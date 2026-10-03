@@ -455,6 +455,11 @@ bool studio_ui_modal_open(studio *s)
     return false;
 }
 
+rml_data_reads studio_ui_data_reads(const studio *s)
+{
+    return s->ui ? rml_data_model_reads(s->ui->data.model) : (rml_data_reads){ 0 };
+}
+
 /* Whether an editor's authored area holds `element`: Members, not a Studio
    UI panel shown in an area, which keeps its keys. */
 static bool in_editor_area(studio *s, rml_element *element)

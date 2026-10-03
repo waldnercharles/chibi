@@ -1047,6 +1047,7 @@ void studio_free(studio *s)
     afree(s->references);
     afree(s->calls.rows);
     afree(s->members.uses.items);
+    rml_element_ref_destroy(s->members.list_element);
     afree(s->perf);
     afree(s->perf_published);
     studio_assets_free(s);

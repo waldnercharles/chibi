@@ -596,7 +596,8 @@ typedef struct
     bool rename_focus;  /* scroll the row being named into view */
     char filter[128];   /* what the header's field filters by */
     ui_list_state list; /* the authored List's window (Members.rml) */
-    unsigned collapsed; /* bit per section */
+    rml_element_ref *list_element; /* that List, or NULL before it shows */
+    unsigned collapsed;            /* bit per section */
     bool value_editing; /* a default value gesture has an open undo step */
     struct
     {
@@ -1227,6 +1228,8 @@ bool studio_ui_shortcut_focus(studio *s);
 /* True while a modal panel (Settings, Collaboration, Keyboard Shortcuts,
  * New Project) shows. */
 bool studio_ui_modal_open(studio *s);
+/* What the panels' data views have read, for the UI bench's counts. */
+rml_data_reads studio_ui_data_reads(const studio *s);
 /* Clears its GameUi.hidden. */
 void studio_ui_show(studio *s, const char *name);
 /* Runs a collaboration action with transient values from the authored panel. */

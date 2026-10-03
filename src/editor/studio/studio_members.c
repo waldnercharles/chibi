@@ -493,26 +493,27 @@ static bool variable_matches(const behavior_variable *v, const char *filter)
 }
 
 /* Uncategorized variables first, then each category in order of first use
-   with its variables. */
+   with its variables. Rows rebuild at every refresh Members shows, so a
+   category is found among the categories seen, not every variable before. */
 static int variable_rows(const behavior_asset *asset, const char *filter, member_row **rows)
 {
     const behavior_variable *vars = asset->variables;
-    int total = 0;
+    int total = 0, *firsts = NULL; /* each category's first variable */
     for (int i = 0; i < acount(vars); i++) {
+        bool seen = !category_of(&vars[i]);
+        for (int c = 0; !seen && c < acount(firsts); c++) {
+            seen = same_category(&vars[i], &vars[firsts[c]]);
+        }
+        if (!seen) {
+            apush(firsts, i);
+        }
         if (!category_of(&vars[i]) && variable_matches(&vars[i], filter)) {
             apush(*rows, ((member_row){ ROW_VARIABLE, i, 1, 0 }));
             total++;
         }
     }
-    for (int i = 0; i < acount(vars); i++) {
-        bool first = category_of(&vars[i]) != NULL;
-        for (int j = 0; first && j < i; j++) {
-            first = !same_category(&vars[i], &vars[j]);
-        }
-        if (!first) {
-            continue;
-        }
-        int header = acount(*rows);
+    for (int c = 0; c < acount(firsts); c++) {
+        int i = firsts[c], header = acount(*rows);
         apush(*rows, ((member_row){ ROW_CATEGORY, i, 1, 0 }));
         for (int j = i; j < acount(vars); j++) {
             if (same_category(&vars[i], &vars[j]) &&
@@ -526,6 +527,7 @@ static int variable_rows(const behavior_asset *asset, const char *filter, member
             asetlen(*rows, header);
         }
     }
+    afree(firsts);
     return total;
 }
 
@@ -1159,6 +1161,19 @@ static rml_element *studio_by_id(studio *s, const char *id)
     return NULL;
 }
 
+/* The List, found by id once while it lives: the search walks every
+   document, and the source syncs at every refresh. */
+static rml_element *members_list(studio *s)
+{
+    studio_members *m = &s->members;
+    rml_element *list = m->list_element ? rml_element_ref_get(m->list_element) : NULL;
+    if (!list && (list = studio_by_id(s, MEMBERS_LIST))) {
+        rml_element_ref_destroy(m->list_element);
+        m->list_element = rml_element_ref_create(list);
+    }
+    return list;
+}
+
 /* The row to scroll into view: a member being named as it is added, or
    one Go to Definition selected; -1 for none. */
 static int reveal_row(studio *s, const member_row *rows)
@@ -1182,7 +1197,7 @@ static bool show_rows(studio *s, const studio_panel_sync *at, yyjson_mut_val *ar
 {
     member_row *rows = member_rows(s);
     int count = acount(rows), reveal = reveal_row(s, rows);
-    rml_element *list = at->preview ? NULL : studio_by_id(s, MEMBERS_LIST);
+    rml_element *list = at->preview ? NULL : members_list(s);
     int first = 0, length = count < UNLAID_ROWS ? count : UNLAID_ROWS;
     if (list) {
         ui_list window = { .count = count, .reveal = reveal };
@@ -1198,79 +1213,56 @@ static bool show_rows(studio *s, const studio_panel_sync *at, yyjson_mut_val *ar
     return changed;
 }
 
-static bool show_item(
-    studio *s,
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *item,
-    const char *id,
-    const char *label,
-    uint32_t icon,
-    const char *shortcut,
-    bool disabled
-)
+/* A menu item: what it runs (members.<id>), and how it shows. */
+typedef struct
 {
-    bool changed = put_text(doc, item, "id", id);
-    changed |= put_text(doc, item, "label", label);
-    changed |= put_glyph(doc, item, "icon", icon);
-    changed |= put_text(doc, item, "shortcut", shortcut ? studio_chord(s, shortcut) : "");
-    return put_bool(item, "disabled", disabled) || changed;
+    const char *id, *label, *shortcut;
+    uint32_t icon;
+    bool shown, disabled;
+} menu_item;
+
+static bool show_item(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const menu_item *shown)
+{
+    bool changed = put_text(doc, item, "id", shown->id);
+    changed |= put_text(doc, item, "label", shown->label);
+    changed |= put_glyph(doc, item, "icon", shown->icon);
+    changed |= put_text(
+        doc,
+        item,
+        "shortcut",
+        shown->shortcut ? studio_chord(s, shown->shortcut) : ""
+    );
+    return put_bool(item, "disabled", shown->disabled) || changed;
 }
 
 /* The selected member's menu: what it can do, and Delete apart. */
 static bool show_menu(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *m)
 {
-    const studio_members *members = &s->members;
     graph *g = sm_graph(s);
-    bool readonly = locked(s), variable = members->kind == STUDIO_MEMBER_VARIABLE;
+    bool readonly = locked(s), variable = s->members.kind == STUDIO_MEMBER_VARIABLE;
     bool callable = g && (g->kind == GRAPH_FUNCTION || g->kind == GRAPH_MACRO);
+    const menu_item items[] = {
+        { "open", "Open", NULL, KIT_ICON_EXTERNAL, g != NULL, false },
+        { "rename", "Rename", "F2", KIT_ICON_EDIT, true, readonly },
+        { "duplicate", "Duplicate", "Shift+D", KIT_ICON_COPY, variable, readonly },
+        { "refs", "Find References", NULL, KIT_ICON_REFERENCES, variable || callable, false },
+        { "calls", "Call Hierarchy", NULL, KIT_ICON_CALLERS, callable, false },
+    };
+    const menu_item remove = { "delete",       "Delete", "X",
+                               KIT_ICON_TRASH, true,     readonly };
+    int length = 0;
+    for (size_t i = 0; i < sizeof items / sizeof *items; i++) {
+        length += items[i].shown;
+    }
     yyjson_mut_val *menu = yyjson_mut_obj_get(m, "menu");
-    int length = (g != NULL) + 1 + variable + (variable || callable) + callable;
     bool changed = fit(doc, menu, length, &ITEM_SHAPE);
-    int at = 0;
-    if (g) {
-        changed |= show_item(s, doc, yyjson_mut_arr_get(menu, at++), "open", "Open", KIT_ICON_EXTERNAL, NULL, false);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(menu);
+    for (size_t i = 0; i < sizeof items / sizeof *items; i++) {
+        if (items[i].shown) {
+            changed |= show_item(s, doc, yyjson_mut_arr_iter_next(&it), &items[i]);
+        }
     }
-    changed |= show_item(s, doc, yyjson_mut_arr_get(menu, at++), "rename", "Rename", KIT_ICON_EDIT, "F2", readonly);
-    if (variable) {
-        changed |= show_item(
-            s,
-            doc,
-            yyjson_mut_arr_get(menu, at++),
-            "duplicate",
-            "Duplicate",
-            KIT_ICON_COPY,
-            "Shift+D",
-            readonly
-        );
-    }
-    if (variable || callable) {
-        changed |= show_item(
-            s,
-            doc,
-            yyjson_mut_arr_get(menu, at++),
-            "refs",
-            "Find References",
-            KIT_ICON_REFERENCES,
-            NULL,
-            false
-        );
-    }
-    if (callable) {
-        changed |= show_item(
-            s,
-            doc,
-            yyjson_mut_arr_get(menu, at++),
-            "calls",
-            "Call Hierarchy",
-            KIT_ICON_CALLERS,
-            NULL,
-            false
-        );
-    }
-    assert(at == length);
-    yyjson_mut_val *remove = yyjson_mut_obj_get(m, "remove");
-    return show_item(s, doc, remove, "delete", "Delete", KIT_ICON_TRASH, "X", readonly) ||
-           changed;
+    return show_item(s, doc, yyjson_mut_obj_get(m, "remove"), &remove) || changed;
 }
 
 /* The filter is view state the header's field binds; C keeps it too, so

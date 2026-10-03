@@ -153,14 +153,21 @@ static double native_ui(studio *s, double *phases)
     return t[PHASE_COUNT] - t[0];
 }
 
-static bench_counts studio_mark()
+/* Layouts, and what the authored panels' data views read. */
+static bench_counts studio_mark(studio *s)
 {
-    return (bench_counts){ .layouts = bench_layouts() };
+    rml_data_reads reads = studio_ui_data_reads(s);
+    return (bench_counts){ .values = reads.values,
+                           .lookups = reads.lookups,
+                           .layouts = bench_layouts() };
 }
 
 static bench_counts studio_counts(studio *s, bench_counts before)
 {
-    return (bench_counts){ .layouts = bench_layouts() - before.layouts,
+    bench_counts now = studio_mark(s);
+    return (bench_counts){ .values = now.values - before.values,
+                           .lookups = now.lookups - before.lookups,
+                           .layouts = now.layouts - before.layouts,
                            .elements = studio_count(s, "*") };
 }
 
@@ -204,7 +211,7 @@ static void full_layout(studio_bench *b, bool comfortable)
     bench_counts counts = { 0 };
     for (int run = -WARMUP; run < RUNS; run++) {
         rml_backend_resize_pixels(s->backend, width + (run & 1), height, ratio);
-        bench_counts before = studio_mark();
+        bench_counts before = studio_mark(s);
         double t = bench_now();
         rml_backend_update(s->backend, 0);
         t = bench_now() - t;
@@ -244,7 +251,7 @@ static void area_text_change(studio_bench *b)
     bench_counts counts = { 0 };
     for (int run = -WARMUP; run < RUNS; run++) {
         rml_element_set_inner_rml(name, run & 1 ? "Renamed" : "Renamed again");
-        bench_counts before = studio_mark();
+        bench_counts before = studio_mark(s);
         double t = bench_now();
         rml_backend_update(s->backend, 0);
         t = bench_now() - t;
@@ -383,7 +390,8 @@ static void properties_step(properties_case *c, int step, const char *name)
         for (int arm = 0; arm < ARMS; arm++) {
             change_player(c, step, run);
             cf_app_update(NULL);
-            bench_counts before = arm ? bench_spike_counts(c->spike) : studio_mark();
+            bench_counts before = arm ? bench_spike_counts(c->spike)
+                                      : studio_mark(c->b->studio);
             double t = properties_ui(c, step, arm, run & 1 ? c->other : c->player, phase);
             cf_app_draw_onto_screen(true);
             bench_counts after = arm ? bench_spike_counts(c->spike)
@@ -457,7 +465,7 @@ static void properties(studio_bench *b)
     bench_counts counts = { 0 };
     for (int run = -WARMUP; run < RUNS; run++) {
         cf_app_update(NULL);
-        bench_counts before = studio_mark();
+        bench_counts before = studio_mark(s);
         double t = native_ui(s, phase);
         cf_app_draw_onto_screen(true);
         counts = studio_counts(s, before);
@@ -623,7 +631,7 @@ static void members_step_row(studio_bench *b, members_step step, const char *nam
     for (int run = -WARMUP; run < RUNS; run++) {
         members_change(s, step, run, ids);
         cf_app_update(NULL);
-        bench_counts before = studio_mark();
+        bench_counts before = studio_mark(s);
         double t = native_ui(s, phase);
         cf_app_draw_onto_screen(true);
         counts = studio_counts(s, before);
@@ -675,13 +683,19 @@ static void members(studio_bench *b)
     probe_documents(s);
     float ratio = studio_pixel_ratio(s);
     rml_vec2 size = rml_element_box_size(list, RML_BOX_BORDER);
+    rml_element *rows[256];
+    int count = rml_element_query_selector_all(list, ".tree-row", rows, 256),
+        shown = 0;
+    for (int i = 0; i < count && i < 256; i++) {
+        shown += rml_element_is_visible(rows[i], true);
+    }
     printf(
-        "|  | Members %.0fx%.0f dp over %d variables; %d rows shown | | | | | "
-        "| |\n",
+        "|  | Members %.0fx%.0f dp over %d variables; %d rows in its window | "
+        "| | | | | |\n",
         size.x / ratio,
         size.y / ratio,
         acount(asset->variables),
-        studio_count(s, "[data-section], .member-row .tree-row, .members-list .tree-row")
+        shown
     );
     members_step_row(b, MEMBERS_IDLE, "Members: a UI frame with nothing changed", ids);
     members_step_row(b, MEMBERS_SELECT, "Members: select another variable", ids);

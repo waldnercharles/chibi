@@ -240,6 +240,9 @@ extern "C"
         RML_EVENT_CHANGE,
         RML_EVENT_SUBMIT,
         RML_EVENT_TABCHANGE,
+        /* A text field's edit, as HTML's; change follows once it commits
+         * (cmake/patches/rmlui-input-events.patch). */
+        RML_EVENT_INPUT,
     } rml_event_id;
 
     typedef enum rml_box_area

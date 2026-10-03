@@ -292,7 +292,7 @@ TEST_CASE(all_checks)
     /* Trackpad pinch (G). */
     test_studio_pinch();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
-    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data, follow array edits with constant-time item lookups and lay out text in flex rows");
+    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data, follow array edits with constant-time item lookups, lay out text in flex rows, build data-when copies and send input and change from text fields");
     /* UI source maps (workstream A) */
     test_ui_sources();
     /* UI documents (workstream D). */

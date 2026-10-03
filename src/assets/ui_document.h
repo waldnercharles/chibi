@@ -95,15 +95,15 @@ void ui_document_use_names(const char *rml, char ***names);
 #define UI_DOCUMENT_PAUSE_MENU "PauseMenu"
 
 /* An event markup sends the entity showing it: an emit('Name') in a
- * data-event-* handler when that event happens (data-event-change when the
- * player changes an input), and a data-keys binding's when the player
- * presses its key with focus inside. */
+ * data-event-* handler when that event happens (data-event-change or
+ * data-event-input when the player changes an input), and a data-keys
+ * binding's when the player presses its key with focus inside. */
 typedef struct ui_document_event
 {
     char *name;
     char *element; /* "#id", "tag.class", "tag", or a <use>'s widget name */
     char *key;     /* the data-keys key; NULL for a handler's emit */
-    bool input;    /* emitted by data-event-change, when an input changes */
+    bool input;    /* emitted as an input changes */
 } ui_document_event;
 
 /* Appends each event the markup names, in document order, to `events`. */

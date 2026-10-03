@@ -955,11 +955,15 @@ text, and with it the letters gameplay and single-key shortcuts would take;
 Escape and chords with the primary modifier stay the host's.
 
 Documents bind data with RmlUi's data bindings, which follow Vue: `{{ save.name }}`
-in text, `data-for="item : list"`, `data-if`, `data-class-active="expr"`,
-`data-attr-src="expr"`, `data-value="save.volume"` on an input (`data-value-lazy`
-sets it on Enter or blur, as Vue's `v-model.lazy`),
+in text, `data-for="item : list"`, `data-if` (hides, as `v-show`),
+`data-when` (builds or removes the element, as `v-if`), `data-class-active="expr"`,
+`data-attr-src="expr"`, `data-value="save.volume"` on an input, which follows
+each edit (`data-value-lazy` sets it once the edit commits with Enter or blur,
+as Vue's `v-model.lazy`),
 `data-checked="save.theme"` on a radio with a `value` or on a checkbox, and
 `data-event-click="expr"`, where `emit('Name')` sends an event to the entity.
+As in HTML, a text input sends `input` on each edit and `change` once on
+commit, and a right press sends `contextmenu`.
 `save` holds the world's saved keys (the store of `Read Saved Text`) as text,
 `true` and `false` as booleans; a key nothing saved reads empty until a
 binding sets it, and changes stay pending until a behavior commits the save.

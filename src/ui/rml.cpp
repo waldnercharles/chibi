@@ -142,6 +142,7 @@ SAME_EVENT(TRANSITIONEND, Transitionend);
 SAME_EVENT(CHANGE, Change);
 SAME_EVENT(SUBMIT, Submit);
 SAME_EVENT(TABCHANGE, Tabchange);
+SAME_EVENT(INPUT, Input);
 
 SAME(RML_BOX_MARGIN, Rml::BoxArea::Margin);
 SAME(RML_BOX_BORDER, Rml::BoxArea::Border);

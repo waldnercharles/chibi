@@ -874,7 +874,7 @@ typedef struct
 {
     const char *at;
     size_t length;
-    bool change; /* the handler is data-event-change */
+    bool change; /* the handler is data-event-change or data-event-input */
 } emit_span;
 
 /* Appends the emit('Name') calls of the data-event-* handlers among the
@@ -909,7 +909,8 @@ static void emit_spans(const char *p, const char *end, emit_span **spans)
         if (!close) {
             return;
         }
-        bool change = equals - type == 6 && !strncmp(type, "change", 6);
+        bool change = (equals - type == 6 && !strncmp(type, "change", 6)) ||
+                      (equals - type == 5 && !strncmp(type, "input", 5));
         for (const char *e = value; e + 6 < close; e++) {
             if (strncmp(e, "emit(", 5) || (e[5] != '"' && e[5] != '\'')) {
                 continue;

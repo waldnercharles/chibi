@@ -533,9 +533,9 @@ static const char *const ADD_HINTS[] = {
 
 /* Attributes RmlUi documents take besides id, class and style. */
 static const char *const ATTRIBUTES[] = {
-    "data-if",   "data-for",  "data-event-click", "data-value", "data-checked",
-    "data-keys", "autofocus", "placeholder",      "type",       "value",
-    "src",       "disabled",
+    "data-if",      "data-when", "data-for",  "data-event-click", "data-value",
+    "data-checked", "data-keys", "autofocus", "placeholder",      "type",
+    "value",        "src",       "disabled",
 };
 
 static bool enter_pressed(const studio *s)

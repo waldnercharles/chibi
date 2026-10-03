@@ -957,7 +957,8 @@ static void on_event(void *user, const rml_event *e)
         case RML_EVENT_DRAG:
         case RML_EVENT_DRAGEND: drag(k, e); break;
         case RML_EVENT_KEYDOWN: keydown(k, e, n); break;
-        case RML_EVENT_CHANGE:
+        /* The kit's fields take each edit; they commit on their own keys. */
+        case RML_EVENT_INPUT:
             if (!command_change(k, e->target) && n) {
                 control_change(k, n, e->target);
             }
@@ -986,7 +987,7 @@ static void on_event(void *user, const rml_event *e)
 static const rml_event_id kit_events[] = {
     RML_EVENT_MOUSEDOWN, RML_EVENT_MOUSEUP,   RML_EVENT_CLICK,
     RML_EVENT_DBLCLICK,  RML_EVENT_DRAGSTART, RML_EVENT_DRAG,
-    RML_EVENT_DRAGEND,   RML_EVENT_KEYDOWN,   RML_EVENT_CHANGE,
+    RML_EVENT_DRAGEND,   RML_EVENT_KEYDOWN,   RML_EVENT_INPUT,
     RML_EVENT_MOUSEOVER, RML_EVENT_FOCUS,     RML_EVENT_BLUR,
     RML_EVENT_MOUSEMOVE,
 };

@@ -148,8 +148,8 @@ static bool text_is(rml_element *doc, const char *id, const char *text)
 }
 
 /* A data model over JSON: text and lists follow it, a missing member reads
- * empty, bindings write back, a lazy one on blur, and emit('Name') and
- * emit('Name', value) reach the host. */
+ * empty, bindings write back, a lazy one once its edit commits, and
+ * emit('Name') and emit('Name', value) reach the host. */
 static bool binds_data(rml_context *context)
 {
     yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
@@ -194,7 +194,8 @@ static bool binds_data(rml_context *context)
     bool picked = !strcmp(emitted, "pick:Pick=1");
     rml_element *lazy = rml_element_by_id(doc, "lazy");
     rml_element_focus(lazy, false);
-    rml_element_set_value(lazy, "Theme");
+    rml_element_set_selection_range(lazy, 0, 6);
+    rml_context_process_text_input(context, "Theme", 5);
     bool held = !strcmp(yyjson_mut_get_str(yyjson_mut_obj_get(root, "title")), "Tokens");
     rml_element_blur(lazy);
     bool committed = !strcmp(yyjson_mut_get_str(yyjson_mut_obj_get(root, "title")), "Theme");
@@ -203,6 +204,153 @@ static bool binds_data(rml_context *context)
     rml_data_model_destroy(model);
     yyjson_mut_doc_free(json);
     return shown && listed && wrote && went && picked && held && committed;
+}
+
+static int count(rml_element *doc, const char *selector)
+{
+    return rml_element_query_selector_all(doc, selector, NULL, 0);
+}
+
+static void set_flag(yyjson_mut_val *root, const char *name, bool on, rml_data_model *model)
+{
+    yyjson_mut_set_bool(yyjson_mut_obj_get(root, name), on);
+    rml_data_model_dirty(model, name);
+}
+
+/* data-when builds a copy of its element while true and removes the copy
+ * and its views while false, as Vue's v-if does, where data-if hides its
+ * element and keeps its views (v-show); the element stays as the hidden
+ * template, as data-for's does (cmake/patches/rmlui-data-when.patch). */
+static bool builds_when(rml_context *context)
+{
+    yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(json);
+    yyjson_mut_doc_set_root(json, root);
+    yyjson_mut_obj_add_bool(json, root, "on", true);
+    yyjson_mut_obj_add_str(json, root, "label", "A");
+    rml_data_model *model = rml_data_model_create(context, "when", json, on_emit, NULL);
+    rml_element *doc = rml_context_load_document_from_memory(
+        context,
+        "<rml><head><style>body { font-family: Inter; }</style></head>"
+        "<body data-model=\"when\">"
+        "<div class=\"when\" data-when=\"on\"><span class=\"built\">{{ label "
+        "}}</span></div>"
+        "<div class=\"shown\" data-if=\"on\"><span class=\"kept\">{{ label "
+        "}}</span></div>"
+        "<span class=\"empty\" data-when=\"on\"/>"
+        "</body></rml>",
+        "[memory]"
+    );
+    assert(doc);
+    rml_context_update(context);
+    rml_element *built = rml_element_query_selector(doc, ".built");
+    char text[16] = "";
+    if (built) {
+        rml_element_inner_rml(built, text, sizeof text);
+    }
+    bool first = count(doc, ".when") == 2 && count(doc, ".empty") == 2 &&
+                 !strcmp(text, "A");
+    set_flag(root, "on", false, model);
+    rml_context_update(context);
+    bool removed = count(doc, ".when") == 1 && count(doc, ".built") == 0 &&
+                   count(doc, ".empty") == 1 && count(doc, ".kept") == 1;
+    rml_data_reads before = rml_data_model_reads(model);
+    yyjson_mut_set_str(yyjson_mut_obj_get(root, "label"), "B");
+    rml_data_model_dirty(model, "label");
+    rml_context_update(context);
+    /* Only the kept span reads the label: the removed copy's view is gone. */
+    uint64_t evaluated = rml_data_model_reads(model).values - before.values;
+    set_flag(root, "on", true, model);
+    rml_context_update(context);
+    built = rml_element_query_selector(doc, ".built");
+    text[0] = '\0';
+    if (built) {
+        rml_element_inner_rml(built, text, sizeof text);
+    }
+    bool rebuilt = count(doc, ".when") == 2 && !strcmp(text, "B");
+    if (!(first && removed && evaluated == 1 && rebuilt)) {
+        printf("  data-when: %d %d %llu %d\n", first, removed, (unsigned long long)evaluated, rebuilt);
+    }
+    rml_document_close(doc);
+    rml_context_update(context);
+    rml_data_model_destroy(model);
+    yyjson_mut_doc_free(json);
+    return first && removed && evaluated == 1 && rebuilt;
+}
+
+static char sent[64];
+
+static void log_emit(void *, const rml_event *, const char *name, const char *)
+{
+    snprintf(sent + strlen(sent), sizeof sent - strlen(sent), "%s%s", sent[0] ? " " : "", name);
+}
+
+static const char *text_of(yyjson_mut_val *root, const char *name)
+{
+    return yyjson_mut_get_str(yyjson_mut_obj_get(root, name));
+}
+
+static void enter(rml_context *context)
+{
+    rml_context_process_key_down(context, RML_KEY_RETURN, 0);
+    rml_context_process_key_up(context, RML_KEY_RETURN, 0);
+}
+
+/* A text field sends input on each edit and change once its edit commits,
+ * with Enter or by leaving the field, as browsers do; data-value follows
+ * input and data-value-lazy change, as Vue's v-model and v-model.lazy do
+ * (cmake/patches/rmlui-input-events.patch). */
+static bool text_events(rml_context *context)
+{
+    yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(json);
+    yyjson_mut_doc_set_root(json, root);
+    yyjson_mut_obj_add_str(json, root, "live", "");
+    yyjson_mut_obj_add_str(json, root, "lazy", "");
+    rml_data_model *model = rml_data_model_create(context, "fields", json, log_emit, NULL);
+    rml_element *doc = rml_context_load_document_from_memory(
+        context,
+        "<rml><head><style>body { font-family: Inter; } input { display: "
+        "block; "
+        "width: 100dp; height: 20dp; }</style></head><body "
+        "data-model=\"fields\">"
+        "<input id=\"live\" type=\"text\" data-value=\"live\" "
+        "data-event-input=\"emit('input')\" "
+        "data-event-change=\"emit('change')\"/>"
+        "<input id=\"lazy\" type=\"text\" data-value-lazy=\"lazy\"/>"
+        "</body></rml>",
+        "[memory]"
+    );
+    assert(doc);
+    rml_document_show(doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_NONE);
+    rml_context_update(context);
+    sent[0] = '\0';
+    rml_element_focus(rml_element_by_id(doc, "live"), false);
+    rml_context_process_text_input(context, "a", 1);
+    rml_context_process_text_input(context, "b", 1);
+    bool live = !strcmp(text_of(root, "live"), "ab") && !strcmp(sent, "input input");
+    enter(context);
+    enter(context);
+    rml_element_blur(rml_element_by_id(doc, "live"));
+    bool once = !strcmp(sent, "input input change");
+    rml_element *lazy = rml_element_by_id(doc, "lazy");
+    rml_element_focus(lazy, false);
+    rml_context_process_text_input(context, "x", 1);
+    bool held = !strcmp(text_of(root, "lazy"), "");
+    rml_element_blur(lazy);
+    bool left = !strcmp(text_of(root, "lazy"), "x");
+    rml_element_focus(lazy, false);
+    rml_context_process_text_input(context, "y", 1);
+    enter(context);
+    bool entered = !strcmp(text_of(root, "lazy"), "xy");
+    if (!(live && once && held && left && entered)) {
+        printf("  text events: %d %d %d %d %d '%s'\n", live, once, held, left, entered, sent);
+    }
+    rml_document_close(doc);
+    rml_context_update(context);
+    rml_data_model_destroy(model);
+    yyjson_mut_doc_free(json);
+    return live && once && held && left && entered;
 }
 
 /* Whether every index of `array` reads the item yyjson's own walk reaches,
@@ -317,7 +465,8 @@ bool test_rmlui_binding()
     bool ok = loads_from_memory(context) && replaces_style_sheet(context) &&
               mixes_colors(context) && binds_data(context) &&
               lays_out_flex_text(context) && indexes_array_items() &&
-              lists_follow_arrays(context);
+              lists_follow_arrays(context) && builds_when(context) &&
+              text_events(context);
     rml_backend_destroy(backend);
     return ok;
 }

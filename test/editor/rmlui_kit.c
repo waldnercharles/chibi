@@ -46,6 +46,8 @@ typedef struct
     const char *morph;
     int reveal, rows_emitted, hovered_row;
     char dropped[32];
+    bool drop_hovered; /* a "thing" drag is over the target */
+    char hovered[32];  /* and its payload */
     char note[64];
     int note_commits;
     bool focus_note;
@@ -316,6 +318,13 @@ static void emit(kit_fixture *f)
     kit_style(k, "height", "20dp");
     kit_style(k, "margin-left", "40dp");
     kit_drop_target(k, "thing", f->dropped, sizeof f->dropped);
+    kit_drop_target(k, "other", f->dropped, sizeof f->dropped);
+    char type[16];
+    f->drop_hovered = kit_drop_hover(k, type, sizeof type, f->hovered, sizeof f->hovered) &&
+                      !strcmp(type, "thing");
+    if (f->drop_hovered) {
+        kit_drag_hint(k, "Put here");
+    }
     kit_pop(k);
     if (f->open_rename) {
         f->open_rename = false;
@@ -2828,10 +2837,40 @@ bool test_rmlui_kit()
     pointer(&f, RML_INPUT_POINTER_MOVE, tx, ty);
     frame(&f);
     ok &= check(kit_dragging(f.k, "thing"), "drag starts past 5 dp");
+    frame(&f);
+    frame(&f);
+    rml_element *dnd = rml_context_document(rml_backend_context(f.backend), 0);
+    rml_element *over = rml_element_query_selector(dnd, "[data-drop-over]");
+    rml_element *hint = rml_element_query_selector(dnd, ".drag-overlay[data-hint] .hint");
+    char hint_text[32] = "";
+    if (hint) {
+        rml_element_inner_rml(hint, hint_text, sizeof hint_text);
+    }
+    ok &= check(
+        f.drop_hovered && !strcmp(f.hovered, "apple") && over &&
+            rml_element_has_attribute(over, "data-drop-accept") &&
+            !strcmp(hint_text, "Put here"),
+        "a target of several types hears the drag over it and names what a "
+        "drop does"
+    );
     pointer(&f, RML_INPUT_POINTER_UP, tx, ty);
     f.in.down[0] = false;
     frame(&f);
     ok &= check(strcmp(f.dropped, "apple") == 0 && !kit_dragging(f.k, NULL), "drop lands on the target");
+    /* Escape puts a drag back: nothing lands, even released over a target. */
+    f.dropped[0] = '\0';
+    pointer(&f, RML_INPUT_POINTER_MOVE, sx, sy);
+    pointer(&f, RML_INPUT_POINTER_DOWN, sx, sy);
+    f.in.down[0] = true;
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_MOVE, tx, ty);
+    frame(&f);
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_UP, tx, ty);
+    f.in.down[0] = false;
+    frame(&f);
+    ok &= check(!f.dropped[0] && !kit_dragging(f.k, NULL), "Escape cancels a drag");
 
     /* NumberFlow and Torph settle to exactly what a fresh render of the new
      * value lays out. */

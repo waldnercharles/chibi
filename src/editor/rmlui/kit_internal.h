@@ -193,8 +193,8 @@ struct node
     kit_rect layout_rect;
     spring layout_x, layout_y;
     chart_state *chart; /* owned, NULL until used */
-    char *drop_type; /* accepted drag type, set each frame by kit_drop_target */
-    bool hosted;     /* kit_host: its children are mounted content */
+    char **drop_types; /* accepted drag types, set each frame by kit_drop_target */
+    bool hosted;       /* kit_host: its children are mounted content */
 };
 
 /* A toast (kit_toast.c). Positions are springs around their targets, in dp. */
@@ -215,6 +215,7 @@ typedef struct drag_state
 {
     bool pending, active, dropped;
     char *type, *payload, *label, *source, *over, *target;
+    char *hint; /* what a drop does here, set each frame by kit_drag_hint */
     uint32_t icon;
     float x0, y0;
     double t0;
@@ -427,6 +428,8 @@ void toasts_frame(kit *k);
 void drag_begin_frame(kit *k);
 void drag_end_frame(kit *k);
 void drag_cancel(kit *k);
+/* Forgets the drag types a node accepted last frame. */
+void drop_types_clear(node *n);
 
 /* ---------- Custom elements (kit_chart.c, kit_wires.c) ---------- */
 

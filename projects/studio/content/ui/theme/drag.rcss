@@ -6,7 +6,12 @@
     transition: opacity 0.12s cubic-out;
 }
 .drag-overlay[data-starting-style], .drag-overlay[data-ending-style] { opacity: 0; }
+.drag-overlay .text { display: flex; flex-direction: column; }
 .drag-overlay .label { display: block; line-height: var(--studio-line-16, 16dp); }
+/* What a drop does where the pointer is: a second line. */
+.drag-overlay .hint { display: none; font-size: var(--studio-font-11, 11dp); line-height: var(--studio-line-14, 14dp); color: var(--muted-foreground); }
+.drag-overlay[data-hint] { height: auto; padding: 4dp 8dp; }
+.drag-overlay[data-hint] .hint { display: block; }
 .drag-overlay[data-over] { border-color: var(--primary); }
 [data-dragging] { opacity: 0.5; }
 [data-drop-over] { background-color: var(--primary-soft); }

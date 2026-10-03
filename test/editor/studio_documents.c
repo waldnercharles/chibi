@@ -1948,6 +1948,19 @@ static void wheel_at(const studio *s, float x, float y, float notches)
     assert(SDL_PushEvent(&wheel));
 }
 
+static void button_at(const studio *s, float x, float y, Uint8 button, bool down)
+{
+    SDL_Event event = { .type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN
+                                     : SDL_EVENT_MOUSE_BUTTON_UP };
+    event.button.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.button.button = button;
+    event.button.down = down;
+    event.button.clicks = 1;
+    event.button.x = x * s->prefs.ui_scale;
+    event.button.y = y * s->prefs.ui_scale;
+    assert(SDL_PushEvent(&event));
+}
+
 static bool near_ratio(float ratio, float expected)
 {
     return fabsf(ratio / expected - 1) < 0.002f;
@@ -2036,6 +2049,24 @@ static void wheel_zooms_canvases()
         "a wheel notch zooms the Scene camera about 15% once, two half notches "
         "as much, and one event at most halves it"
     );
+    /* A right press while the left is held reaches the Scene, whose tools
+       cancel a drag with it, and only in its own frame. */
+    button_at(s, x, y, SDL_BUTTON_LEFT, true);
+    frames(&scene, 2);
+    mouse_move(s, x + 40, y + 20);
+    button_at(s, x + 40, y + 20, SDL_BUTTON_RIGHT, true);
+    frame(&scene, false);
+    bool heard = s->surface.pressed[1] && s->surface.down[0];
+    frame(&scene, false);
+    bool once = !s->surface.pressed[1];
+    button_at(s, x + 40, y + 20, SDL_BUTTON_RIGHT, false);
+    button_at(s, x + 40, y + 20, SDL_BUTTON_LEFT, false);
+    frames(&scene, 2);
+    if (kit_has_popup(s->kit)) {
+        tap(SDL_SCANCODE_ESCAPE);
+        frames(&scene, 2);
+    }
+    test_check(heard && once, "a right press during a Scene drag reaches its tools once");
     fixture_free(&scene);
 
     studio_fixture f = fixture_new();

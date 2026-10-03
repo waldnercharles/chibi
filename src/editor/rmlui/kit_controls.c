@@ -1261,12 +1261,17 @@ rml_element *kit_surface(kit *k, const char *key, const char *cls, const char *t
     out.hovered = rml_context_hover_element(k->context) == n->el &&
                   rect_contains(out.rect, k->in.mouse_x, k->in.mouse_y);
     bool captured = str_eq(k->surface_capture, n->path);
+    /* A surface holding a press still hears the other buttons' presses, as a
+       right click cancels a drag. */
     for (int b = 0; b < 3; b++) {
-        if (out.hovered && k->in.pressed[b] && !captured) {
+        if (!k->in.pressed[b] || !(out.hovered || captured)) {
+            continue;
+        }
+        out.pressed[b] = true;
+        if (!captured) {
             str_set(&k->surface_capture, n->path);
             k->surface_button = b;
             captured = true;
-            out.pressed[b] = true;
         }
     }
     if (captured) {

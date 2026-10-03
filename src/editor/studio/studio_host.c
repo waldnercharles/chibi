@@ -787,13 +787,6 @@ static void draw_viewport(studio *s)
         input.pressed[b] = s->surface.pressed[b];
         input.released[b] = s->surface.released[b];
     }
-    /* The surface's events are refreshed only in frames that emit the UI,
-       but the Scene draws every frame: a wheel turn or a click reaches it
-       once, not again in each frame until the next emit. */
-    s->surface.wheel = 0;
-    for (int b = 0; b < 3; b++) {
-        s->surface.pressed[b] = s->surface.released[b] = false;
-    }
     studio_scene_view(s, &input);
     if (studio_canvas_draw(s, &input)) {
         engine_viewport_set_host_input(s->viewport, NULL);
@@ -1248,6 +1241,12 @@ static void run(studio *s, double delta_seconds, float width, float height)
     share_project_prefs(s);
     studio_debug_frame(s);
     bool update_ui = host_ui_due(s, input, authored);
+    /* The Scene and its tools read the surface every frame, but only an emit
+       refreshes it: a click or a wheel turn reaches them in its own frame. */
+    s->surface.wheel = 0;
+    for (int b = 0; b < 3; b++) {
+        s->surface.pressed[b] = s->surface.released[b] = false;
+    }
     if (update_ui) {
         CHIBI_TRACE_ZONE_BEGIN(sync_zone, "Studio model sync");
         studio_ui_frame(s);

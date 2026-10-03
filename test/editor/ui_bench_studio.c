@@ -3,6 +3,7 @@
  * Properties showing the Player against the authored spike, and whether a
  * popover escapes an area's clipping. */
 #include "editor/studio/studio_internal.h"
+#include "editor/studio/studio_thumbnails.h"
 #include "editor/ui/kit.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_internal.h"
@@ -13,6 +14,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define ARENA "projects/arena2d"
@@ -476,6 +478,150 @@ static void properties(studio_bench *b)
     bench_spike_free(c.spike);
 }
 
+/* ---------- 10: Assets over 500 assets ---------- */
+
+#define ASSETS_ADDED 480
+/* Where the scroll cases scroll from, in lines or rows, past the overscan
+   that keeps the window still for small scrolls near the top. */
+#define ASSETS_SCROLLED 10
+/* Opening takes this many UI frames to show every tile in view. */
+#define OPEN_FRAMES 3
+
+typedef enum
+{
+    ASSETS_OPEN,   /* show Assets in an area that showed the Outliner */
+    ASSETS_SCROLL, /* scroll the grid a line */
+    ASSETS_FILTER, /* type in the filter */
+    ASSETS_IDLE,   /* a UI frame with nothing changed */
+    ASSETS_LIST,   /* scroll the list a row */
+} assets_step;
+
+/* The views Studio's authored panels evaluated so far. */
+static uint64_t studio_values(studio *s)
+{
+    ui_data *data = studio_ui_data(s);
+    return data ? rml_data_model_reads(data->model).values : 0;
+}
+
+/* The Assets view's scroller. */
+static rml_element *assets_scroller(studio *s)
+{
+    return studio_query(s, "#assets-list");
+}
+
+/* Scrolls the view to `lines` of `height` dp, and half a line more for an
+   odd run. */
+static void assets_scroll(studio *s, float height, int run)
+{
+    float lines = ASSETS_SCROLLED + (run & 1 ? 1.0f : 0.0f);
+    rml_element_set_scroll_top(assets_scroller(s), lines * height * studio_pixel_ratio(s));
+}
+
+static void assets_change(studio_bench *b, assets_step step, int run)
+{
+    studio *s = b->studio;
+    switch (step) {
+        case ASSETS_OPEN:
+            studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_OUTLINER;
+            frames(b, 2);
+            studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_ASSETS;
+            break;
+        case ASSETS_SCROLL:
+            assets_scroll(s, (float)s->prefs.assets_tile + 2 * 4 + 18 + 4, run);
+            break;
+        case ASSETS_FILTER:
+            snprintf(s->assets_filter, sizeof s->assets_filter, "%s", run & 1 ? "QaBench1" : "QaBench");
+            break;
+        case ASSETS_LIST: assets_scroll(s, 26, run); break;
+        case ASSETS_IDLE: break;
+    }
+}
+
+/* Times one step's UI work: three UI frames to open (a mount, then its
+   window once the List has a width), one otherwise; counts the views
+   evaluated, the documents laid out and the elements in the area's
+   document. */
+static void assets_case(studio_bench *b, assets_step step, const char *name)
+{
+    studio *s = b->studio;
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT], more[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        assets_change(b, step, run);
+        cf_app_update(NULL);
+        uint64_t values = studio_values(s), layouts = bench_layouts();
+        double t = native_ui(s, phase);
+        for (int f = 1; step == ASSETS_OPEN && f < OPEN_FRAMES; f++) {
+            t += native_ui(s, more);
+            for (int p = 0; p < PHASE_COUNT; p++) {
+                phase[p] += more[p];
+            }
+        }
+        cf_app_draw_onto_screen(true);
+        counts = (bench_counts){
+            .values = studio_values(s) - values,
+            .layouts = bench_layouts() - layouts,
+            .elements = rml_element_query_selector_all(
+                rml_element_owner_document(assets_scroller(s)),
+                "*",
+                NULL,
+                0
+            ),
+        };
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    bench_row("10", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
+/* Assets maximized over the Sandbox's assets and 480 more, which have no
+   files, so their tiles keep their kinds' icons: open, scroll and filter
+   the grid, an idle frame, and a scroll of the list. */
+static void assets(studio_bench *b)
+{
+    studio *s = b->studio;
+    for (int i = 0; i < ASSETS_ADDED; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "QaBench%03d", i);
+        reference_asset_kind kind = i & 1 ? REFERENCE_ASSET_BEHAVIOR
+                                          : REFERENCE_ASSET_MATERIAL;
+        reference_index_add_asset(b->scene->asset_index, kind, name, NULL, name);
+    }
+    /* Inserted directly: start the cached model afresh, as a rebuild would. */
+    studio_assets_free(s);
+    s->maximized = STUDIO_AREA_TOP;
+    studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_ASSETS;
+    s->prefs.assets_tile = STUDIO_ASSETS_TILE;
+    frames(b, 4);
+    for (int i = 0; i < 600 && studio_thumbs_pending(s); i++) {
+        frames(b, 1);
+    }
+    /* Maximized, the area is a document of its own. */
+    bench_probe(rml_element_owner_document(assets_scroller(s)));
+    printf(
+        "|  | Assets: %d assets, %d tiles shown | | | | | | |\n",
+        reference_index_asset_count(b->scene->asset_index),
+        studio_count(s, "#assets-list [data-ui=Tile]")
+    );
+    assets_case(b, ASSETS_OPEN, "Assets grid: open, 3 UI frames");
+    assets_case(b, ASSETS_SCROLL, "Assets grid: scroll a line");
+    assets_case(b, ASSETS_FILTER, "Assets grid: filter keystroke");
+    assets_case(b, ASSETS_IDLE, "Assets grid: UI frame, nothing changed");
+    s->prefs.assets_tile = STUDIO_ASSETS_LIST;
+    frames(b, 4);
+    assets_case(b, ASSETS_LIST, "Assets list: scroll a row");
+    s->prefs.assets_tile = STUDIO_ASSETS_TILE;
+    s->maximized = -1;
+    frames(b, 2);
+}
+
 /* ---------- 7: popovers and area clipping ---------- */
 
 #define POP_SIZE 200
@@ -599,11 +745,15 @@ int ui_bench_studio(const char *program)
     probe_documents(b.studio);
     bench_header("Studio on the Sandbox at 1440x900, native");
     printf("|  | pixel scale %.1f | | | | | | |\n", cf_app_get_pixel_scale());
-    full_layout(&b, false);
-    full_layout(&b, true);
-    b.studio->prefs.comfortable = false;
-    area_text_change(&b);
-    properties(&b);
+    /* UI_BENCH_ASSETS runs case 10 alone. */
+    if (!getenv("UI_BENCH_ASSETS")) {
+        full_layout(&b, false);
+        full_layout(&b, true);
+        b.studio->prefs.comfortable = false;
+        area_text_change(&b);
+        properties(&b);
+    }
+    assets(&b);
     bench_close(&b);
     popover_clipping();
     app_input_shutdown();

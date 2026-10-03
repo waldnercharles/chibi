@@ -338,13 +338,15 @@ void studio_scene_body(studio *s, int area)
     if (!session) {
         view_overlay(s);
     }
-    engine_viewport_view view;
-    engine_viewport_get_view(s->viewport, &view);
+    engine_viewport_camera camera;
+    engine_viewport_get_camera(s->viewport, &camera);
     /* Only once the surface is laid out and the scene has drawn: its first
        draw restores or fits the camera after this readout is emitted, so an
        earlier value would be the reset camera's, rolling to the real one. */
     if (s->surface.rect.w > 0 && scene->camera_target >= 0) {
-        double zoom = roundf(s->surface.rect.w / fmaxf(view.width, 1) * 100);
+        /* The camera widens the framed span to the area's aspect, so its
+           span, not the framed width, sets the pixels per world unit. */
+        double zoom = roundf(s->surface.rect.w / fmaxf(camera.span_width, 1) * 100);
         kit_number_flow(
             k,
             "zoom",

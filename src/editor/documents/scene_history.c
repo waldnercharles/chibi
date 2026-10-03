@@ -18,6 +18,7 @@ typedef struct
 {
     ecs_entity entity;
     uint64_t group;
+    uint64_t step; /* the group's id, or this lone edit's own; 0 once restored */
     GameTransform before;
     GameTransform after;
     scene_field_edit *fields;
@@ -126,6 +127,24 @@ uint64_t scene_history_group_id(const scene_history *history, bool redo)
     return acount(edits) ? alast(edits).group : 0;
 }
 
+/* A group is one step; an edit outside a group is a step of its own. Ids
+   share the group counter, so they grow and never repeat. */
+static uint64_t next_step(scene_history *history)
+{
+    if (history->group) {
+        return history->group;
+    }
+    assert(history->next_group != UINT64_MAX);
+    return ++history->next_group;
+}
+
+uint64_t scene_history_step_id(const scene_history *history, bool redo)
+{
+    assert(history);
+    const scene_edit *edits = redo ? history->redo : history->undo;
+    return acount(edits) ? alast(edits).step : 0;
+}
+
 bool scene_history_push(scene_history *history, ecs_entity entity, GameTransform before, GameTransform after)
 {
     assert(history && entity.slot);
@@ -136,7 +155,11 @@ bool scene_history_push(scene_history *history, ecs_entity entity, GameTransform
     }
     apush(
         history->undo,
-        ((scene_edit){ .entity = entity, .group = history->group, .before = before, .after = after })
+        ((scene_edit){ .entity = entity,
+                       .group = history->group,
+                       .step = next_step(history),
+                       .before = before,
+                       .after = after })
     );
     clear_edits(&history->redo);
     return true;
@@ -254,6 +277,7 @@ bool scene_history_push_fields(
         apush(edit.fields, field);
     }
     edit.group = history->group;
+    edit.step = next_step(history);
     apush(history->undo, edit);
     clear_edits(&history->redo);
     return true;
@@ -301,7 +325,13 @@ bool scene_history_push_actor(scene_history *history, ecs_entity entity, const s
     copy->base = av_value_copy(actor->base);
     copy->state = av_value_copy(actor->state);
     copy->retained = actor->retained ? av_value_copy(actor->retained) : NULL;
-    apush(history->undo, ((scene_edit){ .entity = entity, .group = history->group, .actor = copy }));
+    apush(
+        history->undo,
+        ((scene_edit){ .entity = entity,
+                       .group = history->group,
+                       .step = next_step(history),
+                       .actor = copy })
+    );
     clear_edits(&history->redo);
     return true;
 }
@@ -403,7 +433,13 @@ bool scene_history_push_behaviors(scene_history *history, ecs_entity entity, con
     *copy = *edit;
     copy->before = copy_names(edit->before, edit->before_count);
     copy->after = copy_names(edit->after, edit->after_count);
-    apush(history->undo, ((scene_edit){ .entity = entity, .group = history->group, .behaviors = copy }));
+    apush(
+        history->undo,
+        ((scene_edit){ .entity = entity,
+                       .group = history->group,
+                       .step = next_step(history),
+                       .behaviors = copy })
+    );
     clear_edits(&history->redo);
     return true;
 }
@@ -446,6 +482,7 @@ bool scene_history_push_rename(scene_history *history, ecs_entity entity, const 
         history->undo,
         ((scene_edit){ .entity = entity,
                        .group = history->group,
+                       .step = next_step(history),
                        .name_before = xstrdup(before),
                        .name_after = xstrdup(after) })
     );
@@ -491,6 +528,7 @@ bool scene_history_push_physics(scene_history *history, game_physics_settings be
         history->undo,
         ((scene_edit){ .physics = true,
                        .group = history->group,
+                       .step = next_step(history),
                        .physics_before = before,
                        .physics_after = after })
     );

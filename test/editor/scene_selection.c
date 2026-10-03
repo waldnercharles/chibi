@@ -148,6 +148,31 @@ static void toggle_and_range()
     fixture_free(&f);
 }
 
+/* Undo restores the selection a step began with and Redo the one it ended
+   with, as Unity and Blender do; Studio notes it as each frame begins. */
+static void undo_restores_selection()
+{
+    selection_fixture f = fixture_new(SCENE);
+    select_instance(f.scene, 0);
+    scene_toggle_instance(f.scene, 2);
+    scene_selection_track(f.scene);
+    bool duplicated = scene_duplicate_selection(f.scene, (GameTransform){ 8, 8 }) == 0;
+    scene_selection_track(f.scene);
+    bool undone = replay_scene_edit(f.scene, false) == 0 && selection_is(&f, "AC", 2);
+    bool redone = replay_scene_edit(f.scene, true) == 0 &&
+                  scene_selection_count(f.scene) == 2 &&
+                  scene_instance_selected(f.scene, 3) &&
+                  scene_instance_selected(f.scene, 4) && f.scene->selected == 4;
+    select_instance(f.scene, 1);
+    scene_selection_track(f.scene);
+    bool deleted = app_scene_authoring_delete_instance(f.scene) == 0;
+    scene_selection_track(f.scene);
+    bool restored = replay_scene_edit(f.scene, false) == 0 &&
+                    selection_is(&f, "B", 1);
+    test_check(duplicated && undone && redone && deleted && restored, "Undo restores the selection a step began with and Redo the one it ended with");
+    fixture_free(&f);
+}
+
 /* Duplicate copies every selected object a grid step away as one Undo step,
    and the copies become the selection. */
 static void duplicate_is_one_step()
@@ -270,6 +295,7 @@ void test_scene_selection()
 {
     toggle_and_range();
     duplicate_is_one_step();
+    undo_restores_selection();
     clipboard_round_trip();
     invalid_clipboard();
     multi_field_is_one_step();

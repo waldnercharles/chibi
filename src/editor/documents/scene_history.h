@@ -23,6 +23,10 @@ void scene_history_clear(scene_history *history);
 void scene_history_begin_group(scene_history *history);
 void scene_history_end_group(scene_history *history);
 uint64_t scene_history_group_id(const scene_history *history, bool redo);
+/* The head step's id on the Undo or Redo stack: its group's, or a lone
+ * edit's own. Ids grow with each new step and never repeat; zero means an
+ * empty stack or an edit restored from a capture. */
+uint64_t scene_history_step_id(const scene_history *history, bool redo);
 /* Records an already-applied transform edit. A no-op preserves redo. */
 bool scene_history_push(scene_history *history, ecs_entity entity, GameTransform before, GameTransform after);
 typedef struct

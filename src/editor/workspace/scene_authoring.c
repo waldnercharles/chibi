@@ -1601,6 +1601,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         return;
     }
     scene_kept_clear(scene);
+    scene_selection_free(scene);
     scenario_document_free(scene->scenario);
     av_value_free(scene->scenario_saved_state);
     free(scene->ui);
@@ -1759,6 +1760,7 @@ static void refresh_asset_index(app_scene_authoring *scene, bool ui_active)
 
 void app_scene_authoring_update(app_scene_authoring *scene, bool ui_active)
 {
+    scene_selection_track(scene);
     refresh_catalogs(scene);
     refresh_asset_index(scene, ui_active);
 }

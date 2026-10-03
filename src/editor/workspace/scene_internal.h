@@ -27,6 +27,20 @@ typedef struct
     bool marked;
 } scene_actor;
 
+/* The objects selected before and after a history step, by identity, so
+   Undo and Redo restore them as Unity and Blender do. */
+typedef struct
+{
+    uint64_t *ids;
+    uint64_t active;
+} scene_selection_set;
+
+typedef struct
+{
+    uint64_t step;
+    scene_selection_set before, after;
+} scene_step_selection;
+
 /* An object a multi-object Properties edit also writes, and its value
    before the edit. */
 typedef struct
@@ -179,6 +193,10 @@ struct app_scene_authoring
     tree_watch disk;  /* content files as last loaded or saved */
     char **disk_pending; /* changes waiting for the runtime to stop */
     int selected;
+    /* The selection each recent step began and ended with (scene_actors.c). */
+    scene_step_selection *step_selections;
+    scene_selection_set frame_selection; /* as the frame began */
+    uint64_t seen_step;
     ecs_entity reveal_actor;
     ecs_entity runtime_selected;
     int selected_prototype;
@@ -328,6 +346,9 @@ bool fit_scene_view(engine_viewport *viewport, ecs_world *world, const ecs_entit
  * the edited view each draw, and discards them for a session or when off. */
 void scene_world_preview_update(app_scene_authoring *scene, const engine_viewport_camera *view);
 void scene_world_preview_discard(app_scene_authoring *scene);
+/* Records the selection around the step the last frame added, and frees it. */
+void scene_selection_track(app_scene_authoring *scene);
+void scene_selection_free(app_scene_authoring *scene);
 /* Overlays and View Through Camera (scene_overlays.c). */
 void scene_overlays_draw(app_scene_authoring *scene);
 void scene_camera_view_follow(app_scene_authoring *scene, engine_viewport *viewport, bool editing);

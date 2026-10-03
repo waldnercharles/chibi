@@ -595,6 +595,76 @@ static void select_identities(app_scene_authoring *scene, const uint64_t *identi
     scene->runtime_selected = (ecs_entity){ 0 };
 }
 
+/* ---------- Selection around history steps ---------- */
+
+/* Unity keeps the selection in its Undo steps; recent steps are enough. */
+#define STEP_SELECTIONS_MAX 256
+
+static scene_selection_set selection_now(const app_scene_authoring *scene)
+{
+    const scene_actor *active = selected_actor((app_scene_authoring *)scene);
+    return (scene_selection_set){ .ids = selection_identities(scene),
+                                  .active = active ? active->identity : 0 };
+}
+
+static void selection_set_free(scene_selection_set *set)
+{
+    afree(set->ids);
+}
+
+static void step_selection_free(scene_step_selection *entry)
+{
+    selection_set_free(&entry->before);
+    selection_set_free(&entry->after);
+}
+
+/* A step the last frame added remembers the selection the frame began with
+   and the one it ended with; then this frame's selection is noted. */
+void scene_selection_track(app_scene_authoring *scene)
+{
+    uint64_t step = scene_history_step_id(scene->history, false);
+    if (step > scene->seen_step) {
+        if (acount(scene->step_selections) == STEP_SELECTIONS_MAX) {
+            step_selection_free(&scene->step_selections[0]);
+            memmove(
+                scene->step_selections,
+                scene->step_selections + 1,
+                (STEP_SELECTIONS_MAX - 1) * sizeof *scene->step_selections
+            );
+            asetlen(scene->step_selections, STEP_SELECTIONS_MAX - 1);
+        }
+        apush(
+            scene->step_selections,
+            ((scene_step_selection){ .step = step,
+                                     .before = scene->frame_selection,
+                                     .after = selection_now(scene) })
+        );
+        scene->frame_selection = (scene_selection_set){ 0 };
+        scene->seen_step = step;
+    }
+    selection_set_free(&scene->frame_selection);
+    scene->frame_selection = selection_now(scene);
+}
+
+void scene_selection_free(app_scene_authoring *scene)
+{
+    for (int i = 0; i < acount(scene->step_selections); i++) {
+        step_selection_free(&scene->step_selections[i]);
+    }
+    afree(scene->step_selections);
+    selection_set_free(&scene->frame_selection);
+}
+
+static const scene_step_selection *step_selection(const app_scene_authoring *scene, uint64_t step)
+{
+    for (int i = acount(scene->step_selections) - 1; step && i >= 0; i--) {
+        if (scene->step_selections[i].step == step) {
+            return &scene->step_selections[i];
+        }
+    }
+    return NULL;
+}
+
 /* Moves an object by `offset` as one recorded transform edit. */
 static void move_actor(app_scene_authoring *scene, ecs_entity entity, GameTransform offset)
 {
@@ -1014,6 +1084,8 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
 int replay_scene_edit(app_scene_authoring *scene, bool redo)
 {
     uint64_t group = scene_history_group_id(scene->history, redo);
+    const scene_step_selection
+        *recorded = step_selection(scene, scene_history_step_id(scene->history, redo));
     uint64_t *touched = NULL; /* the objects the steps edited or restored */
     int applied = 0;
     do {
@@ -1031,6 +1103,14 @@ int replay_scene_edit(app_scene_authoring *scene, bool redo)
         }
         applied++;
     } while (group && scene_history_group_id(scene->history, redo) == group);
+    /* Undo restores the selection the step began with, Redo the one it
+       ended with. */
+    if (recorded) {
+        const scene_selection_set *set = redo ? &recorded->after : &recorded->before;
+        select_identities(scene, set->ids, set->active);
+        afree(touched);
+        return 0;
+    }
     /* A step of several objects leaves those it kept selected, as it found
        them. */
     int kept = 0;

@@ -821,6 +821,7 @@ static bool retained_geometry()
     );
     wire.flags = KIT_WIRE_FLOW;
     wire.flow = 0.1f;
+    wire.pulse = 1;
     wire.flow_color = 0x5395fbff;
     wire.flow_width = 8;
     wire_geometry_frame(k, context, &capture, &wires, 1);
@@ -836,23 +837,24 @@ static bool retained_geometry()
             capture.compiles[2] == flow_uploads + 1 && capture.drawn[2].seen &&
             count == 4 &&
             !memcmp(previous_path, path, (size_t)count * 2 * sizeof *path),
-        "flow animation uploads only its marker layer and retains static wire "
-        "paths and grid"
+        "flow animation uploads only its bubble layer and retains static wire "
+        "paths, glow and grid"
     );
     wire_geometry_frame(k, context, &capture, &wires, 1);
     ok &= check(
         capture.compiles[0] == wire_uploads && capture.compiles[2] == flow_uploads + 1,
-        "an unchanged flow phase reuses the animated marker mesh too"
+        "an unchanged flow phase reuses the bubble mesh too"
     );
     chart_bounds hot_bounds = capture.drawn[2];
     wire.flow_width = 2;
     wire.flow_color = 0x5395fb80;
+    wire.pulse = 0; /* stopped firing: the bubbles are gone, the glow fades */
     wire_geometry_frame(k, context, &capture, &wires, 1);
     ok &= check(
         capture.compiles[0] == wire_uploads && capture.compiles[1] == grid_uploads &&
             capture.compiles[2] == flow_uploads + 2 && capture.drawn[2].seen &&
             capture.drawn[2].top > hot_bounds.top,
-        "decaying hot stroke width and color update only the overlay mesh"
+        "a decaying glow updates only the overlay mesh once bubbles are gone"
     );
     wire_uploads = capture.compiles[0];
     wire_geometry_frame(k, context, &capture, &wires, 1.5f);

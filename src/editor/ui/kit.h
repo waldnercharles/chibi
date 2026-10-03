@@ -524,7 +524,9 @@ extern "C"
     enum
     {
         KIT_WIRE_DASHED = 1 << 0,
-        KIT_WIRE_FLOW = 1 << 1, /* markers travel from source to target */
+        /* Bubbles travel from source to target at a constant on-screen speed,
+         * evenly spaced, sized by `pulse` (Unreal's execution pulses). */
+        KIT_WIRE_FLOW = 1 << 1,
     };
     typedef struct kit_wire
     {
@@ -535,9 +537,10 @@ extern "C"
         uint32_t color; /* 0xRRGGBBAA */
         float width;    /* dp; 0 means 1.5 */
         unsigned flags;
-        float flow;          /* seconds, the marker phase with KIT_WIRE_FLOW */
-        float flow_width;    /* optional hot stroke width in dp; 0 none */
-        uint32_t flow_color; /* hot stroke/marker color; 0 uses color */
+        float flow;       /* seconds, the bubbles' phase with KIT_WIRE_FLOW */
+        float pulse;      /* the bubbles' size, 0 to 1 */
+        float flow_width; /* optional hot stroke width in dp; 0 none */
+        uint32_t flow_color; /* hot stroke/bubble color; 0 uses color */
     } kit_wire;
     typedef struct kit_wires_desc
     {
@@ -548,6 +551,9 @@ extern "C"
         float grid;               /* line spacing in dp; 0 draws no grid */
         float grid_x, grid_y; /* grid coordinate at the element's top-left */
         uint32_t grid_color, grid_major_color;
+        /* Screen pixels per dp without the canvas's zoom, in which bubble
+         * spacing and speed stay constant; 0 uses the canvas's dp ratio. */
+        float flow_scale;
     } kit_wires_desc;
     void kit_wires(kit *k, const char *key, const char *cls, const kit_wires_desc *desc);
     /* The cubic pieces of a wire drawn in `style` through `count` knots, given

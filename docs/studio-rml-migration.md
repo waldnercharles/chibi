@@ -1226,7 +1226,11 @@ and the Text Editor's header and find bar match pixel for pixel but for a
 caret's blink and, in Play, the Scene's live render. Performance, idle and
 in Play, matches in its headings, legend, ticks, badges and readout; its
 samples differ run to run. The rename field is the intentional
-difference above.
+difference above. Native shots (`UI_BENCH_CAPTURE=<dir>` on the Studio
+bench: the header, graph picker, Graph menu, find bar and Performance in
+Play, dark and light, compact and comfortable, reduced motion, 2880×1800)
+of the kit build and this one match in the Behavior area within 1/255;
+Performance's charts differ only in their samples.
 
 `UI_BENCH_PERFORMANCE=1 ./build-release/test_suite --ui-bench studio`
 (case 15: Performance in the bottom area while the Sandbox plays, 1440×900,
@@ -1251,14 +1255,15 @@ matches, Down, Enter (to the node, closing, the keys back to the graph)
 and Escape; the debug target picker's Follow newest, Break when spawned
 and No target in Play; the Text Editor's part, apply mode and find bar
 with Enter, Shift+Enter and Escape back to the text; an asset source's
-header; Performance's charts and legend in Play. `--ui-controls`: a
+header; Performance's charts and legend in Play. `--studio-panels`' area
+turns now include the Text Editor and Performance. `--ui-controls`: a
 `<line-chart>` showing published series, redrawing new samples without a
 layout, its scrub readout and a forgotten series.
 
 Open: two Behavior areas share one header's data, as one Text Editor's;
 `graph_targets` follows the instances while the header shows, the picker
-closed or not; native before/after shots were not compared (the web
-build renders the same markup through the same RmlUi).
+closed or not. The bench ran before the integration branch's view leak
+fix (`cf21ee38`) merged.
 
 ### Wave 4: graph chrome, Designer, Inspector (3 parallel)
 

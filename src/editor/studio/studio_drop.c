@@ -151,24 +151,36 @@ static bool preview(studio *s, scene_actor *actor, int kind, const char *name)
     return true;
 }
 
-void studio_drop_row(studio *s, int index)
+void studio_drop_types(studio *s, int index, char *out, size_t size)
 {
+    out[0] = '\0';
     if (!studio_editable(s)) {
         return;
     }
-    kit *k = s->kit;
-    scene_actor *actor = &s->scene->actors[index];
-    char name[256], type[32];
+    snprintf(out, size, "%s", studio_asset_kind_name(REFERENCE_ASSET_BEHAVIOR));
+    ecs_entity entity = s->scene->actors[index].entity;
     for (int i = 0; i < ASSIGNED_COUNT; i++) {
         ecs_component_id component;
-        if (scene_asset_field(s->scene, actor->entity, ASSIGNED[i], &component) >= 0 &&
-            kit_drop_target(k, studio_asset_kind_name(ASSIGNED[i]), name, sizeof name)) {
-            assign(s, actor, ASSIGNED[i], name);
+        if (scene_asset_field(s->scene, entity, ASSIGNED[i], &component) >= 0) {
+            size_t used = strlen(out);
+            snprintf(out + used, size - used, " %s", studio_asset_kind_name(ASSIGNED[i]));
         }
     }
-    if (kit_drop_hover(k, type, sizeof type, name, sizeof name)) {
-        preview(s, actor, kind_named(type), name);
+}
+
+void studio_drop_preview(studio *s, int index, const char *type, const char *name)
+{
+    preview(s, &s->scene->actors[index], kind_named(type), name);
+}
+
+void studio_drop_on(studio *s, int index, const char *type, const char *name)
+{
+    int kind = kind_named(type);
+    if (kind == REFERENCE_ASSET_BEHAVIOR) {
+        studio_attach_behavior(s, index, name);
+        return;
     }
+    assign(s, &s->scene->actors[index], kind, name);
 }
 
 /* The authored object under the pointer, or -1. */

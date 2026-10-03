@@ -3,11 +3,14 @@
    Outliner's eye and lock). Alias the row as data-alias-item: an object
    with label, icon (a glyph), meta, depth, parent (it has children), open,
    selected, active, marked and hidden; the twisty writes item.open, which
-   is UI-local. Put data-drag, data-drop and data-drop-zones (src/ui/drag.h)
-   on the use: the row's marks follow them here. The use may mark the row
-   selected itself, with data-selected, when its selection lives in a
-   variable of its own. The rows' own look is the theme's .tree-row
-   (theme/tree.rcss). */
+   is UI-local. A panel whose selection changes often keeps it out of its
+   rows: give each item a key and alias the selected and the active key as
+   data-alias-selection and data-alias-active, from a variable of their
+   own, so a selection re-evaluates only the rows' two state views (the
+   flags still mark rows the keys don't); or mark the use selected itself
+   with data-selected. Put data-drag, data-drop and data-drop-zones
+   (src/ui/drag.h) on the use: the row's marks follow them here. The rows'
+   own look is the theme's .tree-row (theme/tree.rcss). */
 body { display: block; }
 body[data-selected] .tree-row { background-color: var(--selected); }
 /* A drop target that takes the drag, then the one under the pointer, and

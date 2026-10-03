@@ -8,8 +8,9 @@
  * shown option and moves with the pointer and with Up, Down, Home and End
  * in the field; Enter or a click chooses, sending change with ev.value, the
  * option's value. Shown again, it clears its search and highlights the
- * current option (aria-selected="true" or data-current). The search field's
- * own input and change stay inside it. */
+ * current option (aria-selected="true" or data-current), its search field
+ * showing the list's placeholder when it has one. The search field's own
+ * input and change stay inside it. */
 #include "support/array.h"
 #include "support/text_search.h"
 #include "support/xalloc.h"
@@ -141,10 +142,16 @@ static void filter(rml_element *el)
     move(el, 1, true);
 }
 
-/* Opened again: the whole list, with the current option highlighted. */
+/* Opened again: the whole list, with the current option highlighted, and
+   the list's placeholder in its search field, as cmdk's Command.Input. */
 static void reset(rml_element *el)
 {
     rml_element *search = search_of(el);
+    char placeholder[LABEL_TEXT];
+    control_string(el, "placeholder", placeholder, sizeof placeholder);
+    if (search && placeholder[0]) {
+        rml_element_set_attribute(search, "placeholder", placeholder);
+    }
     if (search) {
         rml_element_set_value(search, "");
     }

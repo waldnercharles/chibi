@@ -501,7 +501,7 @@ static void panel_actions_route()
                   s->shortcut_recording == STUDIO_COMMAND_SEARCH + 1;
     s->shortcut_recording = 0;
     ui_activation command = { .event = "studio.keyboardShortcuts" };
-    ui_activation unknown = { .event = "outliner.select" };
+    ui_activation unknown = { .event = "nowhere.select" };
     ui_activation bare = { .event = "Close" };
     bool ran = studio_panel_route(s, &command) && studio_ui_modal_open(s);
     bool passed = !studio_panel_route(s, &unknown) && !studio_panel_route(s, &bare);

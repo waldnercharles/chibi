@@ -972,6 +972,13 @@ struct studio
     bool outliner_reveal; /* scroll the selection into view on the next frame */
     struct
     {
+        ui_list_state lists[STUDIO_AREA_COUNT]; /* each area's window */
+        char query[128]; /* the filter the panel last showed */
+        bool open;       /* whether it last showed the root open */
+        bool keyboard;   /* a rename began while the keyboard held the list */
+    } outliner;
+    struct
+    {
         uint64_t anchor; /* the object a Shift range extends from, by identity */
         uint64_t active; /* the active object the last range left, by identity */
     } range;
@@ -1065,7 +1072,7 @@ struct studio
     {
         uint64_t entity; /* the object renamed in place, or 0 */
         bool outliner; /* in its Outliner row, else in Properties' name field */
-        bool focus;    /* focus the field on its next frame */
+        bool focus;    /* focus Properties' field on its next frame */
         char name[256];
     } rename;
     struct
@@ -1241,6 +1248,10 @@ void studio_ui_modal(studio *s, const char *name);
 /* True when a focused authored chrome button, or anything but a field in
    an editor's authored area (Members), can pass global shortcuts. */
 bool studio_ui_shortcut_focus(studio *s);
+/* The area whose panel the keyboard moved focus into (:focus-visible) on an
+ * element that edits no text, which takes the keys the area under the
+ * pointer would; -1 when none. */
+int studio_ui_keyboard_area(studio *s);
 /* True while a modal panel (Settings, Collaboration, Keyboard Shortcuts,
  * New Project) shows. */
 bool studio_ui_modal_open(studio *s);
@@ -1317,10 +1328,13 @@ void studio_scene_body(studio *s, int area);
 /* Takes the view zoom's gestures from the Scene area's pointer in `input`,
  * given in area points, and leaves it in the frame's points. */
 void studio_scene_view(studio *s, engine_viewport_host_input *input);
-/* The Outliner (studio_outliner.c). */
+/* The Outliner (studio_outliner.c): its header's filter and Add, and its
+ * body, the authored Outliner panel in each area showing it. */
 void studio_outliner_header(studio *s, int area);
 void studio_outliner_body(studio *s, int area);
 int *studio_outliner_rows(studio *s);
+/* Left and Right over the Outliner fold and unfold the scene's root. */
+bool studio_outliner_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
 /* Hide in Editor (Blender's H, Shift+H and Alt+H): hides the selected objects,
  * or the others, from the Scene's edit view, or shows them all again. */
 void studio_hide(studio *s, bool selected);
@@ -1872,10 +1886,18 @@ void studio_drop_frame(studio *s);
 const char *studio_drop_picker(studio *s, const char *key, int kind);
 /* The asset dragged over the field keyed `key`, which it shows; NULL. */
 const char *studio_drop_shown(const studio *s, const char *key);
-/* The Outliner row emitted last, of actor `index`, and the Scene's surface
-   take assets an object's fields name, and behaviors. */
-void studio_drop_row(studio *s, int index);
+/* The Scene's surface takes assets an object's fields name, and behaviors. */
 void studio_drop_scene(studio *s);
+/* The drag types an Outliner row of actor `index` takes, space-separated:
+   behaviors and the asset kinds its fields name, while the scene is
+   editable; "" when it takes none. */
+void studio_drop_types(studio *s, int index, char *out, size_t size);
+/* While `name`, of drag type `type`, is over actor `index`'s row: the
+   object shows it and the overlay says what a drop does. */
+void studio_drop_preview(studio *s, int index, const char *type, const char *name);
+/* Drops it on the actor: attaches a behavior or assigns the asset, one Undo
+   step. */
+void studio_drop_on(studio *s, int index, const char *type, const char *name);
 /* Attaches behavior `name` to actor `index`, selecting it, as one Undo step. */
 void studio_attach_behavior(studio *s, int index, const char *name);
 /* Sets the actor's text field to `text` as Properties does: one Undo step. */
@@ -2323,6 +2345,34 @@ void studio_gallery_add(yyjson_mut_doc *doc);
 bool studio_gallery_sync(studio *s, const studio_panel_sync *at);
 void studio_gallery_action(studio *s, const char *action, const ui_activation *a);
 
+/* ---------- The Outliner (workstream P2) ---------- */
+
+/* The Outliner's source, `outliner` (studio_outliner.c): the scene's root
+ * row and object count, the filter (query, which the header binds two-way
+ * as view state), and in views[area] the window of rows each area's List
+ * shows (root, rows keyed by entity); `outliner_ui` what each selection
+ * changes: the active row's key, which TreeRow binds by alias, the rename
+ * field's text and the row menu; `outliner_header` what rarely changes:
+ * the Add list's prototypes, editable and the eye's tip.
+ * outliner.click, .menu, .eye and .lock name a row by key; .drop takes the
+ * row's key ("" for the list), the type and the payload; .rename takes the
+ * committed name and ends the rename, as leaving its field does;
+ * .renameEnter and .renameCancel return the keyboard to the list, Escape
+ * first ending the rename so nothing commits; .collapse
+ * folds the root; .add places a prototype; .openPrototype and .spawnBreak
+ * act on the selection; .scroll wakes the source. */
+void studio_outliner_add(yyjson_mut_doc *doc);
+bool studio_outliner_sync(studio *s, const studio_panel_sync *at);
+void studio_outliner_action(studio *s, const char *action, const ui_activation *a);
+void studio_outliner_ui_add(yyjson_mut_doc *doc);
+bool studio_outliner_ui_sync(studio *s, const studio_panel_sync *at);
+void studio_outliner_header_add(yyjson_mut_doc *doc);
+bool studio_outliner_header_sync(studio *s, const studio_panel_sync *at);
+/* Shows panel `name` filling area `area`'s body with `view` aliased to the
+ * area's item of `views`, such as "outliner.views", as an area header
+ * aliases `area`; returns its host, or NULL when it shows none. */
+rml_element *studio_ui_area_view(studio *s, int area, const char *name, const char *views);
+
 /* ---------- Members (workstream P5) ---------- */
 
 /* Members' source, `members` (studio_members.c): the open behavior's rows
@@ -2336,7 +2386,7 @@ void studio_gallery_action(studio *s, const char *action, const ui_activation *a
 void studio_members_add(yyjson_mut_doc *doc);
 bool studio_members_sync(studio *s, const studio_panel_sync *at);
 void studio_members_action(studio *s, const char *action, const ui_activation *a);
-/* `members_ui`: the keys of the selected member, the open graph and the
+/* `members_ui`: the keys of the selected member, the active one and the
  * member being named, and the selected member's menu, apart from the rows
  * so a selection dirties only the views that bind them. */
 void studio_members_ui_add(yyjson_mut_doc *doc);

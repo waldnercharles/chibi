@@ -29,6 +29,8 @@ name "Studio"
     }
     - name="AreaHeader" prototype="AreaHeader"
     - name="Properties" prototype="Properties"
+    - name="Outliner" prototype="Outliner"
+    - name="OutlinerHeader" prototype="OutlinerHeader"
     - {
         name "Widgets"
         prototype "Widgets"

@@ -61,6 +61,12 @@ engine_focus engine_get_focus(const engine *engine);
 int engine_set_playing(engine *engine, bool playing);
 bool engine_is_playing(const engine *engine);
 int engine_step(engine *engine);
+/* Simulation seconds per wall second while playing (Unity's Time.timeScale,
+ * Unreal's slomo): fixed steps keep their length and run less or more often,
+ * so behaviors, physics, particles and material time slow alike while frames
+ * still draw at the display's rate. Step advances one tick at any scale. */
+void engine_set_time_scale(engine *engine, double scale);
+double engine_time_scale(const engine *engine);
 int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error);
 /* Host input ingress: hold the latest movement/aim sample across fixed steps. */
 int engine_sample_movement(engine *engine, float x, float y);

@@ -32,8 +32,9 @@ struct ui_mount
     rml_element *root;
     bool installed; /* root holds the current markup */
     ui_activation *pending;
-    uint64_t applied; /* the model revision already applied */
-    bool autofocus;   /* installed, and its autofocus element not yet focused */
+    rml_element_ref *taken; /* the anchor of the activation last taken */
+    uint64_t applied;       /* the model revision already applied */
+    bool autofocus; /* installed, and its autofocus element not yet focused */
 };
 
 /* The names data-keys binds, for keys that are not letters or digits. */
@@ -66,7 +67,11 @@ void ui_mount_free(ui_mount *m)
         return;
     }
     afree(m->uses);
+    for (int i = 0; i < acount(m->pending); i++) {
+        rml_element_ref_destroy(m->pending[i].anchor);
+    }
     afree(m->pending);
+    rml_element_ref_destroy(m->taken);
     free(m->content_root);
     free(m->name);
     free(m->markup);
@@ -298,6 +303,18 @@ static bool owns_field_keys(rml_element *element)
            strcmp(type, "submit") && strcmp(type, "reset");
 }
 
+/* An activation `element` sent through `event`. */
+static ui_activation activation(rml_element *element, const rml_event *event)
+{
+    ui_activation a = { .modifiers = event->modifiers,
+                        .button = event->button,
+                        .x = event->mouse_x,
+                        .y = event->mouse_y,
+                        .anchor = rml_element_ref_create(element) };
+    snprintf(a.id, sizeof a.id, "%s", rml_element_id(element));
+    return a;
+}
+
 /* A key pressed inside a data-keys element sends the event bound to it from
  * the nearest such element, and goes no further. */
 static void listen_key(ui_mount *m, const rml_event *event)
@@ -307,11 +324,11 @@ static void listen_key(ui_mount *m, const rml_event *event)
     for (rml_element *el = event->target;
          key && el && el != rml_element_parent(m->root);
          el = rml_element_parent(el)) {
-        char bindings[256];
-        ui_activation a = { 0 };
+        char bindings[256], name[128];
         if (rml_element_attribute(el, "data-keys", bindings, sizeof bindings) > 0 &&
-            bound_event(bindings, key, a.event, sizeof a.event)) {
-            snprintf(a.id, sizeof a.id, "%s", rml_element_id(el));
+            bound_event(bindings, key, name, sizeof name)) {
+            ui_activation a = activation(el, event);
+            snprintf(a.event, sizeof a.event, "%s", name);
             apush(m->pending, a);
             rml_event_stop_propagation(event);
             return;
@@ -330,13 +347,18 @@ void ui_mount_listen(ui_mount *m, const rml_event *event)
     }
 }
 
-void ui_mount_emit(ui_mount *m, rml_element *element, const char *event, const char *value)
+void ui_mount_emit(ui_mount *m, const rml_event *event, const char *name, int argc, const char *const *args)
 {
+    rml_element *element = event->current;
     assert(ui_mount_holds(m, element));
-    ui_activation a = { 0 };
-    snprintf(a.event, sizeof a.event, "%s", event);
-    snprintf(a.id, sizeof a.id, "%s", rml_element_id(element));
+    ui_activation a = activation(element, event);
+    snprintf(a.event, sizeof a.event, "%s", name);
+    a.argc = argc < UI_ACTIVATION_ARGS ? argc : UI_ACTIVATION_ARGS;
+    for (int i = 0; i < a.argc; i++) {
+        snprintf(a.args[i], sizeof a.args[i], "%s", args[i]);
+    }
     char input[64];
+    const char *value = argc ? args[0] : NULL;
     if (!value && !strcmp(rml_element_tag_name(element), "input") &&
         rml_element_value(element, input, sizeof input) > 0) {
         value = input;
@@ -355,7 +377,9 @@ bool ui_mount_take(ui_mount *m, ui_activation *out)
     if (!count) {
         return false;
     }
+    rml_element_ref_destroy(m->taken);
     *out = m->pending[0];
+    m->taken = out->anchor;
     memmove(m->pending, m->pending + 1, (size_t)(count - 1) * sizeof *m->pending);
     asetlen(m->pending, count - 1);
     return true;
@@ -917,7 +941,7 @@ struct render_ui
 };
 
 static void on_event(void *user, const rml_event *event);
-static void on_emit(void *user, const rml_event *event, const char *name, const char *value);
+static void on_emit(void *user, const rml_event *event, const char *name, int argc, const char *const *args);
 
 /* Removes the view's root, which detaches the listener, then its mount. */
 static void close_view(render_ui *ui, ui_view *view)
@@ -1079,11 +1103,11 @@ static void on_event(void *user, const rml_event *event)
     }
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
+static void on_emit(void *user, const rml_event *event, const char *name, int argc, const char *const *args)
 {
     ui_mount *m = mount_holding(user, event->current);
     if (m) {
-        ui_mount_emit(m, event->current, name, value);
+        ui_mount_emit(m, event, name, argc, args);
     }
 }
 

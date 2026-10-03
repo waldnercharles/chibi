@@ -80,13 +80,13 @@ static void on_event(void *user, const rml_event *event)
     }
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
+static void on_emit(void *user, const rml_event *event, const char *name, int argc, const char *const *args)
 {
     studio_ui *ui = user;
     ui->wake = true;
     ui_mount *m = mount_holding(ui, event->current);
     if (m) {
-        ui_mount_emit(m, event->current, name, value);
+        ui_mount_emit(m, event, name, argc, args);
     }
 }
 

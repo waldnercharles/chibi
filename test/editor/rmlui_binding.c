@@ -125,19 +125,15 @@ static bool lays_out_flex_text(rml_context *context)
            fabsf(text.y - span.y) < 0.5f;
 }
 
-static char emitted[32];
+static char emitted[64];
 
-static void on_emit(void *, const rml_event *event, const char *name, const char *value)
+/* "id:Name=arg,arg..." for the last emit. */
+static void on_emit(void *, const rml_event *event, const char *name, int argc, const char *const *args)
 {
-    snprintf(
-        emitted,
-        sizeof emitted,
-        "%s:%s%s%s",
-        rml_element_id(event->current),
-        name,
-        value ? "=" : "",
-        value ? value : ""
-    );
+    int n = snprintf(emitted, sizeof emitted, "%s:%s", rml_element_id(event->current), name);
+    for (int i = 0; i < argc; i++) {
+        n += snprintf(emitted + n, sizeof emitted - (size_t)n, "%s%s", i ? "," : "=", args[i]);
+    }
 }
 
 static bool text_is(rml_element *doc, const char *id, const char *text)
@@ -149,7 +145,7 @@ static bool text_is(rml_element *doc, const char *id, const char *text)
 
 /* A data model over JSON: text and lists follow it, a missing member reads
  * empty, bindings write back, a lazy one once its edit commits, and
- * emit('Name') and emit('Name', value) reach the host. */
+ * emit('Name') and emit('Name', ...) reach the host with their arguments. */
 static bool binds_data(rml_context *context)
 {
     yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
@@ -171,7 +167,7 @@ static bool binds_data(rml_context *context)
         "<input id=\"lazy\" type=\"text\" data-value-lazy=\"title\"/>"
         "<div id=\"go\" data-event-click=\"emit('Go')\"/>"
         "<div id=\"pick\" data-for=\"row, i : rows\" "
-        "data-event-click=\"emit('Pick', i)\"/>"
+        "data-event-click=\"emit('Pick', i, row.name)\"/>"
         "</body></rml>",
         "[memory]"
     );
@@ -191,7 +187,7 @@ static bool binds_data(rml_context *context)
     rml_element *picks[3];
     rml_element_query_selector_all(doc, "#pick", picks, 3);
     rml_element_click(picks[1]);
-    bool picked = !strcmp(emitted, "pick:Pick=1");
+    bool picked = !strcmp(emitted, "pick:Pick=1,--border");
     rml_element *lazy = rml_element_by_id(doc, "lazy");
     rml_element_focus(lazy, false);
     rml_element_set_selection_range(lazy, 0, 6);
@@ -280,7 +276,7 @@ static bool builds_when(rml_context *context)
 
 static char sent[64];
 
-static void log_emit(void *, const rml_event *, const char *name, const char *)
+static void log_emit(void *, const rml_event *, const char *name, int, const char *const *)
 {
     snprintf(sent + strlen(sent), sizeof sent - strlen(sent), "%s%s", sent[0] ? " " : "", name);
 }

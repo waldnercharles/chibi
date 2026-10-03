@@ -1205,9 +1205,9 @@ static void on_event(void *user, const rml_event *event)
     ui_mount_listen(user, event);
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
+static void on_emit(void *user, const rml_event *event, const char *name, int argc, const char *const *args)
 {
-    ui_mount_emit(user, event->current, name, value);
+    ui_mount_emit(user, event, name, argc, args);
 }
 
 /* A frame in studio_ui_frame's order: the saved keys, the page, then the

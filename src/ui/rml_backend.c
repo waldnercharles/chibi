@@ -1947,6 +1947,26 @@ static unsigned rml_modifiers(unsigned modifiers)
     return result;
 }
 
+/* A right press sends contextmenu to the element under the pointer after
+   its mousedown, as browsers do, so markup opens menus with
+   data-event-contextmenu. */
+static bool pressed(rml_context *context, int button, int x, int y, unsigned modifiers)
+{
+    bool passed = rml_context_process_mouse_button_down(context, button, modifiers);
+    rml_element *target = rml_context_hover_element(context);
+    if (button == 1 && target) {
+        rml_element_dispatch_event(
+            target,
+            "contextmenu",
+            &(rml_event){ .mouse_x = (float)x,
+                          .mouse_y = (float)y,
+                          .button = button,
+                          .modifiers = modifiers }
+        );
+    }
+    return passed;
+}
+
 /* True when RmlUi consumed the input. */
 static bool consumed(rml_backend *backend, const rml_input *input)
 {
@@ -1960,7 +1980,7 @@ static bool consumed(rml_backend *backend, const rml_input *input)
         case RML_INPUT_POINTER_LEAVE:
             return !rml_context_process_mouse_leave(context);
         case RML_INPUT_POINTER_DOWN:
-            return !rml_context_process_mouse_button_down(context, input->button, modifiers);
+            return !pressed(context, input->button, x, y, modifiers);
         case RML_INPUT_POINTER_UP:
             return !rml_context_process_mouse_button_up(context, input->button, modifiers);
         case RML_INPUT_POINTER_WHEEL:

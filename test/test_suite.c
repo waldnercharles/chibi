@@ -87,6 +87,9 @@ void test_studio_minimap();
 int studio_thumbnails_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
+/* Activations' arguments, event context and anchor, and contextmenu
+   (test/editor/ui_activations.c, workstream F1). */
+void test_ui_activations();
 /* The S0 UI bench (test/editor/ui_bench.h). */
 int ui_bench_headless();
 int ui_bench_studio(const char *program);
@@ -293,6 +296,7 @@ TEST_CASE(all_checks)
     test_studio_pinch();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
     test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data, follow array edits with constant-time item lookups, lay out text in flex rows, build data-when copies and send input and change from text fields");
+    test_ui_activations();
     /* UI source maps (workstream A) */
     test_ui_sources();
     /* UI documents (workstream D). */

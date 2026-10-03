@@ -4,6 +4,7 @@
  * popover escapes an area's clipping. */
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/kit.h"
+#include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_internal.h"
 #include "render/scene_renderer.h"
@@ -153,14 +154,21 @@ static double native_ui(studio *s, double *phases)
     return t[PHASE_COUNT] - t[0];
 }
 
-static bench_counts studio_mark()
+/* Layouts, and what the authored panels' data views read. */
+static bench_counts studio_mark(studio *s)
 {
-    return (bench_counts){ .layouts = bench_layouts() };
+    rml_data_reads reads = studio_ui_data_reads(s);
+    return (bench_counts){ .values = reads.values,
+                           .lookups = reads.lookups,
+                           .layouts = bench_layouts() };
 }
 
 static bench_counts studio_counts(studio *s, bench_counts before)
 {
-    return (bench_counts){ .layouts = bench_layouts() - before.layouts,
+    bench_counts now = studio_mark(s);
+    return (bench_counts){ .values = now.values - before.values,
+                           .lookups = now.lookups - before.lookups,
+                           .layouts = now.layouts - before.layouts,
                            .elements = studio_count(s, "*") };
 }
 
@@ -204,7 +212,7 @@ static void full_layout(studio_bench *b, bool comfortable)
     bench_counts counts = { 0 };
     for (int run = -WARMUP; run < RUNS; run++) {
         rml_backend_resize_pixels(s->backend, width + (run & 1), height, ratio);
-        bench_counts before = studio_mark();
+        bench_counts before = studio_mark(s);
         double t = bench_now();
         rml_backend_update(s->backend, 0);
         t = bench_now() - t;
@@ -244,7 +252,7 @@ static void area_text_change(studio_bench *b)
     bench_counts counts = { 0 };
     for (int run = -WARMUP; run < RUNS; run++) {
         rml_element_set_inner_rml(name, run & 1 ? "Renamed" : "Renamed again");
-        bench_counts before = studio_mark();
+        bench_counts before = studio_mark(s);
         double t = bench_now();
         rml_backend_update(s->backend, 0);
         t = bench_now() - t;
@@ -383,7 +391,8 @@ static void properties_step(properties_case *c, int step, const char *name)
         for (int arm = 0; arm < ARMS; arm++) {
             change_player(c, step, run);
             cf_app_update(NULL);
-            bench_counts before = arm ? bench_spike_counts(c->spike) : studio_mark();
+            bench_counts before = arm ? bench_spike_counts(c->spike)
+                                      : studio_mark(c->b->studio);
             double t = properties_ui(c, step, arm, run & 1 ? c->other : c->player, phase);
             cf_app_draw_onto_screen(true);
             bench_counts after = arm ? bench_spike_counts(c->spike)
@@ -457,7 +466,7 @@ static void properties(studio_bench *b)
     bench_counts counts = { 0 };
     for (int run = -WARMUP; run < RUNS; run++) {
         cf_app_update(NULL);
-        bench_counts before = studio_mark();
+        bench_counts before = studio_mark(s);
         double t = native_ui(s, phase);
         cf_app_draw_onto_screen(true);
         counts = studio_counts(s, before);
@@ -477,7 +486,7 @@ static void properties(studio_bench *b)
     bench_spike_free(c.spike);
 }
 
-/* ---------- 10: the Outliner over ten thousand objects ---------- */
+/* ---------- 11: the Outliner over ten thousand objects ---------- */
 
 #define OUTLINER_OBJECTS 10000
 #define SCROLL_ROWS 3
@@ -511,6 +520,19 @@ static int fresh_rows(rml_element *list, bool mark, int *shown)
         }
     }
     return fresh;
+}
+
+/* What a run did: data views read, layouts, and elements in the
+   Outliner's document. */
+static bench_counts outliner_counts(studio *s, rml_element *list, bench_counts before)
+{
+    bench_counts now = studio_mark(s);
+    return (bench_counts){
+        .values = now.values - before.values,
+        .lookups = now.lookups - before.lookups,
+        .layouts = now.layouts - before.layouts,
+        .elements = rml_element_query_selector_all(rml_element_owner_document(list), "*", NULL, 0)
+    };
 }
 
 /* Scrolls the Outliner three rows down per run, from the middle of ten
@@ -547,13 +569,10 @@ static void outliner_scroll(studio_bench *b)
         top += SCROLL_ROWS * row;
         rml_element_set_scroll_top(list, top);
         cf_app_update(NULL);
-        bench_counts before = studio_mark();
+        bench_counts before = studio_mark(s);
         double t = native_ui(s, phase);
         cf_app_draw_onto_screen(true);
-        counts = (bench_counts){
-            .layouts = bench_layouts() - before.layouts,
-            .elements = rml_element_query_selector_all(rml_element_owner_document(list), "*", NULL, 0)
-        };
+        counts = outliner_counts(s, list, before);
         instanced = fresh_rows(list, false, &shown);
         if (run >= 0) {
             ms[run] = t;
@@ -574,20 +593,17 @@ static void outliner_scroll(studio_bench *b)
         shown,
         instanced
     );
-    bench_row("10", name, bench_stat_of(ms, RUNS), counts);
+    bench_row("11", name, bench_stat_of(ms, RUNS), counts);
     phase_row("its phases", phases);
     /* Two objects in view, selected in turn, as clicks on their rows. */
     int first = (int)(top / row);
     for (int run = -WARMUP; run < RUNS; run++) {
         select_instance(b->scene, first + 4 + (run & 1));
         cf_app_update(NULL);
-        bench_counts before = studio_mark();
+        bench_counts before = studio_mark(s);
         double t = native_ui(s, phase);
         cf_app_draw_onto_screen(true);
-        counts = (bench_counts){
-            .layouts = bench_layouts() - before.layouts,
-            .elements = rml_element_query_selector_all(rml_element_owner_document(list), "*", NULL, 0)
-        };
+        counts = outliner_counts(s, list, before);
         if (run >= 0) {
             ms[run] = t;
             for (int p = 0; p < PHASE_COUNT; p++) {
@@ -596,7 +612,7 @@ static void outliner_scroll(studio_bench *b)
         }
     }
     bench_row(
-        "10",
+        "11",
         "Outliner over 10k objects: select another object in view",
         bench_stat_of(ms, RUNS),
         counts
@@ -702,9 +718,129 @@ static void popover_clipping()
     rml_backend_destroy(ui);
 }
 
+/* ---------- 10: Members over ~200 members ---------- */
+
+#define MEMBER_VARIABLES 192
+#define MEMBER_CATEGORY 16 /* variables per category */
+
+/* Members' scroller, native (the kit's list) or authored (the List). */
+static rml_element *members_list(studio *s)
+{
+    rml_element *authored = studio_query(s, "#members-list");
+    return authored ? authored : studio_query(s, ".members-list");
+}
+
+/* What one run of a Members case changes before its UI work. */
+typedef enum
+{
+    MEMBERS_IDLE,
+    MEMBERS_SELECT,
+    MEMBERS_SCROLL,
+    MEMBERS_FILTER,
+} members_step;
+
+static void members_change(studio *s, members_step step, int run, const uint64_t *ids)
+{
+    rml_element *list = members_list(s);
+    float row = 26 * studio_pixel_ratio(s);
+    switch (step) {
+        case MEMBERS_IDLE: break;
+        case MEMBERS_SELECT:
+            s->members.kind = STUDIO_MEMBER_VARIABLE;
+            s->members.id = ids[run & 1];
+            break;
+        case MEMBERS_SCROLL:
+            rml_element_set_scroll_top(list, (run & 1 ? 40 : 43) * row);
+            break;
+        case MEMBERS_FILTER:
+            snprintf(s->members.filter, sizeof s->members.filter, "%s", run & 1 ? "Value 1" : "");
+            break;
+    }
+}
+
+static void members_step_row(studio_bench *b, members_step step, const char *name, const uint64_t *ids)
+{
+    studio *s = b->studio;
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        members_change(s, step, run, ids);
+        cf_app_update(NULL);
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        counts = studio_counts(s, before);
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    bench_row("10", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
+/* The open behavior with MEMBER_VARIABLES more variables in categories,
+   shown by Members in the Properties area: a UI frame with nothing
+   changed, a selection change, a scroll step of 3 rows and a filter
+   keystroke. Run each build's binary in turn for an A/B. */
+static void members(studio_bench *b)
+{
+    studio *s = b->studio;
+    behavior_asset *asset = b->graph->asset;
+    for (int i = 0; i < MEMBER_VARIABLES; i++) {
+        char name[32], category[32];
+        snprintf(name, sizeof name, "Value %d", i);
+        snprintf(category, sizeof category, "Group %d", i / MEMBER_CATEGORY);
+        behavior_variable *v = behavior_asset_add_variable(
+            asset,
+            name,
+            PIN_F32,
+            "float",
+            PIN_CONTAINER_SINGLE,
+            NULL,
+            category
+        );
+        assert(v);
+    }
+    uint64_t ids[2] = {
+        asset->variables[acount(asset->variables) - MEMBER_VARIABLES].id,
+        asset->variables[acount(asset->variables) - MEMBER_VARIABLES + 2].id
+    };
+    s->maximized = -1;
+    studio_active_layout(s)->editors[STUDIO_AREA_PROPERTIES] = STUDIO_EDITOR_MEMBERS;
+    frames(b, 6);
+    rml_element *list = members_list(s);
+    assert(list);
+    probe_documents(s);
+    float ratio = studio_pixel_ratio(s);
+    rml_vec2 size = rml_element_box_size(list, RML_BOX_BORDER);
+    rml_element *rows[256];
+    int count = rml_element_query_selector_all(list, ".tree-row", rows, 256),
+        shown = 0;
+    for (int i = 0; i < count && i < 256; i++) {
+        shown += rml_element_is_visible(rows[i], true);
+    }
+    printf(
+        "|  | Members %.0fx%.0f dp over %d variables; %d rows in its window | "
+        "| | | | | |\n",
+        size.x / ratio,
+        size.y / ratio,
+        acount(asset->variables),
+        shown
+    );
+    members_step_row(b, MEMBERS_IDLE, "Members: a UI frame with nothing changed", ids);
+    members_step_row(b, MEMBERS_SELECT, "Members: select another variable", ids);
+    members_step_row(b, MEMBERS_SCROLL, "Members: scroll 3 rows", ids);
+    members_step_row(b, MEMBERS_FILTER, "Members: filter by a keystroke", ids);
+}
+
 /* ---------- Run ---------- */
 
-int ui_bench_studio(const char *program)
+int ui_bench_studio(const char *program, bool members_only)
 {
     CF_Result result = cf_make_app(
         "UI bench",
@@ -727,14 +863,22 @@ int ui_bench_studio(const char *program)
     probe_documents(b.studio);
     bench_header("Studio on the Sandbox at 1440x900, native");
     printf("|  | pixel scale %.1f | | | | | | |\n", cf_app_get_pixel_scale());
-    full_layout(&b, false);
-    full_layout(&b, true);
-    b.studio->prefs.comfortable = false;
-    area_text_change(&b);
-    properties(&b);
-    outliner_scroll(&b);
+    if (!members_only) {
+        full_layout(&b, false);
+        full_layout(&b, true);
+        b.studio->prefs.comfortable = false;
+        area_text_change(&b);
+        properties(&b);
+    }
+    members(&b);
+    /* Last: it leaves ten thousand objects in the scene. */
+    if (!members_only) {
+        outliner_scroll(&b);
+    }
     bench_close(&b);
-    popover_clipping();
+    if (!members_only) {
+        popover_clipping();
+    }
     app_input_shutdown();
     cf_destroy_app();
     return 0;

@@ -86,6 +86,8 @@ int studio_lists_run(const char *program);
 /* The Outliner (workstream P2). */
 int studio_outliner_run(const char *program);
 void test_ui_lists();
+/* Members (workstream P5). */
+int studio_members_run(const char *program);
 int studio_graph_inputs_run(const char *program);
 /* Asset thumbnails. */
 void test_studio_minimap();
@@ -97,7 +99,7 @@ bool test_rmlui_binding();
 void test_ui_activations();
 /* The S0 UI bench (test/editor/ui_bench.h). */
 int ui_bench_headless();
-int ui_bench_studio(const char *program);
+int ui_bench_studio(const char *program, bool members_only);
 int rmlui_render_run(const char *program, bool gles);
 /* Trackpad pinch (G). */
 void test_studio_pinch();
@@ -1046,18 +1048,25 @@ int main(int argc, char **argv)
         registry_validate();
         return studio_outliner_run(program_name) || fails ? 1 : 0;
     }
+    /* Members (workstream P5): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-members") == 0) {
+        registry_validate();
+        return studio_members_run(program_name) || fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--studio-properties") == 0) {
         registry_validate();
         return studio_properties_run(program_name) || fails ? 1 : 0;
     }
-    /* The S0 UI bench; `headless` or `studio` runs only those cases. */
+    /* The S0 UI bench; `headless`, `studio` or `members` runs only those
+       cases. */
     if (argc > 1 && strcmp(argv[1], "--ui-bench") == 0) {
         registry_validate();
         const char *only = argc > 2 ? argv[2] : "";
-        bool headless = strcmp(only, "studio") != 0,
+        bool members = strcmp(only, "members") == 0,
+             headless = strcmp(only, "studio") != 0 && !members,
              studio = strcmp(only, "headless") != 0;
         int failed = headless ? ui_bench_headless() : 0;
-        return failed || (studio && ui_bench_studio(program_name)) ? 1 : 0;
+        return failed || (studio && ui_bench_studio(program_name, members)) ? 1 : 0;
     }
     /* UI documents (workstream D). */
     if (argc > 1 && strcmp(argv[1], "--ui-documents") == 0) {

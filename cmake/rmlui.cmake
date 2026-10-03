@@ -31,6 +31,8 @@ add_library(chibi_ui STATIC
     # virtualized list windows for every context.
     src/ui/drag.c
     src/ui/list.c
+    # Autofocus on elements built after their document shows (workstream P5).
+    src/ui/autofocus.c
     # The embedded faces, loaded by the editor kit and game UI alike.
     ${GEN_NERD_FONT} ${GEN_UI_FONT} ${GEN_UI_BOLD_FONT}
     ${GEN_UI_MEDIUM_FONT} ${GEN_UI_SEMIBOLD_FONT} ${GEN_UI_NUMERIC_FONT} ${GEN_STUDIO_FONTS}

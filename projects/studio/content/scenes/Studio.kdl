@@ -36,4 +36,6 @@ name "Studio"
         prototype "Widgets"
         (array)behaviors "VirtualList" "WidgetGallery"
     }
+    - name="Members" prototype="Members"
+    - name="MembersHeader" prototype="MembersHeader"
 }

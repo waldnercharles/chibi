@@ -76,5 +76,7 @@ void studio_documents_properties_checks();
 void studio_documents_assets_checks();
 /* Lists and drag (workstream F4): authored and native lists together. */
 void studio_documents_list_checks();
+/* Members (workstream P5). */
+void studio_documents_members_checks();
 
 #endif

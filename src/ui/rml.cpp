@@ -1302,14 +1302,11 @@ rml_data_model *rml_data_model_create(
             emit(user, &e, texts.empty() ? "" : texts[0].c_str(), (int)args.size(), args.data());
         }
     );
-    /* The DOM's event.stopPropagation(), as Vue's .stop: a button inside a
-       row keeps its click from the row. */
-    constructor.BindEventCallback(
-        "stopPropagation",
-        [](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &) {
-            event.StopPropagation();
-        }
-    );
+    /* stop(), as Vue's .stop modifier: the event goes no further, so a
+       button in a row keeps its click from the row's handler. */
+    constructor.BindEventCallback("stop", [](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &) {
+        event.StopPropagation();
+    });
     return model;
 }
 
@@ -1834,6 +1831,37 @@ private:
 void rml_add_context_hooks(const rml_context_hooks *hooks)
 {
     Rml::RegisterPlugin(new ContextHooks(hooks));
+}
+
+/* ---------- Members (workstream P5) ---------- */
+
+namespace {
+
+/* Forwards each element's creation; RmlUi unregisters it at shutdown,
+ * which frees it. */
+class ElementCreated final : public Rml::Plugin
+{
+public:
+    explicit ElementCreated(void (*created)(rml_element *))
+      : created(created)
+    {
+    }
+
+    int GetEventClasses() override { return EVT_BASIC | EVT_ELEMENT; }
+
+    void OnElementCreate(Rml::Element *e) override { created(wrap(e)); }
+
+    void OnShutdown() override { delete this; }
+
+private:
+    void (*created)(rml_element *);
+};
+
+} // namespace
+
+void rml_add_element_created(void (*created)(rml_element *element))
+{
+    Rml::RegisterPlugin(new ElementCreated(created));
 }
 
 rml_element *rml_context_root(rml_context *c)

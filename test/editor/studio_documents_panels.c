@@ -418,7 +418,7 @@ static void settings_records_shortcut()
     bool text_field_kept = search_field &&
                            !app_scene_authoring_runtime_state(f.scene).playing;
 
-    /* The Settings page test covers the Record control. Here, exercise the
+    /* panel_actions_route covers the Record control. Here, exercise the
        host after that control has requested a recording. */
     s->shortcut_recording = STUDIO_COMMAND_SEARCH + 1;
     bool recording = s->shortcut_recording == STUDIO_COMMAND_SEARCH + 1;
@@ -463,6 +463,62 @@ static void settings_records_shortcut()
         text_field_kept && focus_canceled && repeat_ignored && captured,
         "Settings text focus blocks Play; focus loss cancels recording, which "
         "ignores repeats and captures a chord through the host input queue"
+    );
+    fixture_free(&f);
+}
+
+/* The first element `selector` matches in Studio's documents that shows. */
+static rml_element *shown_element(studio *s, const char *selector)
+{
+    rml_context *context = rml_backend_context(s->backend);
+    for (int d = 0; d < rml_context_document_count(context); d++) {
+        rml_element *found[512];
+        int count = rml_element_query_selector_all(rml_context_document(context, d), selector, found, 512);
+        for (int i = 0; i < count && i < 512; i++) {
+            if (rml_element_is_visible(found[i], true)) {
+                return found[i];
+            }
+        }
+    }
+    return NULL;
+}
+
+/* A panel's activations route by name (studio_panel_route): studio.<id>
+ * runs the command, <source>.<action> the panel source's action, here the
+ * Settings page's Record button's emit('settings.record', row.key), and
+ * any other event goes to the panel's behaviors. */
+static void panel_actions_route()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    studio_ui_show_settings(s, "Frame Selected");
+    frames(&f, 4);
+    rml_element *record = shown_element(s, ".record-shortcut");
+    if (record) {
+        press(s, record);
+    }
+    frames(&f, 3);
+    bool recorded = record && s->shortcut_recording == STUDIO_COMMAND_FRAME + 1 &&
+                    shown_element(s, ".recording");
+    s->shortcut_recording = 0;
+    ui_activation a = { .event = "settings.record", .argc = 1, .args = { "command.search" } };
+    bool routed = studio_panel_route(s, &a) &&
+                  s->shortcut_recording == STUDIO_COMMAND_SEARCH + 1;
+    s->shortcut_recording = 0;
+    ui_activation command = { .event = "studio.keyboardShortcuts" };
+    ui_activation unknown = { .event = "outliner.select" };
+    ui_activation bare = { .event = "Close" };
+    bool ran = studio_panel_route(s, &command) && studio_ui_modal_open(s);
+    bool passed = !studio_panel_route(s, &unknown) && !studio_panel_route(s, &bare);
+    if (!(recorded && routed && ran && passed)) {
+        printf("  panel actions: %d %d %d %d\n", recorded, routed, ran, passed);
+    }
+    test_check(
+        recorded && routed && ran && passed,
+        "panel actions route by name: Settings' Record emits settings.record "
+        "to its source, "
+        "studio.<id> runs a command, and other events go to the panel's "
+        "behaviors"
     );
     fixture_free(&f);
 }
@@ -925,6 +981,7 @@ void studio_documents_panel_checks()
     ui_wiring_checks();
     preview_hears_keys();
     settings_records_shortcut();
+    panel_actions_route();
     virtual_list_rows();
     settings_reopens_after_font_change();
     source_reload_preserves_failed_draft();

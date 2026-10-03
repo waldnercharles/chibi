@@ -1,14 +1,15 @@
 /* The data Studio's authored panels bind beyond their own world's `save`
- * (render/ui.h): `world`, the saved keys of the world the Scene shows, and
- * `theme`, the custom properties of the stylesheets the open scene's root
- * document imports; `settings`, the Settings page's preferences;
+ * (render/ui.h), one variable per panel source (studio_panel_sources, at the
+ * end): `world`, the saved keys of the world the Scene shows, and `theme`,
+ * the custom properties of the stylesheets the open scene's root document
+ * imports; `collaboration` and `new_project`, their dialogs'; `settings`, the
+ * Settings page's preferences; `shortcuts`, Keyboard Shortcuts';
  * `inspector`, the UI Inspector's (see its section below); `editor`, what
  * the status bar, the top bar and the area headers show; and `commands`,
- * each command's state (the last sections). A panel's
- * edits apply back: a saved key to the save, a theme value to its file,
- * which restyles everything the page styles, and a setting to the
- * preferences. A preview of Studio's own ui assets shows the same data and
- * applies nothing. */
+ * each command's state (the last sections). A panel's edits apply back: a
+ * saved key to the save, a theme value to its file, which restyles
+ * everything the page styles, and a setting to the preferences. A preview of
+ * Studio's own ui assets shows the same data and applies nothing. */
 #include "assets/asset_source.h"
 #include "assets/project.h"
 #include "editor/collab/collab.h"
@@ -27,54 +28,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void add_inspector(yyjson_mut_doc *doc, yyjson_mut_val *root);
-static void sync_inspector(studio *s, studio_sources *src, ui_data *data);
-static void show_inspector_model(studio_sources *src, ui_data *data, const studio_inspect_model *m);
-static void sync_editor(studio *s, ui_data *data);
-static void sync_commands(studio *s, ui_data *data);
-static void sync_collaboration(studio *s, ui_data *data);
-
-yyjson_mut_doc *studio_sources_new()
+static yyjson_mut_val *root_object(yyjson_mut_doc *doc, const char *name)
 {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_val *world = yyjson_mut_obj_add_obj(doc, root, "world");
-    yyjson_mut_obj_add_str(doc, world, "title", "");
-    yyjson_mut_obj_add_arr(doc, world, "saved");
-    yyjson_mut_obj_add_arr(doc, yyjson_mut_obj_add_obj(doc, root, "theme"), "sections");
-    yyjson_mut_val *collaboration = yyjson_mut_obj_add_obj(doc, root, "collaboration");
-    yyjson_mut_obj_add_bool(doc, collaboration, "available", false);
-    yyjson_mut_obj_add_bool(doc, collaboration, "connected", false);
-    yyjson_mut_obj_add_bool(doc, collaboration, "host", false);
-    yyjson_mut_obj_add_bool(doc, collaboration, "error", false);
-    yyjson_mut_obj_add_str(doc, collaboration, "status", "");
-    yyjson_mut_obj_add_str(doc, collaboration, "token", "");
-    yyjson_mut_obj_add_str(doc, collaboration, "invite", "");
-    yyjson_mut_obj_add_bool(doc, collaboration, "token_expanded", false);
-    yyjson_mut_obj_add_bool(doc, collaboration, "busy", false);
-    yyjson_mut_obj_add_bool(doc, collaboration, "has_peers", false);
-    yyjson_mut_obj_add_arr(doc, collaboration, "peers");
-    yyjson_mut_val *new_project = yyjson_mut_obj_add_obj(doc, root, "new_project");
-    yyjson_mut_obj_add_str(doc, new_project, "name", "");
-    yyjson_mut_obj_add_str(doc, new_project, "error", "");
-    yyjson_mut_obj_add_str(doc, new_project, "error_markup", "");
-    yyjson_mut_obj_add_bool(doc, new_project, "waiting", false);
-    yyjson_mut_obj_add_bool(doc, new_project, "confirm_discard", false);
-    add_inspector(doc, root);
-    studio_settings_add(doc);
-    studio_keymap_add(doc);
-    studio_status_add(doc);
-    studio_commands_add(doc);
-    return doc;
-}
-
-static yyjson_mut_val *variable(ui_data *data, const char *name)
-{
-    return yyjson_mut_obj_get(yyjson_mut_doc_get_root(data->doc), name);
+    return yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), name);
 }
 
 /* ---------- World ---------- */
+
+static void add_world(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *world = root_object(doc, "world");
+    yyjson_mut_obj_add_str(doc, world, "title", "");
+    yyjson_mut_obj_add_arr(doc, world, "saved");
+}
 
 /* The save of the world the Scene shows, and its title. */
 static game_save *scene_save(studio *s, char *title, size_t size)
@@ -137,25 +103,25 @@ static void show_rows(yyjson_mut_doc *doc, yyjson_mut_val *rows, const game_save
     }
 }
 
-static void sync_world(studio *s, studio_sources *src, ui_data *data, bool wrote)
+static bool sync_world(studio *s, const studio_panel_sync *at)
 {
-    yyjson_mut_val *world = variable(data, "world");
-    yyjson_mut_val *rows = yyjson_mut_obj_get(world, "saved");
-    yyjson_mut_val *shown_title = yyjson_mut_obj_get(world, "title");
+    studio_sources *src = at->sources;
+    yyjson_mut_val *rows = yyjson_mut_obj_get(at->variable, "saved");
+    yyjson_mut_val *shown_title = yyjson_mut_obj_get(at->variable, "title");
     char title[192];
     game_save *save = scene_save(s, title, sizeof title);
-    if (wrote && save == src->save) {
+    if (at->wrote && save == src->save) {
         save_rows(rows, save);
     }
     bool retitled = strcmp(yyjson_mut_get_str(shown_title), title) != 0;
     if (save == src->save && game_save_revision(save) == src->save_seen && !retitled) {
-        return;
+        return false;
     }
     src->save = save;
     src->save_seen = game_save_revision(save);
-    ui_data_set_text(data->doc, shown_title, title);
-    show_rows(data->doc, rows, save);
-    rml_data_model_dirty(data->model, "world");
+    ui_data_set_text(at->doc, shown_title, title);
+    show_rows(at->doc, rows, save);
+    return true;
 }
 
 /* ---------- Theme ---------- */
@@ -205,11 +171,17 @@ static void file_title(char *out, size_t size, const char *path)
     snprintf(out, size, "%.*s", (int)strcspn(name, "."), name);
 }
 
-/* Lists the theme's files' custom properties, a section per file and rule. */
-static void show_theme(studio_sources *src, ui_data *data)
+static void add_theme(yyjson_mut_doc *doc)
 {
-    yyjson_mut_doc *doc = data->doc;
-    yyjson_mut_val *sections = yyjson_mut_obj_get(variable(data, "theme"), "sections");
+    yyjson_mut_obj_add_arr(doc, root_object(doc, "theme"), "sections");
+}
+
+/* Lists the theme's files' custom properties, a section per file and rule. */
+static void show_theme(const studio_panel_sync *at)
+{
+    studio_sources *src = at->sources;
+    yyjson_mut_doc *doc = at->doc;
+    yyjson_mut_val *sections = yyjson_mut_obj_get(at->variable, "sections");
     yyjson_mut_arr_clear(sections);
     free_tokens(src);
     yyjson_mut_val *rows = NULL;
@@ -245,13 +217,12 @@ static void show_theme(studio_sources *src, ui_data *data)
         afree(vars);
         free(text);
     }
-    rml_data_model_dirty(data->model, "theme");
 }
 
 /* The value each token's row holds, in token order; NULL past the rows. */
-static const char *row_value(ui_data *data, int token)
+static const char *row_value(yyjson_mut_val *theme, int token)
 {
-    yyjson_mut_val *sections = yyjson_mut_obj_get(variable(data, "theme"), "sections");
+    yyjson_mut_val *sections = yyjson_mut_obj_get(theme, "sections");
     for (size_t i = 0; i < yyjson_mut_arr_size(sections); i++) {
         yyjson_mut_val *rows = yyjson_mut_obj_get(yyjson_mut_arr_get(sections, i), "rows");
         size_t count = yyjson_mut_arr_size(rows);
@@ -264,10 +235,11 @@ static const char *row_value(ui_data *data, int token)
     return NULL;
 }
 
-static bool theme_edited(const studio_sources *src, ui_data *data)
+static bool theme_edited(const studio_panel_sync *at)
 {
+    const studio_sources *src = at->sources;
     for (int i = 0; i < acount(src->tokens); i++) {
-        const char *value = row_value(data, i);
+        const char *value = row_value(at->variable, i);
         if (value && strcmp(value, src->tokens[i].value) != 0) {
             return true;
         }
@@ -277,8 +249,9 @@ static bool theme_edited(const studio_sources *src, ui_data *data)
 
 /* Writes file `file` with each edited token's new value in place of its
  * old one; a value the file no longer holds is left alone. */
-static void save_file(studio *s, studio_sources *src, ui_data *data, int file)
+static void save_file(studio *s, const studio_panel_sync *sync, int file)
 {
+    const studio_sources *src = sync->sources;
     const char *path = src->page.imports[file].path;
     char *text = text_file_read(path);
     if (!text) {
@@ -288,7 +261,7 @@ static void save_file(studio *s, studio_sources *src, ui_data *data, int file)
     int at = 0;
     for (int i = 0; i < acount(src->tokens); i++) {
         const studio_token *t = &src->tokens[i];
-        const char *value = row_value(data, i);
+        const char *value = row_value(sync->variable, i);
         size_t old = strlen(t->value);
         if (t->file != file || !value || !strcmp(value, t->value) ||
             (size_t)(t->end - t->start) != old ||
@@ -314,36 +287,41 @@ static void save_file(studio *s, studio_sources *src, ui_data *data, int file)
     free(text);
 }
 
-static void save_theme(studio *s, studio_sources *src, ui_data *data)
+static void save_theme(studio *s, const studio_panel_sync *at)
 {
+    const studio_sources *src = at->sources;
     for (int f = 0; f < acount(src->page.imports); f++) {
         bool edited = false;
         for (int i = 0; i < acount(src->tokens) && !edited; i++) {
-            const char *value = row_value(data, i);
+            const char *value = row_value(at->variable, i);
             edited = src->tokens[i].file == f && value &&
                      strcmp(value, src->tokens[i].value) != 0;
         }
         if (edited) {
-            save_file(s, src, data, f);
+            save_file(s, at, f);
         }
     }
-    show_theme(src, data);
+    show_theme(at);
 }
 
-static void sync_theme(studio *s, studio_sources *src, ui_data *data, bool wrote)
+static bool sync_theme(studio *s, const studio_panel_sync *at)
 {
+    studio_sources *src = at->sources;
     const char *content = s->scene->content_root;
     if (strcmp(src->content_root, content) != 0) {
         ui_page_free(&src->page);
         snprintf(src->content_root, sizeof src->content_root, "%s", content);
     }
-    if (wrote && theme_edited(src, data)) {
-        save_theme(s, src, data);
+    bool saved = at->wrote && theme_edited(at);
+    if (saved) {
+        save_theme(s, at);
     }
     const char *page = app_scene_authoring_page(s->scene);
-    if (ui_page_sync(&src->page, content, page ? page : "", s->time)) {
-        show_theme(src, data);
+    bool read = ui_page_sync(&src->page, content, page ? page : "", s->time);
+    if (read) {
+        show_theme(at);
     }
+    return saved || read;
 }
 
 /* ---------- Settings ---------- */
@@ -352,11 +330,12 @@ static void sync_theme(studio *s, studio_sources *src, ui_data *data, bool wrote
  * category, the search query, the categories with their search counts, and
  * one row per preference, command and project setting. Rows are built once
  * and shown or hidden, so the page never rebuilds as the query changes. A
- * row's value is text, and its control is chosen by which of its `bool`,
- * `choice`, `range` and `text` lists holds an item, as data-if leaves hidden
- * controls bound. A slider moves `position`, from 0 to 1 in steps of
- * `tick`: a range input clamps its value when its bounds arrive, so its
- * bounds stay fixed. */
+ * row's value is text, and its `control` ("bool", "choice", "range", "text",
+ * or "" for a shortcut) chooses the one control the page builds for it with
+ * data-when, which removes the others where data-if would keep them bound. A
+ * slider moves `position`, from 0 to 1 in steps of `tick`: a range input
+ * clamps its value when its bounds arrive, so its bounds stay fixed. The
+ * Record button sends emit('settings.record', key). */
 
 /* The Project tab's rows, after the preferences and commands. A field the
    manifest may leave out (`optional`) offers None and Reset; the others must
@@ -490,11 +469,9 @@ static yyjson_mut_val *add_row(
     static const char *const TEXTS[] = { "key",     "label",    "description",
                                          "value",   "default",  "position",
                                          "context", "conflict", "bound",
-                                         "aliases" };
-    static const char *const FLAGS[] = { "shown",  "head",      "modified",
-                                         "record", "recording", "indexed" };
-    static const char *const LISTS[] = { "choices", "bool", "choice",
-                                         "range",   "keys", "text" };
+                                         "aliases", "control" };
+    static const char *const FLAGS[] = { "shown", "head", "modified", "recording", "indexed" };
+    static const char *const LISTS[] = { "choices", "keys" };
     static const char *const NUMBERS[] = { "min", "max", "step", "tick" };
     yyjson_mut_val *row = yyjson_mut_arr_add_obj(doc, rows);
     yyjson_mut_obj_add_str(
@@ -525,10 +502,10 @@ static yyjson_mut_val *add_row(
     return row;
 }
 
-/* Puts an item in the row's list for `control`, which the page shows it with. */
-static void gate(yyjson_mut_doc *doc, yyjson_mut_val *row, const char *control)
+/* Sets the control the page shows the row with. */
+static void gate(yyjson_mut_val *row, const char *control)
 {
-    yyjson_mut_arr_add_true(doc, yyjson_mut_obj_get(row, control));
+    yyjson_mut_set_str(yyjson_mut_obj_get(row, "control"), control);
 }
 
 /* A number without presets, which a slider sets. */
@@ -565,7 +542,6 @@ static void add_setting(
         yyjson_mut_obj_add_str(doc, choice, "label", s->choices[i].label);
     }
     gate(
-        doc,
         row,
         s->type == STUDIO_SETTING_BOOL ? "bool"
         : s->choice_count              ? "choice"
@@ -609,7 +585,7 @@ static void build_rows(const studio_settings_view *view, yyjson_mut_doc *doc, yy
             yyjson_mut_obj_get(row, "description"),
             PROJECT_ROWS[f].description
         );
-        gate(doc, row, text ? "text" : "choice");
+        gate(row, text ? "text" : "choice");
     }
 }
 
@@ -674,10 +650,6 @@ static void apply_rows(studio_settings_view *view, yyjson_mut_val *rows)
         yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)(studio_setting_count + c));
         if (command < 0 || view->commands[c].indexed) {
             continue;
-        }
-        if (yyjson_mut_get_bool(yyjson_mut_obj_get(row, "record"))) {
-            view->recording = command + 1;
-            put_bool(row, "record", false);
         }
         const char *value = text_of(row, "value");
         if (!strcmp(value, text_of(row, "bound"))) {
@@ -1177,14 +1149,14 @@ static void set_project_field(studio *s, studio_project_field field, const char 
     apply_project_field(s, field, value);
 }
 
-static void sync_settings(studio *s, studio_sources *src, ui_data *data, bool wrote)
+static bool sync_settings(studio *s, const studio_panel_sync *at)
 {
     studio_command_info commands[STUDIO_COMMAND_COUNT];
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         commands[c] = studio_command_describe(s, (studio_command)c);
     }
     studio_settings_view view = { .prefs = &s->prefs,
-                                  .cache = &src->settings_cache,
+                                  .cache = &at->sources->settings_cache,
                                   .commands = commands,
                                   .command_count = STUDIO_COMMAND_COUNT,
                                   .recording = s->shortcut_recording,
@@ -1207,9 +1179,7 @@ static void sync_settings(studio *s, studio_sources *src, ui_data *data, bool wr
     view.choices[STUDIO_PROJECT_UI] = asset_choices(s, REFERENCE_ASSET_UI);
     char before[STUDIO_PROJECT_FIELD_COUNT][256];
     memcpy(before, view.fields, sizeof before);
-    if (studio_settings_sync(&view, data->doc, wrote)) {
-        rml_data_model_dirty(data->model, "settings");
-    }
+    bool changed = studio_settings_sync(&view, at->doc, at->wrote);
     s->shortcut_recording = view.recording;
     for (int f = 0; f < STUDIO_PROJECT_FIELD_COUNT; f++) {
         if (strcmp(view.fields[f], before[f]) != 0) {
@@ -1217,26 +1187,49 @@ static void sync_settings(studio *s, studio_sources *src, ui_data *data, bool wr
         }
         afree(view.choices[f]);
     }
+    return changed;
 }
 
-/* Shows the current values, applying first what bindings wrote when
-   `wrote`. */
-static void sync_values(studio *s, studio_sources *src, ui_data *data, bool wrote)
+/* emit('settings.record', key) records a shortcut for the row's command,
+ * "command.<id>", unless an index chooses its target. */
+static void settings_action(studio *s, const char *action, const ui_activation *a)
 {
-    sync_world(s, src, data, wrote);
-    sync_theme(s, src, data, wrote);
-    sync_settings(s, src, data, wrote);
-    if (studio_keymap_show(data->doc, &s->prefs, s->mac, &src->keymap_cache)) {
-        rml_data_model_dirty(data->model, "shortcuts");
+    const char *key = a->args[0];
+    int command = !strcmp(action, "record") && a->argc && !strncmp(key, "command.", 8)
+                    ? studio_command_named(key + 8)
+                    : -1;
+    if (command >= 0 && !studio_command_describe(s, (studio_command)command).indexed) {
+        s->shortcut_recording = command + 1;
     }
-    sync_editor(s, data);
-    sync_commands(s, data);
-    sync_collaboration(s, data);
 }
 
-static void sync_collaboration(studio *s, ui_data *data)
+static bool sync_shortcuts(studio *s, const studio_panel_sync *at)
 {
-    yyjson_mut_val *collaboration = variable(data, "collaboration");
+    return studio_keymap_show(at->doc, &s->prefs, s->mac, &at->sources->keymap_cache);
+}
+
+/* ---------- Collaboration ---------- */
+
+static void add_collaboration(yyjson_mut_doc *doc)
+{
+    static const char *const FLAGS[] = { "available", "connected",      "host",
+                                         "error",     "token_expanded", "busy",
+                                         "has_peers" };
+    static const char *const TEXTS[] = { "status", "token", "invite" };
+    yyjson_mut_val *collaboration = root_object(doc, "collaboration");
+    for (size_t i = 0; i < sizeof FLAGS / sizeof *FLAGS; i++) {
+        yyjson_mut_obj_add_bool(doc, collaboration, FLAGS[i], false);
+    }
+    for (size_t i = 0; i < sizeof TEXTS / sizeof *TEXTS; i++) {
+        yyjson_mut_obj_add_str(doc, collaboration, TEXTS[i], "");
+    }
+    yyjson_mut_obj_add_arr(doc, collaboration, "peers");
+}
+
+static bool sync_collaboration(studio *s, const studio_panel_sync *at)
+{
+    yyjson_mut_doc *doc = at->doc;
+    yyjson_mut_val *collaboration = at->variable;
     bool changed = false;
     changed |= put_bool(collaboration, "token_expanded", s->collaboration.admin_token_expanded);
     changed |= put_bool(collaboration, "busy", studio_collab_busy(s));
@@ -1244,17 +1237,17 @@ static void sync_collaboration(studio *s, ui_data *data)
     changed |= put_bool(collaboration, "connected", collab_active());
     changed |= put_bool(collaboration, "host", collab_active() && collab_is_host());
     changed |= put_bool(collaboration, "error", studio_collab_status_error());
-    changed |= put_text(data->doc, collaboration, "status", studio_collab_display_status());
+    changed |= put_text(doc, collaboration, "status", studio_collab_display_status());
     yyjson_mut_val *peers = yyjson_mut_obj_get(collaboration, "peers");
     int count = acount(s->collaboration.peers);
     changed |= put_bool(collaboration, "has_peers", count > 0);
     if ((int)yyjson_mut_arr_size(peers) != count) {
         yyjson_mut_arr_clear(peers);
         for (int i = 0; i < count; i++) {
-            yyjson_mut_val *peer = yyjson_mut_obj(data->doc);
-            yyjson_mut_obj_add_str(data->doc, peer, "name", "");
-            yyjson_mut_obj_add_str(data->doc, peer, "color", "");
-            yyjson_mut_obj_add_bool(data->doc, peer, "following", false);
+            yyjson_mut_val *peer = yyjson_mut_obj(doc);
+            yyjson_mut_obj_add_str(doc, peer, "name", "");
+            yyjson_mut_obj_add_str(doc, peer, "color", "");
+            yyjson_mut_obj_add_bool(doc, peer, "following", false);
             yyjson_mut_arr_append(peers, peer);
         }
         changed = true;
@@ -1264,8 +1257,8 @@ static void sync_collaboration(studio *s, ui_data *data)
         yyjson_mut_val *row = yyjson_mut_arr_get(peers, (size_t)i);
         char color[16];
         snprintf(color, sizeof color, "#%08x", peer->color ? peer->color : 0x6ea8feffu);
-        changed |= put_text(data->doc, row, "name", peer->name);
-        changed |= put_text(data->doc, row, "color", color);
+        changed |= put_text(doc, row, "name", peer->name);
+        changed |= put_text(doc, row, "color", color);
         changed |= put_bool(
             row,
             "following",
@@ -1273,24 +1266,144 @@ static void sync_collaboration(studio *s, ui_data *data)
                 !strcmp(s->collaboration.follow_client, peer->client)
         );
     }
-    if (changed) {
-        rml_data_model_dirty(data->model, "collaboration");
+    return changed;
+}
+
+/* ---------- New Project ---------- */
+
+/* `new_project`, the New Project dialog: the name the panel edits, and the
+ * error, waiting and discard confirmation project operations own. */
+static void add_new_project(yyjson_mut_doc *doc)
+{
+    static const char *const TEXTS[] = { "name", "error", "error_markup" };
+    yyjson_mut_val *page = root_object(doc, "new_project");
+    for (size_t i = 0; i < sizeof TEXTS / sizeof *TEXTS; i++) {
+        yyjson_mut_obj_add_str(doc, page, TEXTS[i], "");
+    }
+    yyjson_mut_obj_add_bool(doc, page, "waiting", false);
+    yyjson_mut_obj_add_bool(doc, page, "confirm_discard", false);
+}
+
+/* Markup showing `text` as text, so names and paths never parse as tags. */
+static void escape_markup(char *out, size_t size, const char *text)
+{
+    size_t length = 0;
+    for (const char *p = text; *p && length + 6 < size; p++) {
+        const char *escaped = *p == '&' ? "&amp;"
+                            : *p == '<' ? "&lt;"
+                            : *p == '>' ? "&gt;"
+                                        : NULL;
+        if (escaped) {
+            length += (size_t)snprintf(out + length, size - length, "%s", escaped);
+            continue;
+        }
+        out[length++] = *p;
+    }
+    out[length] = '\0';
+}
+
+/* Takes the name the panel edits, unless the dialog has just opened or an
+ * operation holds it, then shows the dialog's state. */
+static bool sync_new_project(studio *s, const studio_panel_sync *at)
+{
+    yyjson_mut_val *page = at->variable;
+    yyjson_mut_val *name = yyjson_mut_obj_get(page, "name");
+    const char *text = yyjson_mut_get_str(name);
+    studio_new_project *dialog = &s->new_project;
+    if (!at->preview && !dialog->focus && !dialog->waiting &&
+        !dialog->confirm_discard && strcmp(dialog->name, text)) {
+        snprintf(dialog->name, sizeof dialog->name, "%s", text);
+        dialog->error[0] = '\0';
+        dialog->created_root[0] = '\0';
+    }
+    yyjson_mut_val *error = yyjson_mut_obj_get(page, "error");
+    yyjson_mut_val *waiting = yyjson_mut_obj_get(page, "waiting");
+    yyjson_mut_val *confirmation = yyjson_mut_obj_get(page, "confirm_discard");
+    bool changed = strcmp(text, dialog->name) ||
+                   strcmp(yyjson_mut_get_str(error), dialog->error) ||
+                   yyjson_mut_get_bool(waiting) != dialog->waiting ||
+                   yyjson_mut_get_bool(confirmation) != dialog->confirm_discard;
+    if (!changed) {
+        return false;
+    }
+    ui_data_set_text(at->doc, name, dialog->name);
+    ui_data_set_text(at->doc, error, dialog->error);
+    char markup[sizeof dialog->error * 6 + 1];
+    escape_markup(markup, sizeof markup, dialog->error);
+    ui_data_set_text(at->doc, yyjson_mut_obj_get(page, "error_markup"), markup);
+    yyjson_mut_set_bool(waiting, dialog->waiting);
+    yyjson_mut_set_bool(confirmation, dialog->confirm_discard);
+    return true;
+}
+
+/* ---------- Panel sources ---------- */
+
+/* Runs source `i`'s sync over `data` and dirties its variable when it
+ * changed. */
+static void sync_source(studio *s, studio_sources *src, ui_data *data, int i, bool wrote)
+{
+    const studio_panel_source *source = &studio_panel_sources[i];
+    studio_panel_sync at = {
+        .sources = src,
+        .doc = data->doc,
+        .variable = yyjson_mut_obj_get(
+            yyjson_mut_doc_get_root(data->doc),
+            source->name
+        ),
+        .preview = src->preview,
+        .wrote = wrote,
+    };
+    assert(at.variable);
+    if (source->sync(s, &at)) {
+        rml_data_model_dirty(data->model, source->name);
     }
 }
 
+yyjson_mut_doc *studio_sources_new()
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
+    for (int i = 0; i < studio_panel_source_count; i++) {
+        studio_panel_sources[i].add(doc);
+    }
+    return doc;
+}
+
+/* A source syncs while its panel shows, as the last UI refresh mounted it,
+ * and whenever a binding wrote, so no edit is lost to a panel closing. */
 void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
 {
     uint64_t writes = rml_data_model_writes(data->model);
     bool wrote = writes != src->writes_seen;
     src->writes_seen = writes;
-    sync_inspector(s, src, data);
-    sync_values(s, src, data, wrote);
+    for (int i = 0; i < studio_panel_source_count; i++) {
+        if (!studio_panel_sources[i].panel ||
+            src->shown_at[i] >= s->ui_schedule.frames || wrote) {
+            sync_source(s, src, data, i, wrote);
+        }
+    }
+}
+
+void studio_sources_mounted(studio *s, studio_sources *src, ui_data *data, const char *panel)
+{
+    for (int i = 0; i < studio_panel_source_count; i++) {
+        const char *shows = studio_panel_sources[i].panel;
+        if (!shows || strcmp(shows, panel)) {
+            continue;
+        }
+        if (src->shown_at[i] < s->ui_schedule.frames) {
+            sync_source(s, src, data, i, false);
+        }
+        src->shown_at[i] = s->ui_schedule.frames + 1;
+    }
 }
 
 void studio_sources_show(studio *s, studio_sources *src, ui_data *data)
 {
-    show_inspector_model(src, data, studio_inspect_shown(s));
-    sync_values(s, src, data, false);
+    src->preview = true;
+    for (int i = 0; i < studio_panel_source_count; i++) {
+        sync_source(s, src, data, i, false);
+    }
 }
 
 void studio_sources_search_settings(ui_data *data, const char *query)
@@ -1360,7 +1473,7 @@ static void add_flags(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *cons
     }
 }
 
-static void add_inspector(yyjson_mut_doc *doc, yyjson_mut_val *root)
+static void add_inspector(yyjson_mut_doc *doc)
 {
     static const char *const TEXTS[] = { "target", "shortcut", "title",
                                          "path",   "source",   "pseudo",
@@ -1372,7 +1485,7 @@ static void add_inspector(yyjson_mut_doc *doc, yyjson_mut_val *root)
     static const char *const REQUESTS[] = { "select", "toggle", "hover", "rule" };
     static const char *const LISTS[] = { "rows", "styles", "computed", "attributes" };
     static const char *const SPARES[] = { "rows", "styles", "pairs" };
-    yyjson_mut_val *in = yyjson_mut_obj_add_obj(doc, root, "inspector");
+    yyjson_mut_val *in = root_object(doc, "inspector");
     add_texts(doc, in, TEXTS);
     add_flags(doc, in, FLAGS);
     yyjson_mut_obj_add_str(doc, in, "tab", "styles"); /* the panel's own */
@@ -1578,22 +1691,28 @@ static void show_inspector(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio
     show_pairs(doc, in, "attributes", m->attributes);
 }
 
-/* Shows `m` when its revision is not the one shown, as its strings may
-   have moved since. */
-static void show_inspector_model(studio_sources *src, ui_data *data, const studio_inspect_model *m)
+/* Shows the Inspector's model when its revision is not the one shown, as its
+   strings may have moved since; a preview shows the model as it stands. The
+   Inspector reads nothing while neither shown nor picking, so it syncs at
+   every refresh. */
+static const studio_inspect_model *inspector_model(studio *s, const studio_panel_sync *at)
 {
-    if (!m || m->revision == src->inspected) {
-        return;
+    if (at->preview) {
+        return studio_inspect_shown(s);
     }
-    src->inspected = m->revision;
-    show_inspector(data->doc, variable(data, "inspector"), m);
-    rml_data_model_dirty(data->model, "inspector");
+    studio_inspect_input input = inspector_input(at->variable);
+    return studio_inspect_sync(s, &input);
 }
 
-static void sync_inspector(studio *s, studio_sources *src, ui_data *data)
+static bool sync_inspector(studio *s, const studio_panel_sync *at)
 {
-    studio_inspect_input input = inspector_input(variable(data, "inspector"));
-    show_inspector_model(src, data, studio_inspect_sync(s, &input));
+    const studio_inspect_model *m = inspector_model(s, at);
+    if (!m || m->revision == at->sources->inspected) {
+        return false;
+    }
+    at->sources->inspected = m->revision;
+    show_inspector(at->doc, at->variable, m);
+    return true;
 }
 
 /* ---------- Editor (workstreams J and T) ---------- */
@@ -1876,7 +1995,7 @@ static const char *spawned_selection(app_scene_authoring *scene)
              : "";
 }
 
-static void sync_editor(studio *s, ui_data *data)
+static bool sync_editor(studio *s, const studio_panel_sync *at)
 {
     char title[128], speed[16];
     scene_actor *actor = selected_actor(s->scene);
@@ -1914,10 +2033,9 @@ static void sync_editor(studio *s, ui_data *data)
             status.live |= 1u << i;
         }
     }
-    if (studio_status_show(data->doc, &status)) {
-        rml_data_model_dirty(data->model, "editor");
-    }
+    bool changed = studio_status_show(at->doc, &status);
     afree(tabs);
+    return changed;
 }
 
 /* ---------- Commands (workstream T) ---------- */
@@ -1969,7 +2087,7 @@ bool studio_commands_show(yyjson_mut_doc *doc, const studio_command_state *state
     return changed;
 }
 
-static void sync_commands(studio *s, ui_data *data)
+static bool sync_commands(studio *s, const studio_panel_sync *at)
 {
     studio_command_state states[STUDIO_COMMAND_COUNT];
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
@@ -1980,7 +2098,28 @@ static void sync_commands(studio *s, ui_data *data)
             .checked = studio_command_checked(s, command) == 1,
         };
     }
-    if (studio_commands_show(data->doc, states)) {
-        rml_data_model_dirty(data->model, "commands");
-    }
+    return studio_commands_show(at->doc, states);
 }
+
+/* ---------- The table ---------- */
+
+/* Each panel's source, in the order they sync. The chrome every area shows
+ * (editor, commands, collaboration's status in the top bar) and the
+ * Inspector, which reads nothing while hidden, sync at every refresh. */
+const studio_panel_source studio_panel_sources[] = {
+    { "inspector", NULL, add_inspector, sync_inspector, NULL },
+    { "world", "Data", add_world, sync_world, NULL },
+    { "theme", "Theme", add_theme, sync_theme, NULL },
+    { "settings", "Settings", studio_settings_add, sync_settings, settings_action },
+    { "shortcuts", "Shortcuts", studio_keymap_add, sync_shortcuts, NULL },
+    { "editor", NULL, studio_status_add, sync_editor, NULL },
+    { "commands", NULL, studio_commands_add, sync_commands, NULL },
+    { "collaboration", NULL, add_collaboration, sync_collaboration, NULL },
+    { "new_project", "NewProject", add_new_project, sync_new_project, NULL },
+};
+const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
+                                            sizeof *studio_panel_sources);
+_Static_assert(
+    sizeof studio_panel_sources / sizeof *studio_panel_sources <= STUDIO_PANEL_SOURCE_MAX,
+    "studio_sources keeps a shown_at for each source"
+);

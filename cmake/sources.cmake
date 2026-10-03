@@ -205,6 +205,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_member_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_outliner.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_output.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_panels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_performance.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prefs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_projects.c

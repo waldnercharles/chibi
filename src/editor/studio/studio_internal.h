@@ -1131,6 +1131,9 @@ bool studio_keymap_show(yyjson_mut_doc *doc, const studio_prefs *prefs, bool mac
 /* Whether the sheet lists the area. */
 bool studio_keymap_area(const char *area);
 
+/* The panel sources a studio_sources follows at most. */
+#define STUDIO_PANEL_SOURCE_MAX 16
+
 /* What authored panels bind beyond their world's `save` (studio_sources.c):
  * `world`, the Scene world's saved keys, and `theme`, the custom properties
  * of the stylesheets the open scene's root document imports. */
@@ -1145,11 +1148,16 @@ typedef struct studio_sources
     int inspected; /* the Inspector model's revision `inspector` shows */
     studio_settings_cache settings_cache;
     studio_keymap_cache keymap_cache;
+    /* By source, one past the UI refresh (ui_schedule.frames) that last
+       mounted its panel; 0 before any did. */
+    uint64_t shown_at[STUDIO_PANEL_SOURCE_MAX];
+    bool preview; /* a preview's, which applies nothing (studio_sources_show) */
 } studio_sources;
 
 /* A data model's JSON with the variables authored panels bind. */
 yyjson_mut_doc *studio_sources_new();
-/* Applies what bindings changed, then shows the current values. */
+/* Applies what bindings changed, then shows the current values of the
+ * sources whose panels show (studio_panel_source). */
 void studio_sources_sync(studio *s, studio_sources *sources, ui_data *data);
 /* Shows the current values in a preview's model, applying nothing its
  * bindings write (studio_canvas.c). */
@@ -2195,5 +2203,51 @@ void studio_component_toast(studio *s);
 void studio_keep_changes(studio *s, const ecs_component_desc *only);
 /* Runs the Undo a Keep Changes toast offers; call every frame. */
 void studio_keep_toast(studio *s);
+
+/* ---------- Panel sources and actions (workstream F1) ---------- */
+
+/* What a source's sync works on: a host's data model and the source's
+ * variable in it, and what the source keeps for that host. A preview of
+ * Studio's own ui assets (studio_canvas.c) shows the data and applies nothing
+ * its bindings write. */
+typedef struct studio_panel_sync
+{
+    studio_sources *sources;
+    yyjson_mut_doc *doc;
+    yyjson_mut_val *variable;
+    bool preview;
+    bool wrote; /* bindings wrote values since the last sync */
+} studio_panel_sync;
+
+/* An authored panel's C side (docs/studio-rml-migration.md, Panels). `name`
+ * is its variable and its actions' prefix; `panel` the Studio scene entity
+ * whose showing syncs it, or NULL to sync it at every UI refresh, as the
+ * chrome every area shows needs. `add` adds the variable before the data
+ * model exists; `sync` shows Studio's state in it, applying first what
+ * bindings wrote, and returns true when anything changed, so the host dirties
+ * that variable alone; `action`, which may be NULL, runs
+ * emit('<name>.<action>', ...) with `action` the part after the dot. */
+typedef struct studio_panel_source
+{
+    const char *name;
+    const char *panel;
+    void (*add)(yyjson_mut_doc *doc);
+    bool (*sync)(studio *s, const studio_panel_sync *at);
+    void (*action)(studio *s, const char *action, const ui_activation *a);
+} studio_panel_source;
+
+/* Every source, in one table (studio_sources.c). */
+extern const studio_panel_source studio_panel_sources[];
+extern const int studio_panel_source_count;
+
+/* Syncs the sources of `panel` as it mounts, unless the last UI refresh
+ * showed it already, so a panel never shows stale data for a frame. */
+void studio_sources_mounted(studio *s, studio_sources *sources, ui_data *data, const char *panel);
+
+/* Runs an activation that is Studio's (studio_panels.c):
+ * emit('studio.<command>') runs the command, on the tab or area its first
+ * argument names, and emit('<source>.<action>', ...) the source's action.
+ * False for any other, which the panel's entity behaviors hear. */
+bool studio_panel_route(studio *s, const ui_activation *a);
 
 #endif

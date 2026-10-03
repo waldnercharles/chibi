@@ -2,9 +2,9 @@
 
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
-performance, is postponed and listed in Postponed below. Status: planned. The
-spike (S0) ran on a loaded machine, so its times are provisional until
-re-measured on an idle one (S0 results).
+performance, is postponed and listed in Postponed below. Status: S0, F0 and
+F1 done; the rest planned. The spike (S0) ran on a loaded machine, so its
+times are provisional until re-measured on an idle one (S0 results).
 
 ## Target
 
@@ -18,9 +18,9 @@ sends back. Controls that need native speed become native RmlUi elements in
 
 What already works this way:
 
-- `Settings.rml` lays out rows C builds, choosing a control per row with a
-  `data-for` over an array of zero or one item (`row.bool`, `row.choice`,
-  `row.range`).
+- `Settings.rml` lays out rows C builds, building each row's one control
+  with `data-when` over its `row.control`, and its Record button sends
+  `emit('settings.record', row.key)` to the `settings` source (F1).
 - `Inspector.rml` renders up to 1,000 rows through `data-for`.
 - `TopBar`, `StatusBar` and `AreaHeader` bind `editor` and `commands`.
 - `Properties.rml` is a shell (tabs and a scroll area) around native content.
@@ -41,7 +41,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, GraphView popover | Authored | | Done |
 | Properties: Object, Prototype, Scene, Behaviors | `studio_properties.c` (~2k lines) | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep, Add Component | W2 P1 |
 | Properties: Node, Member | `studio_graph_properties.c`, `studio_member_properties.c` | Literal editors, binding autocomplete, expression code, type picker, reorder grips | W4 G1 |
-| Outliner | `studio_scene.c` | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | W2 P2 |
+| Outliner | `studio_outliner.c` (F0) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | W2 P2 |
 | Scene and Canvas headers | `studio_scene.c`, `studio_canvas.c` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | W3 C1 |
 | Scene viewport | `kit_surface` showing `kit:viewport` | Texture, pointer input, camera labels | Overlays authored; input stays in C |
 | Assets | `studio_assets.c` | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | W2 P3 |
@@ -63,21 +63,32 @@ About 1,600 kit call sites remain across 40 files. The largest:
 
 A panel is `content/ui/<Panel>.rml` and `.rcss`, its prototype and an entity
 in `scenes/Studio.kdl`, as today, plus a C source registered in one table in
-`studio_sources.c`:
+`studio_sources.c` (`studio_panel_sources`, F1; `studio_internal.h`):
 
 ```c
 typedef struct studio_panel_source {
-    const char *name;                  /* "outliner": its variable and action prefix */
-    void (*add)(yyjson_mut_doc *doc);  /* variables exist before the data model */
-    bool (*sync)(studio *s, yyjson_mut_val *variable); /* true when it changed */
-    void (*action)(studio *s, const ui_activation *a);
+    const char *name;  /* "outliner": its variable and action prefix */
+    const char *panel; /* "Outliner": the entity whose showing syncs it; NULL: every refresh */
+    void (*add)(yyjson_mut_doc *doc); /* variables exist before the data model */
+    bool (*sync)(studio *s, const studio_panel_sync *at); /* true when it changed */
+    void (*action)(studio *s, const char *action, const ui_activation *a); /* or NULL */
 } studio_panel_source;
 ```
 
-`studio_ui_frame` syncs each shown panel and dirties its variable only when
-`sync` reports a change. The shell mounts the panel in each area that shows
-it, aliasing the area's view state as `view`. A panel's own header controls
-move into its document as children of its `AreaHeader`.
+`studio_panel_sync` gives `sync` the host's doc, the source's variable, what
+the source keeps for that host (`studio_sources`), whether bindings wrote
+since the last sync, and whether the host is a preview (the Canvas showing
+Studio's own ui assets, which applies nothing). `studio_ui_frame` syncs a
+source while its panel shows (the last refresh mounted it), at every refresh
+when it has no panel, and whenever a binding wrote, so an edit is never lost
+to a closing panel; a panel's first mount syncs its sources before it shows,
+so it never shows stale data. The host dirties a source's variable only when
+`sync` reports a change. Today's sources: `inspector`, `world` (Data),
+`theme` (Theme), `settings` (Settings), `shortcuts` (Shortcuts), `editor`,
+`commands`, `collaboration` and `new_project` (NewProject). The shell mounts
+the panel in each area that shows it, aliasing the area's view state as
+`view`. A panel's own header controls move into its document as children of
+its `AreaHeader`.
 
 ### Data
 
@@ -107,16 +118,33 @@ intents.
 
 ### Events
 
-`emit(name, ...args)` grows from one value to up to four text arguments, and
-its activation carries `modifiers`, `button`, `x`, `y` and the sending element
-(the anchor for popovers). Today it passes one value (`src/ui/rml.cpp`, the
-`emit` callback). `studio.<command>` runs a command; `<panel>.<action>` goes to
-that panel source; bare names go to entity behaviors.
+`emit(name, ...args)` passes its arguments as text (F1: `rml_emit_fn` takes
+`argc` and `args`; the binding converts and forwards them). Its
+`ui_activation` keeps up to `UI_ACTIVATION_ARGS` (4) in `args`, the first as
+`value` when it is a number, and the DOM event's `modifiers`, `button`, `x`
+and `y` (context pixels), and `anchor`, the sending element as an
+`rml_element_ref` for popovers: it reads NULL once the element is gone and
+lives until the mount's next take. `studio_panel_route` (`studio_panels.c`)
+runs `studio.<command>` as a command, on the tab or area its first argument
+names (palette-visible actions stay commands), and `<source>.<action>` as
+that panel source's `action`; other names go to the panel's entity
+behaviors. New Project's dialog still takes its own `newProject.*` and its
+backdrop's bare `Close` until its migration.
 
 Native controls follow the web: `input` while a gesture runs, `change` once on
 commit with `ev.value` and `ev.canceled`. In Properties, `input` is a live
 write with no history and `change` is one Undo step, as `property_edit`
-already models.
+already models. Text fields do so since F1 (`rmlui-input-events.patch`):
+`input` (`RML_EVENT_INPUT`) on each edit, `change` once when an edit commits
+with Enter or by leaving the field; `data-value` follows `input`, as Vue's
+`v-model`, and `data-value-lazy` follows `change`, as `v-model.lazy`. The
+kit's fields hear `input`.
+
+`data-when="expr"` (F1, `rmlui-data-when.patch`, named for Lit's `when` and
+behaving as Vue's `v-if`) builds a copy of its element while the expression
+is true and removes the copy with its views while false, keeping the element
+as a hidden template as `data-for` does; `data-if` hides an element and keeps
+its views bound (`v-show`). Use `data-when` for a row's one control of many.
 
 ```html
 <number-field data-attr-value="n.value" data-attr-step="n.step"
@@ -124,7 +152,10 @@ already models.
   data-event-change="emit('properties.change', row.id, ev.value, ev.canceled)"/>
 ```
 
-The backend synthesizes `contextmenu` on a right press, as browsers do.
+The backend synthesizes `contextmenu` on a right press, after its
+`mousedown`, at the element under the pointer, as browsers do
+(`rml_backend.c`, F1). It is a custom RmlUi event with the press's button,
+pointer and modifiers, so markup hears it with `data-event-contextmenu`.
 
 ### State
 
@@ -196,7 +227,8 @@ What RmlUi 6.3 and our binding do (checked in source):
   object members linearly. Before S0 an unwindowed list of n rows cost
   about n²/2 item steps per dirty.
 - `data-for` builds new items with a parse and matches by index.
-- `data-if` hides and keeps views (Vue's `v-show`).
+- `data-if` hides and keeps views (Vue's `v-show`); `data-when` (F1)
+  removes its copy and its views (`v-if`), and builds it again with a parse.
 - Any dirty layout re-lays out the whole document. Studio is one kit
   document today, so the native editor already pays this.
 - Same-value style writes lay nothing out, and live labels avoid layout
@@ -446,14 +478,17 @@ table in `studio_ui.c`, `scenes/Studio.kdl`, `test_suite.c`, `sources.cmake`,
 
 - **S0**, the spike above: done, with provisional numbers in S0 results and
   the O(1) item lookups landed.
-- **F0:** move the Outliner from `studio_scene.c` into `studio_outliner.c`;
-  split `test/editor/studio_documents.c` by surface.
+- **F0:** done. The Outliner moved from `studio_scene.c` into
+  `studio_outliner.c`; `test/editor/studio_documents.c` keeps the fixtures,
+  input helpers and runner (`studio_documents.h`), and each surface's checks
+  live in `studio_documents_<surface>.c` (graph, shell, panels, outliner,
+  properties, assets) behind one entry the runner calls.
 
 ### Wave 1: foundation (4 parallel)
 
 | | Scope | Done when |
 |---|---|---|
-| F1 Contracts | `emit` with arguments and event context; the panel-source table and `<panel>.<action>` router; `contextmenu`; RmlUi patches for a structural conditional (Vue's `v-if`) and for `input`/`change` on text inputs | Settings and the widget gallery unchanged; binding tests pass |
+| F1 Contracts | `emit` with arguments and event context; the panel-source table and `<panel>.<action>` router; `contextmenu`; RmlUi patches for a structural conditional (Vue's `v-if`) and for `input`/`change` on text inputs | Done: Settings builds its row controls with `data-when` and records through `settings.record`; binding tests (`rmlui_binding.c`, `ui_activations.c`) and the router check (`studio_documents_panels.c`) pass |
 | F2 Controls | `<number-field>`, `<color-field>`, `<splitter>`, `<live-text>`, `number_expr.c`, kit wrappers; widgets NumberField, VectorField, ColorField, Checkbox, TextField, PropertyRow, Panel, Splitter | Native Properties runs on the wrapped elements with the kit tests green |
 | F3 Popovers | `popover.c`, `<menubar>`, one popup stack; widgets Menu*, MenuCommand, ChoiceList, AssetField, EnumField; a `choices` source | The GraphView popover and one authored menu at parity |
 | F4 Lists and drag | `drag.c`, `ui_list_window`, kit wrappers; widgets List, TreeRow (drop zones), Tile | One drag crosses an authored list and a native one |
@@ -523,12 +558,14 @@ needs; shrink `kit.h`; update DESIGN decision 5, `studio-ui-authoring.md` and
    graph's renderer?
 2. Can Zep's surface and popups stay native, with only the Text Editor's
    chrome authored?
-3. Panel actions as their own namespace (`outliner.rename`), or must every
-   action be a registered, palette-listed command?
+3. Answered in F1: panel actions are their own namespace
+   (`settings.record`), routed to the panel source; actions the palette lists
+   stay commands (`studio.<id>`).
 4. Parity: exact pixels, or screenshot diffs within tolerance plus review?
-5. Which RmlUi patches are acceptable: structural conditional, `input`/`change`
-   on text inputs and `contextmenu`? (O(1) JSON arrays live in our bridge,
-   and one document per area needs no patch.)
+5. Answered in F1: the structural conditional (`data-when`) and `input`/`change`
+   on text inputs are patches; `contextmenu` needed none (the backend
+   dispatches it). O(1) JSON arrays live in our bridge, and one document per
+   area needs no patch.
 6. Where do shared widgets live so games can import them (today
    `projects/studio`)?
 7. May one editor type show in two areas at once, or do the fixed layout

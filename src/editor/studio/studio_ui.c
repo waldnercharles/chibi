@@ -354,11 +354,9 @@ static panel *find_panel(studio_ui *ui, const char *name)
     return NULL;
 }
 
-/* Sends a panel's events to its entity's behaviors, an input's value first;
- * emit('studio.<id>') runs Studio's command `id` instead, and
- * emit('studio.<id>', index) runs it on the tab or area `index` names. */
-static void sync_new_project(studio *s, bool read_input);
-
+/* Sends a panel's events to its entity's behaviors, an input's value first,
+ * unless they are Studio's (studio_panel_route). New Project's dialog takes
+ * its own, its backdrop's Close among them. */
 static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
 {
     studio_ui *ui = s->ui;
@@ -367,10 +365,8 @@ static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
         ui->wake = true;
         if (!strcmp(ui_mount_name(mount), "NewProject") &&
             (!strncmp(a.event, "newProject.", 11) || !strcmp(a.event, "Close"))) {
-            sync_new_project(s, true);
             bool confirmation = s->new_project.confirm_discard;
             studio_new_project_action(s, !strcmp(a.event, "Close") ? "cancel" : a.event + 11);
-            sync_new_project(s, false);
             if (!confirmation && s->new_project.confirm_discard) {
                 game_entities_request_event(
                     game_prototype_preview_entities(ui->world),
@@ -388,15 +384,7 @@ static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
             }
             continue;
         }
-        int command = strncmp(a.event, "studio.", 7)
-                        ? -1
-                        : studio_command_named(a.event + 7);
-        if (command >= 0) {
-            studio_command_run_with(
-                s,
-                (studio_command)command,
-                a.has_value ? (int)a.value : -1
-            );
+        if (studio_panel_route(s, &a)) {
             continue;
         }
         if (a.has_value && a.id[0]) {
@@ -501,6 +489,7 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
     if (!*mount) {
         *mount = ui_mount_new(ui->content_root, document);
     }
+    studio_sources_mounted(s, &ui->sources, &ui->data, p->name);
     ui_data_bind_self(&ui->data, host, ecs_entity_to_u64(entity));
     if (ui_mount_sync(*mount, host, ui->listener, s->time)) {
         kit_style_sheet(s->kit, document, ui_mount_style(*mount));
@@ -627,54 +616,8 @@ void studio_ui_show(studio *s, const char *name)
     }
 }
 
-/* Project operations own their state; the authored panel owns its controls. */
-static void sync_new_project(studio *s, bool read_input)
-{
-    ui_data *data = &s->ui->data;
-    yyjson_mut_val *root = yyjson_mut_doc_get_root(data->doc);
-    yyjson_mut_val *page = yyjson_mut_obj_get(root, "new_project");
-    yyjson_mut_val *name = yyjson_mut_obj_get(page, "name");
-    const char *text = yyjson_mut_get_str(name);
-    studio_new_project *dialog = &s->new_project;
-    if (read_input && !dialog->focus && !dialog->waiting &&
-        !dialog->confirm_discard && strcmp(dialog->name, text)) {
-        snprintf(dialog->name, sizeof dialog->name, "%s", text);
-        dialog->error[0] = '\0';
-        dialog->created_root[0] = '\0';
-    }
-    yyjson_mut_val *error = yyjson_mut_obj_get(page, "error");
-    yyjson_mut_val *waiting = yyjson_mut_obj_get(page, "waiting");
-    yyjson_mut_val *confirmation = yyjson_mut_obj_get(page, "confirm_discard");
-    bool changed = strcmp(text, dialog->name) ||
-                   strcmp(yyjson_mut_get_str(error), dialog->error) ||
-                   yyjson_mut_get_bool(waiting) != dialog->waiting ||
-                   yyjson_mut_get_bool(confirmation) != dialog->confirm_discard;
-    if (changed) {
-        ui_data_set_text(data->doc, name, dialog->name);
-        ui_data_set_text(data->doc, error, dialog->error);
-        /* Attribute bindings survive a modal host being reordered. Keep the
-           error markup escaped so names and filesystem paths stay text. */
-        char markup[sizeof dialog->error * 6 + 1];
-        size_t length = 0;
-        for (const char *p = dialog->error; *p; p++) {
-            const char *escaped = *p == '&' ? "&amp;"
-                                : *p == '<' ? "&lt;"
-                                : *p == '>' ? "&gt;"
-                                            : NULL;
-            if (escaped) {
-                length += (size_t)snprintf(markup + length, sizeof markup - length, "%s", escaped);
-            } else {
-                markup[length++] = *p;
-            }
-        }
-        markup[length] = '\0';
-        ui_data_set_text(data->doc, yyjson_mut_obj_get(page, "error_markup"), markup);
-        yyjson_mut_set_bool(waiting, dialog->waiting);
-        yyjson_mut_set_bool(confirmation, dialog->confirm_discard);
-        rml_data_model_dirty(data->model, "new_project");
-    }
-}
-
+/* Project operations own the dialog's state (`new_project`); the panel owns
+ * its controls. */
 void studio_ui_new_project(studio *s)
 {
     panel *p;
@@ -686,7 +629,6 @@ void studio_ui_new_project(studio *s)
         ui_mount_detach(p->mount);
         return;
     }
-    sync_new_project(s, true);
     show_panel(s, p, &p->mount, kit_modal_host(s->kit, "new-project"), document);
     s->new_project.focus = false;
 }

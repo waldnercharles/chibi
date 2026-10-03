@@ -333,10 +333,10 @@ extern "C"
      * popup and returns true: emit items, then kit_popup_end. */
     bool kit_menubar_trigger(kit *k, const char *key, const char *label);
 
-    /* Command palette (cmdk). Emit items while open; returns the chosen index
-     * or -1. A description shows as a muted second line under the label.
-     * Items rank by text_search_score on their label, then their keywords,
-     * plus their boost, as for items used recently. */
+    /* An item of a searchable list (dropdowns, autocompletes). A description
+     * shows as a muted second line under the label. Items rank by
+     * support/text_rank.h on their label, then their keywords, plus their
+     * boost. The command palette is authored (Studio's Palette.rml). */
     typedef struct kit_command_item
     {
         const char *label;
@@ -356,19 +356,6 @@ extern "C"
         bool submitted; /* Enter without an active suggestion; caller validates text */
         bool canceled; /* Escape restored the displayed value */
     } kit_autocomplete_result;
-    void kit_command_open(kit *k, const char *placeholder);
-    bool kit_command_is_open(const kit *k);
-    int kit_command(kit *k, const kit_command_item *items, int count);
-    /* The same, ranked against `query` rather than the typed text, as the
-     * text after a prefix such as '>'. */
-    int kit_command_filtered(kit *k, const kit_command_item *items, int count, const char *query);
-    /* Items already filtered and ranked by the caller for the current query,
-     * shown in order and grouped by first appearance. */
-    int kit_command_ranked(kit *k, const kit_command_item *items, int count);
-    const char *kit_command_query(const kit *k);
-    /* Replaces the typed text, as choosing a prefix does. */
-    void kit_command_set_query(kit *k, const char *query);
-
     /* A searchable choice list anchored to its trigger. Search ranks labels
      * and keywords, keeps groups together, and returns the selected item's
      * original index. Call kit_dropdown each frame while open. Calling open
@@ -437,6 +424,8 @@ extern "C"
      * from a ui asset (render/ui.h). It lasts while its key is emitted. Keys
      * typed inside it are the content's, except Escape and Tab in a popup. */
     rml_element *kit_host(kit *k, const char *key, const char *cls);
+    /* The last item's element, where an authored popover anchors. */
+    rml_element *kit_item_element(kit *k);
     /* A host that covers the window above the editor and takes the pointer, for
      * hosted modal content such as a dialog. While it shows, Tab and Shift+Tab
      * move the focus through its content only (Base UI's Dialog). */

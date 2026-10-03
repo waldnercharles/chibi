@@ -1525,7 +1525,7 @@ static void track_pointer(studio *s)
            pane geometrically without transferring its command context. */
         const char *path = kit_hovered_path(s->kit);
         bool overlay = path && !strncmp(path, "layer/", 6);
-        if (s->hover_area >= 0 && !overlay && !kit_command_is_open(s->kit)) {
+        if (s->hover_area >= 0 && !overlay && !studio_palette_is_open(s)) {
             s->focus_area = s->hover_area;
         }
     }

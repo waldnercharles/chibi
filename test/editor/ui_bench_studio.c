@@ -1098,6 +1098,126 @@ static void members(studio_bench *b)
     members_step_row(b, MEMBERS_FILTER, "Members: filter by a keystroke", ids);
 }
 
+/* ---------- 15: typing in the palette ---------- */
+
+/* Assets added to the Sandbox's for the palette to rank, with commands,
+   settings and objects: thousands of results with nothing typed. */
+#define PALETTE_ADDED 2000
+
+typedef enum
+{
+    PALETTE_OPEN,      /* ⌘K: the palette shows, 2 UI frames */
+    PALETTE_FILTERED,  /* "qa" to "qab" and back: few results a group */
+    PALETTE_EMPTIED,   /* "" to "b" and back: every result, then a few */
+    PALETTE_HIGHLIGHT, /* Down and Up */
+    PALETTE_IDLE,      /* a UI frame with nothing changed */
+} palette_step;
+
+static void palette_query(studio *s, const char *query)
+{
+    ui_activation a = { .argc = 1 };
+    snprintf(a.args[0], sizeof a.args[0], "%s", query);
+    studio_palette_action(s, "query", &a);
+}
+
+static void palette_change(studio_bench *b, palette_step step, int run)
+{
+    studio *s = b->studio;
+    switch (step) {
+        case PALETTE_OPEN:
+            studio_palette_close(s);
+            frames(b, 2);
+            studio_palette_open(s, STUDIO_PALETTE_SEARCH, STUDIO_PALETTE_PLACEHOLDER);
+            break;
+        case PALETTE_FILTERED: palette_query(s, run & 1 ? "qab" : "qa"); break;
+        case PALETTE_EMPTIED: palette_query(s, run & 1 ? "b" : ""); break;
+        case PALETTE_HIGHLIGHT: {
+            ui_activation a = { .argc = 1, .has_value = true, .value = (float)(run & 1) };
+            snprintf(a.args[0], sizeof a.args[0], "%d", run & 1);
+            studio_palette_action(s, "highlight", &a);
+            break;
+        }
+        case PALETTE_IDLE: break;
+    }
+}
+
+/* Times one step's UI work (two UI frames to open), counting the views
+   evaluated, the documents laid out and the elements of the overlay
+   layer's document, which holds the palette. */
+static void palette_case(studio_bench *b, palette_step step, const char *name)
+{
+    studio *s = b->studio;
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT], more[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        palette_change(b, step, run);
+        cf_app_update(NULL);
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        if (step == PALETTE_OPEN) {
+            t += native_ui(s, more);
+            for (int p = 0; p < PHASE_COUNT; p++) {
+                phase[p] += more[p];
+            }
+        }
+        cf_app_draw_onto_screen(true);
+        counts = studio_counts(s, before);
+        rml_element *search = studio_query(s, "#palette-search");
+        counts.elements = search ? rml_element_query_selector_all(
+                                       rml_element_owner_document(search),
+                                       "*",
+                                       NULL,
+                                       0
+                                   )
+                                 : 0;
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    bench_row("15", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
+/* The palette over the Sandbox's commands, settings, objects and assets
+   and 2,000 more assets: open it, type a keystroke that keeps few results
+   a group, one that empties the query and back, move the highlight, and an
+   idle frame. */
+static void palette(studio_bench *b)
+{
+    studio *s = b->studio;
+    for (int i = 0; i < PALETTE_ADDED; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "QaPalette%04d", i);
+        reference_index_add_asset(b->scene->asset_index, REFERENCE_ASSET_MATERIAL, name, NULL, name);
+    }
+    b->scene->asset_index_revision++;
+    s->maximized = -1;
+    frames(b, 2);
+    studio_palette_open(s, STUDIO_PALETTE_SEARCH, STUDIO_PALETTE_PLACEHOLDER);
+    frames(b, 4);
+    probe_new_documents(s);
+    printf(
+        "|  | Palette: %d results with nothing typed, %d rows in its window | "
+        "| | | | | |\n",
+        acount(s->palette.places),
+        studio_count(s, ".palette-row")
+    );
+    palette_case(b, PALETTE_OPEN, "Palette: open, 2 UI frames");
+    palette_case(b, PALETTE_FILTERED, "Palette: a keystroke, \"qa\" to \"qab\"");
+    palette_case(b, PALETTE_EMPTIED, "Palette: a keystroke, \"\" to \"b\"");
+    palette_query(s, "");
+    frames(b, 2);
+    palette_case(b, PALETTE_HIGHLIGHT, "Palette: move the highlight");
+    palette_case(b, PALETTE_IDLE, "Palette: a UI frame with nothing changed");
+    studio_palette_close(s);
+    frames(b, 2);
+}
+
 /* ---------- Run ---------- */
 
 int ui_bench_studio(const char *program, bool members_only)
@@ -1123,6 +1243,14 @@ int ui_bench_studio(const char *program, bool members_only)
     probe_documents(b.studio);
     bench_header("Studio on the Sandbox at 1440x900, native");
     printf("|  | pixel scale %.1f | | | | | | |\n", cf_app_get_pixel_scale());
+    /* UI_BENCH_PALETTE runs case 15 alone. */
+    if (getenv("UI_BENCH_PALETTE")) {
+        palette(&b);
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
     /* UI_BENCH_ASSETS runs case 14 alone. */
     bool assets_only = getenv("UI_BENCH_ASSETS") != NULL;
     if (!members_only && !assets_only) {
@@ -1141,6 +1269,7 @@ int ui_bench_studio(const char *program, bool members_only)
     }
     /* Last: it leaves ten thousand objects in the scene. */
     if (!members_only && !assets_only) {
+        palette(&b);
         outliner_scroll(&b);
     }
     bench_close(&b);

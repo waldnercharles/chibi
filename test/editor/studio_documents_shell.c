@@ -277,13 +277,13 @@ static void performance_snapshot_retains_intermediate_frames()
     studio_inspect_toggle(s);
     frame(&f, false);
 
-    kit_command_open(s->kit, "Search");
+    studio_palette_open(s, STUDIO_PALETTE_SEARCH, "Search");
     emitted = s->ui_schedule.frames;
     mouse_move(s, x + 2, y + 2);
     frame(&f, false);
     rml_element *input = studio_element(s, ".cmd-input input");
     test_check(
-        kit_command_is_open(s->kit) && input &&
+        studio_palette_is_open(s) && input &&
             rml_context_focus_element(rml_backend_context(s->backend)) == input &&
             s->ui_schedule.frames == emitted + 1,
         "a command overlay immediately takes host focus and input during graph "
@@ -298,7 +298,7 @@ static void performance_snapshot_retains_intermediate_frames()
     test_check(
         s->ui_schedule.frames == emitted + 1 &&
             s->graph.gesture == STUDIO_GRAPH_IDLE && !s->graph.captured &&
-            !s->in.down[2] && !s->graph.in.down[2] && !kit_command_is_open(s->kit),
+            !s->in.down[2] && !s->graph.in.down[2] && !studio_palette_is_open(s),
         "Escape and the captured pan release keep normal host and graph input "
         "lifecycles"
     );
@@ -442,7 +442,7 @@ static void palette_finds_settings()
     frames(&f, 2);
     tap(SDL_SCANCODE_RETURN);
     frames(&f, 2);
-    bool flipped = s->prefs.code_vim == !vim && !kit_command_is_open(s->kit) &&
+    bool flipped = s->prefs.code_vim == !vim && !studio_palette_is_open(s) &&
                    studio_element(s, ".toast");
     studio_command_run(s, STUDIO_COMMAND_SEARCH);
     frames(&f, 2);
@@ -469,11 +469,26 @@ static void palette_finds_settings()
 
 /* The palette's first row's label, without its highlighting, and the group
    it heads, or "". */
+static rml_element *first_shown(studio *s, const char *selector)
+{
+    rml_element *found[64];
+    rml_element *search = studio_element(s, "#palette-search");
+    int count = search
+                  ? rml_element_query_selector_all(rml_element_owner_document(search), selector, found, 64)
+                  : 0;
+    for (int i = 0; i < count; i++) {
+        if (rml_element_is_visible(found[i], true)) {
+            return found[i];
+        }
+    }
+    return NULL;
+}
+
 static void first_row(studio *s, char *label, char *group, size_t size)
 {
     label[0] = group[0] = '\0';
     char rml[256] = "";
-    rml_element *row = studio_element(s, ".cmd-item .label");
+    rml_element *row = first_shown(s, "[role=option][aria-posinset=\"1\"] .label");
     if (row) {
         rml_element_inner_rml(row, rml, sizeof rml);
     }
@@ -486,7 +501,7 @@ static void first_row(studio *s, char *label, char *group, size_t size)
         }
     }
     label[n] = '\0';
-    rml_element *heading = studio_element(s, ".cmd-group");
+    rml_element *heading = first_shown(s, ".cmd-group");
     if (heading) {
         rml_element_inner_rml(heading, group, size);
     }
@@ -550,8 +565,7 @@ static void palette_recent_and_prefixes()
     search_for(&f, "?");
     tap(SDL_SCANCODE_RETURN);
     frames(&f, 3);
-    bool prefix = kit_command_is_open(s->kit) &&
-                  !strcmp(kit_command_query(s->kit), ">");
+    bool prefix = studio_palette_is_open(s) && !strcmp(studio_palette_query(s), ">");
     tap(SDL_SCANCODE_ESCAPE);
     frames(&f, 2);
     if (!(unranked && remembered && boosted && recent_first && commands_only &&
@@ -809,11 +823,11 @@ static void shortcut_repeat_policy()
     primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
     apush(s->keys, ((studio_key){ SDLK_K, primary, true }));
     studio_shortcuts(s, false);
-    bool toggle_repeat_ignored = !kit_command_is_open(s->kit);
+    bool toggle_repeat_ignored = !studio_palette_is_open(s);
     asetlen(s->keys, 0);
     apush(s->keys, ((studio_key){ SDLK_K, primary, false }));
     studio_shortcuts(s, false);
-    bool toggle_press_runs = kit_command_is_open(s->kit);
+    bool toggle_press_runs = studio_palette_is_open(s);
     test_check(
         zoom_repeat_runs && zoom_press_runs && toggle_repeat_ignored && toggle_press_runs,
         "repeatable zoom runs on a held shortcut while the Search toggle "
@@ -966,11 +980,11 @@ static void toolbar_shortcuts_keep_text_focus()
     key_event_mod(SDL_SCANCODE_K, true, primary, false);
     key_event_mod(SDL_SCANCODE_K, false, primary, false);
     frames(&f, 2);
-    bool button_shortcut = kit_command_is_open(s->kit);
+    bool button_shortcut = studio_palette_is_open(s);
     key_event(SDL_SCANCODE_ESCAPE, true);
     key_event(SDL_SCANCODE_ESCAPE, false);
     frames(&f, 2);
-    bool dismissed = !kit_command_is_open(s->kit);
+    bool dismissed = !studio_palette_is_open(s);
 
     rml_element *tab = studio_element(s, ".doc-tab .face");
     assert(tab);
@@ -984,7 +998,7 @@ static void toolbar_shortcuts_keep_text_focus()
     key_event_mod(SDL_SCANCODE_K, true, primary, false);
     key_event_mod(SDL_SCANCODE_K, false, primary, false);
     frames(&f, 2);
-    bool tab_shortcut = kit_command_is_open(s->kit);
+    bool tab_shortcut = studio_palette_is_open(s);
     key_event(SDL_SCANCODE_ESCAPE, true);
     key_event(SDL_SCANCODE_ESCAPE, false);
     frames(&f, 2);
@@ -1008,7 +1022,7 @@ static void toolbar_shortcuts_keep_text_focus()
     key_event_mod(SDL_SCANCODE_K, true, primary, false);
     key_event_mod(SDL_SCANCODE_K, false, primary, false);
     frames(&f, 2);
-    bool input_palette = kit_command_is_open(s->kit);
+    bool input_palette = studio_palette_is_open(s);
     input_protected &= input_palette;
 
     if (!(button_focus && button_shortcut && dismissed && tab_focus &&

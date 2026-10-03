@@ -807,11 +807,11 @@ void set_tip(node *n, const char *label, const char *shortcut, const char *descr
     set_optional_attr(n, "data-tip-about", description);
 }
 
-/* The hovered element with a tip, unless a held button, a popup or the
- * palette blocks tooltips. */
+/* The hovered element with a tip, unless a held button or a popup blocks
+ * tooltips. */
 static rml_element *tip_owner(kit *k)
 {
-    if (k->in.down[0] || k->in.down[1] || popover_top(k->context) || k->command.open) {
+    if (k->in.down[0] || k->in.down[1] || popover_top(k->context)) {
         return NULL;
     }
     /* An empty tip, as a binding leaves one, shows nothing. */

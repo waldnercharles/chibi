@@ -344,6 +344,7 @@ list(APPEND RUNTIME_SUPPORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/ui_ev
 list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_canvas.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_palette.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_palette_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_pick.c
 )
 

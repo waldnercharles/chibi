@@ -688,7 +688,6 @@ static void mousedown(kit *k, const rml_event *e, node *n)
     /* An outside press closed them in popover.c: they emit no more. */
     forget_closed_popups(k);
     popup_press(k, e->target);
-    command_press(k, e->target);
     if (!n) {
         return;
     }
@@ -711,7 +710,6 @@ static void click(kit *k, const rml_event *e, node *n)
     switch (n->kind) {
         case KIND_MENU_ITEM:
         case KIND_SUBMENU: menu_click(k, n); return;
-        case KIND_COMMAND_ITEM: command_click(k, n); return;
         case KIND_BOX:
             /* A click on a label or icon is also a click on the boxes around
                it, as DOM clicks bubble, so a whole row or tab answers. */
@@ -737,8 +735,7 @@ static rml_element *top_modal(const kit *k)
 
 static bool trap_focus(kit *k, const rml_event *e)
 {
-    rml_element *modal = e->key == RML_KEY_TAB && !k->command.open ? top_modal(k)
-                                                                   : NULL;
+    rml_element *modal = e->key == RML_KEY_TAB ? top_modal(k) : NULL;
     if (!modal) {
         return false;
     }
@@ -778,7 +775,7 @@ static void keydown(kit *k, const rml_event *e, node *n)
                        n->kind == KIND_AUTOCOMPLETE || n->kind == KIND_NUMBER ||
                        (n->kind == KIND_COLOR && e->target == n->el) ||
                        is_input(e->target));
-    if (dropdown_key(k, e, n) || command_key(k, e) || !n || (!entry && menu_open(k))) {
+    if (dropdown_key(k, e, n) || !n || (!entry && menu_open(k))) {
         return;
     }
     control_key(k, n, e);
@@ -811,7 +808,7 @@ static void on_event(void *user, const rml_event *e)
         case RML_EVENT_KEYDOWN: keydown(k, e, n); break;
         /* The kit's fields take each edit; they commit on their own keys. */
         case RML_EVENT_INPUT:
-            if (!command_change(k, e->target) && n) {
+            if (n) {
                 control_change(k, n, e->target);
             }
             break;
@@ -821,13 +818,8 @@ static void on_event(void *user, const rml_event *e)
             }
             break;
         case RML_EVENT_BLUR: blur(e, n); break;
-        /* Rows the results bring under a still pointer fire mouseover but
-           no mousemove, so they leave the selection on the best match, as
-           cmdk's do. */
         case RML_EVENT_MOUSEMOVE:
-            if (n && n->kind == KIND_COMMAND_ITEM) {
-                command_hover(k, n);
-            } else if (n) {
+            if (n) {
                 menu_hover(k, n);
             }
             break;
@@ -1022,7 +1014,6 @@ kit *kit_create(void *context, const char *document_path)
     k->context = context;
     k->frame = 1;
     k->surface_button = -1;
-    k->command.chosen = -1;
     char *path = NULL;
     str_catf(&path, "%s/%s", resource_ui(), document_path);
     k->doc = rml_context_load_document(k->context, path);
@@ -1076,9 +1067,6 @@ static void kit_free(kit *k)
         free(k->toasts[i].action);
     }
     afree(k->toasts);
-    free(k->command.placeholder);
-    free(k->command.query);
-    afree(k->command.shown);
     free(k->surface_capture);
     free(k->tip_image);
     strings_free(k->strings);
@@ -1161,9 +1149,6 @@ void kit_end(kit *k)
     toasts_frame(k);
     prune(k, k->layer);
     end_slots(k);
-    if (!k->command.open) {
-        k->command_backdrop = NULL;
-    }
     update_tooltip(k);
     motion_frame(k);
     for (int i = 0; i < cf_map_size(k->by_path); i++) {
@@ -1356,6 +1341,11 @@ kit_rect kit_item_rect(kit *k)
     return k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
 }
 
+rml_element *kit_item_element(kit *k)
+{
+    return k->last ? k->last->el : NULL;
+}
+
 bool kit_item_hovered(kit *k)
 {
     rml_element *hover = rml_context_hover_element(k->context);
@@ -1386,7 +1376,7 @@ const char *kit_classes(kit *k, const char *base, const kit_class *list, int cou
 
 bool kit_wants_keyboard(const kit *k)
 {
-    if (k->command.open || popover_top(k->context)) {
+    if (popover_top(k->context)) {
         return true;
     }
     rml_element *focus = rml_context_focus_element(k->context);
@@ -1432,7 +1422,7 @@ bool kit_wants_text(const kit *k, kit_rect *caret)
 
 bool kit_wants_pointer(const kit *k)
 {
-    if (k->command.open || popover_top(k->context)) {
+    if (popover_top(k->context)) {
         return true;
     }
     if (!str_eq(k->surface_capture, "")) {

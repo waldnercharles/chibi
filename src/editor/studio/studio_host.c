@@ -773,7 +773,7 @@ static void draw_viewport(studio *s)
         .y = s->surface.y * ui,
         .hovered = s->surface.hovered,
         .focused = s->focus_area == area && !kit_wants_keyboard(s->kit),
-        .blocked = kit_command_is_open(s->kit),
+        .blocked = studio_palette_is_open(s),
         .wheel = s->surface.wheel,
         .alt = (s->mods & SDL_KMOD_ALT) != 0,
         .escape = studio_key_pressed(s, SDLK_ESCAPE) && !kit_wants_keyboard(s->kit),
@@ -1062,6 +1062,7 @@ void studio_free(studio *s)
     chibi_project_free(&s->project);
     studio_disk_free(s);
     studio_refactor_free(s);
+    studio_palette_free(s);
     studio_canvas_free(s);
     studio_add_menu_close(s);
     engine_viewport_set_host_input(s->viewport, NULL);
@@ -1108,7 +1109,7 @@ static uint64_t ui_state(studio *s)
         scene->property_dirty,
         scene->edit_dirty,
         scene->scene_dirty,
-        kit_command_is_open(s->kit),
+        studio_palette_is_open(s),
         (uint64_t)s->hover_area,
         (uint64_t)s->focus_area,
         (uint64_t)acount(s->records),
@@ -1147,7 +1148,7 @@ static uint64_t ui_state(studio *s)
     const char *texts[] = { s->status,
                             s->ui_error,
                             last ? last->text : "",
-                            kit_command_query(s->kit) };
+                            studio_palette_query(s) };
     for (int i = 0; i < (int)(sizeof texts / sizeof *texts); i++) {
         const unsigned char *p = (const unsigned char *)texts[i];
         do {
@@ -1223,7 +1224,7 @@ static bool field_chords(studio *s)
     kit *graph = s->graph.kit;
     bool field = kit_input_focused(s->kit) || (graph && kit_input_focused(graph));
     return field && !s->shortcut_recording && !kit_has_popup(s->kit) &&
-           !(graph && kit_has_popup(graph)) && !kit_command_is_open(s->kit) &&
+           !(graph && kit_has_popup(graph)) && !studio_palette_is_open(s) &&
            !studio_ui_modal_open(s);
 }
 

@@ -89,6 +89,7 @@ int studio_output_run(const char *program);
 void test_ui_lists();
 /* Members (workstream P5). */
 int studio_members_run(const char *program);
+int studio_palette_run(const char *program);
 int studio_panels_run(const char *program);
 int studio_graph_inputs_run(const char *program);
 /* Asset thumbnails. */
@@ -1059,6 +1060,12 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--studio-members") == 0) {
         registry_validate();
         return studio_members_run(program_name) || fails ? 1 : 0;
+    }
+    /* The palette, pickers and refactor popover (workstream C4): Studio's,
+       in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-palette") == 0) {
+        registry_validate();
+        return studio_palette_run(program_name) || fails ? 1 : 0;
     }
     /* Authored panels, game UI and the areas they take turns in: Studio's,
        in a hidden window. */

@@ -80,5 +80,7 @@ void studio_documents_list_checks();
 void studio_documents_output_checks();
 /* Members (workstream P5). */
 void studio_documents_members_checks();
+/* The palette, pickers and refactor popover (workstream C4). */
+void studio_documents_palette_checks();
 
 #endif

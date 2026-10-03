@@ -637,9 +637,8 @@ typedef struct
 typedef struct
 {
     studio_refactor_mode mode;
-    bool opening; /* open the popover this frame */
-    bool focus;   /* focus the name field on its first frame */
-    bool shown;   /* the popover showed last frame */
+    bool opening; /* show the popover at the pointer this frame */
+    bool mounted; /* its document showed last frame */
     reference_symbol symbol;
     int asset_kind;
     char asset[128]; /* the asset holding the symbol, or the asset itself */
@@ -830,6 +829,80 @@ typedef struct studio_fold
     char key[128];
     bool open;
 } studio_fold;
+
+/* ---------- The palette and pickers (workstream C4) ---------- */
+
+/* Who fills the palette and hears what is chosen. */
+typedef enum
+{
+    STUDIO_PALETTE_CLOSED,
+    STUDIO_PALETTE_SEARCH, /* ⌘K's commands, settings, objects, assets (studio_palette.c) */
+    STUDIO_PALETTE_NODES, /* the graph's add-node search (studio_graph_edit.c) */
+    STUDIO_PALETTE_COMPONENTS, /* Add Component (studio_properties.c) */
+    STUDIO_PALETTE_ASSETS,     /* an asset pick (studio_pick.c) */
+} studio_palette_client;
+
+/* Which document shows the list. */
+typedef enum
+{
+    STUDIO_PALETTE_UNMOUNTED,
+    STUDIO_PALETTE_MODAL,  /* Palette.rml, over the editor */
+    STUDIO_PALETTE_PICKER, /* Picker.rml, under the field that opened it */
+} studio_palette_mount;
+
+/* The longest label a result shows. */
+#define STUDIO_PALETTE_TEXT 128
+
+/* A result: what it shows, how it ranks and what choosing it does. */
+typedef struct studio_palette_entry
+{
+    char label[STUDIO_PALETTE_TEXT]; /* shown, and matched first */
+    char keywords[256];              /* matched after the label */
+    char group[64];                  /* its group's heading, or "" */
+    char meta[96];                   /* muted, after the label */
+    char about[192];                 /* a second line, or "" */
+    char shortcut[32];
+    char key[96]; /* how recent use knows it, or "" */
+    uint32_t icon;
+    int asset;    /* whose cached thumbnail shows in the icon's place, or -1 */
+    int boost;    /* added to a match's score, as recent use is */
+    bool current; /* the value the field holds */
+    int kind, index; /* what choosing it does, as its client reads them */
+    uint64_t graph, node;
+} studio_palette_entry;
+
+/* A row of the ranked list: a result, or its group's heading. */
+typedef struct studio_palette_row
+{
+    int entry; /* the result, or the first of the group it heads */
+    int place; /* among the results, from 0; -1 for a heading */
+} studio_palette_row;
+
+/* The palette, or a picker, while open (studio_palette_view.c). */
+typedef struct studio_palette_state
+{
+    studio_palette_client client;
+    bool anchored; /* a picker under `anchor`, else the modal palette */
+    rml_element_ref *anchor;
+    bool shown; /* the picker's popover showed */
+    studio_palette_mount mounted;
+    char placeholder[96];
+    char query[256];
+    char ranked[256]; /* what the rows rank against */
+    bool typed;       /* the client set the query: write it in the field */
+    bool collect;     /* ask the client for the entries again */
+    bool rank;        /* rank the entries again */
+    bool top;         /* scroll the list back to its top */
+    uint64_t inputs;  /* what the entries were collected from */
+    studio_palette_entry *entries;
+    studio_palette_row *rows;
+    int *places;   /* each result's row */
+    float *tops;   /* each row's top in dp, then the end of the last */
+    int highlight; /* the highlighted result's place */
+    int reveal;    /* a row to scroll into view, or -1 */
+    ui_list_state window;
+    rml_element_ref *list;
+} studio_palette_state;
 
 struct studio
 {
@@ -1033,7 +1106,6 @@ struct studio
        and the Canvas preview. */
     struct
     {
-        bool open;   /* the command surface is choosing an asset for `key` */
         bool chosen; /* `value` waits for the field keyed `key` */
         bool text;   /* a name no asset has may be chosen */
         int kind;    /* reference_asset_kind */
@@ -1049,7 +1121,8 @@ struct studio
     struct
     {
         bool read; /* events holds them while the Add menu is open */
-        struct ui_event *events; /* studio_behavior_ui_events */
+        struct ui_event *events;         /* studio_behavior_ui_events */
+        struct ed_search_match *matches; /* the add-node results, by entry */
     } add_menu;
     /* What the ui documents showing the open behavior's entities bind under
        self, for Set UI Data (studio_graph_ui_data). */
@@ -1084,11 +1157,10 @@ struct studio
     } rename;
     struct
     {
-        bool open; /* the command surface adds a component to `prototype` */
-        char prototype[128];
-        char added[128];      /* the component added last, whose panel opens */
-        char menu[128];       /* the component whose panel menu is open */
-        int toast;            /* offers Undo after Remove Component */
+        char prototype[128]; /* the one Add Component adds to */
+        char added[128];     /* the component added last, whose panel opens */
+        char menu[128];      /* the component whose panel menu is open */
+        int toast;           /* offers Undo after Remove Component */
         const av_value *step; /* the removal's undo snapshot; never dereferenced */
     } components;
     struct
@@ -1104,6 +1176,8 @@ struct studio
         studio_fold *folds; /* each panel folded or opened, by key (array) */
         char choosing[192]; /* the row whose list shows every choice, or "" */
     } properties;
+    /* ---------- The palette and pickers (workstream C4) ---------- */
+    studio_palette_state palette;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -1188,7 +1262,7 @@ bool studio_keymap_show(yyjson_mut_doc *doc, const studio_prefs *prefs, bool mac
 bool studio_keymap_area(const char *area);
 
 /* The panel sources a studio_sources follows at most. */
-#define STUDIO_PANEL_SOURCE_MAX 24
+#define STUDIO_PANEL_SOURCE_MAX 40
 
 /* What authored panels bind beyond their world's `save` (studio_sources.c):
  * `world`, the Scene world's saved keys, and `theme`, the custom properties
@@ -1249,6 +1323,12 @@ void studio_ui_frame(studio *s);
 /* Shows the Studio scene entity `name`'s GameUi document in a kit host;
  * returns the host, for native slots, or NULL when it shows none. */
 rml_element *studio_ui_panel(studio *s, const char *key, const char *name);
+/* The same over the editor in a modal host (kit_modal_host), as a dialog
+   whose focus Tab keeps inside it. */
+rml_element *studio_ui_dialog(studio *s, const char *key, const char *name);
+/* Lets panel `name`'s mount go before the kit removes its host, when a
+   panel shown on demand closes. */
+void studio_ui_panel_detach(studio *s, const char *name);
 /* The Studio scene's panels, each an editor type an area can show. */
 int studio_ui_panel_count(const studio *s);
 const char *studio_ui_panel_name(const studio *s, int index);
@@ -1281,10 +1361,49 @@ void studio_ui_collaboration_action(studio *s, studio_command command);
 /* Shows Settings searching for `query`. */
 void studio_ui_show_settings(studio *s, const char *query);
 
-/* The command palette (studio_palette.c), while open. */
+/* The palette and pickers (studio_palette_view.c): a ranked list a client
+ * fills, shown as the modal ⌘K palette (Palette.rml) or as a picker under
+ * the field that opened it (Picker.rml), over the `palette` source. */
 #define STUDIO_PALETTE_PLACEHOLDER                                             \
     "Search, or type > for commands, @ for symbols, ? for help"
+/* Opens the modal palette for `client`, closing every popup. */
+void studio_palette_open(studio *s, studio_palette_client client, const char *placeholder);
+/* Opens a picker for `client` under `anchor`. */
+void studio_palette_open_at(
+    studio *s,
+    studio_palette_client client,
+    const char *placeholder,
+    rml_element *anchor
+);
+void studio_palette_close(studio *s);
+/* Whether the modal palette is open; an open picker is a popover. */
+bool studio_palette_is_open(const studio *s);
+const char *studio_palette_query(const studio *s);
+/* Replaces the typed text, as choosing a prefix does. */
+void studio_palette_set_query(studio *s, const char *query);
+/* The field an open picker hangs from, or NULL. */
+rml_element *studio_palette_anchor(const studio *s);
+/* Appends a result to a client's entries, its thumbnail none. */
+studio_palette_entry *studio_palette_add(
+    studio_palette_entry **entries,
+    const char *group,
+    const char *label
+);
+/* Mounts the open palette's document; call every frame. */
 void studio_palette(studio *s);
+void studio_palette_free(studio *s);
+
+/* The ⌘K search (studio_palette.c): commands, settings, the scene's
+ * objects, assets, projects and scenarios, and the active document's
+ * symbols, recent ones first; '>' keeps commands and settings, '@' the
+ * symbols, '?' lists the prefixes. */
+void studio_search_entries(studio *s, const char *query, studio_palette_entry **entries);
+/* Whether the query lists other entries than `was` did: another prefix,
+   or symbols, which wait for typing. */
+bool studio_search_lists_anew(const char *was, const char *query);
+/* The query without its prefix. */
+const char *studio_search_query(const char *query);
+void studio_search_choose(studio *s, const studio_palette_entry *entry);
 
 /* Content changed on disk (studio_disk.c): reloads it and raises failures and
    unsaved conflicts as toasts. */
@@ -1374,8 +1493,13 @@ void studio_graph_free(studio *s);
 bool studio_graph_wants_keyboard(const studio *s);
 bool studio_graph_accepts_text(const studio *s);
 const char *studio_graph_cursor(const studio *s);
-/* The add-node palette: items for the command surface while it is open for the graph. */
-bool studio_graph_palette(studio *s);
+/* The add-node search on the palette: the graph's search ranks the nodes
+   for the query, nodes that fit a dragged wire first; choosing places one
+   where the search opened. studio_graph_palette keeps the search's catalog
+   and ends a wire's spawn when it closes; call every frame. */
+void studio_graph_palette_entries(studio *s, const char *query, studio_palette_entry **entries);
+void studio_graph_palette_choose(studio *s, const studio_palette_entry *entry);
+void studio_graph_palette(studio *s);
 bool studio_graph_can_replay(studio *s, bool redo);
 void studio_graph_history(studio *s, bool redo);
 bool studio_graph_active(const studio *s);
@@ -1528,7 +1652,7 @@ bool studio_refactor_confirm_delete(
     uint64_t id
 );
 void studio_refactor_delete_asset(studio *s, int asset);
-/* The popover and the Undo toast; call every frame. */
+/* The popover (Refactor.rml) and the Undo toast; call every frame. */
 void studio_refactor_frame(studio *s);
 void studio_refactor_free(studio *s);
 
@@ -1860,7 +1984,7 @@ void studio_add_menu_close(studio *s);
 void studio_graph_ui_data(studio *s, bool again);
 
 /* Asset pickers (studio_pick.c): a field naming an asset chooses one of its
- * kind on the command surface, as Unity's object field and Unreal's asset
+ * kind in a picker under it, as Unity's object field and Unreal's asset
  * picker do. */
 typedef struct
 {
@@ -1870,6 +1994,9 @@ typedef struct
 } studio_pick_desc;
 /* The key of the pick that previews the chosen ui asset. */
 #define STUDIO_PICK_PREVIEW "@preview"
+/* The key of an authored AssetField's pick, which sends the field change
+   with the name chosen. */
+#define STUDIO_PICK_FIELD "@field"
 /* An asset of `kind` a field can name: not a name only a reference makes
  * up, nor a file of another format beside the assets, as a stylesheet under
  * ui/. */
@@ -1886,10 +2013,19 @@ const char *studio_asset_field(
     const studio_pick_desc *desc,
     unsigned flags
 );
-/* Opens the command surface over desc's assets for `key`. */
-void studio_pick_open(studio *s, const char *key, const char *current, const studio_pick_desc *desc);
-/* Items for the command surface while it picks an asset. */
-bool studio_pick_palette(studio *s);
+/* Opens a pick of desc's assets for `key`, under `anchor`, or in the modal
+ * palette when it is NULL. */
+void studio_pick_open(
+    studio *s,
+    const char *key,
+    const char *current,
+    const studio_pick_desc *desc,
+    rml_element *anchor
+);
+/* The palette's results while it picks an asset: none, the kind's assets
+   and, when a name may be typed, the typed name no asset has yet. */
+void studio_pick_entries(studio *s, const char *query, studio_palette_entry **entries);
+void studio_pick_choose(studio *s, const studio_palette_entry *entry, rml_element *anchor);
 
 /* ---------- Typed asset drops (studio_drop.c) ---------- */
 
@@ -2295,11 +2431,12 @@ void studio_rename_object(studio *s);
 /* Names the object `entity` authors, as one Undo step; a refused name
  * toasts why. */
 void studio_rename_commit(studio *s, uint64_t entity, const char *name);
-/* Add Component (Unity's Inspector): the command surface lists the
- * components the open prototype lacks, by the Properties tab each shows in. */
+/* Add Component (Unity's Inspector): the palette lists the components the
+ * open prototype lacks, by the Properties tab each shows in, the current
+ * tab's first. */
 void studio_add_component_open(studio *s);
-/* Its items while it is open. */
-bool studio_component_palette(studio *s);
+void studio_component_entries(studio *s, studio_palette_entry **entries);
+void studio_component_choose(studio *s, const studio_palette_entry *entry);
 /* Runs the Undo a Remove Component toast offers; call every frame. */
 void studio_component_toast(studio *s);
 /* Keep Changes (Unreal's Keep Simulation Changes, K): the selected object's
@@ -2341,6 +2478,16 @@ typedef struct studio_panel_source
     bool (*sync)(studio *s, const studio_panel_sync *at);
     void (*action)(studio *s, const char *action, const ui_activation *a);
 } studio_panel_source;
+
+/* The refactor popover's source (studio_refactor.c): `refactor`. */
+void studio_refactor_add(yyjson_mut_doc *doc);
+bool studio_refactor_sync(studio *s, const studio_panel_sync *at);
+void studio_refactor_action(studio *s, const char *action, const ui_activation *a);
+/* The palette's source (studio_palette_view.c): `palette` and
+   `palette_ui`. */
+void studio_palette_add_variables(yyjson_mut_doc *doc);
+bool studio_palette_sync(studio *s, const studio_panel_sync *at);
+void studio_palette_action(studio *s, const char *action, const ui_activation *a);
 
 /* Every source, in one table (studio_sources.c). */
 extern const studio_panel_source studio_panel_sources[];

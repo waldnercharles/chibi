@@ -39,10 +39,8 @@ typedef struct
     int menu_b;
     int menu_count, menu_action;
     bool menu_submenu;
-    int chosen;
     const char *order[3];
     int order_count;
-    bool open_command;
     double flow;
     const char *morph;
     int reveal, rows_emitted, hovered_row;
@@ -64,12 +62,6 @@ typedef struct
     char rename[32];
     int rename_commits, rename_applied;
 } kit_fixture;
-
-static const kit_command_item COMMANDS[] = {
-    { "Alpha", "Commands", NULL, NULL, NULL, 0 },
-    { "Beta", "Commands", NULL, NULL, "second", 0 },
-    { "Frame Selected", "Commands", NULL, "F", "focus", 0, "Centers the view on the selection." },
-};
 
 static const char *const CHOICES[] = { "Alpha", "Beta", "Frame Selected", "Gamma" };
 
@@ -358,14 +350,6 @@ static void emit(kit_fixture *f)
         }
         kit_popup_end(k);
     }
-    if (f->open_command) {
-        f->open_command = false;
-        kit_command_open(k, "Search");
-    }
-    int chosen = kit_command(k, COMMANDS, (int)(sizeof COMMANDS / sizeof *COMMANDS));
-    if (chosen >= 0) {
-        f->chosen = chosen;
-    }
 }
 
 static void frame(kit_fixture *f)
@@ -445,28 +429,6 @@ static void type(kit_fixture *f, const char *text)
                         .text = text,
                         .text_size = strlen(text) };
     rml_backend_process_input(f->backend, &input);
-}
-
-/* The first palette row's label as RML with its tags removed. */
-static void first_row_text(kit_fixture *f, char *text, size_t size)
-{
-    rml_element *input = rml_context_focus_element(rml_backend_context(f->backend));
-    rml_element *label = input
-                           ? rml_element_query_selector(rml_element_owner_document(input), ".cmd-item .label")
-                           : NULL;
-    char rml[256] = "";
-    if (label) {
-        rml_element_inner_rml(label, rml, sizeof rml);
-    }
-    size_t n = 0;
-    bool tag = false;
-    for (const char *c = rml; *c && n + 1 < size; c++) {
-        tag = *c == '<' || (tag && *c != '>');
-        if (!tag && *c != '>') {
-            text[n++] = *c;
-        }
-    }
-    text[n] = '\0';
 }
 
 /* The shown tooltip's size, with its description's text. */
@@ -1577,7 +1539,6 @@ bool test_rmlui_kit()
                       .color = 0x33669900,
                       .autocomplete_value = "Path 04",
                       .autocomplete_selected = -1,
-                      .chosen = -1,
                       .order = { "a", "b", "c" },
                       .order_count = 3,
                       .flow = 9,
@@ -2679,69 +2640,6 @@ bool test_rmlui_kit()
     kit_popup_close(f.k, "rename");
     frame(&f);
     ok &= check(!kit_popup_is_open(f.k, "rename"), "close closes a popup at once");
-
-    /* Command palette: ranking and keyboard selection. */
-    f.open_command = true;
-    settle(&f);
-    ok &= check(kit_command_is_open(f.k), "command opens");
-    type(&f, "fs");
-    frame(&f);
-    key(&f, RML_INPUT_KEY_ENTER, 0);
-    frame(&f);
-    ok &= check(f.chosen == 2, "the palette ranks Frame Selected by its initials, \"fs\"");
-    ok &= check(!kit_command_is_open(f.k), "choosing closes the command");
-
-    /* Rows a new query brings under a still pointer leave the selection on
-       the best match (cmdk): only a pointer that moves chooses a row. */
-    f.open_command = true;
-    settle(&f);
-    rml_element *rows[4];
-    rml_element *input = rml_context_focus_element(rml_backend_context(f.backend));
-    int row_count = rml_element_query_selector_all(rml_element_owner_document(input), ".cmd-item", rows, 4);
-    rml_vec2 at = row_count > 1 ? rml_element_absolute_offset(rows[1], RML_BOX_BORDER)
-                                : (rml_vec2){ 0 };
-    pointer(&f, RML_INPUT_POINTER_MOVE, at.x + 4, at.y + 4);
-    frame(&f);
-    /* "l" drops Beta, so Frame Selected's row comes under the pointer. */
-    f.chosen = -1;
-    type(&f, "l");
-    settle(&f);
-    key(&f, RML_INPUT_KEY_ENTER, 0);
-    frame(&f);
-    ok &= check(row_count > 1 && f.chosen == 0, "a still pointer leaves Enter on the best match");
-
-    /* Match highlighting keeps the spaces RmlUi would drop as blank text:
-       one inside a bold run and one alone between two. */
-    char matched_space[64], gap_space[64];
-    f.open_command = true;
-    settle(&f);
-    type(&f, "frame sel");
-    frame(&f);
-    first_row_text(&f, matched_space, sizeof matched_space);
-    key(&f, RML_INPUT_KEY_ESCAPE, 0);
-    frame(&f);
-    f.open_command = true;
-    settle(&f);
-    type(&f, "es");
-    frame(&f);
-    first_row_text(&f, gap_space, sizeof gap_space);
-    key(&f, RML_INPUT_KEY_ESCAPE, 0);
-    frame(&f);
-    ok &= check(strcmp(matched_space, "Frame Selected") == 0, "highlighting keeps a matched space");
-    ok &= check(strcmp(gap_space, "Frame Selected") == 0, "highlighting keeps a space between matches");
-
-    /* A described command takes a second line; others keep one. */
-    kit_rect plain, described;
-    f.open_command = true;
-    settle(&f);
-    ok &= check(
-        kit_find(f.k, "layer/@command/i0", &plain) &&
-            kit_find(f.k, "layer/@command/i2", &described) &&
-            described.h > plain.h,
-        "a command's description is a second line"
-    );
-    key(&f, RML_INPUT_KEY_ESCAPE, 0);
-    settle(&f);
 
     /* Tooltips: the description wraps under the label, and a zoomed canvas
        keeps the tooltip's size on screen. */

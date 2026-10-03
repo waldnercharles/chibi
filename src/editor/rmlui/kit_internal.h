@@ -62,8 +62,6 @@ typedef enum node_kind
     KIND_TRIGGER,
     KIND_SPLITTER,
     KIND_SURFACE,
-    KIND_COMMAND,
-    KIND_COMMAND_ITEM,
     KIND_LIST,
     KIND_CODE, /* kit_code: takes keys and text while focused */
 } node_kind;
@@ -232,19 +230,6 @@ typedef struct popup
     float content_shown; /* the width applied */
 } popup;
 
-typedef struct command_state
-{
-    bool open;
-    bool focus;
-    char *placeholder;
-    char *query;
-    int selected;
-    int chosen;  /* -1 none */
-    bool reveal; /* keyboard moved the selection; scroll it into view */
-    int *shown;  /* original indices in display order */
-    rml_element *input;
-} command_state;
-
 struct kit
 {
     rml_context *context;
@@ -277,8 +262,6 @@ struct kit
     bool tip_visible;
     uint64_t tip_shown_frame;
     char *tip_image; /* the picture the shown tooltip holds, owned */
-    command_state command;
-    rml_element *command_backdrop;
     char *surface_capture;
     int surface_button; /* -1 none */
     popup **emitting;   /* popups being emitted, innermost last */
@@ -441,11 +424,6 @@ void update_tooltip(kit *k);
 
 /* Key and change handlers return false for events that are not the
  * palette's. */
-void command_press(kit *k, rml_element *target);
-bool command_key(kit *k, const rml_event *e);
-bool command_change(kit *k, rml_element *target);
-void command_click(kit *k, node *n);
-void command_hover(kit *k, node *n);
 
 /* ---------- Native slots (kit_slot.c) ---------- */
 

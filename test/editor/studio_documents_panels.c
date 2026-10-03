@@ -153,8 +153,9 @@ static void preview_logs_actions()
     frames(&f, 3);
     closed &= !s->canvas;
     studio_command_run(s, STUDIO_COMMAND_PREVIEW_UI);
-    bool picking = s->pick.open && !strcmp(s->pick.key, STUDIO_PICK_PREVIEW) &&
-                   kit_command_is_open(s->kit);
+    bool picking = s->palette.client == STUDIO_PALETTE_ASSETS &&
+                   !strcmp(s->pick.key, STUDIO_PICK_PREVIEW) &&
+                   studio_palette_is_open(s);
     if (!(picking && alone && dark && logged && light && counted && closed)) {
         printf("  %d %d %d %d %d %d %d\n", picking, alone, dark, logged, light, counted, closed);
     }
@@ -308,7 +309,7 @@ static void preview_binds_studio_data()
     canvas_elements(s, ".search-trigger", found);
     rml_element_click(found[0]);
     frames(&f, 2);
-    bool logged = logged_last(s, "studio.search") && !kit_command_is_open(s->kit);
+    bool logged = logged_last(s, "studio.search") && !studio_palette_is_open(s);
     fixture_free(&f);
 
     f = vault_open();
@@ -999,8 +1000,37 @@ static uint64_t data_views(studio_fixture *f)
     return studio_ui_data_reads(s).values - before;
 }
 
+/* The palette, a picker and the refactor popover open and close, each
+   document mounting while it shows and letting its mount go after. */
+static void palettes_take_turns(studio_fixture *f)
+{
+    studio *s = f->studio;
+    studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    frames(f, 2);
+    text_event("to");
+    frames(f, 2);
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(f, 2);
+    studio_pick_open(
+        s,
+        "turns",
+        "",
+        &(studio_pick_desc){ .kind = REFERENCE_ASSET_PROTOTYPE, .none = "None" },
+        studio_element(s, ".area-header")
+    );
+    frames(f, 2);
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(f, 2);
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    studio_refactor_rename_asset(s, reference_index_find_name(index, REFERENCE_ASSET_PROTOTYPE, "Player"));
+    frames(f, 2);
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(f, 2);
+}
+
 /* One area turned from every authored panel to every other, round after
-   round: RmlUi warns of no view it lost or could not bind, and the data
+   round, and the palette, a picker and the refactor popover opened and
+   closed: RmlUi warns of no view it lost or could not bind, and the data
    model keeps as many views as after the first round. */
 static void area_panels_take_turns()
 {
@@ -1030,6 +1060,7 @@ static void area_panels_take_turns()
             s->maximized = -1;
             frames(&f, 3);
         }
+        palettes_take_turns(&f);
         show_area_panel(&f, AREA_PANELS[0]);
         views[round > 0] = data_views(&f);
     }

@@ -13,6 +13,7 @@
 #include "support/xalloc.h"
 #include "ui/controls/controls.h"
 #include "ui/drag.h"
+#include "ui/focus_within.h"
 #include "ui/iframe.h"
 #include "ui/motion.h"
 #include "ui/popover.h"
@@ -980,6 +981,8 @@ static bool initialize_rml()
     controls_register();
     /* Workstream F4: drag and drop in every context. */
     ui_drag_register();
+    /* :focus-within in every context (workstream P3). */
+    ui_focus_within_register();
     return true;
 }
 

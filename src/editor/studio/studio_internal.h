@@ -2319,8 +2319,9 @@ void studio_gallery_action(studio *s, const char *action, const ui_activation *a
 
 /* The Outliner's source, `outliner` (studio_outliner.c): the scene's root
  * row and object count, the filter (query, which the header binds two-way
- * as view state), the Add menu's prototypes, the row menu's state, and in
- * views[area] the window of rows each area's List shows (root, rows).
+ * as view state), the row menu's state, and in views[area] the window of
+ * rows each area's List shows (root, rows); `outlinerHeader` holds what
+ * rarely changes: the Add list's prototypes, editable and the eye's tip.
  * outliner.click, .menu, .eye and .lock name a row by id; .drop takes the
  * row's id ("" for the list), the type and the payload; .rename takes the
  * committed name and ends the rename, as leaving its field does;
@@ -2331,6 +2332,8 @@ void studio_gallery_action(studio *s, const char *action, const ui_activation *a
 void studio_outliner_add(yyjson_mut_doc *doc);
 bool studio_outliner_sync(studio *s, const studio_panel_sync *at);
 void studio_outliner_action(studio *s, const char *action, const ui_activation *a);
+void studio_outliner_header_add(yyjson_mut_doc *doc);
+bool studio_outliner_header_sync(studio *s, const studio_panel_sync *at);
 /* Shows panel `name` filling area `area`'s body with `view` aliased to the
  * area's item of `views`, such as "outliner.views", as an area header
  * aliases `area`; returns its host, or NULL when it shows none. */

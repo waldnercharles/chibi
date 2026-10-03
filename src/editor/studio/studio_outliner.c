@@ -269,12 +269,9 @@ static void add_menu_item(yyjson_mut_doc *doc, yyjson_mut_val *menu, const char 
 void studio_outliner_add(yyjson_mut_doc *doc)
 {
     yyjson_mut_val *outliner = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "outliner");
-    static const char *const TEXTS[] = { "count",  "empty",   "query",
-                                         "rename", "isolate", NULL };
-    static const char *const FLAGS[] = { "editable", NULL };
-    add_members(doc, outliner, TEXTS, FLAGS);
+    static const char *const TEXTS[] = { "count", "empty", "query", "rename", NULL };
+    add_members(doc, outliner, TEXTS, NULL);
     yyjson_mut_obj_add_val(doc, outliner, "root", row_new(doc, 0));
-    yyjson_mut_obj_add_arr(doc, outliner, "prototypes");
     yyjson_mut_val *menu = yyjson_mut_obj_add_obj(doc, outliner, "menu");
     static const char *const MENU_FLAGS[] = { "actor", "live", NULL };
     add_members(doc, menu, (const char *const[]){ "label", NULL }, MENU_FLAGS);
@@ -417,13 +414,6 @@ static bool show_header(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *outliner
     changed |= put_text(doc, outliner, "empty", empty);
     changed |= put_text(doc, outliner, "query", filter);
     changed |= put_text(doc, outliner, "rename", s->rename.name);
-    changed |= put_text(
-        doc,
-        outliner,
-        "isolate",
-        s->mac ? "\xe2\x8c\xa5-click shows only this object" : "Alt+click shows only this object"
-    );
-    changed |= put_bool(outliner, "editable", studio_editable(s));
     changed |= put_text(doc, root, "label", studio_scene_title(s->scene, title, sizeof title));
     changed |= put_glyph(doc, root, "icon", KIT_ICON_SCENE);
     changed |= put_bool(root, "parent", true);
@@ -544,7 +534,6 @@ bool studio_outliner_sync(studio *s, const studio_panel_sync *at)
     take_view_state(s, outliner);
     int *rows = studio_outliner_rows(s);
     bool changed = show_header(s, at->doc, outliner, acount(rows));
-    changed |= show_prototypes(s, at->doc, member(outliner, "prototypes"));
     changed |= show_menu(s, at->doc, member(outliner, "menu"));
     yyjson_mut_val *views = member(outliner, "views");
     bool shown = false;
@@ -554,6 +543,33 @@ bool studio_outliner_sync(studio *s, const studio_panel_sync *at)
     }
     afree(rows);
     s->outliner_reveal &= !shown;
+    return changed;
+}
+
+/* ---------- What rarely changes ---------- */
+
+/* The header's Add list and editability, and the eye's tip, apart from the
+ * rows, so a scroll or a selection reads none of their views. */
+void studio_outliner_header_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *header = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "outlinerHeader");
+    static const char *const TEXTS[] = { "isolate", NULL };
+    static const char *const FLAGS[] = { "editable", NULL };
+    add_members(doc, header, TEXTS, FLAGS);
+    yyjson_mut_obj_add_arr(doc, header, "prototypes");
+}
+
+bool studio_outliner_header_sync(studio *s, const studio_panel_sync *at)
+{
+    yyjson_mut_val *header = at->variable;
+    bool changed = show_prototypes(s, at->doc, member(header, "prototypes"));
+    changed |= put_bool(header, "editable", studio_editable(s));
+    changed |= put_text(
+        at->doc,
+        header,
+        "isolate",
+        s->mac ? "\xe2\x8c\xa5-click shows only this object" : "Alt+click shows only this object"
+    );
     return changed;
 }
 

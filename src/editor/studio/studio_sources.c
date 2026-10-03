@@ -2325,6 +2325,7 @@ const studio_panel_source studio_panel_sources[] = {
     { "gallery", "Widgets", studio_gallery_add, studio_gallery_sync, studio_gallery_action },
     /* The Outliner (workstream P2). */
     { "outliner", "Outliner", studio_outliner_add, studio_outliner_sync, studio_outliner_action },
+    { "outlinerHeader", "OutlinerHeader", studio_outliner_header_add, studio_outliner_header_sync, NULL },
     /* Members (workstream P5). */
     { "members", "Members", studio_members_add, studio_members_sync, studio_members_action },
 };

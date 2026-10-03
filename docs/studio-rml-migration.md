@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4 and F5 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5 and P2 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -42,7 +42,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, the Behavior header's View menu (GraphView, trigger included since F3) | Authored | | Done |
 | Properties: Object, Prototype, Scene, Behaviors | `studio_properties.c` (~2k lines) | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep, Add Component | W2 P1 |
 | Properties: Node, Member | `studio_graph_properties.c`, `studio_member_properties.c` | Literal editors, binding autocomplete, expression code, type picker, reorder grips | W4 G1 |
-| Outliner | `studio_outliner.c` (F0) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | W2 P2 |
+| Outliner | Authored: `Outliner.rml`, `OutlinerHeader.rml`; the `outliner` source (`studio_outliner.c`) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | Done (W2 P2) |
 | Scene and Canvas headers | `studio_scene.c`, `studio_canvas.c` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | W3 C1 |
 | Scene viewport | `kit_surface` showing `kit:viewport` | Texture, pointer input, camera labels | Overlays authored; input stays in C |
 | Assets | `studio_assets.c` | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | W2 P3 |
@@ -758,10 +758,85 @@ popups above areas, focus across documents, inspection and lifetime;
 | | Scope | Deletes |
 |---|---|---|
 | P1 Properties | Object, Prototype, Scene, Behaviors tabs; header with Live and Keep; search; field menu (Node and Member stay in a slot) | ~1,200 lines of kit UI; `write_field`, reset, Keep and multi-object logic stay |
-| P2 Outliner | Rows, root, eye and lock, rename, drops, menu, filter | ~350 lines |
+| P2 Outliner (done) | Rows, root, eye and lock, rename, drops, menu, filter | ~350 lines |
 | P3 Assets | Grid and list, header, New menu, name popover, drag sources, preview tooltip | ~400 lines |
 | P4 Output | Six views, follow-output, highlighted rows, Calls tree | ~450 lines |
 | P5 Members | Sections, rename, uses, menus, drag into the graph | ~600 lines |
+
+#### P2: the Outliner (done)
+
+The Outliner is `Outliner.rml` in each area that shows it (a List of
+TreeRows, `studio_ui_area_view` aliasing the area's item of
+`outliner.views` as `view`) and `OutlinerHeader.rml` in its AreaHeader's
+controls (the filter and Add, a ChoiceList of the scene's prototypes). The
+`outliner` source publishes the root, the count, the notice, the filter
+(`query`, two-way, view state), the row menu's state, the Add list and each
+view's window (`root`, `rows`: id, label, icon, behaviors, drop, selected,
+active, marked, hidden, locked, renaming), and takes `outliner.click`,
+`.menu`, `.eye`, `.lock`, `.drop`, `.rename`, `.renameEnter`,
+`.renameCancel`, `.collapse`, `.add`, `.openPrototype` and `.spawnBreak`.
+The filter stays one per Studio, as the kit's was, since Up, Down and Shift
+ranges walk the filtered rows. Blender's Outliner and Unity's Hierarchy are
+the references: click, Mod and Shift selection, F2 and double-click rename,
+eye and lock; and Unity's focusable list for the keyboard.
+
+- **Interaction:** a click selects on release, Mod toggles, Shift ranges
+  from the anchor; a right click keeps a selection it lands in and opens
+  the Menu at the pointer (`popover_show` at a point) with the kit menu's
+  items; the eye and lock show on hover or when set, Alt+click isolates,
+  and their buttons stop the click from the row (`stopPropagation()`, a
+  data event callback beside `emit`, as the DOM's and Vue's `.stop`).
+  Rename is `<input autofocus data-value-lazy>` in place of the row's name
+  (`data-when`): Enter commits as one Undo step and gives the keyboard back
+  to the list, Escape ends it first so nothing commits, and leaving the
+  field commits. Drops: prototypes onto the list add an object; behaviors
+  and the asset kinds an object's fields name onto its row, which previews
+  the asset in the Scene while it is over (polled at emit).
+- **Keyboard (UX review):** the List is one Tab stop. A focused element of
+  an area panel that edits no text passes Studio's shortcuts, as the
+  chrome's buttons do; when Tab moved the focus there (`:focus-visible`),
+  the area's keys act on it wherever the pointer is (`studio_ui_keyboard_area`),
+  and the active row shows the focus ring. Left and Right fold the root.
+- **Hit targets (UX review):** the eye and lock stretch to the row's full
+  height, so a press above or below their icon toggles rather than selects.
+- **Shared fixes:** Menu's wrapper is now the 480 dp containing block its
+  fixed popup is placed against (RmlUi places a fixed box against its
+  nearest positioned ancestor), so authored menus fit their widest row
+  instead of clipping long labels at 180 dp; a disabled popovertarget
+  button opens nothing; a choice-list's `placeholder` names its search.
+- **Parity:** web shots before (`80bd2538`) and after, dark and light,
+  compact and comfortable, of the rows with selection, hover, a hidden and
+  a locked object, rename in place, the row menu and the Add list, compared
+  over the Outliner area with a 2% fuzz: identical but for the caret's
+  blink. The row a drag is over now fills with the soft primary as the
+  TreeRow's drop mark does (the kit row kept its hover gray).
+- **Bench:** `--ui-bench studio` case 10 adds 10,000 objects and scrolls
+  the Outliner three rows a run from the middle, then selects one of two
+  objects in view. Release builds before and after, alternated process by
+  process three times at a 1-minute load of 35-39 (provisional), whole
+  Studio UI frame (sync + emit + update + capture), medians:
+
+  | Case | Before (kit) | After (authored) | After ÷ before | Rows instanced | Layouts |
+  |---|---:|---:|---:|---|---:|
+  | Scroll step of 3 rows, 21 rows shown | 6.30 / 8.29 / 7.93 | 7.47 / 6.57 / 6.87 | 0.93× | 3 → 0 | 2 |
+  | Select another object in view | 7.61 / 9.54 / 9.46 | 9.08 / 7.93 / 8.70 | 0.97× | | 6 |
+  | A text change in the Outliner (case 8) | 2.27 / 2.13 / 1.77 | 1.54 / 2.16 / 2.13 | 0.94× | | 1 |
+
+  The Outliner's document holds 929 elements against 558: closed popovers
+  (the row menu, the Add list's options) and `data-when` templates add
+  elements that never lay out. Sync rose 0.3 to 0.5 ms (the filter walks
+  every object at each refresh, as the kit's emit did); emit and capture
+  fell.
+- **Tests:** `--studio-outliner` (new; also in `--studio-documents`):
+  rename in place, click, Mod and Shift selection, eye and lock at the
+  row's top and bottom edges without selecting, Alt+click isolation, the
+  menu at the pointer and its heading, the filter and No matches, folding
+  by twisty, double click, Left and Right, a 2,000-row window that keeps
+  its length and elements and reveals Down's row, and Tab with Down, F2
+  and Enter while the pointer is elsewhere. `--studio-lists`: a prototype
+  onto the Outliner and a behavior onto its row.
+- **Deleted:** the kit Outliner (header, rows, rename row, view toggles)
+  and `studio_drop_row`, about 280 lines of kit UI.
 
 ### Wave 3: scene, chrome, palette (4 parallel)
 
@@ -795,6 +870,7 @@ needs; shrink `kit.h`; update DESIGN decision 5, `studio-ui-authoring.md` and
 | Chart, wire and grid geometry; color plane; drag ghost; Inspector and Designer highlights | Per-frame geometry with no document structure |
 | Toasts | Springs and swipe need native motion; revisit after W3 |
 | Tooltips | Already attribute-driven; the controller stays native, as a browser's `title` does |
+| Reordering and reparenting objects by dragging Outliner rows | Scenes have no hierarchy, and object order has no Undo step, collaboration action or checkpoint record; it is a scene-authoring feature to add first. TreeRow's drop zones and the insertion line (F4) are ready for it |
 
 ## Risks
 

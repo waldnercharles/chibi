@@ -844,8 +844,8 @@ static void shot(studio_bench *b, const char *dir, const char *variant, const ch
 
 /* With UI_BENCH_CAPTURE set to a directory, native shots of the Behavior
    header, its graph picker and Graph menu, the graph's find bar and
-   Performance in Play, in dark and light, compact and comfortable, which
-   the kit build and the authored one both take. */
+   Performance in Play, in dark and light, compact and comfortable, with
+   reduced motion, which the kit build and the authored one both take. */
 static void capture_chrome(studio_bench *b, const char *dir)
 {
     static const struct
@@ -860,6 +860,8 @@ static void capture_chrome(studio_bench *b, const char *dir)
     studio *s = b->studio;
     studio_layout *layout = studio_active_layout(s);
     s->maximized = -1;
+    /* Fades settle at once, so a shot never catches one midway. */
+    s->prefs.reduced_motion = true;
     for (size_t v = 0; v < sizeof VARIANTS / sizeof *VARIANTS; v++) {
         const char *name = VARIANTS[v].name;
         s->prefs.theme = VARIANTS[v].theme;

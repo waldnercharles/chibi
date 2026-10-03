@@ -2307,7 +2307,7 @@ const studio_panel_source studio_panel_sources[] = {
     /* Assets (workstream P3). */
     { "assets", "Assets", studio_assets_add, studio_assets_sync, studio_assets_action },
     { "asset_view", "Assets", studio_asset_view_add, studio_asset_view_sync, NULL },
-    { "asset_menus", "NewAsset", studio_asset_menus_add, studio_asset_menus_sync, studio_asset_menus_action },
+    { "asset_menus", NULL, studio_asset_menus_add, studio_asset_menus_sync, studio_asset_menus_action },
     /* Members (workstream P5). */
     { "members", "Members", studio_members_add, studio_members_sync, studio_members_action },
 };

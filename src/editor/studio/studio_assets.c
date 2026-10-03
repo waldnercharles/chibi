@@ -1486,6 +1486,12 @@ static void close_name(studio *s, rml_element *popover)
 
 void studio_new_asset_frame(studio *s)
 {
+    studio_new_asset *n = &s->new_asset;
+    /* Its document lives while it asks, from a New command until the
+       popover closes, and costs nothing otherwise. */
+    if (n->asking == STUDIO_NAME_IDLE && !n->open) {
+        return;
+    }
     kit *k = s->kit;
     /* A document of its own, as tall as nothing, whose popover shows over
        every area. */
@@ -1496,7 +1502,6 @@ void studio_new_asset_frame(studio *s)
     if (!popover) {
         return;
     }
-    studio_new_asset *n = &s->new_asset;
     if (n->closing) {
         close_name(s, popover);
         n->closing = false;
@@ -1507,4 +1512,5 @@ void studio_new_asset_frame(studio *s)
         }
         n->asking = STUDIO_NAME_IDLE;
     }
+    n->open = popover_open(popover);
 }

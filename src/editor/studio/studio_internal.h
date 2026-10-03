@@ -803,6 +803,7 @@ typedef struct
         STUDIO_NAME_SHOWN,
     } asking;
     bool closing; /* the asset was made: close the popover */
+    bool open;    /* the popover showed at the last frame */
     char name[64];
     char typed[64]; /* the name as its field last showed it */
     char error[160];
@@ -2353,11 +2354,11 @@ void studio_assets_action(studio *s, const char *action, const ui_activation *a)
  * `assets`). */
 void studio_asset_view_add(yyjson_mut_doc *doc);
 bool studio_asset_view_sync(studio *s, const studio_panel_sync *at);
-/* The Assets menus' source, `asset_menus`, synced with NewAsset, which
- * every refresh mounts: New's kinds (`create`), the row menu (`row`) and the
- * name popover (`naming`): its title, the name, bound both ways, and why
- * the last one was refused. asset_menus.select selects the name its field
- * holds and asset_menus.create makes the asset. */
+/* The Assets menus' source, `asset_menus`, synced at every refresh, since
+ * NewAsset mounts only while it asks: New's kinds (`create`), the row menu
+ * (`row`) and the name popover (`naming`): its title, the name, bound both
+ * ways, and why the last one was refused. asset_menus.select selects the name
+ * its field holds and asset_menus.create makes the asset. */
 void studio_asset_menus_add(yyjson_mut_doc *doc);
 bool studio_asset_menus_sync(studio *s, const studio_panel_sync *at);
 void studio_asset_menus_action(studio *s, const char *action, const ui_activation *a);

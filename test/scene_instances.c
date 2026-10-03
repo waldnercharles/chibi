@@ -456,6 +456,80 @@ static void prototype_component_removal(app_scene_authoring *scene, ecs_world *w
     puts("prototype component removal PASS: add and remove are one Undo step each, instances keep their overrides, and the prototype saves canonically");
 }
 
+static float position_x(ecs_world *world, const scene_actor *actor)
+{
+    return GAME_GameTransform_get_const(world, actor->entity)->x;
+}
+
+static int health(ecs_world *world, const scene_actor *actor)
+{
+    return GAME_GameHealth_get_const(world, actor->entity)->current;
+}
+
+static void write_health(app_scene_authoring *scene, const scene_actor *actor, int current)
+{
+    pin_value value = { .type = PIN_I32, .i = current };
+    assert(
+        ecs_component_write_field(
+            scene->world,
+            actor->entity,
+            GAME_COMPONENT_GameHealth.id,
+            0,
+            value
+        ) == ECS_OK
+    );
+}
+
+/* While the scene runs, moves and writes change only its world: no Undo step
+   and no unsaved mark. Keep Changes waits for Stop, which applies the values
+   each object's latest record decides as one Undo step. */
+static void live_edits_keep_changes(app_scene_authoring *scene, ecs_world *world)
+{
+    assert(app_scene_authoring_add_instance(scene, "First") == 0);
+    int index = acount(scene->actors) - 1;
+    select_instance(scene, index);
+    float authored_x = position_x(world, &scene->actors[index]);
+    int authored_health = health(world, &scene->actors[index]);
+    scene_history_clear(scene->history);
+    assert(
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0 &&
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_PAUSE) == 0
+    );
+    scene_actor *actor = &scene->actors[index];
+    scene->scene_dirty = false;
+    GameTransform moved = *GAME_GameTransform_get_const(world, actor->entity);
+    moved.x = authored_x + 9;
+    begin_transform_edit(scene, actor->entity);
+    write_transform_edit(scene, actor->entity, moved);
+    finish_transform_edit(scene, false);
+    write_health(scene, actor, 50);
+    assert(position_x(world, actor) == moved.x && health(world, actor) == 50);
+    assert(!scene->scene_dirty && !scene_history_can_undo(scene->history));
+    assert(scene_keep_changes(scene, NULL) == 2);
+    /* Undo in its toast forgets the latest record only. */
+    write_health(scene, actor, 40);
+    assert(scene_keep_changes(scene, &GAME_COMPONENT_GameHealth) == 1);
+    scene_kept_drop(scene);
+    /* A later record of one component decides that component's values. */
+    write_health(scene, actor, 30);
+    assert(scene_keep_changes(scene, &GAME_COMPONENT_GameHealth) == 1);
+    int objects;
+    const char *name;
+    assert(scene_kept_values(scene, &objects, &name) == 2);
+    assert(objects == 1 && !strcmp(name, actor->name));
+    assert(!scene->scene_dirty);
+    assert(app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
+    actor = &scene->actors[index];
+    assert(position_x(world, actor) == moved.x && health(world, actor) == 30);
+    assert(scene->scene_dirty && !acount(scene->kept));
+    assert(history(scene, false) == 0);
+    assert(position_x(world, actor) == authored_x && health(world, actor) == authored_health);
+    assert(!scene_history_can_undo(scene->history));
+    assert(history(scene, true) == 0);
+    assert(position_x(world, actor) == moved.x && health(world, actor) == 30);
+    puts("live edits PASS: running edits leave the scene clean, and Keep Changes applies at Stop as one Undo step");
+}
+
 void test_scene_instances()
 {
     ecs_world *world = ecs_world_new();
@@ -492,6 +566,7 @@ void test_scene_instances()
     prototype_spawn_refresh(scene, live, world);
     duplicate_instance_preserves_edits(scene, world);
     prototype_vectors_and_text(scene, world);
+    live_edits_keep_changes(scene, world);
     char folder[] = "/tmp/chibi-scene-instances-XXXXXX";
     assert(mkdtemp(folder));
     rename_instance(scene, folder);

@@ -185,6 +185,43 @@ static const type_desc *vector_type(const pin_value *value)
     return type;
 }
 
+bool studio_properties_live(studio *s)
+{
+    return studio_live(s) && !studio_designer_active(s) &&
+           s->scene->document.kind != APP_EDITOR_DOCUMENT_PROTOTYPE;
+}
+
+/* While the scene runs, Properties edits its running world: the header says
+   so, tinted (studio_sources.c) as Unity tints its editor in Play Mode, and
+   offers Keep Changes (Unreal's Keep Simulation Changes). A prototype stays
+   read-only, since editing it respawns every instance. */
+static void live_header(studio *s)
+{
+    kit *k = s->kit;
+    if (!studio_properties_live(s)) {
+        kit_label(k, "locked", "badge", "Read-only");
+        kit_tip(k, "Stop playing to edit prototypes", NULL, NULL);
+        return;
+    }
+    kit_label(k, "live", "badge accent", "Live");
+    kit_tip(k, "Changes made while playing revert when you stop", NULL, NULL);
+    studio_command_info keep = studio_command_describe(s, STUDIO_COMMAND_KEEP_CHANGES);
+    bool enabled = studio_command_enabled(s, STUDIO_COMMAND_KEEP_CHANGES);
+    kit_button_desc button = { .icon = keep.icon,
+                               .label = "Keep",
+                               .flags = enabled ? 0 : KIT_DISABLED };
+    if (kit_button(k, "keep", &button)) {
+        studio_command_run(s, STUDIO_COMMAND_KEEP_CHANGES);
+    }
+    kit_tip(
+        k,
+        keep.label,
+        keep.shortcut,
+        enabled ? "Copy this object's live values into the scene when you stop"
+                : "Select an object placed in the scene"
+    );
+}
+
 void studio_properties_header(studio *s, int area)
 {
     /* Visual designer (workstream H): a UI document's Details. */
@@ -193,6 +230,9 @@ void studio_properties_header(studio *s, int area)
         return;
     }
     kit_search(s->kit, "search", s->property_search, sizeof s->property_search, "Search properties");
+    if (studio_live(s)) {
+        live_header(s);
+    }
 }
 
 static const game_prototype_component *base_component(
@@ -229,7 +269,8 @@ static bool field_overridden(
     return !pin_value_equal(&value, &inherited);
 }
 
-/* One Undo step per gesture: the first change opens an edit, the commit records it. */
+/* One Undo step per gesture: the first change opens an edit, the commit
+   records it. While the scene runs, a change writes only its running world. */
 static void write_field(
     studio *s,
     scene_actor *actor,
@@ -242,6 +283,12 @@ static void write_field(
 )
 {
     app_scene_authoring *scene = s->scene;
+    if (studio_live(s)) {
+        if (changed && editable_scalar(&value)) {
+            ecs_component_write_field(scene->world, actor->entity, component, field, value);
+        }
+        return;
+    }
     bool pending = scene->property_actor.slot &&
                    ecs_entity_to_u64(scene->property_actor) ==
                        ecs_entity_to_u64(actor->entity) &&
@@ -351,7 +398,7 @@ static void position_row(studio *s, scene_actor *actor, bool locked)
             begin_transform_edit(scene, actor->entity);
         }
         write_transform_edit(scene, actor->entity, after);
-        if (scene_collab_can_write_locally()) {
+        if (scene_collab_can_write_locally() && !studio_live(s)) {
             scene->scene_dirty = true;
         }
     }
@@ -731,7 +778,7 @@ static void reset_field(studio *s, scene_actor *actor)
         }
         begin_transform_edit(scene, actor->entity);
         write_transform_edit(scene, actor->entity, after);
-        if (scene_collab_can_write_locally()) {
+        if (scene_collab_can_write_locally() && !studio_live(s)) {
             scene->scene_dirty = true;
         }
         finish_transform_edit(scene, false);
@@ -771,6 +818,8 @@ static void field_menu(studio *s, scene_actor *actor, bool locked)
     }
     kit_popup_end(k);
 }
+
+#define LIVE_COMPONENT_MENU "live-component-menu"
 
 static void component_panel(studio *s, scene_actor *actor, const ecs_component_desc *desc, bool locked)
 {
@@ -815,10 +864,47 @@ static void component_panel(studio *s, scene_actor *actor, const ecs_component_d
         }
     }
     kit_panel_end(k);
+    /* While the scene runs, an authored object's component menu keeps its
+       values alone. */
+    if (studio_live(s) && actor->identity && kit_panel_menu(k)) {
+        snprintf(s->components.menu, sizeof s->components.menu, "%s", desc->name);
+        kit_popup_open_at(k, LIVE_COMPONENT_MENU, s->in.mouse_x, s->in.mouse_y);
+    }
+}
+
+static void live_component_menu(studio *s)
+{
+    kit *k = s->kit;
+    if (!kit_popup_begin(k, LIVE_COMPONENT_MENU, "menu")) {
+        return;
+    }
+    char title[128];
+    editor_component_label(s->components.menu, title, sizeof title);
+    kit_menu_group(k, "group", title);
+    kit_menu_item_desc keep = { .label = "Keep Changes",
+                                .icon = KIT_ICON_PIN,
+                                .checked = -1 };
+    if (kit_menu_item(k, "keep", &keep)) {
+        for (int i = 0; i < s->scene->registry.component_count; i++) {
+            const ecs_component_desc *desc = s->scene->registry.components[i];
+            if (!strcmp(desc->name, s->components.menu)) {
+                studio_keep_changes(s, desc);
+            }
+        }
+    }
+    kit_popup_end(k);
+}
+
+/* Why a structural control is disabled while a run holds the scene, for its
+   tip; NULL otherwise. */
+static const char *while_playing(const studio *s, bool locked, const char *reason)
+{
+    return locked && runtime_session(s->scene) ? reason : NULL;
 }
 
 /* The name edits in place, as Unity's Inspector names an object: Enter or
-   leaving the field renames it, Escape keeps the name. */
+   leaving the field renames it, Escape keeps the name. Authored objects
+   have an identity; spawned ones do not. */
 static void name_field(studio *s, scene_actor *actor, bool locked)
 {
     kit *k = s->kit;
@@ -827,7 +913,10 @@ static void name_field(studio *s, scene_actor *actor, bool locked)
     snprintf(name, sizeof name, "%s", actor->name);
     kit_push(k, "name", NULL, "name-field");
     bool committed = kit_text_field(k, "field", name, sizeof name, NULL, locked ? KIT_READONLY : 0);
-    kit_tip(k, "Name", studio_chord(s, "F2"), NULL);
+    const char *why = actor->identity
+                        ? while_playing(s, locked, "Stop playing to rename")
+                        : "Spawned while playing; Stop removes it";
+    kit_tip(k, "Name", locked ? NULL : studio_chord(s, "F2"), why);
     /* Rename (F2) focuses it while no area shows the Outliner. */
     if (s->rename.entity == entity && !s->rename.outliner) {
         kit_focus(k);
@@ -849,7 +938,7 @@ static void identity(studio *s, scene_actor *actor, bool locked)
     kit_push(k, "who", NULL, "who");
     name_field(s, actor, locked);
     kit_push(k, "lineage", NULL, "lineage");
-    kit_label(k, "of", NULL, "Instance of");
+    kit_label(k, "of", NULL, actor->identity ? "Instance of" : "Spawned from");
     kit_button_desc prototype = { .label = actor->prototype_name,
                                   .icon = KIT_ICON_PROTOTYPE,
                                   .tip = "Open prototype" };
@@ -868,6 +957,7 @@ static void behaviors_panel(studio *s, scene_actor *actor, bool locked)
     char **names = instance_behavior_names(scene, actor->entity);
     char count[16];
     snprintf(count, sizeof count, "%d", acount(names));
+    const char *why = while_playing(s, locked, "Stop playing to change behaviors");
     if (kit_panel_begin(k, "behaviors", "Behaviors", NULL, true)) {
         for (int i = 0; i < acount(names); i++) {
             if (!studio_matches(s->property_search, names[i])) {
@@ -883,9 +973,9 @@ static void behaviors_panel(studio *s, scene_actor *actor, bool locked)
             kit_label(k, "name", "name", names[i]);
             kit_button_desc detach = { .icon = KIT_ICON_CLOSE,
                                        .size = KIT_SM,
-                                       .tip = "Detach",
                                        .flags = locked ? KIT_DISABLED : 0 };
             bool detached = kit_button(k, "detach", &detach);
+            kit_tip(k, "Detach", NULL, why);
             if (detached) {
                 app_scene_authoring_set_instance_behavior(scene, names[i], false);
             }
@@ -902,6 +992,7 @@ static void behaviors_panel(studio *s, scene_actor *actor, bool locked)
         if (kit_button(k, "attach", &attach)) {
             kit_popup_open(k, "attach-behavior");
         }
+        kit_tip(k, why, NULL, NULL);
         kit_pop(k);
     }
     kit_panel_end(k);
@@ -960,6 +1051,10 @@ static void scene_panels(studio *s, bool locked)
 {
     kit *k = s->kit;
     app_scene_authoring *scene = s->scene;
+    const char *why = while_playing(s, locked, "Stop playing to change scene settings");
+    if (why) {
+        kit_label(k, "stopped", "prop-note", why);
+    }
     page_panel(s, locked);
     game_physics_settings settings = game_physics_configuration(scene->live->physics);
     game_physics_settings next = settings;
@@ -1258,6 +1353,65 @@ void studio_component_toast(studio *s)
     }
 }
 
+/* ---------- Keep Changes ---------- */
+
+void studio_keep_changes(studio *s, const ecs_component_desc *only)
+{
+    scene_actor *actor = selected_actor(s->scene);
+    int kept = scene_keep_changes(s->scene, only);
+    if (kept < 0) {
+        return;
+    }
+    char title[320];
+    kit_toast_dismiss(s->kit, s->keep.toast);
+    s->keep.toast = 0;
+    if (!kept) {
+        snprintf(title, sizeof title, "%s matches the scene", actor->name);
+        kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_INFO, .title = title });
+        return;
+    }
+    snprintf(
+        title,
+        sizeof title,
+        "Kept %d %s on %s",
+        kept,
+        kept == 1 ? "value" : "values",
+        actor->name
+    );
+    s->keep.toast = kit_toast(
+        s->kit,
+        0,
+        &(kit_toast_desc){
+            .title = title,
+            .description = "They apply to the scene when you stop",
+            .action = "Undo",
+            .duration = 6 }
+    );
+    s->keep.depth = acount(s->scene->kept);
+    studio_record(s, KIT_TOAST_DEFAULT, title);
+}
+
+void studio_keep_toast(studio *s)
+{
+    int toast = s->keep.toast;
+    if (!toast) {
+        return;
+    }
+    bool current = acount(s->scene->kept) == s->keep.depth;
+    if (kit_toast_action(s->kit, toast)) {
+        s->keep.toast = 0;
+        if (current) {
+            scene_kept_drop(s->scene);
+            studio_report(s, "Undo Keep Changes");
+        }
+        return;
+    }
+    if (!current) {
+        kit_toast_dismiss(s->kit, toast);
+        s->keep.toast = 0;
+    }
+}
+
 /* A component panel's menu: its header's button or a right press there. */
 static void component_menu(studio *s, scene_prototype_asset *asset, bool locked)
 {
@@ -1268,10 +1422,13 @@ static void component_menu(studio *s, scene_prototype_asset *asset, bool locked)
     char title[128];
     editor_component_label(s->components.menu, title, sizeof title);
     kit_menu_group(k, "group", title);
-    kit_menu_item_desc remove = { .label = "Remove Component",
-                                  .icon = KIT_ICON_TRASH,
-                                  .checked = -1,
-                                  .disabled = locked };
+    kit_menu_item_desc remove = {
+        .label = "Remove Component",
+        .icon = KIT_ICON_TRASH,
+        .checked = -1,
+        .disabled = locked,
+        .description = while_playing(s, locked, "Stop playing to remove")
+    };
     if (kit_menu_item(k, "remove", &remove)) {
         remove_component(s, asset);
     }
@@ -1357,8 +1514,27 @@ static void prototype_properties(studio *s, scene_prototype_asset *asset, bool l
     if (kit_button(k, "component", &add)) {
         studio_command_run(s, STUDIO_COMMAND_ADD_COMPONENT);
     }
+    kit_tip(k, while_playing(s, locked, "Stop playing to add components"), NULL, NULL);
     kit_pop(k);
     component_menu(s, asset, locked);
+}
+
+/* An object the running scene spawned shows as an instance of its prototype;
+   its values edit live, and it has no authored state to keep. */
+static scene_actor *spawned_actor(app_scene_authoring *scene, scene_actor *out)
+{
+    ecs_entity entity = selected_scene_entity(scene);
+    if (!scene->runtime_selected.slot || !entity.slot) {
+        return NULL;
+    }
+    /* Borrowed for this frame; nothing writes through it. */
+    char *name = (char *)runtime_entity_label(scene, entity);
+    scene_prototype_asset *asset = find_prototype(scene, name);
+    *out = (scene_actor){ .entity = entity,
+                          .name = name,
+                          .prototype_name = name,
+                          .base = asset ? asset->prototype : NULL };
+    return out;
 }
 
 static studio_tab prototype_default_tab(const studio *s, const scene_prototype_asset *asset)
@@ -1386,7 +1562,11 @@ void studio_properties_body(studio *s, int area)
     bool prototype_document = document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE;
     scene_prototype_asset *asset = prototype_document ? selected_prototype(scene)
                                                       : NULL;
+    scene_actor spawned;
     scene_actor *actor = prototype_document ? NULL : selected_actor(scene);
+    if (!actor && !prototype_document) {
+        actor = spawned_actor(scene, &spawned);
+    }
     bool locked = !studio_editable(s);
     bool available[STUDIO_TAB_COUNT] = { [STUDIO_TAB_SCENE] = asset == NULL };
     if (asset && asset->prototype) {
@@ -1493,7 +1673,8 @@ void studio_properties_body(studio *s, int area)
                 const ecs_component_desc *desc = scene->registry.components[i];
                 if (ecs_component_has(scene->world, actor->entity, desc->id) &&
                     tab_of(s, desc) == s->tab) {
-                    component_panel(s, actor, desc, locked);
+                    /* Values edit the running world while the scene runs. */
+                    component_panel(s, actor, desc, locked && !studio_live(s));
                 }
             }
         }
@@ -1504,5 +1685,6 @@ void studio_properties_body(studio *s, int area)
         kit_pop(k);
         kit_pop(k);
     }
-    field_menu(s, actor, locked);
+    field_menu(s, actor, locked && !studio_live(s));
+    live_component_menu(s);
 }

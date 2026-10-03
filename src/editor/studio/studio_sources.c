@@ -1572,9 +1572,9 @@ static void sync_inspector(studio *s, studio_sources *src, ui_data *data)
  * the status bar, `hints`, a list of {icon, key, label}, report and
  * reporting, scene, selection, objects and playing; for the top bar, `tabs`,
  * a list of {label, path, icon, dirty, active, closable}, and paused; and
- * `areas`, an {index, drawer, maximized} per area, which each AreaHeader
- * binds as `area`. Values change only when they differ, so bindings update
- * in place, and items a list sheds wait in `spare`. */
+ * `areas`, an {index, drawer, maximized, live} per area, which each
+ * AreaHeader binds as `area`. Values change only when they differ, so bindings
+ * update in place, and items a list sheds wait in `spare`. */
 
 /* Reports show for three seconds, then fade (DESIGN.md). */
 #define REPORT_SECONDS 3.0
@@ -1595,6 +1595,7 @@ static void add_areas(yyjson_mut_doc *doc, yyjson_mut_val *editor)
         yyjson_mut_obj_add_int(doc, area, "index", i);
         yyjson_mut_obj_add_bool(doc, area, "drawer", i == STUDIO_AREA_DRAWER);
         yyjson_mut_obj_add_bool(doc, area, "maximized", false);
+        yyjson_mut_obj_add_bool(doc, area, "live", false);
     }
 }
 
@@ -1654,12 +1655,14 @@ static bool show_tabs(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio_
     return changed;
 }
 
-static bool show_areas(yyjson_mut_val *editor, int maximized)
+static bool show_areas(yyjson_mut_val *editor, const studio_status *status)
 {
     bool changed = false;
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(member(editor, "areas"));
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        changed |= put_bool(yyjson_mut_arr_iter_next(&it), "maximized", i == maximized);
+        yyjson_mut_val *area = yyjson_mut_arr_iter_next(&it);
+        changed |= put_bool(area, "maximized", i == status->maximized);
+        changed |= put_bool(area, "live", status->live & 1u << i);
     }
     return changed;
 }
@@ -1669,7 +1672,7 @@ bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status)
     yyjson_mut_val *editor = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "editor");
     bool changed = show_hints(doc, editor, status);
     changed |= show_tabs(doc, editor, status);
-    changed |= show_areas(editor, status->maximized);
+    changed |= show_areas(editor, status);
     const char *texts[] = { status->report, status->scene, status->selection };
     for (int t = 0; STATUS_TEXTS[t]; t++) {
         changed |= put_text(doc, editor, STATUS_TEXTS[t], texts[t] ? texts[t] : "");
@@ -1821,6 +1824,12 @@ static void sync_editor(studio *s, ui_data *data)
                               ? studio_command_chord(&s->prefs, hints.hints[i].command - 1)
                               : hints.hints[i].key;
         status.hints[i].key = chord ? studio_chord(s, chord) : NULL;
+    }
+    bool live = studio_properties_live(s);
+    for (int i = 0; live && i < STUDIO_AREA_COUNT; i++) {
+        if (studio_active_layout(s)->editors[i] == STUDIO_EDITOR_PROPERTIES) {
+            status.live |= 1u << i;
+        }
     }
     if (studio_status_show(data->doc, &status)) {
         rml_data_model_dirty(data->model, "editor");

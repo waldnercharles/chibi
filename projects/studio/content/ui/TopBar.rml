@@ -85,6 +85,8 @@
           <li command="finerGrid"/>
           <li command="coarserGrid"/>
         </menu>
+        <hr/>
+        <li command="keepChanges"/>
       </menu>
       <menu label="Play">
         <li command="play"/>

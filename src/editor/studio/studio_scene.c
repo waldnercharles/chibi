@@ -15,6 +15,11 @@ bool studio_editable(const studio *s)
     return scene_can_move(s->scene) && !s->scene->runtime_snapshot_valid;
 }
 
+bool studio_live(const studio *s)
+{
+    return s->scene->runtime_snapshot_valid;
+}
+
 bool studio_matches(const char *query, const char *text)
 {
     if (!query[0]) {
@@ -744,6 +749,9 @@ void studio_outliner_body(studio *s, int area)
                                          .disabled = !actor };
         if (kit_menu_item(k, "prototype", &prototype)) {
             app_scene_authoring_open_prototype(scene, actor->prototype_name);
+        }
+        if (studio_live(s)) {
+            studio_command_item(s, STUDIO_COMMAND_KEEP_CHANGES);
         }
         kit_menu_separator(k, "s1");
         kit_menu_item_desc remove = { .label = "Delete",

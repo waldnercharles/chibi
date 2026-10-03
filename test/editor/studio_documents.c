@@ -3535,6 +3535,78 @@ static void component_vector_property()
     fixture_free(&f);
 }
 
+/* While the scene runs, a Properties field edits the running world without
+   marking the scene unsaved or writing history, and the header says Live;
+   Keep Changes (K) applies the running value when the scene stops, as one
+   Undo step. */
+static void live_property_edit()
+{
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.kdl", "Weapons");
+    f.studio = studio_new(f.scene, f.viewport, "projects/studio");
+    studio *s = f.studio;
+    select_instance(f.scene, 0);
+    show_object_properties(s);
+    snprintf(s->property_search, sizeof s->property_search, "Target");
+    scene_history_clear(f.scene->history);
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frames(&f, 2);
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    f.scene->scene_dirty = false;
+    frames(&f, 3);
+    bool live = studio_live(s) && studio_element(s, ".area-head.live") != NULL;
+    rml_element *row = property_row(s, "Target");
+    if (row) {
+        rml_element_scroll_into_view(row, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+        frames(&f, 2);
+        row = property_row(s, "Target");
+    }
+    rml_element *axes[4];
+    int axis_count = row ? rml_element_query_selector_all(row, ".field.number", axes, 4)
+                         : 0;
+    bool editable = axis_count == 2 &&
+                    !rml_element_has_attribute(axes[0], "data-readonly");
+    if (editable) {
+        press(s, axes[0]);
+    }
+    text_event("9");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 3);
+    const GameDrive
+        *drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
+    bool written = drive && drive->target.x == 9.0f;
+    bool clean = !f.scene->scene_dirty && !scene_history_can_undo(f.scene->history);
+    bool chord = studio_command_for_key(&s->prefs, SDLK_K, 0, STUDIO_EDITOR_PROPERTIES, s->mac) ==
+                     STUDIO_COMMAND_KEEP_CHANGES &&
+                 studio_command_for_key(&s->prefs, SDLK_K, 0, STUDIO_EDITOR_BEHAVIOR, s->mac) !=
+                     STUDIO_COMMAND_KEEP_CHANGES;
+    studio_command_run(s, STUDIO_COMMAND_KEEP_CHANGES);
+    frames(&f, 2);
+    bool kept = acount(f.scene->kept) == 1 && s->keep.toast;
+    studio_runtime(s, APP_RUNTIME_STOP);
+    frames(&f, 2);
+    drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
+    bool applied = drive && drive->target.x == 9.0f && f.scene->scene_dirty &&
+                   s->undo_toast && !studio_live(s);
+    studio_history(s, false);
+    drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
+    bool undone = drive && drive->target.x == 3.0f &&
+                  !scene_history_can_undo(f.scene->history);
+    if (!(live && editable && written && clean && chord && kept && applied && undone)) {
+        printf("  %d %d %d %d %d %d %d %d\n", live, editable, written, clean, chord, kept, applied, undone);
+    }
+    test_check(
+        live && editable && written && clean,
+        "while the scene runs, Properties edits the running world without "
+        "an unsaved mark or Undo step"
+    );
+    test_check(
+        chord && kept && applied && undone,
+        "Keep Changes (K) applies a running value when the scene stops, as "
+        "one Undo step"
+    );
+    fixture_free(&f);
+}
+
 static int studio_documents_app(const char *program, bool run_properties_only)
 {
     CF_Result result = cf_make_app(
@@ -3556,6 +3628,7 @@ static int studio_documents_app(const char *program, bool run_properties_only)
     if (run_properties_only) {
         large_enum_property();
         component_vector_property();
+        live_property_edit();
     } else {
         graph_layout_does_not_wiggle();
         graph_calculations_follow_edits();
@@ -3599,6 +3672,7 @@ static int studio_documents_app(const char *program, bool run_properties_only)
         prototype_components();
         large_enum_property();
         component_vector_property();
+        live_property_edit();
         toolbar_shortcuts_keep_text_focus();
         authored_modals_and_collaboration();
         authored_fields_keep_editing_keys();

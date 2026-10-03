@@ -1,4 +1,7 @@
+#include "editor/collab/actions_scene.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/model/type.h"
+#include "graph/runtime/value_array.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
 
@@ -12,6 +15,7 @@
 
 void invalidate_runtime_snapshot(app_scene_authoring *scene)
 {
+    scene_kept_clear(scene);
     scene->runtime_selected = (ecs_entity){ 0 };
     for (int i = 0; i < acount(scene->actors); i++) {
         game_prototype_free(scene->actors[i].runtime_snapshot);
@@ -123,6 +127,167 @@ static int restart_runtime(app_scene_authoring *scene)
 bool runtime_session(const app_scene_authoring *scene)
 {
     return scene->runtime_snapshot_valid || scene->preview_prototype_id;
+}
+
+/* ---------- Keep Changes ---------- */
+
+static void kept_free(scene_kept *kept)
+{
+    for (int i = 0; i < acount(kept->fields); i++) {
+        scene_property_value_free(&kept->fields[i].after);
+    }
+    afree(kept->fields);
+}
+
+void scene_kept_clear(app_scene_authoring *scene)
+{
+    for (int i = 0; i < acount(scene->kept); i++) {
+        kept_free(&scene->kept[i]);
+    }
+    afree(scene->kept);
+}
+
+void scene_kept_drop(app_scene_authoring *scene)
+{
+    assert(acount(scene->kept));
+    kept_free(&alast(scene->kept));
+    (void)apop(scene->kept);
+}
+
+/* Appends the entity's fields whose running value differs from `authored`. */
+static void keep_component(
+    app_scene_authoring *scene,
+    ecs_entity entity,
+    const game_prototype_component *authored,
+    scene_kept *kept
+)
+{
+    const ecs_component_desc *desc = authored->desc;
+    for (int f = 0; f < desc->type->field_count; f++) {
+        pin_value running = { 0 };
+        if (ecs_component_read_field(scene->world, entity, desc->id, f, &running) != ECS_OK ||
+            !editable_scalar(&running)) {
+            continue;
+        }
+        pin_value before = running;
+        pin_read_field(authored->data, &desc->type->fields[f], &before);
+        if (pin_value_equal(&running, &before)) {
+            continue;
+        }
+        scene_field_edit edit = { .component = desc->id, .field = f };
+        if (!scene_property_value_copy(&edit.after, running)) {
+            abort();
+        }
+        apush(kept->fields, edit);
+    }
+}
+
+int scene_keep_changes(app_scene_authoring *scene, const ecs_component_desc *only)
+{
+    scene_actor *actor = selected_actor(scene);
+    if (!scene->runtime_snapshot_valid || !actor ||
+        !ecs_entity_is_alive(scene->world, actor->entity)) {
+        return -1;
+    }
+    scene_kept kept = { .actor = actor->identity, .only = only };
+    const game_prototype *authored = actor->runtime_snapshot;
+    for (int i = 0; i < acount(authored->components); i++) {
+        const game_prototype_component *component = &authored->components[i];
+        if (component->data && (!only || component->desc->id == only->id) &&
+            ecs_component_has(scene->world, actor->entity, component->desc->id)) {
+            keep_component(scene, actor->entity, component, &kept);
+        }
+    }
+    apush(scene->kept, kept);
+    return acount(kept.fields);
+}
+
+/* Whether a later record of the same instance covers field `f` of record
+   `index`, so the later one decides its value. */
+static bool kept_superseded(const app_scene_authoring *scene, int index, int f)
+{
+    const scene_kept *kept = &scene->kept[index];
+    for (int i = index + 1; i < acount(scene->kept); i++) {
+        const scene_kept *later = &scene->kept[i];
+        if (later->actor == kept->actor &&
+            (!later->only || later->only->id == kept->fields[f].component)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int scene_kept_values(app_scene_authoring *scene, int *objects, const char **name)
+{
+    int values = 0;
+    *objects = 0;
+    *name = NULL;
+    uint64_t *counted = NULL;
+    for (int i = 0; i < acount(scene->kept); i++) {
+        scene_actor *actor = scene_actor_by_identity(scene, scene->kept[i].actor);
+        int count = 0;
+        for (int f = 0; actor && f < acount(scene->kept[i].fields); f++) {
+            count += !kept_superseded(scene, i, f);
+        }
+        bool seen = false;
+        for (int j = 0; j < acount(counted); j++) {
+            seen |= counted[j] == scene->kept[i].actor;
+        }
+        if (count && !seen) {
+            apush(counted, scene->kept[i].actor);
+            *name = acount(counted) == 1 ? actor->name : NULL;
+        }
+        values += count;
+    }
+    *objects = acount(counted);
+    afree(counted);
+    return values;
+}
+
+/* One kept value as an authored property edit, recorded and shared as
+   Properties records one. */
+static void apply_kept_field(app_scene_authoring *scene, ecs_entity entity, const scene_field_edit *kept)
+{
+    pin_value before = { 0 };
+    if (ecs_component_read_field(scene->world, entity, kept->component, kept->field, &before) !=
+        ECS_OK) {
+        return;
+    }
+    scene->property_actor = entity;
+    scene->property_edit = (scene_field_edit){ .component = kept->component,
+                                               .field = kept->field };
+    if (!scene_property_value_copy(&scene->property_edit.before, before) ||
+        !scene_property_value_copy(&scene->property_edit.after, kept->after)) {
+        abort();
+    }
+    scene->property_dirty = scene->scene_dirty;
+    if (scene_collab_can_write_locally() &&
+        ecs_component_write_field(scene->world, entity, kept->component, kept->field, kept->after) ==
+            ECS_OK) {
+        scene->scene_dirty = true;
+    }
+    finish_property_edit(scene);
+}
+
+/* After Stop restored the authored scene: each value its latest record
+   decides, together one Undo step. */
+static void apply_kept(app_scene_authoring *scene)
+{
+    if (!acount(scene->kept)) {
+        return;
+    }
+    scene_history_begin_group(scene->history);
+    for (int i = 0; i < acount(scene->kept); i++) {
+        scene_actor *actor = scene_actor_by_identity(scene, scene->kept[i].actor);
+        for (int f = 0; actor && f < acount(scene->kept[i].fields); f++) {
+            if (!kept_superseded(scene, i, f)) {
+                apply_kept_field(scene, actor->entity, &scene->kept[i].fields[f]);
+            }
+        }
+    }
+    scene_history_end_group(scene->history);
+    asset_index_invalidate(scene);
+    scene_kept_clear(scene);
 }
 
 int app_scene_authoring_set_runtime_target(app_scene_authoring *scene, app_runtime_target target)
@@ -313,6 +478,7 @@ int app_scene_authoring_runtime_command(
             return result;
         }
         if (command == APP_RUNTIME_STOP) {
+            apply_kept(scene);
             invalidate_runtime_snapshot(scene);
             return 0;
         }

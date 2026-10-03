@@ -355,7 +355,8 @@ static void set(app_scene_authoring *scene, const scene_gizmo_target *target, in
             field->field,
             (pin_value){ .type = PIN_F32, .f = value }
         );
-        scene->scene_dirty = true;
+        /* A paused run's objects change only its world, which Stop replaces. */
+        scene->scene_dirty |= !scene->runtime_snapshot_valid;
     }
 }
 
@@ -609,6 +610,14 @@ void scene_gizmo_finish(app_scene_authoring *scene, bool cancel)
             );
         }
         scene->scene_dirty = g->dirty;
+        g->status[0] = '\0';
+        afree(fields);
+        return;
+    }
+    /* A paused run's objects keep their new values in its world; nothing
+       records them, as Properties' live edits record nothing. */
+    if (scene->runtime_snapshot_valid) {
+        snprintf(g->report, sizeof g->report, "%s", g->status);
         g->status[0] = '\0';
         afree(fields);
         return;

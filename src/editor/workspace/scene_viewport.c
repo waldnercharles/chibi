@@ -379,7 +379,6 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
         }
         if (game_entities_owns(scene->live->entities, picked)) {
             app_scene_authoring_select_runtime_entity(scene, picked);
-            return;
         }
         for (int i = 0; i < acount(scene->actors); i++) {
             if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(picked)) {
@@ -387,6 +386,28 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
                 return;
             }
         }
+        /* A paused run's spawned objects move in its world. */
+        if (!GAME_GameTransform_has(scene->world, picked)) {
+            return;
+        }
+        begin_transform_edit(scene, picked);
+        scene->dragging_actor = true;
+        scene->drag_origin = (GameTransform){ pointer.world_x, -pointer.world_y };
+    }
+    /* A paused run's spawned object follows the pointer in its world; the
+       gizmo moves placed ones. */
+    if (scene->dragging_actor && !scene->gizmo.active) {
+        if (pointer.dragging) {
+            GameTransform position = {
+                scene->edit_before.x + pointer.world_x - scene->drag_origin.x,
+                scene->edit_before.y - pointer.world_y - scene->drag_origin.y,
+            };
+            write_transform_edit(scene, scene->edit_actor, position);
+        }
+        if (pointer.released) {
+            finish_transform_edit(scene, false);
+        }
+        return;
     }
     if (!scene->marquee) {
         return;
@@ -737,13 +758,12 @@ void app_scene_authoring_render(void *user)
     const engine *runtime = scene->active_runtime_target == APP_RUNTIME_PREVIEW
                               ? game_prototype_preview_runtime(scene->prototype_preview)
                               : scene->runtime;
-    /* An edited scene shows the game's state only as its view options ask. */
+    /* An edited scene shows the game's state only as its view options ask; a
+       paused run keeps its own, its materials, visibility and lighting. */
     bool editing = scene_editing(scene);
     const app_scene_view_options *options = &scene->view_options;
-    if (scene_can_move(scene)) {
-        runtime = editing && (scene->world_preview.built || options->fog)
-                    ? scene->runtime
-                    : NULL;
+    if (editing) {
+        runtime = scene->world_preview.built || options->fog ? scene->runtime : NULL;
     }
     app_scene_renderer_set_view(
         scene->renderer,

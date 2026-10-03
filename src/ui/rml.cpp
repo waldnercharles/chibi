@@ -963,9 +963,11 @@ rml_element *rml_element_create_child(rml_element *parent, const char *tag, rml_
 
 void rml_element_move_child(rml_element *parent, rml_element *child, rml_element *before)
 {
-    Rml::Element *c = element(child);
-    Rml::ElementPtr moved = c->GetParentNode()->RemoveChild(c);
-    element(parent)->InsertBefore(std::move(moved), element(before));
+    Rml::Element *c = element(child), *p = element(parent);
+    Rml::Element *from = c->GetParentNode();
+    bool same_model = c->GetDataModel() && c->GetDataModel() == p->GetDataModel();
+    Rml::ElementPtr moved = same_model ? from->RemoveChildToMove(c) : from->RemoveChild(c);
+    p->InsertBefore(std::move(moved), element(before));
 }
 
 void rml_element_remove_child(rml_element *parent, rml_element *child)
@@ -1320,6 +1322,12 @@ void rml_data_model_dirty(rml_data_model *model, const char *variable)
 {
     json_items_clear(model->items);
     model->handle.DirtyVariable(variable);
+}
+
+void rml_data_model_dirty_all(rml_data_model *model)
+{
+    json_items_clear(model->items);
+    model->handle.DirtyAllVariables();
 }
 
 uint64_t rml_data_model_writes(const rml_data_model *model)

@@ -486,6 +486,11 @@ static int focus_area(studio *s, rml_element *focus)
     return -1;
 }
 
+void studio_ui_data_dirty_all(studio *s)
+{
+    rml_data_model_dirty_all(s->ui->data.model);
+}
+
 rml_data_reads studio_ui_data_reads(const studio *s)
 {
     return s->ui ? rml_data_model_reads(s->ui->data.model) : (rml_data_reads){ 0 };

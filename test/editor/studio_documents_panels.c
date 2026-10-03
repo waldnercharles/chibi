@@ -971,8 +971,86 @@ static void authored_modals_and_collaboration()
     fixture_free(&f);
 }
 
+/* The editors whose area shows authored panels: the body, header controls
+   or both (the Behavior editor's GraphView). */
+static const studio_editor AREA_PANELS[] = {
+    STUDIO_EDITOR_ASSETS, STUDIO_EDITOR_OUTLINER, STUDIO_EDITOR_MEMBERS,
+    STUDIO_EDITOR_OUTPUT, STUDIO_EDITOR_BEHAVIOR,
+};
+#define AREA_PANEL_COUNT (int)(sizeof AREA_PANELS / sizeof *AREA_PANELS)
+#define AREA_ROUNDS 3
+
+/* Shows `editor` in the top area for three UI frames, the List's window
+   following its mount. */
+static void show_area_panel(studio_fixture *f, studio_editor editor)
+{
+    studio_active_layout(f->studio)->editors[STUDIO_AREA_TOP] = editor;
+    frames(f, 3);
+}
+
+/* The views of the panels' data model: one frame evaluates each once. */
+static uint64_t data_views(studio_fixture *f)
+{
+    studio *s = f->studio;
+    uint64_t before = studio_ui_data_reads(s).values;
+    studio_ui_data_dirty_all(s);
+    s->ui_schedule.wake = true;
+    frames(f, 1);
+    return studio_ui_data_reads(s).values - before;
+}
+
+/* One area turned from every authored panel to every other, round after
+   round: RmlUi warns of no view it lost or could not bind, and the data
+   model keeps as many views as after the first round. */
+static void area_panels_take_turns()
+{
+    /* A behavior open, so Members lists it and GraphView's menus fill. */
+    studio_fixture f = scene_open("projects/arena2d", "projects/arena2d/content/scenes/Sandbox.kdl", "Movement");
+    studio *s = f.studio;
+    /* The list, which streams no thumbnails between rounds. */
+    s->prefs.assets_tile = STUDIO_ASSETS_LIST;
+    s->applied = s->prefs;
+    int warnings = rml_backend_warning_count();
+    uint64_t views[2] = { 0 };
+    for (int round = 0; round < AREA_ROUNDS; round++) {
+        for (int a = 0; a < AREA_PANEL_COUNT; a++) {
+            for (int b = 0; b < AREA_PANEL_COUNT; b++) {
+                if (a != b) {
+                    show_area_panel(&f, AREA_PANELS[a]);
+                    show_area_panel(&f, AREA_PANELS[b]);
+                }
+            }
+        }
+        /* Maximized and back, an area's header and body move in the
+           kit's tree. */
+        for (int a = 0; a < AREA_PANEL_COUNT; a++) {
+            show_area_panel(&f, AREA_PANELS[a]);
+            s->maximized = STUDIO_AREA_TOP;
+            frames(&f, 3);
+            s->maximized = -1;
+            frames(&f, 3);
+        }
+        show_area_panel(&f, AREA_PANELS[0]);
+        views[round > 0] = data_views(&f);
+    }
+    warnings = rml_backend_warning_count() - warnings;
+    bool kept = !warnings && views[1] == views[0];
+    if (!kept) {
+        printf(
+            "  views %llu after the first round, %llu after the last; %d RmlUi "
+            "warnings\n",
+            (unsigned long long)views[0],
+            (unsigned long long)views[1],
+            warnings
+        );
+    }
+    test_check(kept, "an area turned between every pair of authored panels binds each one's views anew, none lost or piling up");
+    fixture_free(&f);
+}
+
 void studio_documents_panel_checks()
 {
+    area_panels_take_turns();
     ui_wiring_checks();
     preview_hears_keys();
     settings_records_shortcut();

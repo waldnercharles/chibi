@@ -13,6 +13,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define ARENA "projects/arena2d"
@@ -476,6 +477,133 @@ static void properties(studio_bench *b)
     bench_spike_free(c.spike);
 }
 
+/* ---------- 10: the Outliner over ten thousand objects ---------- */
+
+#define OUTLINER_OBJECTS 10000
+#define SCROLL_ROWS 3
+/* Rows a document query collects at most; a window holds fewer. */
+#define MAX_ROWS 256
+
+/* The Outliner's scroller, the authored List (workstream P2). Before it,
+   the kit's list was ".vlist.outliner". */
+static rml_element *outliner_list(studio *s)
+{
+    return studio_query(s, "#outliner-list");
+}
+
+/* The rows shown (templates left out) that lack the mark, which a step
+   instanced; with `mark`, marks them all. `shown` counts them. */
+static int fresh_rows(rml_element *list, bool mark, int *shown)
+{
+    rml_element *rows[MAX_ROWS];
+    int count = rml_element_query_selector_all(list, ".tree-row", rows, MAX_ROWS);
+    assert(count < MAX_ROWS);
+    int fresh = 0;
+    *shown = 0;
+    for (int i = 0; i < count; i++) {
+        if (!rml_element_is_visible(rows[i], false)) {
+            continue;
+        }
+        ++*shown;
+        fresh += !rml_element_has_attribute(rows[i], "data-bench");
+        if (mark) {
+            rml_element_set_attribute(rows[i], "data-bench", "");
+        }
+    }
+    return fresh;
+}
+
+/* Scrolls the Outliner three rows down per run, from the middle of ten
+   thousand objects, and times the UI frame that follows: rows instanced,
+   layouts and elements in the Outliner's document; then selects one of two
+   objects in view in turn. */
+static void outliner_scroll(studio_bench *b)
+{
+    studio *s = b->studio;
+    for (int i = 0; i < OUTLINER_OBJECTS; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "Marker %d", i);
+        int added = add_actor(b->scene, name, "DriftingMarker");
+        assert(added == 0);
+    }
+    select_instance(b->scene, 0);
+    studio_show_editor(s, STUDIO_EDITOR_OUTLINER);
+    frames(b, 6);
+    rml_element *list = outliner_list(s);
+    assert(list);
+    probe_documents(s);
+    char value[32] = "";
+    rml_element_property(list, "--row", value, sizeof value);
+    float row = (float)atof(value) * studio_pixel_ratio(s);
+    assert(row > 0);
+    float top = row * OUTLINER_OBJECTS / 2;
+    rml_element_set_scroll_top(list, top);
+    frames(b, 4);
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    int instanced = 0, shown = 0;
+    for (int run = -WARMUP; run < RUNS; run++) {
+        fresh_rows(list, true, &shown);
+        top += SCROLL_ROWS * row;
+        rml_element_set_scroll_top(list, top);
+        cf_app_update(NULL);
+        bench_counts before = studio_mark();
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        counts = (bench_counts){
+            .layouts = bench_layouts() - before.layouts,
+            .elements = rml_element_query_selector_all(rml_element_owner_document(list), "*", NULL, 0)
+        };
+        instanced = fresh_rows(list, false, &shown);
+        if (run >= 0) {
+            ms[run] = t;
+            for (int p = 0; p < PHASE_COUNT; p++) {
+                phases[p][run] = phase[p];
+            }
+        }
+    }
+    char name[160];
+    snprintf(
+        name,
+        sizeof name,
+        "Outliner over %d objects, %.0f dp tall, a %d-row scroll step: %d rows "
+        "shown, %d instanced",
+        acount(b->scene->actors),
+        rml_element_client_height(list) / studio_pixel_ratio(s),
+        SCROLL_ROWS,
+        shown,
+        instanced
+    );
+    bench_row("10", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("its phases", phases);
+    /* Two objects in view, selected in turn, as clicks on their rows. */
+    int first = (int)(top / row);
+    for (int run = -WARMUP; run < RUNS; run++) {
+        select_instance(b->scene, first + 4 + (run & 1));
+        cf_app_update(NULL);
+        bench_counts before = studio_mark();
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        counts = (bench_counts){
+            .layouts = bench_layouts() - before.layouts,
+            .elements = rml_element_query_selector_all(rml_element_owner_document(list), "*", NULL, 0)
+        };
+        if (run >= 0) {
+            ms[run] = t;
+            for (int p = 0; p < PHASE_COUNT; p++) {
+                phases[p][run] = phase[p];
+            }
+        }
+    }
+    bench_row(
+        "10",
+        "Outliner over 10k objects: select another object in view",
+        bench_stat_of(ms, RUNS),
+        counts
+    );
+    phase_row("its phases", phases);
+}
+
 /* ---------- 7: popovers and area clipping ---------- */
 
 #define POP_SIZE 200
@@ -604,6 +732,7 @@ int ui_bench_studio(const char *program)
     b.studio->prefs.comfortable = false;
     area_text_change(&b);
     properties(&b);
+    outliner_scroll(&b);
     bench_close(&b);
     popover_clipping();
     app_input_shutdown();

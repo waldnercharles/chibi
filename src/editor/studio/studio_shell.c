@@ -1620,6 +1620,7 @@ void studio_emit(studio *s)
     reveal_document(s);
     track_pointer(s);
     kit_root(s->kit, "app");
+    studio_drop_frame(s);
     topbar(s);
     workspace(s);
     /* Visual designer (workstream H): the Text Editor's cursor and the Canvas. */
@@ -1627,6 +1628,7 @@ void studio_emit(studio *s)
     statusbar(s);
     studio_palette(s);
     studio_new_asset_frame(s);
+    studio_prototype_actions_frame(s);
     undo_toast(s);
     studio_projects_frame(s);
     studio_rewire_toast(s);

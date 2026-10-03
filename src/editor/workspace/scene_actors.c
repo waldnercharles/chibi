@@ -159,7 +159,9 @@ void remove_selected(app_scene_authoring *scene)
     remove_actor_at(scene, scene->selected);
 }
 
-static av_value *capture_actor_state(app_scene_authoring *scene, const scene_actor *actor)
+/* The object's components and behaviors, spawning as an instance of the
+   prototype whose identity is `identity`. */
+static av_value *actor_state_as(app_scene_authoring *scene, const scene_actor *actor, const char *identity)
 {
     game_prototype *state = game_prototype_capture_entity(
         actor->name,
@@ -171,7 +173,7 @@ static av_value *capture_actor_state(app_scene_authoring *scene, const scene_act
         return NULL;
     }
     free(state->identity);
-    state->identity = xstrdup(actor->base->identity);
+    state->identity = xstrdup(identity);
     int count = game_behavior_attachment_count_for_entity(
         scene->live->behaviors,
         actor->entity
@@ -188,6 +190,11 @@ static av_value *capture_actor_state(app_scene_authoring *scene, const scene_act
     av_value *value = game_prototype_to_value(state);
     game_prototype_free(state);
     return value;
+}
+
+static av_value *capture_actor_state(app_scene_authoring *scene, const scene_actor *actor)
+{
+    return actor_state_as(scene, actor, actor->base->identity);
 }
 
 static bool actor_name_used(const app_scene_authoring *scene, const char *name)
@@ -562,6 +569,50 @@ int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
     av_value_free(retained);
     scene_action_finish(scene, action, result == 0);
     free(action);
+    return result;
+}
+
+int scene_repoint_actor(app_scene_authoring *scene, int index, const char *prototype)
+{
+    scene_prototype_asset *asset = find_prototype(scene, prototype);
+    scene_actor *actor = &scene->actors[index];
+    assert(asset && strcmp(actor->prototype_name, prototype));
+    scene_actor_edit removed = {
+        .index = index,
+        .identity = actor->identity,
+        .name = xstrdup(actor->name),
+        .prototype_name = xstrdup(actor->prototype_name),
+        .base = game_prototype_to_value(actor->base),
+        .state = capture_actor_state(scene, actor),
+        .retained = scene_retention_save(actor->retained),
+    };
+    scene_actor_edit added = removed;
+    added.prototype_name = prototype;
+    added.base = game_prototype_to_value(asset->prototype);
+    added.state = actor_state_as(scene, actor, asset->prototype->identity);
+    added.created = true;
+    ecs_entity old = actor->entity, entity = { 0 };
+    int result = removed.state && added.state ? remove_actor_at(scene, index) : -1;
+    if (result == 0 && restore_actor(scene, &added, &entity) != 0) {
+        result = restore_actor(scene, &removed, &entity);
+        assert(result == 0);
+        result = -1;
+    }
+    if (result == 0) {
+        scene_history_begin_group(scene->history);
+        scene_history_push_actor(scene->history, old, &removed);
+        scene_history_push_actor(scene->history, entity, &added);
+        scene_history_end_group(scene->history);
+        scene->scene_dirty = true;
+        asset_index_invalidate(scene);
+    }
+    free((char *)removed.name);
+    free((char *)removed.prototype_name);
+    av_value_free(removed.base);
+    av_value_free(removed.state);
+    av_value_free(removed.retained);
+    av_value_free(added.base);
+    av_value_free(added.state);
     return result;
 }
 
@@ -1000,6 +1051,18 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
         }
         apply_physics_settings(scene, *physics);
         scene_history_complete_physics(scene->history, redo);
+        return 0;
+    }
+    const scene_prototype_edit *prototype = scene_history_peek_prototype(scene->history, redo);
+    if (prototype) {
+        if (scene_restore_prototype(
+                scene,
+                prototype->name,
+                redo ? prototype->after : prototype->before
+            ) != 0) {
+            return -1;
+        }
+        scene_history_complete_prototype(scene->history, redo);
         return 0;
     }
     ecs_entity entity;

@@ -390,7 +390,8 @@ target_link_libraries(authoring_graph PUBLIC runtime_support core)
 
 add_library(automation STATIC src/automation/controller.c src/automation/field_preview.c
     src/automation/graph_optimize.c src/automation/navigation.c
-    src/automation/prototype_edit.c src/automation/scene_edit.c src/automation/asset_write.c)
+    src/automation/prototype_edit.c src/automation/prototype_instance.c src/automation/scene_edit.c
+    src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core authoring_graph editor)
 
@@ -693,6 +694,8 @@ add_executable(test_suite
     src/editor/workspace/scene_gizmo.c
     src/editor/workspace/scene_overlays.c
     src/editor/workspace/scene_world_preview.c
+    src/editor/workspace/scene_asset_drop.c
+    src/editor/documents/scene_prototype_actions.c
     src/editor/documents/scene_disk.c
     src/editor/documents/scene_document.c
     src/editor/documents/scene_documents.c

@@ -27,7 +27,7 @@ const entries = [
     operation: "edit_prototype",
     adapter: "authoring",
     title: "Build or edit a prototype",
-    description: "Build or edit a prototype, including reflected components, field values, and behavior attachments. Use this for requests to create or modify a prefab-like authored object. Call describeComponents when a field type or native default is unclear, then validateAsset and runScenario after publishing.",
+    description: "Build or edit a prototype, including reflected components, field values, and behavior attachments. Use this for requests to create or modify a prefab-like authored object. Pass source_instance to apply a scene entity's overridden fields to its prototype, or with create to save the tuned entity as a new prototype; then buildScene's set_entity_prototype makes the entity an instance of it. Call describeComponents when a field type or native default is unclear, then validateAsset and runScenario after publishing.",
     intentTerms: ["build", "prototype"],
     candidates: ["createOrEditPrototype", "authorPrototype", "buildPrototype"],
     legacyName: "edit_prototype",

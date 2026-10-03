@@ -1,5 +1,6 @@
 #ifndef CHIBI_SCENE_INTERNAL_H
 #define CHIBI_SCENE_INTERNAL_H
+#include "assets/prototype_instance.h"
 #include "assets/scenario_document.h"
 #include "assets/scene_document.h"
 #include "editor/documents/scene_history.h"
@@ -100,6 +101,22 @@ typedef struct
     const ecs_component_desc *only; /* the component kept, or NULL for all */
     scene_field_edit *fields;       /* array; `after` holds each kept value */
 } scene_kept;
+
+/* An asset dragged over an object, in the field that names its kind
+   (scene_asset_drop.c): the next draw shows it, then puts `before` back. */
+typedef struct
+{
+    ecs_entity entity;
+    ecs_component_id component;
+    int field;
+    char *text;       /* the asset's name, owned */
+    pin_value before; /* while drawn; owned, as scene_property_value_copy copies */
+    bool shown;
+} scene_field_preview;
+
+/* The Scene outlines an object a dragged asset would land on in the kit's
+   drop color, a bright primary, beside the orange selection. */
+#define SCENE_DROP_COLOR 0x5B8DEFFFu
 
 typedef struct
 {
@@ -224,6 +241,7 @@ struct app_scene_authoring
     uint64_t *spawn_seen;
     bool runtime_snapshot_valid;
     scene_kept *kept; /* Keep Changes, oldest first; Stop applies them */
+    scene_field_preview *field_previews; /* until the next draw (scene_asset_drop.c) */
     bool runtime_playing;
     bool runtime_step;
     bool preview_playing;
@@ -369,6 +387,49 @@ char **instance_behavior_names(app_scene_authoring *scene, ecs_entity entity);
 scene_prototype_asset *previewed_prototype(app_scene_authoring *scene);
 
 bool prototype_has_component_id(const game_prototype *prototype, ecs_component_id id);
+/* The live world and the prototype preview spawn the prototype as it is now. */
+int register_prototype_hosts(app_scene_authoring *scene, const game_prototype *prototype);
+
+/* ---------- Prototype actions (scene_prototype_actions.c) ---------- */
+
+/* How many other instances of its prototype take one of the fields from
+   `source` (game_prototype_instance_overrides), and so change when they are
+   applied. */
+int scene_override_reach(
+    const app_scene_authoring *scene,
+    const scene_actor *source,
+    const game_prototype_field *fields,
+    int count
+);
+/* Copies the instance's fields into its prototype; the instances that
+   inherit them follow. One scene Undo step, also an Undo step of the
+   prototype's own document. */
+int scene_apply_overrides(
+    app_scene_authoring *scene,
+    scene_actor *source,
+    const game_prototype_field *fields,
+    int count
+);
+/* Replaces prototype `name` with its definition `value`, as its scene Undo
+   step replays it; every instance keeps its values. */
+int scene_restore_prototype(app_scene_authoring *scene, const char *name, av_value *value);
+/* Whether a new prototype can be named `name`: a valid asset name no asset
+   or file has; false with why in `error`. */
+bool scene_prototype_name_free(app_scene_authoring *scene, const char *name, char *error, size_t size);
+/* Saves the instance as a new prototype asset `name` and makes the instance
+   one of it, as one Undo step; -1 with why in `error` when the name is
+   invalid or taken. */
+int scene_save_as_prototype(
+    app_scene_authoring *scene,
+    scene_actor *actor,
+    const char *name,
+    char *error,
+    size_t size
+);
+/* Makes the object at `index` an instance of `prototype`, keeping its name,
+   place, values, behaviors and identity, as one Undo step that removes it
+   and adds it back (scene_actors.c). */
+int scene_repoint_actor(app_scene_authoring *scene, int index, const char *prototype);
 void prototype_history_before(app_scene_authoring *scene, game_prototype *prototype);
 /* The prototype a running scene entity was made from, or NULL. */
 const char *scene_entity_prototype(const app_scene_authoring *scene, ecs_entity entity);
@@ -521,6 +582,32 @@ render_skip scene_view_skip(app_scene_authoring *scene, unsigned flags, uint64_t
 void scene_view_save_as(app_scene_authoring *scene, const char *path);
 /* The topmost object at (x, y) in the 2D edit view that `skip` does not hold. */
 ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y, render_skip skip);
+/* The object a click at the pointer would pick, as of the Scene's last draw. */
+ecs_entity scene_pick_at_pointer(app_scene_authoring *scene, engine_viewport *viewport);
+
+/* ---------- Assets dropped on objects (scene_asset_drop.c) ---------- */
+
+/* The field of `entity` whose text names an asset of `kind`
+   (reference_named_field_kind), its component in `component`; -1 for none. */
+int scene_asset_field(
+    const app_scene_authoring *scene,
+    ecs_entity entity,
+    reference_asset_kind kind,
+    ecs_component_id *component
+);
+/* Shows `text` in the field for the next draw only, outlined in
+   SCENE_DROP_COLOR, as Unity previews a material dragged over an object. */
+void scene_preview_field(
+    app_scene_authoring *scene,
+    ecs_entity entity,
+    ecs_component_id component,
+    int field,
+    const char *text
+);
+/* The draw writes the previews before it renders; clearing puts the authored
+   values back and forgets them. */
+void scene_field_previews_apply(app_scene_authoring *scene);
+void scene_field_previews_clear(app_scene_authoring *scene);
 
 /* ---------- UI documents (Studio UI authoring, workstream D) ---------- */
 

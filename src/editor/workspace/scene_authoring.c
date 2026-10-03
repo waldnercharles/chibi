@@ -1734,6 +1734,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         return;
     }
     scene_kept_clear(scene);
+    scene_field_previews_clear(scene);
     scene_selection_free(scene);
     scenario_document_free(scene->scenario);
     av_value_free(scene->scenario_saved_state);

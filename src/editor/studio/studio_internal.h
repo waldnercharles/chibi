@@ -195,6 +195,9 @@ typedef enum
     STUDIO_COMMAND_SLOWER,
     STUDIO_COMMAND_FASTER,
     STUDIO_COMMAND_NORMAL_SPEED,
+    /* Prototype actions on the selected instance (studio_prototype_actions.c) */
+    STUDIO_COMMAND_APPLY_OVERRIDES,
+    STUDIO_COMMAND_SAVE_AS_PROTOTYPE,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -891,6 +894,29 @@ struct studio
     double assets_rest_since;
     struct studio_thumbs *thumbs; /* asset thumbnails, NULL until asked for */
     char dropped_prototype[256];  /* placed by the viewport this frame */
+    /* An asset dragged over an asset field (studio_drop.c): the field's key
+       and the asset as of the last frame, and the asset a field took. */
+    struct
+    {
+        char key[192];
+        char name[256];
+        char landed[256];
+    } drop;
+    /* Apply Overrides and Save as New Prototype (studio_prototype_actions.c):
+       the instance they act on, by identity; the overridden fields Apply
+       leaves out; Save as New's name, its error, and the Undo toast. */
+    struct studio_prototype_action
+    {
+        uint64_t actor;
+        game_prototype_field *skipped; /* array */
+        char name[128];
+        char error[192];
+        bool opening; /* a popover asks at the pointer next frame */
+        bool saving;  /* the open popover is Save as New's */
+        bool focus, shown;
+        int toast;
+        uint64_t step; /* the Undo step the toast undoes */
+    } prototype_action;
     int output_view;
     char output_filter[128];
     char references_title[160]; /* what Output's Find view lists references to */
@@ -1771,6 +1797,42 @@ void studio_pick_open(studio *s, const char *key, const char *current, const stu
 /* Items for the command surface while it picks an asset. */
 bool studio_pick_palette(studio *s);
 
+/* ---------- Typed asset drops (studio_drop.c) ---------- */
+
+/* Whether Assets lets the asset drag: prototypes, behaviors, and the kinds
+   object fields name. */
+bool studio_asset_draggable(const reference_asset *asset);
+/* Before the areas emit: forgets what the last frame previewed. */
+void studio_drop_frame(studio *s);
+/* An asset field emitted last, keyed `key`, takes assets of `kind`: the name
+   of one dropped on it this frame, or NULL. */
+const char *studio_drop_picker(studio *s, const char *key, int kind);
+/* The asset dragged over the field keyed `key`, which it shows; NULL. */
+const char *studio_drop_shown(const studio *s, const char *key);
+/* The Outliner row emitted last, of actor `index`, and the Scene's surface
+   take assets an object's fields name, and behaviors. */
+void studio_drop_row(studio *s, int index);
+void studio_drop_scene(studio *s);
+/* Attaches behavior `name` to actor `index`, selecting it, as one Undo step. */
+void studio_attach_behavior(studio *s, int index, const char *name);
+/* Sets the actor's text field to `text` as Properties does: one Undo step. */
+void studio_set_field(studio *s, scene_actor *actor, ecs_component_id component, int field, const char *text);
+
+/* ---------- Prototype actions (studio_prototype_actions.c) ---------- */
+
+/* The selected instance Apply Overrides and Save as New act on, or NULL. */
+scene_actor *studio_prototype_action_actor(studio *s);
+/* Opens Apply Overrides to Prototype's or Save as New Prototype's popover at
+   the pointer. */
+void studio_prototype_action_open(studio *s, bool saving);
+/* The Properties identity's menu button for both, emitted beside its
+   prototype; and, after the areas, the popovers and the Undo toast. */
+void studio_prototype_actions_button(studio *s, scene_actor *actor);
+void studio_prototype_actions_frame(studio *s);
+/* Applies the field to its instance's prototype (the field menu's Apply to
+   Prototype). */
+void studio_apply_field(studio *s, scene_actor *actor, game_prototype_field field);
+
 /* Game UI errors (studio_canvas.c): the shown documents' error, the scene's
  * or the preview's, as "ui/Name.rml message". A change is recorded in
  * Output once; the Scene's notice and Output's Problems show it while it
@@ -2038,6 +2100,8 @@ void studio_designer_frame(studio *s);
  * picks the selected row up to move with the arrows, as dnd-kit's keyboard
  * sensor does (workstream Q). True when one was taken. */
 bool studio_designer_key(studio *s, studio_editor editor, SDL_Keycode key, SDL_Keymod mod);
+/* A Canvas resize handle is held: it owns the keys, and Escape cancels. */
+bool studio_designer_resizing(const studio *s);
 void studio_designer_free(studio *s);
 /* The element of `rml`, the markup of ui asset `asset`, that the shown
  * `element` of `context`, or its nearest ancestor the asset wrote, was

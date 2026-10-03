@@ -4,9 +4,10 @@
  * view). Both are virtualized. A click selects, the arrows move the
  * selection, and Enter or a double-click opens the asset. Prototypes drag
  * into the Scene or the Outliner to place an instance; behaviors drag onto an
- * Outliner row to attach. Resting on a tile shows a large preview, as
- * Unreal's Content Browser does. New makes an asset of any kind Studio
- * indexes and opens it. */
+ * Outliner row to attach, and assets fields name onto those fields
+ * (studio_drop.c). Resting on a tile shows a large preview, as Unreal's
+ * Content Browser does. New makes an asset of any kind Studio indexes and
+ * opens it. */
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
 #include "editor/workspace/asset_index.h"
@@ -393,8 +394,7 @@ static void asset_events(studio *s, const char *menu_key, int id, unsigned event
         s->assets_hover = id;
     }
     kit_flag(k, "data-unresolved", asset->unresolved);
-    if (asset->kind == REFERENCE_ASSET_PROTOTYPE ||
-        asset->kind == REFERENCE_ASSET_BEHAVIOR) {
+    if (studio_asset_draggable(asset)) {
         kit_drag_desc drag = { .type = KIND_NAMES[asset->kind],
                                .payload = asset->name,
                                .icon = icon };

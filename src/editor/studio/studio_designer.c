@@ -17,6 +17,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1340,6 +1341,258 @@ static void drop_line(kit *k, const canvas_target *t, kit_rect clip)
     place(k, (kit_rect){ x, y, fmaxf(right - x, 0), fmaxf(bottom - y, 0) });
 }
 
+/* ---------- Resize handles ---------- */
+
+/* A handle's side, in kit dp; an edge's handle shows once the edge is three
+   handles long. */
+#define HANDLE 8.0f
+
+static const struct
+{
+    const char *key, *cls;
+    unsigned axes;
+    float u, v; /* where on the box, as fractions of its width and height */
+} HANDLES[] = {
+    { "resize-e", "designer-handle e", DESIGNER_RESIZE_WIDTH, 1, 0.5f },
+    { "resize-s", "designer-handle s", DESIGNER_RESIZE_HEIGHT, 0.5f, 1 },
+    { "resize-se", "designer-handle se", DESIGNER_RESIZE_WIDTH | DESIGNER_RESIZE_HEIGHT, 1, 1 },
+};
+
+static const char *const DIMENSIONS[] = { "width", "height" };
+
+void designer_resize_css(
+    const designer_box *box,
+    unsigned axes,
+    float dx,
+    float dy,
+    bool aspect,
+    float css[2]
+)
+{
+    float size[2] = { box->size[0] + dx, box->size[1] + dy };
+    bool both = axes == (DESIGNER_RESIZE_WIDTH | DESIGNER_RESIZE_HEIGHT);
+    if (aspect && both && box->size[0] > 0 && box->size[1] > 0) {
+        float ratio = box->size[0] / box->size[1];
+        if (fabsf(dx) / box->size[0] >= fabsf(dy) / box->size[1]) {
+            size[1] = size[0] / ratio;
+        } else {
+            size[0] = size[1] * ratio;
+        }
+    }
+    for (int i = 0; i < 2; i++) {
+        float border = axes & (1u << i) ? size[i] : box->size[i];
+        float content = box->border_box ? fmaxf(border, box->extra[i])
+                                        : fmaxf(border - box->extra[i], 0);
+        css[i] = roundf(content);
+    }
+}
+
+/* The element's inline `property`, as written, in `out`; "" for none. */
+static void inline_style(const ui_source *rml, int element, const char *property, char *out, size_t size)
+{
+    out[0] = '\0';
+    char *style = ui_source_attribute_value(rml, element, "style");
+    size_t length = strlen(property);
+    for (const char *at = style; at && *at;) {
+        at += strspn(at, " \t\n;");
+        const char *colon = strchr(at, ':'), *end = at + strcspn(at, ";");
+        if (colon && colon < end && (size_t)(colon - at) >= length &&
+            !strncmp(at, property, length) &&
+            strspn(at + length, " \t") == (size_t)(colon - at - length)) {
+            const char *value = colon + 1 + strspn(colon + 1, " \t");
+            int written = (int)(end - value);
+            while (written > 0 && isspace((unsigned char)value[written - 1])) {
+                written--;
+            }
+            snprintf(out, size, "%.*s", written, value);
+        }
+        at = end;
+    }
+    free(style);
+}
+
+/* The drag runs from the handle's center, wherever on it the press was and
+   however far the pointer went in the frame that took it. */
+static void resize_begin(
+    studio *s,
+    studio_designer *d,
+    ui_buffer *b,
+    rml_element *el,
+    rml_context *context,
+    kit_rect handle
+)
+{
+    float ratio = rml_context_dp_ratio(context);
+    rml_vec2 border = rml_element_box_size(el, RML_BOX_BORDER);
+    rml_vec2 content = rml_element_box_size(el, RML_BOX_CONTENT);
+    char sizing[32] = "";
+    rml_element_property(el, "box-sizing", sizing, sizeof sizing);
+    d->resize.active = true;
+    d->resize.moved = false;
+    d->resize.element = d->selected;
+    d->resize.x0 = handle.x + handle.w / 2;
+    d->resize.y0 = handle.y + handle.h / 2;
+    d->resize.revision = b->revision;
+    d->resize.box = (designer_box){ { border.x / ratio, border.y / ratio },
+                                    { (border.x - content.x) / ratio,
+                                      (border.y - content.y) / ratio },
+                                    !strcmp(sizing, "border-box") };
+    for (int i = 0; i < 2; i++) {
+        inline_style(
+            d->rml,
+            d->selected,
+            DIMENSIONS[i],
+            d->resize.before[i],
+            sizeof d->resize.before[i]
+        );
+    }
+}
+
+/* Puts back what the drag showed on the element. */
+static void resize_restore(studio_designer *d, rml_element *el)
+{
+    for (int i = 0; el && i < 2; i++) {
+        if (!(d->resize.axes & (1u << i))) {
+            continue;
+        }
+        if (d->resize.before[i][0]) {
+            rml_element_set_property(el, DIMENSIONS[i], d->resize.before[i]);
+        } else {
+            rml_element_remove_property(el, DIMENSIONS[i]);
+        }
+    }
+}
+
+/* Release writes the size into the element's inline style, one undo step;
+   a press that never moved writes nothing. */
+static void resize_commit(studio *s, studio_designer *d, ui_buffer *b, rml_element *el)
+{
+    d->resize.active = false;
+    if (!d->resize.moved) {
+        return;
+    }
+    ui_design_style styles[2];
+    char values[2][32];
+    int count = 0;
+    for (int i = 0; i < 2; i++) {
+        if (d->resize.axes & (1u << i)) {
+            snprintf(values[count], sizeof values[count], "%gdp", d->resize.css[i]);
+            styles[count] = (ui_design_style){ DIMENSIONS[i], values[count] };
+            count++;
+        }
+    }
+    char error[192] = "";
+    if (!ui_design_set_styles(b, d->resize.element, styles, count, error, sizeof error)) {
+        resize_restore(d, el);
+        designer_warn(s, "Could not resize", error);
+    }
+}
+
+/* While the button is held the Canvas shows the new size, and the
+   selection's label reads it; Shift keeps the aspect at the corner. */
+static void resize_frame(studio *s, studio_designer *d, ui_buffer *b, rml_context *context, canvas_map m)
+{
+    if (!d->resize.active) {
+        return;
+    }
+    rml_element *el = studio_designer_shown(context, d->rml, d->asset, d->resize.element);
+    if (!el || b->revision != d->resize.revision) {
+        resize_restore(d, el);
+        d->resize.active = false;
+        return;
+    }
+    float ratio = rml_context_dp_ratio(context);
+    float dx = (s->in.mouse_x - d->resize.x0) / (m.sx * ratio);
+    float dy = (s->in.mouse_y - d->resize.y0) / (m.sy * ratio);
+    /* A press anywhere on the handle that never left it changes nothing. */
+    d->resize.moved |= fabsf(s->in.mouse_x - d->resize.x0) > HANDLE / 2 + 1 ||
+                       fabsf(s->in.mouse_y - d->resize.y0) > HANDLE / 2 + 1;
+    if (d->resize.moved) {
+        bool aspect = (s->mods & SDL_KMOD_SHIFT) != 0;
+        designer_resize_css(
+            &d->resize.box,
+            d->resize.axes,
+            dx,
+            dy,
+            aspect,
+            d->resize.css
+        );
+        for (int i = 0; i < 2; i++) {
+            char value[32];
+            snprintf(value, sizeof value, "%gdp", d->resize.css[i]);
+            if (d->resize.axes & (1u << i)) {
+                rml_element_set_property(el, DIMENSIONS[i], value);
+            }
+        }
+    }
+    if (!s->in.down[0]) {
+        resize_commit(s, d, b, el);
+    }
+}
+
+static bool inside(kit_rect outer, kit_rect r)
+{
+    return r.x >= outer.x && r.y >= outer.y && r.x + r.w <= outer.x + outer.w &&
+           r.y + r.h <= outer.y + outer.h;
+}
+
+/* The selection's handles on its right and bottom edges and corner: only
+   its size changes, so wherever its layout puts it, it stays. A widget's use
+   has none, its widget deciding its size. */
+static void resize_handles(studio *s, studio_designer *d, ui_buffer *b, rml_context *context, canvas_map m)
+{
+    kit *k = s->kit;
+    rml_element *el = studio_designer_shown(context, d->rml, d->asset, d->selected);
+    if (!el || !rml_element_is_visible(el, true) ||
+        rml_element_has_attribute(el, "data-ui")) {
+        return;
+    }
+    kit_rect bounds = studio_designer_element_box(el);
+    kit_rect box = { m.x + bounds.x * m.sx,
+                     m.y + bounds.y * m.sy,
+                     bounds.w * m.sx,
+                     bounds.h * m.sy };
+    for (size_t i = 0; i < sizeof HANDLES / sizeof *HANDLES; i++) {
+        kit_rect r = { box.x + box.w * HANDLES[i].u - HANDLE / 2,
+                       box.y + box.h * HANDLES[i].v - HANDLE / 2,
+                       HANDLE,
+                       HANDLE };
+        float edge = HANDLES[i].axes == DESIGNER_RESIZE_WIDTH ? box.h : box.w;
+        bool corner = HANDLES[i].u == 1 && HANDLES[i].v == 1;
+        if (!inside(m.clip, r) || (!corner && edge < 3 * HANDLE)) {
+            continue;
+        }
+        kit_leaf(k, HANDLES[i].key, NULL, HANDLES[i].cls);
+        place(k, r);
+        kit_flag(
+            k,
+            "data-active",
+            d->resize.active && d->resize.axes == HANDLES[i].axes
+        );
+        if (kit_item_pressed(k) && !d->resize.active) {
+            d->resize.axes = HANDLES[i].axes;
+            resize_begin(s, d, b, el, context, r);
+        }
+    }
+}
+
+static void resize_cancel(studio *s, studio_designer *d, ui_buffer *b)
+{
+    canvas_map m;
+    rml_context *context = canvas(s, d, b, &m);
+    resize_restore(
+        d,
+        context ? studio_designer_shown(context, d->rml, d->asset, d->resize.element) : NULL
+    );
+    d->resize.active = false;
+    studio_report(s, "Resize canceled");
+}
+
+bool studio_designer_resizing(const studio *s)
+{
+    return s->designer && s->designer->resize.active;
+}
+
 /* Outlines the selection and the element under the pointer or its row,
  * selects with a click, and takes drops through a zone over the frame that
  * only takes the pointer while a Hierarchy row or a Library item drags.
@@ -1350,9 +1603,11 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
     canvas_map m;
     rml_context *context = canvas(s, d, b, &m);
     if (!context) {
+        d->resize.active = false;
         return;
     }
     kit *k = s->kit;
+    resize_frame(s, d, b, context, m);
     bool dragging = kit_dragging(k, DESIGNER_DRAG);
     bool over = dragging && pointer_in(s, m.clip) && d->hovered < 0;
     bool pointed = s->surface.hovered || over;
@@ -1361,9 +1616,6 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
                         : (canvas_target){
                               .target = pointed ? source_under(s, d, context, m) : -1
                           };
-    if (s->surface.hovered && s->surface.pressed[0]) {
-        designer_select(s, t.target);
-    }
     kit_guides_begin(k, "designer");
     kit_leaf(k, "drop", NULL, "designer-drop");
     place(k, m.clip);
@@ -1380,8 +1632,13 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
     }
     if (d->selected >= 0) {
         outline(s, d, context, m, d->selected, "selected");
+        resize_handles(s, d, b, context, m);
     }
     kit_guides_end(k);
+    /* A press selects, unless it took a resize handle. */
+    if (s->surface.hovered && s->surface.pressed[0] && !d->resize.active) {
+        designer_select(s, t.target);
+    }
     if (dropped) {
         t = canvas_target_at(s, d, context, m);
         drop(s, d, b, payload, t.target, t.place);
@@ -1395,6 +1652,9 @@ void studio_designer_frame(studio *s)
     ui_buffer *b;
     studio_designer *d = designer_state(s, &b);
     if (!d) {
+        if (s->designer) {
+            s->designer->resize.active = false;
+        }
         return;
     }
     undo_delete(s, d, b);
@@ -1408,6 +1668,13 @@ bool studio_designer_key(studio *s, studio_editor editor, SDL_Keycode key, SDL_K
 {
     ui_buffer *b;
     studio_designer *d = designer_state(s, &b);
+    /* A resize owns the keys while it runs: Escape cancels it. */
+    if (d && d->resize.active) {
+        if (key == SDLK_ESCAPE) {
+            resize_cancel(s, d, b);
+        }
+        return true;
+    }
     bool hierarchy = editor == STUDIO_EDITOR_OUTLINER;
     if (!d ||
         (!hierarchy && !(editor == STUDIO_EDITOR_SCENE && shows_document(s, d))) ||

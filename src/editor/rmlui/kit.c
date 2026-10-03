@@ -443,7 +443,7 @@ void node_free(node *n)
     free(n->cls);
     free(n->text);
     free(n->tag);
-    free(n->drop_type);
+    drop_types_clear(n);
     pairs_free(n->attrs);
     pairs_free(n->styles);
     widget_free(&n->w);
@@ -627,8 +627,7 @@ node *emit_in(kit *k, node *parent, const char *key, node_kind kind, const char 
     }
     parent->cursor++;
     n->frame = k->frame;
-    free(n->drop_type);
-    n->drop_type = NULL;
+    drop_types_clear(n);
     set_class(n, cls);
     k->last = n;
     return n;
@@ -1130,8 +1129,8 @@ static void kit_free(kit *k)
     }
     afree(k->toasts);
     drag_state *d = &k->drag;
-    char *drag_strings[] = { d->type,   d->payload, d->label,
-                             d->source, d->over,    d->target };
+    char *drag_strings[] = { d->type, d->payload, d->label, d->source,
+                             d->over, d->target,  d->hint };
     for (size_t i = 0; i < sizeof drag_strings / sizeof *drag_strings; i++) {
         free(drag_strings[i]);
     }
@@ -1365,6 +1364,11 @@ void kit_style(kit *k, const char *property, const char *value)
 bool kit_item_clicked(kit *k)
 {
     return k->last && (k->last->events & EV_CLICK);
+}
+
+bool kit_item_pressed(kit *k)
+{
+    return k->last && (k->last->events & EV_PRESS);
 }
 
 bool kit_item_context_clicked(kit *k)

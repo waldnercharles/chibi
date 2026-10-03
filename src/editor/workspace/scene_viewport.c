@@ -366,6 +366,41 @@ static void end_marquee(app_scene_authoring *scene)
     scene->marquee_base = NULL;
 }
 
+/* The object under the pointer in the edit view, perspective or 2D. */
+static ecs_entity pick_pointer(
+    app_scene_authoring *scene,
+    engine_viewport *viewport,
+    const engine_viewport_pointer *pointer,
+    render_skip unpickable
+)
+{
+    if (!engine_viewport_perspective(viewport)) {
+        return pick_scene_entity(scene, pointer->world_x, pointer->world_y, unpickable);
+    }
+    render_arena_camera camera = arena_camera(viewport);
+    return render_arena_pick(
+        scene->world,
+        &camera,
+        (CF_V2){ pointer->ndc_x, pointer->ndc_y },
+        unpickable
+    );
+}
+
+ecs_entity scene_pick_at_pointer(app_scene_authoring *scene, engine_viewport *viewport)
+{
+    engine_viewport_pointer pointer;
+    engine_viewport_get_pointer(viewport, &pointer);
+    if (!pointer.hovered) {
+        return (ecs_entity){ 0 };
+    }
+    render_skip unpickable = scene_view_skip(
+        scene,
+        APP_SCENE_VIEW_HIDDEN | APP_SCENE_VIEW_LOCKED,
+        &scene->view_unpickable
+    );
+    return pick_pointer(scene, viewport, &pointer, unpickable);
+}
+
 static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *viewport)
 {
     engine_viewport_pointer pointer;
@@ -399,18 +434,7 @@ static void edit_scene_pointer(app_scene_authoring *scene, engine_viewport *view
     }
     if (pointer.pressed) {
         finish_transform_edit(scene, false);
-        ecs_entity picked;
-        if (engine_viewport_perspective(viewport)) {
-            render_arena_camera camera = arena_camera(viewport);
-            picked = render_arena_pick(
-                scene->world,
-                &camera,
-                (CF_V2){ pointer.ndc_x, pointer.ndc_y },
-                unpickable
-            );
-        } else {
-            picked = pick_scene_entity(scene, pointer.world_x, pointer.world_y, unpickable);
-        }
+        ecs_entity picked = pick_pointer(scene, viewport, &pointer, unpickable);
         scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
         if (!picked.slot) {
             begin_marquee(scene, (CF_V2){ pointer.ndc_x, pointer.ndc_y });
@@ -591,7 +615,9 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
             snprintf(scene->message, sizeof scene->message, "GameCamera requires one active camera with positive spans.");
         }
     }
+    scene_field_previews_apply(scene);
     int drawn = engine_viewport_draw(viewport, &controls);
+    scene_field_previews_clear(scene);
     edit_scene_pointer(scene, viewport);
     engine_viewport_get_view(viewport, &camera->view);
     camera->saved = true;
@@ -724,6 +750,36 @@ static unsigned selection_color(const app_scene_authoring *scene, int i)
     return i < 0 || i == scene->selected ? SCENE_ACTIVE_COLOR : SCENE_SELECTED_COLOR;
 }
 
+/* An object's bounding box, projected and drawn as its twelve edges. */
+static void draw_arena_box(
+    ecs_world *world,
+    const render_arena_camera *camera,
+    const engine_viewport_camera *frame,
+    ecs_entity entity,
+    float stroke,
+    unsigned color
+)
+{
+    CF_V3 bounds[8];
+    if (!render_arena_entity_bounds(world, entity, bounds)) {
+        return;
+    }
+    CF_V2 corners[8];
+    for (int j = 0; j < 8; j++) {
+        CF_V3 projected = render_arena_project(camera, bounds[j]);
+        corners[j] = canvas_point(frame, (CF_V2){ projected.x, projected.y });
+    }
+    cf_draw_push_color(packed_color(color));
+    for (int j = 0; j < 8; j++) {
+        for (int bit = 1; bit <= 4; bit *= 2) {
+            if (!(j & bit)) {
+                cf_draw_line(corners[j], corners[j | bit], stroke);
+            }
+        }
+    }
+    cf_draw_pop_color();
+}
+
 static void draw_arena_selection(
     app_scene_authoring *scene,
     ecs_world *world,
@@ -737,29 +793,42 @@ static void draw_arena_selection(
     for (int i = -1; i < acount(scene->actors); i++) {
         ecs_entity entity = i < 0 ? scene->runtime_selected : scene->actors[i].entity;
         bool selected = i < 0 ? entity.slot != 0 : scene_instance_selected(scene, i);
-        if (!selected || !entity.slot || render_skip_has(hidden, entity)) {
-            continue;
+        if (selected && entity.slot && !render_skip_has(hidden, entity)) {
+            draw_arena_box(world, camera, &frame, entity, stroke, selection_color(scene, i));
         }
-        CF_V3 bounds[8];
-        if (!render_arena_entity_bounds(world, entity, bounds)) {
-            continue;
-        }
-        CF_V2 corners[8];
-        for (int j = 0; j < 8; j++) {
-            CF_V3 projected = render_arena_project(camera, bounds[j]);
-            corners[j] = canvas_point(&frame, (CF_V2){ projected.x, projected.y });
-        }
-        cf_draw_push_color(packed_color(selection_color(scene, i)));
-        for (int j = 0; j < 8; j++) {
-            for (int bit = 1; bit <= 4; bit *= 2) {
-                if (!(j & bit)) {
-                    cf_draw_line(corners[j], corners[j | bit], stroke);
-                }
-            }
-        }
-        cf_draw_pop_color();
+    }
+    for (int i = 0; i < acount(scene->field_previews); i++) {
+        ecs_entity entity = scene->field_previews[i].entity;
+        draw_arena_box(world, camera, &frame, entity, stroke, SCENE_DROP_COLOR);
     }
     draw_marquee(scene);
+}
+
+/* A box `margin` pixels around an object's appearance, a pixel wide. */
+static void outline_object(ecs_world *world, ecs_entity entity, float pixel, float margin, unsigned color)
+{
+    CF_Aabb bounds;
+    const GameTransform *position = GAME_GameTransform_get_const(world, entity);
+    const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
+    if (!position || !appearance ||
+        !appearance_bounds(
+            position,
+            appearance,
+            GAME_GameShader_get_const(world, entity),
+            actor_orientation(world, entity),
+            GAME_GameSdfMotion_get_const(world, entity),
+            false,
+            &bounds
+        )) {
+        return;
+    }
+    bounds.min.x -= margin * pixel;
+    bounds.min.y -= margin * pixel;
+    bounds.max.x += margin * pixel;
+    bounds.max.y += margin * pixel;
+    cf_draw_push_color(packed_color(color));
+    cf_draw_quad(bounds, pixel, 0);
+    cf_draw_pop_color();
 }
 
 /* The grid under the scene while it is edited: the renderer's backdrop, or
@@ -918,31 +987,13 @@ void app_scene_authoring_render(void *user)
                                             : scene->actors[selection].entity;
         bool marked = selection < 0 ? selected.slot != 0
                                     : scene_instance_selected(scene, selection);
-        if (!scene_can_move(scene) || !selected.slot || !marked ||
-            render_skip_has(hidden, selected)) {
-            continue;
+        if (scene_can_move(scene) && selected.slot && marked &&
+            !render_skip_has(hidden, selected)) {
+            outline_object(world, selected, pixel, 3, selection_color(scene, selection));
         }
-        CF_Aabb bounds;
-        const GameTransform *position = GAME_GameTransform_get_const(world, selected);
-        const GameAppearance *appearance = GAME_GameAppearance_get_const(world, selected);
-        if (position && appearance &&
-            appearance_bounds(
-                position,
-                appearance,
-                GAME_GameShader_get_const(world, selected),
-                actor_orientation(world, selected),
-                GAME_GameSdfMotion_get_const(world, selected),
-                false,
-                &bounds
-            )) {
-            bounds.min.x -= 3 * pixel;
-            bounds.min.y -= 3 * pixel;
-            bounds.max.x += 3 * pixel;
-            bounds.max.y += 3 * pixel;
-            cf_draw_push_color(packed_color(selection_color(scene, selection)));
-            cf_draw_quad(bounds, pixel, 0);
-            cf_draw_pop_color();
-        }
+    }
+    for (int i = 0; i < acount(scene->field_previews); i++) {
+        outline_object(world, scene->field_previews[i].entity, pixel, 5, SCENE_DROP_COLOR);
     }
     draw_marquee(scene);
     if (scene_can_move(scene)) {

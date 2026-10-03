@@ -12,7 +12,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-static int register_prototype_hosts(app_scene_authoring *scene, const game_prototype *prototype)
+int register_prototype_hosts(app_scene_authoring *scene, const game_prototype *prototype)
 {
     if (game_entities_register(scene->live->entities, prototype) != 0 ||
         game_prototype_preview_register_prototype(scene->prototype_preview, prototype) !=

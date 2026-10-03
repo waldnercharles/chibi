@@ -53,6 +53,7 @@ body.comfortable .popover .btn.sm { height: var(--studio-height-36, 36dp); }
 .menu-item[data-disabled] .lead, .menu-item[data-disabled] .kbd { color: var(--disabled-foreground); }
 .menu-sep { height: 1dp; margin: 4dp 2dp; background-color: var(--border); }
 .menu-group { height: var(--studio-height-22, 22dp); line-height: var(--studio-line-22, 22dp); display: block; padding: 0dp 6dp; font-size: var(--studio-font-11, 11dp); color: var(--faint-foreground); }
+.menu-note { display: block; padding: 0dp 8dp 6dp; font-size: var(--studio-font-11, 11dp); color: var(--muted-foreground); white-space: nowrap; }
 .dropdown .field.search { margin: 2dp 2dp 6dp; }
 /* Field choices show seven rows. Action menus use compact, font-scaled rows
    and grow to their content until the viewport requires scrolling. */

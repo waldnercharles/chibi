@@ -37,7 +37,7 @@ Rebindable commands, active over any area unless noted.
 | Mod+Alt+-, Mod+Alt+= | Slower, Faster: step the playback speed through 0.1×, 0.25×, 0.5×, 1× and 2× (UI Scale's keys with Alt; Stop returns to 1×) | Global | `studio_commands.c`, `studio_debug.c` |
 | Mod+Alt+0 | Normal Speed | Global | `studio_commands.c`, `studio_debug.c` |
 
-Commands without a default chord (Reload, Open Prototype, Reset Camera, Toggle Performance, Reset Layout, Step, Record Gameplay, Show Live Values, the density, motion and theme toggles, Preview UI Asset, New …, Add Component, the layout modes, Side Pane, Collaboration and its actions, Close Tab, Close Drawer) are in the menus and Search, and Settings ▸ Keyboard can bind them.
+Commands without a default chord (Reload, Open Prototype, Apply Overrides to Prototype, Save as New Prototype, Reset Camera, Toggle Performance, Reset Layout, Step, Record Gameplay, Show Live Values, the density, motion and theme toggles, Preview UI Asset, New …, Add Component, the layout modes, Side Pane, Collaboration and its actions, Close Tab, Close Drawer) are in the menus and Search, and Settings ▸ Keyboard can bind them.
 
 ## Scene and Outliner
 
@@ -139,6 +139,7 @@ Ctrl+Space completes here; Maximize Area does not reach a focused editor.
 | --- | --- | --- |
 | F2 | Rename the asset under the pointer | `studio_assets.c` |
 | X, Backspace, Delete | Delete it | `studio_assets.c` |
+| Drag onto a field, an Outliner row or a Scene object | Assign the asset to the field of its kind (Release assigns, Escape cancels) | `studio_drop.c` |
 
 ## UI Hierarchy and Canvas
 
@@ -151,6 +152,7 @@ The Outliner and Scene while a UI document is open (`studio_designer.c`).
 | Space, Enter | Pick up the element; then Up and Down move it, Space, Enter or Tab drops it, Escape cancels |
 | Shift+D, Mod+D | Duplicate |
 | X, Backspace, Delete | Delete |
+| Drag a handle | Resize the selection from its right edge, bottom edge or corner; Shift keeps the aspect at the corner, Escape cancels (Canvas) |
 
 ## Debugger
 

@@ -86,6 +86,8 @@
         <li command="delete"/>
         <hr/>
         <li command="openPrototype"/>
+        <li command="applyOverrides"/>
+        <li command="saveAsPrototype"/>
         <li command="addComponent"/>
         <hr/>
         <menu label="Transform">

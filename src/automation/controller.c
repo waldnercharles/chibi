@@ -17,6 +17,7 @@
 #include "automation/graph_optimize.h"
 #include "automation/navigation.h"
 #include "automation/prototype_edit.h"
+#include "automation/prototype_instance.h"
 #include "automation/scene_edit.h"
 #include "automation/ui_edit.h"
 #include "ecs/ecs.h"
@@ -374,6 +375,7 @@ static const contract_field CONTRACT_EDIT_PROTOTYPE[] = {
     { "create", "boolean", false, "Create a new asset without replacing existing content." },
     { "expected_hash", "string", false, "Required current asset hash when editing." },
     { "dry_run", "boolean", false, "Validate and return results without writing." },
+    { "source_instance", "object", false, "A scene entity {scene, entity, fields?}: with create, the new prototype starts as a copy of it; otherwise the fields it overrides, or the fields named, are applied to this prototype, the one it is an instance of." },
     { "operations", "array", true, "Atomic semantic component, field, and behavior edit batch, at most 128 operations." },
 };
 static const contract_field CONTRACT_EDIT_SCENE[] = {
@@ -9995,6 +9997,79 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
     return status;
 }
 
+/* buildPrototype's source_instance (automation/prototype_instance.h): the
+ * prototype text the edit starts from in `start`. */
+static int start_from_instance(
+    const char *root,
+    yyjson_val *instance,
+    const asset_ref *ref,
+    const char *source,
+    response *result,
+    yyjson_mut_val *value,
+    char **start,
+    char *error,
+    size_t size
+)
+{
+    const char *scene = request_string(instance, "scene");
+    const char *entity = request_string(instance, "entity");
+    yyjson_val *fields = yyjson_obj_get(instance, "fields");
+    bool create = !source;
+    if (!scene || !entity || (fields && (!yyjson_is_arr(fields) || create))) {
+        return set_error(error, size, "source_instance needs scene and entity names; fields apply to the prototype it is an instance of"),
+               CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    asset_ref scene_ref, prototype_ref;
+    char *scene_text = NULL, *prototype_text = NULL, prototype[256];
+    int status = load_named_asset(
+        root,
+        family_by_kind("scene"),
+        scene,
+        &scene_ref,
+        &scene_text,
+        NULL,
+        NULL,
+        error,
+        size
+    );
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = automation_instance_prototype(scene_text, entity, prototype, sizeof prototype, error, size);
+    }
+    char *name = asset_name_from_filename(ref->filename);
+    if (status == CHIBI_AUTOMATION_OK && create) {
+        status = load_named_asset(
+            root,
+            family_by_kind("prototype"),
+            prototype,
+            &prototype_ref,
+            &prototype_text,
+            NULL,
+            NULL,
+            error,
+            size
+        );
+    } else if (status == CHIBI_AUTOMATION_OK && strcmp(prototype, name)) {
+        snprintf(error, size, "%s is an instance of %s", entity, prototype);
+        status = CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        game_prototype_registry registry = {
+            .components = GAME_REGISTRY_COMPONENTS,
+            .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+        };
+        automation_instance from = { scene_text,
+                                     entity,
+                                     create ? prototype_text : source,
+                                     create ? name : NULL,
+                                     fields };
+        status = automation_prototype_from_instance(&from, &registry, result->doc, value, start, error, size);
+    }
+    free(name);
+    free(prototype_text);
+    free(scene_text);
+    return status;
+}
+
 static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     yyjson_val *create_value = yyjson_obj_get(request, "create");
@@ -10056,6 +10131,16 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         free(source);
         return -1;
     }
+    char *start = NULL;
+    yyjson_val *instance = yyjson_obj_get(request, "source_instance");
+    if (instance) {
+        status = start_from_instance(root, instance, &ref, source, result, value, &start, error, sizeof error);
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, error);
+            free(source);
+            return -1;
+        }
+    }
     if (create) {
         char *name = asset_name_from_filename(ref.filename);
         source = new_asset_text(NEW_ASSET_PROTOTYPE, name);
@@ -10066,7 +10151,17 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
     char *edited = NULL;
-    status = automation_prototype_edit(source, &registry, request, result->doc, value, &edited, error, sizeof error);
+    status = automation_prototype_edit(
+        start ? start : source,
+        &registry,
+        request,
+        result->doc,
+        value,
+        &edited,
+        error,
+        sizeof error
+    );
+    free(start);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         free(source);

@@ -143,6 +143,7 @@ extern "C"
 
     /* Last-item queries, valid until the next emitted item. */
     bool kit_item_clicked(kit *k);
+    bool kit_item_pressed(kit *k); /* the primary button went down on it */
     bool kit_item_context_clicked(kit *k); /* right press; open a context menu */
     bool kit_item_active(kit *k);          /* scrubbing, editing or held */
     bool kit_item_committed(kit *k); /* a gesture or edit finished this frame */
@@ -496,8 +497,10 @@ extern "C"
     /* Drag and drop (dnd-kit). The last item becomes a source: moving 5 dp with
      * the button held, or holding 200 ms within 10 dp, picks it up; an overlay
      * follows the pointer and Escape cancels. The last item becomes a target
-     * for one type: it is marked data-drop-over while a matching drag is over
-     * it and returns true, with the payload, on the frame a drop lands. */
+     * for `type`, and for each other type another call names: while a drag it
+     * accepts is in progress it is marked data-drop-accept, and data-drop-over
+     * while that drag is over it; it returns true, with the payload, on the
+     * frame a drop of `type` lands. */
     typedef struct kit_drag_desc
     {
         const char *type; /* e.g. "prototype" */
@@ -507,6 +510,12 @@ extern "C"
     } kit_drag_desc;
     void kit_drag_source(kit *k, const kit_drag_desc *desc);
     bool kit_drop_target(kit *k, const char *type, char *payload, size_t size);
+    /* While a drag the last target accepts is over it (dnd-kit's `over`), its
+     * type and payload, so the target can preview the drop. */
+    bool kit_drop_hover(kit *k, char *type, size_t type_size, char *payload, size_t size);
+    /* What dropping here would do, under the overlay's label this frame, as
+     * dnd-kit announces a drag over a droppable. */
+    void kit_drag_hint(kit *k, const char *text);
     /* A drag of this type (any when NULL) is in progress. */
     bool kit_dragging(const kit *k, const char *type);
 

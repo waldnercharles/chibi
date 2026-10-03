@@ -15,6 +15,7 @@
 
 const studio_settings_category_info studio_settings_categories[STUDIO_SETTINGS_CATEGORY_COUNT] = {
     [STUDIO_SETTINGS_APPEARANCE] = { "appearance", "Appearance", KIT_ICON_MATERIAL, false },
+    [STUDIO_SETTINGS_SCENE] = { "scene", "Scene View", KIT_ICON_SCENE, false },
     [STUDIO_SETTINGS_GRAPH] = { "graph", "Graph", KIT_ICON_GRAPH, false },
     [STUDIO_SETTINGS_TEXT] = { "text", "Text Editor", KIT_ICON_EXPRESSION, false },
     [STUDIO_SETTINGS_KEYBOARD] = { "keyboard", "Keyboard", KIT_ICON_KEYBOARD, false },
@@ -167,6 +168,48 @@ const studio_setting studio_settings[] = {
       .max = 18,
       .step = 1,
       .fallback = 13 },
+    /* The Scene view's Show toggles (View › Show), as Unity's Scene view
+       effects and Unreal's Show flags. */
+    { .key = "scene.generatedWorld",
+      .save = "sceneGeneratedWorld",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Generated World",
+      .description = "While you edit, the Scene shows terrain, clouds and "
+                     "liquids as the game's first frame makes them.",
+      .keywords = "procedural terrain field material fluid cave preview "
+                  "realtime",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_world),
+      .fallback = 1 },
+    { .key = "scene.lighting",
+      .save = "sceneLighting",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Lighting",
+      .description = "Lights the edited scene as the game does. Off shows "
+                     "material colors unlit.",
+      .keywords = "hrc radiance light shadows unlit",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_lighting),
+      .fallback = 1 },
+    { .key = "scene.fog",
+      .save = "sceneFog",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Fog of War",
+      .description = "Covers the edited scene with its fog of war as the "
+                     "game starts.",
+      .keywords = "visibility vision explored conceal",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_fog) },
+    { .key = "scene.cameraFrames",
+      .save = "sceneCameraFrames",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Camera Frames",
+      .description = "Outlines what each camera shows, labeled with its "
+                     "object's name.",
+      .keywords = "camera frustum view bounds overlay",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_cameras),
+      .fallback = 1 },
     { .key = "wires",
       .save = "wires",
       .category = STUDIO_SETTINGS_GRAPH,

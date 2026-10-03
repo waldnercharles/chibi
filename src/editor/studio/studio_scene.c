@@ -129,6 +129,17 @@ static void view_zoom_menu(studio *s, int area)
 
 /* ---------- Scene viewport ---------- */
 
+/* View › Show: what the edited scene shows of the game (Unreal's Show
+   flags), each a command over a preference. */
+static void show_items(studio *s)
+{
+    kit_menu_group(s->kit, "show-group", "Show");
+    studio_command_item(s, STUDIO_COMMAND_SHOW_WORLD);
+    studio_command_item(s, STUDIO_COMMAND_SHOW_LIGHTING);
+    studio_command_item(s, STUDIO_COMMAND_SHOW_FOG);
+    studio_command_item(s, STUDIO_COMMAND_SHOW_CAMERAS);
+}
+
 static bool canvas_header(studio *s, int area);
 static bool canvas_body(studio *s);
 
@@ -162,7 +173,10 @@ void studio_scene_header(studio *s, int area)
         if (kit_menu_item(k, "reset", &reset)) {
             engine_viewport_reset_camera(s->viewport);
         }
+        studio_command_item(s, STUDIO_COMMAND_VIEW_THROUGH_CAMERA);
         kit_menu_separator(k, "s1");
+        show_items(s);
+        kit_menu_separator(k, "s2");
         view_zoom_items(s);
         kit_popup_end(k);
     }
@@ -191,6 +205,35 @@ static void crop_view(studio *s)
     char crop[64];
     snprintf(crop, sizeof crop, "%g %g %g %g", s->view.x - half, s->view.y - half, 2 * half, 2 * half);
     kit_attr(s->kit, "rect", crop);
+}
+
+#define CAMERA_LABELS_MAX 16
+
+/* Each camera frame's name over its top-left corner, in the frame the view
+   zoom shows. */
+static void camera_labels(studio *s)
+{
+    kit *k = s->kit;
+    app_scene_camera_label labels[CAMERA_LABELS_MAX];
+    int count = app_scene_authoring_camera_labels(s->scene, labels, CAMERA_LABELS_MAX);
+    float half = 0.5f / s->view.zoom;
+    for (int i = 0; i < count; i++) {
+        float x = (labels[i].x - (s->view.x - half)) / (2 * half);
+        float y = (labels[i].y - (s->view.y - half)) / (2 * half);
+        if (x < 0 || x >= 1 || y < 0 || y >= 1) {
+            continue;
+        }
+        char key[16], value[32];
+        snprintf(key, sizeof key, "camera%d", i);
+        kit_label(k, key, "camera-label", labels[i].name);
+        kit_flag(k, "data-active", labels[i].active);
+        kit_flag(k, "data-disabled", labels[i].disabled);
+        kit_flag(k, "data-selected", labels[i].selected);
+        snprintf(value, sizeof value, "%.1fdp", x * s->surface.rect.w);
+        kit_style(k, "left", value);
+        snprintf(value, sizeof value, "%.1fdp", y * s->surface.rect.h);
+        kit_style(k, "top", value);
+    }
 }
 
 /* The Scene's tool shelf and the label naming its view and selection. */
@@ -252,6 +295,7 @@ void studio_scene_body(studio *s, int area)
        label leave the top-left corner to the game's HUD. */
     bool session = runtime_session(scene);
     if (!session) {
+        camera_labels(s);
         view_overlay(s);
     }
     engine_viewport_view view;
@@ -272,9 +316,18 @@ void studio_scene_body(studio *s, int area)
     if (session) {
         kit_label(k, "live", "badge accent live-badge", "Live");
     }
-    /* The renderer's error first, then the game UI's (render_ui_error). */
+    if (!session && app_scene_authoring_world_pending(scene)) {
+        kit_push(k, "generating", NULL, "world-pending");
+        kit_presence(k);
+        kit_icon(k, "spin", "spin", KIT_ICON_LOADING);
+        kit_label(k, "text", NULL, "Generating world");
+        kit_pop(k);
+    }
+    /* The renderer's error first, then the generated world's, then the game
+       UI's (render_ui_error). */
     const char *error = app_scene_renderer_error(scene->renderer);
-    error = error && error[0] ? error : s->ui_error;
+    const char *world = app_scene_authoring_world_error(scene);
+    error = error && error[0] ? error : world[0] ? world : s->ui_error;
     const char *warning = app_scene_renderer_warning(scene->renderer);
     if (error[0]) {
         kit_label(k, "error", "notice", error);

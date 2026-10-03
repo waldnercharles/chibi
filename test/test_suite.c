@@ -106,6 +106,8 @@ void test_code_intelligence();
 
 /* ---------- Settings (workstream F) ---------- */
 void test_studio_settings();
+/* The Scene view's game preview while editing. */
+void test_scene_view();
 /* Visual designer (workstream H). */
 void test_ui_designer();
 
@@ -242,6 +244,7 @@ TEST_CASE(all_checks)
     test_tree_watch();
     test_rcss();
     test_scene_debug();
+    test_scene_view();
     test_appearance_geometry();
     test_mesh_surface();
     test_mesh_asset();

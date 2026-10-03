@@ -103,6 +103,46 @@ static void prefs_round_trip()
     free(json);
 }
 
+/* View › Show's toggles are preferences: Generated World, Lighting and
+ * Camera Frames start on and Fog of War off, they save under "scene", and each
+ * Show command is checked as its preference is. View Through Camera's Shift+C
+ * and Keypad 0 reach it in the Scene area and collide with nothing there. */
+static void scene_view_preferences()
+{
+    studio_prefs p = studio_prefs_default();
+    bool defaults = p.scene_world && p.scene_lighting && !p.scene_fog && p.scene_cameras;
+    p.scene_world = false;
+    p.scene_fog = true;
+    char *json = studio_prefs_write(&p, NULL);
+    studio_prefs back = studio_prefs_read(json);
+    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    bool saved = yyjson_is_false(yyjson_ptr_get(root, "/scene/generatedWorld")) &&
+                 yyjson_is_true(yyjson_ptr_get(root, "/scene/fog")) &&
+                 studio_prefs_equal(&p, &back) && !back.scene_world && back.scene_fog;
+    yyjson_doc_free(doc);
+    free(json);
+    studio *s = xcalloc(1, sizeof *s);
+    s->prefs = back;
+    bool checked = studio_command_checked(s, STUDIO_COMMAND_SHOW_WORLD) == 0 &&
+                   studio_command_checked(s, STUDIO_COMMAND_SHOW_LIGHTING) == 1 &&
+                   studio_command_checked(s, STUDIO_COMMAND_SHOW_FOG) == 1 &&
+                   studio_command_checked(s, STUDIO_COMMAND_SHOW_CAMERAS) == 1;
+    free(s);
+    studio_command camera = STUDIO_COMMAND_VIEW_THROUGH_CAMERA;
+    bool keys = studio_command_for_key(&p, SDLK_C, SDL_KMOD_SHIFT, STUDIO_EDITOR_SCENE, true) ==
+                    (int)camera &&
+                studio_command_for_key(&p, SDLK_KP_0, 0, STUDIO_EDITOR_SCENE, false) ==
+                    (int)camera &&
+                studio_command_conflict(&p, camera, "Shift+C", true) < 0 &&
+                studio_command_conflict(&p, camera, "Shift+C", false) < 0;
+    test_check(
+        defaults && saved && checked && keys,
+        "Scene view toggles default, save and check as preferences, and "
+        "View Through Camera's chords reach it without collisions"
+    );
+}
+
 static const studio_setting *setting_named(const char *key)
 {
     for (int i = 0; i < studio_setting_count; i++) {
@@ -1404,6 +1444,7 @@ void test_studio_settings()
 {
     independent_ui_deadlines();
     prefs_round_trip();
+    scene_view_preferences();
     font_preferences();
     invalid_values();
     theme_presets();

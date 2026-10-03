@@ -31,6 +31,37 @@ typedef struct
     bool saved;
 } scene_camera;
 
+/* What the Generated World preview reads, hashed. */
+typedef struct
+{
+    uint64_t terrain; /* terrain sources and field graphs */
+    uint64_t sources; /* destructibles, fluid volumes and material worlds */
+} scene_world_inputs;
+
+/* The Generated World preview's state (scene_world_preview.c). */
+typedef struct
+{
+    scene_world_inputs inputs;
+    double changed_at;    /* when the inputs last changed */
+    double waiting_since; /* since when terrain has streamed, or 0 */
+    bool built;           /* the scene's materials hold a preview */
+    bool dirty;           /* the inputs changed since it was built */
+    bool terrain_dirty;   /* and terrain's among them */
+    char error[256];
+} scene_world_preview;
+
+/* The preview reports waiting once it has waited this long. */
+#define SCENE_WORLD_PENDING_SECONDS 0.1
+
+/* View Through Camera (scene_overlays.c). */
+typedef struct
+{
+    bool active;
+    ecs_entity entity;
+    engine_viewport_view before; /* restored on leaving */
+    engine_viewport_view shown;  /* set last; any other view means it moved */
+} scene_camera_view;
+
 typedef struct
 {
     char *path;
@@ -142,6 +173,9 @@ struct app_scene_authoring
     app_runtime_target active_runtime_target;
     scene_camera camera;
     int camera_target;
+    app_scene_view_options view_options;
+    scene_world_preview world_preview;
+    scene_camera_view camera_view;
     scene_history *history;
     ecs_entity edit_actor;
     ecs_entity property_actor;
@@ -243,6 +277,13 @@ void finish_property_edit(app_scene_authoring *scene);
 void finish_transform_edit(app_scene_authoring *scene, bool cancel);
 void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
 void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only);
+/* Generated World (scene_world_preview.c): prepares the scene's materials for
+ * the edited view each draw, and discards them for a session or when off. */
+void scene_world_preview_update(app_scene_authoring *scene, const engine_viewport_camera *view);
+void scene_world_preview_discard(app_scene_authoring *scene);
+/* Overlays and View Through Camera (scene_overlays.c). */
+void scene_overlays_draw(app_scene_authoring *scene);
+void scene_camera_view_follow(app_scene_authoring *scene, engine_viewport *viewport, bool editing);
 void free_behavior_names(char **names);
 char **instance_behavior_names(app_scene_authoring *scene, ecs_entity entity);
 scene_prototype_asset *previewed_prototype(app_scene_authoring *scene);
@@ -252,6 +293,8 @@ void prototype_history_before(app_scene_authoring *scene, game_prototype *protot
 const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity entity);
 bool runtime_session(const app_scene_authoring *scene);
 bool scene_can_move(const app_scene_authoring *scene);
+/* The scene is edited: no session runs, paused or not. */
+bool scene_editing(const app_scene_authoring *scene);
 void select_instance(app_scene_authoring *scene, int actor_index);
 scene_actor *selected_actor(app_scene_authoring *scene);
 scene_prototype_asset *selected_prototype(app_scene_authoring *scene);

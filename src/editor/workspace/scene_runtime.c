@@ -275,6 +275,10 @@ int app_scene_authoring_runtime_command(
     if (target == APP_RUNTIME_SCENE) {
         scene->active_runtime_target = APP_RUNTIME_SCENE;
         if (command == APP_RUNTIME_PLAY || command == APP_RUNTIME_STEP) {
+            /* The game generates its own world on its first step. */
+            if (!scene->runtime_snapshot_valid) {
+                scene_world_preview_discard(scene);
+            }
             if (capture_runtime_snapshot(scene) != 0) {
                 return -1;
             }

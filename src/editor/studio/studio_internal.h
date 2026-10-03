@@ -158,6 +158,12 @@ typedef enum
     STUDIO_COMMAND_COLLABORATION_TOKEN,
     STUDIO_COMMAND_COLLABORATION_FOLLOW,
     STUDIO_COMMAND_COLLABORATION_UNFOLLOW,
+    /* The Scene view's Show toggles and its camera view. */
+    STUDIO_COMMAND_SHOW_WORLD,
+    STUDIO_COMMAND_SHOW_LIGHTING,
+    STUDIO_COMMAND_SHOW_FOG,
+    STUDIO_COMMAND_SHOW_CAMERAS,
+    STUDIO_COMMAND_VIEW_THROUGH_CAMERA,
     STUDIO_COMMAND_COUNT,
 } studio_command;
 
@@ -218,6 +224,11 @@ typedef struct
     float code_font_size; /* the Text Editor's font size, in dp */
     bool code_apply_live; /* UI edits apply as typed, not when saved */
     bool code_wrap; /* Workstream I: long lines wrap; off, they scroll sideways */
+    /* What the Scene view shows while editing (app_scene_view_options). */
+    bool scene_world;
+    bool scene_lighting;
+    bool scene_fog;
+    bool scene_cameras;
 } studio_prefs;
 
 typedef struct
@@ -1661,6 +1672,7 @@ void studio_canvas_free(studio *s);
 typedef enum
 {
     STUDIO_SETTINGS_APPEARANCE,
+    STUDIO_SETTINGS_SCENE,
     STUDIO_SETTINGS_GRAPH,
     STUDIO_SETTINGS_TEXT,
     STUDIO_SETTINGS_KEYBOARD,

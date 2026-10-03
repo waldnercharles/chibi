@@ -109,7 +109,7 @@ Keys of the graph canvas (`studio_graph_input.c`, `studio_graph_find.c`, `studio
 | B, S, D, F, N, O, G (held) + click | Place Branch, Sequence, Delay, For Each, Do N, Do Once, Gate | `studio_graph_input.c` |
 | Ctrl (held) | Snap while moving | `studio_graph_input.c` |
 | Escape | Cancel the drag | `studio_graph_input.c` |
-| Down, Up, Enter, Escape | Find: next, previous, go to, close | `studio_graph_find.c` |
+| Down, Up, Enter, Escape | Find: next, previous, go to the match and close, close; closing gives the keys back to the graph | `GraphFind.rml`, `studio_graph_find.c` |
 
 Space does not play and Shift+D does not duplicate objects here; Mod+Z, Mod+Shift+Z and Mod+S act on the graph.
 
@@ -128,7 +128,7 @@ with Studio, and the name and filter fields keep theirs.
 
 ## Text Editor
 
-`kit_code.c` and `studio_code.c`. Mod chords it does not edit with (Mod+S, Mod+K, Mod+F, Mod+/, UI Scale, drawers) run Studio's commands.
+`kit_code.c` and `studio_code.c`, with the header and find bar authored (`CodeHeader.rml`, `CodeFind.rml`). Mod chords it does not edit with (Mod+S, Mod+K, Mod+F, Mod+/, UI Scale, drawers) run Studio's commands.
 
 | Key | Action |
 | --- | --- |
@@ -191,7 +191,7 @@ While a run is paused at a breakpoint, which selects the instance it stopped in;
 
 ## Menus, Search, popups and fields
 
-Menus and popovers, authored and the kit's alike (`src/ui/popover.c`), the kit's dropdowns and Search (`src/editor/rmlui/kit_popup.c`, `kit_command.c`) and the native controls (`src/ui/controls`: `<number-field>`, `<color-field>`, `<splitter>`, `<choice-list>`).
+Menus and popovers, authored and the kit's alike (`src/ui/popover.c`), the kit's dropdowns and Search (`src/editor/rmlui/kit_popup.c`, `kit_command.c`) and the native controls (`src/ui/controls`: `<number-field>`, `<color-field>`, `<splitter>`, `<choice-list>`, `<line-chart>`).
 
 | Key | Action |
 | --- | --- |

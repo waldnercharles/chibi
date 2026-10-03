@@ -1254,6 +1254,9 @@ int studio_ui_keyboard_area(studio *s);
 bool studio_ui_modal_open(studio *s);
 /* What the panels' data views have read, for the UI bench's counts. */
 rml_data_reads studio_ui_data_reads(const studio *s);
+/* Dirties every variable of the panels' data, so the next UI frame's reads
+ * count their views. */
+void studio_ui_data_dirty_all(studio *s);
 /* Clears its GameUi.hidden. */
 void studio_ui_show(studio *s, const char *name);
 /* Runs a collaboration action with transient values from the authored panel. */

@@ -645,7 +645,7 @@ static const char *const ITEM_FLAGS[] = { "parent",  "open",       "selected",
                                           "active",  "marked",     "hidden",
                                           "loading", "unresolved", "unused",
                                           "shown" };
-static const char *const ITEM_NUMBERS[] = { "id", "kind", "depth" };
+static const char *const ITEM_NUMBERS[] = { "key", "kind", "depth" };
 static const char *const ENTRY_TEXTS[] = { "id", "action", "label", "icon", "shortcut" };
 static const char *const ENTRY_FLAGS[] = { "checked", "disabled", "separator" };
 static const char *const HEADER_TEXTS[] = { "filter", "tileWidth", "tileHeight", "empty" };
@@ -724,7 +724,7 @@ static void dp_text(char out[32], float value)
 
 static bool show_item(yyjson_mut_doc *doc, yyjson_mut_val *item, const item_view *v)
 {
-    bool changed = ui_data_put_int(item, "id", v->id);
+    bool changed = ui_data_put_int(item, "key", v->id);
     changed |= ui_data_put_int(item, "kind", v->kind);
     changed |= ui_data_put_int(item, "depth", v->depth);
     changed |= ui_data_put_text(doc, item, "label", or_empty(v->label));

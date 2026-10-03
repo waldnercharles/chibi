@@ -501,6 +501,7 @@ typedef enum
     ASSETS_OPEN,   /* show Assets in an area that showed the Outliner */
     ASSETS_SCROLL, /* scroll the grid a line */
     ASSETS_FILTER, /* type in the filter */
+    ASSETS_SELECT, /* select another tile */
     ASSETS_IDLE,   /* a UI frame with nothing changed */
     ASSETS_LIST,   /* scroll the list a row */
 } assets_step;
@@ -539,6 +540,10 @@ static void assets_change(studio_bench *b, assets_step step, int run)
             break;
         case ASSETS_FILTER:
             snprintf(s->assets_filter, sizeof s->assets_filter, "%s", run & 1 ? "QaBench1" : "QaBench");
+            break;
+        case ASSETS_SELECT:
+            s->assets_selected_kind = REFERENCE_ASSET_BEHAVIOR;
+            snprintf(s->assets_selected, sizeof s->assets_selected, "%s", run & 1 ? "QaBench001" : "QaBench003");
             break;
         case ASSETS_LIST: assets_scroll(s, 26, run); break;
         case ASSETS_IDLE: break;
@@ -621,6 +626,10 @@ static void assets(studio_bench *b)
     assets_case(b, ASSETS_OPEN, "Assets grid: open, 3 UI frames");
     assets_case(b, ASSETS_SCROLL, "Assets grid: scroll a line");
     assets_case(b, ASSETS_FILTER, "Assets grid: filter keystroke");
+    /* The first QaBench behaviors in view. */
+    rml_element_set_scroll_top(assets_scroller(s), 0);
+    frames(b, 2);
+    assets_case(b, ASSETS_SELECT, "Assets grid: select another tile");
     assets_case(b, ASSETS_IDLE, "Assets grid: UI frame, nothing changed");
     s->prefs.assets_tile = STUDIO_ASSETS_LIST;
     frames(b, 4);

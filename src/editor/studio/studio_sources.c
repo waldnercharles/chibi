@@ -2307,8 +2307,12 @@ const studio_panel_source studio_panel_sources[] = {
     /* The Outliner (workstream P2). */
     { "outliner", "Outliner", studio_outliner_add, studio_outliner_sync, studio_outliner_action },
     { "outlinerHeader", "OutlinerHeader", studio_outliner_header_add, studio_outliner_header_sync, NULL },
+    /* Output (workstream P4). */
+    { "output", "Output", studio_output_add, studio_output_sync, studio_output_action },
+    { "output_rows", "Output", studio_output_rows_add, studio_output_rows_sync, NULL },
     /* Members (workstream P5). */
     { "members", "Members", studio_members_add, studio_members_sync, studio_members_action },
+    { "members_ui", "Members", studio_members_ui_add, studio_members_ui_sync, NULL },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

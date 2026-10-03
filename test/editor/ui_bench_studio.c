@@ -486,7 +486,100 @@ static void properties(studio_bench *b)
     bench_spike_free(c.spike);
 }
 
-/* ---------- 11: the Outliner over ten thousand objects ---------- */
+/* ---------- 11: Output following a log ---------- */
+
+/* Gives documents opened since the bench began their layout probes. */
+static void probe_new_documents(studio *s)
+{
+    rml_context *context = rml_backend_context(s->backend);
+    for (int i = 0; i < rml_context_document_count(context); i++) {
+        rml_element *document = rml_context_document(context, i);
+        if (!rml_element_query_selector(document, "bench-probe")) {
+            bench_probe(document);
+        }
+    }
+}
+
+/* Prints `count` lines, as a behavior printing every frame does. */
+static void print_lines(editor *graph, int count)
+{
+    static int printed;
+    for (int i = 0; i < count; i++, printed++) {
+        char text[192];
+        snprintf(
+            text,
+            sizeof text,
+            "warning: Player hit \"Wall %d\" at (%d.5, -%d.25) for %d damage "
+            "in content/behaviors/Weapon.kdl",
+            printed % 97,
+            printed,
+            printed % 13,
+            printed % 9
+        );
+        editor_log_print(graph, "Weapon", text);
+    }
+}
+
+/* One UI frame after `lines` new lines with Output's Log following them:
+   its document's layouts and elements, and the views Studio's authored
+   panels evaluated. */
+static void log_step(studio_bench *b, int lines, bool full, rml_element *document)
+{
+    studio *s = b->studio;
+    editor_clear_log(b->graph);
+    print_lines(b->graph, full ? ED_LOG_MAX : 200);
+    frames(b, 2);
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        print_lines(b->graph, lines);
+        cf_app_update(NULL);
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        counts = studio_counts(s, before);
+        counts.elements = rml_element_query_selector_all(document, "*", NULL, 0);
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    char name[128];
+    snprintf(
+        name,
+        sizeof name,
+        "Output's Log following %d new line%s a frame, the log %s",
+        lines,
+        lines == 1 ? "" : "s",
+        full ? "full (the oldest drop)" : "growing"
+    );
+    bench_row("11", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
+static void output_log(studio_bench *b)
+{
+    studio *s = b->studio;
+    studio_show_editor(s, STUDIO_EDITOR_OUTPUT);
+    s->output_view = 0;
+    frames(b, 4);
+    probe_new_documents(s);
+    rml_element *list = studio_query(s, ".output-list");
+    assert(list);
+    rml_element *document = rml_element_owner_document(list);
+    log_step(b, 1, false, document);
+    log_step(b, 8, false, document);
+    log_step(b, 1, true, document);
+    log_step(b, 8, true, document);
+    editor_clear_log(b->graph);
+    frames(b, 2);
+}
+
+/* ---------- 12: the Outliner over ten thousand objects ---------- */
 
 #define OUTLINER_OBJECTS 10000
 #define SCROLL_ROWS 3
@@ -593,7 +686,7 @@ static void outliner_scroll(studio_bench *b)
         shown,
         instanced
     );
-    bench_row("11", name, bench_stat_of(ms, RUNS), counts);
+    bench_row("12", name, bench_stat_of(ms, RUNS), counts);
     phase_row("its phases", phases);
     /* Two objects in view, selected in turn, as clicks on their rows. */
     int first = (int)(top / row);
@@ -612,7 +705,7 @@ static void outliner_scroll(studio_bench *b)
         }
     }
     bench_row(
-        "11",
+        "12",
         "Outliner over 10k objects: select another object in view",
         bench_stat_of(ms, RUNS),
         counts
@@ -869,6 +962,7 @@ int ui_bench_studio(const char *program, bool members_only)
         b.studio->prefs.comfortable = false;
         area_text_change(&b);
         properties(&b);
+        output_log(&b);
     }
     members(&b);
     /* Last: it leaves ten thousand objects in the scene. */

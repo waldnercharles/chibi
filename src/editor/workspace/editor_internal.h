@@ -5,8 +5,9 @@
 #include "support/asset_value.h"
 
 #define ED_HIST_MAX 64
-#define ED_LOG_MAX 128
+#define ED_LOG_MAX 1024
 #define ED_LOG_MESSAGE 256
+#define ED_LOG_ORIGIN 64
 
 typedef enum ed_pin_kind
 {
@@ -31,7 +32,7 @@ typedef struct ed_link_ref
 
 typedef struct ed_log_entry
 {
-    const node *origin;
+    char origin[ED_LOG_ORIGIN]; /* what printed it, labeled as it printed */
     double timestamp;
     unsigned long step;
     char message[ED_LOG_MESSAGE];
@@ -98,8 +99,10 @@ struct editor
     compile_report compile;
     behavior_asset *compiled; /* the linked snapshot compile describes; NULL when unlinked */
     double monotonic_time;
+    /* A ring: line i, 0 the oldest, is log[(log_dropped + i) % ED_LOG_MAX]. */
     ed_log_entry log[ED_LOG_MAX];
     int log_count;
+    int64_t log_dropped;        /* lines dropped from the front or cleared */
     char optimize_summary[192]; /* what the last Optimize changed */
     bool arrange_pending;
 

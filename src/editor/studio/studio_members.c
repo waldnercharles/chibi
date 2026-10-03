@@ -905,9 +905,7 @@ typedef struct
 static const char *const ROW_TEXTS[] = { "key",    "label", "icon", "meta",
                                          "swatch", "color", "uses", "usesTip",
                                          "add",    "drag",  NULL };
-static const char *const ROW_FLAGS[] = { "parent",   "open",   "selected",
-                                         "active",   "marked", "hidden",
-                                         "renaming", "unused", NULL };
+static const char *const ROW_FLAGS[] = { "parent", "open", "graph", "unused", NULL };
 static const char *const ITEM_TEXTS[] = { "id", "icon", "label", "shortcut", NULL };
 static const char *const ITEM_FLAGS[] = { "checked", "disabled", NULL };
 static const item_shape ROW_SHAPE = { ROW_TEXTS, ROW_FLAGS, true };
@@ -935,6 +933,14 @@ void studio_members_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_bool(doc, m, "locked", false);
     yyjson_mut_obj_add_strcpy(doc, m, "filter", "");
     yyjson_mut_obj_add_arr(doc, m, "rows");
+}
+
+void studio_members_ui_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *m = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "members_ui");
+    yyjson_mut_obj_add_strcpy(doc, m, "selected", "");
+    yyjson_mut_obj_add_strcpy(doc, m, "graph", "");
+    yyjson_mut_obj_add_strcpy(doc, m, "renaming", "");
     yyjson_mut_obj_add_arr(doc, m, "menu");
     yyjson_mut_obj_add_val(doc, m, "remove", item_new(doc, &ITEM_SHAPE));
 }
@@ -966,13 +972,13 @@ static bool fit(yyjson_mut_doc *doc, yyjson_mut_val *array, int length, const it
 
 /* ---------- One row ---------- */
 
-/* What a row shows besides its key, selection, name field and uses. */
+/* What a row shows besides its key and uses. */
 typedef struct
 {
     const char *label, *meta, *add;
     uint32_t icon;
     const pin_spec *pin; /* its type, for a swatch */
-    bool open, active, draggable;
+    bool open, draggable;
 } row_look;
 
 static row_look section_look(const studio *s, const member_row *row, char *meta, size_t size)
@@ -990,8 +996,7 @@ static row_look section_look(const studio *s, const member_row *row, char *meta,
                                !(s->members.collapsed & 1u << row->index) };
 }
 
-/* A graph row is active while its graph is open; a function or macro drags
-   onto the canvas as its call. */
+/* A function or macro drags onto the canvas as its call. */
 static row_look graph_look(const studio *s, const member_row *row)
 {
     const editor *e = sg_graph_editor(s);
@@ -1002,7 +1007,6 @@ static row_look graph_look(const studio *s, const member_row *row)
               : g->kind == GRAPH_MACRO    ? KIT_ICON_EXPRESSION
                                           : KIT_ICON_EVENT,
         .meta = g->kind == GRAPH_FUNCTION && graph_signature_pure(g) ? "pure" : "",
-        .active = g == e->active_graph,
         .draggable = g->kind != GRAPH_EVENT,
     };
 }
@@ -1084,16 +1088,14 @@ static bool show_uses(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, cons
     return ui_data_put_bool(item, "unused", !strcmp(label, "0")) || changed;
 }
 
-/* A row: a selected member is marked, and active too but for a graph,
-   whose row is active while it is open. A drag's payload is its key. */
+/* A row: what it shows, but whether it is selected, active or being
+   named, which members_ui holds by key, so a selection changes no row. A
+   drag's payload is its key. */
 static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const member_row *row)
 {
     pin_spec pin;
     char meta[96], key[40];
     row_look look = row_look_of(s, row, &pin, meta, sizeof meta);
-    uint64_t id = 0;
-    studio_member_kind kind = row_member(s, row, &id);
-    bool selected = kind && kind == s->members.kind && id == s->members.id;
     row_key(s, row, key, sizeof key);
     bool changed = ui_data_put_text(doc, item, "key", key);
     changed |= ui_data_put_text(doc, item, "label", look.label);
@@ -1104,9 +1106,7 @@ static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const
     changed |= ui_data_put_int(item, "depth", row->depth);
     changed |= ui_data_put_bool(item, "parent", row->kind == ROW_SECTION);
     changed |= ui_data_put_bool(item, "open", look.open);
-    changed |= ui_data_put_bool(item, "selected", selected);
-    changed |= ui_data_put_bool(item, "active", look.active || (selected && row->kind != ROW_GRAPH));
-    changed |= ui_data_put_bool(item, "renaming", kind && renaming(s, kind, id));
+    changed |= ui_data_put_bool(item, "graph", row->kind == ROW_GRAPH);
     changed |= show_swatch(s, doc, item, look.pin);
     return show_uses(s, doc, item, row) || changed;
 }
@@ -1267,8 +1267,40 @@ bool studio_members_sync(studio *s, const studio_panel_sync *at)
     }
     follow(s);
     changed |= ui_data_put_bool(m, "locked", locked(s));
-    changed |= show_rows(s, at, yyjson_mut_obj_get(m, "rows"));
-    return show_menu(s, at->doc, m) || changed;
+    return show_rows(s, at, yyjson_mut_obj_get(m, "rows")) || changed;
+}
+
+/* A member's row key, as row_key names it; "" for none. */
+static void member_key(studio_member_kind kind, uint64_t id, char *out, size_t size)
+{
+    static const char LETTERS[] = { [STUDIO_MEMBER_GRAPH] = 'g',
+                                    [STUDIO_MEMBER_VARIABLE] = 'v',
+                                    [STUDIO_MEMBER_LOCAL] = 'l' };
+    out[0] = '\0';
+    if (kind) {
+        snprintf(out, size, "%c%llu", LETTERS[kind], (unsigned long long)id);
+    }
+}
+
+/* What changes as the user selects and names: the selected member, the open
+   graph and the member being named by row key, and the selected member's
+   menu. Rows bind them by key (Members.rml), so a selection re-evaluates
+   these views alone, not every row's. */
+bool studio_members_ui_sync(studio *s, const studio_panel_sync *at)
+{
+    studio_members *m = &s->members;
+    yyjson_mut_val *ui = at->variable;
+    char selected[40] = "", open[40] = "", named[40] = "";
+    if (studio_graph_active(s)) {
+        follow(s);
+        member_key(m->kind, m->id, selected, sizeof selected);
+        member_key(STUDIO_MEMBER_GRAPH, sg_active_graph(s)->graph_id, open, sizeof open);
+        member_key(m->rename_kind, m->rename_id, named, sizeof named);
+    }
+    bool changed = ui_data_put_text(at->doc, ui, "selected", selected);
+    changed |= ui_data_put_text(at->doc, ui, "graph", open);
+    changed |= ui_data_put_text(at->doc, ui, "renaming", named);
+    return show_menu(s, at->doc, ui) || changed;
 }
 
 /* ---------- Actions ---------- */

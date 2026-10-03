@@ -1877,6 +1877,11 @@ bool test_rmlui_kit()
     ok &= check(strcmp(markup, partial) == 0, "markup keeps the characters of a run that fit");
     highlight_markup(HIGHLIGHT_LOG, "<<", markup, 36);
     ok &= check(strcmp(markup, "<span class=\"tok-punct\">&lt;</span>") == 0, "markup never cuts an entity");
+    /* Braces would open a data expression where the markup is shown. */
+    highlight_escape("a {{ b }} <c>", markup, sizeof markup);
+    ok &= check(!strcmp(markup, "a &#123;&#123; b &#125;&#125; &lt;c&gt;"), "escaped markup shows braces and tags as text");
+    highlight_escape("<<", markup, 8);
+    ok &= check(!strcmp(markup, "&lt;"), "escaped markup is cut between whole characters");
     double parsed;
     ok &= check(
         number_expr_eval("=2*pi", 0, &parsed) &&

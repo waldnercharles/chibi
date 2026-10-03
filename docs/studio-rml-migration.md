@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P2 and P5 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P2, P4 and P5 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -46,7 +46,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Scene and Canvas headers | `studio_scene.c`, `studio_canvas.c` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | W3 C1 |
 | Scene viewport | `kit_surface` showing `kit:viewport` | Texture, pointer input, camera labels | Overlays authored; input stays in C |
 | Assets | `studio_assets.c` | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | W2 P3 |
-| Output, Find, Calls | `studio_output.c`, `studio_find.c`, `studio_calls.c` | Log ring, highlighted markup, problem places, follow-output, call tree | W2 P4 |
+| Output, Find, Calls | Authored (P4): `Output.rml`, `OutputHeader.rml` over `studio_output.c`'s `output` source | | Done |
 | Members | `Members.rml` and `MembersHeader.rml`; the `members` source in `studio_members.c` | Members, uses, rename, drag into the graph, menus | Done (P5) |
 | Behavior area | `studio_graph*.c`, a second context drawn to `kit:graph` | Nodes, pins, literals, comments, reroutes, wires, live chips | Header, breadcrumbs, find, menus, add-node search: W4 G1. Node bodies: postponed |
 | Text Editor | `studio_code.c`, `kit_code.c` (Zep) | Buffer, intelligence, Vim | Chrome authored (W3 C2); the Zep surface stays a native element |
@@ -270,7 +270,7 @@ natively and 1.3-1.7× that on web, provisionally):
 | Outliner (10k objects, 60-row window) | Measured: 362 per scroll step; in Studio (P2), 518 per scroll step or selection over a 22-row window | Scroll, selection | Low (0.69 ms native, 0.91 ms web per step; 0.93× the kit's frame, P2 results) |
 | Assets (8×8 tiles) | ~400 | Scroll, thumbnails ready | Low |
 | Output following a log | Measured: 40 markup parses per batch | Logging | Medium (1.3 ms native, 1.9 ms web; 6× plain text) |
-| Members (<300 rows) | Measured: 768 per change over a 28-row window | Selection, scroll, filter | Medium: 1.2-1.3× native on selection and scroll (P5 results) |
+| Members (<300 rows) | Measured: 284 per selection, 815 per scroll step or filter over a 28-row window | Selection, scroll, filter | Low; a scroll step 1.2× native until `data-for` is keyed (P5 results) |
 | Shell and headers | ~400 | Command state | Low |
 | Palette (50-item window) | ~300 | Each keystroke | Low |
 | Graph node bodies (300 nodes) | 5-10k+ | Node drags each frame, chips at 10 Hz | High: postponed |
@@ -760,15 +760,21 @@ popups above areas, focus across documents, inspection and lifetime;
 | P1 Properties | Object, Prototype, Scene, Behaviors tabs; header with Live and Keep; search; field menu (Node and Member stay in a slot) | ~1,200 lines of kit UI; `write_field`, reset, Keep and multi-object logic stay |
 | P2 Outliner (done) | Rows, root, eye and lock, rename, drops, menu, filter | ~350 lines |
 | P3 Assets | Grid and list, header, New menu, name popover, drag sources, preview tooltip | ~400 lines |
-| P4 Output | Six views, follow-output, highlighted rows, Calls tree | ~450 lines |
+| P4 Output (done) | Six views, follow-output, highlighted rows, Calls tree | ~450 lines |
 | P5 Members (done) | Sections, rename, uses, menus, drag into the graph | ~550 lines of kit UI: P5 results |
 
 #### P5: Members (done)
 
-`Members.rml` is a List of TreeRows that the `members` source
+`Members.rml` is a List whose rows the `members` source
 (`studio_members.c`) windows with `ui_list_window`, and `MembersHeader.rml`
 is the header's filter (`members.filter`), mounted in the AreaHeader's
-controls as GraphView is. Rows keep the kit's anatomy, so web shots before
+controls as GraphView is. What changes as the user selects and names
+lives apart, in `members_ui` (the selected member's, the open graph's and
+the named member's row keys, and the selected member's menu): rows bind
+it by key (`row.key == members_ui.selected`), so a selection re-evaluates
+those views and not every row's. The rows are TreeRow's anatomy written
+out, since TreeRow reads its selection from its item. Rows keep the kit's
+anatomy, so web shots before
 (`db679e48`) and after match pixel for pixel in dark and light, compact
 and comfortable: rows with a selection and a folded section, the name
 field and a filter. The kit's rows, list, menu, search and text field
@@ -804,22 +810,24 @@ What it needed beyond the panel, each usable elsewhere:
 variables in 12 categories, Members 372×458 dp, a 28-row window, the
 Sandbox at 1440×900, pixel scale 2), the binary before (`db679e48`, with
 `CHIBI_RESOURCE_DIR` over that commit's resources) and after alternated
-three times, 1-minute load 16-22; ms, the mean of the runs' medians:
+three times, 1-minute load 45-57 (the machine was busy, so counts and
+ratios matter more than ms); ms, the mean of the runs' medians:
 
 | Case | Native | Authored | Ratio | UI time (sync + emit + update) | Views evaluated | Layouts |
 |---|---:|---:|---:|---|---:|---:|
-| A UI frame with nothing changed | 1.05 | 1.02 | 0.97× | 0.82 / 0.77 | 0 | 0 |
-| Select another variable | 2.98 | 3.66 | 1.23× | 1.92 / 2.43 (1.27×) | 768 | 2 |
-| Scroll 3 rows | 3.87 | 5.01 | 1.30× | 2.78 / 3.39 (1.22×) | 763 | 2 |
-| Filter by a keystroke | 5.93 | 5.03 | 0.85× | 3.35 / 3.38 (1.01×) | 763 | 2 |
+| A UI frame with nothing changed | 1.01 | 1.06 | 1.05× | 0.77 / 0.81 (1.06×) | 0 | 0 |
+| Select another variable | 3.19 | 3.26 | 1.02× | 2.00 / 2.14 (1.07×) | 284 | 2 |
+| Scroll 3 rows | 4.06 | 4.94 | 1.22× | 2.90 / 3.28 (1.13×) | 815 | 2 |
+| Filter by a keystroke | 5.92 | 5.17 | 0.87× | 3.37 / 3.35 (0.99×) | 815 | 2 |
 
-The source's sync costs 0.05 ms over the native's at every refresh. A
-dirty `members` re-evaluates all 27 views of each window row, so a
-selection change costs what a filter does; and as `data-for` matches by
-index, a scroll rewrites every row's texts where the kit kept each
-member's row. Both exceed the +10% gate under this load; a re-measure on
-an idle machine decides whether to key `data-for` by row (an RmlUi
-patch) or keep the selection in a variable of its own. Checks:
+Before `members_ui`, a select evaluated 768 views (every view of every
+window row, as a filter does) and cost 1.23× native (load 16-22). The
+source's sync costs about 0.05 ms over the native's at every refresh.
+**Follow-up, shared:** a scroll step still rewrites every window row,
+because `data-for` matches items by index where the kit kept each
+member's elements by key; a keyed `data-for` (Vue's `:key`, an RmlUi
+patch) would let the Outliner, Assets and Members lists move rows instead
+of rewriting them. Checks:
 `--studio-members` (also in `--studio-documents`): sections, swatch and
 use counts, selection, folding, a use count's press, F2 and double-click
 rename with Enter, Escape and one Undo step, the add buttons, the context
@@ -883,7 +891,7 @@ eye and lock; and Unity's focusable list for the keyboard.
   over the Outliner area with a 2% fuzz: identical but for the caret's
   blink. The row a drag is over now fills with the soft primary as the
   TreeRow's drop mark does (the kit row kept its hover gray).
-- **Bench:** `--ui-bench studio` case 10 adds 10,000 objects and scrolls
+- **Bench:** `--ui-bench studio` case 12 adds 10,000 objects and scrolls
   the Outliner three rows a run from the middle, then selects one of two
   objects in view. Release builds before and after, alternated process by
   process three times at a 1-minute load of 35-39 (provisional), whole
@@ -921,6 +929,75 @@ eye and lock; and Unity's focusable list for the keyboard.
   onto the Outliner and a behavior onto its row.
 - **Deleted:** the kit Outliner (header, rows, rename row, view toggles)
   and `studio_drop_row`, about 280 lines of kit UI.
+
+#### P4: Output (done)
+
+`Output.rml` holds the six views and `OutputHeader.rml`, mounted in the
+area header's controls as GraphView is, the view switch (with Problems'
+and Runtime's counts), Problems' scope and Refresh, the filter (two-way,
+UI-local) and Clear, over the `output` source (`studio_output.c`); the
+rows are `output_rows`, a source of their own synced after it, so a new
+line evaluates the rows' views alone and a view change the header's. The
+kit UI of `studio_output.c`, `studio_find.c` and `studio_calls.c` is gone
+(443 lines removed, 82 kit calls); the views' data and their navigation stay in C
+behind the source's actions: `view`, `scope`, `refresh`, `clear`,
+`click` and `open` (a row's key), `direction`, and the keys Output binds.
+
+- **Rows:** a List window (`ui_list_window`, 60 dp overscan) of the view's
+  rows, each moved to its place by `translateY` and keyed by what it
+  shows: a log line's serial (the editor's log is now a ring of 1,024 lines
+  with serials), a record's, a problem's section and index, a reference,
+  a call. A row that stays in the window keeps its element and markup, so
+  a new line is highlighted and parsed once, as it arrives, as S0 asked;
+  moving rows lays nothing out. Three arrays by shape: `lines`, the Log's
+  (one markup element a row), `entries` (kind icon, place, markup, count)
+  and `items` (TreeRow). Markup escapes `<`, `&`, quotes and braces
+  (`highlight_escape`; braces would open data expressions).
+- **Follow-output:** the Log and Info follow new rows while at their end,
+  stop when scrolled up and resume back at the end; a List's padding now
+  counts in its end (`src/ui/list.c`).
+- **Calls:** a TreeRow tree, as VS Code's call hierarchy: a click selects,
+  the twisty folds (the item's `open`, read back at sync), a double click
+  or Enter opens, and Up, Down, Home, End, Left and Right walk and fold it
+  with the pointer over Output (Studio's shortcuts, which an editor area's
+  focus no longer blocks). Find's rows open on a click, as before.
+- **Also:** what the running game prints reaches the Log under its
+  behavior's name (Unreal's Output Log in PIE); it was dropped. The gaps
+  RmlUi drops between a log line's lead, origin and text are `&nbsp;`.
+  A `line-height` or `font-size` set by `var()` now follows its variable
+  (`rmlui-variable-line-height.patch`): authored labels kept the other
+  density's line-height after a density switch, which the kit hid by
+  restyling its controls every frame.
+
+`./build-release/test_suite --ui-bench studio` case 11, Output's Log in
+the drawer at 1440×900 following one or eight new lines a frame, the kit
+build (`6ecac3a5` with its own `projects/studio`) and this one alternated
+process by process, three runs each, 1-minute load 11.6-13.2 (ms, the
+range of the runs' medians; provisional):
+
+| Case | Kit | Authored | Ratio |
+|---|---:|---:|---:|
+| 1 line a frame, log growing | 4.10-4.25 | 3.45-3.69 | 0.85× |
+| 8 lines a frame, log growing | 6.03-6.14 | 5.18-5.44 | 0.87× |
+| 1 line a frame, log full (oldest drop) | 4.20-4.33 | 3.40-3.55 | 0.82× |
+| 8 lines a frame, log full | 4.22-4.38 | 5.46-5.83 | 1.33× |
+
+Per frame: one layout (the drawer's document) in both; markup parsed for
+the new lines only, where the kit re-parsed every shown row (about 19)
+once its ring was full. Eight new lines into a full log cost more because
+each new row's text is new geometry to capture (capture 3.1-3.4 ms
+against 2.0-2.2); the kit's full-log cost stays flat because it rewrote
+every row anyway. Since the rows moved to `output_rows` (after Members
+merged), a frame evaluates 38 views (64 with one variable; the kit has
+none) and the drawer's document holds 556 elements against 518; the same
+alternation at a 1-minute load of 48-62 gave 0.84-1.0× for one line a
+frame and eight into a growing log, and 1.36× for eight into a full one.
+
+Web shots (1600×1000, before `6ecac3a5` and after), Problems with places,
+Find, Calls, Info and Runtime, dark and light, compact and comfortable:
+identical pixel for pixel but for counts and clocks that moved between
+runs, the Log's restored gaps, and the header's labels after a density
+switch, which now sit as they do before one.
 
 ### Wave 3: scene, chrome, palette (4 parallel)
 

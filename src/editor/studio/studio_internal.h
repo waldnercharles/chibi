@@ -872,6 +872,7 @@ struct studio
     uint64_t shown_node; /* graph node the Properties tabs last followed */
     int shown_actor;     /* scene selection the Properties tabs last followed */
     studio_record_entry *records;
+    int64_t records_dropped; /* records the history dropped or cleared */
     studio_runtime_error *runtime_errors;
     studio_problem *project_problems; /* the last check of every graph asset */
     bool problems_checked;            /* no save or reload since that check */
@@ -944,7 +945,15 @@ struct studio
         studio_call_root root;
         int callees; /* 0 lists callers, 1 callees */
         studio_call *rows;
-    } calls; /* Output's Calls view */
+        int selected; /* a row, or -1 */
+        bool reveal;  /* scroll the selection into view at the next sync */
+    } calls;          /* Output's Calls view */
+    struct
+    {
+        int shown;          /* the view the rows show, -1 before any */
+        int64_t *slots;     /* the key each row shows (studio_output.c) */
+        ui_list_state list; /* the List's window */
+    } output;
     struct
     {
         bool request; /* open at x, y on the next frame */
@@ -1159,7 +1168,7 @@ bool studio_keymap_show(yyjson_mut_doc *doc, const studio_prefs *prefs, bool mac
 bool studio_keymap_area(const char *area);
 
 /* The panel sources a studio_sources follows at most. */
-#define STUDIO_PANEL_SOURCE_MAX 16
+#define STUDIO_PANEL_SOURCE_MAX 24
 
 /* What authored panels bind beyond their world's `save` (studio_sources.c):
  * `world`, the Scene world's saved keys, and `theme`, the custom properties
@@ -1397,6 +1406,8 @@ void studio_performance_header(studio *s, int area);
 void studio_performance_body(studio *s, int area);
 void studio_output_header(studio *s, int area);
 void studio_output_body(studio *s, int area);
+/* The keys of the Output view under the pointer: the Calls tree's. */
+bool studio_output_key(studio *s, SDL_Keycode key, SDL_Keymod mod);
 /* Shows Output's Find view, opening the drawer when no area shows Output. */
 void studio_output_find(studio *s);
 /* Shows Output's Calls view the same way. */
@@ -1418,7 +1429,8 @@ void studio_find_variable_references(studio *s, uint64_t variable_id);
 bool studio_node_referable(const node *n);
 void studio_find_node_references(studio *s, const node *n);
 void studio_find_references(studio *s, const char *title, reference_symbol symbol);
-void studio_find_view(studio *s, float row);
+/* The references Output's filter keeps, as indices into references. */
+int *studio_find_rows(const studio *s);
 void studio_find_clear(studio *s);
 /* What a referable node names, with a title for it; the index is refreshed
    first. An ASSET symbol at -1 for nothing. */
@@ -1445,7 +1457,18 @@ void studio_definition_peek(studio *s);
 bool studio_node_traceable(const node *n);
 void studio_calls_node(studio *s, const node *n);
 void studio_calls_graph(studio *s, const graph *gr);
-void studio_calls_view(studio *s, float row);
+/* The rows under open rows that Output's filter keeps, as indices into
+   calls.rows, each open row with more children than the trace kept
+   followed past its subtree by its More row, as -1 - row. */
+int *studio_calls_rows(const studio *s);
+/* A row's click selects it; a More row's traces on from its row. */
+void studio_calls_click(studio *s, int key);
+/* A double click opens the row's call, send or Event node. */
+void studio_calls_open(studio *s, int key);
+/* Traces callees, or callers, of the same root. */
+void studio_calls_direction(studio *s, bool callees);
+/* Up, Down, Home, End, Left, Right and Enter over Output's Calls tree. */
+bool studio_calls_key(studio *s, SDL_Keycode key);
 void studio_calls_clear(studio *s);
 /* Selects a member of the open behavior and scrolls Members to it. */
 void studio_members_reveal(studio *s, studio_member_kind kind, uint64_t id);
@@ -2344,14 +2367,19 @@ rml_element *studio_ui_area_view(studio *s, int area, const char *name, const ch
 /* Members' source, `members` (studio_members.c): the open behavior's rows
  * in its List's window, keyed "s4" (a section), "c3" (a category), "g7"
  * (a graph), "v12" (a variable), "l5" (a named value) or "e0.9" (an
- * event); the selected member's menu; the header's filter. Rows send
- * members.click, .edit (double click), .menu (right press), .uses and .add
- * with their key; the name field members.renamed with its text, or
- * .cancel; the menu .open, .rename, .duplicate, .refs, .calls and .delete;
- * members.scroll wakes the source as the List scrolls. */
+ * event); the header's filter. Rows send members.click, .edit (double
+ * click), .menu (right press), .uses and .add with their key; the name
+ * field members.renamed with its text, or .cancel; the menu .open,
+ * .rename, .duplicate, .refs, .calls and .delete; members.scroll wakes the
+ * source as the List scrolls. */
 void studio_members_add(yyjson_mut_doc *doc);
 bool studio_members_sync(studio *s, const studio_panel_sync *at);
 void studio_members_action(studio *s, const char *action, const ui_activation *a);
+/* `members_ui`: the keys of the selected member, the open graph and the
+ * member being named, and the selected member's menu, apart from the rows
+ * so a selection dirties only the views that bind them. */
+void studio_members_ui_add(yyjson_mut_doc *doc);
+bool studio_members_ui_sync(studio *s, const studio_panel_sync *at);
 
 /* Runs an activation that is Studio's (studio_panels.c):
  * emit('studio.<command>') runs the command, on the tab or area its first
@@ -2374,5 +2402,22 @@ void studio_editor_choices(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *edito
 /* Shows editor type `editor` in `area`, or with STUDIO_EDITOR_PANEL the
  * Studio panel `panel`; a drawer takes only the types it may hold. */
 void studio_area_show(studio *s, int area, int editor, const char *panel);
+
+/* ---------- Output (workstream P4) ---------- */
+
+/* The `output` panel source: Output.rml's view and OutputHeader.rml's
+ * controls (studio_output.c). output.view, problems and runtime (counts),
+ * scope, clearable, filter (the field's, two-way), head (icon, title, count)
+ * and callees. Actions: view, scope, refresh, clear, click and open (a
+ * row's key), direction and scroll. */
+void studio_output_add(yyjson_mut_doc *doc);
+bool studio_output_sync(studio *s, const studio_panel_sync *at);
+void studio_output_action(studio *s, const char *action, const ui_activation *a);
+/* `output_rows`, synced after `output`: empty, and the List's window of the
+ * view's rows, each written only when its row is new to the window, in
+ * `lines` (the Log's: offset, key, rml), `entries` (with kind, icon, at and
+ * count) or `items` (TreeRow's, with offset, key and shown). */
+void studio_output_rows_add(yyjson_mut_doc *doc);
+bool studio_output_rows_sync(studio *s, const studio_panel_sync *at);
 
 #endif

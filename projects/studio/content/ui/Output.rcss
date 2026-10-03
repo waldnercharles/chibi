@@ -1,0 +1,24 @@
+/* Output's views (studio_output.c): Find's and Calls' head, then a List of
+   the view's rows, all at the list's top and each moved to its row by a
+   translateY the source writes, so a row keeps its element and markup while
+   the window scrolls or the log's oldest lines drop, and moving one lays
+   nothing out. The rows' look, which density sets, is the theme's
+   .output-log and .output-row (theme/workspace.rcss) and .tree-row
+   (theme/tree.rcss). */
+/* The area's panel host scrolls and pads; Output's List scrolls instead. */
+body.area-panel { padding: 0dp; overflow: hidden; }
+.output { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; }
+.output-list { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; }
+.output-list.find-list { top: 24dp; }
+.output-list .list { box-sizing: border-box; padding: 2dp 0dp 6dp; }
+.output-list.find-list .list { padding: 2dp 4dp 6dp; }
+.output-row, .output-log, .output-item { position: absolute; left: 0dp; top: 0dp; right: 0dp; }
+.output-empty { position: absolute; left: 0dp; right: 0dp; top: 45%; text-align: center; color: var(--faint-foreground); pointer-events: none; }
+/* What the references are to, or what the calls trace from; Calls' direction trails. */
+.find-head { position: absolute; left: 0dp; top: 0dp; right: 0dp; height: var(--studio-height-24, 24dp); display: flex; align-items: center; gap: 6dp; padding: 0dp 10dp; border-bottom: 1dp var(--line); }
+.find-head .icon { color: var(--faint-foreground); font-size: 12dp; width: 14dp; }
+.find-title { display: block; line-height: var(--studio-line-16, 16dp); color: var(--foreground); font-weight: 600; white-space: nowrap; }
+.find-count { display: block; line-height: var(--studio-line-16, 16dp); color: var(--faint-foreground); font-family: var(--font-numeric); }
+.output-scope { display: flex; flex: 0 0 auto; margin-left: 6dp; }
+.output-scope .segmented, .output-scope .seg { flex: 0 0 auto; }
+.seg { tab-index: auto; }

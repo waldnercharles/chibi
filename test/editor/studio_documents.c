@@ -1481,7 +1481,7 @@ static void status_bar_follows_studio()
     s->in.mouse_x = s->in.mouse_y = 1;
     frames(&f, 2);
     status_hints(s, elsewhere, sizeof elsewhere);
-    bool hints = !strcmp(scene, "Select|Pan (middle)|Frame") &&
+    bool hints = !strcmp(scene, "Select|Grab|Snap|Frame") &&
                  !strcmp(elsewhere, "Select|Search|Shortcuts");
 
     studio_report(s, "Saved");

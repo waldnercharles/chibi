@@ -1213,17 +1213,19 @@ widget are the references, as the kit's were.
   mode, the problems' count and Invalid chip, and the apply mode; an
   asset's KDL source's name, Unsaved, Save and apply mode.
 - **Fixes**: the kit's rename field in the crumbs had no width, so the
-  name typed was invisible; the authored one is 160 dp at most. A Submenu
-  now fits its widest row as Menu does (it clipped long behavior names).
-  The rename field's blur after Escape no longer commits (the rename
-  ended first).
+  name typed was invisible; the authored one is 160 dp at most. The
+  rename field's blur after Escape doesn't commit (the rename ends first).
+  A find bar opened without input (a command run from code) shows at the
+  next UI frame.
 
 Web shots (1600×1000) before (`3777b63b`) and after, dark and light,
 compact and comfortable: the header, the graph picker for the event graph
-and for a function, the asset crumb's menu with its Behaviors submenu, the
-Graph menu, the find bar with matches, the debug target picker in Play,
-and the Text Editor's header and find bar match pixel for pixel but for a
-caret's blink and, in Play, the Scene's live render. Performance, idle and
+and for a function, the asset crumb's menu, the Graph menu, the find bar
+with matches, the debug target picker in Play, and the Text Editor's
+header and find bar match pixel for pixel but for a caret's blink and, in
+Play, the Scene's live render. The asset crumb's Behaviors submenu clips
+long names at the menu's width until C3's Submenu, which fits a submenu
+to its widest row, merges; with that fix it matched too. Performance, idle and
 in Play, matches in its headings, legend, ticks, badges and readout; its
 samples differ run to run. The rename field is the intentional
 difference above. Native shots (`UI_BENCH_CAPTURE=<dir>` on the Studio

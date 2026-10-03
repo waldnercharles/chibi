@@ -1056,7 +1056,7 @@ struct studio
     {
         uint64_t entity; /* the object renamed in place, or 0 */
         bool outliner; /* in its Outliner row, else in Properties' name field */
-        bool focus;    /* focus the field on its next frame */
+        bool focus;    /* focus Properties' field on its next frame */
         char name[256];
     } rename;
     struct

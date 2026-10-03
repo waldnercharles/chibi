@@ -66,7 +66,10 @@ void studio_rename_object(studio *s)
     bool outliner = editor_shown(s, STUDIO_EDITOR_OUTLINER);
     s->rename.entity = ecs_entity_to_u64(actor->entity);
     s->rename.outliner = outliner;
-    s->rename.focus = true;
+    /* The row's field focuses itself as it is built (autofocus). */
+    s->rename.focus = !outliner;
+    /* How the keyboard comes back to the list after it. */
+    s->outliner.keyboard = studio_ui_keyboard_area(s) >= 0;
     snprintf(s->rename.name, sizeof s->rename.name, "%s", actor->name);
     if (!outliner) {
         s->tab = STUDIO_TAB_OBJECT;
@@ -103,24 +106,6 @@ void studio_rename_commit(studio *s, uint64_t entity, const char *name)
         return;
     }
     studio_report(s, report);
-}
-
-/* The row's field takes the keyboard once it is built, a frame after its
-   row starts renaming; Enter or leaving it renames (Blender's F2). Whether
-   the keyboard held the list decides how it gets it back. */
-static void focus_rename(studio *s, int area, rml_element *host)
-{
-    if (!s->rename.focus || !s->rename.outliner) {
-        return;
-    }
-    rml_element *field = rml_element_query_selector(host, ".object-rename input");
-    s->outliner.keyboard = studio_ui_keyboard_area(s) == area;
-    if (field && rml_element_focus(field, true)) {
-        rml_element_select(field);
-        s->rename.focus = false;
-        return;
-    }
-    s->ui_schedule.wake = true;
 }
 
 /* ---------- Hide in Editor ---------- */
@@ -741,7 +726,7 @@ void studio_outliner_action(studio *s, const char *action, const ui_activation *
    lost focus, which the panel's intents brought first. */
 static void left_rename(studio *s, rml_element *host)
 {
-    if (!s->rename.entity || !s->rename.outliner || s->rename.focus ||
+    if (!s->rename.entity || !s->rename.outliner ||
         !rml_element_query_selector(host, ".object-rename input")) {
         return;
     }
@@ -786,5 +771,4 @@ void studio_outliner_body(studio *s, int area)
     kit_attr(s->kit, "id", id);
     preview_drop(s, host);
     left_rename(s, host);
-    focus_rename(s, area, host);
 }

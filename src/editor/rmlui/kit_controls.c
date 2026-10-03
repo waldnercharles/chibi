@@ -584,6 +584,7 @@ bool kit_checkbox(kit *k, const char *key, bool *value, const char *label, unsig
     if (!w->label_el) {
         rml_element *box = raw(n->el, "span", "box", NULL);
         raw_icon(box, "", KIT_ICON_CHECK);
+        raw_icon(box, "dash", KIT_ICON_DASH);
         w->label_el = raw(n->el, "span", "label", NULL);
     }
     w->desc.flags = flags;
@@ -599,6 +600,7 @@ bool kit_checkbox(kit *k, const char *key, bool *value, const char *label, unsig
     }
     w->pending = false;
     set_flag(n, "data-checked", *value);
+    set_flag(n, "data-mixed", (flags & KIT_MIXED) && !changed);
     set_flag(n, "data-disabled", flags & KIT_DISABLED);
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     return changed;
@@ -682,10 +684,12 @@ static bool choice_select_items(
     }
     set_element_text(
         w->value_el,
-        closed_label                    ? closed_label
+        flags & KIT_MIXED               ? "\xe2\x80\x94"
+        : closed_label                  ? closed_label
         : *value >= 0 && *value < count ? items[*value].label
                                         : "-"
     );
+    set_flag(n, "data-mixed", flags & KIT_MIXED);
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     set_flag(n, "data-disabled", flags & KIT_DISABLED);
     rml_element_set_property(n->el, "tab-index", flags & KIT_DISABLED ? "none" : "auto");
@@ -776,6 +780,7 @@ static bool edit_text(node *n, char *buffer, size_t size, unsigned flags)
     w->desc.flags = flags;
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     set_flag(n, "data-disabled", flags & KIT_DISABLED);
+    set_flag(n, "data-mixed", flags & KIT_MIXED);
     flag_element(w->input_el, "disabled", flags & KIT_DISABLED);
     rml_element_set_property(w->input_el, "tab-index", flags & KIT_DISABLED ? "none" : "auto");
     if (locked(n)) {
@@ -951,6 +956,7 @@ bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags)
     hex_color(hex, *rgba);
     rml_element_set_property(w->swatch_el, "background-color", none ? "transparent" : hex);
     set_flag(n, "data-overridden", flags & KIT_OVERRIDDEN);
+    set_flag(n, "data-mixed", (flags & KIT_MIXED) && !changed);
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     set_flag(n, "data-disabled", flags & KIT_DISABLED);
     set_attr(n, "role", "button");

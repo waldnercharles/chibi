@@ -146,7 +146,7 @@ app_game_presentation *app_game_presentation_new(
     scene->render_viewport = viewport;
     engine_viewport_set_perspective(viewport, scene->perspective);
     engine_viewport_request_resize(viewport, cf_app_get_canvas_width(), cf_app_get_canvas_height());
-    fit_scene_view(viewport, scene->world, (ecs_entity){ 0 });
+    fit_scene_view(viewport, scene->world, NULL, 0);
     engine_viewport_set_render_callback(viewport, render_game, game);
     ui_world ui = { .ecs = scene->world,
                     .page = app_scene_authoring_page(scene),

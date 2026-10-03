@@ -16,3 +16,5 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; overflow: hidden; }
 .prop { align-items: center; }
 /* Why a scene setting is read-only while the scene runs. */
 .prop-note { padding: 0dp 4dp 8dp; color: var(--faint-foreground); }
+/* Several selected objects: a chip per prototype among them, wrapping. */
+.identity .lineage.prototypes { flex-wrap: wrap; white-space: normal; gap: 2dp 4dp; }

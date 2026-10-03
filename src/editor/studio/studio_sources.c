@@ -1639,6 +1639,7 @@ void studio_status_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_arr(doc, spare, "tabs");
     add_texts(doc, editor, STATUS_TEXTS);
     add_flags(doc, editor, STATUS_FLAGS);
+    yyjson_mut_obj_add_real(doc, editor, "selected", 0);
     yyjson_mut_obj_add_real(doc, editor, "objects", 0);
     yyjson_mut_obj_add_real(doc, editor, "hidden", 0);
     add_areas(doc, editor);
@@ -1712,6 +1713,7 @@ bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status)
     for (int f = 0; STATUS_FLAGS[f]; f++) {
         changed |= put_bool(editor, STATUS_FLAGS[f], flags[f]);
     }
+    changed |= put_number(editor, "selected", status->selected);
     changed |= put_number(editor, "objects", status->objects);
     changed |= put_number(editor, "hidden", status->hidden);
     return changed;
@@ -1773,8 +1775,11 @@ static hint_list scene_hints(studio *s)
             hints[n++] = (studio_hint){ KIT_ICON_MOUSE, NULL, "Select" };
             break;
     }
+    hints[n++] = (studio_hint){ KIT_ICON_MOUSE, "Shift", "Toggle" };
     hints[n++] = (studio_hint){ 0, NULL, "Grab", STUDIO_COMMAND_GRAB + 1 };
-    hints[n++] = (studio_hint){ 0, "Ctrl", snap };
+    if (n < STUDIO_HINT_MAX) {
+        hints[n++] = (studio_hint){ 0, "Ctrl", snap };
+    }
     if (n < STUDIO_HINT_MAX) {
         hints[n++] = (studio_hint){ 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 };
     }
@@ -1794,8 +1799,9 @@ static hint_list editor_hints(studio *s)
                                               { 0, "Ctrl", "Snap" } };
     static const studio_hint OUTLINER[] = {
         { KIT_ICON_MOUSE, NULL, "Select" },
+        { KIT_ICON_MOUSE, "Mod", "Toggle" },
+        { KIT_ICON_MOUSE, "Shift", "Range" },
         { 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 },
-        { 0, NULL, "Delete", STUDIO_COMMAND_DELETE + 1 },
         { 0, NULL, "Rename", STUDIO_COMMAND_RENAME + 1 }
     };
     /* Visual designer (workstream H): the Outliner as a UI document's Hierarchy. */
@@ -1855,6 +1861,8 @@ static void sync_editor(studio *s, ui_data *data)
         .reporting = s->status[0] && s->time - s->status_time < REPORT_SECONDS,
         .scene = studio_scene_title(s->scene, title, sizeof title),
         .selection = actor ? actor->name : spawned_selection(s->scene),
+        .selected = scene_selection_count(s->scene) +
+                    (spawned_selection(s->scene)[0] != '\0'),
         .objects = acount(s->scene->actors),
         .hidden = studio_hidden_count(s),
         .playing = app_scene_authoring_runtime_state(s->scene).playing || s->guest != NULL,

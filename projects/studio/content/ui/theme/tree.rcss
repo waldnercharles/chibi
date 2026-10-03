@@ -7,6 +7,9 @@
 .tree-row[data-selected] { background-color: var(--selected); }
 .tree-row[data-active] { background-color: var(--active-row); }
 .tree-row[data-active] .name { color: var(--strong); }
+/* The rest of a multi-selection sits a step under the active row (Blender's
+   Outliner). */
+.tree-row[data-marked] { background-color: color-mix(in srgb, var(--selected) 55%, transparent); }
 .tree-row:focus-visible { border-color: var(--ring); }
 .tree-row .twisty { width: 14dp; font-size: 11dp; color: var(--faint-foreground); }
 .tree-row .name { flex: 1 1 0dp; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

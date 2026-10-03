@@ -628,6 +628,49 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                                         "help",
                                             .icon = KIT_ICON_KEYBOARD,
                                             .phase = SHORTCUT_EARLY },
+    /* The object clipboard, as Unity's and Godot's; a focused field keeps
+       these chords for its text. */
+    [STUDIO_COMMAND_COPY] = { .id = "copy",
+                              .label = "Copy",
+                              .chord = "Mod+C",
+                              .context = "Scene, Outliner",
+                              .contexts = OBJECT_AREAS,
+                              .keywords = "clipboard objects",
+                              .icon = KIT_ICON_CLIPBOARD,
+                              .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_CUT] = { .id = "cut",
+                             .label = "Cut",
+                             .chord = "Mod+X",
+                             .context = "Scene, Outliner",
+                             .contexts = OBJECT_AREAS,
+                             .keywords = "clipboard objects remove",
+                             .icon = KIT_ICON_CUT,
+                             .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_PASTE] = { .id = "paste",
+                               .label = "Paste",
+                               .chord = "Mod+V",
+                               .context = "Scene, Outliner",
+                               .contexts = OBJECT_AREAS,
+                               .keywords = "clipboard objects insert",
+                               .icon = KIT_ICON_PASTE,
+                               .phase = SHORTCUT_EDITOR },
+    /* Shift+arrows extend a list's selection, as Finder's and VS Code's. */
+    [STUDIO_COMMAND_EXTEND_PREVIOUS] = { .id = "extendPrevious",
+                                         .label = "Extend Selection Up",
+                                         .chord = "Shift+Up",
+                                         .context = "Outliner",
+                                         .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                         .keywords = "range multiple",
+                                         .repeat = true,
+                                         .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_EXTEND_NEXT] = { .id = "extendNext",
+                                     .label = "Extend Selection Down",
+                                     .chord = "Shift+Down",
+                                     .context = "Outliner",
+                                     .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                     .keywords = "range multiple",
+                                     .repeat = true,
+                                     .phase = SHORTCUT_EDITOR },
 };
 
 const char *studio_command_default_chord(studio_command command)
@@ -949,8 +992,9 @@ static void find(studio *s, studio_editor editor)
     }
 }
 
-/* Up and Down walk the Outliner's visible rows (Blender). */
-static void step_selection(studio *s, int direction)
+/* Up and Down walk the Outliner's visible rows (Blender); Shift extends the
+   selection from its anchor. */
+void studio_step_selection(studio *s, int direction, bool extend)
 {
     int *rows = studio_outliner_rows(s);
     int count = acount(rows), at = -1;
@@ -960,7 +1004,11 @@ static void step_selection(studio *s, int direction)
     int next = at < 0 ? (direction > 0 ? 0 : count - 1) : at + direction;
     if (count && next >= 0 && next < count) {
         finish_transform_edit(s->scene, false);
-        select_instance(s->scene, rows[next]);
+        if (extend) {
+            studio_select_range(s, rows, count, next);
+        } else {
+            select_instance(s->scene, rows[next]);
+        }
         s->outliner_reveal = true;
     }
     afree(rows);
@@ -990,6 +1038,13 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         /* X and Delete constrain or cancel a running gizmo instead. */
         case STUDIO_COMMAND_DELETE:
             return editable && selection && !s->scene->gizmo.active;
+        case STUDIO_COMMAND_CUT:
+            return editable && selection && !s->scene->gizmo.active &&
+                   !studio_designer_active(s);
+        case STUDIO_COMMAND_COPY:
+            return selection && !studio_designer_active(s);
+        case STUDIO_COMMAND_PASTE:
+            return editable && !s->scene->gizmo.active && !studio_designer_active(s);
         case STUDIO_COMMAND_OPEN_PROTOTYPE:
         case STUDIO_COMMAND_FRAME: return selection;
         case STUDIO_COMMAND_HIDE_SELECTED:
@@ -1145,8 +1200,18 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_STOP: studio_runtime(s, APP_RUNTIME_STOP); break;
         case STUDIO_COMMAND_STEP: studio_runtime(s, APP_RUNTIME_STEP); break;
         case STUDIO_COMMAND_RECORD_GAMEPLAY: studio_record_gameplay(s); break;
-        case STUDIO_COMMAND_SELECT_PREVIOUS: step_selection(s, -1); break;
-        case STUDIO_COMMAND_SELECT_NEXT: step_selection(s, 1); break;
+        case STUDIO_COMMAND_SELECT_PREVIOUS:
+            studio_step_selection(s, -1, false);
+            break;
+        case STUDIO_COMMAND_SELECT_NEXT:
+            studio_step_selection(s, 1, false);
+            break;
+        case STUDIO_COMMAND_EXTEND_PREVIOUS:
+            studio_step_selection(s, -1, true);
+            break;
+        case STUDIO_COMMAND_EXTEND_NEXT:
+            studio_step_selection(s, 1, true);
+            break;
         case STUDIO_COMMAND_RESUME: studio_debug(s, STUDIO_RESUME); break;
         case STUDIO_COMMAND_STEP_OVER: studio_debug(s, STUDIO_STEP_OVER); break;
         case STUDIO_COMMAND_STEP_INTO: studio_debug(s, STUDIO_STEP_INTO); break;
@@ -1242,6 +1307,9 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_KEYBOARD_SHORTCUTS:
             studio_ui_show(s, "Shortcuts");
             break;
+        case STUDIO_COMMAND_COPY: studio_copy(s); break;
+        case STUDIO_COMMAND_CUT: studio_cut(s); break;
+        case STUDIO_COMMAND_PASTE: studio_paste(s); break;
         case STUDIO_COMMAND_COUNT: break;
     }
 }

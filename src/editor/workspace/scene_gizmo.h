@@ -35,6 +35,8 @@ typedef struct
     bool snap;       /* snapping, before Ctrl inverts it */
     float increment; /* the grid's spacing, in world units */
     bool shift;      /* held: a resize keeps the aspect ratio */
+    bool extend;     /* Shift or Mod held: a click toggles an object in the
+                        selection and a marquee adds to it */
     bool ctrl;       /* held: inverts snapping */
     bool alt;        /* held: a resize keeps the center */
     bool axis_x;     /* pressed: a modal move follows X only, or again freely */

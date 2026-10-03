@@ -704,12 +704,64 @@ void select_instance(app_scene_authoring *scene, int actor_index)
     }
 }
 
+bool scene_instance_selected(const app_scene_authoring *scene, int index)
+{
+    return scene->actors[index].marked || index == scene->selected;
+}
+
+int scene_selection_count(const app_scene_authoring *scene)
+{
+    int count = 0;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        count += scene_instance_selected(scene, i);
+    }
+    return count;
+}
+
+void scene_toggle_instance(app_scene_authoring *scene, int index)
+{
+    assert(index >= 0 && index < acount(scene->actors));
+    finish_transform_edit(scene, false);
+    scene->runtime_selected = (ecs_entity){ 0 };
+    if (scene->selected >= 0) {
+        scene->actors[scene->selected].marked = true;
+    }
+    bool selected = !scene->actors[index].marked;
+    scene->actors[index].marked = selected;
+    if (selected) {
+        scene->selected = index;
+        return;
+    }
+    /* Unity's: the active object leaves for another selected one. */
+    scene->selected = -1;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->selected = scene->actors[i].marked ? i : scene->selected;
+    }
+}
+
+void scene_select_range(app_scene_authoring *scene, const int *rows, int from, int to)
+{
+    finish_transform_edit(scene, false);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = false;
+    }
+    int step = from <= to ? 1 : -1;
+    for (int r = from; r != to + step; r += step) {
+        scene->actors[rows[r]].marked = true;
+    }
+    scene->runtime_selected = (ecs_entity){ 0 };
+    scene->selected = rows[to];
+}
+
 int app_scene_authoring_select_runtime_entity(app_scene_authoring *scene, ecs_entity entity)
 {
     if (!scene || !game_entities_owns(scene->live->entities, entity)) {
         return -1;
     }
     finish_transform_edit(scene, scene->dragging_actor);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = false;
+    }
     scene->runtime_selected = entity;
     scene->selected = -1;
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
@@ -816,11 +868,8 @@ void scene_property_value_free(pin_value *value)
     *value = (pin_value){ 0 };
 }
 
-void finish_property_edit(app_scene_authoring *scene)
+static void commit_property_edit(app_scene_authoring *scene)
 {
-    if (!scene->property_actor.slot) {
-        return;
-    }
     scene_field_edit *edit = &scene->property_edit;
     scene_actor *actor = NULL;
     uint64_t identity = scene_actor_identity(scene, scene->property_actor);
@@ -896,6 +945,56 @@ void finish_property_edit(app_scene_authoring *scene)
     scene_property_value_free(&edit->after);
     *edit = (scene_field_edit){ 0 };
     scene->property_actor = (ecs_entity){ 0 };
+}
+
+/* Records each other object a multi-object edit wrote, as the edit itself. */
+static void commit_property_others(
+    app_scene_authoring *scene,
+    scene_field_target *others,
+    ecs_component_id component,
+    int field
+)
+{
+    for (int i = 0; i < acount(others); i++) {
+        pin_value after = { 0 };
+        if (ecs_component_read_field(scene->world, others[i].entity, component, field, &after) ==
+                ECS_OK &&
+            !pin_value_equal(&others[i].before, &after)) {
+            scene->property_actor = others[i].entity;
+            scene->property_edit = (scene_field_edit){ .component = component,
+                                                       .field = field };
+            bool copied = scene_property_value_copy(
+                              &scene->property_edit.before,
+                              others[i].before
+                          ) &&
+                          scene_property_value_copy(&scene->property_edit.after, after);
+            assert(copied);
+            scene->property_dirty = true;
+            commit_property_edit(scene);
+            scene->scene_dirty = true;
+        }
+        scene_property_value_free(&others[i].before);
+    }
+}
+
+void finish_property_edit(app_scene_authoring *scene)
+{
+    if (!scene->property_actor.slot) {
+        return;
+    }
+    scene_field_target *others = scene->property_others;
+    scene->property_others = NULL;
+    ecs_component_id component = scene->property_edit.component;
+    int field = scene->property_edit.field;
+    if (acount(others)) {
+        scene_history_begin_group(scene->history);
+    }
+    commit_property_edit(scene);
+    commit_property_others(scene, others, component, field);
+    if (acount(others)) {
+        scene_history_end_group(scene->history);
+    }
+    afree(others);
 }
 
 void begin_transform_edit(app_scene_authoring *scene, ecs_entity entity)
@@ -1455,6 +1554,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         remove_selected(scene);
     }
     afree(scene->actors);
+    afree(scene->marquee_base);
     scene_view_free(scene);
     reference_index_free(scene->asset_index);
     scene_tabs_free(scene);

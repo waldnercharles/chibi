@@ -1,6 +1,7 @@
 #ifndef CHIBI_SCENE_INTERNAL_H
 #define CHIBI_SCENE_INTERNAL_H
 #include "assets/scenario_document.h"
+#include "assets/scene_document.h"
 #include "editor/documents/scene_history.h"
 #include "editor/documents/scene_retention.h"
 #include "editor/documents/ui_buffer.h"
@@ -25,6 +26,14 @@ typedef struct
     scene_retained_component *retained;
     bool marked;
 } scene_actor;
+
+/* An object a multi-object Properties edit also writes, and its value
+   before the edit. */
+typedef struct
+{
+    ecs_entity entity;
+    pin_value before; /* owned, as scene_property_value_copy copies */
+} scene_field_target;
 
 /* An object the editor hides or locks in the open scene, by its name. */
 typedef struct
@@ -197,6 +206,7 @@ struct app_scene_authoring
     ecs_entity edit_actor;
     ecs_entity property_actor;
     scene_field_edit property_edit;
+    scene_field_target *property_others; /* array; recorded with the edit as one step */
     bool property_dirty;
     GameTransform edit_before;
     GameTransform edit_after;
@@ -206,6 +216,8 @@ struct app_scene_authoring
     scene_gizmo gizmo;
     bool marquee;
     bool marquee_visible;
+    int *marquee_base; /* the selection an extending marquee adds to; array of actors */
+    int marquee_active;  /* the active object when it began */
     CF_V2 marquee_start; /* Normalized viewport coordinates. */
     CF_V2 marquee_end;
     float selection_scale;
@@ -301,7 +313,9 @@ void scene_property_value_free(pin_value *value);
 void finish_property_edit(app_scene_authoring *scene);
 void finish_transform_edit(app_scene_authoring *scene, bool cancel);
 void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTransform position);
-void fit_scene_view(engine_viewport *viewport, ecs_world *world, ecs_entity only);
+/* Fits the `count` objects in `only` in the view, or every object when
+   `only` is NULL. */
+void fit_scene_view(engine_viewport *viewport, ecs_world *world, const ecs_entity *only, int count);
 /* Generated World (scene_world_preview.c): prepares the scene's materials for
  * the edited view each draw, and discards them for a session or when off. */
 void scene_world_preview_update(app_scene_authoring *scene, const engine_viewport_camera *view);
@@ -334,6 +348,37 @@ bool scene_can_move(const app_scene_authoring *scene);
 /* The scene is edited: no session runs, paused or not. */
 bool scene_editing(const app_scene_authoring *scene);
 void select_instance(app_scene_authoring *scene, int actor_index);
+/* Multi-selection, as Unity's, Godot's and Blender's: `selected` is the
+   active object and `marked` the rest of the selection. */
+bool scene_instance_selected(const app_scene_authoring *scene, int index);
+int scene_selection_count(const app_scene_authoring *scene);
+/* Adds the object to the selection as its active one, or takes it out,
+   another selected object becoming active (Mod+click, Shift+click). */
+void scene_toggle_instance(app_scene_authoring *scene, int index);
+/* Selects actors rows[from] through rows[to] alone, rows[to] active, as
+   Shift+click selects a range of a list. */
+void scene_select_range(app_scene_authoring *scene, const int *rows, int from, int to);
+/* Duplicates the selected objects `offset` away as one Undo step; the copies
+   become the selection, the active object's copy active. */
+int scene_duplicate_selection(app_scene_authoring *scene, GameTransform offset);
+/* The selected objects as scene text: a scene document of their entities,
+   each its prototype, overridden fields and behaviors, as the clipboard
+   carries them. NULL without a selection. */
+char *scene_copy_selection(app_scene_authoring *scene);
+/* Where pasted objects land: the group's center on `*center`, else moved by
+   `offset`; a positive `snap` rounds the move, so objects on the grid stay
+   on it. */
+typedef struct
+{
+    const GameTransform *center;
+    GameTransform offset;
+    float snap;
+} scene_paste_place;
+/* Adds the objects scene text `text` holds, keeping their layout and names
+   unless taken, as one Undo step, and selects them. Returns how many, or -1
+   with the message set when the text holds no objects or one this project
+   cannot make. */
+int scene_paste(app_scene_authoring *scene, const char *text, scene_paste_place place);
 scene_actor *selected_actor(app_scene_authoring *scene);
 scene_prototype_asset *selected_prototype(app_scene_authoring *scene);
 ecs_entity selected_scene_entity(const app_scene_authoring *scene);
@@ -348,6 +393,19 @@ int write_prototype_field(
 
 int actor_has_behavior(game_behavior_world *behaviors, const scene_actor *actor, const char *asset_name);
 int add_actor(app_scene_authoring *scene, const char *name, const char *prototype_name);
+/* Scene document entities (scene_document.c), as loading and the clipboard
+   share them: whether this project can make one, with the message set when
+   not; one spawned as a new object named `name`, its actor last; and an
+   object written as one. */
+int scene_validate_entity(app_scene_authoring *scene, const game_scene_entity *entity);
+int scene_spawn_entity(app_scene_authoring *scene, const game_scene_entity *entity, const char *name);
+int scene_document_add_actor(
+    app_scene_authoring *scene,
+    game_scene_document *document,
+    const scene_actor *actor
+);
+/* The scene document's name: its file's, without the extension. */
+void scene_document_name(const app_scene_authoring *scene, char *name, size_t size);
 int add_instance_at(app_scene_authoring *scene, const char *prototype_name, const GameTransform *position);
 game_prototype_registry app_component_registry(void);
 int apply_components_value(app_scene_authoring *scene, ecs_entity entity, av_value *components);

@@ -237,7 +237,7 @@ void sg_copy_selection(studio *s)
     }
     char *json = graph_save_nodes(e->active_graph, e->selected, acount(e->selected));
     if (json) {
-        cf_clipboard_set(json);
+        kit_clipboard_set(json);
         free(e->clipboard);
         e->clipboard = json;
     }

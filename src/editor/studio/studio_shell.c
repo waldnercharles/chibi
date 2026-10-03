@@ -391,28 +391,125 @@ void studio_runtime(studio *s, app_runtime_command command)
     }
 }
 
+/* Fits every selected object, a spawned one included, in the view. */
 void studio_frame_selection(studio *s)
 {
-    ecs_entity entity = selected_scene_entity(s->scene);
-    if (!entity.slot || !ecs_entity_is_alive(s->scene->world, entity)) {
-        return;
+    app_scene_authoring *scene = s->scene;
+    ecs_entity *entities = NULL;
+    if (scene->runtime_selected.slot && selected_scene_entity(scene).slot) {
+        apush(entities, scene->runtime_selected);
     }
-    fit_scene_view(s->viewport, s->scene->world, entity);
-    engine_viewport_get_view(s->viewport, &s->scene->camera.view);
-    s->scene->camera.saved = true;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        ecs_entity entity = scene->actors[i].entity;
+        if (scene_instance_selected(scene, i) &&
+            ecs_entity_is_alive(scene->world, entity)) {
+            apush(entities, entity);
+        }
+    }
+    if (acount(entities)) {
+        fit_scene_view(s->viewport, scene->world, entities, acount(entities));
+        engine_viewport_get_view(s->viewport, &scene->camera.view);
+        scene->camera.saved = true;
+    }
+    afree(entities);
 }
 
+/* What an operation on the selection did, for a report or a toast:
+   "Copied Player" or "Copied 3 objects". */
+static void selection_title(studio *s, const char *verb, int count, char *title, size_t size)
+{
+    scene_actor *actor = selected_actor(s->scene);
+    if (count == 1 && actor) {
+        snprintf(title, size, "%s %s", verb, actor->name);
+        return;
+    }
+    snprintf(title, size, "%s %d objects", verb, count);
+}
+
+/* Duplicates land one grid increment down and right, as Godot's do, so the
+   copies show beside their originals and stay on the grid with them; Unity's
+   in place copies hide behind what they copy. */
 void studio_duplicate(studio *s)
 {
-    if (studio_editable(s) && selected_actor(s->scene)) {
-        finish_transform_edit(s->scene, false);
-        app_scene_authoring_duplicate_instance(s->scene);
+    app_scene_authoring *scene = s->scene;
+    if (!studio_editable(s) || !selected_actor(scene)) {
+        return;
     }
+    float step = s->prefs.scene_increment;
+    if (scene_duplicate_selection(scene, (GameTransform){ step, step }) != 0) {
+        studio_report(s, scene->message[0] ? scene->message : "Could not duplicate");
+        return;
+    }
+    char title[160];
+    selection_title(s, "Duplicated", scene_selection_count(scene), title, sizeof title);
+    studio_report(s, title);
+}
+
+void studio_copy(studio *s)
+{
+    char *text = scene_copy_selection(s->scene);
+    if (!text) {
+        return;
+    }
+    kit_clipboard_set(text);
+    free(text);
+    char title[160];
+    selection_title(s, "Copied", scene_selection_count(s->scene), title, sizeof title);
+    studio_report(s, title);
+}
+
+/* The pointer's place in the scene while it is over the Scene and the key
+   came from there, as gameplay coordinates. */
+static bool scene_pointer(studio *s, GameTransform *at)
+{
+    int area = s->key_area;
+    float x, y;
+    if (area < 0 || studio_active_layout(s)->editors[area] != STUDIO_EDITOR_SCENE ||
+        !s->surface.hovered || studio_previewed_ui(s) ||
+        !engine_viewport_mouse_world(s->viewport, &x, &y)) {
+        return false;
+    }
+    *at = (GameTransform){ x, -y };
+    return true;
+}
+
+void studio_paste(studio *s)
+{
+    if (!studio_editable(s)) {
+        return;
+    }
+    float step = s->prefs.scene_increment;
+    GameTransform pointer;
+    scene_paste_place place = { .offset = { step, step },
+                                .snap = s->prefs.scene_snap ? step : 0 };
+    if (scene_pointer(s, &pointer)) {
+        place.center = &pointer;
+    }
+    char *text = cf_clipboard_get();
+    int pasted = scene_paste(s->scene, text, place);
+    if (text) {
+        cf_free(text);
+    }
+    if (pasted < 0) {
+        kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = "Nothing to paste",
+                               .description = s->scene->message }
+        );
+        /* The toast says why; the status bar need not repeat it. */
+        s->scene->message[0] = '\0';
+        return;
+    }
+    char title[160];
+    selection_title(s, "Pasted", pasted, title, sizeof title);
+    studio_report(s, title);
 }
 
 void studio_frame_all(studio *s)
 {
-    fit_scene_view(s->viewport, s->scene->world, (ecs_entity){ 0 });
+    fit_scene_view(s->viewport, s->scene->world, NULL, 0);
     engine_viewport_get_view(s->viewport, &s->scene->camera.view);
     s->scene->camera.saved = true;
 }
@@ -471,26 +568,23 @@ static int delete_entities(app_scene_authoring *scene, const ecs_entity *entitie
     return result;
 }
 
-/* Destructive edits offer Undo in a toast while they are still the latest edit. */
-void studio_delete(studio *s)
+/* Deletes the selection as one Undo step, which a toast offers to undo
+   while it is still the latest edit, titled "<verb> Player" or "<verb> 3
+   objects". */
+static void delete_selection(studio *s, const char *verb)
 {
     app_scene_authoring *scene = s->scene;
-    scene_actor *actor = selected_actor(scene);
-    if (!studio_editable(s) || !actor) {
+    if (!studio_editable(s) || !selected_actor(scene)) {
         return;
     }
     ecs_entity *entities = NULL;
     for (int i = 0; i < acount(scene->actors); i++) {
-        if (scene->actors[i].marked || i == scene->selected) {
+        if (scene_instance_selected(scene, i)) {
             apush(entities, scene->actors[i].entity);
         }
     }
     char title[160];
-    if (acount(entities) == 1) {
-        snprintf(title, sizeof title, "Deleted %s", actor->name);
-    } else {
-        snprintf(title, sizeof title, "Deleted %d objects", acount(entities));
-    }
+    selection_title(s, verb, acount(entities), title, sizeof title);
     finish_transform_edit(scene, false);
     scene_history_begin_group(scene->history);
     int result = delete_entities(scene, entities);
@@ -506,6 +600,23 @@ void studio_delete(studio *s)
         return;
     }
     offer_undo(s, title);
+}
+
+void studio_delete(studio *s)
+{
+    delete_selection(s, "Deleted");
+}
+
+/* Cut copies and deletes, the deletion offering Undo as Delete does. */
+void studio_cut(studio *s)
+{
+    char *text = scene_copy_selection(s->scene);
+    if (!text) {
+        return;
+    }
+    kit_clipboard_set(text);
+    free(text);
+    delete_selection(s, "Cut");
 }
 
 static void undo_toast(studio *s)

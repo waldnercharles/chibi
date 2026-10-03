@@ -65,6 +65,24 @@ EMSCRIPTEN_KEEPALIVE int studio_web_wants_text()
            (web_studio->guest && web_wants_text(web_studio->guest));
 }
 
+/* Presses and releases Mod+V for SDL, as the browser kept the key. */
+static bool push_paste_key(int meta)
+{
+    SDL_Event event = { .type = SDL_EVENT_KEY_DOWN };
+    event.key.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.key.key = SDLK_V;
+    event.key.scancode = SDL_SCANCODE_V;
+    event.key.mod = meta ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    event.key.down = true;
+    if (!SDL_PushEvent(&event)) {
+        return false;
+    }
+    event.type = SDL_EVENT_KEY_UP;
+    event.key.down = false;
+    SDL_PushEvent(&event);
+    return true;
+}
+
 /* A trusted DOM paste provides text only during its event. Give RmlUi's
  * normal Control+V handler that text through its clipboard interface. */
 EMSCRIPTEN_KEEPALIVE int studio_web_paste(const char *text, int meta)
@@ -73,20 +91,22 @@ EMSCRIPTEN_KEEPALIVE int studio_web_paste(const char *text, int meta)
         return 0;
     }
     rml_backend_set_pending_paste_text(text);
-    SDL_Event event = { .type = SDL_EVENT_KEY_DOWN };
-    event.key.windowID = SDL_GetWindowID(cf_app_get_window());
-    event.key.key = SDLK_V;
-    event.key.scancode = SDL_SCANCODE_V;
-    event.key.mod = meta ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
-    event.key.down = true;
-    if (!SDL_PushEvent(&event)) {
+    if (!push_paste_key(meta)) {
         rml_backend_clear_pending_paste_text();
         return 0;
     }
-    event.type = SDL_EVENT_KEY_UP;
-    event.key.down = false;
-    SDL_PushEvent(&event);
     return 1;
+}
+
+/* Mod+V with no field focused: the browser's clipboard text, when its paste
+ * event had any, becomes SDL's before the key reaches Studio's Paste and the
+ * graph's, so objects and nodes paste between sessions. */
+EMSCRIPTEN_KEEPALIVE void studio_web_paste_key(const char *text, int meta)
+{
+    if (text && text[0]) {
+        cf_clipboard_set(text);
+    }
+    push_paste_key(meta);
 }
 #endif
 

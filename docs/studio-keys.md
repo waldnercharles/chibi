@@ -9,8 +9,8 @@ Every key Studio takes, by the area it acts in. **Mod** is Command on a Mac (the
 - **Text fields** keep their keys: typing, Enter, Escape, Mod+A/C/V/X/Z/Y and caret keys. Other Mod chords still run commands, as VS Code's do (Mod+S saves, Mod+K searches). A key that a field, popup or modal releases (Escape, Enter) does nothing else in the same frame.
 - **Popups, Search and modal dialogs** own every key while open; Escape closes them.
 - **While playing**, a click in the Scene gives the game the keyboard. Studio keeps chords with Mod and the function keys (Stop, the debugger), which games do not bind. Hold Alt to navigate the Scene camera while playing.
-- **Web build**: the page lets Studio take Command chords even while a field has focus (the browser would otherwise save, print, zoom or bookmark); Mod+V still pastes through the browser. Option chords dispatch as their letter (⌥G, not ©).
-- Held keys repeat only Undo, Redo, UI Scale, Up and Down in the Outliner, and the debugger's steps.
+- **Web build**: the page lets Studio take Command chords even while a field has focus (the browser would otherwise save, print, zoom or bookmark); Mod+V still pastes through the browser, into the focused field, or else into Studio's Paste (objects or nodes), so text copied in another tab or session reaches both. Option chords dispatch as their letter (⌥G, not ©).
+- Held keys repeat only Undo, Redo, UI Scale, Up and Down (with Shift too) in the Outliner, and the debugger's steps.
 
 ## Global
 
@@ -39,16 +39,24 @@ Commands without a default chord (Reload, Open Prototype, Reset Camera, Toggle P
 
 ## Scene and Outliner
 
+Commands act on the whole selection; F2 renames the active object.
+
 | Key | Action | Context | Source |
 | --- | --- | --- | --- |
-| F | Frame Selected | Scene, Outliner | `studio_commands.c` |
+| F | Frame Selected: fit every selected object | Scene, Outliner | `studio_commands.c` |
 | Home | Frame All | Scene | `studio_commands.c` |
-| F2 | Rename the selected object in place | Scene, Outliner | `studio_commands.c`, `studio_scene.c` |
-| Shift+D, Mod+D | Duplicate | Scene, Outliner | `studio_commands.c` |
-| X, Backspace, Delete | Delete the selected and marquee-marked objects (Undo in the toast) | Scene, Outliner | `studio_commands.c`, `studio_shell.c` |
+| F2 | Rename the active object in place | Scene, Outliner | `studio_commands.c`, `studio_scene.c` |
+| Shift+D, Mod+D | Duplicate the selection one grid increment down and right; the copies become the selection | Scene, Outliner | `studio_commands.c`, `studio_shell.c` |
+| X, Backspace, Delete | Delete the selection (Undo in the toast) | Scene, Outliner | `studio_commands.c`, `studio_shell.c` |
+| Mod+C, Mod+X, Mod+V | Copy, Cut (Undo in the toast) and Paste objects; Paste centers them under the pointer over the Scene, else one grid increment from where they were copied | Scene, Outliner | `studio_commands.c`, `studio_shell.c` |
 | Mod+A | Select All | Scene, Outliner | `studio_commands.c` |
 | Escape | Deselect All (not while a drag is held) | Scene, Outliner | `studio_commands.c` |
 | Up, Down | Select previous and next row | Outliner | `studio_commands.c` |
+| Shift+Up, Shift+Down | Extend the selection from its anchor | Outliner | `studio_commands.c` |
+| Mod+click | Add a row to the selection, or take it out | Outliner | `studio_scene.c` |
+| Shift+click | Select the rows from the anchor (the last row clicked) | Outliner | `studio_scene.c` |
+| Shift+click, Mod+click | Add an object to the selection, or take it out (not on a gizmo handle, where Shift keeps the aspect) | Scene | `workspace/scene_viewport.c` |
+| Shift+drag, Mod+drag | Add a marquee's objects to the selection | Scene | `workspace/scene_viewport.c` |
 | Mod or Ctrl + wheel | Magnify the Scene view; middle drag pans it | Scene | `studio_scene.c` |
 | Alt (held) | Navigate the camera while playing | Scene | `workspace/viewport.c` |
 

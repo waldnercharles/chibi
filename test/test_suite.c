@@ -108,6 +108,8 @@ void test_code_intelligence();
 void test_studio_settings();
 /* The Scene view's game preview while editing. */
 void test_scene_view();
+/* One selection model, commands on the selection and the object clipboard. */
+void test_scene_selection();
 /* Visual designer (workstream H). */
 void test_ui_designer();
 
@@ -247,6 +249,7 @@ TEST_CASE(all_checks)
     test_rcss();
     test_scene_debug();
     test_scene_view();
+    test_scene_selection();
     test_appearance_geometry();
     test_mesh_surface();
     test_mesh_asset();

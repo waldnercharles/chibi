@@ -14,76 +14,84 @@
 #include <string.h>
 #include <sys/stat.h>
 
-av_value *scene_authoring_scene_value(app_scene_authoring *scene)
+/* The document is named after its file, so saving never renames it. */
+void scene_document_name(const app_scene_authoring *scene, char *name, size_t size)
 {
-    finish_transform_edit(scene, false);
-    /* The document is named after its file, so saving never renames it. */
-    char name[256] = "Scene";
+    snprintf(name, size, "Scene");
     if (scene->scene_path && scene->scene_path[0]) {
-        snprintf(name, sizeof name, "%s", content_basename(scene->scene_path));
+        snprintf(name, size, "%s", content_basename(scene->scene_path));
         char *extension = strrchr(name, '.');
         if (extension && extension != name) {
             *extension = '\0';
         }
     }
+}
+
+int scene_document_add_actor(app_scene_authoring *scene, game_scene_document *document, const scene_actor *actor)
+{
+    game_behavior_world *behaviors = scene->live->behaviors;
+    const game_prototype *snapshot = scene->runtime_snapshot_valid
+                                       ? actor->runtime_snapshot
+                                       : NULL;
+    const char **names = NULL;
+    if (snapshot) {
+        for (int j = 0; j < acount(snapshot->graphs); j++) {
+            apush(names, snapshot->graphs[j]);
+        }
+    }
+    int count = snapshot
+                  ? 0
+                  : game_behavior_attachment_count_for_entity(behaviors, actor->entity);
+    for (int j = 0; j < count; j++) {
+        game_behavior_attachment_info info;
+        if (game_behavior_attachment_info_at(behaviors, actor->entity, j, &info) != 0) {
+            afree(names);
+            return -1;
+        }
+        apush(names, info.asset_name);
+    }
+    int index = acount(document->entities);
+    int result = game_scene_document_add_entity(
+        document,
+        actor->name,
+        actor->prototype_name,
+        names,
+        acount(names)
+    );
+    afree(names);
+    if (result == 0) {
+        av_value *components = snapshot
+                                 ? game_prototype_overrides_value(actor->base, snapshot)
+                                 : game_prototype_capture_overrides_value(
+                                       actor->base,
+                                       scene->world,
+                                       actor->entity
+                                   );
+        result = game_scene_document_set_entity_components(document, index, components);
+        av_value_free(components);
+    }
+    if (result == 0) {
+        av_value *retained = scene_retention_save(actor->retained);
+        result = game_scene_document_set_entity_retained(document, index, retained);
+        av_value_free(retained);
+    }
+    return result;
+}
+
+av_value *scene_authoring_scene_value(app_scene_authoring *scene)
+{
+    finish_transform_edit(scene, false);
+    char name[256];
+    scene_document_name(scene, name, sizeof name);
     game_scene_document *document = game_scene_document_new(name);
     if (!document) {
         return NULL;
     }
-    game_behavior_world *behaviors = scene->live->behaviors;
     document->perspective = scene->perspective;
     game_scene_document_set_ui(document, scene->ui);
     document->physics = game_physics_configuration(scene->live->physics);
     for (int i = 0; i < acount(scene->actors); i++) {
-        const scene_actor *actor = &scene->actors[i];
-        const game_prototype *snapshot = scene->runtime_snapshot_valid
-                                           ? actor->runtime_snapshot
-                                           : NULL;
-        const char **names = NULL;
-        if (snapshot) {
-            for (int j = 0; j < acount(snapshot->graphs); j++) {
-                apush(names, snapshot->graphs[j]);
-            }
-        }
-        int count = snapshot ? 0
-                             : game_behavior_attachment_count_for_entity(
-                                   behaviors,
-                                   actor->entity
-                               );
-        for (int j = 0; j < count; j++) {
-            game_behavior_attachment_info info;
-            if (game_behavior_attachment_info_at(behaviors, actor->entity, j, &info) != 0) {
-                afree(names);
-                game_scene_document_free(document);
-                return NULL;
-            }
-            apush(names, info.asset_name);
-        }
-        int result = game_scene_document_add_entity(
-            document,
-            actor->name,
-            actor->prototype_name,
-            names,
-            acount(names)
-        );
-        if (result == 0) {
-            av_value *components = snapshot
-                                     ? game_prototype_overrides_value(actor->base, snapshot)
-                                     : game_prototype_capture_overrides_value(
-                                           actor->base,
-                                           scene->world,
-                                           actor->entity
-                                       );
-            result = game_scene_document_set_entity_components(document, i, components);
-            av_value_free(components);
-        }
-        if (result == 0) {
-            av_value *retained = scene_retention_save(actor->retained);
-            result = game_scene_document_set_entity_retained(document, i, retained);
-            av_value_free(retained);
-        }
-        afree(names);
-        if (result != 0) {
+        if (scene_document_add_actor(scene, document, &scene->actors[i]) != 0) {
             game_scene_document_free(document);
             return NULL;
         }
@@ -264,7 +272,7 @@ static int validate_scene_behaviors(app_scene_authoring *scene, char **names)
     return 0;
 }
 
-static int validate_scene_entity(app_scene_authoring *scene, const game_scene_entity *entity)
+int scene_validate_entity(app_scene_authoring *scene, const game_scene_entity *entity)
 {
     scene_retained_component *retained = NULL;
     bool valid = scene_retention_load(entity->retained, &retained) == 0 &&
@@ -332,6 +340,28 @@ static int validate_scene_entity(app_scene_authoring *scene, const game_scene_en
     return result;
 }
 
+int scene_spawn_entity(app_scene_authoring *scene, const game_scene_entity *entity, const char *name)
+{
+    if (add_actor(scene, name, entity->prototype) != 0) {
+        return -1;
+    }
+    scene_actor *actor = &alast(scene->actors);
+    if (scene_retention_load(entity->retained, &actor->retained) != 0 ||
+        apply_components_value(scene, actor->entity, entity->components) != 0 ||
+        restore_retained_components(scene, actor, actor->base) != 0) {
+        return -1;
+    }
+    game_behavior_world *behaviors = scene->live->behaviors;
+    game_behavior_detach_entity(behaviors, actor->entity);
+    for (int j = 0; j < acount(entity->behaviors); j++) {
+        if (game_behavior_attach(behaviors, actor->entity, entity->behaviors[j]) != 0) {
+            snprintf(scene->message, sizeof scene->message, "Could not attach scene behavior.");
+            return -1;
+        }
+    }
+    return 0;
+}
+
 int scene_authoring_load_value(app_scene_authoring *scene, av_value *value, const char *path)
 {
     char error[256];
@@ -340,9 +370,8 @@ int scene_authoring_load_value(app_scene_authoring *scene, av_value *value, cons
         snprintf(scene->message, sizeof scene->message, "Could not load scene: %s", error);
         return -1;
     }
-    game_behavior_world *behaviors = scene->live->behaviors;
     for (int i = 0; i < acount(document->entities); i++) {
-        if (validate_scene_entity(scene, &document->entities[i]) != 0) {
+        if (scene_validate_entity(scene, &document->entities[i]) != 0) {
             game_scene_document_free(document);
             return -1;
         }
@@ -367,30 +396,9 @@ int scene_authoring_load_value(app_scene_authoring *scene, av_value *value, cons
     }
     for (int i = 0; i < acount(document->entities); i++) {
         game_scene_entity *entity = &document->entities[i];
-        if (add_actor(scene, entity->name, entity->prototype) != 0) {
+        if (scene_spawn_entity(scene, entity, entity->name) != 0) {
             game_scene_document_free(document);
             return -1;
-        }
-        scene_actor *actor = selected_actor(scene);
-        if (scene_retention_load(entity->retained, &actor->retained) != 0) {
-            game_scene_document_free(document);
-            return -1;
-        }
-        if (apply_components_value(scene, actor->entity, entity->components) != 0) {
-            game_scene_document_free(document);
-            return -1;
-        }
-        if (restore_retained_components(scene, actor, actor->base) != 0) {
-            game_scene_document_free(document);
-            return -1;
-        }
-        game_behavior_detach_entity(behaviors, actor->entity);
-        for (int j = 0; j < acount(entity->behaviors); j++) {
-            if (game_behavior_attach(behaviors, actor->entity, entity->behaviors[j]) != 0) {
-                game_scene_document_free(document);
-                snprintf(scene->message, sizeof scene->message, "Could not attach scene behavior.");
-                return -1;
-            }
         }
     }
     if (game_entities_rebuild_global_bindings(scene->live->entities) != 0) {

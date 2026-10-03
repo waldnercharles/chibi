@@ -12,6 +12,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -923,10 +924,20 @@ static float trail_width(kit *k, bool sub, const char *shortcut)
 }
 
 /* Padding, lead icon and gaps, then the label and the shortcut or chevron. */
+/* Menu labels draw at the body's size, `--studio-font-13` when the font
+   preference sets it (theme/base.rcss), else 13 dp. */
+static float label_size(kit *k)
+{
+    char value[32] = "";
+    rml_element_property(k->doc, "--studio-font-13", value, sizeof value);
+    float size = strtof(value, NULL);
+    return isfinite(size) && size > 0 ? size : 13;
+}
+
 static float row_width(kit *k, bool sub, const char *label, const char *shortcut)
 {
-    return 6 + 16 + 8 + kit_text_width(k, label, 12, 400, dp_ratio(k)) + 8 +
-           trail_width(k, sub, shortcut);
+    return 6 + 16 + 8 + kit_text_width(k, label, label_size(k), 400, dp_ratio(k)) +
+           8 + trail_width(k, sub, shortcut);
 }
 
 /* A swatch tints the lead glyph; none restores the theme's icon color. */

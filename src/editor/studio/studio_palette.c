@@ -5,6 +5,7 @@
  * the active document's symbols, and '?' lists the prefixes. */
 #include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_graph_internal.h"
+#include "editor/studio/studio_thumbnails.h"
 #include "editor/workspace/asset_index.h"
 #include "support/array.h"
 
@@ -36,6 +37,7 @@ typedef struct
     int index; /* the command, setting, actor, asset, project, element, rule or prefix */
     uint64_t graph_id, node_id;
     uint32_t icon;
+    const char *image; /* an asset's thumbnail, when one is cached */
     const char *group;
     char label[128];
     char meta[96];
@@ -192,6 +194,7 @@ static void add_assets(studio *s, pick **picks)
         snprintf(p->keywords, sizeof p->keywords, "%s", kind);
         snprintf(p->key, sizeof p->key, "asset:%s:%s", kind, asset->name);
         p->icon = studio_asset_kind_icon(asset->kind);
+        p->image = studio_thumb_cached(s, i);
     }
 }
 
@@ -511,6 +514,7 @@ void studio_palette(studio *s)
                                  .shortcut = p->shortcut,
                                  .keywords = p->keywords,
                                  .icon = p->icon,
+                                 .image = p->image,
                                  .description = p->description,
                                  .boost = boost(&s->prefs, p->key) })
         );

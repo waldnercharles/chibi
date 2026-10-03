@@ -895,6 +895,7 @@ add_executable(test_suite
     test/sdf_motion.c
     src/render/sdf_shapes.c
     src/render/scene_renderer.c
+    src/render/shader_preview.c
     test/material.c
     test/wave.c
     test/radiance.c

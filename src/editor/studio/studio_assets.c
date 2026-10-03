@@ -1,8 +1,14 @@
-/* Assets: every indexed asset as a virtualized list, filtered by kind and name.
- * Prototypes drag into the Scene or the Outliner to place an instance;
- * behaviors drag onto an Outliner row to attach. Double-click opens the asset.
- * New makes an asset of any kind Studio indexes and opens it. */
+/* Assets: every indexed asset, filtered by kind and name, as a grid of
+ * thumbnails (Unity's Project window, Unreal's Content Browser) or, at the
+ * size slider's smallest step, as a list grouped by kind (Unity's one-column
+ * view). Both are virtualized. A click selects, the arrows move the
+ * selection, and Enter or a double-click opens the asset. Prototypes drag
+ * into the Scene or the Outliner to place an instance; behaviors drag onto an
+ * Outliner row to attach. Resting on a tile shows a large preview, as
+ * Unreal's Content Browser does. New makes an asset of any kind Studio
+ * indexes and opens it. */
 #include "editor/studio/studio_internal.h"
+#include "editor/studio/studio_thumbnails.h"
 #include "editor/workspace/asset_index.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -28,6 +34,16 @@ static const uint32_t KIND_ICONS[REFERENCE_ASSET_KIND_COUNT] = {
     KIT_ICON_MATERIAL, KIT_ICON_HEXAGON,   KIT_ICON_GRID,  KIT_ICON_LIBRARY,
     KIT_ICON_SYSTEM,   KIT_ICON_LAYOUT,
 };
+
+/* A tile's padding around its picture, its label's line, the gap between
+   tiles and the list's own padding, in dp (theme/assets.rcss). */
+#define TILE_PAD 4.0f
+#define TILE_LABEL 18.0f
+#define TILE_GAP 4.0f
+#define LIST_PAD 8.0f
+/* The pointer rests on a tile this long before its large preview renders,
+   just ahead of its tooltip's 500 ms. */
+#define REST_SECONDS 0.3
 
 const char *studio_asset_kind_name(int kind)
 {
@@ -62,6 +78,11 @@ static bool contains(const char *text, const char *filter)
     return false;
 }
 
+static bool grid_view(const studio *s)
+{
+    return s->prefs.assets_tile > STUDIO_ASSETS_LIST;
+}
+
 void studio_assets_header(studio *s, int area)
 {
     /* Visual designer (workstream H): a UI document's Library. */
@@ -82,6 +103,20 @@ void studio_assets_header(studio *s, int area)
     kit_pop(k);
     kit_push(k, "filter", NULL, "assets-filter");
     kit_search(k, "search", s->assets_filter, sizeof s->assets_filter, "Filter");
+    kit_pop(k);
+    /* Unity's thumbnail slider: its smallest step is the list. */
+    double size = s->prefs.assets_tile;
+    kit_push(k, "size", NULL, "assets-size");
+    kit_number_desc slider = { .min = STUDIO_ASSETS_LIST,
+                               .max = STUDIO_ASSETS_TILE_MAX,
+                               .step = 8,
+                               .integer = true,
+                               .slider = true,
+                               .addon = "Size" };
+    if (kit_number(k, "tile", &size, &slider)) {
+        s->prefs.assets_tile = (int)size;
+    }
+    kit_tip(k, "Thumbnail Size", NULL, "The smallest size lists assets by kind.");
     kit_pop(k);
     studio_new_asset_button(s);
 }
@@ -113,6 +148,8 @@ struct studio_assets_cache
     int *uses;
     int *sorted;
     asset_row *rows;
+    int *tiles;  /* the grid's assets: every match, in the list's order */
+    int columns; /* the grid's, as it last laid out */
     int totals[REFERENCE_ASSET_KIND_COUNT];
 };
 
@@ -125,6 +162,7 @@ void studio_assets_free(studio *s)
     afree(cache->uses);
     afree(cache->sorted);
     afree(cache->rows);
+    afree(cache->tiles);
     free(cache);
     s->assets_cache = NULL;
 }
@@ -138,6 +176,7 @@ static struct studio_assets_cache *asset_rows(studio *s, const reference_index *
                          cache->revision != s->scene->asset_index_revision;
     if (!cache) {
         cache = s->assets_cache = xcalloc(1, sizeof *cache);
+        cache->columns = 1;
     } else if (
         cache->index == index && cache->revision == s->scene->asset_index_revision &&
         cache->kind == s->assets_kind && cache->collapsed == s->assets_collapsed &&
@@ -179,6 +218,7 @@ static struct studio_assets_cache *asset_rows(studio *s, const reference_index *
     int previous_kind = -1;
     memset(cache->totals, 0, sizeof cache->totals);
     aclear(cache->rows);
+    aclear(cache->tiles);
     for (int m = 0; m < acount(cache->sorted); m++) {
         int id = cache->sorted[m];
         const reference_asset *asset = reference_index_asset_at(index, id);
@@ -188,6 +228,7 @@ static struct studio_assets_cache *asset_rows(studio *s, const reference_index *
             continue;
         }
         cache->totals[kind]++;
+        apush(cache->tiles, id);
         if (grouped && kind != previous_kind) {
             apush(cache->rows, ((asset_row){ -1, kind }));
         }
@@ -243,28 +284,142 @@ static void asset_menu(studio *s, const char *key)
     kit_popup_end(k);
 }
 
+/* ---------- Selection ---------- */
+
+static bool is_selected(const studio *s, const reference_asset *asset)
+{
+    return s->assets_selected[0] && (int)asset->kind == s->assets_selected_kind &&
+           !strcmp(asset->name, s->assets_selected);
+}
+
+static void select_asset(studio *s, const reference_asset *asset)
+{
+    s->assets_selected_kind = (int)asset->kind;
+    snprintf(s->assets_selected, sizeof s->assets_selected, "%s", asset->name);
+}
+
+/* The assets in the order the view shows them: the grid's tiles, or the
+   list's asset rows. */
+static int *shown_assets(const studio *s, const struct studio_assets_cache *cache)
+{
+    int *shown = NULL;
+    for (int i = 0; grid_view(s) && i < acount(cache->tiles); i++) {
+        apush(shown, cache->tiles[i]);
+    }
+    for (int i = 0; !grid_view(s) && i < acount(cache->rows); i++) {
+        if (cache->rows[i].asset >= 0) {
+            apush(shown, cache->rows[i].asset);
+        }
+    }
+    return shown;
+}
+
+static int selected_position(const studio *s, const reference_index *index, const int *shown)
+{
+    for (int i = 0; i < acount(shown); i++) {
+        if (is_selected(s, reference_index_asset_at(index, shown[i]))) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* The list row or grid row to scroll into view: the selection's, after the
+   keyboard moved it; -1 otherwise. */
+static int reveal_row(studio *s, const reference_index *index, const struct studio_assets_cache *cache)
+{
+    if (!s->assets_reveal) {
+        return -1;
+    }
+    s->assets_reveal = false;
+    if (grid_view(s)) {
+        int at = selected_position(s, index, cache->tiles);
+        return at < 0 ? -1 : at / cache->columns;
+    }
+    for (int i = 0; i < acount(cache->rows); i++) {
+        if (cache->rows[i].asset >= 0 &&
+            is_selected(s, reference_index_asset_at(index, cache->rows[i].asset))) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* ---------- Rows and tiles ---------- */
+
+static uint32_t asset_icon(studio *s, const reference_asset *asset)
+{
+    return asset->unresolved ? KIT_ICON_WARNING
+         : asset->kind == REFERENCE_ASSET_PROTOTYPE
+             ? studio_prototype_icon(s, asset->name)
+             : KIND_ICONS[asset->kind];
+}
+
+/* "3 uses" or "unused" in `out`; false for scenes, entry points nothing
+   references, whose usage says nothing. */
+static bool usage(
+    const struct studio_assets_cache *cache,
+    int id,
+    const reference_asset *asset,
+    char *out,
+    size_t size
+)
+{
+    int used = cache->uses[id];
+    out[0] = '\0';
+    if (asset->kind == REFERENCE_ASSET_SCENE) {
+        return false;
+    }
+    if (!used) {
+        snprintf(out, size, "unused");
+        return true;
+    }
+    snprintf(out, size, "%d %s", used, used == 1 ? "use" : "uses");
+    return true;
+}
+
+/* What a row or tile does, once emitted as the last item. */
+static void asset_events(studio *s, const char *menu_key, int id, unsigned events, uint32_t icon)
+{
+    kit *k = s->kit;
+    const reference_asset *
+        asset = reference_index_asset_at(app_scene_authoring_asset_index(s->scene), id);
+    /* Overscan rows and rows scrolled under the header are clipped. */
+    if (kit_item_hovered(k)) {
+        s->assets_hover = id;
+    }
+    kit_flag(k, "data-unresolved", asset->unresolved);
+    if (asset->kind == REFERENCE_ASSET_PROTOTYPE ||
+        asset->kind == REFERENCE_ASSET_BEHAVIOR) {
+        kit_drag_desc drag = { .type = KIND_NAMES[asset->kind],
+                               .payload = asset->name,
+                               .icon = icon };
+        kit_drag_source(k, &drag);
+    }
+    if (events & (KIT_ROW_CLICK | KIT_ROW_DOUBLE_CLICK | KIT_ROW_CONTEXT)) {
+        select_asset(s, asset);
+    }
+    if (events & KIT_ROW_DOUBLE_CLICK) {
+        finish_transform_edit(s->scene, false);
+        app_scene_authoring_open_asset(s->scene, id);
+    }
+    if (events & KIT_ROW_CONTEXT) {
+        s->assets_menu = id;
+        kit_popup_open_at(k, menu_key, s->in.mouse_x, s->in.mouse_y);
+    }
+}
+
 /* All kinds show as collapsible groups sorted by name, each asset with how often
    it is used, so unused and unresolved assets stand out. One kind is a flat list. */
-void studio_assets_body(studio *s, int area)
+static void asset_list(studio *s, const char *menu_key, struct studio_assets_cache *cache)
 {
-    /* Visual designer (workstream H): a UI document's Library. */
-    if (studio_designer_active(s)) {
-        studio_designer_library(s, area);
-        return;
-    }
     kit *k = s->kit;
-    char menu_key[24];
-    snprintf(menu_key, sizeof menu_key, "asset:%d", area);
-    app_scene_authoring *scene = s->scene;
-    const reference_index *index = app_scene_authoring_asset_index(scene);
-    int count = index ? reference_index_asset_count(index) : 0;
-    struct studio_assets_cache *cache = asset_rows(s, index);
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
     asset_row *rows = cache->rows;
     bool grouped = s->assets_kind < 0;
-    s->assets_hover = -1;
     kit_list_desc list = { .count = acount(rows),
                            .row_height = kit_metric(s->kit, "--row"),
-                           .reveal = -1 };
+                           .reveal = reveal_row(s, index, cache) };
     int first, last;
     kit_list_begin(k, "assets", "assets-list", &list, &first, &last);
     for (int r = first; r <= last && r < acount(rows); r++) {
@@ -284,63 +439,203 @@ void studio_assets_body(studio *s, int area)
             kit_row_end(k);
             continue;
         }
-        const reference_asset *asset = reference_index_asset_at(index, rows[r].asset);
-        int used = cache->uses[rows[r].asset];
-        snprintf(key, sizeof key, "a%d", rows[r].asset);
-        /* Scenes are entry points: nothing references them, so usage says nothing. */
-        bool counted = asset->kind != REFERENCE_ASSET_SCENE;
-        if (!counted) {
-            meta[0] = '\0';
-        } else if (used) {
-            snprintf(meta, sizeof meta, "%d %s", used, used == 1 ? "use" : "uses");
-        } else {
-            snprintf(meta, sizeof meta, "unused");
-        }
+        int id = rows[r].asset;
+        const reference_asset *asset = reference_index_asset_at(index, id);
+        bool counted = usage(cache, id, asset, meta, sizeof meta);
+        snprintf(key, sizeof key, "a%d", id);
         kit_row_desc row = {
             .label = asset->name,
-            .icon = asset->unresolved ? KIT_ICON_WARNING
-                  : asset->kind == REFERENCE_ASSET_PROTOTYPE
-                      ? studio_prototype_icon(s, asset->name)
-                      : KIND_ICONS[asset->kind],
+            .icon = asset_icon(s, asset),
             .depth = grouped,
             .twisty = -1,
             .meta = grouped ? meta : KIND_NAMES[asset->kind],
+            .flags = is_selected(s, asset) ? KIT_ON : 0,
         };
         unsigned events = kit_row_begin(k, key, &row);
         kit_row_end(k);
-        /* Overscan rows and rows scrolled under the header are clipped. */
-        if (kit_item_hovered(k)) {
-            s->assets_hover = rows[r].asset;
-        }
-        kit_flag(k, "data-unused", counted && !used);
-        kit_flag(k, "data-unresolved", asset->unresolved);
-        if (asset->kind == REFERENCE_ASSET_PROTOTYPE ||
-            asset->kind == REFERENCE_ASSET_BEHAVIOR) {
-            kit_drag_desc drag = { .type = KIND_NAMES[asset->kind],
-                                   .payload = asset->name,
-                                   .icon = row.icon };
-            kit_drag_source(k, &drag);
-        }
-        if (events & KIT_ROW_DOUBLE_CLICK) {
-            finish_transform_edit(scene, false);
-            app_scene_authoring_open_asset(scene, rows[r].asset);
-        }
-        if (events & KIT_ROW_CONTEXT) {
-            s->assets_menu = rows[r].asset;
-            kit_popup_open_at(k, menu_key, s->in.mouse_x, s->in.mouse_y);
-        }
+        kit_flag(k, "data-unused", counted && !cache->uses[id]);
+        asset_events(s, menu_key, id, events, row.icon);
     }
     kit_list_end(k);
+}
+
+/* Whether the pointer has rested on the tile long enough to want its large
+   preview, which renders while the tooltip waits to show. */
+static bool resting(studio *s, int id)
+{
+    if (!kit_item_hovered(s->kit)) {
+        return false;
+    }
+    if (s->assets_rest != id) {
+        s->assets_rest = id;
+        s->assets_rest_since = s->time;
+    }
+    return s->time - s->assets_rest_since >= REST_SECONDS;
+}
+
+/* A tile's tooltip names it in full, says what it is and how often it is
+   used, and shows the large preview once the pointer rests on it. */
+static void tile_tip(studio *s, const struct studio_assets_cache *cache, int id, const char *image)
+{
+    kit *k = s->kit;
+    const reference_asset *
+        asset = reference_index_asset_at(app_scene_authoring_asset_index(s->scene), id);
+    char meta[24], about[64];
+    bool counted = usage(cache, id, asset, meta, sizeof meta);
+    snprintf(about, sizeof about, "%s%s%s", KIND_NAMES[asset->kind], counted ? " \xc2\xb7 " : "", meta);
+    kit_tip(k, asset->name, NULL, about);
+    const char *large = resting(s, id) ? studio_thumb(s, id, STUDIO_THUMB_LARGE) : NULL;
+    kit_tip_image(k, large ? large : image);
+}
+
+static const char *dp_text(kit *k, float value)
+{
+    char text[32];
+    snprintf(text, sizeof text, "%.0fdp", value);
+    return kit_string(k, text);
+}
+
+/* Unity's grid: tiles of one size in rows as wide as the area. */
+static void asset_grid(studio *s, const char *menu_key, struct studio_assets_cache *cache)
+{
+    kit *k = s->kit;
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    float art = (float)s->prefs.assets_tile;
+    float width = art + 2 * TILE_PAD, height = art + 2 * TILE_PAD + TILE_LABEL;
+    int columns = cache->columns, count = acount(cache->tiles);
+    kit_list_desc list = { .count = (count + columns - 1) / columns,
+                           .row_height = height + TILE_GAP,
+                           .reveal = reveal_row(s, index, cache) };
+    int first, last;
+    kit_list_begin(k, "grid", "assets-list assets-grid", &list, &first, &last);
+    /* Columns follow the width the list last laid out at. */
+    int fit = (int)((kit_item_rect(k).w - LIST_PAD + TILE_GAP) / (width + TILE_GAP));
+    fit = fit < 1 ? 1 : fit;
+    if (fit != cache->columns) {
+        cache->columns = fit;
+        s->ui_schedule.wake = true;
+    }
+    const char *tile_width = dp_text(k, width), *tile_height = dp_text(k, height);
+    const char *row_height = dp_text(k, height + TILE_GAP);
+    for (int r = first; r <= last; r++) {
+        char key[24];
+        snprintf(key, sizeof key, "r%d", r);
+        kit_push(k, key, NULL, "assets-grid-row");
+        kit_style(k, "height", row_height);
+        for (int i = r * columns; i < count && i < (r + 1) * columns; i++) {
+            int id = cache->tiles[i];
+            const reference_asset *asset = reference_index_asset_at(index, id);
+            const char *image = studio_thumb(s, id, STUDIO_THUMB_TILE);
+            kit_tile_desc tile = { .label = asset->name,
+                                   .image = image,
+                                   .icon = asset_icon(s, asset),
+                                   .badge = image ? KIND_ICONS[asset->kind] : 0,
+                                   .flags = is_selected(s, asset) ? KIT_ON : 0 };
+            snprintf(key, sizeof key, "a%d", id);
+            unsigned events = kit_tile(k, key, &tile);
+            kit_style(k, "width", tile_width);
+            kit_style(k, "height", tile_height);
+            tile_tip(s, cache, id, image);
+            asset_events(s, menu_key, id, events, tile.icon);
+        }
+        kit_pop(k);
+    }
+    kit_list_end(k);
+}
+
+void studio_assets_body(studio *s, int area)
+{
+    /* Visual designer (workstream H): a UI document's Library. */
+    if (studio_designer_active(s)) {
+        studio_designer_library(s, area);
+        return;
+    }
+    kit *k = s->kit;
+    char menu_key[24];
+    snprintf(menu_key, sizeof menu_key, "asset:%d", area);
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    int count = index ? reference_index_asset_count(index) : 0;
+    struct studio_assets_cache *cache = asset_rows(s, index);
+    s->assets_hover = -1;
+    if (grid_view(s)) {
+        asset_grid(s, menu_key, cache);
+    } else {
+        asset_list(s, menu_key, cache);
+    }
     asset_menu(s, menu_key);
-    if (!acount(rows)) {
+    if (!acount(cache->tiles)) {
         kit_label(k, "empty", "output-empty", count ? "No matches" : "No assets");
     }
 }
 
+/* Moves the selection `step` places in the view's order, within its ends.
+   Without one, End selects the last asset and any other step the first. */
+static void move_selection(studio *s, int step)
+{
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    int *shown = s->assets_cache ? shown_assets(s, s->assets_cache) : NULL;
+    int count = acount(shown);
+    if (count) {
+        int at = selected_position(s, index, shown);
+        at = at >= 0 ? at + step : step >= count ? count - 1 : 0;
+        at = at < 0 ? 0 : at >= count ? count - 1 : at;
+        select_asset(s, reference_index_asset_at(index, shown[at]));
+        s->assets_reveal = true;
+        s->ui_schedule.wake = true;
+    }
+    afree(shown);
+}
+
+static bool open_selection(studio *s)
+{
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    int asset = s->assets_selected[0]
+                  ? reference_index_find_name(index, (reference_asset_kind)s->assets_selected_kind, s->assets_selected)
+                  : -1;
+    if (asset < 0) {
+        return false;
+    }
+    finish_transform_edit(s->scene, false);
+    app_scene_authoring_open_asset(s->scene, asset);
+    return true;
+}
+
+/* The arrows move the selection (Left and Right only in the grid), Home and
+   End go to the ends and Enter opens it. */
+static bool navigation_key(studio *s, SDL_Keycode key)
+{
+    bool grid = grid_view(s);
+    int columns = grid && s->assets_cache ? s->assets_cache->columns : 1;
+    int far = s->assets_cache ? acount(s->assets_cache->tiles) : 0;
+    switch (key) {
+        case SDLK_UP: move_selection(s, -columns); return true;
+        case SDLK_DOWN: move_selection(s, columns); return true;
+        case SDLK_LEFT:
+        case SDLK_RIGHT:
+            if (grid) {
+                move_selection(s, key == SDLK_LEFT ? -1 : 1);
+            }
+            return grid;
+        case SDLK_HOME: move_selection(s, -far); return true;
+        case SDLK_END: move_selection(s, far); return true;
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER: return open_selection(s);
+        default: return false;
+    }
+}
+
+/* Navigation acts on the selection; F2 and Delete on the asset under the
+   pointer. */
 bool studio_assets_key(studio *s, SDL_Keycode key, SDL_Keymod mod)
 {
-    if (s->assets_hover < 0 || studio_primary(s, mod) ||
+    if (studio_designer_active(s) || studio_primary(s, mod) ||
         (mod & (SDL_KMOD_ALT | SDL_KMOD_SHIFT))) {
+        return false;
+    }
+    if (navigation_key(s, key)) {
+        return true;
+    }
+    if (s->assets_hover < 0) {
         return false;
     }
     if (key == SDLK_F2) {

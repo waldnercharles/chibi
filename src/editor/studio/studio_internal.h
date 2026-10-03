@@ -218,7 +218,13 @@ typedef struct
     float code_font_size; /* the Text Editor's font size, in dp */
     bool code_apply_live; /* UI edits apply as typed, not when saved */
     bool code_wrap; /* Workstream I: long lines wrap; off, they scroll sideways */
+    int assets_tile; /* Assets' thumbnail size in dp; STUDIO_ASSETS_LIST lists them */
 } studio_prefs;
+
+/* Assets' thumbnail slider: its smallest step shows the list. */
+#define STUDIO_ASSETS_LIST 40
+#define STUDIO_ASSETS_TILE 96
+#define STUDIO_ASSETS_TILE_MAX 160
 
 typedef struct
 {
@@ -820,8 +826,14 @@ struct studio
     int assets_kind;           /* reference_asset_kind, or -1 for all */
     unsigned assets_collapsed; /* bit per reference_asset_kind */
     char assets_filter[128];
-    int assets_menu;             /* the asset under the row menu */
-    char dropped_prototype[256]; /* placed by the viewport this frame */
+    int assets_menu;           /* the asset under the row menu */
+    int assets_selected_kind;  /* the selected asset's reference_asset_kind */
+    char assets_selected[128]; /* the selected asset's name, or "" */
+    bool assets_reveal; /* scroll the selection into view on the next emission */
+    int assets_rest;    /* the tile the pointer rests on, or -1 */
+    double assets_rest_since;
+    struct studio_thumbs *thumbs; /* asset thumbnails, NULL until asked for */
+    char dropped_prototype[256];  /* placed by the viewport this frame */
     int output_view;
     char output_filter[128];
     char references_title[160]; /* what Output's Find view lists references to */

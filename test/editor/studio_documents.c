@@ -1857,6 +1857,8 @@ static void assets_cache_follows_explicit_refresh()
     studio *s = f.studio;
     s->maximized = STUDIO_AREA_TOP;
     studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_ASSETS;
+    s->prefs.assets_tile = STUDIO_ASSETS_LIST;
+    s->applied = s->prefs;
     frames(&f, 6);
     reference_index_add_asset(f.scene->asset_index, REFERENCE_ASSET_BEHAVIOR, "QaRefreshCache", NULL, "qa-cache-probe");
     /* The fixture inserts directly into the index; start its cached model

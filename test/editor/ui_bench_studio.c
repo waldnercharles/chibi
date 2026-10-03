@@ -83,9 +83,23 @@ static void bench_close(studio_bench *b)
     engine_viewport_free(b->viewport);
 }
 
+/* RmlUi warnings one frame may log before the bench stops: a defect that
+   repeats them every frame floods the log by gigabytes a minute. */
+#define WARNING_FLOOD 100
+
+static void stop_on_flood(int before)
+{
+    int logged = rml_backend_warning_count() - before;
+    if (logged > WARNING_FLOOD) {
+        fprintf(stderr, "ui bench: RmlUi logged %d warnings in one frame; stopping\n", logged);
+        exit(1);
+    }
+}
+
 static void frames(studio_bench *b, int count)
 {
     for (int i = 0; i < count; i++) {
+        int warnings = rml_backend_warning_count();
         b->time += FRAME;
         cf_app_update(NULL);
         app_input_frame();
@@ -95,6 +109,7 @@ static void frames(studio_bench *b, int count)
         studio_frame(b->studio, FRAME);
         cf_app_draw_onto_screen(true);
         b->studio->prefs_changed_at = 0;
+        stop_on_flood(warnings);
     }
 }
 
@@ -133,6 +148,7 @@ typedef enum
  * and fills each phase's time. */
 static double native_ui(studio *s, double *phases)
 {
+    int warnings = rml_backend_warning_count();
     double t[PHASE_COUNT + 1];
     t[0] = bench_now();
     studio_ui_frame(s);
@@ -152,6 +168,7 @@ static double native_ui(studio *s, double *phases)
     for (int p = 0; p < PHASE_COUNT; p++) {
         phases[p] = t[p + 1] - t[p];
     }
+    stop_on_flood(warnings);
     return t[PHASE_COUNT] - t[0];
 }
 
@@ -235,7 +252,7 @@ static void full_layout(studio_bench *b, bool comfortable)
     bench_row("1", name, bench_stat_of(ms, RUNS), counts);
 }
 
-/* ---------- 8: a text change inside one area ---------- */
+/* ---------- 13: a text change inside one area ---------- */
 
 /* Rewrites one Outliner row's name, as a rename does, and updates: RmlUi
  * lays out the document that holds the row. Counts the documents laid out
@@ -267,7 +284,13 @@ static void area_text_change(studio_bench *b)
     }
     rml_element_set_inner_rml(name, text);
     frames(b, 2);
-    bench_row("8", "a text change in the Outliner: documents laid out, elements in its document", bench_stat_of(ms, RUNS), counts);
+    bench_row(
+        "13",
+        "a text change in the Outliner: documents laid out, elements in its "
+        "document",
+        bench_stat_of(ms, RUNS),
+        counts
+    );
 }
 
 /* ---------- 5: Properties, native and authored ---------- */
@@ -487,7 +510,7 @@ static void properties(studio_bench *b)
     bench_spike_free(c.spike);
 }
 
-/* ---------- 10: Assets over 500 assets ---------- */
+/* ---------- 14: Assets over 500 assets ---------- */
 
 #define ASSETS_ADDED 480
 /* Where the scroll cases scroll from, in lines or rows, past the overscan
@@ -577,7 +600,7 @@ static void assets_case(studio_bench *b, assets_step step, const char *name)
             phases[p][run] = phase[p];
         }
     }
-    bench_row("10", name, bench_stat_of(ms, RUNS), counts);
+    bench_row("14", name, bench_stat_of(ms, RUNS), counts);
     phase_row("phases", phases);
 }
 
@@ -853,7 +876,7 @@ static void outliner_scroll(studio_bench *b)
     phase_row("its phases", phases);
 }
 
-/* ---------- 13: the Scene's overlays while its camera moves ---------- */
+/* ---------- 15: the Scene's overlays while its camera moves ---------- */
 
 #define PAN_STEP 8.0f   /* world units a run pans, back and forth */
 #define ZOOM_STEP 1.15f /* about a wheel notch */
@@ -901,7 +924,7 @@ static void scene_case(studio_bench *b, float pan, float zoom, const char *name)
     }
     char row[160];
     snprintf(row, sizeof row, "%s, %d camera labels", name, studio_count(s, ".viewport .camera-label"));
-    bench_row("13", row, bench_stat_of(ms, RUNS), counts);
+    bench_row("15", row, bench_stat_of(ms, RUNS), counts);
     phase_row("its phases", phases);
 }
 
@@ -1162,7 +1185,7 @@ int ui_bench_studio(const char *program, bool members_only)
     probe_documents(b.studio);
     bench_header("Studio on the Sandbox at 1440x900, native");
     printf("|  | pixel scale %.1f | | | | | | |\n", cf_app_get_pixel_scale());
-    /* UI_BENCH_SCENE runs case 13 alone. */
+    /* UI_BENCH_SCENE runs case 15 alone. */
     if (getenv("UI_BENCH_SCENE")) {
         scene_overlays(&b);
         bench_close(&b);
@@ -1170,7 +1193,7 @@ int ui_bench_studio(const char *program, bool members_only)
         cf_destroy_app();
         return 0;
     }
-    /* UI_BENCH_ASSETS runs case 10 alone. */
+    /* UI_BENCH_ASSETS runs case 14 alone. */
     bool assets_only = getenv("UI_BENCH_ASSETS") != NULL;
     if (!members_only && !assets_only) {
         full_layout(&b, false);

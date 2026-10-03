@@ -916,7 +916,7 @@ eye and lock; and Unity's focusable list for the keyboard.
   |---|---:|---:|---:|---|---:|---:|
   | Scroll step of 3 rows, 22 rows shown | 6.30 / 8.29 / 7.93 | 7.47 / 6.57 / 6.87 | 0.93× | 3 → 0 | 606 | 3 |
   | Select another object in view | 7.61 / 9.54 / 9.46 | 9.08 / 7.93 / 8.70 | 0.97× | | 625 | 9 |
-  | A text change in the Outliner (case 8) | 2.27 / 2.13 / 1.77 | 1.54 / 2.16 / 2.13 | 0.94× | | | 1 |
+  | A text change in the Outliner (case 13) | 2.27 / 2.13 / 1.77 | 1.54 / 2.16 / 2.13 | 0.94× | | | 1 |
 
   A scroll step or a selection reads the window's row views (about 23 a
   row) and the root's; a selection also reads the chrome's (`editor`,
@@ -1049,10 +1049,15 @@ the new name both ways, as view state; the row menu opens at the press
   selected tile restyles its line, not the grid. Index-matched rows in
   flow, the first version, cost about 1.6× more per scroll step.
 - **Variables by rate of change** (P5's lead): a click changes only
-  `asset_view` (585 views: each tile's selected and preview bindings), an
-  open row menu only `asset_menus`; TreeRow and Tile take `data-selected`
-  on their use for a selection kept apart. The data goes through the
-  shared `ui_data_put_*` writers.
+  `asset_view` (each tile's selected and preview bindings), an open row
+  menu only `asset_menus`. Rows and tiles carry their asset's `key` and
+  alias `asset_view.selected` as `data-alias-selection`, the selection
+  contract TreeRow took in P2 and Tile shares; their marks land on the
+  use's only child, so a selection restyles no sibling. A select reads 819
+  values, from 585 when the uses compared ids themselves, in the same two
+  views a tile, and takes as long (6.6 ms against 6.6, three alternated
+  release pairs at a load of 50). The data goes through the shared
+  `ui_data_put_*` writers.
 - **Thumbnails** are `kit:thumb:<slot>` sources the sync asks for, as the
   kit's emission did; Tile paints its picture as a decorator and hides its
   skeleton by visibility, so a thumbnail arriving lays nothing out (the
@@ -1070,7 +1075,7 @@ the new name both ways, as view state; the row menu opens at the press
   its sources' data plumbing, so `studio_assets.c` grew from 959 to 1,516
   lines; the kit lost 87 lines.
 
-`UI_BENCH_ASSETS=1 ./build-release/test_suite --ui-bench studio` (case 10:
+`UI_BENCH_ASSETS=1 ./build-release/test_suite --ui-bench studio` (case 14:
 Assets maximized at 1440×900, pixel scale 2, over the Sandbox's 101 assets
 and 480 more inserted into the index), the kit build (`80bd2538` with the
 same case) and this one alternated process by process, three pairs,
@@ -1126,10 +1131,26 @@ costs recur across panels and belong in shared code, not in each panel:
   and return before walking.
 - **Sibling restyles**: RmlUi restyles every sibling of a changed element, so
   a selection in a flat list restyles all rows (Assets groups tiles in lines
-  to contain it). Contain it in the List widget or patch RmlUi.
+  to contain it). Contain it in the List widget or patch RmlUi. TreeRow and
+  Tile mark the use's only child, so their selection by key restyles no
+  sibling; hover and drop marks on the use still do.
 
 Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
 `UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.
+
+Fixed after Wave 2: an area that changed from one authored panel to another
+kept the first panel's views in the data model. Binding the shared host moved
+it with the old markup, which bound its views again, and replacing the markup
+in the same frame dropped elements whose new views RmlUi had not yet taken
+in, so they outlived them, and every later removal logged a warning per view
+(the UI bench wrote tens of gigabytes). `ui_mount_sync` now empties a host
+before binding it, and the RmlUi patch `move-keeps-data` keeps a moved
+element's views bound under the same model, as a DOM move does, so a kit
+reorder (GraphView's host in a maximized header) no longer unbinds evaluated
+markup. `--studio-panels` turns one area between every pair of authored
+panels, three rounds, and checks for no RmlUi warning and as many views as
+after the first round; the Studio bench stops when a frame logs more than
+100 warnings.
 
 ### Wave 3: scene, chrome, palette (4 parallel)
 
@@ -1205,7 +1226,7 @@ area with its own authored Scene. Intentional difference: the Canvas's
 screen sizes are buttons, as Output's view switch is, so Left and Right no
 longer step them (Tab and Enter do).
 
-`UI_BENCH_SCENE=1 ./build-release/test_suite --ui-bench studio` (case 13:
+`UI_BENCH_SCENE=1 ./build-release/test_suite --ui-bench studio` (case 15:
 the Sandbox at 1440×900, pixel scale 2, its Camera's frame labeled; the
 camera moves 8 world units diagonally and back, or zooms a notch in and
 out, and is drawn before the timed UI frame), the kit build (`f7edf3ec`)

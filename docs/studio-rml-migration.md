@@ -881,13 +881,16 @@ range of the runs' medians; provisional):
 | 1 line a frame, log full (oldest drop) | 4.20-4.33 | 3.40-3.55 | 0.82× |
 | 8 lines a frame, log full | 4.22-4.38 | 5.46-5.83 | 1.33× |
 
-Per frame: one layout (the drawer's document) in both; 64 views evaluated
-(the kit has none); 542 elements in the drawer's document against 518;
-markup parsed for the new lines only, where the kit re-parsed every shown
-row (about 19) once its ring was full. Eight new lines into a full log
-cost more because each new row's text is new geometry to capture (capture
-3.1-3.4 ms against 2.0-2.2); the kit's full-log cost stays flat because it
-rewrote every row anyway.
+Per frame: one layout (the drawer's document) in both; markup parsed for
+the new lines only, where the kit re-parsed every shown row (about 19)
+once its ring was full. Eight new lines into a full log cost more because
+each new row's text is new geometry to capture (capture 3.1-3.4 ms
+against 2.0-2.2); the kit's full-log cost stays flat because it rewrote
+every row anyway. Since the rows moved to `output_rows` (after Members
+merged), a frame evaluates 38 views (64 with one variable; the kit has
+none) and the drawer's document holds 556 elements against 518; the same
+alternation at a 1-minute load of 48-62 gave 0.84-1.0× for one line a
+frame and eight into a growing log, and 1.36× for eight into a full one.
 
 Web shots (1600×1000, before `6ecac3a5` and after), Problems with places,
 Find, Calls, Info and Runtime, dark and light, compact and comfortable:

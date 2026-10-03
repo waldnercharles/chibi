@@ -6,7 +6,7 @@
     <button class="btn crumb" popovertarget="crumb-asset" aria-haspopup="menu"><span class="icon">{{ graph_header.asset.icon }}</span><span class="label">{{ graph_header.asset.label }}</span></button>
     <span class="icon crumb-sep">&#xeab6;</span>
     <div class="caller" data-for="caller : graph_header.callers">
-      <button class="btn crumb" data-event-click="emit('graph_header.caller', caller.index)"><span class="label">{{ caller.label }}</span></button>
+      <button class="btn crumb" data-event-click="emit('graph_header.caller', caller.id)"><span class="label">{{ caller.label }}</span></button>
       <span class="icon crumb-sep">&#xeab6;</span>
     </div>
     <button class="btn crumb current" data-if="!graph_header.renaming" popovertarget="graph-picker" aria-haspopup="menu" data-tip="Graphs"><span class="icon">{{ graph_header.graph.icon }}</span><span class="label">{{ graph_header.graph.label }}</span></button>
@@ -54,7 +54,7 @@
     <use ui="ChoiceList" placeholder="Search instances" data-event-change="emit('graph_header.target', ev.value)">
       <div role="group" data-for="group : graph_targets.groups">
         <use ui="MenuGroup" data-if="group.label != ''" data-alias-group="group"/>
-        <div class="menu-item" role="option" data-for="option : group.options" data-attr-value="option.value" data-attr-data-label="option.label" data-attr-data-keywords="option.keywords" data-attrif-data-current="option.current"><span class="icon lead">{{ option.icon }}</span><span class="text"><span class="label">{{ option.label }}</span></span></div>
+        <div class="menu-item" role="option" data-for="option : group.options" data-attr-value="option.id" data-attr-data-label="option.label" data-attr-data-keywords="option.keywords" data-attrif-data-current="option.current"><span class="icon lead">{{ option.icon }}</span><span class="text"><span class="label">{{ option.label }}</span></span></div>
       </div>
     </use>
   </div>

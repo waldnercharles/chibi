@@ -19,20 +19,33 @@
 
 /* ---------- Items ---------- */
 
-/* A menu item as MenuItem shows it. */
+/* An item as MenuItem shows it, or a crumb or a choice: `name` is the
+   member of its variable that holds it, when one does. */
 typedef struct
 {
-    const char *id, *label, *shortcut;
+    const char *name, *id, *label, *shortcut, *keywords;
     uint32_t icon;
     bool disabled, current;
 } header_item;
 
-static const char *const ITEM_TEXTS[] = { "id", "icon", "label", "shortcut", NULL };
+static const char *const ITEM_TEXTS[] = { "id",       "icon",     "label",
+                                          "shortcut", "keywords", NULL };
 static const char *const ITEM_FLAGS[] = { "checked", "disabled", "current", NULL };
 
-static yyjson_mut_val *item_new(yyjson_mut_doc *doc)
+typedef enum
+{
+    SHAPE_ITEM,
+    SHAPE_GROUP, /* a label over an array of items, `options` */
+} item_shape;
+
+static yyjson_mut_val *item_new(yyjson_mut_doc *doc, item_shape shape)
 {
     yyjson_mut_val *item = yyjson_mut_obj(doc);
+    if (shape == SHAPE_GROUP) {
+        yyjson_mut_obj_add_strcpy(doc, item, "label", "");
+        yyjson_mut_obj_add_arr(doc, item, "options");
+        return item;
+    }
     for (const char *const *text = ITEM_TEXTS; *text; text++) {
         yyjson_mut_obj_add_strcpy(doc, item, *text, "");
     }
@@ -45,7 +58,7 @@ static yyjson_mut_val *item_new(yyjson_mut_doc *doc)
 static void add_items(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *const *names)
 {
     for (; *names; names++) {
-        yyjson_mut_obj_add_val(doc, object, *names, item_new(doc));
+        yyjson_mut_obj_add_val(doc, object, *names, item_new(doc, SHAPE_ITEM));
     }
 }
 
@@ -64,23 +77,29 @@ static bool put_item(yyjson_mut_doc *doc, yyjson_mut_val *item, const header_ite
     changed |= ui_data_put_text(doc, item, "label", shown->label);
     changed |= put_glyph(doc, item, "icon", shown->icon);
     changed |= ui_data_put_text(doc, item, "shortcut", shown->shortcut ? shown->shortcut : "");
+    changed |= ui_data_put_text(doc, item, "keywords", shown->keywords ? shown->keywords : "");
     changed |= ui_data_put_bool(item, "disabled", shown->disabled);
     return ui_data_put_bool(item, "current", shown->current) || changed;
 }
 
-static bool put_named(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const header_item *shown)
+/* Puts each item in the member of `object` it names. */
+static bool put_named(yyjson_mut_doc *doc, yyjson_mut_val *object, const header_item *items, size_t count)
 {
-    return put_item(doc, yyjson_mut_obj_get(object, name), shown);
+    bool changed = false;
+    for (size_t i = 0; i < count; i++) {
+        changed |= put_item(doc, yyjson_mut_obj_get(object, items[i].name), &items[i]);
+    }
+    return changed;
 }
 
-/* Gives `array` `length` objects made by `make`, adding and removing at its
+/* Gives `array` `length` objects of `shape`, adding and removing at its
    end, so items already shown keep their elements; true when its length
    changed. */
-static bool fit(yyjson_mut_doc *doc, yyjson_mut_val *array, int length, yyjson_mut_val *(*make)(yyjson_mut_doc *))
+static bool fit(yyjson_mut_doc *doc, yyjson_mut_val *array, int length, item_shape shape)
 {
     int had = (int)yyjson_mut_arr_size(array);
     for (int i = had; i < length; i++) {
-        yyjson_mut_arr_append(array, make(doc));
+        yyjson_mut_arr_append(array, item_new(doc, shape));
     }
     for (int i = had; i > length; i--) {
         yyjson_mut_arr_remove_last(array);
@@ -226,15 +245,8 @@ void studio_graph_header_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_arr(doc, h, "callers");
 }
 
-static yyjson_mut_val *caller_new(yyjson_mut_doc *doc)
-{
-    yyjson_mut_val *caller = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_strcpy(doc, caller, "label", "");
-    yyjson_mut_obj_add_int(doc, caller, "index", 0);
-    return caller;
-}
-
-/* The calls entered to reach the open graph, each returning to its graph. */
+/* The calls entered to reach the open graph, each returning to its graph:
+   its id is its index among them. */
 static bool show_callers(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *array)
 {
     editor *e = sg_graph_editor(s);
@@ -242,15 +254,16 @@ static bool show_callers(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *array)
     for (int i = 0; i < editor_graph_history_count(e); i++) {
         count += behavior_asset_find_graph(e->asset, e->graph_callers[i].graph_id) != NULL;
     }
-    bool changed = fit(doc, array, count, caller_new);
+    bool changed = fit(doc, array, count, SHAPE_ITEM);
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(array);
     for (int i = 0; i < editor_graph_history_count(e); i++) {
         const graph
             *caller = behavior_asset_find_graph(e->asset, e->graph_callers[i].graph_id);
         if (caller) {
-            yyjson_mut_val *item = yyjson_mut_arr_iter_next(&it);
-            changed |= ui_data_put_text(doc, item, "label", graph_label(caller));
-            changed |= ui_data_put_int(item, "index", i);
+            char id[16];
+            snprintf(id, sizeof id, "%d", i);
+            header_item shown = { .id = id, .label = graph_label(caller) };
+            changed |= put_item(doc, yyjson_mut_arr_iter_next(&it), &shown);
         }
     }
     return changed;
@@ -346,7 +359,7 @@ static bool show_assets(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *m)
         count += asset->kind == kind && !asset->unresolved;
     }
     yyjson_mut_val *array = yyjson_mut_obj_get(m, "assets");
-    changed |= fit(doc, array, count, item_new);
+    changed |= fit(doc, array, count, SHAPE_ITEM);
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(array);
     for (int i = 0; count && i < reference_index_asset_count(index); i++) {
         const reference_asset *asset = reference_index_asset_at(index, i);
@@ -371,7 +384,7 @@ static bool show_graphs(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *array)
     for (int i = 0; i < acount(e->asset->graphs); i++) {
         count += !e->asset->graphs[i]->math_expression || e->asset->graphs[i] == gr;
     }
-    bool changed = fit(doc, array, count, item_new);
+    bool changed = fit(doc, array, count, SHAPE_ITEM);
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(array);
     for (int i = 0; i < acount(e->asset->graphs); i++) {
         const graph *item = e->asset->graphs[i];
@@ -397,23 +410,17 @@ static bool show_graph_items(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *m)
     const graph *gr = sg_active_graph(s);
     bool locked = !behavior_asset_mutable(sg_graph_editor(s)->asset);
     const char *remove = gr->kind == GRAPH_MACRO ? "Delete Macro" : "Delete Function";
-    header_item items[] = {
-        { .label = "Find References", .icon = KIT_ICON_REFERENCES },
-        { .label = "New Function", .icon = KIT_ICON_ADD, .disabled = locked },
-        { .label = "New Macro", .icon = KIT_ICON_ADD, .disabled = locked },
-        { .label = "Rename", .icon = KIT_ICON_EDIT, .disabled = locked },
-        { .label = "Find References", .icon = KIT_ICON_REFERENCES },
-        { .label = "Call Hierarchy", .icon = KIT_ICON_CALLERS },
-        { .label = remove, .icon = KIT_ICON_TRASH, .disabled = locked },
+    const header_item items[] = {
+        { .name = "refs", .label = "Find References", .icon = KIT_ICON_REFERENCES },
+        { .name = "newFunction", .label = "New Function", .icon = KIT_ICON_ADD, .disabled = locked },
+        { .name = "newMacro", .label = "New Macro", .icon = KIT_ICON_ADD, .disabled = locked },
+        { .name = "rename", .label = "Rename", .icon = KIT_ICON_EDIT, .disabled = locked },
+        { .name = "graphRefs", .label = "Find References", .icon = KIT_ICON_REFERENCES },
+        { .name = "graphCalls", .label = "Call Hierarchy", .icon = KIT_ICON_CALLERS },
+        { .name = "remove", .label = remove, .icon = KIT_ICON_TRASH, .disabled = locked },
     };
-    static const char *const NAMES[] = { "refs",   "newFunction", "newMacro",
-                                         "rename", "graphRefs",   "graphCalls",
-                                         "remove" };
     bool changed = ui_data_put_bool(m, "named", gr->kind == GRAPH_FUNCTION || gr->kind == GRAPH_MACRO);
-    for (size_t i = 0; i < sizeof items / sizeof *items; i++) {
-        changed |= put_named(doc, m, NAMES[i], &items[i]);
-    }
-    return changed;
+    return put_named(doc, m, items, sizeof items / sizeof *items) || changed;
 }
 
 bool studio_graph_menus_sync(studio *s, const studio_panel_sync *at)
@@ -463,7 +470,7 @@ void studio_graph_view_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_strcpy(doc, alignment, "icon", glyph);
     yyjson_mut_val *edges = yyjson_mut_obj_add_arr(doc, v, "edges");
     for (int i = 0; i < ALIGN_COUNT; i++) {
-        yyjson_mut_arr_append(edges, item_new(doc));
+        yyjson_mut_arr_append(edges, item_new(doc, SHAPE_ITEM));
     }
 }
 
@@ -473,29 +480,28 @@ static bool show_actions(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *v)
     bool readonly = sg_graph_readonly(s);
     bool expression = readonly || sg_active_graph(s)->math_expression;
     int count = acount(sg_graph_editor(s)->selected);
-    header_item items[] = {
-        { .label = "Optimize", .icon = KIT_ICON_EXPRESSION, .disabled = expression },
-        { .label = "Math to Expressions", .icon = KIT_ICON_EXPRESSION, .disabled = expression },
-        { .label = "Distribute Horizontally",
+    const header_item items[] = {
+        { .name = "optimize", .label = "Optimize", .icon = KIT_ICON_EXPRESSION, .disabled = expression },
+        { .name = "collapse",
+          .label = "Math to Expressions",
+          .icon = KIT_ICON_EXPRESSION,
+          .disabled = expression },
+        { .name = "horizontal",
+          .label = "Distribute Horizontally",
           .icon = KIT_ICON_DISTRIBUTE_X,
           .disabled = readonly || count < 3 },
-        { .label = "Distribute Vertically",
+        { .name = "vertical",
+          .label = "Distribute Vertically",
           .icon = KIT_ICON_DISTRIBUTE_Y,
           .disabled = readonly || count < 3 },
-        { .label = "Straighten Connections",
+        { .name = "straighten",
+          .label = "Straighten Connections",
           .icon = KIT_ICON_MOVE,
           .shortcut = "Q",
           .disabled = readonly || !count },
     };
-    static const char *const NAMES[] = { "optimize",
-                                         "collapse",
-                                         "horizontal",
-                                         "vertical",
-                                         "straighten" };
     bool changed = ui_data_put_bool(v, "align", count > 1);
-    for (size_t i = 0; i < sizeof items / sizeof *items; i++) {
-        changed |= put_named(doc, v, NAMES[i], &items[i]);
-    }
+    changed |= put_named(doc, v, items, sizeof items / sizeof *items);
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(yyjson_mut_obj_get(v, "edges"));
     for (int i = 0; i < ALIGN_COUNT; i++) {
         header_item edge = { .id = ALIGN[i].id,
@@ -642,44 +648,21 @@ static void target_choices(studio *s, target_group *groups)
     }
 }
 
-static yyjson_mut_val *group_new(yyjson_mut_doc *doc)
-{
-    yyjson_mut_val *group = yyjson_mut_obj(doc);
-    yyjson_mut_obj_add_strcpy(doc, group, "label", "");
-    yyjson_mut_obj_add_arr(doc, group, "options");
-    return group;
-}
-
-static yyjson_mut_val *option_new(yyjson_mut_doc *doc)
-{
-    yyjson_mut_val *option = yyjson_mut_obj(doc);
-    static const char *const TEXTS[] = { "value", "label", "icon", "keywords", NULL };
-    for (const char *const *text = TEXTS; *text; text++) {
-        yyjson_mut_obj_add_strcpy(doc, option, *text, "");
-    }
-    yyjson_mut_obj_add_bool(doc, option, "current", false);
-    return option;
-}
-
+/* A group's options are items whose id is the choice's value. */
 static bool show_group(yyjson_mut_doc *doc, yyjson_mut_val *shown, const target_group *group)
 {
     yyjson_mut_val *options = yyjson_mut_obj_get(shown, "options");
     bool changed = ui_data_put_text(doc, shown, "label", group->label);
-    changed |= fit(doc, options, acount(group->choices), option_new);
+    changed |= fit(doc, options, acount(group->choices), SHAPE_ITEM);
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(options);
     for (int i = 0; i < acount(group->choices); i++) {
         const target_choice *choice = &group->choices[i];
-        yyjson_mut_val *option = yyjson_mut_arr_iter_next(&it);
-        changed |= ui_data_put_text(doc, option, "value", choice->value);
-        changed |= ui_data_put_text(doc, option, "label", choice->label);
-        changed |= put_glyph(doc, option, "icon", choice->icon);
-        changed |= ui_data_put_text(
-            doc,
-            option,
-            "keywords",
-            choice->keywords ? choice->keywords : ""
-        );
-        changed |= ui_data_put_bool(option, "current", choice->current);
+        header_item item = { .id = choice->value,
+                             .label = choice->label,
+                             .keywords = choice->keywords,
+                             .icon = choice->icon,
+                             .current = choice->current };
+        changed |= put_item(doc, yyjson_mut_arr_iter_next(&it), &item);
     }
     return changed;
 }
@@ -700,7 +683,7 @@ bool studio_graph_targets_sync(studio *s, const studio_panel_sync *at)
         shown += acount(groups[i].choices) > 0;
     }
     yyjson_mut_val *array = yyjson_mut_obj_get(at->variable, "groups");
-    bool changed = fit(at->doc, array, shown, group_new);
+    bool changed = fit(at->doc, array, shown, SHAPE_GROUP);
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(array);
     for (int i = 0; i < GROUP_COUNT; i++) {
         if (acount(groups[i].choices)) {

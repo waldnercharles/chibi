@@ -71,7 +71,10 @@ int ui_list_window(rml_element *scroller, const ui_list *list, ui_list_state *st
     float ratio = context ? rml_context_dp_ratio(context) : 1;
     ratio = ratio > 0 ? ratio : 1;
     float row = row_height(scroller, list);
-    float total = list->count * row;
+    /* The scroller's padding scrolls with the rows, so its end is past it. */
+    float padding = rml_element_box_size(scroller, RML_BOX_PADDING).y -
+                    rml_element_box_size(scroller, RML_BOX_CONTENT).y;
+    float total = list->count * row + padding / ratio;
     float view = rml_element_client_height(scroller) / ratio;
     float scrolled = rml_element_scroll_top(scroller);
     float scroll = follow(state, list, total, view, scrolled / ratio);
@@ -90,7 +93,7 @@ int ui_list_window(rml_element *scroller, const ui_list *list, ui_list_state *st
     int start = (int)floorf((scroll - overscan) / row);
     start = start > list->count - length ? list->count - length : start;
     *first = start > 0 ? start : 0;
-    set_dp(spacer, "height", total);
+    set_dp(spacer, "height", list->count * row);
     set_dp(spacer, "padding-top", *first * row);
     return length;
 }

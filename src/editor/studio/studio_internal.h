@@ -519,9 +519,6 @@ typedef struct
     char names[STUDIO_VALUE_NAMES][64];
     bool renaming; /* the name of rename_graph is being edited */
     uint64_t rename_graph;
-    int rename_area; /* the area whose header holds the name field */
-    bool rename_focus;
-    char rename[128];
     int forms;          /* node settings the layouts follow */
     bool spawn_pending; /* the add-node palette spawns at spawn_x, spawn_y */
     float spawn_x, spawn_y;
@@ -553,12 +550,12 @@ typedef struct
     struct
     {
         bool open;
-        bool focus;  /* focus the field on the next frame */
-        bool typing; /* the field had focus last frame */
+        bool focus; /* focus the field once it can take focus */
         char query[128];
         char seen[128]; /* the query the results follow */
         int current;    /* the result shown in the graph, or -1 */
         studio_find_hit *hits;
+        ui_list_state list; /* GraphFind's List of the results */
     } find;
     studio_visit *visits; /* graphs visited, for Back and Forward */
     int visit;            /* the current one */
@@ -2468,5 +2465,41 @@ bool studio_output_rows_sync(studio *s, const studio_panel_sync *at);
  * perf:systems, perf:rendering and perf:gpu. */
 void studio_performance_add(yyjson_mut_doc *doc);
 bool studio_performance_sync(studio *s, const studio_panel_sync *at);
+
+/* The Behavior header (studio_graph_header.c, BehaviorHeader.rml), by how
+ * often each changes. `graph_header`: open, back and forward (and their
+ * chords), asset and graph ({label, icon}: the behavior's crumb and the
+ * open graph's), callers ({label, index}), renaming, readonly, find, and
+ * the debug target (debug, target, targetAbout). `graph_menus`: the
+ * asset crumb's refs and the assets of its kind (kinds, kind, assets), the
+ * picker's graphs and its items (newFunction, newMacro, named, rename,
+ * graphRefs, graphCalls, remove). `graph_view`: the zoom and the Graph
+ * menu's items, which the selection enables. `graph_targets`: the debug
+ * target's groups of choices ({label, options: {value, label, icon,
+ * keywords, current}}). Items are MenuItem's {id, icon, label, shortcut,
+ * checked, disabled, current}. Actions (graph_header.<action>): back,
+ * forward, assetRefs, asset (a name), caller (an index), graph (an id),
+ * newFunction, newMacro, rename, renamed (the name), cancel, graphRefs,
+ * graphCalls, remove, target (a choice's value), optimize, collapse, align
+ * (an edge), distribute (0 across, 1 down), straighten, arrange, find and
+ * frame. */
+void studio_graph_header_add(yyjson_mut_doc *doc);
+bool studio_graph_header_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_header_action(studio *s, const char *action, const ui_activation *a);
+void studio_graph_menus_add(yyjson_mut_doc *doc);
+bool studio_graph_menus_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_view_add(yyjson_mut_doc *doc);
+bool studio_graph_view_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_targets_add(yyjson_mut_doc *doc);
+bool studio_graph_targets_sync(studio *s, const studio_panel_sync *at);
+/* `graph_find` (studio_graph_find.c, GraphFind.rml), while the graph's
+ * find is open: query (the field's, two-way), count (its readout), total,
+ * height (the List's, eight rows at most) and rows, the List's window of
+ * matches as TreeRow items keyed by their index. Actions: next, previous,
+ * jump (a row's key), enter (go to the current match and close), close and
+ * scroll. */
+void studio_graph_find_add(yyjson_mut_doc *doc);
+bool studio_graph_find_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_find_action(studio *s, const char *action, const ui_activation *a);
 
 #endif

@@ -2320,6 +2320,15 @@ const studio_panel_source studio_panel_sources[] = {
     { "members_ui", "Members", studio_members_ui_add, studio_members_ui_sync, NULL },
     /* Editor chrome (workstream C2). */
     { "performance", "Performance", studio_performance_add, studio_performance_sync, NULL },
+    { "graph_header",
+      "BehaviorHeader",
+      studio_graph_header_add,
+      studio_graph_header_sync,
+      studio_graph_header_action },
+    { "graph_menus", "BehaviorHeader", studio_graph_menus_add, studio_graph_menus_sync, NULL },
+    { "graph_view", "BehaviorHeader", studio_graph_view_add, studio_graph_view_sync, NULL },
+    { "graph_targets", "BehaviorHeader", studio_graph_targets_add, studio_graph_targets_sync, NULL },
+    { "graph_find", "GraphFind", studio_graph_find_add, studio_graph_find_sync, studio_graph_find_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

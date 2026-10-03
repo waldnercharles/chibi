@@ -145,9 +145,9 @@ body.comfortable .output-row, body.comfortable .output-log { height: var(--studi
 .output-row .output-at { display: block; flex: 0 0 auto; color: var(--faint-foreground); white-space: nowrap; }
 .output-row .output-count { flex: 0 0 auto; font-family: var(--font-numeric); }
 
-/* Find in the graph (studio_graph_find.c) and in the Text Editor
-   (studio_code.c): floats over the canvas's or the text's top right, as VS
-   Code's find widget does. */
+/* Find in the graph (GraphFind) and in the Text Editor (CodeFind): floats
+   over the canvas's or the text's top right, as VS Code's find widget
+   does. */
 .find-widget {
     position: absolute; top: 8dp; right: 8dp; width: 340dp; display: flex; flex-direction: column; gap: 4dp;
     padding: 4dp; background-color: var(--popover); border: 1dp var(--popover-edge); border-radius: var(--r-lg);
@@ -156,8 +156,6 @@ body.comfortable .output-row, body.comfortable .output-log { height: var(--studi
 .find-widget-bar { display: flex; align-items: center; gap: 2dp; }
 .find-widget-bar .search { flex: 1 1 0dp; min-width: 0dp; }
 .find-widget-count { display: block; flex: 0 0 auto; padding: 0dp 4dp; line-height: var(--studio-line-16, 16dp); color: var(--faint-foreground); font-size: var(--studio-font-11, 11dp); font-family: var(--font-numeric); white-space: nowrap; }
-.graph-find-list { position: relative; }
-.graph-find-list .tree-row .meta { display: block; flex: 0 1 auto; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* The name filter of Assets (AssetsHeader) and of a UI document's Library. */
 .assets-filter { flex: 1 1 0dp; display: flex; max-width: 220dp; margin-left: 4dp; }

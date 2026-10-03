@@ -202,16 +202,21 @@ void editor_redo(editor *e);
 bool editor_can_undo(const editor *e);
 bool editor_can_redo(const editor *e);
 
-/* Behavior output from the preview, oldest first. The origin label is written
- * to origin; the message stays valid until the log changes. */
+/* Behavior output, oldest first: the preview's and whatever the host prints,
+ * such as the running game's. The newest lines push the oldest out. A line's
+ * serial counts every line the log has held, so it stays with the line as
+ * older lines drop; its texts stay valid until the log changes. */
 typedef struct
 {
+    int64_t serial;
     double time;
     unsigned long step;
+    const char *origin; /* what printed it */
     const char *message;
 } editor_log_line;
 int editor_log_count(const editor *e);
-editor_log_line editor_log_at(const editor *e, int index, char *origin, size_t origin_size);
+editor_log_line editor_log_at(const editor *e, int index);
+void editor_log_print(editor *e, const char *origin, const char *message);
 void editor_clear_log(editor *e);
 
 /* Adds a node of type desc to the graph at canvas (x, y) and returns the core

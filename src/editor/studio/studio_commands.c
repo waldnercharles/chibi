@@ -1517,6 +1517,9 @@ void studio_shortcuts(studio *s, bool field)
         if (editor == STUDIO_EDITOR_ASSETS && studio_assets_key(s, key.key, key.mod)) {
             continue;
         }
+        if (editor == STUDIO_EDITOR_OUTPUT && studio_output_key(s, key.key, key.mod)) {
+            continue;
+        }
         if (command >= 0 && COMMANDS[command].phase == SHORTCUT_EDITOR) {
             studio_command_run(s, (studio_command)command);
         }

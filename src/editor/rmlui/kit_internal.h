@@ -102,7 +102,6 @@ typedef struct widget
     int pending_index;
     kit_number_desc desc; /* its strings are borrowed for one call only */
     char *addon, *draft, *applied, *label, *meta, *badge, *placeholder;
-    char *image;   /* a command item's picture, a "kit:<name>" source */
     char **labels; /* owned strings */
     uint32_t icon;
     uint32_t color;

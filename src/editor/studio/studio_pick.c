@@ -110,7 +110,6 @@ void studio_pick_entries(studio *s, const char *query, studio_palette_entry **en
         studio_palette_entry *typed = studio_palette_add(entries, "", label);
         snprintf(typed->keywords, sizeof typed->keywords, "%s", query);
         snprintf(typed->about, sizeof typed->about, "No asset has this name yet");
-        snprintf(typed->key, sizeof typed->key, "%s", query);
         typed->icon = KIT_ICON_EDIT;
         typed->kind = CHOOSE_TYPED;
     }
@@ -120,7 +119,7 @@ void studio_pick_entries(studio *s, const char *query, studio_palette_entry **en
 void studio_pick_choose(studio *s, const studio_palette_entry *entry, rml_element *anchor)
 {
     const char *value = entry->kind == CHOOSE_ASSET ? entry->label
-                      : entry->kind == CHOOSE_TYPED ? entry->key
+                      : entry->kind == CHOOSE_TYPED ? entry->keywords
                                                     : "";
     if (!strcmp(s->pick.key, STUDIO_PICK_PREVIEW)) {
         studio_preview_ui(s, value);

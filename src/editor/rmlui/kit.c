@@ -329,8 +329,8 @@ static void strings_free(char **strings)
 
 static void widget_free(widget *w)
 {
-    char *owned[] = { w->addon, w->draft, w->applied,     w->label,
-                      w->meta,  w->badge, w->placeholder, w->image };
+    char *owned[] = { w->addon, w->draft, w->applied,    w->label,
+                      w->meta,  w->badge, w->placeholder };
     for (size_t i = 0; i < sizeof owned / sizeof *owned; i++) {
         free(owned[i]);
     }

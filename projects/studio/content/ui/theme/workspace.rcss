@@ -190,17 +190,9 @@ body.comfortable .output-list .vlist-content > .output-line, body.comfortable .o
 .perf-idle { flex: 1 1 0dp; display: block; line-height: var(--studio-line-40, 40dp); text-align: center; color: var(--faint-foreground); }
 .perf-status { flex: 0 0 auto; display: block; line-height: var(--studio-line-16, 16dp); color: var(--muted-foreground); font-size: var(--studio-font-11, 11dp); }
 
-/* Members (Unreal's My Blueprint). */
-.members-filter { flex: 1 1 0dp; display: flex; max-width: 240dp; }
-.members-list { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; padding: 3dp 4dp 8dp; }
-.members-list .tree-row { tab-index: none; }
-.members-list .tree-row[data-section] .name { font-weight: 600; }
-.member-row { display: block; }
+/* A member's type swatch, in Members (Members.rcss) and its Properties. */
 .member-swatch { width: 9dp; height: 9dp; flex: 0 0 auto; margin: 0dp 5dp 0dp 3dp; }
-/* A member's use count, which lists its uses in Find. */
-.tree-row .member-uses { height: var(--studio-height-18, 18dp); min-width: 20dp; padding: 0dp 4dp; justify-content: center; color: var(--faint-foreground); font-family: var(--font-numeric); }
-.tree-row .member-uses[data-unused] { color: var(--disabled-foreground); }
-.member-rename .field, .object-rename .field { height: var(--studio-height-20, 20dp); margin-right: 4dp; }
+.object-rename .field { height: var(--studio-height-20, 20dp); margin-right: 4dp; }
 /* Apply Overrides to Prototype: a checkbox per overridden field, its value
    beside it, as the refactor popover's rows. */
 .popup.prototype-apply { width: 320dp; }

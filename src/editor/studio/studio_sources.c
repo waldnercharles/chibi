@@ -1372,16 +1372,20 @@ yyjson_mut_doc *studio_sources_new()
 }
 
 /* A source syncs while its panel shows, as the last UI refresh mounted it,
- * and whenever a binding wrote, so no edit is lost to a panel closing. */
+ * and whenever a binding wrote, so no edit is lost to a panel closing. Only
+ * a shown panel's bindings can have written its variable: a hidden one's
+ * values are only stale, and taking them would undo what changed since,
+ * as the Members filter's typing once reset a density a command set. */
 void studio_sources_sync(studio *s, studio_sources *src, ui_data *data)
 {
     uint64_t writes = rml_data_model_writes(data->model);
     bool wrote = writes != src->writes_seen;
     src->writes_seen = writes;
     for (int i = 0; i < studio_panel_source_count; i++) {
-        if (!studio_panel_sources[i].panel ||
-            src->shown_at[i] >= s->ui_schedule.frames || wrote) {
-            sync_source(s, src, data, i, wrote);
+        bool shown = !studio_panel_sources[i].panel ||
+                     src->shown_at[i] >= s->ui_schedule.frames;
+        if (shown || wrote) {
+            sync_source(s, src, data, i, wrote && shown);
         }
     }
 }
@@ -2319,6 +2323,8 @@ const studio_panel_source studio_panel_sources[] = {
     { "choices", NULL, add_choices, sync_choices, NULL },
     /* Lists and drag (workstream F4). */
     { "gallery", "Widgets", studio_gallery_add, studio_gallery_sync, studio_gallery_action },
+    /* Members (workstream P5). */
+    { "members", "Members", studio_members_add, studio_members_sync, studio_members_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

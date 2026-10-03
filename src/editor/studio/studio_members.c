@@ -4,10 +4,16 @@
  * double-click or F2 renames. A variable dragged onto the canvas places its
  * Get, or its Set with Alt (Unreal), and a function or macro its call. Each
  * member counts its uses across the project, and the count lists them in
- * Find. */
+ * Find. The panel is authored (Members.rml, its header's filter
+ * MembersHeader.rml); this is its `members` source, which windows the rows
+ * into its List and takes what the rows, the name field and the menu send
+ * (docs/studio-rml-migration.md, P5). */
 #include "editor/studio/studio_members_internal.h"
 #include "support/array.h"
+#include "ui/list.h"
+#include "ui/popover.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -487,26 +493,27 @@ static bool variable_matches(const behavior_variable *v, const char *filter)
 }
 
 /* Uncategorized variables first, then each category in order of first use
-   with its variables. */
+   with its variables. Rows rebuild at every refresh Members shows, so a
+   category is found among the categories seen, not every variable before. */
 static int variable_rows(const behavior_asset *asset, const char *filter, member_row **rows)
 {
     const behavior_variable *vars = asset->variables;
-    int total = 0;
+    int total = 0, *firsts = NULL; /* each category's first variable */
     for (int i = 0; i < acount(vars); i++) {
+        bool seen = !category_of(&vars[i]);
+        for (int c = 0; !seen && c < acount(firsts); c++) {
+            seen = same_category(&vars[i], &vars[firsts[c]]);
+        }
+        if (!seen) {
+            apush(firsts, i);
+        }
         if (!category_of(&vars[i]) && variable_matches(&vars[i], filter)) {
             apush(*rows, ((member_row){ ROW_VARIABLE, i, 1, 0 }));
             total++;
         }
     }
-    for (int i = 0; i < acount(vars); i++) {
-        bool first = category_of(&vars[i]) != NULL;
-        for (int j = 0; first && j < i; j++) {
-            first = !same_category(&vars[i], &vars[j]);
-        }
-        if (!first) {
-            continue;
-        }
-        int header = acount(*rows);
+    for (int c = 0; c < acount(firsts); c++) {
+        int i = firsts[c], header = acount(*rows);
         apush(*rows, ((member_row){ ROW_CATEGORY, i, 1, 0 }));
         for (int j = i; j < acount(vars); j++) {
             if (same_category(&vars[i], &vars[j]) &&
@@ -520,6 +527,7 @@ static int variable_rows(const behavior_asset *asset, const char *filter, member
             asetlen(*rows, header);
         }
     }
+    afree(firsts);
     return total;
 }
 
@@ -655,131 +663,6 @@ void sm_swatch(studio *s, const char *key, const pin_spec *pin)
     kit_dot(s->kit, key, "member-swatch", &dot);
 }
 
-static void section_row(studio *s, const member_row *row)
-{
-    kit *k = s->kit;
-    studio_members *m = &s->members;
-    static const char *const ADD_TIPS[SECTION_COUNT] = {
-        [SECTION_FUNCTIONS] = "New Function",
-        [SECTION_MACROS] = "New Macro",
-        [SECTION_VARIABLES] = "New Variable",
-    };
-    char key[8], meta[16];
-    snprintf(key, sizeof key, "s%d", row->index);
-    snprintf(meta, sizeof meta, "%d", row->count);
-    bool open = m->filter[0] || !(m->collapsed & 1u << row->index);
-    kit_row_desc d = { .label = section_label(s, (section)row->index),
-                       .twisty = open,
-                       .meta = meta };
-    unsigned events = kit_row_begin(k, key, &d);
-    if (ADD_TIPS[row->index]) {
-        kit_button_desc add = { .icon = KIT_ICON_ADD,
-                                .cls = "toggle",
-                                .tip = ADD_TIPS[row->index],
-                                .flags = locked(s) ? KIT_DISABLED : 0 };
-        if (kit_button(k, "add", &add)) {
-            if (row->index == SECTION_VARIABLES) {
-                add_variable(s);
-            } else {
-                add_graph(
-                    s,
-                    row->index == SECTION_MACROS ? GRAPH_MACRO : GRAPH_FUNCTION,
-                    ADD_TIPS[row->index]
-                );
-            }
-        }
-    }
-    kit_row_end(k);
-    kit_flag(k, "data-section", true);
-    if (events & (KIT_ROW_TWISTY | KIT_ROW_CLICK)) {
-        m->collapsed ^= 1u << row->index;
-    }
-}
-
-/* The name as a field in the row's place (Blender's F2): Enter or leaving the
-   field renames, Escape keeps the name. */
-static void rename_row(studio *s, const char *name, uint32_t icon, int depth)
-{
-    kit *k = s->kit;
-    studio_members *m = &s->members;
-    kit_push(k, "rename", NULL, "tree-row member-rename");
-    char pad[16];
-    snprintf(pad, sizeof pad, "%ddp", 24 + depth * 14);
-    kit_style(k, "padding-left", pad);
-    kit_icon(k, "icon", NULL, icon);
-    char text[128];
-    snprintf(text, sizeof text, "%s", name);
-    bool committed = kit_text_field(k, "name", text, sizeof text, NULL, 0);
-    bool focus = m->rename_focus;
-    if (focus) {
-        kit_focus(k);
-        m->rename_focus = false;
-    }
-    bool left = !focus && !kit_item_active(k);
-    kit_pop(k);
-    if (committed && text[0]) {
-        rename_member(s, text);
-    }
-    if (committed || left) {
-        m->rename_kind = STUDIO_MEMBER_NONE;
-    }
-}
-
-static bool renaming(const studio *s, studio_member_kind kind, uint64_t id)
-{
-    return s->members.rename_kind == kind && s->members.rename_id == id;
-}
-
-/* The member a row shows; NONE for sections, categories and events. */
-static studio_member_kind row_member(const studio *s, const member_row *row, uint64_t *id)
-{
-    const behavior_asset *asset = sg_graph_editor(s)->asset;
-    switch (row->kind) {
-        case ROW_GRAPH:
-            *id = asset->graphs[row->index]->graph_id;
-            return STUDIO_MEMBER_GRAPH;
-        case ROW_VARIABLE:
-            *id = asset->variables[row->index].id;
-            return STUDIO_MEMBER_VARIABLE;
-        case ROW_LOCAL:
-            *id = sg_active_graph(s)->locals[row->index].id;
-            return STUDIO_MEMBER_LOCAL;
-        default: return STUDIO_MEMBER_NONE;
-    }
-}
-
-/* Whether a row shows the member being renamed. */
-static bool renaming_row(const studio *s, const member_row *row)
-{
-    uint64_t id = 0;
-    studio_member_kind kind = row_member(s, row, &id);
-    return kind && renaming(s, kind, id);
-}
-
-static bool selected_row(const studio *s, const member_row *row)
-{
-    uint64_t id = 0;
-    studio_member_kind kind = row_member(s, row, &id);
-    return kind && kind == s->members.kind && id == s->members.id;
-}
-
-static void open_menu(studio *s, unsigned events, int area)
-{
-    if (events & KIT_ROW_CONTEXT) {
-        char key[24];
-        snprintf(key, sizeof key, "member:%d", area);
-        kit_popup_open_at(s->kit, key, s->in.mouse_x, s->in.mouse_y);
-    }
-}
-
-static void member_drag(kit *k, char kind, uint64_t id, const char *label, uint32_t icon)
-{
-    char payload[32];
-    snprintf(payload, sizeof payload, "%c%llu", kind, (unsigned long long)id);
-    kit_drag_desc drag = { .type = "member", .payload = payload, .label = label, .icon = icon };
-    kit_drag_source(k, &drag);
-}
-
 /* ---------- Uses ---------- */
 
 static const char *const ROLE_WORDS[REFERENCE_ROLE_COUNT] = {
@@ -863,20 +746,70 @@ static reference_symbol own_symbol(const studio *s, reference_symbol_kind kind, 
                                .id = id };
 }
 
-/* A member's use count, whose tip splits it by role; pressing it lists the
-   uses in Find. Events count every sender and handler. */
-static void uses_button(studio *s, const char *title, reference_symbol symbol)
+/* An event row's event: the one its Event node handles, or an event
+   definition's own. */
+static const char *event_name(const studio *s, const member_row *row)
 {
-    const struct studio_member_uses *uses = member_uses(s, &symbol);
-    char tip[160] = "", label[16];
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    return row->index >= 0 ? asset->graphs[row->index]->nodes[row->node]->reference_name
+                           : s->scene->graph_document_id;
+}
+
+/* The symbol whose uses a row counts, and its title; false for a row that
+   counts none. Event and field parameters are read by name, not through
+   Get nodes, and an event graph is the behavior itself. */
+static bool row_symbol(const studio *s, const member_row *row, reference_symbol *symbol, const char **title)
+{
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    const graph *active = sg_active_graph(s);
+    switch (row->kind) {
+        case ROW_GRAPH: {
+            const graph *g = asset->graphs[row->index];
+            *symbol = own_symbol(s, REFERENCE_SYMBOL_GRAPH, 0, g->graph_id);
+            *title = graph_label(g);
+            return g->kind != GRAPH_EVENT;
+        }
+        case ROW_VARIABLE: {
+            const behavior_variable *v = &asset->variables[row->index];
+            *symbol = own_symbol(s, REFERENCE_SYMBOL_VARIABLE, 0, v->id);
+            *title = v->name;
+            return asset->domain == BEHAVIOR_DOMAIN_EVENT;
+        }
+        case ROW_LOCAL: {
+            const graph_local *local = &active->locals[row->index];
+            *symbol = own_symbol(
+                s,
+                REFERENCE_SYMBOL_LOCAL,
+                active->graph_id,
+                local->id
+            );
+            *title = local->name;
+            return true;
+        }
+        case ROW_EVENT:
+            *title = event_name(s, row);
+            *symbol = (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT,
+                                          .asset = -1,
+                                          .name = *title };
+            return true;
+        default: return false;
+    }
+}
+
+/* A member's use count and the tip that splits it by role. Events count
+   every sender and handler. */
+static void uses_text(studio *s, const reference_symbol *symbol, char label[16], char tip[160])
+{
+    const struct studio_member_uses *uses = member_uses(s, symbol);
     int total = 0;
+    tip[0] = '\0';
     for (int role = 0; uses && role < REFERENCE_ROLE_COUNT; role++) {
         int count = uses->roles[role];
         size_t used = strlen(tip);
         if (count) {
             snprintf(
                 tip + used,
-                sizeof tip - used,
+                160 - used,
                 "%s%d %s%s",
                 total ? ", " : "",
                 count,
@@ -886,299 +819,644 @@ static void uses_button(studio *s, const char *title, reference_symbol symbol)
         }
         total += count;
     }
-    snprintf(label, sizeof label, "%d", total);
-    kit_button_desc d = { .label = label,
-                          .size = KIT_SM,
-                          .cls = "member-uses",
-                          .tip = total ? tip : "No uses" };
-    bool pressed = kit_button(s->kit, "uses", &d);
-    kit_flag(s->kit, "data-unused", total == 0);
-    if (pressed) {
+    snprintf(label, 16, "%d", total);
+    if (!total) {
+        snprintf(tip, 160, "No uses");
+    }
+}
+
+/* ---------- Rows ---------- */
+
+static bool renaming(const studio *s, studio_member_kind kind, uint64_t id)
+{
+    return s->members.rename_kind == kind && s->members.rename_id == id;
+}
+
+/* The member a row shows; NONE for sections, categories and events. */
+static studio_member_kind row_member(const studio *s, const member_row *row, uint64_t *id)
+{
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    switch (row->kind) {
+        case ROW_GRAPH:
+            *id = asset->graphs[row->index]->graph_id;
+            return asset->graphs[row->index]->kind == GRAPH_EVENT
+                     ? STUDIO_MEMBER_NONE
+                     : STUDIO_MEMBER_GRAPH;
+        case ROW_VARIABLE:
+            *id = asset->variables[row->index].id;
+            return STUDIO_MEMBER_VARIABLE;
+        case ROW_LOCAL:
+            *id = sg_active_graph(s)->locals[row->index].id;
+            return STUDIO_MEMBER_LOCAL;
+        default: return STUDIO_MEMBER_NONE;
+    }
+}
+
+/* A row's name for the actions it sends: its kind's letter and what it
+   shows, as "v12" for variable 12 or "s4" for the Variables section. */
+static void row_key(const studio *s, const member_row *row, char *out, size_t size)
+{
+    uint64_t id = 0;
+    row_member(s, row, &id);
+    switch (row->kind) {
+        case ROW_SECTION: snprintf(out, size, "s%d", row->index); return;
+        case ROW_CATEGORY: snprintf(out, size, "c%d", row->index); return;
+        case ROW_GRAPH:
+            snprintf(out, size, "g%llu", (unsigned long long)id);
+            return;
+        case ROW_VARIABLE:
+            snprintf(out, size, "v%llu", (unsigned long long)id);
+            return;
+        case ROW_LOCAL:
+            snprintf(out, size, "l%llu", (unsigned long long)id);
+            return;
+        case ROW_EVENT:
+            snprintf(out, size, "e%d.%d", row->index, row->node);
+            return;
+    }
+}
+
+/* The row named `key` among those Members shows now. */
+static bool row_named(const studio *s, const char *key, member_row *out)
+{
+    member_row *rows = member_rows(s);
+    bool found = false;
+    for (int i = 0; !found && i < acount(rows); i++) {
+        char named[40];
+        row_key(s, &rows[i], named, sizeof named);
+        found = !strcmp(named, key);
+        if (found) {
+            *out = rows[i];
+        }
+    }
+    afree(rows);
+    return found;
+}
+
+/* What each item of a list holds: its texts, its flags and, for a row,
+   its depth. Every row has them all, so data-for reuses its elements as
+   kinds change under them. */
+typedef struct
+{
+    const char *const *texts, *const *flags; /* NULL-terminated */
+    bool depth;
+} item_shape;
+
+static const char *const ROW_TEXTS[] = { "key",    "label", "icon", "meta",
+                                         "swatch", "color", "uses", "usesTip",
+                                         "add",    "drag",  NULL };
+static const char *const ROW_FLAGS[] = { "parent",   "open",   "selected",
+                                         "active",   "marked", "hidden",
+                                         "renaming", "unused", NULL };
+static const char *const ITEM_TEXTS[] = { "id", "icon", "label", "shortcut", NULL };
+static const char *const ITEM_FLAGS[] = { "checked", "disabled", NULL };
+static const item_shape ROW_SHAPE = { ROW_TEXTS, ROW_FLAGS, true };
+static const item_shape ITEM_SHAPE = { ITEM_TEXTS, ITEM_FLAGS, false };
+
+static yyjson_mut_val *item_new(yyjson_mut_doc *doc, const item_shape *shape)
+{
+    yyjson_mut_val *item = yyjson_mut_obj(doc);
+    for (const char *const *text = shape->texts; *text; text++) {
+        yyjson_mut_obj_add_strcpy(doc, item, *text, "");
+    }
+    for (const char *const *flag = shape->flags; *flag; flag++) {
+        yyjson_mut_obj_add_bool(doc, item, *flag, false);
+    }
+    if (shape->depth) {
+        yyjson_mut_obj_add_int(doc, item, "depth", 0);
+    }
+    return item;
+}
+
+void studio_members_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *m = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "members");
+    yyjson_mut_obj_add_bool(doc, m, "shown", false);
+    yyjson_mut_obj_add_bool(doc, m, "locked", false);
+    yyjson_mut_obj_add_strcpy(doc, m, "filter", "");
+    yyjson_mut_obj_add_arr(doc, m, "rows");
+    yyjson_mut_obj_add_arr(doc, m, "menu");
+    yyjson_mut_obj_add_val(doc, m, "remove", item_new(doc, &ITEM_SHAPE));
+}
+
+/* ---------- Values, written in place ---------- */
+
+static bool put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (!strcmp(yyjson_mut_get_str(value), text)) {
+        return false;
+    }
+    ui_data_set_text(doc, value, text);
+    return true;
+}
+
+static bool put_bool(yyjson_mut_val *object, const char *name, bool on)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_get_bool(value) == on) {
+        return false;
+    }
+    yyjson_mut_set_bool(value, on);
+    return true;
+}
+
+static bool put_int(yyjson_mut_val *object, const char *name, int number)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_get_int(value) == number) {
+        return false;
+    }
+    yyjson_mut_set_int(value, number);
+    return true;
+}
+
+static bool put_glyph(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, uint32_t icon)
+{
+    char glyph[5] = "";
+    if (icon) {
+        studio_glyph(glyph, icon);
+    }
+    return put_text(doc, object, name, glyph);
+}
+
+/* Gives `array` `length` items, adding and removing at its end, so items
+   already shown keep their elements; true when its length changed. */
+static bool fit(yyjson_mut_doc *doc, yyjson_mut_val *array, int length, const item_shape *shape)
+{
+    int had = (int)yyjson_mut_arr_size(array);
+    for (int i = had; i < length; i++) {
+        yyjson_mut_arr_append(array, item_new(doc, shape));
+    }
+    for (int i = had; i > length; i--) {
+        yyjson_mut_arr_remove_last(array);
+    }
+    return had != length;
+}
+
+/* ---------- One row ---------- */
+
+/* What a row shows besides its key, selection, name field and uses. */
+typedef struct
+{
+    const char *label, *meta, *add;
+    uint32_t icon;
+    const pin_spec *pin; /* its type, for a swatch */
+    bool open, active, draggable;
+} row_look;
+
+static row_look section_look(const studio *s, const member_row *row, char *meta, size_t size)
+{
+    static const char *const ADD_TIPS[SECTION_COUNT] = {
+        [SECTION_FUNCTIONS] = "New Function",
+        [SECTION_MACROS] = "New Macro",
+        [SECTION_VARIABLES] = "New Variable",
+    };
+    snprintf(meta, size, "%d", row->count);
+    return (row_look){ .label = section_label(s, (section)row->index),
+                       .meta = meta,
+                       .add = ADD_TIPS[row->index],
+                       .open = s->members.filter[0] ||
+                               !(s->members.collapsed & 1u << row->index) };
+}
+
+/* A graph row is active while its graph is open; a function or macro drags
+   onto the canvas as its call. */
+static row_look graph_look(const studio *s, const member_row *row)
+{
+    const editor *e = sg_graph_editor(s);
+    const graph *g = e->asset->graphs[row->index];
+    return (row_look){
+        .label = graph_label(g),
+        .icon = g->kind == GRAPH_FUNCTION ? KIT_ICON_FUNCTION
+              : g->kind == GRAPH_MACRO    ? KIT_ICON_EXPRESSION
+                                          : KIT_ICON_EVENT,
+        .meta = g->kind == GRAPH_FUNCTION && graph_signature_pure(g) ? "pure" : "",
+        .active = g == e->active_graph,
+        .draggable = g->kind != GRAPH_EVENT,
+    };
+}
+
+/* Get and Set nodes read a behavior's own variables, not an event's or a
+   field's parameters. */
+static row_look variable_look(const studio *s, const member_row *row, pin_spec *pin, char *meta, size_t size)
+{
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    *pin = sm_variable_pin(&asset->variables[row->index]);
+    return (row_look){ .label = pin->name,
+                       .icon = KIT_ICON_VARIABLE,
+                       .meta = sm_type_label(pin, meta, size),
+                       .pin = pin,
+                       .draggable = asset->domain == BEHAVIOR_DOMAIN_EVENT };
+}
+
+static row_look local_look(const studio *s, const member_row *row, char *meta, size_t size)
+{
+    graph *gr = sg_active_graph(s);
+    const graph_local *local = &gr->locals[row->index];
+    int output = 0, index = -1;
+    const pin_spec *pin = graph_pin_by_id(
+        graph_node_by_id(gr, local->source_id),
+        local->source_pin_id,
+        &output,
+        &index
+    );
+    return (row_look){ .label = local->name,
+                       .icon = KIT_ICON_LOCAL,
+                       .meta = pin ? sm_type_label(pin, meta, size) : "",
+                       .pin = pin };
+}
+
+static row_look row_look_of(const studio *s, const member_row *row, pin_spec *pin, char *meta, size_t size)
+{
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    switch (row->kind) {
+        case ROW_SECTION: return section_look(s, row, meta, size);
+        case ROW_CATEGORY:
+            snprintf(meta, size, "%d", row->count);
+            return (row_look){ .label = category_of(&asset->variables[row->index]),
+                               .icon = KIT_ICON_FOLDER,
+                               .meta = meta };
+        case ROW_GRAPH: return graph_look(s, row);
+        case ROW_VARIABLE: return variable_look(s, row, pin, meta, size);
+        case ROW_LOCAL: return local_look(s, row, meta, size);
+        case ROW_EVENT:
+            return (row_look){ .label = event_name(s, row), .icon = KIT_ICON_EVENT };
+    }
+    return (row_look){ 0 };
+}
+
+/* A type swatch colored as the canvas colors its sockets. */
+static bool show_swatch(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const pin_spec *pin)
+{
+    char color[16] = "";
+    const char *shape = "";
+    if (pin) {
+        snprintf(color, sizeof color, "#%08x", sg_pin_color(s, pin));
+        shape = pin->kind == PIN_EXEC                  ? "arrow"
+              : pin->container == PIN_CONTAINER_SINGLE ? "circle"
+                                                       : "square";
+    }
+    bool changed = put_text(doc, item, "swatch", shape);
+    return put_text(doc, item, "color", color) || changed;
+}
+
+static bool show_uses(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const member_row *row)
+{
+    reference_symbol symbol;
+    const char *title;
+    char label[16] = "", tip[160] = "";
+    if (row_symbol(s, row, &symbol, &title)) {
+        uses_text(s, &symbol, label, tip);
+    }
+    bool changed = put_text(doc, item, "uses", label);
+    changed |= put_text(doc, item, "usesTip", tip);
+    return put_bool(item, "unused", !strcmp(label, "0")) || changed;
+}
+
+/* A row: a selected member is marked, and active too but for a graph,
+   whose row is active while it is open. A drag's payload is its key. */
+static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const member_row *row)
+{
+    pin_spec pin;
+    char meta[96], key[40];
+    row_look look = row_look_of(s, row, &pin, meta, sizeof meta);
+    uint64_t id = 0;
+    studio_member_kind kind = row_member(s, row, &id);
+    bool selected = kind && kind == s->members.kind && id == s->members.id;
+    row_key(s, row, key, sizeof key);
+    bool changed = put_text(doc, item, "key", key);
+    changed |= put_text(doc, item, "label", look.label);
+    changed |= put_glyph(doc, item, "icon", look.icon);
+    changed |= put_text(doc, item, "meta", look.meta ? look.meta : "");
+    changed |= put_text(doc, item, "add", look.add ? look.add : "");
+    changed |= put_text(doc, item, "drag", look.draggable ? "member" : "");
+    changed |= put_int(item, "depth", row->depth);
+    changed |= put_bool(item, "parent", row->kind == ROW_SECTION);
+    changed |= put_bool(item, "open", look.open);
+    changed |= put_bool(item, "selected", selected);
+    changed |= put_bool(item, "active", look.active || (selected && row->kind != ROW_GRAPH));
+    changed |= put_bool(item, "renaming", kind && renaming(s, kind, id));
+    changed |= show_swatch(s, doc, item, look.pin);
+    return show_uses(s, doc, item, row) || changed;
+}
+
+/* ---------- The panel ---------- */
+
+/* The List's id in Members.rml. */
+#define MEMBERS_LIST "members-list"
+/* Rows shown before the List is laid out. */
+#define UNLAID_ROWS 40
+
+/* The element with `id` in Studio's documents, or NULL. */
+static rml_element *studio_by_id(studio *s, const char *id)
+{
+    rml_context *context = rml_backend_context(s->backend);
+    for (int i = 0; i < rml_context_document_count(context); i++) {
+        rml_element *found = rml_element_by_id(rml_context_document(context, i), id);
+        if (found) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+/* The List, found by id once while it lives: the search walks every
+   document, and the source syncs at every refresh. */
+static rml_element *members_list(studio *s)
+{
+    studio_members *m = &s->members;
+    rml_element *list = m->list_element ? rml_element_ref_get(m->list_element) : NULL;
+    if (!list && (list = studio_by_id(s, MEMBERS_LIST))) {
+        rml_element_ref_destroy(m->list_element);
+        m->list_element = rml_element_ref_create(list);
+    }
+    return list;
+}
+
+/* The row to scroll into view: a member being named as it is added, or
+   one Go to Definition selected; -1 for none. */
+static int reveal_row(studio *s, const member_row *rows)
+{
+    studio_members *m = &s->members;
+    int reveal = -1;
+    for (int r = 0; r < acount(rows); r++) {
+        uint64_t id = 0;
+        studio_member_kind kind = row_member(s, &rows[r], &id);
+        bool named = m->rename_focus && kind && renaming(s, kind, id);
+        bool selected = m->reveal && kind && kind == m->kind && id == m->id;
+        reveal = named || selected ? r : reveal;
+    }
+    m->rename_focus = false;
+    m->reveal = false;
+    return reveal;
+}
+
+/* The rows of the List in view, as ui_list_window places them. */
+static bool show_rows(studio *s, const studio_panel_sync *at, yyjson_mut_val *array)
+{
+    member_row *rows = member_rows(s);
+    int count = acount(rows), reveal = reveal_row(s, rows);
+    rml_element *list = at->preview ? NULL : members_list(s);
+    int first = 0, length = count < UNLAID_ROWS ? count : UNLAID_ROWS;
+    if (list) {
+        ui_list window = { .count = count, .reveal = reveal };
+        length = ui_list_window(list, &window, &s->members.list, &first);
+    }
+    bool changed = fit(at->doc, array, length, &ROW_SHAPE);
+    yyjson_mut_val *item;
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(array);
+    for (int i = first; (item = yyjson_mut_arr_iter_next(&it)); i++) {
+        changed |= show_row(s, at->doc, item, &rows[i]);
+    }
+    afree(rows);
+    return changed;
+}
+
+/* A menu item: what it runs (members.<id>), and how it shows. */
+typedef struct
+{
+    const char *id, *label, *shortcut;
+    uint32_t icon;
+    bool shown, disabled;
+} menu_item;
+
+static bool show_item(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const menu_item *shown)
+{
+    bool changed = put_text(doc, item, "id", shown->id);
+    changed |= put_text(doc, item, "label", shown->label);
+    changed |= put_glyph(doc, item, "icon", shown->icon);
+    changed |= put_text(
+        doc,
+        item,
+        "shortcut",
+        shown->shortcut ? studio_chord(s, shown->shortcut) : ""
+    );
+    return put_bool(item, "disabled", shown->disabled) || changed;
+}
+
+/* The selected member's menu: what it can do, and Delete apart. */
+static bool show_menu(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *m)
+{
+    graph *g = sm_graph(s);
+    bool readonly = locked(s), variable = s->members.kind == STUDIO_MEMBER_VARIABLE;
+    bool callable = g && (g->kind == GRAPH_FUNCTION || g->kind == GRAPH_MACRO);
+    const menu_item items[] = {
+        { "open", "Open", NULL, KIT_ICON_EXTERNAL, g != NULL, false },
+        { "rename", "Rename", "F2", KIT_ICON_EDIT, true, readonly },
+        { "duplicate", "Duplicate", "Shift+D", KIT_ICON_COPY, variable, readonly },
+        { "refs", "Find References", NULL, KIT_ICON_REFERENCES, variable || callable, false },
+        { "calls", "Call Hierarchy", NULL, KIT_ICON_CALLERS, callable, false },
+    };
+    const menu_item remove = { "delete",       "Delete", "X",
+                               KIT_ICON_TRASH, true,     readonly };
+    int length = 0;
+    for (size_t i = 0; i < sizeof items / sizeof *items; i++) {
+        length += items[i].shown;
+    }
+    yyjson_mut_val *menu = yyjson_mut_obj_get(m, "menu");
+    bool changed = fit(doc, menu, length, &ITEM_SHAPE);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(menu);
+    for (size_t i = 0; i < sizeof items / sizeof *items; i++) {
+        if (items[i].shown) {
+            changed |= show_item(s, doc, yyjson_mut_arr_iter_next(&it), &items[i]);
+        }
+    }
+    return show_item(s, doc, yyjson_mut_obj_get(m, "remove"), &remove) || changed;
+}
+
+/* The filter is view state the header's field binds; C keeps it too, so
+   it filters rows and outlasts the field. */
+static bool sync_filter(studio *s, const studio_panel_sync *at)
+{
+    studio_members *m = &s->members;
+    yyjson_mut_val *filter = yyjson_mut_obj_get(at->variable, "filter");
+    if (at->wrote && strcmp(yyjson_mut_get_str(filter), m->filter)) {
+        snprintf(m->filter, sizeof m->filter, "%s", yyjson_mut_get_str(filter));
+    }
+    /* Find (Mod+F) focuses the field. */
+    rml_element *field = s->find_request == STUDIO_EDITOR_MEMBERS + 1 && !at->preview
+                           ? studio_by_id(s, "members-filter")
+                           : NULL;
+    if (field && rml_element_focus(field, true)) {
+        rml_element_select(field);
+        s->find_request = 0;
+    }
+    return put_text(at->doc, at->variable, "filter", m->filter);
+}
+
+bool studio_members_sync(studio *s, const studio_panel_sync *at)
+{
+    yyjson_mut_val *m = at->variable;
+    bool shown = studio_graph_active(s);
+    bool changed = sync_filter(s, at);
+    changed |= put_bool(m, "shown", shown);
+    if (!shown) {
+        s->members.rename_kind = STUDIO_MEMBER_NONE;
+        return fit(at->doc, yyjson_mut_obj_get(m, "rows"), 0, &ROW_SHAPE) || changed;
+    }
+    follow(s);
+    changed |= put_bool(m, "locked", locked(s));
+    changed |= show_rows(s, at, yyjson_mut_obj_get(m, "rows"));
+    return show_menu(s, at->doc, m) || changed;
+}
+
+/* ---------- Actions ---------- */
+
+/* A press on a row: a section opens or closes, a graph opens, a member
+   is selected for Properties, and an event reveals its node. */
+static void press_row(studio *s, const member_row *row)
+{
+    editor *e = sg_graph_editor(s);
+    uint64_t id = 0;
+    studio_member_kind kind = row_member(s, row, &id);
+    switch (row->kind) {
+        case ROW_SECTION: s->members.collapsed ^= 1u << row->index; return;
+        case ROW_GRAPH:
+            if (e->asset->graphs[row->index] != e->active_graph) {
+                editor_open_graph(e, id);
+            }
+            select_member(s, kind, id);
+            return;
+        case ROW_VARIABLE: select_member(s, kind, id); return;
+        case ROW_LOCAL:
+            select_local(s, &sg_active_graph(s)->locals[row->index]);
+            return;
+        case ROW_EVENT:
+            if (row->index >= 0) {
+                studio_reveal_node(
+                    s,
+                    e->asset->graphs[row->index]->graph_id,
+                    e->asset->graphs[row->index]->nodes[row->node]->id
+                );
+            }
+            return;
+        case ROW_CATEGORY: return;
+    }
+}
+
+/* A right press on a member selects it and opens its menu at the pointer. */
+static void open_menu(studio *s, const member_row *row, const ui_activation *a)
+{
+    uint64_t id = 0;
+    bool member = row_member(s, row, &id) != STUDIO_MEMBER_NONE;
+    if (row->kind == ROW_GRAPH || member) {
+        press_row(s, row);
+    }
+    rml_element *anchor = rml_element_ref_get(a->anchor);
+    rml_element *menu = member && anchor
+                          ? rml_element_query_selector(rml_element_owner_document(anchor), "#member-menu")
+                          : NULL;
+    if (menu) {
+        popover_show(menu, &(popover_anchor){ .side = POPOVER_POINT, .box = { a->x, a->y, 0, 0 } });
+    }
+}
+
+static void add_to(studio *s, const member_row *row)
+{
+    if (row->kind != ROW_SECTION || locked(s)) {
+        return;
+    }
+    switch ((section)row->index) {
+        case SECTION_VARIABLES: add_variable(s); return;
+        case SECTION_FUNCTIONS:
+            add_graph(s, GRAPH_FUNCTION, "New Function");
+            return;
+        case SECTION_MACROS: add_graph(s, GRAPH_MACRO, "New Macro"); return;
+        default: return;
+    }
+}
+
+static void list_uses(studio *s, const member_row *row)
+{
+    reference_symbol symbol;
+    const char *title;
+    if (row_symbol(s, row, &symbol, &title)) {
         studio_find_references(s, title, symbol);
     }
 }
 
-static void graph_row(studio *s, const member_row *row, int area)
+/* What a row's activation names: its press, double click, right press,
+   use count or add button. */
+static void row_action(studio *s, const char *action, const ui_activation *a)
 {
-    kit *k = s->kit;
-    editor *e = sg_graph_editor(s);
-    graph *g = e->asset->graphs[row->index];
-    bool member = g->kind != GRAPH_EVENT;
-    uint32_t icon = g->kind == GRAPH_FUNCTION ? KIT_ICON_FUNCTION
-                  : g->kind == GRAPH_MACRO    ? KIT_ICON_EXPRESSION
-                                              : KIT_ICON_EVENT;
-    char key[32];
-    snprintf(key, sizeof key, "g%llu", (unsigned long long)g->graph_id);
-    kit_push(k, key, NULL, "member-row");
-    if (renaming(s, STUDIO_MEMBER_GRAPH, g->graph_id)) {
-        rename_row(s, graph_label(g), icon, row->depth);
-        kit_pop(k);
+    member_row row;
+    if (a->argc < 1 || !studio_graph_active(s) || !row_named(s, a->args[0], &row)) {
         return;
     }
-    bool selected = s->members.kind == STUDIO_MEMBER_GRAPH &&
-                    s->members.id == g->graph_id;
-    kit_row_desc d = {
-        .label = graph_label(g),
-        .icon = icon,
-        .depth = row->depth,
-        .twisty = -1,
-        .meta = g->kind == GRAPH_FUNCTION && graph_signature_pure(g) ? "pure" : NULL,
-        .flags = (selected ? KIT_ON : 0) | (g == e->active_graph ? KIT_ACTIVE : 0)
-    };
-    unsigned events = kit_row_begin(k, "row", &d);
-    if (member) {
-        uses_button(s, graph_label(g), own_symbol(s, REFERENCE_SYMBOL_GRAPH, 0, g->graph_id));
-    }
-    kit_row_end(k);
-    if (member) {
-        member_drag(k, 'g', g->graph_id, graph_label(g), icon);
-    }
-    kit_pop(k);
-    if (events & (KIT_ROW_CLICK | KIT_ROW_CONTEXT)) {
-        if (g != e->active_graph) {
-            editor_open_graph(e, g->graph_id);
-        }
-        select_member(s, member ? STUDIO_MEMBER_GRAPH : STUDIO_MEMBER_NONE, g->graph_id);
-    }
-    if (member && (events & KIT_ROW_DOUBLE_CLICK)) {
-        start_rename(s, STUDIO_MEMBER_GRAPH, g->graph_id);
-    }
-    if (member) {
-        open_menu(s, events, area);
+    uint64_t id = 0;
+    studio_member_kind kind = row_member(s, &row, &id);
+    if (!strcmp(action, "click")) {
+        press_row(s, &row);
+    } else if (!strcmp(action, "edit")) {
+        start_rename(s, kind, id);
+    } else if (!strcmp(action, "menu")) {
+        open_menu(s, &row, a);
+    } else if (!strcmp(action, "uses")) {
+        list_uses(s, &row);
+    } else if (!strcmp(action, "add")) {
+        add_to(s, &row);
     }
 }
 
-static void variable_row(studio *s, const member_row *row, int area)
+/* The selected member's menu items. */
+static bool menu_action(studio *s, const char *action)
 {
-    kit *k = s->kit;
-    behavior_asset *asset = sg_graph_editor(s)->asset;
-    const behavior_variable *v = &asset->variables[row->index];
-    char key[32], type[96];
-    snprintf(key, sizeof key, "v%llu", (unsigned long long)v->id);
-    kit_push(k, key, NULL, "member-row");
-    if (renaming(s, STUDIO_MEMBER_VARIABLE, v->id)) {
-        rename_row(s, v->name, KIT_ICON_VARIABLE, row->depth);
-        kit_pop(k);
-        return;
-    }
-    pin_spec pin = sm_variable_pin(v);
-    bool selected = s->members.kind == STUDIO_MEMBER_VARIABLE &&
-                    s->members.id == v->id;
-    kit_row_desc d = { .label = v->name,
-                       .icon = KIT_ICON_VARIABLE,
-                       .depth = row->depth,
-                       .twisty = -1,
-                       .meta = sm_type_label(&pin, type, sizeof type),
-                       .flags = selected ? KIT_ON | KIT_ACTIVE : 0 };
-    unsigned events = kit_row_begin(k, "row", &d);
-    sm_swatch(s, "type", &pin);
-    /* Event and field parameters are read by name, not through Get nodes. */
-    if (asset->domain == BEHAVIOR_DOMAIN_EVENT) {
-        uses_button(s, v->name, own_symbol(s, REFERENCE_SYMBOL_VARIABLE, 0, v->id));
-    }
-    kit_row_end(k);
-    /* Get and Set nodes read a behavior's own variables. */
-    if (asset->domain == BEHAVIOR_DOMAIN_EVENT) {
-        member_drag(k, 'v', v->id, v->name, KIT_ICON_VARIABLE);
-    }
-    kit_pop(k);
-    uint64_t id = v->id;
-    if (events & (KIT_ROW_CLICK | KIT_ROW_CONTEXT)) {
-        select_member(s, STUDIO_MEMBER_VARIABLE, id);
-    }
-    if (events & KIT_ROW_DOUBLE_CLICK) {
-        start_rename(s, STUDIO_MEMBER_VARIABLE, id);
-    }
-    open_menu(s, events, area);
-}
-
-static void category_row(studio *s, const member_row *row)
-{
-    const behavior_variable *v = &sg_graph_editor(s)->asset->variables[row->index];
-    char key[16], meta[16];
-    snprintf(key, sizeof key, "c%d", row->index);
-    snprintf(meta, sizeof meta, "%d", row->count);
-    kit_row_desc d = { .label = category_of(v),
-                       .icon = KIT_ICON_FOLDER,
-                       .depth = row->depth,
-                       .twisty = -1,
-                       .meta = meta };
-    kit_row_begin(s->kit, key, &d);
-    kit_row_end(s->kit);
-}
-
-static void local_row(studio *s, const member_row *row, int area)
-{
-    kit *k = s->kit;
-    graph *gr = sg_active_graph(s);
-    const graph_local *local = &gr->locals[row->index];
-    node *source = graph_node_by_id(gr, local->source_id);
-    int output = 0, index = -1;
-    const pin_spec *pin = graph_pin_by_id(source, local->source_pin_id, &output, &index);
-    char key[32], type[96];
-    snprintf(key, sizeof key, "l%llu", (unsigned long long)local->id);
-    kit_push(k, key, NULL, "member-row");
-    if (renaming(s, STUDIO_MEMBER_LOCAL, local->id)) {
-        rename_row(s, local->name, KIT_ICON_LOCAL, row->depth);
-        kit_pop(k);
-        return;
-    }
-    bool selected = s->members.kind == STUDIO_MEMBER_LOCAL &&
-                    s->members.id == local->id;
-    kit_row_desc d = { .label = local->name,
-                       .icon = KIT_ICON_LOCAL,
-                       .depth = row->depth,
-                       .twisty = -1,
-                       .meta = pin ? sm_type_label(pin, type, sizeof type) : NULL,
-                       .flags = selected ? KIT_ON | KIT_ACTIVE : 0 };
-    unsigned events = kit_row_begin(k, "row", &d);
-    if (pin) {
-        sm_swatch(s, "type", pin);
-    }
-    uses_button(
-        s,
-        local->name,
-        own_symbol(s, REFERENCE_SYMBOL_LOCAL, gr->graph_id, local->id)
-    );
-    kit_row_end(k);
-    kit_pop(k);
-    if (events & (KIT_ROW_CLICK | KIT_ROW_CONTEXT)) {
-        select_local(s, local);
-    }
-    if (events & KIT_ROW_DOUBLE_CLICK) {
-        start_rename(s, STUDIO_MEMBER_LOCAL, s->members.id);
-    }
-    open_menu(s, events, area);
-}
-
-/* An event the behavior handles, which a click reveals, or an event
-   definition's own event. */
-static void event_row(studio *s, const member_row *row)
-{
-    kit *k = s->kit;
-    const behavior_asset *asset = sg_graph_editor(s)->asset;
-    const graph *gr = row->index >= 0 ? asset->graphs[row->index] : NULL;
-    const node *n = gr ? gr->nodes[row->node] : NULL;
-    const char *name = n ? n->reference_name : s->scene->graph_document_id;
-    char key[32];
-    snprintf(key, sizeof key, "e%d.%d", row->index, row->node);
-    kit_push(k, key, NULL, "member-row");
-    kit_row_desc d = { .label = name,
-                       .icon = KIT_ICON_EVENT,
-                       .depth = row->depth,
-                       .twisty = -1 };
-    unsigned events = kit_row_begin(k, "row", &d);
-    uses_button(s, name, (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT, .asset = -1, .name = name });
-    kit_row_end(k);
-    kit_pop(k);
-    if (n && (events & KIT_ROW_CLICK)) {
-        studio_reveal_node(s, gr->graph_id, n->id);
-    }
-}
-
-static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled)
-{
-    kit_menu_item_desc d = { .label = label,
-                             .icon = icon,
-                             .shortcut = shortcut,
-                             .checked = -1,
-                             .disabled = disabled };
-    return kit_menu_item(k, key, &d);
-}
-
-static void member_menu(studio *s, int area)
-{
-    kit *k = s->kit;
     studio_members *m = &s->members;
-    char key[24];
-    snprintf(key, sizeof key, "member:%d", area);
-    if (!kit_popup_begin(k, key, "menu")) {
+    graph *g = sm_graph(s);
+    if (!strcmp(action, "open") && g) {
+        editor_open_graph(sg_graph_editor(s), g->graph_id);
+    } else if (!strcmp(action, "rename")) {
+        start_rename(s, m->kind, m->id);
+    } else if (!strcmp(action, "duplicate")) {
+        duplicate_variable(s);
+    } else if (!strcmp(action, "refs") && g) {
+        studio_find_graph_references(s, g);
+    } else if (!strcmp(action, "refs") && m->kind == STUDIO_MEMBER_VARIABLE) {
+        studio_find_variable_references(s, m->id);
+    } else if (!strcmp(action, "calls") && g) {
+        studio_calls_graph(s, g);
+    } else if (!strcmp(action, "delete")) {
+        delete_member(s);
+    } else {
+        return false;
+    }
+    return true;
+}
+
+void studio_members_action(studio *s, const char *action, const ui_activation *a)
+{
+    studio_members *m = &s->members;
+    /* A scroll only wakes the source, which reads where the List is. */
+    if (!studio_graph_active(s) || !strcmp(action, "scroll")) {
         return;
     }
-    bool readonly = locked(s);
-    graph *g = sm_graph(s);
-    if (g && menu_item(k, "open", "Open", KIT_ICON_EXTERNAL, NULL, false)) {
-        editor_open_graph(sg_graph_editor(s), g->graph_id);
-    }
-    if (menu_item(k, "rename", "Rename", KIT_ICON_EDIT, "F2", readonly)) {
-        start_rename(s, m->kind, m->id);
-    }
-    if (m->kind == STUDIO_MEMBER_VARIABLE &&
-        menu_item(k, "dup", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"), readonly)) {
-        duplicate_variable(s);
-    }
-    bool callable = g && (g->kind == GRAPH_FUNCTION || g->kind == GRAPH_MACRO);
-    if ((m->kind == STUDIO_MEMBER_VARIABLE || callable) &&
-        menu_item(k, "refs", "Find References", KIT_ICON_REFERENCES, NULL, false)) {
-        if (callable) {
-            studio_find_graph_references(s, g);
-        } else {
-            studio_find_variable_references(s, m->id);
+    follow(s);
+    /* The name field commits with Enter or by leaving it, and Escape keeps
+       the name; it sends one or the other first. */
+    if (!strcmp(action, "renamed") || !strcmp(action, "cancel")) {
+        if (!strcmp(action, "renamed") && m->rename_kind && a->argc && a->args[0][0]) {
+            rename_member(s, a->args[0]);
         }
+        m->rename_kind = STUDIO_MEMBER_NONE;
+        return;
     }
-    if (callable &&
-        menu_item(k, "calls", "Call Hierarchy", KIT_ICON_CALLERS, NULL, false)) {
-        studio_calls_graph(s, g);
+    if (!menu_action(s, action)) {
+        row_action(s, action, a);
     }
-    kit_menu_separator(k, "s0");
-    if (menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X", readonly)) {
-        delete_member(s);
-    }
-    kit_popup_end(k);
 }
 
 /* ---------- Editor ---------- */
 
+/* The header's filter field (MembersHeader.rml). */
 void studio_members_header(studio *s, int area)
 {
-    (void)area;
-    kit *k = s->kit;
-    kit_push(k, "filter", NULL, "members-filter");
-    kit_search(k, "search", s->members.filter, sizeof s->members.filter, "Filter");
-    studio_find_field(s, STUDIO_EDITOR_MEMBERS);
-    kit_pop(k);
+    studio_ui_area_controls(s, area, "filter", "MembersHeader");
 }
 
 void studio_members_body(studio *s, int area)
 {
-    kit *k = s->kit;
-    follow(s);
-    if (!studio_graph_active(s)) {
-        s->members.rename_kind = STUDIO_MEMBER_NONE;
-        kit_label(k, "empty", "output-empty", "No behavior open");
-        return;
-    }
-    member_row *rows = member_rows(s);
-    /* A new member, named as it is added, scrolls into view, and so does
-       one Go to Definition selects. */
-    int reveal = -1;
-    for (int r = 0; s->members.rename_focus && r < acount(rows); r++) {
-        reveal = renaming_row(s, &rows[r]) ? r : reveal;
-    }
-    for (int r = 0; s->members.reveal && r < acount(rows); r++) {
-        reveal = selected_row(s, &rows[r]) ? r : reveal;
-    }
-    s->members.reveal = false;
-    kit_list_desc list = { .count = acount(rows),
-                           .row_height = kit_metric(s->kit, "--row"),
-                           .reveal = reveal };
-    int first, last;
-    kit_list_begin(k, "members", "members-list", &list, &first, &last);
-    for (int r = first; r <= last && r < acount(rows); r++) {
-        switch (rows[r].kind) {
-            case ROW_SECTION: section_row(s, &rows[r]); break;
-            case ROW_CATEGORY: category_row(s, &rows[r]); break;
-            case ROW_GRAPH: graph_row(s, &rows[r], area); break;
-            case ROW_VARIABLE: variable_row(s, &rows[r], area); break;
-            case ROW_LOCAL: local_row(s, &rows[r], area); break;
-            case ROW_EVENT: event_row(s, &rows[r]); break;
-        }
-    }
-    kit_list_end(k);
-    afree(rows);
-    if (s->members.kind) {
-        member_menu(s, area);
-    }
+    studio_ui_area(s, area, "Members");
 }
 
 bool studio_members_key(studio *s, SDL_Keycode key, SDL_Keymod mod)
@@ -1229,11 +1507,26 @@ static node *drop_node(studio *s, char kind, uint64_t id)
              : behavior_asset_add_function_call_node_to_graph(e->asset, gr, target);
 }
 
+/* What a drop does, under the drag's label: a variable places its Get, or
+   its Set while Alt is held, and a function or macro its call. */
+static const char *drop_hint(const studio *s, const char *payload)
+{
+    if (payload[0] != 'v') {
+        return "Call";
+    }
+    return s->mods & SDL_KMOD_ALT ? "Set" : "Get (Alt: Set)";
+}
+
 void studio_members_drop(studio *s)
 {
-    char payload[32];
-    if (!kit_drop_target(s->kit, "member", payload, sizeof payload) ||
-        sg_graph_readonly(s)) {
+    char type[16], payload[32];
+    bool readonly = sg_graph_readonly(s);
+    if (!readonly &&
+        kit_drop_hover(s->kit, type, sizeof type, payload, sizeof payload) &&
+        !strcmp(type, "member")) {
+        kit_drag_hint(s->kit, drop_hint(s, payload));
+    }
+    if (!kit_drop_target(s->kit, "member", payload, sizeof payload) || readonly) {
         return;
     }
     editor *e = sg_graph_editor(s);

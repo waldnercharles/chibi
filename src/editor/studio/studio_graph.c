@@ -1220,13 +1220,13 @@ void studio_behavior_body(studio *s, int area)
     }
     g->area = area;
     kit_surface(k, "graph", "graph-surface", "graph", &g->surface);
+    studio_members_drop(s);
     /* An empty graph says how to begin, where a node will go. */
     if (!visible_nodes(sg_active_graph(s))) {
         char hint[96];
         snprintf(hint, sizeof hint, "Add a node with %s or a right click", studio_chord(s, "Shift+A"));
         kit_label(k, "empty", "graph-empty", hint);
     }
-    studio_members_drop(s);
     studio_debug_call_stack(s);
     sg_find_panel(s);
     studio_graph_menus(s);

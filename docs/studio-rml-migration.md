@@ -1049,10 +1049,15 @@ the new name both ways, as view state; the row menu opens at the press
   selected tile restyles its line, not the grid. Index-matched rows in
   flow, the first version, cost about 1.6× more per scroll step.
 - **Variables by rate of change** (P5's lead): a click changes only
-  `asset_view` (585 views: each tile's selected and preview bindings), an
-  open row menu only `asset_menus`; TreeRow and Tile take `data-selected`
-  on their use for a selection kept apart. The data goes through the
-  shared `ui_data_put_*` writers.
+  `asset_view` (each tile's selected and preview bindings), an open row
+  menu only `asset_menus`. Rows and tiles carry their asset's `key` and
+  alias `asset_view.selected` as `data-alias-selection`, the selection
+  contract TreeRow took in P2 and Tile shares; their marks land on the
+  use's only child, so a selection restyles no sibling. A select reads 819
+  values, from 585 when the uses compared ids themselves, in the same two
+  views a tile, and takes as long (6.6 ms against 6.6, three alternated
+  release pairs at a load of 50). The data goes through the shared
+  `ui_data_put_*` writers.
 - **Thumbnails** are `kit:thumb:<slot>` sources the sync asks for, as the
   kit's emission did; Tile paints its picture as a decorator and hides its
   skeleton by visibility, so a thumbnail arriving lays nothing out (the
@@ -1126,7 +1131,9 @@ costs recur across panels and belong in shared code, not in each panel:
   and return before walking.
 - **Sibling restyles**: RmlUi restyles every sibling of a changed element, so
   a selection in a flat list restyles all rows (Assets groups tiles in lines
-  to contain it). Contain it in the List widget or patch RmlUi.
+  to contain it). Contain it in the List widget or patch RmlUi. TreeRow and
+  Tile mark the use's only child, so their selection by key restyles no
+  sibling; hover and drop marks on the use still do.
 
 Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
 `UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.

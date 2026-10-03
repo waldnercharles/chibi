@@ -24,6 +24,7 @@ enum
 #define QUERY_ID "graph-find-query"
 #define LIST_ID "graph-find-list"
 
+/* Opening shows the bar at the next UI frame, whatever asked for it. */
 void studio_graph_find(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -32,6 +33,7 @@ void studio_graph_find(studio *s)
     }
     g->find.open = true;
     g->find.focus = true;
+    s->ui_schedule.wake = true;
 }
 
 static void close_find(studio *s)
@@ -235,6 +237,9 @@ static bool show_rows(studio *s, const studio_panel_sync *at)
     yyjson_mut_val *array = yyjson_mut_obj_get(at->variable, "rows");
     int count = acount(g->find.hits);
     rml_element *list = at->preview ? NULL : find_list(s);
+    /* Before the List lays out, its window is a guess: window it once it
+       has. */
+    s->ui_schedule.wake |= !at->preview && !list && count;
     int first = 0, length = count < UNLAID_ROWS ? count : UNLAID_ROWS;
     float row = 0;
     if (list) {

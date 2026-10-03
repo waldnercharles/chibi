@@ -1292,9 +1292,11 @@ static void run_chord(studio *s, const char *chord)
     }
 }
 
+/* Opening shows the bar at the next UI frame, whatever asked for it. */
 void studio_code_find(studio *s)
 {
     open_find(&s->code);
+    s->ui_schedule.wake = true;
 }
 
 /* The editor's text into the buffer, the undo keys through it, and the

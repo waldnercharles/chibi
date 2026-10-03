@@ -401,6 +401,55 @@ static void check_shadow_beside_surface()
     cf_destroy_texture(texture);
 }
 
+/* Studio's overlay elevation: a wide, downsampled black blur with negative
+   spread darkens below the element and leaves the far field untouched. */
+static void check_overlay_shadow()
+{
+    enum
+    {
+        WIDTH = 160,
+        HEIGHT = 128
+    };
+    rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
+    assert(ui);
+    rml_element *doc = rml_context_load_document_from_memory(
+        rml_backend_context(ui),
+        "<rml><head><style>"
+        "body { margin: 0; width: 100%; height: 100%; background-color: "
+        "#ffffff; "
+        "--lift: 0px 8px 24px -4px #00000073, 0px 1px 2px 0px #00000059; }"
+        "div { position: absolute; left: 48px; top: 24px; width: 64px; height: "
+        "48px; "
+        "background-color: #ffffff; border-radius: 8px; box-shadow: "
+        "var(--lift); }"
+        "</style></head><body><div/></body></rml>",
+        "overlay-shadow"
+    );
+    assert(doc);
+    rml_document_show(doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
+    CF_Canvas target = cf_make_canvas(cf_canvas_defaults(WIDTH, HEIGHT));
+    CF_Pixel pixels[WIDTH * HEIGHT];
+    render_pixels(ui, target, pixels, sizeof pixels);
+    CF_Pixel below = pixels[80 * WIDTH + 80], far = pixels[120 * WIDTH + 4];
+    CF_Pixel inside = pixels[48 * WIDTH + 80];
+    assert(inside.colors.r > 250 && far.colors.r > 250);
+    /* CSS draws 213 here: the blur keeps the light the box hides. */
+    assert(
+        below.colors.r > 200 && below.colors.r < 225 &&
+        below.colors.r == below.colors.b
+    );
+    /* RmlUi keeps the shadow texture: the next frame drops the commands that
+       made it, and from then on frames repeat no work. */
+    render_pixels(ui, target, pixels, sizeof pixels);
+    assert(pixels[80 * WIDTH + 80].colors.r == below.colors.r);
+    rml_backend_stats settled = rml_backend_get_stats(ui);
+    render_pixels(ui, target, pixels, sizeof pixels);
+    same_work(settled, rml_backend_get_stats(ui));
+    cf_destroy_canvas(target);
+    rml_document_close(doc);
+    rml_backend_destroy(ui);
+}
+
 /* Gradient decorators draw through the gradient program. */
 static void check_gradients()
 {
@@ -1487,6 +1536,7 @@ int rmlui_render_run(const char *program, bool gles)
     check_filters();
     check_gradients();
     check_shadow_beside_surface();
+    check_overlay_shadow();
     check_static_output_cache();
     check_external_output_cache();
     check_two_external_surfaces();

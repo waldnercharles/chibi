@@ -41,8 +41,10 @@ function(chibi_rmlui_dependencies)
     # Resolved var() values keep their authored source for the inspector.
     # Text with locally managed content still lays out after font changes.
     # Variables resolving to dp lengths recompute when the pixel ratio changes.
+    # A blurred box-shadow blurs its whole shape before the box clips it, as in
+    # browsers, so an offset shadow with negative spread keeps its strength.
     set(patches "")
-    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation)
+    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur)
         list(APPEND patches "${CMAKE_CURRENT_SOURCE_DIR}/cmake/patches/rmlui-${name}.patch")
     endforeach()
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})

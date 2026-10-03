@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5 and P2 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P2 and P5 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -267,7 +267,7 @@ natively and 1.3-1.7× that on web, provisionally):
 | Surface | Views | Updates | Risk |
 |---|---|---|---|
 | Properties, Object tab (the Player: 4 panels, 14 rows, 309 elements) | Measured: 340 per selection, 166 per refresh | Selection rebuilds rows; edits dirty once; Play refreshes at 20 Hz | Low for views (0.19 ms native, 0.32 ms web per refresh); each text change lays out its document |
-| Outliner (10k objects, 60-row window) | Measured: 362 per scroll step | Scroll, selection | Low (0.69 ms native, 0.91 ms web per step) |
+| Outliner (10k objects, 60-row window) | Measured: 362 per scroll step; in Studio (P2), 518 per scroll step or selection over a 22-row window | Scroll, selection | Low (0.69 ms native, 0.91 ms web per step; 0.93× the kit's frame, P2 results) |
 | Assets (8×8 tiles) | ~400 | Scroll, thumbnails ready | Low |
 | Output following a log | Measured: 40 markup parses per batch | Logging | Medium (1.3 ms native, 1.9 ms web; 6× plain text) |
 | Members (<300 rows) | Measured: 768 per change over a 28-row window | Selection, scroll, filter | Medium: 1.2-1.3× native on selection and scroll (P5 results) |
@@ -836,9 +836,11 @@ TreeRows, `studio_ui_area_view` aliasing the area's item of
 `outliner.views` as `view`) and `OutlinerHeader.rml` in its AreaHeader's
 controls (the filter and Add, a ChoiceList of the scene's prototypes). The
 `outliner` source publishes the root, the count, the notice, the filter
-(`query`, two-way, view state), the row menu's state, the Add list and each
-view's window (`root`, `rows`: id, label, icon, behaviors, drop, selected,
-active, marked, hidden, locked, renaming), and takes `outliner.click`,
+(`query`, two-way, view state), the row menu's state and each view's
+window (`root`, `rows`: id, label, icon, behaviors, drop, selected, active,
+marked, hidden, locked, renaming); `outlinerHeader`, apart so a scroll or
+a selection reads none of its views, holds what rarely changes (the Add
+list, editable, the eye's tip). It takes `outliner.click`,
 `.menu`, `.eye`, `.lock`, `.drop`, `.rename`, `.renameEnter`,
 `.renameCancel`, `.collapse`, `.add`, `.openPrototype` and `.spawnBreak`.
 The filter stays one per Studio, as the kit's was, since Up, Down and Shift
@@ -850,19 +852,24 @@ eye and lock; and Unity's focusable list for the keyboard.
   from the anchor; a right click keeps a selection it lands in and opens
   the Menu at the pointer (`popover_show` at a point) with the kit menu's
   items; the eye and lock show on hover or when set, Alt+click isolates,
-  and their buttons stop the click from the row (`stopPropagation()`, a
-  data event callback beside `emit`, as the DOM's and Vue's `.stop`).
-  Rename is `<input autofocus data-value-lazy>` in place of the row's name
-  (`data-when`): Enter commits as one Undo step and gives the keyboard back
-  to the list, Escape ends it first so nothing commits, and leaving the
-  field commits. Drops: prototypes onto the list add an object; behaviors
-  and the asset kinds an object's fields name onto its row, which previews
-  the asset in the Scene while it is over (polled at emit).
-- **Keyboard (UX review):** the List is one Tab stop. A focused element of
-  an area panel that edits no text passes Studio's shortcuts, as the
-  chrome's buttons do; when Tab moved the focus there (`:focus-visible`),
-  the area's keys act on it wherever the pointer is (`studio_ui_keyboard_area`),
-  and the active row shows the focus ring. Left and Right fold the root.
+  and their buttons stop the click from the row (P5's `stop()`). Rename
+  is `<input autofocus data-value-lazy>` in place of the row's name
+  (`data-when`, focused as it is built by P5's autofocus): Enter commits
+  as one Undo step and gives the keyboard back to the list, Escape ends it
+  first so nothing commits, and leaving the field commits. Drops:
+  prototypes onto the list add an object; behaviors and the asset kinds an
+  object's fields name onto its row, which previews the asset in the Scene
+  while it is over (polled at emit).
+- **Keyboard (UX review):** the List is one Tab stop. `kit_wants_keyboard`
+  now claims the keyboard only for fields, the code editor and a modal's
+  hosted content, so a focused row, list or button in an area or the
+  chrome passes keys on: Studio's, the graph's and the Scene's still reach
+  the area under the pointer after a click on an Outliner or Members row
+  (the kit's claim had blocked them, and P5's `in_editor_area` covered only
+  Studio's shortcuts). When Tab moved the focus to a list
+  (`:focus-visible`), its area takes the keys wherever the pointer is
+  (`studio_ui_keyboard_area`), and the active row shows the focus ring.
+  Left and Right fold the root.
 - **Hit targets (UX review):** the eye and lock stretch to the row's full
   height, so a press above or below their icon toggles rather than selects.
 - **Shared fixes:** Menu's wrapper is now the 480 dp containing block its
@@ -880,13 +887,24 @@ eye and lock; and Unity's focusable list for the keyboard.
   the Outliner three rows a run from the middle, then selects one of two
   objects in view. Release builds before and after, alternated process by
   process three times at a 1-minute load of 35-39 (provisional), whole
-  Studio UI frame (sync + emit + update + capture), medians:
+  Studio UI frame (sync + emit + update + capture), medians (data views
+  counted after the header split, in a later run):
 
-  | Case | Before (kit) | After (authored) | After ÷ before | Rows instanced | Layouts |
-  |---|---:|---:|---:|---|---:|
-  | Scroll step of 3 rows, 21 rows shown | 6.30 / 8.29 / 7.93 | 7.47 / 6.57 / 6.87 | 0.93× | 3 → 0 | 2 |
-  | Select another object in view | 7.61 / 9.54 / 9.46 | 9.08 / 7.93 / 8.70 | 0.97× | | 6 |
-  | A text change in the Outliner (case 8) | 2.27 / 2.13 / 1.77 | 1.54 / 2.16 / 2.13 | 0.94× | | 1 |
+  | Case | Before (kit) | After (authored) | After ÷ before | Rows instanced | Views | Layouts |
+  |---|---:|---:|---:|---|---:|---:|
+  | Scroll step of 3 rows, 22 rows shown | 6.30 / 8.29 / 7.93 | 7.47 / 6.57 / 6.87 | 0.93× | 3 → 0 | 518 | 2 |
+  | Select another object in view | 7.61 / 9.54 / 9.46 | 9.08 / 7.93 / 8.70 | 0.97× | | 927 | 6 |
+  | A text change in the Outliner (case 8) | 2.27 / 2.13 / 1.77 | 1.54 / 2.16 / 2.13 | 0.94× | | | 1 |
+
+  A scroll step or a selection reads the window's row views (about 23 a
+  row) and the root's; a selection also reads the chrome's (`editor`,
+  `commands`). The header's Add list (160 views) and the eye's tip moved
+  to `outlinerHeader`, from 696 views a step. Row flags (selected, active,
+  hidden) stay in the rows: RmlUi addresses take only literal indices, so
+  a parallel array of flags can't be read by the `data-for` index, and
+  TreeRow reads its state from its item. `data-for` matches by index, so
+  a step rewrites each row's values as the window slides (as the gallery's
+  List does), and instances none.
 
   The Outliner's document holds 929 elements against 558: closed popovers
   (the row menu, the Add list's options) and `data-when` templates add

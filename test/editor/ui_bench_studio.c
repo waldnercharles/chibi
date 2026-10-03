@@ -719,6 +719,69 @@ static void output_log(studio_bench *b)
     frames(b, 2);
 }
 
+/* ---------- 13: dragging a splitter (workstream C3) ---------- */
+
+/* The splitter between the top and bottom areas: the kit's in the shell
+   document, or the Workspace's. */
+static rml_element *main_splitter(studio *s)
+{
+    return studio_query(s, ".main-editors > splitter, .editors > splitter");
+}
+
+static void pointer(studio *s, rml_input_type type, float x, float y)
+{
+    rml_backend_process_input(s->backend, &(rml_input){ .type = type, .x = x, .y = y });
+}
+
+/* A UI frame after the pointer dragged the main splitter 3 dp: the
+   documents laid out, and the views Studio's authored panels evaluated. */
+static void splitter_drag(studio_bench *b)
+{
+    studio *s = b->studio;
+    s->maximized = -1;
+    frames(b, 4);
+    probe_new_documents(s);
+    rml_element *split = main_splitter(s);
+    assert(split);
+    float ratio = studio_pixel_ratio(s);
+    rml_vec2 at = rml_element_absolute_offset(split, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(split, RML_BOX_BORDER);
+    float x = (at.x + size.x / 2) / ratio, y = (at.y + size.y / 2) / ratio;
+    pointer(s, RML_INPUT_POINTER_MOVE, x, y);
+    pointer(s, RML_INPUT_POINTER_DOWN, x, y);
+    for (int i = 1; i <= 4; i++) {
+        pointer(s, RML_INPUT_POINTER_MOVE, x, y + i);
+        frames(b, 1);
+    }
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        cf_app_update(NULL);
+        pointer(s, RML_INPUT_POINTER_MOVE, x, y + (run & 1 ? 1 : 4));
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        counts = studio_counts(s, before);
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    pointer(s, RML_INPUT_POINTER_UP, x, y);
+    frames(b, 2);
+    bench_row(
+        "13",
+        "dragging the main splitter 3 dp a frame: documents laid out",
+        bench_stat_of(ms, RUNS),
+        counts
+    );
+    phase_row("phases", phases);
+}
+
 /* ---------- 12: the Outliner over ten thousand objects ---------- */
 
 #define OUTLINER_OBJECTS 10000
@@ -1096,9 +1159,11 @@ int ui_bench_studio(const char *program, bool members_only)
     probe_documents(b.studio);
     bench_header("Studio on the Sandbox at 1440x900, native");
     printf("|  | pixel scale %.1f | | | | | | |\n", cf_app_get_pixel_scale());
-    /* UI_BENCH_ASSETS runs case 10 alone. */
+    /* UI_BENCH_ASSETS runs case 10 alone, UI_BENCH_SPLITTER case 13. */
     bool assets_only = getenv("UI_BENCH_ASSETS") != NULL;
-    if (!members_only && !assets_only) {
+    bool splitter_only = getenv("UI_BENCH_SPLITTER") != NULL;
+    bool all = !members_only && !assets_only && !splitter_only;
+    if (all) {
         full_layout(&b, false);
         full_layout(&b, true);
         b.studio->prefs.comfortable = false;
@@ -1106,18 +1171,21 @@ int ui_bench_studio(const char *program, bool members_only)
         properties(&b);
         output_log(&b);
     }
-    if (!assets_only) {
+    if (all || splitter_only) {
+        splitter_drag(&b);
+    }
+    if (!assets_only && !splitter_only) {
         members(&b);
     }
-    if (!members_only) {
+    if (!members_only && !splitter_only) {
         assets(&b);
     }
     /* Last: it leaves ten thousand objects in the scene. */
-    if (!members_only && !assets_only) {
+    if (all) {
         outliner_scroll(&b);
     }
     bench_close(&b);
-    if (!members_only && !assets_only) {
+    if (all) {
         popover_clipping();
     }
     app_input_shutdown();

@@ -134,6 +134,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_file.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_overlay.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_rank.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/tree_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.c

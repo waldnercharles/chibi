@@ -87,6 +87,9 @@ void test_studio_minimap();
 int studio_thumbnails_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
+/* The S0 UI bench (test/editor/ui_bench.h). */
+int ui_bench_headless();
+int ui_bench_studio(const char *program);
 int rmlui_render_run(const char *program, bool gles);
 /* Trackpad pinch (G). */
 void test_studio_pinch();
@@ -289,7 +292,7 @@ TEST_CASE(all_checks)
     /* Trackpad pinch (G). */
     test_studio_pinch();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
-    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data and lay out text in flex rows");
+    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data, follow array edits with constant-time item lookups and lay out text in flex rows");
     /* UI source maps (workstream A) */
     test_ui_sources();
     /* UI documents (workstream D). */
@@ -1005,6 +1008,15 @@ int main(int argc, char **argv)
         registry_validate();
         return studio_properties_run(program_name) || fails ? 1 : 0;
     }
+    /* The S0 UI bench; `headless` or `studio` runs only those cases. */
+    if (argc > 1 && strcmp(argv[1], "--ui-bench") == 0) {
+        registry_validate();
+        const char *only = argc > 2 ? argv[2] : "";
+        bool headless = strcmp(only, "studio") != 0,
+             studio = strcmp(only, "headless") != 0;
+        int failed = headless ? ui_bench_headless() : 0;
+        return failed || (studio && ui_bench_studio(program_name)) ? 1 : 0;
+    }
     /* UI documents (workstream D). */
     if (argc > 1 && strcmp(argv[1], "--ui-documents") == 0) {
         test_ui_documents();
@@ -1012,6 +1024,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--rmlui-binding") == 0) {
+        return test_rmlui_binding() ? 0 : 1;
     }
     /* Visual designer (workstream H) alone. */
     if (argc > 1 && strcmp(argv[1], "--ui-designer") == 0) {

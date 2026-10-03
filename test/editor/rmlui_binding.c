@@ -1,5 +1,6 @@
 /* RmlUi binding calls: documents from text, style sheets, color-mix() and
  * data models. */
+#include "ui/json_items.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
@@ -204,13 +205,119 @@ static bool binds_data(rml_context *context)
     return shown && listed && wrote && went && picked && held && committed;
 }
 
+/* Whether every index of `array` reads the item yyjson's own walk reaches,
+ * and none past its end. */
+static bool items_match(json_items *items, yyjson_mut_val *array)
+{
+    size_t size = yyjson_mut_arr_size(array);
+    for (size_t i = 0; i <= size; i++) {
+        if (json_items_get(items, array, i) != yyjson_mut_arr_get(array, i)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Constant-time lookups follow appends, removals, inserts and rotations by
+ * themselves, and an item replaced in place after a clear. */
+static bool indexes_array_items()
+{
+    yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *array = yyjson_mut_arr(json);
+    for (int i = 0; i < 100; i++) {
+        yyjson_mut_arr_add_int(json, array, i);
+    }
+    json_items *items = json_items_new();
+    bool listed = items_match(items, array);
+    yyjson_mut_arr_add_int(json, array, 100);
+    bool appended = items_match(items, array);
+    yyjson_mut_arr_remove(array, 40);
+    bool removed = items_match(items, array);
+    yyjson_mut_arr_insert(array, yyjson_mut_int(json, -1), 0);
+    bool inserted = items_match(items, array);
+    yyjson_mut_arr_rotate(array, 7);
+    bool rotated = items_match(items, array);
+    yyjson_mut_arr_replace(array, 60, yyjson_mut_int(json, 1000));
+    json_items_clear(items);
+    bool replaced = items_match(items, array) &&
+                    yyjson_mut_get_int(json_items_get(items, array, 60)) == 1000;
+    json_items_free(items);
+    yyjson_mut_doc_free(json);
+    return listed && appended && removed && inserted && rotated && replaced;
+}
+
+/* Whether the list's rows show `array`'s values in order, before the
+ * data-for template. */
+static bool rows_show(rml_element *doc, yyjson_mut_val *array)
+{
+    rml_element *rows[64];
+    int count = rml_element_query_selector_all(doc, ".item", rows, 64);
+    bool same = count == (int)yyjson_mut_arr_size(array) + 1;
+    for (int i = 0; same && i < count - 1; i++) {
+        char text[16], want[16];
+        rml_element_inner_rml(rows[i], text, sizeof text);
+        int value = yyjson_mut_get_int(yyjson_mut_arr_get(array, (size_t)i));
+        snprintf(want, sizeof want, "%d", value);
+        same = !strcmp(text, want);
+    }
+    return same;
+}
+
+/* A list's rows follow its array as it shrinks, grows and has an item
+ * replaced, past the items views walk to. */
+static bool lists_follow_arrays(rml_context *context)
+{
+    yyjson_mut_doc *json = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(json);
+    yyjson_mut_doc_set_root(json, root);
+    yyjson_mut_val *array = yyjson_mut_obj_add_arr(json, root, "values");
+    for (int i = 0; i < 40; i++) {
+        yyjson_mut_arr_add_int(json, array, i);
+    }
+    rml_data_model *model = rml_data_model_create(context, "list", json, on_emit, NULL);
+    rml_element *doc = rml_context_load_document_from_memory(
+        context,
+        "<rml><head><style>body { font-family: Inter; }</style></head>"
+        "<body data-model=\"list\">"
+        "<div class=\"item\" data-for=\"v : values\">{{ v }}</div>"
+        "</body></rml>",
+        "[memory]"
+    );
+    assert(doc);
+    rml_context_update(context);
+    bool shown = rows_show(doc, array);
+    /* The same size and last item: only the dirty relists it. */
+    yyjson_mut_arr_replace(array, 30, yyjson_mut_int(json, 1000));
+    rml_data_model_dirty(model, "values");
+    rml_context_update(context);
+    bool replaced = rows_show(doc, array);
+    yyjson_mut_arr_remove(array, 3);
+    yyjson_mut_arr_add_int(json, array, 99);
+    rml_data_model_dirty(model, "values");
+    rml_context_update(context);
+    bool edited = replaced && rows_show(doc, array);
+    for (int i = 0; i < 10; i++) {
+        yyjson_mut_arr_remove_last(array);
+    }
+    rml_data_model_dirty(model, "values");
+    rml_context_update(context);
+    bool shrunk = rows_show(doc, array);
+    rml_data_reads reads = rml_data_model_reads(model);
+    rml_document_close(doc);
+    rml_context_update(context);
+    rml_data_model_destroy(model);
+    yyjson_mut_doc_free(json);
+    return shown && edited && shrunk && reads.values > 0 && reads.lookups > 0;
+}
+
 bool test_rmlui_binding()
 {
     rml_backend *backend = rml_backend_create(320, 240, 1);
     rml_context *context = rml_backend_context(backend);
     bool ok = loads_from_memory(context) && replaces_style_sheet(context) &&
               mixes_colors(context) && binds_data(context) &&
-              lays_out_flex_text(context);
+              lays_out_flex_text(context) && indexes_array_items() &&
+              lists_follow_arrays(context);
     rml_backend_destroy(backend);
     return ok;
 }

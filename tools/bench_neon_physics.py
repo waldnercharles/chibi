@@ -13,6 +13,15 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def physics_dependencies(build, cache):
+    package = re.search(r"^CHIBI_DEPENDENCY_PACKAGE:[^=]+=(.+)$", cache, re.M)
+    dependency_build = Path(package[1]).parent if package else build
+    dependency_cache = (dependency_build / "CMakeCache.txt").read_text() if package else cache
+    box_source = re.search(r"^FETCHCONTENT_SOURCE_DIR_BOX2D:[^=]+=(.+)$", dependency_cache, re.M)
+    box2d = Path(box_source[1]) if box_source else dependency_build / "_deps/box2d-src"
+    return box2d, dependency_build / "_deps/cute_framework-build/libcute.a"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--neon", type=Path, required=True)
@@ -32,9 +41,7 @@ def main():
     ):
         parser.error("use an optimized native build without sanitizers")
     compiler = re.search(r"^CMAKE_C_COMPILER:\w+=(.+)$", cache, re.M)[1]
-    box_source = re.search(r"^FETCHCONTENT_SOURCE_DIR_BOX2D:\w+=(.+)$", cache, re.M)
-    box2d = Path(box_source[1]) if box_source else build / "_deps/box2d-src"
-    library = build / "_deps/cute_framework-build/libcute.a"
+    box2d, library = physics_dependencies(build, cache)
     driver = root / "tools/experiments/physics_compare.c"
     source = neon / "src/physics.c"
     report = {

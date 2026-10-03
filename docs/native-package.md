@@ -119,10 +119,12 @@ Register game workspaces in the editor checkout's ignored
 }
 ```
 
-Native application builds through Make also build a distribution package and
-deliver it to registered games. `make package-native` delivers its package as
-well. Set `UPDATE_GAME_RUNTIME=0` on a native build to skip its extra package
-build. Controller-only builds leave game runtimes alone.
+Launch commands such as `make run`, `make play`, and `make dev` build a
+distribution package and deliver it to registered games before starting.
+`make update-game-runtime` refreshes registered games explicitly, and
+`make package-native` delivers its package as well. Set `UPDATE_GAME_RUNTIME=0`
+to skip launch-time delivery. Ordinary build and test commands do not create
+a second packaging profile or update external game runtimes.
 
 Delivery verifies the complete package and each game's project version, then
 stages a full copy inside each game's `.chibi` directory. It replaces

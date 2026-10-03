@@ -18,7 +18,9 @@ class RuntimeBuildHooks(unittest.TestCase):
         self.root = Path(self.temporary.name)
         shutil.copyfile(ROOT / 'Makefile', self.root / 'Makefile')
         (self.root / 'tools').mkdir()
+        shutil.copyfile(ROOT / 'tools/quiet.py', self.root / 'tools/quiet.py')
         (self.root / 'tools/configure_native.sh').write_text('fixture-tool configure "$@"\n')
+        (self.root / 'tools/configure_web.sh').write_text('fixture-tool configure-web "$@"\n')
         self.bin = self.root / 'fake-bin'
         self.bin.mkdir()
         self.log = self.root / 'calls.jsonl'
@@ -59,8 +61,10 @@ if command == 'python3' and args[0] == 'tools/package_native.py' and os.environ.
         env.update(flags)
         env['PATH'] = str(self.bin) + os.pathsep + env['PATH']
         env['FIXTURE_LOG'] = str(self.log)
-        result = subprocess.run(['make', target, f'BUILD_TARGET={build_target}', 'JOBS=2',
-                                 'NATIVE_TOOLCHAIN_FLAGS=', 'PACKAGE_OUTPUT=dist/runtime'],
+        result = subprocess.run(['make', target, *([f'BUILD_TARGET={build_target}']
+                                  if build_target is not None else []), 'JOBS=2',
+                                 'NATIVE_TOOLCHAIN_FLAGS=', 'PACKAGE_OUTPUT=dist/runtime',
+                                 f'QUIET={sys.executable} tools/quiet.py'],
                                 cwd=self.root, env=env, text=True, capture_output=True,
                                 timeout=15)
         calls = [json.loads(line) for line in self.log.read_text().splitlines()]
@@ -70,46 +74,53 @@ if command == 'python3' and args[0] == 'tools/package_native.py' and os.environ.
         return [call for call in calls
                 if call['command'] == 'python3' and call['args'][0] == f'tools/{name}.py']
 
-    def test_registered_editor_build_packages_once_then_installs(self):
+    def test_registered_editor_build_uses_only_requested_profile(self):
         result, calls = self.make()
         self.assertEqual(result.returncode, 0, result.stderr)
-        packages = self.script_calls(calls, 'package_native')
-        installs = self.script_calls(calls, 'install_game_runtime')
-        self.assertEqual(len(packages), 1)
-        self.assertEqual(len(installs), 1)
-        self.assertLess(calls.index(packages[0]), calls.index(installs[0]))
-        configures = [call for call in calls if call['command'] == 'configure']
-        self.assertEqual(len(configures), 2)
-        self.assertIn('-DCHIBI_DISTRIBUTION=ON', configures[1]['args'])
-        self.assertIn('-DCHIBI_DEVELOPMENT_RELOAD=OFF', configures[1]['args'])
-        self.assertIn('UPDATE_GAME_RUNTIME=0', configures[1]['makeflags'])
-        self.assertEqual(installs[0]['args'], ['tools/install_game_runtime.py',
-                                             '--package', 'dist/runtime'])
+        self.assertFalse(self.script_calls(calls, 'package_native'))
+        self.assertFalse(self.script_calls(calls, 'install_game_runtime'))
+        self.assertEqual(len([call for call in calls if call['command'] == 'configure']), 1)
+
+    def test_launch_refreshes_registered_game_before_starting(self):
+        for target in ('run', 'play', 'debug', 'debug-san', 'run-tracy', 'dev'):
+            with self.subTest(target=target):
+                result, calls = self.make(target=target)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                packages = self.script_calls(calls, 'package_native')
+                installs = self.script_calls(calls, 'install_game_runtime')
+                launch = next(call for call in calls if call['command'] == 'launch')
+                self.assertEqual(len(packages), 1)
+                self.assertEqual(len(installs), 1)
+                self.assertLess(calls.index(packages[0]), calls.index(installs[0]))
+                self.assertLess(calls.index(installs[0]), calls.index(launch))
+                configures = [call for call in calls if call['command'] == 'configure']
+                self.assertIn('-DCHIBI_DISTRIBUTION=ON', configures[1]['args'])
+                self.assertIn('-DCHIBI_DEVELOPMENT_RELOAD=OFF', configures[1]['args'])
+                self.log.unlink()
+
+    def test_default_build_limits_targets_to_app_and_controller(self):
+        result, calls = self.make(build_target=None)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        build = next(call for call in calls if call['command'] == 'cmake')
+        self.assertEqual(build['args'], ['--build', 'build', '--target',
+                                         'chibi', 'chibi_ctl', '--parallel', '2'])
+
+    def test_web_reflection_reuses_native_configuration(self):
+        result, calls = self.make(registered=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        native = next(call for call in calls if call['command'] == 'configure')['args']
+        self.log.unlink()
+        result, calls = self.make(target='web-configure', registered=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reflect = next(call for call in calls if call['command'] == 'configure')['args']
+        self.assertEqual(reflect, native)
+        self.assertEqual(len([call for call in calls if call['command'] == 'configure-web']), 1)
 
     def test_controller_build_does_not_refresh_game_runtime(self):
         result, calls = self.make(build_target='chibi_ctl')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.script_calls(calls, 'package_native'))
         self.assertFalse(self.script_calls(calls, 'install_game_runtime'))
-
-    def test_profiling_and_development_builds_deliver_once_before_launch(self):
-        for target in ('build-tracy', 'dev'):
-            with self.subTest(target=target):
-                result, calls = self.make(target=target)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                packages = self.script_calls(calls, 'package_native')
-                installs = self.script_calls(calls, 'install_game_runtime')
-                self.assertEqual(len(packages), 1)
-                self.assertEqual(len(installs), 1)
-                self.assertLess(calls.index(packages[0]), calls.index(installs[0]))
-                configures = [call for call in calls if call['command'] == 'configure']
-                self.assertIn('-DCHIBI_DISTRIBUTION=ON', configures[1]['args'])
-                self.assertIn('-DCHIBI_DEVELOPMENT_RELOAD=OFF', configures[1]['args'])
-                if target == 'dev':
-                    self.assertIn('-DCHIBI_DEVELOPMENT_RELOAD=ON', configures[0]['args'])
-                    launch = next(call for call in calls if call['command'] == 'launch')
-                    self.assertLess(calls.index(installs[0]), calls.index(launch))
-                self.log.unlink()
 
     def test_unregistered_editor_build_does_not_package(self):
         result, calls = self.make(registered=False)
@@ -118,10 +129,15 @@ if command == 'python3' and args[0] == 'tools/package_native.py' and os.environ.
         self.assertFalse(self.script_calls(calls, 'install_game_runtime'))
 
     def test_failed_editor_build_does_not_install(self):
-        result, calls = self.make(FAIL_EDITOR='1')
+        result, calls = self.make(target='run', FAIL_EDITOR='1')
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.script_calls(calls, 'package_native'))
         self.assertFalse(self.script_calls(calls, 'install_game_runtime'))
+
+    def test_launch_can_skip_runtime_refresh(self):
+        result, calls = self.make(target='run', UPDATE_GAME_RUNTIME='0')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.script_calls(calls, 'package_native'))
 
     def test_explicit_package_installs_after_assembly(self):
         result, calls = self.make(target='package-native')

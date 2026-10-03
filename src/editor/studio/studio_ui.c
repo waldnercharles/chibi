@@ -390,6 +390,7 @@ static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
             continue;
         }
         if (studio_panel_route(s, &a)) {
+            studio_sources_acted(s, &ui->sources, &ui->data, a.event);
             continue;
         }
         if (a.has_value && a.id[0]) {
@@ -455,21 +456,30 @@ bool studio_ui_modal_open(studio *s)
     return false;
 }
 
-/* Whether `el` is a field, which keeps keys a list passes on. */
-static bool takes_keys(rml_element *el)
+/* Whether `el` edits text, and so keeps every key: a text input or a
+ * textarea. A checkbox, a choice, a button or a number field not being typed
+ * in (it types in an input of its own) keeps only the keys it handles, as
+ * the kit's controls do. */
+static bool edits_text(rml_element *el)
 {
     const char *tag = rml_element_tag_name(el);
-    return !strcmp(tag, "input") || !strcmp(tag, "textarea") ||
-           !strcmp(tag, "select") || !strcmp(tag, "number-field") ||
-           !strcmp(tag, "color-field");
+    char type[16] = "text";
+    rml_element_attribute(el, "type", type, sizeof type);
+    return !strcmp(tag, "textarea") ||
+           (!strcmp(tag, "input") && strcmp(type, "checkbox") && strcmp(type, "radio"));
 }
 
-/* The area whose panel holds `focus` on an element that edits nothing, or
- * -1. */
+/* The area whose authored editor, or its header's controls, hold `focus` on
+ * an element that edits no text, or -1: Studio's keys and the area's reach
+ * it, as they reach a native area. A Studio UI panel shown in an area keeps
+ * its keys. */
 static int focus_area(studio *s, rml_element *focus)
 {
-    for (int i = 0; focus && !takes_keys(focus) && i < STUDIO_AREA_COUNT; i++) {
-        if (s->ui->areas[i] && ui_mount_holds(s->ui->areas[i], focus)) {
+    const studio_layout *layout = studio_active_layout(s);
+    for (int i = 0; focus && !edits_text(focus) && i < STUDIO_AREA_COUNT; i++) {
+        bool holds = (s->ui->areas[i] && ui_mount_holds(s->ui->areas[i], focus)) ||
+                     (s->ui->controls[i] && ui_mount_holds(s->ui->controls[i], focus));
+        if (holds && layout->editors[i] != STUDIO_EDITOR_PANEL) {
             return i;
         }
     }
@@ -486,34 +496,22 @@ rml_data_reads studio_ui_data_reads(const studio *s)
     return s->ui ? rml_data_model_reads(s->ui->data.model) : (rml_data_reads){ 0 };
 }
 
-/* Whether an editor's authored area holds `element`: Members, not a Studio
-   UI panel shown in an area, which keeps its keys. */
-static bool in_editor_area(studio *s, rml_element *element)
-{
-    const studio_layout *layout = studio_active_layout(s);
-    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (s->ui->areas[i] && layout->editors[i] != STUDIO_EDITOR_PANEL &&
-            ui_mount_holds(s->ui->areas[i], element)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool studio_ui_shortcut_focus(studio *s)
 {
     if (!s || !s->ui || !s->backend || !s->kit || kit_has_popup(s->kit) ||
-        kit_command_is_open(s->kit) || kit_accepts_text(s->kit) ||
-        studio_ui_modal_open(s)) {
+        kit_command_is_open(s->kit) || studio_ui_modal_open(s)) {
         return false;
     }
     studio_ui *ui = s->ui;
     rml_context *context = rml_backend_context(s->backend);
     rml_element *focus = context ? rml_context_focus_element(context) : NULL;
-    /* An editor area keeps only its fields' keys, as a native one does, so
-       Studio's shortcuts and the area's own (F2, X) reach it. */
-    if (focus && in_editor_area(s, focus)) {
+    /* An editor area keeps only its text fields' keys, as a native one
+       does, so Studio's shortcuts and the area's own (F2, X) reach it. */
+    if (focus_area(s, focus) >= 0) {
         return true;
+    }
+    if (kit_accepts_text(s->kit)) {
+        return false;
     }
     rml_element *button = focus;
     while (button && strcmp(rml_element_tag_name(button), "button") &&

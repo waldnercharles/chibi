@@ -282,6 +282,8 @@ static void canvas_header_and_actions()
         s->canvas->actions,
         ((studio_canvas_action){ .count = 2, .event = "Repair", .element = "#repair" })
     );
+    /* As the preview's click that logs it would. */
+    s->ui_schedule.wake = true;
     frames(&f, 3);
     bool logged = text_is(in_panel(s, "Canvas", ".canvas-action:not([data-for]) .event"), "Repair") &&
                   text_is(

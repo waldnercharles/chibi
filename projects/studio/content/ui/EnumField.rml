@@ -1,5 +1,5 @@
 <div class="enum-field" attrs>
-  <button class="field select" popovertarget="choices" aria-haspopup="listbox"><span class="part value"><span data-for="group : table.groups"><span data-for="option : group.options" data-if="option.value == value">{{ option.label }}</span></span></span><span class="icon caret">&#xeab4;</span></button>
+  <button class="field select" popovertarget="choices" aria-haspopup="listbox"><span class="part value"><span class="mixed">&#x2014;</span><span class="current" data-for="group : table.groups"><span data-for="option : group.options" data-if="option.value == value">{{ option.label }}</span></span></span><span class="icon caret">&#xeab4;</span></button>
   <div class="popup dropdown" popover id="choices">
     <use ui="ChoiceList">
       <div role="group" data-for="group : table.groups">

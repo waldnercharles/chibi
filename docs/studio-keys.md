@@ -113,6 +113,20 @@ Keys of the graph canvas (`studio_graph_input.c`, `studio_graph_find.c`, `studio
 
 Space does not play and Shift+D does not duplicate objects here; Mod+Z, Mod+Shift+Z and Mod+S act on the graph.
 
+## Properties
+
+Its fields and menus follow Menus, Search, popups and fields below (`Properties.rml`, `studio_properties.c`).
+
+| Key | Action | Source |
+| --- | --- | --- |
+| Mod+F | Focus the property search; Escape clears it | `studio_commands.c`, `studio_properties.c` |
+| F2 | Rename the object in its name field while no area shows the Outliner; Enter renames, Escape keeps the name | `studio_outliner.c`, `studio_properties.c` |
+| Tab, Shift+Tab | Move through the fields | RmlUi, `<number-field>` |
+| Enter, Escape | Commit or keep a typed text, number or name | `studio_properties.c`, `<number-field>` |
+| Escape | Put a scrubbed number back | `<number-field>` |
+| Right press | A field's menu (Reset and Apply to Prototype) on its row; a component's menu on its panel head | `studio_properties.c` |
+| K | Keep Changes while playing | `studio_commands.c` |
+
 ## Members
 
 | Key | Action | Source |

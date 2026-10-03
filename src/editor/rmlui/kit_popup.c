@@ -814,9 +814,11 @@ static rml_element *tip_owner(kit *k)
     if (k->in.down[0] || k->in.down[1] || popover_top(k->context) || k->command.open) {
         return NULL;
     }
+    /* An empty tip, as a binding leaves one, shows nothing. */
     rml_element *el = rml_context_hover_element(k->context);
     for (; el; el = rml_element_parent(el)) {
-        if (rml_element_has_attribute(el, "data-tip")) {
+        char tip[2];
+        if (rml_element_attribute(el, "data-tip", tip, sizeof tip) > 0) {
             return el;
         }
     }

@@ -1609,6 +1609,7 @@ void studio_status_add(yyjson_mut_doc *doc)
     add_texts(doc, editor, STATUS_TEXTS);
     add_flags(doc, editor, STATUS_FLAGS);
     yyjson_mut_obj_add_real(doc, editor, "objects", 0);
+    yyjson_mut_obj_add_real(doc, editor, "hidden", 0);
     add_areas(doc, editor);
 }
 
@@ -1679,6 +1680,7 @@ bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status)
         changed |= put_bool(editor, STATUS_FLAGS[f], flags[f]);
     }
     changed |= put_number(editor, "objects", status->objects);
+    changed |= put_number(editor, "hidden", status->hidden);
     return changed;
 }
 
@@ -1694,9 +1696,12 @@ typedef struct hint_list
  * notation. */
 static hint_list editor_hints(studio *s)
 {
-    static const studio_hint SCENE[] = { { KIT_ICON_MOUSE, NULL, "Select" },
-                                         { KIT_ICON_PAN, NULL, "Pan (middle)" },
-                                         { 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 } };
+    static const studio_hint SCENE[] = {
+        { KIT_ICON_MOUSE, NULL, "Select" },
+        { KIT_ICON_PAN, NULL, "Pan (middle)" },
+        { 0, NULL, "Frame", STUDIO_COMMAND_FRAME + 1 },
+        { 0, NULL, "Hide", STUDIO_COMMAND_HIDE_SELECTED + 1 }
+    };
     static const studio_hint PROPERTIES[] = { { KIT_ICON_MOUSE, NULL, "Drag to scrub" },
                                               { 0, "Alt", "Fine" },
                                               { 0, "Shift", "Coarse" },
@@ -1753,6 +1758,7 @@ static void sync_editor(studio *s, ui_data *data)
         .scene = studio_scene_title(s->scene, title, sizeof title),
         .selection = actor ? actor->name : "",
         .objects = acount(s->scene->actors),
+        .hidden = studio_hidden_count(s),
         .playing = app_scene_authoring_runtime_state(s->scene).playing || s->guest != NULL,
         .paused = s->pause.active,
         .tabs = tabs,

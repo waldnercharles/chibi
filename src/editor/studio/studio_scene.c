@@ -420,6 +420,96 @@ static void rename_row(studio *s, const scene_actor *actor)
     }
 }
 
+/* ---------- Hide in Editor ---------- */
+
+static unsigned actor_view(studio *s, int actor)
+{
+    return app_scene_authoring_actor_view(s->scene, actor);
+}
+
+static void set_hidden(studio *s, int actor, bool hidden)
+{
+    unsigned view = actor_view(s, actor) & ~APP_SCENE_VIEW_HIDDEN;
+    app_scene_authoring_set_actor_view(s->scene, actor, view | (hidden ? APP_SCENE_VIEW_HIDDEN : 0));
+}
+
+void studio_hide(studio *s, bool selected)
+{
+    app_scene_authoring *scene = s->scene;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if ((i == scene->selected || scene->actors[i].marked) == selected) {
+            set_hidden(s, i, true);
+        }
+    }
+}
+
+void studio_show_all(studio *s)
+{
+    for (int i = 0; i < acount(s->scene->actors); i++) {
+        set_hidden(s, i, false);
+    }
+}
+
+int studio_hidden_count(studio *s)
+{
+    int count = 0;
+    for (int i = 0; i < acount(s->scene->actors); i++) {
+        count += (actor_view(s, i) & APP_SCENE_VIEW_HIDDEN) != 0;
+    }
+    return count;
+}
+
+/* Alt+click on an eye shows its object alone, or every object once it is the
+   only one shown, as Blender's Ctrl+click on the eye isolates. */
+static void isolate(studio *s, int actor)
+{
+    bool alone = true;
+    for (int i = 0; i < acount(s->scene->actors); i++) {
+        alone &= (i == actor) != ((actor_view(s, i) & APP_SCENE_VIEW_HIDDEN) != 0);
+    }
+    for (int i = 0; i < acount(s->scene->actors); i++) {
+        set_hidden(s, i, !alone && i != actor);
+    }
+}
+
+/* The eye and the lock at a row's end, as Blender's Outliner restriction
+   toggles: they show while the row is hovered or while they are on. */
+static void view_toggles(studio *s, int actor)
+{
+    kit *k = s->kit;
+    unsigned view = actor_view(s, actor);
+    bool hidden = view & APP_SCENE_VIEW_HIDDEN, locked = view & APP_SCENE_VIEW_LOCKED;
+    studio_command_info keys = studio_command_describe(s, hidden ? STUDIO_COMMAND_SHOW_ALL : STUDIO_COMMAND_HIDE_SELECTED);
+    kit_push(k, "view", NULL, "view-toggles");
+    kit_button_desc eye = {
+        .icon = hidden ? KIT_ICON_EYE_OFF : KIT_ICON_EYE,
+        .cls = "toggle",
+        .tip = hidden ? "Show in Editor" : "Hide in Editor",
+        .shortcut = keys.shortcut,
+        .description = s->mac ? "\xe2\x8c\xa5-click shows only this object"
+                              : "Alt+click shows only this object",
+        .flags = hidden ? KIT_ON : 0
+    };
+    if (kit_button(k, "eye", &eye)) {
+        if (s->in.modifiers & KIT_MOD_ALT) {
+            isolate(s, actor);
+        } else {
+            set_hidden(s, actor, !hidden);
+        }
+    }
+    kit_button_desc lock = {
+        .icon = locked ? KIT_ICON_LOCK : KIT_ICON_UNLOCK,
+        .cls = "toggle",
+        .tip = locked ? "Unlock" : "Lock",
+        .description = "A locked object can't be picked in the Scene",
+        .flags = locked ? KIT_ON : 0
+    };
+    if (kit_button(k, "lock", &lock)) {
+        app_scene_authoring_set_actor_view(s->scene, actor, view ^ APP_SCENE_VIEW_LOCKED);
+    }
+    kit_pop(k);
+}
+
 /* Actors shown by the Outliner filter, in scene order. The caller frees the array. */
 int *studio_outliner_rows(studio *s)
 {
@@ -467,12 +557,15 @@ void studio_outliner_body(studio *s, int area)
             .label = studio_scene_title(scene, title, sizeof title),
             .icon = KIT_ICON_SCENE,
             .twisty = !s->outliner_collapsed,
-            .meta = count,
         };
-        if (kit_row_begin(k, "root", &root) & (KIT_ROW_TWISTY | KIT_ROW_DOUBLE_CLICK)) {
+        unsigned events = kit_row_begin(k, "root", &root);
+        /* The count and the toggles' column line up with the rows'. */
+        kit_label(k, "count", "meta", count);
+        kit_leaf(k, "view", NULL, "view-toggles");
+        kit_row_end(k);
+        if (events & (KIT_ROW_TWISTY | KIT_ROW_DOUBLE_CLICK)) {
             s->outliner_collapsed = !s->outliner_collapsed;
         }
-        kit_row_end(k);
     }
     char menu_key[24];
     snprintf(menu_key, sizeof menu_key, "actor:%d", area);
@@ -512,7 +605,9 @@ void studio_outliner_body(studio *s, int area)
             kit_label(k, "count", "meta", behaviors);
             kit_pop(k);
         }
+        view_toggles(s, i);
         kit_row_end(k);
+        kit_flag(k, "data-hidden", actor_view(s, i) & APP_SCENE_VIEW_HIDDEN);
         if (kit_drop_target(k, "behavior", dropped, sizeof dropped) &&
             studio_editable(s)) {
             finish_transform_edit(scene, false);
@@ -575,6 +670,7 @@ void studio_outliner_body(studio *s, int area)
         if (kit_menu_item(k, "prototype", &prototype)) {
             app_scene_authoring_open_prototype(scene, actor->prototype_name);
         }
+        studio_command_item(s, STUDIO_COMMAND_HIDE_SELECTED);
         kit_menu_separator(k, "s1");
         kit_menu_item_desc remove = { .label = "Delete",
                                       .icon = KIT_ICON_TRASH,

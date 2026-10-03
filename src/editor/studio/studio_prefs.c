@@ -467,6 +467,20 @@ bool studio_prefs_save(const studio_prefs *p)
     return ok;
 }
 
+bool studio_prefs_open_scene_view(game_save *store)
+{
+#ifdef __EMSCRIPTEN__
+    return game_save_open(store, "chibi.sceneView");
+#else
+    const char *directory = cf_fs_get_user_directory("chibi", "editor");
+    char path[1024];
+    return directory &&
+           snprintf(path, sizeof path, "%sscene-view.json", directory) <
+               (int)sizeof path &&
+           game_save_open(store, path);
+#endif
+}
+
 /* ---------- Shared with authored panels ---------- */
 
 void studio_prefs_share(studio_prefs *p, game_save *save, uint64_t *seen)

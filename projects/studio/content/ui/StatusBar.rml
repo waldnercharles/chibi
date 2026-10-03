@@ -9,7 +9,8 @@
   <div class="stats">
     <span class="strong">{{ editor.scene }}</span>
     <span data-class-strong="editor.selection != ''">{{ editor.selection != '' ? editor.selection : 'No selection' }}</span>
-    <span class="count">Objects <number-flow data-attr-value="editor.selection != '' ? 1 : 0"/>/<number-flow data-attr-value="editor.objects"/></span>
+    <span class="count objects">Objects <number-flow data-attr-value="editor.selection != '' ? 1 : 0"/>/<number-flow data-attr-value="editor.objects"/></span>
+    <span class="count hidden-objects" data-if="editor.hidden > 0" data-attr-data-tip="commands.showAll.label" data-attr-data-kbd="commands.showAll.shortcut" data-event-click="emit('studio.showAll')"><number-flow data-attr-value="editor.hidden"/> hidden</span>
   </div>
   <div id="ui-scale"/>
 </div>

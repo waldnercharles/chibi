@@ -49,6 +49,10 @@
         <li command="frame"/>
         <li command="resetCamera"/>
         <hr/>
+        <li command="hideSelected"/>
+        <li command="hideUnselected"/>
+        <li command="showAll"/>
+        <hr/>
         <li label="Drawers"/>
         <li command="toggleAssets"/>
         <li command="toggleOutput"/>

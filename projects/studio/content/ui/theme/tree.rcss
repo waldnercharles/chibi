@@ -17,3 +17,10 @@
 .tree-row .toggle[data-state=off] .icon { color: var(--disabled-foreground); }
 .tree-row .toggle[data-state=on] { background-color: transparent; }
 .tree-row .inline .icon { font-size: 12dp; width: 14dp; color: var(--link); }
+/* The Outliner's eye and lock (Blender's restriction toggles) show while their
+   row is hovered or while they are on; a hidden object's row recedes. */
+.tree-row .view-toggles { display: flex; align-items: center; gap: 1dp; width: 41dp; flex-shrink: 0; }
+.tree-row .view-toggles .toggle { visibility: hidden; }
+.tree-row:hover .view-toggles .toggle, .tree-row .view-toggles .toggle[data-state=on] { visibility: visible; }
+.tree-row .view-toggles .toggle[data-state=on] .icon { color: var(--muted-foreground); }
+.tree-row[data-hidden] > .icon, .tree-row[data-hidden] .name, .tree-row[data-hidden] .inline { opacity: 0.5; }

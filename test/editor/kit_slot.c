@@ -280,8 +280,19 @@ static bool label_is(rml_element *el, const char *text)
 static bool counts_are(slot_fixture *f, const char *selected, const char *objects)
 {
     rml_element *flows[2];
-    return rml_element_query_selector_all(f->host, ".count number-flow", flows, 2) == 2 &&
+    return rml_element_query_selector_all(f->host, ".objects number-flow", flows, 2) == 2 &&
            label_is(flows[0], selected) && label_is(flows[1], objects);
+}
+
+/* The hidden objects' count, which shows only while any are hidden. */
+static bool hidden_is(slot_fixture *f, const char *hidden)
+{
+    rml_element *count = rml_element_query_selector(f->host, ".hidden-objects");
+    if (!hidden) {
+        return !count || !rml_element_is_visible(count, false);
+    }
+    return count && rml_element_is_visible(count, false) &&
+           label_is(rml_element_query_selector(count, "number-flow"), hidden);
 }
 
 static bool state_is(rml_element *el, const char *state)
@@ -325,6 +336,7 @@ static void status_checks()
         .scene = "Sandbox",
         .selection = "Player",
         .objects = 12,
+        .hidden = 3,
         .maximized = -1,
     };
     bool shown = studio_status_show(doc, &status) &&
@@ -352,7 +364,8 @@ static void status_checks()
             toggle_count == 3 && state_is(toggles[0], "on") &&
             state_is(toggles[1], "off") && !strcmp(kbd, ASSETS_KEY "A") &&
             text_is(rml_element_query_selector(toggles[1], ".label"), "toggleOutput") &&
-            counts_are(&f, "1", "12") && count(&f, "#ui-scale .ui-scale") == 1 &&
+            counts_are(&f, "1", "12") && hidden_is(&f, "3") &&
+            count(&f, "#ui-scale .ui-scale") == 1 &&
             rml_element_box_size(bar, RML_BOX_BORDER).y == 28,
         "the authored status bar shows the editor and commands variables, "
         "with UI Scale in its native slot"
@@ -370,6 +383,7 @@ static void status_checks()
     status.hint_count = 1;
     status.reporting = false;
     status.selection = "";
+    status.hidden = 0;
     if (studio_status_show(doc, &status)) {
         rml_data_model_dirty(f.data.model, "editor");
     }
@@ -377,9 +391,9 @@ static void status_checks()
     test_check(
         count(&f, "[data-ui=KeyHint]") == 1 &&
             rml_element_has_attribute(report, "data-ending-style") &&
-            counts_are(&f, "0", "12"),
+            counts_are(&f, "0", "12") && hidden_is(&f, NULL),
         "the status bar follows the editor variable as it changes: the report "
-        "leaves and the counts roll"
+        "leaves, the counts roll and the hidden count goes"
     );
     close_fixture(&f);
 }

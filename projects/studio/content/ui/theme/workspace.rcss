@@ -49,19 +49,13 @@ body:not(.dark) .viewport {
     --floating: #282c33ee; --primary-text: #9dbef5; --notice: #1a1612f0; --notice-fg: #ffad66;
 }
 .viewport .surface { position: absolute; left: 0dp; top: 0dp; width: 100%; height: 100%; }
-.viewport .toolshelf { position: absolute; left: 8dp; top: 8dp; display: flex; flex-direction: column; gap: 2dp; padding: 3dp; background-color: var(--floating); border: 1dp var(--line); border-radius: var(--r-lg); }
-.viewport .toolshelf .btn { width: 28dp; height: 28dp; padding: 0dp; }
-.viewport .toolshelf .btn .icon { font-size: 15dp; width: 18dp; }
-.viewport .toolshelf .btn[data-state=on] { background-color: var(--primary); }
-.viewport .toolshelf .btn[data-state=on] .icon { color: var(--primary-foreground); }
-.viewport .view-label { position: absolute; left: 50dp; bottom: 10dp; color: var(--foreground); font-size: var(--studio-font-11, 11dp); pointer-events: none; }
+.viewport .view-label { position: absolute; left: 12dp; bottom: 10dp; color: var(--foreground); font-size: var(--studio-font-11, 11dp); pointer-events: none; }
 .viewport .view-label .dim { display: block; }
-/* They leave the game's view to its HUD while a session runs. */
-.viewport .toolshelf, .viewport .view-label { opacity: 1; transition: opacity 0.14s cubic-out; }
-.viewport .toolshelf[data-starting-style], .viewport .toolshelf[data-ending-style],
+/* It leaves the game's view to its HUD while a session runs. */
+.viewport .view-label { opacity: 1; transition: opacity 0.14s cubic-out; }
 .viewport .view-label[data-starting-style], .viewport .view-label[data-ending-style] { opacity: 0; }
 .viewport .readout { position: absolute; right: 10dp; bottom: 8dp; color: var(--faint-foreground); font-size: var(--studio-font-11, 11dp); font-family: var(--font-numeric); pointer-events: none; }
-.viewport .live-badge { position: absolute; left: 50dp; bottom: 10dp; }
+.viewport .live-badge { position: absolute; left: 12dp; bottom: 10dp; }
 .viewport .notice { position: absolute; left: 12dp; right: 12dp; bottom: 36dp; padding: 6dp 8dp; border-radius: var(--r); background-color: var(--notice); color: var(--notice-fg); white-space: normal; }
 
 /* Outliner. */

@@ -1,5 +1,16 @@
-/* The Scene's transform tools: the shelf's divider between the tools and
-   Frame, and the header's snapping toggle joined to its grid increment. */
-.viewport .toolshelf .shelf-sep { height: 1dp; margin: 2dp 4dp; background-color: var(--line); }
-.snap-controls { display: flex; align-items: center; flex: 0 0 auto; gap: 0dp; }
-.snap-controls .menu-btn { min-width: 30dp; padding: 0dp 6dp; font-family: var(--font-numeric); }
+/* The Scene header's groups (studio_scene.c): the transform tools, and
+   snapping joined to its grid increment, each a pill of icon buttons as
+   Unreal's and Godot's viewport toolbars group theirs. The active tool is
+   filled, as Blender's toolbar marks it. */
+.tool-group, .snap-controls {
+    display: flex; align-items: center; flex: 0 0 auto; gap: 1dp; padding: 1dp;
+    border-radius: var(--r); background-color: var(--secondary);
+}
+.tool-group { margin-left: 4dp; }
+.tool-group .btn, .snap-controls .btn { height: var(--h-sm); }
+.tool-group .btn { width: var(--h-sm); padding: 0dp; }
+.tool-group .btn[data-state=on] { background-color: var(--primary); }
+.tool-group .btn[data-state=on] .icon { color: var(--primary-foreground); }
+.snap-controls .btn { min-width: var(--h-sm); padding: 0dp 6dp; }
+.snap-controls .btn.icon-only { width: var(--h-sm); padding: 0dp; }
+.snap-controls .menu-btn { font-family: var(--font-numeric); }

@@ -210,6 +210,32 @@ static void snap_controls(studio *s, int area)
     kit_popup_end(k);
 }
 
+/* A tool in the header's group: pressed while active, its name and key in
+   its tip. */
+static void tool_button(studio *s, studio_command command)
+{
+    studio_command_info info = studio_command_describe(s, command);
+    kit_button_desc button = { .icon = info.icon,
+                               .tip = info.menu,
+                               .shortcut = info.shortcut,
+                               .flags = studio_command_checked(s, command) > 0 ? KIT_ON
+                                                                               : 0 };
+    if (kit_button(s->kit, info.id, &button)) {
+        studio_command_run(s, command);
+    }
+}
+
+/* The transform tools sit in the header, as Unreal's and Godot's viewport
+   toolbars hold them, so nothing covers the game's HUD in the view. */
+static void tool_group(studio *s)
+{
+    kit_push(s->kit, "tools", NULL, "tool-group");
+    for (int tool = 0; tool < SCENE_TOOL_COUNT; tool++) {
+        tool_button(s, STUDIO_COMMAND_SELECT_TOOL + tool);
+    }
+    kit_pop(s->kit);
+}
+
 void studio_scene_header(studio *s, int area)
 {
     kit *k = s->kit;
@@ -247,6 +273,7 @@ void studio_scene_header(studio *s, int area)
         view_zoom_items(s);
         kit_popup_end(k);
     }
+    tool_group(s);
     kit_leaf(k, "spacer", NULL, "spacer");
     /* View Zoom magnifies the frame, the game's UI too, apart from the
        camera the readout shows; it shows here only while it magnifies, as a
@@ -256,8 +283,7 @@ void studio_scene_header(studio *s, int area)
     }
     snap_controls(s, area);
     kit_button_desc frame = { .icon = KIT_ICON_FRAME,
-                              .label = "Frame",
-                              .tip = "Frame selected",
+                              .tip = "Frame Selected",
                               .shortcut = "F",
                               .flags = selected_actor(s->scene) ? 0 : KIT_DISABLED };
     if (kit_button(k, "frame", &frame)) {
@@ -273,21 +299,6 @@ static void crop_view(studio *s)
     char crop[64];
     snprintf(crop, sizeof crop, "%g %g %g %g", s->view.x - half, s->view.y - half, 2 * half, 2 * half);
     kit_attr(s->kit, "rect", crop);
-}
-
-/* A tool on the shelf: pressed while active, its name and key in its tip. */
-static void tool_button(studio *s, studio_command command)
-{
-    studio_command_info info = studio_command_describe(s, command);
-    kit_button_desc button = { .icon = info.icon,
-                               .tip = info.menu,
-                               .shortcut = info.shortcut,
-                               .flags = studio_command_checked(s, command) > 0 ? KIT_ON
-                                                                               : 0 };
-    if (kit_button(s->kit, info.id, &button)) {
-        studio_command_run(s, command);
-    }
-    kit_attr(s->kit, "data-tip-side", "right");
 }
 
 #define CAMERA_LABELS_MAX 16
@@ -319,25 +330,10 @@ static void camera_labels(studio *s)
     }
 }
 
-/* The Scene's tool shelf and the label naming its view and selection. */
+/* The label naming the Scene's view and selection. */
 static void view_overlay(studio *s)
 {
     kit *k = s->kit;
-    kit_push(k, "tools", NULL, "toolshelf");
-    kit_presence(k);
-    for (int tool = 0; tool < SCENE_TOOL_COUNT; tool++) {
-        tool_button(s, STUDIO_COMMAND_SELECT_TOOL + tool);
-    }
-    kit_leaf(k, "sep", NULL, "shelf-sep");
-    kit_button_desc frame = { .icon = KIT_ICON_FRAME,
-                              .tip = "Frame selected",
-                              .shortcut = "F",
-                              .flags = selected_actor(s->scene) ? 0 : KIT_DISABLED };
-    if (kit_button(k, "frame", &frame)) {
-        studio_frame_selection(s);
-    }
-    kit_attr(k, "data-tip-side", "right");
-    kit_pop(k);
     kit_push(k, "label", NULL, "view-label");
     kit_presence(k);
     char title[128], context[256];

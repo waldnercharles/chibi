@@ -1,7 +1,7 @@
 /* Studio kit internals shared by the reconciler (kit.c) and its feature
  * modules: controls, number fields, popups and menus, the command palette,
- * motion, text in place, toasts, lists, drag and drop, charts and wires. Not
- * part of the C API.
+ * motion, text in place, toasts, lists, drag and drop and wires. Not part of
+ * the C API.
  *
  * Conventions:
  * - An owned string is a `char *`, NULL until first set. str_set replaces it
@@ -17,7 +17,7 @@
  *   carries, and every lookup compares it (path_node, popup_find). A popup is
  *   heap allocated, so pointers to it stay valid; spring values are inline and
  *   move on insertion. No popup loop depends on key order.
- * - Owned pointers (node children and chart; exiting nodes; roots, popups)
+ * - Owned pointers (node children; exiting nodes; roots, popups)
  *   are freed only by node_free and kit_destroy; update them with any new
  *   owned field.
  * - Strings for one frame (frame_format, kit_string, kit_classes) are freed by
@@ -368,7 +368,7 @@ void drag_flush(node *n);
 /* Forgets the drag types a node accepted last frame. */
 void drop_types_clear(node *n);
 
-/* ---------- Custom elements (kit_chart.c, kit_wires.c) ---------- */
+/* ---------- Custom elements (kit_wires.c) ---------- */
 
 /* Registered per kit: RmlUi's factory is rebuilt whenever it reinitializes. */
 void register_wires_element();

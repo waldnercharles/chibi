@@ -74,7 +74,7 @@ Two layout modes ship, selected from the top bar or View ▸ Layout Mode. Vertic
   - A wheel notch zooms every canvas by 2^0.2, about 15%: the Scene's camera, its view zoom and the UI Canvas (⌘ or Ctrl with the wheel), and the graph, as Blender's views and xyflow do. A trackpad's fraction of a notch zooms by that fraction, and a pinch zooms with the fingers. One event never more than doubles or halves a zoom.
   - A notch scrolls lists, panels, menus, the palette and the Text Editor 100 points, what a browser scrolls, so trackpad content moves with the fingers. That is about four compact rows.
   - Each event counts once, in the frame it arrives, at any frame rate.
-  - A press becomes a drag after 4 dp: Scene objects, graph nodes, wires and reroutes, dragged rows and tiles, and scrubbed numbers. A double-click is two presses within 500 ms and 3 dp.
+  - A press becomes a drag after 4 dp: Scene objects, graph nodes, wires and reroutes, dragged rows and tiles, and scrubbed numbers. Holding still never starts a drag, so a slow click still clicks. A double-click is two presses within 500 ms and 3 dp.
   - Tooltips open once the pointer rests 500 ms, and within 400 ms of one closing the next opens at once (Base UI).
   - Wheel directions arrive as the system reports them, natural scrolling included.
 

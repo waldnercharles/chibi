@@ -215,7 +215,6 @@ typedef struct drag_state
     char *type, *payload, *label, *source, *over, *target;
     uint32_t icon;
     float x0, y0;
-    double t0;
 } drag_state;
 
 /* A value animated by kit_spring, keyed by its path. */

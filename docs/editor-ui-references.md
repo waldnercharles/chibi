@@ -199,8 +199,7 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 - Pointer activation:
   - A drag handle starts immediately.
-  - Otherwise a drag starts after `FEEL_DRAG_DP` (4 dp) of movement, or after a 200 ms hold within 10 px.
-  - Touch starts after a 250 ms hold within 5 px.
+  - Otherwise a drag starts after `FEEL_DRAG_DP` (4 dp) of movement, dnd-kit's distance constraint. Holding still never starts one: dnd-kit's delay constraint is for touch, and with a mouse it turned a slow click on a tile into a drag that swallowed the click.
 - Keyboard: Space or Enter picks up, arrows move, Space, Enter or Tab drops, Escape cancels.
 - Collision uses pointer intersection first, then shape intersection.
 - Motion:

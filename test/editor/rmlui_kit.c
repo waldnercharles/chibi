@@ -2811,8 +2811,8 @@ bool test_rmlui_kit()
     settle(&f);
     ok &= check(f.hovered_row < 0, "an overscan row outside the list is not hovered");
 
-    /* Drag and drop: picked up after FEEL_DRAG_DP, dropped on the target
-     * under the pointer. */
+    /* Drag and drop: picked up after FEEL_DRAG_DP of movement, never by a
+     * still hold, and dropped on the target under the pointer. */
     float sx = 0, sy = 0, tx = 0, ty = 0;
     ok &= check(
         center(&f, "app/dnd/source", &sx, &sy) &&
@@ -2822,7 +2822,10 @@ bool test_rmlui_kit()
     pointer(&f, RML_INPUT_POINTER_MOVE, sx, sy);
     pointer(&f, RML_INPUT_POINTER_DOWN, sx, sy);
     f.in.down[0] = true;
-    frame(&f);
+    for (int i = 0; i < 30; i++) {
+        frame(&f);
+    }
+    ok &= check(!kit_dragging(f.k, "thing"), "a press held still for half a second is no drag");
     pointer(&f, RML_INPUT_POINTER_MOVE, sx + FEEL_DRAG_DP - 1, sy);
     frame(&f);
     ok &= check(!kit_dragging(f.k, "thing"), "no drag under the drag threshold");

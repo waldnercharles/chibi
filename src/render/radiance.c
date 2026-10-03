@@ -263,6 +263,22 @@ static CF_Canvas s_make_targets(int w, int h, int count, CF_Filter filter)
     return cf_make_canvas(params);
 }
 
+/* Pass materials keep each texture a pass bound until its name is bound
+ * again, and WebGL validates every one on each draw: forget them before
+ * the canvases they name go. Each pass binds what it samples. */
+static void s_forget_textures(HRC *hrc)
+{
+    CF_Material materials[] = { hrc->pass_material, hrc->bounce_material };
+    for (int i = 0; i < 2; i++) {
+        if (materials[i].id) {
+            cf_material_clear_textures(materials[i]);
+        }
+    }
+    if (hrc->luminance) {
+        s_forget_textures(hrc->luminance);
+    }
+}
+
 static void s_destroy_level(CF_Canvas *level)
 {
     if (level->id) {
@@ -635,6 +651,7 @@ static void s_dispatch_filter(HRC *hrc)
 
 static void s_destroy_surface(HRC *hrc)
 {
+    s_forget_textures(hrc);
     s_destroy_canvas(&hrc->surface_canvas[0]);
     s_destroy_canvas(&hrc->surface_canvas[1]);
     s_destroy_canvas(&hrc->surface_half);
@@ -1034,6 +1051,7 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
     bool images_changed = hrc->canvas_w != width || hrc->canvas_h != height ||
                           hrc->radiance_w != radiance_w ||
                           hrc->radiance_h != radiance_h;
+    s_forget_textures(hrc);
     bool ok = true;
     if (images_changed) {
         destroy_images(hrc);

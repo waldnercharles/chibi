@@ -2306,6 +2306,7 @@ const studio_panel_source studio_panel_sources[] = {
     { "gallery", "Widgets", studio_gallery_add, studio_gallery_sync, studio_gallery_action },
     /* Members (workstream P5). */
     { "members", "Members", studio_members_add, studio_members_sync, studio_members_action },
+    { "members_ui", "Members", studio_members_ui_add, studio_members_ui_sync, NULL },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

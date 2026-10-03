@@ -2298,14 +2298,19 @@ void studio_gallery_action(studio *s, const char *action, const ui_activation *a
 /* Members' source, `members` (studio_members.c): the open behavior's rows
  * in its List's window, keyed "s4" (a section), "c3" (a category), "g7"
  * (a graph), "v12" (a variable), "l5" (a named value) or "e0.9" (an
- * event); the selected member's menu; the header's filter. Rows send
- * members.click, .edit (double click), .menu (right press), .uses and .add
- * with their key; the name field members.renamed with its text, or
- * .cancel; the menu .open, .rename, .duplicate, .refs, .calls and .delete;
- * members.scroll wakes the source as the List scrolls. */
+ * event); the header's filter. Rows send members.click, .edit (double
+ * click), .menu (right press), .uses and .add with their key; the name
+ * field members.renamed with its text, or .cancel; the menu .open,
+ * .rename, .duplicate, .refs, .calls and .delete; members.scroll wakes the
+ * source as the List scrolls. */
 void studio_members_add(yyjson_mut_doc *doc);
 bool studio_members_sync(studio *s, const studio_panel_sync *at);
 void studio_members_action(studio *s, const char *action, const ui_activation *a);
+/* `members_ui`: the keys of the selected member, the open graph and the
+ * member being named, and the selected member's menu, apart from the rows
+ * so a selection dirties only the views that bind them. */
+void studio_members_ui_add(yyjson_mut_doc *doc);
+bool studio_members_ui_sync(studio *s, const studio_panel_sync *at);
 
 /* Runs an activation that is Studio's (studio_panels.c):
  * emit('studio.<command>') runs the command, on the tab or area its first

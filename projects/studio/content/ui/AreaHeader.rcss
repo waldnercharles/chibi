@@ -19,3 +19,9 @@ body { flex: 0 0 auto; }
 .maximize .icon { color: var(--faint-foreground); }
 .maximize:hover .icon, .area-head.maximized .maximize .icon { color: var(--foreground); }
 .close { margin-left: 2dp; }
+
+/* ---------- Live values ---------- */
+/* While the scene runs, a Properties area edits its running world
+   (studio_properties_live): its header takes a primary wash and rule, as
+   Unity tints its editor in Play Mode. */
+.area-head.live { background-color: color-mix(in srgb, var(--primary) 9%, var(--muted)); border-bottom: 1dp var(--primary-edge); }

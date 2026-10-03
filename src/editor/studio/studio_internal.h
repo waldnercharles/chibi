@@ -145,6 +145,7 @@ typedef enum
     STUDIO_COMMAND_NEW_STYLESHEET,
     STUDIO_COMMAND_RENAME,
     STUDIO_COMMAND_ADD_COMPONENT,
+    STUDIO_COMMAND_KEEP_CHANGES,
     STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT,
     STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT,
     STUDIO_COMMAND_TOGGLE_SIDE_PANE,
@@ -942,6 +943,11 @@ struct studio
         int toast;            /* offers Undo after Remove Component */
         const av_value *step; /* the removal's undo snapshot; never dereferenced */
     } components;
+    struct
+    {
+        int toast; /* offers Undo after Keep Changes */
+        int depth; /* the scene's Keep Changes records after it */
+    } keep;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -1106,6 +1112,9 @@ const char *studio_scene_title(const app_scene_authoring *scene, char *out, size
 bool studio_unsaved(studio *s);
 /* Scene edits are allowed: the scene can move and shows no runtime snapshot. */
 bool studio_editable(const studio *s);
+/* The scene runs, playing or paused: Properties and the Scene edit its running
+ * world, as Unity's Play Mode does, and Stop restores the authored scene. */
+bool studio_live(const studio *s);
 /* Case-insensitive substring filter; an empty query matches everything. */
 bool studio_matches(const char *query, const char *text);
 
@@ -1120,6 +1129,8 @@ void studio_outliner_body(studio *s, int area);
 int *studio_outliner_rows(studio *s);
 void studio_properties_header(studio *s, int area);
 void studio_properties_body(studio *s, int area);
+/* Properties shows the running scene's values, which edit live. */
+bool studio_properties_live(studio *s);
 void studio_code_header(studio *s, int area);
 void studio_code_body(studio *s, int area);
 /* Opens a UI asset's or stylesheet's source at a 1-based line, as Blender's
@@ -1813,6 +1824,7 @@ typedef struct studio_status
     const studio_tab_view *tabs; /* the open documents */
     int tab_count;
     int maximized; /* the area filling the workspace, or -1 */
+    unsigned live; /* a bit per area whose Properties edit the running scene */
 } studio_status;
 
 /* Adds the `editor` variable to a data model's JSON. */
@@ -1933,5 +1945,11 @@ void studio_add_component_open(studio *s);
 bool studio_component_palette(studio *s);
 /* Runs the Undo a Remove Component toast offers; call every frame. */
 void studio_component_toast(studio *s);
+/* Keep Changes (Unreal's Keep Simulation Changes, K): the selected object's
+ * running values, or those of its component `only`, apply to the scene when
+ * it stops; a toast offers Undo. */
+void studio_keep_changes(studio *s, const ecs_component_desc *only);
+/* Runs the Undo a Keep Changes toast offers; call every frame. */
+void studio_keep_toast(studio *s);
 
 #endif

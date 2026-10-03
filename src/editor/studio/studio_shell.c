@@ -322,6 +322,39 @@ void studio_replay_scenario(studio *s, const char *name)
     }
 }
 
+/* An edit the user did not make directly offers Undo in a toast while it is
+   still the latest edit, as Delete does. */
+static void offer_undo(studio *s, const char *title)
+{
+    kit_toast_dismiss(s->kit, s->undo_toast);
+    s->undo_toast = kit_toast(
+        s->kit,
+        0,
+        &(kit_toast_desc){ .title = title, .action = "Undo", .duration = 6 }
+    );
+    studio_record(s, KIT_TOAST_DEFAULT, title);
+    s->undo_toast_group = scene_history_group_id(s->scene->history, false);
+}
+
+/* What Stop applies of Keep Changes, or "" for nothing. */
+static void kept_title(studio *s, char *title, size_t size)
+{
+    int objects;
+    const char *name;
+    int values = scene_kept_values(s->scene, &objects, &name);
+    title[0] = '\0';
+    if (!values) {
+        return;
+    }
+    char who[160];
+    if (name) {
+        snprintf(who, sizeof who, "%s", name);
+    } else {
+        snprintf(who, sizeof who, "%d objects", objects);
+    }
+    snprintf(title, size, "Applied %d kept %s to %s", values, values == 1 ? "value" : "values", who);
+}
+
 void studio_runtime(studio *s, app_runtime_command command)
 {
     /* Play resumes a run paused at a breakpoint (Unreal). */
@@ -348,7 +381,13 @@ void studio_runtime(studio *s, app_runtime_command command)
     if (command == APP_RUNTIME_PLAY && state.playing) {
         command = APP_RUNTIME_PAUSE;
     }
+    char kept[320];
+    kept_title(s, kept, sizeof kept);
     app_scene_authoring_runtime_command(s->scene, state.target, command);
+    /* Stop applied Keep Changes as one Undo step. */
+    if (kept[0] && !studio_live(s)) {
+        offer_undo(s, kept);
+    }
 }
 
 void studio_frame_selection(studio *s)
@@ -392,14 +431,7 @@ void studio_delete(studio *s)
         );
         return;
     }
-    kit_toast_dismiss(s->kit, s->undo_toast);
-    s->undo_toast = kit_toast(
-        s->kit,
-        0,
-        &(kit_toast_desc){ .title = title, .action = "Undo", .duration = 6 }
-    );
-    studio_record(s, KIT_TOAST_DEFAULT, title);
-    s->undo_toast_group = scene_history_group_id(s->scene->history, false);
+    offer_undo(s, title);
 }
 
 static void undo_toast(studio *s)
@@ -407,7 +439,8 @@ static void undo_toast(studio *s)
     if (!s->undo_toast) {
         return;
     }
-    bool current = s->scene->document.kind == APP_EDITOR_DOCUMENT_SCENE &&
+    /* Every document but a prototype replays the scene's history. */
+    bool current = s->scene->document.kind != APP_EDITOR_DOCUMENT_PROTOTYPE &&
                    scene_history_group_id(s->scene->history, false) == s->undo_toast_group;
     if (kit_toast_action(s->kit, s->undo_toast)) {
         s->undo_toast = 0;
@@ -1321,5 +1354,6 @@ void studio_emit(studio *s)
     studio_members_toast(s);
     studio_refactor_frame(s);
     studio_component_toast(s);
+    studio_keep_toast(s);
     studio_new_project_frame(s);
 }

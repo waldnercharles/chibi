@@ -284,6 +284,18 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                        .keywords = "prototype attach",
                                        .icon = KIT_ICON_ADD,
                                        .phase = SHORTCUT_EDITOR },
+    /* Unreal's Keep Simulation Changes, and its K. */
+    [STUDIO_COMMAND_KEEP_CHANGES] = { .id = "keepChanges",
+                                      .label = "Keep Changes",
+                                      .chord = "K",
+                                      .context = "Properties, Scene",
+                                      .contexts = EDITOR_BIT(STUDIO_EDITOR_PROPERTIES) |
+                                                  EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                      .keywords = "play live runtime "
+                                                  "simulation "
+                                                  "values apply copy",
+                                      .icon = KIT_ICON_PIN,
+                                      .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT] = { .id = "workspaceVerticalSpli"
                                                         "t",
                                                   .label = "Vertical Split",
@@ -745,6 +757,9 @@ static bool enabled_with(studio *s, studio_command command, int argument)
             return editable &&
                    s->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE &&
                    selected_prototype(s->scene);
+        case STUDIO_COMMAND_KEEP_CHANGES:
+            return studio_live(s) && selection &&
+                   selected_scene_entity(s->scene).slot;
         case STUDIO_COMMAND_RESUME:
         case STUDIO_COMMAND_STEP_OVER:
         case STUDIO_COMMAND_STEP_INTO:
@@ -887,6 +902,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         /* Rename objects and prototype components */
         case STUDIO_COMMAND_RENAME: studio_rename_object(s); break;
         case STUDIO_COMMAND_ADD_COMPONENT: studio_add_component_open(s); break;
+        case STUDIO_COMMAND_KEEP_CHANGES: studio_keep_changes(s, NULL); break;
         case STUDIO_COMMAND_COUNT: break;
     }
 }

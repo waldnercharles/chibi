@@ -369,37 +369,6 @@ static const char *text_of(yyjson_mut_val *object, const char *name)
     return text ? text : "";
 }
 
-/* Sets a member to a copy of `text`; true when it changed. */
-static bool put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
-    if (yyjson_mut_is_str(value) && !strcmp(yyjson_mut_get_str(value), text)) {
-        return false;
-    }
-    ui_data_set_text(doc, value, text);
-    return true;
-}
-
-static bool put_bool(yyjson_mut_val *object, const char *name, bool on)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
-    if (yyjson_mut_is_bool(value) && yyjson_mut_get_bool(value) == on) {
-        return false;
-    }
-    yyjson_mut_set_bool(value, on);
-    return true;
-}
-
-static bool put_number(yyjson_mut_val *object, const char *name, double number)
-{
-    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
-    if (yyjson_mut_is_num(value) && yyjson_mut_get_num(value) == number) {
-        return false;
-    }
-    yyjson_mut_set_real(value, number);
-    return true;
-}
-
 /* The text a binding left in a row's member: a switch writes a boolean and
  * a slider a number. */
 static const char *bound_text(yyjson_mut_val *row, const char *name, char *buffer, size_t size)
@@ -536,7 +505,7 @@ static void add_setting(
     yyjson_mut_set_str(yyjson_mut_obj_get(row, "description"), s->description);
     char text[32];
     studio_setting_text(defaults, s, text, sizeof text);
-    put_text(doc, row, "default", text);
+    ui_data_put_text(doc, row, "default", text);
     yyjson_mut_val *choices = yyjson_mut_obj_get(row, "choices");
     for (int i = 0; i < s->choice_count; i++) {
         yyjson_mut_val *choice = yyjson_mut_arr_add_obj(doc, choices);
@@ -549,11 +518,11 @@ static void add_setting(
         : s->choice_count              ? "choice"
                                        : "range"
     );
-    put_number(row, "min", s->min);
-    put_number(row, "max", s->max);
-    put_number(row, "step", s->step);
+    ui_data_put_number(row, "min", s->min);
+    ui_data_put_number(row, "max", s->max);
+    ui_data_put_number(row, "step", s->step);
     if (ranged(s)) {
-        put_number(row, "tick", s->step / (s->max - s->min));
+        ui_data_put_number(row, "tick", s->step / (s->max - s->min));
     }
 }
 
@@ -568,15 +537,15 @@ static void build_rows(const studio_settings_view *view, yyjson_mut_doc *doc, yy
         yyjson_mut_val *row = add_row(doc, rows, STUDIO_SETTINGS_KEYBOARD, "shortcut");
         char text[160];
         snprintf(text, sizeof text, "command.%s", view->commands[c].id);
-        put_text(doc, row, "key", text);
+        ui_data_put_text(doc, row, "key", text);
         snprintf(text, sizeof text, "studio.%s", view->commands[c].id);
-        put_text(doc, row, "description", text);
+        ui_data_put_text(doc, row, "description", text);
         int command = studio_command_named(view->commands[c].id);
         if (command >= 0) {
-            put_text(doc, row, "default", studio_command_default_chord(command));
-            put_text(doc, row, "context", studio_command_context(command));
+            ui_data_put_text(doc, row, "default", studio_command_default_chord(command));
+            ui_data_put_text(doc, row, "context", studio_command_context(command));
         }
-        put_bool(row, "indexed", view->commands[c].indexed);
+        ui_data_put_bool(row, "indexed", view->commands[c].indexed);
     }
     for (int f = 0; f < STUDIO_PROJECT_FIELD_COUNT; f++) {
         bool text = f == STUDIO_PROJECT_NAME;
@@ -825,12 +794,12 @@ static bool show_values(
         const studio_setting *s = &studio_settings[i];
         char text[32];
         studio_setting_text(view->prefs, s, text, sizeof text);
-        changed |= put_text(doc, row, "value", text);
-        changed |= put_bool(row, "modified", strcmp(text, text_of(row, "default")) != 0);
+        changed |= ui_data_put_text(doc, row, "value", text);
+        changed |= ui_data_put_bool(row, "modified", strcmp(text, text_of(row, "default")) != 0);
         if (ranged(s)) {
             float value = studio_setting_get(view->prefs, s);
             snprintf(text, sizeof text, "%g", (value - s->min) / (s->max - s->min));
-            changed |= put_text(doc, row, "position", text);
+            changed |= ui_data_put_text(doc, row, "position", text);
         }
     }
     for (int c = 0; c < view->command_count; c++) {
@@ -839,18 +808,22 @@ static bool show_values(
                                   : studio_command_named(view->commands[c].id);
         const char *chord = command >= 0 ? studio_command_chord(view->prefs, command)
                                          : "";
-        changed |= put_text(doc, row, "label", view->commands[c].label);
-        changed |= put_text(doc, row, "value", chord);
-        changed |= put_text(doc, row, "bound", chord);
+        changed |= ui_data_put_text(doc, row, "label", view->commands[c].label);
+        changed |= ui_data_put_text(doc, row, "value", chord);
+        changed |= ui_data_put_text(doc, row, "bound", chord);
         if (shortcuts_changed) {
             char shortcut[STUDIO_CHORD_SIZE], aliases[192];
             studio_chord_format(shortcut, sizeof shortcut, chord, view->mac);
             changed |= show_keys(doc, yyjson_mut_obj_get(row, "keys"), shortcut);
             alias_text(view, command, aliases, sizeof aliases);
-            changed |= put_text(doc, row, "aliases", aliases);
+            changed |= ui_data_put_text(doc, row, "aliases", aliases);
         }
-        changed |= put_bool(row, "modified", command >= 0 && view->prefs->shortcuts[command][0]);
-        changed |= put_bool(row, "recording", command >= 0 && view->recording == command + 1);
+        changed |= ui_data_put_bool(
+            row,
+            "modified",
+            command >= 0 && view->prefs->shortcuts[command][0]
+        );
+        changed |= ui_data_put_bool(row, "recording", command >= 0 && view->recording == command + 1);
         int conflict = view->cache ? view->cache->conflicts[c]
                      : command >= 0
                          ? studio_command_conflict(view->prefs, command, chord, view->mac)
@@ -866,15 +839,15 @@ static bool show_values(
         if (conflict >= 0) {
             snprintf(message, sizeof message, "Also assigned to %s", label);
         }
-        changed |= put_text(doc, row, "conflict", message);
+        changed |= ui_data_put_text(doc, row, "conflict", message);
     }
     for (int f = 0; f < STUDIO_PROJECT_FIELD_COUNT; f++) {
         yyjson_mut_val *row = project_row(view, rows, f);
         if (f != STUDIO_PROJECT_NAME) {
             changed |= show_project_choices(view, f, doc, yyjson_mut_obj_get(row, "choices"));
         }
-        changed |= put_text(doc, row, "value", view->fields[f]);
-        changed |= put_bool(row, "modified", PROJECT_ROWS[f].optional && view->fields[f][0]);
+        changed |= ui_data_put_text(doc, row, "value", view->fields[f]);
+        changed |= ui_data_put_bool(row, "modified", PROJECT_ROWS[f].optional && view->fields[f][0]);
     }
     return changed;
 }
@@ -943,14 +916,14 @@ static int show_scope(yyjson_mut_doc *doc, yyjson_mut_val *page, bool *changed)
 {
     bool project = !strcmp(text_of(page, "scope"), "project");
     int category = category_in(text_of(page, "category"), project);
-    *changed |= put_text(doc, page, "scope", project ? "project" : "editor");
-    *changed |= put_text(
+    *changed |= ui_data_put_text(doc, page, "scope", project ? "project" : "editor");
+    *changed |= ui_data_put_text(
         doc,
         page,
         "category",
         studio_settings_categories[category].id
     );
-    *changed |= put_text(
+    *changed |= ui_data_put_text(
         doc,
         page,
         "title",
@@ -981,8 +954,8 @@ static bool show_visible(const studio_settings_view *view, yyjson_mut_doc *doc, 
                     (searching ? row_matches(view, i, query) : c == category);
         matches[c] += show;
         modified[c] |= yyjson_mut_get_bool(yyjson_mut_obj_get(row, "modified"));
-        changed |= put_bool(row, "shown", show);
-        changed |= put_bool(row, "head", show && searching && c != last);
+        changed |= ui_data_put_bool(row, "shown", show);
+        changed |= ui_data_put_bool(row, "head", show && searching && c != last);
         last = show ? c : last;
         shown += show;
     }
@@ -993,13 +966,17 @@ static bool show_visible(const studio_settings_view *view, yyjson_mut_doc *doc, 
         if (searching && matches[c]) {
             snprintf(badge, sizeof badge, "%d", matches[c]);
         }
-        changed |= put_bool(item, "hidden", studio_settings_categories[c].project != project);
-        changed |= put_bool(item, "dim", searching && !matches[c]);
-        changed |= put_bool(item, "dot", modified[c]);
-        changed |= put_text(doc, item, "badge", badge);
+        changed |= ui_data_put_bool(
+            item,
+            "hidden",
+            studio_settings_categories[c].project != project
+        );
+        changed |= ui_data_put_bool(item, "dim", searching && !matches[c]);
+        changed |= ui_data_put_bool(item, "dot", modified[c]);
+        changed |= ui_data_put_text(doc, item, "badge", badge);
     }
-    changed |= put_number(page, "matches", shown);
-    changed |= put_number(page, "conflicts", conflicts);
+    changed |= ui_data_put_number(page, "matches", shown);
+    changed |= ui_data_put_number(page, "conflicts", conflicts);
     return changed;
 }
 
@@ -1024,11 +1001,11 @@ bool studio_settings_sync(studio_settings_view *view, yyjson_mut_doc *doc, bool 
     }
     bool shortcuts_changed = refresh_shortcuts(view, doc, rows, built);
     bool changed = show_values(view, doc, rows, shortcuts_changed);
-    changed |= put_text(doc, page, "project", view->project);
+    changed |= ui_data_put_text(doc, page, "project", view->project);
     changed |= show_visible(view, doc, page);
     if (recording && !yyjson_mut_get_bool(yyjson_mut_obj_get(recording, "shown"))) {
         view->recording = 0;
-        changed |= put_bool(recording, "recording", false);
+        changed |= ui_data_put_bool(recording, "recording", false);
     }
     return changed || built;
 }
@@ -1233,16 +1210,20 @@ static bool sync_collaboration(studio *s, const studio_panel_sync *at)
     yyjson_mut_doc *doc = at->doc;
     yyjson_mut_val *collaboration = at->variable;
     bool changed = false;
-    changed |= put_bool(collaboration, "token_expanded", s->collaboration.admin_token_expanded);
-    changed |= put_bool(collaboration, "busy", studio_collab_busy(s));
-    changed |= put_bool(collaboration, "available", studio_collab_available());
-    changed |= put_bool(collaboration, "connected", collab_active());
-    changed |= put_bool(collaboration, "host", collab_active() && collab_is_host());
-    changed |= put_bool(collaboration, "error", studio_collab_status_error());
-    changed |= put_text(doc, collaboration, "status", studio_collab_display_status());
+    changed |= ui_data_put_bool(
+        collaboration,
+        "token_expanded",
+        s->collaboration.admin_token_expanded
+    );
+    changed |= ui_data_put_bool(collaboration, "busy", studio_collab_busy(s));
+    changed |= ui_data_put_bool(collaboration, "available", studio_collab_available());
+    changed |= ui_data_put_bool(collaboration, "connected", collab_active());
+    changed |= ui_data_put_bool(collaboration, "host", collab_active() && collab_is_host());
+    changed |= ui_data_put_bool(collaboration, "error", studio_collab_status_error());
+    changed |= ui_data_put_text(doc, collaboration, "status", studio_collab_display_status());
     yyjson_mut_val *peers = yyjson_mut_obj_get(collaboration, "peers");
     int count = acount(s->collaboration.peers);
-    changed |= put_bool(collaboration, "has_peers", count > 0);
+    changed |= ui_data_put_bool(collaboration, "has_peers", count > 0);
     if ((int)yyjson_mut_arr_size(peers) != count) {
         yyjson_mut_arr_clear(peers);
         for (int i = 0; i < count; i++) {
@@ -1259,9 +1240,9 @@ static bool sync_collaboration(studio *s, const studio_panel_sync *at)
         yyjson_mut_val *row = yyjson_mut_arr_get(peers, (size_t)i);
         char color[16];
         snprintf(color, sizeof color, "#%08x", peer->color ? peer->color : 0x6ea8feffu);
-        changed |= put_text(doc, row, "name", peer->name);
-        changed |= put_text(doc, row, "color", color);
-        changed |= put_bool(
+        changed |= ui_data_put_text(doc, row, "name", peer->name);
+        changed |= ui_data_put_text(doc, row, "color", color);
+        changed |= ui_data_put_bool(
             row,
             "following",
             s->collaboration.following &&
@@ -1415,8 +1396,8 @@ void studio_sources_show(studio *s, studio_sources *src, ui_data *data)
 void studio_sources_search_settings(ui_data *data, const char *query)
 {
     yyjson_mut_val *page = settings_page(data->doc);
-    put_text(data->doc, page, "scope", "editor");
-    put_text(data->doc, page, "query", query);
+    ui_data_put_text(data->doc, page, "scope", "editor");
+    ui_data_put_text(data->doc, page, "query", query);
     rml_data_model_dirty(data->model, "settings");
 }
 
@@ -1788,9 +1769,9 @@ static bool show_hints(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio
         if (h->icon) {
             studio_glyph(icon, h->icon);
         }
-        changed |= put_text(doc, item, "icon", icon);
-        changed |= put_text(doc, item, "key", h->key ? h->key : "");
-        changed |= put_text(doc, item, "label", h->label);
+        changed |= ui_data_put_text(doc, item, "icon", icon);
+        changed |= ui_data_put_text(doc, item, "key", h->key ? h->key : "");
+        changed |= ui_data_put_text(doc, item, "label", h->label);
     }
     return changed;
 }
@@ -1808,11 +1789,11 @@ static bool show_tabs(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio_
         studio_glyph(icon, t->icon);
         const char *texts[] = { t->label, t->path, icon };
         for (int k = 0; TAB_TEXTS[k]; k++) {
-            changed |= put_text(doc, item, TAB_TEXTS[k], texts[k]);
+            changed |= ui_data_put_text(doc, item, TAB_TEXTS[k], texts[k]);
         }
         const bool flags[] = { t->dirty, t->active, t->closable };
         for (int f = 0; TAB_FLAGS[f]; f++) {
-            changed |= put_bool(item, TAB_FLAGS[f], flags[f]);
+            changed |= ui_data_put_bool(item, TAB_FLAGS[f], flags[f]);
         }
     }
     return changed;
@@ -1824,19 +1805,19 @@ static bool show_areas(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(member(editor, "areas"));
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
         yyjson_mut_val *area = yyjson_mut_arr_iter_next(&it);
-        changed |= put_bool(area, "maximized", i == status->maximized);
-        changed |= put_bool(area, "live", status->live & 1u << i);
+        changed |= ui_data_put_bool(area, "maximized", i == status->maximized);
+        changed |= ui_data_put_bool(area, "live", status->live & 1u << i);
         const studio_area_view *view = &status->areas[i];
         char icon[5] = "";
         if (view->icon) {
             studio_glyph(icon, view->icon);
         }
-        changed |= put_number(area, "editor", view->editor);
+        changed |= ui_data_put_number(area, "editor", view->editor);
         const char *texts[] = { view->panel ? view->panel : "",
                                 icon,
                                 view->title ? view->title : "" };
         for (int t = 0; AREA_TEXTS[t]; t++) {
-            changed |= put_text(doc, area, AREA_TEXTS[t], texts[t]);
+            changed |= ui_data_put_text(doc, area, AREA_TEXTS[t], texts[t]);
         }
     }
     return changed;
@@ -1853,15 +1834,15 @@ bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status)
                             status->selection,
                             status->speed };
     for (int t = 0; STATUS_TEXTS[t]; t++) {
-        changed |= put_text(doc, editor, STATUS_TEXTS[t], texts[t] ? texts[t] : "");
+        changed |= ui_data_put_text(doc, editor, STATUS_TEXTS[t], texts[t] ? texts[t] : "");
     }
     const bool flags[] = { status->reporting, status->playing, status->paused };
     for (int f = 0; STATUS_FLAGS[f]; f++) {
-        changed |= put_bool(editor, STATUS_FLAGS[f], flags[f]);
+        changed |= ui_data_put_bool(editor, STATUS_FLAGS[f], flags[f]);
     }
-    changed |= put_number(editor, "selected", status->selected);
-    changed |= put_number(editor, "objects", status->objects);
-    changed |= put_number(editor, "hidden", status->hidden);
+    changed |= ui_data_put_number(editor, "selected", status->selected);
+    changed |= ui_data_put_number(editor, "objects", status->objects);
+    changed |= ui_data_put_number(editor, "hidden", status->hidden);
     return changed;
 }
 
@@ -2122,11 +2103,11 @@ bool studio_commands_show(yyjson_mut_doc *doc, const studio_command_state *state
                                 info->shortcut ? info->shortcut : "",
                                 icon };
         for (int t = 0; COMMAND_TEXTS[t]; t++) {
-            changed |= put_text(doc, command, COMMAND_TEXTS[t], texts[t]);
+            changed |= ui_data_put_text(doc, command, COMMAND_TEXTS[t], texts[t]);
         }
-        changed |= put_bool(command, "enabled", states[c].enabled);
-        changed |= put_bool(command, "checkable", states[c].checkable);
-        changed |= put_bool(command, "checked", states[c].checked);
+        changed |= ui_data_put_bool(command, "enabled", states[c].enabled);
+        changed |= ui_data_put_bool(command, "checkable", states[c].checkable);
+        changed |= ui_data_put_bool(command, "checked", states[c].checked);
     }
     return changed;
 }

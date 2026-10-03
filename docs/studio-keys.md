@@ -167,13 +167,16 @@ While a run is paused at a breakpoint, which selects the instance it stopped in;
 
 ## Menus, Search, popups and fields
 
-The kit's controls (`src/editor/rmlui/kit_popup.c`, `kit_command.c`) and the native controls (`src/ui/controls`: `<number-field>`, `<color-field>`, `<splitter>`).
+Menus and popovers, authored and the kit's alike (`src/ui/popover.c`), the kit's dropdowns and Search (`src/editor/rmlui/kit_popup.c`, `kit_command.c`) and the native controls (`src/ui/controls`: `<number-field>`, `<color-field>`, `<splitter>`, `<choice-list>`).
 
 | Key | Action |
 | --- | --- |
 | Up, Down, Home, End | Move in a menu, list or Search |
+| A–Z | In a menu, highlight the first item whose label starts with the letters typed within half a second |
+| Right, Left | Open or close a submenu; in a menubar's menu, the next or previous menu |
 | Enter, Space | Choose |
-| Escape | Close the popup, color picker, Search or dialog; cancel a field edit, a number's scrub (back to its starting value) or a drag |
+| Tab, Shift+Tab | Move through a popover's controls, closing it past either end; close a menu or list |
+| Escape | Close the top popup (focus inside it returns to its trigger), color picker, Search or dialog; cancel a field edit, a number's scrub (back to its starting value) or a drag |
 | Enter, Tab | Commit a field |
 | Up, Down; PageUp, PageDown; Home, End | Step a focused number; coarse step; minimum, maximum |
 | Alt, Shift, Ctrl (held) | Fine, coarse and snapped steps |

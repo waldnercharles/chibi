@@ -2,8 +2,8 @@
 
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
-performance, is postponed and listed in Postponed below. Status: S0, F0 and
-F1 done; the rest planned. The spike (S0) ran on a loaded machine, so its
+performance, is postponed and listed in Postponed below. Status: S0, F0,
+F1, F2, F3 and F5 done; the rest planned. The spike (S0) ran on a loaded machine, so its
 times are provisional until re-measured on an idle one (S0 results).
 
 ## Target
@@ -35,10 +35,10 @@ About 1,600 kit call sites remain across 40 files. The largest:
 
 | Surface | Lives now | Needs from C | Plan |
 |---|---|---|---|
-| Top bar | `TopBar.rml`; menubar drawn natively from its `<menu>` markup; play target, layout and debugger steps in native slots | `commands`, `editor.tabs`, menu lists | W3 C3: `<menubar>`, MenuCommand, popovers |
+| Top bar | `TopBar.rml`; menubar drawn natively from its `<menu>` markup; play target, layout and debugger steps in native slots | `commands`, `editor.tabs`, menu lists | W3 C3 over F3's `<menubar>`, Menu and MenuCommand |
 | Status bar | `StatusBar.rml`; UI Scale native | `editor`, `commands` | W3 C3 |
-| Area header | `AreaHeader.rml`; editor type menu and editor controls in native slots | `editor.areas`, editor types | W3 C3; each panel's controls move with the panel |
-| Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, GraphView popover | Authored | | Done |
+| Area header | `AreaHeader.rml`; editor type menu authored (F3, a Menu over `choices.editors`); editor controls in a native slot | `editor.areas`, `choices` | W3 C3; each panel's controls move with the panel |
+| Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, the Behavior header's View menu (GraphView, trigger included since F3) | Authored | | Done |
 | Properties: Object, Prototype, Scene, Behaviors | `studio_properties.c` (~2k lines) | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep, Add Component | W2 P1 |
 | Properties: Node, Member | `studio_graph_properties.c`, `studio_member_properties.c` | Literal editors, binding autocomplete, expression code, type picker, reorder grips | W4 G1 |
 | Outliner | `studio_outliner.c` (F0) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | W2 P2 |
@@ -52,7 +52,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Performance | `studio_performance.c` | Sample ring | W3 C2 around a native `<line-chart>` |
 | Shell | `studio_shell.c` | Area tree, ratios, drawer and side springs, maximize, editor types | W3 C3 with a native `<splitter>` |
 | Palette, dropdowns, autocomplete, asset pickers | `kit_command.c`, `studio_palette.c`, `studio_pick.c`, `kit_popup.c` | Ranking, recents, prefixes, thumbnails | W3 C4; ranking stays in C |
-| Popups, menus, tooltips | `kit_popup.c` | Placement, stacking, dismissal, typeahead | Content authored; the popover controller is native; tooltips stay attribute-driven |
+| Popups, menus, tooltips | `src/ui/popover.c` (F3) stacks, places and dismisses authored popovers and the kit's popups and runs menus; `kit_popup.c` emits the kit's | Placement, stacking, dismissal, typeahead | Done for the controller (F3); kit menus move to Menu with their panels; tooltips stay attribute-driven |
 | Toasts | `kit_toast.c` | Springs, swipe | Postponed |
 | Designer: Hierarchy, Details, Library | `studio_designer*.c` | `ui_design` edits, drop zones, CSS value types | W4 D1; Canvas guides native |
 | UI Inspector | Authored panel; picking native | | W4 I1: virtualize its tree |
@@ -85,7 +85,7 @@ to a closing panel; a panel's first mount syncs its sources before it shows,
 so it never shows stale data. The host dirties a source's variable only when
 `sync` reports a change. Today's sources: `inspector`, `world` (Data),
 `theme` (Theme), `settings` (Settings), `shortcuts` (Shortcuts), `editor`,
-`commands`, `collaboration` and `new_project` (NewProject). The shell mounts
+`commands`, `collaboration`, `new_project` (NewProject) and `choices`. The shell mounts
 the panel in each area that shows it, aliasing the area's view state as
 `view`. A panel's own header controls move into its document as children of
 its `AreaHeader`.
@@ -107,7 +107,9 @@ properties: { mode, live, locked, lockTip, query,
              overridden, mixed, readonly, invalid,
              number: [], vector: [{ axes: [{ key, label, value, step, precision, min, max, unit }] }],
              bool: [], choice: [], color: [], text: [], asset: [], entity: [] }] }] }
-choices: { "GameBody.kind": [{ value, label, icon, group }] }
+choices: { fields: { GameBody: { type: TABLE } }, assets: { prototype: TABLE },
+  editors: TABLE, panels: { label, icon, tools: [], others: [] } }
+TABLE: { label, icon, groups: [{ label, options: [{ value, label, icon }] }] }
 outliner: { title, count, collapsed, total, row,
   views: [{ first, query, rows: [{ id, label, icon, behaviors, selected, active, marked, hidden, locked, renaming }] }] }
 ```
@@ -175,7 +177,8 @@ pointer and modifiers, so markup hears it with `data-event-contextmenu`.
 | Element | Replaces | Contract |
 |---|---|---|
 | `<number-field>` | `kit_number.c` (done, F2: `src/ui/controls/number_field.c`; the parser is `src/support/number_expr.c`) | `value min max step precision integer float slider unit addon mixed readonly disabled invalid`; `input`/`change`; today's scrub threshold, Alt fine, Shift coarse, Ctrl snap, steppers, Tab; Escape cancels typing or a scrub; repaints text without layout |
-| `<color-field>` | `kit_color` (done, F2) | `value mixed readonly disabled`; opens its own picker as `<input type=color>` opens the OS one: `input` while open, `change` on close. Its popover is inside the field (`position: fixed; clip: none`) until F3's `popover.c` |
+| `<color-field>` | `kit_color` (done, F2) | `value mixed readonly disabled`; opens its own picker as `<input type=color>` opens the OS one: `input` while open, `change` on close. Its picker is inside the field (`position: fixed; clip: none`), stacked, placed and dismissed by `popover.c` (F3), so it escapes its area |
+| `<choice-list>` | `kit_dropdown`'s list (F3; the kit's still runs its own) | `[role=option]` descendants with `value`, `data-label` or `.label`, `data-keywords`; its first `<input>` filters them by `text_search_score` (`data-filtered`, `data-empty`); Up, Down, Home, End and the pointer move `data-highlighted`; Enter or a click sends `change` with the option's value |
 | `<splitter>` | `kit_splitter` (done, F2) | `axis min max value invert`; `input`/`change`; cursor |
 | `<live-text>` | `kit_live_label` (done, F2) | `value`; glyphs update without layout |
 | `<line-chart>` | `kit_chart.c` | Series from a C registry, named like `kit:` textures |
@@ -199,14 +202,16 @@ stack and one drag session while the migration runs.
 - **Keys:** area keys stay in C (`studio_shortcuts`, editors' `*_key`); widget
   keys are the element's; modal content uses `nav`/`tabindex` and behaviors.
   Rename in place uses `<input autofocus data-value-lazy>`.
-- **Popovers:** `src/ui/popover.c` gives the HTML popover attribute's
-  behavior: content stays in its document, shows above all with
+- **Popovers (F3, done):** `src/ui/popover.c` gives the HTML popover
+  attribute's behavior: content stays in its document, shows above all with
   `position: fixed; clip: none`, anchors to its target or a point, closes on
   an outside press or Escape and returns focus. `role="menu"` adds highlight,
   typeahead and submenu delay; `<menubar>` switches menus on hover. Widgets:
   Menu, MenuItem, MenuGroup, MenuSeparator, Submenu, MenuCommand and
-  ChoiceList (palette, pickers, Add Component, editor types, debug target).
-  Closed popovers mount nothing.
+  ChoiceList (palette, pickers, Add Component, editor types, debug target),
+  with EnumField and AssetField over ChoiceList. A closed popover is
+  `display: none`, so nothing in it lays out or draws; its data views stay
+  bound.
 
 ### Live values in Play
 
@@ -527,8 +532,86 @@ table in `studio_ui.c`, `scenes/Studio.kdl`, `test_suite.c`, `sources.cmake`,
 |---|---|---|
 | F1 Contracts (done) | `emit` with arguments and event context; the panel-source table and `<panel>.<action>` router; `contextmenu`; RmlUi patches for a structural conditional (Vue's `v-if`) and for `input`/`change` on text inputs | Done: Settings builds its row controls with `data-when` and records through `settings.record`; binding tests (`rmlui_binding.c`, `ui_activations.c`) and the router check (`studio_documents_panels.c`) pass |
 | F2 Controls (done) | `<number-field>`, `<color-field>`, `<splitter>`, `<live-text>`, `number_expr.c`, kit wrappers; widgets NumberField, VectorField, ColorField, Checkbox, TextField, PropertyRow, Panel, Splitter | Native Properties runs on the wrapped elements with the kit tests green: F2 results |
-| F3 Popovers | `popover.c`, `<menubar>`, one popup stack; widgets Menu*, MenuCommand, ChoiceList, AssetField, EnumField; a `choices` source | The GraphView popover and one authored menu at parity |
+| F3 Popovers (done) | `popover.c`, `<menubar>`, one popup stack; widgets Menu*, MenuCommand, ChoiceList, AssetField, EnumField; a `choices` source | Done: the Behavior header's View menu and each area header's editor type menu are authored and at parity: F3 results |
 | F4 Lists and drag | `drag.c`, `ui_list_window`, kit wrappers; widgets List, TreeRow (drop zones), Tile | One drag crosses an authored list and a native one |
+
+#### F3: popovers (done)
+
+`src/ui/popover.c` is the HTML popover attribute for every context, the
+editor's and games'. `<button popovertarget="id">` toggles `<div popover
+id="id">`, looking the id up from the button outward, so a widget repeated
+by `data-for` finds its own (Submenu, EnumField and AssetField use a fixed
+inner id). One stack per context holds what is open, authored popovers,
+the kit's popups and `<color-field>`'s picker alike: showing one closes those
+above the one it opened from (the popover holding it or its trigger), so a
+context's stack is a chain, and an outside press, Escape and an item's
+activation close the top first. Listeners on each context's root element,
+the parent of its documents, hear every event before any document does;
+`popovers_settle`, after each backend update, places what opened, opens a
+submenu after its delay and ends fades.
+
+- **Above every area:** the owning document of an open popover takes
+  `z-index: 9` until nothing in it is open, above the areas (whose
+  documents leave it auto, which RmlUi raises on focus) and below the kit's
+  layer (10). The content keeps its document, so its data bindings work, and
+  it is placed against the window (the context's root box), not its area.
+  Blender draws menus in a window-level region after every area, and
+  Unreal's `FMenuStack` puts each menu in a window of its own above its
+  parent; raising the document gets the same result without moving the
+  content or rebinding it (the teleport the Risks named).
+- **Behavior:** placement below the anchor (flipped above), beside a
+  submenu's row (flipped left, 4 dp up) or at a point, 2 dp from the anchor
+  and 4 dp inside the window, to a tenth of a pixel as the kit placed its
+  popups; `--anchor-width` for a list as wide as its field. `role="menu"`:
+  Base UI's highlight (`data-highlighted`, the pointer or Up, Down, Home,
+  End), typeahead within 0.5 s, Enter or Space clicks, a submenu after a
+  100 ms hover or Right, Left closes it, Tab closes the menus; a `menuitem`
+  or `option` click closes its popover and the menus it opened from, a
+  checkbox or radio item stays open. Other popovers are Base UI's nonmodal
+  Popover: focus to the first tabbable control, Tab within, past the ends
+  closes, focus moving outside closes. `<menubar>` (or `role="menubar"`):
+  hovering another trigger switches menus, Left and Right step. A text
+  field keeps its keys; a `role="combobox"` field keeps all of them.
+- **The kit:** `kit_popup.c` emits its popups and shows them with
+  `popover_show` (role `menu`, `listbox` for dropdowns and autocompletes,
+  else `dialog`); what popover.c closes closes in the kit at the end of the
+  frame, so an activated item still reports. It lost its placement, outside
+  press, Escape, Tab, focus model, menu keys, typeahead, submenu timer and
+  menubar (1,219 to 946 lines); a dropdown's search keeps its highlight.
+  `<color-field>`'s picker lost its placement and outside press (731 to 626
+  lines). `kit_has_popup`, `kit_wants_keyboard` and `kit_wants_pointer` see
+  authored popovers too.
+- **Widgets** (projects/studio): Menu, MenuItem (`data-alias-item`: icon,
+  label, shortcut, checked, disabled; `data-current`; a chevron with
+  `aria-haspopup`), MenuCommand (`data-alias-command="commands.<id>"`; the
+  `commands` source gained `id` and `checkable`), MenuGroup, MenuSeparator,
+  Submenu, MenuCheck and MenuOption (`menuitemcheckbox` and `menuitemradio`),
+  ChoiceList over the native `<choice-list>`, EnumField and AssetField
+  (`data-alias-table`, `data-alias-value`, `change` with `ev.value`). An
+  alias named as a global variable reads the global, so widgets alias
+  `table` and `value`, never `choices`. The widget gallery shows them.
+- **`choices`:** every reflected enum or named choice field's values
+  (`component_properties.h`), each asset kind's assets, refreshed when they
+  change, and the editor types and Studio panels.
+- **Parity:** each AreaHeader's editor type menu is a Menu over
+  `choices.editors` (`emit('editor.type', area.index, type)` and
+  `editor.panel`), and GraphView is the View button and its Menu, mounted
+  per area (`studio_ui_area_controls`); their kit code and the MenuKeys
+  behavior are gone. Web shots before and after, dark and light, compact
+  and comfortable, the View menu and the editor type menu (and its Studio
+  UI submenu) open: all nine identical pixel for pixel at 1600×1000. Both
+  menus draw over the neighbouring area, as the kit's did from its layer.
+- **Tests:** `--ui-popovers` (a menu over another area whichever has
+  focus, Escape and focus, an outside press, typeahead, the submenu's
+  delay, Left and Right, Enter, a checkbox item, the menubar, a popover's
+  focus and Tab, a color picker escaping a short area, EnumField and
+  ChoiceList filtering and keys, `choices.fields` listing every value, the
+  widgets checking clean); `--kit-documents` (an authored popover a kit
+  menu holds: Escape closes it, then the menu; an outside press both);
+  `--studio-documents` (the editor type menu draws over the next area and
+  shows the chosen editor; the View menu toggles and stays open). The kit's
+  menu, dropdown, autocomplete and popover checks in `--rmlui-kit` pass
+  unchanged.
 
 #### F5: one document per area (done)
 
@@ -626,9 +709,9 @@ needs; shrink `kit.h`; update DESIGN decision 5, `studio-ui-authoring.md` and
   index when a list reorders.
 - Popovers rely on `clip: none` and stacking; S0 found both work while no
   area forms a stacking context (`z-index`, `transform`, `filter`). Since F5
-  each area is a document, which is one: a popover in it is above the other
-  areas only while its document is in front, as it is once it takes focus.
-  Fallback: a teleport into the layer that rebinds the data model.
+  each area is a document, which is one; F3 raises the document holding an
+  open popover above the other areas, so a `transform` or `filter` inside
+  an area still clips or buries a popover under it.
 - The web build costs 1.3-1.7× more per view (S0); the guest Studio doubles UI cost.
 - Hot-reloading a panel mid-gesture drops the gesture.
 - The shared `entities`/`self` variable dirties every panel, so editor data

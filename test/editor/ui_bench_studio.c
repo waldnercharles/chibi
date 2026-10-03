@@ -853,6 +853,69 @@ static void outliner_scroll(studio_bench *b)
     phase_row("its phases", phases);
 }
 
+/* ---------- 13: the Scene's overlays while its camera moves ---------- */
+
+#define PAN_STEP 8.0f   /* world units a run pans, back and forth */
+#define ZOOM_STEP 1.15f /* about a wheel notch */
+
+/* Moves the Scene's camera as a held drag or a wheel notch does, `pan`
+   across or by `zoom`, and times the UI frame that follows. */
+static double scene_step(studio_bench *b, float pan, float zoom, double *phases)
+{
+    engine_viewport_view view;
+    engine_viewport_get_view(b->viewport, &view);
+    view.center_x += pan;
+    view.width *= zoom;
+    view.height *= zoom;
+    engine_viewport_set_view(b->viewport, &view);
+    cf_app_update(NULL);
+    double t = native_ui(b->studio, phases);
+    cf_app_draw_onto_screen(true);
+    return t;
+}
+
+/* Layouts of every document, data views and elements in the Scene's. */
+static void scene_case(studio_bench *b, float pan, float zoom, const char *name)
+{
+    studio *s = b->studio;
+    rml_element *viewport = studio_query(s, ".viewport");
+    assert(viewport);
+    rml_element *document = rml_element_owner_document(viewport);
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        bool back = run & 1;
+        bench_counts before = studio_mark(s);
+        double t = scene_step(b, back ? -pan : pan, back ? 1 / zoom : zoom, phase);
+        counts = studio_counts(s, before);
+        counts.elements = rml_element_query_selector_all(document, "*", NULL, 0);
+        if (run >= 0) {
+            ms[run] = t;
+            for (int p = 0; p < PHASE_COUNT; p++) {
+                phases[p][run] = phase[p];
+            }
+        }
+    }
+    char row[160];
+    snprintf(row, sizeof row, "%s, %d camera labels", name, studio_count(s, ".viewport .camera-label"));
+    bench_row("13", row, bench_stat_of(ms, RUNS), counts);
+    phase_row("its phases", phases);
+}
+
+/* A pan moves each camera frame's label; a zoom also rolls the zoom
+   readout. Both should repaint without laying out the Scene's document. */
+static void scene_overlays(studio_bench *b)
+{
+    studio *s = b->studio;
+    studio_show_editor(s, STUDIO_EDITOR_SCENE);
+    s->prefs.scene_cameras = true;
+    frames(b, 6);
+    probe_documents(s);
+    scene_case(b, PAN_STEP, 1, "Scene camera panned");
+    scene_case(b, 0, ZOOM_STEP, "Scene camera zoomed a notch");
+    frames(b, 2);
+}
+
 /* ---------- 7: popovers and area clipping ---------- */
 
 #define POP_SIZE 200
@@ -1096,6 +1159,14 @@ int ui_bench_studio(const char *program, bool members_only)
     probe_documents(b.studio);
     bench_header("Studio on the Sandbox at 1440x900, native");
     printf("|  | pixel scale %.1f | | | | | | |\n", cf_app_get_pixel_scale());
+    /* UI_BENCH_SCENE runs case 13 alone. */
+    if (getenv("UI_BENCH_SCENE")) {
+        scene_overlays(&b);
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
     /* UI_BENCH_ASSETS runs case 10 alone. */
     bool assets_only = getenv("UI_BENCH_ASSETS") != NULL;
     if (!members_only && !assets_only) {
@@ -1105,6 +1176,7 @@ int ui_bench_studio(const char *program, bool members_only)
         area_text_change(&b);
         properties(&b);
         output_log(&b);
+        scene_overlays(&b);
     }
     if (!assets_only) {
         members(&b);

@@ -8,8 +8,9 @@
  * spacer's box-sizing is border-box). Rows have one fixed height. The
  * window keeps its length while the list scrolls, so a data-for over it
  * reuses its elements and only their values change. A following list (a
- * log) stays at the bottom as rows arrive while it was within 4 dp of it;
- * reveal scrolls the least that brings a row into view.
+ * log) stays at the bottom, the scroller's padding below the last row, as
+ * rows arrive while it was within 4 dp of it; reveal scrolls the least that
+ * brings a row into view.
  *
  * projects/studio's List widget is such a scroller; the kit's kit_list is
  * one too. */

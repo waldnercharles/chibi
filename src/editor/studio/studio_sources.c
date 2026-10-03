@@ -2304,6 +2304,9 @@ const studio_panel_source studio_panel_sources[] = {
     { "choices", NULL, add_choices, sync_choices, NULL },
     /* Lists and drag (workstream F4). */
     { "gallery", "Widgets", studio_gallery_add, studio_gallery_sync, studio_gallery_action },
+    /* Output (workstream P4). */
+    { "output", "Output", studio_output_add, studio_output_sync, studio_output_action },
+    { "output_rows", "Output", studio_output_rows_add, studio_output_rows_sync, NULL },
     /* Members (workstream P5). */
     { "members", "Members", studio_members_add, studio_members_sync, studio_members_action },
     { "members_ui", "Members", studio_members_ui_add, studio_members_ui_sync, NULL },

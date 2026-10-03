@@ -10,7 +10,7 @@ Every key Studio takes, by the area it acts in. **Mod** is Command on a Mac (the
 - **Popups, Search and modal dialogs** own every key while open; Escape closes them.
 - **While playing**, a click in the Scene gives the game the keyboard. Studio keeps chords with Mod and the function keys (Stop, playback speed, the debugger), which games do not bind. Hold Alt to navigate the Scene camera while playing.
 - **Web build**: the page lets Studio take Command chords even while a field has focus (the browser would otherwise save, print, zoom or bookmark); Mod+V still pastes through the browser, into the focused field, or else into Studio's Paste (objects or nodes), so text copied in another tab or session reaches both. Option chords dispatch as their letter (⌥G, not ©).
-- Held keys repeat only Undo, Redo, UI Scale, playback speed, Up and Down (with Shift too) in the Outliner, and the debugger's steps.
+- Held keys repeat only Undo, Redo, UI Scale, playback speed, Up and Down (with Shift too) in the Outliner, the arrows in Output's Calls tree, and the debugger's steps.
 
 ## Global
 
@@ -144,6 +144,18 @@ Ctrl+Space completes here; Maximize Area does not reach a focused editor.
 | F2 | Rename the asset under the pointer | `studio_assets.c` |
 | X, Backspace, Delete | Delete it | `studio_assets.c` |
 | Drag onto a field, an Outliner row or a Scene object | Assign the asset to the field of its kind (Release assigns, Escape cancels) | `studio_drop.c` |
+
+## Output
+
+The Calls view's tree (`studio_calls.c`), with the pointer over Output, focus inside it or not, as VS Code's call hierarchy and WAI-ARIA's tree view take them. A click selects a row and its twisty folds it; a double click opens its call, send or Event node. Other views open a row with a click.
+
+| Key | Action | Source |
+| --- | --- | --- |
+| Up, Down | Select the previous, next call | `studio_calls.c` |
+| Home, End | Select the first, last call | `studio_calls.c` |
+| Right | Unfold the selected call, or select its first callee or caller | `studio_calls.c` |
+| Left | Fold the selected call, or select its parent | `studio_calls.c` |
+| Enter | Open the selected call | `studio_calls.c` |
 
 ## UI Hierarchy and Canvas
 

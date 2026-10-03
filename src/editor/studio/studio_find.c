@@ -1,7 +1,7 @@
 /* Find References (Unreal): every node and object across the project that
  * uses a function, variable, event, component or asset, from the reference
- * index, listed in Output's Find view. A row opens its asset and reveals its
- * node. */
+ * index, listed in Output's Find view (studio_output.c). A row opens its
+ * asset and reveals its node. */
 #include "editor/studio/studio_graph_internal.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
@@ -269,46 +269,13 @@ void studio_open_reference(studio *s, const studio_reference *row)
     }
 }
 
-void studio_find_view(studio *s, float row_height)
+int *studio_find_rows(const studio *s)
 {
-    kit *k = s->kit;
     int *shown = NULL;
     for (int i = 0; i < acount(s->references); i++) {
         if (matches(&s->references[i], s->output_filter)) {
             apush(shown, i);
         }
     }
-    if (s->references_title[0]) {
-        char count[16];
-        snprintf(count, sizeof count, "%d", acount(s->references));
-        kit_push(k, "head", NULL, "find-head");
-        kit_icon(k, "icon", NULL, KIT_ICON_REFERENCES);
-        kit_label(k, "title", "find-title", s->references_title);
-        kit_label(k, "count", "find-count", count);
-        kit_pop(k);
-    }
-    kit_list_desc list = { .count = acount(shown),
-                           .row_height = row_height,
-                           .reveal = -1 };
-    int first, last;
-    kit_list_begin(k, "references", "output-list find-list", &list, &first, &last);
-    for (int r = first; r <= last && r < acount(shown); r++) {
-        const studio_reference *ref = &s->references[shown[r]];
-        char key[16], label[320];
-        snprintf(key, sizeof key, "f%d", shown[r]);
-        snprintf(label, sizeof label, ref->place[0] ? "%s \xe2\x80\xba %s" : "%s", ref->asset, ref->place);
-        kit_row_desc d = { .label = label,
-                           .icon = studio_asset_kind_icon(ref->kind),
-                           .twisty = -1,
-                           .meta = ref->use };
-        if (kit_row_begin(k, key, &d) & KIT_ROW_CLICK) {
-            studio_open_reference(s, ref);
-        }
-        kit_row_end(k);
-    }
-    kit_list_end(k);
-    if (!acount(shown)) {
-        kit_label(k, "empty", "output-empty", acount(s->references) ? "No matches" : "No references");
-    }
-    afree(shown);
+    return shown;
 }

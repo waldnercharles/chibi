@@ -51,8 +51,10 @@ function(chibi_rmlui_dependencies)
     # As in browsers, input and change events' propagation can be stopped, so
     # a native control keeps its inner fields' events to itself
     # (src/ui/controls).
+    # A font-size or line-height set by var() follows its variable, as other
+    # properties do, so a density change re-lays out line-height: var(--h).
     set(patches "")
-    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when event-propagation)
+    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when event-propagation variable-line-height)
         list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-${name}.patch")
     endforeach()
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})

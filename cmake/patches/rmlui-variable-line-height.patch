@@ -1,0 +1,29 @@
+diff --git a/Source/Core/ElementStyle.cpp b/Source/Core/ElementStyle.cpp
+--- a/Source/Core/ElementStyle.cpp
++++ b/Source/Core/ElementStyle.cpp
+@@ -924,6 +924,25 @@
+ 	SmallUnorderedSet<String> variable_dependencies;
+ 	bool dirty_em_properties = false;
+ 
++	// Font-size and line-height are computed before the other properties, so one that uses a dirtied variable must be
++	// dirtied here: the loop below dirties the others as it meets them, too late for these two.
++	if (!dirty_variables.empty())
++	{
++		for (PropertyId id : {PropertyId::FontSize, PropertyId::LineHeight})
++		{
++			const Property* property = GetLocalProperty(id);
++			if (!property || dirty_properties.Contains(id))
++				continue;
++			variable_dependencies.clear();
++			ResolveVariables(id, property, variable_dependencies, property_storage);
++			for (const String& variable_name : variable_dependencies)
++			{
++				if (dirty_variables.count(variable_name) != 0)
++					dirty_properties.Insert(id);
++			}
++		}
++	}
++
+ 	// Always do font-size first if dirty, because of em-relative values
+ 	if (dirty_properties.Contains(PropertyId::FontSize))
+ 	{

@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 static int finish(node *, struct flow_context *)
 {
@@ -42,6 +43,31 @@ static void fire(behavior_instance *instance)
     flow_run *run = behavior_instance_dispatch(instance, "Input", (flow_inputs){ 0 }, &error);
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
     assert(behavior_instance_release_activation(instance, run) == 0);
+}
+
+/* The log keeps the newest ED_LOG_MAX lines; each keeps its serial and the
+   label it printed with, and clearing keeps counting. */
+static void log_ring()
+{
+    editor *e = editor_new(behavior_asset_new("Log"));
+    char text[32];
+    for (int i = 0; i < ED_LOG_MAX + 6; i++) {
+        snprintf(text, sizeof text, "line %d", i);
+        editor_log_print(e, i % 2 ? "Odd" : "Even", text);
+    }
+    editor_log_line first = editor_log_at(e, 0);
+    editor_log_line last = editor_log_at(e, ED_LOG_MAX - 1);
+    snprintf(text, sizeof text, "line %d", ED_LOG_MAX + 5);
+    assert(
+        editor_log_count(e) == ED_LOG_MAX && first.serial == 6 &&
+        !strcmp(first.message, "line 6") && !strcmp(first.origin, "Even") &&
+        last.serial == ED_LOG_MAX + 5 && !strcmp(last.message, text) &&
+        !strcmp(last.origin, "Odd")
+    );
+    editor_clear_log(e);
+    editor_log_print(e, "Again", "after");
+    assert(editor_log_count(e) == 1 && editor_log_at(e, 0).serial == ED_LOG_MAX + 6);
+    editor_free(e);
 }
 
 /* Pulses follow the inspected instance's wires on the editor's clock: whole
@@ -164,5 +190,6 @@ void test_editor_flow()
     editor_set_inspection_instance(editor, NULL);
     behavior_instance_destroy(instance);
     editor_free(editor);
-    puts("editor flow PASS: pulses hold while wires fire and ease out after; node runs; retained values; untraced instances record nothing");
+    log_ring();
+    puts("editor flow PASS: pulses hold while wires fire and ease out after; node runs; retained values; untraced instances record nothing; the log keeps its newest lines");
 }

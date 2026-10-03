@@ -744,6 +744,36 @@ static void output_log(studio_bench *b)
 
 /* ---------- 15: dragging a splitter (workstream C3) ---------- */
 
+/* One UI frame of the chrome at rest, or after a selection change, which
+   the top bar's play target and the menus' commands follow. */
+static void chrome_step(studio_bench *b, bool select, const char *name)
+{
+    studio *s = b->studio;
+    app_scene_authoring *scene = b->scene;
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        if (select) {
+            select_instance(scene, run & 1 ? 0 : acount(scene->actors) - 1);
+        }
+        cf_app_update(NULL);
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        counts = studio_counts(s, before);
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    bench_row("15", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
 /* The splitter between the top and bottom areas: the kit's in the shell
    document, or the Workspace's. */
 static rml_element *main_splitter(studio *s)
@@ -815,6 +845,8 @@ static void splitter_drag(studio_bench *b)
         counts
     );
     phase_row("phases", phases);
+    chrome_step(b, false, "the chrome: a UI frame with nothing changed");
+    chrome_step(b, true, "the chrome: select another object");
 }
 
 /* ---------- 12: the Outliner over ten thousand objects ---------- */

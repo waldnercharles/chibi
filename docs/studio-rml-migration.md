@@ -916,7 +916,7 @@ eye and lock; and Unity's focusable list for the keyboard.
   |---|---:|---:|---:|---|---:|---:|
   | Scroll step of 3 rows, 22 rows shown | 6.30 / 8.29 / 7.93 | 7.47 / 6.57 / 6.87 | 0.93× | 3 → 0 | 606 | 3 |
   | Select another object in view | 7.61 / 9.54 / 9.46 | 9.08 / 7.93 / 8.70 | 0.97× | | 625 | 9 |
-  | A text change in the Outliner (case 8) | 2.27 / 2.13 / 1.77 | 1.54 / 2.16 / 2.13 | 0.94× | | | 1 |
+  | A text change in the Outliner (case 13) | 2.27 / 2.13 / 1.77 | 1.54 / 2.16 / 2.13 | 0.94× | | | 1 |
 
   A scroll step or a selection reads the window's row views (about 23 a
   row) and the root's; a selection also reads the chrome's (`editor`,
@@ -1070,7 +1070,7 @@ the new name both ways, as view state; the row menu opens at the press
   its sources' data plumbing, so `studio_assets.c` grew from 959 to 1,516
   lines; the kit lost 87 lines.
 
-`UI_BENCH_ASSETS=1 ./build-release/test_suite --ui-bench studio` (case 10:
+`UI_BENCH_ASSETS=1 ./build-release/test_suite --ui-bench studio` (case 14:
 Assets maximized at 1440×900, pixel scale 2, over the Sandbox's 101 assets
 and 480 more inserted into the index), the kit build (`80bd2538` with the
 same case) and this one alternated process by process, three pairs,

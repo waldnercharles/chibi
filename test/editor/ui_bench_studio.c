@@ -252,7 +252,7 @@ static void full_layout(studio_bench *b, bool comfortable)
     bench_row("1", name, bench_stat_of(ms, RUNS), counts);
 }
 
-/* ---------- 8: a text change inside one area ---------- */
+/* ---------- 13: a text change inside one area ---------- */
 
 /* Rewrites one Outliner row's name, as a rename does, and updates: RmlUi
  * lays out the document that holds the row. Counts the documents laid out
@@ -284,7 +284,13 @@ static void area_text_change(studio_bench *b)
     }
     rml_element_set_inner_rml(name, text);
     frames(b, 2);
-    bench_row("8", "a text change in the Outliner: documents laid out, elements in its document", bench_stat_of(ms, RUNS), counts);
+    bench_row(
+        "13",
+        "a text change in the Outliner: documents laid out, elements in its "
+        "document",
+        bench_stat_of(ms, RUNS),
+        counts
+    );
 }
 
 /* ---------- 5: Properties, native and authored ---------- */
@@ -504,7 +510,7 @@ static void properties(studio_bench *b)
     bench_spike_free(c.spike);
 }
 
-/* ---------- 10: Assets over 500 assets ---------- */
+/* ---------- 14: Assets over 500 assets ---------- */
 
 #define ASSETS_ADDED 480
 /* Where the scroll cases scroll from, in lines or rows, past the overscan
@@ -594,7 +600,7 @@ static void assets_case(studio_bench *b, assets_step step, const char *name)
             phases[p][run] = phase[p];
         }
     }
-    bench_row("10", name, bench_stat_of(ms, RUNS), counts);
+    bench_row("14", name, bench_stat_of(ms, RUNS), counts);
     phase_row("phases", phases);
 }
 
@@ -1113,7 +1119,7 @@ int ui_bench_studio(const char *program, bool members_only)
     probe_documents(b.studio);
     bench_header("Studio on the Sandbox at 1440x900, native");
     printf("|  | pixel scale %.1f | | | | | | |\n", cf_app_get_pixel_scale());
-    /* UI_BENCH_ASSETS runs case 10 alone. */
+    /* UI_BENCH_ASSETS runs case 14 alone. */
     bool assets_only = getenv("UI_BENCH_ASSETS") != NULL;
     if (!members_only && !assets_only) {
         full_layout(&b, false);

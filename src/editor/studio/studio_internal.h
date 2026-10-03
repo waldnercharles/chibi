@@ -519,6 +519,7 @@ typedef struct
     char names[STUDIO_VALUE_NAMES][64];
     bool renaming; /* the name of rename_graph is being edited */
     uint64_t rename_graph;
+    uint64_t menus_key; /* what graph_menus last showed (studio_graph_header.c) */
     int forms;          /* node settings the layouts follow */
     bool spawn_pending; /* the add-node palette spawns at spawn_x, spawn_y */
     float spawn_x, spawn_y;

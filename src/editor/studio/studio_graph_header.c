@@ -423,11 +423,34 @@ static bool show_graph_items(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *m)
     return put_named(doc, m, items, sizeof items / sizeof *items) || changed;
 }
 
+/* What the menus show follows the asset index, the behavior's edits, the
+   open graph and whether the asset takes edits; a host's model is its own. */
+static uint64_t menus_key(const studio *s, const studio_panel_sync *at)
+{
+    const editor *e = sg_graph_editor(s);
+    const uint64_t parts[] = { s->scene->asset_index_generation,
+                               editor_edit_revision(e),
+                               sg_active_graph(s)->graph_id,
+                               (uintptr_t)e->asset,
+                               (uintptr_t)at->doc,
+                               behavior_asset_mutable(e->asset) };
+    uint64_t key = 1469598103934665603ull;
+    for (size_t i = 0; i < sizeof parts / sizeof *parts; i++) {
+        key = (key ^ parts[i]) * 1099511628211ull;
+    }
+    return key;
+}
+
 bool studio_graph_menus_sync(studio *s, const studio_panel_sync *at)
 {
     if (!studio_graph_active(s)) {
         return false;
     }
+    uint64_t key = menus_key(s, at);
+    if (key == s->graph.menus_key) {
+        return false;
+    }
+    s->graph.menus_key = key;
     bool changed = show_assets(s, at->doc, at->variable);
     changed |= show_graphs(s, at->doc, yyjson_mut_obj_get(at->variable, "graphs"));
     return show_graph_items(s, at->doc, at->variable) || changed;

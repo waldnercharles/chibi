@@ -37,15 +37,22 @@ static studio_fixture members_open()
     return f;
 }
 
-/* Members' row (a TreeRow's use) whose name is `name`. */
+/* Members' shown row whose name is `name`. */
 static rml_element *member_row(studio *s, const char *name)
 {
     rml_element *rows[128];
-    int count = test_query_all(rml_backend_context(s->backend), "#members-list [data-ui=TreeRow]", rows, 128);
+    int count = test_query_all(
+        rml_backend_context(s->backend),
+        "#members-list .member-row > .tree-row",
+        rows,
+        128
+    );
     for (int i = 0; i < count && i < 128; i++) {
         rml_element *label = rml_element_query_selector(rows[i], ".name");
         char text[128] = "";
-        rml_element_inner_rml(label, text, sizeof text);
+        if (label) {
+            rml_element_inner_rml(label, text, sizeof text);
+        }
         if (!strcmp(text, name) && rml_element_is_visible(rows[i], true)) {
             return rows[i];
         }
@@ -157,7 +164,8 @@ static void rows_and_selection()
     behavior_variable *v = sm_variable(s);
     rml_element *selected = member_row(s, "Speed");
     bool picked = v && !strcmp(v->name, "Speed") && selected &&
-                  rml_element_query_selector(selected, ".tree-row[data-selected][data-active]");
+                  rml_element_has_attribute(selected, "data-selected") &&
+                  rml_element_has_attribute(selected, "data-active");
     press(s, member_row(s, "Variables"));
     frames(&f, 2);
     bool folded = !member_row(s, "Speed") && member_row(s, "Variables");
@@ -191,7 +199,7 @@ static void rows_and_selection()
     test_check(
         sections && look,
         "Members shows each section's count and add button, and each "
-        "variable's type, swatch and use count, as authored TreeRows"
+        "variable's type, swatch and use count, as authored rows"
     );
     test_check(
         picked && folded && unfolded,
@@ -395,7 +403,7 @@ static void reveal_and_filter()
         height = rml_element_client_height(list);
         shown = middle >= view && middle <= view + height;
     }
-    bool selected = row && rml_element_query_selector(row, ".tree-row[data-selected]");
+    bool selected = row && rml_element_has_attribute(row, "data-selected");
     rml_element *filter = studio_element(s, "#members-filter");
     if (filter) {
         press(s, filter);

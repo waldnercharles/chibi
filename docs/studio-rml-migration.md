@@ -270,7 +270,7 @@ natively and 1.3-1.7× that on web, provisionally):
 | Outliner (10k objects, 60-row window) | Measured: 362 per scroll step | Scroll, selection | Low (0.69 ms native, 0.91 ms web per step) |
 | Assets (8×8 tiles) | ~400 | Scroll, thumbnails ready | Low |
 | Output following a log | Measured: 40 markup parses per batch | Logging | Medium (1.3 ms native, 1.9 ms web; 6× plain text) |
-| Members (<300 rows) | Measured: 768 per change over a 28-row window | Selection, scroll, filter | Medium: 1.2-1.3× native on selection and scroll (P5 results) |
+| Members (<300 rows) | Measured: 284 per selection, 815 per scroll step or filter over a 28-row window | Selection, scroll, filter | Low; a scroll step 1.2× native until `data-for` is keyed (P5 results) |
 | Shell and headers | ~400 | Command state | Low |
 | Palette (50-item window) | ~300 | Each keystroke | Low |
 | Graph node bodies (300 nodes) | 5-10k+ | Node drags each frame, chips at 10 Hz | High: postponed |
@@ -765,10 +765,16 @@ popups above areas, focus across documents, inspection and lifetime;
 
 #### P5: Members (done)
 
-`Members.rml` is a List of TreeRows that the `members` source
+`Members.rml` is a List whose rows the `members` source
 (`studio_members.c`) windows with `ui_list_window`, and `MembersHeader.rml`
 is the header's filter (`members.filter`), mounted in the AreaHeader's
-controls as GraphView is. Rows keep the kit's anatomy, so web shots before
+controls as GraphView is. What changes as the user selects and names
+lives apart, in `members_ui` (the selected member's, the open graph's and
+the named member's row keys, and the selected member's menu): rows bind
+it by key (`row.key == members_ui.selected`), so a selection re-evaluates
+those views and not every row's. The rows are TreeRow's anatomy written
+out, since TreeRow reads its selection from its item. Rows keep the kit's
+anatomy, so web shots before
 (`db679e48`) and after match pixel for pixel in dark and light, compact
 and comfortable: rows with a selection and a folded section, the name
 field and a filter. The kit's rows, list, menu, search and text field
@@ -804,22 +810,24 @@ What it needed beyond the panel, each usable elsewhere:
 variables in 12 categories, Members 372×458 dp, a 28-row window, the
 Sandbox at 1440×900, pixel scale 2), the binary before (`db679e48`, with
 `CHIBI_RESOURCE_DIR` over that commit's resources) and after alternated
-three times, 1-minute load 16-22; ms, the mean of the runs' medians:
+three times, 1-minute load 45-57 (the machine was busy, so counts and
+ratios matter more than ms); ms, the mean of the runs' medians:
 
 | Case | Native | Authored | Ratio | UI time (sync + emit + update) | Views evaluated | Layouts |
 |---|---:|---:|---:|---|---:|---:|
-| A UI frame with nothing changed | 1.05 | 1.02 | 0.97× | 0.82 / 0.77 | 0 | 0 |
-| Select another variable | 2.98 | 3.66 | 1.23× | 1.92 / 2.43 (1.27×) | 768 | 2 |
-| Scroll 3 rows | 3.87 | 5.01 | 1.30× | 2.78 / 3.39 (1.22×) | 763 | 2 |
-| Filter by a keystroke | 5.93 | 5.03 | 0.85× | 3.35 / 3.38 (1.01×) | 763 | 2 |
+| A UI frame with nothing changed | 1.01 | 1.06 | 1.05× | 0.77 / 0.81 (1.06×) | 0 | 0 |
+| Select another variable | 3.19 | 3.26 | 1.02× | 2.00 / 2.14 (1.07×) | 284 | 2 |
+| Scroll 3 rows | 4.06 | 4.94 | 1.22× | 2.90 / 3.28 (1.13×) | 815 | 2 |
+| Filter by a keystroke | 5.92 | 5.17 | 0.87× | 3.37 / 3.35 (0.99×) | 815 | 2 |
 
-The source's sync costs 0.05 ms over the native's at every refresh. A
-dirty `members` re-evaluates all 27 views of each window row, so a
-selection change costs what a filter does; and as `data-for` matches by
-index, a scroll rewrites every row's texts where the kit kept each
-member's row. Both exceed the +10% gate under this load; a re-measure on
-an idle machine decides whether to key `data-for` by row (an RmlUi
-patch) or keep the selection in a variable of its own. Checks:
+Before `members_ui`, a select evaluated 768 views (every view of every
+window row, as a filter does) and cost 1.23× native (load 16-22). The
+source's sync costs about 0.05 ms over the native's at every refresh.
+**Follow-up, shared:** a scroll step still rewrites every window row,
+because `data-for` matches items by index where the kit kept each
+member's elements by key; a keyed `data-for` (Vue's `:key`, an RmlUi
+patch) would let the Outliner, Assets and Members lists move rows instead
+of rewriting them. Checks:
 `--studio-members` (also in `--studio-documents`): sections, swatch and
 use counts, selection, folding, a use count's press, F2 and double-click
 rename with Enter, Escape and one Undo step, the add buttons, the context

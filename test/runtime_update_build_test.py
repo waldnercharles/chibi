@@ -56,7 +56,7 @@ if command == 'python3' and args[0] == 'tools/package_native.py' and os.environ.
             (self.root / '.chibi/game-runtime.json').write_text('{}\n')
         env = os.environ.copy()
         for key in ('MAKEFLAGS', 'MFLAGS', 'MAKEOVERRIDES', 'UPDATE_GAME_RUNTIME',
-                    'FAIL_EDITOR', 'FAIL_PACKAGE'):
+                    'FAIL_EDITOR', 'FAIL_PACKAGE', 'CHIBI_WORKSPACE_LOCK_FD'):
             env.pop(key, None)
         env.update(flags)
         env['PATH'] = str(self.bin) + os.pathsep + env['PATH']

@@ -1,23 +1,16 @@
-Summary: Share immutable compiled third-party dependencies across c-blueprints worktrees, reduce build/test output, and migrate relevant checkouts without losing local edits.
+Summary: Add a shared workspace allocator for Codex and Claude, with deterministic retirement of verified generated build files.
 
-Context: Dependency sources already use shared pristine snapshots and APFS clones. Most compiled dependencies still build in each checkout. Ordinary builds also trigger runtime packaging. Existing worktrees have divergent CMake definitions and some have staged or unstaged changes.
+Context: Shared dependency packages and quiet builds are already integrated. The desktop apps have independent worktree creation and lifecycle rules. Existing checkouts contain local changes, nested worktrees and external dependency references, so they cannot safely enter an automatic cleanup pool by directory name alone.
 
-System impact: Package identities determine reuse from dependency source and patch content plus compiler, SDK, architecture, flags and platform. Package publication is locked and atomic. Application generated state remains private. Full command logs stay on disk while routine terminal output is concise. Build failures retain nonzero exit codes and useful diagnostics.
+Design:
+- A local Python manager owns new task worktrees, a small pool of active tasks, unique branches, and session ownership. Task paths remain stable, including after completion; a different task never inherits an old chat's path.
+- Supported session/tool hooks enforce ownership. A launcher opens the allocated checkout as a local project. Native app worktree buttons retain their own behavior. Hook installation preserves existing settings and does not approve Codex hook trust.
+- One inherited OS lock covers a complete make invocation, including recursive builds, tests and runtimes. Configuration registers only new managed build directories.
+- Retirement keeps three recent workspace build sets and considers older sets after seven idle days. It verifies generated output hashes and identities, rejects active sessions/processes, and preserves unknown files, source, branches and shared caches. Existing builds are excluded.
+- A user LaunchAgent runs deterministic cleanup without model calls. Configuration and hook definitions are backed up before installation.
 
-Changes:
-- CMake dependency definitions and configure helpers: build or reuse shared native/web packages automatically.
-- Makefile and output helper: concise summaries, retained full logs, bounded diagnostics and verbose override; avoid redundant package profiles.
-- Infrastructure tests: package reuse, invalidation, publication/concurrency and output/failure behavior.
-- Global ccache: compare APFS cloning against compression before enabling.
-- Desktop settings: enable supported cleanup controls, retain current worktree locations.
-- Existing worktrees: inventory and snapshot local state, apply compatible focused changes, validate preservation.
+Implementation: tools/workspaces.py, tools/workspace_retirement.py, installer, Makefile/configure integration, focused process/Git/filesystem safety tests, and a user guide.
 
-Verification: Focused tests; native make build and make test; serial and worker make web; reuse from a second checkout; identity separation and concurrency; migration state checks.
+Validation: temporary Git repositories exercise capacity, branch/path stability, conflicting sessions, handoff/revocation, active locks, child inheritance, concurrent allocation, dry runs, changed or unknown artifacts, symlink and nested-worktree rejection. Test Make goal/variable/recursive propagation, installer merging and idempotency, and a real managed build followed by a retirement dry run. Install only after these checks pass.
 
-Validation completed: default native build, full native test suite and whole-function audit, both web builds and their combined package, development build/staging/headless bootstrap, cross-checkout package reuse, private fallback configuration, cache identity/publication tests, quiet-output retention tests, and packaging notice regression checks.
-
-Deployment: integrate the scoped commit into main while preserving unrelated local files. Existing branch migrations retain their original dependency declarations, HEADs and staging areas, with external backups and immediate drift checks. Custom external dependency edits keep private builds. A temporary checkout that disappeared during validation is excluded rather than recreated.
-
-Desktop outcome: Claude PR auto-archive is enabled. Codex retention could not be changed because the computer-control tool rejects access to Codex settings. Worktree locations remain as configured.
-
-Workspace pooling and automatic build retirement are assessments in this request. Claude can replace allocation using WorktreeCreate; Codex exposes post-creation setup. Safe retirement requires exact generated paths, activity/build leases and source-state preservation, not branch names alone.
+Delivery: integrate the scoped changes while preserving unrelated main-checkout edits. Install the shared launcher, merge hooks, and load the cleanup LaunchAgent. Document any app version or hook-trust step that cannot be completed through supported interfaces.

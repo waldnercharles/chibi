@@ -1,3 +1,30 @@
+# Managed workspaces hold one lock across configure, tests, and launched runtimes.
+# Recursive make inherits MAKEFLAGS, command-line variables, and the lock fd.
+override CHIBI_WORKSPACE_INNER := 0
+ifneq ($(wildcard .chibi-workspace.json),)
+ifeq ($(strip $(CHIBI_WORKSPACE_LOCK_FD)),)
+CHIBI_WORKSPACE_GOALS := $(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
+.DEFAULT_GOAL := all
+.PHONY: $(CHIBI_WORKSPACE_GOALS) .chibi-workspace-invocation
+$(CHIBI_WORKSPACE_GOALS): .chibi-workspace-invocation
+.chibi-workspace-invocation:
+ifneq ($(findstring q,$(firstword $(MAKEFLAGS))),)
+# Every delegated convenience goal is phony and therefore pending in query mode.
+	@:
+else
+	+@python3 tools/workspaces.py run -- $(MAKE) $(CHIBI_WORKSPACE_GOALS)
+endif
+else
+ifneq ($(shell python3 tools/workspaces.py validate-lock >/dev/null 2>&1 && printf valid),valid)
+$(error Invalid inherited workspace lock; run make without CHIBI_WORKSPACE_LOCK_FD)
+endif
+override CHIBI_WORKSPACE_INNER := 1
+endif
+else
+override CHIBI_WORKSPACE_INNER := 1
+endif
+
+ifeq ($(CHIBI_WORKSPACE_INNER),1)
 # Convenience wrapper around CMake. `make` configures and builds.
 BUILD_DIR ?= build
 DEBUG_BUILD_DIR ?= build-debug
@@ -230,6 +257,10 @@ test:
 	@$(QUIET) install_game_runtime_test.py -- python3 test/install_game_runtime_test.py
 	@$(QUIET) runtime_update_build_test.py -- python3 test/runtime_update_build_test.py
 	@$(QUIET) quiet_test.py -- python3 test/quiet_test.py
+	@$(QUIET) workspaces_test.py -- python3 test/workspaces_test.py
+	@$(QUIET) workspace_retirement_test.py -- python3 test/workspace_retirement_test.py
+	@$(QUIET) workspace_make_test.py -- python3 test/workspace_make_test.py
+	@$(QUIET) workspace_install_test.py -- python3 test/workspace_install_test.py
 	@$(QUIET) mcp-package-tests -- node --test test/mcp_package_test.mjs
 	@$(QUIET) web_serve_test.py -- python3 test/web_serve_test.py
 	@$(QUIET) web_workspace_test.mjs -- node test/web_workspace_test.mjs
@@ -281,3 +312,5 @@ dev:
 	@$(MAKE) update-game-runtime
 	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+
+endif # CHIBI_WORKSPACE_INNER

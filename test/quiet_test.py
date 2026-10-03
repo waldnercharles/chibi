@@ -21,6 +21,7 @@ class QuietOutput(unittest.TestCase):
 
     def run_phase(self, script, verbose=False):
         env = dict(os.environ, VERBOSE='1' if verbose else '0')
+        env.pop('CHIBI_WORKSPACE_LOCK_FD', None)
         return subprocess.run([sys.executable, str(ROOT / 'tools/quiet.py'),
                                '--log-dir', str(self.logs), 'fixture', '--',
                                sys.executable, '-c', script],

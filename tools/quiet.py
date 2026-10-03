@@ -68,6 +68,19 @@ def diagnostics(path):
     return ''.join(errors)[-FAILURE_BYTES // 2:] + ''.join(tail)[-FAILURE_BYTES // 2:]
 
 
+def child_fds():
+    if not os.environ.get('CHIBI_WORKSPACE_LOCK_FD'):
+        return ()
+    import workspaces
+    with workspaces.registry_lock() as registry:
+        entry = workspaces.workspace_for_path(registry, Path.cwd())
+        if entry is None:
+            raise ValueError('workspace lock supplied outside a managed workspace')
+        workspaces.validate_marker(entry)
+        fd = workspaces.inherited_lock(entry)
+    return workspaces.inherited_fds(fd)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--log-dir', default='.chibi/logs')
@@ -79,6 +92,10 @@ def main():
         command = command[1:]
     if not command:
         parser.error('a command is required')
+    try:
+        inherited = child_fds()
+    except (ValueError, OSError) as error:
+        parser.exit(2, f'quiet: {error}\n')
     directory = Path(args.log_dir)
     directory.mkdir(parents=True, exist_ok=True)
     phase = re.sub(r'[^a-zA-Z0-9_.-]', '-', args.phase)
@@ -93,14 +110,15 @@ def main():
         with path.open('wb') as log:
             if verbose:
                 child = subprocess.Popen(command, stdout=subprocess.PIPE,
-                                         stderr=subprocess.STDOUT)
+                                         stderr=subprocess.STDOUT, pass_fds=inherited)
                 for line in child.stdout:
                     log.write(line)
                     sys.stderr.buffer.write(line)
                     sys.stderr.buffer.flush()
                 result = child.wait()
             else:
-                result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT).returncode
+                result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT,
+                                        pass_fds=inherited).returncode
     except OSError as error:
         path.write_text(f'{error}\n')
         result = 127

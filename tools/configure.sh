@@ -18,6 +18,9 @@ configure()
 	fi
 }
 source_dir=$(pwd -P)
+if [ -f "$source_dir/.chibi-workspace.json" ]; then
+	python3 "$source_dir/tools/workspace_retirement.py" register "$build_dir"
+fi
 # Commits run the clang-format CI checks (.githooks/pre-commit).
 if [ -z "$(git -C "$source_dir" config --get core.hooksPath 2>/dev/null)" ]; then
 	git -C "$source_dir" config core.hooksPath .githooks 2>/dev/null || :

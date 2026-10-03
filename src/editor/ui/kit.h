@@ -154,9 +154,8 @@ extern "C"
 
     /* Last-item queries, valid until the next emitted item. */
     bool kit_item_clicked(kit *k);
-    bool kit_item_pressed(kit *k); /* the primary button went down on it */
-    bool kit_item_context_clicked(kit *k); /* right press; open a context menu */
-    bool kit_item_active(kit *k);          /* scrubbing, editing or held */
+    bool kit_item_pressed(kit *k);   /* the primary button went down on it */
+    bool kit_item_active(kit *k);    /* scrubbing, editing or held */
     bool kit_item_committed(kit *k); /* a gesture or edit finished this frame */
     kit_rect kit_item_rect(kit *k);  /* logical pixels, latest layout */
     bool kit_item_hovered(kit *k); /* under the pointer and not clipped away */
@@ -256,11 +255,6 @@ extern "C"
     /* Containers. */
     bool kit_panel_begin(kit *k, const char *key, const char *title, const char *badge, bool default_open);
     void kit_panel_end(kit *k);
-    /* After kit_panel_end: the panel's header shows a menu button while it is
-     * hovered, as Unity's component header and Blender's modifier panels offer
-     * their operations. True on the frame the button is pressed or the header
-     * right-pressed; open the panel's menu at the pointer. */
-    bool kit_panel_menu(kit *k);
     void kit_prop_begin(kit *k, const char *key, const char *label);
     void kit_prop_end(kit *k);
 

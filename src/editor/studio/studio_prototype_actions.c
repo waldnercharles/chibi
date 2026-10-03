@@ -16,7 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MENU "prototype-actions"
 #define APPLY "prototype-apply"
 #define SAVE "prototype-save"
 
@@ -61,22 +60,6 @@ void studio_prototype_action_open(studio *s, bool saving)
     a->error[0] = '\0';
     app_scene_authoring_refresh_asset_index(s->scene);
     default_name(s, actor, a->name, sizeof a->name);
-}
-
-void studio_prototype_actions_button(studio *s, scene_actor *actor)
-{
-    if (!actor->identity) {
-        return;
-    }
-    kit *k = s->kit;
-    kit_button_desc more = { .icon = KIT_ICON_MORE,
-                             .tip = "Prototype actions",
-                             .flags = studio_prototype_action_actor(s) == actor
-                                        ? 0
-                                        : KIT_DISABLED };
-    if (kit_button(k, "actions", &more)) {
-        kit_popup_open(k, MENU);
-    }
 }
 
 /* The Undo the last action's toast offers, while it is the step Undo
@@ -310,21 +293,9 @@ static void save_popover(studio *s)
     }
 }
 
-static void action_menu(studio *s)
-{
-    kit *k = s->kit;
-    if (!kit_popup_begin(k, MENU, "menu")) {
-        return;
-    }
-    studio_command_item(s, STUDIO_COMMAND_APPLY_OVERRIDES);
-    studio_command_item(s, STUDIO_COMMAND_SAVE_AS_PROTOTYPE);
-    kit_popup_end(k);
-}
-
 void studio_prototype_actions_frame(studio *s)
 {
     struct studio_prototype_action *a = &s->prototype_action;
-    action_menu(s);
     if (a->opening) {
         kit_popup_open_at(s->kit, a->saving ? SAVE : APPLY, s->in.mouse_x, s->in.mouse_y);
         a->opening = false;

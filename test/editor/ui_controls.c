@@ -460,11 +460,16 @@ static const char WIDGETS
 static const char WIDGET_DATA
     [] = "{\"transform\": {\"title\": \"Transform\", \"badge\": \"\", "
          "\"open\": true},"
-         "\"position\": {\"label\": \"Position\", \"about\": \"Where it is\", "
-         "\"overridden\": true, \"axes\": [{\"key\": \"x\", \"label\": \"X\", "
-         "\"value\": 1.5, \"precision\": 2}, {\"key\": \"y\", \"label\": "
-         "\"Y\", "
-         "\"value\": 2, \"precision\": 2}]},"
+         "\"position\": {\"id\": \"position\", \"label\": \"Position\", "
+         "\"tip\": \"Position\", \"about\": \"Where it is\", \"overridden\": "
+         "true, \"readonly\": false, \"float\": true, \"axes\": [{\"key\": "
+         "\"x\", \"label\": \"X\", \"value\": 1.5, \"precision\": 2, \"step\": "
+         "1, \"min\": \"-inf\", \"max\": \"inf\", \"unit\": \"\", "
+         "\"slider\": false, \"mixed\": false, \"overridden\": true}, "
+         "{\"key\": "
+         "\"y\", \"label\": \"Y\", \"value\": 2, \"precision\": 2, \"step\": "
+         "1, \"min\": \"-inf\", \"max\": \"inf\", \"unit\": \"\", "
+         "\"slider\": false, \"mixed\": false, \"overridden\": false}]},"
          "\"color\": \"#336699ff\", \"checked\": false, \"changes\": 0, "
          "\"named\": \"\"}";
 

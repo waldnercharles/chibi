@@ -1052,6 +1052,7 @@ void studio_free(studio *s)
     studio_assets_free(s);
     studio_thumbs_free(s);
     afree(s->gallery.bin);
+    afree(s->properties.folds);
     afree(s->keys);
     afree(s->game_input);
     studio_projects_free(s);

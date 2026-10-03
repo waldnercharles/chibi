@@ -112,7 +112,7 @@ typedef struct widget
     ui_list_state list; /* list: its window's scroll state (ui/list.h) */
     rml_element *body;  /* list content */
     rml_element *value_el, *input_el, *label_el, *icon_el, *meta_el, *twisty_el,
-        *kbd_el, *badge_el, *head_el, *about_el, *menu_el, *image_el;
+        *kbd_el, *badge_el, *head_el, *about_el, *image_el;
 } widget;
 
 /* Charts (kit_chart.c): what the chart element draws this frame. The chart

@@ -1,7 +1,7 @@
 /* The Studio cases of the S0 UI bench (ui_bench.h), native in a hidden
  * window: Studio's documents over the Sandbox at 1440x900, its
- * Properties showing the Player against the authored spike, and whether a
- * popover escapes an area's clipping. */
+ * Properties showing the Player (authored since P1) against the S0 spike,
+ * and whether a popover escapes an area's clipping. */
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/kit.h"
 #include "editor/workspace/input.h"
@@ -292,8 +292,11 @@ static void open_panels(studio_bench *b)
     rml_element *area = studio_query(b->studio, "[data-ui=Properties]");
     int count = rml_element_query_selector_all(area, "section.panel", panels, 64);
     for (int i = 0; i < count; i++) {
-        if (!rml_element_has_attribute(panels[i], "data-open")) {
-            rml_element_click(rml_element_query_selector(panels[i], ".panel-head"));
+        rml_element *fold = rml_element_query_selector(panels[i], ".panel-fold");
+        /* data-for keeps its template hidden and empty. */
+        if (fold && rml_element_is_visible(panels[i], true) &&
+            !rml_element_has_attribute(panels[i], "data-open")) {
+            rml_element_click(fold);
             frames(b, 1);
         }
     }
@@ -405,13 +408,13 @@ static void properties_step(properties_case *c, int step, const char *name)
     char label[128];
     bench_stat native = bench_stat_of(ms[0], RUNS),
                authored = bench_stat_of(ms[1], RUNS);
-    snprintf(label, sizeof label, "native kit: %s", name);
+    snprintf(label, sizeof label, "Studio: %s", name);
     bench_row("5", label, native, counts[0]);
-    phase_row("native phases", phases[0]);
+    phase_row("Studio phases", phases[0]);
     snprintf(label, sizeof label, "authored spike: %s", name);
     bench_row("5", label, authored, counts[1]);
     phase_row("authored phases", phases[1]);
-    snprintf(label, sizeof label, "authored over native: %s", name);
+    snprintf(label, sizeof label, "spike over Studio: %s", name);
     bench_ratio("5", label, native, authored);
     /* The Player stays shown. */
     select_actor(c, c->player, false);
@@ -468,8 +471,8 @@ static void properties(studio_bench *b)
             }
         }
     }
-    bench_row("5", "native kit: a UI frame with nothing changed", bench_stat_of(idle, RUNS), counts);
-    phase_row("native phases", phases);
+    bench_row("5", "Studio: a UI frame with nothing changed", bench_stat_of(idle, RUNS), counts);
+    phase_row("Studio phases", phases);
     properties_step(&c, 0, "select the other object or the Player");
     properties_step(&c, 1, "edit one field of the Player");
     properties_step(&c, 2, "Play refresh, every float of the Player changed");

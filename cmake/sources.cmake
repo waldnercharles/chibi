@@ -378,3 +378,7 @@ list(APPEND CORE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/support/number_expr.c)
 # Lists and drag (workstream F4): the widget gallery's List, TreeRow and
 # Tile samples over the project's assets.
 list(APPEND EDITOR_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_gallery.c)
+
+# Properties (workstream P1): the `properties` source its authored panel
+# binds.
+list(APPEND EDITOR_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_properties_view.c)

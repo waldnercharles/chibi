@@ -1,27 +1,21 @@
-/* Properties: prototype components, enum, vector and live fields, and an
- * asset dropped onto a field. */
+/* Properties (workstream P1): its authored panel over the `properties`
+ * source. Prototype components, enum, vector and live fields, the field
+ * menu, a scrub Escape cancels, several objects' mixed values, and an asset
+ * dropped onto a field. */
 
-#include "assets/ui_events.h"
-#include "editor/collab/collab.h"
-#include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/editor.h"
-#include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
-#include "graph/document/serialize.h"
-#include "graph/nodes/component_nodes.h"
 #include "platform/cute.h"
-#include "render/scene_renderer.h"
 #include "render/screenshot.h"
+#include "render/ui_check.h"
 #include "runtime/generated.h"
 #include "support/array.h"
-#include "support/asset_text.h"
 #include "support/text_file.h"
-#include "support/text_overlay.h"
 #include "test/editor/studio_documents.h"
+#include "test/editor/ui_bench.h"
 #include "test/suite_internal.h"
-#include "ui/input_feel.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
@@ -31,32 +25,68 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
-/* Find a Properties row by its visible label so the test follows the authored
-   pane's slots instead of depending on a generated kit path. */
+/* The elements `selector` matches under `root` that show, up to `max`:
+   data-for and data-when keep their templates hidden. */
+static int shown_all(rml_element *root, const char *selector, rml_element **out, int max)
+{
+    rml_element *found[512];
+    int count = root ? rml_element_query_selector_all(root, selector, found, 512) : 0,
+        shown = 0;
+    for (int i = 0; i < count && shown < max; i++) {
+        if (rml_element_is_visible(found[i], true)) {
+            out[shown++] = found[i];
+        }
+    }
+    return shown;
+}
+
+static rml_element *shown_in(rml_element *root, const char *selector)
+{
+    rml_element *found = NULL;
+    return shown_all(root, selector, &found, 1) ? found : NULL;
+}
+
+/* The Properties panel's root, whichever document holds it. */
+static rml_element *properties(studio *s)
+{
+    return studio_element(s, "[data-ui=Properties]");
+}
+
+/* A Properties row by its visible label, so the checks follow the authored
+   panel rather than how it is built. */
 static rml_element *property_row(studio *s, const char *label)
 {
-    rml_context *context = rml_backend_context(s->backend);
-    for (int d = 0; d < rml_context_document_count(context); d++) {
-        rml_element *rows[128];
-        int count = rml_element_query_selector_all(
-            rml_context_document(context, d),
-            "[data-ui=Properties] .prop",
-            rows,
-            128
-        );
-        for (int i = 0; i < count; i++) {
-            rml_element *text = rml_element_query_selector(rows[i], ".label span");
-            char shown[128] = "";
-            if (text && rml_element_inner_rml(text, shown, sizeof shown) &&
-                !strcmp(shown, label)) {
-                return rows[i];
-            }
+    rml_element *rows[128];
+    int count = shown_all(properties(s), ".prop", rows, 128);
+    for (int i = 0; i < count; i++) {
+        rml_element *text = rml_element_query_selector(rows[i], ".label span");
+        char shown[128] = "";
+        if (text && rml_element_inner_rml(text, shown, sizeof shown) &&
+            !strcmp(shown, label)) {
+            return rows[i];
         }
     }
     return NULL;
+}
+
+/* The row labeled `label`, scrolled into view. */
+static rml_element *row_in_view(studio_fixture *f, const char *label)
+{
+    rml_element *row = property_row(f->studio, label);
+    if (row) {
+        rml_element_scroll_into_view(row, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+        frames(f, 2);
+    }
+    return property_row(f->studio, label);
+}
+
+/* The tab button whose tip is `label`, or NULL when the tab is not shown. */
+static rml_element *tab_button(studio *s, const char *label)
+{
+    char selector[96];
+    snprintf(selector, sizeof selector, ".prop-tabs .btn[data-tip=%s]", label);
+    return shown_in(properties(s), selector);
 }
 
 /* Keep the selected actor's Object fields visible when this fixture also has
@@ -97,6 +127,16 @@ static float text_baseline(rml_element *line)
     return at.y + (size.y - metrics.line_spacing) * 0.5f + metrics.ascent;
 }
 
+/* The center of `el` in dp, as the pointer reaches it. */
+static void element_center(studio *s, rml_element *el, float *x, float *y)
+{
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    *x = (at.x + size.x * 0.5f) / ratio;
+    *y = (at.y + size.y * 0.5f) / ratio;
+}
+
 static void mouse_click(studio_fixture *f, float x, float y, Uint8 button)
 {
     const studio *s = f->studio;
@@ -115,13 +155,14 @@ static void mouse_click(studio_fixture *f, float x, float y, Uint8 button)
     frames(f, 2);
 }
 
-static bool click_path(studio_fixture *f, const char *path, Uint8 button)
+static bool click(studio_fixture *f, rml_element *el, Uint8 button)
 {
-    kit_rect r;
-    if (!kit_find(f->studio->kit, path, &r)) {
+    if (!el) {
         return false;
     }
-    mouse_click(f, r.x + r.w * 0.5f, r.y + r.h * 0.5f, button);
+    float x, y;
+    element_center(f->studio, el, &x, &y);
+    mouse_click(f, x, y, button);
     return true;
 }
 
@@ -134,6 +175,30 @@ static bool prototype_has(app_scene_authoring *scene, const char *component)
         }
     }
     return false;
+}
+
+static float acceleration(studio_fixture *f, int actor)
+{
+    return GAME_GameDrive_get_const(f->scene->world, f->scene->actors[actor].entity)
+        ->acceleration;
+}
+
+static void set_acceleration(studio_fixture *f, int actor, float value)
+{
+    GAME_GameDrive_get(f->scene->world, f->scene->actors[actor].entity)->acceleration = value;
+}
+
+/* The Binding scene with its object's Object tab in Properties. */
+static studio_fixture binding_open(const char *search)
+{
+    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.kdl", "Weapons");
+    f.studio = studio_new(f.scene, f.viewport, "projects/studio");
+    select_instance(f.scene, 0);
+    show_object_properties(f.studio);
+    snprintf(f.studio->property_search, sizeof f.studio->property_search, "%s", search);
+    scene_history_clear(f.scene->history);
+    frames(&f, 4);
+    return f;
 }
 
 /* Prototype Properties opens on its own context and keeps a valid component
@@ -154,15 +219,19 @@ static void prototype_properties_follow_document()
     ));
     assert(app_scene_authoring_open_prototype(f.scene, "Vault") == 0);
     frames(&f, 3);
-    kit_rect rect;
-    bool object = s->tab == STUDIO_TAB_OBJECT &&
-                  !kit_find(s->kit, "app/workspace/main/properties/body/properties/tabs/tab0", &rect);
+    bool object = s->tab == STUDIO_TAB_OBJECT && !tab_button(s, "Scene") &&
+                  tab_button(s, "Object");
     s->tab = STUDIO_TAB_GAMEPLAY;
     frames(&f, 2);
-    bool retained = s->tab == STUDIO_TAB_GAMEPLAY &&
-                    kit_find(s->kit, "app/workspace/main/properties/body/properties/tabs/tab4", &rect);
+    rml_element *gameplay = tab_button(s, "Gameplay");
+    bool retained = s->tab == STUDIO_TAB_GAMEPLAY && gameplay &&
+                    rml_element_has_attribute(gameplay, "data-state");
+    char state[8] = "";
+    if (gameplay) {
+        rml_element_attribute(gameplay, "data-state", state, sizeof state);
+    }
     test_check(object, "opening a prototype leaves the unrelated Scene tab and selects Object");
-    test_check(retained, "Properties keeps a valid component tab selected for the active prototype");
+    test_check(retained && !strcmp(state, "on"), "Properties keeps a valid component tab selected for the active prototype");
     fixture_free(&f);
 }
 
@@ -176,29 +245,32 @@ static void prototype_components()
     s->maximized = s->focus_area = STUDIO_AREA_PROPERTIES;
     assert(app_scene_authoring_open_prototype(f.scene, "Vault") == 0);
     frames(&f, 3);
-    const char *scroll = "app/workspace/main/properties/body/properties/scroll";
-    char path[256];
-    snprintf(path, sizeof path, "%s/add/component", scroll);
-    rml_element *add_button = studio_element(s, ".prop-scroll .add-row .btn");
-    assert(add_button);
-    rml_element_scroll_into_view(add_button, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
-    frames(&f, 2);
-    bool button = click_path(&f, path, SDL_BUTTON_LEFT);
+    rml_element *add = shown_in(properties(s), ".prop-scroll .add-row .btn");
+    if (add) {
+        rml_element_scroll_into_view(add, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+        frames(&f, 2);
+    }
+    bool button = click(&f, add, SDL_BUTTON_LEFT);
     bool palette = kit_command_is_open(s->kit) && s->components.open;
     text_event("Health");
     frames(&f, 2);
     tap(SDL_SCANCODE_RETURN);
     frames(&f, 3);
-    char added[128];
+    char added[128], selector[192];
     snprintf(added, sizeof added, "%s", s->components.added);
     bool gained = added[0] && prototype_has(f.scene, added) && !s->components.open;
-    snprintf(path, sizeof path, "%s/%s", scroll, added);
-    kit_rect panel = { 0 };
-    bool shown = kit_find(s->kit, path, &panel);
-    mouse_click(&f, panel.x + 40, panel.y + 10, SDL_BUTTON_RIGHT);
-    frames(&f, 8);
-    bool menu = kit_popup_is_open(s->kit, "component-menu");
-    click_path(&f, "layer/@component-menu/remove", SDL_BUTTON_LEFT);
+    const char *dot = strrchr(added, '.');
+    snprintf(selector, sizeof selector, "section.panel[data-key=%s]", dot ? dot + 1 : added);
+    rml_element *panel = shown_in(properties(s), selector);
+    bool shown = panel && rml_element_has_attribute(panel, "data-open");
+    if (panel) {
+        rml_element_scroll_into_view(panel, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+        frames(&f, 2);
+    }
+    click(&f, panel ? rml_element_query_selector(panel, ".panel-head .title") : NULL, SDL_BUTTON_RIGHT);
+    frames(&f, 2);
+    rml_element *menu = studio_element(s, "#component-menu[data-open]");
+    click(&f, menu ? shown_in(menu, ".menu-item") : NULL, SDL_BUTTON_LEFT);
     bool removed = !prototype_has(f.scene, added);
     rml_element *undo = studio_element(s, ".toast-action");
     if (undo) {
@@ -218,7 +290,7 @@ static void prototype_components()
             palette,
             gained,
             shown,
-            menu,
+            menu != NULL,
             removed,
             undo != NULL,
             restored,
@@ -226,128 +298,101 @@ static void prototype_components()
             redone
         );
     }
-    test_check(
-        button && palette && gained,
-        "Add Component searches the components a prototype lacks and adds "
-        "the one chosen"
-    );
-    test_check(
-        shown && menu && removed && undo && restored && undone && redone,
-        "a component panel's menu removes it with Undo in a toast, and "
-        "Undo and Redo step both"
-    );
+    test_check(button && palette && gained, "Add Component searches the components a prototype lacks and adds the one chosen");
+    test_check(shown && menu && removed && undo && restored && undone && redone, "an added component's panel opens, its menu (a right press on its head) removes it with Undo in a toast, and Undo and Redo step both");
     fixture_free(&f);
 }
 
+/* The label of the option an EnumField's field shows. */
+static void enum_shown(rml_element *row, char *out, size_t size)
+{
+    out[0] = '\0';
+    rml_element *value = row ? shown_in(row, ".field.select .current span") : NULL;
+    if (value) {
+        rml_element_inner_rml(value, out, size);
+    }
+}
+
+/* Whether the shown groups of `list` are the three device groups. */
+static bool device_groups(rml_element *list, int *count)
+{
+    static const char *const EXPECTED[] = { "Mouse", "Keyboard", "Controller" };
+    rml_element *groups[8];
+    *count = shown_all(list, ".menu-group", groups, 8);
+    bool known = *count == 3;
+    for (int i = 0; known && i < *count; i++) {
+        char group[32] = "";
+        rml_element_inner_rml(groups[i], group, sizeof group);
+        known &= !strcmp(group, EXPECTED[i]);
+    }
+    return known;
+}
+
 /* A large reflected enum keeps its name in Properties and can still be
-   changed from the control. GameControl's Aim Stick is past the old cap. */
+   changed from the control, searchable and grouped. GameControl's Aim Stick
+   is past the old cap. Its list loads once it opens. */
 static void large_enum_property()
 {
-    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.kdl", "Weapons");
-    f.studio = studio_new(f.scene, f.viewport, "projects/studio");
+    studio_fixture f = binding_open("Source");
     studio *s = f.studio;
-    select_instance(f.scene, 0);
-    show_object_properties(s);
-    snprintf(s->property_search, sizeof s->property_search, "Source");
-    frames(&f, 4);
-
-    rml_element *tabs = studio_element(s, "[data-ui=Properties] #tabs");
-    rml_element *scroll = studio_element(s, "[data-ui=Properties] #scroll");
-    rml_element *row = property_row(s, "Source");
-    if (row) {
-        rml_element_scroll_into_view(row, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
-        frames(&f, 2);
-        row = property_row(s, "Source");
-    }
+    rml_element *tabs = studio_element(s, "[data-ui=Properties] .prop-tabs");
+    rml_element *row = row_in_view(&f, "Source");
     rml_element *label = row ? rml_element_query_selector(row, ".label span") : NULL;
-    rml_element *field = row ? rml_element_query_selector(row, ".field.select") : NULL;
-    rml_element *value = row ? rml_element_query_selector(row, ".field.select .value")
-                             : NULL;
-    char shown[64] = "";
-    if (value) {
-        rml_element_inner_rml(value, shown, sizeof shown);
-    }
-    bool mounted = tabs && scroll;
-    bool readable = row && field && !strcmp(shown, "Aim Stick");
+    rml_element *field = row ? shown_in(row, ".field.select") : NULL;
+    rml_element *value = row ? shown_in(row, ".field.select .current span") : NULL;
+    char shown[64];
+    enum_shown(row, shown, sizeof shown);
+    rml_element *closed[4];
+    bool lazy = shown_all(row, ".popup.dropdown .menu-item", closed, 4) == 0 &&
+                rml_element_query_selector_all(row, ".popup.dropdown [role=option]", NULL, 0) <=
+                    4;
+    bool readable = tabs && row && field && !strcmp(shown, "Aim Stick");
     float label_baseline = label ? text_baseline(label) : 0;
     float value_baseline = value ? text_baseline(value) : 0;
     bool aligned = label && value && fabsf(label_baseline - value_baseline) <= 1.5f;
-
     if (field) {
         press(s, field);
         frames(&f, 2);
     }
-    rml_element *dropdown = studio_element(s, ".popup.dropdown");
-    bool opened = dropdown != NULL;
-    rml_element *groups[4], *icons[64];
-    int group_count = dropdown
-                        ? rml_element_query_selector_all(dropdown, ".menu-group", groups, 4)
-                        : 0;
-    int icon_count = dropdown
-                       ? rml_element_query_selector_all(dropdown, ".menu-item .lead", icons, 64)
-                       : 0;
-    bool grouped = group_count == 3 && icon_count > 32;
-    if (grouped) {
-        const char *expected[] = { "Mouse", "Keyboard", "Controller" };
-        for (int i = 0; i < group_count; i++) {
-            char group[32] = "";
-            rml_element_inner_rml(groups[i], group, sizeof group);
-            grouped &= !strcmp(group, expected[i]);
-        }
-        for (int i = 0; i < icon_count; i++) {
-            char icon[16] = "";
-            rml_element_inner_rml(icons[i], icon, sizeof icon);
-            grouped &= icon[0] != '\0';
-        }
+    rml_element *dropdown = studio_element(s, ".popup.dropdown[data-open]");
+    rml_element *icons[128];
+    int group_count = 0;
+    bool grouped = dropdown && device_groups(dropdown, &group_count);
+    int icon_count = shown_all(dropdown, ".menu-item .lead", icons, 128);
+    for (int i = 0; i < icon_count; i++) {
+        char icon[16] = "";
+        rml_element_inner_rml(icons[i], icon, sizeof icon);
+        grouped &= icon[0] != '\0';
     }
+    rml_element *current = shown_in(dropdown, ".menu-item[data-current]");
+    bool highlighted = current &&
+                       rml_element_has_attribute(current, "data-highlighted");
+    grouped &= icon_count > 32;
     capture_properties_screenshot(&f, "properties-enum-dropdown");
     text_event("L");
     frames(&f, 2);
-    int search_group_count = dropdown
-                               ? rml_element_query_selector_all(dropdown, ".menu-group", groups, 4)
-                               : 0;
-    int search_icon_count = dropdown
-                              ? rml_element_query_selector_all(dropdown, ".menu-item .lead", icons, 64)
-                              : 0;
-    bool all_search_groups = search_group_count == 3 && search_icon_count > 2;
-    if (all_search_groups) {
-        const char *expected[] = { "Mouse", "Keyboard", "Controller" };
-        for (int i = 0; i < search_group_count; i++) {
-            char group[32] = "";
-            rml_element_inner_rml(groups[i], group, sizeof group);
-            bool known = false;
-            for (int j = 0; j < 3; j++) {
-                known |= !strcmp(group, expected[j]);
-            }
-            all_search_groups &= known;
-        }
-        for (int i = 0; i < search_icon_count; i++) {
-            char icon[16] = "";
-            rml_element_inner_rml(icons[i], icon, sizeof icon);
-            all_search_groups &= icon[0] != '\0';
-        }
-    }
+    char query[16] = "";
     rml_element *search = dropdown
                             ? rml_element_query_selector(dropdown, ".field.search .value")
                             : NULL;
-    char query[16] = "";
     if (search) {
         rml_element_value(search, query, sizeof query);
     }
-    all_search_groups &= !strcmp(query, "L");
+    int search_groups = 0;
+    device_groups(dropdown, &search_groups);
+    bool searched = !strcmp(query, "L") && search_groups >= 1 &&
+                    shown_all(dropdown, ".menu-item .lead", icons, 128) > 2;
     capture_properties_screenshot(&f, "properties-grouped-search");
     tap(SDL_SCANCODE_BACKSPACE);
     frames(&f, 1);
     text_event("Mouse Left");
     frames(&f, 2);
-    rml_element *mouse_left = dropdown
-                                ? rml_element_query_selector(dropdown, ".dropdown-results .menu-item .label")
-                                : NULL;
+    rml_element *first = shown_in(dropdown, ".menu-item .label");
     char option[64] = "";
-    if (mouse_left) {
-        rml_element_inner_rml(mouse_left, option, sizeof option);
+    if (first) {
+        rml_element_inner_rml(first, option, sizeof option);
     }
-    bool filtered = mouse_left && !strcmp(option, "Mouse Left");
+    bool filtered = !strcmp(option, "Mouse Left");
     tap(SDL_SCANCODE_RETURN);
     frames(&f, 3);
     pin_value source = { 0 };
@@ -359,35 +404,40 @@ static void large_enum_property()
                         0,
                         &source
                     ) == ECS_OK &&
-                    source.type == PIN_ENUM && source.e == GAME_CONTROL_MOUSE_LEFT;
-    if (!(mounted && readable && aligned && opened && filtered && editable &&
-          grouped && all_search_groups)) {
+                    source.type == PIN_ENUM && source.e == GAME_CONTROL_MOUSE_LEFT &&
+                    scene_history_can_undo(f.scene->history);
+    enum_shown(property_row(s, "Source"), shown, sizeof shown);
+    bool follows = !strcmp(shown, "Mouse Left");
+    if (!(readable && lazy && aligned && dropdown && filtered && editable &&
+          grouped && searched && highlighted && follows)) {
         printf(
-            "  %d %d %d %d %d %d %d %d (baselines %g / %g, groups %d, icons "
-            "%d, search groups %d, icons %d, query '%s')\n",
-            mounted,
+            "  %d %d %d %d %d %d %d %d %d %d (baselines %g / %g, groups %d, "
+            "icons %d, search groups %d, query '%s', shown '%s')\n",
             readable,
+            lazy,
             aligned,
-            opened,
+            dropdown != NULL,
             filtered,
             editable,
             grouped,
-            all_search_groups,
+            searched,
+            highlighted,
+            follows,
             label_baseline,
             value_baseline,
             group_count,
             icon_count,
-            search_group_count,
-            search_icon_count,
-            query
+            search_groups,
+            query,
+            shown
         );
     }
-    test_check(mounted, "Properties uses its authored tab and scroll slots");
+    test_check(readable && lazy, "Properties shows a reflected enum's choice by name and builds its list only once it opens");
     test_check(aligned, "Properties label and value text baselines align");
     test_check(
-        readable && opened && filtered && editable && grouped && all_search_groups,
-        "a reflected enum beyond 32 options stays named, grouped, iconed "
-        "and editable in Properties"
+        dropdown && filtered && editable && grouped && searched && highlighted && follows,
+        "a reflected enum beyond 32 options opens grouped, iconed and "
+        "searchable on its current value, and a choice is one Undo step"
     );
     fixture_free(&f);
 }
@@ -396,23 +446,11 @@ static void large_enum_property()
    rest of the vector intact through Undo and Redo. */
 static void component_vector_property()
 {
-    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.kdl", "Weapons");
-    f.studio = studio_new(f.scene, f.viewport, "projects/studio");
+    studio_fixture f = binding_open("Target");
     studio *s = f.studio;
-    select_instance(f.scene, 0);
-    show_object_properties(s);
-    snprintf(s->property_search, sizeof s->property_search, "Target");
-    frames(&f, 4);
-
-    rml_element *row = property_row(s, "Target");
-    if (row) {
-        rml_element_scroll_into_view(row, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
-        frames(&f, 2);
-        row = property_row(s, "Target");
-    }
+    rml_element *row = row_in_view(&f, "Target");
     rml_element *axes[4];
-    int axis_count = row ? rml_element_query_selector_all(row, ".field.number", axes, 4)
-                         : 0;
+    int axis_count = shown_all(row, ".field.number", axes, 4);
     bool controls = axis_count == 2;
     bool clicked = false;
     if (controls) {
@@ -445,42 +483,29 @@ static void component_vector_property()
         );
     }
     test_check(controls && clicked && edited, "a reflected component vector is editable by axis in Properties");
-    test_check(
-        undone && redone,
-        "component vector edits retain owned before and "
-        "after values for Undo and Redo"
-    );
+    test_check(undone && redone, "component vector edits retain owned before and after values for Undo and Redo");
     fixture_free(&f);
 }
 
 /* While the scene runs, a Properties field edits the running world without
    marking the scene unsaved or writing history, and the header says Live;
    Keep Changes (K) applies the running value when the scene stops, as one
-   Undo step. */
+   Undo step. A Play refresh that only moves values lays nothing out. */
 static void live_property_edit()
 {
-    studio_fixture f = fixture_open(PROJECT, PROJECT "/content/scenes/Binding.kdl", "Weapons");
-    f.studio = studio_new(f.scene, f.viewport, "projects/studio");
+    studio_fixture f = binding_open("Target");
     studio *s = f.studio;
-    select_instance(f.scene, 0);
-    show_object_properties(s);
-    snprintf(s->property_search, sizeof s->property_search, "Target");
-    scene_history_clear(f.scene->history);
     studio_runtime(s, APP_RUNTIME_PLAY);
     frames(&f, 2);
     studio_runtime(s, APP_RUNTIME_PLAY);
     f.scene->scene_dirty = false;
     frames(&f, 3);
-    bool live = studio_live(s) && studio_element(s, ".area-head.live") != NULL;
-    rml_element *row = property_row(s, "Target");
-    if (row) {
-        rml_element_scroll_into_view(row, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
-        frames(&f, 2);
-        row = property_row(s, "Target");
-    }
+    bool live = studio_live(s) && studio_element(s, ".area-head.live") &&
+                studio_element(s, "[data-ui=PropertiesHeader] .badge.accent") &&
+                shown_in(studio_element(s, "[data-ui=PropertiesHeader]"), ".btn");
+    rml_element *row = row_in_view(&f, "Target");
     rml_element *axes[4];
-    int axis_count = row ? rml_element_query_selector_all(row, ".field.number", axes, 4)
-                         : 0;
+    int axis_count = shown_all(row, ".field.number", axes, 4);
     bool editable = axis_count == 2 &&
                     !rml_element_has_attribute(axes[0], "data-readonly");
     if (editable) {
@@ -493,6 +518,22 @@ static void live_property_edit()
         *drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
     bool written = drive && drive->target.x == 9.0f;
     bool clean = !f.scene->scene_dirty && !scene_history_can_undo(f.scene->history);
+    /* A value the game moves shows without laying out Properties. */
+    frames(&f, 2);
+    rml_element *y = shown_all(row_in_view(&f, "Target"), ".field.number", axes, 4) == 2
+                       ? axes[1]
+                       : NULL;
+    GAME_GameDrive_get(f.scene->world, f.scene->actors[0].entity)->target.y = 21.5f;
+    bench_probe(rml_element_owner_document(properties(s)));
+    frames(&f, 1);
+    uint64_t layouts = bench_layouts();
+    frames(&f, 6);
+    char shown[32] = "";
+    rml_element *text = y ? rml_element_query_selector(y, ".value") : NULL;
+    if (text) {
+        rml_element_inner_rml(text, shown, sizeof shown);
+    }
+    bool refreshed = strstr(shown, "21.5") != NULL && bench_layouts() == layouts;
     bool chord = studio_command_for_key(&s->prefs, SDLK_K, 0, STUDIO_EDITOR_PROPERTIES, s->mac) ==
                      STUDIO_COMMAND_KEEP_CHANGES &&
                  studio_command_for_key(&s->prefs, SDLK_K, 0, STUDIO_EDITOR_BEHAVIOR, s->mac) !=
@@ -509,30 +550,197 @@ static void live_property_edit()
     drive = GAME_GameDrive_get_const(f.scene->world, f.scene->actors[0].entity);
     bool undone = drive && drive->target.x == 3.0f &&
                   !scene_history_can_undo(f.scene->history);
-    if (!(live && editable && written && clean && chord && kept && applied && undone)) {
-        printf("  %d %d %d %d %d %d %d %d\n", live, editable, written, clean, chord, kept, applied, undone);
+    if (!(live && editable && written && clean && refreshed && chord && kept &&
+          applied && undone)) {
+        printf(
+            "  %d %d %d %d %d ('%s') %d %d %d %d\n",
+            live,
+            editable,
+            written,
+            clean,
+            refreshed,
+            shown,
+            chord,
+            kept,
+            applied,
+            undone
+        );
     }
-    test_check(
-        live && editable && written && clean,
-        "while the scene runs, Properties edits the running world without "
-        "an unsaved mark or Undo step"
-    );
-    test_check(
-        chord && kept && applied && undone,
-        "Keep Changes (K) applies a running value when the scene stops, as "
-        "one Undo step"
-    );
+    test_check(live && editable && written && clean, "while the scene runs, Properties edits the running world without an unsaved mark or Undo step, and its header says Live and offers Keep");
+    test_check(refreshed, "a value the running game moves refreshes its field without laying out Properties");
+    test_check(chord && kept && applied && undone, "Keep Changes (K) applies a running value when the scene stops, as one Undo step");
     fixture_free(&f);
 }
 
-/* The center of `el` in dp, as the pointer reaches it. */
-static void element_center(studio *s, rml_element *el, float *x, float *y)
+/* A right press on an overridden field opens its menu, whose Reset to
+   Prototype puts the prototype's value back as one Undo step. */
+static void field_menu_resets()
 {
-    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
-    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
-    float ratio = studio_pixel_ratio(s);
-    *x = (at.x + size.x * 0.5f) / ratio;
-    *y = (at.y + size.y * 0.5f) / ratio;
+    studio_fixture f = binding_open("Acceleration");
+    studio *s = f.studio;
+    set_acceleration(&f, 0, 9);
+    frames(&f, 3);
+    rml_element *row = row_in_view(&f, "Acceleration");
+    bool marked = row && rml_element_has_attribute(row, "data-overridden");
+    click(&f, row ? shown_in(row, ".field.number") : NULL, SDL_BUTTON_RIGHT);
+    frames(&f, 2);
+    rml_element *menu = studio_element(s, "#field-menu[data-open]");
+    rml_element *items[2];
+    int count = shown_all(menu, ".menu-item", items, 2);
+    bool offered = count == 2 &&
+                   !rml_element_has_attribute(items[0], "data-disabled") &&
+                   !rml_element_has_attribute(items[1], "data-disabled");
+    click(&f, count ? items[0] : NULL, SDL_BUTTON_LEFT);
+    /* The menu fades out as it closes. */
+    rml_element *open = studio_element(s, "#field-menu[data-open]");
+    bool reset = acceleration(&f, 0) == 5 &&
+                 scene_history_can_undo(f.scene->history) &&
+                 (!open || rml_element_has_attribute(open, "data-ending-style"));
+    row = property_row(s, "Acceleration");
+    bool unmarked = row && !rml_element_has_attribute(row, "data-overridden");
+    studio_history(s, false);
+    bool undone = acceleration(&f, 0) == 9;
+    if (!(marked && menu && offered && reset && unmarked && undone)) {
+        printf(
+            "  %d %d %d %d %d %d (%g)\n",
+            marked,
+            menu != NULL,
+            offered,
+            reset,
+            unmarked,
+            undone,
+            acceleration(&f, 0)
+        );
+    }
+    test_check(marked && menu && offered && reset && unmarked && undone, "a right press on an overridden field opens its menu, and Reset to Prototype is one Undo step that clears its mark");
+    fixture_free(&f);
+}
+
+/* Scrubbing a number writes the value as it moves, without history, and
+   Escape puts its first value back, writing nothing. */
+static void scrub_escape_cancels()
+{
+    studio_fixture f = binding_open("Acceleration");
+    studio *s = f.studio;
+    f.scene->scene_dirty = false;
+    rml_element *row = row_in_view(&f, "Acceleration");
+    rml_element *field = row ? shown_in(row, ".field.number") : NULL;
+    float x = 0, y = 0;
+    if (field) {
+        element_center(s, field, &x, &y);
+    }
+    mouse_move(s, x, y);
+    frames(&f, 1);
+    graph_drag_button(s, x, y, true);
+    frames(&f, 1);
+    for (int i = 1; i <= 4; i++) {
+        mouse_move(s, x + 10 * i, y);
+        frames(&f, 1);
+    }
+    bool live = field && acceleration(&f, 0) != 5 &&
+                rml_element_has_attribute(field, "data-scrubbing") &&
+                !scene_history_can_undo(f.scene->history);
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 1);
+    graph_drag_button(s, x + 40, y, false);
+    frames(&f, 3);
+    bool restored = acceleration(&f, 0) == 5 &&
+                    !scene_history_can_undo(f.scene->history) &&
+                    !f.scene->scene_dirty;
+    if (!(live && restored)) {
+        printf("  %d %d (%g)\n", live, restored, acceleration(&f, 0));
+    }
+    test_check(live && restored, "a scrub writes as it moves without history, and Escape puts the value back");
+    fixture_free(&f);
+}
+
+/* Several objects selected show their shared fields, a value they differ in
+   mixed; typing one writes it to each as one Undo step. */
+static void mixed_selection()
+{
+    studio_fixture f = binding_open("Acceleration");
+    studio *s = f.studio;
+    studio_add_object(s, "Binding");
+    frames(&f, 2);
+    app_scene_authoring *scene = f.scene;
+    set_acceleration(&f, 1, 7);
+    scene_history_clear(scene->history);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = true;
+    }
+    scene->selected = 0;
+    show_object_properties(s);
+    frames(&f, 3);
+    rml_element *title = shown_in(properties(s), ".identity .title");
+    char heading[32] = "";
+    if (title) {
+        rml_element_inner_rml(title, heading, sizeof heading);
+    }
+    rml_element *chips[4];
+    bool counted = !strcmp(heading, "2 objects") &&
+                   shown_all(properties(s), ".identity .lineage .btn", chips, 4) == 1;
+    rml_element *row = row_in_view(&f, "Acceleration");
+    rml_element *field = row ? shown_in(row, ".field.number") : NULL;
+    bool mixed = field && rml_element_has_attribute(field, "data-mixed");
+    if (field) {
+        press(s, field);
+    }
+    text_event("8");
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 3);
+    bool written = acceleration(&f, 0) == 8 && acceleration(&f, 1) == 8;
+    field = shown_in(property_row(s, "Acceleration"), ".field.number");
+    bool settled = field && !rml_element_has_attribute(field, "data-mixed");
+    studio_history(s, false);
+    bool undone = acceleration(&f, 0) == 5 && acceleration(&f, 1) == 7 &&
+                  !scene_history_can_undo(scene->history);
+    if (!(counted && mixed && written && settled && undone)) {
+        printf(
+            "  %d ('%s') %d %d %d %d (%g, %g)\n",
+            counted,
+            heading,
+            mixed,
+            written,
+            settled,
+            undone,
+            acceleration(&f, 0),
+            acceleration(&f, 1)
+        );
+    }
+    test_check(counted && mixed, "several selected objects show their count, a chip per prototype and a value they differ in as mixed");
+    test_check(written && settled && undone, "a value typed into a mixed field writes every selected object as one Undo step");
+    fixture_free(&f);
+}
+
+/* Find focuses the header's search, typing filters the rows to the fields
+   it names, and Escape clears it and lets go. */
+static void search_filters()
+{
+    studio_fixture f = binding_open("");
+    studio *s = f.studio;
+    rml_element *rows[64];
+    int before = shown_all(properties(s), ".prop", rows, 64);
+    s->find_request = STUDIO_EDITOR_PROPERTIES + 1;
+    frames(&f, 2);
+    rml_element *search = studio_element(s, "[data-ui=PropertiesHeader] #search");
+    rml_context *context = rml_backend_context(s->backend);
+    bool focused = search && rml_context_focus_element(context) == search &&
+                   !s->find_request;
+    text_event("Accel");
+    frames(&f, 3);
+    int filtered = shown_all(properties(s), ".prop", rows, 64);
+    bool found = filtered == 1 && property_row(s, "Acceleration") &&
+                 !strcmp(s->property_search, "Accel");
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 3);
+    bool cleared = !s->property_search[0] &&
+                   rml_context_focus_element(context) != search &&
+                   shown_all(properties(s), ".prop", rows, 64) == before;
+    if (!(focused && found && cleared)) {
+        printf("  %d %d (%d of %d rows) %d\n", focused, found, filtered, before, cleared);
+    }
+    test_check(focused && found && cleared, "Find focuses the property search, typing filters the fields, and Escape clears it");
+    fixture_free(&f);
 }
 
 /* The Vault's ui document, as its GameUi names it. */
@@ -558,8 +766,7 @@ static bool carry_bank(studio_fixture *f, bool cancel)
         row = strstr(text, "Bank") && !strstr(text, ">UI<") ? child : row;
     }
     rml_element *prop = property_row(s, "Document");
-    rml_element *picker = prop ? rml_element_query_selector(prop, ".field.picker")
-                               : NULL;
+    rml_element *picker = prop ? shown_in(prop, ".field.picker") : NULL;
     if (!row || !picker) {
         printf("  carry: row=%d picker=%d\n", row != NULL, picker != NULL);
         return false;
@@ -575,9 +782,16 @@ static bool carry_bank(studio_fixture *f, bool cancel)
     frames(f, 2);
     mouse_move(s, px, py);
     frames(f, 3);
-    picker = rml_element_query_selector(property_row(s, "Document"), ".field.picker");
-    bool over = picker && rml_element_has_attribute(picker, "data-drop-over") &&
-                rml_element_has_attribute(picker, "data-drop-preview");
+    rml_element *target = shown_in(property_row(s, "Document"), ".asset-field");
+    char shown[64] = "";
+    rml_element *value = target ? rml_element_query_selector(target, ".field.picker .value")
+                                : NULL;
+    if (value) {
+        rml_element_inner_rml(value, shown, sizeof shown);
+    }
+    bool over = target && rml_element_has_attribute(target, "data-drop-over") &&
+                rml_element_has_attribute(target, "data-drop-preview") &&
+                !strcmp(shown, "Bank");
     if (cancel) {
         tap(SDL_SCANCODE_ESCAPE);
         frames(f, 1);
@@ -628,11 +842,51 @@ static void asset_drop_assigns()
     fixture_free(&f);
 }
 
+/* Properties' panel and the widgets it builds rows with read without a
+   warning from RmlUi. */
+static void properties_assets_check()
+{
+    static const char *const NAMES[] = {
+        "Properties",  "PropertiesHeader", "PropertyRow",
+        "VectorField", "EnumField",        "AssetField",
+    };
+    int clean = 0, count = (int)(sizeof NAMES / sizeof *NAMES);
+    for (int i = 0; i < count; i++) {
+        char path[256], error[200] = "";
+        snprintf(path, sizeof path, "projects/studio/content/ui/%s.rml", NAMES[i]);
+        char *rml = text_file_read(path);
+        snprintf(path, sizeof path, "projects/studio/content/ui/%s.rcss", NAMES[i]);
+        char *rcss = text_file_read(path);
+        ui_check_message *messages = NULL;
+        bool ok = rml &&
+                  ui_check("projects/studio/content", NAMES[i], rml, rcss, &messages, error, sizeof error);
+        for (int m = 0; m < acount(messages); m++) {
+            fprintf(
+                stderr,
+                "  %s:%d %s\n",
+                NAMES[i],
+                messages[m].line,
+                messages[m].text
+            );
+        }
+        clean += ok && !acount(messages);
+        ui_check_messages_free(messages);
+        free(rml);
+        free(rcss);
+    }
+    test_check(clean == count, "Properties and the widgets of its rows check clean");
+}
+
 void studio_documents_property_field_checks()
 {
+    properties_assets_check();
     large_enum_property();
     component_vector_property();
     live_property_edit();
+    field_menu_resets();
+    scrub_escape_cancels();
+    mixed_selection();
+    search_filters();
 }
 
 void studio_documents_properties_checks()

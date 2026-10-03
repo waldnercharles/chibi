@@ -43,7 +43,6 @@ typedef struct
     const char *order[3];
     int order_count;
     bool open_command;
-    int context;
     double flow;
     const char *morph;
     int reveal, rows_emitted, hovered_row;
@@ -64,7 +63,6 @@ typedef struct
     bool rename_empty;
     char rename[32];
     int rename_commits, rename_applied;
-    int panel_menus; /* the panel's menu asked for */
 } kit_fixture;
 
 static const kit_command_item COMMANDS[] = {
@@ -195,7 +193,6 @@ static void emit(kit_fixture *f)
     }
     f->commits += kit_item_committed(k);
     f->editing = kit_item_active(k);
-    f->context += kit_item_context_clicked(k);
     kit_prop_end(k);
     kit_prop_begin(k, "second", "Second");
     kit_number(k, "value", &f->second, &d);
@@ -276,7 +273,6 @@ static void emit(kit_fixture *f)
     kit_prop_end(k);
     kit_panel_begin(k, "panel", "Panel", NULL, true);
     kit_panel_end(k);
-    f->panel_menus += kit_panel_menu(k);
     kit_pop(k);
     kit_push(k, "list", NULL, NULL);
     for (int i = 0; i < f->order_count; i++) {
@@ -2068,42 +2064,6 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_PAGE_DOWN, RML_INPUT_MOD_SHIFT);
     frame(&f);
     ok &= check(f.value == before, "PageDown retreats ten steps even with Shift held");
-
-    /* Right press reports a context click without editing. */
-    ok &= check(center(&f, "app/fields/first/@control/value", &x, &y), "field for context");
-    pointer(&f, RML_INPUT_POINTER_MOVE, x, y);
-    rml_input right = { .type = RML_INPUT_POINTER_DOWN, .x = x, .y = y, .button = 1 };
-    rml_backend_process_input(f.backend, &right);
-    right.type = RML_INPUT_POINTER_UP;
-    rml_backend_process_input(f.backend, &right);
-    frame(&f);
-    ok &= check(f.context == 1 && !kit_wants_text(f.k, NULL), "right press is a context click");
-
-    /* A panel's menu button asks for its menu without folding the panel, as a
-       right press on its header does. */
-    rml_element *more = test_query(rml_backend_context(f.backend), ".panel[data-menu] .panel-head .menu");
-    ok &= check(more != NULL, "the panel's header holds its menu button");
-    if (more) {
-        rml_vec2 at = rml_element_absolute_offset(more, RML_BOX_BORDER);
-        rml_vec2 size = rml_element_box_size(more, RML_BOX_BORDER);
-        x = at.x + size.x * 0.5f;
-        y = at.y + size.y * 0.5f;
-        pointer(&f, RML_INPUT_POINTER_MOVE, x, y);
-        pointer(&f, RML_INPUT_POINTER_DOWN, x, y);
-        pointer(&f, RML_INPUT_POINTER_UP, x, y);
-        frame(&f);
-        rml_element *panel = test_query(rml_backend_context(f.backend), ".panel[data-menu]");
-        ok &= check(
-            f.panel_menus == 1 && rml_element_has_attribute(panel, "data-open"),
-            "the menu button asks for the menu and leaves the panel open"
-        );
-        right = (rml_input){ .type = RML_INPUT_POINTER_DOWN, .x = x - 60, .y = y, .button = 1 };
-        rml_backend_process_input(f.backend, &right);
-        right.type = RML_INPUT_POINTER_UP;
-        rml_backend_process_input(f.backend, &right);
-        frame(&f);
-        ok &= check(f.panel_menus == 2, "a right press on the header asks for it too");
-    }
 
     /* A text area: Shift+Enter starts a line, Enter commits both once. */
     f.focus_note = true;

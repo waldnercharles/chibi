@@ -815,6 +815,13 @@ typedef struct studio_gallery
     studio_gallery_item *bin; /* Collected, in order (support/array.h) */
 } studio_gallery;
 
+/* A Properties panel the user folded or opened (studio_properties.c). */
+typedef struct studio_fold
+{
+    char key[128];
+    bool open;
+} studio_fold;
+
 struct studio
 {
     app_scene_authoring *scene;
@@ -1066,6 +1073,12 @@ struct studio
     } keep;
     /* ---------- Lists and drag (workstream F4) ---------- */
     studio_gallery gallery;
+    /* ---------- Properties (workstream P1) ---------- */
+    struct
+    {
+        studio_fold *folds; /* each panel folded or opened, by key (array) */
+        char choosing[192]; /* the row whose list shows every choice, or "" */
+    } properties;
 };
 
 /* Whether frames run at full rate for input or a playing scene, rather than
@@ -1852,9 +1865,8 @@ scene_actor *studio_prototype_action_actor(studio *s);
 /* Opens Apply Overrides to Prototype's or Save as New Prototype's popover at
    the pointer. */
 void studio_prototype_action_open(studio *s, bool saving);
-/* The Properties identity's menu button for both, emitted beside its
-   prototype; and, after the areas, the popovers and the Undo toast. */
-void studio_prototype_actions_button(studio *s, scene_actor *actor);
+/* After the areas: the popovers and the Undo toast. Properties' identity
+   lists both commands in its authored menu beside the prototype. */
 void studio_prototype_actions_frame(studio *s);
 /* Applies the field to its instance's prototype (the field menu's Apply to
    Prototype). */
@@ -2274,6 +2286,9 @@ extern const int studio_panel_source_count;
 /* Syncs the sources of `panel` as it mounts, unless the last UI refresh
  * showed it already, so a panel never shows stale data for a frame. */
 void studio_sources_mounted(studio *s, studio_sources *sources, ui_data *data, const char *panel);
+/* Syncs the source whose action `event` ran, so what it changed shows in
+ * the same frame: a committed field shows the value the model took. */
+void studio_sources_acted(studio *s, studio_sources *sources, ui_data *data, const char *event);
 
 /* ---------- Lists and drag (workstream F4) ---------- */
 
@@ -2308,5 +2323,13 @@ void studio_editor_choices(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *edito
 /* Shows editor type `editor` in `area`, or with STUDIO_EDITOR_PANEL the
  * Studio panel `panel`; a drawer takes only the types it may hold. */
 void studio_area_show(studio *s, int area, int editor, const char *panel);
+
+/* ---------- Properties (workstream P1) ---------- */
+
+/* The `properties` source (studio_properties_view.c), what Properties.rml
+ * and PropertiesHeader.rml bind, and its intents (studio_properties.c). */
+void studio_properties_add(yyjson_mut_doc *doc);
+bool studio_properties_sync(studio *s, const studio_panel_sync *at);
+void studio_properties_action(studio *s, const char *action, const ui_activation *a);
 
 #endif

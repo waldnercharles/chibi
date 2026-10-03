@@ -390,6 +390,7 @@ static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
             continue;
         }
         if (studio_panel_route(s, &a)) {
+            studio_sources_acted(s, &ui->sources, &ui->data, a.event);
             continue;
         }
         if (a.has_value && a.id[0]) {
@@ -455,16 +456,37 @@ bool studio_ui_modal_open(studio *s)
     return false;
 }
 
+/* An editor panel's control that edits no text, such as a checkbox, a
+   choice or a number field not being typed in, leaves Studio its keys, as
+   the kit's controls do. */
+static bool panel_control_focus(studio *s, rml_element *focus)
+{
+    ui_mount *mount = mount_holding(s->ui, focus);
+    const char *name = mount ? ui_mount_name(mount) : "";
+    char type[16] = "text";
+    rml_element_attribute(focus, "type", type, sizeof type);
+    bool text = !strcmp(rml_element_tag_name(focus), "textarea") ||
+                (!strcmp(rml_element_tag_name(focus), "input") &&
+                 strcmp(type, "checkbox") && strcmp(type, "radio"));
+    return !text &&
+           (!strcmp(name, "Properties") || !strcmp(name, "PropertiesHeader"));
+}
+
 bool studio_ui_shortcut_focus(studio *s)
 {
     if (!s || !s->ui || !s->backend || !s->kit || kit_has_popup(s->kit) ||
-        kit_command_is_open(s->kit) || kit_accepts_text(s->kit) ||
-        studio_ui_modal_open(s)) {
+        kit_command_is_open(s->kit) || studio_ui_modal_open(s)) {
         return false;
     }
     studio_ui *ui = s->ui;
     rml_context *context = rml_backend_context(s->backend);
     rml_element *focus = context ? rml_context_focus_element(context) : NULL;
+    if (focus && panel_control_focus(s, focus)) {
+        return true;
+    }
+    if (kit_accepts_text(s->kit)) {
+        return false;
+    }
     rml_element *button = focus;
     while (button && strcmp(rml_element_tag_name(button), "button") &&
            !rml_element_is_class_set(button, "btn")) {

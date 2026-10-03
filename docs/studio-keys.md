@@ -145,8 +145,12 @@ Ctrl+Space completes here; Maximize Area does not reach a focused editor.
 
 | Key | Action | Source |
 | --- | --- | --- |
+| Up, Down; Left, Right in the grid | Move the selection | `studio_assets.c` |
+| Home, End | Select the first or last asset | `studio_assets.c` |
+| Enter, double-click | Open the selected asset | `studio_assets.c` |
 | F2 | Rename the asset under the pointer | `studio_assets.c` |
 | X, Backspace, Delete | Delete it | `studio_assets.c` |
+| Enter, Escape (New's name) | Make the asset; close without making it | `NewAsset.rml` |
 | Drag onto a field, an Outliner row or a Scene object | Assign the asset to the field of its kind (Release assigns, Escape cancels) | `studio_drop.c` |
 
 ## Output

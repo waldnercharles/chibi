@@ -548,11 +548,11 @@ static bool carry_bank(studio_fixture *f, bool cancel)
 {
     studio *s = f->studio;
     char first[256];
-    list_rows(s, ".assets-list .vlist-content", first, sizeof first);
-    rml_element *window = studio_element(s, ".assets-list .vlist-content");
+    list_rows(s, "#assets-list > .list-spacer", first, sizeof first);
+    rml_element *window = studio_element(s, "#assets-list > .list-spacer");
     rml_element *row = NULL;
     for (int i = 0; window && i < rml_element_child_count(window); i++) {
-        char text[256] = "";
+        char text[4096] = "";
         rml_element *child = rml_element_child(window, i);
         rml_element_inner_rml(child, text, sizeof text);
         row = strstr(text, "Bank") && !strstr(text, ">UI<") ? child : row;

@@ -311,18 +311,16 @@ static void grid_keys_move_selection(thumbs_fixture *f)
     test_check(last[0] && before && scene && !strcmp(last, "PauseMenu"), "the grid's End, Left and Home keys move the selection through the assets in their order");
 }
 
+/* Tiles the grid shows, past data-for's templates. */
 static int grid_tiles(studio *s)
 {
-    rml_context *context = rml_backend_context(s->backend);
-    rml_element *grid = NULL;
-    for (int i = 0; !grid && i < rml_context_document_count(context); i++) {
-        grid = rml_element_query_selector(rml_context_document(context, i), ".assets-grid .vlist-content");
+    rml_element *tiles[512];
+    int count = test_query_all(rml_backend_context(s->backend), "#assets-list [data-ui=Tile]", tiles, 512);
+    int shown = 0;
+    for (int i = 0; i < count && i < 512; i++) {
+        shown += rml_element_is_visible(tiles[i], true);
     }
-    int tiles = 0;
-    for (int r = 0; grid && r < rml_element_child_count(grid); r++) {
-        tiles += rml_element_child_count(rml_element_child(grid, r));
-    }
-    return tiles;
+    return shown;
 }
 
 /* A grid of more than a thousand assets makes only the tiles in view. */

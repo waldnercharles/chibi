@@ -135,6 +135,9 @@ void test_ui_motion();
 /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
 void test_arena_hud();
 
+/* ---------- Native controls (workstream F2) ---------- */
+void test_ui_controls();
+
 static int fails;
 
 void test_check(int ok, const char *msg)
@@ -322,6 +325,8 @@ TEST_CASE(all_checks)
     test_ui_motion();
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
     test_arena_hud();
+    /* ---------- Native controls (workstream F2) ---------- */
+    test_ui_controls();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -1170,6 +1175,11 @@ int main(int argc, char **argv)
         test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
         test_ui_motion();
         test_kit_slot();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Native controls (workstream F2) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-controls")) {
+        test_ui_controls();
         return fails ? 1 : 0;
     }
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */

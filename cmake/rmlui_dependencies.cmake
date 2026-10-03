@@ -43,8 +43,10 @@ function(chibi_rmlui_dependencies)
     # Variables resolving to dp lengths recompute when the pixel ratio changes.
     # A blurred box-shadow blurs its whole shape before the box clips it, as in
     # browsers, so an offset shadow with negative spread keeps its strength.
+    # As in browsers, a change event's propagation can be stopped, so a native
+    # control keeps its inner input's changes to itself (src/ui/controls).
     set(patches "")
-    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur)
+    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur change-propagation)
         list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-${name}.patch")
     endforeach()
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})

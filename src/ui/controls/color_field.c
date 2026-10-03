@@ -618,14 +618,18 @@ static color_field *field_new(rml_element *el)
     control_part(el, "div", "mark");
     f->swatch = control_part(el, "div", "swatch");
     static const rml_event_id EVENTS[] = {
-        RML_EVENT_MOUSEDOWN, RML_EVENT_DRAG,   RML_EVENT_DRAGEND,
-        RML_EVENT_CLICK,     RML_EVENT_CHANGE,
+        RML_EVENT_MOUSEDOWN,
+        RML_EVENT_DRAG,
+        RML_EVENT_DRAGEND,
+        RML_EVENT_CLICK,
     };
     for (size_t i = 0; i < sizeof EVENTS / sizeof *EVENTS; i++) {
         rml_element_add_event_listener(el, EVENTS[i], listener, false);
     }
-    /* Keys reach the picker before its controls do, as a popover's do. */
+    /* Keys reach the picker before its controls do, as a popover's do, and
+       its controls' changes stop at the field. */
     rml_element_add_event_listener(el, RML_EVENT_KEYDOWN, listener, true);
+    rml_element_add_event_listener(el, RML_EVENT_CHANGE, listener, true);
     rml_element_set_attribute(el, "role", "button");
     rml_element_set_attribute(el, "aria-haspopup", "dialog");
     rml_element_set_attribute(el, "aria-expanded", "false");

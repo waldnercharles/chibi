@@ -310,7 +310,8 @@ typedef struct spike_value
     const ecs_component_desc *desc;
     int field;
     int axis;              /* a float of a vector field, or -1 */
-    yyjson_mut_val *shown; /* its text, or a check's bool */
+    bool number;           /* a <number-field>'s value */
+    yyjson_mut_val *shown; /* its number or text, or a check's bool */
 } spike_value;
 
 struct bench_spike
@@ -481,6 +482,17 @@ static void field_text(const type_field *f, const pin_value *v, int axis, char *
     snprintf(out, size, "%lld", integer_of(v));
 }
 
+/* The number a <number-field> shows. */
+static double number_of(const pin_value *v, int axis)
+{
+    switch (v->type) {
+        case PIN_F32: return v->f;
+        case PIN_F64: return v->d;
+        case PIN_STRUCT: return ((const float *)v->ptr)[axis];
+        default: return (double)integer_of(v);
+    }
+}
+
 static bool read_value(const bench_spike *s, const spike_value *value, pin_value *out)
 {
     return ecs_component_read_field(s->world, s->entity, value->desc->id, value->field, out) ==
@@ -495,7 +507,9 @@ static void add_shown(bench_spike *s, yyjson_mut_val *item, const char *key, spi
     bool read = read_value(s, &value, &v);
     assert(read);
     const type_field *f = &value.desc->type->fields[value.field];
-    if (v.type == PIN_BOOL) {
+    if (value.number) {
+        value.shown = yyjson_mut_real(json, number_of(&v, value.axis));
+    } else if (v.type == PIN_BOOL) {
         value.shown = yyjson_mut_bool(json, v.b);
     } else {
         char text[256];
@@ -504,6 +518,15 @@ static void add_shown(bench_spike *s, yyjson_mut_val *item, const char *key, spi
     }
     yyjson_mut_obj_add_val(json, item, key, value.shown);
     apush(s->values, value);
+}
+
+/* A vector axis's fields other than its value. */
+static void spike_axis(yyjson_mut_doc *json, yyjson_mut_val *axis, int a)
+{
+    yyjson_mut_obj_add_str(json, axis, "key", AXES[a]);
+    yyjson_mut_obj_add_str(json, axis, "label", AXIS_LABELS[a]);
+    yyjson_mut_obj_add_real(json, axis, "step", 0.1);
+    yyjson_mut_obj_add_int(json, axis, "precision", 2);
 }
 
 /* A row with an empty array for each control kind, which `kinds` gets. */
@@ -554,19 +577,24 @@ static void add_field_row(bench_spike *s, yyjson_mut_val *rows, const ecs_compon
     row_kind kind = kind_of(f, &v);
     yyjson_mut_val *item = yyjson_mut_arr_add_obj(json, kinds[kind]);
     spike_value value = { .desc = desc, .field = field, .axis = -1 };
+    bool real = v.type == PIN_F32 || v.type == PIN_F64;
     switch (kind) {
         case KIND_NUMBER:
-            add_shown(s, item, "text", value);
+            value.number = true;
+            add_shown(s, item, "value", value);
+            yyjson_mut_obj_add_real(json, item, "step", real ? 0.1 : 1);
+            yyjson_mut_obj_add_int(json, item, "precision", real ? 2 : 0);
+            yyjson_mut_obj_add_bool(json, item, "integer", !real);
             yyjson_mut_obj_add_str(json, item, "unit", "");
             return;
         case KIND_VECTOR: {
             yyjson_mut_val *axes = yyjson_mut_obj_add_arr(json, item, "axes");
+            value.number = true;
             for (int a = 0; a < vector_axes(f->type_name); a++) {
                 yyjson_mut_val *axis = yyjson_mut_arr_add_obj(json, axes);
-                yyjson_mut_obj_add_str(json, axis, "key", AXES[a]);
-                yyjson_mut_obj_add_str(json, axis, "label", AXIS_LABELS[a]);
+                spike_axis(json, axis, a);
                 value.axis = a;
-                add_shown(s, axis, "text", value);
+                add_shown(s, axis, "value", value);
             }
             return;
         }
@@ -593,9 +621,8 @@ static void add_position_row(bench_spike *s, yyjson_mut_val *rows, const ecs_com
     );
     for (int a = 0; a < 2; a++) {
         yyjson_mut_val *axis = yyjson_mut_arr_add_obj(json, axes);
-        yyjson_mut_obj_add_str(json, axis, "key", AXES[a]);
-        yyjson_mut_obj_add_str(json, axis, "label", AXIS_LABELS[a]);
-        add_shown(s, axis, "text", (spike_value){ .desc = desc, .field = a, .axis = -1 });
+        spike_axis(json, axis, a);
+        add_shown(s, axis, "value", (spike_value){ .desc = desc, .field = a, .axis = -1, .number = true });
     }
 }
 
@@ -655,6 +682,12 @@ int bench_spike_refresh(bench_spike *s)
         if (!read_value(s, value, &v)) {
             continue;
         }
+        if (value->number) {
+            double number = number_of(&v, value->axis);
+            changed += yyjson_mut_get_real(value->shown) != number;
+            yyjson_mut_set_real(value->shown, number);
+            continue;
+        }
         if (v.type == PIN_BOOL) {
             changed += yyjson_mut_get_bool(value->shown) != v.b;
             yyjson_mut_set_bool(value->shown, v.b);
@@ -688,14 +721,16 @@ static void spike_fill(bench_spike *s, int count)
     yyjson_mut_obj_add_bool(json, panel, "open", true);
     yyjson_mut_val *rows = yyjson_mut_obj_add_arr(json, panel, "rows");
     for (int i = 0; i < count; i++) {
-        char id[32], label[32], text[32];
+        char id[32], label[32];
         snprintf(id, sizeof id, "bench.%d", i);
         snprintf(label, sizeof label, "Field %d", i);
-        snprintf(text, sizeof text, "%.2f", i * 1.5);
         yyjson_mut_val *kinds[KIND_COUNT];
         new_row(s, rows, id, label, "", kinds);
         yyjson_mut_val *item = yyjson_mut_arr_add_obj(json, kinds[KIND_NUMBER]);
-        yyjson_mut_obj_add_strcpy(json, item, "text", text);
+        yyjson_mut_obj_add_real(json, item, "value", i * 1.5);
+        yyjson_mut_obj_add_real(json, item, "step", 0.1);
+        yyjson_mut_obj_add_int(json, item, "precision", 2);
+        yyjson_mut_obj_add_bool(json, item, "integer", false);
         yyjson_mut_obj_add_str(json, item, "unit", "");
     }
 }

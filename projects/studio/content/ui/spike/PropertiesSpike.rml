@@ -19,21 +19,9 @@
         <div class="prop" data-for="row : panel.rows" data-attrif-data-overridden="row.overridden">
           <label class="label" data-attr-data-tip="row.about"><span>{{ row.label }}</span></label>
           <div class="control">
-            <div class="field number" data-for="n : row.number" data-attrif-data-overridden="row.overridden" data-attrif-data-readonly="row.readonly" data-attrif-data-mixed="row.mixed" data-attrif-data-invalid="row.invalid" data-event-mousedown="emit('properties.press', row.id)">
-              <div class="fill"/><div class="mark"/>
-              <span class="part value">{{ n.text }}</span>
-              <span class="part unit" data-if="n.unit != ''">{{ n.unit }}</span>
-              <span class="step dec"><span class="icon">&#xeab5;</span></span>
-              <span class="step inc"><span class="icon">&#xeab6;</span></span>
-            </div>
+            <number-field class="field number" data-for="n : row.number" data-attr-value="n.value" data-attr-step="n.step" data-attr-precision="n.precision" data-attrif-integer="n.integer" data-attr-unit="n.unit" data-attrif-data-overridden="row.overridden" data-attrif-readonly="row.readonly" data-attrif-mixed="row.mixed" data-attrif-invalid="row.invalid" data-event-change="emit('properties.change', row.id)"></number-field>
             <div class="joined" data-for="v : row.vector">
-              <div class="field number" data-for="a : v.axes" data-attrif-data-overridden="row.overridden" data-attrif-data-readonly="row.readonly" data-attrif-data-mixed="row.mixed" data-event-mousedown="emit('properties.press', row.id, a.key)">
-                <div class="fill"/><div class="mark"/>
-                <span class="part addon" data-class-x="a.key == 'x'" data-class-y="a.key == 'y'">{{ a.label }}</span>
-                <span class="part value">{{ a.text }}</span>
-                <span class="step dec"><span class="icon">&#xeab5;</span></span>
-                <span class="step inc"><span class="icon">&#xeab6;</span></span>
-              </div>
+              <number-field class="field number" data-for="a : v.axes" data-attr-value="a.value" data-attr-step="a.step" data-attr-precision="a.precision" data-attr-addon="a.label" data-attr-data-axis="a.key" data-attrif-data-overridden="row.overridden" data-attrif-readonly="row.readonly" data-attrif-mixed="row.mixed" data-event-change="emit('properties.change', row.id)"></number-field>
             </div>
             <div class="check" data-for="b : row.bool" data-attrif-data-checked="b.value" data-attrif-data-readonly="row.readonly" data-attrif-data-mixed="row.mixed" data-event-click="emit('properties.toggle', row.id)">
               <span class="box"><span class="icon">&#xeab2;</span><span class="icon dash">&#xeacc;</span></span>

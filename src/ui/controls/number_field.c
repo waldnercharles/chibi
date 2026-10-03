@@ -33,7 +33,9 @@ typedef struct number_field
     int precision;
     bool integer, single, slider, mixed, readonly, disabled, invalid;
     char addon_text[PART_TEXT], unit_text[PART_TEXT];
-    bool dirty; /* an attribute changed since the last update read them */
+    /* Attributes changed since the last update read them: any, or only the
+       value, which a Play refresh changes and reads alone. */
+    bool dirty, value_dirty;
     /* The gesture. */
     double value, start, step_next;
     int step_dir;
@@ -138,7 +140,7 @@ static void set_value(number_field *f, double v)
 static void commit(number_field *f, bool canceled)
 {
     f->committed = true;
-    f->dirty = true;
+    f->value_dirty = true;
     control_redraw(f->el);
     control_dispatch_number(f->el, "change", f->value, canceled);
 }
@@ -468,6 +470,13 @@ static void on_event(void *, const rml_event *e)
         case RML_EVENT_DRAGEND: drag(f, e); return;
         case RML_EVENT_KEYDOWN: key(f, e); return;
         case RML_EVENT_BLUR: blur(f, e); return;
+        case RML_EVENT_CHANGE:
+            /* The typed text's changes stay inside; the field's change is
+               its commit. */
+            if (e->target != f->el) {
+                rml_event_stop_propagation(e);
+            }
+            return;
         default: return;
     }
 }
@@ -493,9 +502,11 @@ static void build(number_field *f)
         rml_element_add_event_listener(el, EVENTS[i], listener, false);
     }
     /* The typed input's keys reach the field before the input takes them,
-       and its blur, which does not bubble, as the field captures. */
+       its blur, which does not bubble, as the field captures, and its
+       changes stop there. */
     rml_element_add_event_listener(el, RML_EVENT_KEYDOWN, listener, true);
     rml_element_add_event_listener(el, RML_EVENT_BLUR, listener, true);
+    rml_element_add_event_listener(el, RML_EVENT_CHANGE, listener, true);
     rml_element_set_property(el, "drag", "drag");
 }
 
@@ -525,8 +536,6 @@ static void read_attributes(number_field *f)
     f->readonly = control_bool(el, "readonly");
     f->disabled = control_bool(el, "disabled");
     f->invalid = control_bool(el, "invalid");
-    double model = control_number(el, "value", 0);
-    f->model = f->single ? (double)(float)model : model;
     char text[PART_TEXT];
     control_string(el, "addon", text, sizeof text);
     part_text(f->addon, f->addon_text, text);
@@ -538,7 +547,12 @@ static void read_attributes(number_field *f)
 
 static void apply_attributes(number_field *f)
 {
-    read_attributes(f);
+    if (f->dirty) {
+        read_attributes(f);
+    }
+    f->value_dirty = false;
+    double model = control_number(f->el, "value", 0);
+    f->model = f->single ? (double)(float)model : model;
     if (locked(f)) {
         end_edit(f, false, false);
     }
@@ -562,7 +576,7 @@ static number_field *field_new(rml_element *el)
 static void field_update(rml_element *el, void *user)
 {
     number_field *f = user ? user : field_new(el);
-    if (f->dirty) {
+    if (f->dirty || f->value_dirty) {
         apply_attributes(f);
     }
     if (f->step_dir) {
@@ -573,8 +587,8 @@ static void field_update(rml_element *el, void *user)
 static bool contract_attribute(const char *name)
 {
     static const char *const NAMES[] = {
-        "value",  "min",  "max",   "step",  "precision", "integer",  "float",
-        "slider", "unit", "addon", "mixed", "readonly",  "disabled", "invalid",
+        "min",  "max",   "step",  "precision", "integer",  "float",   "slider",
+        "unit", "addon", "mixed", "readonly",  "disabled", "invalid",
     };
     for (size_t i = 0; i < sizeof NAMES / sizeof *NAMES; i++) {
         if (!strcmp(name, NAMES[i])) {
@@ -587,9 +601,11 @@ static bool contract_attribute(const char *name)
 static void field_attribute(rml_element *, void *user, const char *name)
 {
     number_field *f = user;
-    if (f && contract_attribute(name)) {
-        f->dirty = true;
+    if (!f) {
+        return;
     }
+    f->value_dirty |= !strcmp(name, "value");
+    f->dirty |= contract_attribute(name);
 }
 
 static void field_release(void *user)

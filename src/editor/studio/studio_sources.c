@@ -63,6 +63,7 @@ yyjson_mut_doc *studio_sources_new()
     yyjson_mut_obj_add_bool(doc, new_project, "confirm_discard", false);
     add_inspector(doc, root);
     studio_settings_add(doc);
+    studio_keymap_add(doc);
     studio_status_add(doc);
     studio_commands_add(doc);
     return doc;
@@ -460,6 +461,7 @@ void studio_settings_add(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_str(doc, page, "title", studio_settings_categories[0].label);
     yyjson_mut_obj_add_str(doc, page, "project", "");
     yyjson_mut_obj_add_real(doc, page, "matches", 0);
+    yyjson_mut_obj_add_real(doc, page, "conflicts", 0);
     yyjson_mut_val *categories = yyjson_mut_obj_add_arr(doc, page, "categories");
     for (int c = 0; c < STUDIO_SETTINGS_CATEGORY_COUNT; c++) {
         const studio_settings_category_info *info = &studio_settings_categories[c];
@@ -487,7 +489,8 @@ static yyjson_mut_val *add_row(
 {
     static const char *const TEXTS[] = { "key",     "label",    "description",
                                          "value",   "default",  "position",
-                                         "context", "conflict", "bound" };
+                                         "context", "conflict", "bound",
+                                         "aliases" };
     static const char *const FLAGS[] = { "shown",  "head",      "modified",
                                          "record", "recording", "indexed" };
     static const char *const LISTS[] = { "choices", "bool", "choice",
@@ -816,6 +819,23 @@ static bool refresh_shortcuts(
     return true;
 }
 
+/* "Also" and the chords after the first that run the command, which its
+ * default's aliases give while it is not overridden. */
+static void alias_text(const studio_settings_view *view, int command, char *out, size_t size)
+{
+    const char *chords[5];
+    int count = command >= 0
+                  ? studio_command_bindings(view->prefs, command, chords, 5)
+                  : 0;
+    size_t used = 0;
+    out[0] = '\0';
+    for (int i = 1; i < count && used < size; i++) {
+        char shown[STUDIO_CHORD_SIZE];
+        studio_chord_format(shown, sizeof shown, chords[i], view->mac);
+        used += (size_t)snprintf(out + used, size - used, "%s%s", i == 1 ? "Also " : ", ", shown);
+    }
+}
+
 /* Shows each row's value, whether it differs from its default, and a
  * command's label and keys. */
 static bool show_values(
@@ -849,9 +869,11 @@ static bool show_values(
         changed |= put_text(doc, row, "value", chord);
         changed |= put_text(doc, row, "bound", chord);
         if (shortcuts_changed) {
-            char shortcut[STUDIO_CHORD_SIZE];
+            char shortcut[STUDIO_CHORD_SIZE], aliases[192];
             studio_chord_format(shortcut, sizeof shortcut, chord, view->mac);
             changed |= show_keys(doc, yyjson_mut_obj_get(row, "keys"), shortcut);
+            alias_text(view, command, aliases, sizeof aliases);
+            changed |= put_text(doc, row, "aliases", aliases);
         }
         changed |= put_bool(row, "modified", command >= 0 && view->prefs->shortcuts[command][0]);
         changed |= put_bool(row, "recording", command >= 0 && view->recording == command + 1);
@@ -902,13 +924,15 @@ static bool row_matches(const studio_settings_view *view, int index, const char 
     int command = index - studio_setting_count;
     if (command < view->command_count) {
         const studio_command_info *c = &view->commands[command];
+        bool conflict = view->cache && view->cache->conflicts[command] >= 0;
         snprintf(
             text,
             sizeof text,
-            "%s %s %s Keyboard shortcut",
+            "%s %s %s Keyboard shortcut%s",
             c->label,
             c->keywords ? c->keywords : "",
-            c->id
+            c->id,
+            conflict ? " conflict" : ""
         );
     } else {
         int f = command - view->command_count;
@@ -972,11 +996,13 @@ static bool show_visible(const studio_settings_view *view, yyjson_mut_doc *doc, 
     const char *query = text_of(page, "query");
     bool searching = query[strspn(query, " ")] != '\0';
     yyjson_mut_val *rows = yyjson_mut_obj_get(page, "rows");
-    int matches[STUDIO_SETTINGS_CATEGORY_COUNT] = { 0 }, shown = 0, last = -1;
+    int matches[STUDIO_SETTINGS_CATEGORY_COUNT] = { 0 }, shown = 0, last = -1,
+        conflicts = 0;
     bool modified[STUDIO_SETTINGS_CATEGORY_COUNT] = { false };
     for (int i = 0; i < (int)yyjson_mut_arr_size(rows); i++) {
         yyjson_mut_val *row = yyjson_mut_arr_get(rows, (size_t)i);
         int c = row_category(view, i);
+        conflicts += text_of(row, "conflict")[0] != '\0';
         bool show = studio_settings_categories[c].project == project &&
                     (searching ? row_matches(view, i, query) : c == category);
         matches[c] += show;
@@ -999,6 +1025,7 @@ static bool show_visible(const studio_settings_view *view, yyjson_mut_doc *doc, 
         changed |= put_text(doc, item, "badge", badge);
     }
     changed |= put_number(page, "matches", shown);
+    changed |= put_number(page, "conflicts", conflicts);
     return changed;
 }
 
@@ -1199,6 +1226,9 @@ static void sync_values(studio *s, studio_sources *src, ui_data *data, bool wrot
     sync_world(s, src, data, wrote);
     sync_theme(s, src, data, wrote);
     sync_settings(s, src, data, wrote);
+    if (studio_keymap_show(data->doc, &s->prefs, s->mac, &src->keymap_cache)) {
+        rml_data_model_dirty(data->model, "shortcuts");
+    }
     sync_editor(s, data);
     sync_commands(s, data);
     sync_collaboration(s, data);
@@ -1781,8 +1811,11 @@ static hint_list editor_hints(studio *s)
                                             { 0, "Shift+A", "Add" },
                                             { 0, "Q", "Straighten" } };
     static const studio_hint MOVING[] = { { 0, "Ctrl", "Snap" } };
-    static const studio_hint OTHER[] = { { KIT_ICON_MOUSE, NULL, "Select" },
-                                         { 0, NULL, "Search", STUDIO_COMMAND_SEARCH + 1 } };
+    static const studio_hint OTHER[] = {
+        { KIT_ICON_MOUSE, NULL, "Select" },
+        { 0, NULL, "Search", STUDIO_COMMAND_SEARCH + 1 },
+        { 0, NULL, "Shortcuts", STUDIO_COMMAND_KEYBOARD_SHORTCUTS + 1 }
+    };
     studio_editor editor = s->hover_area >= 0
                              ? studio_active_layout(s)->editors[s->hover_area]
                              : STUDIO_EDITOR_COUNT;

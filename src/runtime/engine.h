@@ -151,7 +151,6 @@ typedef struct engine_viewport_pointer
     bool released;
     bool dragging;
     bool cancel;
-    bool delete_pressed;
     char dropped_prototype[256];
 } engine_viewport_pointer;
 

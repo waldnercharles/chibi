@@ -22,6 +22,11 @@ name "Studio"
         (array)behaviors "NavKeys" "Dismiss"
     }
     - {
+        name "Shortcuts"
+        prototype "Shortcuts"
+        (array)behaviors "Dismiss"
+    }
+    - {
         name "NewProject"
         prototype "NewProject"
         (array)behaviors "NewProjectKeys"

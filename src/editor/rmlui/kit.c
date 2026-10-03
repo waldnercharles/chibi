@@ -1445,6 +1445,12 @@ bool kit_accepts_text(const kit *k)
     return is_input(focus) || (n && (n->kind == KIND_NUMBER || n->kind == KIND_CODE));
 }
 
+bool kit_input_focused(const kit *k)
+{
+    rml_element *focus = rml_context_focus_element(k->context);
+    return focus && is_input(focus);
+}
+
 bool kit_wants_text(const kit *k, kit_rect *caret)
 {
     rml_element *focus = rml_context_focus_element(k->context);

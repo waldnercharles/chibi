@@ -750,6 +750,7 @@ void studio_designer_hierarchy_header(studio *s, int area)
     assert(d);
     kit_label(k, "mode", "designer-mode", "Hierarchy");
     kit_search(k, "filter", d->filter, sizeof d->filter, "Filter");
+    studio_find_field(s, STUDIO_EDITOR_OUTLINER);
     char key[32], markup[512], label[96];
     snprintf(key, sizeof key, "designer-add:%d", area);
     kit_button_desc add = { .icon = KIT_ICON_ADD };
@@ -1410,8 +1411,15 @@ bool studio_designer_key(studio *s, studio_editor editor, SDL_Keycode key, SDL_K
     bool hierarchy = editor == STUDIO_EDITOR_OUTLINER;
     if (!d ||
         (!hierarchy && !(editor == STUDIO_EDITOR_SCENE && shows_document(s, d))) ||
-        studio_primary(s, mod) || (mod & SDL_KMOD_ALT)) {
+        (mod & SDL_KMOD_ALT)) {
         return false;
+    }
+    /* Mod+D duplicates, as for objects. */
+    if (studio_primary(s, mod)) {
+        if (key == SDLK_D && !d->carry.active) {
+            duplicate(s, d, b);
+        }
+        return key == SDLK_D;
     }
     if (hierarchy && d->carry.active) {
         carry_key(s, d, b, key);
@@ -1430,7 +1438,8 @@ bool studio_designer_key(studio *s, studio_editor editor, SDL_Keycode key, SDL_K
     }
     switch (key) {
         case SDLK_X:
-        case SDLK_DELETE: delete_selected(s, d, b); return true;
+        case SDLK_DELETE:
+        case SDLK_BACKSPACE: delete_selected(s, d, b); return true;
         case SDLK_UP:
         case SDLK_DOWN:
             if (hierarchy) {

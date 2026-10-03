@@ -908,12 +908,14 @@ void studio_behavior_header(studio *s, int area)
         sg_arrange(s, false);
         sg_frame_nodes(s, false, true);
     }
-    kit_button_desc find = { .icon = KIT_ICON_SEARCH,
-                             .tip = "Find",
-                             .shortcut = studio_chord(s, "Mod+F"),
-                             .flags = g->find.open ? KIT_ON : 0 };
+    kit_button_desc find = {
+        .icon = KIT_ICON_SEARCH,
+        .tip = "Find",
+        .shortcut = studio_command_describe(s, STUDIO_COMMAND_FIND).shortcut,
+        .flags = g->find.open ? KIT_ON : 0
+    };
     if (kit_button(k, "find", &find)) {
-        sg_find_open(s);
+        studio_graph_find(s);
     }
     kit_button_desc fit = { .icon = KIT_ICON_FRAME, .tip = "Frame all", .shortcut = "Home" };
     if (kit_button(k, "frame", &fit)) {

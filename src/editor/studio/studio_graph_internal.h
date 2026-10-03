@@ -235,7 +235,6 @@ void sg_frame_properties(studio *s, graph_comment_box *box);
 void sg_identity(kit *k, uint32_t icon, const char *name, const char *lineage);
 
 /* Find in graph (studio_graph_find.c). */
-void sg_find_open(studio *s);
 void sg_find_panel(studio *s);
 
 /* Navigation (studio_graph_nav.c). */

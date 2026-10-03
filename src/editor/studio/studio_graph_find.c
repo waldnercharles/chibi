@@ -14,7 +14,7 @@ enum
     VISIBLE_ROWS = 8,
 };
 
-void sg_find_open(studio *s)
+void studio_graph_find(studio *s)
 {
     s->graph.find.open = true;
     s->graph.find.focus = true;

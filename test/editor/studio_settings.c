@@ -530,6 +530,201 @@ static void shortcut_recording()
     );
 }
 
+/* No two commands share a default chord or alias where both can act, on
+ * either platform, every binding parses, and Keyboard Shortcuts lists each
+ * command's area. */
+static void shortcut_defaults()
+{
+    studio_prefs prefs = studio_prefs_default();
+    bool unique = true, valid = true, grouped = true;
+    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
+        const char *chords[5];
+        int count = studio_command_bindings(&prefs, (studio_command)c, chords, 5);
+        for (int i = 0; i < count; i++) {
+            valid &= studio_chord_valid(chords[i]);
+        }
+        for (int mac = 0; count && mac < 2; mac++) {
+            int other = studio_command_conflict(&prefs, (studio_command)c, chords[0], mac);
+            if (other >= 0) {
+                printf(
+                    "  %s conflicts with %s\n",
+                    studio_command_id((studio_command)c),
+                    studio_command_id((studio_command)other)
+                );
+            }
+            unique &= other < 0;
+        }
+        grouped &= studio_keymap_area(studio_command_group((studio_command)c));
+    }
+    test_check(unique && valid && grouped, "default shortcuts are unique where they act, parse, and have a Keyboard Shortcuts area");
+}
+
+/* The areas each object, find and transport key acts in. */
+static void shortcut_areas()
+{
+    studio_prefs p = studio_prefs_default();
+    SDL_Keymod ctrl = SDL_KMOD_CTRL, cmd = SDL_KMOD_GUI;
+    bool deletes = studio_command_for_key(&p, SDLK_BACKSPACE, 0, STUDIO_EDITOR_OUTLINER, true) ==
+                       STUDIO_COMMAND_DELETE &&
+                   studio_command_for_key(&p, SDLK_BACKSPACE, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_DELETE &&
+                   studio_command_for_key(&p, SDLK_DELETE, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_DELETE &&
+                   studio_command_for_key(&p, SDLK_X, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_DELETE &&
+                   studio_command_for_key(&p, SDLK_BACKSPACE, 0, STUDIO_EDITOR_ASSETS, false) <
+                       0;
+    bool duplicates = studio_command_for_key(&p, SDLK_D, cmd, STUDIO_EDITOR_SCENE, true) ==
+                          STUDIO_COMMAND_DUPLICATE &&
+                      studio_command_for_key(&p, SDLK_D, ctrl, STUDIO_EDITOR_OUTLINER, false) ==
+                          STUDIO_COMMAND_DUPLICATE &&
+                      studio_command_for_key(&p, SDLK_D, SDL_KMOD_SHIFT, STUDIO_EDITOR_SCENE, false) ==
+                          STUDIO_COMMAND_DUPLICATE &&
+                      studio_command_for_key(&p, SDLK_D, SDL_KMOD_SHIFT, STUDIO_EDITOR_OUTPUT, false) <
+                          0 &&
+                      studio_command_for_key(&p, SDLK_D, ctrl, STUDIO_EDITOR_BEHAVIOR, false) <
+                          0;
+    bool selects = studio_command_for_key(&p, SDLK_A, ctrl, STUDIO_EDITOR_OUTLINER, false) ==
+                       STUDIO_COMMAND_SELECT_ALL &&
+                   studio_command_for_key(&p, SDLK_A, ctrl, STUDIO_EDITOR_BEHAVIOR, false) <
+                       0 &&
+                   studio_command_for_key(&p, SDLK_ESCAPE, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_DESELECT &&
+                   studio_command_for_key(&p, SDLK_ESCAPE, 0, STUDIO_EDITOR_BEHAVIOR, false) <
+                       0 &&
+                   studio_command_for_key(&p, SDLK_HOME, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_FRAME_ALL &&
+                   studio_command_for_key(&p, SDLK_HOME, 0, STUDIO_EDITOR_BEHAVIOR, false) <
+                       0;
+    bool finds = true;
+    static const studio_editor FINDS[] = {
+        STUDIO_EDITOR_BEHAVIOR,   STUDIO_EDITOR_CODE,   STUDIO_EDITOR_OUTLINER,
+        STUDIO_EDITOR_PROPERTIES, STUDIO_EDITOR_ASSETS, STUDIO_EDITOR_OUTPUT,
+        STUDIO_EDITOR_MEMBERS
+    };
+    for (size_t i = 0; i < sizeof FINDS / sizeof *FINDS; i++) {
+        finds &= studio_command_for_key(&p, SDLK_F, cmd, FINDS[i], true) ==
+                 STUDIO_COMMAND_FIND;
+    }
+    finds &= studio_command_for_key(&p, SDLK_F, cmd, STUDIO_EDITOR_SCENE, true) < 0;
+    bool transport = studio_command_for_key(&p, SDLK_F5, SDL_KMOD_SHIFT, STUDIO_EDITOR_BEHAVIOR, true) ==
+                         STUDIO_COMMAND_STOP &&
+                     studio_command_for_key(&p, SDLK_SLASH, cmd, STUDIO_EDITOR_CODE, true) ==
+                         STUDIO_COMMAND_KEYBOARD_SHORTCUTS &&
+                     studio_command_for_key(&p, SDLK_SLASH, ctrl, STUDIO_EDITOR_COUNT, false) ==
+                         STUDIO_COMMAND_KEYBOARD_SHORTCUTS;
+    test_check(deletes && duplicates, "Delete, Backspace and X delete, and Shift+D and Mod+D duplicate, objects only over the Scene and Outliner");
+    test_check(selects && finds && transport, "Select All, Deselect, Frame All, Find, Stop and Keyboard Shortcuts act in their areas");
+}
+
+/* Text fields keep the primary modifier's editing keys; Studio takes the
+ * rest. Option's composed characters dispatch as the key's letter. */
+static void shortcut_text_keys()
+{
+    bool text = studio_text_key(SDLK_A) && studio_text_key(SDLK_C) &&
+                studio_text_key(SDLK_V) && studio_text_key(SDLK_X) &&
+                studio_text_key(SDLK_Z) && studio_text_key(SDLK_Y) &&
+                studio_text_key(SDLK_LEFT) && studio_text_key(SDLK_BACKSPACE);
+    bool commands = !studio_text_key(SDLK_K) && !studio_text_key(SDLK_S) &&
+                    !studio_text_key(SDLK_EQUALS) && !studio_text_key(SDLK_SLASH);
+    SDL_KeyboardEvent option_g = { .key = 0xa9,
+                                   .scancode = SDL_SCANCODE_G,
+                                   .mod = SDL_KMOD_LALT };
+    SDL_KeyboardEvent copyright = { .key = 0xa9, .scancode = SDL_SCANCODE_G };
+    SDL_KeyboardEvent option_f5 = { .key = SDLK_F5,
+                                    .scancode = SDL_SCANCODE_F5,
+                                    .mod = SDL_KMOD_LALT };
+    bool composed = studio_event_key(&option_g) == SDLK_G &&
+                    studio_event_key(&copyright) == 0xa9 &&
+                    studio_event_key(&option_f5) == SDLK_F5;
+    char shown[64];
+    studio_chord_format(shown, sizeof shown, "Backspace", true);
+    bool glyphs = !strcmp(shown, "Delete");
+    studio_chord_format(shown, sizeof shown, "Backspace", false);
+    glyphs &= !strcmp(shown, "Backspace");
+    studio_chord_format(shown, sizeof shown, "Mod+Up", true);
+    glyphs &= !strcmp(shown, "\xe2\x8c\x98\xe2\x86\x91");
+    studio_chord_format(shown, sizeof shown, "Ctrl+Space", true);
+    glyphs &= !strcmp(shown, "\xe2\x8c\x83 Space");
+    studio_chord_format(shown, sizeof shown, "Escape", false);
+    glyphs &= !strcmp(shown, "Esc");
+    test_check(text && commands, "a focused field keeps the clipboard, undo and caret chords and passes the rest to Studio");
+    test_check(composed && glyphs, "Option-composed keys dispatch as their letter, and menus write arrows as glyphs and a Mac's delete keys by name");
+}
+
+/* The `shortcuts` group named `label`, or NULL. */
+static yyjson_mut_val *sheet_group(yyjson_mut_doc *doc, const char *label)
+{
+    yyjson_mut_val *sheet = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "shortcuts");
+    yyjson_mut_val *groups = yyjson_mut_obj_get(sheet, "groups");
+    for (size_t i = 0; i < yyjson_mut_arr_size(groups); i++) {
+        yyjson_mut_val *group = yyjson_mut_arr_get(groups, i);
+        if (!strcmp(yyjson_mut_get_str(yyjson_mut_obj_get(group, "label")), label)) {
+            return group;
+        }
+    }
+    return NULL;
+}
+
+/* The keys of the group's row labeled `label`, joined by spaces. */
+static void sheet_keys(yyjson_mut_val *group, const char *label, char *out, size_t size)
+{
+    out[0] = '\0';
+    yyjson_mut_val *rows = group ? yyjson_mut_obj_get(group, "rows") : NULL;
+    for (size_t i = 0; rows && i < yyjson_mut_arr_size(rows); i++) {
+        yyjson_mut_val *row = yyjson_mut_arr_get(rows, i);
+        if (strcmp(yyjson_mut_get_str(yyjson_mut_obj_get(row, "label")), label)) {
+            continue;
+        }
+        yyjson_mut_val *keys = yyjson_mut_obj_get(row, "keys");
+        size_t used = 0;
+        for (size_t k = 0; k < yyjson_mut_arr_size(keys); k++) {
+            used += (size_t)snprintf(
+                out + used,
+                size - used,
+                "%s%s",
+                k ? " " : "",
+                yyjson_mut_get_str(yyjson_mut_arr_get(keys, k))
+            );
+        }
+    }
+}
+
+/* Keyboard Shortcuts lists commands by area with their effective chords,
+ * then the keys editors take themselves, and searches all of it. */
+static void shortcut_sheet()
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
+    studio_keymap_add(doc);
+    studio_prefs prefs = studio_prefs_default();
+    studio_keymap_cache cache = { 0 };
+    bool shown = studio_keymap_show(doc, &prefs, false, &cache);
+    bool cached = !studio_keymap_show(doc, &prefs, false, &cache);
+    char keys[128];
+    sheet_keys(sheet_group(doc, "Global"), "Search", keys, sizeof keys);
+    bool search = !strcmp(keys, "Ctrl+K Ctrl+P");
+    sheet_keys(sheet_group(doc, "Behavior"), "Duplicate nodes", keys, sizeof keys);
+    bool fixed = !strcmp(keys, "Shift+D Ctrl+D");
+    sheet_keys(sheet_group(doc, "Text Editor"), "Start and end of the text", keys, sizeof keys);
+    bool platform = !strcmp(keys, "Ctrl+Home Ctrl+End");
+    snprintf(prefs.shortcuts[STUDIO_COMMAND_SAVE], STUDIO_CHORD_SIZE, "Mod+Shift+S");
+    bool rebound = studio_keymap_show(doc, &prefs, false, &cache);
+    sheet_keys(sheet_group(doc, "Global"), "Save", keys, sizeof keys);
+    rebound &= !strcmp(keys, "Ctrl+Shift+S");
+    yyjson_mut_val *sheet = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "shortcuts");
+    yyjson_mut_set_str(yyjson_mut_obj_get(sheet, "query"), "breakpoint");
+    studio_keymap_show(doc, &prefs, true, &cache);
+    bool found = yyjson_mut_get_int(yyjson_mut_obj_get(sheet, "matches")) == 1 &&
+                 sheet_group(doc, "Behavior") && !sheet_group(doc, "Global");
+    yyjson_mut_set_str(yyjson_mut_obj_get(sheet, "query"), "no such key");
+    studio_keymap_show(doc, &prefs, true, &cache);
+    bool empty = yyjson_mut_get_int(yyjson_mut_obj_get(sheet, "matches")) == 0 &&
+                 !yyjson_mut_arr_size(yyjson_mut_obj_get(sheet, "groups"));
+    test_check(shown && cached && search && fixed && platform && rebound && found && empty, "Keyboard Shortcuts lists effective chords and editor keys by area and searches them");
+    yyjson_mut_doc_free(doc);
+}
+
 /* Authored panels bind the preferences as saved keys: a panel's change
  * applies, an invalid one is dropped, and the save shows the preferences. */
 static void save_mirror()
@@ -777,6 +972,35 @@ static void page_rows()
             !strcmp(yyjson_mut_get_str(member(font, "value")), "14") &&
             !strcmp(yyjson_mut_get_str(member(font, "position")), "0.25"),
         "a slider moves from 0 to 1 and sets its number on a step"
+    );
+    page_close(&f);
+}
+
+/* A shortcut row lists its default's aliases until it is rebound; a chord
+ * two commands share counts on the page, and "conflict" finds them. */
+static void page_shortcut_aliases()
+{
+    page_fixture f;
+    page_open(&f);
+    set_text(&f, f.page, "category", "keyboard");
+    studio_settings_sync(&f.view, f.doc, true);
+    yyjson_mut_val *search = row_named(&f, "command.search");
+    bool aliased = !strcmp(yyjson_mut_get_str(member(search, "aliases")), "Also Ctrl+P") &&
+                   !yyjson_mut_get_str(
+                       member(row_named(&f, "command.save"), "aliases")
+                   )[0] &&
+                   yyjson_mut_get_real(member(f.page, "conflicts")) == 0;
+    snprintf(f.prefs.shortcuts[STUDIO_COMMAND_SAVE], STUDIO_CHORD_SIZE, "Mod+P");
+    studio_settings_sync(&f.view, f.doc, false);
+    bool counted = yyjson_mut_get_real(member(f.page, "conflicts")) == 2;
+    set_text(&f, f.page, "query", "conflict");
+    studio_settings_sync(&f.view, f.doc, true);
+    char keys[256];
+    shown(&f, keys, sizeof keys);
+    test_check(
+        aliased && counted && !strcmp(keys, "command.save command.search"),
+        "a shortcut row lists its aliases, and the Keyboard page counts and "
+        "finds conflicting chords"
     );
     page_close(&f);
 }
@@ -1452,9 +1676,14 @@ void test_studio_settings()
     shortcut_chords();
     shortcut_dispatch();
     shortcut_recording();
+    shortcut_defaults();
+    shortcut_areas();
+    shortcut_text_keys();
+    shortcut_sheet();
     save_mirror();
     page_rows();
     page_keyboard_and_project();
     page_shortcut_refresh();
+    page_shortcut_aliases();
     page_mount();
 }

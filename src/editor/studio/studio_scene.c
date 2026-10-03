@@ -471,6 +471,7 @@ void studio_outliner_header(studio *s, int area)
     }
     kit *k = s->kit;
     kit_search(k, "filter", s->outliner_filter, sizeof s->outliner_filter, "Filter");
+    studio_find_field(s, STUDIO_EDITOR_OUTLINER);
     char key[24];
     snprintf(key, sizeof key, "add:%d", area);
     kit_button_desc add = { .icon = KIT_ICON_ADD,

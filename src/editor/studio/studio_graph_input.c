@@ -1038,8 +1038,6 @@ void sg_shortcuts(studio *s)
         bool alt = s->keys[i].mod & SDL_KMOD_ALT;
         if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
             sg_delete_selection(s);
-        } else if (mod && key == SDLK_F) {
-            sg_find_open(s);
         } else if (shift && alt && key == SDLK_F) {
             if (acount(e->selected) && studio_node_referable(e->selected[0])) {
                 studio_find_node_references(s, e->selected[0]);

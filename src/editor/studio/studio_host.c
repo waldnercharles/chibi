@@ -42,6 +42,20 @@ static bool web_wants_text(const studio *s)
     return s->viewport && engine_viewport_ui_typing(s->viewport);
 }
 
+/* SDL leaves a key to the page while a field takes text, keeping only
+   Control chords from the browser: ⌘S would save the page, ⌘= zoom it and ⌘F
+   find in it. Command chords are Studio's, but ⌘V, whose paste event carries
+   the clipboard. */
+// clang-format off
+EM_JS(void, web_keep_chords, (), {
+    if (Module.chibiChords) return;
+    Module.chibiChords = true;
+    window.addEventListener('keydown', (event) => {
+        if (event.metaKey && event.key.toLowerCase() !== 'v') event.preventDefault();
+    }, true);
+})
+// clang-format on
+
 EMSCRIPTEN_KEEPALIVE int studio_web_wants_text()
 {
     if (!web_studio) {
@@ -190,6 +204,7 @@ static rml_input_key input_key(SDL_Keycode key)
            Editor. */
         case SDLK_COMMA: return RML_INPUT_KEY_OEM_COMMA;
         case SDLK_SEMICOLON: return RML_INPUT_KEY_OEM_1;
+        case SDLK_SLASH: return RML_INPUT_KEY_OEM_2; /* Keyboard Shortcuts */
         case SDLK_LEFTBRACKET: return RML_INPUT_KEY_OEM_4;
         case SDLK_RIGHTBRACKET: return RML_INPUT_KEY_OEM_6;
         case SDLK_KP_MINUS: return RML_INPUT_KEY_SUBTRACT;
@@ -483,7 +498,7 @@ static bool forward_input(studio *s)
                 studio_shortcut_record(
                     &s->prefs,
                     &s->shortcut_recording,
-                    (studio_key){ e->key.key, e->key.mod, e->key.repeat },
+                    (studio_key){ studio_event_key(&e->key), e->key.mod, e->key.repeat },
                     s->mac
                 );
             }
@@ -560,7 +575,12 @@ static bool forward_input(studio *s)
                 s->mods = e->key.mod;
                 input.modifiers = rml_key_modifiers(s, e->key.mod);
                 if (e->type == SDL_EVENT_KEY_DOWN) {
-                    apush(s->keys, ((studio_key){ e->key.key, e->key.mod, e->key.repeat }));
+                    apush(
+                        s->keys,
+                        ((studio_key){ studio_event_key(&e->key),
+                                       e->key.mod,
+                                       e->key.repeat })
+                    );
                 }
                 if (input.key == RML_INPUT_KEY_UNKNOWN) {
                     continue;
@@ -889,7 +909,7 @@ static studio *create(
     s->assets_kind = -1;
     s->assets_hover = -1;
     s->cursor_shown = -1;
-    s->hover_area = s->focus_area = s->maximized = -1;
+    s->hover_area = s->focus_area = s->key_area = s->maximized = -1;
     s->bound.behavior = -2;
     s->view.zoom = 1;
     s->view.x = s->view.y = 0.5f;
@@ -903,6 +923,7 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     studio *s = create(scene, viewport, project_root, NULL);
 #ifdef __EMSCRIPTEN__
     web_studio = s;
+    web_keep_chords();
 #ifdef CHIBI_ENABLE_WEB_TRACE
     install_editor_counters();
 #endif
@@ -1151,6 +1172,17 @@ static bool canvas_layout_changed(const studio *s)
            fabsf(size.y / ratio - before.h) > 0.5f;
 }
 
+/* A text field has the keyboard, and no popup, palette or modal dialog that
+   keeps every key: Studio's chords that edit no text still run. */
+static bool field_chords(studio *s)
+{
+    kit *graph = s->graph.kit;
+    bool field = kit_input_focused(s->kit) || (graph && kit_input_focused(graph));
+    return field && !s->shortcut_recording && !kit_has_popup(s->kit) &&
+           !(graph && kit_has_popup(graph)) && !kit_command_is_open(s->kit) &&
+           !studio_ui_modal_open(s);
+}
+
 /* One frame of a Studio in a window of `width` by `height` points: the
  * window's, or a guest's in its host's Scene area. */
 static void run(studio *s, double delta_seconds, float width, float height)
@@ -1187,11 +1219,17 @@ static void run(studio *s, double delta_seconds, float width, float height)
         s->ui_schedule.frames++;
         CHIBI_TRACE_ZONE_END(emit_zone);
     }
+    /* This frame's keys reached whatever had the keyboard as they arrived:
+       a field that Escape or Enter just released still had them. */
+    bool typed = s->typing;
     s->typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
+    typed |= s->typing;
     bool toolbar_shortcuts = !studio_graph_wants_keyboard(s) &&
                              !s->shortcut_recording && studio_ui_shortcut_focus(s);
-    if (!s->typing || toolbar_shortcuts) {
-        studio_shortcuts(s);
+    if (!typed || toolbar_shortcuts) {
+        studio_shortcuts(s, false);
+    } else if (field_chords(s)) {
+        studio_shortcuts(s, true);
     }
     bool prefs_dirty = s->theme_switching > 0 ||
                        !studio_prefs_equal(&s->prefs, &s->applied);

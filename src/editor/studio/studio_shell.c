@@ -96,11 +96,12 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype)
    members and nodes. */
 static bool graph_focused(const studio *s)
 {
-    if (!studio_graph_active(s) || s->focus_area < 0) {
+    int area = studio_command_area(s);
+    if (!studio_graph_active(s) || area < 0) {
         return false;
     }
-    studio_editor editor = s->prefs.layouts[s->prefs.workspace].editors[s->focus_area];
-    return s->focus_area == s->graph.area || editor == STUDIO_EDITOR_MEMBERS ||
+    studio_editor editor = s->prefs.layouts[s->prefs.workspace].editors[area];
+    return area == s->graph.area || editor == STUDIO_EDITOR_MEMBERS ||
            (editor == STUDIO_EDITOR_PROPERTIES &&
             (s->tab == STUDIO_TAB_NODE || s->tab == STUDIO_TAB_MEMBER));
 }
@@ -409,19 +410,92 @@ void studio_duplicate(studio *s)
     }
 }
 
+void studio_frame_all(studio *s)
+{
+    fit_scene_view(s->viewport, s->scene->world, (ecs_entity){ 0 });
+    engine_viewport_get_view(s->viewport, &s->scene->camera.view);
+    s->scene->camera.saved = true;
+}
+
+void studio_select_all(studio *s)
+{
+    app_scene_authoring *scene = s->scene;
+    finish_transform_edit(scene, false);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = true;
+    }
+    scene->runtime_selected = (ecs_entity){ 0 };
+    scene->selected = acount(scene->actors) - 1;
+}
+
+void studio_deselect(studio *s)
+{
+    app_scene_authoring *scene = s->scene;
+    finish_transform_edit(scene, false);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = false;
+    }
+    scene->runtime_selected = (ecs_entity){ 0 };
+    scene->selected = -1;
+}
+
+void studio_find_field(studio *s, studio_editor editor)
+{
+    if (s->find_request == (int)editor + 1) {
+        kit_focus(s->kit);
+        s->find_request = 0;
+    }
+}
+
+static int actor_of(const app_scene_authoring *scene, ecs_entity entity)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Deletes the actors' entities from last to first; 0 when all went. */
+static int delete_entities(app_scene_authoring *scene, const ecs_entity *entities)
+{
+    int result = 0;
+    for (int i = acount(entities) - 1; i >= 0 && !result; i--) {
+        scene->selected = actor_of(scene, entities[i]);
+        result = app_scene_authoring_delete_instance(scene);
+    }
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = false;
+    }
+    return result;
+}
+
 /* Destructive edits offer Undo in a toast while they are still the latest edit. */
 void studio_delete(studio *s)
 {
-    scene_actor *actor = selected_actor(s->scene);
+    app_scene_authoring *scene = s->scene;
+    scene_actor *actor = selected_actor(scene);
     if (!studio_editable(s) || !actor) {
         return;
     }
+    ecs_entity *entities = NULL;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (scene->actors[i].marked || i == scene->selected) {
+            apush(entities, scene->actors[i].entity);
+        }
+    }
     char title[160];
-    snprintf(title, sizeof title, "Deleted %s", actor->name);
-    finish_transform_edit(s->scene, false);
-    scene_history_begin_group(s->scene->history);
-    int result = app_scene_authoring_delete_instance(s->scene);
-    scene_history_end_group(s->scene->history);
+    if (acount(entities) == 1) {
+        snprintf(title, sizeof title, "Deleted %s", actor->name);
+    } else {
+        snprintf(title, sizeof title, "Deleted %d objects", acount(entities));
+    }
+    finish_transform_edit(scene, false);
+    scene_history_begin_group(scene->history);
+    int result = delete_entities(scene, entities);
+    scene_history_end_group(scene->history);
+    afree(entities);
     if (result != 0) {
         toast(
             s,

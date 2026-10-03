@@ -187,6 +187,7 @@ void studio_output_header(studio *s, int area)
     kit_leaf(k, "spacer", NULL, "spacer");
     kit_push(k, "filter", NULL, "output-filter");
     kit_search(k, "search", s->output_filter, sizeof s->output_filter, "Filter");
+    studio_find_field(s, STUDIO_EDITOR_OUTPUT);
     kit_pop(k);
     bool clearable = false;
     switch (s->output_view) {

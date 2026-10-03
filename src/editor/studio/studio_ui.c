@@ -444,23 +444,32 @@ static const GameUi *panel_ui(studio_ui *ui, const panel *p)
     return GAME_GameUi_has(world, entity) ? GAME_GameUi_get_const(world, entity) : NULL;
 }
 
+/* The panels shown as modal dialogs. */
+static const char *const MODALS[] = { "Settings", "Collaboration", "Shortcuts" };
+
+bool studio_ui_modal_open(studio *s)
+{
+    if (s->new_project.open) {
+        return true;
+    }
+    for (size_t i = 0; s->ui && i < sizeof MODALS / sizeof *MODALS; i++) {
+        panel *p = find_panel(s->ui, MODALS[i]);
+        const GameUi *component = p ? panel_ui(s->ui, p) : NULL;
+        if (component && !component->hidden) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool studio_ui_shortcut_focus(studio *s)
 {
-    if (!s || !s->ui || !s->backend || !s->kit || s->new_project.open ||
-        kit_has_popup(s->kit) || kit_command_is_open(s->kit) ||
-        kit_accepts_text(s->kit)) {
+    if (!s || !s->ui || !s->backend || !s->kit || kit_has_popup(s->kit) ||
+        kit_command_is_open(s->kit) || kit_accepts_text(s->kit) ||
+        studio_ui_modal_open(s)) {
         return false;
     }
     studio_ui *ui = s->ui;
-    const char *modal_names[] = { "Settings", "Collaboration" };
-    for (size_t i = 0; i < sizeof modal_names / sizeof *modal_names; i++) {
-        panel *p = find_panel(ui, modal_names[i]);
-        const GameUi *component = p ? panel_ui(ui, p) : NULL;
-        if (component && !component->hidden) {
-            return false;
-        }
-    }
-
     rml_context *context = rml_backend_context(s->backend);
     rml_element *focus = context ? rml_context_focus_element(context) : NULL;
     rml_element *button = focus;
@@ -600,9 +609,11 @@ void studio_ui_modal(studio *s, const char *name)
         return;
     }
     show_modal(s, name);
-    /* The top bar's modal pass also hosts the on-demand Collaboration panel. */
+    /* The top bar's modal pass also hosts the on-demand Collaboration and
+       Keyboard Shortcuts panels. */
     if (!strcmp(name, "Settings")) {
         show_modal(s, "Collaboration");
+        show_modal(s, "Shortcuts");
     }
 }
 

@@ -44,9 +44,14 @@
         <li command="duplicate"/>
         <li command="rename"/>
         <li command="delete"/>
+        <hr/>
+        <li command="selectAll"/>
+        <li command="deselect"/>
+        <li command="find"/>
       </menu>
       <menu label="View">
         <li command="frame"/>
+        <li command="frameAll"/>
         <li command="resetCamera"/>
         <hr/>
         <li command="hideSelected"/>
@@ -98,6 +103,9 @@
         <li command="step"/>
         <hr/>
         <li list="debugger"/>
+      </menu>
+      <menu label="Help">
+        <li command="keyboardShortcuts"/>
       </menu>
     </div>
     <div id="layout"/>

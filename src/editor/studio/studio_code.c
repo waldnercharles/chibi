@@ -648,7 +648,7 @@ static void file_label(studio *s, const scene_document_tab *tab)
     kit_tip(k, file, NULL, NULL);
     if (ui_buffer_dirty(tab->ui)) {
         kit_leaf(k, "dirty", NULL, "dirty-dot");
-        kit_tip(k, "Unsaved", studio_chord(s, "Mod+S"), NULL);
+        kit_tip(k, "Unsaved", studio_command_describe(s, STUDIO_COMMAND_SAVE).shortcut, NULL);
     }
     kit_pop(k);
 }
@@ -800,10 +800,12 @@ void studio_code_header(studio *s, int)
     }
     file_label(s, tab);
     kit_leaf(k, "spacer", NULL, "spacer");
-    kit_button_desc find = { .icon = KIT_ICON_SEARCH,
-                             .tip = "Find",
-                             .shortcut = studio_chord(s, "Mod+F"),
-                             .flags = s->code.find.open ? KIT_ON : 0 };
+    kit_button_desc find = {
+        .icon = KIT_ICON_SEARCH,
+        .tip = "Find",
+        .shortcut = studio_command_describe(s, STUDIO_COMMAND_FIND).shortcut,
+        .flags = s->code.find.open ? KIT_ON : 0
+    };
     if (kit_button(k, "find", &find)) {
         open_find(&s->code);
     }
@@ -1286,25 +1288,33 @@ static void find_widget(studio *s, kit_code_editor *e, const char *text)
 
 /* A chord the editor leaves to Studio runs the command it names, as the
    shortcuts would if typing had not turned them off; Mod+[ and Mod+] step
-   Back and Forward, as in JetBrains' editors, and Mod+F finds. */
+   Back and Forward, as in JetBrains' editors, and Find finds here. */
+static int chord_command(const studio *s, const char *chord)
+{
+    studio_key key;
+    if (!studio_chord_parse(chord, s->mac, &key)) {
+        return -1;
+    }
+    return studio_command_for_key(&s->prefs, key.key, key.mod, STUDIO_EDITOR_CODE, s->mac);
+}
+
 static void run_chord(studio *s, const char *chord)
 {
-    if (!strcmp(chord, "Mod+F")) {
-        open_find(&s->code);
-        return;
-    }
     if (!strcmp(chord, "Mod+[") || !strcmp(chord, "Mod+]")) {
         studio_nav_step(s, chord[4] == ']' ? 1 : -1);
         return;
     }
-    studio_key key;
-    if (!studio_chord_parse(chord, s->mac, &key)) {
-        return;
-    }
-    int command = studio_command_for_key(&s->prefs, key.key, key.mod, STUDIO_EDITOR_CODE, s->mac);
-    if (command >= 0) {
+    int command = chord_command(s, chord);
+    if (command == STUDIO_COMMAND_FIND) {
+        open_find(&s->code);
+    } else if (command >= 0) {
         studio_command_run(s, command);
     }
+}
+
+void studio_code_find(studio *s)
+{
+    open_find(&s->code);
 }
 
 /* The editor's text into the buffer, the undo keys through it, and the
@@ -1540,8 +1550,9 @@ void studio_code_body(studio *s, int)
             (KIT_CODE_CHANGED | KIT_CODE_UNDO | KIT_CODE_REDO | KIT_CODE_CURSOR)) {
             capture_asset(s, code);
         }
+        bool chord = r.events & KIT_CODE_CHORD;
         if ((r.events & KIT_CODE_SAVED) ||
-            ((r.events & KIT_CODE_CHORD) && !strcmp(r.chord, "Mod+S"))) {
+            (chord && chord_command(s, r.chord) == STUDIO_COMMAND_SAVE)) {
             save_asset(s, code);
         } else if (r.events & KIT_CODE_CHORD) {
             run_chord(s, r.chord);

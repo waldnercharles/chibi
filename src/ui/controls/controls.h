@@ -36,6 +36,18 @@
  *   sending change with the option's value. Shown again, it clears its
  *   search and highlights the current option (aria-selected or
  *   data-current).
+ * - <line-chart series="name ..." window unit precision reference min max
+ *   fill live/>: Liveline's live line chart with Recharts' ticks. It draws
+ *   the series C published under the names `series` lists
+ *   (line_chart_publish), the first in its `color` unless the series names
+ *   one, and the grid in its border-color, over the last `window` seconds
+ *   (30) up to the newest time its series hold. The range follows the data
+ *   with a margin and eases toward it, or is min to max; `reference` draws
+ *   a dashed line such as a frame budget, `fill` the area under the first
+ *   series, and `live` pulses its newest point. Its parts are .chart-tick,
+ *   .chart-badge (the newest value, with `precision` and `unit`) and
+ *   .chart-hover (the value under the pointer). Publishing redraws the
+ *   charts that name the series and lays out nothing.
  *
  * C owners (the kit) read a control's state instead of listening. */
 
@@ -67,6 +79,20 @@ bool splitter_active(const rml_element *splitter);
  * label's fixed width. */
 void line_text_set(rml_element *label, const char *text);
 void line_text_set_right(rml_element *label, const char *text);
+
+/* Samples a <line-chart> draws: time-ascending seconds and their values. */
+typedef struct line_chart_series
+{
+    const float *times;
+    const float *values;
+    int count;
+    uint32_t color; /* 0xRRGGBBAA; 0 draws in the chart's color */
+    double now;     /* the time at the chart's right edge */
+} line_chart_series;
+
+/* Copies `series` under `name` for the charts that name it, which redraw
+ * when it changed; NULL forgets the name. */
+void line_chart_publish(const char *name, const line_chart_series *series);
 
 /* Moves focus `step` tab stops from `from` among `root`'s enabled, visible
  * ones in document order, wrapping when `wrap`, outside `skip` when set;

@@ -114,31 +114,6 @@ typedef struct widget
         *kbd_el, *badge_el, *head_el, *about_el, *menu_el;
 } widget;
 
-/* Charts (kit_chart.c): what the chart element draws this frame. The chart
- * element's user data owns its frame. */
-typedef struct chart_series
-{
-    float *times, *values;
-    uint32_t color;
-} chart_series;
-
-typedef struct chart_frame
-{
-    chart_series *series;
-    double *ticks;
-    double now, lo, hi, hover_value;
-    float window, dp, reference, hover_x;
-    bool fill, live, reduced_motion;
-} chart_frame;
-
-typedef struct chart_state
-{
-    bool ranged;
-    double lo, hi, time;
-    rml_element **labels;
-    rml_element *badge, *hover;
-} chart_state;
-
 struct node
 {
     char *key;
@@ -160,7 +135,6 @@ struct node
     bool layout_known;
     kit_rect layout_rect;
     spring layout_x, layout_y;
-    chart_state *chart; /* owned, NULL until used */
     char **drop_types; /* accepted drag types, set each frame by kit_drop_target */
     bool drag_source; /* kit_drag_source named it this frame */
     bool hosted;      /* kit_host: its children are mounted content */
@@ -397,7 +371,6 @@ void drop_types_clear(node *n);
 /* ---------- Custom elements (kit_chart.c, kit_wires.c) ---------- */
 
 /* Registered per kit: RmlUi's factory is rebuilt whenever it reinitializes. */
-void register_chart_element();
 void register_wires_element();
 void register_dot_element();
 

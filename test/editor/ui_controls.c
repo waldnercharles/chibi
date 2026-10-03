@@ -2,11 +2,13 @@
  * as games have them, bound to a data model whose event bindings count what
  * they send: a scrub's inputs and its one change, Escape cancelling typing
  * and a scrub, typing committing once, mixed and readonly fields, values
- * that repaint without laying out the document, a splitter's drag and a
- * color field's picker; and projects/studio's widgets over them. */
+ * that repaint without laying out the document, a splitter's drag, a
+ * color field's picker and a line chart drawing published series; and
+ * projects/studio's widgets over them. */
 #include "assets/ui_document.h"
 #include "support/array.h"
 #include "test/suite_internal.h"
+#include "ui/controls/controls.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
@@ -42,6 +44,12 @@ static const char DOCUMENT[] =
     ".popup .puck { position: absolute; width: 4dp; height: 4dp; }"
     ".popup .field { display: flex; height: 26dp; }"
     ".popup input.hex { width: 120dp; height: 24dp; }"
+    "line-chart { display: block; position: relative; width: 200dp; "
+    "height: 80dp; margin: 4dp; color: #ff0000; border-color: #00ff00; }"
+    ".chart-tick, .chart-badge, .chart-hover { position: absolute; "
+    "font-family: InterNumeric; }"
+    ".chart-tick { left: 4dp; } .chart-badge { right: 4dp; } "
+    ".chart-hover { top: 4dp; }"
     "</style></head><body data-model=\"controls\">"
     "<number-field id=\"number\" step=\"1\" precision=\"2\" "
     "data-attr-value=\"value\" data-attrif-mixed=\"mixed\" "
@@ -59,6 +67,8 @@ static const char DOCUMENT[] =
     "data-event-input=\"color_inputs = color_inputs + 1\" "
     "data-event-change=\"color_changes = color_changes + 1; color = "
     "ev.value\"></color-field>"
+    "<line-chart id=\"chart\" series=\"test:frame test:phase\" "
+    "unit=\"ms\" precision=\"1\" min=\"0\" max=\"40\"></line-chart>"
     "<layout-probe/>"
     "</body></rml>";
 
@@ -385,6 +395,67 @@ static void repaint_checks(controls_fixture *f)
     test_check(layouts == before && !strcmp(text, "13.5 ms"), "live-text changes its glyphs without laying out the document");
 }
 
+/* Publishes two samples of `value` under `name`, the newest at 30 s. */
+static void publish(const char *name, float value)
+{
+    float times[] = { 0, 30 }, values[] = { value, value };
+    line_chart_publish(name, &(line_chart_series){ times, values, 2, 0, 30 });
+}
+
+static bool label_shows(rml_element *label, const char *expected)
+{
+    char text[32];
+    shown(label, NULL, text, sizeof text);
+    return rml_element_is_visible(label, false) && !strcmp(text, expected);
+}
+
+/* A line chart draws what C publishes under the names its series attribute
+   lists: its badge shows the first series' newest value, a new sample moves
+   it without laying out the document, the pointer reads the value under it,
+   and a forgotten series leaves the chart empty. */
+static void chart_checks(controls_fixture *f)
+{
+    rml_element *chart = by_id(f, "chart");
+    frames(f, 1);
+    rml_element *badge = rml_element_query_selector(chart, ".chart-badge");
+    rml_element *hover = rml_element_query_selector(chart, ".chart-hover");
+    test_check(
+        badge && hover && !rml_element_is_visible(badge, false),
+        "a line chart builds its badge and scrub readout and shows nothing "
+        "before its series are published"
+    );
+    publish("test:frame", 12.5f);
+    publish("test:phase", 3);
+    frames(f, 2);
+    int ticks = rml_element_query_selector_all(chart, ".chart-tick", NULL, 0);
+    test_check(
+        label_shows(badge, "12.5 ms") && ticks == 5,
+        "publishing a chart's series shows its first series' newest value "
+        "and the range's ticks"
+    );
+    int before = layouts;
+    publish("test:frame", 16.5f);
+    frames(f, 1);
+    publish("test:frame", 14.5f);
+    frames(f, 1);
+    test_check(
+        layouts == before && label_shows(badge, "14.5 ms"),
+        "new samples move the chart's badge and redraw it without laying out "
+        "the document"
+    );
+    rml_vec2 at = center(chart);
+    move(f, at);
+    frames(f, 1);
+    test_check(label_shows(hover, "14.5 ms"), "the pointer over a chart reads the value under it");
+    move(f, (rml_vec2){ 2, 2 });
+    frames(f, 1);
+    test_check(!rml_element_is_visible(hover, false), "leaving a chart hides its readout");
+    line_chart_publish("test:frame", NULL);
+    line_chart_publish("test:phase", NULL);
+    frames(f, 1);
+    test_check(!rml_element_is_visible(badge, false), "a forgotten series leaves its chart empty");
+}
+
 /* A splitter's drag sends input within its bounds and change once. */
 static void splitter_checks(controls_fixture *f)
 {
@@ -603,6 +674,7 @@ void test_ui_controls()
     repaint_checks(&f);
     splitter_checks(&f);
     color_checks(&f);
+    chart_checks(&f);
     close_fixture(&f);
     widget_checks();
 }

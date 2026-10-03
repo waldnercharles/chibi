@@ -12,6 +12,7 @@ void controls_register()
     splitter_register();
     live_text_register();
     choice_list_register();
+    line_chart_register();
 }
 
 rml_element *control_part(rml_element *parent, const char *tag, const char *cls)

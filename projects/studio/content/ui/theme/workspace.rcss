@@ -162,19 +162,6 @@ body.comfortable .output-row, body.comfortable .output-log { height: var(--studi
 /* The name filter of Assets (AssetsHeader) and of a UI document's Library. */
 .assets-filter { flex: 1 1 0dp; display: flex; max-width: 220dp; margin-left: 4dp; }
 
-/* Performance. */
-.perf-title { display: block; line-height: var(--studio-line-16, 16dp); color: var(--foreground); font-weight: 500; margin-left: 2dp; }
-.perf-readout { display: block; line-height: var(--studio-line-16, 16dp); color: var(--muted-foreground); font-family: var(--font-numeric); margin-right: 6dp; }
-.perf { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; padding: 6dp 10dp 8dp; gap: 4dp; overflow-y: auto; }
-.perf-heading { display: block; line-height: var(--studio-line-16, 16dp); color: var(--faint-foreground); font-size: var(--studio-font-11, 11dp); }
-.perf-chart { flex: 1 1 0dp; min-height: 60dp; }
-.perf-legend { display: flex; gap: 14dp; flex: 0 0 auto; height: var(--studio-height-18, 18dp); align-items: center; }
-.perf-key { display: flex; align-items: center; gap: 5dp; }
-.perf-key span { display: block; line-height: var(--studio-line-16, 16dp); color: var(--muted-foreground); font-size: var(--studio-font-11, 11dp); }
-.perf-dot { width: 8dp; height: 8dp; border-radius: 4dp; }
-.perf-idle { flex: 1 1 0dp; display: block; line-height: var(--studio-line-40, 40dp); text-align: center; color: var(--faint-foreground); }
-.perf-status { flex: 0 0 auto; display: block; line-height: var(--studio-line-16, 16dp); color: var(--muted-foreground); font-size: var(--studio-font-11, 11dp); }
-
 /* A member's type swatch, in Members (Members.rcss) and its Properties. */
 .member-swatch { width: 9dp; height: 9dp; flex: 0 0 auto; margin: 0dp 5dp 0dp 3dp; }
 .object-rename .field { height: var(--studio-height-20, 20dp); margin-right: 4dp; }

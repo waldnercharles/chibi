@@ -1175,7 +1175,7 @@ bool studio_keymap_show(yyjson_mut_doc *doc, const studio_prefs *prefs, bool mac
 bool studio_keymap_area(const char *area);
 
 /* The panel sources a studio_sources follows at most. */
-#define STUDIO_PANEL_SOURCE_MAX 24
+#define STUDIO_PANEL_SOURCE_MAX 32
 
 /* What authored panels bind beyond their world's `save` (studio_sources.c):
  * `world`, the Scene world's saved keys, and `theme`, the custom properties
@@ -1412,6 +1412,7 @@ const char *studio_asset_kind_label(int kind); /* plural: "Behaviors" */
 void studio_performance_sample(studio *s, double delta_seconds);
 void studio_performance_header(studio *s, int area);
 void studio_performance_body(studio *s, int area);
+void studio_performance_free(studio *s);
 void studio_output_header(studio *s, int area);
 void studio_output_body(studio *s, int area);
 /* The keys of the Output view under the pointer: the Calls tree's. */
@@ -2456,5 +2457,16 @@ void studio_output_action(studio *s, const char *action, const ui_activation *a)
  * count) or `items` (TreeRow's, with offset, key and shown). */
 void studio_output_rows_add(yyjson_mut_doc *doc);
 bool studio_output_rows_sync(studio *s, const studio_panel_sync *at);
+
+/* ---------- Editor chrome (workstream C2) ---------- */
+
+/* `performance` (studio_performance.c): Performance.rml's and
+ * PerformanceHeader.rml's readout, live (the newest points pulse), running
+ * and gpu (whether the simulation and the GPU have samples), and lighting,
+ * lightingText and budget. Its samples reach its <line-chart>s through
+ * line_chart_publish, as perf:frame, perf:behavior, perf:physics,
+ * perf:systems, perf:rendering and perf:gpu. */
+void studio_performance_add(yyjson_mut_doc *doc);
+bool studio_performance_sync(studio *s, const studio_panel_sync *at);
 
 #endif

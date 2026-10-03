@@ -511,33 +511,6 @@ extern "C"
     /* A drag of this type (any when NULL) is in progress. */
     bool kit_dragging(const kit *k, const char *type);
 
-    /* Live line chart (Liveline, with Recharts' ticks). Series are time-ascending
-     * samples; the right edge is `now` and `window` seconds are shown. The range
-     * follows the data with a 12% margin and eases toward it; curves never
-     * overshoot a sample. The chart's `color` draws the first series and its
-     * `border-color` the grid. Returns the time under the pointer, or -1. */
-    typedef struct kit_chart_series
-    {
-        const float *times; /* seconds, ascending */
-        const float *values;
-        int count;
-        uint32_t color; /* 0xRRGGBBAA; 0 uses the chart's color */
-    } kit_chart_series;
-    typedef struct kit_chart_desc
-    {
-        const kit_chart_series *series;
-        int series_count;
-        double now;
-        float window;    /* seconds; 0 means 30 */
-        float min, max;  /* both 0: the range follows the data */
-        float reference; /* a dashed line such as a frame budget; 0 none */
-        const char *unit;
-        int precision;
-        bool fill; /* area under the first series */
-        bool live; /* pulse the newest point */
-    } kit_chart_desc;
-    float kit_chart(kit *k, const char *key, const char *cls, const kit_chart_desc *desc);
-
     /* Node-editor wires and the canvas grid, drawn by one element (xyflow
      * edges, Blender noodles). A wire end anchors to the center of the element
      * at a kit path, resolved after layout, or to a point; points and waypoints

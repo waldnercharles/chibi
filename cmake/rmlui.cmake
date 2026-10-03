@@ -16,11 +16,12 @@ add_library(chibi_ui STATIC
     src/ui/motion.c
     src/ui/text_motion.c
     # Native controls (workstream F2): <number-field>, <color-field>,
-    # <splitter> and <live-text>; F3's <choice-list>.
+    # <splitter> and <live-text>; F3's <choice-list>; C2's <line-chart>.
     src/ui/controls/controls.c
     src/ui/controls/choice_list.c
     src/ui/controls/color_field.c
     src/ui/controls/focus.c
+    src/ui/controls/line_chart.c
     src/ui/controls/line_text.c
     src/ui/controls/live_text.c
     src/ui/controls/number_field.c
@@ -56,7 +57,6 @@ set_target_properties(chibi_ui PROPERTIES
 
 add_library(chibi_rmlui STATIC
     src/editor/rmlui/kit.c
-    src/editor/rmlui/kit_chart.c
     src/editor/rmlui/kit_command.c
     src/editor/rmlui/kit_controls.c
     src/editor/rmlui/kit_drag.c

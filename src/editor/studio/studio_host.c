@@ -1050,8 +1050,7 @@ void studio_free(studio *s)
     afree(s->output.slots);
     afree(s->members.uses.items);
     rml_element_ref_destroy(s->members.list_element);
-    afree(s->perf);
-    afree(s->perf_published);
+    studio_performance_free(s);
     studio_assets_free(s);
     studio_thumbs_free(s);
     afree(s->gallery.bin);

@@ -769,11 +769,14 @@ popups above areas, focus across documents, inspection and lifetime;
 (`studio_members.c`) windows with `ui_list_window`, and `MembersHeader.rml`
 is the header's filter (`members.filter`), mounted in the AreaHeader's
 controls as GraphView is. What changes as the user selects and names
-lives apart, in `members_ui` (the selected member's, the open graph's and
-the named member's row keys, and the selected member's menu): rows bind
-it by key (`row.key == members_ui.selected`), so a selection re-evaluates
-those views and not every row's. The rows are TreeRow's anatomy written
-out, since TreeRow reads its selection from its item. Rows keep the kit's
+lives apart, in `members_ui` (the selected member's, the active
+member's and the named member's row keys, and the selected member's
+menu): rows bind it by key, so a selection re-evaluates those views and
+not every row's. The rows are TreeRows, which compare their item's `key`
+with the keys a panel aliases as `data-alias-selection` and
+`data-alias-active` (added in P2; the rows had been TreeRow's anatomy
+written out); the open graph's row is active by its own `active` flag, as
+opening a graph rewrites the rows anyway. Rows keep the kit's
 anatomy, so web shots before
 (`db679e48`) and after match pixel for pixel in dark and light, compact
 and comfortable: rows with a selection and a folded section, the name
@@ -827,7 +830,16 @@ source's sync costs about 0.05 ms over the native's at every refresh.
 because `data-for` matches items by index where the kit kept each
 member's elements by key; a keyed `data-for` (Vue's `:key`, an RmlUi
 patch) would let the Outliner, Assets and Members lists move rows instead
-of rewriting them. Checks:
+of rewriting them.
+
+Rows as TreeRows (P2's follow-up), the same release binary alternating
+the two `Members.rml` (written-out rows over the same data) three times,
+load 16-17: a select 3.09 → 3.06 ms (0.99×, 284 → 368 views), a scroll
+step 4.59 → 4.74 ms (1.03×, 815 → 955), a filter keystroke 4.63 → 4.82 ms
+(1.04×). The added views are TreeRow's `marked` and `hidden` and its
+alias views (`Update` returns at once), three a row on a select and five
+on a scroll. `CHIBI_MEMBERS_CAPTURE_DIR`'s 16 shots match pixel for pixel
+in the Members area. Checks:
 `--studio-members` (also in `--studio-documents`): sections, swatch and
 use counts, selection, folding, a use count's press, F2 and double-click
 rename with Enter, Escape and one Undo step, the add buttons, the context
@@ -844,10 +856,12 @@ TreeRows, `studio_ui_area_view` aliasing the area's item of
 `outliner.views` as `view`) and `OutlinerHeader.rml` in its AreaHeader's
 controls (the filter and Add, a ChoiceList of the scene's prototypes). The
 `outliner` source publishes the root, the count, the notice, the filter
-(`query`, two-way, view state), the row menu's state and each view's
-window (`root`, `rows`: id, label, icon, behaviors, drop, selected, active,
-marked, hidden, locked, renaming); `outlinerHeader`, apart so a scroll or
-a selection reads none of its views, holds what rarely changes (the Add
+(`query`, two-way, view state) and each view's window (`root`, `rows`:
+key, label, icon, behaviors, drop, marked (the rest of a
+multi-selection), hidden, locked, renaming); `outliner_ui`, apart so a selection reads only its views,
+holds the active row's key (TreeRow's `data-alias-active`), the rename
+field's text and the row menu; `outliner_header`, apart so a scroll or a
+selection reads none of its views, holds what rarely changes (the Add
 list, editable, the eye's tip). It takes `outliner.click`,
 `.menu`, `.eye`, `.lock`, `.drop`, `.rename`, `.renameEnter`,
 `.renameCancel`, `.collapse`, `.add`, `.openPrototype` and `.spawnBreak`.
@@ -895,22 +909,29 @@ eye and lock; and Unity's focusable list for the keyboard.
   the Outliner three rows a run from the middle, then selects one of two
   objects in view. Release builds before and after, alternated process by
   process three times at a 1-minute load of 35-39 (provisional), whole
-  Studio UI frame (sync + emit + update + capture), medians (data views
-  counted after the header split, in a later run):
+  Studio UI frame (sync + emit + update + capture), medians (views and
+  layouts from the final build, with `outliner_ui`):
 
   | Case | Before (kit) | After (authored) | After ÷ before | Rows instanced | Views | Layouts |
   |---|---:|---:|---:|---|---:|---:|
-  | Scroll step of 3 rows, 22 rows shown | 6.30 / 8.29 / 7.93 | 7.47 / 6.57 / 6.87 | 0.93× | 3 → 0 | 518 | 2 |
-  | Select another object in view | 7.61 / 9.54 / 9.46 | 9.08 / 7.93 / 8.70 | 0.97× | | 927 | 6 |
+  | Scroll step of 3 rows, 22 rows shown | 6.30 / 8.29 / 7.93 | 7.47 / 6.57 / 6.87 | 0.93× | 3 → 0 | 606 | 3 |
+  | Select another object in view | 7.61 / 9.54 / 9.46 | 9.08 / 7.93 / 8.70 | 0.97× | | 625 | 9 |
   | A text change in the Outliner (case 8) | 2.27 / 2.13 / 1.77 | 1.54 / 2.16 / 2.13 | 0.94× | | | 1 |
 
   A scroll step or a selection reads the window's row views (about 23 a
   row) and the root's; a selection also reads the chrome's (`editor`,
   `commands`). The header's Add list (160 views) and the eye's tip moved
-  to `outlinerHeader`, from 696 views a step. Row flags (selected, active,
-  hidden) stay in the rows: RmlUi addresses take only literal indices, so
-  a parallel array of flags can't be read by the `data-for` index, and
-  TreeRow reads its state from its item. `data-for` matches by index, so
+  to `outliner_header`, from 696 views a step. The active row's key moved
+  to `outliner_ui`, which TreeRow compares with each row's `key`
+  (`data-alias-active`; `data-alias-selection` likewise), so a selection
+  reads 625 views, from 927; a scroll step reads 606, from 518, for the
+  key comparisons and the alias views. The rest of a multi-selection
+  (`marked`), hidden and locked stay row flags, and so does renaming: in
+  `outliner_ui` it put the window's 44 `data-when` views under every
+  selection (814 views). A parallel array of flags can't replace them, as
+  RmlUi addresses take only literal indices, not the `data-for` index.
+  The first count, before the integration merges, laid out 2 documents a
+  step and 6 a selection. `data-for` matches by index, so
   a step rewrites each row's values as the window slides (as the gallery's
   List does), and instances none.
 

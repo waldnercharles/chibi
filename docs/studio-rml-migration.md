@@ -998,6 +998,25 @@ siblings of one spacer, so a scroll restyles all of them, and each
 evaluates about 17 views (the TreeRow's and the drag and hover attributes
 on its use); selecting and the idle frame cost 1.2× and 1.4× the kit's.
 
+#### Shared follow-ups after Wave 2 (measure on an idle machine)
+
+Wave 2 ran with load averages of 12–60, so its ratios are provisional. Three
+costs recur across panels and belong in shared code, not in each panel:
+
+- **Keyed `data-for`** (Vue's `:key`, an RmlUi patch): a window that shifts
+  rewrites every row because rows match by index (Members' scroll 1.22×,
+  Assets' list scroll 1.14×). Output keys rows by placing them itself.
+- **Change-driven sync**: a shown panel's source syncs every refresh and
+  walks its data even when nothing changed (Assets' idle frame 1.4×). Sources
+  should compare a revision (asset index, scene history step, log serial)
+  and return before walking.
+- **Sibling restyles**: RmlUi restyles every sibling of a changed element, so
+  a selection in a flat list restyles all rows (Assets groups tiles in lines
+  to contain it). Contain it in the List widget or patch RmlUi.
+
+Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
+`UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.
+
 ### Wave 3: scene, chrome, palette (4 parallel)
 
 | | Scope | Deletes |

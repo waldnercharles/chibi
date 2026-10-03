@@ -46,4 +46,6 @@ name "Studio"
     - name="PerformanceHeader" prototype="PerformanceHeader"
     - name="BehaviorHeader" prototype="BehaviorHeader"
     - name="GraphFind" prototype="GraphFind"
+    - name="CodeHeader" prototype="CodeHeader"
+    - name="CodeFind" prototype="CodeFind"
 }

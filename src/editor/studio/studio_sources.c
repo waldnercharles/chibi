@@ -2329,6 +2329,8 @@ const studio_panel_source studio_panel_sources[] = {
     { "graph_view", "BehaviorHeader", studio_graph_view_add, studio_graph_view_sync, NULL },
     { "graph_targets", "BehaviorHeader", studio_graph_targets_add, studio_graph_targets_sync, NULL },
     { "graph_find", "GraphFind", studio_graph_find_add, studio_graph_find_sync, studio_graph_find_action },
+    { "code_header", "CodeHeader", studio_code_header_add, studio_code_header_sync, studio_code_header_action },
+    { "code_find", "CodeFind", studio_code_find_add, studio_code_find_sync, studio_code_find_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

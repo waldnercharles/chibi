@@ -192,21 +192,9 @@ body.comfortable .output-row, body.comfortable .output-log { height: var(--studi
 .param-row .param-grip:hover { color: var(--muted-foreground); }
 .param { border-radius: 4dp; }
 
-/* UI documents (workstream D). The Text Editor: part tabs, the file and the
-   apply mode in the header; the part's code editor (kit_code) filling the
-   body, and a status line while the text does not read. */
-.code-parts, .code-apply { display: flex; flex: 0 0 auto; }
-/* Workstream Q: Back and Forward through Go to Definition's jumps. */
-.code-history { display: flex; flex: 0 0 auto; align-items: center; gap: 1dp; margin-right: 4dp; }
-.code-parts .segmented, .code-apply .segmented { flex: 0 0 auto; }
-.code-parts .seg, .code-apply .seg { flex: 0 0 auto; }
-.code-file { display: flex; align-items: center; gap: 6dp; padding: 0dp 6dp; flex: 0 1 auto; min-width: 0dp; white-space: nowrap; color: var(--foreground); }
-.code-file .icon { color: var(--muted-foreground); }
-.code-file .icon, .code-file .dirty-dot { flex: 0 0 auto; }
-.code-file .name { min-width: 0dp; overflow: hidden; text-overflow: ellipsis; }
-/* Asset source uses a single text span instead of the UI document's file group. */
-span.code-file { display: block; overflow: hidden; text-overflow: ellipsis; }
-.code-problem { display: flex; align-items: center; gap: 4dp; padding: 0dp 6dp; flex: 0 0 auto; color: var(--destructive); }
+/* UI documents (workstream D). The Text Editor: the part's code editor
+   (kit_code) filling the body, and a status line while the text does not
+   read; its header is CodeHeader. */
 .code-editor { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; flex-direction: column; background-color: var(--background); }
 .code-editor kit-code { flex: 1 1 0dp; min-height: 0dp; }
 .code-status { display: flex; align-items: center; gap: 6dp; height: var(--studio-height-22, 22dp); flex: 0 0 auto; padding: 0dp 8dp; border-top: 1dp var(--edge); background-color: var(--muted); color: var(--destructive); white-space: nowrap; overflow: hidden; }

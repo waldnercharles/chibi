@@ -753,7 +753,7 @@ typedef struct
        the part holds. */
     struct
     {
-        bool open, focus, typing, refocus;
+        bool open, focus, refocus;
         char query[128], seen[128];
         int at, count, index;
     } find;
@@ -2501,5 +2501,23 @@ bool studio_graph_targets_sync(studio *s, const studio_panel_sync *at);
 void studio_graph_find_add(yyjson_mut_doc *doc);
 bool studio_graph_find_sync(studio *s, const studio_panel_sync *at);
 void studio_graph_find_action(studio *s, const char *action, const ui_activation *a);
+/* The Text Editor's header (studio_code.c, CodeHeader.rml): `code_header`'s
+ * mode (0 nothing shown, 1 an asset's KDL source, 2 a UI document), live
+ * (the apply mode), dirty, and for an asset its title; for a document back
+ * and forward (and their chords), parts (it has RML and RCSS), part, icon,
+ * name and path (the shown part's file), find (open), vim (the mode, or ""),
+ * problems, errors, problemsTip and error (why the text does not read).
+ * Actions (code_header.<action>): apply (0 Live, 1 On Save), save, back,
+ * forward, part (0 RML, 1 RCSS), find and nextProblem. */
+void studio_code_header_add(yyjson_mut_doc *doc);
+bool studio_code_header_sync(studio *s, const studio_panel_sync *at);
+void studio_code_header_action(studio *s, const char *action, const ui_activation *a);
+/* `code_find` (CodeFind.rml), while the Text Editor's find is open: query
+ * (the field's, two-way), count (its readout) and total. Actions: next,
+ * previous, enter (next, or previous with Shift) and close (back to the
+ * text). */
+void studio_code_find_add(yyjson_mut_doc *doc);
+bool studio_code_find_sync(studio *s, const studio_panel_sync *at);
+void studio_code_find_action(studio *s, const char *action, const ui_activation *a);
 
 #endif

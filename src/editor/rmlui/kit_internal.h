@@ -336,6 +336,10 @@ struct kit
     node **layout_nodes;
     CF_MAP(spring_value) springs; /* keyed by str_hash(key) */
     drag_state drag;
+    /* A drag began since the last click. RmlUi counts a press as a double
+       click after any press on the same element; as in browsers, only a
+       press after a click does. */
+    bool dragged;
     toast *toasts;
     CF_MAP(uint64_t) toast_actions; /* toast id -> frame the action was pressed */
     int toast_next;

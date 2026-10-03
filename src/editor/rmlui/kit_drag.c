@@ -56,6 +56,7 @@ static bool activate(kit *k, drag_state *d)
         return false;
     }
     d->active = true;
+    k->dragged = true;
     close_all_popups(k);
     return true;
 }

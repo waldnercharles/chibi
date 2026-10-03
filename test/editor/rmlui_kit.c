@@ -47,8 +47,9 @@ typedef struct
     const char *morph;
     int reveal, rows_emitted, hovered_row;
     char dropped[32];
-    bool drop_hovered; /* a "thing" drag is over the target */
-    char hovered[32];  /* and its payload */
+    bool drop_hovered;     /* a "thing" drag is over the target */
+    int row_double_clicks; /* on the draggable row "pear" */
+    char hovered[32];      /* and its payload */
     char note[64];
     int note_commits;
     bool focus_note;
@@ -326,6 +327,11 @@ static void emit(kit_fixture *f)
     if (f->drop_hovered) {
         kit_drag_hint(k, "Put here");
     }
+    unsigned pear = kit_row_begin(k, "pear", &(kit_row_desc){ .label = "Pear", .twisty = -1 });
+    kit_row_end(k);
+    kit_style(k, "width", "60dp");
+    kit_drag_source(k, &(kit_drag_desc){ .type = "thing", .payload = "pear" });
+    f->row_double_clicks += (pear & KIT_ROW_DOUBLE_CLICK) != 0;
     kit_pop(k);
     if (f->open_rename) {
         f->open_rename = false;
@@ -2870,6 +2876,31 @@ bool test_rmlui_kit()
     f.in.down[0] = false;
     frame(&f);
     ok &= check(!f.dropped[0] && !kit_dragging(f.k, NULL), "Escape cancels a drag");
+    /* As in browsers, only a press after a click double-clicks: RmlUi
+     * counts a press after any press on the same element, so a quick press
+     * on a row just dragged from would open it. */
+    float px = 0, py = 0;
+    ok &= check(center(&f, "app/dnd/pear", &px, &py), "the draggable row is laid out");
+    pointer(&f, RML_INPUT_POINTER_MOVE, px, py);
+    pointer(&f, RML_INPUT_POINTER_DOWN, px, py);
+    f.in.down[0] = true;
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_MOVE, tx, ty);
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_UP, tx, ty);
+    f.in.down[0] = false;
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_MOVE, px, py);
+    pointer(&f, RML_INPUT_POINTER_DOWN, px, py);
+    pointer(&f, RML_INPUT_POINTER_UP, px, py);
+    frame(&f);
+    ok &= check(f.row_double_clicks == 0, "a quick press on a row just dragged from is a click, not a double click");
+    for (int i = 0; i < 2; i++) {
+        pointer(&f, RML_INPUT_POINTER_DOWN, px, py);
+        pointer(&f, RML_INPUT_POINTER_UP, px, py);
+    }
+    frame(&f);
+    ok &= check(f.row_double_clicks == 1, "a double click on the row after it still double-clicks");
 
     /* NumberFlow and Torph settle to exactly what a fresh render of the new
      * value lays out. */

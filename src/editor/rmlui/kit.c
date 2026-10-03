@@ -968,12 +968,13 @@ static void on_event(void *user, const rml_event *e)
             }
             break;
         case RML_EVENT_CLICK:
+            k->dragged = false;
             if (n) {
                 click(k, e, n);
             }
             break;
         case RML_EVENT_DBLCLICK:
-            if (n) {
+            if (n && !k->dragged) {
                 n->events |= EV_DOUBLE;
             }
             break;

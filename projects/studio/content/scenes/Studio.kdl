@@ -1,11 +1,7 @@
 version 1
 name "Studio"
 (array)entities {
-    - {
-        name "GraphView"
-        prototype "GraphView"
-        (array)behaviors "MenuKeys"
-    }
+    - name="GraphView" prototype="GraphView"
     - {
         name "Settings"
         prototype "Settings"

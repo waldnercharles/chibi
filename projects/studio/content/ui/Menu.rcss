@@ -1,0 +1,6 @@
+/* Base UI's Menu as a popover (ui/popover.c): give it an id and open it with
+   <button popovertarget="id">. Its items are MenuItem, MenuCommand,
+   MenuCheck and MenuOption, with Submenu, MenuGroup and MenuSeparator; the
+   pointer, the arrow keys and typeahead highlight them, and Enter or a click
+   runs one. Where it is written it takes no room. */
+body { position: absolute; }

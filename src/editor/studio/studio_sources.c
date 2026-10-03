@@ -13,8 +13,10 @@
 #include "assets/asset_source.h"
 #include "assets/project.h"
 #include "editor/collab/collab.h"
+#include "editor/documents/component_properties.h"
 #include "editor/studio/studio_internal.h"
 #include "runtime/behaviors/live.h"
+#include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -414,7 +416,7 @@ static const char *bound_text(yyjson_mut_val *row, const char *name, char *buffe
 }
 
 /* An icon's codepoint as UTF-8; Symbols' glyphs are past U+0800. */
-static void utf8_icon(char out[5], uint32_t c)
+void studio_glyph(char out[5], uint32_t c)
 {
     assert(c >= 0x800);
     if (c < 0x10000) {
@@ -446,7 +448,7 @@ void studio_settings_add(yyjson_mut_doc *doc)
         const studio_settings_category_info *info = &studio_settings_categories[c];
         yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, categories);
         char icon[5];
-        utf8_icon(icon, info->icon);
+        studio_glyph(icon, info->icon);
         yyjson_mut_obj_add_str(doc, item, "id", info->id);
         yyjson_mut_obj_add_str(doc, item, "label", info->label);
         yyjson_mut_obj_add_strcpy(doc, item, "icon", icon);
@@ -1722,8 +1724,10 @@ static bool sync_inspector(studio *s, const studio_panel_sync *at)
  * reporting, scene, selection, objects, speed ("" at 1×) and playing; for
  * the top bar, `tabs`, a list of {label, path, icon, dirty, active,
  * closable}, and paused; and
- * `areas`, an {index, drawer, maximized, live} per area, which each
- * AreaHeader binds as `area`. Values change only when they differ, so bindings
+ * `areas`, an {index, drawer, maximized, live, editor, panel, icon, title}
+ * per area, which each AreaHeader binds as `area`: its editor type menu
+ * runs emit('editor.type', area.index, type) and emit('editor.panel',
+ * area.index, name). Values change only when they differ, so bindings
  * update in place, and items a list sheds wait in `spare`. */
 
 /* Reports show for three seconds, then fade (DESIGN.md). */
@@ -1736,6 +1740,7 @@ static const char *const TAB_FLAGS[] = { "dirty", "active", "closable", NULL };
 static const item_shape TAB = { TAB_TEXTS, TAB_FLAGS };
 static const char *const STATUS_TEXTS[] = { "report", "scene", "selection", "speed", NULL };
 static const char *const STATUS_FLAGS[] = { "reporting", "playing", "paused", NULL };
+static const char *const AREA_TEXTS[] = { "panel", "icon", "title", NULL };
 
 static void add_areas(yyjson_mut_doc *doc, yyjson_mut_val *editor)
 {
@@ -1746,6 +1751,8 @@ static void add_areas(yyjson_mut_doc *doc, yyjson_mut_val *editor)
         yyjson_mut_obj_add_bool(doc, area, "drawer", i == STUDIO_AREA_DRAWER);
         yyjson_mut_obj_add_bool(doc, area, "maximized", false);
         yyjson_mut_obj_add_bool(doc, area, "live", false);
+        yyjson_mut_obj_add_real(doc, area, "editor", -1);
+        add_texts(doc, area, AREA_TEXTS);
     }
 }
 
@@ -1775,7 +1782,7 @@ static bool show_hints(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio
         yyjson_mut_val *item = yyjson_mut_arr_get(list, (size_t)i);
         char icon[5] = "";
         if (h->icon) {
-            utf8_icon(icon, h->icon);
+            studio_glyph(icon, h->icon);
         }
         changed |= put_text(doc, item, "icon", icon);
         changed |= put_text(doc, item, "key", h->key ? h->key : "");
@@ -1794,7 +1801,7 @@ static bool show_tabs(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio_
         const studio_tab_view *t = &status->tabs[i];
         yyjson_mut_val *item = yyjson_mut_arr_iter_next(&it);
         char icon[5];
-        utf8_icon(icon, t->icon);
+        studio_glyph(icon, t->icon);
         const char *texts[] = { t->label, t->path, icon };
         for (int k = 0; TAB_TEXTS[k]; k++) {
             changed |= put_text(doc, item, TAB_TEXTS[k], texts[k]);
@@ -1807,7 +1814,7 @@ static bool show_tabs(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio_
     return changed;
 }
 
-static bool show_areas(yyjson_mut_val *editor, const studio_status *status)
+static bool show_areas(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio_status *status)
 {
     bool changed = false;
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(member(editor, "areas"));
@@ -1815,6 +1822,18 @@ static bool show_areas(yyjson_mut_val *editor, const studio_status *status)
         yyjson_mut_val *area = yyjson_mut_arr_iter_next(&it);
         changed |= put_bool(area, "maximized", i == status->maximized);
         changed |= put_bool(area, "live", status->live & 1u << i);
+        const studio_area_view *view = &status->areas[i];
+        char icon[5] = "";
+        if (view->icon) {
+            studio_glyph(icon, view->icon);
+        }
+        changed |= put_number(area, "editor", view->editor);
+        const char *texts[] = { view->panel ? view->panel : "",
+                                icon,
+                                view->title ? view->title : "" };
+        for (int t = 0; AREA_TEXTS[t]; t++) {
+            changed |= put_text(doc, area, AREA_TEXTS[t], texts[t]);
+        }
     }
     return changed;
 }
@@ -1824,7 +1843,7 @@ bool studio_status_show(yyjson_mut_doc *doc, const studio_status *status)
     yyjson_mut_val *editor = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "editor");
     bool changed = show_hints(doc, editor, status);
     changed |= show_tabs(doc, editor, status);
-    changed |= show_areas(editor, status);
+    changed |= show_areas(doc, editor, status);
     const char *texts[] = { status->report,
                             status->scene,
                             status->selection,
@@ -2027,6 +2046,9 @@ static bool sync_editor(studio *s, const studio_panel_sync *at)
                               : hints.hints[i].key;
         status.hints[i].key = chord ? studio_chord(s, chord) : NULL;
     }
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        status.areas[i] = studio_area_view_of(s, i);
+    }
     bool live = studio_properties_live(s);
     for (int i = 0; live && i < STUDIO_AREA_COUNT; i++) {
         if (studio_active_layout(s)->editors[i] == STUDIO_EDITOR_PROPERTIES) {
@@ -2038,16 +2060,32 @@ static bool sync_editor(studio *s, const studio_panel_sync *at)
     return changed;
 }
 
+/* An area header's editor type menu: emit('editor.type', area, type) shows
+   an editor type, emit('editor.panel', area, name) a Studio panel. */
+static void editor_action(studio *s, const char *action, const ui_activation *a)
+{
+    if (a->argc < 2) {
+        return;
+    }
+    int area = atoi(a->args[0]);
+    if (!strcmp(action, "type")) {
+        studio_area_show(s, area, atoi(a->args[1]), "");
+    } else if (!strcmp(action, "panel")) {
+        studio_area_show(s, area, STUDIO_EDITOR_PANEL, a->args[1]);
+    }
+}
+
 /* ---------- Commands (workstream T) ---------- */
 
-/* `commands`, each command's state by id (studio_command_state): label,
- * menu, shortcut and icon as text, enabled and checked. An authored button
- * runs its command with emit('studio.<id>') and reads it here, as
- * data-attr-data-tip="commands.play.label" does. Members follow the
- * registry's order, so showing walks them without a lookup. */
+/* `commands`, each command's state by id (studio_command_state): its id,
+ * label, menu, shortcut and icon as text, enabled, checkable and checked. An
+ * authored button runs its command with emit('studio.<id>') and reads it
+ * here, as data-attr-data-tip="commands.play.label" does, and MenuCommand
+ * runs emit('studio.' + command.id). Members follow the registry's order, so
+ * showing walks them without a lookup. */
 
 static const char *const COMMAND_TEXTS[] = { "label", "menu", "shortcut", "icon", NULL };
-static const char *const COMMAND_FLAGS[] = { "enabled", "checked", NULL };
+static const char *const COMMAND_FLAGS[] = { "enabled", "checkable", "checked", NULL };
 
 void studio_commands_add(yyjson_mut_doc *doc)
 {
@@ -2055,6 +2093,7 @@ void studio_commands_add(yyjson_mut_doc *doc)
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         const char *id = studio_command_id((studio_command)c);
         yyjson_mut_val *command = yyjson_mut_obj_add_obj(doc, commands, id);
+        yyjson_mut_obj_add_str(doc, command, "id", id);
         add_texts(doc, command, COMMAND_TEXTS);
         add_flags(doc, command, COMMAND_FLAGS);
     }
@@ -2072,7 +2111,7 @@ bool studio_commands_show(yyjson_mut_doc *doc, const studio_command_state *state
         );
         char icon[5] = "";
         if (info->icon) {
-            utf8_icon(icon, info->icon);
+            studio_glyph(icon, info->icon);
         }
         const char *texts[] = { info->label,
                                 info->menu,
@@ -2082,6 +2121,7 @@ bool studio_commands_show(yyjson_mut_doc *doc, const studio_command_state *state
             changed |= put_text(doc, command, COMMAND_TEXTS[t], texts[t]);
         }
         changed |= put_bool(command, "enabled", states[c].enabled);
+        changed |= put_bool(command, "checkable", states[c].checkable);
         changed |= put_bool(command, "checked", states[c].checked);
     }
     return changed;
@@ -2092,13 +2132,172 @@ static bool sync_commands(studio *s, const studio_panel_sync *at)
     studio_command_state states[STUDIO_COMMAND_COUNT];
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         studio_command command = (studio_command)c;
+        int checked = studio_command_checked(s, command);
         states[c] = (studio_command_state){
             .info = studio_command_describe(s, command),
             .enabled = studio_command_enabled(s, command),
-            .checked = studio_command_checked(s, command) == 1,
+            .checkable = checked >= 0,
+            .checked = checked == 1,
         };
     }
     return studio_commands_show(at->doc, states);
+}
+
+/* ---------- Choices (workstream F3) ---------- */
+
+/* `choices`, the tables choice fields and menus list, which rarely change.
+ * A table is { label, icon, groups: [{ label, options: [{ value, label,
+ * icon }] }] }:
+ * - fields.<Component>.<field>: every value of a reflected enum or named
+ *   choice field (component_properties.h), as EnumField lists them;
+ * - assets.<kind>: the project's assets of a kind (scene, prototype,
+ *   behavior, event, material, shape, field, library, system, ui) by name,
+ *   as AssetField lists them;
+ * - editors: the editor types by task, as an area header's menu lists them,
+ *   each option with drawer, whether a drawer may show it, and each group
+ *   with tools, whether the Studio panels that are tools follow it;
+ * - panels: { label, icon, tools, others }, the Studio panels, the others in
+ *   the menu's Studio UI submenu. */
+
+static yyjson_mut_val *add_table(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *obj,
+    const char *key,
+    const char *label,
+    uint32_t icon
+)
+{
+    yyjson_mut_val *table = yyjson_mut_obj_add_obj(doc, obj, key);
+    char glyph[5] = "";
+    if (icon) {
+        studio_glyph(glyph, icon);
+    }
+    yyjson_mut_obj_add_strcpy(doc, table, "label", label);
+    yyjson_mut_obj_add_strcpy(doc, table, "icon", glyph);
+    yyjson_mut_obj_add_arr(doc, table, "groups");
+    return table;
+}
+
+/* A group's options, the group made when `label` differs from the last. */
+static yyjson_mut_val *group_options(yyjson_mut_doc *doc, yyjson_mut_val *table, const char *label)
+{
+    yyjson_mut_val *groups = member(table, "groups");
+    size_t count = yyjson_mut_arr_size(groups);
+    yyjson_mut_val *last = count ? yyjson_mut_arr_get(groups, count - 1) : NULL;
+    if (last && !strcmp(text_at(last, "label"), label)) {
+        return member(last, "options");
+    }
+    yyjson_mut_val *group = yyjson_mut_arr_add_obj(doc, groups);
+    yyjson_mut_obj_add_strcpy(doc, group, "label", label);
+    return yyjson_mut_obj_add_arr(doc, group, "options");
+}
+
+static void add_field_choices(yyjson_mut_doc *doc, yyjson_mut_val *fields, const ecs_component_desc *desc)
+{
+    yyjson_mut_val *component = NULL;
+    for (int f = 0; desc->type && f < desc->type->field_count; f++) {
+        const type_field *field = &desc->type->fields[f];
+        const editor_choices *choices = property_choices(desc->type, field);
+        if (!choices || !editor_choices_count(choices)) {
+            continue;
+        }
+        component = component ? component
+                              : yyjson_mut_obj_add_obj(doc, fields, desc->name);
+        yyjson_mut_val *table = add_table(doc, component, field->name, field->name, 0);
+        for (int i = 0; i < editor_choices_count(choices); i++) {
+            editor_choice choice = editor_choice_at(choices, i);
+            yyjson_mut_val *option = yyjson_mut_arr_add_obj(
+                doc,
+                group_options(doc, table, choice.group ? choice.group : "")
+            );
+            char glyph[5] = "";
+            if (choice.icon) {
+                studio_glyph(glyph, choice.icon);
+            }
+            yyjson_mut_obj_add_int(doc, option, "value", choice.value);
+            yyjson_mut_obj_add_strcpy(doc, option, "label", choice.label);
+            yyjson_mut_obj_add_strcpy(doc, option, "icon", glyph);
+        }
+    }
+}
+
+static void add_choices(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *choices = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "choices");
+    yyjson_mut_val *fields = yyjson_mut_obj_add_obj(doc, choices, "fields");
+    for (int c = 0; c < GAME_REGISTRY_COMPONENT_COUNT; c++) {
+        add_field_choices(doc, fields, GAME_REGISTRY_COMPONENTS[c]);
+    }
+    yyjson_mut_val *assets = yyjson_mut_obj_add_obj(doc, choices, "assets");
+    for (int kind = 0; kind < REFERENCE_ASSET_KIND_COUNT; kind++) {
+        add_table(
+            doc,
+            assets,
+            studio_asset_kind_name(kind),
+            studio_asset_kind_label(kind),
+            studio_asset_kind_icon(kind)
+        );
+    }
+    add_table(doc, choices, "editors", "", 0);
+    yyjson_mut_val *panels = add_table(doc, choices, "panels", "Studio UI", KIT_ICON_LAYOUT);
+    yyjson_mut_obj_add_arr(doc, panels, "tools");
+    yyjson_mut_obj_add_arr(doc, panels, "others");
+}
+
+/* Whether a kind's options name exactly `names`, in order. */
+static bool lists(yyjson_mut_val *table, const char **names)
+{
+    yyjson_mut_val *groups = member(table, "groups");
+    yyjson_mut_val *group = yyjson_mut_arr_size(groups)
+                              ? yyjson_mut_arr_get(groups, 0)
+                              : NULL;
+    yyjson_mut_val *options = group ? member(group, "options") : NULL;
+    if ((int)(options ? yyjson_mut_arr_size(options) : 0) != acount(names)) {
+        return false;
+    }
+    for (int i = 0; i < acount(names); i++) {
+        if (strcmp(text_at(yyjson_mut_arr_get(options, (size_t)i), "value"), names[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool show_assets(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *assets)
+{
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    bool changed = false;
+    for (int kind = 0; index && kind < REFERENCE_ASSET_KIND_COUNT; kind++) {
+        yyjson_mut_val *table = member(assets, studio_asset_kind_name(kind));
+        const char **names = studio_asset_names(index, kind);
+        if (!lists(table, names)) {
+            yyjson_mut_arr_clear(member(table, "groups"));
+            for (int i = 0; i < acount(names); i++) {
+                yyjson_mut_val *options = group_options(doc, table, studio_asset_kind_label(kind));
+                yyjson_mut_val *option = yyjson_mut_arr_add_obj(doc, options);
+                yyjson_mut_obj_add_strcpy(doc, option, "value", names[i]);
+                yyjson_mut_obj_add_strcpy(doc, option, "label", names[i]);
+            }
+            changed = true;
+        }
+        afree(names);
+    }
+    return changed;
+}
+
+/* The editor types are fixed; the panels follow the Studio scene's. */
+static bool sync_choices(studio *s, const studio_panel_sync *at)
+{
+    yyjson_mut_val *editors = member(at->variable, "editors");
+    yyjson_mut_val *panels = member(at->variable, "panels");
+    size_t listed = yyjson_mut_arr_size(member(panels, "tools")) +
+                    yyjson_mut_arr_size(member(panels, "others"));
+    bool menu = !yyjson_mut_arr_size(member(editors, "groups")) ||
+                (int)listed != studio_ui_panel_count(s);
+    if (menu) {
+        studio_editor_choices(s, at->doc, editors, panels);
+    }
+    return show_assets(s, at->doc, member(at->variable, "assets")) || menu;
 }
 
 /* ---------- The table ---------- */
@@ -2112,10 +2311,11 @@ const studio_panel_source studio_panel_sources[] = {
     { "theme", "Theme", add_theme, sync_theme, NULL },
     { "settings", "Settings", studio_settings_add, sync_settings, settings_action },
     { "shortcuts", "Shortcuts", studio_keymap_add, sync_shortcuts, NULL },
-    { "editor", NULL, studio_status_add, sync_editor, NULL },
+    { "editor", NULL, studio_status_add, sync_editor, editor_action },
     { "commands", NULL, studio_commands_add, sync_commands, NULL },
     { "collaboration", NULL, add_collaboration, sync_collaboration, NULL },
     { "new_project", "NewProject", add_new_project, sync_new_project, NULL },
+    { "choices", NULL, add_choices, sync_choices, NULL },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

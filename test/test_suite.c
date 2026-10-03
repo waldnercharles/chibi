@@ -142,6 +142,8 @@ void test_arena_hud();
 void test_kit_documents();
 /* ---------- Native controls (workstream F2) ---------- */
 void test_ui_controls();
+/* ---------- Popovers (workstream F3) ---------- */
+void test_ui_popovers();
 
 static int fails;
 
@@ -335,6 +337,8 @@ TEST_CASE(all_checks)
     test_kit_documents();
     /* ---------- Native controls (workstream F2) ---------- */
     test_ui_controls();
+    /* ---------- Popovers (workstream F3) ---------- */
+    test_ui_popovers();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -1193,6 +1197,11 @@ int main(int argc, char **argv)
     /* ---------- Native controls (workstream F2) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-controls")) {
         test_ui_controls();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Popovers (workstream F3) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-popovers")) {
+        test_ui_popovers();
         return fails ? 1 : 0;
     }
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */

@@ -1110,6 +1110,20 @@ static bool drawer_editor(studio_editor editor)
            editor == STUDIO_EDITOR_PANEL || editor == STUDIO_EDITOR_CODE;
 }
 
+void studio_maximize_graph(studio *s)
+{
+    studio_layout *layout = studio_active_layout(s);
+    int area = STUDIO_AREA_TOP;
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        area = layout->editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
+    }
+    layout->editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    s->applied.layouts[s->prefs.workspace].editors[area] = STUDIO_EDITOR_BEHAVIOR;
+    s->maximized = area;
+}
+
+/* ---------- Editor types (workstream F3) ---------- */
+
 /* The Studio project's panels that are tools in any project; the rest are
    pieces of Studio's own chrome, kept in a submenu. */
 static const struct
@@ -1122,79 +1136,21 @@ static const struct
     { "Theme", KIT_ICON_MATERIAL },
 };
 
-static bool tool_panel(const char *name)
+static int tool_panel(const char *name)
 {
     for (size_t i = 0; i < sizeof TOOL_PANELS / sizeof *TOOL_PANELS; i++) {
         if (!strcmp(TOOL_PANELS[i].name, name)) {
-            return true;
+            return (int)i;
         }
     }
-    return false;
+    return -1;
 }
 
 /* A panel's icon: a tool's own, else the panel glyph. */
 static uint32_t panel_icon(const char *name)
 {
-    for (size_t i = 0; i < sizeof TOOL_PANELS / sizeof *TOOL_PANELS; i++) {
-        if (!strcmp(TOOL_PANELS[i].name, name)) {
-            return TOOL_PANELS[i].icon;
-        }
-    }
-    return EDITOR_ICONS[STUDIO_EDITOR_PANEL];
-}
-
-static void panel_item(studio *s, int area, int index)
-{
-    studio_layout *layout = studio_active_layout(s);
-    const char *name = studio_ui_panel_name(s, index);
-    char item_key[16];
-    snprintf(item_key, sizeof item_key, "p%d", index);
-    kit_menu_item_desc item = {
-        .label = name,
-        .icon = panel_icon(name),
-        .checked = -1,
-        .current = layout->editors[area] == STUDIO_EDITOR_PANEL &&
-                   !strcmp(layout->panels[area], name),
-    };
-    if (kit_menu_item(s->kit, item_key, &item)) {
-        layout->editors[area] = STUDIO_EDITOR_PANEL;
-        snprintf(layout->panels[area], sizeof layout->panels[area], "%s", name);
-    }
-}
-
-/* The panels that are tools, then the rest in a submenu. */
-static void panel_types(studio *s, int area, bool tools)
-{
-    int count = studio_ui_panel_count(s);
-    for (int i = 0; tools && i < count; i++) {
-        if (tool_panel(studio_ui_panel_name(s, i))) {
-            panel_item(s, area, i);
-        }
-    }
-    if (tools || count <= (int)(sizeof TOOL_PANELS / sizeof *TOOL_PANELS)) {
-        return;
-    }
-    kit_menu_separator(s->kit, "panels-sep");
-    if (kit_submenu_begin(s->kit, "studio-ui", "Studio UI", EDITOR_ICONS[STUDIO_EDITOR_PANEL])) {
-        for (int i = 0; i < count; i++) {
-            if (!tool_panel(studio_ui_panel_name(s, i))) {
-                panel_item(s, area, i);
-            }
-        }
-        kit_submenu_end(s->kit);
-    }
-}
-
-void studio_maximize_graph(studio *s)
-{
-    studio_layout *layout = studio_active_layout(s);
-    int area = STUDIO_AREA_TOP;
-    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        area = layout->editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : area;
-    }
-    layout->editors[area] = STUDIO_EDITOR_BEHAVIOR;
-    s->applied.layouts[s->prefs.workspace].editors[area] = STUDIO_EDITOR_BEHAVIOR;
-    s->maximized = area;
+    int tool = tool_panel(name);
+    return tool >= 0 ? TOOL_PANELS[tool].icon : EDITOR_ICONS[STUDIO_EDITOR_PANEL];
 }
 
 /* Editor types by task, as Blender's editor type menu groups them. */
@@ -1218,58 +1174,74 @@ static const editor_group EDITOR_GROUPS[] = {
     { "Diagnostics", { STUDIO_EDITOR_OUTPUT, STUDIO_EDITOR_PERFORMANCE }, 2, true },
 };
 
-static void editor_group_items(studio *s, int area, const editor_group *group, int index)
+studio_area_view studio_area_view_of(studio *s, int area)
 {
-    kit *k = s->kit;
-    studio_editor *editor = &studio_active_layout(s)->editors[area];
-    char key[16];
-    snprintf(key, sizeof key, "g%d", index);
-    if (index > 0) {
-        kit_menu_separator(k, key);
-    }
-    kit_menu_group(k, group->label, group->label);
-    for (int i = 0; i < group->count; i++) {
-        studio_editor e = group->editors[i];
-        if (area == STUDIO_AREA_DRAWER && !drawer_editor(e)) {
-            continue;
+    studio_layout *layout = studio_active_layout(s);
+    studio_editor editor = layout->editors[area];
+    bool panel = editor == STUDIO_EDITOR_PANEL;
+    return (studio_area_view){
+        .editor = editor,
+        .panel = panel ? layout->panels[area] : "",
+        .icon = panel ? panel_icon(layout->panels[area]) : EDITOR_ICONS[editor],
+        .title = panel ? layout->panels[area] : EDITOR_LABELS[editor],
+    };
+}
+
+static void add_glyph(yyjson_mut_doc *doc, yyjson_mut_val *obj, uint32_t icon)
+{
+    char glyph[5];
+    studio_glyph(glyph, icon);
+    yyjson_mut_obj_add_strcpy(doc, obj, "icon", glyph);
+}
+
+static void add_panel(yyjson_mut_doc *doc, yyjson_mut_val *list, const char *name)
+{
+    yyjson_mut_val *option = yyjson_mut_arr_add_obj(doc, list);
+    yyjson_mut_obj_add_strcpy(doc, option, "value", name);
+    yyjson_mut_obj_add_strcpy(doc, option, "label", name);
+    add_glyph(doc, option, panel_icon(name));
+}
+
+void studio_editor_choices(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *editors, yyjson_mut_val *panels)
+{
+    yyjson_mut_val *groups = yyjson_mut_obj_get(editors, "groups");
+    yyjson_mut_arr_clear(groups);
+    for (size_t g = 0; g < sizeof EDITOR_GROUPS / sizeof *EDITOR_GROUPS; g++) {
+        const editor_group *group = &EDITOR_GROUPS[g];
+        yyjson_mut_val *shown = yyjson_mut_arr_add_obj(doc, groups);
+        yyjson_mut_obj_add_str(doc, shown, "label", group->label);
+        yyjson_mut_obj_add_bool(doc, shown, "tools", group->tools);
+        yyjson_mut_val *options = yyjson_mut_obj_add_arr(doc, shown, "options");
+        for (int i = 0; i < group->count; i++) {
+            studio_editor e = group->editors[i];
+            yyjson_mut_val *option = yyjson_mut_arr_add_obj(doc, options);
+            yyjson_mut_obj_add_int(doc, option, "value", e);
+            yyjson_mut_obj_add_str(doc, option, "label", EDITOR_LABELS[e]);
+            add_glyph(doc, option, EDITOR_ICONS[e]);
+            yyjson_mut_obj_add_bool(doc, option, "drawer", drawer_editor(e));
         }
-        snprintf(key, sizeof key, "e%d", (int)e);
-        kit_menu_item_desc item = { .label = EDITOR_LABELS[e],
-                                    .icon = EDITOR_ICONS[e],
-                                    .checked = -1,
-                                    .current = *editor == e };
-        if (kit_menu_item(k, key, &item)) {
-            *editor = e;
-        }
     }
-    if (group->tools) {
-        panel_types(s, area, true);
+    yyjson_mut_val *tools = yyjson_mut_obj_get(panels, "tools");
+    yyjson_mut_val *others = yyjson_mut_obj_get(panels, "others");
+    yyjson_mut_arr_clear(tools);
+    yyjson_mut_arr_clear(others);
+    for (int i = 0; i < studio_ui_panel_count(s); i++) {
+        const char *name = studio_ui_panel_name(s, i);
+        add_panel(doc, tool_panel(name) >= 0 ? tools : others, name);
     }
 }
 
-static void editor_type_menu(studio *s, int area)
+void studio_area_show(studio *s, int area, int editor, const char *panel)
 {
-    kit *k = s->kit;
     studio_layout *layout = studio_active_layout(s);
-    studio_editor *editor = &layout->editors[area];
-    kit_button_desc d = { .icon = *editor == STUDIO_EDITOR_PANEL
-                                    ? panel_icon(layout->panels[area])
-                                    : EDITOR_ICONS[*editor],
-                          .cls = "editor-type",
-                          .tip = *editor == STUDIO_EDITOR_PANEL
-                                   ? layout->panels[area]
-                                   : EDITOR_LABELS[*editor] };
-    char key[24];
-    snprintf(key, sizeof key, "type:%d", area);
-    if (kit_button(k, "type", &d)) {
-        kit_popup_open(k, key);
+    if (area < 0 || area >= STUDIO_AREA_COUNT || editor < 0 ||
+        editor >= STUDIO_EDITOR_COUNT ||
+        (area == STUDIO_AREA_DRAWER && !drawer_editor((studio_editor)editor))) {
+        return;
     }
-    if (kit_popup_begin(k, key, "menu")) {
-        for (size_t g = 0; g < sizeof EDITOR_GROUPS / sizeof *EDITOR_GROUPS; g++) {
-            editor_group_items(s, area, &EDITOR_GROUPS[g], (int)g);
-        }
-        panel_types(s, area, false);
-        kit_popup_end(k);
+    layout->editors[area] = (studio_editor)editor;
+    if (editor == STUDIO_EDITOR_PANEL) {
+        snprintf(layout->panels[area], sizeof layout->panels[area], "%s", panel);
     }
 }
 
@@ -1298,20 +1270,16 @@ static void editor_header(studio *s, int index)
 }
 
 /* The area header is authored: projects/studio's AreaHeader, one per area,
-   binds its `area` (studio_sources.c) to maximize it and to close the
-   drawer. The editor type menu and the editor's own controls stay native in
-   its slots. Fields keep their keys while chrome controls allow global
-   shortcuts through the host. */
+   binds its `area` (studio_sources.c) to its editor type menu, to maximize
+   it and to close the drawer. The editor's own controls stay native in its
+   slot. Fields keep their keys while chrome controls allow global shortcuts
+   through the host. */
 static void area_header(studio *s, int index)
 {
     kit *k = s->kit;
     rml_element *host = studio_ui_area_header(s, index, "AreaHeader");
     if (!host) {
         return;
-    }
-    if (kit_slot_begin(k, "type", host, "#editor-type")) {
-        editor_type_menu(s, index);
-        kit_slot_end(k);
     }
     if (kit_slot_begin(k, "controls", host, "#controls")) {
         editor_header(s, index);

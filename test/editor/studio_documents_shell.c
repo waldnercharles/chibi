@@ -24,6 +24,7 @@
 #include "test/editor/ui_bench.h"
 #include "test/suite_internal.h"
 #include "ui/input_feel.h"
+#include "ui/popover.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
@@ -883,8 +884,8 @@ static void chrome_follows_studio()
     rml_element *heads[8], *tabs[8], *play[8];
     int shown = panel_elements(s, "AreaHeader", ".area-head", heads);
     bool slots = kit_find(s->kit, "app/topbar/menus/file", &r) &&
-                 kit_find(s->kit, "app/topbar/target/target", &r) &&
-                 kit_find(s->kit, "app/workspace/main/editors/top/head/type/type", &r) &&
+                 kit_find(s->kit, "app/topbar/target/target", &r) && heads[0] &&
+                 rml_element_query_selector(heads[0], ".editor-type") &&
                  kit_find(s->kit, "app/workspace/main/editors/top/head/controls", &r) &&
                  s->maximized < 0 && shown >= STUDIO_AREA_COUNT - 1;
     int count = panel_elements(s, "TopBar", ".doc-tab", tabs) - 1;
@@ -1266,6 +1267,137 @@ static void area_documents()
     fixture_free(&f);
 }
 
+/* The text of an element's .label, or "". */
+static void label_text(rml_element *el, char *out, size_t size)
+{
+    rml_element *label = el ? rml_element_query_selector(el, ".label") : NULL;
+    rml_element *node = label ? rml_element_first_child(label) : NULL;
+    out[0] = '\0';
+    if (node && !strcmp(rml_element_tag_name(node), "#text")) {
+        rml_element_text(node, out, size);
+    }
+}
+
+/* The shown element in `menu` matching `selector` labeled `name`, or NULL. */
+static rml_element *labeled(rml_element *menu, const char *selector, const char *name)
+{
+    rml_element *items[64];
+    int count = menu ? rml_element_query_selector_all(menu, selector, items, 64) : 0;
+    for (int i = 0; i < count && i < 64; i++) {
+        char label[64];
+        label_text(items[i], label, sizeof label);
+        if (!strcmp(label, name) && rml_element_is_visible(items[i], true)) {
+            return items[i];
+        }
+    }
+    return NULL;
+}
+
+/* A point inside `el` outside `document`'s box: where it draws over another
+   document. False when it has none. */
+static bool beyond(rml_element *el, rml_element *document, rml_vec2 *point)
+{
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    rml_vec2 box_at = rml_element_absolute_offset(document, RML_BOX_BORDER);
+    rml_vec2 box = rml_element_box_size(document, RML_BOX_BORDER);
+    for (float y = at.y + 4; y < at.y + size.y - 4; y += 4) {
+        if (y < box_at.y || y > box_at.y + box.y) {
+            *point = (rml_vec2){ at.x + size.x / 2, y };
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool inside(rml_element *el, const rml_element *ancestor)
+{
+    for (; el; el = rml_element_parent(el)) {
+        if (el == ancestor) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Each area header's editor type menu is an authored Menu over
+   choices.editors: it draws over the areas beside its own, marks the area's
+   editor, and a chosen item shows that editor there. The Behavior header's
+   View menu toggles a view preference and stays open; Escape closes it. */
+static void area_menus()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    frames(&f, 6);
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *heads[8];
+    int shown = panel_elements(s, "AreaHeader", ".area-head", heads);
+    bool over = false, current = true;
+    for (int i = 0; i < shown; i++) {
+        press(s, rml_element_query_selector(heads[i], ".editor-type"));
+        frames(&f, 3);
+        rml_element *menu = rml_element_query_selector(heads[i], "#editor-types");
+        char label[64];
+        label_text(rml_element_query_selector(menu, "[data-current]"), label, sizeof label);
+        current &= popover_open(menu) && label[0];
+        rml_vec2 point;
+        over |= beyond(menu, rml_element_owner_document(menu), &point) &&
+                inside(rml_context_element_at_point(context, point, NULL), menu);
+        press(s, rml_element_query_selector(heads[i], ".editor-type"));
+        frames(&f, 2);
+    }
+    studio_layout *layout = studio_active_layout(s);
+    studio_editor before[STUDIO_AREA_COUNT];
+    memcpy(before, layout->editors, sizeof before);
+    press(s, rml_element_query_selector(heads[0], ".editor-type"));
+    frames(&f, 3);
+    rml_element *members = labeled(
+        rml_element_query_selector(heads[0], "#editor-types"),
+        "[role=menuitem]",
+        "Members"
+    );
+    if (members) {
+        press(s, members);
+        frames(&f, 3);
+    }
+    int shows = 0, changed = 0;
+    for (int a = 0; a < STUDIO_AREA_COUNT; a++) {
+        shows += layout->editors[a] == STUDIO_EDITOR_MEMBERS;
+        changed += layout->editors[a] != before[a];
+    }
+    test_check(
+        shown >= 2 && current && over && shows == 1 && changed == 1 &&
+            !popover_top(context),
+        "an area header's editor type menu marks its editor, draws over the "
+        "next area, and its item shows that editor in the area"
+    );
+    memcpy(layout->editors, before, sizeof before);
+    frames(&f, 4);
+    rml_element *view = studio_element(s, "[data-ui=GraphView] button");
+    bool compact = s->prefs.compact_nodes;
+    if (view) {
+        press(s, view);
+        frames(&f, 3);
+    }
+    rml_element *menu = studio_element(s, "#graph-view");
+    rml_element *toggle = labeled(menu, ".menu-check", "Compact Nodes");
+    if (toggle) {
+        press(s, toggle);
+        frames(&f, 3);
+    }
+    bool toggled = toggle && s->prefs.compact_nodes != compact && popover_open(menu);
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 2);
+    test_check(
+        view && toggled && !popover_open(menu),
+        "the Behavior header's View menu toggles a view preference, stays "
+        "open, and closes on Escape"
+    );
+    s->prefs.compact_nodes = compact;
+    fixture_free(&f);
+}
+
 void studio_documents_shell_checks()
 {
     host_ui_refresh_keeps_input_immediate();
@@ -1282,4 +1414,5 @@ void studio_documents_shell_checks()
     layout_modes_are_explicit();
     toolbar_shortcuts_keep_text_focus();
     area_documents();
+    area_menus();
 }

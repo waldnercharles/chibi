@@ -45,7 +45,8 @@ struct studio_ui
     ui_data data; /* what the kit's hosted panels bind */
     studio_sources sources;
     ui_mount *areas[STUDIO_AREA_COUNT]; /* each area's panel, when it shows one */
-    ui_mount *headers[STUDIO_AREA_COUNT]; /* each area's header */
+    ui_mount *headers[STUDIO_AREA_COUNT];  /* each area's header */
+    ui_mount *controls[STUDIO_AREA_COUNT]; /* an authored panel in each header */
     bool wake; /* authored activations waiting for a host emission */
     uint64_t ui_seen, save_seen, panels_seen;
     uint64_t prefs_seen; /* the settings revision Studio's preferences match */
@@ -65,6 +66,9 @@ static ui_mount *mount_holding(studio_ui *ui, rml_element *element)
         }
         if (ui->headers[i] && ui_mount_holds(ui->headers[i], element)) {
             return ui->headers[i];
+        }
+        if (ui->controls[i] && ui_mount_holds(ui->controls[i], element)) {
+            return ui->controls[i];
         }
     }
     return NULL;
@@ -186,7 +190,8 @@ static void free_world(studio_ui *ui)
     for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
         ui_mount_free(ui->areas[i]);
         ui_mount_free(ui->headers[i]);
-        ui->areas[i] = ui->headers[i] = NULL;
+        ui_mount_free(ui->controls[i]);
+        ui->areas[i] = ui->headers[i] = ui->controls[i] = NULL;
     }
     afree(ui->panels);
     game_prototype_preview_free(ui->world);
@@ -542,6 +547,19 @@ rml_element *studio_ui_area_header(studio *s, int area, const char *name)
     return host;
 }
 
+/* A mount per area, so each header showing the panel keeps its own. */
+rml_element *studio_ui_area_controls(studio *s, int area, const char *key, const char *name)
+{
+    panel *p;
+    const char *document = panel_document(s, name, &p);
+    if (!document) {
+        return NULL;
+    }
+    rml_element *host = kit_host(s->kit, key, "panel-host");
+    show_panel(s, p, &s->ui->controls[area], host, document);
+    return host;
+}
+
 void studio_ui_area_detach(studio *s, int area)
 {
     if (!s->ui) {
@@ -549,6 +567,7 @@ void studio_ui_area_detach(studio *s, int area)
     }
     ui_mount_detach(s->ui->headers[area]);
     ui_mount_detach(s->ui->areas[area]);
+    ui_mount_detach(s->ui->controls[area]);
 }
 
 const char *studio_ui_page(const studio_ui *ui)

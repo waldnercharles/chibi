@@ -1,8 +1,9 @@
 /* An area's header, as Blender's (studio_shell.c hosts one per area and
-   binds `area`, its item of editor.areas): the editor type menu and the
-   editor's own controls, native in the #editor-type and #controls slots,
-   then Maximize, which turns to Restore while its area fills the
-   workspace, and the drawer's Close. */
+   binds `area`, its item of editor.areas): the editor type menu, a Menu over
+   choices.editors and choices.panels that draws above the other areas, the
+   editor's own controls, native in the #controls slot, then Maximize, which
+   turns to Restore while its area fills the workspace, and the drawer's
+   Close. */
 body { flex: 0 0 auto; }
 .area-head {
   height: var(--header-h); display: flex; align-items: center; gap: 3dp; padding: 0dp 6dp;

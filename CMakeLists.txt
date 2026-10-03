@@ -1062,6 +1062,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:behavior_backend_smoke>"
         COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:runtime_backend_smoke>"
         DEPENDS behavior_backend_smoke runtime_backend_smoke VERBATIM)
+    # The S0 UI bench's headless cases (docs/studio-rml-migration.md) under
+    # Node: `node build-web/ui_bench.js` from the repository root. Natively
+    # they run as `test_suite --ui-bench`.
+    add_executable(ui_bench test/ui_bench_main.c test/editor/ui_bench.c ${APP_REGISTRY})
+    add_dependencies(ui_bench generate_runtime_registry)
+    target_include_directories(ui_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(ui_bench PRIVATE chibi_render editor engine)
+    target_compile_options(ui_bench PRIVATE -UNDEBUG)
+    target_link_options(ui_bench PRIVATE "-sENVIRONMENT=node" "-sNODERAWFS=1" "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1")
+    set_target_properties(ui_bench PROPERTIES LINKER_LANGUAGE CXX)
 else()
     add_custom_target(check-behavior-backend
         COMMAND "$<TARGET_FILE:behavior_backend_smoke>"

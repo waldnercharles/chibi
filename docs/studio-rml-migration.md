@@ -158,6 +158,13 @@ is true and removes the copy with its views while false, keeping the element
 as a hidden template as `data-for` does; `data-if` hides an element and keeps
 its views bound (`v-show`). Use `data-when` for a row's one control of many.
 
+`data-template` (F3 follow-up, `rmlui-data-template.patch`) is the structural
+view for content that native code mounts: RmlUi builds none of the element's
+content and keeps its markup unparsed in `rmlui-inner-rml`, for
+`rml_element_set_inner_rml` to build and to remove with its views. It
+cancels the element's other data views, as `data-for` does. `popover.c` uses
+it for popovers: see F3.
+
 ```html
 <number-field data-attr-value="n.value" data-attr-step="n.step"
   data-event-input="emit('properties.input', row.id, ev.value)"
@@ -226,8 +233,10 @@ stack and one drag session while the migration runs.
   Menu, MenuItem, MenuGroup, MenuSeparator, Submenu, MenuCommand and
   ChoiceList (palette, pickers, Add Component, editor types, debug target),
   with EnumField and AssetField over ChoiceList. A closed popover is
-  `display: none`, so nothing in it lays out or draws; its data views stay
-  bound.
+  `display: none`, so nothing in it lays out or draws. One marked
+  `data-template` (Menu and Submenu) also holds no elements and no data
+  views: it builds its content when it opens and removes it after its exit
+  transition (F3 follow-up, below).
 
 ### Live values in Play
 
@@ -635,6 +644,72 @@ submenu after its delay and ends fades.
   menu, dropdown, autocomplete and popover checks in `--rmlui-kit` pass
   unchanged.
 
+**Closed popovers mount nothing (follow-up, done).** C3 measured the cost of
+the top bar's closed menus: about 1,100 elements and their data views stayed
+bound, and a selection changed rows inside them (the commands' checked and
+enabled states), laying the bar out once more. Base UI unmounts a Popup while
+it is closed; Blender builds a menu's items when it opens. `popover.c` does
+the same for a popover marked `data-template` (Menu and Submenu have it):
+
+- RmlUi builds none of its content (`rmlui-data-template.patch`, above) and
+  keeps the markup in `rmlui-inner-rml`. `popover_show` builds it with
+  `rml_element_set_inner_rml`, so its views bind the data of that moment, and
+  the end of the popover's exit transition (`end_fades`) removes it with its
+  views. Opening again during the fade removes the pending end and keeps the
+  content. A popover without the attribute (the kit's, a games', EnumField's
+  and AssetField's) is unchanged.
+- The data model could not carry the flag: its variables are the host's, an
+  expression reads no element's attributes, and a view re-evaluates only when
+  a variable it reads is dirtied. A `data-when` on an open flag would need a
+  model variable per popover (ids repeat, as Submenu's `submenu`) and
+  popover.c would have to dirty it.
+- Keys, typeahead, the submenu delay, menubar hover switching, focus return
+  and exit transitions needed no change: they work on the content that is
+  built while open. A menu is placed in the update after it opens, as before.
+- `data-*` bindings written on a Menu's use element land on the popover and
+  are cancelled by `data-template`, so they go on an element around it. No
+  Studio document had one.
+- Not done: the dropdowns over ChoiceList (EnumField, AssetField, the
+  Outliner's Add list, the Behavior header's debug targets) stay built; their
+  owner can add `data-template` to the popover element when C4 lands.
+- `ui_check` and the inspector see a closed menu's content only once it is
+  open: a binding error inside a menu shows when it opens.
+
+Numbers, `UI_BENCH_SPLITTER=1 ./build-release/test_suite --ui-bench studio`
+(case 15) and `UI_BENCH_MENUS=1 ... --ui-bench studio` (case 19, new: the
+File menu opened by a press on its trigger), the same binary over `3160b5f9`'s
+Menu and Submenu and over these, alternated, 1-minute load 30-57 (provisional;
+the counts do not depend on load):
+
+| Case | Before | After |
+|---|---:|---:|
+| Elements in Studio's documents, at rest | 4,371 | 993 |
+| Elements in the top bar's document, menus closed | 1,212 | 99 |
+| A UI frame with nothing changed | 1.0-1.6 ms | 0.5-0.7 ms |
+| Select another object: views evaluated / lookups / layouts | 862 / 3,057 / 5 | 267 / 851 / 4 |
+| Select another object | 13.9-16.5 ms | 7.7-8.5 ms |
+| Splitter drag 3 dp, the two UI frames after | 3.6-5.1 ms | 2.6-3.0 ms |
+| Open the File menu: press to first paint | 12.5-14.6 ms, 1 UI frame | 5.1-5.8 ms, 1 UI frame |
+| Elements in the top bar's document with File open | 1,212 | 169 |
+
+Opening still paints in one UI frame: the press builds the items, and the
+frame's update binds, styles and lays them out and `popovers_settle` places
+the menu in it. The top bar's document, now 99 elements, lays out faster than
+the 1,212 it held, which pays for the parse. A selection still lays out four
+documents (five before): what it changes is shown outside the menus. Pixel parity: the 72 native shell shots of C3's capture
+(`CHIBI_SHELL_CAPTURE_DIR`, dark and light, compact and comfortable, 150% UI
+Scale: File, View, Object ▸ Add, the play target's, layout's, speed's and UI
+Scale's menus) are identical to the shots before, and so are 32 web ones
+(1600×1000, dark and light, compact and comfortable: File, Edit, View,
+Object ▸ Add, the editor type menu, the Scene's View menu and UI Scale, and
+a whole-window shot each). Checks: `--ui-popovers` (a closed menu holds no
+elements and a change to what its items show evaluates no view; opening
+builds them with the current values and the submenu in it stays unbuilt; the
+items stay through the fade and survive opening again during it; the fade's
+end removes them; a submenu builds when it opens and closing its menu removes
+both) and `--studio-shell` (every menu in Studio's documents is empty while
+closed; the File menu builds its items and removes them).
+
 #### F4: lists and drag (done)
 
 `src/ui/drag.c` is dnd-kit's drag and drop for every RmlUi context, over
@@ -1035,9 +1110,10 @@ eye and lock; and Unity's focusable list for the keyboard.
   a step rewrites each row's values as the window slides (as the gallery's
   List does), and instances none.
 
-  The Outliner's document holds 929 elements against 558: closed popovers
+  The Outliner's document held 929 elements against 558: closed popovers
   (the row menu, the Add list's options) and `data-when` templates add
-  elements that never lay out. Sync rose 0.3 to 0.5 ms (the filter walks
+  elements that never lay out. (Since the F3 follow-up the row menu holds
+  none while closed.) Sync rose 0.3 to 0.5 ms (the filter walks
   every object at each refresh, as the kit's emit did); emit and capture
   fell.
 - **Tests:** `--studio-outliner` (new; also in `--studio-documents`):
@@ -1462,8 +1538,10 @@ at each refresh) and emit (+0.12: the Workspace's slots and place
 queries). A selection costs about 1.1 ms more: the closed menus hold about
 1,100 elements and their views, and the Play target's Preview row and the
 commands' states they show change with the selection, laying out the top
-bar's document once more. **Follow-up, shared with F3:** build a popover's
-content only while it is open, as the kit's menus were.
+bar's document once more. **Follow-up, shared with F3 (done):** a popover's
+content is built only while it is open, as the kit's menus were
+(F3, above): at rest the top bar's document holds 99 elements, and a
+selection evaluates 267 views, not 862.
 
 Shots, before C3 (`3777b63b`) and after. Native, in a hidden window at
 2560×1600 (`CHIBI_SHELL_CAPTURE_DIR`): dark and light, compact and
@@ -1584,9 +1662,9 @@ the runs' medians:
 Neither build lays the Scene out for a pan: the kit's labels moved by
 `left` and `top` on absolute boxes, which RmlUi places without a layout,
 and the authored ones move by transform. A zoom lays out twice in both,
-for `<number-flow>`'s digits. The authored document holds 220 more
+for `<number-flow>`'s digits. The authored document held 220 more
 elements, the header's closed menus and `data-when` templates, which
-neither lay out nor draw. Checks: `--studio-scene` (also in
+neither lay out nor draw (the menus no longer: F3 follow-up). Checks: `--studio-scene` (also in
 `--studio-documents`): the tools run their commands, pressed while active,
 their tips naming them and their keys; the magnet and the increment menu;
 the View menu's Show toggles and View Zoom, whose button shows only while

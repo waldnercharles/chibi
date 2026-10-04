@@ -358,6 +358,37 @@ static void lower_documents()
     }
 }
 
+/* ---------- Mounting ---------- */
+
+/* A popover with data-template builds its content while it shows, as Base
+   UI's Popup is mounted only while open: RmlUi leaves the content unbuilt
+   with its markup in rmlui-inner-rml, showing builds it and the end of its
+   fade removes it with its views, so a closed menu holds no elements and
+   binds nothing. */
+static bool has_template(const rml_element *el)
+{
+    return rml_element_has_attribute(el, "data-template");
+}
+
+static void mount(rml_element *el)
+{
+    if (!has_template(el) || rml_element_child_count(el)) {
+        return;
+    }
+    size_t size = rml_element_attribute(el, "rmlui-inner-rml", NULL, 0);
+    char *markup = xmalloc(size + 1);
+    rml_element_attribute(el, "rmlui-inner-rml", markup, size + 1);
+    rml_element_set_inner_rml(el, markup);
+    free(markup);
+}
+
+static void unmount(rml_element *el)
+{
+    if (has_template(el)) {
+        rml_element_set_inner_rml(el, "");
+    }
+}
+
 /* ---------- Showing and hiding ---------- */
 
 static void appear(entry *e, rml_element *el)
@@ -534,6 +565,7 @@ void popover_show(rml_element *popover, const popover_anchor *at)
     appear(&alast(stack), popover);
     follow_width(&alast(stack), popover);
     raise_document(rml_element_owner_document(popover));
+    mount(popover);
     rml_context_request_next_update(context, 0);
 }
 
@@ -1159,6 +1191,7 @@ static void end_fades(rml_context *context, double now)
             rml_element_remove_attribute(el, "data-open");
             rml_element_remove_attribute(el, "data-ending-style");
             rml_element_remove_property(el, "pointer-events");
+            unmount(el);
             rml_context_request_next_update(context, 0);
         }
         unref(&leavings[i].el);

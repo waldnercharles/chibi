@@ -62,7 +62,7 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
 
   So panels, the Scene view and page themes update without a new API. The `code_apply_live` preference chooses between live and on-save.
 - **Commands are one table.** `studio_commands.c` feeds menus, the palette, shortcuts and authored UI, where `emit('studio.<id>')` runs a command, `emit('studio.<id>', index)` runs it on a tab or an area, as VS Code's commands take arguments, and `commands.<id>` binds its state. Ids are camelCase, so both name it the same.
-- **Authored UI hosts native content through slots**, as Unity's IMGUIContainer does. The graph canvas, the viewport, the areas' editors still in the kit and the kit's own menus stay native; the Workspace's places hold each area's document, and the palette, the asset pickers and the refactor popover are authored (`Palette.rml`, `Picker.rml`, `Refactor.rml`). Authored menus and popovers share one stack with the kit's popups (`src/ui/popover.c`, F3).
+- **Authored UI hosts native content through slots**, as Unity's IMGUIContainer does. The graph canvas, the viewport, the areas' editors still in the kit and the kit's own menus stay native; the Workspace's places hold each area's document, and the palette, the asset pickers and the refactor popover are authored (`Palette.rml`, `Picker.rml`, `Refactor.rml`). Authored menus and popovers share one stack with the kit's popups (`src/ui/popover.c`, F3). A popover marked `data-template`, as the Menu and Submenu widgets are, builds its content when it opens and removes it after its exit transition.
 
 ## Contracts
 

@@ -1631,6 +1631,43 @@ static void menubar_runs_commands()
     fixture_free(&f);
 }
 
+/* Closed menus mount nothing (workstream F3): every popover Studio's
+   documents mark data-template holds no elements until it opens, builds
+   them when it does and holds none again once it has faded out. */
+static void menus_mount_when_open()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    s->maximized = -1;
+    /* A fade ends at once whatever the user's preference. */
+    s->prefs.reduced_motion = true;
+    frames(&f, 6);
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *menus[64];
+    rml_element *file = studio_element(s, "#menu-file");
+    rml_element *bar = rml_element_owner_document(file);
+    int count = test_query_all(context, "[popover][data-template]", menus, 64);
+    int built = 0;
+    for (int i = 0; i < count && i < 64; i++) {
+        built += rml_element_child_count(menus[i]);
+    }
+    int closed = rml_element_query_selector_all(bar, "*", NULL, 0);
+    press(s, menubar_trigger(s, "File"));
+    frames(&f, 3);
+    int opened = rml_element_query_selector_all(bar, "*", NULL, 0);
+    bool listed = labeled(file, ".menu-item", "Save") != NULL;
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 4);
+    bool gone = rml_element_child_count(file) == 0 &&
+                rml_element_query_selector_all(bar, "*", NULL, 0) == closed;
+    if (!(count >= 8 && !built && opened > closed + 20 && listed && gone)) {
+        printf("  %d menus, %d children, %d -> %d elements, %d %d\n", count, built, closed, opened, listed, gone);
+    }
+    test_check(count >= 8 && !built, "every menu in Studio's documents holds no element while closed");
+    test_check(opened > closed + 20 && listed && gone, "a menu builds its items when it opens and removes them once closed");
+    fixture_free(&f);
+}
+
 /* The play target, playback speed, layout and debugger steps (workstream
    C3): menus over the `shell` source and commands. */
 static void transport_menus()
@@ -1795,6 +1832,7 @@ void studio_documents_shell_checks()
     area_documents();
     area_menus();
     menubar_runs_commands();
+    menus_mount_when_open();
     transport_menus();
     workspace_layout();
 }

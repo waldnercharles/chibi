@@ -55,7 +55,8 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
   `self.rows` (Array's Slice of its data) and `self.total`. The widget gallery
   (the Widgets panel, WidgetGallery) shows ten thousand rows this way.
   A panel source in C uses the `List` widget instead, which
-  `ui_list_window` windows as the source syncs.
+  `ui_list_window` windows as the source syncs; the Inspector's element tree
+  shows ten thousand elements this way, each row keyed by its element.
 - **Live apply is an overlay.** `src/support/text_overlay.h` holds unsaved text:
   - `text_file_read` returns it in place of the file;
   - `file_watch_changed` sees each change at once.
@@ -139,7 +140,7 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
 | B | Language service and MCP | `assets/ui_source.*`, `cmake/tree_sitter.cmake`, `render/ui_check.*`, `automation/ui_edit.c`, the controller's UI hooks, `tools/mcp`, `docs/mcp.md` |
 | C | Text editor on Zep | `cmake/zep.cmake`, `editor/text/zep_bridge.*`, `rmlui/kit_code.c`, the JetBrains Mono embed, `theme/code.rcss` |
 | D | UI documents | `documents/ui_buffer.*`, the UI cases in `scene_tabs.c` and `studio_shell.c`, `studio_code.c`, Assets ▸ New |
-| E | UI Inspector | `studio/studio_inspect.c`, `rmlui/kit_inspect.c`, and `projects/studio`'s Inspector assets and scene entity |
+| E | UI Inspector | `studio/studio_inspect.c`, the Inspector section of `studio_sources.c`, `rmlui/kit_inspect.c`, and `projects/studio`'s Inspector assets and scene entity. Its tree is a `List` of TreeRows over a window of every element, with no row limit (I1) |
 | F | Settings | `studio_prefs.c`, `studio_settings.c`, the settings section of `studio_sources.c`, the Settings and widget assets |
 | G | Trackpad pinch | Pinch handling in `studio_host.c`, `studio_scene.c` and the graph's zoom; `tools/web_shell.html` |
 | K | UI wiring | Asset pickers in `studio_properties.c`, the Scene's UI errors, UI events in the behavior Add menu, the Canvas preview in `studio_canvas.c` |

@@ -71,11 +71,11 @@ typedef struct element_ref
 /* A row of the tree before it is described: its element, depth, the row of
  * its parent (-1 for a document) and its place among the parent's children
  * (a document's among the context's). */
-typedef struct listed
+typedef struct tree_row
 {
     rml_element *element;
     int depth, parent, child;
-} listed;
+} tree_row;
 
 struct studio_inspect
 {
@@ -89,7 +89,7 @@ struct studio_inspect
     studio_inspect_target picked_target;
     bool focused;
     element_ref focus;   /* Studio's focus while picking, which a pick keeps */
-    listed *listed;      /* every row of the tree, while it is read */
+    tree_row *tree;      /* every row of the tree, while it is read */
     element_ref *places; /* each row of the window's element */
     ui_list_state list;  /* the panel's List, which sizes the window */
     bool list_found;     /* list_ref names the List */
@@ -303,6 +303,7 @@ static void set_open(studio_inspect *in, rml_element *el, bool open)
     }
 }
 
+/* Whether a text node holds nothing but white space. */
 static bool blank(const rml_element *el)
 {
     char text[512];
@@ -385,8 +386,8 @@ static void walk(studio_inspect *in, rml_element *el, int depth, int parent, int
     if (is_text(el) && blank(el)) {
         return;
     }
-    int row = acount(in->listed);
-    apush(in->listed, ((listed){ el, depth, parent, child }));
+    int row = acount(in->tree);
+    apush(in->tree, ((tree_row){ el, depth, parent, child }));
     if (depth + 1 == DEPTH_MAX || !expandable(el) || open_index(in, el) < 0) {
         return;
     }
@@ -398,18 +399,18 @@ static void walk(studio_inspect *in, rml_element *el, int depth, int parent, int
 
 static void list_tree(studio_inspect *in, rml_context *context)
 {
-    asetlen(in->listed, 0);
+    asetlen(in->tree, 0);
     for (int d = 0; d < rml_context_document_count(context); d++) {
         walk(in, rml_context_document(context, d), 0, -1, d);
     }
-    in->model.count = acount(in->listed);
+    in->model.count = acount(in->tree);
 }
 
 /* The tree row listing `el`, or -1. */
 static int row_of(const studio_inspect *in, const rml_element *el)
 {
-    for (int i = 0; el && i < acount(in->listed); i++) {
-        if (in->listed[i].element == el) {
+    for (int i = 0; el && i < acount(in->tree); i++) {
+        if (in->tree[i].element == el) {
             return i;
         }
     }
@@ -420,13 +421,13 @@ static int row_of(const studio_inspect *in, const rml_element *el)
  * level down. */
 static element_ref place_of(const studio_inspect *in, int row)
 {
-    const listed *l = &in->listed[row];
+    const tree_row *l = &in->tree[row];
     element_ref r;
     aim(&r, l->element);
     r.depth = l->depth + 1;
     int d = l->depth;
-    for (int i = row; i >= 0; i = in->listed[i].parent) {
-        r.place[d--] = in->listed[i].child;
+    for (int i = row; i >= 0; i = in->tree[i].parent) {
+        r.place[d--] = in->tree[i].child;
     }
     return r;
 }
@@ -471,7 +472,7 @@ static void describe_window(studio_inspect *in, int first, int length)
     m->first = first;
     for (int r = first; r < first + length; r++) {
         studio_inspect_row row;
-        describe_row(in, &row, in->listed[r].element, in->listed[r].depth);
+        describe_row(in, &row, in->tree[r].element, in->tree[r].depth);
         apush(m->rows, row);
         apush(in->places, place_of(in, r));
     }
@@ -735,7 +736,7 @@ void studio_inspect_free(studio_inspect *in)
     afree(m->styles);
     afree(m->computed);
     afree(m->attributes);
-    afree(in->listed);
+    afree(in->tree);
     afree(in->places);
     afree(in->open);
     free(in);

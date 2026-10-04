@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2 and C3 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2, C3 and I1 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -22,7 +22,8 @@ What already works this way:
 - `Settings.rml` lays out rows C builds, building each row's one control
   with `data-when` over its `row.control`, and its Record button sends
   `emit('settings.record', row.key)` to the `settings` source (F1).
-- `Inspector.rml` renders up to 1,000 rows through `data-for`.
+- `Inspector.rml` lists the element tree as a List of TreeRows over the window
+  of rows the `inspector` source shows, without a row limit (I1).
 - `TopBar`, `StatusBar` and `AreaHeader` bind `editor` and `commands`.
 - `Properties.rml` and `PropertiesHeader.rml` are Properties' Object,
   Prototype, Scene and Behaviors tabs over the `properties` source (P1);
@@ -58,7 +59,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Popups, menus, tooltips | `src/ui/popover.c` (F3) stacks, places and dismisses authored popovers and the kit's popups and runs menus; `kit_popup.c` emits the kit's | Placement, stacking, dismissal, typeahead | Done for the controller (F3); kit menus move to Menu with their panels; tooltips stay attribute-driven |
 | Toasts | `kit_toast.c` | Springs, swipe | Postponed |
 | Designer: Hierarchy, Details, Library | `studio_designer*.c` | `ui_design` edits, drop zones, CSS value types | W4 D1; Canvas guides native |
-| UI Inspector | Authored panel; picking native | | W4 I1: virtualize its tree |
+| UI Inspector | Authored: `Inspector.rml`, its tree a List of TreeRows over the `inspector` source's window of every element (`studio_inspect.c`); picking and the highlight native | Element tree walk, selection and pick keys, styles | Done (W4 I1) |
 
 ## Architecture
 
@@ -270,6 +271,7 @@ natively and 1.3-1.7× that on web, provisionally):
 | Surface | Views | Updates | Risk |
 |---|---|---|---|
 | Properties, Object tab (the Player: 4 panels, 14 rows, 309 elements) | Measured: 340 per selection, 166 per refresh; authored (P1): 2,733 per selection, 20 per value refresh | Selection rebuilds rows; edits dirty once; Play refreshes at 20 Hz | Low for views (0.19 ms native, 0.32 ms web per refresh); each text change lays out its document; selection 1.15× native (P1 results) |
+| UI Inspector (10k elements, 19-row window) | Measured: 308 per selection, 494 per scroll step; the old 1,000-row panel 17,176 per selection | Selection, pick, scroll | Low (4.2-4.8 ms idle, 6.0-7.1 ms per selection, 0.2-0.45× the old panel; I1 results) |
 | Outliner (10k objects, 60-row window) | Measured: 362 per scroll step; in Studio (P2), 518 per scroll step or selection over a 22-row window | Scroll, selection | Low (0.69 ms native, 0.91 ms web per step; 0.93× the kit's frame, P2 results) |
 | Assets (8×8 tiles) | ~400 | Scroll, thumbnails ready | Low |
 | Output following a log | Measured: 40 markup parses per batch | Logging | Medium (1.3 ms native, 1.9 ms web; 6× plain text) |
@@ -1597,7 +1599,100 @@ fix (`cf21ee38`) merged.
 |---|---|
 | G1 Graph chrome | Node, wire, pin and comment menus; add-node search; Node and Member tabs as PropertyRow kinds (binding chip, source autocomplete, expression field, type picker, reorder grips) |
 | D1 Designer | Hierarchy (TreeRow, drop zones), Details (lengths with units, colors, keywords, class chips, add popovers), Library (Tile) |
-| I1 Inspector | Its tree on `List`, removing the 1,000-row cap |
+| I1 Inspector (done) | Its tree on `List`, removing the 1,000-row cap; `InspectorRow` is gone: I1 results |
+
+#### I1: the UI Inspector (done)
+
+The Inspector's Elements tree is a List of TreeRows, so it shows every
+element of every document, as Chrome's Elements panel does, where it stopped
+at 1,000 rows (and told the user to collapse some). `Inspector.rml` keeps its
+toolbar and details panes; `InspectorRow` is gone. The `inspector` source
+(`studio_sources.c`, the Inspector section; the model is `studio_inspect.c`)
+keeps three variables, each dirtying only the views that bind it:
+
+- `inspector`: the toolbar, target and the selection's box, styles, computed
+  values and attributes, as before, without the rows. The panel still writes
+  `rule`, `action`, `target` and `force` there.
+- `inspector_tree.rows`: the window of rows the List shows (`key`, `depth`,
+  `label` (the tag), `id`, `classes`, `widget`, `text`, `parent`, `open`,
+  `node`, `hidden`), the strings pointing at the model's, as the details
+  do, so a scroll step allocates nothing.
+- `inspector_ui`: the `selected` and `picked` keys, apart, as `outliner_ui`
+  does: a selection or a pick re-evaluates only TreeRow's two key
+  comparisons (`data-alias-selection`) and the `data-picked` mark.
+
+How it avoids a row cap: `studio_inspect.c` walks the open tree once per sync
+(`walk`, which describes nothing: a list of element, depth, parent row and
+child index), so the tree's size and the selected and picked rows are known;
+`ui_list_window` then asks for the window, and only its rows are described
+(tag, id, classes, `data-ui`, text) and placed (`place_of`, the
+`element_ref` each is found again by). The `studio_inspect_read` API the
+unit test uses lists every row.
+
+- **Keys name elements, not rows.** A row's key is its element's address as
+  text, only compared, never followed, so a click names the element it was
+  drawn for however the rows above it changed since: a first version keyed
+  rows by their index and mis-targeted a click whenever a document came or
+  went between the frame the user saw and the frame that handled it (a
+  popover or toast is a document). `inspector.click` takes the key and the
+  row's open state.
+- **Folding.** The twisty is TreeRow's, which flips `item.open` in the data
+  and lets the click reach the row; the row's `emit('inspector.click', row.key,
+  row.open ? 1 : 0)` sends the flipped state, and C, finding it differs from
+  the one it showed, expands or collapses the element and does not select it.
+  A click anywhere else on the row selects.
+- **Hover.** Unchanged for the user, and no events: each frame the Inspector
+  reads the `data-inspect-row` of the row under the pointer from the DOM
+  (`rml_context_hover_element`, up its parents) and highlights that row's
+  element in the app. The old panel wrote `inspector.hover` on every
+  mouseover, which dirtied the whole variable.
+- **Pick.** Picking marks the row of the element under the pointer
+  (`inspector_ui.picked`, `data-picked`); a click selects the element, opens
+  its ancestors and scrolls its row into view (Chrome's reveal). RmlUi clamps
+  a scroll to the content laid out, and a deep element in a short tree needs
+  the spacer laid out first, so `window` asks `ui_list_window` again at each
+  sync (waking the UI) until the row is in view, up to 8 syncs. The List's own
+  reveal counts a row from the scroller's top padding, so the tree has none.
+- **Mirror.** The tree lists the Inspector's own area as it does any
+  document, but the panel's List is a leaf, `N rows`, as the old tree's
+  container was (its rows are the window of this very tree).
+- **Intentional differences:** TreeRow's indent (14 dp a level, the
+  Outliner's) for the old 12 dp; the tree has no top padding; the note
+  `Collapse rows to list more` is gone with the cap. Keyboard: unchanged.
+  The Inspector has no arrow-key navigation, as before; `Mod+Shift+C` and
+  Escape stay in `studio_inspect_key`.
+- **Bench:** `--ui-bench studio` case 20 (`UI_BENCH_INSPECTOR=1` runs it
+  alone): the Inspector in the Properties area over a document of 10,000
+  elements whose items are open in the tree (372×214 dp, 1440×900, pixel
+  scale 2), a release build before (`3160b5f9`) and after, alternated process
+  by process three times at a 1-minute load of 76-80 (provisional), whole
+  Studio UI frame, medians of the three runs:
+
+  | Case | Before (1,000 rows) | After (window of 19) | After ÷ before | Views | Layouts | Elements in its document |
+  |---|---:|---:|---:|---:|---:|---:|
+  | A UI frame with nothing changed | 10.3-10.7 ms | 4.2-4.8 | 0.41-0.45× | 0 / 0 | 0 / 0 | 9,645 / 875 |
+  | Select another element in view | 27.6-29.5 | 6.0-7.1 | 0.21-0.25× | 17,176 / 308 | 4 / 4 | 9,645 / 875 |
+  | Scroll step of 3 rows | 11.5-12.6 | 7.3-8.0 | 0.64× | 0 / 494 | 0 / 2 | 9,645 / 875 |
+
+  The window holds 19 rows whatever the tree's size and keeps its elements
+  as it scrolls (0 instanced a step), where the old panel instanced 1,000 and
+  evaluated 17 views a row on every selection. A scroll step reads 494 views
+  (a window row's, as the Outliner's) where the old scroller read none, but
+  it could scroll only the first 1,000 rows. Sync rose 0.85 to 1.1 ms: it
+  walks all 10,000 open rows at about 90 ns each (the old one described 1,000).
+- **Checks:** `--studio-inspector` (new, also in `--studio-documents`): each
+  document a root row, a click selecting and the twisty folding without
+  selecting; ten thousand elements as a window of 18 rows that keeps its
+  length and elements as it scrolls to the middle and the end, reveals the
+  selected last item from the top and folds; the hover highlight following
+  the row under the pointer and stopping when it leaves; a deep element
+  selected in a short tree scrolling into view, while picking marking the
+  hovered element's row, and a click selecting it. `--ui-inspector` reads
+  the window's selected row.
+- **Open:** two areas showing the Inspector share one window and one List
+  (the first's); the sync walks the open tree at every refresh while the
+  panel shows, as the shared follow-up on change-driven sync describes (the
+  DOM has no revision to compare, so the walk's cost is the open rows).
 
 ### Wave 5: removal
 

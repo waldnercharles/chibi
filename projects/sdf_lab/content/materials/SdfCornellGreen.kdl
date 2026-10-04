@@ -1,0 +1,29 @@
+version 3
+name "SdfCornellGreen"
+domain "material"
+id_counter 10
+description "Matte Cornell-style cutaway green side wall."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.14 y=0.48 z=0.21
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.9
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+        }
+    }
+}

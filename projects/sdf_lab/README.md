@@ -32,6 +32,8 @@ a sampled distance volume. Existing Material graphs shade the hit position.
 | SdfOrbitOrtho | The same true orbit with orthographic projection. |
 | SdfOrbitNoEmitters | The Gather orbit with all emitters removed; expected to remain black. |
 | SdfOrbitDepthProof | Two emissive shapes isolate front/back changes from lighting. |
+| HrcCornellCutaway | Cornell-inspired open-front diorama with moving area light, raised blocker and HRC bounce. |
+| HrcCornellCutawayNoBounce | Matched control with HRC feedback and bounce disabled. |
 
 SdfSwarm256 and SdfSwarm1000 share a 590 by 400 orthographic view, 13-unit grid spacing,
 0.12 instance scale, shape/material distribution, and fixed half-resolution
@@ -797,3 +799,45 @@ captures, regression results and measured costs are described in
 
 HRC transport and its existing history are separate from these options. The
 Depth contribution still adds to HRC. Gain zero skips the Depth passes.
+
+### HRC Cornell-inspired cutaway
+
+`HrcCornellCutaway` is a small open-front room made from a neutral floor and
+back wall, red and green returns, two differently colored SDF blocks, a raised
+blocker, and a bright rectangular area emitter. The fixed perspective camera
+looks into the cutaway. `HrcCornellLightSweep` moves the emitter on an eight
+second ellipse while all blockers and the camera remain still. The paired
+`HrcCornellCutawayNoBounce` scene uses the same geometry, motion and direct
+Depth settings, with `feedback=false` and `bounce_intensity=0`.
+
+Launch the comparison with the native Release executable:
+
+```sh
+build-release/chibi --play --project-root projects/sdf_lab \
+  --scene scenes/HrcCornellCutaway.kdl
+build-release/chibi --play --project-root projects/sdf_lab \
+  --scene scenes/HrcCornellCutawayNoBounce.kdl
+```
+
+Both scenes use HRC at half resolution, half-resolution gather, low bounded
+source sampling, a 12-unit assumed camera-depth slab and no fog or bloom. The
+raised blocker is 24 units deep at elevation 39. `surface_depth_gain=8`
+deliberately amplifies the experimental direct Depth contribution for
+visibility; it is not a calibrated energy value. The matched control is an
+honest feedback toggle, not a ground-truth indirect-lighting comparison. Run
+both scenes long enough for HRC feedback to develop; a two-frame preview can
+look similar before that history builds.
+
+This is a camera-relative 2.5D approximation. It uses the visible surface
+layer and an authored constant thickness, so it cannot resolve hidden or
+offscreen geometry, multiple stacked surfaces, or full 3D indirect transport.
+The open cutaway keeps the colored returns and objects visible without claiming
+a classic closed Cornell-box reference. The fluid renderer writes camera-plane
+optical depth and emission; it has no volumetric phase-function scattering, so
+the scene uses no smoke or fog. Bounded segment queries can still miss blockers
+narrower than their sample spacing.
+
+`HrcCornell-HRC-feedback-comparison-15fps.mp4` is a labeled split-screen of
+both scenes. It samples warmed native Vulkan renders at 640×360, then keeps
+every fourth frame from the 60 Hz sequence for 15 fps playback; no frames are
+interpolated. The emitter's eight-second sweep spans the short loop.

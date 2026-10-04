@@ -35,6 +35,8 @@
 #define ROW_ATTRIBUTE "data-inspect-row"
 /* Rows described while the List has no window yet. */
 #define UNLAID_ROWS 40
+/* Syncs that try to scroll the selected row into view. */
+#define REVEAL_SYNCS 8
 
 static const char *const PSEUDO_NAMES[] = { "hover", "active", "focus", "checked" };
 _Static_assert(sizeof PSEUDO_NAMES / sizeof *PSEUDO_NAMES == STUDIO_PSEUDO_COUNT, "a name per pseudo class");
@@ -90,12 +92,14 @@ struct studio_inspect
     listed *listed;      /* every row of the tree, while it is read */
     element_ref *places; /* each row of the window's element */
     ui_list_state list;  /* the panel's List, which sizes the window */
-    rml_element **open;  /* expanded; compared only */
+    bool list_found;     /* list_ref names the List */
+    element_ref list_ref;
+    rml_element **open;               /* expanded; compared only */
     bool force[STUDIO_PSEUDO_COUNT];  /* asked for by the panel */
     bool forced[STUDIO_PSEUDO_COUNT]; /* set on forced_on */
     element_ref forced_on;
     studio_inspect_target forced_target;
-    bool reveal; /* the selected row is to scroll into view */
+    int reveal; /* syncs left to scroll the selected row into view */
     uint64_t seen, rows_seen, marks_seen; /* the model's hashes at the last sync */
     studio_inspect_model model;
 };
@@ -125,7 +129,8 @@ typedef struct pick
 
 static bool is_text(const rml_element *el)
 {
-    return !strcmp(rml_element_tag_name(el), "#text");
+    const char *tag = rml_element_tag_name(el);
+    return tag[0] == '#' && !strcmp(tag, "#text");
 }
 
 static int child_index(const rml_element *parent, const rml_element *child)
@@ -317,13 +322,10 @@ static bool is_list(const rml_element *el)
     return !strcmp(rml_element_id(el), LIST_ID);
 }
 
-/* Whether `el` has children to list under it: not a text node, nor an
- * element whose only child is text, which its own row shows. */
+/* Whether `el` has children to list under it: not an element whose only
+ * child is text, which its own row shows. A text node has no children. */
 static bool expandable(const rml_element *el)
 {
-    if (is_text(el)) {
-        return false;
-    }
     int count = rml_element_child_count(el);
     bool text = count == 1 && is_text(rml_element_child(el, 0));
     return count > 0 && !text && !is_list(el);
@@ -429,21 +431,35 @@ static element_ref place_of(const studio_inspect *in, int row)
     return r;
 }
 
+/* Whether tree row `row` lies in the List's view. */
+static bool row_in_view(rml_element *list, int row)
+{
+    char value[32] = "";
+    rml_element_property(list, "--row", value, sizeof value);
+    float height = strtof(value, NULL);
+    float ratio = rml_context_dp_ratio(rml_element_context(list));
+    float top = (float)row * height, scroll = rml_element_scroll_top(list) / ratio,
+          view = rml_element_client_height(list) / ratio;
+    return top >= scroll - 0.5f && top + height <= scroll + view + 0.5f;
+}
+
 /* The rows of the tree to describe: `limit` of them, or the List's window
- * when the panel has one, which brings the selected row into view after a
- * pick once the List is laid out. */
+ * when the panel has one. After a selection it scrolls the selected row into
+ * view, again at each sync until it is: the first may find the List too
+ * short for a row its content has yet to lay out. */
 static int window(studio_inspect *in, rml_element *list, int limit, int *first)
 {
-    int count = in->model.count;
+    int count = in->model.count, row = in->model.selected_row;
     *first = 0;
     if (!list) {
         return count < limit ? count : limit;
     }
     bool laid_out = rml_element_client_height(list) > 0;
-    ui_list view = { .count = count,
-                     .reveal = in->reveal ? in->model.selected_row : -1 };
+    ui_list view = { .count = count, .reveal = in->reveal ? row : -1 };
+    in->list.revealed = -1;
     int length = ui_list_window(list, &view, &in->list, first);
-    in->reveal = in->reveal && !laid_out;
+    bool done = row < 0 || (laid_out && row_in_view(list, row));
+    in->reveal = done ? 0 : in->reveal - (in->reveal > 0 && laid_out);
     return length;
 }
 
@@ -729,7 +745,7 @@ void studio_inspect_select(studio_inspect *in, rml_element *el)
 {
     in->selected = true;
     in->selection = ref_to(el);
-    in->reveal = true;
+    in->reveal = REVEAL_SYNCS;
     memset(in->force, 0, sizeof in->force);
     rml_element *document = rml_element_owner_document(el);
     for (rml_element *e = el; e != document;) {
@@ -1025,17 +1041,20 @@ static int panel_area(const studio *s)
     return -1;
 }
 
-/* The panel's List, or NULL before it is built. */
-static rml_element *panel_list(const studio *s)
+/* The panel's List, found again by its place, else by its id; NULL before
+ * it is built. */
+static rml_element *panel_list(const studio *s, studio_inspect *in)
 {
     rml_context *context = target_context(s, STUDIO_INSPECT_STUDIO);
-    for (int d = 0; d < rml_context_document_count(context); d++) {
-        rml_element *list = rml_element_by_id(rml_context_document(context, d), LIST_ID);
+    rml_element *list = in->list_found ? find(context, &in->list_ref) : NULL;
+    for (int d = 0; !list && d < rml_context_document_count(context); d++) {
+        list = rml_element_by_id(rml_context_document(context, d), LIST_ID);
         if (list) {
-            return list;
+            in->list_ref = ref_to(list);
         }
     }
-    return NULL;
+    in->list_found = list != NULL;
+    return list;
 }
 
 /* In the drawer, as DevTools docks at the bottom, unless an area shows it. */
@@ -1206,11 +1225,12 @@ const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_
         in,
         target_context(s, in->target),
         target_kit(s, in->target),
-        panel_list(s),
+        panel_list(s, in),
         UNLAID_ROWS
     );
     m->target = in->target;
     m->picking = in->picking;
+    s->ui_schedule.wake |= in->reveal > 0;
     for (int t = 0; t < STUDIO_INSPECT_TARGET_COUNT; t++) {
         m->targets[t] = target_context(s, (studio_inspect_target)t) != NULL;
     }

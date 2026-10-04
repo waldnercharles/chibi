@@ -102,6 +102,19 @@ static void center_dp(studio *s, rml_element *el, float *x, float *y)
     *y = (at.y + size.y * 0.5f) / ratio;
 }
 
+/* Whether `row` lies inside the visible part of `list`. */
+static bool in_view(rml_element *list, rml_element *row)
+{
+    if (!list || !row) {
+        return false;
+    }
+    rml_vec2 at = rml_element_absolute_offset(list, RML_BOX_PADDING);
+    rml_vec2 size = rml_element_box_size(list, RML_BOX_PADDING);
+    rml_vec2 top = rml_element_absolute_offset(row, RML_BOX_BORDER);
+    rml_vec2 height = rml_element_box_size(row, RML_BOX_BORDER);
+    return top.y >= at.y - 1 && top.y + height.y <= at.y + size.y + 1;
+}
+
 /* Selects `el` as a pick would, and lets the panel show it. */
 static void select_element(studio_fixture *f, rml_element *el)
 {
@@ -318,6 +331,9 @@ static void picking_marks_and_selects()
     studio *s = f.studio;
     rml_element *pick = studio_element(s, "[data-ui=Inspector] .toolbar .pick .label");
     select_element(&f, pick);
+    /* A deep element selected in a short tree scrolls into view at once. */
+    bool revealed = model(s)->selected_row > 6 &&
+                    in_view(tree(s), selected_row_element(s));
     studio_inspect_toggle(s);
     frames(&f, 2);
     float x, y;
@@ -335,9 +351,11 @@ static void picking_marks_and_selects()
     m = model(s);
     bool selected = m && !m->picking && m->selection && m->selected_row >= 0 &&
                     selected_row_element(s) && !strncmp(m->title, "span", 4);
-    if (!(marked && selected)) {
+    if (!(revealed && marked && selected)) {
         printf(
-            "  pick: marked %d (row %d) selected %d (row %d, '%s')\n",
+            "  pick: revealed %d marked %d (row %d) selected %d (row %d, "
+            "'%s')\n",
+            revealed,
             marked,
             m ? m->picked_row : -2,
             selected,
@@ -346,9 +364,10 @@ static void picking_marks_and_selects()
         );
     }
     test_check(
-        marked && selected,
-        "while picking, the Inspector marks the row of the element under the "
-        "pointer; a click selects it, ends the pick and shows its row"
+        revealed && marked && selected,
+        "an element selected deep in the tree scrolls its row into view; while "
+        "picking, the Inspector marks the row of the element under the "
+        "pointer, and a click selects it and ends the pick"
     );
     fixture_free(&f);
 }

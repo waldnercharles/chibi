@@ -1617,6 +1617,11 @@ still kit code: `body.comfortable .designer-tile` (Designer); D1 moved it into `
   doesn't move focus, so a focused field keeps keys a context menu should
   take (G1 blurs on menu open; popover.c should own it).
 
+- **List window query per frame** (fx-refresh): `ui_mount_measure` runs
+  `window_lists`, a `[data-list-rows]` query per mount per frame (about
+  123 µs of a 0.9 ms idle frame over 14 mounts); find a mount's list hosts
+  once when its markup loads.
+
 Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
 `UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.
 

@@ -396,6 +396,17 @@ C panel's 2,831. Scene Objects was first a pure read, which the
 interpreter runs again for each node taking it (four walks a refresh, 0.30
 ms idle and 3.0 ms per keystroke); as a query it runs once.
 
+**Parity:** native shots of the rows (a selection of two, a hidden and a
+locked object, a hovered row), the row menu and rename in place, dark and
+light, compact and comfortable (`UI_BENCH_OUTLINER_CAPTURE`, release builds
+of both), are identical at a 2% fuzz but for the caret's blink; the web
+build shows the same in both themes and densities. `--studio-outliner`,
+`--studio-documents`, `--studio-panels`, `--studio-lists`,
+`--scene-documents` and `make test` pass unchanged but for three
+checks that read state the behaviors now own: the root's fold is read from
+the rows shown, rows are found by `data-object`, and a game's preview binds
+`e<entity>` variables in place of `entities`.
+
 **Authoring cost:** the Outliner's C went from 800 lines to 224
 (`studio_outliner.c`: mounting, rename, Hide in Editor, ranges), and its
 three panel sources left the table. The behaviors are about 140 nodes and

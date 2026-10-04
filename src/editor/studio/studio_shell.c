@@ -1707,6 +1707,8 @@ void studio_emit(studio *s)
     studio_rewire_toast(s);
     studio_members_toast(s);
     studio_refactor_frame(s);
+    studio_graph_menu_frame(s);
+    studio_graph_details_frame(s);
     studio_component_toast(s);
     studio_keep_toast(s);
     studio_new_project_frame(s);

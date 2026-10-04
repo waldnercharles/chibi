@@ -366,6 +366,9 @@ popup *open_popup(kit *k, const char *key, const char *parent);
 popup *popup_open_on(kit *k, const char *key, const node *anchor, const node *trigger);
 /* NULL when it toggled the trigger's open dropdown closed. */
 popup *dropdown_open_on(kit *k, const char *key, const char *placeholder, const node *trigger);
+/* Emits open dropdown `key`'s search and its items ranked by the query;
+   the chosen item's original index, or -1. Call it each frame while open. */
+int dropdown_items(kit *k, const char *key, const kit_command_item *items, int count);
 void autocomplete_open_on(kit *k, const char *key, node *trigger);
 void size_popups(kit *k);
 /* Sees every press: one outside an autocomplete ends its field's editing. */

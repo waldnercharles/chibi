@@ -56,4 +56,5 @@ name "Studio"
     - name="Palette" prototype="Palette"
     - name="Picker" prototype="Picker"
     - name="Refactor" prototype="Refactor"
+    - name="GraphMenu" prototype="GraphMenu"
 }

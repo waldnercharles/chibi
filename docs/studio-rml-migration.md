@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2, C3, C4 and I1 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2, C3, C4, G1 and I1 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -26,8 +26,8 @@ What already works this way:
   of rows the `inspector` source shows, without a row limit (I1).
 - `TopBar`, `StatusBar` and `AreaHeader` bind `editor` and `commands`.
 - `Properties.rml` and `PropertiesHeader.rml` are Properties' Object,
-  Prototype, Scene and Behaviors tabs over the `properties` source (P1);
-  the Node and Member tabs stay native in its `#native` slot.
+  Prototype, Scene and Behaviors tabs over the `properties` source (P1),
+  and its Node and Member tabs over `graph_details` (G1).
 
 About 1,600 kit call sites remain across 40 files. The largest:
 `studio_properties.c` (171), `studio_scene.c` (162), `studio_shell.c` (98),
@@ -44,19 +44,19 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Area header | `AreaHeader.rml`; editor type menu authored (F3, a Menu over `choices.editors`); editor controls in a native slot | `editor.areas`, `choices` | W3 C3; each panel's controls move with the panel |
 | Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, the Behavior header's View menu (GraphView, trigger included since F3) | Authored | | Done |
 | Properties: Object, Prototype, Scene, Behaviors | Authored (P1): `Properties.rml`, `PropertiesHeader.rml`; `studio_properties_view.c` publishes `properties`, `studio_properties.c` runs its intents | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep | Done; Add Component and the asset fields' pickers are the palette's (C4) |
-| Properties: Node, Member | `studio_graph_properties.c`, `studio_member_properties.c` | Literal editors, binding autocomplete, expression code, type picker, reorder grips | W4 G1 |
+| Properties: Node, Member | Authored (G1): `Properties.rml`'s graph section and `GraphField.rml` over `graph_details` (`studio_graph_details.c`); `studio_graph_properties.c` and `studio_member_properties.c` write the rows and run their intents | Literal editors, binding autocomplete, expression code, type picker, reorder grips | Done (W4 G1) |
 | Outliner | Authored: `Outliner.rml`, `OutlinerHeader.rml`; the `outliner` source (`studio_outliner.c`) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | Done (W2 P2) |
 | Scene and Canvas headers | Authored: `SceneHeader.rml` over `scene` (`studio_scene.c`), `canvas` (`studio_canvas.c`) and `commands` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | Done (W3 C1) |
 | Scene viewport | `Scene.rml` and `Canvas.rml` over `scene_view` and `canvas`; the `kit_surface` showing `kit:viewport` stays native in their slot | Texture, pointer input, camera labels | Done (C1): overlays authored; input stays in C |
 | Assets | `Assets.rml`, `AssetsHeader.rml` and `NewAsset.rml` over `assets`, `asset_view` and `asset_menus` (`studio_assets.c`, P3) | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | Done (P3) |
 | Output, Find, Calls | Authored (P4): `Output.rml`, `OutputHeader.rml` over `studio_output.c`'s `output` source | | Done |
 | Members | `Members.rml` and `MembersHeader.rml`; the `members` source in `studio_members.c` | Members, uses, rename, drag into the graph, menus | Done (P5) |
-| Behavior area | `BehaviorHeader.rml` and `GraphFind.rml` (C2); the canvas, `studio_graph*.c`, a second context drawn to `kit:graph` | Nodes, pins, literals, comments, reroutes, wires, live chips | Header, breadcrumbs, debug target and find: done (C2). Canvas menus, add-node search: W4 G1. Node bodies: postponed |
+| Behavior area | `BehaviorHeader.rml` and `GraphFind.rml` (C2); the canvas, `studio_graph*.c`, a second context drawn to `kit:graph` | Nodes, pins, literals, comments, reroutes, wires, live chips | Header, breadcrumbs, debug target and find: done (C2). Add-node search: done (C4). Canvas menus (`GraphMenu.rml`) and the pins' choice and asset pickers: done (G1). Node bodies: postponed |
 | Text Editor | `CodeHeader.rml`, `CodeFind.rml` (C2); the surface in `studio_code.c`, `kit_code.c` (Zep) | Buffer, intelligence, Vim | Chrome done (C2); the Zep surface stays a native element |
 | Performance | `Performance.rml`, `PerformanceHeader.rml` over `<line-chart>` (C2) | Sample ring | Done (C2) |
 | Shell | Authored: `Workspace.rml` over the `workspace` source (`studio_shell.c`); each area a document in its place | Ratios, open states, maximize, the columns' laid-out sizes | Done (W3 C3) |
 | Palette, asset pickers, Add Component, refactor popover | Authored (C4): `Palette.rml` and `Picker.rml` over the `palette` source (`studio_palette_view.c`), `Refactor.rml` over `refactor` (`studio_refactor.c`); clients `studio_palette.c`, `studio_pick.c`, Add Component, the add-node search | Ranking (`support/text_rank.h`), recents, prefixes, thumbnails, the window | Done (C4) |
-| Kit dropdowns and autocomplete | `kit_command.c` over `support/text_rank.h` | Graph literals, member types, `kit_select` | W4 G1 with the graph's literals |
+| Kit dropdowns and autocomplete | `kit_command.c` over `support/text_rank.h` | Graph literals, member types, `kit_select` | Done (G1): graph literals, pins' assets, member types and Properties' source fields use Studio's picker; `kit_select` (the Designer's keywords) and the source field on a node body (postponed with node bodies) keep the kit's |
 | Popups, menus, tooltips | `src/ui/popover.c` (F3) stacks, places and dismisses authored popovers and the kit's popups and runs menus; `kit_popup.c` emits the kit's | Placement, stacking, dismissal, typeahead | Done for the controller (F3); kit menus move to Menu with their panels; tooltips stay attribute-driven |
 | Toasts | `kit_toast.c` | Springs, swipe | Postponed |
 | Designer: Hierarchy, Details, Library | `studio_designer*.c` | `ui_design` edits, drop zones, CSS value types | W4 D1; Canvas guides native |
@@ -191,7 +191,7 @@ pointer and modifiers, so markup hears it with `data-event-contextmenu`.
 |---|---|---|
 | `<number-field>` | `kit_number.c` (done, F2: `src/ui/controls/number_field.c`; the parser is `src/support/number_expr.c`) | `value min max step precision integer float slider unit addon mixed readonly disabled invalid`; `input`/`change`; today's scrub threshold, Alt fine, Shift coarse, Ctrl snap, steppers, Tab; Escape cancels typing or a scrub; repaints text without layout |
 | `<color-field>` | `kit_color` (done, F2) | `value mixed readonly disabled`; opens its own picker as `<input type=color>` opens the OS one: `input` while open, `change` on close. Its picker is inside the field (`position: fixed; clip: none`), stacked, placed and dismissed by `popover.c` (F3), so it escapes its area |
-| `<choice-list>` | `kit_dropdown`'s list (F3; the kit's still runs its own) and the palette's (C4) | `[role=option]` descendants with `value`, `data-label` or `.label`, `data-keywords`; its first `<input>` filters them by `text_search_score` (`data-filtered`, `data-empty`); Up, Down, PageUp, PageDown, Home, End, cmdk's Ctrl+N/P/J/K and the pointer move `data-highlighted`; Enter or a click sends `change` with the option's value. `virtualized` (C4): the app filters, orders and windows the options (`aria-posinset` each, `aria-setsize` and `highlight` on the list) and hears `highlight` (`ev.value`, `ev.pointer`) as keys and the pointer move it |
+| `<choice-list>` | `kit_select`'s list (F3; the kit's still runs its own) and the palette's (C4) | `[role=option]` descendants with `value`, `data-label` or `.label`, `data-keywords`; its first `<input>` filters them by `text_search_score` (`data-filtered`, `data-empty`); Up, Down, PageUp, PageDown, Home, End, cmdk's Ctrl+N/P/J/K and the pointer move `data-highlighted`; Enter or a click sends `change` with the option's value. `virtualized` (C4): the app filters, orders and windows the options (`aria-posinset` each, `aria-setsize` and `highlight` on the list) and hears `highlight` (`ev.value`, `ev.pointer`) as keys and the pointer move it |
 | `<splitter>` | `kit_splitter` (done, F2; the kit's wrapper went with C3) | `axis min max value invert`; `input`/`change`; cursor |
 | `<live-text>` | `kit_live_label` (done, F2) | `value`; glyphs update without layout |
 | `<line-chart>` | `kit_chart.c` (done, C2: `src/ui/controls/line_chart.c`) | `series` names the series C publishes with `line_chart_publish` (times, values, color, `now`), as textures are named `kit:...`; `window unit precision reference min max fill live`; parts `.chart-tick`, `.chart-badge`, `.chart-hover`; a publish redraws the charts naming it without layout |
@@ -1428,7 +1428,7 @@ back.
   each kind's label, icon and none, and no longer lists every asset at
   each refresh. The Designer's kit asset field anchors the same picker on
   its element (`kit_item_element`); graph pins keep their kit dropdowns
-  (W4 G1).
+  (W4 G1, since moved to this picker).
 - **Deleted:** the kit's palette (`kit_command*`, its command state, keys,
   rows, highlighting, backdrop and theme rules): `kit_command.c` 795 to
   357 lines, the kit 549 lines out and 79 in. P1's per-row asset option
@@ -1473,7 +1473,8 @@ popover every round with no RmlUi warning and the same views;
 surface retargeted.
 
 Open: graph pins' asset pickers, graph literal dropdowns, the member type
-dropdown and source autocompletes stay kit dropdowns (W4 G1); cmdk's
+dropdown and source autocompletes stay kit dropdowns (W4 G1, since done
+but for a node body's source field); cmdk's
 pages and group jumps (Alt+Up/Down); a choice-list's own filter does not
 reorder by score, as `kit_select` did.
 
@@ -1913,6 +1914,148 @@ unit test uses lists every row.
   panel shows, as the shared follow-up on change-driven sync describes (the
   DOM has no revision to compare, so the walk's cost is the open rows).
 
+#### G1: graph chrome (done)
+
+The graph canvas's context menus and Properties' Node and Member tabs are
+authored; node bodies stay kit-emitted (Postponed). Unreal's Blueprint
+editor is the reference, as the kit's was: its graph context menus (a
+node's actions with their keys and the Select submenu, a pin's Break Link
+To and Reset to Default, a wire's Straighten Connection), its Details
+panel for a node's inputs and for a variable or function (Name, the pin
+type picker, Container, Category, Default Value, a function's inputs and
+outputs with grips), and its comment colors. The source field is Base
+UI's Combobox over cmdk's list; Blender's node sidebar and Godot's
+Inspector agree on editing a node's inputs beside the graph.
+
+- **Canvas menus** (`GraphMenu.rml` over `graph_menu`,
+  `studio_graph_menu.c`): a node's, a pin's, a wire's and a comment
+  frame's, each a Menu with its heading, MenuItems with icons and keys,
+  Submenus (Select, Alignment, Break Link To, a frame's Color with a dot
+  per color and the current marked) and separators. A menu is written
+  once in C, as the kit's immediate menus were: described, `sg_menu_item`
+  adds an entry and returns false; run with the key a click sends, only
+  that item returns true and its code acts, one Undo step. The document
+  mounts while a menu is open, at the pointer (`popover_show`); opening
+  one takes focus from a field, so its keys reach the menu.
+- **Node tab** (`Properties.rml`'s graph section over `graph_details`,
+  `graph_values` and `graph_details_ui`; `studio_graph_details.c` writes
+  the rows, `studio_graph_properties.c` fills and edits them): an input
+  per row as its reflected type asks (`GraphField.rml`'s controls: a
+  source field, the binding chip, numbers and vectors that scrub, a
+  checkbox, an EnumField with every value, an AssetField, a color with
+  its alpha, a text or a multi-line text), struct and array values in a
+  popover with Add item and remove, an inline source's inputs in a
+  popover, the expression field with its error shown under it, the
+  outputs, and the Node panel (Disabled, Breakpoint, Comment, Show
+  Comment, Show on node). A comment frame's tab edits its title and
+  color. A row's id names what it edits (`n12.i3`, `n12.i3/a1/f0`, `c4.t`);
+  the fast values (a scrubbed number) are their own variable.
+- **The source field**: one field per input, as CLAUDE.md asks: typing a
+  literal offers it first and Enter sets a constant; typing a path lists
+  the fields and outputs that fit. Its `<input role=combobox>` sits in a
+  virtualized `<choice-list>` whose rows are the palette's
+  (`STUDIO_PALETTE_SOURCES`, `studio_palette_open_field`), shown under the
+  field: focus opens it, typing ranks, Enter or Tab sets the highlighted
+  row, Escape shuts it keeping the source.
+- **Member tab** (`studio_member_properties.c`): a variable's Name, Type,
+  Container, Category and Default; a function's Name and Pure and its
+  inputs and outputs, each a row with a grip (F4's `data-drag` and
+  `data-drop`; dropped on another row it takes its place), name, remove,
+  type, container and an input's default; a local's. Type is a button
+  that opens Studio's picker anchored to it (`STUDIO_PALETTE_TYPES`).
+- **Canvas pickers**: a node body's enum, choice and asset fields open
+  Studio's picker under the field's box in the canvas
+  (`studio_palette_open_box`, `studio_pick_open_box`;
+  `STUDIO_PALETTE_CHOICES` lists every value). The kit's searchable
+  dropdowns there are gone.
+- **Edits** stay in C behind `graph_details.input`, `.change`, `.check`,
+  `.choices`, `.type`, `.rename`, `.container`, `.remove`, `.add`,
+  `.addPin`, `.reorder`, `.fold` and the source field's `.source`,
+  `.query`, `.escape` and `.tab`; each commit is one Undo step and a
+  scrub coalesces into one. A checkbox's binding `change` and an
+  unchanged value make no step. A refused edit (a taken name) redraws its
+  field with the model's text. Each tab's file keeps its capabilities
+  (renames, retypes, defaults, signature edits, node flags, frame title
+  and color, over nodes, members, pins and values) apart from the
+  intents that read the rows' events into them, so each can become an
+  editor capability node; the Members panel and the Member tab share
+  `sm_rename`.
+- **Closed pickers build nothing**: EnumField's popover and the graph
+  section's popovers carry `data-template` (fx-popovers).
+- **Deleted**: the native Node and Member tabs and the `#native` slot's
+  graph branch, the kit's member type dropdown and graph literal
+  dropdowns, `kit_choice_items`, `kit_dropdown_open_at`,
+  `kit_dropdown_open`, `kit_dropdown_query`, `kit_command_item`'s shortcut
+  and image, `sm_swatch` and the eight-output cap on Name Value
+  (`STUDIO_VALUE_NAMES`); `kit_dropdown` is the kit's own
+  (`dropdown_items`), serving `kit_select`.
+- **Fixes**: the base's Member tab never showed its type dropdown
+  (`studio_member_palette` had no caller); the picker opens now.
+  Checkbox bindings no longer add an Undo step when a row rebinds.
+
+Keys are unchanged: menus keep Menu's (arrows, Enter, Escape, typeahead,
+Right and Left into and out of a submenu); the source field keeps the
+kit autocomplete's Enter, Tab and Escape and adds the list's Up, Down,
+PageUp, PageDown, Home, End, Ctrl+N and Ctrl+P (`studio-keys.md`).
+
+Web shots (1600×1000) before (`3ceb236f`, `99aaea5b` plus the frame
+clock) and after, dark and light, compact and comfortable
+(`.shots/base4`, `.shots/new4`, `.shots/base5`, `.shots/new5` in the
+worktree): the Node tab on Find Nearest Entity, Set Aim and an
+Expression; the pin and wire menus; and the Member tab on a variable and
+on a function with an input match pixel for pixel. Intentional
+differences:
+
+- The node menu after a key highlights as Menu does (P5's: the kit
+  highlighted its first item).
+- The source list is as wide as its field and under it; the kit's was
+  wider and shifted left. Its empty state's box is 1 px taller.
+- After Escape, Tab and Down leave the source list shut (the kit's
+  reopened it); typing reopens it.
+- The Container dropdown is EnumField's (P1's): its trigger shows the
+  open state and its list is 3 px narrower.
+- An enum inside a struct or array value is an EnumField, and a compound
+  value's popover lists its fields flat; inside an inline source's
+  popover a struct or array value has no nested popover.
+- Name Value names every output, not the first eight.
+
+`UI_BENCH_NODE=1 ./build-release/test_suite --ui-bench studio` (case 21:
+Properties' Node tab beside the Behavior area over Movement, a Direction
+To and an Atan2 spawned, 1440×900, pixel scale 1), the base build
+(`3ceb236f` with the same case) and this one alternated process by
+process, three pairs, 1-minute load 16-19 (busy; counts and ratios matter
+more than ms); ms, the range of the runs' medians of 31:
+
+| Case | Native | Authored | Ratio | Views (lookups) | Layouts | Elements in Properties' document |
+|---|---:|---:|---:|---:|---:|---:|
+| Select the other node | 2.73-3.00 | 3.41-3.51 | 1.21× | 633 (3,129) | 2 / 2 | 587 / 345 |
+| A vector literal's axis grows | 1.54-1.65 | 0.84-0.89 | 0.54× | 8 (32) | 0 / 0 | |
+| A UI frame with nothing changed | 0.96-1.51 | 0.56-0.63 | 0.47× | 0 | 0 / 0 | |
+
+A selection change rebinds every row (update 1.9 ms against the kit's
+0.7, emit 0.18 against 0.82): `data-for` reuses the rows by index, but
+rows whose control kind changes rebuild their `data-when` content. A
+literal edit writes one row's values (8 views) and lays nothing out; an
+idle frame evaluates nothing, where the kit re-emitted the tab.
+
+Checks: `--studio-graph-chrome` (also in `--studio-documents`): the node
+menu's heading, keys and Select submenu, Escape, and Disable as one Undo
+step; a pin's menu with Break Link disabled and Reset to Default; a
+wire's Delete Wire; a comment frame's Color dots, current and choice; the
+Node tab's vector axis as one step, Disabled, the comment and a rebind to
+the next node selected; a comment frame's title, and a color dragged and
+committed as one step; the source field's list, a typed literal first,
+Enter as one step, typed text kept as the list follows and Escape; no
+views evaluated while idle; the Member tab's rename, default and type
+from the picker each one step, and a function's Add Input, grip reorder
+as one step, pin rename and remove. `--studio-graph-inputs` drives a
+node body's Interpolation through Studio's picker. `--rmlui-kit` lost
+the button- and picker-opened dropdown checks with their API.
+
+Open: the select case's rebuild (a keyed `data-for` would keep rows of
+the same kind); a node body's source field stays the kit's autocomplete
+with the node bodies.
+
 ### Wave 5: removal
 
 Delete the kit controls, list, command and menu code the graph no longer
@@ -1923,7 +2066,7 @@ needs; shrink `kit.h`; update DESIGN decision 5, `studio-ui-authoring.md` and
 
 | Item | Why |
 |---|---|
-| Graph node bodies, pins, inline literals, comment frames, reroutes, live chips | Node drags every frame and 10 Hz chips over 5-10k bound views; the canvas is a separate context whose dp ratio is the zoom. They stay kit-emitted, styled by `graph.rcss` |
+| Graph node bodies, pins, inline literals and their source field (`kit_autocomplete`), comment frames, reroutes, live chips | Node drags every frame and 10 Hz chips over 5-10k bound views; the canvas is a separate context whose dp ratio is the zoom. They stay kit-emitted, styled by `graph.rcss`; a pin's choice and asset fields open Studio's picker (G1) |
 | Zep's text surface, completion list, hover card | A native editor by nature, like Monaco in a browser |
 | Chart, wire and grid geometry; color plane; drag ghost; Inspector and Designer highlights | Per-frame geometry with no document structure |
 | Toasts | Springs and swipe need native motion; revisit after W3 |

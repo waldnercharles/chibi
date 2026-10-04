@@ -417,10 +417,8 @@ typedef struct
     bool more;   /* has children past the trace's depth or size */
 } studio_call;
 
-enum
-{
-    STUDIO_VALUE_NAMES = 8, /* outputs per node the Outputs panel can name */
-};
+/* The longest id of a row in Properties' Node and Member tabs. */
+#define GD_ROW_ID_MAX 160
 
 /* The behavior graph canvas (studio_graph*.c): its own RmlUi context whose dp
  * ratio includes graph zoom and standard-font scale, so text stays crisp and
@@ -512,12 +510,9 @@ typedef struct
     int reroute_edge, reroute_point; /* the reroute being dragged */
     float reroute_x, reroute_y;      /* where it was before the drag */
     bool reroute_added;              /* the drag began by adding it */
-    int hover_reroute;   /* edge * GRAPH_EDGE_MAX_REROUTES + point, or -1 */
-    int insert_edge;     /* the wire a dragged node would join, or -1 */
-    uint64_t names_node; /* node whose output names the Outputs panel edits */
-    unsigned long long names_revision;
-    char names[STUDIO_VALUE_NAMES][64];
-    bool renaming; /* the name of rename_graph is being edited */
+    int hover_reroute; /* edge * GRAPH_EDGE_MAX_REROUTES + point, or -1 */
+    int insert_edge;   /* the wire a dragged node would join, or -1 */
+    bool renaming;     /* the name of rename_graph is being edited */
     uint64_t rename_graph;
     uint64_t menus_key; /* what graph_menus last showed (studio_graph_header.c) */
     int forms;          /* node settings the layouts follow */
@@ -529,13 +524,13 @@ typedef struct
     float last_press_x, last_press_y;
     uint64_t menu_node; /* context menu target, or 0 */
     int menu_edge;      /* context menu wire, or -1 */
-    bool menu_request; /* open the context menu at menu_x, menu_y (window px) */
+    bool menu_request; /* open the context menu at menu_x, menu_y (window dp) */
     float menu_x, menu_y;
+    bool menu_open;    /* GraphMenu.rml shows (studio_graph_menu.c) */
+    bool menu_opening; /* show its popover at menu_x, menu_y this frame */
+    bool menu_mounted; /* its document showed last frame */
     uint64_t *unused; /* nodes no event reaches or whose values nothing reads */
-    uint64_t expression_node; /* the expression being edited in Properties */
-    char expression[512];
-    char expression_source[512]; /* the node's source when expression was read */
-    char expression_error[192];
+    char expression_error[192]; /* why the last expression edit was refused */
     struct
     {
         int toast;   /* offers Keep Wire or Undo after a source edit */
@@ -572,6 +567,36 @@ typedef struct
         struct studio_live_value *values; /* shown pins' live values as read */
         double time;                      /* when they were read */
     } live;
+    /* Properties' Node and Member tabs (studio_graph_details.c). */
+    struct
+    {
+        struct studio_fold *folds;    /* each panel folded or opened (array) */
+        uint64_t key;                 /* what the tabs last showed */
+        unsigned revision;            /* bumped by each intent */
+        char choosing[GD_ROW_ID_MAX]; /* the row whose choice is open */
+        char source[GD_ROW_ID_MAX];   /* the row whose source list is open */
+        char popup[GD_ROW_ID_MAX];    /* the row whose popover is open */
+        uint64_t source_node;         /* that input's node and pin */
+        int source_pin;
+        bool source_shown; /* its list's popover showed */
+        bool popup_shown;
+        bool redraw; /* fields show the model's text again */
+        struct studio_graph_source *source_choices; /* what the list offers (array) */
+        bool gesture;        /* a frame color's gesture holds its step */
+        uint64_t error_node; /* the expression whose edit was refused */
+        char error[192];
+        char error_source[512]; /* its source then */
+    } details;
+    /* The canvas's pickers: the control whose picker is open, and a
+       choice's options and the one chosen (studio_graph_literals.c). */
+    char picker[192];
+    struct
+    {
+        char key[192];
+        const struct editor_choices *choices;
+        int current, chosen;
+        bool taken;
+    } choice;
 } studio_graph;
 
 typedef enum
@@ -838,6 +863,9 @@ typedef enum
     STUDIO_PALETTE_NODES, /* the graph's add-node search (studio_graph_edit.c) */
     STUDIO_PALETTE_COMPONENTS, /* Add Component (studio_properties.c) */
     STUDIO_PALETTE_ASSETS,     /* an asset pick (studio_pick.c) */
+    STUDIO_PALETTE_SOURCES, /* a graph input's source field in Properties (studio_graph_values.c) */
+    STUDIO_PALETTE_TYPES,   /* a member's type (studio_member_properties.c) */
+    STUDIO_PALETTE_CHOICES, /* a graph canvas choice (studio_graph_literals.c) */
 } studio_palette_client;
 
 /* Which document shows the list. */
@@ -860,6 +888,7 @@ typedef struct studio_palette_entry
     char meta[96];                   /* muted, after the label */
     char about[192];                 /* a second line, or "" */
     char shortcut[32];
+    char tip[96]; /* its row's tooltip, or "" */
     char key[96]; /* how recent use knows it, or "" */
     uint32_t icon;
     int asset;    /* whose cached thumbnail shows in the icon's place, or -1 */
@@ -881,6 +910,9 @@ typedef struct studio_palette_state
 {
     studio_palette_client client;
     bool anchored; /* a picker under `anchor`, else the modal palette */
+    bool field; /* the list of `anchor`, a field typed in, which its client shows */
+    bool boxed;   /* a picker under `box`, a control in another context */
+    float box[4]; /* x, y, width and height in Studio's pixels */
     rml_element_ref *anchor;
     bool shown; /* the picker's popover showed */
     studio_palette_mount mounted;
@@ -1375,6 +1407,17 @@ void studio_palette_open_at(
     const char *placeholder,
     rml_element *anchor
 );
+/* Opens `client`'s list of the field `field`, typed in, which the client's
+   markup shows over the palette's rows (a graph input's source field). */
+void studio_palette_open_field(studio *s, studio_palette_client client, rml_element *field);
+/* Opens a picker for `client` under `box` (x, y, width, height in Studio's
+   pixels), a control the graph canvas's own context draws. */
+void studio_palette_open_box(
+    studio *s,
+    studio_palette_client client,
+    const char *placeholder,
+    const float box[4]
+);
 void studio_palette_close(studio *s);
 /* Whether the modal palette is open; an open picker is a popover. */
 bool studio_palette_is_open(const studio *s);
@@ -1506,11 +1549,10 @@ bool studio_graph_active(const studio *s);
 void studio_graph_find(studio *s);
 /* Opens the Text Editor's find widget. */
 void studio_code_find(studio *s);
-/* The graph node Properties shows, or 0; and its panels. */
+/* The graph node Properties shows, or 0. */
 uint64_t studio_graph_node(const studio *s);
 /* The comment frame selected on the canvas while no node is, or 0. */
 uint64_t studio_graph_comment(const studio *s);
-void studio_node_properties(studio *s);
 void studio_rewire_toast(studio *s);
 /* Members: the open behavior's graphs, variables and named values, an
    authored panel (Members.rml) with its header's filter (MembersHeader). */
@@ -2033,6 +2075,14 @@ void studio_pick_open(
     const char *current,
     const studio_pick_desc *desc,
     rml_element *anchor
+);
+/* Opens it under `box`, in Studio's pixels (studio_palette_open_box). */
+void studio_pick_open_box(
+    studio *s,
+    const char *key,
+    const char *current,
+    const studio_pick_desc *desc,
+    const float box[4]
 );
 /* The palette's results while it picks an asset: none, the kind's assets
    and, when a name may be typed, the typed name no asset has yet. */
@@ -2768,5 +2818,38 @@ void studio_code_header_action(studio *s, const char *action, const ui_activatio
 void studio_code_find_add(yyjson_mut_doc *doc);
 bool studio_code_find_sync(studio *s, const studio_panel_sync *at);
 void studio_code_find_action(studio *s, const char *action, const ui_activation *a);
+
+/* ---------- Graph chrome (workstream G1) ---------- */
+
+/* `graph_menu` (studio_graph_menu.c, GraphMenu.rml): the canvas's open
+ * context menu, its heading (group.label) and items, each with key, label,
+ * icon, shortcut,
+ * swatch, disabled, current, sep (a separator above it) and sub (it opens
+ * its items). Action: run (an item's key). The frame mounts its document
+ * while it is open. */
+void studio_graph_menu_add(yyjson_mut_doc *doc);
+bool studio_graph_menu_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_menu_action(studio *s, const char *action, const ui_activation *a);
+void studio_graph_menu_frame(studio *s);
+/* `graph_details`, `graph_values` and `graph_details_ui`
+ * (studio_graph_details.c): Properties' Node and Member tabs. Actions:
+ * input, change, check, choices, fold, add, remove, source, query, escape,
+ * cancel, type, reorder, rename. The frame shows and hides their popovers;
+ * call it while Properties shows. */
+void studio_graph_details_add(yyjson_mut_doc *doc);
+bool studio_graph_details_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_details_action(studio *s, const char *action, const ui_activation *a);
+void studio_graph_details_frame(studio *s);
+void studio_graph_details_free(studio *s);
+/* The source list's results and choice (studio_graph_values.c). */
+void studio_graph_source_entries(studio *s, const char *query, studio_palette_entry **entries);
+void studio_graph_source_choose(studio *s, const studio_palette_entry *entry);
+/* The type picker's results and choice (studio_member_properties.c). */
+void studio_member_type_entries(studio *s, studio_palette_entry **entries);
+void studio_member_type_choose(studio *s, const studio_palette_entry *entry);
+/* A graph canvas choice's picker: its choices and the one chosen
+   (studio_graph_literals.c). */
+void studio_graph_choice_entries(studio *s, studio_palette_entry **entries);
+void studio_graph_choice_choose(studio *s, const studio_palette_entry *entry);
 
 #endif

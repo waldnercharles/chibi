@@ -66,13 +66,6 @@ typedef struct
 
 static const char *const CHOICES[] = { "Alpha", "Beta", "Frame Selected", "Gamma" };
 
-static const kit_command_item BUTTON_DROPDOWN_OPTIONS[] = {
-    { .label = "Alpha" },
-    { .label = "Beta", .current = true },
-    { .label = "Frame Selected" },
-    { .label = "Gamma" },
-};
-
 static const kit_command_item AUTOCOMPLETE_OPTIONS[] = {
     { .label = "Path 00", .group = "Paths", .keywords = "common", .meta = "float" },
     { .label = "Path 01", .group = "Paths", .keywords = "common" },
@@ -139,30 +132,6 @@ static void emit(kit_fixture *f)
         f->clicks++;
     }
     kit_attr(k, "id", "test-press-button");
-    kit_button_desc dropdown_button = { .label = "Choose" };
-    if (kit_button(k, "dropdown-trigger", &dropdown_button)) {
-        kit_dropdown_open(k, "button-dropdown", "Search choices");
-    }
-    if (kit_dropdown_is_open(k, "button-dropdown")) {
-        kit_dropdown(
-            k,
-            "button-dropdown",
-            BUTTON_DROPDOWN_OPTIONS,
-            (int)(sizeof BUTTON_DROPDOWN_OPTIONS / sizeof *BUTTON_DROPDOWN_OPTIONS)
-        );
-    }
-    kit_picker_desc picker = { .value = "Alpha", .placeholder = "Choose asset" };
-    if (kit_picker(k, "asset-trigger", &picker)) {
-        kit_dropdown_open(k, "asset-dropdown", "Search assets");
-    }
-    if (kit_dropdown_is_open(k, "asset-dropdown")) {
-        kit_dropdown(
-            k,
-            "asset-dropdown",
-            BUTTON_DROPDOWN_OPTIONS,
-            (int)(sizeof BUTTON_DROPDOWN_OPTIONS / sizeof *BUTTON_DROPDOWN_OPTIONS)
-        );
-    }
     kit_button_desc rename = { .label = "Rename" };
     if (kit_button(k, "rename-trigger", &rename)) {
         if (kit_popup_is_open(k, "rename")) {
@@ -2338,42 +2307,6 @@ bool test_rmlui_kit()
     settle(&f);
     rml_element_value(autocomplete, shown_value, sizeof shown_value);
     ok &= check(strcmp(shown_value, "External.path") == 0, "an unfocused autocomplete refreshes its display after an external value change");
-
-    ok &= check(click(&f, "app/bar/dropdown-trigger"), "button opens its dropdown");
-    settle(&f);
-    ok &= check(
-        kit_dropdown_is_open(f.k, "button-dropdown") && kit_wants_text(f.k, NULL),
-        "button dropdown focuses its search field"
-    );
-    type(&f, "Bet");
-    frame(&f);
-    ok &= check(
-        strcmp(kit_dropdown_query(f.k, "button-dropdown"), "Bet") == 0,
-        "button dropdown retains its search query while open"
-    );
-    ok &= check(click(&f, "app/bar/dropdown-trigger"), "button closes its open dropdown");
-    settle(&f);
-    ok &= check(
-        !kit_dropdown_is_open(f.k, "button-dropdown") &&
-            strcmp(kit_dropdown_query(f.k, "button-dropdown"), "Bet") == 0,
-        "re-clicking the same dropdown trigger closes it instead of reopening"
-    );
-    ok &= check(click(&f, "app/bar/dropdown-trigger"), "button reopens its dropdown");
-    settle(&f);
-    ok &= check(
-        kit_dropdown_is_open(f.k, "button-dropdown") &&
-            kit_dropdown_query(f.k, "button-dropdown")[0] == 0,
-        "reopening a closed dropdown starts with a clean search"
-    );
-    kit_popup_close(f.k, "button-dropdown");
-    frame(&f);
-
-    ok &= check(click(&f, "app/bar/asset-trigger"), "asset picker opens its dropdown");
-    settle(&f);
-    ok &= check(kit_dropdown_is_open(f.k, "asset-dropdown"), "asset picker search is open");
-    ok &= check(click(&f, "app/bar/asset-trigger"), "asset picker closes its dropdown");
-    settle(&f);
-    ok &= check(!kit_dropdown_is_open(f.k, "asset-dropdown"), "re-clicking an asset picker closes without reopening its search");
 
     /* Menubar: press opens, item activation reports once and closes. */
     ok &= check(click(&f, "app/bar/file"), "menu trigger");

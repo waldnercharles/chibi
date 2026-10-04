@@ -89,5 +89,7 @@ void studio_documents_chrome_checks();
 void studio_documents_inspector_checks();
 /* The palette, pickers and refactor popover (workstream C4). */
 void studio_documents_palette_checks();
+/* The graph's menus and Properties' Node and Member tabs (workstream G1). */
+void studio_documents_graph_chrome_checks();
 
 #endif

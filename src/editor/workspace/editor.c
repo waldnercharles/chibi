@@ -183,6 +183,11 @@ void editor_set_ui_context(editor *e, editor_ui_context context)
     }
 }
 
+void editor_set_studio_nodes(editor *e, bool offered)
+{
+    e->studio_nodes = offered;
+}
+
 static bool retained_keyboard;
 
 void editor_set_retained_keyboard(bool captured)

@@ -164,6 +164,10 @@ const graph *editor_active_graph(const editor *e);
 
 /* Chooses the node catalog and graph rules for the edited document. */
 void editor_set_ui_context(editor *e, editor_ui_context context);
+/* Offers Studio's editor nodes (editor/studio/studio_nodes.h) in the node
+ * search, and accepts them in the Problems: only when the open project is
+ * Studio's own, whose world runs them. Off by default. */
+void editor_set_studio_nodes(editor *e, bool offered);
 
 /* ENG-3: true while the retained UI consumes the keyboard, so the host must
  * not also route those keys to a focused viewport. */

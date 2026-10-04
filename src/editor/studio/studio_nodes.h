@@ -9,6 +9,7 @@
  * Objects are named by their key, the entity authoring them as text, as the
  * rows a panel shows carry it. */
 
+#include "graph/compiler/compile.h"
 #include "graph/model/registry.h"
 #include "support/arena.h"
 
@@ -76,6 +77,15 @@ typedef struct studio_choice
 #define STUDIO_CHOICE_TYPE "Choice"
 
 extern const registry_pack STUDIO_PACK;
+
+/* Whether `desc` is one of the pack's nodes (category Studio). */
+bool studio_node_is(const node_desc *desc);
+/* Whether `root` is Studio's own project: the only one whose world binds the
+ * "studio" service, so the only one that offers the pack's nodes. */
+bool studio_project_is(const char *root);
+/* Adds an error to `report` for each of the pack's nodes `asset` holds, for a
+ * project other than Studio's, where no world runs them. Returns how many. */
+int studio_nodes_check(const behavior_asset *asset, compile_report *report);
 
 /* Studio's implementation of every node (studio_node_calls.c). */
 const char *studio_node_run(

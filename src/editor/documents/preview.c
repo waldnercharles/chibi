@@ -1,4 +1,5 @@
 #include "editor/graph/eval_view.h"
+#include "editor/studio/studio_nodes.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/problems.h"
@@ -28,6 +29,9 @@ void ed_compile(editor *e)
     compile_report_init(&e->compile);
     behavior_asset_free(e->compiled);
     e->compiled = behavior_asset_validate(e->asset, e->asset_catalog, acount(e->asset_catalog), &e->compile);
+    if (!e->studio_nodes) {
+        studio_nodes_check(e->asset, &e->compile);
+    }
 }
 
 unsigned editor_edit_revision(const editor *e)

@@ -6,9 +6,15 @@
 
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
+#include "support/array.h"
+#include "support/resources.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static const char MISSING[] = "Editor nodes require Studio";
 
@@ -453,3 +459,38 @@ const registry_pack STUDIO_PACK = { .name = "studio",
                                     .node_count = sizeof NODES / sizeof *NODES,
                                     .types = TYPES,
                                     .type_count = sizeof TYPES / sizeof *TYPES };
+
+bool studio_node_is(const node_desc *desc)
+{
+    return desc->category && !strcmp(desc->category, "Studio");
+}
+
+bool studio_project_is(const char *root)
+{
+    char studio[PATH_MAX], project[PATH_MAX];
+    return realpath(resource_studio(), studio) && realpath(root, project) &&
+           !strcmp(studio, project);
+}
+
+int studio_nodes_check(const behavior_asset *asset, compile_report *report)
+{
+    int found = 0;
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        const graph *graph = asset->graphs[g];
+        for (int i = 0; i < acount(graph->nodes); i++) {
+            const node *n = graph->nodes[i];
+            if (!studio_node_is(n->desc)) {
+                continue;
+            }
+            compile_diagnostic d = { .severity = CMPL_ERROR,
+                                     .graph_id = graph->graph_id,
+                                     .node_id = n->id,
+                                     .rule = CMPL_RULE_EDITOR_NODE };
+            snprintf(d.message, sizeof d.message, "%s", MISSING);
+            apush(report->items, d);
+            report->error_count++;
+            found++;
+        }
+    }
+    return found;
+}

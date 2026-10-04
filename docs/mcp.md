@@ -494,6 +494,11 @@ Every result carries a one-sentence `description` of what the node or event
 does, from the node's `description`, the host event table, the event asset or
 the ui document.
 
+Studio's own editor nodes (category `Studio`, such as Scene Objects) run only
+in the Studio project, so searchNodes lists them there and in no other, and
+validateAsset fails a behavior that holds one elsewhere with "Editor nodes
+require Studio". Studio's node search follows the same rule.
+
 Pins read `name: type`. Behavior search offers component nodes instead of the
 generated `Get_<Component>` and `Make_<Type>` nodes they lower to. Pass
 `domain: "system"` for System graphs, which use the generated nodes directly.
@@ -916,9 +921,14 @@ extraction policy.
 | Sensor contacts | `GameSensorContact` stores an observed position, lifetime and color, independently of explored terrain. |
 
 RCSS `dp` units scale with the view height, 720 pixels being one pixel per
-`dp`; `GameUi.order` stacks documents. UI events carry no payload, like action
-events: each button emits its event with `data-event-click="emit('Name')"`,
-and a behavior reads an input's value with `Get UI Value`, or the number
+`dp`; `GameUi.order` stacks documents. Each button emits its event with
+`data-event-click="emit('Name')"`, and the event reaches the entity's behaviors
+in the update that follows the click, so what they set shows in that frame. It
+carries no payload, like action events, unless an `event` asset of its name
+declares one: Shift, Alt and Mod (Command on a Mac, Control elsewhere) and
+Pointer (`CF_V2`, in the document's pixels) come from the click, and each
+other value is the next argument of `emit('Name', a, b)`, read as its type. A
+behavior reads an input's value with `Get UI Value`, or the number
 `emit('Name', value)` passes from an element with an id, as in a list's
 `emit('Buy', i)`. Behavior graphs own rules, text and history. While the pointer
 is over an interactive element, it does not reach gameplay.

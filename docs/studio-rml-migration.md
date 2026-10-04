@@ -283,9 +283,16 @@ chibi, chibi_ctl, the UI bench, test_suite), so games' runtimes never list
 it. Its nodes run on the `studio` service, Studio and one call
 (`studio_node_run`, a switch in `studio_node_calls.c`), which only Studio's
 own world binds (`game_behavior_bind_service`); elsewhere they fail with
-"Editor nodes require Studio". searchNodes offers them (category Studio)
-only in the Studio project. They are named for capabilities and name
-objects by key, the entity as text, as rows carry it:
+"Editor nodes require Studio". Only the Studio project offers them
+(category Studio): searchNodes, and the graph editor's node search (the Add
+menu, the palette's add-node search and a dragged wire's, all
+`ed_search_matches`) list them there and in no other project, where
+`editor_set_studio_nodes` stays off. A behavior in another project that holds
+one fails validation with that message (`studio_nodes_check`, rule CMPL-29):
+validateAsset, the asset catalog's diagnostics and the open document's
+Problems say so, rather than the node failing when it runs. They are named
+for capabilities and name objects by key, the entity as text, as rows carry
+it:
 
 | Kind | Nodes |
 |---|---|
@@ -315,15 +322,29 @@ as a source syncs, then the events behaviors sent each other (Send Event),
 shows what they set and applies their UI effects before RmlUi lays the
 frame out; an effect that sends events of its own (a focus move blurs a
 field, which commits it) runs in up to four more rounds of the same frame. An event asset declares the
-payload: `ui_activation_payload` fills Shift, Alt, Mod (Command on a Mac,
+payload: `ui_activation_send` (`render/ui.h`) fills Shift, Alt, Mod (Command on a Mac,
 Control elsewhere) and Pointer (`CF_V2`, the document's pixels) from the
 DOM event, as a web handler reads `event.shiftKey` and `event.clientX`, and
 the rest from emit's arguments in order, read as each value's type. Studio
 sends `RevealObject` to every panel behavior after Up, Down, a Find jump or
 F2. `data-area-keys="Left:FoldRoot"` gives a panel the unmodified keys of
 its area, Blender's per-editor keymap. Events in a header's controls now
-reach the controls' panel, the innermost mount, not the AreaHeader. Games
-still queue UI events to the next tick.
+reach the controls' panel, the innermost mount, not the AreaHeader.
+
+Games' UI events run the same way. `render_ui_update` sends each document's
+activations to its entity's behaviors with `ui_activation_send`, the call
+Studio's `dispatch` makes, before it shows what behaviors set, so a click's
+result is on screen in the frame after the pointer reached the document (the
+player, the editor's Scene and Play, and the web build alike); before, the
+activation queued for the next simulation step (`game_entities_request_event`)
+and showed a step later still. The payload is the same: the event asset of
+its name in the world's definitions (`ui_world.live`), the pointer's
+modifier keys (the viewport hosts pass them, traded on a Mac as for keys, so
+Control is a game's Mod) and position, and emit's arguments. A payload a UI
+event cannot carry (a list) runs nothing and shows as the documents' error.
+Activations wait in their mount while a spawn initializes, as the engine
+holds its own events. Events behaviors send each other (Send Event) still
+wait for the next simulation step, where Studio settles them in the frame.
 
 **Refresh is change-driven.** `Refresh` is where a panel's behaviors query
 and publish, as a source's sync does, and it runs only when something the
@@ -391,8 +412,8 @@ The graphs were written through the native controller's `edit_graph`
 
 **Gaps closed, in shared code:** per-entity `self` variables (render/ui.c,
 rml.cpp); same-frame UI events with typed payloads, Refresh, settling and
-effect rounds (studio_ui.c, render/ui.c's `ui_activation_payload` and
-`ui_mount_pending`); native list windows with `window` events and one-shot
+effect rounds (studio_ui.c, render/ui.c's `ui_activation_send` and
+`ui_mount_pending`), which games' documents share; native list windows with `window` events and one-shot
 reveal (render/ui.c); Show UI Popover and Reveal UI List Row (game.ui); area
 keys (`ui_mount_area_key`); events reaching the innermost mount
 (studio_ui.c); host services for behavior worlds (`game_behavior_bind_service`);
@@ -407,7 +428,8 @@ event's `CF_V2` payload to a `CF_V2` input chose a GameTransform-to-CF_V2
 conversion (`game_transform_to_cf`), which ran right only because a
 GameTransform starts with its position (removed by hand); a bool cannot feed
 arithmetic or Select (no bool to number conversion), so folds are Branches.
-Studio's Add menu still lists the studio pack in every project.
+buildGraph does not refuse a studio node in another project's behavior; its
+validateAsset says so.
 
 **Results** (`--ui-bench studio`, case 23, `UI_BENCH_OUTLINER=1`): the
 Outliner over ten thousand objects, scrolled to the middle, each step

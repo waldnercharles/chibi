@@ -6,7 +6,7 @@
 #include "graph/model/behavior_asset.h"
 #include "platform/cute.h"
 #include "render/skip.h"
-#include "runtime/behaviors/entities.h"
+#include "runtime/behaviors/live.h"
 #include "runtime/save.h"
 #include "runtime/ui.h"
 #include "support/file_watch.h"
@@ -15,7 +15,7 @@
 
 /* What shown documents read and act on. Only `ecs` is required: without
  * `page` documents show on a bare page, without `model` as authored, without
- * `entities` activations reach no one, and without `save` documents bind an
+ * `live` activations reach no one, and without `save` documents bind an
  * empty `save`. A preview shows documents their GameUi keeps hidden, as an
  * editor previews a dialog before anything opens it; `revealed` shows one
  * entity's the same way, as the editor shows the object selected in a scene
@@ -25,7 +25,7 @@ typedef struct ui_world
     ecs_world *ecs;
     const char *page; /* the scene's root ui document (ui_page) */
     game_ui *model;
-    game_entities *entities;
+    game_live_world *live; /* the behaviors activations reach, and their events */
     game_save *save;
     bool preview;
     uint64_t revealed; /* an entity (ecs_entity_to_u64), or 0 for none */
@@ -121,23 +121,16 @@ typedef struct ui_activation
     rml_element_ref *anchor;
 } ui_activation;
 
-/* The payload a UI event takes from activation `a`, in the order `event`,
- * the event asset declaring it, lists its payload (NULL declares none):
- * Shift, Alt and Mod (bools; `primary` holds Mod's modifier bits, Meta on a
- * Mac and Control elsewhere) and Pointer (CF_V2, in the document's pixels,
- * stored in `pointer`) come from the DOM event, as a web handler reads
- * event.shiftKey and event.clientX; each other value is emit's next argument
- * read as its type (text, a number or a flag; strings borrow `a`). Returns
- * how many values it wrote to `out`, or -1 for a payload a UI event cannot
- * carry or more than `capacity`. */
-int ui_activation_payload(
-    const ui_activation *a,
-    const behavior_asset *event,
-    unsigned primary,
-    float pointer[2],
-    pin_value *out,
-    int capacity
-);
+/* Runs activation `a` on `entity`'s behaviors in `live` now, or on every
+ * entity's for an entity of none, so what they set shows in the frame that
+ * sent it. Its payload is what the event asset `live` holds under its name
+ * declares (none for a local event), in order: Shift, Alt and Mod (bools;
+ * `primary` holds Mod's modifier bits, Meta on a Mac and Control elsewhere)
+ * and Pointer (CF_V2, in the document's pixels) come from the DOM event, as a
+ * web handler reads event.shiftKey and event.clientX; each other value is
+ * emit's next argument read as its type (text, a number or a flag). False,
+ * running nothing, for a payload a UI event cannot carry. */
+bool ui_activation_send(game_live_world *live, ecs_entity entity, const ui_activation *a, unsigned primary);
 ui_mount *ui_mount_new(const char *content_root, const char *name);
 void ui_mount_free(ui_mount *mount);
 const char *ui_mount_name(const ui_mount *mount);
@@ -240,8 +233,11 @@ void render_ui_free(render_ui *ui);
 /* The documents' data model, in which the host shows the variables it gave
  * render_ui_new. */
 ui_data *render_ui_data(render_ui *ui);
-/* Shows `world`'s GameUi documents. An input's change first stores its value
- * in the model under `#id` for Get UI Value. */
+/* Shows `world`'s GameUi documents. First it sends the documents' activations
+ * to their entities' behaviors (ui_activation_send), an input's change
+ * storing its value in the model under `#id` for Get UI Value, so what they
+ * set shows in this update; they wait for the next while a spawn
+ * initializes. */
 void render_ui_update(render_ui *ui, const ui_world *world, int width, int height, double dt);
 /* Shows the host's ui asset `name` above the world's documents with `state`
  * as its root's class, or hides it when `state` is NULL, from the next

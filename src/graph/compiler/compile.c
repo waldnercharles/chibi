@@ -244,6 +244,7 @@ const char *cmpl_rule_name(int rule)
         case CMPL_RULE_CALL_SIGNATURE: return "CMPL-23";
         case CMPL_RULE_INPUT_BINDING: return "CMPL-24";
         case CMPL_RULE_BACKEND: return "CMPL-25";
+        case CMPL_RULE_EDITOR_NODE: return "CMPL-29";
         case CMPL_RULE_QUERY_FUSION: return "PERF-QUERY-FUSION";
         case CMPL_RULE_QUERY_SCAN: return "PERF-QUERY-SCAN";
         case CMPL_RULE_CONTAINER: return "PERF-CONTAINER";

@@ -250,6 +250,35 @@ void run_content_catalog_checks();
 void test_write_ui(const char *folder, const char *name, const char *rml, const char *rcss);
 void test_remove_ui(const char *folder, const char *name);
 
+/* What a probe behavior (test/support/ui_probe.c) heard last: how many UI
+ * events reached its entity, the last one's name and payload. */
+#define UI_PROBE_VALUES 8
+typedef struct ui_probe
+{
+    int count;
+    char event[64];
+    int values;
+    pin_value payload[UI_PROBE_VALUES];
+    char text[UI_PROBE_VALUES][64];
+    float pointer[2];
+} ui_probe;
+
+/* Attaches to `entity` a behavior handling each of `events`, with the payload
+ * a definition in `live` declares, which only records them in `probe`. */
+void test_ui_probe_events(
+    game_live_world *live,
+    ecs_entity entity,
+    const char *const *events,
+    int count,
+    ui_probe *probe
+);
+/* A node that records the event named `event` in the probe bound to its
+ * instance; for a handler a test builds itself and attaches here. */
+const node_desc *test_ui_probe_node(const char *event);
+void test_ui_probe_attach(game_live_world *live, ecs_entity entity, behavior_asset *asset, ui_probe *probe);
+/* Frees what the probes made, once the worlds they attached to are freed. */
+void test_ui_probes_free();
+
 #endif
 
 void test_parallel_ticks();

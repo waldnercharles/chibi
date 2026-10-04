@@ -404,43 +404,13 @@ static panel *find_panel(studio_ui *ui, const char *name)
     return NULL;
 }
 
-/* The Studio project's declaration of event `name`, an event asset, or
- * NULL when it declares none, as local events without a payload. */
-static const behavior_asset *declared_event(studio_ui *ui, const char *name)
-{
-    game_live_definition
-        *event = game_live_find_definition(game_prototype_preview_live(ui->world), name);
-    return event && event->working->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION
-             ? event->working
-             : NULL;
-}
-
 /* Runs `a` on `entity`'s behaviors now, or on every panel's when `entity`
- * is none, its payload as its event asset declares, so what they set shows
- * in the frame that sent it. */
+ * is none, so what they set shows in the frame that sent it. */
 static void dispatch(studio *s, ecs_entity entity, const ui_activation *a)
 {
-    studio_ui *ui = s->ui;
-    pin_value values[16];
-    float pointer[2];
-    int count = ui_activation_payload(
-        a,
-        declared_event(ui, a->event),
-        s->mac ? RML_KM_META : RML_KM_CTRL,
-        pointer,
-        values,
-        16
-    );
-    if (count < 0) {
+    game_live_world *live = game_prototype_preview_live(s->ui->world);
+    if (!ui_activation_send(live, entity, a, s->mac ? RML_KM_META : RML_KM_CTRL)) {
         report_error(s, a->event, "declares a payload a UI event cannot carry");
-        return;
-    }
-    game_behavior_world *behaviors = game_prototype_preview_behaviors(ui->world);
-    flow_inputs inputs = { .values = values, .count = count };
-    if (entity.slot) {
-        game_behavior_dispatch(behaviors, entity, a->event, inputs, NULL);
-    } else {
-        game_behavior_dispatch_all(behaviors, a->event, inputs, NULL);
     }
 }
 

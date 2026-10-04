@@ -77,6 +77,7 @@ struct editor
 {
     behavior_asset *asset;
     editor_ui_context ui_context;
+    bool studio_nodes; /* the project is Studio's own, whose world runs Studio's editor nodes */
     graph *active_graph;
     ed_graph_caller *graph_callers;
     eval_view *ev;

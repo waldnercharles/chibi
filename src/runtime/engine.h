@@ -131,6 +131,9 @@ typedef struct engine_viewport_host_input
     bool down[3], pressed[3], released[3];
     float wheel;
     bool alt;
+    /* The modifier keys held (RML_INPUT_MOD_*), traded as the keys' are, so
+       Control is a game's Mod (Command on a Mac) in its events' payloads. */
+    unsigned modifiers;
     bool escape;
     char dropped_prototype[256];
     /* Key presses and typed text the host passes on, in order, kept until

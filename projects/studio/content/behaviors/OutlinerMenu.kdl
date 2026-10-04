@@ -1,6 +1,6 @@
 version 3
 name "OutlinerMenu"
-id_counter 150
+id_counter 151
 description "Keeps the Outliner's row menu current: its heading names the selection, Break When Spawned shows whether the selection's prototype breaks, and the Live and object items follow the run; sets the eye's Alt+click tip for the platform."
 owner_type "ecs.entity"
 (array)graphs {
@@ -59,7 +59,12 @@ owner_type "ecs.entity"
                 type "Behavior Expression"
                 reference_name "Count == 1"
                 inputs {
-                    Count id=68 type="double" flags=0
+                    Count {
+                        id 68
+                        type "double"
+                        flags 0
+                        binding kind="local" name="Count"
+                    }
                 }
                 outputs {
                     Result id=69 type="bool"
@@ -79,7 +84,10 @@ owner_type "ecs.entity"
                 type "Format Text"
                 inputs {
                     Format "{} objects"
-                    Arg0 type="int"
+                    Arg0 {
+                        type "int"
+                        binding kind="local" name="Count"
+                    }
                 }
             }
             - {
@@ -95,7 +103,12 @@ owner_type "ecs.entity"
                 type "Behavior Expression"
                 reference_name "Count > 0"
                 inputs {
-                    Count id=109 type="double" flags=0
+                    Count {
+                        id 109
+                        type "double"
+                        flags 0
+                        binding kind="local" name="Count"
+                    }
                 }
                 outputs {
                     Result id=110 type="bool"
@@ -174,6 +187,9 @@ owner_type "ecs.entity"
             - from="141.Value" to="15.Value"
             - from="144.Value" to="30.Value"
             - from="147.Value" to="36.Value"
+        }
+        (array)locals {
+            - id=150 name="Count" from="44.Count"
         }
     }
     - id=53 kind="function" math_expression="Count == 1" entry_id=54

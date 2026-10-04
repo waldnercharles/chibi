@@ -15,6 +15,7 @@ owner_type "ecs.entity"
                 id 2
                 type "Event"
                 reference_name "RenameCommitted"
+                comment "Commits only while this row still renames: Escape ended the rename before its field's blur commits."
                 outputs {
                     Key id=4 declaration_id=1 type="const char *" kind="data"
                     Name id=5 declaration_id=2 type="const char *" kind="data"
@@ -57,7 +58,7 @@ owner_type "ecs.entity"
                     Value type="const char *"
                 }
             }
-            - id=50 type="Event" reference_name="Refresh"
+            - id=50 type="Event" reference_name="Refresh" comment="A field left without a commit closes here, after the commit its blur may also send."
             - {
                 id 52
                 type "Get Variable"

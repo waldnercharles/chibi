@@ -23,6 +23,7 @@ owner_type "ecs.entity"
                 id 12
                 type "Event"
                 reference_name "RowMenu"
+                comment "A right click keeps a selection it lands in (Unity), then opens the row menu at the pointer."
                 outputs {
                     Key id=14 declaration_id=1 type="const char *" kind="data"
                     Pointer id=15 declaration_id=2 type="struct" type_name="CF_V2" kind="data"
@@ -76,6 +77,7 @@ owner_type "ecs.entity"
                 id 81
                 type "Event"
                 reference_name "ListDropped"
+                comment "A row's drop stops at the row (RowDropped), so the list takes only prototypes."
                 outputs {
                     Type id=83 declaration_id=1 type="const char *" kind="data"
                     Payload id=84 declaration_id=2 type="const char *" kind="data"

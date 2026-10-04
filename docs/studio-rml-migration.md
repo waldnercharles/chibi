@@ -1342,6 +1342,16 @@ still kit code: `body.comfortable .designer-tile` (Designer); D1 moved it into `
   at each refresh while it shows, because RmlUi documents have no revision
   to compare.
 
+- **`data-attr` inside `data-when`** (D1): one `data-attr` in a row's
+  `data-when` branch adds about 260 view reads to a Details selection,
+  however many rows follow; it points at the data model, not a widget.
+- **Widget quirks** (D1, G1): EnumField's dropdown is only as wide as its
+  value; `data-for` leaves its hidden template as a sibling, so
+  `:last-child` never matches the last row; margins collapse between
+  siblings but not through a `use` wrapper's first child; a right press
+  doesn't move focus, so a focused field keeps keys a context menu should
+  take (G1 blurs on menu open; popover.c should own it).
+
 Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
 `UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.
 

@@ -1,0 +1,6 @@
+name "Camera"
+components {
+    GAME.GameCamera height=115.0 width=150.0
+    GAME.GameHRC2D ambient=0.12 bloom=0.01 bounce_hysteresis=0.8 bounce_intensity=1.0 exposure=0.7 falloff=1.0 feedback=#true fog=1.0 intensity=3.0 min_resolution=0.5 particle_focal_length=300.0 radiance_hysteresis=0.8 resolution=0.5 specular=1.0 surface_bevel=1.0 surface_depth_radius=128.0 surface_radius=24.0 surface_relief=1.5 surface_thickness=12.0 target_fps=60.0 trace_levels=3 upscale_mode="Edge aware" upscale_threshold=0.1
+    (object)GAME.GameTransform
+}

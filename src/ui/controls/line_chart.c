@@ -95,8 +95,10 @@ static published *find_series(const char *name)
 static bool same_samples(const published *p, const line_chart_series *s)
 {
     return p->color == s->color && p->now == s->now && acount(p->times) == s->count &&
-           !memcmp(p->times, s->times, (size_t)s->count * sizeof *s->times) &&
-           !memcmp(p->values, s->values, (size_t)s->count * sizeof *s->values);
+           (!s->count ||
+            !memcmp(p->times, s->times, (size_t)s->count * sizeof *s->times)) &&
+           (!s->count ||
+            !memcmp(p->values, s->values, (size_t)s->count * sizeof *s->values));
 }
 
 static void copy_floats(float **out, const float *in, int count)

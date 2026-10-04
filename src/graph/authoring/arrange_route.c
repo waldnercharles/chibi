@@ -516,7 +516,7 @@ static void ar_emit_backward(
     float edge = AR_TRACK_MARGIN * 0.5f;
     /* Lanes run from the target's side: lane k sits in column to + 1 + k. */
     int count = ar_lane_count(lanes, link);
-    const int *lane = lanes->lanes + lanes->start[link];
+    const int *lane = count ? lanes->lanes + lanes->start[link] : NULL;
     float y = ar_beside(g, pos, l->from, count ? ar_lane_y(c, lane[count - 1]) : end.y);
     float x = right[from] + edge;
     apush(routes->points, ((arrange_point){ x, start.y }));

@@ -72,11 +72,13 @@ void sg_nav_track(studio *s)
     const editor *e = sg_graph_editor(s);
     visit.caller_count = acount(e->graph_callers);
     assert(visit.caller_count <= ED_CALLER_LIMIT);
-    memcpy(
-        visit.callers,
-        e->graph_callers,
-        (size_t)visit.caller_count * sizeof *visit.callers
-    );
+    if (visit.caller_count) {
+        memcpy(
+            visit.callers,
+            e->graph_callers,
+            (size_t)visit.caller_count * sizeof *visit.callers
+        );
+    }
     see(g, &visit);
     push(g, &visit);
 }

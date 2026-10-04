@@ -580,7 +580,9 @@ void ui_source_complete(
     } else {
         complete_css(&r, project, 0, 0);
     }
-    qsort(out->items, (size_t)acount(out->items), sizeof *out->items, completion_order);
+    if (acount(out->items) > 1) {
+        qsort(out->items, (size_t)acount(out->items), sizeof *out->items, completion_order);
+    }
 }
 
 void ui_source_completions_free(ui_source_completions *completions)

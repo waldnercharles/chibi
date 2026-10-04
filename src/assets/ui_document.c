@@ -216,6 +216,9 @@ typedef struct expansion
 
 static void put(char **out, const char *text, size_t length)
 {
+    if (!length) {
+        return;
+    }
     int start = acount(*out);
     asetlen(*out, start + (int)length);
     memcpy(*out + start, text, length);

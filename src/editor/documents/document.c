@@ -201,11 +201,13 @@ static ed_location capture_location(const editor *e)
         }
     }
     assert(location.caller_count <= ED_CALLER_LIMIT);
-    memcpy(
-        location.callers,
-        e->graph_callers,
-        (size_t)location.caller_count * sizeof *location.callers
-    );
+    if (location.caller_count) {
+        memcpy(
+            location.callers,
+            e->graph_callers,
+            (size_t)location.caller_count * sizeof *location.callers
+        );
+    }
     return location;
 }
 

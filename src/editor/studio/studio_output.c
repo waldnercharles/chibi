@@ -795,7 +795,7 @@ static bool show_rows(studio *s, const studio_panel_sync *at)
     for (int i = 0; i < SHAPE_COUNT; i++) {
         yyjson_mut_val *rows = yyjson_mut_obj_get(at->variable, SHAPE_ARRAYS[i]);
         changed |= i == (int)kind
-                     ? show_window(s, at->doc, rows, keys + first, length, first, height)
+                     ? show_window(s, at->doc, rows, keys ? keys + first : NULL, length, first, height)
                      : fit(at->doc, rows, 0, (shape)i);
     }
     changed |= ui_data_put_text(at->doc, at->variable, "empty", count ? "" : empty_text(s));

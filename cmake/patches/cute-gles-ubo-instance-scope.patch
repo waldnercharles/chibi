@@ -1,0 +1,24 @@
+--- a/libraries/cute/cute_spirv.h
++++ b/libraries/cute/cute_spirv.h
+@@ -7003,7 +7003,9 @@
+ 		if (d->kind != CSPV_D_BLOCK || d->instance_name) continue;
+ 		for (int j = 0; j < d->num_members; j++) {
+ 			char* nm = (char*)cspv_arena_alloc(&ctx->arena, 192);
+-			snprintf(nm, 192, "cf_ubi_%s.%s", d->name, d->member_names[j]);
++			snprintf(nm, 192, "cf_%s_ubi_%s.%s",
++				ctx->stage == CSPV_STAGE_VERTEX ? "vs" : "fs",
++				d->name, d->member_names[j]);
+ 			cspv_tp_rename(g, d->member_names[j], nm);
+ 		}
+ 	}
+@@ -7087,7 +7089,9 @@
+ 				sappend(ctx->tp_out, ";\n");
+ 			}
+ 			if (d->instance_name) sfmt_append(ctx->tp_out, "} %s;\n", d->instance_name);
+-			else sfmt_append(ctx->tp_out, "} cf_ubi_%s;\n", d->name); // See member rename above.
++			else sfmt_append(ctx->tp_out, "} cf_%s_ubi_%s;\n",
++				ctx->stage == CSPV_STAGE_VERTEX ? "vs" : "fs",
++				d->name); // See member rename above.
+ 			break;
+ 
+ 		case CSPV_D_OPAQUE:

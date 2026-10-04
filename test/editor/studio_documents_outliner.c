@@ -1,11 +1,13 @@
 /* The Outliner: renaming objects in place, and the Hierarchy a UI
  * document shows there. */
 
+#include "assets/new_asset.h"
 #include "assets/ui_events.h"
 #include "editor/collab/collab.h"
 #include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/studio/studio_nodes.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
@@ -650,6 +652,213 @@ static void list_takes_tab()
     fixture_free(&f);
 }
 
+/* ---------- Refresh follows what the panels read ---------- */
+
+/* The Refresh events the panels' behaviors ran in the next frame. */
+static uint64_t refreshes(studio_fixture *f)
+{
+    game_behavior_world *behaviors = studio_ui_behaviors(f->studio);
+    game_behavior_set_profiling(behaviors, true);
+    game_behavior_profile_begin(behaviors);
+    frames(f, 1);
+    const game_behavior_profile_frame *profile = game_behavior_profile(behaviors);
+    uint64_t runs = 0;
+    for (int i = 0; i < profile->count; i++) {
+        runs += !strcmp(profile->rows[i].event, "Refresh") ? profile->rows[i].dispatches
+                                                           : 0;
+    }
+    game_behavior_set_profiling(behaviors, false);
+    return runs;
+}
+
+/* The name row `index` shows, or "" while it is out of the window. */
+static void row_name(studio *s, int index, char *out, size_t size)
+{
+    rml_element *row = row_of(s, index);
+    rml_element *name = row ? rml_element_query_selector(row, ".name") : NULL;
+    out[0] = '\0';
+    if (name) {
+        rml_element_inner_rml(name, out, size);
+    }
+}
+
+static int prototype_options(studio *s)
+{
+    rml_element *popup = studio_element(s, "#outliner-add");
+    return popup ? rml_element_query_selector_all(popup, ".menu-item", NULL, 0) : -1;
+}
+
+/* A panel's behaviors refresh only when what they read changed: nothing
+   runs in a frame with nothing changed, even when a UI frame is forced, and
+   each thing the Outliner shows reaches its rows by the next frame. */
+static void refresh_follows_changes()
+{
+    studio_fixture f = objects_open(3);
+    studio *s = f.studio;
+    app_scene_authoring *scene = f.scene;
+    uint64_t idle = 0;
+    for (int i = 0; i < 4; i++) {
+        s->ui_schedule.wake = true;
+        idle += refreshes(&f);
+    }
+    test_check(idle == 0, "a UI frame with nothing changed runs no panel's Refresh");
+    /* A name Properties commits, and its Undo. */
+    char before[64], name[64];
+    row_name(s, 1, before, sizeof before);
+    studio_rename_commit(s, ecs_entity_to_u64(scene->actors[1].entity), "Annex");
+    uint64_t ran = refreshes(&f);
+    row_name(s, 1, name, sizeof name);
+    bool renamed = ran > 0 && !strcmp(name, "Annex");
+    studio_history(s, false);
+    refreshes(&f);
+    row_name(s, 1, name, sizeof name);
+    bool undone = !strcmp(name, before);
+    /* A selection the Scene makes, then a second object. */
+    select_instance(scene, 2);
+    refreshes(&f);
+    row_name(s, 2, name, sizeof name);
+    rml_element *active = studio_element(s, "#outliner-list .tree-row[data-active] .name");
+    char shown[64] = "";
+    if (active) {
+        rml_element_inner_rml(active, shown, sizeof shown);
+    }
+    bool selected = !strcmp(shown, name);
+    scene_toggle_instance(scene, 0);
+    refreshes(&f);
+    bool marked = studio_element(s, "#outliner-list .tree-row[data-marked]") != NULL;
+    /* Hide in Editor, a command, and Show All. */
+    studio_hide(s, true);
+    refreshes(&f);
+    bool hidden = studio_element(s, "#outliner-list .tree-row[data-hidden]") != NULL;
+    studio_show_all(s);
+    refreshes(&f);
+    bool shown_again = !studio_element(s, "#outliner-list .tree-row[data-hidden]");
+    /* An object added, and the filter Studio sets. */
+    studio_add_object(s, "Vault");
+    refreshes(&f);
+    /* The List windows its new length once it has laid out. */
+    frames(&f, 2);
+    bool added = row_of(s, 3) != NULL;
+    snprintf(s->outliner_filter, sizeof s->outliner_filter, "Vault_1");
+    refreshes(&f);
+    bool filtered = row_of(s, 1) && !row_of(s, 0) && !row_of(s, 2);
+    s->outliner_filter[0] = '\0';
+    refreshes(&f);
+    frames(&f, 2);
+    bool cleared = row_of(s, 0) && row_of(s, 2);
+    /* An asset the project gains joins Add's list. */
+    int options = prototype_options(s);
+    char *json = new_asset_text(NEW_ASSET_PROTOTYPE, "Crate");
+    int registered = app_scene_authoring_register_prototype(scene, json, NULL);
+    free(json);
+    refreshes(&f);
+    bool asset = registered == 0 && options >= 0 &&
+                 prototype_options(s) == options + 1;
+    /* Play shuts Add, and Stop opens it. */
+    studio_runtime(s, APP_RUNTIME_PLAY);
+    frames(&f, 3);
+    bool playing = studio_element(s, "button[popovertarget=outliner-add][data-disabled]") !=
+                   NULL;
+    studio_runtime(s, APP_RUNTIME_STOP);
+    frames(&f, 3);
+    bool stopped = !studio_element(s, "button[popovertarget=outliner-add][data-disabled]");
+    idle = 0;
+    for (int i = 0; i < 3; i++) {
+        idle += refreshes(&f);
+    }
+    if (!(renamed && undone && selected && marked && hidden && shown_again &&
+          added && filtered && cleared && asset && playing && stopped && !idle)) {
+        printf(
+            "  refresh: renamed %d undone %d selected %d marked %d hidden %d "
+            "shown %d "
+            "added %d filtered %d cleared %d asset %d playing %d stopped %d "
+            "idle %d\n",
+            renamed,
+            undone,
+            selected,
+            marked,
+            hidden,
+            shown_again,
+            added,
+            filtered,
+            cleared,
+            asset,
+            playing,
+            stopped,
+            (int)idle
+        );
+    }
+    test_check(
+        renamed && undone && selected && marked && hidden && shown_again && added,
+        "the Outliner follows a name Properties commits and its Undo, the "
+        "Scene's selection, Hide in Editor, and an object added"
+    );
+    test_check(
+        filtered && cleared && asset && playing && stopped && !idle,
+        "the Outliner follows the filter Studio sets, an asset the project "
+        "gains, and Play and Stop, and settles to no Refresh after them"
+    );
+    fixture_free(&f);
+}
+
+/* What the editor nodes read moves the stamp that wakes Refresh: each change
+   a panel can show differs from the last, and a frame between them does not. */
+static void stamp_follows_reads()
+{
+    studio_fixture f = objects_open(3);
+    studio *s = f.studio;
+    app_scene_authoring *scene = f.scene;
+    uint64_t at = studio_nodes_stamp(s);
+    frames(&f, 3);
+    bool still = studio_nodes_stamp(s) == at;
+    bool moved[9] = { false };
+    int step = 0;
+#define MOVES(change)                                                          \
+    do {                                                                       \
+        change;                                                                \
+        frames(&f, 2);                                                         \
+        uint64_t now = studio_nodes_stamp(s);                                  \
+        moved[step++] = now != at;                                             \
+        at = now;                                                              \
+    } while (0)
+    MOVES(select_instance(scene, 1));
+    MOVES(studio_toggle_spawn_break(s, "Vault"));
+    MOVES(studio_rename_object(s));
+    MOVES(s->rename.entity = 0);
+    MOVES(app_scene_authoring_set_instance_behavior(scene, "Teller", false));
+    MOVES(app_scene_authoring_set_instance_behavior(scene, "Teller", true));
+    MOVES(studio_history(s, false));
+    MOVES(studio_runtime(s, APP_RUNTIME_PLAY));
+    MOVES(studio_runtime(s, APP_RUNTIME_STOP));
+#undef MOVES
+    bool all = true;
+    for (int i = 0; i < step; i++) {
+        all &= moved[i];
+    }
+    if (!(still && all)) {
+        printf(
+            "  stamp: still %d, moved %d %d %d %d %d %d %d %d %d\n",
+            still,
+            moved[0],
+            moved[1],
+            moved[2],
+            moved[3],
+            moved[4],
+            moved[5],
+            moved[6],
+            moved[7],
+            moved[8]
+        );
+    }
+    test_check(
+        still && all,
+        "the editor nodes' stamp holds between frames and moves with the "
+        "selection, a spawn break, in-place rename, an attached behavior, "
+        "Undo, and Play and Stop"
+    );
+    fixture_free(&f);
+}
+
 void studio_documents_outliner_checks()
 {
     designer_selection_reveals_hierarchy();
@@ -660,4 +869,6 @@ void studio_documents_outliner_checks()
     filter_and_root();
     rows_window();
     list_takes_tab();
+    refresh_follows_changes();
+    stamp_follows_reads();
 }

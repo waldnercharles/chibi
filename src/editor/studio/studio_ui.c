@@ -32,6 +32,7 @@ typedef struct panel
     char *name;
     int index; /* in the launched scene */
     ui_mount *mount;
+    uint64_t refreshed; /* the revision its behaviors last refreshed at; 0 before */
     char error[256]; /* the last error reported */
 } panel;
 
@@ -53,6 +54,10 @@ struct studio_ui
     ui_mount *controls[STUDIO_AREA_COUNT]; /* an authored panel in each header */
     studio_node_service nodes; /* the "studio" service its behaviors call */
     bool wake; /* authored activations waiting for a host emission */
+    /* What the panels' behaviors read (studio_nodes_stamp) as of the last
+       tick; `revision` counts its changes, and the panels refresh when it
+       moved past theirs. */
+    uint64_t stamp, revision;
     uint64_t ui_seen, save_seen, panels_seen;
     uint64_t prefs_seen; /* the settings revision Studio's preferences match */
 };
@@ -178,6 +183,13 @@ static void report_error(studio *s, const char *path, const char *message)
     studio_record(s, KIT_TOAST_ERROR, error);
 }
 
+/* Every panel's behaviors refresh in the next UI frame. */
+static void refresh_all(studio_ui *ui)
+{
+    ui->revision++;
+    ui->wake = true;
+}
+
 /* Recompiles an edited panel behavior into the running world, keeping its
  * state; a behavior that fails keeps its last valid version. */
 static void reload_behavior(studio *s, const char *path)
@@ -247,6 +259,7 @@ static void follow_disk(studio *s)
     for (int i = 0; i < acount(changed); i++) {
         if (in_folder(ui, changed[i], "/behaviors")) {
             reload_behavior(s, changed[i]);
+            refresh_all(ui);
         }
         relaunch |= in_folder(ui, changed[i], "/scenes") ||
                     in_folder(ui, changed[i], "/prototypes");
@@ -273,6 +286,7 @@ studio_ui *studio_ui_new(studio *s, const char *project_root, char *error, size_
         ui->default_page = xstrdup(project.ui);
     }
     chibi_project_free(&project);
+    ui->revision = 1; /* a panel is due before it first refreshes */
     ui_data_init(&ui->data, context, studio_sources_new(), on_emit, ui);
     size_t length = strlen(project_root) + sizeof "/content";
     ui->content_root = xmalloc(length);
@@ -334,7 +348,8 @@ static uint64_t panel_state(studio_ui *ui)
 }
 
 /* Authored behaviors keep their host clock even when unchanged native panels
- * have no work. Actual UI/save revisions wake the next model emission. */
+ * have no work. Actual UI/save revisions wake the next model emission, as
+ * does a change in what the panels' behaviors read. */
 bool studio_ui_tick(studio *s)
 {
     if (!s->ui) {
@@ -343,6 +358,11 @@ bool studio_ui_tick(studio *s)
     studio_ui *ui = s->ui;
     follow_disk(s);
     game_prototype_preview_tick(ui->world, s->time);
+    uint64_t stamp = studio_nodes_stamp(s);
+    if (stamp != ui->stamp) {
+        ui->stamp = stamp;
+        refresh_all(ui);
+    }
     uint64_t model = game_ui_revision(engine_ui(game_prototype_preview_runtime(ui->world)));
     uint64_t save = game_save_revision(settings(ui));
     uint64_t panels = panel_state(ui);
@@ -436,12 +456,15 @@ static void settle(studio_ui *ui)
 
 /* Sends a panel's events to its entity's behaviors now, an input's value
  * first, unless they are Studio's (studio_panel_route). New Project's
- * dialog takes its own, its backdrop's Close among them. */
-static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
+ * dialog takes its own, its backdrop's Close among them. True when it sent
+ * any. */
+static bool send_activations(studio *s, ui_mount *mount, ecs_entity entity)
 {
     studio_ui *ui = s->ui;
     ui_activation a;
+    bool sent = false;
     while (ui_mount_take(mount, &a)) {
+        sent = true;
         ui->wake = true;
         if (!strcmp(ui_mount_name(mount), "NewProject") &&
             (!strncmp(a.event, "newProject.", 11) || !strcmp(a.event, "Close"))) {
@@ -480,6 +503,7 @@ static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
         }
         dispatch(s, entity, &a);
     }
+    return sent;
 }
 
 void studio_ui_send(studio *s, const char *name, const char *argument)
@@ -492,7 +516,7 @@ void studio_ui_send(studio *s, const char *name, const char *argument)
     snprintf(a.args[0], sizeof a.args[0], "%s", argument);
     dispatch(s, (ecs_entity){ 0 }, &a);
     settle(s->ui);
-    s->ui->wake = true;
+    refresh_all(s->ui);
 }
 
 /* While an asset is dragged over an object's element, data-object="<key>"
@@ -500,6 +524,9 @@ void studio_ui_send(studio *s, const char *name, const char *argument)
    says what a drop does. */
 static void preview_drop(studio *s, ui_mount *mount, rml_element *host)
 {
+    if (!ui_drag_active(rml_backend_context(s->backend), NULL)) {
+        return;
+    }
     rml_element *over = rml_element_query_selector(host, "[data-drop-over][data-object]");
     ui_drag_item item;
     if (!over || !ui_mount_holds(mount, over) || !ui_drag_over(over, &item)) {
@@ -661,6 +688,9 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
         ui_mount_free(*mount);
         *mount = NULL;
     }
+    /* Its behaviors refresh when a document is new to them, when what they
+       read changed since they last did, and after the panel's own events. */
+    bool due = !*mount || p->refreshed != ui->revision;
     if (!*mount) {
         *mount = ui_mount_new(ui->content_root, document);
     }
@@ -673,21 +703,26 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
     game_ui *model = engine_ui(game_prototype_preview_runtime(ui->world));
     /* What behaviors asked for since (a list's reveal) applies before the
        lists window, whose `window` events join the panel's activations;
-       then the behaviors refresh, as a panel source syncs, and what they
-       set shows in this frame. An effect can send events of its own (a
-       focus moved blurs a field, which commits it): they run in the same
-       frame too, a few rounds at most. */
+       then the behaviors refresh when due, as a panel source syncs, and
+       what they set shows in this frame. An effect can send events of its
+       own (a focus moved blurs a field, which commits it): they run in the
+       same frame too, a few rounds at most. */
+    uint64_t revision = ui->revision;
     ui_mount_apply(*mount, model, id);
     ui_mount_measure(*mount, model, id);
     for (int round = 0;
          round == 0 || (round < EFFECT_ROUNDS && ui_mount_pending(*mount));
          round++) {
-        send_activations(s, *mount, entity);
-        dispatch(s, entity, &(ui_activation){ .event = "Refresh" });
+        due |= send_activations(s, *mount, entity);
+        if (due) {
+            dispatch(s, entity, &(ui_activation){ .event = "Refresh" });
+            due = false;
+        }
         settle(ui);
         ui_data_show_entities(&ui->data, model);
         ui_mount_apply(*mount, model, id);
     }
+    p->refreshed = revision;
     preview_drop(s, *mount, host);
     report(s, p, *mount);
 }

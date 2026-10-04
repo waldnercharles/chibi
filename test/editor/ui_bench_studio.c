@@ -1298,8 +1298,20 @@ static bool outliner_shown(studio *s, outliner_step step, int actor, const char 
     return !strcmp(text, renamed);
 }
 
+/* The behavior runs (dispatches) in the frame so far. */
+static uint64_t behavior_runs(const game_behavior_world *behaviors)
+{
+    const game_behavior_profile_frame *profile = game_behavior_profile(behaviors);
+    uint64_t runs = profile->overflow.dispatches;
+    for (int i = 0; i < profile->count; i++) {
+        runs += profile->rows[i].dispatches;
+    }
+    return runs;
+}
+
 /* Times the UI frames a step takes until it shows, with the behaviors'
-   time in them (game_behavior_profile) and what their views read. */
+   time and runs in them (game_behavior_profile) and what their views
+   read. */
 static void outliner_step_row(studio_bench *b, outliner_step step, const char *name, float row)
 {
     studio *s = b->studio;
@@ -1311,6 +1323,7 @@ static void outliner_step_row(studio_bench *b, outliner_step step, const char *n
     double ms[RUNS], behavior_ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
     bench_counts counts = { 0 };
     int took = 0;
+    uint64_t runs = 0;
     for (int run = -WARMUP; run < RUNS; run++) {
         int actor = middle + 4 + (run & 1);
         if (step == OUTLINER_RENAME) {
@@ -1322,6 +1335,7 @@ static void outliner_step_row(studio_bench *b, outliner_step step, const char *n
         cf_app_update(NULL);
         bench_counts before = studio_mark(s);
         double t = 0, behavior = 0;
+        uint64_t frame_runs = 0;
         for (int p = 0; p < PHASE_COUNT; p++) {
             phase[p] = 0;
         }
@@ -1339,6 +1353,7 @@ static void outliner_step_row(studio_bench *b, outliner_step step, const char *n
             t += native_ui(s, frame_phases);
             cf_app_draw_onto_screen(true);
             behavior += game_behavior_profile(behaviors)->inclusive_cpu_ms;
+            frame_runs += behavior_runs(behaviors);
             for (int p = 0; p < PHASE_COUNT; p++) {
                 phase[p] += frame_phases[p];
             }
@@ -1346,6 +1361,7 @@ static void outliner_step_row(studio_bench *b, outliner_step step, const char *n
             shown = outliner_shown(s, step, actor, renamed) || frame == SHOW_FRAMES_MAX;
         }
         took = frame;
+        runs = frame_runs;
         counts = outliner_counts(s, list, before);
         frames(b, 1);
         if (run < 0) {
@@ -1363,11 +1379,12 @@ static void outliner_step_row(studio_bench *b, outliner_step step, const char *n
     snprintf(
         label,
         sizeof label,
-        "%s (%d UI frame%s; behaviors %.3f ms)",
+        "%s (%d UI frame%s; behaviors %.3f ms, %llu runs)",
         name,
         took,
         took == 1 ? "" : "s",
-        behavior.median
+        behavior.median,
+        (unsigned long long)runs
     );
     bench_row("23", label, bench_stat_of(ms, RUNS), counts);
     phase_row("its phases", phases);

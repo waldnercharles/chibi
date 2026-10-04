@@ -669,10 +669,20 @@ static void step_selection_free(scene_step_selection *entry)
     selection_set_free(&entry->after);
 }
 
+static bool selection_same(const scene_selection_set *a, const scene_selection_set *b)
+{
+    return a->active == b->active && acount(a->ids) == acount(b->ids) &&
+           (!acount(a->ids) ||
+            !memcmp(a->ids, b->ids, (size_t)acount(a->ids) * sizeof *a->ids));
+}
+
 /* A step the last frame added remembers the selection the frame began with
-   and the one it ended with; then this frame's selection is noted. */
+   and the one it ended with; then this frame's selection is noted, and
+   counted when it is not the last frame's. */
 void scene_selection_track(app_scene_authoring *scene)
 {
+    scene_selection_set now = selection_now(scene);
+    scene->selection_revision += !selection_same(&scene->frame_selection, &now);
     uint64_t step = scene_history_step_id(scene->history, false);
     if (step > scene->seen_step) {
         if (acount(scene->step_selections) == STEP_SELECTIONS_MAX) {
@@ -688,13 +698,14 @@ void scene_selection_track(app_scene_authoring *scene)
             scene->step_selections,
             ((scene_step_selection){ .step = step,
                                      .before = scene->frame_selection,
-                                     .after = selection_now(scene) })
+                                     .after = now })
         );
         scene->frame_selection = (scene_selection_set){ 0 };
         scene->seen_step = step;
+        now = selection_now(scene);
     }
     selection_set_free(&scene->frame_selection);
-    scene->frame_selection = selection_now(scene);
+    scene->frame_selection = now;
 }
 
 void scene_selection_free(app_scene_authoring *scene)

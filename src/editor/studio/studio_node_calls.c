@@ -183,6 +183,59 @@ static void prototype_choices(studio *s, arena *storage, pin_value *out)
                           .ptr = items };
 }
 
+/* ---------- Revision ---------- */
+
+static uint64_t mix(uint64_t hash, uint64_t value)
+{
+    return (hash ^ value) * 1099511628211ull;
+}
+
+static uint64_t mix_text(uint64_t hash, const char *text)
+{
+    for (const char *c = text; *c; c++) {
+        hash = mix(hash, (unsigned char)*c);
+    }
+    return mix(hash, 0);
+}
+
+/* Stands for everything the reads above look at, as counters their owners
+   keep: it differs after a change, and between changes it is the same, so
+   a panel refreshes only when it moved. A scene edit invalidates the asset
+   index, which then counts it, as does an Undo or Redo the history's heads;
+   the selection and the view flags count their own. A node that reads
+   something new adds its counter here. */
+uint64_t studio_nodes_stamp(const studio *s)
+{
+    const app_scene_authoring *scene = s->scene;
+    const uint64_t counters[] = {
+        scene->asset_index_generation,
+        scene->asset_index_revision,
+        (uintptr_t)scene->history,
+        scene_history_step_id(scene->history, false),
+        scene_history_step_id(scene->history, true),
+        (uint64_t)acount(scene->actors),
+        (uint64_t)acount(scene->prototypes),
+        (uint64_t)scene->selected,
+        scene->selection_revision,
+        game_save_revision(scene->view_store),
+        studio_editable(s),
+        studio_live(s),
+        s->mac,
+        s->rename.entity,
+        s->rename.outliner,
+    };
+    uint64_t stamp = 1469598103934665603ull;
+    for (size_t i = 0; i < sizeof counters / sizeof *counters; i++) {
+        stamp = mix(stamp, counters[i]);
+    }
+    stamp = mix_text(stamp, s->outliner_filter);
+    stamp = mix_text(stamp, scene->scene_path ? scene->scene_path : "");
+    for (int i = 0; i < acount(scene->spawn_breaks); i++) {
+        stamp = mix_text(stamp, scene->spawn_breaks[i]);
+    }
+    return stamp;
+}
+
 /* ---------- Effects ---------- */
 
 /* Selects the object as a click on its row does: alone, Toggle in or out

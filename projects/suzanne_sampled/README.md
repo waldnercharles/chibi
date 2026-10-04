@@ -11,6 +11,7 @@ COPYING and provenance.json for licensing, exact geometry hashes and operations.
 ```sh
 blender --background --factory-startup --python projects/suzanne_sampled/convert.py -- 96 144
 make build-release
+cmake --build build-release --target test_suite
 python3 projects/suzanne_sampled/author.py --preview
 build-release/test_suite --model-sampled
 build-release/test_suite --model-sampled-gpu "$PWD/projects/suzanne_sampled/content"

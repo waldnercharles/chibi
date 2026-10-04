@@ -19,7 +19,7 @@ def wire(a,b,pin='Geometry'):return dict(op='connect',**{'from':a},from_pin='Geo
 def proto(name,components):
  if not (PROJECT/f'content/prototypes/{name}.kdl').exists():call('buildPrototype',kind='prototype',name=name,create=True,operations=[dict(op='add_component',component=k,fields=v) for k,v in components.items()])
 def main():
- (PROJECT/'project.kdl').write_text('version 5\nname "Sampled Blender Suzanne"\ncontent "content"\nstart_scene "scenes/SuzanneFront.kdl"\n')
+ if not (PROJECT/'project.kdl').exists(): (PROJECT/'project.kdl').write_text('version 5\nname "Sampled Blender Suzanne"\ncontent "content"\nstart_scene "scenes/SuzanneFront.kdl"\n')
  provenance=json.loads((PROJECT/'reference/provenance.json').read_text())
  for field in provenance['grids']:
   name='BlenderSuzanne'+str(field['resolution'])

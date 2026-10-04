@@ -34,6 +34,12 @@ assert result('readAsset',kind='scene',name='SdfDepthCoverageCircle')['hash']==s
 poses=[]
 for frames in (0,120,240,360,480):
  poses.append(result('captureRuntimeSnapshot',kind='scene',name=NAME,frames=frames,fields=['GameTransform.x','GameTransform.y','GameVisualTransform.pitch','GameVisualTransform.roll','GameShader.shape']))
+for snapshot,expected in zip(poses,[(60,0),(0,60),(-60,0),(0,-60),(60,0)]):
+ for name,sign in [('Cyan orbiting emitter',1),('Amber orbiting emitter',-1)]:
+  entity=next(e for e in snapshot['entities'] if e['name']==name)
+  transform=next(c for c in entity['components'] if c['name']=='GameTransform')
+  values={f['name']:f['value'] for f in transform['fields']}
+  assert abs(values['x']-sign*expected[0])<.01 and abs(values['y']-sign*expected[1])<.01,(name,values,expected)
 (EVIDENCE/'orbit-emitter-poses.json').write_text(json.dumps(poses,indent=2))
 (EVIDENCE/'orbit-source-preservation.json').write_text(json.dumps({'scene':'SdfDepthCoverageCircle','before_hash':source['hash'],'after_hash':source['hash'],'demo':NAME},indent=2))
 print('Created and validated',NAME,flush=True)

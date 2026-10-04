@@ -245,6 +245,10 @@ enum
 };
 void sg_emit_comment(studio *s, graph_comment_box *box);
 void sg_comment_menu(studio *s, sg_menu *m, graph_comment_box *box);
+/* A frame's color as its swatch shows it: the canvas's own when it has none. */
+uint32_t sg_frame_color(const graph_comment_box *box);
+/* Sets a node's comment and whether it hides, as one undo step. */
+void sg_set_node_comment(studio *s, node *n, const char *text, bool hidden);
 void sg_edit_title(studio *s, uint64_t comment);
 void sg_begin_resize(studio *s, graph_comment_box *box, unsigned edges);
 void sg_resize(studio *s);
@@ -253,11 +257,6 @@ const char *sg_resize_cursor(unsigned edges);
 void sg_emit_bubble(studio *s, node *n);
 void sg_edit_bubble(studio *s, uint64_t node_id);
 bool sg_node_comment_items(studio *s, sg_menu *m, node *n);
-void sg_comment_properties(studio *s, node *n);
-/* The Node tab for a selected frame: its title and color. */
-void sg_frame_properties(studio *s, graph_comment_box *box);
-/* The Node tab's heading: an icon, a name and what it is. */
-void sg_identity(kit *k, uint32_t icon, const char *name, const char *lineage);
 
 /* Find in graph (studio_graph_find.c). */
 void sg_find_panel(studio *s);
@@ -285,6 +284,33 @@ bool sg_color_pin(const node *n, const pin_spec *spec);
 /* A color pin's value as 0xRRGGBBAA. */
 uint32_t sg_literal_color(const pin_spec *spec, const pin_value *value);
 
+/* Literals (studio_graph_literals.c), shared by the canvas's controls and
+   Properties. */
+typedef enum
+{
+    SG_STEP_ONCE,   /* a discrete edit: an Undo step of its own */
+    SG_STEP_LIVE,   /* a gesture runs: its first edit opens the step */
+    SG_STEP_COMMIT, /* a gesture ends, in its step, or one of its own */
+} sg_step;
+/* Writes a pin's default as `step` says; false when the graph refused it. */
+bool sg_set_literal(studio *s, node *n, int output, int p, const pin_value *value, sg_step step);
+double sg_literal_number(const pin_value *value);
+void sg_set_literal_number(pin_value *value, double number);
+/* A number type's range; unbounded types leave min and max as they are. */
+void sg_literal_bounds(pin_type type, double *min, double *max);
+double sg_literal_alpha(const pin_spec *spec, const pin_value *value);
+bool sg_write_literal_color(const pin_spec *spec, pin_value *value, arena *scratch, uint32_t rgba);
+void sg_write_literal_alpha(const pin_spec *spec, pin_value *value, arena *scratch, double alpha);
+/* A color ramp's stops, which stay ordered by position. */
+bool sg_ramp_stops(const pin_spec *shape);
+/* Where stop `index` may move, between its neighbours; false when they
+   leave it no room. */
+bool sg_ramp_range(const pin_array *array, int index, double *min, double *max);
+bool sg_array_can_add(const pin_value *value, const pin_spec *shape);
+/* The array with item `remove` gone, or one added with `append` (a ramp's
+   between its widest gap's stops); NULL when it cannot be. */
+pin_array *sg_array_edit(arena *scratch, const pin_value *value, const pin_spec *shape, int remove, bool append);
+
 /* Rendering (studio_graph_draw.c). */
 /* A pin's socket color as 0xRRGGBBAA. */
 uint32_t sg_pin_color(const studio *s, const pin_spec *spec);
@@ -296,5 +322,82 @@ bool sg_expression_editing(const studio *s, const kit *k, const node *expression
 void sg_emit_expression_editor(studio *s, kit *k, node *expression, uint64_t owner_pin);
 int sg_set_expression_source(studio *s, node *expression, const char *source);
 void sg_emit_canvas(studio *s);
+
+/* ---------- Properties' Node and Member tabs (workstream G1) ----------
+ * Rows of graph_details (studio_graph_details.c), which the tabs write as a
+ * sync walks them; see that file for the variable. */
+#define GD_ROW_ID GD_ROW_ID_MAX
+typedef struct gd_view gd_view;
+typedef struct gd_rows
+{
+    gd_view *v;
+    yyjson_mut_val *list, *panel;
+    size_t count;
+    bool open;
+} gd_rows;
+/* What every row shows; `control` names its control. */
+typedef struct gd_row
+{
+    const char *id, *label, *about, *control;
+    bool readonly, invalid;
+} gd_row;
+/* How a number edits: Base UI's NumberField attributes. */
+typedef struct gd_number_shape
+{
+    double min, max, step;
+    int precision;
+    bool integer, single;
+} gd_number_shape;
+void gd_identity(gd_view *v, uint32_t icon, const char *name, const char *of);
+void gd_empty(gd_view *v, const char *text);
+/* A panel, open as last folded; write rows while open, then end it. */
+gd_rows gd_panel(gd_view *v, const char *key, const char *title);
+/* The panel's add button below its rows, which sends addPin with `id`. */
+void gd_panel_add(gd_rows *r, const char *id, const char *label, bool disabled);
+void gd_panel_end(gd_rows *r);
+yyjson_mut_val *gd_next_row(gd_rows *r, const gd_row *d);
+void gd_put_text(gd_rows *r, yyjson_mut_val *row, const char *key, const char *text);
+void gd_put_flag(gd_rows *r, yyjson_mut_val *row, const char *key, bool on);
+void gd_put_int(gd_rows *r, yyjson_mut_val *row, const char *key, int n);
+void gd_put_number(gd_rows *r, yyjson_mut_val *row, double value, const gd_number_shape *shape);
+void gd_put_alpha(gd_rows *r, yyjson_mut_val *row, double alpha);
+void gd_put_axes(gd_rows *r, yyjson_mut_val *row, const double *values, int count, const gd_number_shape *shape);
+/* A choice's options, each valued by its place, `current` that of the
+   value; listed only while the choice is open. */
+void gd_put_choices(gd_rows *r, yyjson_mut_val *row, const editor_choices *choices, int current);
+/* An asset field's kind, picker and problem. */
+void gd_put_asset(gd_rows *r, yyjson_mut_val *row, reference_asset_kind kind, const char *value);
+/* A type's swatch, as Members colors it, and its label. */
+void gd_put_type(gd_rows *r, yyjson_mut_val *row, const pin_spec *pin, const char *label);
+/* The rows of a row's popover. */
+gd_rows gd_sub(gd_rows *r, yyjson_mut_val *row);
+void gd_sub_end(gd_rows *r);
+/* Intents changed what the tabs show. */
+void gd_changed(studio *s);
+
+/* The Node tab (studio_graph_properties.c). */
+void studio_node_details(studio *s, gd_view *v);
+void studio_node_details_action(studio *s, const char *action, const ui_activation *a);
+/* An input's row: its source field, chip or value editor. */
+void sg_input_row(gd_rows *r, studio *s, node *n, int p);
+/* The Member tab (studio_member_properties.c). */
+void studio_member_details(studio *s, gd_view *v);
+void studio_member_details_action(studio *s, const char *action, const ui_activation *a);
+
+/* How Properties shows an input (studio_graph_values.c), as the canvas does:
+   execution, its source field, a chip or its value editor; `text` is the
+   field's or the chip's. */
+typedef enum
+{
+    SG_INPUT_NONE,
+    SG_INPUT_EXEC,
+    SG_INPUT_SOURCE,
+    SG_INPUT_CHIP,
+    SG_INPUT_VALUE,
+} sg_input_kind;
+sg_input_kind sg_input_view(studio *s, node *n, int p, char *text, size_t size);
+/* Opens input p's source list under its field, whose row is `row`. */
+void sg_source_open(studio *s, node *n, int p, const char *row, rml_element *field);
+void sg_source_free(studio *s);
 
 #endif

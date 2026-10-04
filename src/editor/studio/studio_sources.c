@@ -2330,6 +2330,11 @@ const studio_panel_source studio_panel_sources[] = {
     { "refactor", NULL, studio_refactor_add, studio_refactor_sync, studio_refactor_action },
     /* Graph chrome (workstream G1). */
     { "graph_menu", NULL, studio_graph_menu_add, studio_graph_menu_sync, studio_graph_menu_action },
+    { "graph_details",
+      "Properties",
+      studio_graph_details_add,
+      studio_graph_details_sync,
+      studio_graph_details_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

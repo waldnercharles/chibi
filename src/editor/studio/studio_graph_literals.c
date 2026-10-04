@@ -149,7 +149,7 @@ static const char *graph_asset_field(
     return chosen;
 }
 
-static double literal_number(const pin_value *value)
+double sg_literal_number(const pin_value *value)
 {
     switch (value->type) {
         case PIN_I8: return value->i8;
@@ -166,7 +166,7 @@ static double literal_number(const pin_value *value)
     }
 }
 
-static void set_literal_number(pin_value *value, double number)
+void sg_set_literal_number(pin_value *value, double number)
 {
     switch (value->type) {
         case PIN_I8: value->i8 = (int8_t)number; break;
@@ -219,7 +219,7 @@ static bool literal_integer_bounds(pin_type type, double *min, double *max)
     }
 }
 
-static void literal_number_bounds(pin_type type, double *min, double *max)
+void sg_literal_bounds(pin_type type, double *min, double *max)
 {
     if (literal_integer_bounds(type, min, max)) {
         return;
@@ -310,7 +310,7 @@ static bool edit_integer64(
 
 static uint32_t color_channel(const pin_value *value)
 {
-    double channel = literal_number(value);
+    double channel = sg_literal_number(value);
     if (value->type == PIN_F32 || value->type == PIN_F64) {
         channel *= 255;
     }
@@ -339,7 +339,7 @@ uint32_t sg_literal_color(const pin_spec *spec, const pin_value *value)
            channels[3];
 }
 
-static bool write_literal_color(const pin_spec *spec, pin_value *value, arena *scratch, uint32_t rgba)
+bool sg_write_literal_color(const pin_spec *spec, pin_value *value, arena *scratch, uint32_t rgba)
 {
     if (value->type == PIN_U32) {
         value->u = rgba;
@@ -360,7 +360,7 @@ static bool write_literal_color(const pin_spec *spec, pin_value *value, arena *s
         if (type->field_count == 4) {
             pin_value alpha;
             pin_read_field(value->ptr, &type->fields[3], &alpha);
-            set_literal_number(&alpha, alpha.type == PIN_F32 || alpha.type == PIN_F64 ? 1 : 255);
+            sg_set_literal_number(&alpha, alpha.type == PIN_F32 || alpha.type == PIN_F64 ? 1 : 255);
             pin_write_field(value->ptr, &type->fields[3], alpha);
         }
     }
@@ -374,13 +374,13 @@ static bool write_literal_color(const pin_spec *spec, pin_value *value, arena *s
             channel /= 255;
         }
         component = previous;
-        set_literal_number(&component, channel);
+        sg_set_literal_number(&component, channel);
         pin_write_field(value->ptr, field, component);
     }
     return true;
 }
 
-static double literal_alpha(const pin_spec *spec, const pin_value *value)
+double sg_literal_alpha(const pin_spec *spec, const pin_value *value)
 {
     const type_desc *type = registry_type_by_name(spec->type_name);
     if (!type || type->field_count != 4 || !value->ptr) {
@@ -388,14 +388,14 @@ static double literal_alpha(const pin_spec *spec, const pin_value *value)
     }
     pin_value alpha;
     pin_read_field(value->ptr, &type->fields[3], &alpha);
-    double number = literal_number(&alpha);
+    double number = sg_literal_number(&alpha);
     if (alpha.type != PIN_F32 && alpha.type != PIN_F64) {
         number /= 255;
     }
     return fmin(fmax(number, 0), 1);
 }
 
-static void write_literal_alpha(const pin_spec *spec, pin_value *value, arena *scratch, double alpha)
+void sg_write_literal_alpha(const pin_spec *spec, pin_value *value, arena *scratch, double alpha)
 {
     const type_desc *type = registry_type_by_name(spec->type_name);
     assert(type && type->field_count == 4);
@@ -411,7 +411,7 @@ static void write_literal_alpha(const pin_spec *spec, pin_value *value, arena *s
         alpha *= 255;
     }
     component = previous;
-    set_literal_number(&component, alpha);
+    sg_set_literal_number(&component, alpha);
     pin_write_field(value->ptr, field, component);
 }
 
@@ -587,7 +587,7 @@ static bool edit_struct_control(
     return fields.changed;
 }
 
-static bool is_ramp_stops(const pin_spec *shape)
+bool sg_ramp_stops(const pin_spec *shape)
 {
     return shape->type == PIN_STRUCT && shape->container == PIN_CONTAINER_ARRAY &&
            shape->type_name && !strcmp(shape->type_name, "ShaderRampStop");
@@ -610,6 +610,7 @@ static bool ramp_values(const pin_array *array, shader_ramp_stop stops[SHADER_RA
     return shader_ramp_valid(stops, array->count);
 }
 
+/* A ramp stop's Position keeps it between its neighbours. */
 static void ramp_position_range(const pin_array *array, int index, literal_range *range)
 {
     *range = (literal_range){ .min = 0, .max = 1, .valid = true };
@@ -663,6 +664,15 @@ static bool ramp_insert_value(const pin_array *array, int *at, shader_ramp_stop 
     return true;
 }
 
+bool sg_ramp_range(const pin_array *array, int index, double *min, double *max)
+{
+    literal_range range;
+    ramp_position_range(array, index, &range);
+    *min = range.min;
+    *max = range.max;
+    return range.valid;
+}
+
 static pin_array *array_with_count(
     arena *scratch,
     const pin_array *source,
@@ -699,6 +709,48 @@ static pin_array *array_with_count(
     return copy;
 }
 
+/* Whether an item may be added: a ramp holds SHADER_RAMP_MAX stops at
+   most, each between two others. */
+bool sg_array_can_add(const pin_value *value, const pin_spec *shape)
+{
+    const pin_array *array = value->ptr;
+    if (!sg_ramp_stops(shape)) {
+        return true;
+    }
+    shader_ramp_stop stop;
+    int at;
+    return array && array->count < SHADER_RAMP_MAX &&
+           ramp_insert_value(array, &at, &stop);
+}
+
+pin_array *sg_array_edit(arena *scratch, const pin_value *value, const pin_spec *shape, int remove, bool append)
+{
+    pin_array *array = value->ptr
+                         ? value->ptr
+                         : pin_array_allocate(scratch, shape->type, shape->type_name, 0);
+    bool ramp = sg_ramp_stops(shape);
+    shader_ramp_stop stop = { 0 };
+    int at = array->count;
+    if (append && ramp && !ramp_insert_value(array, &at, &stop)) {
+        return NULL;
+    }
+    pin_value added = { .type = array->element_type,
+                        .type_name = array->type_name,
+                        .container = PIN_CONTAINER_SINGLE };
+    if (append && ramp) {
+        added.ptr = &stop;
+    } else if (append && added.type == PIN_STRUCT) {
+        const type_desc *type = registry_type_by_name(added.type_name);
+        if (type) {
+            added.ptr = arena_alloc(scratch, type->size);
+            memset(added.ptr, 0, type->size);
+        }
+    } else if (append && pin_string(added.type)) {
+        added.str = "";
+    }
+    return array_with_count(scratch, array, remove, append, added.type, added.type_name, at, &added);
+}
+
 static bool edit_array_control(
     studio *s,
     kit *k,
@@ -730,10 +782,8 @@ static bool edit_array_control(
     if (!array) {
         array = pin_array_allocate(scratch, shape->type, shape->type_name, 0);
     }
-    bool ramp = is_ramp_stops(shape);
-    shader_ramp_stop ramp_stop = { 0 };
-    int ramp_insert = count;
-    bool ramp_can_add = !ramp || ramp_insert_value(array, &ramp_insert, &ramp_stop);
+    bool ramp = sg_ramp_stops(shape);
+    bool can_add = sg_array_can_add(&(pin_value){ .ptr = array }, shape);
     int remove = -1;
     pin_spec item_shape = { .type = array->element_type,
                             .type_name = array->type_name,
@@ -785,41 +835,13 @@ static bool edit_array_control(
                             .icon = KIT_ICON_ADD,
                             .variant = KIT_SUBTLE,
                             .size = KIT_SM,
-                            .flags = flags |
-                                     (ramp && !ramp_can_add ? KIT_DISABLED : 0) };
-    append = kit_button(k, "add", &add) && !(flags & KIT_READONLY);
-    if (ramp && count >= SHADER_RAMP_MAX) {
-        append = false;
-    }
+                            .flags = flags | (can_add ? 0 : KIT_DISABLED) };
+    append = kit_button(k, "add", &add) && !(flags & KIT_READONLY) && can_add;
     if (remove >= 0 && append) {
         append = false;
     }
     if (remove >= 0 || append) {
-        int insert_at = append && ramp ? ramp_insert : count;
-        pin_value added = { .type = item_shape.type,
-                            .type_name = item_shape.type_name,
-                            .container = PIN_CONTAINER_SINGLE };
-        if (append && ramp) {
-            added.ptr = &ramp_stop;
-        } else if (append && item_shape.type == PIN_STRUCT) {
-            const type_desc *type = registry_type_by_name(item_shape.type_name);
-            if (type) {
-                added.ptr = arena_alloc(scratch, type->size);
-                memset(added.ptr, 0, type->size);
-            }
-        } else if (append && pin_string(item_shape.type)) {
-            added.str = "";
-        }
-        pin_array *updated = array_with_count(
-            scratch,
-            array,
-            remove,
-            append,
-            item_shape.type,
-            item_shape.type_name,
-            insert_at,
-            &added
-        );
+        pin_array *updated = sg_array_edit(scratch, &(pin_value){ .ptr = array }, shape, remove, append);
         if (updated) {
             array = updated;
             state->changed = true;
@@ -876,7 +898,7 @@ static bool edit_literal_value(
                             .active = active }
         );
         if (has_alpha) {
-            double alpha = literal_alpha(shape, value);
+            double alpha = sg_literal_alpha(shape, value);
             kit_number_desc desc = { .min = 0,
                                      .max = 1,
                                      .step = 0.01,
@@ -895,12 +917,12 @@ static bool edit_literal_value(
             );
             if (alpha_changed) {
                 changed = true;
-                write_literal_alpha(shape, value, scratch, alpha);
+                sg_write_literal_alpha(shape, value, scratch, alpha);
             }
             kit_pop(k);
         }
         if (color_changed) {
-            write_literal_color(shape, value, scratch, color);
+            sg_write_literal_color(shape, value, scratch, color);
         }
         return changed;
     }
@@ -923,9 +945,9 @@ static bool edit_literal_value(
             for (int i = 0; i < width; i++) {
                 pin_value component;
                 pin_read_field(value->ptr, &type->fields[i], &component);
-                double number = literal_number(&component);
+                double number = sg_literal_number(&component);
                 double min = 0, max = 0;
-                literal_number_bounds(component.type, &min, &max);
+                sg_literal_bounds(component.type, &min, &max);
                 kit_number_desc desc = { .precision = 2,
                                          .single_precision = component.type == PIN_F32,
                                          .min = min,
@@ -943,7 +965,7 @@ static bool edit_literal_value(
                 state->active |= active;
                 state->committed |= committed;
                 if (edited) {
-                    set_literal_number(&component, number);
+                    sg_set_literal_number(&component, number);
                     pin_write_field(value->ptr, &type->fields[i], component);
                     changed = true;
                 }
@@ -1012,10 +1034,10 @@ static bool edit_literal_value(
             state->committed |= committed;
             return changed;
         }
-        double number = literal_number(value);
+        double number = sg_literal_number(value);
         bool integer = literal_integer(shape->type);
         double min = 0, max = 0;
-        literal_number_bounds(shape->type, &min, &max);
+        sg_literal_bounds(shape->type, &min, &max);
         if (range) {
             min = fmax(min, range->min);
             max = fmin(max, range->max);
@@ -1034,7 +1056,7 @@ static bool edit_literal_value(
         state->active |= active;
         state->committed |= committed;
         if (changed) {
-            set_literal_number(value, number);
+            sg_set_literal_number(value, number);
         }
         state->changed |= changed;
         return changed;
@@ -1052,6 +1074,44 @@ static bool edit_literal_value(
     }
     kit_label(k, key, "muted", ed_pin_type_name(shape));
     return false;
+}
+
+/* Writes the pin's default, through collaboration while it runs: a new Undo
+   step, or with `coalesce` the gesture's open one. 0 on success. */
+static int write_literal(studio *s, node *n, int output, int p, const pin_value *value, bool coalesce)
+{
+    editor *e = sg_graph_editor(s);
+    if (collab_active() && !collab_replaying()) {
+        return editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                              .data.set_pin_default = {
+                                  .node_id = n->id,
+                                  .output = output,
+                                  .pin_index = p,
+                                  .value = (pin_value *)value,
+                                  .coalesce_history = collab_is_host() && coalesce } }
+        );
+    }
+    /* A scrub is one undo step; discrete edits, and a step or typed value
+       that commits as it changes, are one each. */
+    if (!coalesce) {
+        ed_snapshot_before(e);
+    }
+    return graph_set_pin_default(sg_active_graph(s), n, output, p, value);
+}
+
+bool sg_set_literal(studio *s, node *n, int output, int p, const pin_value *value, sg_step step)
+{
+    studio_graph *g = &s->graph;
+    const pin_spec *spec = output ? &n->output_pins[p] : &n->input_pins[p];
+    bool same = value_edit_matches(g, n, output, spec->id, NULL);
+    int edited = write_literal(s, n, output, p, value, step != SG_STEP_ONCE && same);
+    value_edit_set(g, n, output, spec->id, NULL, edited == 0 && step == SG_STEP_LIVE);
+    if (edited == 0) {
+        touched(sg_graph_editor(s));
+    }
+    return edited == 0;
 }
 
 static void apply_literal_edit(
@@ -1076,25 +1136,7 @@ static void apply_literal_edit(
         }
         return;
     }
-    int edited;
-    bool coalesce = state.streaming && same_edit;
-    if (collab_active() && !collab_replaying()) {
-        edited = editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
-                              .data.set_pin_default = {
-                                  .node_id = n->id,
-                                  .output = output,
-                                  .pin_index = p,
-                                  .value = value,
-                                  .coalesce_history = collab_is_host() && coalesce } }
-        );
-    } else {
-        if (!coalesce) {
-            ed_snapshot_before(e);
-        }
-        edited = graph_set_pin_default(sg_active_graph(s), n, output, p, value);
-    }
+    int edited = write_literal(s, n, output, p, value, state.streaming && same_edit);
     value_edit_set(
         g,
         n,
@@ -1144,7 +1186,7 @@ static bool choice_control(
                                                      !strcmp(value->str, choice.name)
                       : spec->type == PIN_ENUM
                           ? choice.value == value->e
-                          : choice.value == literal_number(value);
+                          : choice.value == sg_literal_number(value);
         if (selected) {
             current = i;
             break;
@@ -1174,7 +1216,7 @@ static bool choice_control(
     } else if (spec->type == PIN_ENUM) {
         value->e = selected.value;
     } else {
-        set_literal_number(value, selected.value);
+        sg_set_literal_number(value, selected.value);
     }
     return true;
 }
@@ -1271,7 +1313,7 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
             default: number = value.d; break;
         }
         double min = 0, max = 0;
-        literal_number_bounds(spec->type, &min, &max);
+        sg_literal_bounds(spec->type, &min, &max);
         kit_number_desc desc = { .single_precision = spec->type == PIN_F32,
                                  .min = min,
                                  .max = max,
@@ -1305,27 +1347,7 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
         }
         return;
     }
-    int edited;
-    bool coalesce = streaming && same_edit;
-    if (collab_active() && !collab_replaying()) {
-        edited = editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
-                              .data.set_pin_default = {
-                                  .node_id = n->id,
-                                  .output = output,
-                                  .pin_index = p,
-                                  .value = &value,
-                                  .coalesce_history = collab_is_host() && coalesce } }
-        );
-    } else {
-        /* A scrub is one undo step; discrete edits, and a step or typed value
-           that commits as it changes, are one each. */
-        if (!coalesce) {
-            ed_snapshot_before(e);
-        }
-        edited = graph_set_pin_default(gr, n, output, p, &value);
-    }
+    int edited = write_literal(s, n, output, p, &value, streaming && same_edit);
     value_edit_set(g, n, output, spec->id, k, edited == 0 && streaming && active && !committed);
     if (edited == 0) {
         touched(e);

@@ -627,6 +627,7 @@ void studio_graph_free(studio *s)
     afree(g->views);
     afree(g->drag);
     afree(g->box_base);
+    studio_graph_details_free(s);
     sg_calculations_free(s);
     afree(g->layouts);
     afree(g->unused);

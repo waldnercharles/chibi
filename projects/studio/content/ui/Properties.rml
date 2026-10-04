@@ -5,7 +5,7 @@
       <button class="btn icon-only" data-attr-data-state="tab.on ? 'on' : 'off'" data-attr-data-tip="tab.tip" data-tip-side="right" data-event-click="emit('properties.tab', tab.id)"><span class="icon">{{ tab.icon }}</span></button>
     </div>
   </nav>
-  <div class="prop-scroll" data-if="properties.view != 'native'">
+  <div class="prop-scroll" data-if="properties.view != 'graph'">
     <div class="identity" data-when="properties.identity.kind == 'object'">
       <div class="glyph"><span class="icon">{{ properties.identity.icon }}</span></div>
       <div class="who">
@@ -97,7 +97,75 @@
     </div>
     <span class="prop-empty" data-if="properties.view == 'empty'">Select an object to edit its properties</span>
   </div>
-  <div class="prop-scroll" id="native" data-if="properties.view == 'native'"></div>
+  <div class="prop-scroll" data-if="properties.view == 'graph'">
+    <div class="identity" data-if="graph_details.identity.name != ''">
+      <div class="glyph"><span class="icon">{{ graph_details.identity.icon }}</span></div>
+      <div class="who"><span class="title">{{ graph_details.identity.name }}</span><div class="lineage"><span>{{ graph_details.identity.of }}</span></div></div>
+    </div>
+    <span class="prop-empty" data-if="graph_details.empty != ''">{{ graph_details.empty }}</span>
+    <section class="panel" data-for="panel : graph_details.panels" data-if="panel.shown" data-attrif-data-open="panel.open">
+      <div class="panel-head">
+        <div class="panel-fold" data-event-click="emit('graph_details.fold', panel.key)">
+          <span class="icon chev">&#xeab4;</span>
+          <span class="title">{{ panel.title }}</span>
+          <span class="spacer"></span>
+          <span class="icon grip">&#xeb04;</span>
+        </div>
+      </div>
+      <div class="panel-body" data-if="panel.open">
+        <div class="graph-row" data-for="row : panel.rows" data-if="row.shown">
+          <use ui="PropertyRow" data-when="row.control != 'expression' && row.control != 'param'" data-alias-property="row">
+            <div class="kind" data-when="row.control != 'type' && row.control != 'struct' && row.control != 'array'"><use ui="GraphField" data-alias-field="row" data-alias-kind="row.control"></use></div>
+            <div class="type-pick" data-when="row.control == 'type'"><kit-dot class="member-swatch" data-attr-shape="row.swatch" data-attr-fill="row.color"></kit-dot><button class="btn subtle type-button" data-attrif-data-disabled="row.readonly" data-event-click="emit('graph_details.type', row.id)"><span class="label">{{ row.type }}</span></button></div>
+            <div class="kind" data-when="row.control == 'struct' || row.control == 'array'">
+              <button class="btn sm" popovertarget="values" data-attr-data-tip="row.control == 'struct' ? row.name : ''" data-attrif-data-disabled="row.readonly"><span class="icon">{{ row.control == 'struct' ? '&#xf0a66;' : '&#xeb86;' }}</span><span class="label">{{ row.text }}</span></button>
+              <div class="popup popover menu" popover id="values" data-attrif-data-struct="row.control == 'struct'">
+                <span class="muted" data-if="row.control == 'struct'">{{ row.name }}</span>
+                <div class="graph-sub" data-for="sub : row.sub">
+                  <span class="muted graph-sub-heading" data-if="sub.heading">{{ sub.label }}</span>
+                  <use ui="PropertyRow" data-if="!sub.heading" data-alias-property="sub">
+                    <use ui="GraphField" data-alias-field="sub" data-alias-kind="sub.control"></use>
+                    <button class="btn sm icon-only" data-if="sub.removable" data-tip="Remove item" data-attrif-data-disabled="row.readonly" data-event-click="emit('graph_details.remove', sub.id)"><span class="icon">&#xea81;</span></button>
+                  </use>
+                  <button class="btn sm icon-only graph-sub-remove" data-if="sub.heading && sub.removable" data-tip="Remove item" data-attrif-data-disabled="row.readonly" data-event-click="emit('graph_details.remove', sub.id)"><span class="icon">&#xea81;</span></button>
+                </div>
+                <button class="btn subtle sm" data-if="row.control == 'array'" data-attrif-data-disabled="row.readonly || !row.removable" data-event-click="emit('graph_details.add', row.id)"><span class="icon">&#xea60;</span><span class="label">Add item</span></button>
+              </div>
+            </div>
+            <div class="popup popover graph-inline-values" popover data-when="row.control == 'source'" data-attr-id="'pop-' + row.id">
+              <span class="graph-inline-heading">Inline inputs</span>
+              <div class="graph-inline-part" data-for="sub : row.sub">
+                <span class="graph-inline-title" data-if="sub.heading">{{ sub.label }}</span>
+                <div class="graph-inline-row" data-if="!sub.heading"><span class="graph-inline-label">{{ sub.label }}</span><use ui="GraphField" data-alias-field="sub" data-alias-kind="sub.control"></use></div>
+              </div>
+            </div>
+          </use>
+          <div class="graph-expression" data-when="row.control == 'expression'">
+            <div class="field text" data-attrif-data-readonly="row.readonly"><input type="text" class="part value" data-attr-id="row.id" aria-label="Expression" data-attr-value="row.text" data-attr-placeholder="row.placeholder" data-attrif-readonly="row.readonly" data-keys="Escape:graph_details.cancel" data-event-change="emit('graph_details.change', row.id, ev.value)"/></div>
+            <span class="notice" data-if="row.error != ''">{{ row.error }}</span>
+          </div>
+          <div class="param" data-when="row.control == 'param'" data-attr-data-drop="row.drop" data-event-drop="emit('graph_details.reorder', row.id, ev.payload)">
+            <div class="param-row">
+              <div class="param-name">
+                <span class="icon param-grip" data-attr-data-drag="row.drop" data-attr-data-drag-payload="row.id" data-attr-data-drag-label="row.name">&#xeb04;</span>
+                <div class="field text" data-attrif-data-readonly="row.readonly"><input type="text" class="part value" aria-label="Name" data-attr-value="row.name" data-attrif-readonly="row.readonly" data-keys="Escape:graph_details.cancel" data-event-change="emit('graph_details.rename', row.id, ev.value)"/></div>
+                <button class="btn icon-only" data-tip="Remove" data-attrif-data-disabled="row.readonly" data-event-click="emit('graph_details.remove', row.id)"><span class="icon">&#xea81;</span></button>
+              </div>
+              <div class="param-settings">
+                <div class="type-pick"><kit-dot class="member-swatch" data-attr-shape="row.swatch" data-attr-fill="row.color"></kit-dot><button class="btn subtle type-button" data-attrif-data-disabled="row.readonly" data-event-click="emit('graph_details.type', row.id)"><span class="label">{{ row.type }}</span></button></div>
+                <use ui="EnumField" data-alias-table="graph_details.containers.table" data-alias-value="row.container" data-attrif-data-readonly="row.readonly || row.fixed" data-event-change="emit('graph_details.container', row.id, ev.value)"></use>
+              </div>
+            </div>
+            <div class="prop" data-when="row.def != ''">
+              <label class="label"><span>Default</span></label>
+              <div class="control"><use ui="GraphField" data-alias-field="row" data-alias-kind="row.def"></use></div>
+            </div>
+          </div>
+        </div>
+        <div class="add-row" data-if="panel.add != ''"><button class="btn subtle" data-attrif-data-disabled="panel.addOff" data-event-click="emit('graph_details.addPin', panel.addId)"><span class="icon">&#xea60;</span><span class="label">{{ panel.add }}</span></button></div>
+      </div>
+    </section>
+  </div>
   <use ui="Menu" id="field-menu">
     <use ui="MenuItem" data-alias-item="properties.fieldMenu.reset" data-event-click="emit('properties.reset')"/>
     <use ui="MenuItem" data-alias-item="properties.fieldMenu.apply" data-event-click="emit('properties.apply')"/>

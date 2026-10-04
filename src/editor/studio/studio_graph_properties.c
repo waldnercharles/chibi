@@ -1,12 +1,29 @@
-/* The Node tab in Properties: the selected graph node's pins and settings. */
+/* The Node tab in Properties (workstream G1): the selected node's pins and
+ * settings, every pin, advanced ones included, with what feeds it, or a
+ * comment frame's title and color, as rows of graph_details
+ * (studio_graph_details.c). The canvas shows the common case, this shows
+ * everything (Unreal's Details). A row's id names what it edits:
+ * n<node>.<part><index>, with a compound value's place after a slash, or
+ * c<frame>.<part>. */
+#include "assets/reference_index.h"
 #include "editor/studio/studio_graph_internal.h"
+#include "editor/ui/choices.h"
+#include "editor/ui/labels.h"
 #include "graph/model/local.h"
+#include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "ui/popover.h"
 
+#include <errno.h>
+#include <float.h>
+#include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 uint64_t studio_graph_node(const studio *s)
@@ -23,23 +40,585 @@ uint64_t studio_graph_comment(const studio *s)
     return box ? box->id : 0;
 }
 
-void sg_identity(kit *k, uint32_t icon, const char *name, const char *lineage)
+/* ---------- Row ids ---------- */
+
+/* What a row edits: owner n (a node) or c (a comment frame), its id, the
+   part (i input, o output, m an output's name, x the expression, d
+   Disabled, b Breakpoint, k the comment, h Show Comment, a Advanced Inputs;
+   t a frame's title, c its color), the pin, and a compound value's place:
+   f<field> and a<item> steps joined by slashes. */
+typedef struct
 {
-    kit_push(k, "identity", NULL, "identity");
-    kit_push(k, "glyph", NULL, "glyph");
-    kit_icon(k, "icon", NULL, icon);
-    kit_pop(k);
-    kit_push(k, "who", NULL, "who");
-    kit_label(k, "name", "title", name);
-    kit_push(k, "lineage", NULL, "lineage");
-    kit_label(k, "of", NULL, lineage);
-    kit_pop(k);
-    kit_pop(k);
-    kit_pop(k);
+    char owner, part;
+    uint64_t id;
+    int index;
+    const char *path;
+} target;
+
+static void row_id(char out[GD_ROW_ID], char owner, uint64_t id, char part, int index)
+{
+    snprintf(out, GD_ROW_ID, "%c%" PRIu64 ".%c%d", owner, id, part, index);
 }
 
-/* The Node tab: every pin, advanced ones included, with what feeds it; the
-   canvas shows the common case, this shows everything (Unreal's Details). */
+static bool target_of(const char *id, target *out)
+{
+    char *end;
+    *out = (target){ .owner = id[0], .index = -1 };
+    out->id = strtoull(id + 1, &end, 10);
+    if (*end != '.' || !end[1]) {
+        return false;
+    }
+    out->part = end[1];
+    out->index = (int)strtol(end + 2, &end, 10);
+    out->path = *end == '/' ? end + 1 : "";
+    return true;
+}
+
+/* ---------- Values ---------- */
+
+static bool pin_string(pin_type type)
+{
+    return type == PIN_STR || type == PIN_NAME;
+}
+
+static const pin_spec *pin_of(const node *n, int output, int p)
+{
+    return output ? &n->output_pins[p] : &n->input_pins[p];
+}
+
+/* The pin's choices, the place of its value among them or -1. */
+static int choice_index(const pin_spec *spec, const pin_value *value, const editor_choices *choices)
+{
+    for (int i = 0; i < editor_choices_count(choices); i++) {
+        editor_choice choice = editor_choice_at(choices, i);
+        bool same = spec->type == PIN_NAME
+                      ? value->str && choice.name && !strcmp(value->str, choice.name)
+                  : spec->type == PIN_ENUM
+                      ? choice.value == value->e
+                      : choice.value == sg_literal_number(value);
+        if (same) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static gd_number_shape number_shape(pin_type type)
+{
+    bool integer = type < PIN_F32;
+    gd_number_shape shape = { .integer = integer,
+                              .single = type == PIN_F32,
+                              .precision = integer ? 0 : 2,
+                              .step = integer ? 1 : 0.1,
+                              .min = -INFINITY,
+                              .max = INFINITY };
+    sg_literal_bounds(type, &shape.min, &shape.max);
+    return shape;
+}
+
+/* An 8-byte integer edits as text, as the canvas's field does. */
+static void integer64_text(const pin_value *value, char text[32])
+{
+    if (value->type == PIN_I64) {
+        snprintf(text, 32, "%" PRId64, value->i64);
+        return;
+    }
+    snprintf(text, 32, "%" PRIu64, value->u64);
+}
+
+static bool parse_integer64(pin_value *value, const char *text)
+{
+    char *end;
+    errno = 0;
+    if (value->type == PIN_I64) {
+        long long parsed = strtoll(text, &end, 10);
+        value->i64 = parsed;
+    } else {
+        if (strchr(text, '-')) {
+            return false;
+        }
+        unsigned long long parsed = strtoull(text, &end, 10);
+        value->u64 = parsed;
+    }
+    return text[0] && !*end && errno != ERANGE;
+}
+
+/* ---------- Compound values ---------- */
+
+/* The value at `path` in `value`, which a compound pin's default holds in
+   `scratch`: f<i> steps into a struct's field, a<i> into an array's item.
+   The leaf is read into `out`, with its shape; false when the path names
+   none. */
+typedef struct
+{
+    pin_value value;
+    pin_spec shape;
+    const type_desc *owner; /* the struct holding it, or NULL */
+    const type_field *field;
+} leaf;
+
+static bool leaf_at(const pin_value *value, const pin_spec *shape, const char *path, leaf *out)
+{
+    *out = (leaf){ .value = *value, .shape = *shape };
+    for (const char *at = path; at && *at;) {
+        char *end;
+        int index = (int)strtol(at + 1, &end, 10);
+        if (at[0] == 'a') {
+            const pin_array *array = out->value.ptr;
+            if (out->shape.container == PIN_CONTAINER_SINGLE || !array ||
+                index < 0 || index >= array->count) {
+                return false;
+            }
+            out->value = array->items[index];
+            out->shape.container = PIN_CONTAINER_SINGLE;
+            out->owner = NULL;
+            out->field = NULL;
+        } else {
+            const type_desc *type = registry_type_by_name(out->shape.type_name);
+            if (!type || !out->value.ptr || index < 0 || index >= type->field_count) {
+                return false;
+            }
+            const type_field *field = &type->fields[index];
+            pin_read_field(out->value.ptr, field, &out->value);
+            out->value.type_name = out->value.type_name ? out->value.type_name
+                                                        : field->type_name;
+            out->shape = (pin_spec){ .type = field->type,
+                                     .type_name = field->type_name,
+                                     .kind = PIN_DATA,
+                                     .container = PIN_CONTAINER_SINGLE,
+                                     .flags = !strcmp(type->name, "ShaderRampStop") &&
+                                                      !strcmp(field->name, "Color")
+                                                ? PIN_FLAG_COLOR
+                                                : 0 };
+            out->owner = type;
+            out->field = field;
+        }
+        at = *end == '/' ? end + 1 : NULL;
+    }
+    return true;
+}
+
+/* Writes `with` at `path` in `value`, in place. */
+static bool write_at(pin_value *value, const pin_spec *shape, const char *path, const pin_value *with)
+{
+    if (!path || !*path) {
+        *value = *with;
+        return true;
+    }
+    char *end;
+    int index = (int)strtol(path + 1, &end, 10);
+    const char *rest = *end == '/' ? end + 1 : "";
+    if (path[0] == 'a') {
+        pin_array *array = value->ptr;
+        pin_spec item = *shape;
+        item.container = PIN_CONTAINER_SINGLE;
+        return array && index >= 0 && index < array->count &&
+               write_at(&array->items[index], &item, rest, with);
+    }
+    const type_desc *type = registry_type_by_name(shape->type_name);
+    if (!type || !value->ptr || index < 0 || index >= type->field_count) {
+        return false;
+    }
+    const type_field *field = &type->fields[index];
+    pin_value inner;
+    pin_read_field(value->ptr, field, &inner);
+    inner.type_name = inner.type_name ? inner.type_name : field->type_name;
+    pin_spec inner_shape = { .type = field->type,
+                             .type_name = field->type_name,
+                             .kind = PIN_DATA,
+                             .container = PIN_CONTAINER_SINGLE };
+    if (!write_at(&inner, &inner_shape, rest, with)) {
+        return false;
+    }
+    pin_write_field(value->ptr, field, inner);
+    return true;
+}
+
+static const char *arena_text(arena *scratch, const char *text)
+{
+    size_t length = strlen(text) + 1;
+    char *copy = arena_alloc(scratch, length);
+    memcpy(copy, text, length);
+    return copy;
+}
+
+/* ---------- Writing rows ---------- */
+
+typedef struct
+{
+    studio *s;
+    node *n;
+    int output, p;
+    const char *id; /* the row's */
+    bool readonly;
+} pin_row;
+
+static void leaf_row(
+    gd_rows *r,
+    const pin_row *pr,
+    const gd_row *d,
+    const leaf *l,
+    const char *path,
+    const double range[2]
+);
+
+/* A color, with its alpha beside it when it has one. */
+static void color_row(gd_rows *r, const gd_row *d, const pin_spec *shape, const pin_value *value)
+{
+    gd_row row = *d;
+    row.control = "color";
+    yyjson_mut_val *item = gd_next_row(r, &row);
+    char hex[16];
+    snprintf(hex, sizeof hex, "#%08" PRIx32, sg_literal_color(shape, value));
+    gd_put_text(r, item, "value", hex);
+    const type_desc *type = shape->type == PIN_STRUCT
+                              ? registry_type_by_name(shape->type_name)
+                              : NULL;
+    bool alpha = type && type->field_count == 4;
+    gd_put_flag(r, item, "alpha", alpha);
+    if (alpha) {
+        gd_put_alpha(r, item, sg_literal_alpha(shape, value));
+    }
+}
+
+static void vector_row(gd_rows *r, const gd_row *d, const pin_value *value, const pin_spec *shape)
+{
+    const type_desc *type = registry_type_by_name(shape->type_name);
+    int width = pin_vector_width(shape);
+    gd_row row = *d;
+    row.control = "vector";
+    yyjson_mut_val *item = gd_next_row(r, &row);
+    double values[4] = { 0 };
+    gd_number_shape axis = number_shape(PIN_F32);
+    for (int i = 0; type && value->ptr && i < width; i++) {
+        pin_value component;
+        pin_read_field(value->ptr, &type->fields[i], &component);
+        values[i] = sg_literal_number(&component);
+        axis = number_shape(component.type);
+    }
+    gd_put_axes(r, item, values, width, &axis);
+}
+
+/* `path` joined with one more step, from a pin's root. */
+static void step_path(char out[GD_ROW_ID], const char *path, char kind, int index)
+{
+    snprintf(out, GD_ROW_ID, "%s%s%c%d", path, path[0] ? "/" : "", kind, index);
+}
+
+static void leaf_id(char out[GD_ROW_ID], const pin_row *pr, const char *path)
+{
+    snprintf(out, GD_ROW_ID, "%s/%s", pr->id, path);
+}
+
+/* A struct's fields, each a row, in the order its type declares them. */
+static void field_rows(gd_rows *r, const pin_row *pr, const leaf *l, const char *path, const double range[2])
+{
+    const type_desc *type = registry_type_by_name(l->shape.type_name);
+    for (int i = 0; type && l->value.ptr && i < type->field_count; i++) {
+        char step[16], at[GD_ROW_ID], id[GD_ROW_ID], label[128];
+        snprintf(step, sizeof step, "f%d", i);
+        step_path(at, path, 'f', i);
+        leaf_id(id, pr, at);
+        editor_identifier_label(type->fields[i].name, label, sizeof label);
+        leaf field;
+        if (!leaf_at(&l->value, &l->shape, step, &field)) {
+            continue;
+        }
+        /* A ramp stop's Position stays between its neighbours'. */
+        bool position = range && !strcmp(type->fields[i].name, "Position");
+        gd_row row = { .id = id,
+                       .label = label,
+                       .readonly = pr->readonly || (position && range[0] > range[1]) };
+        leaf_row(r, pr, &row, &field, at, position ? range : NULL);
+    }
+}
+
+/* An array's items, each a row, and a struct's beneath its heading; every
+   item has its remove button, but a ramp's last two stops. */
+static void item_rows(gd_rows *r, const pin_row *pr, const leaf *l)
+{
+    const pin_array *array = l->value.ptr;
+    bool ramp = sg_ramp_stops(&l->shape);
+    for (int i = 0; array && i < array->count; i++) {
+        char step[16], id[GD_ROW_ID], label[32];
+        snprintf(step, sizeof step, "a%d", i);
+        leaf_id(id, pr, step);
+        snprintf(label, sizeof label, "Item %d", i + 1);
+        leaf item;
+        leaf_at(&l->value, &l->shape, step, &item);
+        size_t first = r->count;
+        double range[2] = { 1, 0 };
+        if (ramp) {
+            sg_ramp_range(array, i, &range[0], &range[1]);
+        }
+        leaf_row(
+            r,
+            pr,
+            &(gd_row){ .id = id, .label = label, .readonly = pr->readonly },
+            &item,
+            step,
+            ramp ? range : NULL
+        );
+        gd_put_flag(r, yyjson_mut_arr_get(r->list, first), "removable", !(ramp && array->count <= 2));
+    }
+}
+
+/* One value inside a compound one, or a pin's single value; a struct inside
+   one is its heading and its fields' rows. */
+static void leaf_row(
+    gd_rows *r,
+    const pin_row *pr,
+    const gd_row *d,
+    const leaf *l,
+    const char *path,
+    const double range[2]
+)
+{
+    const pin_spec *shape = &l->shape;
+    const pin_value *value = &l->value;
+    gd_row row = *d;
+    yyjson_mut_val *item;
+    if ((shape->flags & PIN_FLAG_COLOR) &&
+        (shape->type == PIN_U32 || shape->type == PIN_I32 || shape->type == PIN_STRUCT)) {
+        color_row(r, &row, shape, value);
+        return;
+    }
+    if (shape->type == PIN_STRUCT && pin_vector_width(shape) > 0) {
+        vector_row(r, &row, value, shape);
+        return;
+    }
+    if (shape->type == PIN_STRUCT) {
+        row.control = "heading";
+        gd_put_flag(r, gd_next_row(r, &row), "heading", true);
+        field_rows(r, pr, l, path, range);
+        return;
+    }
+    if (shape->type == PIN_ENUM) {
+        const editor_choices *choices = editor_choices_for_enum(shape->type_name);
+        bool listed = choices && editor_choices_count(choices) > 0;
+        row.control = listed ? "choice" : "label";
+        item = gd_next_row(r, &row);
+        if (listed) {
+            gd_put_choices(r, item, choices, choice_index(shape, value, choices));
+        } else {
+            gd_put_text(r, item, "text", "Missing enum values");
+        }
+        return;
+    }
+    if (shape->type == PIN_BOOL) {
+        row.control = "bool";
+        gd_put_flag(r, gd_next_row(r, &row), "checked", value->b);
+        return;
+    }
+    if (pin_string(shape->type)) {
+        reference_asset_kind
+            asset = l->owner && l->field
+                      ? reference_named_field_kind(l->owner->name, l->field->name)
+                      : REFERENCE_ASSET_KIND_COUNT;
+        row.control = asset != REFERENCE_ASSET_KIND_COUNT ? "asset" : "text";
+        item = gd_next_row(r, &row);
+        gd_put_text(r, item, "text", value->str ? value->str : "");
+        if (asset != REFERENCE_ASSET_KIND_COUNT) {
+            gd_put_asset(r, item, asset, value->str ? value->str : "");
+        }
+        return;
+    }
+    if (shape->type == PIN_I64 || shape->type == PIN_U64) {
+        char text[32];
+        integer64_text(value, text);
+        row.control = "text";
+        gd_put_text(r, gd_next_row(r, &row), "text", text);
+        return;
+    }
+    if (shape->type >= PIN_I8 && shape->type <= PIN_F64) {
+        gd_number_shape number = number_shape(shape->type);
+        if (range && range[0] <= range[1]) {
+            number.min = fmax(number.min, range[0]);
+            number.max = fmin(number.max, range[1]);
+        }
+        row.control = "number";
+        gd_put_number(r, gd_next_row(r, &row), sg_literal_number(value), &number);
+        return;
+    }
+    row.control = "label";
+    const char *text = ed_pin_type_name(shape);
+    if (shape->type == PIN_HANDLE) {
+        text = value->u64
+                 ? runtime_entity_label(pr->s->scene, ecs_entity_from_u64(value->u64))
+                 : "None";
+    }
+    gd_put_text(r, gd_next_row(r, &row), "text", text);
+}
+
+/* A pin's value: as the canvas edits pin values. */
+static void value_row(gd_rows *r, const pin_row *pr, const gd_row *d)
+{
+    studio *s = pr->s;
+    node *n = pr->n;
+    const pin_spec *spec = pin_of(n, pr->output, pr->p);
+    gd_row row = *d;
+    row.readonly = pr->readonly;
+    int width = pin_vector_width(spec);
+    bool color = sg_value_kind_of(s, n, pr->output, pr->p) == VALUE_COLOR;
+    leaf l = { .value = spec->default_value, .shape = *spec };
+    if (color) {
+        l.shape.flags |= PIN_FLAG_COLOR;
+        color_row(r, &row, &l.shape, &l.value);
+        return;
+    }
+    if (spec->container == PIN_CONTAINER_MAP) {
+        row.control = "label";
+        gd_put_text(r, gd_next_row(r, &row), "text", "Map values are not editable yet");
+        return;
+    }
+    if (spec->container != PIN_CONTAINER_SINGLE ||
+        (spec->type == PIN_STRUCT && width == 0)) {
+        /* A compound value edits in a popover, as on the canvas. */
+        bool array = spec->container != PIN_CONTAINER_SINGLE;
+        const type_desc *type = registry_type_by_name(spec->type_name);
+        if (!array && !type) {
+            row.control = "label";
+            gd_put_text(r, gd_next_row(r, &row), "text", spec->type_name ? spec->type_name : "Struct");
+            return;
+        }
+        row.control = array ? "array" : "struct";
+        yyjson_mut_val *item = gd_next_row(r, &row);
+        const pin_array *items = spec->default_value.ptr;
+        int count = items ? items->count : 0;
+        char text[64], title[128] = "";
+        snprintf(text, sizeof text, "%d item%s", count, count == 1 ? "" : "s");
+        if (type) {
+            editor_identifier_label(type->name, title, sizeof title);
+        }
+        gd_put_text(r, item, "text", array ? text : "Edit");
+        gd_put_text(r, item, "name", title);
+        /* An array's Add item, which a full ramp disables. */
+        gd_put_flag(r, item, "removable", array && sg_array_can_add(&spec->default_value, spec));
+        gd_rows sub = gd_sub(r, item);
+        if (array) {
+            item_rows(&sub, pr, &l);
+        } else {
+            field_rows(&sub, pr, &l, "", NULL);
+        }
+        gd_sub_end(&sub);
+        return;
+    }
+    const editor_choices *choices = ed_pin_choices(sg_graph_editor(s), n, pr->output, pr->p);
+    if (choices && editor_choices_count(choices) > 0) {
+        row.control = "choice";
+        yyjson_mut_val *item = gd_next_row(r, &row);
+        gd_put_choices(r, item, choices, choice_index(spec, &spec->default_value, choices));
+        return;
+    }
+    if (spec->type == PIN_BOOL || (width > 0 && !(spec->flags & PIN_FLAG_COLOR)) ||
+        pin_string(spec->type) || (spec->type >= PIN_I8 && spec->type <= PIN_F64)) {
+        leaf_row(r, pr, &row, &l, "", NULL);
+        return;
+    }
+    row.control = "";
+    gd_next_row(r, &row);
+}
+
+/* ---------- The Inputs panel ---------- */
+
+static node *expression_editing(studio *s, const node *n, int p)
+{
+    studio_graph *g = &s->graph;
+    if (g->input_edit_kit || !g->input_edit_pin ||
+        g->input_edit_pin != n->input_pins[p].id) {
+        return NULL;
+    }
+    return sg_node_by_id(s, g->input_edit_node);
+}
+
+/* A folded source's inputs, as its popover lists them: each part's title,
+   then its inputs and editable outputs. */
+static void inline_rows(gd_rows *r, studio *s, node *target, int p)
+{
+    graph *gr = sg_active_graph(s);
+    editor *e = sg_graph_editor(s);
+    node *source = NULL;
+    int source_pin = -1;
+    if (!graph_input_source(gr, target, p, &source, &source_pin) ||
+        !graph_node_is_inline(gr, source)) {
+        return;
+    }
+    uint64_t *ids = NULL;
+    graph_inline_tree(gr, source, &ids);
+    for (int i = 0; i < acount(ids); i++) {
+        node *part = graph_node_by_id(gr, ids[i]);
+        if (!part) {
+            continue;
+        }
+        char title[128], id[GD_ROW_ID];
+        row_id(id, 'n', part->id, 'p', 0);
+        gd_row heading = { .id = id,
+                           .label = ed_node_title(e, part, title, sizeof title),
+                           .control = "title" };
+        gd_put_flag(r, gd_next_row(r, &heading), "heading", true);
+        for (int k = 0; k < part->input_count; k++) {
+            if (part->input_pins[k].kind != PIN_DATA ||
+                !ed_pin_visible(gr, part, ED_PIN_INPUT, k)) {
+                continue;
+            }
+            sg_input_row(r, s, part, k);
+        }
+        for (int k = 0; k < part->output_count; k++) {
+            if (part->output_pins[k].kind != PIN_DATA ||
+                !ed_pin_editable(gr, part, ED_PIN_OUTPUT, k)) {
+                continue;
+            }
+            char label[128];
+            row_id(id, 'n', part->id, 'o', k);
+            ed_pin_label(part, &part->output_pins[k], label, sizeof label);
+            pin_row pr = { s, part, 1, k, id, sg_graph_readonly(s) };
+            value_row(r, &pr, &(gd_row){ .id = id, .label = label });
+        }
+    }
+    afree(ids);
+}
+
+void sg_input_row(gd_rows *r, studio *s, node *n, int p)
+{
+    const pin_spec *spec = &n->input_pins[p];
+    char id[GD_ROW_ID], label[160], text[256];
+    row_id(id, 'n', n->id, 'i', p);
+    ed_pin_label(n, spec, label, sizeof label);
+    gd_row d = { .id = id, .label = label, .readonly = sg_graph_readonly(s) };
+    if (expression_editing(s, n, p)) {
+        /* Edit Expression: the folded expression's source, in place. */
+        d.control = "edit";
+        yyjson_mut_val *item = gd_next_row(r, &d);
+        gd_put_text(r, item, "text", s->graph.input_edit);
+        gd_put_text(r, item, "placeholder", "a + b");
+        return;
+    }
+    sg_input_kind kind = sg_input_view(s, n, p, text, sizeof text);
+    if (kind == SG_INPUT_EXEC || kind == SG_INPUT_CHIP) {
+        d.control = kind == SG_INPUT_EXEC ? "label" : "chip";
+        gd_put_text(r, gd_next_row(r, &d), "text", kind == SG_INPUT_EXEC ? "Execution" : text);
+        return;
+    }
+    if (kind == SG_INPUT_VALUE) {
+        pin_row pr = { s, n, 0, p, id, d.readonly };
+        value_row(r, &pr, &d);
+        return;
+    }
+    d.control = kind == SG_INPUT_SOURCE ? "source" : "";
+    yyjson_mut_val *item = gd_next_row(r, &d);
+    gd_put_text(r, item, "text", text);
+    gd_put_text(r, item, "placeholder", "Value or source");
+    gd_rows sub = gd_sub(r, item);
+    studio_graph *g = &s->graph;
+    if (kind == SG_INPUT_SOURCE && !g->inline_edit_kit && g->inline_edit_node &&
+        g->inline_edit_pin == spec->id) {
+        inline_rows(&sub, s, n, p);
+    }
+    gd_sub_end(&sub);
+}
+
+/* ---------- The panels ---------- */
+
 static bool used(const graph *gr, const node *n, int p)
 {
     for (int i = 0; i < acount(gr->edges); i++) {
@@ -51,17 +630,196 @@ static bool used(const graph *gr, const node *n, int p)
     return false;
 }
 
-static void sync_value_names(studio_graph *g, const graph *gr, const node *n)
+/* The expression is the node: edit it here, see errors in place. A rejected
+   draft stays until the source changes, as undo does. */
+static void expression_panel(gd_view *v, studio *s, node *n, const char *source)
 {
-    g->names_node = n->id;
-    g->names_revision = graph_topology_revision(gr);
-    for (int p = 0; p < STUDIO_VALUE_NAMES; p++) {
-        const graph_local *local = p < n->output_count
-                                     ? graph_output_local(gr, n, p)
-                                     : NULL;
-        snprintf(g->names[p], sizeof g->names[p], "%s", local ? local->name : "");
+    studio_graph *g = &s->graph;
+    gd_rows r = gd_panel(v, "expression", "Expression");
+    if (r.open) {
+        char id[GD_ROW_ID];
+        row_id(id, 'n', n->id, 'x', 0);
+        bool rejected = g->details.error_node == n->id &&
+                        !strncmp(
+                            g->details.error_source,
+                            source,
+                            sizeof g->details.error_source - 1
+                        );
+        yyjson_mut_val *item = gd_next_row(
+            &r,
+            &(gd_row){ .id = id, .control = "expression", .readonly = sg_graph_readonly(s) }
+        );
+        gd_put_text(&r, item, "text", source);
+        gd_put_text(&r, item, "placeholder", "a + b");
+        gd_put_text(&r, item, "error", rejected ? g->details.error : "");
     }
+    gd_panel_end(&r);
 }
+
+static void outputs_panel(gd_view *v, studio *s, node *n)
+{
+    graph *gr = sg_active_graph(s);
+    bool readonly = sg_graph_readonly(s);
+    gd_rows r = gd_panel(v, "outputs", "Outputs");
+    for (int p = 0; r.open && p < n->output_count; p++) {
+        const pin_spec *spec = &n->output_pins[p];
+        char id[GD_ROW_ID], label[160];
+        ed_pin_label(n, spec, label, sizeof label);
+        if (ed_pin_editable(gr, n, ED_PIN_OUTPUT, p) && !readonly &&
+            sg_value_kind_of(s, n, 1, p) != VALUE_NONE) {
+            row_id(id, 'n', n->id, 'o', p);
+            pin_row pr = { s, n, 1, p, id, readonly };
+            value_row(&r, &pr, &(gd_row){ .id = id, .label = label });
+        } else if (spec->kind == PIN_DATA && used(gr, n, p)) {
+            /* A named value (Unreal's named reroute): uses read the name
+               instead of drawing a wire; clearing it brings wires back. */
+            const graph_local *local = graph_output_local(gr, n, p);
+            row_id(id, 'n', n->id, 'm', p);
+            yyjson_mut_val *item = gd_next_row(
+                &r,
+                &(gd_row){ .id = id, .label = label, .control = "text", .readonly = readonly }
+            );
+            gd_put_text(&r, item, "text", local ? local->name : "");
+            gd_put_text(&r, item, "placeholder", ed_pin_type_name(spec));
+        } else {
+            row_id(id, 'n', n->id, 'o', p);
+            yyjson_mut_val *item = gd_next_row(
+                &r,
+                &(gd_row){ .id = id, .label = label, .control = "label" }
+            );
+            gd_put_text(&r, item, "text", spec->kind == PIN_EXEC ? "Execution" : ed_pin_type_name(spec));
+        }
+    }
+    gd_panel_end(&r);
+}
+
+static void check_row(
+    gd_rows *r,
+    node *n,
+    char part,
+    const char *label,
+    bool checked,
+    bool disabled,
+    const char *check
+)
+{
+    char id[GD_ROW_ID];
+    row_id(id, 'n', n->id, part, 0);
+    yyjson_mut_val *item = gd_next_row(
+        r,
+        &(gd_row){ .id = id, .label = label, .control = "bool", .readonly = disabled }
+    );
+    gd_put_flag(r, item, "checked", checked);
+    gd_put_text(r, item, "check", check);
+}
+
+static void node_panel(gd_view *v, studio *s, node *n)
+{
+    bool readonly = sg_graph_readonly(s);
+    gd_rows r = gd_panel(v, "node", "Node");
+    if (r.open) {
+        check_row(&r, n, 'd', "Disabled", n->disabled, readonly, "");
+        if (node_behavior_for(n) != NODE_BEHAVIOR_PURE) {
+            check_row(&r, n, 'b', "Breakpoint", n->breakpoint, readonly, "");
+        }
+        char id[GD_ROW_ID];
+        row_id(id, 'n', n->id, 'k', 0);
+        yyjson_mut_val *item = gd_next_row(
+            &r,
+            &(gd_row){ .id = id, .label = "Comment", .control = "area", .readonly = readonly }
+        );
+        const char *comment = n->comment ? n->comment : "";
+        gd_put_text(&r, item, "text", comment);
+        gd_put_text(&r, item, "placeholder", "");
+        /* A text area's rows, as many as its lines, eight at most. */
+        int rows = 1;
+        for (const char *c = comment; *c && rows < 8; c++) {
+            rows += *c == '\n';
+        }
+        gd_put_int(&r, item, "precision", rows);
+        if (n->comment) {
+            check_row(&r, n, 'h', "Show Comment", !n->comment_hidden, readonly, "");
+        }
+        if (ed_node_has_advanced_inputs(n)) {
+            check_row(&r, n, 'a', "Advanced Inputs", n->show_advanced, readonly, "Show on node");
+        }
+    }
+    gd_panel_end(&r);
+}
+
+/* Unreal's comment Details: the title, and a color from the full picker as
+   well as the menu's palette. */
+static void frame_details(gd_view *v, studio *s, graph_comment_box *box)
+{
+    const char *title = box->title ? box->title : "";
+    bool readonly = sg_graph_readonly(s);
+    gd_identity(v, KIT_ICON_COMMENT, title[0] ? title : "Comment", "Comment");
+    gd_rows r = gd_panel(v, "frame", "Comment");
+    if (r.open) {
+        char id[GD_ROW_ID];
+        row_id(id, 'c', box->id, 't', 0);
+        yyjson_mut_val *item = gd_next_row(
+            &r,
+            &(gd_row){ .id = id, .label = "Title", .control = "text", .readonly = readonly }
+        );
+        gd_put_text(&r, item, "text", title);
+        gd_put_text(&r, item, "placeholder", "Comment");
+        row_id(id, 'c', box->id, 'c', 0);
+        item = gd_next_row(
+            &r,
+            &(gd_row){ .id = id, .label = "Color", .control = "color", .readonly = readonly }
+        );
+        char hex[16];
+        snprintf(hex, sizeof hex, "#%08" PRIx32, sg_frame_color(box));
+        gd_put_text(&r, item, "value", hex);
+        gd_put_flag(&r, item, "alpha", false);
+    }
+    gd_panel_end(&r);
+}
+
+void studio_node_details(studio *s, gd_view *v)
+{
+    editor *e = sg_graph_editor(s);
+    node *n = sg_node_by_id(s, studio_graph_node(s));
+    graph_comment_box *box = sg_comment_by_id(s, studio_graph_comment(s));
+    if (box) {
+        frame_details(v, s, box);
+        return;
+    }
+    if (!n) {
+        gd_empty(v, "No node selected");
+        return;
+    }
+    char title[256];
+    gd_identity(
+        v,
+        sg_node_icon(s, n) ? sg_node_icon(s, n) : KIT_ICON_HEXAGON,
+        ed_node_title(e, n, title, sizeof title),
+        n->desc->category ? n->desc->category : n->desc->name
+    );
+    const char *source = n->desc == &NODE_BehaviorExpression
+                           ? behavior_expression_source(e->asset, n)
+                           : NULL;
+    if (source) {
+        expression_panel(v, s, n, source);
+    }
+    if (n->input_count) {
+        gd_rows r = gd_panel(v, "inputs", "Inputs");
+        for (int p = 0; r.open && p < n->input_count; p++) {
+            const pin_spec *spec = &n->input_pins[p];
+            if (!(spec->flags & PIN_FLAG_SETTING) || spec->kind == PIN_DATA) {
+                sg_input_row(&r, s, n, p);
+            }
+        }
+        gd_panel_end(&r);
+    }
+    if (n->output_count) {
+        outputs_panel(v, s, n);
+    }
+    node_panel(v, s, n);
+}
+
+/* ---------- Edits ---------- */
 
 /* Names, renames or, with an empty name, unnames a value. */
 static void name_value(studio *s, node *n, int p, const char *name)
@@ -69,10 +827,7 @@ static void name_value(studio *s, node *n, int p, const char *name)
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     const graph_local *local = graph_output_local(gr, n, p);
-    if (!local && !name[0]) {
-        return;
-    }
-    if (local && !strcmp(local->name, name)) {
+    if ((!local && !name[0]) || (local && !strcmp(local->name, name))) {
         return;
     }
     ed_snapshot_before(e);
@@ -87,7 +842,6 @@ static void name_value(studio *s, node *n, int p, const char *name)
                                .title = local ? "A value has that name" : "Can't name this value" }
         );
     }
-    sync_value_names(&s->graph, gr, n);
 }
 
 static bool listed(char **names, const char *name)
@@ -120,7 +874,7 @@ static const char *added_input(const graph *gr, const node *n, char **before)
 
 /* Inputs match by name, so a rename drops its wire, as in Unreal's Math
    Expression; the toast keeps it, or undoes an edit that dropped several. */
-static void offer_rewire(studio *s, kit *k, const node *n, char **before, char **lost, const char *source)
+static void offer_rewire(studio *s, const node *n, char **before, char **lost, const char *source)
 {
     studio_graph *g = &s->graph;
     const char *to = acount(lost) == 1 ? added_input(sg_active_graph(s), n, before)
@@ -132,9 +886,9 @@ static void offer_rewire(studio *s, kit *k, const node *n, char **before, char *
     snprintf(g->rewire.source, sizeof g->rewire.source, "%s", source);
     g->rewire.node = n->id;
     g->rewire.history = acount(sg_graph_editor(s)->undo);
-    kit_toast_dismiss(k, g->rewire.toast);
+    kit_toast_dismiss(s->kit, g->rewire.toast);
     g->rewire.toast = kit_toast(
-        k,
+        s->kit,
         0,
         &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
                            .title = title,
@@ -158,31 +912,24 @@ int sg_set_expression_source(studio *s, node *n, const char *source)
     graph *gr = sg_active_graph(s);
     char **before = input_names(n), **lost = behavior_expression_fed_inputs(gr, n);
     behavior_expression_error error = { 0 };
-    if (editor_set_behavior_expression(sg_graph_editor(s), n, source, &error) != 0) {
+    int status = editor_set_behavior_expression(sg_graph_editor(s), n, source, &error);
+    if (status != 0) {
         snprintf(
             g->expression_error,
             sizeof g->expression_error,
             "%s",
             error.message[0] ? error.message : "Invalid expression"
         );
-        behavior_expression_free_names(before);
-        behavior_expression_free_names(lost);
-        return -1;
     } else {
         g->expression_error[0] = '\0';
         behavior_expression_keep_unfed(gr, n, &lost);
         if (acount(lost)) {
-            offer_rewire(s, s->kit, n, before, lost, source);
+            offer_rewire(s, n, before, lost, source);
         }
     }
     behavior_expression_free_names(before);
     behavior_expression_free_names(lost);
-    return 0;
-}
-
-static void set_expression(studio *s, node *n)
-{
-    sg_set_expression_source(s, n, s->graph.expression);
+    return status != 0 ? -1 : 0;
 }
 
 void studio_rewire_toast(studio *s)
@@ -223,139 +970,350 @@ void studio_rewire_toast(studio *s)
     }
 }
 
-void studio_node_properties(studio *s)
+/* What a control's event carries: its row id, its value as text, whether
+   it was canceled and the part of a control with several (a vector's axis
+   key, or alpha). */
+static const char *value_of(const ui_activation *a)
 {
-    kit *k = s->kit;
+    return a->argc > 1 ? a->args[1] : "";
+}
+
+static const char *part_of(const ui_activation *a)
+{
+    return a->argc > 3 ? a->args[3] : "";
+}
+
+/* The step a control's event takes: input runs a gesture, change ends one;
+   a checkbox's or a choice's is one of its own. */
+static sg_step step_of(const char *action)
+{
+    return !strcmp(action, "input")  ? SG_STEP_LIVE
+         : !strcmp(action, "change") ? SG_STEP_COMMIT
+                                     : SG_STEP_ONCE;
+}
+
+/* The choices a row offers, or NULL: a pin's catalog, or an enum's. */
+static const editor_choices *choices_of(studio *s, node *n, int output, int p, const char *path, const leaf *l)
+{
+    const editor_choices *choices = path[0]
+                                      ? NULL
+                                      : ed_pin_choices(sg_graph_editor(s), n, output, p);
+    if (choices && editor_choices_count(choices) > 0) {
+        return choices;
+    }
+    return l->shape.type == PIN_ENUM ? editor_choices_for_enum(l->shape.type_name)
+                                     : NULL;
+}
+
+/* The leaf's value with what the control sent; false when it reads as
+   none. */
+static bool edited_leaf(
+    const leaf *l,
+    const editor_choices *choices,
+    const ui_activation *a,
+    arena *scratch,
+    pin_value *out
+)
+{
+    const char *text = value_of(a);
+    *out = l->value;
+    if (choices) {
+        int index = atoi(text);
+        if (index < 0 || index >= editor_choices_count(choices)) {
+            return false;
+        }
+        editor_choice choice = editor_choice_at(choices, index);
+        if (l->shape.type == PIN_NAME) {
+            out->str = choice.name;
+        } else if (l->shape.type == PIN_ENUM) {
+            out->e = choice.value;
+        } else {
+            sg_set_literal_number(out, choice.value);
+        }
+        return true;
+    }
+    if (l->shape.flags & PIN_FLAG_COLOR) {
+        if (!strcmp(part_of(a), "alpha")) {
+            sg_write_literal_alpha(&l->shape, out, scratch, strtod(text, NULL));
+            return true;
+        }
+        return sg_write_literal_color(
+            &l->shape,
+            out,
+            scratch,
+            (uint32_t)strtoul(text + (text[0] == '#'), NULL, 16)
+        );
+    }
+    if (l->shape.type == PIN_STRUCT && pin_vector_width(&l->shape) > 0) {
+        /* An axis of a vector, which its key names. */
+        const type_desc *type = registry_type_by_name(l->shape.type_name);
+        const char *key = strchr("xyzw", part_of(a)[0]);
+        int axis = key && part_of(a)[0] ? (int)(key - "xyzw") : -1;
+        if (!type || axis < 0 || axis >= type->field_count) {
+            return false;
+        }
+        if (!out->ptr) {
+            out->ptr = arena_alloc(scratch, type->size);
+            memset(out->ptr, 0, type->size);
+            out->type_name = type->name;
+        }
+        pin_value component;
+        pin_read_field(out->ptr, &type->fields[axis], &component);
+        sg_set_literal_number(&component, strtod(text, NULL));
+        pin_write_field(out->ptr, &type->fields[axis], component);
+        return true;
+    }
+    if (l->shape.type == PIN_BOOL) {
+        out->b = text[0] && strcmp(text, "0") && strcmp(text, "false");
+        return true;
+    }
+    if (pin_string(l->shape.type)) {
+        out->str = arena_text(scratch, text);
+        return true;
+    }
+    if (l->shape.type == PIN_I64 || l->shape.type == PIN_U64) {
+        return parse_integer64(out, text);
+    }
+    char *end;
+    double number = strtod(text, &end);
+    if (end == text) {
+        return false;
+    }
+    sg_set_literal_number(out, number);
+    return true;
+}
+
+/* An array's Add item, or an item's remove button, as one step. */
+static bool edit_items(const target *t, const char *action, arena *scratch, pin_value *value, const pin_spec *shape)
+{
+    char parent[GD_ROW_ID] = "";
+    int item = -1;
+    if (!strcmp(action, "remove")) {
+        const char *slash = strrchr(t->path, '/');
+        const char *step = slash ? slash + 1 : t->path;
+        snprintf(parent, sizeof parent, "%.*s", slash ? (int)(slash - t->path) : 0, t->path);
+        item = atoi(step + 1);
+    }
+    leaf l;
+    if (!leaf_at(value, shape, parent, &l)) {
+        return false;
+    }
+    pin_value edited = l.value;
+    edited.ptr = sg_array_edit(scratch, &l.value, &l.shape, item, item < 0);
+    return edited.ptr && write_at(value, shape, parent, &edited);
+}
+
+/* The default in `value` with the control's edit written in; false when it
+   reads as none or changes nothing. `step` becomes one of its own for a
+   discrete edit. */
+static bool edited_value(
+    studio *s,
+    node *n,
+    const target *t,
+    const char *action,
+    const ui_activation *a,
+    arena *scratch,
+    pin_value *value,
+    const pin_spec *shape,
+    sg_step *step
+)
+{
+    if (!strcmp(action, "add") || !strcmp(action, "remove")) {
+        *step = SG_STEP_ONCE;
+        return edit_items(t, action, scratch, value, shape);
+    }
+    leaf l;
+    if (!leaf_at(value, shape, t->path, &l)) {
+        return false;
+    }
+    int output = t->part == 'o';
+    const editor_choices *choices = choices_of(s, n, output, t->index, t->path, &l);
+    if (choices || pin_string(l.shape.type) || l.shape.type == PIN_I64 ||
+        l.shape.type == PIN_U64) {
+        *step = SG_STEP_ONCE;
+    }
+    pin_value with;
+    if (!edited_leaf(&l, choices, a, scratch, &with)) {
+        return false;
+    }
+    /* RmlUi sends a checkbox's change as a binding sets it too. */
+    if (l.shape.type == PIN_BOOL && !choices && with.b == l.value.b) {
+        return false;
+    }
+    return write_at(value, shape, t->path, &with);
+}
+
+/* An edit of pin `t`'s default, or of a place inside it: the control's
+   gesture is one Undo step, a discrete edit one of its own. A typed text
+   the pin refuses shows the pin's again. */
+static void edit_value(studio *s, node *n, const target *t, const char *action, const ui_activation *a)
+{
+    int output = t->part == 'o', p = t->index;
+    if (p < 0 || p >= (output ? n->output_count : n->input_count)) {
+        return;
+    }
+    const pin_spec *spec = pin_of(n, output, p);
+    arena scratch = { 0 };
+    pin_value value;
+    if (pin_value_snapshot_to_arena(&scratch, &value, &spec->default_value)) {
+        arena_free(&scratch);
+        return;
+    }
+    pin_spec shape = *spec;
+    if (sg_value_kind_of(s, n, output, p) == VALUE_COLOR) {
+        shape.flags |= PIN_FLAG_COLOR;
+    }
+    sg_step step = step_of(action);
+    if (!edited_value(s, n, t, action, a, &scratch, &value, &shape, &step) ||
+        !sg_set_literal(s, n, output, p, &value, step)) {
+        s->graph.details.redraw = true;
+    }
+    arena_free(&scratch);
+}
+
+/* A checkbox's state, which RmlUi also sends as a binding sets it: a state
+   the node holds already changes nothing. */
+static bool node_flag(const node *n, char part)
+{
+    switch (part) {
+        case 'd': return n->disabled;
+        case 'b': return n->breakpoint;
+        case 'h': return !n->comment_hidden;
+        case 'a': return n->show_advanced;
+        default: return false;
+    }
+}
+
+static void set_node_flag(studio *s, node *n, char part, bool on)
+{
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
-    node *n = sg_node_by_id(s, studio_graph_node(s));
-    graph_comment_box *box = sg_comment_by_id(s, studio_graph_comment(s));
-    if (box) {
-        sg_frame_properties(s, box);
+    if (node_flag(n, part) == on) {
         return;
     }
+    ed_snapshot_before(e);
+    switch (part) {
+        case 'd': graph_set_node_disabled(gr, n, on); break;
+        case 'b': graph_set_breakpoint(gr, n, on); break;
+        case 'h':
+            sg_set_node_comment(s, n, n->comment ? n->comment : "", !on);
+            break;
+        case 'a': n->show_advanced = on; break;
+        default: break;
+    }
+}
+
+/* A folded expression's source as Edit Expression edits it in place. */
+static void edit_inline_expression(studio *s, const ui_activation *a)
+{
+    studio_graph *g = &s->graph;
+    node *expression = sg_node_by_id(s, g->input_edit_node);
+    if (!expression || a->argc < 2) {
+        return;
+    }
+    if (sg_set_expression_source(s, expression, a->args[1]) == 0) {
+        g->input_edit_pin = g->input_edit_node = 0;
+    } else if (g->expression_error[0]) {
+        sg_show_error(s, g->expression_error);
+    }
+}
+
+static void edit_expression(studio *s, node *n, const ui_activation *a)
+{
+    studio_graph *g = &s->graph;
+    const char *source = a->argc > 1 ? a->args[1] : "";
+    if (sg_set_expression_source(s, n, source) == 0) {
+        g->details.error_node = 0;
+        return;
+    }
+    g->details.error_node = n->id;
+    snprintf(g->details.error, sizeof g->details.error, "%s", g->expression_error);
+    const char *was = behavior_expression_source(sg_graph_editor(s)->asset, n);
+    snprintf(g->details.error_source, sizeof g->details.error_source, "%s", was ? was : "");
+}
+
+static void frame_edit(studio *s, graph_comment_box *box, char part, const char *action, const ui_activation *a)
+{
+    studio_graph *g = &s->graph;
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    const char *title = box->title ? box->title : "";
+    if (part == 't' && !strcmp(action, "change") && a->argc > 1 &&
+        strcmp(a->args[1], title)) {
+        ed_snapshot_before(e);
+        graph_set_comment_box(gr, box, a->args[1], box->color);
+        return;
+    }
+    if (part != 'c' || a->argc < 2 ||
+        (strcmp(action, "input") && strcmp(action, "change"))) {
+        return;
+    }
+    /* A color gesture is one undo step. */
+    uint32_t color = (uint32_t)strtoul(a->args[1] + (a->args[1][0] == '#'), NULL, 16);
+    bool canceled = a->argc > 2 && !strcmp(a->args[2], "1");
+    if (!g->details.gesture) {
+        ed_snapshot_before(e);
+    }
+    graph_set_comment_box(gr, box, title, canceled ? box->color : color);
+    g->details.gesture = !strcmp(action, "input");
+}
+
+void studio_node_details_action(studio *s, const char *action, const ui_activation *a)
+{
+    target t;
+    if (!a->argc || !target_of(a->args[0], &t) || sg_graph_readonly(s)) {
+        return;
+    }
+    if (t.owner == 'c') {
+        graph_comment_box *box = sg_comment_by_id(s, t.id);
+        if (box) {
+            frame_edit(s, box, t.part, action, a);
+        }
+        return;
+    }
+    node *n = sg_node_by_id(s, t.id);
     if (!n) {
-        kit_label(k, "empty", "prop-empty", "No node selected");
         return;
     }
-    char title[256], label[160];
-    bool readonly = sg_graph_readonly(s);
-    sg_identity(
-        k,
-        sg_node_icon(s, n) ? sg_node_icon(s, n) : KIT_ICON_HEXAGON,
-        ed_node_title(e, n, title, sizeof title),
-        n->desc->category ? n->desc->category : n->desc->name
-    );
-    const char *source = n->desc == &NODE_BehaviorExpression
-                           ? behavior_expression_source(e->asset, n)
-                           : NULL;
-    if (source) {
-        /* The expression is the node: edit it here, see errors in place. */
-        if (kit_panel_begin(k, "expression", "Expression", NULL, true)) {
-            studio_graph *g = &s->graph;
-            /* A rejected draft stays until the source changes, as undo does. */
-            if (g->expression_node != n->id ||
-                strncmp(g->expression_source, source, sizeof g->expression_source - 1)) {
-                snprintf(g->expression, sizeof g->expression, "%s", source);
-                snprintf(g->expression_source, sizeof g->expression_source, "%s", source);
-                g->expression_node = n->id;
-                g->expression_error[0] = '\0';
+    bool value = !strcmp(action, "input") || !strcmp(action, "change") ||
+                 !strcmp(action, "check") || !strcmp(action, "add") ||
+                 !strcmp(action, "remove");
+    switch (t.part) {
+        case 'i':
+            if (!strcmp(action, "change") && expression_editing(s, n, t.index)) {
+                edit_inline_expression(s, a);
+            } else if (!strcmp(action, "source")) {
+                sg_source_open(s, n, t.index, a->args[0], a->anchor ? rml_element_ref_get(a->anchor) : NULL);
+            } else if (!strcmp(action, "cancel")) {
+                s->graph.input_edit_pin = s->graph.input_edit_node = 0;
+            } else if (value) {
+                edit_value(s, n, &t, action, a);
             }
-            if (kit_text_field(k, "source", g->expression, sizeof g->expression, "a + b", readonly ? KIT_READONLY : 0)) {
-                set_expression(s, n);
+            return;
+        case 'o':
+            if (value) {
+                edit_value(s, n, &t, action, a);
             }
-            if (g->expression_error[0]) {
-                kit_label(k, "error", "notice", g->expression_error);
+            return;
+        case 'm':
+            if (!strcmp(action, "change") && a->argc > 1) {
+                name_value(s, n, t.index, a->args[1]);
             }
-        }
-        kit_panel_end(k);
+            return;
+        case 'x':
+            if (!strcmp(action, "change")) {
+                edit_expression(s, n, a);
+            }
+            return;
+        case 'k':
+            if (!strcmp(action, "change") && a->argc > 1) {
+                sg_set_node_comment(s, n, a->args[1], n->comment_hidden);
+            }
+            return;
+        default:
+            if (!strcmp(action, "check")) {
+                set_node_flag(s, n, t.part, a->argc > 1 && a->args[1][0]);
+            }
+            return;
     }
-    if (n->input_count && kit_panel_begin(k, "inputs", "Inputs", NULL, true)) {
-        for (int p = 0; p < n->input_count; p++) {
-            const pin_spec *spec = &n->input_pins[p];
-            if (spec->flags & PIN_FLAG_SETTING && spec->kind != PIN_DATA) {
-                continue;
-            }
-            char key[16];
-            snprintf(key, sizeof key, "i%d", p);
-            ed_pin_label(n, spec, label, sizeof label);
-            kit_prop_begin(k, key, label);
-            if (spec->kind == PIN_EXEC) {
-                kit_label(k, "v", "dim", "Execution");
-            } else {
-                sg_emit_graph_input(s, k, n, p);
-            }
-            kit_prop_end(k);
-        }
-    }
-    if (n->input_count) {
-        kit_panel_end(k);
-    }
-    if (n->output_count && kit_panel_begin(k, "outputs", "Outputs", NULL, true)) {
-        studio_graph *g = &s->graph;
-        if (g->names_node != n->id ||
-            g->names_revision != graph_topology_revision(gr)) {
-            sync_value_names(g, gr, n);
-        }
-        for (int p = 0; p < n->output_count; p++) {
-            const pin_spec *spec = &n->output_pins[p];
-            char key[16];
-            snprintf(key, sizeof key, "o%d", p);
-            ed_pin_label(n, spec, label, sizeof label);
-            kit_prop_begin(k, key, label);
-            if (ed_pin_editable(gr, n, ED_PIN_OUTPUT, p) && !readonly &&
-                sg_value_kind_of(s, n, 1, p) != VALUE_NONE) {
-                sg_emit_value_in(s, k, n, 1, p);
-            } else if (p < STUDIO_VALUE_NAMES && spec->kind == PIN_DATA && used(gr, n, p)) {
-                /* A named value (Unreal's named reroute): uses read the name
-                   instead of drawing a wire; clearing it brings wires back. */
-                if (kit_text_field(
-                        k,
-                        "name",
-                        g->names[p],
-                        sizeof g->names[p],
-                        ed_pin_type_name(spec),
-                        readonly ? KIT_READONLY : 0
-                    )) {
-                    name_value(s, n, p, g->names[p]);
-                }
-            } else {
-                kit_label(k, "v", "dim", spec->kind == PIN_EXEC ? "Execution" : ed_pin_type_name(spec));
-            }
-            kit_prop_end(k);
-        }
-    }
-    if (n->output_count) {
-        kit_panel_end(k);
-    }
-    if (kit_panel_begin(k, "node", "Node", NULL, true)) {
-        unsigned flags = readonly ? KIT_DISABLED : 0;
-        bool disabled = n->disabled != 0;
-        kit_prop_begin(k, "disabled", "Disabled");
-        if (kit_checkbox(k, "v", &disabled, NULL, flags)) {
-            ed_snapshot_before(e);
-            graph_set_node_disabled(gr, n, disabled);
-        }
-        kit_prop_end(k);
-        if (node_behavior_for(n) != NODE_BEHAVIOR_PURE) {
-            bool breakpoint = n->breakpoint != 0;
-            kit_prop_begin(k, "break", "Breakpoint");
-            if (kit_checkbox(k, "v", &breakpoint, NULL, flags)) {
-                ed_snapshot_before(e);
-                graph_set_breakpoint(gr, n, breakpoint);
-            }
-            kit_prop_end(k);
-        }
-        sg_comment_properties(s, n);
-        if (ed_node_has_advanced_inputs(n)) {
-            bool advanced = n->show_advanced;
-            kit_prop_begin(k, "advanced", "Advanced Inputs");
-            if (kit_checkbox(k, "v", &advanced, "Show on node", flags)) {
-                ed_snapshot_before(e);
-                n->show_advanced = advanced;
-            }
-            kit_prop_end(k);
-        }
-    }
-    kit_panel_end(k);
 }

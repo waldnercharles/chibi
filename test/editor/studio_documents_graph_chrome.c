@@ -252,9 +252,326 @@ static void wire_and_comment_menus()
     fixture_free(&f);
 }
 
+/* ---------- Properties' Node and Member tabs ---------- */
+
+static rml_element *shown_in(rml_element *root, const char *selector)
+{
+    rml_element *found = NULL;
+    return shown_items(root, selector, &found, 1) ? found : NULL;
+}
+
+/* The control `selector` finds in a shown row of the graph section labeled
+   `label`, or NULL. */
+static rml_element *details_control(studio *s, const char *label, const char *selector)
+{
+    rml_element *rows[64];
+    rml_element *section = studio_element(s, "[data-ui=Properties]");
+    int count = shown_items(section, ".graph-row .prop", rows, 64);
+    for (int i = 0; i < count; i++) {
+        rml_element *control = shown_in(rows[i], selector);
+        if (control &&
+            shows_text(rml_element_query_selector(rows[i], ".label span"), label)) {
+            return control;
+        }
+    }
+    return NULL;
+}
+
+/* The graph section's shown row labeled `label`, or NULL. */
+static rml_element *details_row(studio *s, const char *label)
+{
+    rml_element *rows[128];
+    rml_element *section = studio_element(s, "[data-ui=Properties]");
+    int count = shown_items(section, ".graph-row .prop", rows, 64);
+    for (int i = 0; i < count; i++) {
+        if (shows_text(rml_element_query_selector(rows[i], ".label span"), label)) {
+            return rows[i];
+        }
+    }
+    return NULL;
+}
+
+static bool identity_is(studio *s, const char *name)
+{
+    rml_element *section = studio_element(s, "[data-ui=Properties]");
+    return shows_text(shown_in(section, ".identity .title"), name);
+}
+
+/* Scrolls `el` into view and presses it; nothing without one. */
+static void press_in_view(studio_fixture *f, rml_element *el)
+{
+    if (!el) {
+        return;
+    }
+    rml_element_scroll_into_view(el, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
+    frames(f, 2);
+    press(f->studio, el);
+}
+
+/* Types `text` into the field, replacing what it holds, and presses Enter. */
+static void type_in(studio_fixture *f, rml_element *field, const char *text)
+{
+    if (!field) {
+        return;
+    }
+    press_in_view(f, field);
+    frames(f, 2);
+    rml_element *input = rml_context_focus_element(rml_backend_context(f->studio->backend));
+    if (input) {
+        rml_element_select(input);
+    }
+    text_event(text);
+    tap(SDL_SCANCODE_RETURN);
+    frames(f, 3);
+}
+
+/* A vector input's axis edits as one Undo step; the Node panel's Disabled
+   and Comment edit the node; selecting another node rebinds the rows to
+   it. */
+static void node_tab()
+{
+    studio_fixture f = graph_open();
+    studio *s = f.studio;
+    node *real = editor_spawn(f.graph, registry_node_by_name("Direction To"), 120, 80);
+    node *atan = editor_spawn(f.graph, registry_node_by_name("Atan2"), 360, 80);
+    uint64_t real_id = real->id, atan_id = atan->id;
+    sg_select_only(f.graph, real);
+    frames(&f, 6);
+    bool tab = s->tab == STUDIO_TAB_NODE && identity_is(s, "Direction To");
+    int undo = acount(f.graph->undo);
+    rml_element *field = details_control(s, "Target", ".field.number");
+    type_in(&f, field, "3.5");
+    if (!field) {
+        printf("  node tab: no number field\n");
+    }
+    real = sg_node_by_id(s, real_id);
+    int target = -1;
+    for (int p = 0; real && p < real->input_count; p++) {
+        target = !strcmp(real->input_pins[p].name, "Target") ? p : target;
+    }
+    const float *vector = real && target >= 0
+                            ? real->input_pins[target].default_value.ptr
+                            : NULL;
+    double literal = vector ? vector[0] : 0;
+    bool number = literal == 3.5 && acount(f.graph->undo) == undo + 1;
+    press_in_view(&f, details_control(s, "Disabled", "input"));
+    frames(&f, 3);
+    real = sg_node_by_id(s, real_id);
+    bool disabled = real && real->disabled && acount(f.graph->undo) == undo + 2;
+    rml_element *comment = shown_in(details_row(s, "Comment"), "textarea");
+    if (comment) {
+        rml_element_dispatch_value(comment, "change", "Tuned", false);
+    }
+    frames(&f, 3);
+    real = sg_node_by_id(s, real_id);
+    bool commented = real && real->comment && !strcmp(real->comment, "Tuned") &&
+                     details_row(s, "Show Comment");
+    sg_select_only(f.graph, sg_node_by_id(s, atan_id));
+    frames(&f, 4);
+    bool rebound = identity_is(s, "Atan2") &&
+                   shown_in(details_row(s, "Y"), ".source-field input") &&
+                   details_row(s, "Disabled");
+    if (!(tab && number && disabled && commented && rebound)) {
+        printf(
+            "  node tab: tab %d number %d (%g, %d steps) disabled %d commented "
+            "%d rebound %d\n",
+            tab,
+            number,
+            literal,
+            acount(f.graph->undo) - undo,
+            disabled,
+            commented,
+            rebound
+        );
+    }
+    test_check(
+        tab && number && disabled && commented && rebound,
+        "the Node tab edits a literal as one Undo step, sets Disabled and the "
+        "comment, and rebinds its rows to the next node selected"
+    );
+    fixture_free(&f);
+}
+
+/* An input's source field lists what fits under it as it takes focus, the
+   current value highlighted; a typed literal is offered first and Enter
+   sets it as one Undo step; Escape shuts the list and keeps the source. */
+static void source_field()
+{
+    studio_fixture f = graph_open();
+    studio *s = f.studio;
+    node *atan = editor_spawn(f.graph, registry_node_by_name("Atan2"), 360, 80);
+    uint64_t id = atan->id;
+    sg_select_only(f.graph, atan);
+    frames(&f, 6);
+    rml_element *input = shown_in(details_row(s, "Y"), ".source-field input");
+    char list_id[64];
+    snprintf(list_id, sizeof list_id, "list-n%llu.i0", (unsigned long long)id);
+    press_in_view(&f, input);
+    frames(&f, 4);
+    rml_element *list = NULL;
+    rml_context *context = rml_backend_context(s->backend);
+    for (int i = 0; !list && i < rml_context_document_count(context); i++) {
+        list = rml_element_by_id(rml_context_document(context, i), list_id);
+    }
+    rml_element *rows[64];
+    int listed = shown_items(list, ".menu-item", rows, 64);
+    bool opened = list && popover_open(list) && listed > 0;
+    int undo = acount(f.graph->undo);
+    rml_element_select(input);
+    text_event("2.5");
+    frames(&f, 4);
+    rml_element *lit = shown_in(list, ".menu-item[data-highlighted] .label");
+    char label[128] = "";
+    if (lit) {
+        rml_element_inner_rml(lit, label, sizeof label);
+    }
+    bool offered = strstr(label, "2.5") != NULL;
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 4);
+    atan = sg_node_by_id(s, id);
+    double y = atan ? sg_literal_number(&atan->input_pins[0].default_value) : 0;
+    bool set = y == 2.5 && acount(f.graph->undo) == undo + 1 && !popover_open(list);
+    if (!set) {
+        printf("  source set: y %g steps %d open %d\n", y, acount(f.graph->undo) - undo, popover_open(list));
+    }
+    input = shown_in(details_row(s, "Y"), ".source-field input");
+    press_in_view(&f, input);
+    frames(&f, 3);
+    text_event("zz");
+    frames(&f, 2);
+    tap(SDL_SCANCODE_ESCAPE);
+    frames(&f, 4);
+    char shown[64] = "";
+    if (input) {
+        rml_element_value(input, shown, sizeof shown);
+    }
+    bool kept = !popover_open(list) && !strcmp(shown, "2.5") &&
+                acount(f.graph->undo) == undo + 1;
+    if (!(opened && offered && set && kept)) {
+        printf(
+            "  source: opened %d (%d rows) offered %d ('%s') set %d kept %d "
+            "('%s')\n",
+            opened,
+            listed,
+            offered,
+            label,
+            set,
+            kept,
+            shown
+        );
+    }
+    test_check(
+        opened && offered && set && kept,
+        "an input's source field lists what fits under it, offers a typed "
+        "literal first and sets it with Enter as one Undo step; Escape shuts "
+        "the list and keeps the source"
+    );
+    fixture_free(&f);
+}
+
+/* Whether function `id`'s entry has an input named `name`. */
+static bool signature_named(editor *e, uint64_t id, const char *name)
+{
+    graph *g = behavior_asset_find_graph(e->asset, id);
+    node *entry = g ? graph_node_by_id(g, g->entry_id) : NULL;
+    for (int p = 0; entry && p < entry->output_count; p++) {
+        if (entry->output_pins[p].name && !strcmp(entry->output_pins[p].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The Member tab: a variable's name, type (the palette's picker), container
+   and default, each one Undo step; a function's Add Input, a pin's rename
+   and its remove. */
+static void member_tab()
+{
+    studio_fixture f = graph_open();
+    studio *s = f.studio;
+    behavior_asset *asset = f.graph->asset;
+    behavior_asset_add_variable(asset, "Speed", PIN_F32, "float", PIN_CONTAINER_SINGLE, NULL, NULL);
+    behavior_asset_add_function(asset, "Aim", 0);
+    frames(&f, 2);
+    behavior_variable *speed = behavior_asset_find_variable_by_name(asset, "Speed");
+    uint64_t speed_id = speed->id;
+    s->members.kind = STUDIO_MEMBER_VARIABLE;
+    s->members.id = speed_id;
+    frames(&f, 6);
+    bool tab = s->tab == STUDIO_TAB_MEMBER && identity_is(s, "Speed");
+    int undo = acount(f.graph->undo);
+    type_in(&f, details_control(s, "Name", "input"), "Velocity");
+    speed = behavior_asset_find_variable_by_id(f.graph->asset, speed_id);
+    bool renamed = speed && !strcmp(speed->name, "Velocity") &&
+                   acount(f.graph->undo) == undo + 1;
+    type_in(&f, details_control(s, "Value", ".field.number"), "7");
+    speed = behavior_asset_find_variable_by_id(f.graph->asset, speed_id);
+    bool defaulted = speed && speed->default_value.f == 7.0f &&
+                     acount(f.graph->undo) == undo + 2;
+    press_in_view(&f, details_control(s, "Type", ".type-button"));
+    frames(&f, 4);
+    bool picking = s->palette.client == STUDIO_PALETTE_TYPES;
+    text_event("Integer");
+    frames(&f, 3);
+    tap(SDL_SCANCODE_RETURN);
+    frames(&f, 4);
+    speed = behavior_asset_find_variable_by_id(f.graph->asset, speed_id);
+    bool retyped = picking && speed && speed->type == PIN_I32 &&
+                   !s->palette.client && acount(f.graph->undo) == undo + 3;
+    graph *aim = NULL;
+    for (int i = 0; i < acount(f.graph->asset->graphs); i++) {
+        aim = !strcmp(f.graph->asset->graphs[i]->name, "Aim")
+                ? f.graph->asset->graphs[i]
+                : aim;
+    }
+    uint64_t aim_id = aim->graph_id;
+    s->members.kind = STUDIO_MEMBER_GRAPH;
+    s->members.id = aim_id;
+    frames(&f, 6);
+    rml_element *section = studio_element(s, "[data-ui=Properties]");
+    rml_element *adds[4];
+    int buttons = shown_items(section, ".add-row .btn", adds, 4);
+    press_in_view(&f, buttons ? adds[0] : NULL);
+    frames(&f, 4);
+    aim = behavior_asset_find_graph(f.graph->asset, aim_id);
+    rml_element *param = shown_in(section, ".param");
+    bool added = signature_named(f.graph, aim_id, "Value") && param;
+    type_in(&f, shown_in(param, ".param-name input"), "Range");
+    bool pin_named = signature_named(f.graph, aim_id, "Range");
+    press_in_view(&f, shown_in(shown_in(section, ".param"), ".param-name .btn"));
+    frames(&f, 4);
+    bool removed = !signature_named(f.graph, aim_id, "Range") &&
+                   !shown_in(section, ".param");
+    if (!(tab && renamed && defaulted && retyped && added && pin_named && removed)) {
+        printf(
+            "  member tab: tab %d renamed %d defaulted %d picking %d retyped "
+            "%d added %d (%d buttons) named %d removed %d\n",
+            tab,
+            renamed,
+            defaulted,
+            picking,
+            retyped,
+            added,
+            buttons,
+            pin_named,
+            removed
+        );
+    }
+    test_check(
+        tab && renamed && defaulted && retyped,
+        "the Member tab renames a variable, sets its default and its type "
+        "from the palette's picker, each one Undo step"
+    );
+    test_check(added && pin_named && removed, "a function's Add Input adds a pin whose row renames and removes it");
+    fixture_free(&f);
+}
+
 void studio_documents_graph_chrome_checks()
 {
     node_menu();
     pin_menu();
     wire_and_comment_menus();
+    node_tab();
+    source_field();
+    member_tab();
 }

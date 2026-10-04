@@ -1527,7 +1527,8 @@ static void body(view *v, const properties_subject *subject)
     studio *s = v->s;
     shown out = { .view = "empty", .identity = "", .note = "" };
     if (s->tab == STUDIO_TAB_NODE || s->tab == STUDIO_TAB_MEMBER) {
-        out.view = "native";
+        /* The Node and Member tabs are graph_details' (workstream G1). */
+        out.view = "graph";
     } else if (s->tab == STUDIO_TAB_SCENE) {
         const char *why = properties_while_playing(s, subject->locked, "Stop playing to change scene settings");
         out = (shown){ .view = "scene", .identity = "", .note = why ? why : "" };

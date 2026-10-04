@@ -592,6 +592,11 @@ void studio_ui_data_dirty_all(studio *s)
     rml_data_model_dirty_all(s->ui->data.model);
 }
 
+game_behavior_world *studio_ui_behaviors(studio *s)
+{
+    return game_prototype_preview_behaviors(s->ui->world);
+}
+
 rml_data_reads studio_ui_data_reads(const studio *s)
 {
     return s->ui ? rml_data_model_reads(s->ui->data.model) : (rml_data_reads){ 0 };

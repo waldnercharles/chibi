@@ -47,6 +47,7 @@
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/asset_text.h"
+#include "support/resources.h"
 #include "support/text_file.h"
 #include "support/text_search.h"
 #include "support/xalloc.h"
@@ -8673,9 +8674,14 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
 
 /* Behavior graphs author component nodes, which lower to the generated nodes
  * System graphs use directly; Systems offer the nodes their compiler turns
- * into bytecode. No domain offers every domain's authoring nodes. */
-static bool domain_offers(const char *domain, const node_desc *node)
+ * into bytecode. No domain offers every domain's authoring nodes, and only
+ * the Studio project, whose world runs them, offers Studio's editor nodes
+ * (category Studio). */
+static bool domain_offers(const char *domain, const node_desc *node, bool studio)
 {
+    if (!studio && node->category && !strcmp(node->category, "Studio")) {
+        return false;
+    }
     if (domain && !strcmp(domain, "system")) {
         return game_system_node_supported(node);
     }
@@ -8699,6 +8705,7 @@ typedef struct
     behavior_asset **definitions;
     ui_event *ui;
     ui_data_binding *bindings;
+    bool studio; /* the Studio project, which runs Studio's editor nodes */
 } project_events;
 
 static bool defined_event(const project_events *events, const char *name)
@@ -9304,7 +9311,8 @@ static void add_node_outline(
     yyjson_mut_val *categories = yyjson_mut_obj_add_obj(doc, value, "categories");
     for (int i = 0; i < registry_node_count(); i++) {
         const node_desc *node = registry_node(i);
-        if (!domain_offers(domain, node) || component_generated_kind(node)) {
+        if (!domain_offers(domain, node, project->studio) ||
+            component_generated_kind(node)) {
             continue;
         }
         const char *category = node->category && node->category[0] ? node->category
@@ -9360,7 +9368,7 @@ static node_match *node_candidates(
 {
     node_match *matches = NULL;
     for (int i = 0; i < registry_node_count(); i++) {
-        if (domain_offers(domain, registry_node(i))) {
+        if (domain_offers(domain, registry_node(i), project->studio)) {
             apush(matches, ((node_match){ .desc = registry_node(i) }));
         }
     }
@@ -9518,7 +9526,10 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page, include_pins or behavior");
         return -1;
     }
-    project_events events = { 0 };
+    char *studio = realpath(resource_studio(), NULL), *project = realpath(root, NULL);
+    project_events events = { .studio = studio && project && !strcmp(studio, project) };
+    free(studio);
+    free(project);
     char error[256] = "";
     int status = behavior_vocabulary(domain)
                    ? load_project_events(root, behavior, &events, error, sizeof error)

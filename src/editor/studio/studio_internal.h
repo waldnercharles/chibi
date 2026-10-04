@@ -1352,6 +1352,8 @@ int studio_ui_keyboard_area(studio *s);
 bool studio_ui_modal_open(studio *s);
 /* What the panels' data views have read, for the UI bench's counts. */
 rml_data_reads studio_ui_data_reads(const studio *s);
+/* The panels' behaviors, for the UI bench's behavior time. */
+game_behavior_world *studio_ui_behaviors(studio *s);
 /* Dirties every variable of the panels' data, so the next UI frame's reads
  * count their views. */
 void studio_ui_data_dirty_all(studio *s);

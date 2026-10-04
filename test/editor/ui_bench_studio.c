@@ -1200,6 +1200,250 @@ static void outliner_scroll(studio_bench *b)
     phase_row("its phases", phases);
 }
 
+/* ---------- 21: the Outliner's interactions, an A/B of builds ---------- */
+
+typedef enum
+{
+    OUTLINER_IDLE,
+    OUTLINER_SCROLL,
+    OUTLINER_CLICK,
+    OUTLINER_FILTER,
+    OUTLINER_RENAME,
+} outliner_step;
+
+/* Object `actor`'s row in the Outliner: data-object since its behaviors
+   (the spike), data-id before. */
+static rml_element *outliner_row(studio *s, int actor)
+{
+    char selector[96];
+    unsigned long long key = ecs_entity_to_u64(s->scene->actors[actor].entity);
+    snprintf(selector, sizeof selector, "#outliner-list [data-object=\"%llu\"]", key);
+    rml_element *row = studio_query(s, selector);
+    snprintf(selector, sizeof selector, "#outliner-list [data-id=\"%llu\"]", key);
+    return row ? row : studio_query(s, selector);
+}
+
+static void key_press(studio *s, rml_input_key key)
+{
+    rml_input input = { .type = RML_INPUT_KEY_PRESS, .key = key };
+    rml_backend_process_input(s->backend, &input);
+    input.type = RML_INPUT_KEY_RELEASE;
+    rml_backend_process_input(s->backend, &input);
+}
+
+static void type_text(studio *s, const char *text)
+{
+    rml_input input = { .type = RML_INPUT_TEXT_INPUT,
+                        .text = text,
+                        .text_size = strlen(text) };
+    rml_backend_process_input(s->backend, &input);
+}
+
+/* What one run changes before its UI frames: nothing, a scroll of three
+   rows, a click on one of two rows in view, a keystroke in the filter
+   ("Marker 5" and "Marker 51" in turn), or a rename typed in place. */
+static void outliner_change(studio_bench *b, outliner_step step, int run, float row, int middle)
+{
+    studio *s = b->studio;
+    rml_element *list = outliner_list(s);
+    switch (step) {
+        case OUTLINER_IDLE: break;
+        case OUTLINER_SCROLL:
+            rml_element_set_scroll_top(list, rml_element_scroll_top(list) + SCROLL_ROWS * row);
+            break;
+        case OUTLINER_CLICK:
+            press_element(s, outliner_row(s, middle + 4 + (run & 1)));
+            break;
+        case OUTLINER_FILTER:
+            if (run & 1) {
+                key_press(s, RML_INPUT_KEY_BACKSPACE);
+            } else {
+                type_text(s, "1");
+            }
+            break;
+        case OUTLINER_RENAME: {
+            char name[32];
+            snprintf(name, sizeof name, "Renamed %d", run + WARMUP);
+            type_text(s, name);
+            key_press(s, RML_INPUT_KEY_ENTER);
+            break;
+        }
+    }
+}
+
+#define RENAME_FRAMES_MAX 4
+
+/* Times the UI frames a step takes until it shows, with the behaviors'
+   time in them (game_behavior_profile) and what their views read. */
+static void outliner_step_row(studio_bench *b, outliner_step step, const char *name, float row)
+{
+    studio *s = b->studio;
+    rml_element *list = outliner_list(s);
+    /* The objects a click or a rename picks are in view. */
+    int middle = (int)(rml_element_scroll_top(list) / row);
+    game_behavior_world *behaviors = studio_ui_behaviors(s);
+    game_behavior_set_profiling(behaviors, true);
+    double ms[RUNS], behavior_ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    int took = 0;
+    for (int run = -WARMUP; run < RUNS; run++) {
+        int actor = middle + 4 + (run & 1);
+        if (step == OUTLINER_RENAME) {
+            select_instance(s->scene, actor);
+            studio_rename_object(s);
+            frames(b, 3);
+        }
+        outliner_change(b, step, run, row, middle);
+        cf_app_update(NULL);
+        bench_counts before = studio_mark(s);
+        double t = 0, behavior = 0;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phase[p] = 0;
+        }
+        /* A rename shows once its row names the new name. */
+        char renamed[32];
+        snprintf(renamed, sizeof renamed, "Renamed %d", run + WARMUP);
+        int frame = 0;
+        bool shown = false;
+        while (!shown) {
+            double frame_phases[PHASE_COUNT];
+            if (frame) {
+                cf_app_update(NULL);
+            }
+            game_behavior_profile_begin(behaviors);
+            t += native_ui(s, frame_phases);
+            cf_app_draw_onto_screen(true);
+            behavior += game_behavior_profile(behaviors)->inclusive_cpu_ms;
+            for (int p = 0; p < PHASE_COUNT; p++) {
+                phase[p] += frame_phases[p];
+            }
+            frame++;
+            rml_element *label = step == OUTLINER_RENAME ? outliner_row(s, actor)
+                                                         : NULL;
+            char text[64] = "";
+            if (label && (label = rml_element_query_selector(label, ".name"))) {
+                rml_element_inner_rml(label, text, sizeof text);
+            }
+            shown = step != OUTLINER_RENAME || !strcmp(text, renamed) ||
+                    frame == RENAME_FRAMES_MAX;
+        }
+        took = frame;
+        counts = outliner_counts(s, list, before);
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        behavior_ms[run] = behavior;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    game_behavior_set_profiling(behaviors, false);
+    bench_stat behavior = bench_stat_of(behavior_ms, RUNS);
+    char label[200];
+    snprintf(
+        label,
+        sizeof label,
+        "%s (%d UI frame%s; behaviors %.3f ms)",
+        name,
+        took,
+        took == 1 ? "" : "s",
+        behavior.median
+    );
+    bench_row("21", label, bench_stat_of(ms, RUNS), counts);
+    phase_row("its phases", phases);
+}
+
+/* The Outliner over ten thousand objects, scrolled to the middle: a UI
+   frame with nothing changed, a scroll step, a click on a row, a filter
+   keystroke and a rename, each through the UI as a hand would. Run each
+   build's binary in turn for an A/B (UI_BENCH_OUTLINER=1). */
+static void outliner_ab(studio_bench *b)
+{
+    studio *s = b->studio;
+    for (int i = 0; i < OUTLINER_OBJECTS; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "Marker %d", i);
+        int added = add_actor(b->scene, name, "DriftingMarker");
+        assert(added == 0);
+    }
+    select_instance(b->scene, 0);
+    studio_show_editor(s, STUDIO_EDITOR_OUTLINER);
+    frames(b, 6);
+    rml_element *list = outliner_list(s);
+    assert(list);
+    probe_documents(s);
+    char value[32] = "";
+    rml_element_property(list, "--row", value, sizeof value);
+    float row = (float)atof(value) * studio_pixel_ratio(s);
+    assert(row > 0);
+    rml_element_set_scroll_top(list, row * OUTLINER_OBJECTS / 2);
+    frames(b, 4);
+    outliner_step_row(b, OUTLINER_IDLE, "Outliner: a UI frame with nothing changed", row);
+    outliner_step_row(b, OUTLINER_SCROLL, "Outliner: a scroll step of 3 rows", row);
+    outliner_step_row(b, OUTLINER_CLICK, "Outliner: click a row in view", row);
+    outliner_step_row(b, OUTLINER_RENAME, "Outliner: rename in place, Enter to shown", row);
+    rml_element *filter = studio_query(s, "#outliner-filter");
+    assert(filter && rml_element_focus(filter, true));
+    type_text(s, "Marker 5");
+    frames(b, 4);
+    outliner_step_row(b, OUTLINER_FILTER, "Outliner: a filter keystroke, \"Marker 5\" to \"Marker 51\"", row);
+}
+
+/* With UI_BENCH_OUTLINER_CAPTURE set to a directory, native shots of the
+   Outliner (rows, selection, a hidden and a locked object, the row menu,
+   rename in place) in both themes and densities. */
+static void capture_outliner(studio_bench *b, const char *dir)
+{
+    static const struct
+    {
+        const char *name;
+        studio_theme theme;
+        bool comfortable;
+    } VARIANTS[] = { { "dark-compact", STUDIO_THEME_DARK, false },
+                     { "dark-comfortable", STUDIO_THEME_DARK, true },
+                     { "light-compact", STUDIO_THEME_LIGHT, false },
+                     { "light-comfortable", STUDIO_THEME_LIGHT, true } };
+    studio *s = b->studio;
+    s->maximized = -1;
+    s->prefs.reduced_motion = true;
+    studio_show_editor(s, STUDIO_EDITOR_OUTLINER);
+    app_scene_authoring_set_actor_view(s->scene, 1, APP_SCENE_VIEW_HIDDEN);
+    app_scene_authoring_set_actor_view(s->scene, 2, APP_SCENE_VIEW_LOCKED);
+    select_instance(s->scene, 3);
+    scene_toggle_instance(s->scene, 4);
+    frames(b, 10);
+    for (size_t v = 0; v < sizeof VARIANTS / sizeof *VARIANTS; v++) {
+        s->prefs.theme = VARIANTS[v].theme;
+        s->prefs.comfortable = VARIANTS[v].comfortable;
+        frames(b, 6);
+        rml_element *row = outliner_row(s, 5);
+        assert(row);
+        rml_vec2 at = rml_element_absolute_offset(row, RML_BOX_BORDER);
+        float ratio = studio_pixel_ratio(s);
+        pointer(s, RML_INPUT_POINTER_MOVE, at.x / ratio + 40, at.y / ratio + 6);
+        shot(b, dir, VARIANTS[v].name, "outliner-rows");
+        rml_input press = { .type = RML_INPUT_POINTER_DOWN,
+                            .x = at.x / ratio + 40,
+                            .y = at.y / ratio + 6,
+                            .button = 1 };
+        rml_backend_process_input(s->backend, &press);
+        press.type = RML_INPUT_POINTER_UP;
+        rml_backend_process_input(s->backend, &press);
+        shot(b, dir, VARIANTS[v].name, "outliner-menu");
+        key_press(s, RML_INPUT_KEY_ESCAPE);
+        frames(b, 4);
+        select_instance(s->scene, 3);
+        scene_toggle_instance(s->scene, 4);
+        studio_rename_object(s);
+        shot(b, dir, VARIANTS[v].name, "outliner-rename");
+        key_press(s, RML_INPUT_KEY_ESCAPE);
+        frames(b, 4);
+        pointer(s, RML_INPUT_POINTER_MOVE, 5, 5);
+    }
+}
+
 /* ---------- 16: the Scene's overlays while its camera moves ---------- */
 
 #define PAN_STEP 8.0f   /* world units a run pans, back and forth */
@@ -1829,6 +2073,19 @@ int ui_bench_studio(const char *program, bool members_only)
     /* UI_BENCH_CAPTURE takes C2's native shots alone. */
     if (getenv("UI_BENCH_CAPTURE")) {
         capture_chrome(&b, getenv("UI_BENCH_CAPTURE"));
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
+    /* UI_BENCH_OUTLINER runs case 21 alone; UI_BENCH_OUTLINER_CAPTURE
+       takes the Outliner's native shots. */
+    if (getenv("UI_BENCH_OUTLINER") || getenv("UI_BENCH_OUTLINER_CAPTURE")) {
+        if (getenv("UI_BENCH_OUTLINER")) {
+            outliner_ab(&b);
+        } else {
+            capture_outliner(&b, getenv("UI_BENCH_OUTLINER_CAPTURE"));
+        }
         bench_close(&b);
         app_input_shutdown();
         cf_destroy_app();

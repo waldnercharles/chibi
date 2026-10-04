@@ -21,6 +21,11 @@ bool sm_record(editor *e, behavior_asset *before, bool ok);
    undo step; a pin dropped on itself changes nothing. Returns true when the
    signature changed. */
 bool sm_move_signature_pin(editor *e, graph *g, bool result, uint64_t dragged, int to);
+/* Renames member `id` of `kind`, and the uses other assets name, as one
+   undo step; an empty or unchanged name changes nothing. False when the
+   name is taken (sm_name_taken says so). */
+bool sm_rename(studio *s, studio_member_kind kind, uint64_t id, const char *name);
+const char *sm_name_taken(studio_member_kind kind);
 void sm_refused(studio *s, const char *title);
 
 #endif

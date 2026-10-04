@@ -819,29 +819,80 @@ void studio_node_details(studio *s, gd_view *v)
     node_panel(v, s, n);
 }
 
-/* ---------- Edits ---------- */
+/* ---------- Capabilities ----------
+ * What the tab's edits do to the graph, over nodes, pins and values: no
+ * row ids, events or JSON. Each is one undo step; false: refused. Literals
+ * are sg_set_literal's, expressions sg_set_expression_source's and
+ * comments sg_set_node_comment's. */
 
-/* Names, renames or, with an empty name, unnames a value. */
-static void name_value(studio *s, node *n, int p, const char *name)
+/* Names output `p`, renames its value or, with an empty name, unnames it. */
+static bool name_value(editor *e, graph *gr, node *n, int p, const char *name)
 {
-    editor *e = sg_graph_editor(s);
-    graph *gr = sg_active_graph(s);
     const graph_local *local = graph_output_local(gr, n, p);
     if ((!local && !name[0]) || (local && !strcmp(local->name, name))) {
+        return true;
+    }
+    ed_snapshot_before(e);
+    return !name[0] ? graph_expand_local(gr, local->id) == 0
+         : local    ? graph_rename_local(gr, local->id, name) == 0
+                    : graph_create_local(gr, n, p, name) != 0;
+}
+
+typedef enum
+{
+    FLAG_DISABLED,
+    FLAG_BREAKPOINT,
+    FLAG_COMMENT_SHOWN,
+    FLAG_ADVANCED_SHOWN,
+} node_flag;
+
+static bool flag_of(const node *n, node_flag flag)
+{
+    switch (flag) {
+        case FLAG_DISABLED: return n->disabled;
+        case FLAG_BREAKPOINT: return n->breakpoint;
+        case FLAG_COMMENT_SHOWN: return !n->comment_hidden;
+        case FLAG_ADVANCED_SHOWN: return n->show_advanced;
+    }
+    return false;
+}
+
+/* A state the node holds already changes nothing. */
+static void set_flag(studio *s, node *n, node_flag flag, bool on)
+{
+    graph *gr = sg_active_graph(s);
+    if (flag_of(n, flag) == on) {
+        return;
+    }
+    ed_snapshot_before(sg_graph_editor(s));
+    switch (flag) {
+        case FLAG_DISABLED: graph_set_node_disabled(gr, n, on); break;
+        case FLAG_BREAKPOINT: graph_set_breakpoint(gr, n, on); break;
+        case FLAG_COMMENT_SHOWN:
+            sg_set_node_comment(s, n, n->comment ? n->comment : "", !on);
+            break;
+        case FLAG_ADVANCED_SHOWN: n->show_advanced = on; break;
+    }
+}
+
+static void set_frame_title(editor *e, graph *gr, graph_comment_box *box, const char *title)
+{
+    if (!strcmp(box->title ? box->title : "", title)) {
         return;
     }
     ed_snapshot_before(e);
-    bool ok = !name[0] ? graph_expand_local(gr, local->id) == 0
-            : local    ? graph_rename_local(gr, local->id, name) == 0
-                       : graph_create_local(gr, n, p, name) != 0;
-    if (!ok) {
-        kit_toast(
-            s->kit,
-            0,
-            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
-                               .title = local ? "A value has that name" : "Can't name this value" }
-        );
+    graph_set_comment_box(gr, box, title, box->color);
+}
+
+/* A color gesture (live, then its commit) is one undo step. */
+static void set_frame_color(studio *s, graph_comment_box *box, uint32_t color, sg_step step)
+{
+    studio_graph *g = &s->graph;
+    if (step == SG_STEP_ONCE || !g->details.gesture) {
+        ed_snapshot_before(sg_graph_editor(s));
     }
+    graph_set_comment_box(sg_active_graph(s), box, box->title ? box->title : "", color);
+    g->details.gesture = step == SG_STEP_LIVE;
 }
 
 static bool listed(char **names, const char *name)
@@ -968,6 +1019,16 @@ void studio_rewire_toast(studio *s)
                              )) {
         kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_ERROR, .title = "Could not keep the wire" });
     }
+}
+
+/* ---------- Intents ----------
+ * The rows' events read as the capabilities above. */
+
+/* A refused edit's field shows the graph's text again. */
+static void refused(studio *s, const char *title)
+{
+    kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_WARNING, .title = title });
+    s->graph.details.redraw = true;
 }
 
 /* What a control's event carries: its row id, its value as text, whether
@@ -1171,34 +1232,15 @@ static void edit_value(studio *s, node *n, const target *t, const char *action, 
     arena_free(&scratch);
 }
 
-/* A checkbox's state, which RmlUi also sends as a binding sets it: a state
-   the node holds already changes nothing. */
-static bool node_flag(const node *n, char part)
+/* A Node panel checkbox's state, which RmlUi also sends as a binding sets
+   it (set_flag ignores a state the node holds). */
+static void check_flag(studio *s, node *n, char part, bool on)
 {
     switch (part) {
-        case 'd': return n->disabled;
-        case 'b': return n->breakpoint;
-        case 'h': return !n->comment_hidden;
-        case 'a': return n->show_advanced;
-        default: return false;
-    }
-}
-
-static void set_node_flag(studio *s, node *n, char part, bool on)
-{
-    editor *e = sg_graph_editor(s);
-    graph *gr = sg_active_graph(s);
-    if (node_flag(n, part) == on) {
-        return;
-    }
-    ed_snapshot_before(e);
-    switch (part) {
-        case 'd': graph_set_node_disabled(gr, n, on); break;
-        case 'b': graph_set_breakpoint(gr, n, on); break;
-        case 'h':
-            sg_set_node_comment(s, n, n->comment ? n->comment : "", !on);
-            break;
-        case 'a': n->show_advanced = on; break;
+        case 'd': set_flag(s, n, FLAG_DISABLED, on); break;
+        case 'b': set_flag(s, n, FLAG_BREAKPOINT, on); break;
+        case 'h': set_flag(s, n, FLAG_COMMENT_SHOWN, on); break;
+        case 'a': set_flag(s, n, FLAG_ADVANCED_SHOWN, on); break;
         default: break;
     }
 }
@@ -1234,28 +1276,19 @@ static void edit_expression(studio *s, node *n, const ui_activation *a)
 
 static void frame_edit(studio *s, graph_comment_box *box, char part, const char *action, const ui_activation *a)
 {
-    studio_graph *g = &s->graph;
-    editor *e = sg_graph_editor(s);
-    graph *gr = sg_active_graph(s);
-    const char *title = box->title ? box->title : "";
-    if (part == 't' && !strcmp(action, "change") && a->argc > 1 &&
-        strcmp(a->args[1], title)) {
-        ed_snapshot_before(e);
-        graph_set_comment_box(gr, box, a->args[1], box->color);
+    if (a->argc < 2) {
         return;
     }
-    if (part != 'c' || a->argc < 2 ||
-        (strcmp(action, "input") && strcmp(action, "change"))) {
+    if (part == 't' && !strcmp(action, "change")) {
+        set_frame_title(sg_graph_editor(s), sg_active_graph(s), box, a->args[1]);
         return;
     }
-    /* A color gesture is one undo step. */
+    if (part != 'c' || (strcmp(action, "input") && strcmp(action, "change"))) {
+        return;
+    }
     uint32_t color = (uint32_t)strtoul(a->args[1] + (a->args[1][0] == '#'), NULL, 16);
     bool canceled = a->argc > 2 && !strcmp(a->args[2], "1");
-    if (!g->details.gesture) {
-        ed_snapshot_before(e);
-    }
-    graph_set_comment_box(gr, box, title, canceled ? box->color : color);
-    g->details.gesture = !strcmp(action, "input");
+    set_frame_color(s, box, canceled ? box->color : color, step_of(action));
 }
 
 void studio_node_details_action(studio *s, const char *action, const ui_activation *a)
@@ -1297,7 +1330,11 @@ void studio_node_details_action(studio *s, const char *action, const ui_activati
             return;
         case 'm':
             if (!strcmp(action, "change") && a->argc > 1) {
-                name_value(s, n, t.index, a->args[1]);
+                graph *gr = sg_active_graph(s);
+                bool named = graph_output_local(gr, n, t.index) != NULL;
+                if (!name_value(sg_graph_editor(s), gr, n, t.index, a->args[1])) {
+                    refused(s, named ? "A value has that name" : "Can't name this value");
+                }
             }
             return;
         case 'x':
@@ -1312,7 +1349,7 @@ void studio_node_details_action(studio *s, const char *action, const ui_activati
             return;
         default:
             if (!strcmp(action, "check")) {
-                set_node_flag(s, n, t.part, a->argc > 1 && a->args[1][0]);
+                check_flag(s, n, t.part, a->argc > 1 && a->args[1][0]);
             }
             return;
     }

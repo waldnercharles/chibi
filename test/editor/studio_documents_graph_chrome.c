@@ -392,6 +392,53 @@ static void node_tab()
     fixture_free(&f);
 }
 
+/* A comment frame's tab: its title as one Undo step, and a color dragged
+   then committed as one more. */
+static void frame_tab()
+{
+    studio_fixture f = graph_open();
+    studio *s = f.studio;
+    graph *gr = sg_active_graph(s);
+    uint64_t id = graph_add_comment_box(gr, "Aim", 40, 260, 240, 120)->id;
+    ed_clear_selection(f.graph);
+    s->graph.comment = id;
+    frames(&f, 6);
+    bool tab = identity_is(s, "Aim");
+    int undo = acount(f.graph->undo);
+    type_in(&f, details_control(s, "Title", "input"), "Aim at");
+    graph_comment_box *box = sg_comment_by_id(s, id);
+    bool titled = box && !strcmp(box->title, "Aim at") &&
+                  acount(f.graph->undo) == undo + 1;
+    rml_element *color = details_control(s, "Color", "color-field");
+    if (color) {
+        rml_element_dispatch_value(color, "input", "#336699ff", false);
+        frames(&f, 2);
+        rml_element_dispatch_value(color, "input", "#e5534bff", false);
+        frames(&f, 2);
+        rml_element_dispatch_value(color, "change", "#e5534bff", false);
+    }
+    frames(&f, 3);
+    box = sg_comment_by_id(s, id);
+    bool colored = box && box->color == 0xe5534bffu &&
+                   acount(f.graph->undo) == undo + 2;
+    if (!(tab && titled && colored)) {
+        printf(
+            "  frame tab: tab %d titled %d color %d colored %d (%d steps)\n",
+            tab,
+            titled,
+            color != NULL,
+            colored,
+            acount(f.graph->undo) - undo
+        );
+    }
+    test_check(
+        tab && titled && colored,
+        "a comment frame's tab sets its title and, as one Undo step, a color "
+        "dragged then committed"
+    );
+    fixture_free(&f);
+}
+
 /* An input's source field lists what fits under it as it takes focus, the
    current value highlighted; a typed literal is offered first and Enter
    sets it as one Undo step; Escape shuts the list and keeps the source. */
@@ -481,17 +528,41 @@ static void source_field()
     fixture_free(&f);
 }
 
-/* Whether function `id`'s entry has an input named `name`. */
-static bool signature_named(editor *e, uint64_t id, const char *name)
+/* The index of function `id`'s input named `name`, or -1. */
+static int signature_at(editor *e, uint64_t id, const char *name)
 {
     graph *g = behavior_asset_find_graph(e->asset, id);
     node *entry = g ? graph_node_by_id(g, g->entry_id) : NULL;
     for (int p = 0; entry && p < entry->output_count; p++) {
         if (entry->output_pins[p].name && !strcmp(entry->output_pins[p].name, name)) {
-            return true;
+            return p;
         }
     }
-    return false;
+    return -1;
+}
+
+/* Presses `from`, carries it past the drag threshold onto the middle of
+   `to` and releases there. */
+static void carry(studio_fixture *f, rml_element *from, rml_element *to)
+{
+    studio *s = f->studio;
+    float ratio = studio_pixel_ratio(s);
+    rml_vec2 at = rml_element_absolute_offset(from, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(from, RML_BOX_BORDER);
+    float x = (at.x + size.x * 0.5f) / ratio, y = (at.y + size.y * 0.5f) / ratio;
+    at = rml_element_absolute_offset(to, RML_BOX_BORDER);
+    size = rml_element_box_size(to, RML_BOX_BORDER);
+    float tx = (at.x + size.x * 0.5f) / ratio, ty = (at.y + size.y * 0.5f) / ratio;
+    mouse_move(s, x, y);
+    frames(f, 1);
+    graph_drag_button(s, x, y, true);
+    frames(f, 1);
+    mouse_move(s, x + 12, y);
+    frames(f, 2);
+    mouse_move(s, tx, ty);
+    frames(f, 3);
+    graph_drag_button(s, tx, ty, false);
+    frames(f, 4);
 }
 
 /* The Member tab: a variable's name, type (the palette's picker), container
@@ -545,19 +616,35 @@ static void member_tab()
     int buttons = shown_items(section, ".add-row .btn", adds, 4);
     press_in_view(&f, buttons ? adds[0] : NULL);
     frames(&f, 4);
-    aim = behavior_asset_find_graph(f.graph->asset, aim_id);
+    press_in_view(&f, buttons ? shown_in(section, ".add-row .btn") : NULL);
+    frames(&f, 4);
+    rml_element *params[4];
+    int listed = shown_items(section, ".param", params, 4);
+    bool added = signature_at(f.graph, aim_id, "Value") >= 0 &&
+                 signature_at(f.graph, aim_id, "Value 2") >= 0 && listed == 2;
+    /* The second input's grip dropped on the first's row moves it there. */
+    undo = acount(f.graph->undo);
+    if (listed == 2) {
+        carry(&f, shown_in(params[1], ".param-grip"), params[0]);
+    }
+    bool reordered = signature_at(f.graph, aim_id, "Value 2") >= 0 &&
+                     signature_at(f.graph, aim_id, "Value 2") <
+                         signature_at(f.graph, aim_id, "Value") &&
+                     acount(f.graph->undo) == undo + 1;
     rml_element *param = shown_in(section, ".param");
-    bool added = signature_named(f.graph, aim_id, "Value") && param;
     type_in(&f, shown_in(param, ".param-name input"), "Range");
-    bool pin_named = signature_named(f.graph, aim_id, "Range");
+    bool pin_named = signature_at(f.graph, aim_id, "Range") >= 0 &&
+                     signature_at(f.graph, aim_id, "Value 2") < 0;
     press_in_view(&f, shown_in(shown_in(section, ".param"), ".param-name .btn"));
     frames(&f, 4);
-    bool removed = !signature_named(f.graph, aim_id, "Range") &&
-                   !shown_in(section, ".param");
-    if (!(tab && renamed && defaulted && retyped && added && pin_named && removed)) {
+    bool removed = signature_at(f.graph, aim_id, "Range") < 0 &&
+                   shown_items(section, ".param", params, 4) == 1;
+    if (!(tab && renamed && defaulted && retyped && added && reordered &&
+          pin_named && removed)) {
         printf(
             "  member tab: tab %d renamed %d defaulted %d picking %d retyped "
-            "%d added %d (%d buttons) named %d removed %d\n",
+            "%d added %d (%d buttons, %d rows) reordered %d named %d removed "
+            "%d\n",
             tab,
             renamed,
             defaulted,
@@ -565,6 +652,8 @@ static void member_tab()
             retyped,
             added,
             buttons,
+            listed,
+            reordered,
             pin_named,
             removed
         );
@@ -574,7 +663,11 @@ static void member_tab()
         "the Member tab renames a variable, sets its default and its type "
         "from the palette's picker, each one Undo step"
     );
-    test_check(added && pin_named && removed, "a function's Add Input adds a pin whose row renames and removes it");
+    test_check(
+        added && reordered && pin_named && removed,
+        "a function's Add Input adds pins whose rows reorder by their grips "
+        "as one Undo step, rename and remove them"
+    );
     fixture_free(&f);
 }
 
@@ -584,6 +677,7 @@ void studio_documents_graph_chrome_checks()
     pin_menu();
     wire_and_comment_menus();
     node_tab();
+    frame_tab();
     source_field();
     member_tab();
 }

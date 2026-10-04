@@ -476,21 +476,10 @@ void kit_popup_open(kit *k, const char *key)
     str_set(&p->trigger, k->last ? k->last->path : "");
 }
 
-void kit_dropdown_open(kit *k, const char *key, const char *placeholder)
-{
-    dropdown_open_on(k, key, placeholder, k->last);
-}
-
 bool kit_dropdown_is_open(const kit *k, const char *key)
 {
     popup *p = popup_find(k, key);
     return p && p->open && p->dropdown;
-}
-
-const char *kit_dropdown_query(const kit *k, const char *key)
-{
-    popup *p = popup_find(k, key);
-    return p && p->dropdown ? p->dropdown_query : "";
 }
 
 void kit_popup_open_at(kit *k, const char *key, float x, float y)

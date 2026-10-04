@@ -7,7 +7,9 @@
  * source. Types are chosen from a search over basic types, structures and
  * enums, and Exec for a macro (Unreal's pin type picker), in the palette's
  * picker under the type. A row's id names what it edits: v<variable>,
- * g<graph> or l<local>, then a part letter and, for a pin, p<pin id>. */
+ * g<graph> or l<local>, then a part letter and, for a pin, p<pin id>.
+ * Capabilities edit the behavior over members, pins and values; intents
+ * only read the rows' events into them. */
 #include "editor/studio/studio_members_internal.h"
 #include "editor/ui/choices.h"
 #include "graph/model/pin_conv.h"
@@ -383,6 +385,137 @@ void studio_member_details(studio *s, gd_view *v)
     }
 }
 
+/* ---------- Capabilities ----------
+ * What the tab's edits do to the behavior, over members, pins and values:
+ * no row ids, events or JSON. Each is one undo step; false: refused. */
+
+/* A function's or macro's pin, and its side. */
+static const pin_spec *signature_pin(graph *g, uint64_t pin_id, bool *result, int *index)
+{
+    for (int side = 0; g && side < 2; side++) {
+        int output = 0;
+        const pin_spec *pin = graph_pin_by_id(signature_node(g, side), pin_id, &output, index);
+        if (pin) {
+            *result = side;
+            return pin;
+        }
+    }
+    return NULL;
+}
+
+static bool retype_variable(editor *e, uint64_t id, pin_type type, const char *type_name)
+{
+    behavior_asset *before = ed_snapshot(e);
+    return sm_record(e, before, behavior_asset_retype_variable(e->asset, id, type, type_name) == 0);
+}
+
+static bool set_variable_container(editor *e, uint64_t id, pin_container container)
+{
+    behavior_asset *before = ed_snapshot(e);
+    return sm_record(e, before, behavior_asset_set_variable_container(e->asset, id, container) == 0);
+}
+
+static bool set_variable_category(editor *e, uint64_t id, const char *category)
+{
+    behavior_asset *before = ed_snapshot(e);
+    return sm_record(e, before, behavior_asset_set_variable_category(e->asset, id, category) == 0);
+}
+
+/* Sets variable `variable`'s default or, with `g`, its input `index`'s: a
+   scrub (live, then its commit) is one undo step. */
+static void set_default(studio *s, graph *g, int index, uint64_t variable, const pin_value *value, sg_step step)
+{
+    studio_members *m = &s->members;
+    editor *e = member_editor(s);
+    if (step == SG_STEP_ONCE || !m->value_editing) {
+        ed_snapshot_before(e);
+    }
+    m->value_editing = step == SG_STEP_LIVE;
+    if (g) {
+        graph_signature_set_default(e->asset, g, index, value);
+        return;
+    }
+    behavior_asset_set_variable_default(e->asset, variable, value);
+}
+
+/* Adds a Float input or output, named past the names in use. */
+static bool add_signature_pin(editor *e, graph *g, bool result)
+{
+    node *owner = signature_node(g, result);
+    const char *base = result ? "Result" : "Value";
+    char name[64];
+    snprintf(name, sizeof name, "%s", base);
+    for (int i = 2;; i++) {
+        bool taken = false;
+        int count = result ? owner->input_count : owner->output_count;
+        const pin_spec *pins = result ? owner->input_pins : owner->output_pins;
+        for (int p = 0; p < count && !taken; p++) {
+            taken = pins[p].name && !strcmp(pins[p].name, name);
+        }
+        if (!taken) {
+            break;
+        }
+        snprintf(name, sizeof name, "%s %d", base, i);
+    }
+    pin_spec pin = { .name = name, .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" };
+    behavior_asset *before = ed_snapshot(e);
+    return sm_record(e, before, graph_signature_add(e->asset, g, result, &pin) == 0);
+}
+
+/* Renames an input or output, and what calls in other assets name it; an
+   empty or unchanged name changes nothing. */
+static bool rename_signature_pin(studio *s, graph *g, uint64_t pin_id, const char *name)
+{
+    bool result = false;
+    int index = -1;
+    const pin_spec *pin = signature_pin(g, pin_id, &result, &index);
+    if (!pin || !name[0] || !strcmp(name, pin->name)) {
+        return true;
+    }
+    reference_symbol parameter = { .kind = REFERENCE_SYMBOL_PARAMETER,
+                                   .asset = studio_refresh_document_asset(s),
+                                   .graph_id = g->graph_id,
+                                   .id = pin_id };
+    if (studio_refactor_member_rename(s, parameter, pin->name, name)) {
+        return true;
+    }
+    editor *e = member_editor(s);
+    behavior_asset *before = ed_snapshot(e);
+    return sm_record(e, before, graph_signature_rename(e->asset, g, result, index, name) == 0);
+}
+
+/* Gives an input or output `with`'s kind, type and container. */
+static bool retype_signature_pin(editor *e, graph *g, uint64_t pin_id, const pin_spec *with)
+{
+    bool result = false;
+    int index = -1;
+    if (!signature_pin(g, pin_id, &result, &index)) {
+        return false;
+    }
+    behavior_asset *before = ed_snapshot(e);
+    return sm_record(e, before, graph_signature_retype(e->asset, g, result, index, with) == 0);
+}
+
+static bool remove_signature_pin(editor *e, graph *g, uint64_t pin_id)
+{
+    bool result = false;
+    int index = -1;
+    if (!signature_pin(g, pin_id, &result, &index)) {
+        return false;
+    }
+    behavior_asset *before = ed_snapshot(e);
+    return sm_record(e, before, graph_signature_remove(e->asset, g, result, index) == 0);
+}
+
+static bool set_pure(editor *e, graph *g, bool pure)
+{
+    if (pure == graph_signature_pure(g)) {
+        return true;
+    }
+    behavior_asset *before = ed_snapshot(e);
+    return sm_record(e, before, graph_signature_set_pure(e->asset, g, pure) == 0);
+}
+
 /* ---------- The type picker ---------- */
 
 /* Exec for a macro's pins, basic types, then registered structures and
@@ -405,20 +538,6 @@ static type_choice *type_choices(bool exec)
         apush(choices, ((type_choice){ type->name, PIN_ENUM, type->name }));
     }
     return choices;
-}
-
-/* A function's or macro's pin, and its side. */
-static const pin_spec *signature_pin(graph *g, uint64_t pin_id, bool *result, int *index)
-{
-    for (int side = 0; g && side < 2; side++) {
-        int output = 0;
-        const pin_spec *pin = graph_pin_by_id(signature_node(g, side), pin_id, &output, index);
-        if (pin) {
-            *result = side;
-            return pin;
-        }
-    }
-    return NULL;
 }
 
 /* The graph whose pin the picker types, or NULL for a variable. */
@@ -473,27 +592,17 @@ void studio_member_type_choose(studio *s, const studio_palette_entry *entry)
         return;
     }
     const type_choice *choice = &choices[entry->kind];
-    behavior_asset *before = ed_snapshot(e);
+    bool result = false;
+    int index = -1;
+    const pin_spec *pin = signature_pin(g, m->pick.pin_id, &result, &index);
     if (!m->pick.pin_id) {
-        sm_record(
-            e,
-            before,
-            behavior_asset_retype_variable(
-                e->asset,
-                m->pick.id,
-                choice->type,
-                choice->type_name
-            ) == 0
-        );
-    } else {
-        bool result = false;
-        int index = -1;
-        const pin_spec *pin = signature_pin(g, m->pick.pin_id, &result, &index);
+        retype_variable(e, m->pick.id, choice->type, choice->type_name);
+    } else if (pin) {
         pin_spec type = { .kind = choice->type == PIN_FLOW ? PIN_EXEC : PIN_DATA,
                           .type = choice->type,
                           .type_name = choice->type_name,
-                          .container = pin ? pin->container : PIN_CONTAINER_SINGLE };
-        sm_record(e, before, pin && graph_signature_retype(e->asset, g, result, index, &type) == 0);
+                          .container = pin->container };
+        retype_signature_pin(e, g, m->pick.pin_id, &type);
     }
     afree(choices);
     gd_changed(s);
@@ -516,7 +625,8 @@ static void pick_type(studio *s, uint64_t id, uint64_t pin_id, const ui_activati
     studio_palette_open_at(s, STUDIO_PALETTE_TYPES, "Search types", button);
 }
 
-/* ---------- Edits ---------- */
+/* ---------- Intents ----------
+ * The rows' events read as the capabilities above. */
 
 /* A refused edit's field shows the member's text again. */
 static void refused(studio *s, bool ok, const char *title)
@@ -584,19 +694,8 @@ static bool sent_value(
     return true;
 }
 
-/* Opens the undo step an edit needs: one per discrete change, one per
-   scrub, which input begins and change ends. */
-static void value_step(studio *s, const char *action, bool scrubs)
-{
-    studio_members *m = &s->members;
-    bool live = scrubs && !strcmp(action, "input");
-    if (!scrubs || !m->value_editing) {
-        ed_snapshot_before(member_editor(s));
-    }
-    m->value_editing = live;
-}
-
-/* A default's edit: a variable's or an input's. */
+/* A default's edit: a variable's or an input's. Numbers and vectors scrub,
+   so input runs a gesture and change ends it. */
 static void edit_default(
     studio *s,
     const pin_spec *pin,
@@ -611,13 +710,12 @@ static void edit_default(
     arena scratch = { 0 };
     pin_value value;
     if (sent_value(pin, was, a, &scratch, &value)) {
-        value_step(s, action, (pin->type >= PIN_I8 && pin->type <= PIN_F64) || pin_vector_width(pin) > 0);
-        editor *e = member_editor(s);
-        if (g) {
-            graph_signature_set_default(e->asset, g, index, &value);
-        } else {
-            behavior_asset_set_variable_default(e->asset, variable, &value);
-        }
+        bool scrubs = (pin->type >= PIN_I8 && pin->type <= PIN_F64) ||
+                      pin_vector_width(pin) > 0;
+        sg_step step = !scrubs                  ? SG_STEP_ONCE
+                     : !strcmp(action, "input") ? SG_STEP_LIVE
+                                                : SG_STEP_COMMIT;
+        set_default(s, g, index, variable, &value, step);
     }
     arena_free(&scratch);
 }
@@ -632,57 +730,19 @@ static void variable_edit(
 {
     editor *e = member_editor(s);
     const char *text = a->argc > 1 ? a->args[1] : "";
-    uint64_t id = var->id;
-    if (!strcmp(part, "n") && !strcmp(action, "change") && text[0] &&
-        strcmp(text, var->name) &&
-        !studio_members_rename_across(s, STUDIO_MEMBER_VARIABLE, id, var->name, text)) {
-        behavior_asset *before = ed_snapshot(e);
-        refused(
-            s,
-            sm_record(e, before, behavior_asset_rename_variable(e->asset, id, text) == 0),
-            "A variable has that name"
-        );
+    bool change = !strcmp(action, "change");
+    if (!strcmp(part, "n") && change) {
+        refused(s, sm_rename(s, STUDIO_MEMBER_VARIABLE, var->id, text), sm_name_taken(STUDIO_MEMBER_VARIABLE));
     } else if (!strcmp(part, "t") && !strcmp(action, "type")) {
-        pick_type(s, id, 0, a);
-    } else if (!strcmp(part, "c") && !strcmp(action, "change")) {
-        behavior_asset *before = ed_snapshot(e);
-        sm_record(
-            e,
-            before,
-            behavior_asset_set_variable_container(e->asset, id, (pin_container)atoi(text)) == 0
-        );
-    } else if (!strcmp(part, "g") && !strcmp(action, "change")) {
-        behavior_asset *before = ed_snapshot(e);
-        sm_record(e, before, behavior_asset_set_variable_category(e->asset, id, text) == 0);
+        pick_type(s, var->id, 0, a);
+    } else if (!strcmp(part, "c") && change) {
+        set_variable_container(e, var->id, (pin_container)atoi(text));
+    } else if (!strcmp(part, "g") && change) {
+        set_variable_category(e, var->id, text);
     } else if (!strcmp(part, "d")) {
         pin_spec pin = sm_variable_pin(var);
-        edit_default(s, &pin, &var->default_value, action, a, NULL, 0, id);
+        edit_default(s, &pin, &var->default_value, action, a, NULL, 0, var->id);
     }
-}
-
-/* Adds a Float input or output, named past the names in use. */
-static void add_signature_pin(studio *s, graph *g, bool result)
-{
-    editor *e = member_editor(s);
-    node *owner = signature_node(g, result);
-    const char *base = result ? "Result" : "Value";
-    char name[64];
-    snprintf(name, sizeof name, "%s", base);
-    for (int i = 2;; i++) {
-        bool taken = false;
-        int count = result ? owner->input_count : owner->output_count;
-        const pin_spec *pins = result ? owner->input_pins : owner->output_pins;
-        for (int p = 0; p < count && !taken; p++) {
-            taken = pins[p].name && !strcmp(pins[p].name, name);
-        }
-        if (!taken) {
-            break;
-        }
-        snprintf(name, sizeof name, "%s %d", base, i);
-    }
-    pin_spec pin = { .name = name, .kind = PIN_DATA, .type = PIN_F32, .type_name = "float" };
-    behavior_asset *before = ed_snapshot(e);
-    sm_record(e, before, graph_signature_add(e->asset, g, result, &pin) == 0);
 }
 
 static void signature_edit(studio *s, graph *g, uint64_t pin_id, const char *action, const ui_activation *a)
@@ -697,99 +757,37 @@ static void signature_edit(studio *s, graph *g, uint64_t pin_id, const char *act
     const char *text = a->argc > 1 ? a->args[1] : "";
     if (!strcmp(action, "type")) {
         pick_type(s, g->graph_id, pin_id, a);
-        return;
-    }
-    if (!strcmp(action, "reorder")) {
+    } else if (!strcmp(action, "reorder")) {
         /* The dragged row's id names its pin. */
         const char *dragged = strstr(text, ".p");
         if (dragged) {
             sm_move_signature_pin(e, g, result, strtoull(dragged + 2, NULL, 10), index);
         }
-        return;
-    }
-    if (!strcmp(action, "rename")) {
-        if (!text[0] || !strcmp(text, pin->name)) {
-            return;
-        }
-        /* Calls in other assets name a library function's parameters too. */
-        reference_symbol parameter = { .kind = REFERENCE_SYMBOL_PARAMETER,
-                                       .asset = studio_refresh_document_asset(s),
-                                       .graph_id = g->graph_id,
-                                       .id = pin->id };
-        if (studio_refactor_member_rename(s, parameter, pin->name, text)) {
-            return;
-        }
-        behavior_asset *before = ed_snapshot(e);
-        refused(
-            s,
-            sm_record(e, before, graph_signature_rename(e->asset, g, result, index, text) == 0),
-            "A pin has that name"
-        );
-        return;
-    }
-    if (!strcmp(action, "container")) {
+    } else if (!strcmp(action, "rename")) {
+        refused(s, rename_signature_pin(s, g, pin_id, text), "A pin has that name");
+    } else if (!strcmp(action, "container")) {
         pin_spec type = { .kind = PIN_DATA,
                           .type = pin->type,
                           .type_name = pin->type_name,
                           .container = (pin_container)atoi(text) };
-        behavior_asset *before = ed_snapshot(e);
-        sm_record(e, before, graph_signature_retype(e->asset, g, result, index, &type) == 0);
-        return;
-    }
-    if (!strcmp(action, "remove")) {
-        behavior_asset *before = ed_snapshot(e);
-        sm_record(e, before, graph_signature_remove(e->asset, g, result, index) == 0);
-        return;
-    }
-    if (!result) {
+        retype_signature_pin(e, g, pin_id, &type);
+    } else if (!strcmp(action, "remove")) {
+        remove_signature_pin(e, g, pin_id);
+    } else if (!result) {
         edit_default(s, pin, &pin->default_value, action, a, g, index, 0);
     }
 }
 
 static void graph_edit(studio *s, graph *g, const char *part, const char *action, const ui_activation *a)
 {
-    editor *e = member_editor(s);
     const char *text = a->argc > 1 ? a->args[1] : "";
     if (part[0] == 'p') {
         signature_edit(s, g, strtoull(part + 1, NULL, 10), action, a);
-    } else if (
-        !strcmp(part, "n") && !strcmp(action, "change") && text[0] &&
-        strcmp(text, g->name) &&
-        !studio_members_rename_across(s, STUDIO_MEMBER_GRAPH, g->graph_id, g->name, text)
-    ) {
-        editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
-                                  .data.rename_graph = { g->graph_id, text } };
-        refused(s, editor_command_apply(e, rename) == 0, "A graph has that name");
-    } else if (!strcmp(part, "u") && !strcmp(action, "check") && (text[0] != '\0') != graph_signature_pure(g)) {
-        behavior_asset *before = ed_snapshot(e);
-        refused(
-            s,
-            sm_record(e, before, graph_signature_set_pure(e->asset, g, text[0]) == 0),
-            "The function runs nodes in order"
-        );
+    } else if (!strcmp(part, "n") && !strcmp(action, "change")) {
+        refused(s, sm_rename(s, STUDIO_MEMBER_GRAPH, g->graph_id, text), sm_name_taken(STUDIO_MEMBER_GRAPH));
+    } else if (!strcmp(part, "u") && !strcmp(action, "check")) {
+        refused(s, set_pure(member_editor(s), g, text[0] != '\0'), "The function runs nodes in order");
     }
-}
-
-static void local_edit(
-    studio *s,
-    const graph_local *local,
-    const char *part,
-    const char *action,
-    const ui_activation *a
-)
-{
-    editor *e = member_editor(s);
-    const char *text = a->argc > 1 ? a->args[1] : "";
-    if (strcmp(part, "n") || strcmp(action, "change") || !text[0] ||
-        !strcmp(text, local->name)) {
-        return;
-    }
-    behavior_asset *before = ed_snapshot(e);
-    refused(
-        s,
-        sm_record(e, before, graph_rename_local(sg_active_graph(s), local->id, text) == 0),
-        "A value has that name"
-    );
 }
 
 void studio_member_details_action(studio *s, const char *action, const ui_activation *a)
@@ -804,18 +802,19 @@ void studio_member_details_action(studio *s, const char *action, const ui_activa
     if (!strcmp(action, "addPin")) {
         graph *g = sm_graph(s);
         if (g && g->graph_id == member) {
-            add_signature_pin(s, g, !strcmp(part, "outputs"));
+            add_signature_pin(member_editor(s), g, !strcmp(part, "outputs"));
         }
         return;
     }
     behavior_variable *var = sm_variable(s);
     graph *g = sm_graph(s);
     const graph_local *local = sm_local(s);
+    const char *text = a->argc > 1 ? a->args[1] : "";
     if (id[0] == 'v' && var && var->id == member) {
         variable_edit(s, var, part, action, a);
     } else if (id[0] == 'g' && g && g->graph_id == member) {
         graph_edit(s, g, part, action, a);
-    } else if (id[0] == 'l' && local && local->id == member) {
-        local_edit(s, local, part, action, a);
+    } else if (id[0] == 'l' && local && local->id == member && !strcmp(part, "n") && !strcmp(action, "change")) {
+        refused(s, sm_rename(s, STUDIO_MEMBER_LOCAL, member, text), sm_name_taken(STUDIO_MEMBER_LOCAL));
     }
 }

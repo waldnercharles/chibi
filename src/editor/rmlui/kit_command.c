@@ -47,7 +47,7 @@ static int current_row(const kit_command_item *items, const text_rank_row *rows)
     return 0;
 }
 
-int kit_dropdown(kit *k, const char *key, const kit_command_item *items, int count)
+int dropdown_items(kit *k, const char *key, const kit_command_item *items, int count)
 {
     popup *p = popup_find(k, key);
     if (!p || !p->open || !p->dropdown || !kit_popup_begin(k, key, "dropdown")) {

@@ -380,57 +380,50 @@ bool studio_members_rename_across(
            studio_refactor_member_rename(s, member_symbol(s, kind, id), name, new_name);
 }
 
-static void rename_graph(studio *s, graph *g, const char *name)
+bool sm_rename(studio *s, studio_member_kind kind, uint64_t id, const char *name)
 {
-    editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
-                              .data.rename_graph = { g->graph_id, name } };
-    if (editor_command_apply(sg_graph_editor(s), rename) != 0) {
-        sm_refused(s, "A graph has that name");
+    editor *e = sg_graph_editor(s);
+    graph *g = behavior_asset_find_graph(e->asset, id);
+    const behavior_variable *v = behavior_asset_find_variable_by_id(e->asset, id);
+    const graph_local *local = graph_local_by_id(sg_active_graph(s), id);
+    const char *old = kind == STUDIO_MEMBER_GRAPH    ? (g ? g->name : NULL)
+                    : kind == STUDIO_MEMBER_VARIABLE ? (v ? v->name : NULL)
+                    : kind == STUDIO_MEMBER_LOCAL ? (local ? local->name : NULL)
+                                                  : NULL;
+    if (!old || !name[0] || !strcmp(old, name)) {
+        return true;
+    }
+    /* A library's functions and an event's payload are named elsewhere too. */
+    if (kind != STUDIO_MEMBER_LOCAL &&
+        studio_members_rename_across(s, kind, id, old, name)) {
+        return true;
+    }
+    if (kind == STUDIO_MEMBER_GRAPH) {
+        editor_command rename = { .kind = EDITOR_COMMAND_RENAME_GRAPH,
+                                  .data.rename_graph = { id, name } };
+        return editor_command_apply(e, rename) == 0;
+    }
+    behavior_asset *before = ed_snapshot(e);
+    int status = kind == STUDIO_MEMBER_VARIABLE
+                   ? behavior_asset_rename_variable(e->asset, id, name)
+                   : graph_rename_local(sg_active_graph(s), id, name);
+    return sm_record(e, before, status == 0);
+}
+
+const char *sm_name_taken(studio_member_kind kind)
+{
+    switch (kind) {
+        case STUDIO_MEMBER_GRAPH: return "A graph has that name";
+        case STUDIO_MEMBER_VARIABLE: return "A variable has that name";
+        default: return "A value has that name";
     }
 }
 
 static void rename_member(studio *s, const char *name)
 {
-    editor *e = sg_graph_editor(s);
     studio_members *m = &s->members;
-    graph *g = behavior_asset_find_graph(e->asset, m->rename_id);
-    const behavior_variable *v = behavior_asset_find_variable_by_id(e->asset, m->rename_id);
-    const graph_local *local = graph_local_by_id(sg_active_graph(s), m->rename_id);
-    behavior_asset *before = NULL;
-    /* A library's functions and an event's payload are named elsewhere too. */
-    const char *old = m->rename_kind == STUDIO_MEMBER_GRAPH ? (g ? g->name : NULL)
-                    : m->rename_kind == STUDIO_MEMBER_VARIABLE ? (v ? v->name : NULL)
-                                                               : NULL;
-    if (studio_members_rename_across(s, m->rename_kind, m->rename_id, old, name)) {
-        return;
-    }
-    switch (m->rename_kind) {
-        case STUDIO_MEMBER_GRAPH:
-            if (g && strcmp(g->name, name)) {
-                rename_graph(s, g, name);
-            }
-            break;
-        case STUDIO_MEMBER_VARIABLE:
-            if (v && strcmp(v->name, name)) {
-                before = ed_snapshot(e);
-                if (!sm_record(e, before, behavior_asset_rename_variable(e->asset, v->id, name) == 0)) {
-                    sm_refused(s, "A variable has that name");
-                }
-            }
-            break;
-        case STUDIO_MEMBER_LOCAL:
-            if (local && strcmp(local->name, name)) {
-                before = ed_snapshot(e);
-                if (!sm_record(
-                        e,
-                        before,
-                        graph_rename_local(sg_active_graph(s), local->id, name) == 0
-                    )) {
-                    sm_refused(s, "A value has that name");
-                }
-            }
-            break;
-        default: break;
+    if (!sm_rename(s, m->rename_kind, m->rename_id, name)) {
+        sm_refused(s, sm_name_taken(m->rename_kind));
     }
 }
 

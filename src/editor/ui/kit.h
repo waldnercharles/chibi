@@ -346,14 +346,8 @@ extern "C"
         bool submitted; /* Enter without an active suggestion; caller validates text */
         bool canceled; /* Escape restored the displayed value */
     } kit_autocomplete_result;
-    /* A searchable choice list anchored to its trigger. Search ranks labels
-     * and keywords, keeps groups together, and returns the selected item's
-     * original index. Call kit_dropdown each frame while open. Calling open
-     * again from its same trigger closes it. */
-    void kit_dropdown_open(kit *k, const char *key, const char *placeholder);
+    /* Whether a select's searchable choice list (`select:<path>`) is open. */
     bool kit_dropdown_is_open(const kit *k, const char *key);
-    const char *kit_dropdown_query(const kit *k, const char *key);
-    int kit_dropdown(kit *k, const char *key, const kit_command_item *items, int count);
     /* Inline text input with an anchored, list-only suggestion popup. `key` is
      * the local child key in the current kit container. `value` remains caller-
      * owned and is never changed; query is NULL while closed and empty before

@@ -429,7 +429,7 @@ static bool choice_select_items(
     bool changed = false;
     int selected = -1;
     if (open) {
-        selected = kit_dropdown(k, menu, items, count);
+        selected = dropdown_items(k, menu, items, count);
     }
     if (!locked(n) && selected >= 0 && selected < count) {
         changed = *value != selected;

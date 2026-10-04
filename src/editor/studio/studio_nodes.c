@@ -110,6 +110,34 @@ static int effect_flow(node *n, flow_context *ctx)
                  : flow_context_continue(ctx, 0);
 }
 
+/* A query runs as its node executes, and its outputs stay for the
+   activation, as Unreal's Get All Actors of Class is impure: a pure read
+   runs again for each node that takes it. */
+static int query_flow(node *n, flow_context *ctx, studio_node_op op)
+{
+    const studio_node_service *service = flow_context_service(ctx, "studio");
+    if (!service) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, MISSING);
+    }
+    pin_value in[4], out[4];
+    int inputs = n->desc->input_count - 1, outputs = n->desc->output_count - 1;
+    assert(inputs <= 4 && outputs <= 4);
+    for (int i = 0; i < inputs; i++) {
+        int result = flow_context_eval_data(ctx, i + 1, &in[i]);
+        if (result < 0) {
+            return result;
+        }
+    }
+    const char *error = service->run(service->studio, op, in, flow_context_scratch(ctx), out);
+    if (error) {
+        return flow_context_fail(ctx, FLOW_ERR_ARGUMENT, error);
+    }
+    for (int i = 0; i < outputs; i++) {
+        *flow_context_output_value(ctx, i + 1) = out[i];
+    }
+    return flow_context_continue(ctx, 0);
+}
+
 /* ---------- Descriptors ---------- */
 
 #define EXEC_IN { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC }
@@ -144,6 +172,24 @@ static pin_spec THEN_OUT[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_E
                                .pure_kind = NODE_PURE_READ,                    \
                                .read_inputs = ident##_read,                    \
                                .access = &READ }
+/* A query: Exec and inputs `in`, then Then and outputs `out`. */
+#define QUERY_NODE(ident, op, label, words, text, in, out)                     \
+    static int ident##_flow(node *n, flow_context *ctx)                        \
+    {                                                                          \
+        return query_flow(n, ctx, op);                                         \
+    }                                                                          \
+    static node_desc ident = { .name = label,                                  \
+                               .category = "Studio",                           \
+                               .keywords = words,                              \
+                               .description = text,                            \
+                               .input_count = sizeof in / sizeof *in,          \
+                               .inputs = in,                                   \
+                               .output_count = sizeof out / sizeof *out,       \
+                               .outputs = out,                                 \
+                               .flow_kind = NODE_FLOW_CUSTOM,                  \
+                               .flow = ident##_flow,                           \
+                               .display_class = NODE_DISPLAY_FLOW,             \
+                               .access = &READ }
 #define EFFECT_NODE(ident, op, label, words, text, in)                                     \
     static const char *ident##_invoke(void *service, const pin_value *inputs, pin_value *) \
     {                                                                                      \
@@ -166,8 +212,9 @@ static pin_spec THEN_OUT[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_E
                                .display_class = NODE_DISPLAY_FLOW,                         \
                                .access = &WRITE }
 
-static pin_spec WINDOW_IN[] = { INT_PIN("First"), INT_PIN("Count") };
+static pin_spec WINDOW_IN[] = { EXEC_IN, INT_PIN("First"), INT_PIN("Count") };
 static pin_spec OBJECTS_OUT[] = {
+    { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
     { .name = "Rows",
       .type = PIN_STRUCT,
       .type_name = STUDIO_OBJECT_ROW_TYPE,
@@ -186,22 +233,23 @@ static pin_spec RENAMING_OUT[] = { TEXT_PIN("Object") };
 static pin_spec STATE_OUT[] = { BOOL_PIN("Editable"), BOOL_PIN("Live"), BOOL_PIN("Mac") };
 static pin_spec PROTOTYPE_IN[] = { TEXT_PIN("Prototype") };
 static pin_spec ON_OUT[] = { BOOL_PIN("On") };
+static pin_spec QUERY_IN[] = { EXEC_IN };
 static pin_spec CHOICES_OUT[] = {
+    { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
     { .name = "Options",
       .type = PIN_STRUCT,
       .type_name = STUDIO_CHOICE_TYPE,
       .container = PIN_CONTAINER_ARRAY },
 };
 
-READ_NODE(
+QUERY_NODE(
     SCENE_OBJECTS,
     STUDIO_NODE_SCENE_OBJECTS,
     "Scene Objects",
     "outliner hierarchy objects rows list window filter scene",
-    "Count objects from First, in scene order, of the Shown objects the "
-    "object filter shows, as rows of the scene's hierarchy.",
+    "Lists Count objects from First, in scene order, of the Shown objects "
+    "the object filter shows, as rows of the scene's hierarchy.",
     WINDOW_IN,
-    2,
     OBJECTS_OUT
 );
 READ_NODE(
@@ -278,14 +326,14 @@ READ_NODE(
     1,
     ON_OUT
 );
-READ_NODE(
+QUERY_NODE(
     PROTOTYPE_CHOICES,
     STUDIO_NODE_PROTOTYPE_CHOICES,
     "Prototype Choices",
     "prototypes add object list options icons",
-    "The scene's prototypes, with their icons, as options a ChoiceList lists.",
-    NULL,
-    0,
+    "Lists the scene's prototypes, with their icons, as options a "
+    "ChoiceList lists.",
+    QUERY_IN,
     CHOICES_OUT
 );
 

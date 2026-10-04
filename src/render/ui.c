@@ -421,6 +421,11 @@ void ui_mount_emit(ui_mount *m, const rml_event *event, const char *name, int ar
     apush(m->pending, a);
 }
 
+bool ui_mount_pending(const ui_mount *m)
+{
+    return acount(m->pending) > 0;
+}
+
 bool ui_mount_take(ui_mount *m, ui_activation *out)
 {
     int count = acount(m->pending);

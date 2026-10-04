@@ -649,6 +649,9 @@ int studio_ui_keyboard_area(studio *s)
     return focus_area(s, focus);
 }
 
+/* Rounds of events a panel's own effects may send in one frame. */
+#define EFFECT_ROUNDS 4
+
 /* Mounts the panel's document in `host` and runs its events. */
 static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host, const char *document)
 {
@@ -671,14 +674,20 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
     /* What behaviors asked for since (a list's reveal) applies before the
        lists window, whose `window` events join the panel's activations;
        then the behaviors refresh, as a panel source syncs, and what they
-       set shows in this frame. */
+       set shows in this frame. An effect can send events of its own (a
+       focus moved blurs a field, which commits it): they run in the same
+       frame too, a few rounds at most. */
     ui_mount_apply(*mount, model, id);
     ui_mount_measure(*mount, model, id);
-    send_activations(s, *mount, entity);
-    dispatch(s, entity, &(ui_activation){ .event = "Refresh" });
-    settle(ui);
-    ui_data_show_entities(&ui->data, model);
-    ui_mount_apply(*mount, model, id);
+    for (int round = 0;
+         round == 0 || (round < EFFECT_ROUNDS && ui_mount_pending(*mount));
+         round++) {
+        send_activations(s, *mount, entity);
+        dispatch(s, entity, &(ui_activation){ .event = "Refresh" });
+        settle(ui);
+        ui_data_show_entities(&ui->data, model);
+        ui_mount_apply(*mount, model, id);
+    }
     preview_drop(s, *mount, host);
     report(s, p, *mount);
 }

@@ -1271,7 +1271,26 @@ static void outliner_change(studio_bench *b, outliner_step step, int run, float 
     }
 }
 
-#define RENAME_FRAMES_MAX 4
+#define SHOW_FRAMES_MAX 4
+
+/* Whether the step shows: a clicked row as the active one, a renamed row
+   by its new name; the other steps in their first frame. */
+static bool outliner_shown(studio *s, outliner_step step, int actor, const char *renamed)
+{
+    rml_element *row = outliner_row(s, actor);
+    if (step == OUTLINER_CLICK) {
+        return row && rml_element_query_selector(row, ".tree-row[data-active]");
+    }
+    if (step != OUTLINER_RENAME) {
+        return true;
+    }
+    rml_element *label = row ? rml_element_query_selector(row, ".name") : NULL;
+    char text[64] = "";
+    if (label) {
+        rml_element_inner_rml(label, text, sizeof text);
+    }
+    return !strcmp(text, renamed);
+}
 
 /* Times the UI frames a step takes until it shows, with the behaviors'
    time in them (game_behavior_profile) and what their views read. */
@@ -1318,14 +1337,7 @@ static void outliner_step_row(studio_bench *b, outliner_step step, const char *n
                 phase[p] += frame_phases[p];
             }
             frame++;
-            rml_element *label = step == OUTLINER_RENAME ? outliner_row(s, actor)
-                                                         : NULL;
-            char text[64] = "";
-            if (label && (label = rml_element_query_selector(label, ".name"))) {
-                rml_element_inner_rml(label, text, sizeof text);
-            }
-            shown = step != OUTLINER_RENAME || !strcmp(text, renamed) ||
-                    frame == RENAME_FRAMES_MAX;
+            shown = outliner_shown(s, step, actor, renamed) || frame == SHOW_FRAMES_MAX;
         }
         took = frame;
         counts = outliner_counts(s, list, before);

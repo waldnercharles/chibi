@@ -2008,6 +2008,11 @@ int flow_context_return(struct flow_context *ctx)
     return FLOW_OK;
 }
 
+arena *flow_context_scratch(struct flow_context *ctx)
+{
+    return &ctx->run->scratch;
+}
+
 void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size)
 {
     if (!ctx || !ctx->run || !size) {

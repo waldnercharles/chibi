@@ -179,6 +179,8 @@ void ui_mount_emit(
     int argc,
     const char *const *args
 );
+/* Whether activations wait to be taken. */
+bool ui_mount_pending(const ui_mount *mount);
 /* Takes the oldest activation, releasing the anchor of the one taken before;
  * false when there is none. */
 bool ui_mount_take(ui_mount *mount, ui_activation *out);

@@ -1311,6 +1311,28 @@ costs recur across panels and belong in shared code, not in each panel:
   Tile mark the use's only child, so their selection by key restyles no
   sibling; hover and drop marks on the use still do.
 
+Fixed in Wave 3 (fx-classes): **panel RCSS could not read the body's
+classes.** Scoping names the host `body`, so `body.comfortable .row` became
+`[data-ui="Output"].comfortable .row`, which only a host carrying the class
+matches, and `body:not(.dark)` matched every host. Output, Scene and Canvas
+had left their density and dark-role rules in `theme/workspace.rcss`. The
+host does not take the page's classes: the kit's unscoped `.dark` token blocks
+would then match each host and replace the palette presets and the density
+metrics inside it (a first try failed the Settings font check that way). Scoping instead
+writes the classes after `body` for the page body as well (`ui_document_scope`:
+`body.comfortable .row` becomes `[data-ui="Output"].comfortable .row,
+body.comfortable [data-ui="Output"] .row`, and `body:not(.dark)` only the
+page's form). RmlUi restyles on a class change, so a density or theme change
+applies at once with no per-frame work, in the kit's document and in an
+area's. Output's rows moved from `workspace.rcss` into `Output.rcss`, the
+Actions row into `Canvas.rcss` and the viewport's dark roles into
+`theme/viewport.rcss`; `workspace.rcss` keeps no rule that reads the body's
+classes for an authored panel.
+`--ui-followups` checks a host in the kit's document and in an area's
+(`test/editor/kit_host.c`), `ui_document` the selectors. Reduced motion stays
+`@media (theme: reduced-motion)`. Left in the theme because their panels are
+still kit code: `body.comfortable .designer-tile` (Designer).
+
 Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
 `UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.
 
@@ -1624,8 +1646,10 @@ an idle Studio takes new lines at its next refresh.
 
 Styles moved from `theme/scene.rcss`, `theme/scene_view.rcss` and
 `workspace.rcss` into `SceneHeader.rcss`, `Scene.rcss` and `Canvas.rcss`;
-the scene's dark roles in light themes and the comfortable Actions row stay
-in `workspace.rcss`, since scoped RCSS can't see the body's classes. The
+the scene's dark roles in light themes and the comfortable Actions row stayed
+in `workspace.rcss` while scoped RCSS couldn't see the body's classes; they
+moved to `theme/viewport.rcss` (imported by both) and `Canvas.rcss` with
+that fix (Shared follow-ups, above). The
 header's buttons keep the area header's control height, as the kit's did
 (AreaHeader's `.btn` rule won over `.tool-group .btn` there).
 

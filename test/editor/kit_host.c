@@ -303,6 +303,97 @@ static void modal_focus(const char *root)
     test_remove_ui(folder, "Dialog");
 }
 
+/* A host in the kit's own document, or in a document of its own over a place
+ * in it, as each Studio area is. */
+static void class_frame(host_fixture *f, bool in_document)
+{
+    kit *k = f->k;
+    kit_begin(k, &f->in);
+    kit_root(k, "app");
+    if (in_document) {
+        kit_document_begin(k, "area", NULL, false);
+    }
+    f->host = kit_host(k, f->host_key, NULL);
+    kit_style(k, "display", "block");
+    kit_style(k, "height", "200dp");
+    if (ui_mount_sync(f->mount, f->host, f->listener, f->in.time)) {
+        kit_style_sheet(k, "Probe", ui_mount_style(f->mount));
+    }
+    if (in_document) {
+        kit_document_end(k);
+    }
+    kit_end(k);
+    rml_backend_update(f->backend, 1.0 / 60.0);
+    f->in.time += 1.0 / 60.0;
+}
+
+static void class_frames(host_fixture *f, bool in_document)
+{
+    for (int i = 0; i < 3; i++) {
+        class_frame(f, in_document);
+    }
+}
+
+/* Scoped RCSS names its host `body`, so the host stands for the page body:
+ * a rule under `body.comfortable`, `body:not(.dark)` or a theme's class sees
+ * the classes the kit set on its documents, now and as they change. Reduced
+ * motion is the context's theme, which a media query reads. */
+static void body_classes(const char *root, bool in_document)
+{
+    char folder[128];
+    snprintf(folder, sizeof folder, "%s/ui", root);
+    test_write_ui(
+        folder,
+        "Probe",
+        "<div class=\"row\" id=\"density\"></div><div class=\"row\" "
+        "id=\"light\"></div>"
+        "<div class=\"row\" id=\"theme\"></div><div class=\"row\" "
+        "id=\"motion\"></div>\n",
+        ".row { display: block; height: 20dp; }\n"
+        "body.comfortable #density { height: 30dp; }\n"
+        "body:not(.dark) #light { height: 40dp; }\n"
+        "body.theme-dracula.dark #theme { height: 50dp; }\n"
+        "@media (theme: reduced-motion) { #motion { height: 60dp; } }\n"
+    );
+    host_fixture f = { .host_key = "probe" };
+    open_fixture(&f, root, "Probe");
+    class_frames(&f, in_document);
+    bool plain = height_of(f.host, "#density") == 20 &&
+                 height_of(f.host, "#light") == 40 &&
+                 height_of(f.host, "#theme") == 20 &&
+                 height_of(f.host, "#motion") == 20;
+    kit_set_body_class(f.k, "comfortable", true);
+    kit_set_body_class(f.k, "dark", true);
+    kit_set_body_class(f.k, "theme-dracula", true);
+    class_frames(&f, in_document);
+    bool set = height_of(f.host, "#density") == 30 &&
+               height_of(f.host, "#light") == 20 &&
+               height_of(f.host, "#theme") == 50;
+    kit_set_theme(f.k, "reduced-motion", true);
+    class_frames(&f, in_document);
+    bool motion = height_of(f.host, "#motion") == 60;
+    kit_set_theme(f.k, "reduced-motion", false);
+    kit_set_body_class(f.k, "comfortable", false);
+    kit_set_body_class(f.k, "dark", false);
+    kit_set_body_class(f.k, "theme-dracula", false);
+    class_frames(&f, in_document);
+    bool cleared = height_of(f.host, "#density") == 20 &&
+                   height_of(f.host, "#light") == 40 &&
+                   height_of(f.host, "#theme") == 20 &&
+                   height_of(f.host, "#motion") == 20;
+    test_check(
+        !ui_mount_error(f.mount)[0] && plain && set && motion && cleared,
+        in_document ? "a host in an area's document sees the kit's body "
+                      "classes and theme in "
+                      "its RCSS, as they change"
+                    : "a host in the kit's document sees the kit's body "
+                      "classes and theme in "
+                      "its RCSS, as they change"
+    );
+    close_fixture(&f);
+    test_remove_ui(folder, "Probe");
+}
+
 void test_kit_host()
 {
     char root[] = "/tmp/chibi-kit-host-XXXXXX", folder[64];
@@ -343,6 +434,8 @@ void test_kit_host()
     popup_navigation(root);
     option_groups(root);
     modal_focus(root);
+    body_classes(root, false);
+    body_classes(root, true);
     rmdir(folder);
     rmdir(root);
 }

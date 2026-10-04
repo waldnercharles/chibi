@@ -937,7 +937,12 @@ preview, which shows on the open scene's page. Prototype previews show a
 
 Each asset's RCSS applies only inside it: rules are scoped to the element
 showing the asset (`data-ui="<name>"`), and `body` in a selector names that
-element, so `body.paused #title` styles a state class set on it. Game UI lets
+element, so `body.paused #title` styles a state class set on it. The classes
+after `body` name the page's body too, as a web page's stylesheet sees them:
+`body.dark .card` matches when the element or the page's body has `dark`
+(a class bound with `data-class-dark` follows its data), and
+`body:not(.dark) .card` when the page's body lacks it; a `>`, `+`, `~` or
+another qualifier after the classes asks only the element. Game UI lets
 the pointer through to the game except over `data-event-click` elements and inputs;
 set `pointer-events: auto` where a document should block it, such as a menu's
 backdrop.

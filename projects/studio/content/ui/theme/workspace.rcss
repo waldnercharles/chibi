@@ -31,14 +31,6 @@ body > .area { height: 100%; }
 .area-body { flex: 1 1 0dp; position: relative; overflow: hidden; }
 .area-panel { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; overflow-y: auto; padding: 8dp; }
 
-/* The Scene and Canvas (Scene.rml, Canvas.rml): the scene renders on a dark
-   canvas in every theme, so its chrome keeps dark roles. */
-body:not(.dark) .viewport {
-    --foreground: #e8edf5; --muted-foreground: #aeb9ca; --faint-foreground: #aeb9ca; --line: #ffffff10; --accent: #ffffff0f; --press: #ffffff1a;
-    --floating: #282c33ee; --primary-text: #9dbef5; --notice: #1a1612f0; --notice-fg: #ffad66;
-}
-body.comfortable .canvas-action { height: var(--studio-height-24, 24dp); }
-
 /* Outliner. */
 .outliner { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; overflow-y: auto; padding: 3dp 4dp 8dp; }
 .outliner-empty { position: absolute; left: 0dp; right: 0dp; top: 40dp; color: var(--faint-foreground); text-align: center; pointer-events: none; }
@@ -98,27 +90,6 @@ body.comfortable .canvas-action { height: var(--studio-height-24, 24dp); }
 .behavior-empty .glyph { font-size: 22dp; width: 28dp; line-height: 28dp; color: var(--disabled-foreground); }
 .behavior-empty .title { color: var(--foreground); font-weight: 600; }
 .behavior-choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 6dp; max-width: 480dp; margin-top: 4dp; }
-
-/* Output's rows (Output.rml): a log line, or a row with its kind's icon,
-   where it happened, the message and a repeat count. Density sets their
-   height, which the lines' List takes as its --row. */
-.output-list { font-family: var(--font-numeric); }
-.output-list.lines { --row: var(--studio-height-20, 20dp); }
-body.comfortable .output-list.lines { --row: var(--studio-height-24, 24dp); }
-.output-row, .output-log { display: block; height: var(--studio-height-20, 20dp); line-height: var(--studio-line-20, 20dp); padding: 0dp 10dp; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.output-row { display: flex; align-items: center; gap: 6dp; }
-body.comfortable .output-row, body.comfortable .output-log { height: var(--studio-height-24, 24dp); line-height: var(--studio-line-24, 24dp); }
-.output-row .kind { font-size: var(--studio-font-12, 12dp); width: 14dp; flex: 0 0 auto; }
-.output-row .output-line { display: block; flex: 1 1 0dp; padding: 0dp; overflow: hidden; text-overflow: ellipsis; }
-.output-row[data-kind=error] .kind { color: var(--destructive); }
-.output-row[data-kind=warning] .kind { color: var(--warning); }
-.output-row[data-kind=success] .kind { color: var(--success); }
-.output-row[data-kind=info] .kind { color: var(--faint-foreground); }
-.output-row:hover, .output-log:hover { background-color: var(--accent); }
-/* Rows at a node open it: where, muted, then the message and a repeat count. */
-.output-row.located { cursor: pointer; }
-.output-row .output-at { display: block; flex: 0 0 auto; color: var(--faint-foreground); white-space: nowrap; }
-.output-row .output-count { flex: 0 0 auto; font-family: var(--font-numeric); }
 
 /* Find in the graph (GraphFind) and in the Text Editor (CodeFind): floats
    over the canvas's or the text's top right, as VS Code's find widget

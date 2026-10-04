@@ -438,10 +438,26 @@ static void scoped_styles()
         { "#a, .b > p { color: red; }",
           "[data-ui=\"Hud\"] #a, [data-ui=\"Hud\"] .b > p { color: red; }",
           "each selector in a list matches inside the scoped element" },
-        { "body { color: red; } body.paused #title {}",
-          "[data-ui=\"Hud\"] { color: red; } [data-ui=\"Hud\"].paused #title "
-          "{}",
-          "body names the scoped element itself" },
+        { "body { color: red; } body > p {} body.a > p, body.a:hover p, "
+          "body[x] p {}",
+          "[data-ui=\"Hud\"] { color: red; } [data-ui=\"Hud\"] > p {} "
+          "[data-ui=\"Hud\"].a > p, [data-ui=\"Hud\"].a:hover p, "
+          "[data-ui=\"Hud\"][x] p {}",
+          "body names the scoped element itself, and only it when a child "
+          "combinator or another qualifier follows its classes" },
+        { "body.paused #title {} body.a { x: 1; }",
+          "[data-ui=\"Hud\"].paused #title, body.paused [data-ui=\"Hud\"] "
+          "#title "
+          "{} [data-ui=\"Hud\"].a, body.a [data-ui=\"Hud\"] { x: 1; }",
+          "the classes after body name the page's body as well" },
+        { "body.a.b:not(.c) p {} body:not(.dark) .row {} body:not(.a, .b) p {}",
+          "body.a.b:not(.c) [data-ui=\"Hud\"] p {} "
+          "body:not(.dark) [data-ui=\"Hud\"] .row {} "
+          "body:not(.a, .b) [data-ui=\"Hud\"] p {}",
+          "a negated class asks the page's body alone" },
+        { "body.a\n.b {}",
+          "[data-ui=\"Hud\"].a\n.b, body.a [data-ui=\"Hud\"] .b {}",
+          "a selector's lines stay as many with the page's copy" },
         { "bodyguard {}",
           "[data-ui=\"Hud\"] bodyguard {}",
           "only a whole body name is the scoped element" },

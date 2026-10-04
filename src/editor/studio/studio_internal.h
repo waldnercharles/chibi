@@ -1197,7 +1197,9 @@ typedef struct studio_sources
     ui_page page;            /* the open scene's root document */
     studio_token *tokens;    /* in the order `theme` lists its rows */
     uint64_t writes_seen;
-    int inspected; /* the Inspector model's revision `inspector` shows */
+    int inspected;       /* the Inspector model's revision `inspector` shows */
+    int inspected_rows;  /* and its window's, `inspector_tree` */
+    int inspected_marks; /* and its keys', `inspector_ui` */
     studio_settings_cache settings_cache;
     studio_keymap_cache keymap_cache;
     /* By source, one past the UI refresh (ui_schedule.frames) that last
@@ -1743,15 +1745,18 @@ typedef enum
     STUDIO_PSEUDO_COUNT,
 } studio_pseudo;
 
+/* The size of the key naming an element in the Inspector's tree. */
+#define STUDIO_INSPECT_KEY_SIZE 24
+
 /* A row of the Elements tree: an element, or a text node by its text. */
 typedef struct studio_inspect_row
 {
     int depth;
     bool node;   /* a text node */
     bool parent; /* has children to expand */
-    bool open, selected, hovered;
-    bool hidden;     /* not displayed */
-    char indent[16]; /* its depth as padding, e.g. "28dp" */
+    bool open;
+    bool hidden;                       /* not displayed */
+    char key[STUDIO_INSPECT_KEY_SIZE]; /* names its element, as text, while it lives */
     char tag[32];
     char id[64];       /* "#id", or "" */
     char classes[128]; /* ".a.b", or "" */
@@ -1778,8 +1783,9 @@ typedef struct studio_inspect_pair
     char name[64], value[160];
 } studio_inspect_pair;
 
-/* What the Inspector panel shows: the tree of the target's documents and
- * the selected element's box, styles, computed values and attributes. */
+/* What the Inspector panel shows: the tree of the target's documents, as
+ * the window of its rows the panel's List shows, and the selected element's
+ * box, styles, computed values and attributes. */
 typedef struct studio_inspect_model
 {
     studio_inspect_target target;
@@ -1787,9 +1793,16 @@ typedef struct studio_inspect_model
     bool picking;
     bool wide;         /* its area is wider than tall: panes side by side */
     char shortcut[32]; /* Inspect Element's, in the platform's notation */
-    int revision;      /* counts the syncs that changed it */
-    studio_inspect_row *rows;
-    bool more; /* rows stopped at their limit */
+    int revision;      /* counts the syncs that changed it, rows aside */
+    studio_inspect_row *rows; /* rows first through first + acount(rows) - 1 */
+    int first;                /* the tree row of rows[0] */
+    int count;                /* every row the tree lists */
+    int selected_row,
+        picked_row; /* the selection's, and the element a pick is over; -1 for none */
+    char selected_key[STUDIO_INSPECT_KEY_SIZE],
+        picked_key[STUDIO_INSPECT_KEY_SIZE]; /* theirs, or "" */
+    int rows_revision,
+        marks_revision; /* count the reads that changed the window, and the keys */
     bool selection;
     bool detached;    /* the selected element left its document */
     bool native;      /* drawn by Studio's C code rather than from a ui asset */
@@ -1805,11 +1818,11 @@ typedef struct studio_inspect_model
     studio_inspect_pair *computed, *attributes;
 } studio_inspect_model;
 
-/* What the panel asked for since the last sync: rows of the tree, a Styles
- * row whose origin to open, -1 for none; a target to show, or -1. */
+/* What the panel asked for since the last sync: a Styles row whose origin to
+ * open, -1 for none; a target to show, or -1. */
 typedef struct studio_inspect_input
 {
-    int select, toggle, hover, rule;
+    int rule;
     int target;
     bool source; /* Edit Source */
     bool force[STUDIO_PSEUDO_COUNT];
@@ -1821,8 +1834,8 @@ studio_inspect *studio_inspect_new();
 void studio_inspect_free(studio_inspect *in);
 /* Selects `element` and reveals it in the tree. */
 void studio_inspect_select(studio_inspect *in, rml_element *element);
-/* Lists `context`'s documents as the tree and describes the selection; `k`
- * names its own elements by their key paths. */
+/* Lists `context`'s documents as the tree, every row, and describes the
+ * selection; `k` names its own elements by their key paths. */
 const studio_inspect_model *studio_inspect_read(studio_inspect *in, rml_context *context, const kit *k);
 
 /* Inspect Element: starts picking, showing the panel, or stops. */
@@ -1834,8 +1847,12 @@ bool studio_inspect_key(studio *s, const SDL_KeyboardEvent *key);
  * an area shows the panel nor a pick is on. */
 const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_input *input);
 /* The model the last sync read, whose strings last until its revision
- * changes; NULL before the Inspector opens. */
+ * (rows_revision for the rows) changes; NULL before the Inspector opens. */
 const studio_inspect_model *studio_inspect_shown(const studio *s);
+/* A click on the row `key` names, from the window last shown: it selects the
+ * element, or with `open` other than the row's, which the row's twisty
+ * flipped, expands or collapses it instead. */
+void studio_inspect_click(studio *s, const char *key, bool open);
 /* After studio_emit: the pick overlay and the highlight. */
 void studio_inspect_emit(studio *s);
 /* ---------- UI wiring (workstream K) ---------- */

@@ -9,9 +9,17 @@
     </div>
   </div>
   <div class="panes">
-    <div class="inspect-tree" data-event-mouseout="inspector.hover = -1">
-      <use ui="InspectorRow" data-for="row, i : inspector.rows"/>
-      <div class="note" data-if="inspector.more">Collapse rows to list more</div>
+    <div class="inspect-tree">
+      <use ui="List" id="inspector-list" data-event-scroll="emit('inspector.scroll')">
+        <div class="inspect-host" data-for="row : inspector_tree.rows">
+          <use ui="TreeRow" class="inspect-row" data-alias-item="row" data-alias-selection="inspector_ui.selected" data-attr-data-inspect-row="row.key" data-attrif-data-picked="row.key != '' && row.key == inspector_ui.picked" data-event-click="emit('inspector.click', row.key, row.open ? 1 : 0)">
+            <span class="ident" data-if="row.id != ''">{{ row.id }}</span>
+            <span class="cls" data-if="row.classes != ''">{{ row.classes }}</span>
+            <span class="widget" data-if="row.widget != ''">{{ row.widget }}</span>
+            <span class="text" data-if="row.text != ''">"{{ row.text }}"</span>
+          </use>
+        </div>
+      </use>
     </div>
     <div class="details">
       <div class="note" data-if="!inspector.selection">Pick an element ({{ inspector.shortcut }}) or choose one in the tree.</div>

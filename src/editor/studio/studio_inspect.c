@@ -4,7 +4,9 @@
  * document; the graph canvas's document, through its surface; and the game
  * UI the Scene shows, through the view zoom's crop. The panel that lists the
  * tree and styles is authored (projects/studio's Inspector), so it inspects
- * itself; studio_sources.c binds it to what this reads.
+ * itself; studio_sources.c binds it to what this reads. The tree has no row
+ * limit: the panel's List shows a window of it (ui_list_window), as
+ * Virtuoso does, and only that window's rows are described.
  *
  * Elements come and go between frames, so the Inspector tracks each one as
  * an element_ref and dereferences it only once found again. */
@@ -12,9 +14,11 @@
 #include "support/array.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"
+#include "ui/list.h"
 
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,19 +26,15 @@
 
 /* The Studio scene entity whose panel is the Inspector. */
 #define INSPECT_PANEL "Inspector"
-/* The tree stops listing here; collapsing shows the rest. */
-#define ROWS_MAX 1000
 #define DEPTH_MAX 64
 /* Expanded elements remembered; the oldest is forgotten first. */
 #define OPENED_MAX 512
-/* A tree row's indent per level and at the root, in dp. */
-#define INDENT 12
-#define INDENT_ROOT 4
-/* Frames the picked row has to appear in the panel before it scrolls to it. */
-#define REVEAL_FRAMES 3
-/* The panel's tree (ui/Inspector.rml), and how it marks the selected row. */
-#define TREE_CLASS "inspect-tree"
-#define SELECTED_ROW "." TREE_CLASS " .selected"
+/* The panel's List (ui/Inspector.rml), of which the tree shows a window, and
+ * the attribute that names a row's tree row. */
+#define LIST_ID "inspector-list"
+#define ROW_ATTRIBUTE "data-inspect-row"
+/* Rows described while the List has no window yet. */
+#define UNLAID_ROWS 40
 
 static const char *const PSEUDO_NAMES[] = { "hover", "active", "focus", "checked" };
 _Static_assert(sizeof PSEUDO_NAMES / sizeof *PSEUDO_NAMES == STUDIO_PSEUDO_COUNT, "a name per pseudo class");
@@ -66,6 +66,15 @@ typedef struct element_ref
     int depth;
 } element_ref;
 
+/* A row of the tree before it is described: its element, depth, the row of
+ * its parent (-1 for a document) and its place among the parent's children
+ * (a document's among the context's). */
+typedef struct listed
+{
+    rml_element *element;
+    int depth, parent, child;
+} listed;
+
 struct studio_inspect
 {
     bool picking;
@@ -78,14 +87,16 @@ struct studio_inspect
     studio_inspect_target picked_target;
     bool focused;
     element_ref focus;   /* Studio's focus while picking, which a pick keeps */
-    element_ref *places; /* each listed row's element */
+    listed *listed;      /* every row of the tree, while it is read */
+    element_ref *places; /* each row of the window's element */
+    ui_list_state list;  /* the panel's List, which sizes the window */
     rml_element **open;  /* expanded; compared only */
     bool force[STUDIO_PSEUDO_COUNT];  /* asked for by the panel */
     bool forced[STUDIO_PSEUDO_COUNT]; /* set on forced_on */
     element_ref forced_on;
     studio_inspect_target forced_target;
-    int reveal;    /* frames left to scroll the selected row into view */
-    uint64_t seen; /* the model's hash at the last sync */
+    bool reveal; /* the selected row is to scroll into view */
+    uint64_t seen, rows_seen, marks_seen; /* the model's hashes at the last sync */
     studio_inspect_model model;
 };
 
@@ -287,10 +298,49 @@ static void set_open(studio_inspect *in, rml_element *el, bool open)
     }
 }
 
-static void describe_row(studio_inspect_row *row, rml_element *el, int depth)
+static bool blank(const rml_element *el)
+{
+    char text[512];
+    rml_element_text(el, text, sizeof text);
+    for (const char *c = text; *c; c++) {
+        if (!isspace((unsigned char)*c)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* The panel's own List: its rows are the window of this tree, so listing
+ * them would show the tree to itself, as a mirror facing a mirror does. */
+static bool is_list(const rml_element *el)
+{
+    return !strcmp(rml_element_id(el), LIST_ID);
+}
+
+/* Whether `el` has children to list under it: not a text node, nor an
+ * element whose only child is text, which its own row shows. */
+static bool expandable(const rml_element *el)
+{
+    if (is_text(el)) {
+        return false;
+    }
+    int count = rml_element_child_count(el);
+    bool text = count == 1 && is_text(rml_element_child(el, 0));
+    return count > 0 && !text && !is_list(el);
+}
+
+/* The key naming `el` in the panel, its address as text: it names the same
+ * element while it lives, whatever rows come or go above it, and is only
+ * compared, never followed. */
+static void key_of(char out[STUDIO_INSPECT_KEY_SIZE], const rml_element *el)
+{
+    snprintf(out, STUDIO_INSPECT_KEY_SIZE, "%llx", (unsigned long long)(uintptr_t)el);
+}
+
+static void describe_row(const studio_inspect *in, studio_inspect_row *row, rml_element *el, int depth)
 {
     *row = (studio_inspect_row){ .depth = depth };
-    snprintf(row->indent, sizeof row->indent, "%ddp", INDENT_ROOT + depth * INDENT);
+    key_of(row->key, el);
     if (is_text(el)) {
         row->node = true;
         text_of(el, row->text, sizeof row->text);
@@ -313,68 +363,101 @@ static void describe_row(studio_inspect_row *row, rml_element *el, int depth)
     }
     row->classes[n] = '\0';
     rml_element_attribute(el, "data-ui", row->widget, sizeof row->widget);
-    int count = rml_element_child_count(el);
-    rml_element *only = count == 1 ? rml_element_child(el, 0) : NULL;
+    row->parent = expandable(el);
+    row->open = row->parent && open_index(in, el) >= 0;
+    rml_element *only = rml_element_child_count(el) == 1 ? rml_element_child(el, 0)
+                                                         : NULL;
     if (only && is_text(only)) {
         text_of(only, row->text, sizeof row->text);
-    } else {
-        row->parent = count > 0;
     }
-    /* The panel's own tree has a row per listed row: listing it would add
-       rows each frame, as a mirror facing a mirror does. */
-    if (rml_element_is_class_set(el, TREE_CLASS)) {
-        row->parent = false;
-        snprintf(row->text, sizeof row->text, "%d rows", count);
+    if (is_list(el)) {
+        snprintf(row->text, sizeof row->text, "%d rows", in->model.count);
     }
     row->hidden = !rml_element_is_visible(el, false);
 }
 
-typedef struct listing
+/* Lists `el` and, while it is open, what is under it: one pass over what
+ * the tree shows, which describes nothing. */
+static void walk(studio_inspect *in, rml_element *el, int depth, int parent, int child)
 {
-    studio_inspect *in;
-    const rml_element *selected;
-    element_ref place;
-} listing;
-
-static void list(listing *l, rml_element *el, int depth)
-{
-    studio_inspect *in = l->in;
-    studio_inspect_model *m = &in->model;
-    if (acount(m->rows) == ROWS_MAX) {
-        m->more = true;
+    if (is_text(el) && blank(el)) {
         return;
     }
-    studio_inspect_row row;
-    describe_row(&row, el, depth);
-    if (row.node && !row.text[0]) {
-        return;
-    }
-    row.open = row.parent && open_index(in, el) >= 0;
-    row.selected = el == l->selected;
-    row.hovered = in->picking && in->picked_target == in->target && el == in->picked;
-    aim(&l->place, el);
-    apush(m->rows, row);
-    apush(in->places, l->place);
-    if (!row.open || l->place.depth == DEPTH_MAX) {
+    int row = acount(in->listed);
+    apush(in->listed, ((listed){ el, depth, parent, child }));
+    if (depth + 1 == DEPTH_MAX || !expandable(el) || open_index(in, el) < 0) {
         return;
     }
     int count = rml_element_child_count(el);
     for (int i = 0; i < count; i++) {
-        l->place.place[l->place.depth++] = i;
-        list(l, rml_element_child(el, i), depth + 1);
-        l->place.depth--;
+        walk(in, rml_element_child(el, i), depth + 1, row, i);
     }
 }
 
-static void list_rows(studio_inspect *in, rml_context *context, const rml_element *selected)
+static void list_tree(studio_inspect *in, rml_context *context)
 {
-    asetlen(in->model.rows, 0);
-    asetlen(in->places, 0);
-    in->model.more = false;
-    listing l = { .in = in, .selected = selected, .place = { .depth = 1 } };
+    asetlen(in->listed, 0);
     for (int d = 0; d < rml_context_document_count(context); d++) {
-        l.place.place[0] = d;
-        list(&l, rml_context_document(context, d), 0);
+        walk(in, rml_context_document(context, d), 0, -1, d);
+    }
+    in->model.count = acount(in->listed);
+}
+
+/* The tree row listing `el`, or -1. */
+static int row_of(const studio_inspect *in, const rml_element *el)
+{
+    for (int i = 0; el && i < acount(in->listed); i++) {
+        if (in->listed[i].element == el) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Where tree row `row` is: its document, then the child to follow at each
+ * level down. */
+static element_ref place_of(const studio_inspect *in, int row)
+{
+    const listed *l = &in->listed[row];
+    element_ref r;
+    aim(&r, l->element);
+    r.depth = l->depth + 1;
+    int d = l->depth;
+    for (int i = row; i >= 0; i = in->listed[i].parent) {
+        r.place[d--] = in->listed[i].child;
+    }
+    return r;
+}
+
+/* The rows of the tree to describe: `limit` of them, or the List's window
+ * when the panel has one, which brings the selected row into view after a
+ * pick once the List is laid out. */
+static int window(studio_inspect *in, rml_element *list, int limit, int *first)
+{
+    int count = in->model.count;
+    *first = 0;
+    if (!list) {
+        return count < limit ? count : limit;
+    }
+    bool laid_out = rml_element_client_height(list) > 0;
+    ui_list view = { .count = count,
+                     .reveal = in->reveal ? in->model.selected_row : -1 };
+    int length = ui_list_window(list, &view, &in->list, first);
+    in->reveal = in->reveal && !laid_out;
+    return length;
+}
+
+static void describe_window(studio_inspect *in, int first, int length)
+{
+    studio_inspect_model *m = &in->model;
+    asetlen(m->rows, 0);
+    asetlen(in->places, 0);
+    m->first = first;
+    for (int r = first; r < first + length; r++) {
+        studio_inspect_row row;
+        describe_row(in, &row, in->listed[r].element, in->listed[r].depth);
+        apush(m->rows, row);
+        apush(in->places, place_of(in, r));
     }
 }
 
@@ -621,7 +704,9 @@ static void describe(studio_inspect_model *m, rml_context *context, const kit *k
 
 studio_inspect *studio_inspect_new()
 {
-    return xcalloc(1, sizeof(studio_inspect));
+    studio_inspect *in = xcalloc(1, sizeof(studio_inspect));
+    in->list = (ui_list_state)UI_LIST_STATE_INIT;
+    return in;
 }
 
 void studio_inspect_free(studio_inspect *in)
@@ -634,6 +719,7 @@ void studio_inspect_free(studio_inspect *in)
     afree(m->styles);
     afree(m->computed);
     afree(m->attributes);
+    afree(in->listed);
     afree(in->places);
     afree(in->open);
     free(in);
@@ -643,6 +729,7 @@ void studio_inspect_select(studio_inspect *in, rml_element *el)
 {
     in->selected = true;
     in->selection = ref_to(el);
+    in->reveal = true;
     memset(in->force, 0, sizeof in->force);
     rml_element *document = rml_element_owner_document(el);
     for (rml_element *e = el; e != document;) {
@@ -651,11 +738,33 @@ void studio_inspect_select(studio_inspect *in, rml_element *el)
     }
 }
 
-static studio_inspect_model *read_model(studio_inspect *in, rml_context *context, const kit *k)
+/* Lists the tree, describes `limit` of its rows or the window of `list`'s,
+ * and the selection. */
+static studio_inspect_model *read_model(
+    studio_inspect *in,
+    rml_context *context,
+    const kit *k,
+    rml_element *list,
+    int limit
+)
 {
     studio_inspect_model *m = &in->model;
     rml_element *selected = in->selected ? find(context, &in->selection) : NULL;
-    list_rows(in, context, selected);
+    list_tree(in, context);
+    m->selected_row = row_of(in, selected);
+    m->picked_row = in->picking && in->picked_target == in->target
+                      ? row_of(in, in->picked)
+                      : -1;
+    m->selected_key[0] = m->picked_key[0] = '\0';
+    if (m->selected_row >= 0) {
+        key_of(m->selected_key, selected);
+    }
+    if (m->picked_row >= 0) {
+        key_of(m->picked_key, in->picked);
+    }
+    int first;
+    int length = window(in, list, limit, &first);
+    describe_window(in, first, length);
     m->selection = in->selected;
     m->detached = in->selected && !selected;
     memcpy(m->force, in->force, sizeof m->force);
@@ -667,7 +776,7 @@ static studio_inspect_model *read_model(studio_inspect *in, rml_context *context
 
 const studio_inspect_model *studio_inspect_read(studio_inspect *in, rml_context *context, const kit *k)
 {
-    return read_model(in, context, k);
+    return read_model(in, context, k, NULL, INT_MAX);
 }
 
 /* ---------- Change ---------- */
@@ -694,15 +803,18 @@ static uint64_t mix_flags(uint64_t h, const bool *flags, int count)
     return h;
 }
 
-static uint64_t mix_rows(uint64_t h, const studio_inspect_row *rows)
+/* The window of rows the List shows, as another hash, so a scroll or a fold
+ * changes the rows alone and a selection the details alone. */
+static uint64_t rows_hash(const studio_inspect_model *m)
 {
-    h = mix(h, &(int){ acount(rows) }, sizeof(int));
-    for (int i = 0; i < acount(rows); i++) {
-        const studio_inspect_row *r = &rows[i];
-        bool flags[] = { r->node,     r->parent,  r->open,
-                         r->selected, r->hovered, r->hidden };
+    uint64_t h = mix(0xcbf29ce484222325ull, &m->first, sizeof m->first);
+    h = mix(h, &(int){ acount(m->rows) }, sizeof(int));
+    for (int i = 0; i < acount(m->rows); i++) {
+        const studio_inspect_row *r = &m->rows[i];
+        h = mix(h, &r->depth, sizeof r->depth);
+        bool flags[] = { r->node, r->parent, r->open, r->hidden };
         h = mix_flags(h, flags, (int)(sizeof flags / sizeof *flags));
-        const char *texts[] = { r->indent,  r->tag,    r->id,
+        const char *texts[] = { r->key,     r->tag,    r->id,
                                 r->classes, r->widget, r->text };
         for (size_t t = 0; t < sizeof texts / sizeof *texts; t++) {
             h = mix_text(h, texts[t]);
@@ -733,14 +845,22 @@ static uint64_t mix_pairs(uint64_t h, const studio_inspect_pair *pairs)
     return h;
 }
 
-/* What the panel shows, as one hash: equal hashes show the same model from
- * the same memory, since lists only move when their counts grow. */
+/* The keys of the selected row and the picked one, as a hash of their own, so
+ * a selection or a pick dirties only the views that compare them. */
+static uint64_t marks_hash(const studio_inspect_model *m)
+{
+    return mix_text(mix_text(0xcbf29ce484222325ull, m->selected_key), m->picked_key);
+}
+
+/* What the panel shows but the rows, as one hash: equal hashes show the
+ * same model from the same memory, since lists only move when their counts
+ * grow. */
 static uint64_t model_hash(const studio_inspect_model *m)
 {
     uint64_t h = 0xcbf29ce484222325ull;
-    bool flags[] = { m->picking,    m->wide,      m->more,     m->selection,
-                     m->detached,   m->native,    m->editable, m->targets[0],
-                     m->targets[1], m->targets[2] };
+    bool flags[] = { m->picking,    m->wide,       m->selection,
+                     m->detached,   m->native,     m->editable,
+                     m->targets[0], m->targets[1], m->targets[2] };
     h = mix_flags(h, flags, (int)(sizeof flags / sizeof *flags));
     h = mix_flags(h, m->force, STUDIO_PSEUDO_COUNT);
     h = mix(h, &(int){ (int)m->target }, sizeof(int));
@@ -754,7 +874,6 @@ static uint64_t model_hash(const studio_inspect_model *m)
             h = mix_text(h, m->box[b][e]);
         }
     }
-    h = mix_rows(h, m->rows);
     h = mix_styles(h, m->styles);
     return mix_pairs(mix_pairs(h, m->computed), m->attributes);
 }
@@ -906,6 +1025,19 @@ static int panel_area(const studio *s)
     return -1;
 }
 
+/* The panel's List, or NULL before it is built. */
+static rml_element *panel_list(const studio *s)
+{
+    rml_context *context = target_context(s, STUDIO_INSPECT_STUDIO);
+    for (int d = 0; d < rml_context_document_count(context); d++) {
+        rml_element *list = rml_element_by_id(rml_context_document(context, d), LIST_ID);
+        if (list) {
+            return list;
+        }
+    }
+    return NULL;
+}
+
 /* In the drawer, as DevTools docks at the bottom, unless an area shows it. */
 static void show_panel(studio *s)
 {
@@ -1009,30 +1141,42 @@ static void open_rule(studio *s, const studio_inspect *in, int row)
     }
 }
 
-static rml_element *row_element(studio_inspect *in, rml_context *context, int row)
+/* The element of window row `at`, found again, or NULL. */
+static rml_element *row_element(studio_inspect *in, rml_context *context, int at)
 {
-    return row >= 0 && row < acount(in->places) ? find(context, &in->places[row])
-                                                : NULL;
+    return at >= 0 && at < acount(in->places) ? find(context, &in->places[at]) : NULL;
+}
+
+/* The window row `key` names, or -1. */
+static int window_row(const studio_inspect *in, const char *key)
+{
+    for (int i = 0; i < acount(in->model.rows); i++) {
+        if (!strcmp(in->model.rows[i].key, key)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void studio_inspect_click(studio *s, const char *key, bool open)
+{
+    studio_inspect *in = inspector(s);
+    int at = window_row(in, key);
+    rml_element *el = row_element(in, target_context(s, in->target), at);
+    if (!el) {
+        return;
+    }
+    /* The twisty is inside its row, so its click also reaches the row. */
+    if (open != in->model.rows[at].open) {
+        set_open(in, el, open);
+        return;
+    }
+    studio_inspect_select(in, el);
 }
 
 static void apply(studio *s, studio_inspect *in, const studio_inspect_input *input)
 {
-    rml_context *context = target_context(s, in->target);
     memcpy(in->force, input->force, sizeof in->force);
-    rml_element *toggled = row_element(in, context, input->toggle);
-    if (toggled) {
-        set_open(in, toggled, open_index(in, toggled) < 0);
-    }
-    /* The twisty is inside its row, so its click also reaches the row. */
-    rml_element *chosen = toggled ? NULL : row_element(in, context, input->select);
-    if (chosen) {
-        studio_inspect_select(in, chosen);
-    }
-    rml_element *hovered = row_element(in, context, input->hover);
-    in->hovering = hovered != NULL;
-    if (hovered) {
-        in->hover = in->places[input->hover];
-    }
     if (input->source) {
         edit_source(s, in);
     }
@@ -1058,8 +1202,13 @@ const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_
         in->selected = in->hovering = false;
     }
     apply(s, in, input);
-    studio_inspect_model
-        *m = read_model(in, target_context(s, in->target), target_kit(s, in->target));
+    studio_inspect_model *m = read_model(
+        in,
+        target_context(s, in->target),
+        target_kit(s, in->target),
+        panel_list(s),
+        UNLAID_ROWS
+    );
     m->target = in->target;
     m->picking = in->picking;
     for (int t = 0; t < STUDIO_INSPECT_TARGET_COUNT; t++) {
@@ -1073,9 +1222,13 @@ const studio_inspect_model *studio_inspect_sync(studio *s, const studio_inspect_
         "%s",
         studio_command_describe(s, STUDIO_COMMAND_INSPECT).shortcut
     );
-    uint64_t hash = model_hash(m);
+    uint64_t hash = model_hash(m), rows = rows_hash(m), marks = marks_hash(m);
     m->revision += hash != in->seen;
+    m->rows_revision += rows != in->rows_seen;
+    m->marks_revision += marks != in->marks_seen;
     in->seen = hash;
+    in->rows_seen = rows;
+    in->marks_seen = marks;
     return m;
 }
 
@@ -1250,21 +1403,23 @@ static void keep_focus(studio *s, studio_inspect *in)
     }
 }
 
-/* Scrolls the panel to the selected row once the panel lists it. */
-static void reveal_row(studio *s, studio_inspect *in)
+/* The tree row under the pointer, by the attribute its row carries, as the
+ * element it lists: the app highlights it. */
+static void track_hover(studio *s, studio_inspect *in)
 {
-    if (!in->reveal) {
-        return;
+    in->hovering = false;
+    rml_element *over = rml_context_hover_element(target_context(s, STUDIO_INSPECT_STUDIO));
+    while (over && !rml_element_has_attribute(over, ROW_ATTRIBUTE)) {
+        over = rml_element_parent(over);
     }
-    in->reveal--;
-    rml_context *context = target_context(s, STUDIO_INSPECT_STUDIO);
-    for (int d = 0; d < rml_context_document_count(context); d++) {
-        rml_element *row = rml_element_query_selector(rml_context_document(context, d), SELECTED_ROW);
-        if (row) {
-            rml_element_scroll_into_view(row, RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
-            in->reveal = 0;
-            return;
-        }
+    char key[STUDIO_INSPECT_KEY_SIZE] = "";
+    if (over) {
+        rml_element_attribute(over, ROW_ATTRIBUTE, key, sizeof key);
+    }
+    int at = over ? window_row(in, key) : -1;
+    if (at >= 0) {
+        in->hovering = true;
+        in->hover = in->places[at];
     }
 }
 
@@ -1277,6 +1432,7 @@ void studio_inspect_emit(studio *s)
     bool shown = panel_area(s) >= 0;
     if (in->picking || shown) {
         kit *k = s->kit;
+        track_hover(s, in);
         rml_element *cover = kit_inspect_begin(k, "inspect", in->picking);
         pick picked = in->picking ? pick_at(s, cover) : (pick){ in->target, NULL };
         in->picked = picked.element;
@@ -1288,10 +1444,9 @@ void studio_inspect_emit(studio *s)
             in->target = picked.target;
             in->hovering = false;
             studio_inspect_select(in, picked.element);
-            in->reveal = REVEAL_FRAMES;
+            s->ui_schedule.wake = true;
         }
     }
     keep_focus(s, in);
     force_pseudo(s, in, shown);
-    reveal_row(s, in);
 }

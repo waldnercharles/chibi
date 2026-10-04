@@ -953,6 +953,71 @@ static void shot(studio_bench *b, const char *dir, const char *variant, const ch
     assert(saved == 0);
 }
 
+/* ---------- 18: opening a menu (workstream F3) ---------- */
+
+#define MENU_FRAMES_MAX 8
+
+/* Whether the menu has been placed and shows, which is its first paint. */
+static bool menu_painted(rml_element *menu)
+{
+    return popover_open(menu) && !rml_element_has_attribute(menu, "data-unplaced");
+}
+
+/* The top bar's File menu opened by a press on its trigger, then closed:
+   the time from the press to the UI frame that first paints the menu (the
+   press's own work, which builds the menu's items, and those frames), the
+   frames that took, the views Studio's authored panels evaluated and the
+   elements in the top bar's document open (the line after the row gives
+   them closed). */
+static void menu_open(studio_bench *b)
+{
+    studio *s = b->studio;
+    s->maximized = -1;
+    /* Fades end at once, so each run starts with the menu closed. */
+    s->prefs.reduced_motion = true;
+    frames(b, 4);
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *trigger = studio_query(s, "[popovertarget=menu-file]");
+    rml_element *menu = studio_query(s, "#menu-file");
+    assert(trigger && menu);
+    rml_element *document = rml_element_owner_document(menu);
+    probe_documents(s);
+    int closed = rml_element_query_selector_all(document, "*", NULL, 0);
+    double ms[RUNS];
+    bench_counts counts = { 0 };
+    int painted_in = 0;
+    for (int run = -WARMUP; run < RUNS; run++) {
+        popover_hide_all(context);
+        frames(b, 3);
+        bench_counts before = studio_mark(s);
+        double t = bench_now(), phase[PHASE_COUNT];
+        press_element(s, trigger);
+        t = bench_now() - t;
+        int frame = 0;
+        do {
+            cf_app_update(NULL);
+            t += native_ui(s, phase);
+            cf_app_draw_onto_screen(true);
+            frame++;
+        } while (frame < MENU_FRAMES_MAX && !menu_painted(menu));
+        counts = studio_counts(s, before);
+        counts.elements = rml_element_query_selector_all(document, "*", NULL, 0);
+        painted_in = frame;
+        if (run >= 0) {
+            ms[run] = t;
+        }
+    }
+    popover_hide_all(context);
+    frames(b, 3);
+    bench_row("18", "opening the File menu: press to first paint", bench_stat_of(ms, RUNS), counts);
+    printf(
+        "|  | first painted in %d UI frame(s); the top bar's document holds %d "
+        "elements closed | | | | | | |\n",
+        painted_in,
+        closed
+    );
+}
+
 /* With UI_BENCH_CAPTURE set to a directory, native shots of the Behavior
    header, its graph picker and Graph menu, the graph's find bar and
    Performance in Play, in dark and light, compact and comfortable, with
@@ -1460,6 +1525,14 @@ int ui_bench_studio(const char *program, bool members_only)
         cf_destroy_app();
         return 0;
     }
+    /* UI_BENCH_MENUS runs case 18 alone. */
+    if (getenv("UI_BENCH_MENUS")) {
+        menu_open(&b);
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
     /* UI_BENCH_SCENE runs case 16 alone. */
     if (getenv("UI_BENCH_SCENE")) {
         scene_overlays(&b);
@@ -1481,6 +1554,7 @@ int ui_bench_studio(const char *program, bool members_only)
         output_log(&b);
         scene_overlays(&b);
         performance_play(&b);
+        menu_open(&b);
     }
     if (all || splitter_only) {
         splitter_drag(&b);

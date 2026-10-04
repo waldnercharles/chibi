@@ -2,6 +2,7 @@
 
 #include "render/fullscreen.h"
 #include "render/gpu_timing.h"
+#include "render/material.h"
 #include "render/mesh_material.h"
 #include "render/mesh_projection.h"
 #include "render/mesh_surface.h"
@@ -46,8 +47,21 @@ typedef struct
     int index;
 } draw_order;
 
+typedef struct
+{
+    float position[2], uv[2], center[3], emission[3], scale, source_radius;
+} emitter_vertex;
+
 struct render_material_raster
 {
+    bool capture_emitters;
+    CF_Canvas emitter_canvas;
+    CF_Shader emitter_shader;
+    CF_Material emitter_material;
+    CF_Mesh emitter_mesh;
+    emitter_vertex *emitter_vertices;
+    int emitter_capacity, emitter_width, emitter_height, emitter_sources;
+
     /* The first batch's programs, and later batches', which continue from
      * the previous batch's targets. */
     render_programs *programs, *accumulate, *mesh_composite;
@@ -143,8 +157,18 @@ render_mesh_material_work render_material_raster_mesh_work(const render_material
     return work;
 }
 
+static void free_emitter_targets(render_material_raster *r)
+{
+    if (r->emitter_canvas.id) {
+        cf_destroy_canvas(r->emitter_canvas);
+    }
+    r->emitter_canvas = (CF_Canvas){ 0 };
+    r->emitter_width = r->emitter_height = r->emitter_sources = 0;
+}
+
 static void free_targets(render_material_raster *r)
 {
+    free_emitter_targets(r);
     for (int i = 0; i < 2; i++) {
         if (r->canvases[i].id) {
             cf_destroy_canvas(r->canvases[i]);
@@ -188,6 +212,16 @@ void render_material_raster_free(render_material_raster *r)
         return;
     }
     free_targets(r);
+    if (r->emitter_shader.id) {
+        cf_destroy_shader(r->emitter_shader);
+    }
+    if (r->emitter_material.id) {
+        cf_destroy_material(r->emitter_material);
+    }
+    if (r->emitter_mesh.id) {
+        cf_destroy_mesh(r->emitter_mesh);
+    }
+    afree(r->emitter_vertices);
     render_programs_free(r->programs);
     render_programs_free(r->accumulate);
     render_programs_free(r->mesh_composite);
@@ -1098,4 +1132,223 @@ CF_Canvas render_material_raster_canvas(const render_material_raster *r)
 {
     assert(r);
     return r->canvases[r->result];
+}
+
+void render_material_raster_set_capture_emitters(render_material_raster *r, bool enabled)
+{
+    r->capture_emitters = enabled;
+    if (!enabled) {
+        free_emitter_targets(r);
+    }
+}
+
+render_emitter_textures render_material_raster_emitter_textures(const render_material_raster *r)
+{
+    if (!r->emitter_canvas.id) {
+        return (render_emitter_textures){ 0 };
+    }
+    return (render_emitter_textures){ cf_canvas_get_target2(r->emitter_canvas, 0),
+                                      cf_canvas_get_target2(r->emitter_canvas, 1),
+                                      r->emitter_width,
+                                      r->emitter_height,
+                                      r->emitter_sources };
+}
+
+static void emitter_disk(
+    render_material_raster *r,
+    CF_V3 center,
+    CF_V2 radius,
+    float source_radius,
+    const float color[3],
+    render_material_view view
+)
+{
+    float scale = view.focal_distance > 0
+                    ? view.focal_distance / (view.focal_distance - center.y)
+                    : 1;
+    if (scale <= 0 || (view.focal_distance > 0 &&
+                       view.focal_distance - center.y < RENDER_MESH_NEAR)) {
+        return;
+    }
+    float cx = view.center_x + (center.x - view.center_x) * scale;
+    float cy = -view.center_y + (center.z + view.center_y) * scale;
+    float uv[] = { (cx - view.min_x) / view.width, (cy + view.max_y) / view.height };
+    float rx = radius.x * scale / view.width * r->emitter_width;
+    float ry = radius.y * scale / view.height * r->emitter_height;
+    if (rx <= 0 || ry <= 0) {
+        return;
+    }
+    float px = fmaxf(rx, 1), py = fmaxf(ry, 1);
+    float density = rx * ry / (px * py);
+    /* Below one texel, a separable tent deposits the exact integrated disk
+     * area into four neighboring texels, independent of subpixel motion. */
+    if (fmaxf(rx, ry) < 1) {
+        density = -3.14159265359f * rx * ry;
+    }
+    float du = (px + 1) / r->emitter_width, dv = (py + 1) / r->emitter_height;
+    if (uv[0] + du < 0 || uv[0] - du > 1 || uv[1] + dv < 0 || uv[1] - dv > 1) {
+        return;
+    }
+    const int corners[6][2] = { { -1, -1 }, { 1, -1 }, { -1, 1 },
+                                { -1, 1 },  { 1, -1 }, { 1, 1 } };
+    for (int i = 0; i < 6; i++) {
+        emitter_vertex v = { .position = { (uv[0] + corners[i][0] * du) * 2 - 1,
+                                           (uv[1] + corners[i][1] * dv) * 2 - 1 },
+                             .uv = { corners[i][0] * (px + 1) / px,
+                                     corners[i][1] * (py + 1) / py },
+                             .center = { uv[0], uv[1], center.y },
+                             .emission = { color[0], color[1], color[2] },
+                             .scale = density,
+                             .source_radius = source_radius };
+        apush(r->emitter_vertices, v);
+    }
+    r->emitter_sources++;
+}
+
+bool render_material_raster_capture_emitters(
+    render_material_raster *r,
+    ecs_world *world,
+    const render_material_entity *entities,
+    int count,
+    const render_mesh_material_actor *meshes,
+    int mesh_count,
+    render_material_view view
+)
+{
+    if (!r->capture_emitters) {
+        return true;
+    }
+    int width = (r->width + 3) / 4, height = (r->height + 3) / 4;
+    if (!r->emitter_canvas.id) {
+        CF_CanvasParams p = cf_canvas_defaults(width, height);
+        p.target_count = 2;
+        for (int i = 0; i < 2; i++) {
+            p.targets[i].pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+            p.targets[i].filter = CF_FILTER_NEAREST;
+        }
+        r->emitter_canvas = cf_make_canvas(p);
+        if (r->emitter_canvas.id) {
+            cf_canvas_set_clear_color(r->emitter_canvas, cf_color_invisible());
+        }
+        r->emitter_width = width;
+        r->emitter_height = height;
+    }
+    if (!r->emitter_shader.id) {
+        r->emitter_shader = cf_make_shader("/chibi-render/hrc/emitter_capture.vert", "/chibi-render/hrc/emitter_capture.frag");
+        r->emitter_material = cf_make_material();
+        CF_RenderState state = cf_render_state_defaults();
+        state.blend.enabled = true;
+        state.blend.rgb_src_blend_factor = state.blend.rgb_dst_blend_factor = CF_BLENDFACTOR_ONE;
+        state.blend.alpha_src_blend_factor = state.blend.alpha_dst_blend_factor = CF_BLENDFACTOR_ONE;
+        cf_material_set_render_state(r->emitter_material, state);
+    }
+    if (!r->emitter_canvas.id || !r->emitter_shader.id || !r->emitter_material.id) {
+        return false;
+    }
+    aclear(r->emitter_vertices);
+    r->emitter_sources = 0;
+    for (int i = 0; i < mesh_count; i++) {
+        const GameShader *binding = GAME_GameShader_get_const(world, meshes[i].entity);
+        const GameMaterial
+            *material = GAME_GameMaterial_get_const(world, meshes[i].entity);
+        if (!material || (binding && binding->material && *binding->material)) {
+            continue;
+        }
+        game_material_coefficients color;
+        if (!game_material_extract(material, &color)) {
+            return false;
+        }
+        if (color.emission[0] + color.emission[1] + color.emission[2] <= 0) {
+            continue;
+        }
+        const render_mesh_surface *surface = meshes[i].surface;
+        if (!surface) {
+            continue;
+        }
+        bool uniform = true;
+        for (int j = 0; j < acount(surface->parts); j++) {
+            uniform &= !*surface->parts[j].visual.part.material;
+        }
+        if (!uniform) {
+            continue;
+        }
+        CF_V3 center = cf_mul_v3_f(cf_add_v3(surface->min, surface->max), 0.5f);
+        CF_V3 half = cf_mul_v3_f(cf_sub_v3(surface->max, surface->min), 0.5f);
+        CF_V3 basis[3];
+        render_mesh_camera_basis(view, basis);
+        /* Project a world-bounds ellipsoid, rather than projecting its box.
+         * Equal extents preserve sphere area as the camera rotates. */
+        CF_V3 right = { basis[0].x * half.x, basis[0].y * half.y, basis[0].z * half.z };
+        CF_V3 down = { basis[2].x * half.x, basis[2].y * half.y, basis[2].z * half.z };
+        CF_V2 radius = { sqrtf(cf_dot_v3(right, right)), sqrtf(cf_dot_v3(down, down)) };
+        emitter_disk(
+            r,
+            render_mesh_world_to_camera(view, center),
+            radius,
+            fminf(half.x, fminf(half.y, half.z)),
+            color.emission,
+            view
+        );
+    }
+    for (int i = 0; i < count; i++) {
+        const render_material_entity *e = entities + i;
+        if (e->shape_type != RENDER_SHAPE_CIRCLE || e->reserved[0] != 0 ||
+            e->reserved[1] != 0 ||
+            e->emission[0] + e->emission[1] + e->emission[2] <= 0) {
+            continue;
+        }
+        emitter_disk(
+            r,
+            render_mesh_world_to_camera(view, (CF_V3){ e->pos[0], e->albedo[3], -e->pos[1] }),
+            (CF_V2){ e->radius, e->radius },
+            e->radius,
+            e->emission,
+            view
+        );
+    }
+    int vertices = acount(r->emitter_vertices);
+    if (vertices > r->emitter_capacity) {
+        if (r->emitter_mesh.id) {
+            cf_destroy_mesh(r->emitter_mesh);
+        }
+        CF_VertexAttribute attributes[] = {
+            { .name = "in_pos",
+              .format = CF_VERTEX_FORMAT_FLOAT2,
+              .offset = offsetof(emitter_vertex, position) },
+            { .name = "in_uv",
+              .format = CF_VERTEX_FORMAT_FLOAT2,
+              .offset = offsetof(emitter_vertex, uv) },
+            { .name = "in_center",
+              .format = CF_VERTEX_FORMAT_FLOAT3,
+              .offset = offsetof(emitter_vertex, center) },
+            { .name = "in_emission",
+              .format = CF_VERTEX_FORMAT_FLOAT3,
+              .offset = offsetof(emitter_vertex, emission) },
+            { .name = "in_scale",
+              .format = CF_VERTEX_FORMAT_FLOAT,
+              .offset = offsetof(emitter_vertex, scale) },
+            { .name = "in_radius",
+              .format = CF_VERTEX_FORMAT_FLOAT,
+              .offset = offsetof(emitter_vertex, source_radius) }
+        };
+        r->emitter_mesh = cf_make_mesh(vertices * sizeof(emitter_vertex), attributes, 6, sizeof(emitter_vertex));
+        r->emitter_capacity = vertices;
+    }
+    if (!vertices) {
+        cf_clear_canvas(r->emitter_canvas);
+        return true;
+    }
+    cf_apply_canvas(r->emitter_canvas, true);
+    if (!r->emitter_mesh.id) {
+        return false;
+    }
+    cf_mesh_update_vertex_data(r->emitter_mesh, r->emitter_vertices, vertices);
+    cf_apply_mesh(r->emitter_mesh);
+    float capture_size[] = { (float)width, (float)height };
+    cf_material_set_uniform_fs(r->emitter_material, "u_capture_size", capture_size, CF_UNIFORM_TYPE_FLOAT2, 1);
+    cf_apply_shader(r->emitter_shader, r->emitter_material);
+    cf_apply_viewport(0, 0, width, height);
+    cf_apply_scissor(0, 0, width, height);
+    cf_draw_elements();
+    return true;
 }

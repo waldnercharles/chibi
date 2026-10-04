@@ -1610,6 +1610,27 @@ bool app_scene_renderer_draw(
     }
     render_gpu_timing_mark("Material raster");
     render_material_textures textures = render_material_raster_textures(renderer->raster);
+    bool emitter_proxies = renderer->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH &&
+                           renderer->lighting.surface_depth_gain > 0 &&
+                           renderer->lighting.surface_depth_emitters ==
+                               GAME_HRC_DEPTH_EMITTERS_PROXIES;
+    render_material_raster_set_capture_emitters(renderer->raster, emitter_proxies);
+    if (!render_material_raster_capture_emitters(
+            renderer->raster,
+            world,
+            renderer->entities,
+            acount(renderer->entities),
+            renderer->meshes,
+            acount(renderer->meshes),
+            view
+        )) {
+        snprintf(renderer->error, sizeof renderer->error, "Emitter proxy capture could not allocate or draw");
+        return false;
+    }
+    if (emitter_proxies) {
+        render_gpu_timing_mark("Emitter proxies");
+    }
+
     const game_materials *materials = engine_materials(runtime);
     if (materials && game_materials_fluid(materials)) {
         if (!renderer->fluid) {
@@ -1628,7 +1649,10 @@ bool app_scene_renderer_draw(
         }
         render_gpu_timing_mark("Fluid raster");
     }
-    render_radiance_inputs inputs = { .material = textures };
+    render_radiance_inputs inputs = {
+        .material = textures,
+        .emitters = render_material_raster_emitter_textures(renderer->raster)
+    };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
     bool hdr = renderer->lighting.tone_mapping > 0;

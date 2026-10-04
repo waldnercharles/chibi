@@ -749,3 +749,51 @@ light coverage nor physically correct GI. Multiple sources sharing a cell can
 change its representative source as they move; source-level changes can also
 produce popping. Capture results, image review and
 performance measurements are reported separately.
+
+## Bounded shadows and hidden emitters
+
+The following experiments keep HRC transport and add options to the existing
+Depth thickness surface term:
+
+| Scene | Purpose |
+| --- | --- |
+| SdfDepthSegmentsOrbit | The eight-object orbit with bounded receiver-to-source shadow queries. |
+| SdfDepthEmitterCaptureOrbit | The same orbit with independent uniform emitter capture. |
+| SdfHiddenEmitterStudy | A camera-hidden emitter lights a mesh receiver while a separate blocker casts a shadow. |
+
+Set `GameHRC2D.surface_depth_visibility` to `"Bounded segments"` to replace the
+angular visibility mask. Low/Balanced/High allow at most 32/48/64 samples per
+occupied coarse source tile. The complete finite segment is sampled even when
+it exceeds that budget, so long segments can miss blockers narrower than the
+sample spacing. A single visibility result is shared by a tile's refined source
+estimates. Source grouping stays fixed as receiver depth changes. Several lights
+inside one tile still share approximate visibility.
+
+Set `surface_depth_emitters` to `"Uniform material proxies"` to capture uniform
+GameMaterial emitters separately from camera-visible geometry. This uses one
+batched draw into two RGBA16F targets at one quarter of each canvas dimension.
+It approximates mesh/SDF bounds with ellipses and also supports plain 2D circles.
+Tiny sources use a bilinear footprint to conserve power during subpixel motion.
+Sources overlap additively, with an energy-weighted position and source radius.
+The segment ends at the source volume boundary to avoid opaque spheres blocking
+their own centre. The radius is an inscribed approximation for other shapes.
+
+This source option replaces the Depth term's visible-source field. Shader-authored
+emission and meshes with per-part shader materials are excluded; those sources
+still participate in HRC through the original visible raster. Hidden proxies do
+not feed a separate HRC bounce solve. Offscreen sources and hidden blocker layers
+remain unavailable, and overlapping sources can merge into one representative.
+The capture targets are released when the option is disabled.
+
+Surface reconstruction now compares both samples' tangent planes instead of raw
+height differences. This removes the tested black stripes on a steep continuous
+surface while retaining rejection of separated layers. It adds arithmetic to
+the existing filter/composite passes, without another texture or pass. Curved
+surfaces, thin silhouettes and coincident disconnected surfaces remain approximate.
+
+Both experimental selectors default to their previous paths. The new scenes,
+captures, regression results and measured costs are described in
+[the shadow investigation](../../docs/research/depth-shadow-reconstruction.md).
+
+HRC transport and its existing history are separate from these options. The
+Depth contribution still adds to HRC. Gain zero skips the Depth passes.

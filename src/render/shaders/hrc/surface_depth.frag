@@ -1,5 +1,5 @@
 // Finite depth slabs with area-filtered emission. Aligned source tiles
-// partition energy; real source positions stay separate from coverage.
+// partition energy; bounded child estimates keep distinct sources separate.
 layout(set = 2, binding = 0) uniform sampler2D u_albedo;
 layout(set = 2, binding = 1) uniform sampler2D u_cover;
 layout(set = 2, binding = 2) uniform sampler2D u_normal;
@@ -26,9 +26,17 @@ layout(set = 3, binding = 0) uniform uniform_block
     vec4 u_projection;
     float u_radius;
     float u_thickness;
+    float u_specular;
     int u_block;
     int u_base_block;
+    int u_source_axis;
+    int u_near_detail;
+    float u_shadow_softness;
+    int u_visibility_mode;
+    int u_independent_emitters;
 };
+#include "hrc/brdf.shd"
+
 const float PI = 3.141592653589793;
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
 
@@ -60,10 +68,6 @@ vec2 geometry_at(vec2 uv)
     float height = cover > 1e-6 ? texelFetch(u_albedo, p, 0).a / cover : 0.0;
     return vec2(height, cover);
 }
-int sector(float angle)
-{
-    return clamp(int(floor((angle + 0.5 * PI) * (32.0 / PI))), 0, 31);
-}
 uint slab_mask(float lower, float upper)
 {
     // Mark a sector only when its centre is inside the slab. Expanding every
@@ -74,13 +78,6 @@ uint slab_mask(float lower, float upper)
     if (first > last) return 0u;
     return (0xffffffffu << uint(first)) & (0xffffffffu >> uint(31 - last));
 }
-float visible(uint mask, vec3 delta)
-{
-    float angle = atan(delta.z, max(length(delta.xy), 1e-6));
-    return (mask & (1u << uint(sector(angle)))) == 0u ? 1.0 : 0.0;
-}
-
-
 vec4 emission_at(int level, ivec2 p)
 {
     if (level == 0) return texelFetch(u_emission0, p, 0);
@@ -102,16 +99,109 @@ vec4 emitter_at(int level, ivec2 p)
 
 vec3 receiver_origin;
 vec3 receiver_normal;
+float receiver_gloss;
 float pixel_world;
 float soft_distance;
 float receiver_scale;
 vec3 diffuse = vec3(0);
+vec3 specular = vec3(0);
 vec2 dominant = vec2(0);
 float energy = 0.0;
 vec2 receiver_uv;
 float radial_step;
 uint slab_prefix[96];
 float sampling_rotation;
+float tile_visibility;
+
+float mask_visibility(uint mask, float elevation)
+{
+    int bin = clamp(int(floor(elevation + 0.5)), 0, 31);
+    float hard = (mask & (1u << uint(bin))) == 0u ? 1.0 : 0.0;
+    if (u_shadow_softness <= 0.0) return hard;
+    int lower = clamp(int(floor(elevation)), 0, 31);
+    int upper = clamp(int(floor(elevation)) + 1, 0, 31);
+    float a = (mask & (1u << uint(lower))) == 0u ? 1.0 : 0.0;
+    float b = (mask & (1u << uint(upper))) == 0u ? 1.0 : 0.0;
+    return mix(hard, mix(a, b, fract(elevation)), u_shadow_softness);
+}
+
+float ray_visibility(int ray, float radial, float elevation)
+{
+    ray = int(mod(float(ray), 8.0));
+    int previous = int(ceil(radial)) - 1;
+    uint mask = previous >= 0 ? slab_prefix[ray * 12 + min(previous, 11)] : 0u;
+    float hard = mask_visibility(mask, elevation);
+    if (u_shadow_softness <= 0.0) return hard;
+    int a = int(floor(radial - 0.5));
+    int b = a + 1;
+    uint lower = a >= 0 ? slab_prefix[ray * 12 + min(a, 11)] : 0u;
+    uint upper = b >= 0 ? slab_prefix[ray * 12 + min(b, 11)] : 0u;
+    float filtered = mix(mask_visibility(lower, elevation), mask_visibility(upper, elevation), fract(radial - 0.5));
+    return mix(hard, filtered, u_shadow_softness);
+}
+
+float source_visibility(vec3 delta, float distance, float azimuth)
+{
+    float radial = max(distance - pixel_world, 0.0) / radial_step - 0.5;
+    float elevation = (atan(delta.z, max(length(delta.xy), 1e-6)) + 0.5 * PI) * (32.0 / PI) - 0.5;
+    float hard = ray_visibility(int(floor(azimuth + 0.5)), radial, elevation);
+    if (u_shadow_softness <= 0.0) return hard;
+    int ray = int(floor(azimuth));
+    float filtered = mix(ray_visibility(ray, radial, elevation),
+                         ray_visibility(ray + 1, radial, elevation), fract(azimuth));
+    return mix(hard, filtered, u_shadow_softness);
+}
+
+// A single source-tile query is shared by all its refined energy estimates.
+// The walk covers the complete segment with a fixed quality budget. When the
+// footprint exceeds that budget this is explicit undersampling, never an
+// unfinished walk declared clear. Screen-space slabs cannot see hidden layers.
+float segment_visibility(vec4 emitter, float source_radius)
+{
+    vec2 size = vec2(textureSize(u_cover, 0));
+    vec2 pixels = (emitter.xy - receiver_uv) * size;
+    float extent = max(abs(pixels.x), abs(pixels.y));
+    int budget = u_source_axis <= 4 ? 32 : (u_source_axis <= 6 ? 48 : 64);
+    int steps = min(max(int(ceil(extent)), 1), budget);
+    // Proxy sources radiate from a finite volume. Stop at that volume's
+    // boundary so an opaque emitter's own front slab cannot eclipse its centre.
+    // The radius belongs to the source, not its coarse tile or depth variance.
+    float end = 1.0;
+    if (source_radius > 0.0) {
+        float distance = length(position_at(emitter.xy, emitter.z) - receiver_origin);
+        end = max(1.0 - source_radius / max(distance, 1e-6), 0.0);
+        if (u_projection.z > 0.0) {
+            float d0 = max(u_projection.z - receiver_origin.z, 0.001);
+            float d1 = max(u_projection.z - emitter.z, 0.001);
+            end = end * d1 / max(mix(d0, d1, end), 0.001);
+        }
+    }
+    float visible = 1.0;
+    for (int i = 0; i < 64; i++) {
+        if (i >= steps) break;
+        float t = (float(i) + 0.5) / float(steps);
+        if (t >= end) break;
+        // Avoid testing the receiver and emitter's own rasterized footprint.
+        if (t * extent < 1.0 || (1.0 - t) * extent < 1.0) continue;
+        vec2 uv = mix(receiver_uv, emitter.xy, t);
+        if (!inside(uv)) continue;
+        vec2 obstacle = geometry_at(uv);
+        if (obstacle.y <= 0.5 || texelFetch(u_source, pixel_at(uv), 0).a <= 0.01) continue;
+        float height = mix(receiver_origin.z, emitter.z, t);
+        if (u_projection.z > 0.0) {
+            float q0 = 1.0 / max(u_projection.z - receiver_origin.z, 0.001);
+            float q1 = 1.0 / max(u_projection.z - emitter.z, 0.001);
+            height = u_projection.z - 1.0 / mix(q0, q1, t);
+        }
+        float bias = max(pixel_world * 0.05, 0.001);
+        float interior = min(obstacle.x - height, height - (obstacle.x - u_thickness));
+        float hard = interior > bias ? 0.0 : 1.0;
+        float soft = 1.0 - smoothstep(bias, bias + pixel_world, interior);
+        visible = min(visible, mix(hard, soft, u_shadow_softness));
+        if (visible <= 0.0) break;
+    }
+    return visible;
+}
 
 void receive(vec3 emission, vec4 emitter, float area)
 {
@@ -124,16 +214,19 @@ void receive(vec3 emission, vec4 emitter, float area)
         (PI * max(distance2 + soft_distance * soft_distance, 1e-6)));
     float projected_distance = length((emitter.xy - receiver_uv) *
         vec2(textureSize(u_cover, 0)) * u_world_per_px) * receiver_scale;
-    int previous = int(ceil(max(projected_distance - pixel_world, 0.0) / radial_step - 0.5)) - 1;
     vec2 toward = (emitter.xy - receiver_uv) * vec2(textureSize(u_cover, 0)) * u_world_per_px;
     float azimuth = atan(-toward.y, toward.x) * (8.0 / (2.0 * PI)) - sampling_rotation;
-    int ray = int(mod(floor(azimuth + 0.5), 8.0));
-    uint mask = previous >= 0 ? slab_prefix[ray * 12 + min(previous, 11)] : 0u;
     // Keep the cutoff wider than source-position quantization at small radii.
     float taper = min(u_radius, max(u_radius * 0.15, pixel_world * 2.0));
     float falloff = 1.0 - smoothstep(u_radius - taper, u_radius, projected_distance);
-    vec3 received = emission * weight * visible(mask, delta) * falloff;
+    float visibility = (u_visibility_mode == 1 ? tile_visibility
+        : source_visibility(delta, projected_distance, azimuth)) * falloff;
+    if (visibility <= 0.0) return;
+    vec3 received = emission * weight * visibility;
     diffuse += received * max(dot(receiver_normal, direction), 0.0);
+    if (receiver_gloss > 0.0) {
+        specular += received * PI * highlight(receiver_normal, direction, 1.0 - receiver_gloss);
+    }
     float power = dot(received, LUMA);
     dominant += direction.xy * power;
     energy += power;
@@ -142,7 +235,7 @@ void receive(vec3 emission, vec4 emitter, float area)
 // At the finest level, a source crossing the radius taper must not move
 // all its energy by one texel when its brightest pixel changes. Integrate the
 // actual covered pixels in that small cell; fractional coverage stays smooth.
-void source_pixels(ivec2 cell, float area)
+void source_pixels(ivec2 cell, float area, float fraction)
 {
     ivec2 size = textureSize(u_cover, 0);
     for (int y = 0; y < u_base_block; y++) {
@@ -153,42 +246,94 @@ void source_pixels(ivec2 cell, float area)
             vec3 light = max(texelFetch(u_source, p, 0).rgb, vec3(0)) * max(cover.r, 0.0);
             if (dot(light, LUMA) <= 0.0) continue;
             float height = cover.g > 1e-6 ? texelFetch(u_albedo, p, 0).a / cover.g : 0.0;
-            receive(light, vec4((vec2(p) + 0.5) / vec2(size), height, 0), area);
+            receive(light * fraction, vec4((vec2(p) + 0.5) / vec2(size), height, 0), area);
         }
     }
 }
 
-void source_cell(int level, ivec2 p, float area)
+// Evaluate leaf pixels explicitly, so tiny sources retain their position and
+// integrated power even when several fit into the first pyramid cell.
+void source_value(int level, ivec2 p, float area, float fraction)
 {
+    if (fraction <= 0.0) return;
     int block = u_base_block << level;
     ivec2 size = (textureSize(u_cover, 0) + block - 1) / block;
     if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, size))) return;
     vec4 light = emission_at(level, p);
     if (light.a <= 0.0) return;
-    vec4 emitter = emitter_at(level, p);
-    float distance = length((emitter.xy - receiver_uv) * vec2(textureSize(u_cover, 0)) * u_world_per_px) * receiver_scale;
-    float taper = min(u_radius, max(u_radius * 0.15, pixel_world * 2.0));
-    float cell_extent = float(block) * pixel_world * 1.4142135624;
-    if (level == 0 && distance + cell_extent > u_radius - taper) {
-        source_pixels(p, area / float(block * block));
+    if (level == 0 && u_independent_emitters == 0) {
+        // The fractional estimate weight must be applied to emission, outside
+        // receive's area clamp, so blending estimates never changes energy.
+        source_pixels(p, area / float(block * block), fraction);
         return;
     }
-    // One bounded refinement retains separate depths in mixed cells. Even the
-    // coarse path uses a real source position, never an averaged phantom depth.
-    if (level > 0 && emitter.w > max(u_thickness, pixel_world * 4.0)) {
-        ivec2 child_size = (textureSize(u_cover, 0) + block / 2 - 1) / (block / 2);
-        for (int y = 0; y < 2; y++) {
-            for (int x = 0; x < 2; x++) {
-                ivec2 child = p * 2 + ivec2(x, y);
-                if (any(greaterThanEqual(child, child_size))) continue;
-                vec4 part = emission_at(level - 1, child);
-                if (part.a > 0.0) receive(part.rgb / part.a, emitter_at(level - 1, child), area * 0.25 * part.a);
-            }
+    receive(light.rgb * fraction / light.a, emitter_at(level, p), area * light.a);
+}
+
+void source_children(int level, ivec2 p, float area, float fraction)
+{
+    if (fraction <= 0.0) return;
+    if (level == 0) {
+        source_value(level, p, area, fraction);
+        return;
+    }
+    for (int y = 0; y < 2; y++) {
+        for (int x = 0; x < 2; x++) {
+            source_value(level - 1, p * 2 + ivec2(x, y), area * 0.25, fraction);
         }
+    }
+}
+
+void source_estimate(int level, ivec2 p, float area, float fraction)
+{
+    if (fraction <= 0.0) return;
+    int block = u_base_block << level;
+    ivec2 size = (textureSize(u_cover, 0) + block - 1) / block;
+    if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, size))) return;
+    vec4 light = emission_at(level, p);
+    if (light.a <= 0.0) return;
+    if (level == 0) {
+        source_value(level, p, area, fraction);
         return;
     }
-    // Coverage already includes zero padding in partial viewport edge tiles.
-    receive(light.rgb / light.a, emitter, area * light.a);
+    vec4 emitter = emitter_at(level, p);
+    float distance = length(position_at(emitter.xy, emitter.z) - receiver_origin);
+    float extent = float(block) * pixel_world * 1.4142135624;
+    float depth_scale = max(u_thickness, pixel_world * 4.0);
+    float depth_detail = u_independent_emitters != 0 ? 0.0
+        : smoothstep(depth_scale * 0.5, depth_scale * 1.5, emitter.w);
+    float power = max(dot(light.rgb, LUMA), 1e-12);
+    vec3 chroma = light.rgb / power;
+    float variation = 0.0;
+    ivec2 child_size = (textureSize(u_cover, 0) + block / 2 - 1) / (block / 2);
+    for (int y = 0; y < 2; y++) {
+        for (int x = 0; x < 2; x++) {
+            ivec2 child = p * 2 + ivec2(x, y);
+            if (any(greaterThanEqual(child, child_size))) continue;
+            vec3 rgb = emission_at(level - 1, child).rgb;
+            float child_power = dot(rgb, LUMA);
+            variation += length(rgb - chroma * child_power) / (4.0 * power);
+        }
+    }
+    float angular_detail = smoothstep(0.15, 0.7, extent / max(distance, pixel_world));
+    float color_detail = smoothstep(0.15, 0.8, variation) * angular_detail;
+    float detail = max(depth_detail, color_detail);
+    if (u_near_detail != 0) detail = max(detail, angular_detail);
+    source_value(level, p, area, fraction * (1.0 - detail));
+    source_children(level, p, area, fraction * detail);
+}
+
+void source_cell(int level, ivec2 p, float area, float lod_blend)
+{
+    source_estimate(level, p, area, 1.0 - lod_blend);
+    if (level == 0 || lod_blend <= 0.0) return;
+    // Blend complete estimates, including their refinement. At the boundary
+    // both sides evaluate exactly the same child cells and preserve energy.
+    for (int y = 0; y < 2; y++) {
+        for (int x = 0; x < 2; x++) {
+            source_estimate(level - 1, p * 2 + ivec2(x, y), area * 0.25, lod_blend);
+        }
+    }
 }
 
 void gather_sources(vec2 uv)
@@ -197,23 +342,35 @@ void gather_sources(vec2 uv)
     vec2 radius = u_radius / (u_world_per_px * receiver_scale);
     vec2 lower = max(uv * size - radius, vec2(0));
     vec2 upper = min(uv * size + radius, size);
-    float extent = max(upper.x - lower.x, upper.y - lower.y);
-    int level = 0;
-    int block = u_base_block;
-    while (level < 5 && extent > float(block * 8)) {
-        level++;
-        block *= 2;
-    }
+    // Use the unclipped footprint for LOD. Passing a viewport edge must not
+    // change the representation of every light still inside the viewport.
+    float extent = min(max(radius.x, radius.y) * 2.0, max(size.x, size.y));
+    // Segment visibility belongs to a tile, including all its child estimates.
+    // Fix that tile grouping to the canvas so receiver height/radius cannot
+    // switch the shared visibility at an integer LOD boundary. Several lights
+    // in the same tile still share one representative visibility estimate.
+    if (u_visibility_mode == 1) extent = max(size.x, size.y);
+    float lod = max(log2(max(extent / float(u_base_block * u_source_axis), 1.0)), 0.0);
+    int level = min(int(ceil(lod)), 5);
+    int block = u_base_block << level;
+    float blend = level > 0 ? 1.0 - smoothstep(float(level - 1), float(level), lod) : 0.0;
     ivec2 first = ivec2(floor(lower / float(block)));
     ivec2 last = ivec2(ceil(upper / float(block))) - 1;
     float area = float(block * block) * u_world_per_px.x * u_world_per_px.y * receiver_scale * receiver_scale;
-    // Every tile contributes once. The clipped box spans at most nine cells
-    // on each axis, independent of the number of emitters in those cells.
+    // At most (axis + 1)^2 tiles; each has a fixed refinement limit. More
+    // emitters add source raster work but never lengthen this gather's loops.
     for (int y = 0; y < 9; y++) {
         for (int x = 0; x < 9; x++) {
             ivec2 p = first + ivec2(x, y);
             if (any(greaterThan(p, last))) continue;
-            source_cell(level, p, area);
+            if (u_visibility_mode == 1) {
+                vec4 light = emission_at(level, p);
+                if (light.a <= 0.0) continue;
+                vec4 emitter = emitter_at(level, p);
+                tile_visibility = segment_visibility(emitter,
+                    u_independent_emitters != 0 ? emitter.w : 0.0);
+            }
+            source_cell(level, p, area, blend);
         }
     }
 }
@@ -238,6 +395,8 @@ void main()
     }
     receiver_origin = position_at(uv, receiver.x);
     receiver_normal = normal;
+    receiver_gloss = u_specular > 0.0
+        ? clamp(texelFetch(u_normal, receiver_pixel, 0).w / receiver.y, 0.0, 1.0) : 0.0;
     receiver_scale = projection_scale(receiver.x);
     radial_step = u_radius / 12.0;
     receiver_uv = uv;
@@ -248,6 +407,7 @@ void main()
     // receivers; spatial reconstruction combines them without temporal trails.
     sampling_rotation = fract(52.9829189 * fract(dot(floor(gl_FragCoord.xy), vec2(0.06711056, 0.00583715))));
     for (int azimuth = 0; azimuth < 8; azimuth++) {
+        if (u_visibility_mode == 1) break;
         float angle = (float(azimuth) + sampling_rotation) * (2.0 * PI / 8.0);
         vec2 axis = vec2(cos(angle), sin(angle));
         vec2 screen_axis = vec2(axis.x, -axis.y);
@@ -277,7 +437,7 @@ void main()
     gather_sources(uv);
     // Area weights integrate emission; do not renormalize by accepted samples.
     out_q0 = vec4(min(diffuse, vec3(65504)), receiver.x);
-    out_q1 = vec4(0, 0, 0, 1);
+    out_q1 = vec4(min(specular, vec3(65504)), receiver_gloss);
     out_q2 = vec4(normal, valid);
     out_q3 = vec4(dominant / max(energy, 1e-8), 1.0 - blocked / 128.0, 1);
 }

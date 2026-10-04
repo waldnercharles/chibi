@@ -26,6 +26,8 @@ layout(location=12) in vec4 in_color3;
 layout(location=12) flat out vec4 v_color3;
 layout(location=13) in vec4 in_surface;
 layout(location=13) flat out vec4 v_surface;
+layout(location=14) in vec4 in_center;
+layout(location=14) flat out vec4 v_center;
 layout(set=1,binding=0) uniform uniform_block {
     vec4 u_rect;
     vec2 u_depth;
@@ -54,6 +56,7 @@ void main()
     v_color2=in_color2;
     v_color3=in_color3;
     v_surface=in_surface;
+    v_center=in_center;
     vec4 p=vec4(in_pos,1);
     v_world=vec3(dot(in_model0,p),dot(in_model1,p),dot(in_model2,p));
     vec3 a=vec3(in_model0.x,in_model1.x,in_model2.x);

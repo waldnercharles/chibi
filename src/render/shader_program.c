@@ -14,6 +14,7 @@
 typedef struct
 {
     render_shader_set set;
+    int preview_shape, preview_part;
     CF_Shader draw;
     float (*ramp_data)[4];
     int ramp_vec4_count;
@@ -28,10 +29,12 @@ typedef struct
 struct render_programs
 {
     render_program_kind kind;
+    int preview_shape, preview_part;
     char *vertex, *body, *scene;
     program *entries;
     int *slots;
     int slot_count;
+    unsigned successful_compilations;
     char error[256];
 };
 
@@ -55,17 +58,22 @@ render_programs *render_programs_new(render_program_kind kind)
         programs->vertex = render_shader_source("arena3d.vert");
         programs->body = render_shader_source("arena3d.frag");
         programs->scene = render_shader_source("arena3d_scene.glsl");
-    } else if (kind == RENDER_PROGRAM_MESH_MATERIAL || kind == RENDER_PROGRAM_SDF_MATERIAL) {
+    } else if (kind == RENDER_PROGRAM_MESH_MATERIAL || kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW) {
         programs->vertex = render_shader_source(
-            kind == RENDER_PROGRAM_SDF_MATERIAL ? "sdf_material.vert" : "mesh_material.vert"
+            (kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW)
+                ? "sdf_material.vert"
+                : "mesh_material.vert"
         );
         char *surface = render_shader_source("surface_material.shd");
         char *body = render_shader_source(
-            kind == RENDER_PROGRAM_SDF_MATERIAL ? "sdf_material.frag" : "mesh_material.frag"
+            (kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW)
+                ? "sdf_material.frag"
+                : "mesh_material.frag"
         );
         size_t bytes = strlen(surface) + strlen(body) + 1;
         const char *
-            prefix = kind == RENDER_PROGRAM_SDF_MATERIAL
+            prefix = (kind == RENDER_PROGRAM_SDF_MATERIAL ||
+                      kind == RENDER_PROGRAM_SDF_PREVIEW)
                        ? "layout(location=2) flat in vec4 v_model0;\n"
                          "layout(location=3) flat in vec4 v_model1;\n"
                          "layout(location=4) flat in vec4 v_model2;\n"
@@ -78,6 +86,7 @@ render_programs *render_programs_new(render_program_kind kind)
                          "layout(location=11) flat in vec4 v_color2;\n"
                          "layout(location=12) flat in vec4 v_color3;\n"
                          "layout(location=13) flat in vec4 v_surface;\n"
+                         "layout(location=14) flat in vec4 v_center;\n"
                          "layout(set=2,binding=SG_DEPTH_BINDING) uniform "
                          "sampler2D u_geometric_depth;\n"
                          "layout(set=2,binding=SG_PARAMETERS_BINDING) readonly "
@@ -86,13 +95,19 @@ render_programs *render_programs_new(render_program_kind kind)
                          "sdf_parameters[int(v_dimensions.w)*64+(i)]\n"
                          "#define SG_MATERIAL_PARAMETER(i) "
                          "sdf_parameters[int(v_dimensions.w)*64+32+(i)]\n"
+                         "#define SURFACE_OBJECT0 v_inverse0.xyz\n#define "
+                         "SURFACE_OBJECT1 v_inverse1.xyz\n#define "
+                         "SURFACE_OBJECT2 v_inverse2.xyz\n"
                          "#define u_dimensions v_dimensions\n#define "
                          "u_surface v_surface\n"
                          "#define SURFACE_COLOR0 v_color0\n#define "
                          "SURFACE_COLOR1 v_color1\n"
                          "#define SURFACE_COLOR2 v_color2\n#define "
                          "SURFACE_COLOR3 v_color3\n"
-                       : "#define SURFACE_COLOR0 u_fallback[0]\n#define "
+                       : "#define SURFACE_OBJECT0 u_inverse[0].xyz\n#define "
+                         "SURFACE_OBJECT1 u_inverse[1].xyz\n#define "
+                         "SURFACE_OBJECT2 u_inverse[2].xyz\n"
+                         "#define SURFACE_COLOR0 u_fallback[0]\n#define "
                          "SURFACE_COLOR1 u_fallback[1]\n"
                          "#define SURFACE_COLOR2 u_fallback[2]\n#define "
                          "SURFACE_COLOR3 u_fallback[3]\n";
@@ -132,25 +147,52 @@ static bool compile(render_programs *programs, program *entry)
         &entry->set,
         2,
         raster || programs->kind == RENDER_PROGRAM_MESH_MATERIAL ||
-                programs->kind == RENDER_PROGRAM_SDF_MATERIAL
+                (programs->kind == RENDER_PROGRAM_SDF_MATERIAL ||
+                 programs->kind == RENDER_PROGRAM_SDF_PREVIEW)
             ? 0
             : 1
     );
-    const char *scene = programs->scene ? programs->scene : "";
+    if (programs->kind == RENDER_PROGRAM_SDF_PREVIEW && entry->preview_part >= 0) {
+        shader_error error = { 0 };
+        char *preview = render_shader_model_preview_glsl(
+            entry->preview_shape,
+            entry->preview_part,
+            &error
+        );
+        if (!preview) {
+            free(graphs);
+            free(ramp_data);
+            snprintf(entry->error, sizeof entry->error, "%s", error.message);
+            return false;
+        }
+        size_t bytes = strlen(graphs) + strlen(preview) + 1;
+        graphs = xrealloc(graphs, bytes);
+        strcat(graphs, preview);
+        free(preview);
+    }
+    const char *scene = programs->scene ? programs->scene
+                      : programs->kind == RENDER_PROGRAM_SDF_PREVIEW ? (entry->preview_part >= 0
+                                                                            ? "#define SG_MODEL_PREVIEW 1\n#define SG_MODEL_ISOLATE 1\n"
+                                                                            : "#define SG_MODEL_PREVIEW 1\n")
+                                                                     : "";
     const char *uniforms =
         programs->kind == RENDER_PROGRAM_FRAGMENT
             ? "layout(set=3,binding=1) uniform shd_uniforms { "
               "vec2 sg_lighting; vec4 sg_entity[85]; vec4 "
               "sg_ramp_data[SG_RAMP_COUNT]; };\n"
-        : programs->kind == RENDER_PROGRAM_SDF_MATERIAL
+        : (programs->kind == RENDER_PROGRAM_SDF_MATERIAL ||
+           programs->kind == RENDER_PROGRAM_SDF_PREVIEW)
             ? "layout(set=3,binding=0) uniform uniform_block { "
               "vec4 u_eye; vec4 u_camera[4]; vec2 u_depth; vec4 u_shape; vec4 "
               "u_sdf_quality; vec2 u_occlusion; "
+              "vec4 u_model_materials[33]; vec4 u_preview_plane; "
+              "vec4 u_preview_options; vec4 u_preview_uv_bounds[2]; "
               "vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"
         : programs->kind == RENDER_PROGRAM_MESH_MATERIAL
             ? "layout(set=3,binding=0) uniform uniform_block { "
               "vec4 u_fallback[4]; vec4 u_surface; vec4 "
-              "u_dimensions; vec4 u_eye; vec4 u_camera[4]; vec2 u_depth; "
+              "u_dimensions; vec4 u_uv_bounds[2]; vec4 u_eye; vec4 "
+              "u_camera[4]; vec2 u_depth; "
               "vec4 u_model[3]; vec4 u_inverse[3]; vec4 u_shape; "
               "vec4 u_shape_parameters[32]; "
               "vec4 u_parameters[32]; vec4 "
@@ -195,8 +237,10 @@ static bool compile(render_programs *programs, program *entry)
         entry->set.count + previous,
         entry->set.count + previous + 1,
         entry->set.count + previous + 2,
-        entry->set.count +
-            (programs->kind == RENDER_PROGRAM_SDF_MATERIAL ? 1 : previous + 3),
+        entry->set.count + ((programs->kind == RENDER_PROGRAM_SDF_MATERIAL ||
+                             programs->kind == RENDER_PROGRAM_SDF_PREVIEW)
+                                ? 1
+                                : previous + 3),
         entry->set.count,
         scene,
         uniforms,
@@ -225,6 +269,7 @@ static bool compile(render_programs *programs, program *entry)
         cf_destroy_shader(entry->draw);
     }
     entry->draw = draw;
+    programs->successful_compilations++;
     free(entry->ramp_data);
     entry->ramp_data = ramp_data;
     entry->ramp_vec4_count = ramp_vec4_count;
@@ -233,17 +278,32 @@ static bool compile(render_programs *programs, program *entry)
     return true;
 }
 
+int render_programs_count(const render_programs *programs)
+{
+    int count = 0;
+    for (int i = 0; i < acount(programs->entries); i++) {
+        count += programs->entries[i].draw.id != 0;
+    }
+    return count;
+}
+unsigned render_programs_successful_compilations(const render_programs *programs)
+{
+    return programs->successful_compilations;
+}
+
 unsigned render_shader_compile_count()
 {
     return shader_compile_count;
 }
 
-static uint64_t set_hash(const render_shader_set *set)
+static uint64_t set_hash(const render_shader_set *set, int preview_shape, int preview_part)
 {
     uint64_t hash = UINT64_C(14695981039346656037);
     hash = (hash ^ (unsigned)set->shape) * UINT64_C(1099511628211);
     hash = (hash ^ (unsigned)set->material) * UINT64_C(1099511628211);
     hash = (hash ^ (unsigned)set->count) * UINT64_C(1099511628211);
+    hash = (hash ^ (unsigned)preview_shape) * UINT64_C(1099511628211);
+    hash = (hash ^ (unsigned)preview_part) * UINT64_C(1099511628211);
     for (int i = 0; i < set->count; i++) {
         hash = (hash ^ (unsigned)set->images[i]) * UINT64_C(1099511628211);
     }
@@ -265,7 +325,12 @@ static int program_index(render_programs *programs, const render_shader_set *set
         programs->slots = xcalloc((size_t)programs->slot_count, sizeof *programs->slots);
         int mask = programs->slot_count - 1;
         for (int i = 0; i < acount(programs->entries); i++) {
-            int slot = (int)(set_hash(&programs->entries[i].set) & (uint64_t)mask);
+            int slot = (int)(set_hash(
+                                 &programs->entries[i].set,
+                                 programs->entries[i].preview_shape,
+                                 programs->entries[i].preview_part
+                             ) &
+                             (uint64_t)mask);
             while (programs->slots[slot]) {
                 slot = (slot + 1) & mask;
             }
@@ -273,18 +338,32 @@ static int program_index(render_programs *programs, const render_shader_set *set
         }
     }
     int mask = programs->slot_count - 1;
-    int slot = (int)(set_hash(set) & (uint64_t)mask);
+    int slot = (int)(set_hash(set, programs->preview_shape, programs->preview_part) &
+                     (uint64_t)mask);
     while (programs->slots[slot]) {
         int index = programs->slots[slot] - 1;
-        if (same_set(&programs->entries[index].set, set)) {
+        if (programs->entries[index].preview_shape == programs->preview_shape &&
+            programs->entries[index].preview_part == programs->preview_part &&
+            same_set(&programs->entries[index].set, set)) {
             return index;
         }
         slot = (slot + 1) & mask;
     }
     int index = acount(programs->entries);
-    apush(programs->entries, ((program){ .set = *set }));
+    apush(
+        programs->entries,
+        ((program){ .set = *set,
+                    .preview_shape = programs->preview_shape,
+                    .preview_part = programs->preview_part })
+    );
     programs->slots[slot] = index + 1;
     return index;
+}
+
+void render_programs_set_model_preview(render_programs *p, int shape, int part)
+{
+    p->preview_shape = shape;
+    p->preview_part = part;
 }
 
 int render_programs_prepare(render_programs *programs, const render_shader_set *set)

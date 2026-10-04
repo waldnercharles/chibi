@@ -20,30 +20,37 @@ typedef struct
 {
     int primitive;
     uint64_t asset_identity;
+    int first_vertex;
     CF_Mesh mesh;
 } primitive_mesh;
 typedef struct
 {
-    float model[3][4], inverse[3][4], dimensions[4], colors[4][4], surface[4];
+    float model[3][4], inverse[3][4], dimensions[4], colors[4][4], surface[4],
+        center[4];
 } sdf_instance;
+_Static_assert(sizeof(sdf_instance) == 208, "SDF instance stride");
 typedef struct
 {
-    int shape, material;
+    int shape, material, preview_part;
+    bool preview;
+    float preview_plane[4], preview_options[4], preview_uv_bounds[2][4];
+    float materials[MODEL_MATERIAL_SLOT_MAX + 1][4];
 } sdf_batch_key;
 typedef struct
 {
     float shape[32][4], material[32][4];
 } sdf_parameters;
-_Static_assert(sizeof(sdf_instance) == 192, "SDF instance stride");
 _Static_assert(sizeof(sdf_parameters) == 1024, "SDF parameter table stride");
 typedef struct
 {
     sdf_batch_key key;
     int offset, program;
+    render_programs *programs;
 } sdf_staged;
 typedef struct
 {
-    int shape, material, program;
+    sdf_batch_key key;
+    int program;
 } sdf_prepared_program;
 typedef struct
 {
@@ -56,7 +63,8 @@ typedef struct
 #define DEPTH_MARGIN (4.0f / 65535.0f)
 struct render_mesh_material
 {
-    render_programs *programs, *sdf_programs;
+    render_programs *programs, *sdf_programs, *preview_programs;
+    render_model_inspection inspection;
     render_shader_parameter_cache *cache;
     CF_Material material;
     CF_Canvas canvas, depth_snapshot;
@@ -102,6 +110,16 @@ render_mesh_material *render_mesh_material_new()
     cf_material_set_render_state(pass->material, state);
     return pass;
 }
+void render_mesh_material_set_model_inspection(render_mesh_material *pass, const render_model_inspection *inspection)
+{
+    pass->inspection = *inspection;
+}
+static bool inspected(const render_mesh_material *pass, ecs_entity entity)
+{
+    return ecs_entity_to_u64(pass->inspection.entity) != 0 &&
+           ecs_entity_to_u64(entity) == ecs_entity_to_u64(pass->inspection.entity) &&
+           (pass->inspection.part >= 0 || pass->inspection.section);
+}
 void render_mesh_material_free(render_mesh_material *pass)
 {
     if (!pass) {
@@ -146,6 +164,7 @@ void render_mesh_material_free(render_mesh_material *pass)
     }
     render_programs_free(pass->programs);
     render_programs_free(pass->sdf_programs);
+    render_programs_free(pass->preview_programs);
     render_shader_parameter_cache_free(pass->cache);
     free(pass);
 }
@@ -315,7 +334,8 @@ static CF_Mesh mesh(render_mesh_material *pass, const render_mesh_surface_part *
 {
     for (int i = 0; i < acount(pass->meshes); i++) {
         if (pass->meshes[i].primitive == part->visual.part.primitive &&
-            pass->meshes[i].asset_identity == part->asset_identity) {
+            pass->meshes[i].asset_identity == part->asset_identity &&
+            pass->meshes[i].first_vertex == part->first_vertex) {
             return pass->meshes[i].mesh;
         }
     }
@@ -328,18 +348,36 @@ static CF_Mesh mesh(render_mesh_material *pass, const render_mesh_surface_part *
           .offset = offsetof(render_mesh_surface_vertex, normal) },
         { .name = "in_uv",
           .format = CF_VERTEX_FORMAT_FLOAT2,
-          .offset = offsetof(render_mesh_surface_vertex, uv) }
+          .offset = offsetof(render_mesh_surface_vertex, uv) },
+        { .name = "in_part_position",
+          .format = CF_VERTEX_FORMAT_FLOAT3,
+          .offset = offsetof(render_mesh_surface_vertex, part_position) },
+        { .name = "in_part_frame0",
+          .format = CF_VERTEX_FORMAT_FLOAT3,
+          .offset = offsetof(render_mesh_surface_vertex, part_from_object[0]) },
+        { .name = "in_part_frame1",
+          .format = CF_VERTEX_FORMAT_FLOAT3,
+          .offset = offsetof(render_mesh_surface_vertex, part_from_object[1]) },
+        { .name = "in_part_frame2",
+          .format = CF_VERTEX_FORMAT_FLOAT3,
+          .offset = offsetof(render_mesh_surface_vertex, part_from_object[2]) }
     };
     int count = render_mesh_surface_vertex_count(part);
     CF_Mesh result = cf_make_mesh(
         count * sizeof *part->vertices,
         attributes,
-        3,
+        7,
         sizeof *part->vertices
     );
     if (result.id) {
         cf_mesh_update_vertex_data(result, part->vertices, count);
-        apush(pass->meshes, ((primitive_mesh){ part->visual.part.primitive, part->asset_identity, result }));
+        apush(
+            pass->meshes,
+            ((primitive_mesh){ part->visual.part.primitive,
+                               part->asset_identity,
+                               part->first_vertex,
+                               result })
+        );
     }
     return result;
 }
@@ -411,23 +449,49 @@ static bool draw_actor(
         memcpy(coefficients[2], color.albedo, 16);
         memcpy(coefficients[3], color.absorption, 16);
         float parameters[32][4];
-        render_shader_parameters_cached(
-            id,
-            world,
-            entity,
-            binding ? binding->parameters : NULL,
-            parameters,
-            &pass->cache
-        );
+        if (!render_shader_material_parameters_scoped_cached(
+                id,
+                world,
+                entity,
+                binding ? binding->parameters : NULL,
+                part->material_scope,
+                parameters,
+                &pass->cache,
+                &error
+            )) {
+            snprintf(pass->error, sizeof pass->error, "%s", error.message);
+            ok = false;
+            break;
+        }
         float properties[] = { id,
                                time,
                                material ? material->edge_light : 1,
-                               part->asset_identity ? 1 : 0 };
+                               part->part_coordinates ? 2
+                               : part->asset_identity ? 1
+                                                      : 0 };
         CF_V3 dimensions = part->visual.part.dimensions;
         float size[] = { dimensions.x,
                          dimensions.y,
                          dimensions.z,
                          part->visual.part.primitive };
+        CF_M4x4 inverse = cf_m4_invert(model);
+        float inverse_rows[3][4];
+        for (int row = 0; row < 3; row++) {
+            float factor = part->part_coordinates
+                             ? 1
+                             : (&part->visual.part.dimensions.x)[row];
+            for (int col = 0; col < 4; col++) {
+                inverse_rows[row][col] = inverse.elements[col * 4 + row] * factor;
+            }
+        }
+        cf_material_set_uniform_fs(pass->material, "u_inverse", inverse_rows, CF_UNIFORM_TYPE_FLOAT4, 3);
+        float uv_bounds[2][4] = {
+            { part->uv_min.x, part->uv_min.y, part->uv_min.z, part->uv_bounds },
+            { part->uv_max.x, part->uv_max.y, part->uv_max.z, 0 }
+        };
+        cf_material_set_uniform_fs(pass->material, "u_uv_bounds", uv_bounds, CF_UNIFORM_TYPE_FLOAT4, 2);
+        float part_coordinates = part->part_coordinates ? 1 : 0;
+        cf_material_set_uniform_vs(pass->material, "u_part_coordinates", &part_coordinates, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_vs(pass->material, "u_model", rows, CF_UNIFORM_TYPE_FLOAT4, 3);
         cf_material_set_uniform_vs(pass->material, "u_rect", (void *)rect, CF_UNIFORM_TYPE_FLOAT4, 1);
         cf_material_set_uniform_vs(pass->material, "u_depth", (void *)depth, CF_UNIFORM_TYPE_FLOAT2, 1);
@@ -479,6 +543,14 @@ static bool sdf_record(
         snprintf(pass->error, sizeof pass->error, "SDF surface requires a valid Shape graph.");
         return false;
     }
+    key->preview = inspected(pass, entity);
+    key->preview_part = key->preview ? pass->inspection.part : -1;
+    if (key->preview) {
+        memcpy(key->preview_plane, pass->inspection.normal, 3 * sizeof(float));
+        key->preview_plane[3] = pass->inspection.offset;
+        key->preview_options[0] = 1;
+        key->preview_options[1] = pass->inspection.section;
+    }
     const char *name = binding->material;
     key->material = render_shader_find(name);
     if (name && *name && (!key->material || render_shader_is_shape(key->material))) {
@@ -517,6 +589,11 @@ static bool sdf_record(
                                   record->inverse[row][1] * frame.elements[13] -
                                   record->inverse[row][2] * frame.elements[14];
     }
+    memcpy(
+        record->center,
+        (float[4]){ part->sdf_center.x, part->sdf_center.y, part->sdf_center.z, 0 },
+        16
+    );
     CF_V3 dims = part->visual.part.dimensions;
     memcpy(record->dimensions, (float[4]){ dims.x, dims.y, dims.z, GAME_PRIMITIVE_BOX }, 16);
     memcpy(
@@ -532,14 +609,74 @@ static bool sdf_record(
         parameters->material,
         &pass->cache
     );
-    render_shader_parameters_cached(
-        key->shape,
-        world,
-        entity,
-        binding->parameters,
-        parameters->shape,
-        &pass->cache
-    );
+    if (render_shader_is_model(key->shape)) {
+        float min[3], max[3];
+        bool empty;
+        shader_error diagnostic = { 0 };
+        if (!render_shader_model_snapshot(
+                key->shape,
+                world,
+                entity,
+                binding->parameters,
+                parameters->shape,
+                min,
+                max,
+                &empty,
+                &diagnostic
+            )) {
+            snprintf(pass->error, sizeof pass->error, "%s", diagnostic.message);
+            return false;
+        }
+        if (key->preview) {
+            bool valid_uv = !empty && max[0] > min[0] && max[1] > min[1] &&
+                            max[2] > min[2];
+            for (int axis = 0; axis < 3; axis++) {
+                key->preview_uv_bounds[0][axis] = valid_uv
+                                                    ? (min[axis] + max[axis]) * .5f
+                                                    : record->center[axis];
+                key->preview_uv_bounds[1][axis] = valid_uv
+                                                    ? max[axis] - min[axis]
+                                                    : record->dimensions[axis];
+            }
+        }
+        if (key->preview && key->preview_part >= 0 &&
+            !render_shader_model_preview_factor(
+                key->shape,
+                parameters->shape,
+                key->preview_part,
+                &key->preview_options[0],
+                &diagnostic
+            )) {
+            snprintf(pass->error, sizeof pass->error, "%s", diagnostic.message);
+            return false;
+        }
+        render_shader_set resources = { 0 };
+        if (!render_shader_model_material_snapshot(
+                key->shape,
+                world,
+                entity,
+                binding->parameters,
+                key->material,
+                key->materials,
+                parameters->material,
+                &resources,
+                &diagnostic
+            )) {
+            snprintf(pass->error, sizeof pass->error, "%s", diagnostic.message);
+            return false;
+        }
+    } else {
+        key->materials[0][0] = key->material;
+        key->materials[0][2] = 32;
+        render_shader_parameters_cached(
+            key->shape,
+            world,
+            entity,
+            binding->parameters,
+            parameters->shape,
+            &pass->cache
+        );
+    }
     return true;
 }
 static CF_Mesh sdf_mesh(render_mesh_material *pass, const render_mesh_surface_part *part)
@@ -547,7 +684,7 @@ static CF_Mesh sdf_mesh(render_mesh_material *pass, const render_mesh_surface_pa
     if (pass->sdf_mesh.id) {
         return pass->sdf_mesh;
     }
-    CF_VertexAttribute attrs[14] = {
+    CF_VertexAttribute attrs[15] = {
         { .name = "in_pos",
           .format = CF_VERTEX_FORMAT_FLOAT3,
           .offset = offsetof(render_mesh_surface_vertex, position) },
@@ -558,9 +695,10 @@ static CF_Mesh sdf_mesh(render_mesh_material *pass, const render_mesh_surface_pa
     static const char *names[] = {
         "in_model0",   "in_model1",   "in_model2",     "in_inverse0",
         "in_inverse1", "in_inverse2", "in_dimensions", "in_color0",
-        "in_color1",   "in_color2",   "in_color3",     "in_surface"
+        "in_color1",   "in_color2",   "in_color3",     "in_surface",
+        "in_center"
     };
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 13; i++) {
         attrs[i + 2] = (CF_VertexAttribute){ .name = names[i],
                                              .format = CF_VERTEX_FORMAT_FLOAT4,
                                              .offset = i * 4 * sizeof(float),
@@ -570,7 +708,7 @@ static CF_Mesh sdf_mesh(render_mesh_material *pass, const render_mesh_surface_pa
     CF_Mesh result = cf_make_mesh(
         count * sizeof *part->vertices,
         attrs,
-        14,
+        15,
         sizeof *part->vertices
     );
     if (result.id) {
@@ -601,7 +739,12 @@ static void reset_slots(int **slots, int count)
 static int prepare_sdf_program(render_mesh_material *pass, sdf_batch_key key)
 {
     int mask = acount(pass->pair_slots) - 1;
-    int slot = (int)(pair_hash(key.shape, key.material) & (uint64_t)mask);
+    uint64_t hash = UINT64_C(14695981039346656037);
+    const unsigned char *bytes = (const unsigned char *)&key;
+    for (size_t i = 0; i < sizeof key; i++) {
+        hash = (hash ^ bytes[i]) * UINT64_C(1099511628211);
+    }
+    int slot = (int)(hash & (uint64_t)mask);
     for (;;) {
         pass->work.sdf_pair_probes++;
         int index = pass->pair_slots[slot] - 1;
@@ -609,25 +752,43 @@ static int prepare_sdf_program(render_mesh_material *pass, sdf_batch_key key)
             break;
         }
         sdf_prepared_program *entry = &pass->prepared_programs[index];
-        if (entry->shape == key.shape && entry->material == key.material) {
+        if (!memcmp(&entry->key, &key, sizeof key)) {
             return entry->program;
         }
         slot = (slot + 1) & mask;
     }
-    render_shader_set set = { .shape = key.shape, .material = key.material };
+    render_shader_set set = { 0 };
+    if (!render_shader_is_model(key.shape)) {
+        set.shape = key.shape;
+        set.material = key.material;
+    }
     shader_error error = { 0 };
     if (!render_shader_set_add(&set, key.material, &error) ||
         !render_shader_set_add(&set, key.shape, &error)) {
         snprintf(pass->error, sizeof pass->error, "%s", error.message);
         return 0;
     }
-    int program = render_programs_prepare(pass->sdf_programs, &set);
+    for (int slot = 1; slot <= MODEL_MATERIAL_SLOT_MAX; slot++) {
+        if (!render_shader_set_add(&set, (int)key.materials[slot][0], &error)) {
+            snprintf(pass->error, sizeof pass->error, "%s", error.message);
+            return 0;
+        }
+    }
+    render_programs *programs = pass->sdf_programs;
+    if (key.preview) {
+        if (!pass->preview_programs) {
+            pass->preview_programs = render_programs_new(RENDER_PROGRAM_SDF_PREVIEW);
+        }
+        programs = pass->preview_programs;
+        render_programs_set_model_preview(programs, key.shape, key.preview_part);
+    }
+    int program = render_programs_prepare(programs, &set);
     pass->work.sdf_program_prepares++;
     if (!program) {
-        snprintf(pass->error, sizeof pass->error, "%s", render_programs_error(pass->sdf_programs));
+        snprintf(pass->error, sizeof pass->error, "%s", render_programs_error(programs));
         return 0;
     }
-    apush(pass->prepared_programs, ((sdf_prepared_program){ key.shape, key.material, program }));
+    apush(pass->prepared_programs, ((sdf_prepared_program){ key, program }));
     pass->pair_slots[slot] = acount(pass->prepared_programs);
     return program;
 }
@@ -764,14 +925,15 @@ static void sphere_coverage_bounds(
     CF_V3 lo, hi;
     float *a = &lo.x, *b = &hi.x;
     for (int row = 0; row < 3; row++) {
-        float squared = 0;
+        float squared = 0, center = instance->model[row][3];
         for (int axis = 0; axis < 3; axis++) {
             float value = instance->model[row][axis] / size[axis];
             squared += value * value;
+            center -= value * instance->center[axis];
         }
         float extent = radius * sqrtf(squared);
-        a[row] = instance->model[row][3] - extent;
-        b[row] = instance->model[row][3] + extent;
+        a[row] = center - extent;
+        b[row] = center + extent;
     }
     CF_V2 projected_lo, projected_hi;
     if (!render_mesh_project_bounds(view, lo, hi, &projected_lo, &projected_hi)) {
@@ -850,9 +1012,13 @@ static bool stage_sdfs(
         if (!pass->sdf_programs) {
             pass->sdf_programs = render_programs_new(RENDER_PROGRAM_SDF_MATERIAL);
         }
+        staged[i].programs = pass->sdf_programs;
         staged[i].program = prepare_sdf_program(pass, staged[i].key);
         if (!staged[i].program) {
             return false;
+        }
+        if (staged[i].key.preview) {
+            staged[i].programs = pass->preview_programs;
         }
         if (!sdf_mesh(pass, &surfaces[i]->parts[0]).id) {
             snprintf(pass->error, sizeof pass->error, "Cannot allocate SDF instance mesh.");
@@ -924,7 +1090,37 @@ static int draw_sdfs(
     camera_uniforms(pass->material, view);
     cf_material_set_uniform_fs(pass->material, "u_depth", (void *)depth, CF_UNIFORM_TYPE_FLOAT2, 1);
     cf_material_set_uniform_fs(pass->material, "u_shape", shape, CF_UNIFORM_TYPE_FLOAT4, 1);
-    CF_Shader shader = render_programs_bind_raster(pass->sdf_programs, program, pass->material);
+    cf_material_set_uniform_fs(
+        pass->material,
+        "u_model_materials",
+        (void *)key->materials,
+        CF_UNIFORM_TYPE_FLOAT4,
+        MODEL_MATERIAL_SLOT_MAX + 1
+    );
+    if (key->preview) {
+        cf_material_set_uniform_fs(
+            pass->material,
+            "u_preview_uv_bounds",
+            (void *)key->preview_uv_bounds,
+            CF_UNIFORM_TYPE_FLOAT4,
+            2
+        );
+        cf_material_set_uniform_fs(
+            pass->material,
+            "u_preview_plane",
+            (void *)key->preview_plane,
+            CF_UNIFORM_TYPE_FLOAT4,
+            1
+        );
+        cf_material_set_uniform_fs(
+            pass->material,
+            "u_preview_options",
+            (void *)key->preview_options,
+            CF_UNIFORM_TYPE_FLOAT4,
+            1
+        );
+    }
+    CF_Shader shader = render_programs_bind_raster(staged[0].programs, program, pass->material);
     cf_apply_canvas(pass->canvas, *clear);
     *clear = false;
     cf_apply_mesh(geometry);
@@ -973,7 +1169,20 @@ void render_mesh_material_set_hidden_rejection(render_mesh_material *pass, bool 
 }
 render_mesh_material_work render_mesh_material_last_work(const render_mesh_material *pass)
 {
-    return pass->work;
+    render_mesh_material_work work = pass->work;
+    if (pass->sdf_programs) {
+        work.sdf_program_count = render_programs_count(pass->sdf_programs);
+        work.sdf_program_compilations = render_programs_successful_compilations(
+            pass->sdf_programs
+        );
+    }
+    if (pass->preview_programs) {
+        work.sdf_program_count += render_programs_count(pass->preview_programs);
+        work.sdf_program_compilations += render_programs_successful_compilations(
+            pass->preview_programs
+        );
+    }
+    return work;
 }
 bool render_mesh_material_draw(
     render_mesh_material *pass,
@@ -1004,7 +1213,7 @@ bool render_mesh_material_draw(
     asetlen(pass->surfaces, count);
     asetlen(pass->staged, count);
     for (int i = 0; i < count; i++) {
-        pass->staged[i].program = 0;
+        pass->staged[i] = (sdf_staged){ 0 };
     }
     const render_mesh_surface **surfaces = pass->surfaces;
     sdf_staged *staged = pass->staged;
@@ -1012,16 +1221,39 @@ bool render_mesh_material_draw(
           max = { -INFINITY, -INFINITY, -INFINITY };
     bool ok = true;
     for (int i = 0; i < count; i++) {
-        surfaces[i] = actors[i].surface;
+        model_bounds selected_bounds, *override = NULL;
+        if (ecs_entity_to_u64(actors[i].entity) ==
+                ecs_entity_to_u64(pass->inspection.entity) &&
+            pass->inspection.part >= 0) {
+            const GameShader
+                *binding = GAME_GameShader_get_const(world, actors[i].entity);
+            shader_error diagnostic = { 0 };
+            if (!binding || !render_shader_model_preview_snapshot(
+                                render_shader_find(binding->shape),
+                                world,
+                                actors[i].entity,
+                                binding->parameters,
+                                pass->inspection.part,
+                                &selected_bounds,
+                                &diagnostic
+                            )) {
+                snprintf(pass->error, sizeof pass->error, "%s", diagnostic.message);
+                ok = false;
+                goto done;
+            }
+            override = &selected_bounds;
+        }
+        surfaces[i] = override ? NULL : actors[i].surface;
         if (surfaces[i]) {
             pass->work.surface_reuses++;
         } else {
             surfaces[i] = &pass->owned_surfaces[i];
             pass->work.surface_builds++;
-            if (!render_mesh_surface_build(
+            if (!render_mesh_surface_build_with_bounds(
                     world,
                     actors[i].entity,
                     &actors[i].position,
+                    override,
                     &pass->owned_surfaces[i],
                     pass->error,
                     sizeof pass->error

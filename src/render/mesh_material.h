@@ -19,6 +19,10 @@ bool render_mesh_material_draw(
     float time
 );
 /* 0 selects the default 256; 1 draws each SDF separately with the same shader. */
+void render_mesh_material_set_model_inspection(
+    render_mesh_material *pass,
+    const render_model_inspection *inspection
+);
 void render_mesh_material_set_sdf_batch_limit(render_mesh_material *pass, int limit);
 void render_mesh_material_set_quality(render_mesh_material *pass, GameSurfaceQuality quality);
 /* 0: shaded output; 1: surviving trace/normal calls; 2: include hidden rejects. */

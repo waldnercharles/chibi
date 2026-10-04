@@ -1,4 +1,4 @@
-version 4
+version 5
 name "HRC Lab"
 content "content"
 start_scene "scenes/HRCLabPinhole.kdl"

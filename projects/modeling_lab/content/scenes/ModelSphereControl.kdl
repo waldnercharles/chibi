@@ -1,0 +1,19 @@
+version 1
+name "ModelSphereControl"
+(array)entities {
+    - name="Camera" prototype="StudyCamera"
+    - {
+        name "Key light"
+        prototype "StudyLight"
+        components {
+            GameTransform x=0.0 y=-70.0
+        }
+    }
+    - {
+        name "Sphere"
+        prototype "ModelSphere"
+        components {
+            GameGeometry3D width=4.0 height=4.0 depth=4.0
+        }
+    }
+}

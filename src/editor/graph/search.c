@@ -224,6 +224,7 @@ static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
     }
     bool shader = e->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                  e->asset->domain == BEHAVIOR_DOMAIN_MODEL ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
     bool field_node = desc->category && !strcmp(desc->category, "Procedural Field");
     if (e->asset->domain == BEHAVIOR_DOMAIN_FIELD && !field_node) {
@@ -234,7 +235,12 @@ static int ed_spawn_desc_compatible(const editor *e, const node_desc *desc)
         return 0;
     }
     bool shader_node = desc->category && !strncmp(desc->category, "Shader", 6);
-    if (shader != shader_node) {
+    bool model_node = desc->category && !strncmp(desc->category, "Model", 5);
+    if (e->asset->domain == BEHAVIOR_DOMAIN_MODEL) {
+        if (!model_node && !shader_node) {
+            return 0;
+        }
+    } else if (model_node || shader != shader_node) {
         return 0;
     }
     if (e->ui_context == EDITOR_UI_CONTEXT_SYSTEM && !ed_system_node_allowed(desc)) {
@@ -535,6 +541,7 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
     ed_search_components(e, &matches, filter);
     bool shader = e->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                  e->asset->domain == BEHAVIOR_DOMAIN_MODEL ||
                   e->asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
     for (int a = -1; a < acount(e->asset_catalog); a++) {
         const behavior_asset *asset = a < 0 ? e->asset : e->asset_catalog[a];

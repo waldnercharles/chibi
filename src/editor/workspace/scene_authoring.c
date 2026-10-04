@@ -10,6 +10,7 @@
 #include "editor/ui/choices.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor.h"
+#include "editor/workspace/model_preview.h"
 #include "editor/workspace/scene_debug.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
@@ -1437,6 +1438,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     }
     afree(scene->prototypes);
     game_prototype_preview_free(scene->prototype_preview);
+    scene_model_preview_free(scene);
     free(scene->preview_prototype_id);
     free((void *)scene->image_choices.items);
     for (int i = 0; i < acount(scene->content); i++) {

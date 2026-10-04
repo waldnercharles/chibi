@@ -12,6 +12,8 @@
 #include "runtime/scenes/prototype_preview.h"
 #include "support/tree_watch.h"
 
+typedef struct scene_model_preview scene_model_preview;
+
 typedef struct
 {
     uint64_t identity;
@@ -108,6 +110,8 @@ struct app_scene_authoring
     char *system_path;
     engine *runtime;
     game_prototype_preview *prototype_preview;
+    scene_model_preview *model_preview;
+    scene_camera model_camera;
     char *preview_prototype_id;
     int runtime_preview_prototype;
     scene_actor *actors;

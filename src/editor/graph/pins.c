@@ -83,7 +83,11 @@ int ed_pin_editable(const graph *g, const node *n, int kind, int pin)
         (spec->binding || graph_inline_source(g, n, pin, &source, &source_pin))) {
         return 1;
     }
-    if (spec->kind != PIN_DATA || spec->field_source) {
+    if (spec->kind != PIN_DATA || spec->field_source ||
+        (spec->type == PIN_HANDLE && spec->type_name &&
+         (!strcmp(spec->type_name, "Geometry3D") || !strcmp(spec->type_name, "Profile2D") ||
+          !strcmp(spec->type_name, "ModelMaterialSlot") ||
+          !strcmp(spec->type_name, "Anchor3D")))) {
         return 0;
     }
     return kind == ED_PIN_INPUT ? !graph_input_source(g, n, pin, &source, &source_pin)

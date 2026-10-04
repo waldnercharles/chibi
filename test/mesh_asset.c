@@ -6,7 +6,9 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <yyjson.h>
 
 static const char
     *triangle = "{\"version\":1,\"vertices\":[[-.5,0,-.5,0,2,0,.2,.8],"
@@ -20,8 +22,54 @@ static void near_value(float actual, float expected)
     assert(fabsf(actual - expected) < .001f);
 }
 
+static void large_streams()
+{
+    enum
+    {
+        count = 12288
+    };
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+    yyjson_mut_obj_add_int(doc, root, "version", 1);
+    yyjson_mut_val *vertices = yyjson_mut_obj_add_arr(doc, root, "vertices");
+    yyjson_mut_val *positions = yyjson_mut_obj_add_arr(doc, root, "part_positions");
+    yyjson_mut_val *frames = yyjson_mut_obj_add_arr(doc, root, "part_frames");
+    for (int i = 0; i < count; i++) {
+        float x = i / 3 + (i % 3 == 1), z = i % 3 == 2;
+        double vertex[] = { x, 0, z, 0, 1, 0, 0, 0 };
+        double position[] = { i, -i, i + .5 };
+        double frame[] = { i + 1, 0, 0, 0, 1, 0, 0, 0, -1 };
+        yyjson_mut_arr_add_val(vertices, yyjson_mut_arr_with_real(doc, vertex, 8));
+        yyjson_mut_arr_add_val(positions, yyjson_mut_arr_with_real(doc, position, 3));
+        yyjson_mut_arr_add_val(frames, yyjson_mut_arr_with_real(doc, frame, 9));
+    }
+    char *text = yyjson_mut_write(doc, 0, NULL);
+    render_mesh_asset asset = { 0 };
+    char error[256];
+    assert(render_mesh_asset_parse(text, &asset, error, sizeof error));
+    free(text);
+    assert(acount(asset.vertices) == count);
+    for (int i = 0; i < count; i++) {
+        near_value(asset.vertices[i].part_position.x, i);
+        near_value(asset.vertices[i].part_position.y, -i);
+        near_value(asset.vertices[i].part_position.z, i + .5f);
+        near_value(asset.vertices[i].part_from_object[0][0], i + 1);
+        near_value(asset.vertices[i].part_from_object[2][2], -1);
+    }
+    render_mesh_surface_vertex *retained = asset.vertices;
+    yyjson_mut_arr_replace(frames, count - 1, yyjson_mut_str(doc, "bad final frame"));
+    text = yyjson_mut_write(doc, 0, NULL);
+    assert(!render_mesh_asset_parse(text, &asset, error, sizeof error));
+    assert(asset.vertices == retained && strstr(error, "12287"));
+    free(text);
+    render_mesh_asset_free(&asset);
+    yyjson_mut_doc_free(doc);
+}
+
 void test_mesh_asset()
 {
+    large_streams();
     /* JSON requires leading zeroes. Keep the valid fixture independent of the
        exporter: parser and transformed picking are used before any GPU call. */
     const char
@@ -93,5 +141,27 @@ void test_mesh_asset()
     render_mesh_surface_free(&surface);
     render_mesh_asset_free(&asset);
     assert(!asset.vertices);
+    const char *grouped = "{\"version\":1,\"vertices\":[[0,0,0,0,1,0,0,0],[1,0,"
+                          "0,0,1,0,1,0],[0,0,1,0,1,0,0,1]],"
+                          "\"part_positions\":[[10,0,0],[11,0,0],[10,0,1]],"
+                          "\"part_frames\":[[1,0,0,0,1,0,0,0,-1],[1,0,0,0,1,0,"
+                          "0,0,-1],[1,0,0,0,1,0,0,0,-1]],"
+                          "\"uv_bounds\":[-1,-1,-1,1,1,1],"
+                          "\"groups\":[{\"first\":0,\"count\":3,\"part\":0,"
+                          "\"node\":17,\"asset\":\"Model\",\"name\":\"Wing\","
+                          "\"path\":\"Model/p17\",\"material\":\"Paint\"}]}";
+    assert(render_mesh_asset_parse(grouped, &asset, error, sizeof error));
+    assert(asset.has_part_coordinates && asset.has_uv_bounds && acount(asset.groups) == 1);
+    assert(asset.groups[0].count == 3 && asset.groups[0].node == 17);
+    assert(!strcmp(asset.groups[0].material, "Paint"));
+    near_value(asset.vertices[0].part_position.x, 10);
+    near_value(asset.vertices[0].part_from_object[2][2], -1);
+    render_mesh_asset_free(&asset);
+    const char
+        *missing_frames = "{\"version\":1,\"vertices\":[[0,0,0,0,1,0,0,0],[1,0,"
+                          "0,0,1,0,0,0],[0,0,1,0,1,0,0,0]],\"part_positions\":["
+                          "[0,0,0],[1,0,0],[0,0,1]]}";
+    assert(!render_mesh_asset_parse(missing_frames, &asset, error, sizeof error));
+    assert(strstr(error, "frames") && !asset.vertices);
     puts("mesh asset PASS: invalid/finite data, atomic failure, UV, transformed picking and normals");
 }

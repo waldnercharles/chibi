@@ -265,6 +265,7 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
     [STUDIO_COMMAND_NEW_SHAPE] = NEW_ASSET("Shape", "Shape", "shader sdf distance", KIT_ICON_HEXAGON),
     [STUDIO_COMMAND_NEW_FIELD] = NEW_ASSET("Field", "Field", "procedural terrain noise", KIT_ICON_GRID),
     [STUDIO_COMMAND_NEW_SHADER_LIBRARY] = NEW_ASSET("ShaderLibrary", "Shader Library", "shader functions", KIT_ICON_LIBRARY),
+    [STUDIO_COMMAND_NEW_MODEL] = NEW_ASSET("Model", "Model", "3d sdf geometry asset", KIT_ICON_HEXAGON),
     [STUDIO_COMMAND_NEW_UI_WIDGET] = NEW_ASSET("UiWidget", "UI Widget", "component rml", KIT_ICON_LAYOUT),
     [STUDIO_COMMAND_NEW_UI_DOCUMENT] = NEW_ASSET("UiDocument", "UI Document", "panel screen rml", KIT_ICON_LAYOUT),
     [STUDIO_COMMAND_NEW_STYLESHEET] = NEW_ASSET("Stylesheet", "Stylesheet", "ui styles rcss css", KIT_ICON_FILE),
@@ -869,6 +870,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_NEW_SHAPE:
         case STUDIO_COMMAND_NEW_FIELD:
         case STUDIO_COMMAND_NEW_SHADER_LIBRARY:
+        case STUDIO_COMMAND_NEW_MODEL:
         case STUDIO_COMMAND_NEW_UI_WIDGET:
         case STUDIO_COMMAND_NEW_UI_DOCUMENT:
         case STUDIO_COMMAND_NEW_STYLESHEET:

@@ -1,0 +1,95 @@
+version 3
+name "CostHitPartMaterial"
+domain "model"
+id_counter 60
+description "Identical PaintedModule geometry with three named parts bound to one neutral material slot; isolates hit-resolution and binding overhead."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - id=6 type="Model Material Slot" reference_name="Neutral" reference_asset="StudyIvory"
+            - {
+                id 8
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=26.0 y=15.0 z=19.0
+                    }
+                    Radius 3.0
+                }
+            }
+            - {
+                id 12
+                type "Model Cylinder"
+                inputs Radius=8.0 "Half Height"=22.0
+            }
+            - {
+                id 16
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-10.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=20 type="Model Difference"
+            - id=24 type="Model Part" reference_name="Body and cut"
+            - {
+                id 28
+                type "Model Sphere"
+                inputs Radius=13.0
+            }
+            - {
+                id 31
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=23.0 y=6.0 z=0.0
+                    }
+                }
+            }
+            - id=35 type="Model Part" reference_name="Smooth insert"
+            - {
+                id 39
+                type "Model Smooth Union"
+                inputs Smoothness=5.0
+            }
+            - {
+                id 44
+                type "Model Cylinder"
+                inputs Radius=5.0 "Half Height"=4.0
+            }
+            - {
+                id 48
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=5.0 y=17.0 z=9.0
+                    }
+                }
+            }
+            - id=52 type="Model Part" reference_name="Top cap"
+            - id=56 type="Model Union"
+        }
+        (array)edges {
+            - from="6.Slot" to="24.Material"
+            - from="6.Slot" to="35.Material"
+            - from="6.Slot" to="52.Material"
+            - from="8.Geometry" to="20.A"
+            - from="12.Geometry" to="16.Geometry"
+            - from="16.Geometry" to="20.B"
+            - from="20.Geometry" to="24.Geometry"
+            - from="24.Geometry" to="39.A"
+            - from="28.Geometry" to="31.Geometry"
+            - from="31.Geometry" to="35.Geometry"
+            - from="35.Geometry" to="39.B"
+            - from="39.Geometry" to="56.A"
+            - from="44.Geometry" to="48.Geometry"
+            - from="48.Geometry" to="52.Geometry"
+            - from="52.Geometry" to="56.B"
+            - from="56.Geometry" to="1.Geometry"
+        }
+    }
+}

@@ -124,6 +124,19 @@ void main()
     sg_context.position = local.xz;
     sg_context.uv = primitive_uv(local, material_value(37).xyz, object_normal, int(v_material.z));
     sg_context.object_position = local;
+    sg_context.part_position = local;
+    sg_context.object_from_world[0]=inverse_x.xyz;
+    sg_context.object_from_world[1]=inverse_y.xyz;
+    sg_context.object_from_world[2]=inverse_z.xyz;
+    for(int i=0;i<3;i++) sg_context.part_from_world[i]=sg_context.object_from_world[i];
+    vec3 dx=dFdx(v_world),dy=dFdy(v_world);
+    vec2 du=dFdx(sg_context.uv),dv=dFdy(sg_context.uv);
+    float xx=dot(dx,dx),yy=dot(dy,dy),xy=dot(dx,dy),determinant=xx*yy-xy*xy;
+    for(int i=0;i<2;i++) sg_context.uv_from_world[i]=vec3(0);
+    if(determinant>1e-20) {
+        sg_context.uv_from_world[0]=(dx*(yy*du.x-xy*dv.x)+dy*(xx*dv.x-xy*du.x))/determinant;
+        sg_context.uv_from_world[1]=(dx*(yy*du.y-xy*dv.y)+dy*(xx*dv.y-xy*du.y))/determinant;
+    }
     sg_context.world_position = v_world;
     sg_context.normal = normal;
     sg_context.view_direction = view;

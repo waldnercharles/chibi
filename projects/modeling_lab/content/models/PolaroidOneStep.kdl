@@ -1,0 +1,996 @@
+version 3
+name "PolaroidOneStep"
+domain "model"
+id_counter 586
+description "Single-image reconstruction in editable named 3D parts: convex housing profiles, recessed film slot, lathed lens and controls, material slots, and public scale/lens radius. Hidden surfaces are inferred."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - id=6 type="Model Material Slot" reference_name="Ivory" reference_asset="PolaroidIvory"
+            - id=8 type="Model Material Slot" reference_name="Black" reference_asset="PolaroidBlack"
+            - id=10 type="Model Material Slot" reference_name="Lens" reference_asset="PolaroidLens"
+            - id=12 type="Model Material Slot" reference_name="Glass" reference_asset="PolaroidGlass"
+            - id=14 type="Model Material Slot" reference_name="Red" reference_asset="PolaroidRed"
+            - id=16 type="Model Material Slot" reference_name="Cream" reference_asset="PolaroidCream"
+            - id=18 type="Model Material Slot" reference_name="Metal" reference_asset="PolaroidMetal"
+            - id=20 type="Model Material Slot" reference_name="Label" reference_asset="PolaroidLabel"
+            - id=22 type="Model Material Slot" reference_name="White" reference_asset="PolaroidWhite"
+            - id=24 type="Model Material Slot" reference_name="Rainbow" reference_asset="PolaroidRainbow"
+            - {
+                id 26
+                type "Model Parameter"
+                reference_name "Scale"
+                inputs {
+                    Default {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Minimum {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=0.7 y=0.7 z=0.7
+                    }
+                    Maximum {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=1.4 y=1.4 z=1.4
+                    }
+                }
+                outputs {
+                    Value type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 31
+                type "Model Parameter"
+                reference_name "Lens Radius"
+                inputs Default=1.8 Minimum=1.5 Maximum=2.05
+            }
+            - {
+                id 36
+                type "Model Profile Polygon"
+                inputs {
+                    Vertices {
+                        (array)default {
+                            - x=3.8 y=0.15
+                            - x=3.8 y=3.3
+                            - x=-4.9 y=2.25
+                            - x=-4.9 y=0.15
+                        }
+                    }
+                }
+            }
+            - {
+                id 39
+                type "Model Extrude"
+                inputs "Half Depth"=5.0
+            }
+            - {
+                id 43
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=0.0 y=1.5707964 z=0.0
+                    }
+                }
+            }
+            - {
+                id 47
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=4.35 y=0.28 z=0.8
+                    }
+                    Radius 0.08
+                }
+            }
+            - {
+                id 51
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=0.66 z=4.8
+                    }
+                }
+            }
+            - id=55 type="Model Difference"
+            - id=59 type="Model Part" reference_name="Film housing with recessed ejection slot"
+            - {
+                id 63
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=4.75 y=2.8 z=1.94
+                    }
+                    Radius 0.2
+                }
+            }
+            - {
+                id 67
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=5.1 z=-0.75
+                    }
+                }
+            }
+            - id=71 type="Model Part" reference_name="Rear main shell"
+            - {
+                id 75
+                type "Model Profile Polygon"
+                inputs {
+                    Vertices {
+                        (array)default {
+                            - x=-4.8 y=2.35
+                            - x=-1.5 y=3.5
+                            - x=-1.5 y=3.8
+                            - x=-4.8 y=2.65
+                        }
+                    }
+                }
+            }
+            - {
+                id 78
+                type "Model Extrude"
+                inputs "Half Depth"=4.8
+            }
+            - {
+                id 82
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=0.0 y=1.5707964 z=0.0
+                    }
+                }
+            }
+            - {
+                id 86
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=90 type="Model Part" reference_name="Sloped ivory apron"
+            - {
+                id 94
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=4.8 y=0.2 z=0.13
+                    }
+                    Radius 0.06
+                }
+            }
+            - {
+                id 98
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=2.44 z=4.8
+                    }
+                }
+            }
+            - id=102 type="Model Part" reference_name="Ivory front lip"
+            - {
+                id 106
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=4.8 y=2.25 z=0.18
+                    }
+                    Radius 0.16
+                }
+            }
+            - {
+                id 110
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=5.65 z=1.35
+                    }
+                }
+            }
+            - id=114 type="Model Part" reference_name="Ivory upright face"
+            - {
+                id 118
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=0.065 y=2.1 z=0.23
+                    }
+                    Radius 0.05
+                }
+            }
+            - {
+                id 122
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=4.83 y=5.65 z=1.12
+                    }
+                }
+            }
+            - id=126 type="Model Part" reference_name="Right shell reveal"
+            - {
+                id 130
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=0.065 y=2.1 z=0.23
+                    }
+                    Radius 0.05
+                }
+            }
+            - {
+                id 134
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-4.83 y=5.65 z=1.12
+                    }
+                }
+            }
+            - id=138 type="Model Part" reference_name="Left shell reveal"
+            - {
+                id 142
+                type "Model Profile Polygon"
+                inputs {
+                    Vertices {
+                        (array)default {
+                            - x=1.7 y=6.3
+                            - x=4.7 y=7.05
+                            - x=4.7 y=8.25
+                            - x=1.7 y=7.1
+                        }
+                    }
+                }
+            }
+            - {
+                id 145
+                type "Model Extrude"
+                inputs "Half Depth"=1.2
+            }
+            - {
+                id 149
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=0.0 y=1.5707964 z=0.0
+                    }
+                }
+            }
+            - {
+                id 153
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=3.6 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=157 type="Model Part" reference_name="Rear viewfinder stalk"
+            - {
+                id 161
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=1.45 y=1.03 z=0.22
+                    }
+                    Radius 0.2
+                }
+            }
+            - {
+                id 165
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=1.08 y=0.7 z=0.3
+                    }
+                    Radius 0.12
+                }
+            }
+            - {
+                id 169
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=0.0 z=-0.23
+                    }
+                }
+            }
+            - id=173 type="Model Difference"
+            - {
+                id 177
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=4.2 y=7.65 z=-4.8
+                    }
+                }
+            }
+            - id=181 type="Model Part" reference_name="Raised rear eyecup"
+            - {
+                id 185
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=1.04 y=0.65 z=0.02
+                    }
+                    Radius 0.015
+                }
+            }
+            - {
+                id 189
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=4.2 y=7.65 z=-4.75
+                    }
+                }
+            }
+            - id=193 type="Model Part" reference_name="Recessed eyecup window"
+            - {
+                id 197
+                type "Model Cylinder"
+                inputs Radius=1.8 "Half Height"=0.48
+            }
+            - {
+                id 201
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=1.5707964 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 205
+                type "Model Profile Polygon"
+                inputs {
+                    Vertices {
+                        (array)default {
+                            - x=0.0 y=0.0
+                            - x=1.12 y=0.0
+                            - x=1.62 y=0.62
+                            - x=0.0 y=0.62
+                        }
+                    }
+                }
+            }
+            - id=208 type="Model Revolve"
+            - {
+                id 211
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=1.5707964 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 215
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=0.0 z=0.05
+                    }
+                }
+            }
+            - id=219 type="Model Difference"
+            - {
+                id 223
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-0.05 y=5.7 z=2.04
+                    }
+                }
+            }
+            - id=227 type="Model Part" reference_name="Recessed lens barrel"
+            - {
+                id 231
+                type "Model Profile Polygon"
+                inputs {
+                    Vertices {
+                        (array)default {
+                            - x=0.0 y=-0.21
+                            - x=1.5 y=-0.21
+                            - x=1.87 y=0.16
+                            - x=0.0 y=0.16
+                        }
+                    }
+                }
+            }
+            - id=234 type="Model Revolve"
+            - {
+                id 237
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=1.5707964 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 241
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-0.05 y=5.7 z=1.76
+                    }
+                }
+            }
+            - id=245 type="Model Part" reference_name="Rear lens flare"
+            - {
+                id 249
+                type "Model Profile Polygon"
+                inputs {
+                    Vertices {
+                        (array)default {
+                            - x=1.69 y=-0.04
+                            - x=1.8 y=-0.04
+                            - x=1.8 y=0.04
+                            - x=1.69 y=0.04
+                        }
+                    }
+                }
+            }
+            - id=252 type="Model Revolve"
+            - {
+                id 255
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=1.5707964 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 259
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-0.05 y=5.7 z=2.52
+                    }
+                }
+            }
+            - id=263 type="Model Part" reference_name="Cream annular lens rim"
+            - {
+                id 267
+                type "Model Cylinder"
+                inputs Radius=1.11 "Half Height"=0.04
+            }
+            - {
+                id 271
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=1.5707964 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 275
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-0.05 y=5.7 z=2.13
+                    }
+                }
+            }
+            - id=279 type="Model Part" reference_name="Dark optical glass"
+            - id=283 type="Model Union"
+            - id=287 type="Model Union"
+            - id=291 type="Model Union"
+            - {
+                id 308
+                type "Behavior Expression"
+                reference_name "r / 1.8"
+                inputs {
+                    r id=309 type="float"
+                }
+                outputs {
+                    Result id=310 type="float"
+                }
+            }
+            - {
+                id 311
+                type "Shader Vector3"
+                inputs Z=1.0
+            }
+            - {
+                id 316
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.05 y=-5.7 z=-2.04
+                    }
+                }
+            }
+            - id=320 type="Model Scale"
+            - {
+                id 324
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-0.05 y=5.7 z=2.04
+                    }
+                }
+            }
+            - {
+                id 328
+                type "Model Cylinder"
+                inputs Radius=0.64 "Half Height"=0.08
+            }
+            - {
+                id 332
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=1.5707964 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 336
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-2.9 y=4.75 z=1.61
+                    }
+                }
+            }
+            - id=340 type="Model Part" reference_name="Cream shutter collar"
+            - {
+                id 344
+                type "Model Cylinder"
+                inputs Radius=0.53 "Half Height"=0.12
+            }
+            - {
+                id 348
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=1.5707964 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 352
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-2.9 y=4.75 z=1.75
+                    }
+                }
+            }
+            - id=356 type="Model Part" reference_name="Red shutter button"
+            - {
+                id 360
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=1.02 y=0.9 z=0.09
+                    }
+                    Radius 0.09
+                }
+            }
+            - {
+                id 364
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=3.05 y=6.55 z=1.61
+                    }
+                }
+            }
+            - id=368 type="Model Part" reference_name="Front viewfinder bevel"
+            - {
+                id 372
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=0.93 y=0.8 z=0.035
+                    }
+                    Radius 0.025
+                }
+            }
+            - {
+                id 376
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=3.05 y=6.55 z=1.735
+                    }
+                }
+            }
+            - id=380 type="Model Part" reference_name="Dark front viewfinder window"
+            - {
+                id 384
+                type "Model Cylinder"
+                inputs Radius=0.57 "Half Height"=0.017
+            }
+            - {
+                id 388
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=1.5707964 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 392
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=3.05 y=6.55 z=1.785
+                    }
+                }
+            }
+            - id=396 type="Model Part" reference_name="Viewfinder internal optical surface"
+            - {
+                id 400
+                type "Model Profile Polygon"
+                inputs {
+                    Vertices {
+                        (array)default {
+                            - x=0.0 y=-0.16
+                            - x=0.52 y=-0.16
+                            - x=0.63 y=0.13
+                            - x=0.5 y=0.36
+                            - x=0.0 y=0.36
+                        }
+                    }
+                }
+            }
+            - id=403 type="Model Revolve"
+            - {
+                id 406
+                type "Model Rotate"
+                inputs {
+                    Angles {
+                        default x=1.5707964 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 410
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=3.0 y=4.55 z=1.78
+                    }
+                }
+            }
+            - id=414 type="Model Part" reference_name="Exposure adjustment knob"
+            - {
+                id 418
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=0.045 y=0.14 z=0.018
+                    }
+                    Radius 0.015
+                }
+            }
+            - {
+                id 422
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=3.0 y=5.3 z=1.56
+                    }
+                }
+            }
+            - id=426 type="Model Part" reference_name="Exposure index dash"
+            - {
+                id 430
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=1.0 y=0.42 z=0.026
+                    }
+                    Radius 0.02
+                }
+            }
+            - {
+                id 434
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-2.95 y=6.3 z=1.56
+                    }
+                }
+            }
+            - id=438 type="Model Part" reference_name="Raised OneStep badge"
+            - {
+                id 442
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=4.45 y=0.46 z=0.035
+                    }
+                    Radius 0.025
+                }
+            }
+            - {
+                id 446
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=1.5 z=4.94
+                    }
+                }
+            }
+            - id=450 type="Model Part" reference_name="Polaroid film door nameplate"
+            - {
+                id 454
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=1.8 y=0.08 z=0.48
+                    }
+                    Radius 0.06
+                }
+            }
+            - {
+                id 458
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=7.98 z=0.8
+                    }
+                }
+            }
+            - id=462 type="Model Part" reference_name="Top accessory shoe"
+            - {
+                id 466
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=1.1 y=0.013 z=0.12
+                    }
+                    Radius 0.01
+                }
+            }
+            - {
+                id 470
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=8.074 z=0.8
+                    }
+                }
+            }
+            - id=474 type="Model Part" reference_name="Accessory shoe central slot"
+            - {
+                id 478
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=4.16 y=0.035 z=0.13
+                    }
+                    Radius 0.025
+                }
+            }
+            - {
+                id 482
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=0.41 z=4.55
+                    }
+                }
+            }
+            - id=486 type="Model Part" reference_name="Visible film slot roller"
+            - id=490 type="Model Union"
+            - id=494 type="Model Union"
+            - id=498 type="Model Union"
+            - id=502 type="Model Union"
+            - id=506 type="Model Union"
+            - id=510 type="Model Union"
+            - id=514 type="Model Union"
+            - id=518 type="Model Union"
+            - id=522 type="Model Union"
+            - id=526 type="Model Union"
+            - id=530 type="Model Union"
+            - id=534 type="Model Union"
+            - id=538 type="Model Union"
+            - id=542 type="Model Union"
+            - id=546 type="Model Union"
+            - id=550 type="Model Union"
+            - id=554 type="Model Union"
+            - id=558 type="Model Union"
+            - id=562 type="Model Union"
+            - id=566 type="Model Union"
+            - id=570 type="Model Union"
+            - id=574 type="Model Union"
+            - {
+                id 578
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=-4.2 z=0.0
+                    }
+                }
+            }
+            - id=582 type="Model Scale"
+        }
+        (array)edges {
+            - from="6.Slot" to="114.Material"
+            - from="8.Slot" to="59.Material"
+            - from="8.Slot" to="71.Material"
+            - from="8.Slot" to="126.Material"
+            - from="8.Slot" to="138.Material"
+            - from="8.Slot" to="157.Material"
+            - from="8.Slot" to="181.Material"
+            - from="8.Slot" to="245.Material"
+            - from="8.Slot" to="414.Material"
+            - from="8.Slot" to="474.Material"
+            - from="10.Slot" to="227.Material"
+            - from="10.Slot" to="396.Material"
+            - from="12.Slot" to="193.Material"
+            - from="12.Slot" to="279.Material"
+            - from="12.Slot" to="380.Material"
+            - from="14.Slot" to="356.Material"
+            - from="16.Slot" to="263.Material"
+            - from="16.Slot" to="340.Material"
+            - from="16.Slot" to="368.Material"
+            - from="16.Slot" to="486.Material"
+            - from="18.Slot" to="462.Material"
+            - from="20.Slot" to="438.Material"
+            - from="20.Slot" to="450.Material"
+            - from="22.Slot" to="426.Material"
+            - from="24.Slot" to="90.Material"
+            - from="24.Slot" to="102.Material"
+            - from="26.Value" to="582.Factors"
+            - from="31.Value" to="308.r"
+            - from="36.Profile" to="39.Profile"
+            - from="39.Geometry" to="43.Geometry"
+            - from="43.Geometry" to="55.A"
+            - from="47.Geometry" to="51.Geometry"
+            - from="51.Geometry" to="55.B"
+            - from="55.Geometry" to="59.Geometry"
+            - from="59.Geometry" to="490.A"
+            - from="63.Geometry" to="67.Geometry"
+            - from="67.Geometry" to="71.Geometry"
+            - from="71.Geometry" to="490.B"
+            - from="75.Profile" to="78.Profile"
+            - from="78.Geometry" to="82.Geometry"
+            - from="82.Geometry" to="86.Geometry"
+            - from="86.Geometry" to="90.Geometry"
+            - from="90.Geometry" to="494.B"
+            - from="94.Geometry" to="98.Geometry"
+            - from="98.Geometry" to="102.Geometry"
+            - from="102.Geometry" to="498.B"
+            - from="106.Geometry" to="110.Geometry"
+            - from="110.Geometry" to="114.Geometry"
+            - from="114.Geometry" to="502.B"
+            - from="118.Geometry" to="122.Geometry"
+            - from="122.Geometry" to="126.Geometry"
+            - from="126.Geometry" to="506.B"
+            - from="130.Geometry" to="134.Geometry"
+            - from="134.Geometry" to="138.Geometry"
+            - from="138.Geometry" to="510.B"
+            - from="142.Profile" to="145.Profile"
+            - from="145.Geometry" to="149.Geometry"
+            - from="149.Geometry" to="153.Geometry"
+            - from="153.Geometry" to="157.Geometry"
+            - from="157.Geometry" to="514.B"
+            - from="161.Geometry" to="173.A"
+            - from="165.Geometry" to="169.Geometry"
+            - from="169.Geometry" to="173.B"
+            - from="173.Geometry" to="177.Geometry"
+            - from="177.Geometry" to="181.Geometry"
+            - from="181.Geometry" to="518.B"
+            - from="185.Geometry" to="189.Geometry"
+            - from="189.Geometry" to="193.Geometry"
+            - from="193.Geometry" to="522.B"
+            - from="197.Geometry" to="201.Geometry"
+            - from="201.Geometry" to="219.A"
+            - from="205.Profile" to="208.Profile"
+            - from="208.Geometry" to="211.Geometry"
+            - from="211.Geometry" to="215.Geometry"
+            - from="215.Geometry" to="219.B"
+            - from="219.Geometry" to="223.Geometry"
+            - from="223.Geometry" to="227.Geometry"
+            - from="227.Geometry" to="283.A"
+            - from="231.Profile" to="234.Profile"
+            - from="234.Geometry" to="237.Geometry"
+            - from="237.Geometry" to="241.Geometry"
+            - from="241.Geometry" to="245.Geometry"
+            - from="245.Geometry" to="283.B"
+            - from="249.Profile" to="252.Profile"
+            - from="252.Geometry" to="255.Geometry"
+            - from="255.Geometry" to="259.Geometry"
+            - from="259.Geometry" to="263.Geometry"
+            - from="263.Geometry" to="287.B"
+            - from="267.Geometry" to="271.Geometry"
+            - from="271.Geometry" to="275.Geometry"
+            - from="275.Geometry" to="279.Geometry"
+            - from="279.Geometry" to="291.B"
+            - from="283.Geometry" to="287.A"
+            - from="287.Geometry" to="291.A"
+            - from="291.Geometry" to="316.Geometry"
+            - from="308.Result" to="311.X"
+            - from="308.Result" to="311.Y"
+            - from="311.Value" to="320.Factors"
+            - from="316.Geometry" to="320.Geometry"
+            - from="320.Geometry" to="324.Geometry"
+            - from="324.Geometry" to="526.B"
+            - from="328.Geometry" to="332.Geometry"
+            - from="332.Geometry" to="336.Geometry"
+            - from="336.Geometry" to="340.Geometry"
+            - from="340.Geometry" to="530.B"
+            - from="344.Geometry" to="348.Geometry"
+            - from="348.Geometry" to="352.Geometry"
+            - from="352.Geometry" to="356.Geometry"
+            - from="356.Geometry" to="534.B"
+            - from="360.Geometry" to="364.Geometry"
+            - from="364.Geometry" to="368.Geometry"
+            - from="368.Geometry" to="538.B"
+            - from="372.Geometry" to="376.Geometry"
+            - from="376.Geometry" to="380.Geometry"
+            - from="380.Geometry" to="542.B"
+            - from="384.Geometry" to="388.Geometry"
+            - from="388.Geometry" to="392.Geometry"
+            - from="392.Geometry" to="396.Geometry"
+            - from="396.Geometry" to="546.B"
+            - from="400.Profile" to="403.Profile"
+            - from="403.Geometry" to="406.Geometry"
+            - from="406.Geometry" to="410.Geometry"
+            - from="410.Geometry" to="414.Geometry"
+            - from="414.Geometry" to="550.B"
+            - from="418.Geometry" to="422.Geometry"
+            - from="422.Geometry" to="426.Geometry"
+            - from="426.Geometry" to="554.B"
+            - from="430.Geometry" to="434.Geometry"
+            - from="434.Geometry" to="438.Geometry"
+            - from="438.Geometry" to="558.B"
+            - from="442.Geometry" to="446.Geometry"
+            - from="446.Geometry" to="450.Geometry"
+            - from="450.Geometry" to="562.B"
+            - from="454.Geometry" to="458.Geometry"
+            - from="458.Geometry" to="462.Geometry"
+            - from="462.Geometry" to="566.B"
+            - from="466.Geometry" to="470.Geometry"
+            - from="470.Geometry" to="474.Geometry"
+            - from="474.Geometry" to="570.B"
+            - from="478.Geometry" to="482.Geometry"
+            - from="482.Geometry" to="486.Geometry"
+            - from="486.Geometry" to="574.B"
+            - from="490.Geometry" to="494.A"
+            - from="494.Geometry" to="498.A"
+            - from="498.Geometry" to="502.A"
+            - from="502.Geometry" to="506.A"
+            - from="506.Geometry" to="510.A"
+            - from="510.Geometry" to="514.A"
+            - from="514.Geometry" to="518.A"
+            - from="518.Geometry" to="522.A"
+            - from="522.Geometry" to="526.A"
+            - from="526.Geometry" to="530.A"
+            - from="530.Geometry" to="534.A"
+            - from="534.Geometry" to="538.A"
+            - from="538.Geometry" to="542.A"
+            - from="542.Geometry" to="546.A"
+            - from="546.Geometry" to="550.A"
+            - from="550.Geometry" to="554.A"
+            - from="554.Geometry" to="558.A"
+            - from="558.Geometry" to="562.A"
+            - from="562.Geometry" to="566.A"
+            - from="566.Geometry" to="570.A"
+            - from="570.Geometry" to="574.A"
+            - from="574.Geometry" to="578.Geometry"
+            - from="578.Geometry" to="582.Geometry"
+            - from="582.Geometry" to="1.Geometry"
+        }
+    }
+    - id=295 kind="function" math_expression="r / 1.8" entry_id=296
+}

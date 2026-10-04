@@ -1,0 +1,48 @@
+version 1
+name "ModelReuseStudy"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "StudyCamera"
+        components {
+            GameCamera width=600.0 height=410.0
+            GameHRC2D surface_relief=0.0
+        }
+    }
+    - {
+        name "Key light"
+        prototype "StudyLight"
+        components {
+            GameTransform x=-240.0 y=-90.0
+        }
+    }
+    - {
+        name "Fill light"
+        prototype "StudyLight"
+        components {
+            GameTransform x=250.0 y=55.0
+            GameMaterial emission_color=0x9dd4ffff
+        }
+    }
+    - {
+        name "Shared module variants"
+        prototype "EngineVariants"
+        components {
+            GameTransform x=-70.0 y=-105.0
+        }
+    }
+    - {
+        name "Radial module array"
+        prototype "EngineRadialArray"
+        components {
+            GameTransform x=-125.0 y=70.0
+        }
+    }
+    - {
+        name "Shelf with linear arrays"
+        prototype "ShelfFixture"
+        components {
+            GameTransform x=140.0 y=40.0
+        }
+    }
+}

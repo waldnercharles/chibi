@@ -838,6 +838,17 @@ av_value *behavior_asset_to_value(av_doc *doc, const behavior_asset *asset)
         av_obj_set(doc, root, "bounds_x", av_float(doc, asset->bounds[0]));
         av_obj_set(doc, root, "bounds_y", av_float(doc, asset->bounds[1]));
     }
+    if (asset->domain == BEHAVIOR_DOMAIN_MODEL && asset->reference.image) {
+        const model_reference *reference = &asset->reference;
+        av_value *value = av_obj(doc);
+        av_obj_set(doc, root, "reference", value);
+        av_obj_set(doc, value, "image", av_str(doc, reference->image));
+        av_obj_set(doc, value, "x", av_float(doc, reference->center[0]));
+        av_obj_set(doc, value, "y", av_float(doc, reference->center[1]));
+        av_obj_set(doc, value, "span", av_float(doc, reference->span));
+        av_obj_set(doc, value, "angle", av_float(doc, reference->angle));
+        av_obj_set(doc, value, "locked", av_bool(doc, reference->locked));
+    }
     av_obj_set(doc, root, "id_counter", av_uint(doc, asset->graph->id_counter));
     write_description(doc, root, asset->description);
     if (asset->owner_type_name) {

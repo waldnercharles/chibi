@@ -1,0 +1,40 @@
+version 1
+name "PolaroidOrbitStudy"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "StudyCamera"
+        components {
+            GameHRC2D surface_relief=1.5 ambient=0.8 fog=0.0 bloom=0.0 bounce_intensity=0.2 lighting_margin=110.0 falloff=0.4
+            GameCamera width=520.0 height=390.0 focal_distance=650.0
+        }
+    }
+    - {
+        name "Warm upper-left key"
+        prototype "StudyLight"
+        components {
+            GameTransform x=-315.0 y=-235.0
+            GameMaterial emission_color=0xffe0adff emission_intensity=0.06
+            GameAppearance width=90.0 height=90.0
+        }
+    }
+    - {
+        name "Lower-right fill"
+        prototype "StudyLight"
+        components {
+            GameTransform x=325.0 y=230.0
+            GameMaterial emission_color=0xa9b9d4ff emission_intensity=0.025
+            GameAppearance width=100.0 height=100.0
+        }
+    }
+    - {
+        name "Reconstructed Polaroid"
+        prototype "PolaroidOneStep"
+        components {
+            GameTransform x=6.0 y=22.0
+            GameVisualTransform scale=22.0 pitch=0.301598 yaw=0.124322 roll=-1.277962
+        }
+        (array)behaviors "PolaroidOrbit"
+    }
+    - name="Warm photographic backdrop" prototype="PolaroidBackdrop"
+}

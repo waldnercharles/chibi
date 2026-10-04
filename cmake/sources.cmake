@@ -73,6 +73,24 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_adapter.c
+    src/graph/modeling/model_nodes.c
+    src/graph/modeling/model_compile.c
+    src/graph/modeling/model_expand.c
+    src/graph/modeling/model_numeric.c
+    src/graph/modeling/model_parameters.c
+    src/graph/modeling/model_profiles.c
+    src/graph/modeling/model_materials.c
+    src/graph/modeling/model_hit.c
+    src/graph/modeling/model_authoring.c
+    src/graph/modeling/model_frames.c
+    src/graph/modeling/model_inspection.c
+    src/assets/model_source.c
+    src/graph/shader/shader_detail.c
+    src/graph/modeling/model_constructive.c
+    src/graph/modeling/model_profile_paths.c
+    src/graph/modeling/model_anchors.c
+    src/graph/shader/shader_inspection.c
+    src/graph/modeling/model_bounds.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_local.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_refs.c
@@ -191,6 +209,7 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_literals.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_pins.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_properties.c
+    src/editor/studio/studio_model.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_values.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_host.c
@@ -242,6 +261,7 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_runtime.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_tabs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_viewport.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/model_preview.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/scene_renderer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_fragment.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/screenshot.c
@@ -249,6 +269,8 @@ set(APP_SOURCES
 )
 
 set(RUNTIME_SUPPORT_SOURCES
+    src/assets/model_export.c
+    src/graph/modeling/model_bake.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_mask.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_field.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/material_terrain.c
@@ -269,6 +291,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/particle_emitters.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/task_pool.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/new_asset.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/model_validation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scenario_document.c

@@ -1,0 +1,60 @@
+version 3
+name "VectorLiteralControl"
+domain "material"
+id_counter 25
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 10
+                type "Shader Mix"
+                inputs {
+                    A {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=0.06 y=0.16 z=0.36
+                    }
+                    B {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=0.7 y=0.83 z=0.95
+                    }
+                    Alpha type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Value type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 23
+                type "Behavior Expression"
+                reference_name "0.25"
+                outputs {
+                    Result id=24 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="10.Value" to="1.Base Color"
+            - from="23.Result" to="10.Alpha" conversion="Scalar to ShaderVec3"
+        }
+    }
+    - id=15 kind="function" math_expression="0.25" entry_id=16
+}

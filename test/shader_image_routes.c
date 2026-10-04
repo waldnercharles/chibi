@@ -38,6 +38,7 @@ static node *image_node(graph *g, const char *key)
     assert(graph_set_pin_default(g, image, 0, SHADER_IMAGE_INPUT_IMAGE, &value) == 0);
     for (int i = SHADER_IMAGE_INPUT_COLOR_SPACE; i < SHADER_IMAGE_INPUT_COUNT; i++) {
         value = (pin_value){ .type = PIN_I32,
+                             .type_name = image->input_pins[i].type_name,
                              .i = i == SHADER_IMAGE_INPUT_FILTER ? SHADER_IMAGE_NEAREST
                                                                  : 1 };
         assert(graph_set_pin_default(g, image, 0, i, &value) == 0);
@@ -283,7 +284,11 @@ static int sampling_material(const char *key, int settings)
     value.ptr = &offset;
     assert(graph_set_pin_default(g, mapping, 0, 1, &value) == 0);
     for (int i = 0; i < 3; i++) {
-        value = (pin_value){ .type = PIN_I32, .i = (settings >> i) & 1 };
+        value = (pin_value){
+            .type = PIN_I32,
+            .type_name = image->input_pins[SHADER_IMAGE_INPUT_COLOR_SPACE + i].type_name,
+            .i = (settings >> i) & 1
+        };
         assert(
             graph_set_pin_default(g, image, 0, SHADER_IMAGE_INPUT_COLOR_SPACE + i, &value) == 0
         );

@@ -352,6 +352,16 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
             return -1;
         }
     }
+    /* Scalar shader inputs broadcast into an already authored vector group.
+     * Replaying its scalar driver must not erase the other vector literals. */
+    if (!conversion && (in->flags & PIN_FLAG_WILDCARD) && to->desc->category &&
+        !strcmp(to->desc->category, "Shader") && in->type == PIN_STRUCT && in->type_name &&
+        !strncmp(in->type_name, "ShaderVec", 9) && out->type != PIN_STRUCT) {
+        const node_desc *splat = conversion_for_pins(out, in);
+        if (splat && conversion_is_vector_splat(splat)) {
+            conversion = splat;
+        }
+    }
     int numeric_wildcard = (in->flags & PIN_FLAG_WILDCARD) && graph_numeric_node(to);
     if (!conversion && numeric_wildcard) {
         conversion = graph_numeric_unwrap(out);
@@ -1372,6 +1382,7 @@ int graph_set_pin_binding(graph *g, node *n, int output, int index, const pin_bi
         (g->owner->domain == BEHAVIOR_DOMAIN_LIBRARY ||
          g->owner->domain == BEHAVIOR_DOMAIN_MATERIAL ||
          g->owner->domain == BEHAVIOR_DOMAIN_SHAPE ||
+         g->owner->domain == BEHAVIOR_DOMAIN_MODEL ||
          g->owner->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION ||
          g->owner->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY)) {
         return -1;
@@ -1623,6 +1634,18 @@ int graph_set_node_reference(graph *g, node *n, uint64_t reference_id, const cha
     } else {
         n->reference_name = NULL;
     }
+    graph_changed(g);
+    return 0;
+}
+
+int graph_set_node_reference_asset(graph *g, node *n, const char *asset_name)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
+        return -1;
+    }
+    n->reference_asset = asset_name
+                           ? graph_own_str(g, asset_name, strlen(asset_name))
+                           : NULL;
     graph_changed(g);
     return 0;
 }

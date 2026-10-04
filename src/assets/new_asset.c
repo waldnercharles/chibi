@@ -5,6 +5,7 @@
 #include "assets/system_document.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/modeling/model_compile.h"
 #include "graph/shader/shader_graph.h"
 
 #include <assert.h>
@@ -30,6 +31,7 @@ static const char *const FOLDERS[NEW_ASSET_KIND_COUNT] = {
     [NEW_ASSET_SHAPE] = "shapes",
     [NEW_ASSET_FIELD] = "fields",
     [NEW_ASSET_SHADER_LIBRARY] = "shader-libraries",
+    [NEW_ASSET_MODEL] = "models",
 };
 
 const char *new_asset_folder(new_asset_kind kind)
@@ -62,6 +64,14 @@ behavior_asset *new_asset_graph(behavior_domain domain, const char *name)
             asset->bounds[0] = asset->bounds[1] = SHAPE_HALF_EXTENT;
             output = shader_graph_add_output(asset->graph, true);
             break;
+        case BEHAVIOR_DOMAIN_MODEL: {
+            output = model_graph_add_output(asset->graph);
+            node *sphere = graph_add_node(asset->graph, &NODE_ModelSphere);
+            int connected = graph_connect_data(asset->graph, sphere, 0, output, 0);
+            assert(connected == 0);
+            (void)connected;
+            break;
+        }
         case BEHAVIOR_DOMAIN_FIELD:
             output = graph_add_node(asset->graph, registry_node_by_name("Field Output"));
             break;
@@ -116,6 +126,7 @@ char *new_asset_text(new_asset_kind kind, const char *name)
         case NEW_ASSET_FIELD: return graph_text(BEHAVIOR_DOMAIN_FIELD, name);
         case NEW_ASSET_SHADER_LIBRARY:
             return graph_text(BEHAVIOR_DOMAIN_SHADER_LIBRARY, name);
+        case NEW_ASSET_MODEL: return graph_text(BEHAVIOR_DOMAIN_MODEL, name);
         case NEW_ASSET_KIND_COUNT: break;
     }
     assert(!"a new asset kind");

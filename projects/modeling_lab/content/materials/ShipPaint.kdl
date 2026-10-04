@@ -1,0 +1,30 @@
+version 3
+name "ShipPaint"
+domain "material"
+id_counter 10
+description "A simple existing material graph for the static ship study."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.08 y=0.24 z=0.31
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.35
+                    Metallic 0.15
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+        }
+    }
+}

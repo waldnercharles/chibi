@@ -1,16 +1,39 @@
 #include "render/arena3d.h"
 #include "render/arena_geometry.h"
 #include "render/arena_visual.h"
+#include "render/mesh_surface.h"
+#include "render/shader_catalog.h"
 #include "runtime/generated.h"
 
 #include <float.h>
 #include <math.h>
 
+static int entity_model(const ecs_world *world, ecs_entity entity)
+{
+    const GameSdfSurface3D *surface = GAME_GameSdfSurface3D_get_const(world, entity);
+    const GameShader *binding = GAME_GameShader_get_const(world, entity);
+    int id = surface && surface->enabled && binding
+               ? render_shader_find(binding->shape)
+               : 0;
+    return render_shader_is_model(id) ? id : 0;
+}
+
 bool render_arena_entity_bounds(const ecs_world *world, ecs_entity entity, CF_V3 corners[8])
 {
     arena_visual visuals[ARENA_PART_LIMIT];
     char error[128];
-    int count = render_arena_visuals(world, entity, NULL, visuals, error, sizeof error);
+    int count;
+    if (entity_model(world, entity)) {
+        render_mesh_surface surface = { 0 };
+        bool ok = render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error);
+        count = ok ? acount(surface.parts) : 0;
+        if (count) {
+            visuals[0] = surface.parts[0].visual;
+        }
+        render_mesh_surface_free(&surface);
+    } else {
+        count = render_arena_visuals(world, entity, NULL, visuals, error, sizeof error);
+    }
     if (count <= 0) {
         return false;
     }
@@ -190,6 +213,69 @@ static float primitive_hit(CF_Ray3 ray, int primitive)
     return hit.hit ? hit.t : FLT_MAX;
 }
 
+/* March authored model space inside the same compiled bounds used for rendering.
+ * Inverting frame (rather than the scaled proxy box) preserves SDF units. */
+static float model_ray_hit(ecs_world *world, ecs_entity entity, int id, CF_Ray3 ray)
+{
+    render_mesh_surface surface = { 0 };
+    char message[128];
+    if (!render_mesh_surface_build(world, entity, NULL, &surface, message, sizeof message) ||
+        !acount(surface.parts)) {
+        render_mesh_surface_free(&surface);
+        return FLT_MAX;
+    }
+    CF_M4x4 inverse = cf_m4_invert(surface.parts[0].visual.frame);
+    CF_V3 center = surface.parts[0].sdf_center;
+    render_mesh_surface_free(&surface);
+    CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
+    CF_Ray3 local = cf_make_ray3(
+        cf_add_v3(cf_m4_transform_point(inverse, ray.p), center),
+        cf_add_v3(cf_m4_transform_point(inverse, end), center)
+    );
+    const GameShader *binding = GAME_GameShader_get_const(world, entity);
+    float parameters[32][4], minimum[3], maximum[3];
+    bool empty;
+    shader_error error = { 0 };
+    if (!render_shader_model_snapshot(id, world, entity, binding->parameters, parameters, minimum, maximum, &empty, &error) ||
+        empty) {
+        return FLT_MAX;
+    }
+    float origin[] = { local.p.x, local.p.y, local.p.z };
+    float direction[] = { local.d.x, local.d.y, local.d.z };
+    float enter = 0, leave = local.t, extent = 0;
+    for (int axis = 0; axis < 3; axis++) {
+        extent = fmaxf(extent, maximum[axis] - minimum[axis]);
+        if (fabsf(direction[axis]) < 1e-7f) {
+            if (origin[axis] < minimum[axis] || origin[axis] > maximum[axis]) {
+                return FLT_MAX;
+            }
+            continue;
+        }
+        float a = (minimum[axis] - origin[axis]) / direction[axis];
+        float b = (maximum[axis] - origin[axis]) / direction[axis];
+        enter = fmaxf(enter, fminf(a, b));
+        leave = fminf(leave, fmaxf(a, b));
+    }
+    float epsilon = fmaxf(.00001f, extent * .0002f);
+    for (int step = 0; step < 128 && enter <= leave; step++) {
+        CF_V3 point = cf_add_v3(local.p, cf_mul_v3_f(local.d, enter));
+        shader_sample_context sample = {
+            .object_position = { point.x, point.y, point.z }
+        };
+        float result[SHADER_OUTPUT_MAX][4];
+        if (!render_shader_sample(id, &sample, parameters, result, &error) ||
+            !isfinite(result[0][0])) {
+            return FLT_MAX;
+        }
+        float distance = fabsf(result[0][0]);
+        if (distance <= epsilon) {
+            return enter * ray.t / local.t;
+        }
+        enter += fmaxf(distance * .8f, epsilon * .25f);
+    }
+    return FLT_MAX;
+}
+
 ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc)
 {
     CF_Ray3 ray = render_arena_ray(camera, ndc);
@@ -204,6 +290,15 @@ ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
+        int model = entity_model(world, entity);
+        if (model) {
+            float t = model_ray_hit(world, entity, model, ray);
+            if (t < distance) {
+                nearest = entity;
+                distance = t;
+            }
+            continue;
+        }
         arena_visual visuals[ARENA_PART_LIMIT];
         char error[128];
         int count = render_arena_visuals(world, entity, NULL, visuals, error, sizeof error);

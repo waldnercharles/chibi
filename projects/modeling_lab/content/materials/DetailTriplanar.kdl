@@ -1,0 +1,49 @@
+version 3
+name "DetailTriplanar"
+domain "material"
+id_counter 28
+description "One image resource blends three planar samples using the mapped-space geometric normal. Material sampling does not add SDF march primitives."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.6
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=10 type="Shader PartPosition"
+            - {
+                id 12
+                type "Shader Mapping3D"
+                inputs {
+                    Scale {
+                        default x=0.065 y=0.065 z=0.065
+                    }
+                }
+            }
+            - {
+                id 18
+                type "Shader Triplanar Texture"
+                inputs Distance=0.01 Image="content/images/DetailChecker.png"
+            }
+        }
+        (array)edges {
+            - from="10.Value" to="12.Position"
+            - from="12.Value" to="18.Position"
+            - from="18.Color" to="1.Base Color"
+        }
+    }
+}

@@ -1,5 +1,6 @@
 /* Studio editors for the authored scene: viewport and Outliner. */
 #include "editor/studio/studio_internal.h"
+#include "editor/workspace/model_preview.h"
 #include "support/array.h"
 
 #include <ctype.h>
@@ -87,6 +88,12 @@ void studio_scene_view(studio *s, engine_viewport_host_input *input)
     }
     input->x = (s->view.x + (u - 0.5f) / zoom) * input->width;
     input->y = (s->view.y + (v - 0.5f) / zoom) * input->height;
+    if (input->press_position) {
+        input->press_x = (s->view.x + (input->press_x / input->width - 0.5f) / zoom) *
+                         input->width;
+        input->press_y = (s->view.y + (input->press_y / input->height - 0.5f) / zoom) *
+                         input->height;
+    }
     input->resolution = fminf(zoom, VIEW_SHARP_MAX);
 }
 
@@ -246,6 +253,7 @@ void studio_scene_body(studio *s, int area)
     kit_push(k, "viewport", NULL, "viewport");
     kit_surface(k, "surface", "surface", "viewport", &s->surface);
     crop_view(s);
+    studio_model_reference_overlay(s);
     /* A prototype dropped here is placed under the pointer by the viewport. */
     kit_drop_target(k, "prototype", s->dropped_prototype, sizeof s->dropped_prototype);
     /* While a session runs the Scene is the game's view, so its tools and
@@ -269,7 +277,34 @@ void studio_scene_body(studio *s, int area)
             &(kit_number_flow_desc){ .grouping = true, .suffix = "%" }
         );
     }
-    if (session) {
+    if (scene_model_preview_name(scene)) {
+        kit_label(k, "model", "badge", scene_model_preview_name(scene));
+        if (kit_button(k, "frame-model", &(kit_button_desc){ .icon = KIT_ICON_FRAME, .tip = "Frame model" })) {
+            scene_model_preview_frame(scene);
+        }
+        game_live_definition *definition = game_live_find_definition(
+            scene->live,
+            scene_model_preview_name(scene)
+        );
+        if (definition && definition->diagnostics.error_count) {
+            kit_label(k, "stale-model", "notice", "Showing last valid model");
+            for (int i = 0; i < acount(definition->diagnostics.items); i++) {
+                if (definition->diagnostics.items[i].severity == CMPL_ERROR) {
+                    kit_label(
+                        k,
+                        "model-error",
+                        "notice",
+                        definition->diagnostics.items[i].message
+                    );
+                    break;
+                }
+            }
+        }
+        const char *parameter_error = scene_model_preview_error(scene);
+        if (*parameter_error) {
+            kit_label(k, "model-parameter-error", "notice", parameter_error);
+        }
+    } else if (session) {
         kit_label(k, "live", "badge accent live-badge", "Live");
     }
     /* The renderer's error first, then the game UI's (render_ui_error). */

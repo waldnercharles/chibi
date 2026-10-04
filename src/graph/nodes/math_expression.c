@@ -199,6 +199,7 @@ static expression_dialect dialect_of(const behavior_asset *asset, const graph *c
     switch (asset->domain) {
         case BEHAVIOR_DOMAIN_MATERIAL:
         case BEHAVIOR_DOMAIN_SHAPE:
+        case BEHAVIOR_DOMAIN_MODEL:
         case BEHAVIOR_DOMAIN_SHADER_LIBRARY: return DIALECT_SHADER;
         case BEHAVIOR_DOMAIN_FIELD: return DIALECT_FIELD;
         default: break;

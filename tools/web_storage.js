@@ -1,3 +1,60 @@
+// Bundle downloads are also available with the local-server storage bridge.
+if (typeof window !== 'undefined') {
+    const crcTable = Array.from({length: 256}, (_, n) => {
+        for (let k = 0; k < 8; k++) n = n & 1 ? 0xedb88320 ^ (n >>> 1) : n >>> 1;
+        return n >>> 0;
+    });
+    const crc32 = bytes => {
+        let crc = ~0;
+        for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+        return ~crc >>> 0;
+    };
+    // An uncompressed zip: small, and every archiver opens it.
+    const zip = files => {
+        const now = new Date();
+        const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+        const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+        const parts = [], directory = [];
+        let offset = 0;
+        const header = (size, fields) => {
+            const view = new DataView(new ArrayBuffer(size));
+            fields.forEach(([at, bytes, value]) => bytes === 2 ? view.setUint16(at, value, true) : view.setUint32(at, value, true));
+            return new Uint8Array(view.buffer);
+        };
+        for (const [name, data] of files) {
+            const path = new TextEncoder().encode(name);
+            const crc = crc32(data);
+            // UTF-8 names, stored, then time, date, CRC, both sizes and the name length.
+            const shared = [[6, 2, 0x0800], [10, 2, time], [12, 2, date], [14, 4, crc], [18, 4, data.length], [22, 4, data.length], [26, 2, path.length]];
+            const local = header(30, [[0, 4, 0x04034b50], [4, 2, 20], ...shared]);
+            const central = header(46, [[0, 4, 0x02014b50], [4, 2, 20], [6, 2, 20], ...shared.map(([at, bytes, value]) => [at + 2, bytes, value]), [42, 4, offset]]);
+            parts.push(local, path, data);
+            directory.push(central, path);
+            offset += local.length + path.length + data.length;
+        }
+        const size = directory.reduce((total, part) => total + part.length, 0);
+        const end = header(22, [[0, 4, 0x06054b50], [8, 2, files.length], [10, 2, files.length], [12, 4, size], [16, 4, offset]]);
+        return new Blob([...parts, ...directory, end], {type: 'application/zip'});
+    };
+    Module['chibiZipFiles'] = zip;
+    Module['chibiDownloadModelBundle'] = (directory, name) => {
+        try {
+            const files = ['model.mesh.json', 'model.obj', 'model.mtl', 'provenance.json']
+                .map(file => [file, Module['FS'].readFile(`${directory}/${file}`)]);
+            const archive = zip(files);
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(archive);
+            link.download = `${name.replace(/[^a-z0-9_-]/gi, '_') || 'model'}-mesh.zip`;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(link.href), 40000);
+            return true;
+        } catch (error) {
+            Module['showError']?.(`Could not download model bundle: ${error.message || error}`);
+            return false;
+        }
+    };
+}
+
 // Without the local server bridge, projects persist in IndexedDB, one folder each under /workspace.
 // A project is its folder: project.kdl plus everything beside it.
 if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
@@ -105,42 +162,6 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         return found(id) ? id : copySample(unique(id));
     };
 
-    const crcTable = Array.from({length: 256}, (_, n) => {
-        for (let k = 0; k < 8; k++) n = n & 1 ? 0xedb88320 ^ (n >>> 1) : n >>> 1;
-        return n >>> 0;
-    });
-    const crc32 = bytes => {
-        let crc = ~0;
-        for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-        return ~crc >>> 0;
-    };
-    // An uncompressed zip: small, and every archiver opens it.
-    const zip = files => {
-        const now = new Date();
-        const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
-        const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
-        const parts = [], directory = [];
-        let offset = 0;
-        const header = (size, fields) => {
-            const view = new DataView(new ArrayBuffer(size));
-            fields.forEach(([at, bytes, value]) => bytes === 2 ? view.setUint16(at, value, true) : view.setUint32(at, value, true));
-            return new Uint8Array(view.buffer);
-        };
-        for (const [name, data] of files) {
-            const path = new TextEncoder().encode(name);
-            const crc = crc32(data);
-            // UTF-8 names, stored, then time, date, CRC, both sizes and the name length.
-            const shared = [[6, 2, 0x0800], [10, 2, time], [12, 2, date], [14, 4, crc], [18, 4, data.length], [22, 4, data.length], [26, 2, path.length]];
-            const local = header(30, [[0, 4, 0x04034b50], [4, 2, 20], ...shared]);
-            const central = header(46, [[0, 4, 0x02014b50], [4, 2, 20], [6, 2, 20], ...shared.map(([at, bytes, value]) => [at + 2, bytes, value]), [42, 4, offset]]);
-            parts.push(local, path, data);
-            directory.push(central, path);
-            offset += local.length + path.length + data.length;
-        }
-        const size = directory.reduce((total, part) => total + part.length, 0);
-        const end = header(22, [[0, 4, 0x06054b50], [8, 2, files.length], [10, 2, files.length], [12, 4, size], [16, 4, offset]]);
-        return new Blob([...parts, ...directory, end], {type: 'application/zip'});
-    };
     const inflate = async data => new Uint8Array(
         await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()
     );
@@ -193,7 +214,7 @@ if (typeof window !== 'undefined' && !Module['chibiSaveAsset']) {
         const files = [];
         walk(Module['chibiCollabStorage'].root.replace(/\/$/, ''), (name, data) => files.push([`${project}/${name}`, data]));
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(zip(files));
+        link.href = URL.createObjectURL(Module['chibiZipFiles'](files));
         link.download = `${project}.zip`;
         link.click();
         // Revoking right away can cancel the download in some browsers.

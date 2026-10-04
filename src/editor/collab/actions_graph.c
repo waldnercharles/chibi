@@ -759,6 +759,7 @@ static bool graph_binding_allowed(const editor *e, const pin_binding *binding)
         case BEHAVIOR_DOMAIN_LIBRARY:
         case BEHAVIOR_DOMAIN_MATERIAL:
         case BEHAVIOR_DOMAIN_SHAPE:
+        case BEHAVIOR_DOMAIN_MODEL:
         case BEHAVIOR_DOMAIN_EVENT_DEFINITION:
         case BEHAVIOR_DOMAIN_SHADER_LIBRARY: return false;
         case BEHAVIOR_DOMAIN_EVENT:

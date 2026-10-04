@@ -1,0 +1,30 @@
+version 3
+name "ModelBrass"
+domain "material"
+id_counter 10
+description "Part material for the shared material ownership study."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.72 y=0.45 z=0.12
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.23
+                    Metallic 0.85
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+        }
+    }
+}

@@ -344,6 +344,7 @@ static int import_library(library_link *link, const char *name, uint64_t *offset
     }
     bool shader = link->result->domain == BEHAVIOR_DOMAIN_MATERIAL ||
                   link->result->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                  link->result->domain == BEHAVIOR_DOMAIN_MODEL ||
                   link->result->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
     if (shader != (source->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY)) {
         return fail(link, "library belongs to a different execution domain", name);
@@ -407,7 +408,10 @@ static int link_graph(library_link *link, graph *g)
                 return fail(link, "event payload signature changed", event->name);
             }
         }
-        if (!n->reference_asset) {
+        /* Whole-model references are resolved by the model compiler. */
+        if (!n->reference_asset || (link->result->domain == BEHAVIOR_DOMAIN_MODEL &&
+                                    (!strcmp(n->desc->name, "Model Instance") ||
+                                     !strcmp(n->desc->name, "Model Material Slot")))) {
             continue;
         }
         if (!call_node(n)) {

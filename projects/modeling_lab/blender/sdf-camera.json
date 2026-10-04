@@ -1,0 +1,274 @@
+{
+  "description": "Exact saved ModelPropStudy camera/projection control. Matrices are row-major; use mathutils.Matrix(rows). Input mesh vertices must map original authored (x,y,z) to Blender (x,-z,y).",
+  "resolution": [
+    1040,
+    780
+  ],
+  "pixel_aspect": [
+    1,
+    1
+  ],
+  "camera": {
+    "type": "PERSP",
+    "matrix_world": [
+      [
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        650
+      ],
+      [
+        0,
+        0,
+        0,
+        1
+      ]
+    ],
+    "lens": 45.0,
+    "sensor_width": 36.0,
+    "sensor_fit": "HORIZONTAL",
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "clip_start": 1.0,
+    "clip_end": 2000.0,
+    "use_dof": false
+  },
+  "model_object_matrix_world": [
+    [
+      20.81976890563965,
+      7.06781005859375,
+      0.7637253403663635,
+      2.7923537161303216
+    ],
+    [
+      -2.6407227516174316,
+      5.494661808013916,
+      21.13848304748535,
+      -110.7816247675928
+    ],
+    [
+      6.600287437438965,
+      -20.096141815185547,
+      6.048259258270264,
+      -25.402687731121205
+    ],
+    [
+      0,
+      0,
+      0,
+      1
+    ]
+  ],
+  "canonical_model_camera": {
+    "description": "Alternative: leave original mapped model object at identity and use this camera, in model units. DO NOT also apply model_object_matrix_world. Removes scale22 from camera basis; residual float nonorthogonality is below normal float camera precision.",
+    "matrix_world": [
+      [
+        0.946353163213922,
+        -0.1200327929664528,
+        0.3000131056869096,
+        8.485893113497465
+      ],
+      [
+        0.3212640190084772,
+        0.2497573046016918,
+        -0.9134608165979105,
+        -26.82647105400275
+      ],
+      [
+        0.03471484647127923,
+        0.9608399541082638,
+        0.2749208485298522,
+        13.274032062475667
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "lens": 45.0,
+    "sensor_width": 36.0,
+    "sensor_fit": "HORIZONTAL",
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "clip_start": 0.045454545454545456,
+    "clip_end": 90.9090909090909,
+    "use_dof": false
+  },
+  "intrinsics_pixels": {
+    "fx": 1300.0,
+    "fy": 1300.0,
+    "cx": 520.0,
+    "cy": 390.0,
+    "origin": "top-left pixel edges; raster centers occur at half pixels"
+  },
+  "engine": {
+    "camera_center": [
+      0,
+      0
+    ],
+    "focal_distance": 650,
+    "span": [
+      520,
+      390
+    ],
+    "entity_xyz": [
+      6,
+      0,
+      22
+    ],
+    "visual_scale": 22,
+    "visual_pitch_yaw_roll": [
+      0.301598,
+      0.124322,
+      -1.277962
+    ],
+    "authored_center_translation": [
+      0,
+      -4.199999809265137,
+      0
+    ],
+    "rotation_rule": "qy(-yaw) * qz(pitch) * qx(roll), using support/cos_sin.h deterministic float approximation",
+    "quaternion_xyzw": [
+      -0.5961700677871704,
+      -0.14036592841148376,
+      0.0843849927186966,
+      0.7859758734703064
+    ],
+    "rotation_matrix_rows": [
+      [
+        0.9463531374931335,
+        0.03471478819847107,
+        -0.3212640881538391
+      ],
+      [
+        0.30001306533813477,
+        0.27492088079452515,
+        0.9134610295295715
+      ],
+      [
+        0.12003285437822342,
+        -0.9608401656150818,
+        0.24975734949111938
+      ]
+    ]
+  },
+  "verification": {
+    "max_shader_vs_blender_pinhole_pixel_error": 0,
+    "landmarks": [
+      {
+        "authored_xyz": [
+          -0.05,
+          5.7,
+          2.52
+        ],
+        "pixel_xy_from_top_left": [
+          494.23337167556843,
+          398.8193067570009
+        ],
+        "blender_pixel_xy": [
+          494.23337167556843,
+          398.8193067570009
+        ]
+      },
+      {
+        "authored_xyz": [
+          -2.9,
+          4.75,
+          1.75
+        ],
+        "pixel_xy_from_top_left": [
+          383.27713621298756,
+          415.41966358408155
+        ],
+        "blender_pixel_xy": [
+          383.27713621298756,
+          415.41966358408155
+        ]
+      },
+      {
+        "authored_xyz": [
+          3.05,
+          6.55,
+          1.735
+        ],
+        "pixel_xy_from_top_left": [
+          652.1342717155762,
+          367.41968660468564
+        ],
+        "blender_pixel_xy": [
+          652.1342717155762,
+          367.41968660468564
+        ]
+      },
+      {
+        "authored_xyz": [
+          -4.8,
+          7.9,
+          1.35
+        ],
+        "pixel_xy_from_top_left": [
+          313.0221003028787,
+          263.5930138147901
+        ],
+        "blender_pixel_xy": [
+          313.0221003028787,
+          263.5930138147901
+        ]
+      },
+      {
+        "authored_xyz": [
+          4.8,
+          3.4,
+          1.35
+        ],
+        "pixel_xy_from_top_left": [
+          728.9116537601546,
+          518.6941742168522
+        ],
+        "blender_pixel_xy": [
+          728.9116537601546,
+          518.6941742168522
+        ]
+      },
+      {
+        "authored_xyz": [
+          0,
+          1.5,
+          4.94
+        ],
+        "pixel_xy_from_top_left": [
+          448.98373789467814,
+          633.508480029142
+        ],
+        "blender_pixel_xy": [
+          448.98373789467814,
+          633.508480029142
+        ]
+      }
+    ],
+    "scope": "Analytical pinhole check only; no Blender render or GPU run."
+  },
+  "source_paths": [
+    "src/runtime/visual_transform.c:8",
+    "src/support/cos_sin.h:53",
+    "src/runtime/camera.c:33",
+    "src/render/shaders/sdf_material.vert:63",
+    "src/render/mesh_material.c:547",
+    "projects/modeling_lab/content/scenes/ModelPropStudy.kdl",
+    "projects/modeling_lab/author-polaroid.mjs:291"
+  ]
+}

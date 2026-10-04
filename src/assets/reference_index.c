@@ -259,6 +259,7 @@ reference_asset_kind reference_domain_kind(behavior_domain domain)
         case BEHAVIOR_DOMAIN_SHADER_LIBRARY: return REFERENCE_ASSET_LIBRARY;
         case BEHAVIOR_DOMAIN_MATERIAL: return REFERENCE_ASSET_MATERIAL;
         case BEHAVIOR_DOMAIN_FIELD: return REFERENCE_ASSET_FIELD;
+        case BEHAVIOR_DOMAIN_MODEL:
         case BEHAVIOR_DOMAIN_SHAPE: return REFERENCE_ASSET_SHAPE;
         case BEHAVIOR_DOMAIN_EVENT_DEFINITION: return REFERENCE_ASSET_EVENT;
     }
@@ -670,8 +671,51 @@ static void add_binding(const site *s, const pin_spec *pin)
 static void add_node(const site *s)
 {
     const node *n = s->node;
-    if (graph_call(n)) {
+    if (!strcmp(n->desc->name, "Model Instance") && n->reference_asset &&
+        n->reference_asset[0]) {
+        int asset = named_asset(s->index, REFERENCE_ASSET_SHAPE, n->reference_asset);
+        add_at(s, REFERENCE_CALL, (reference_symbol){ .kind = REFERENCE_SYMBOL_ASSET, .asset = asset }, 0);
+        for (int i = 0; i < n->input_count; i++) {
+            const pin_spec *pin = &n->input_pins[i];
+            if (pin->declaration_id) {
+                add_at(
+                    s,
+                    REFERENCE_ARGUMENT,
+                    (reference_symbol){ .kind = REFERENCE_SYMBOL_PARAMETER,
+                                        .asset = asset,
+                                        .id = pin->declaration_id },
+                    pin->id
+                );
+            }
+        }
+        for (int i = 1; i < n->output_count; i++) {
+            const pin_spec *pin = &n->output_pins[i];
+            if (pin->declaration_id) {
+                add_at(
+                    s,
+                    REFERENCE_ARGUMENT,
+                    (reference_symbol){ .kind = REFERENCE_SYMBOL_PARAMETER,
+                                        .asset = asset,
+                                        .id = pin->declaration_id },
+                    pin->id
+                );
+            }
+        }
+    } else if (!strcmp(n->desc->name, "Model Material Slot") && n->reference_asset && n->reference_asset[0]) {
+        int asset = named_asset(s->index, REFERENCE_ASSET_MATERIAL, n->reference_asset);
+        add_at(s, REFERENCE_CALL, (reference_symbol){ .kind = REFERENCE_SYMBOL_ASSET, .asset = asset }, 0);
+    } else if (graph_call(n)) {
         add_call(s);
+    }
+    if (!strcmp(n->desc->name, "Model Parameter") ||
+        !strcmp(n->desc->name, "Model Material Slot") ||
+        !strcmp(n->desc->name, "Model Anchor")) {
+        add_definition(
+            s,
+            own_symbol(s, REFERENCE_SYMBOL_PARAMETER, 0, n->id),
+            n->reference_name ? n->reference_name : "",
+            0
+        );
     }
     if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {
         reference_role role = n->desc == &NODE_SetVariable ? REFERENCE_WRITE
@@ -685,6 +729,21 @@ static void add_node(const site *s)
         const pin_spec *pin = &n->input_pins[i];
         if (pin->kind == PIN_DATA && pin->binding) {
             add_binding(s, pin);
+        }
+        if (pin->kind == PIN_DATA && pin->type == PIN_STR && pin->type_name &&
+            !strcmp(pin->type_name, "MaterialAsset") &&
+            pin->default_value.str && pin->default_value.str[0]) {
+            int asset = named_asset(
+                s->index,
+                REFERENCE_ASSET_MATERIAL,
+                pin->default_value.str
+            );
+            add_at(
+                s,
+                REFERENCE_BIND,
+                (reference_symbol){ .kind = REFERENCE_SYMBOL_ASSET, .asset = asset },
+                pin->id
+            );
         }
         if (pin->kind == PIN_DATA && pin->type == PIN_STRUCT) {
             add_struct_default(s, pin);

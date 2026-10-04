@@ -69,6 +69,8 @@ extern "C"
         float dp_ratio;
         float width, height;
         float mouse_x, mouse_y;
+        float press_x[3], press_y[3];
+        bool press_position[3]; /* button-down coordinates survived frame coalescing */
         bool down[3], pressed[3], released[3];
         float wheel;
         unsigned modifiers; /* KIT_MOD_* */
@@ -407,6 +409,8 @@ extern "C"
     {
         kit_rect rect;
         float x, y; /* pointer relative to rect */
+        float press_x[3], press_y[3];
+        bool press_position[3];
         bool hovered;
         bool pressed[3], released[3], down[3];
         float wheel;

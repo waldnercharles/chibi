@@ -1,0 +1,28 @@
+version 1
+name "ModelShipStudy"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "StudyCamera"
+        components {
+            GameCamera width=270.0 height=220.0 focal_distance=700.0
+            GameHRC2D surface_relief=0.0 ambient=0.12
+        }
+    }
+    - {
+        name "Key"
+        prototype "StudyLight"
+        components {
+            GameTransform x=-100.0 y=-70.0
+        }
+    }
+    - {
+        name "Fill"
+        prototype "StudyLight"
+        components {
+            GameTransform x=110.0 y=65.0
+            GameMaterial emission_color=0x83c9ffff
+        }
+    }
+    - name="Editable static ship" prototype="StudyShip"
+}

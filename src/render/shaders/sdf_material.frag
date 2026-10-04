@@ -1,3 +1,6 @@
+#ifndef SG_SHAPE_CALL
+#define SG_SHAPE_CALL(id,context,values,result) sg_dispatch(id,context,values,result)
+#endif
 // Analytic shape graphs are distance bounds in authored object units.
 // The box is only a raster proxy; hit depth participates in the mesh group's depth test.
 layout(location=0) in vec3 v_world;
@@ -6,7 +9,7 @@ layout(location=1) in vec3 v_normal;
 vec3 object_point(vec3 p, float w)
 {
     vec4 v=vec4(p,w);
-    return vec3(dot(v_inverse0,v),dot(v_inverse1,v),dot(v_inverse2,v));
+    return vec3(dot(v_inverse0,v),dot(v_inverse1,v),dot(v_inverse2,v))+v_center.xyz*w;
 }
 SGSample shape_context(vec3 p)
 {
@@ -14,7 +17,10 @@ SGSample shape_context(vec3 p)
     context.position=p.xz;
     context.uv=p.xz/u_dimensions.xz+0.5;
     context.object_position=p;
-    vec4 local=vec4(p/u_dimensions.xyz,1);
+    context.part_position=p;
+    vec4 local=vec4((p-v_center.xyz)/u_dimensions.xyz,1);
+    for(int i=0;i<3;i++) { context.object_from_world[i]=vec3(0); context.part_from_world[i]=vec3(0); }
+    for(int i=0;i<2;i++) context.uv_from_world[i]=vec3(0);
     context.world_position=vec3(dot(v_model0,local),dot(v_model1,local),dot(v_model2,local));
     context.normal=vec3(0,1,0);
     context.view_direction=u_camera[3].w<0.5 ? vec3(0,1,0)
@@ -27,8 +33,17 @@ float distance_at(vec3 p)
     SGSample context=shape_context(p);
     vec4 values[32], result[8];
     for(int i=0;i<32;i++) values[i]=SG_SHAPE_PARAMETER(i);
+#ifdef SG_MODEL_ISOLATE
+    sg_preview_distance(context,values,result);
+    float distance=result[0].x*u_preview_options.x;
+#else
     SG_SHAPE_CALL(int(u_shape.x),context,values,result);
-    return result[0].x;
+    float distance=result[0].x;
+#endif
+#ifdef SG_MODEL_PREVIEW
+    if(u_preview_options.y>0.5) distance=max(distance,dot(p,u_preview_plane.xyz)-u_preview_plane.w);
+#endif
+    return distance;
 }
 #if SG_ANALYTIC_GRADIENT
 vec3 gradient_at(vec3 p)
@@ -68,14 +83,14 @@ void main()
     }
     vec3 half_size=u_dimensions.xyz*0.5;
     // Outside the proxy only its entry faces need to trace. Inside, retain exit faces.
-    if(any(greaterThan(abs(start),half_size))&&dot(v_normal,-direction)<=0.0) discard;
+    if(any(greaterThan(abs(start-v_center.xyz),half_size))&&dot(v_normal,-direction)<=0.0) discard;
     float entry=0.0, exit_distance=1e30;
     for(int axis=0;axis<3;axis++) {
         if(abs(ray[axis])<1e-7) {
-            if(abs(start[axis])>half_size[axis]) discard;
+            if(abs(start[axis]-v_center[axis])>half_size[axis]) discard;
         } else {
-            float a=(-half_size[axis]-start[axis])/ray[axis];
-            float b=(half_size[axis]-start[axis])/ray[axis];
+            float a=(v_center[axis]-half_size[axis]-start[axis])/ray[axis];
+            float b=(v_center[axis]+half_size[axis]-start[axis])/ray[axis];
             entry=max(entry,min(a,b));
             exit_distance=min(exit_distance,max(a,b));
         }
@@ -168,7 +183,7 @@ void main()
         if(clipped&&t>exit_distance) { hidden_fragment(evaluations,0.5); return; }
         discard;
     }
-    vec3 local=point/u_dimensions.xyz;
+    vec3 local=(point-v_center.xyz)/u_dimensions.xyz;
     vec4 p=vec4(local,1);
     vec3 world=vec3(dot(v_model0,p),dot(v_model1,p),dot(v_model2,p));
     float camera_y=camera_point(world).y;
@@ -218,10 +233,35 @@ void main()
     normal*=inversesqrt(n2);
     vec3 world_normal=normalize(v_inverse0.xyz*normal.x+v_inverse1.xyz*normal.y+v_inverse2.xyz*normal.z);
     vec3 side=abs(normal);
+    vec3 uv_dimensions=u_dimensions.xyz;
+#ifdef SG_MODEL_ISOLATE
+    uv_dimensions=u_preview_uv_bounds[1].xyz;
+    local=(point-u_preview_uv_bounds[0].xyz)/uv_dimensions;
+#endif
     vec2 uv=side.y>=side.x&&side.y>=side.z ? local.xz+0.5
         : side.x>=side.z ? vec2(local.z+0.5,0.5-local.y)
         : vec2(local.x+0.5,0.5-local.y);
-    shade_surface(world,world_normal,local,normal,uv);
+    vec4 geometry_parameters[32], resolved[8];
+    for(int i=0;i<32;i++) geometry_parameters[i]=SG_SHAPE_PARAMETER(i);
+    SGSample hit_context=shape_context(point);
+#ifdef SG_MODEL_ISOLATE
+    sg_preview_hit(hit_context,geometry_parameters,resolved);
+#else
+    sg_model_hit_dispatch(int(u_shape.x),hit_context,geometry_parameters,resolved);
+#endif
+    int binding_index=sg_model_material_slot(int(u_shape.x),int(resolved[0].x))+1;
+    if(binding_index<0||binding_index>32) discard;
+    vec4 binding=u_model_materials[binding_index];
+    int offset=int(binding.y), count=int(binding.z);
+    vec4 material_parameters[32];
+    for(int i=0;i<32;i++) material_parameters[i]=i<count ? SG_MATERIAL_PARAMETER(offset+i) : vec4(0);
+    vec3 object_rows[3], part_object_rows[3], part_rows[3], uv_rows[2];
+    surface_object_frame(object_rows);
+    sg_model_frame_dispatch(int(u_shape.x),int(resolved[0].x),hit_context,geometry_parameters,part_object_rows);
+    for(int i=0;i<3;i++) part_rows[i]=part_object_rows[i].x*object_rows[0]+part_object_rows[i].y*object_rows[1]+part_object_rows[i].z*object_rows[2];
+    uv_rows[0]=(side.y>=side.x&&side.y>=side.z || side.x<side.z) ? object_rows[0]/uv_dimensions.x : object_rows[2]/uv_dimensions.z;
+    uv_rows[1]=side.y>=side.x&&side.y>=side.z ? object_rows[2]/uv_dimensions.z : -object_rows[1]/uv_dimensions.y;
+    shade_surface_points(world,world_normal,point,resolved[1].xyz,uv,object_rows,part_rows,uv_rows,int(binding.x),material_parameters);
     if(u_sdf_quality.z>0.5) {
         // Optional capture: red is trace evaluations / 128, green marks a hit,
         // blue is normal graph calls / 8 (including a differentiated graph).

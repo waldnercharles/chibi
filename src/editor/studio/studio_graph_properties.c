@@ -1,7 +1,9 @@
 /* The Node tab in Properties: the selected graph node's pins and settings. */
 #include "editor/studio/studio_graph_internal.h"
+#include "editor/workspace/model_preview.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
+#include "graph/modeling/model_authoring.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -223,6 +225,241 @@ void studio_rewire_toast(studio *s)
     }
 }
 
+static const behavior_asset *model_target(const editor *e, const node *n)
+{
+    for (int i = -1; i < acount(e->asset_catalog); i++) {
+        const behavior_asset *asset = i < 0 ? e->asset : e->asset_catalog[i];
+        if (asset->domain == BEHAVIOR_DOMAIN_MODEL && n->reference_asset &&
+            !strcmp(asset->name, n->reference_asset)) {
+            return asset;
+        }
+    }
+    return NULL;
+}
+
+static void model_node_properties(studio *s, editor *e, graph *gr, node *n, bool readonly)
+{
+    bool parameter = n->desc == &NODE_ModelParameter;
+    bool part = n->desc == &NODE_ModelPart;
+    bool instance = n->desc == &NODE_ModelInstance;
+    bool anchor = !strcmp(n->desc->name, "Model Anchor");
+    bool material_slot = !strcmp(n->desc->name, "Model Material Slot");
+    if (!parameter && !part && !instance && !material_slot && !anchor) {
+        return;
+    }
+    kit *k = s->kit;
+    unsigned flags = readonly ? KIT_READONLY : 0;
+    if (kit_panel_begin(k, "model", instance ? "Model Instance" : "Definition", NULL, true)) {
+        if (parameter || part || material_slot || anchor) {
+            char name[128];
+            snprintf(name, sizeof name, "%s", n->reference_name ? n->reference_name : "");
+            kit_prop_begin(k, "name", "Name");
+            if (kit_text_field(
+                    k,
+                    "value",
+                    name,
+                    sizeof name,
+                    parameter       ? "Parameter"
+                    : material_slot ? "Material slot"
+                    : anchor        ? "Anchor"
+                                    : "Part",
+                    flags
+                )) {
+                ed_snapshot_before(e);
+                graph_set_node_reference(gr, n, n->reference_id, name);
+            }
+            kit_prop_end(k);
+        }
+        if (material_slot) {
+            kit_prop_begin(k, "material", "Default material");
+            const char *picked = sg_material_picker(s, k, n->reference_asset, flags);
+            if (picked && (!n->reference_asset || strcmp(picked, n->reference_asset))) {
+                ed_snapshot_before(e);
+                graph_set_node_reference_asset(gr, n, picked);
+            }
+            kit_prop_end(k);
+        }
+        if (parameter) {
+            static const char *const names[] = { "Float", "Vector 2", "Vector 3", "Vector 4" };
+            static const char *const types[] = { "float", "ShaderVec2", "ShaderVec3", "ShaderVec4" };
+            model_parameter_decl declaration;
+            shader_error error = { 0 };
+            bool valid = model_parameter_get(n, &declaration, &error);
+            int width = valid ? declaration.width : 1;
+            kit_prop_begin(k, "type", "Type");
+            if (kit_picker(
+                    k,
+                    "value",
+                    &(kit_picker_desc){ .value = names[width - 1],
+                                        .icon = KIT_ICON_VARIABLE,
+                                        .flags = flags }
+                ) &&
+                !readonly) {
+                kit_dropdown_open(k, "model-parameter-type", "Search numeric types");
+            }
+            kit_command_item choices[4];
+            for (int i = 0; i < 4; i++) {
+                choices[i] = (kit_command_item){ .label = names[i],
+                                                 .current = width == i + 1 };
+            }
+            int selected = kit_dropdown(k, "model-parameter-type", choices, 4);
+            if (selected >= 0 && selected < 4 && selected + 1 != width) {
+                ed_snapshot_before(e);
+                pin_type type = selected ? PIN_STRUCT : PIN_F32;
+                graph_set_pin_type(gr, n, false, 0, type, types[selected]);
+                const float defaults[] = { 1, .001f, 1000 };
+                for (int p = 0; p < 3; p++) {
+                    const float *old = !valid ? NULL
+                                     : p == 0 ? declaration.defaults
+                                     : p == 1 ? declaration.minimum
+                                              : declaration.maximum;
+                    float values[4];
+                    for (int i = 0; i < selected + 1; i++) {
+                        values[i] = old ? old[i < width ? i : 0] : defaults[p];
+                    }
+                    pin_value value = { .type = type, .type_name = types[selected] };
+                    if (selected) {
+                        value.ptr = values;
+                    } else {
+                        value.f = values[0];
+                    }
+                    graph_set_pin_default(gr, n, false, p, &value);
+                }
+            }
+            kit_prop_end(k);
+        }
+        if (instance) {
+            kit_prop_begin(k, "reference", "Model");
+            if (kit_picker(
+                    k,
+                    "asset",
+                    &(kit_picker_desc){ .value = n->reference_asset,
+                                        .placeholder = "Choose model",
+                                        .icon = KIT_ICON_HEXAGON,
+                                        .flags = flags }
+                ) &&
+                !readonly) {
+                kit_dropdown_open(k, "model-assets", "Search models");
+            }
+            kit_command_item *items = NULL;
+            const behavior_asset **models = NULL;
+            for (int i = 0; i < acount(e->asset_catalog); i++) {
+                const behavior_asset *asset = e->asset_catalog[i];
+                if (asset->domain != BEHAVIOR_DOMAIN_MODEL ||
+                    !strcmp(asset->name, e->asset->name)) {
+                    continue;
+                }
+                apush(models, asset);
+                apush(
+                    items,
+                    ((kit_command_item){
+                        .label = asset->name,
+                        .icon = KIT_ICON_HEXAGON,
+                        .current = n->reference_asset &&
+                                   !strcmp(n->reference_asset, asset->name) })
+                );
+            }
+            int picked = kit_dropdown(k, "model-assets", items, acount(items));
+            if (picked >= 0 && picked < acount(models) &&
+                (!n->reference_asset ||
+                 strcmp(n->reference_asset, models[picked]->name))) {
+                ed_snapshot_before(e);
+                while (n->output_count > 1) {
+                    graph_remove_pin(gr, n, true, n->output_count - 1);
+                }
+                while (n->input_count) {
+                    graph_remove_pin(gr, n, false, n->input_count - 1);
+                }
+                graph_set_node_reference_asset(gr, n, models[picked]->name);
+            }
+            afree(items);
+            afree(models);
+            kit_prop_end(k);
+            const behavior_asset *target = model_target(e, n);
+            for (int i = 0; target && i < acount(target->graph->nodes); i++) {
+                const node *anchor = target->graph->nodes[i];
+                if (strcmp(anchor->desc->name, "Model Anchor") ||
+                    !anchor->reference_name) {
+                    continue;
+                }
+                int output = -1;
+                for (int p = 1; p < n->output_count; p++) {
+                    if (n->output_pins[p].declaration_id == anchor->id) {
+                        output = p;
+                    }
+                }
+                char key[32];
+                snprintf(
+                    key,
+                    sizeof key,
+                    "anchor-%llu",
+                    (unsigned long long)anchor->id
+                );
+                bool exposed = output >= 0;
+                kit_prop_begin(k, key, anchor->reference_name);
+                if (kit_checkbox(k, "expose", &exposed, "Expose anchor", flags)) {
+                    ed_snapshot_before(e);
+                    if (exposed) {
+                        shader_error error = { 0 };
+                        if (model_instance_anchor(gr, n, target, anchor->reference_name, &error) <
+                            0) {
+                            sg_show_error(s, error.message);
+                        }
+                    } else {
+                        graph_remove_pin(gr, n, true, output);
+                    }
+                }
+                kit_prop_end(k);
+            }
+            for (int g = 0; target && g < acount(target->graphs); g++) {
+                for (int i = 0; i < acount(target->graphs[g]->nodes); i++) {
+                    const node *declaration = target->graphs[g]->nodes[i];
+                    bool material = !strcmp(declaration->desc->name, "Model Material Slot");
+                    if (declaration->desc != &NODE_ModelParameter && !material) {
+                        continue;
+                    }
+                    model_parameter_decl parameter = { .id = declaration->id,
+                                                       .name = declaration->reference_name };
+                    shader_error error = { 0 };
+                    if ((material && (!parameter.name || !parameter.name[0])) ||
+                        (!material &&
+                         !model_parameter_get(declaration, &parameter, &error))) {
+                        continue;
+                    }
+                    int pin = -1;
+                    for (int p = 0; p < n->input_count; p++) {
+                        if (n->input_pins[p].declaration_id == parameter.id) {
+                            pin = p;
+                        }
+                    }
+                    bool override = pin >= 0;
+                    char key[32];
+                    snprintf(
+                        key,
+                        sizeof key,
+                        "parameter-%llu",
+                        (unsigned long long)parameter.id
+                    );
+                    kit_prop_begin(k, key, parameter.name);
+                    if (kit_checkbox(k, "override", &override, "Override", readonly ? KIT_DISABLED : 0)) {
+                        ed_snapshot_before(e);
+                        if (override) {
+                            if (model_instance_override(gr, n, target, parameter.name, &error) <
+                                0) {
+                                sg_show_error(s, error.message);
+                            }
+                        } else {
+                            graph_remove_pin(gr, n, false, pin);
+                        }
+                    }
+                    kit_prop_end(k);
+                }
+            }
+        }
+    }
+    kit_panel_end(k);
+}
+
 void studio_node_properties(studio *s)
 {
     kit *k = s->kit;
@@ -246,6 +483,7 @@ void studio_node_properties(studio *s)
         ed_node_title(e, n, title, sizeof title),
         n->desc->category ? n->desc->category : n->desc->name
     );
+    model_node_properties(s, e, gr, n, readonly);
     const char *source = n->desc == &NODE_BehaviorExpression
                            ? behavior_expression_source(e->asset, n)
                            : NULL;
@@ -282,6 +520,14 @@ void studio_node_properties(studio *s)
             kit_prop_begin(k, key, label);
             if (spec->kind == PIN_EXEC) {
                 kit_label(k, "v", "dim", "Execution");
+            } else if (
+                spec->type == PIN_HANDLE && spec->type_name &&
+                (!strcmp(spec->type_name, "Geometry3D") ||
+                 !strcmp(spec->type_name, "Profile2D") ||
+                 !strcmp(spec->type_name, "ModelMaterialSlot") ||
+                 !strcmp(spec->type_name, "Anchor3D"))
+            ) {
+                kit_label(k, "v", "dim", ed_pin_type_name(spec));
             } else {
                 sg_emit_graph_input(s, k, n, p);
             }

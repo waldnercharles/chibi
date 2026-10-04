@@ -3,17 +3,124 @@
 #include "ecs/ecs.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
+#include "graph/modeling/model_compile.h"
+#include "graph/modeling/model_inspection.h"
 #include "graph/shader/shader_graph.h"
+#include "graph/shader/shader_inspection.h"
 #include "runtime/components.h"
 
 bool render_shader_upsert(const behavior_asset *asset, shader_error *error);
+/* Validate and publish a complete proposed model dependency generation. */
+bool render_shader_models_upsert(const behavior_asset *const *sources, int count, shader_error *error);
+bool render_shader_model_remove(const char *name, shader_error *error);
+bool render_shader_model_rename(const char *from, const char *to, shader_error *error);
+bool render_shader_material_remove(const char *name, shader_error *error);
+bool render_shader_material_rename(const char *from, const char *to, shader_error *error);
 int render_shader_find(const char *name);
 const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
+/* Copies applied public metadata. Strings are borrowed until the next model
+   catalog publication or clear, including parameter-only revisions. */
+bool render_shader_model_parameter(int index, int slot, model_parameter *out);
+/* Borrowed applied report; expires on catalog publication or clear. */
+const model_inspection *render_shader_model_inspection(int index);
+bool render_shader_material_inspection(int index, shader_inspection *out);
+bool render_shader_model_anchor(int index, int slot, model_anchor *out);
+bool render_shader_model_anchor_values(
+    int index,
+    int slot,
+    const float prepared[SHADER_PARAMETER_MAX][4],
+    float position[3],
+    float angles[3],
+    shader_error *error
+);
+bool render_shader_model_part_bounds(
+    int index,
+    const float prepared[SHADER_PARAMETER_MAX][4],
+    int part,
+    model_bounds *out,
+    shader_error *error
+);
+bool render_shader_model_material_slot(int index, int slot, model_material_slot *out);
+bool render_shader_model_preview_snapshot(
+    int index,
+    ecs_world *world,
+    ecs_entity entity,
+    const char *parameters,
+    int part,
+    model_bounds *bounds,
+    shader_error *error
+);
+bool render_shader_model_preview_factor(
+    int index,
+    const float prepared[32][4],
+    int part,
+    float *factor,
+    shader_error *error
+);
+char *render_shader_model_preview_glsl(int index, int part, shader_error *error);
+bool render_shader_model_preview_bounds(
+    int index,
+    const float prepared[32][4],
+    int part,
+    model_bounds *bounds,
+    shader_error *error
+);
+bool render_shader_model_hit(
+    int index,
+    const float prepared[32][4],
+    const float object_position[3],
+    model_hit *out,
+    shader_error *error
+);
 bool render_shader_parameters_validate(int index, const char *text, shader_error *error);
+bool render_shader_binding_parameters_validate(
+    const GameShader *binding,
+    const char *text,
+    shader_error *error
+);
+bool render_shader_binding_sources_validate(
+    const GameShader *binding,
+    const char *text,
+    const behavior_asset *const *sources,
+    int count,
+    shader_error *error
+);
+typedef struct
+{
+    /* Successful CPU source lowerings published. Runtime setters do not compile. */
+    int compilations;
+    /* Cached render snapshot evaluations; setter validation is separate. */
+    int parameter_updates, bounds_updates, cache_hits;
+    int setter_validations;
+    unsigned program_revision, parameter_revision;
+} render_model_stats;
+render_model_stats render_shader_model_stats();
+void render_shader_model_stats_reset();
+bool render_shader_model_snapshot(
+    int index,
+    ecs_world *world,
+    ecs_entity entity,
+    const char *text,
+    float prepared[32][4],
+    float min[3],
+    float max[3],
+    bool *empty,
+    shader_error *error
+);
 bool render_shader_is_shape(int index);
 /* Exact centered sphere with a constant or scalar parameter radius. */
 bool render_shader_sphere_radius(int index, const float parameters[32][4], float *radius);
+bool render_shader_is_model(int index);
+/* Model bounds use the same validated parameter snapshot as distance evaluation. */
+bool render_shader_model_bounds(
+    int index,
+    const float parameters[32][4],
+    float min[3],
+    float max[3],
+    bool *empty,
+    shader_error *error
+);
 bool render_shader_may_be_transparent(int index);
 bool render_shader_sample(
     int index,
@@ -38,6 +145,19 @@ typedef struct
     int shape, material;
 } render_shader_set;
 bool render_shader_set_add(render_shader_set *set, int asset, shader_error *error);
+/* Transactional slot bindings and one shared material parameter payload.
+   Entry 0 is the entity fallback; compiled slot i uses entry i+1. */
+bool render_shader_model_material_snapshot(
+    int index,
+    ecs_world *world,
+    ecs_entity entity,
+    const char *text,
+    int fallback,
+    float bindings[MODEL_MATERIAL_SLOT_MAX + 1][4],
+    float parameters[32][4],
+    render_shader_set *resources,
+    shader_error *error
+);
 int render_shader_ramp_vec4_count(const render_shader_set *set);
 void render_shader_ramp_payload(const render_shader_set *set, float (*payload)[4]);
 char *render_shader_glsl(const render_shader_set *set, int sampler_set, int first_binding);
@@ -57,9 +177,17 @@ bool render_shader_contains(
     const float world_position[2],
     float time
 );
+/* Same validated transient override path as Set Shape Parameter. NULL means
+   success; returned error text is borrowed until the next call on this thread. */
+const char *render_shader_shape_parameter_set(
+    ecs_world *world,
+    ecs_entity entity,
+    const char *name,
+    pin_value value
+);
 void render_shader_clear_world(ecs_world *world);
-/* Every material parameter behaviors set on this world's entities, hashed, so
-   a scenario's state includes what Set Material Parameter wrote. */
+/* Shape and material overrides on this world's entities, including shader
+   identity, hashed for scenario state inspection. */
 uint64_t render_shader_overrides_hash(const ecs_world *world);
 void render_shader_catalog_clear();
 extern const registry_pack SHADER_BINDING_PACK;
@@ -75,4 +203,19 @@ void render_shader_parameters_cached(
     const char *text,
     float values[32][4],
     render_shader_parameter_cache **cache
+);
+
+/* Baked model groups retain the compiled material slot name. Applies selected
+ * material.Slot.Name / Slot.Name and unqualified material values; ignores
+ * geometry/other slots. Invalid selected input preserves values and cache.
+ * Runtime world/entity material overrides remain authoritative. */
+bool render_shader_material_parameters_scoped_cached(
+    int index,
+    ecs_world *world,
+    ecs_entity entity,
+    const char *text,
+    const char *scope,
+    float values[32][4],
+    render_shader_parameter_cache **cache,
+    shader_error *error
 );

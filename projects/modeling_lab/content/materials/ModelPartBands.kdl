@@ -1,0 +1,62 @@
+version 3
+name "ModelPartBands"
+domain "material"
+id_counter 61
+description "Bands use named-Part coordinates and remain attached through parent transforms and reuse."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.45
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=10 type="Shader PartPosition"
+            - id=12 type="Shader X"
+            - {
+                id 43
+                type "Behavior Expression"
+                reference_name "0.5 + 0.5 * sin(x * 0.55)"
+                inputs {
+                    x id=44
+                }
+                outputs {
+                    Result id=45 type="float"
+                }
+            }
+            - id=46 type="Shader Mix"
+            - {
+                id 51
+                type "Shader Vector3"
+                inputs X=0.06 Y=0.16 Z=0.36
+            }
+            - {
+                id 56
+                type "Shader Vector3"
+                inputs X=0.7 Y=0.83 Z=0.95
+            }
+        }
+        (array)edges {
+            - from="10.Value" to="12.Value"
+            - from="12.Value" to="43.x"
+            - from="43.Result" to="46.Alpha"
+            - from="46.Value" to="1.Base Color"
+            - from="51.Value" to="46.A"
+            - from="56.Value" to="46.B"
+        }
+    }
+    - id=15 kind="function" math_expression="0.5 + 0.5 * sin(x * 0.55)" entry_id=16
+}

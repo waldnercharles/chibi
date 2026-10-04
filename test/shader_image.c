@@ -198,8 +198,13 @@ static void gpu_variant(shader_image_color_space color_space, shader_image_filte
         "layout(set=2,binding=0) uniform Inputs {vec2 sample_uv;};\n"
         "void main(){vec4 values[8],p[32];for(int i=0;i<32;i++)p[i]=vec4(0);"
         "SGSample "
-        "sg_test=SGSample(vec2(0),sample_uv,vec3(0),vec3(0),vec3(0),vec3(0),0."
-        "0);"
+        "sg_test;sg_test.position=vec2(0);sg_test.uv=sample_uv;"
+        "sg_test.object_position=vec3(0);sg_test.part_position=vec3(0);"
+        "sg_test.world_position=vec3(0);sg_test.normal=vec3(0);"
+        "sg_test.view_direction=vec3(0);sg_test.time=0.0;"
+        "for(int i=0;i<3;i++){sg_test.object_from_world[i]=vec3(0);"
+        "sg_test.part_from_world[i]=vec3(0);}"
+        "for(int i=0;i<2;i++)sg_test.uv_from_world[i]=vec3(0);"
         "image_test(sg_test,p,values);int x=int(gl_GlobalInvocationID.x);"
         "imageStore(result_image,ivec2(x,0),values[x]);}\n";
     size_t size = strlen(wrapper) + strlen(function) + strlen(body) + 64;

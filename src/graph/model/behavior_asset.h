@@ -29,13 +29,23 @@ typedef enum
     BEHAVIOR_DOMAIN_EVENT_DEFINITION,
     BEHAVIOR_DOMAIN_SHADER_LIBRARY,
     BEHAVIOR_DOMAIN_FIELD,
+    BEHAVIOR_DOMAIN_MODEL,
 } behavior_domain;
+
+/* A locked authoring reference, in model units. It never affects geometry. */
+typedef struct
+{
+    char *image;                  /* Content-relative image key, graph-owned. */
+    float center[2], span, angle; /* Image height, radians; aspect preserved. */
+    bool locked;
+} model_reference;
 
 typedef struct behavior_asset
 {
     struct behavior_program *program; /* immutable compiled generation */
     uint64_t identity; /* Process-local ownership token for graph clipboard validation. */
     behavior_domain domain;
+    model_reference reference;
     float bounds[2];       /* Shape half extents in local units. */
     graph *graph;          /* the one non-deletable default event graph */
     struct graph **graphs; /* includes graph; graph 0 is always the default */
@@ -69,6 +79,7 @@ void behavior_asset_free(behavior_asset *asset);
 int behavior_asset_mutable(const behavior_asset *asset);
 int behavior_asset_set_name(behavior_asset *asset, const char *name);
 void behavior_asset_set_description(behavior_asset *asset, const char *description);
+bool behavior_asset_set_model_reference(behavior_asset *asset, const model_reference *reference);
 int behavior_asset_set_owner_type(behavior_asset *asset, const char *type_name);
 
 /* Variables. Names are unique within the behavior_asset (VAR-3). Default

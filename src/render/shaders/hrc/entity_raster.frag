@@ -36,7 +36,7 @@ layout(set = 2, binding = 9) uniform sampler2D u_mesh_normal;
 #define SG_RAMP_COUNT 512
 #endif
 #ifndef SG_GRAPHS
-void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,float time,vec4 values[32],out vec4 result[8]) {
+void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,vec4 object_frame,float time,vec4 values[32],out vec4 result[8]) {
  for(int i=0;i<8;i++) result[i]=vec4(0);
 }
 layout(set = 3, binding = 0) uniform uniform_block {
@@ -698,6 +698,7 @@ void main()
             if (radial_length > 0.0) local_p += radial / radial_length * deform;
         }
 
+        vec4 object_frame = wobble > 0.0 || pluck_amp > 0.01 ? vec4(0) : e.inv_rot;
         float sdf = evaluate_sdf(local_p, e);
         vec2 half_size = shader_half_size(e);
         vec2 material_pos = material_position(e, local_p, world_pos);
@@ -705,7 +706,7 @@ void main()
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[floatBitsToUint(e.simulation_time.y)+32u+uint(p)];
-            sg_dispatch_2d(int(e.reserved1), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
+            sg_dispatch_2d(int(e.reserved1), local_p, material_pos, half_size, object_frame, e.simulation_time.x, parameters, graph_output);
             sdf = graph_output[0].x;
         }
         float aa = e.aa > 0.0 ? e.aa : max(plane_pixel.x, plane_pixel.y) * 0.5;
@@ -729,7 +730,7 @@ void main()
         float height = 0.0;
         if (e.reserved0 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[floatBitsToUint(e.simulation_time.y)+uint(p)];
-            sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
+            sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, object_frame, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
             e.albedo=graph_output[2]; e.absorption=graph_output[3];
             e.border_scene=graph_output[0]; e.border_emission=graph_output[1];

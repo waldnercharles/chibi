@@ -247,6 +247,7 @@ void sg_nav_keys(studio *s);
 /* Rendering (studio_graph_draw.c). */
 /* A pin's socket color as 0xRRGGBBAA. */
 uint32_t sg_pin_color(const studio *s, const pin_spec *spec);
+const char *sg_material_picker(studio *s, kit *k, const char *value, unsigned flags);
 void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p);
 /* One editable graph input: its typed constant, binding, inline source, or wire. */
 void sg_emit_graph_input(studio *s, kit *k, node *n, int p);

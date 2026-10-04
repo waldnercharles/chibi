@@ -30,8 +30,8 @@ typedef struct
 /* find_references and call_hierarchy write their result into `result` and
  * return a CHIBI_AUTOMATION status, with the reason in `error`. A request
  * selects an asset ({"asset":{"kind","name"}}), and within it a graph
- * ("graph" or "graph_id"), a "variable", a function's "parameter" or a
- * "local"; or an "event"; or a "component" and its "field". */
+ * ("graph" or "graph_id"), a "variable", a function's or model's "parameter" or
+ * a "local"; or an "event"; or a "component" and its "field". */
 int automation_find_references(
     const navigation *nav,
     yyjson_val *request,

@@ -201,18 +201,29 @@ static void read_setting(studio_prefs *p, const studio_setting *s, yyjson_val *r
     }
 }
 
+#ifndef __EMSCRIPTEN__
+static const char *prefs_path(char path[1024])
+{
+    const char *override = getenv("CHIBI_STUDIO_PREFS_PATH");
+    if (override && *override) {
+        return override;
+    }
+    const char *directory = cf_fs_get_user_directory("chibi", "editor");
+    if (!directory || snprintf(path, 1024, "%sstudio.json", directory) >= 1024) {
+        return NULL;
+    }
+    return path;
+}
+#endif
+
 static char *read_json()
 {
 #ifdef __EMSCRIPTEN__
     return prefs_read_browser();
 #else
-    const char *directory = cf_fs_get_user_directory("chibi", "editor");
-    char path[1024];
-    if (!directory || snprintf(path, sizeof path, "%sstudio.json", directory) >=
-                          (int)sizeof path) {
-        return NULL;
-    }
-    return text_file_read(path);
+    char storage[1024];
+    const char *path = prefs_path(storage);
+    return path ? text_file_read(path) : NULL;
 #endif
 }
 
@@ -452,12 +463,9 @@ bool studio_prefs_save(const studio_prefs *p)
 #ifdef __EMSCRIPTEN__
     bool ok = prefs_write_browser(json);
 #else
-    const char *directory = cf_fs_get_user_directory("chibi", "editor");
-    char path[1024];
-    FILE *file = directory && snprintf(path, sizeof path, "%sstudio.json", directory) <
-                                  (int)sizeof path
-                   ? fopen(path, "wb")
-                   : NULL;
+    char storage[1024];
+    const char *path = prefs_path(storage);
+    FILE *file = path ? fopen(path, "wb") : NULL;
     bool ok = file && fputs(json, file) >= 0;
     if (file) {
         ok &= fclose(file) == 0;

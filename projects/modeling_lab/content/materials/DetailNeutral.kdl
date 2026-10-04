@@ -1,0 +1,29 @@
+version 3
+name "DetailNeutral"
+domain "material"
+id_counter 10
+description "Neutral smooth control for surface detail comparisons."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.11 y=0.28 z=0.49
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.48
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+        }
+    }
+}

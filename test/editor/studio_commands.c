@@ -355,6 +355,9 @@ void test_studio_menu_context(studio *s)
     /* Edit's popup overlaps the Scene pane; it still acts on the graph that
        was clicked last, rather than the area geometrically beneath its row. */
     studio_set_workspace(s, STUDIO_WORKSPACE_HORIZONTAL_SPLIT);
+    *studio_active_layout(s) = studio_layout_default(STUDIO_WORKSPACE_HORIZONTAL_SPLIT);
+    studio_active_layout(s)->editors[STUDIO_AREA_BOTTOM] = STUDIO_EDITOR_BEHAVIOR;
+    s->maximized = -1;
     menu_frame(s);
     menu_frame(s);
     int area = s->graph.area;

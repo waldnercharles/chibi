@@ -1467,7 +1467,7 @@ behavior_asset *behavior_asset_from_value(av_value *root)
     const char *domain = av_get_str(av_obj_get(root, "domain"));
     if (domain) {
         int found = 0;
-        for (int i = BEHAVIOR_DOMAIN_EVENT; i <= BEHAVIOR_DOMAIN_FIELD; i++) {
+        for (int i = BEHAVIOR_DOMAIN_EVENT; i <= BEHAVIOR_DOMAIN_MODEL; i++) {
             if (!strcmp(domain, behavior_domain_name((behavior_domain)i))) {
                 asset->domain = (behavior_domain)i;
                 found = 1;
@@ -1481,6 +1481,28 @@ behavior_asset *behavior_asset_from_value(av_value *root)
     }
     asset->bounds[0] = (float)av_get_num(av_obj_get(root, "bounds_x"));
     asset->bounds[1] = (float)av_get_num(av_obj_get(root, "bounds_y"));
+    av_value *reference = av_obj_get(root, "reference");
+    if (reference) {
+        av_value *image = av_obj_get(reference, "image");
+        const char *keys[] = { "x", "y", "span", "angle" };
+        bool valid = av_is_obj(reference) && av_is_str(image) &&
+                     av_is_bool(av_obj_get(reference, "locked"));
+        for (int i = 0; i < 4; i++) {
+            valid = valid && av_is_num(av_obj_get(reference, keys[i]));
+        }
+        model_reference value = {
+            .image = (char *)av_get_str(image),
+            .center = { (float)av_get_num(av_obj_get(reference, "x")),
+                        (float)av_get_num(av_obj_get(reference, "y")) },
+            .span = (float)av_get_num(av_obj_get(reference, "span")),
+            .angle = (float)av_get_num(av_obj_get(reference, "angle")),
+            .locked = av_get_bool(av_obj_get(reference, "locked"))
+        };
+        if (!valid || !behavior_asset_set_model_reference(asset, &value)) {
+            serialize_error_set("invalid model reference image alignment");
+            goto fail;
+        }
+    }
     behavior_asset_set_description(asset, av_get_str(metadata_description));
     av_value *owner = av_obj_get(root, "owner_type");
     if (av_is_str(owner) && behavior_asset_set_owner_type(asset, av_get_str(owner))) {

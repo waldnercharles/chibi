@@ -49,6 +49,7 @@ struct render_material_raster
     render_pixel_rect *spatial_rects;
     int *spatial_membership, *spatial_offsets, *spatial_order, *spatial_cursor;
     bool disable_spatial_scratch, disable_hidden_rejection;
+    render_model_inspection inspection;
     material_batch *batches;
     char error[256];
     CF_Material material;
@@ -84,6 +85,17 @@ void render_material_raster_set_hidden_rejection(render_material_raster *r, bool
     }
 }
 
+void render_material_raster_set_model_inspection(
+    render_material_raster *r,
+    const render_model_inspection *inspection
+)
+{
+    r->inspection = *inspection;
+    if (r->mesh_pass) {
+        render_mesh_material_set_model_inspection(r->mesh_pass, inspection);
+    }
+}
+
 void render_material_raster_set_sdf_batch_limit(render_material_raster *r, int limit)
 {
     assert(limit >= 0 && limit <= RENDER_SDF_BATCH_LIMIT);
@@ -111,7 +123,13 @@ void render_material_raster_set_sdf_trace_debug(render_material_raster *r, bool 
 
 render_mesh_material_work render_material_raster_mesh_work(const render_material_raster *r)
 {
-    return r->mesh_work;
+    render_mesh_material_work work = r->mesh_work;
+    if (r->mesh_pass) {
+        render_mesh_material_work cache = render_mesh_material_last_work(r->mesh_pass);
+        work.sdf_program_count = cache.sdf_program_count;
+        work.sdf_program_compilations = cache.sdf_program_compilations;
+    }
+    return work;
 }
 
 static void free_targets(render_material_raster *r)
@@ -994,6 +1012,7 @@ bool render_material_raster_draw_mixed(
                 render_mesh_material_set_quality(r->mesh_pass, r->quality);
                 render_mesh_material_set_sdf_trace_debug(r->mesh_pass, r->sdf_trace_debug);
                 render_mesh_material_set_hidden_rejection(r->mesh_pass, !r->disable_hidden_rejection);
+                render_mesh_material_set_model_inspection(r->mesh_pass, &r->inspection);
             }
         }
         int groups = prepare_spatial_groups(r, world, batch, meshes, view);

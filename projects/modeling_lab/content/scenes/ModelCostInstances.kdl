@@ -1,0 +1,2067 @@
+version 1
+name "ModelCostInstances"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "StudyCamera"
+        components {
+            GameCamera width=600.0 height=400.0 focal_distance=0.0
+            GameHRC2D adaptive=#false resolution=0.5 min_resolution=0.5 surface_relief=0.0 ambient=0.12
+        }
+    }
+    - {
+        name "Light"
+        prototype "StudyLight"
+        components {
+            GameTransform x=-250.0 y=-145.0
+        }
+    }
+    - {
+        name "Sphere 1"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 2"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 3"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 4"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 5"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 6"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 7"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 8"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 9"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 10"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 11"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 12"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 13"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 14"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 15"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 16"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=-150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 17"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 18"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 19"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 20"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 21"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 22"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 23"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 24"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 25"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 26"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 27"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 28"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 29"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 30"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 31"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 32"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=-130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 33"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 34"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 35"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 36"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 37"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 38"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 39"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 40"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 41"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 42"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 43"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 44"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 45"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 46"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 47"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 48"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=-110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 49"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 50"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 51"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 52"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 53"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 54"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 55"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 56"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 57"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 58"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 59"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 60"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 61"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 62"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 63"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 64"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=-90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 65"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 66"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 67"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 68"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 69"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 70"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 71"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 72"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 73"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 74"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 75"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 76"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 77"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 78"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 79"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 80"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=-70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 81"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 82"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 83"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 84"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 85"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 86"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 87"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 88"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 89"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 90"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 91"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 92"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 93"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 94"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 95"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 96"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=-50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 97"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 98"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 99"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 100"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 101"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 102"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 103"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 104"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 105"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 106"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 107"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 108"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 109"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 110"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 111"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 112"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=-30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 113"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 114"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 115"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 116"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 117"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 118"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 119"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 120"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 121"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 122"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 123"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 124"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 125"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 126"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 127"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 128"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=-10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 129"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 130"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 131"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 132"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 133"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 134"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 135"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 136"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 137"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 138"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 139"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 140"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 141"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 142"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 143"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 144"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=10.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 145"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 146"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 147"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 148"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 149"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 150"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 151"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 152"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 153"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 154"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 155"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 156"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 157"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 158"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 159"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 160"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=30.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 161"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 162"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 163"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 164"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 165"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 166"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 167"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 168"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 169"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 170"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 171"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 172"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 173"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 174"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 175"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 176"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=50.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 177"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 178"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 179"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 180"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 181"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 182"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 183"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 184"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 185"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 186"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 187"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 188"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 189"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 190"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 191"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 192"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 193"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 194"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 195"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 196"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 197"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 198"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 199"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 200"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 201"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 202"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 203"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 204"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 205"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 206"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 207"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 208"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 209"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 210"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 211"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 212"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 213"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 214"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 215"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 216"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 217"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 218"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 219"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 220"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 221"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 222"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 223"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 224"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 225"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 226"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 227"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 228"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 229"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 230"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 231"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 232"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 233"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 234"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 235"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 236"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 237"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 238"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 239"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 240"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 241"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-150.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 242"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-130.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 243"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-110.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 244"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-90.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 245"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-70.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 246"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-50.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 247"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-30.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 248"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-10.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 249"
+        prototype "CostSphere"
+        components {
+            GameTransform x=10.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 250"
+        prototype "CostSphere"
+        components {
+            GameTransform x=30.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 251"
+        prototype "CostSphere"
+        components {
+            GameTransform x=50.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 252"
+        prototype "CostSphere"
+        components {
+            GameTransform x=70.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 253"
+        prototype "CostSphere"
+        components {
+            GameTransform x=90.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 254"
+        prototype "CostSphere"
+        components {
+            GameTransform x=110.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 255"
+        prototype "CostSphere"
+        components {
+            GameTransform x=130.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Sphere 256"
+        prototype "CostSphere"
+        components {
+            GameTransform x=150.0 y=150.0
+            GameVisualTransform scale=6.0
+        }
+    }
+}

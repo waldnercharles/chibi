@@ -1938,6 +1938,17 @@ static bool s_dispatch_transport(HRC *hrc, render_radiance_inputs inputs, render
     if (!hrc->canvas_w) {
         return false;
     }
+    /* Materials retain sampler handles across draws. The next frame may have
+     * replaced work targets or borrowed raster inputs; discard those bindings
+     * before WebGL's draw fences inspect every retained texture handle. Each
+     * transport phase binds its current inputs below. */
+    cf_material_clear_textures(hrc->pass_material);
+    if (hrc->bounce_material.id) {
+        cf_material_clear_textures(hrc->bounce_material);
+    }
+    if (hrc->luminance) {
+        cf_material_clear_textures(hrc->luminance->pass_material);
+    }
     s_begin_view(hrc, view);
     hrc->screen = (CF_Aabb){ .min = { view.min_x + view.width * view.crop_min_u,
                                       view.max_y - view.height * view.crop_max_v },

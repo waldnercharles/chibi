@@ -14,13 +14,19 @@ typedef enum
     RENDER_PROGRAM_RASTER_ACCUMULATE,
     RENDER_PROGRAM_RASTER_MESH,
     RENDER_PROGRAM_SDF_MATERIAL,
+    RENDER_PROGRAM_SDF_PREVIEW,
     RENDER_PROGRAM_MESH_MATERIAL
 } render_program_kind;
 typedef struct render_programs render_programs;
 render_programs *render_programs_new(render_program_kind kind);
 void render_programs_free(render_programs *programs);
 unsigned render_shader_compile_count();
+/* Retained successful GPU programs, including last-good programs after an
+   invalidation fails. Successful compilations are cumulative for this cache. */
+int render_programs_count(const render_programs *programs);
+unsigned render_programs_successful_compilations(const render_programs *programs);
 /* Preflight all programs before submission; failure leaves previous output available. */
+void render_programs_set_model_preview(render_programs *programs, int shape, int part);
 int render_programs_prepare(render_programs *programs, const render_shader_set *set);
 const char *render_programs_error(const render_programs *programs);
 void render_programs_bind3d(render_programs *programs, int program);

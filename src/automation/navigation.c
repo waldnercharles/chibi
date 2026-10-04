@@ -206,6 +206,18 @@ static int select_member(
                  ? CHIBI_AUTOMATION_OK
                  : fail(error, size, CHIBI_AUTOMATION_NOT_FOUND, "the asset has no variable by that name");
     }
+    if (!graph && parameter && !strcmp(nav->assets[asset].kind, "model")) {
+        reference_symbol wanted = { .kind = REFERENCE_SYMBOL_PARAMETER, .asset = asset };
+        const reference *found = named_definition(nav, wanted, parameter, &matches);
+        if (matches > 1) {
+            return fail(error, size, CHIBI_AUTOMATION_INVALID_REQUEST, "the model has several parameters by that name");
+        }
+        if (!found) {
+            return fail(error, size, CHIBI_AUTOMATION_NOT_FOUND, "the model has no public parameter by that name");
+        }
+        *out = found->symbol;
+        return CHIBI_AUTOMATION_OK;
+    }
     if (!graph) {
         return parameter
                  ? fail(error, size, CHIBI_AUTOMATION_INVALID_REQUEST, "parameter takes its function's graph or graph_id")

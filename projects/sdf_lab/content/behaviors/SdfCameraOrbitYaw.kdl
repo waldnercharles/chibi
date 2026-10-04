@@ -1,6 +1,6 @@
 version 3
 name "SdfCameraOrbitYaw"
-id_counter 131
+id_counter 133
 description "Rotates camera yaw through a full turn in sixteen seconds around a fixed target; world objects remain fixed."
 owner_type "ecs.entity"
 (array)variables {

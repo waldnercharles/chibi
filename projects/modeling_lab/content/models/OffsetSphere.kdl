@@ -1,0 +1,32 @@
+version 3
+name "OffsetSphere"
+domain "model"
+id_counter 10
+description "Off-center model bounds stay authoritative with manual proxy dimensions of one."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - {
+                id 3
+                type "Model Sphere"
+                inputs Radius=18.0
+            }
+            - {
+                id 6
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=26.0 y=8.0 z=-10.0
+                    }
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Geometry" to="6.Geometry"
+            - from="6.Geometry" to="1.Geometry"
+        }
+    }
+}

@@ -1,4 +1,4 @@
-version 4
+version 5
 name "Arena3D"
 content "content"
 start_scene "scenes/Arena3D.kdl"

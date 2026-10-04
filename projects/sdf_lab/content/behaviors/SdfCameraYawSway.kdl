@@ -1,6 +1,6 @@
 version 3
 name "SdfCameraYawSway"
-id_counter 151
+id_counter 153
 description "Small side-to-side camera yaw at fixed tilt: plus/minus 0.3 radians over sixteen seconds. Every world object remains fixed."
 owner_type "ecs.entity"
 (array)variables {

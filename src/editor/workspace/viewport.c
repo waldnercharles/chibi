@@ -93,9 +93,12 @@ void engine_viewport_set_host_input(engine_viewport *viewport, const engine_view
         return;
     }
     if (input->pressed[0]) {
-        viewport->press_origin = (CF_V2){ input->x, input->y };
+        viewport->press_origin = input->press_position
+                                   ? (CF_V2){ input->press_x, input->press_y }
+                                   : (CF_V2){ input->x, input->y };
         viewport->press_distance_sq = 0;
-    } else if (input->down[0]) {
+    }
+    if (input->pressed[0] || input->down[0] || input->released[0]) {
         float dx = input->x - viewport->press_origin.x,
               dy = input->y - viewport->press_origin.y;
         viewport->press_distance_sq = fmaxf(viewport->press_distance_sq, dx * dx + dy * dy);
@@ -512,7 +515,7 @@ static bool navigate_viewport(engine_viewport *viewport, const viewport_io *io, 
         float x = io->mouse.x / size.x - 0.5f;
         float y = 0.5f - io->mouse.y / size.y;
         float scale = powf(1.1f, -io->wheel);
-        scale = fmaxf(1.0f / before.span_width, fminf(100000.0f / before.span_width, scale));
+        scale = fmaxf(.0001f / before.span_width, fminf(100000.0f / before.span_width, scale));
         CF_V2 anchor;
         bool anchored = pointer_world(viewport, (CF_V2){ 2 * x, 2 * y }, &anchor);
         viewport->view_width *= scale;
@@ -563,6 +566,8 @@ static void capture_viewport_pointer(engine_viewport *viewport, const viewport_i
     pointer->world_per_pixel = camera.span_width / size.x;
     pointer->ndc_x = 2 * io->mouse.x / size.x - 1;
     pointer->ndc_y = 1 - 2 * io->mouse.y / size.y;
+    pointer->press_ndc_x = 2 * viewport->press_origin.x / size.x - 1;
+    pointer->press_ndc_y = 1 - 2 * viewport->press_origin.y / size.y;
     CF_V2 world;
     if (!pointer_world(viewport, (CF_V2){ pointer->ndc_x, pointer->ndc_y }, &world)) {
         cancel_viewport_pointer(viewport);
@@ -579,7 +584,11 @@ static void capture_viewport_pointer(engine_viewport *viewport, const viewport_i
         "%s",
         viewport->host_input.dropped_prototype
     );
-    pointer->pressed = pointer->hovered && io->clicked[0];
+    bool press_inside = viewport->press_origin.x >= 0 &&
+                        viewport->press_origin.y >= 0 &&
+                        viewport->press_origin.x < size.x &&
+                        viewport->press_origin.y < size.y;
+    pointer->pressed = press_inside && io->clicked[0];
     if (pointer->pressed) {
         viewport->pointer_active = true;
     }

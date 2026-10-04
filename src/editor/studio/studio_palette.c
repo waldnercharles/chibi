@@ -187,6 +187,13 @@ static void add_assets(studio *s, pick **picks)
             continue;
         }
         const char *kind = studio_asset_kind_name(asset->kind);
+        if (asset->kind == REFERENCE_ASSET_SHAPE) {
+            game_live_definition
+                *definition = game_live_find_definition(s->scene->live, asset->name);
+            if (definition && definition->working->domain == BEHAVIOR_DOMAIN_MODEL) {
+                kind = "model";
+            }
+        }
         pick *p = add(picks, PICK_ASSET, i, "Assets", asset->name);
         snprintf(p->meta, sizeof p->meta, "%s", kind);
         snprintf(p->keywords, sizeof p->keywords, "%s", kind);

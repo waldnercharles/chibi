@@ -1,0 +1,40 @@
+version 1
+name "ModelMaterialStudy"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "StudyCamera"
+        components {
+            GameCamera width=420.0 height=270.0
+            GameHRC2D surface_relief=0.0 ambient=0.18 bloom=0.015
+        }
+    }
+    - {
+        name "Key"
+        prototype "StudyLight"
+        components {
+            GameTransform x=-170.0 y=-75.0
+        }
+    }
+    - {
+        name "Fill"
+        prototype "StudyLight"
+        components {
+            GameTransform x=170.0 y=75.0
+        }
+    }
+    - {
+        name "Original component"
+        prototype "PaintedModule"
+        components {
+            GameTransform x=0.0 y=-65.0
+        }
+    }
+    - {
+        name "Slot overrides and transformed bands"
+        prototype "PaintedVariants"
+        components {
+            GameTransform x=0.0 y=50.0
+        }
+    }
+}

@@ -1,0 +1,52 @@
+version 3
+name "DetailBump"
+domain "material"
+id_counter 68
+description "World-height procedural ridges perturb normals only; the tile's silhouette and distance graph are unchanged."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.11 y=0.28 z=0.49
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.48
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=10 type="Shader PartPosition"
+            - {
+                id 34
+                type "Behavior Expression"
+                reference_name "0.8 * sin(p.x * 0.6)"
+                inputs {
+                    p id=35 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=36 type="float"
+                }
+            }
+            - {
+                id 62
+                type "Shader Bump"
+                inputs Distance=0.01
+            }
+        }
+        (array)edges {
+            - from="10.Value" to="34.p"
+            - from="34.Result" to="62.Height"
+            - from="62.Value" to="1.Normal"
+        }
+    }
+    - id=12 kind="function" math_expression="0.8 * sin(p.x * 0.6)" entry_id=38
+}

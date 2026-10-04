@@ -133,14 +133,14 @@ class WorkspaceSaves(unittest.TestCase):
         self.assertEqual((self.content / 'ui/theme/tokens.rcss').read_text(), ':root { --primary: #c2453b; }\n')
 
     def test_create_project_writes_manifest_and_start_scene(self):
-        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 4})
+        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 5})
         project = self.workspace / 'projects/sample-project'
         manifest = server.kdl_asset.loads((project / 'project.kdl').read_text())
         scene_path = project / 'content/scenes/Start.kdl'
         scene = server.kdl_asset.loads(scene_path.read_text())
         self.assertEqual(result['root'], '/projects/sample-project/')
         self.assertEqual(manifest, {
-            'version': 4, 'name': 'Sample Project', 'content': 'content',
+            'version': 5, 'name': 'Sample Project', 'content': 'content',
             'start_scene': 'scenes/Start.kdl',
         })
         self.assertEqual(scene, {'version': 1, 'name': 'Start', 'entities': []})
@@ -148,8 +148,8 @@ class WorkspaceSaves(unittest.TestCase):
             'projects/sample-project/content/scenes/Start.kdl'], scene_path.read_text())
 
     def test_create_project_uses_a_unique_folder(self):
-        server.create_project(self.workspace, {'name': 'Sample Project', 'version': 4})
-        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 4})
+        server.create_project(self.workspace, {'name': 'Sample Project', 'version': 5})
+        result = server.create_project(self.workspace, {'name': 'Sample Project', 'version': 5})
         self.assertEqual(result['root'], '/projects/sample-project-2/')
 
     def test_create_project_removes_partial_files_after_a_write_error(self):
@@ -161,13 +161,13 @@ class WorkspaceSaves(unittest.TestCase):
             return write_text(path, *args, **kwargs)
 
         with patch.object(Path, 'write_text', fail_scene), self.assertRaises(OSError):
-            server.create_project(self.workspace, {'name': 'Sample Project', 'version': 4})
+            server.create_project(self.workspace, {'name': 'Sample Project', 'version': 5})
         self.assertFalse((self.workspace / 'projects/sample-project').exists())
 
     def test_create_project_rejects_invalid_names_and_versions(self):
         for request in (
-            {'name': '  ', 'version': 4},
-            {'name': 'x' * 129, 'version': 4},
+            {'name': '  ', 'version': 5},
+            {'name': 'x' * 129, 'version': 5},
             {'name': 'Name', 'version': 0},
         ):
             with self.subTest(request=request), self.assertRaises(ValueError):

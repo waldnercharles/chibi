@@ -1,0 +1,50 @@
+version 3
+name "MirroredPart"
+domain "model"
+id_counter 21
+description "Reflection across the local X=0 plane keeps asymmetric detail distinct."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - {
+                id 3
+                type "Model Box"
+                inputs {
+                    "Half Size" {
+                        default x=22.0 y=7.0 z=9.0
+                    }
+                }
+            }
+            - {
+                id 6
+                type "Model Box"
+                inputs {
+                    "Half Size" {
+                        default x=9.0 y=18.0 z=12.0
+                    }
+                }
+            }
+            - {
+                id 9
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=24.0 y=8.0 z=-3.0
+                    }
+                }
+            }
+            - id=13 type="Model Union"
+            - id=17 type="Model Reflect"
+        }
+        (array)edges {
+            - from="3.Geometry" to="13.A"
+            - from="6.Geometry" to="9.Geometry"
+            - from="9.Geometry" to="13.B"
+            - from="13.Geometry" to="17.Geometry"
+            - from="17.Geometry" to="1.Geometry"
+        }
+    }
+}

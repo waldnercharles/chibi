@@ -1614,6 +1614,12 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
     }
     pin_parts parts;
     sg_pin_parts_of(s, n, ED_PIN_INPUT, p, &parts);
+    bool material_asset = spec->type == PIN_STR && spec->type_name &&
+                          !strcmp(spec->type_name, "MaterialAsset");
+    if (material_asset) {
+        sg_emit_value_in(s, k, n, 0, p);
+        return;
+    }
     bool can_choose_source = parts.source_select && !sg_graph_readonly(s) &&
                              !(spec->flags & PIN_FLAG_SETTING);
     int source_pin = -1;

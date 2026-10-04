@@ -375,6 +375,7 @@ static const struct
     { "Rendering", "NewShape", REFERENCE_ASSET_SHAPE },
     { "Rendering", "NewField", REFERENCE_ASSET_FIELD },
     { "Rendering", "NewShaderLibrary", REFERENCE_ASSET_LIBRARY },
+    { "Rendering", "NewModel", REFERENCE_ASSET_SHAPE },
     { "UI", "NewWidget", REFERENCE_ASSET_UI },
     { "UI", "NewDocument", REFERENCE_ASSET_UI },
     { "UI", "NewStylesheet", REFERENCE_ASSET_UI },

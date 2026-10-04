@@ -1,3 +1,4 @@
+#include "editor/workspace/model_preview.h"
 #include "editor/workspace/scene_internal.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
@@ -122,7 +123,8 @@ static int restart_runtime(app_scene_authoring *scene)
 
 bool runtime_session(const app_scene_authoring *scene)
 {
-    return scene->runtime_snapshot_valid || scene->preview_prototype_id;
+    return scene->runtime_snapshot_valid || scene->preview_prototype_id ||
+           scene->model_preview;
 }
 
 int app_scene_authoring_set_runtime_target(app_scene_authoring *scene, app_runtime_target target)
@@ -227,7 +229,9 @@ void app_scene_authoring_stop_prototype_preview(app_scene_authoring *scene)
             editor_set_inspection_run(scene->graph_editor, NULL);
             editor_set_inspection_instance(scene->graph_editor, NULL);
         }
+        render_shader_clear_world(game_prototype_preview_world(scene->prototype_preview));
         game_prototype_preview_stop(scene->prototype_preview);
+        scene_model_preview_free(scene);
         free(scene->preview_prototype_id);
         scene->preview_prototype_id = NULL;
         scene->preview_playing = false;
@@ -252,7 +256,7 @@ int app_scene_authoring_runtime_command(
         return -1;
     }
     if (target == APP_RUNTIME_PREVIEW && !scene->preview_prototype_id &&
-        command != APP_RUNTIME_STOP) {
+        !scene->model_preview && command != APP_RUNTIME_STOP) {
         scene_prototype_asset *asset = prototype_at(scene, scene->runtime_preview_prototype);
         if (!asset ||
             app_scene_authoring_preview_prototype(scene, asset->prototype->name) != 0) {
@@ -336,6 +340,10 @@ int app_scene_authoring_runtime_command(
     }
     if (command == APP_RUNTIME_STOP) {
         app_scene_authoring_stop_prototype_preview(scene);
+        return 0;
+    }
+    if (scene->model_preview) {
+        scene_model_preview_reset_parameters(scene);
         return 0;
     }
     scene_prototype_asset *asset = previewed_prototype(scene);

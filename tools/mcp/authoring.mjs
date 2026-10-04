@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { parseControllerJson } from "./controller.mjs";
 import { getToolCatalogEntry } from "./tool-catalog.mjs";
 
-const GRAPH_KINDS = ["behavior", "event", "library", "material", "shape", "shader-library", "field", "system"];
+const GRAPH_KINDS = ["behavior", "event", "library", "material", "shape", "model", "shader-library", "field", "system"];
 const SHADER_KINDS = ["material", "shape", "shader-library"];
 const MAX_NODE_SEARCH_LIMIT = 50;
 const MAX_GRAPH_OPERATIONS = 128;
@@ -259,8 +259,8 @@ const searchNodesDefinition = {
     },
     domain: {
       type: "string",
-      enum: ["behavior", "shader", "field", "system"],
-      description: "Restrict results to behavior, shader, field, or system graph nodes. System graphs use generated component nodes such as Get_GameVelocity and only the nodes their compiler supports.",
+      enum: ["behavior", "shader", "field", "system", "model"],
+      description: "Restrict results to behavior, shader, field, system, or model graph nodes. System graphs use generated component nodes such as Get_GameVelocity and only the nodes their compiler supports.",
     },
     pin_type: {
       type: "string",

@@ -634,8 +634,12 @@ static void gradient_gpu(bool compound)
                "values[32]; };\n"
                "void main(){vec4 p[32];for(int i=0;i<32;i++)p[i]=values[i];"
                "SGSample "
-               "s=SGSample(vec2(0),vec2(0),point.xyz,vec3(0),vec3(0),vec3(0),"
-               "point.w);"
+               "s;s.position=vec2(0);s.uv=vec2(0);s.object_position=point.xyz;"
+               "s.part_position=vec3(0);s.world_position=vec3(0);"
+               "s.normal=vec3(0);s.view_direction=vec3(0);s.time=point.w;"
+               "for(int i=0;i<3;i++){s.object_from_world[i]=vec3(0);"
+               "s.part_from_world[i]=vec3(0);}"
+               "for(int i=0;i<2;i++)s.uv_from_world[i]=vec3(0);"
                "int x=int(gl_GlobalInvocationID.x);vec3 d=vec3(0);switch(x){"
                "case 0:d=gradient_0(s,p);break;case 1:d=gradient_1(s,p);break;"
                "case 2:d=gradient_2(s,p);break;case 3:d=gradient_3(s,p);break;"
@@ -761,8 +765,13 @@ int test_shader_graph_gpu()
                "layout(set=2,binding=0) uniform Inputs { vec4 values[32]; };\n"
                "void main(){vec4 result[8],p[32]; for(int i=0;i<32;i++) "
                "p[i]=values[i];"
-               "SGSample sg_test=SGSample(vec2(0),vec2(0),vec3(0),"
-               "vec3(0),vec3(0),vec3(0),0.0);"
+               "SGSample sg_test;sg_test.position=vec2(0);sg_test.uv=vec2(0);"
+               "sg_test.object_position=vec3(0);sg_test.part_position=vec3(0);"
+               "sg_test.world_position=vec3(0);sg_test.normal=vec3(0);"
+               "sg_test.view_direction=vec3(0);sg_test.time=0.0;"
+               "for(int i=0;i<3;i++){sg_test.object_from_world[i]=vec3(0);"
+               "sg_test.part_from_world[i]=vec3(0);}"
+               "for(int i=0;i<2;i++)sg_test.uv_from_world[i]=vec3(0);"
                "test_math(sg_test,p,result);"
                "int x=int(gl_GlobalInvocationID.x); "
                "imageStore(result_image,ivec2(x,0),result[x]);}\n";
@@ -943,6 +952,61 @@ static void vector_inline_sources()
     behavior_asset_free(asset);
 }
 
+static void vector_mix_literals_roundtrip()
+{
+    for (int scalar_first = 0; scalar_first < 2; scalar_first++) {
+        behavior_asset *asset = behavior_asset_new("VectorMix");
+        asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+        graph *g = asset->graph;
+        node *mix = add(g, "Shader Mix");
+        node *alpha = add(g, "Shader Constant");
+        scalar(g, alpha, 1, 0, .25f);
+        if (scalar_first) {
+            assert(graph_connect_data(g, alpha, 0, mix, 2) == 0);
+        }
+        assert(graph_set_pin_type(g, mix, false, 0, PIN_STRUCT, "ShaderVec3") == 0);
+        float a[] = { .06f, .16f, .36f }, b[] = { .7f, .83f, .95f };
+        pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = a };
+        assert(graph_set_pin_default(g, mix, false, 0, &value) == 0);
+        value.ptr = b;
+        assert(graph_set_pin_default(g, mix, false, 1, &value) == 0);
+        if (!scalar_first) {
+            assert(graph_connect_data(g, alpha, 0, mix, 2) == 0);
+        }
+        node *surface = shader_graph_add_output(g, false);
+        assert(graph_connect_data(g, mix, 0, surface, 0) == 0);
+        uint64_t id = mix->id, counter = g->id_counter;
+        char *text = behavior_asset_save(asset);
+        behavior_asset *loaded = behavior_asset_load(text);
+        free(text);
+        assert(loaded);
+        node *reloaded = graph_node_by_id(loaded->graph, id);
+        bool preserved = reloaded && reloaded->input_count == 3 &&
+                         loaded->graph->id_counter == counter;
+        for (int p = 0; preserved && p < 2; p++) {
+            const pin_spec *pin = &reloaded->input_pins[p];
+            preserved &= pin->type == PIN_STRUCT && pin->type_name &&
+                         !strcmp(pin->type_name, "ShaderVec3") &&
+                         pin->default_value.ptr &&
+                         !memcmp(pin->default_value.ptr, p ? b : a, sizeof a);
+        }
+        assert(preserved);
+        shader_graph ir;
+        shader_graph_init(&ir);
+        shader_error error = { 0 };
+        float outputs[8][4];
+        shader_sample_context sample = { 0 };
+        assert(shader_graph_from_graph(loaded->graph, &ir, &error));
+        assert(shader_graph_eval_outputs(&ir, &sample, NULL, outputs, &error));
+        for (int axis = 0; axis < 3; axis++) {
+            near(outputs[0][axis], a[axis] + (b[axis] - a[axis]) * .25f);
+        }
+        shader_graph_free(&ir);
+        behavior_asset_free(loaded);
+        behavior_asset_free(asset);
+    }
+}
+
 void test_shader_graph()
 {
     gradient_codegen();
@@ -1060,6 +1124,7 @@ void test_shader_graph()
     graph_free(&specialized);
     shader_graph_free(&ir);
 
+    vector_mix_literals_roundtrip();
     examples();
     live_shader_library();
     math_nodes();

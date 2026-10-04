@@ -68,7 +68,7 @@ or open a new task after adding or changing project MCP configuration.
 ## Asset files
 
 Authored assets under `content/` are KDL 2 (`.kdl`); `project.kdl` is the
-project manifest, at project version 4. The document is an implicit object.
+project manifest, at project version 5. The document is an implicit object.
 Each named node defines one member: a positional argument is a scalar,
 properties define a compact object, and child nodes define a nested object.
 `(array)` marks arrays, whose values are arguments or `-` child nodes;
@@ -90,6 +90,12 @@ Reflected string fields that carry structured asset data also contain KDL:
 document, while `GameMeshParts.parts` holds a root `(array)-` document.
 An empty string means no parameters. These remain reflected string fields;
 use KDL string escapes or multiline strings for their payload text.
+
+Declarative models use `content/models`, `domain "model"`, and the existing
+`GameShader.shape` binding. Author them with the generic graph tools using
+`kind: "model"`; geometry and profile wires preserve construction definitions.
+See [the modeling contract](declarative-sdf-modeling.md) for operation semantics,
+parameter ranges, computed bounds, and current validation status.
 
 Documents omit what loading
 reproduces: default values, pin fields that match the node type's template
@@ -125,7 +131,7 @@ benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
 Use the MCP for authored content whenever it is available. Route requests by
 domain:
 
-- Graph work (behaviors, events, libraries, materials, shapes, shader
+- Graph work (behaviors, events, libraries, materials, shapes, models, shader
   libraries, fields, and Systems): search with `searchAssets` and
   `searchNodes`, inspect with `inspectGraph`, then use `buildGraph`. Check
   shaders with `previewShader`, fields with `previewField` (CPU evaluation, no
@@ -1022,3 +1028,32 @@ candidates. It defaults to a dry run. Apply uses `dry_run: false` and the curren
 threshold defaults to three. Locals preserve source evaluation and never add
 persistent behavior variables. See [graph optimizer](graph-optimizer.md) for
 representation, safety rules, and validation.
+
+Model reference alignment is authored metadata and follows ordinary graph Undo,
+save and reload. Use a `buildGraph` operation:
+
+```json
+{"op":"set_model_reference","value":{"image":"reference/camera.png","center":[0,0],"span":2,"angle":0,"locked":true}}
+```
+
+The image key is relative to project content. `span` is image height in model
+units; aspect ratio is preserved. `angle` is radians. `center` locates the fixed
+camera-plane reference. `value:null` clears it. The locked flag prevents accidental
+alignment edits in Studio; explicit graph edits can replace the alignment.
+Overlay visibility and opacity are temporary preview controls. `inspectGraph`
+returns `model_reference`, independent compiler budgets, and per-part
+`inclusive_distance_nodes`. Part counts include shared reachable IR and overlap;
+adding them does not give the complete model cost.
+
+Named attachment frames use `Model Anchor` with ordinary vector `Position` and
+`Angles` inputs (XYZ radians). A referenced model instance can expose one with
+`{"op":"add_pin","node":"module","side":"output","name":"Lens mount","type":"handle","type_name":"Anchor3D"}`.
+The output retains the source anchor declaration ID through save/reload and
+refactoring. `inspectGraph.model_compilation.anchors` includes source identity,
+invocation scope and evaluated coordinates at declared defaults. These are
+explicit asset coordinates, independent of selected Part bounds.
+
+Material inspection reports per-slot IR, uniform, image, ramp and conservative
+static texture-call bounds. Texture-call counts include the shader detail
+helpers and describe one shading evaluation, not actual GPU reads or total
+raymarch work. Studio shows the maximum per material separately from geometry.

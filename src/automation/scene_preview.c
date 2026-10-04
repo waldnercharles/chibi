@@ -68,6 +68,7 @@ typedef struct
     bool pass_timestamps;
     char *initial_state, *final_state;
     render_mesh_material_work mesh_work;
+    render_model_stats model_before, model_measured, model_after;
     render_horizon_work horizon_work;
     render_surface_work surface_work;
 } render_measurement;
@@ -214,8 +215,12 @@ static bool render_scene(
     if (ok) {
         measurement->initial_state = chibi_preview_state(run);
         measurement->backend = cf_backend_type_to_string(cf_query_backend());
+        measurement->model_before = render_shader_model_stats();
     }
     for (int i = 0; ok && i < render_frames + warmup; i++) {
+        if (i == warmup + 16) {
+            measurement->model_measured = render_shader_model_stats();
+        }
         bool capture = options->capture_path && i == warmup + options->capture_frame;
         if (capture && !chibi_gpu_capture_begin(options->capture_path, error, size)) {
             ok = false;
@@ -325,6 +330,7 @@ static bool render_scene(
         measurement->resolution = lighting.resolution;
         measurement->scene_gpu_ms = lighting.gpu_ms;
         measurement->mesh_work = app_scene_renderer_mesh_work(scene.renderer);
+        measurement->model_after = render_shader_model_stats();
         measurement->horizon_work = app_scene_renderer_horizon_work(scene.renderer);
         measurement->surface_work = app_scene_renderer_surface_work(scene.renderer);
         ok = chibi_preview_readback(width, height, png, error, size);
@@ -432,6 +438,44 @@ static bool surface_quality_options(yyjson_val *root, preview_options *options, 
     }
     options->sdf_trace_debug = yyjson_get_bool(debug);
     return true;
+}
+
+static void add_model_work(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    render_model_stats before,
+    render_model_stats after
+)
+{
+    yyjson_mut_obj_add_int(
+        doc,
+        object,
+        "source_compilations",
+        after.compilations - before.compilations
+    );
+    yyjson_mut_obj_add_int(
+        doc,
+        object,
+        "parameter_updates",
+        after.parameter_updates - before.parameter_updates
+    );
+    yyjson_mut_obj_add_int(
+        doc,
+        object,
+        "bounds_updates",
+        after.bounds_updates - before.bounds_updates
+    );
+    yyjson_mut_obj_add_int(doc, object, "cache_hits", after.cache_hits - before.cache_hits);
+    yyjson_mut_obj_add_int(
+        doc,
+        object,
+        "setter_validations",
+        after.setter_validations - before.setter_validations
+    );
+    yyjson_mut_obj_add_uint(doc, object, "program_revision_before", before.program_revision);
+    yyjson_mut_obj_add_uint(doc, object, "program_revision_after", after.program_revision);
+    yyjson_mut_obj_add_uint(doc, object, "parameter_revision_before", before.parameter_revision);
+    yyjson_mut_obj_add_uint(doc, object, "parameter_revision_after", after.parameter_revision);
 }
 
 char *chibi_scene_preview_handle(const char *request, const char *default_root, int *exit_code)
@@ -855,6 +899,41 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             "tiles_y",
             measurement.horizon_work.tiles_y
         );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "sdf_program_count",
+            measurement.mesh_work.sdf_program_count
+        );
+        yyjson_mut_obj_add_uint(
+            response,
+            work,
+            "sdf_program_compilations",
+            measurement.mesh_work.sdf_program_compilations
+        );
+        yyjson_mut_val *model_work = yyjson_mut_obj_add_obj(response, performance, "model_work");
+        yyjson_mut_obj_add_str(response, model_work, "scope", "render loop including warmup; loading and initial simulation excluded");
+        yyjson_mut_obj_add_int(
+            response,
+            model_work,
+            "compilations_before_render",
+            measurement.model_before.compilations
+        );
+        add_model_work(
+            response,
+            model_work,
+            measurement.model_before,
+            measurement.model_after
+        );
+        if (measurement.samples) {
+            yyjson_mut_val *measured = yyjson_mut_obj_add_obj(response, model_work, "measured_frames");
+            add_model_work(
+                response,
+                measured,
+                measurement.model_measured,
+                measurement.model_after
+            );
+        }
         if (options.pass_timing) {
             /* Average milliseconds per rendered frame, in submission order. */
             yyjson_mut_obj_add_str(

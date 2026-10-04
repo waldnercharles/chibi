@@ -15,7 +15,7 @@
 
 static const char *const GRAPH_FOLDERS[] = {
     "behaviors", "events",           "fields", "libraries",
-    "materials", "shader-libraries", "shapes",
+    "materials", "shader-libraries", "shapes", "models",
 };
 
 static bool in_graph_folder(const app_scene_authoring *scene, const char *path)

@@ -1,6 +1,7 @@
 #include "graph/document/problems.h"
 
 #include "graph/document/library.h"
+#include "graph/modeling/model_compile.h"
 #include "support/array.h"
 
 #include <stdio.h>
@@ -17,7 +18,28 @@ behavior_asset *behavior_asset_validate(
     char message[256];
     behavior_asset *linked = behavior_asset_link_libraries(asset, catalog, count, message, sizeof message);
     if (linked) {
-        behavior_asset_compile(linked, report);
+        if (linked->domain == BEHAVIOR_DOMAIN_MODEL) {
+            model_program program;
+            model_program_init(&program);
+            shader_error error = { 0 };
+            if (!model_compile_with_catalog(linked, catalog, count, &program, &error)) {
+                compile_diagnostic diagnostic = { .severity = CMPL_ERROR,
+                                                  .rule = CMPL_RULE_OPERATOR,
+                                                  .graph_id = linked->graph->graph_id,
+                                                  .node_id = error.node };
+                snprintf(
+                    diagnostic.message,
+                    sizeof diagnostic.message,
+                    "%s",
+                    error.message
+                );
+                apush(report->items, diagnostic);
+                report->error_count++;
+            }
+            model_program_free(&program);
+        } else {
+            behavior_asset_compile(linked, report);
+        }
         return linked;
     }
     compile_diagnostic diagnostic = { .severity = CMPL_ERROR,

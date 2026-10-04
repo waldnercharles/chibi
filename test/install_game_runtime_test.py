@@ -24,7 +24,7 @@ class RuntimeUpdates(unittest.TestCase):
         self.root = Path(self.directory.name).resolve()
         self.game = self.root / 'Independent game'
         self.game.mkdir()
-        (self.game / 'project.kdl').write_text('version 4\nname "Independent"\ncontent "content"\n')
+        (self.game / 'project.kdl').write_text('version 5\nname "Independent"\ncontent "content"\n')
         (self.game / '.codex').mkdir()
         self.original_config = 'model = "custom"\n\n[mcp_servers.other]\ncommand = "other"\n'
         (self.game / '.codex/config.toml').write_text(self.original_config)
@@ -32,7 +32,7 @@ class RuntimeUpdates(unittest.TestCase):
         self.config = self.root / 'registration.json'
         self.config.write_text(json.dumps({'games': [str(self.game)]}))
 
-    def package(self, name, version=4):
+    def package(self, name, version=5):
         package = self.root / name
         (package / 'bin').mkdir(parents=True)
         for binary in ('chibi', 'chibi_ctl', 'chibi-mcp'):
@@ -75,7 +75,7 @@ class RuntimeUpdates(unittest.TestCase):
                          'second:chibi')
         self.assertEqual((self.game / '.codex/config.toml').read_text(), initial_config)
         self.assertEqual(json.loads((self.game / '.chibi-engine.json').read_text()), {
-            'format': 1, 'build_id': second_manifest['build_id'], 'project_version': 4})
+            'format': 1, 'build_id': second_manifest['build_id'], 'project_version': 5})
         installer.install(second, self.config)
         self.assertEqual(self.active(), second_manifest['build_id'])
         self.assertEqual(list((self.game / '.chibi').iterdir()), [self.runtime])
@@ -105,7 +105,7 @@ class RuntimeUpdates(unittest.TestCase):
         config = (self.game / '.codex/config.toml').read_bytes()
         pin = (self.game / '.chibi-engine.json').read_bytes()
         binary = (self.runtime / 'bin/chibi').read_bytes()
-        second, _ = self.package('second', version=5)
+        second, _ = self.package('second', version=4)
         with self.assertRaisesRegex(ValueError, 'Project version mismatch'):
             installer.install(second, self.config)
         self.assertEqual(self.active(), active)

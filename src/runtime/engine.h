@@ -119,6 +119,8 @@ typedef struct engine_viewport_host_input
     float width, height;
     float resolution; /* canvas pixels per unit of width and height, at least 1 */
     float x, y;
+    float press_x, press_y;
+    bool press_position; /* optional left button-down coordinates */
     bool hovered;
     bool focused; /* keyboard belongs to the Scene area */
     bool blocked; /* an overlay or popup covers the image */
@@ -145,6 +147,7 @@ typedef struct engine_viewport_pointer
     float world_y;
     float world_per_pixel;
     float ndc_x, ndc_y;
+    float press_ndc_x, press_ndc_y;
     bool hovered;
     bool pressed;
     bool down;

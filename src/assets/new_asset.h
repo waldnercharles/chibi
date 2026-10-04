@@ -21,6 +21,7 @@ typedef enum
     NEW_ASSET_SHAPE,
     NEW_ASSET_FIELD,
     NEW_ASSET_SHADER_LIBRARY,
+    NEW_ASSET_MODEL,
     NEW_ASSET_KIND_COUNT,
 } new_asset_kind;
 

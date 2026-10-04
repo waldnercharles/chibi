@@ -1,5 +1,7 @@
+#include "assets/model_validation.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/asset_index.h"
+#include "editor/workspace/model_preview.h"
 #include "support/array.h"
 #include "support/text_file.h"
 
@@ -353,6 +355,10 @@ void studio_runtime(studio *s, app_runtime_command command)
 
 void studio_frame_selection(studio *s)
 {
+    if (scene_model_preview_name(s->scene)) {
+        scene_model_preview_frame(s->scene);
+        return;
+    }
     ecs_entity entity = selected_scene_entity(s->scene);
     if (!entity.slot || !ecs_entity_is_alive(s->scene->world, entity)) {
         return;
@@ -573,6 +579,12 @@ static void web_project_items(studio *s)
         web_import_project();
     }
     if (exporting) {
+        char error[1024];
+        if (!model_content_validate(s->scene->content_root, error, sizeof error)) {
+            toast(s, KIT_TOAST_ERROR, "Cannot export invalid model source", error);
+            studio_record(s, KIT_TOAST_ERROR, error);
+            return;
+        }
         web_export_project();
     }
 #else
@@ -746,7 +758,8 @@ static void runtime_target(studio *s)
                                          ? selected_prototype(scene)
                                      : actor ? find_prototype(scene, actor->prototype_name)
                                              : NULL;
-    bool preview = runtime.target == APP_RUNTIME_PREVIEW && previewed;
+    const char *model = scene_model_preview_name(scene);
+    bool preview = runtime.target == APP_RUNTIME_PREVIEW && (previewed || model);
     char title[128], scene_label[160], preview_label[160];
     snprintf(
         scene_label,
@@ -766,7 +779,7 @@ static void runtime_target(studio *s)
         current,
         sizeof current,
         "Preview \xc2\xb7 %s",
-        preview ? previewed->prototype->name : ""
+        preview ? model ? model : previewed->prototype->name : ""
     );
     kit_button_desc d = {
         .label = preview ? current : scene_label,

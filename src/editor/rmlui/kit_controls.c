@@ -1219,11 +1219,24 @@ rml_element *kit_surface(kit *k, const char *key, const char *cls, const char *t
                   rect_contains(out.rect, k->in.mouse_x, k->in.mouse_y);
     bool captured = str_eq(k->surface_capture, n->path);
     for (int b = 0; b < 3; b++) {
-        if (out.hovered && k->in.pressed[b] && !captured) {
+        float press_x = k->in.press_position[b] ? k->in.press_x[b] : k->in.mouse_x;
+        float press_y = k->in.press_position[b] ? k->in.press_y[b] : k->in.mouse_y;
+        bool press_inside = rect_contains(out.rect, press_x, press_y);
+        bool press_target = k->in.press_position[b]
+                              ? rml_context_element_at_point(
+                                    k->context,
+                                    (rml_vec2){ press_x * dp(k), press_y * dp(k) },
+                                    NULL
+                                ) == n->el
+                              : out.hovered;
+        if (press_inside && press_target && k->in.pressed[b] && !captured) {
             str_set(&k->surface_capture, n->path);
             k->surface_button = b;
             captured = true;
             out.pressed[b] = true;
+            out.press_position[b] = k->in.press_position[b];
+            out.press_x[b] = k->in.press_x[b] - out.rect.x;
+            out.press_y[b] = k->in.press_y[b] - out.rect.y;
         }
     }
     if (captured) {

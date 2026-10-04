@@ -293,6 +293,7 @@ set(BASE_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/base_registry.c)
 # Pack order is the catalog and lookup order.
 set(BASE_REGISTRY_PACKS
     SHADER_PACK
+    MODEL_PACK
     FIELD_NODE_PACK
     CORE_EVENT_PACK
     CORE_EXTRA_PACK
@@ -435,6 +436,7 @@ set(APP_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/app_registry.c)
 set(APP_REGISTRY_PACKS
     SHADER_BINDING_PACK
     SHADER_PACK
+    MODEL_PACK
     FIELD_NODE_PACK
     CORE_EVENT_PACK
     GAME_MATERIAL_PACK
@@ -535,6 +537,7 @@ set(CHIBI_ASSET_ROOTS
     ${CMAKE_SOURCE_DIR}/projects/SpaceCadet
     ${CMAKE_SOURCE_DIR}/projects/hrc_lab
     ${CMAKE_SOURCE_DIR}/projects/sdf_lab
+    ${CMAKE_SOURCE_DIR}/projects/modeling_lab
     ${CMAKE_SOURCE_DIR}/projects/studio
     ${CMAKE_SOURCE_DIR}/test/fixtures
     ${CMAKE_SOURCE_DIR}/test/fixtures/studio)
@@ -604,12 +607,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     file(GLOB_RECURSE WEB_ASSETS CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/content/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/projects/modeling_lab/content/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
         ${WEB_ASSETS}
         "${CMAKE_CURRENT_SOURCE_DIR}/project.kdl"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/project.kdl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/projects/modeling_lab/project.kdl"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
@@ -634,6 +639,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/content@projects/arena3d/content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/project.kdl@projects/arena2d/project.kdl"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/content@projects/arena2d/content"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/modeling_lab/project.kdl@projects/modeling_lab/project.kdl"
+        "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/modeling_lab/content@projects/modeling_lab/content"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources@${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/projects/studio@projects/studio"
         "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders@${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
@@ -675,6 +682,20 @@ add_executable(test_suite
     test/shader_image.c
     test/shader_image_routes.c
     test/shader_graph.c
+    test/shader_detail.c
+    test/shader_detail_gpu.c
+    test/modeling.c
+    test/model_surface.c
+    test/model_reuse.c
+    test/model_parameters.c
+    test/model_profiles.c
+    test/model_materials.c
+    test/model_material_scope.c
+    test/model_validation.c
+    test/model_inspection.c
+    test/model_export.c
+    test/model_bake.c
+    test/model_constructive.c
     test/typed_events.c
     test/scene_instances.c
     src/render/screenshot.c
@@ -688,6 +709,7 @@ add_executable(test_suite
     src/editor/workspace/scene_runtime.c
     src/editor/workspace/scene_tabs.c
     src/editor/workspace/scene_viewport.c
+    src/editor/workspace/model_preview.c
     src/editor/documents/scene_disk.c
     src/editor/documents/scene_document.c
     src/editor/documents/scene_documents.c

@@ -4,6 +4,7 @@
 #include "graph/document/events.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
+#include "graph/modeling/model_compile.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
 #include "support/array.h"
@@ -225,6 +226,9 @@ static behavior_asset *linked_snapshot(
     size_t size
 )
 {
+    if (source->domain == BEHAVIOR_DOMAIN_MODEL) {
+        return behavior_asset_clone(source);
+    }
     const behavior_asset **catalog = NULL;
     for (int i = 0; i < acount(world->definitions); i++) {
         game_live_definition *d = world->definitions[i];
@@ -237,7 +241,8 @@ static behavior_asset *linked_snapshot(
 
 static bool shader_domain(behavior_domain domain)
 {
-    return domain == BEHAVIOR_DOMAIN_MATERIAL || domain == BEHAVIOR_DOMAIN_SHAPE;
+    return domain == BEHAVIOR_DOMAIN_MATERIAL ||
+           domain == BEHAVIOR_DOMAIN_SHAPE || domain == BEHAVIOR_DOMAIN_MODEL;
 }
 
 static bool validate_shader(const behavior_asset *asset, char *message, size_t size)
@@ -251,7 +256,20 @@ static bool validate_shader(const behavior_asset *asset, char *message, size_t s
     shader_graph graph;
     shader_graph_init(&graph);
     shader_error error = { 0 };
-    if (!shader_graph_from_graph(asset->graph, &graph, &error)) {
+    model_program model;
+    model_program_init(&model);
+    bool valid;
+    if (asset->domain == BEHAVIOR_DOMAIN_MODEL) {
+        valid = model_compile(asset, &model, &error);
+        if (valid) {
+            graph = model.shader;
+            shader_graph_init(&model.shader);
+        }
+    } else {
+        valid = shader_graph_from_graph(asset->graph, &graph, &error);
+    }
+    model_program_free(&model);
+    if (!valid) {
         set_message(message, size, "%s", error.message);
         return false;
     }
@@ -332,6 +350,30 @@ int game_live_add_definition(game_live_world *world, game_live_definition *defin
     return 0;
 }
 
+static void rename_model_material_references(behavior_asset *asset, const char *from, const char *to)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *g = asset->graphs[i];
+        for (int j = 0; j < acount(g->nodes); j++) {
+            node *n = g->nodes[j];
+            if (n->desc == &NODE_ModelMaterialSlot && n->reference_asset &&
+                !strcmp(n->reference_asset, from)) {
+                n->reference_asset = graph_own_str(g, to, strlen(to));
+            }
+            for (int k = 0; n->desc == &NODE_ModelInstance && k < n->input_count; k++) {
+                pin_spec *pin = &n->input_pins[k];
+                if (pin->type == PIN_STR && pin->type_name &&
+                    !strcmp(pin->type_name, "MaterialAsset") &&
+                    pin->default_value.str && !strcmp(pin->default_value.str, from)) {
+                    pin_value value = { .type = PIN_STR,
+                                        .type_name = "MaterialAsset",
+                                        .str = to };
+                    assert(!graph_set_pin_default(g, n, false, k, &value));
+                }
+            }
+        }
+    }
+}
 int game_live_rename_definition(game_live_world *world, const char *from, const char *to)
 {
     game_live_definition *definition = find_definition(world, from);
@@ -339,6 +381,53 @@ int game_live_rename_definition(game_live_world *world, const char *from, const 
         (definition->working->domain == BEHAVIOR_DOMAIN_EVENT &&
          game_behavior_rename_asset(world->behaviors, from, to) != 0)) {
         return -1;
+    }
+    if (definition->working->domain == BEHAVIOR_DOMAIN_MODEL) {
+        shader_error error = { 0 };
+        if (!render_shader_model_rename(from, to, &error)) {
+            registration_error(definition, error.message);
+            return -1;
+        }
+        for (int i = 0; i < acount(world->definitions); i++) {
+            game_live_definition *d = world->definitions[i];
+            if (d->working->domain != BEHAVIOR_DOMAIN_MODEL) {
+                continue;
+            }
+            behavior_asset *snapshots[] = { d->working, d->applied };
+            for (int j = 0; j < 2; j++) {
+                behavior_asset *asset = snapshots[j];
+                if (d == definition) {
+                    assert(behavior_asset_set_name(asset, to) == 0);
+                }
+                for (int k = 0; k < acount(asset->graphs); k++) {
+                    graph *g = asset->graphs[k];
+                    for (int n = 0; n < acount(g->nodes); n++) {
+                        node *instance = g->nodes[n];
+                        if (instance->desc == &NODE_ModelInstance &&
+                            instance->reference_asset &&
+                            !strcmp(instance->reference_asset, from)) {
+                            instance->reference_asset = graph_own_str(g, to, strlen(to));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (definition->working->domain == BEHAVIOR_DOMAIN_MATERIAL) {
+        shader_error error = { 0 };
+        if (!render_shader_material_rename(from, to, &error)) {
+            registration_error(definition, error.message);
+            return -1;
+        }
+        assert(!behavior_asset_set_name(definition->working, to));
+        assert(!behavior_asset_set_name(definition->applied, to));
+        for (int i = 0; i < acount(world->definitions); i++) {
+            game_live_definition *d = world->definitions[i];
+            if (d->working->domain == BEHAVIOR_DOMAIN_MODEL) {
+                rename_model_material_references(d->working, from, to);
+                rename_model_material_references(d->applied, from, to);
+            }
+        }
     }
     free(definition->name);
     definition->name = xstrdup(to);
@@ -360,6 +449,20 @@ int game_live_remove_definition(game_live_world *world, const char *asset_name)
                  &definition->applied
              ) != 0)) {
             continue;
+        }
+        if (definition->working->domain == BEHAVIOR_DOMAIN_MODEL) {
+            shader_error error = { 0 };
+            if (!render_shader_model_remove(asset_name, &error)) {
+                registration_error(definition, error.message);
+                return -1;
+            }
+        }
+        if (definition->working->domain == BEHAVIOR_DOMAIN_MATERIAL) {
+            shader_error error = { 0 };
+            if (!render_shader_material_remove(asset_name, &error)) {
+                registration_error(definition, error.message);
+                return -1;
+            }
         }
         definition->world = NULL;
         definition->registered = 0;
@@ -539,6 +642,26 @@ static int update_definition(
     }
     compile_report_free(&definition->diagnostics);
     compile_report_init(&definition->diagnostics);
+    if (snapshot->domain == BEHAVIOR_DOMAIN_MODEL) {
+        shader_error error = { 0 };
+        if (!render_shader_upsert(snapshot, &error)) {
+            registration_error(definition, error.message);
+            definition->diagnostics.items[0].node_id = error.node;
+            set_message(message, message_size, "apply blocked: %s", error.message);
+            behavior_asset_free(snapshot);
+            return -1;
+        }
+        behavior_asset_free(definition->applied);
+        definition->applied = snapshot;
+        definition->dirty = 0;
+        set_message(
+            message,
+            message_size,
+            "Updated %s and its model dependents.",
+            definition->name
+        );
+        return 0;
+    }
     if (behavior_asset_compile(snapshot, &definition->diagnostics) != 0 &&
         compile_report_blocked(&definition->diagnostics)) {
         const compile_diagnostic *diagnostic = compile_report_first_error(
@@ -554,8 +677,7 @@ static int update_definition(
         return -1;
     }
     if (definition->working->domain != BEHAVIOR_DOMAIN_EVENT) {
-        if (definition->working->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-            definition->working->domain == BEHAVIOR_DOMAIN_SHAPE) {
+        if (shader_domain(definition->working->domain)) {
             shader_error error = { 0 };
             if (!render_shader_upsert(snapshot, &error)) {
                 set_message(message, message_size, "%s", error.message);

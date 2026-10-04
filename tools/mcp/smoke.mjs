@@ -22,6 +22,7 @@ const expectedPublicNames = [
   "previewScene",
   "searchAssets",
   "searchNodes",
+  "bakeModel",
   "inspectGraph",
   "inspectUi",
   "readAsset",

@@ -1,0 +1,90 @@
+version 3
+name "PolaroidLens"
+domain "material"
+id_counter 226
+description "Fine concentric lens grooves vary color and roughness in the named lens frame; the conical recess remains real geometry."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=10 type="Shader PartPosition"
+            - {
+                id 79
+                type "Behavior Expression"
+                reference_name "0.5 + 0.5 * sin(sqrt((p.x + 0.05) * (p.x + 0.05) + (p.y - 5.7) * (p.y - 5.7)) * 150)"
+                inputs {
+                    p id=80 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=81 type="float"
+                }
+            }
+            - {
+                id 192
+                type "Behavior Expression"
+                reference_name "0.65 + 0.35 * g * g * g * g"
+                inputs {
+                    g id=193 type="float"
+                }
+                outputs {
+                    Result id=194 type="float"
+                }
+            }
+            - {
+                id 195
+                type "Shader Multiply"
+                inputs {
+                    A type="struct" type_name="ShaderVec3"
+                    B type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Value type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 199
+                type "Shader Vector3"
+                inputs X=0.03 Y=0.029 Z=0.026
+            }
+            - {
+                id 223
+                type "Behavior Expression"
+                reference_name "0.2 + 0.25 * g"
+                inputs {
+                    g id=224 type="float"
+                }
+                outputs {
+                    Result id=225 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="10.Value" to="79.p"
+            - from="79.Result" to="192.g"
+            - from="192.Result" to="195.B" conversion="Scalar to ShaderVec3"
+            - from="192.Result" to="223.g"
+            - from="195.Value" to="1.Base Color"
+            - from="199.Value" to="195.A"
+            - from="223.Result" to="1.Roughness"
+        }
+    }
+    - id=12 kind="function" math_expression="0.5 + 0.5 * sin(sqrt((p.x + 0.05) * (p.x + 0.05) + (p.y - 5.7) * (p.y - 5.7)) * 150)" entry_id=83
+    - id=161 kind="function" math_expression="0.65 + 0.35 * g * g * g * g" entry_id=162
+    - id=204 kind="function" math_expression="0.2 + 0.25 * g" entry_id=205
+}

@@ -427,7 +427,9 @@ static bool rename_node(work *w, loaded *l, const reference *r, const char *from
     if (!n) {
         return false;
     }
-    if (r->pin_id && (r->component || r->role == REFERENCE_SPAWN)) {
+    if (r->pin_id &&
+        (r->component || r->role == REFERENCE_SPAWN ||
+         (r->role == REFERENCE_BIND && w->symbol.kind == REFERENCE_SYMBOL_ASSET))) {
         return rename_pin(w, g, n, r, from, to, expected);
     }
     if (r->role == REFERENCE_CALL && w->symbol.kind == REFERENCE_SYMBOL_ASSET) {
@@ -963,6 +965,54 @@ static bool rename_call_pin(
 static bool rename_parameter(work *w, reference_symbol symbol, const char *to)
 {
     loaded *l = load(w, symbol.asset);
+    if (l && l->graphs && l->graphs->domain == BEHAVIOR_DOMAIN_MODEL && !symbol.graph_id) {
+        graph *owner = NULL;
+        node *parameter = NULL;
+        for (int i = 0; i < acount(l->graphs->graphs); i++) {
+            graph *candidate = l->graphs->graphs[i];
+            for (int j = 0; j < acount(candidate->nodes); j++) {
+                node *n = candidate->nodes[j];
+                if ((!strcmp(n->desc->name, "Model Parameter") ||
+                     !strcmp(n->desc->name, "Model Material Slot") ||
+                     !strcmp(n->desc->name, "Model Anchor")) &&
+                    n->id != symbol.id && same_text(n->reference_name, to)) {
+                    return fail(w, "the model already has a parameter named %s", to);
+                }
+                if (n->id == symbol.id &&
+                    (!strcmp(n->desc->name, "Model Parameter") ||
+                     !strcmp(n->desc->name, "Model Material Slot") ||
+                     !strcmp(n->desc->name, "Model Anchor"))) {
+                    owner = candidate;
+                    parameter = n;
+                }
+            }
+        }
+        if (!parameter) {
+            return fail(
+                w,
+                "the model has no parameter %llu",
+                (unsigned long long)symbol.id
+            );
+        }
+        char *from = xstrdup(parameter->reference_name ? parameter->reference_name : "");
+        bool ok = graph_set_node_reference(owner, parameter, parameter->reference_id, to) ==
+                  0;
+        note(l, reference_index_definition(w->project->index, symbol));
+        const reference **arguments = ok ? uses_of(w, symbol) : NULL;
+        for (int i = 0; ok && i < acount(arguments); i++) {
+            ok = rename_call_pin(
+                w,
+                arguments[i],
+                !strcmp(parameter->desc->name, "Model Anchor"),
+                symbol.id,
+                from,
+                to
+            );
+        }
+        afree(arguments);
+        free(from);
+        return ok;
+    }
     graph *g = l ? member_graph(w, l, symbol.graph_id) : NULL;
     if (!g) {
         return false;

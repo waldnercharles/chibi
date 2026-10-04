@@ -177,8 +177,8 @@ int app_scene_authoring_load_content(app_scene_authoring *scene)
         loaded = 0;
     }
     const char *runtime_folders[] = {
-        "libraries", "shader-libraries", "events",    "systems",   "fields",
-        "materials", "shapes",           "behaviors", "prototypes"
+        "libraries", "shader-libraries", "events", "systems",   "fields",
+        "materials", "shapes",           "models", "behaviors", "prototypes"
     };
     const char *first_runtime_asset = NULL;
     for (int i = 0; i < acount(scene->content); i++) {

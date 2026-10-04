@@ -44,6 +44,7 @@ struct app_scene_renderer
     render_fog *fog;
     bool arena_attempted, parallel_disabled, resources_attempted;
     render_material_raster *raster;
+    render_model_inspection inspection;
     int sdf_batch_limit;
     GameSurfaceQuality surface_quality;
     GameHRCShadowMode shadow_mode;
@@ -116,6 +117,7 @@ static void initialize_resources(app_scene_renderer *renderer)
         render_material_raster_set_sdf_batch_limit(renderer->raster, renderer->sdf_batch_limit);
         render_material_raster_set_hidden_rejection(renderer->raster, renderer->hidden_rejection);
         render_material_raster_set_spatial_scratch(renderer->raster, renderer->spatial_scratch);
+        render_material_raster_set_model_inspection(renderer->raster, &renderer->inspection);
     }
     renderer->radiance = render_radiance_new();
     /* Adaptive lighting resolution times lighting with GPU timestamps. */
@@ -791,20 +793,50 @@ static bool collect(
             }
             GameTransform position = *GAME_GameTransform_get_const(world, entity);
             engine_render_position(runtime, entity, &position);
+            model_bounds selected_bounds, *override = NULL;
+            if (ecs_entity_to_u64(entity) ==
+                    ecs_entity_to_u64(renderer->inspection.entity) &&
+                renderer->inspection.part >= 0) {
+                const GameShader *binding = GAME_GameShader_get_const(world, entity);
+                shader_error diagnostic = { 0 };
+                if (!binding || !render_shader_model_preview_snapshot(
+                                    render_shader_find(binding->shape),
+                                    world,
+                                    entity,
+                                    binding->parameters,
+                                    renderer->inspection.part,
+                                    &selected_bounds,
+                                    &diagnostic
+                                )) {
+                    snprintf(
+                        renderer->error,
+                        sizeof renderer->error,
+                        "%s",
+                        diagnostic.message
+                    );
+                    return false;
+                }
+                override = &selected_bounds;
+            }
+
             int index = acount(renderer->meshes);
             if (index == acount(renderer->mesh_surfaces)) {
                 apush(renderer->mesh_surfaces, ((render_mesh_surface){ 0 }));
             }
             render_mesh_surface *surface = &renderer->mesh_surfaces[index];
-            if (!render_mesh_surface_build(
+            if (!render_mesh_surface_build_with_bounds(
                     world,
                     entity,
                     &position,
+                    override,
                     surface,
                     renderer->error,
                     sizeof renderer->error
                 )) {
                 return false;
+            }
+            if (!acount(surface->parts)) {
+                continue;
             }
             CF_V2 min, max;
             bool visible = render_mesh_project_bounds(
@@ -836,6 +868,7 @@ static bool collect(
                 renderer->meshes,
                 ((render_mesh_material_actor){ .entity = entity,
                                                .position = position,
+                                               .surface = surface,
                                                .sdf_shape = detail })
             );
             apush(renderer->entities, draw);
@@ -1558,6 +1591,34 @@ render_arena_work app_scene_renderer_last_work(const app_scene_renderer *rendere
 {
     return renderer->arena ? render_arena_last_work(renderer->arena)
                            : (render_arena_work){ 0 };
+}
+
+void app_scene_renderer_set_model_inspection(
+    app_scene_renderer *r,
+    ecs_entity entity,
+    int part,
+    bool section,
+    const float normal[3],
+    float offset
+)
+{
+    assert(part >= -1 && isfinite(offset));
+    r->inspection = (render_model_inspection){ .entity = entity,
+                                               .part = part,
+                                               .section = section,
+                                               .offset = offset };
+    if (section) {
+        float length = sqrtf(
+            normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]
+        );
+        assert(isfinite(length) && length > 0);
+        for (int i = 0; i < 3; i++) {
+            r->inspection.normal[i] = normal[i] / length;
+        }
+    }
+    if (r->raster) {
+        render_material_raster_set_model_inspection(r->raster, &r->inspection);
+    }
 }
 
 void app_scene_renderer_set_sdf_batch_limit(app_scene_renderer *renderer, int limit)

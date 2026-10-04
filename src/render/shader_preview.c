@@ -127,6 +127,10 @@ render_shader_preview *render_shader_preview_new(
     if (error) {
         *error = (shader_error){ 0 };
     }
+    if (asset && asset->domain == BEHAVIOR_DOMAIN_MODEL) {
+        set_error(error, "Model previews require a scene with an SDF surface.");
+        return NULL;
+    }
     if (!asset || (asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
                    asset->domain != BEHAVIOR_DOMAIN_SHAPE)) {
         set_error(error, "Shader previews require a material or shape asset.");

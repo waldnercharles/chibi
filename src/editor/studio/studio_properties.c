@@ -4,6 +4,7 @@
 #include "editor/documents/component_properties.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/ui/labels.h"
+#include "editor/workspace/editor.h"
 #include "graph/model/pin_fmt.h"
 #include "graph/model/registry.h"
 #include "graph/model/type.h"
@@ -1410,7 +1411,10 @@ void studio_properties_body(studio *s, int area)
                                          : studio_graph_comment(s);
     bool graph_document = document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR ||
                           document.kind == APP_EDITOR_DOCUMENT_SYSTEM;
-    available[STUDIO_TAB_NODE] = graph_document && node != 0;
+    bool model_document = graph_document &&
+                          editor_behavior_asset(scene->graph_editor)->domain ==
+                              BEHAVIOR_DOMAIN_MODEL;
+    available[STUDIO_TAB_NODE] = graph_document && (node != 0 || model_document);
     if (node && node != s->shown_node) {
         s->tab = STUDIO_TAB_NODE;
     } else if (s->tab == STUDIO_TAB_NODE && scene->selected != s->shown_actor && actor) {
@@ -1475,6 +1479,9 @@ void studio_properties_body(studio *s, int area)
     if (s->tab == STUDIO_TAB_SCENE) {
         scene_panels(s, locked);
     } else if (s->tab == STUDIO_TAB_NODE) {
+        if (model_document) {
+            studio_model_preview_controls(s, scene->graph_editor);
+        }
         studio_node_properties(s);
     } else if (s->tab == STUDIO_TAB_MEMBER) {
         studio_member_properties(s);

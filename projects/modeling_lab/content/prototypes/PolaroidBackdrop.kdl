@@ -1,0 +1,6 @@
+name "PolaroidBackdrop"
+components {
+    GAME.GameAppearance antialias=1.0 color=0xd4bd7aff height=600.0 layer=-100 width=800.0
+    GAME.GameMaterial albedo=0xd4bd7aff emission_multiplier=1.0 scene=0xd4bd7aff
+    (object)GAME.GameTransform
+}

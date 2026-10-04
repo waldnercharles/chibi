@@ -1,0 +1,141 @@
+version 3
+name "DetailPolaroidGrip"
+domain "material"
+id_counter 738
+description "Finite film-door decal and subtle molded-plastic bump replace small label geometry. Part coordinates stay in the baseline construction frame."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=151 type="Shader PartPosition"
+            - {
+                id 153
+                type "Shader Mapping3D"
+                inputs {
+                    Offset {
+                        default x=0.0 y=-1.5 z=-4.9
+                    }
+                    Scale {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                }
+            }
+            - {
+                id 159
+                type "Shader Planar Mapping"
+                inputs {
+                    Scale {
+                        default x=0.11235955 y=1.0869565
+                    }
+                    Offset {
+                        default x=0.5 y=0.5
+                    }
+                    Axis 2
+                }
+            }
+            - {
+                id 165
+                type "Shader Decal Mask"
+                inputs {
+                    "Half Size" {
+                        default x=4.45 y=0.46 z=0.16
+                    }
+                    Feather 0.08
+                    Facing 0.05
+                }
+            }
+            - {
+                id 171
+                type "Shader Image Texture"
+                inputs Image="content/images/PolaroidReference.jpg" Wrap=1
+            }
+            - {
+                id 203
+                type "Behavior Expression"
+                reference_name "mix(vec3(0.025, 0.026, 0.022), color, mask)"
+                inputs {
+                    color id=204 type="struct" type_name="ShaderVec3"
+                    mask id=205 type="float"
+                }
+                outputs {
+                    Result id=206 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - id=207 type="Shader Vector2"
+            - {
+                id 314
+                type "Behavior Expression"
+                reference_name "(0.3943505133411161 * ((p.x + 4.45) / 8.9) + 0.01156964233830683 * ((0.46 - p.y) / 0.92) + 0.23575) / (0.003760336032618848 * ((p.x + 4.45) / 8.9) + 0.022911913054457875 * ((0.46 - p.y) / 0.92) + 1)"
+                inputs {
+                    p id=315 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=316 type="float"
+                }
+            }
+            - {
+                id 535
+                type "Behavior Expression"
+                reference_name "(0.09221917629443654 * ((p.x + 4.45) / 8.9) + 0.0777369763424368 * ((0.46 - p.y) / 0.92) + 0.71637) / (0.003760336032618848 * ((p.x + 4.45) / 8.9) + 0.022911913054457875 * ((0.46 - p.y) / 0.92) + 1)"
+                inputs {
+                    p id=536 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=537 type="float"
+                }
+            }
+            - {
+                id 688
+                type "Behavior Expression"
+                reference_name "0.025 * sin(p.x * 12) * sin(p.y * 11)"
+                inputs {
+                    p id=689 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=690 type="float"
+                }
+            }
+            - {
+                id 732
+                type "Shader Bump"
+                inputs Distance=0.01
+            }
+        }
+        (array)edges {
+            - from="151.Value" to="153.Position"
+            - from="151.Value" to="688.p"
+            - from="153.Value" to="159.Position"
+            - from="153.Value" to="165.Position"
+            - from="153.Value" to="314.p"
+            - from="153.Value" to="535.p"
+            - from="165.Value" to="203.mask"
+            - from="171.Color" to="203.color"
+            - from="203.Result" to="1.Base Color"
+            - from="207.Value" to="171.UV"
+            - from="314.Result" to="207.X"
+            - from="535.Result" to="207.Y"
+            - from="688.Result" to="732.Height"
+            - from="732.Value" to="1.Normal"
+        }
+    }
+    - id=179 kind="function" math_expression="mix(vec3(0.025, 0.026, 0.022), color, mask)" entry_id=180
+    - id=211 kind="function" math_expression="(0.3943505133411161 * ((p.x + 4.45) / 8.9) + 0.01156964233830683 * ((0.46 - p.y) / 0.92) + 0.23575) / (0.003760336032618848 * ((p.x + 4.45) / 8.9) + 0.022911913054457875 * ((0.46 - p.y) / 0.92) + 1)" entry_id=318
+    - id=432 kind="function" math_expression="(0.09221917629443654 * ((p.x + 4.45) / 8.9) + 0.0777369763424368 * ((0.46 - p.y) / 0.92) + 0.71637) / (0.003760336032618848 * ((p.x + 4.45) / 8.9) + 0.022911913054457875 * ((0.46 - p.y) / 0.92) + 1)" entry_id=539
+    - id=653 kind="function" math_expression="0.025 * sin(p.x * 12) * sin(p.y * 11)" entry_id=692
+}

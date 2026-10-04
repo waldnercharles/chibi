@@ -70,6 +70,14 @@ typedef enum
     SHADER_FLOOR,
     SHADER_SQRT,
     SHADER_SIGN,
+    SHADER_PART_POSITION,
+    SHADER_PLANAR_MAPPING,
+    SHADER_CYLINDRICAL_MAPPING,
+    SHADER_NORMAL_MAP,
+    SHADER_BUMP,
+    SHADER_TRIPLANAR_TEXTURE,
+    SHADER_TRIPLANAR_TEXTURE_ALPHA,
+    SHADER_DECAL_MASK,
     SHADER_OP_COUNT
 } shader_op;
 enum
@@ -152,6 +160,9 @@ typedef struct
     float position[2]; /* Local 2D shape coordinates, in authored units. */
     float uv[2];
     float object_position[3];
+    float part_position[3];
+    /* Coordinate gradients in world axes; zero rows mean unavailable. */
+    float object_from_world[3][3], part_from_world[3][3], uv_from_world[2][3];
     float world_position[3];
     float normal[3];
     float view_direction[3];
@@ -170,6 +181,35 @@ int shader_graph_add_image(shader_graph *g, const shader_image_source *source);
 const char *shader_op_name(shader_op op);
 int shader_op_inputs(shader_op op);
 bool shader_graph_validate(const shader_graph *g, shader_error *error);
+/* Evaluates once into caller-owned storage for acount(g->nodes) values.
+ * Bounds programs consume numeric intermediate values without resampling geometry. */
+bool shader_graph_eval_values(
+    const shader_graph *g,
+    const shader_sample_context *sample,
+    const float (*parameters)[4],
+    float (*values)[4],
+    shader_error *error
+);
+/* Offline samplers and derivative contexts validate the graph once, then reuse
+ * caller-owned acount(g->nodes) scratch values. No allocation or validation. */
+bool shader_graph_eval_values_validated(
+    const shader_graph *,
+    const shader_sample_context *,
+    const float (*parameters)[4],
+    float (*values)[4],
+    shader_error *
+);
+/* Evaluates only the root's ancestors, never unrelated/downstream nodes.
+ * Requires a validated graph and a valid root index. */
+bool shader_graph_eval_node_scratch(
+    const shader_graph *,
+    const shader_sample_context *,
+    const float (*parameters)[4],
+    int root,
+    float (*values)[4],
+    float result[4],
+    shader_error *
+);
 bool shader_graph_eval_outputs(
     const shader_graph *g,
     const shader_sample_context *sample,

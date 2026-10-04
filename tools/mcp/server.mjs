@@ -458,6 +458,34 @@ function buildToolDefinitions() {
     },
     additionalProperties: false,
   };
+  const bakeModelArguments = {
+    type: "object", additionalProperties: false,
+    properties: {
+      model: { type: "string", minLength: 1, description: "Saved model asset name." },
+      destination: { type: "string", minLength: 1, description: "New bundle directory; parent must exist. Existing destinations are refused." },
+      options: {
+        type: "object", additionalProperties: false,
+        properties: {
+          cell_size: { type: "number", minimum: 0, description: "Object units; zero chooses longest bound extent / 48." },
+          max_axis_cells: { type: "integer", minimum: 2, maximum: 256 },
+          max_triangles: { type: "integer", minimum: 1, maximum: 349525 },
+          max_samples: { type: "integer", minimum: 1, maximum: 100000000 },
+          max_work: { type: "integer", minimum: 1, maximum: 100000000000 },
+          edge_iterations: { type: "integer", minimum: 1, maximum: 24 },
+        },
+      },
+      overrides: {
+        type: "array", maxItems: 32,
+        items: { type: "object", additionalProperties: false,
+          properties: {
+            asset: { type: "string" }, scope: { type: "string", description: "Stable invocation scope from inspectGraph; empty for shared defaults." },
+            parameter_id: { type: "integer", minimum: 0 },
+            value: { type: "array", minItems: 1, maxItems: 4, items: { type: "number" } },
+          }, required: ["asset", "scope", "parameter_id", "value"],
+        },
+      },
+    }, required: ["model", "destination"],
+  };
   const graphArguments = {
     ...assetArguments,
     properties: {
@@ -946,6 +974,11 @@ function buildToolDefinitions() {
       description: "Read a ui asset's outline, props, events, slots, widgets, tokens and syntax errors; with complete, the completions at a position.",
       inputSchema: inspectUiArguments,
       outputSchema,
+    },
+    {
+      name: "bakeModel", operation: "bake_model",
+      description: "Bake saved declarative SDF source into an atomic new bundle containing engine mesh JSON, Blender-compatible OBJ and source/parameter provenance. Bounded sampled geometry; live part materials and coordinates retained in JSON. No appearance baking or source modification.",
+      inputSchema: bakeModelArguments, outputSchema,
     },
     {
       name: "inspectGraph",

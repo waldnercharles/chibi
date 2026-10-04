@@ -1,0 +1,59 @@
+version 3
+name "DetailNormalMapped"
+domain "material"
+id_counter 31
+description "Linear generated tangent normal data follows planar part UVs through object and nonuniform part transforms."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.11 y=0.28 z=0.49
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.48
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 10
+                type "Shader Planar Mapping"
+                inputs {
+                    Scale {
+                        default x=0.08 y=0.08
+                    }
+                }
+            }
+            - {
+                id 16
+                type "Shader Image Texture"
+                inputs Image="content/images/DetailNormal.png" "Color Space"=1
+            }
+            - {
+                id 24
+                type "Shader Normal Map"
+                inputs {
+                    Color {
+                        default x=0.5 y=0.5 z=1.0
+                    }
+                    Distance 0.01
+                }
+            }
+        }
+        (array)edges {
+            - from="10.UV" to="16.UV"
+            - from="10.UV" to="24.UV"
+            - from="16.Color" to="24.Color"
+            - from="24.Value" to="1.Normal"
+        }
+    }
+}

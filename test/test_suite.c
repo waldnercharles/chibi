@@ -18,6 +18,20 @@
 #include "suite_internal.h"
 
 void test_automation_graph_edit();
+void test_modeling();
+void test_shader_detail();
+int test_shader_detail_gpu(const char *program);
+void test_model_surface();
+void test_model_reuse();
+void test_model_parameters();
+void test_model_profiles();
+void test_model_materials();
+void test_model_validation();
+void test_model_inspection();
+void test_model_material_scope();
+void test_model_export();
+void test_model_bake();
+void test_model_constructive();
 void test_collab_protocol();
 void test_collab_replay();
 void test_automation_search();
@@ -80,6 +94,7 @@ void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
 int studio_documents_run(const char *program);
+int studio_models_run(const char *program);
 int studio_properties_run(const char *program);
 int studio_graph_inputs_run(const char *program);
 bool test_rmlui_kit();
@@ -220,6 +235,19 @@ TEST_CASE(all_checks)
     test_input_bindings();
     test_graph_optimizer();
     test_shader_graph();
+    test_modeling();
+    test_shader_detail();
+    test_model_surface();
+    test_model_reuse();
+    test_model_parameters();
+    test_model_profiles();
+    test_model_materials();
+    test_model_validation();
+    test_model_inspection();
+    test_model_material_scope();
+    test_model_export();
+    test_model_bake();
+    test_model_constructive();
     test_surface_cpu();
     test_shader_effects_cpu();
     test_shader_image_cpu();
@@ -308,8 +336,38 @@ TEST_CASE(all_checks)
     return fails == 0;
 }
 
+static char test_preferences[1024];
+
+static void remove_test_preferences()
+{
+    remove(test_preferences);
+}
+
+static void isolate_test_preferences()
+{
+    const char *preferences = getenv("CHIBI_STUDIO_PREFS_PATH");
+    if (preferences && *preferences) {
+        return;
+    }
+#ifdef _WIN32
+    char directory[MAX_PATH];
+    assert(GetTempPathA(sizeof directory, directory));
+    assert(GetTempFileNameA(directory, "csp", 0, test_preferences));
+    assert(_putenv_s("CHIBI_STUDIO_PREFS_PATH", test_preferences) == 0);
+#else
+    snprintf(test_preferences, sizeof test_preferences, "/tmp/chibi-studio-prefs-XXXXXX");
+    int descriptor = mkstemp(test_preferences);
+    assert(descriptor >= 0);
+    close(descriptor);
+    assert(setenv("CHIBI_STUDIO_PREFS_PATH", test_preferences, 1) == 0);
+#endif
+    remove(test_preferences);
+    assert(atexit(remove_test_preferences) == 0);
+}
+
 int main(int argc, char **argv)
 {
+    isolate_test_preferences();
     if (argc == 2 && !strcmp(argv[1], "--collab")) {
         test_collab_protocol();
         test_collab_replay();
@@ -352,6 +410,10 @@ int main(int argc, char **argv)
         extern int surface_gather_run(const char *program, bool gles);
         registry_validate();
         return surface_gather_run(program_name, !strcmp(argv[1], "--surface-gather-gles"));
+    }
+    if (argc == 2 && !strcmp(argv[1], "--shader-detail-gpu")) {
+        registry_validate();
+        return test_shader_detail_gpu(program_name);
     }
     if (argc == 2 && !strcmp(argv[1], "--sdf-material")) {
         extern int sdf_material_run(const char *program);
@@ -1013,6 +1075,10 @@ int main(int argc, char **argv)
         int graph_inputs = studio_graph_inputs_run(program_name);
         return documents || graph_inputs || fails ? 1 : 0;
     }
+    if (argc > 1 && strcmp(argv[1], "--studio-models") == 0) {
+        registry_validate();
+        return studio_models_run(program_name) || fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--studio-graph-inputs") == 0) {
         registry_validate();
         return studio_graph_inputs_run(program_name) || fails ? 1 : 0;
@@ -1137,6 +1203,49 @@ int main(int argc, char **argv)
         test_projectile();
         test_combat();
         test_auto_weapon();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--shader-detail") == 0) {
+        registry_validate();
+        test_shader_detail();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--model-constructive") == 0) {
+        registry_validate();
+        test_model_constructive();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--model-bake") == 0) {
+        registry_validate();
+        test_model_bake();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--model-export") == 0) {
+        registry_validate();
+        test_model_export();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--model-inspection") == 0) {
+        registry_validate();
+        test_model_inspection();
+        test_model_material_scope();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--modeling") == 0) {
+        registry_validate();
+        test_modeling();
+        test_shader_detail();
+        test_model_surface();
+        test_model_reuse();
+        test_model_parameters();
+        test_model_profiles();
+        test_model_materials();
+        test_model_validation();
+        test_model_inspection();
+        test_model_material_scope();
+        test_model_export();
+        test_model_bake();
+        test_model_constructive();
         return fails ? 1 : 0;
     }
     /* ---------- Settings (workstream F) ---------- */

@@ -1180,6 +1180,43 @@ static bool choice_control(
 }
 
 /* A pin's value editor, in the canvas or in Properties. */
+const char *sg_material_picker(studio *s, kit *k, const char *value, unsigned flags)
+{
+    editor *e = sg_graph_editor(s);
+    if (kit_picker(
+            k,
+            "material",
+            &(kit_picker_desc){ .value = value,
+                                .placeholder = "Choose material",
+                                .icon = KIT_ICON_HEXAGON,
+                                .flags = flags }
+        ) &&
+        !(flags & (KIT_READONLY | KIT_DISABLED))) {
+        kit_dropdown_open(k, "materials", "Search materials");
+    }
+    kit_command_item *items = NULL;
+    const behavior_asset **materials = NULL;
+    for (int i = 0; e && i < acount(e->asset_catalog); i++) {
+        const behavior_asset *asset = e->asset_catalog[i];
+        if (asset->domain != BEHAVIOR_DOMAIN_MATERIAL) {
+            continue;
+        }
+        apush(materials, asset);
+        apush(
+            items,
+            ((kit_command_item){ .label = asset->name,
+                                 .current = value && !strcmp(value, asset->name) })
+        );
+    }
+    int picked = kit_dropdown(k, "materials", items, acount(items));
+    const char *result = picked >= 0 && picked < acount(materials)
+                           ? materials[picked]->name
+                           : NULL;
+    afree(items);
+    afree(materials);
+    return result;
+}
+
 void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
 {
     studio_graph *g = &s->graph;
@@ -1246,13 +1283,22 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
             value.ptr = vector;
         }
     } else if (spec->type == PIN_STR || spec->type == PIN_NAME) {
-        snprintf(text, sizeof text, "%s", value.str ? value.str : "");
-        changed = kit_text_field(k, "v", text, sizeof text, NULL, flags);
-        committed = kit_item_committed(k);
-        active = kit_item_active(k) && !committed;
-        streaming = changed || active;
-        if (changed) {
-            value.str = text;
+        if (spec->type_name && !strcmp(spec->type_name, "MaterialAsset")) {
+            const char *picked = sg_material_picker(s, k, value.str, flags);
+            changed = picked && (!value.str || strcmp(picked, value.str));
+            committed = changed;
+            if (changed) {
+                value.str = picked;
+            }
+        } else {
+            snprintf(text, sizeof text, "%s", value.str ? value.str : "");
+            changed = kit_text_field(k, "v", text, sizeof text, NULL, flags);
+            committed = kit_item_committed(k);
+            active = kit_item_active(k) && !committed;
+            streaming = changed || active;
+            if (changed) {
+                value.str = text;
+            }
         }
     } else if (spec->type == PIN_I64 || spec->type == PIN_U64) {
         changed = edit_integer64(k, "v", &value, flags, &streaming, &active, &committed);

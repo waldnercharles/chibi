@@ -1,0 +1,72 @@
+version 3
+name "ProfileBracket"
+domain "model"
+id_counter 35
+description "An extruded rectangle with a corner cut and a circular through-hole. Profiles remain editable construction inputs."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - {
+                id 3
+                type "Model Profile Rectangle"
+                inputs {
+                    "Half Size" {
+                        default x=36.0 y=28.0
+                    }
+                }
+            }
+            - {
+                id 7
+                type "Model Extrude"
+                inputs "Half Depth"=7.0
+            }
+            - {
+                id 11
+                type "Model Profile Rectangle"
+                inputs {
+                    "Half Size" {
+                        default x=28.0 y=24.0
+                    }
+                    Center {
+                        default x=15.0 y=12.0
+                    }
+                }
+            }
+            - {
+                id 15
+                type "Model Extrude"
+                inputs "Half Depth"=9.0
+            }
+            - id=19 type="Model Difference"
+            - {
+                id 23
+                type "Model Profile Circle"
+                inputs {
+                    Radius 6.0
+                    Center {
+                        default x=-24.0 y=-16.0
+                    }
+                }
+            }
+            - {
+                id 27
+                type "Model Extrude"
+                inputs "Half Depth"=9.0
+            }
+            - id=31 type="Model Difference"
+        }
+        (array)edges {
+            - from="3.Profile" to="7.Profile"
+            - from="7.Geometry" to="19.A"
+            - from="11.Profile" to="15.Profile"
+            - from="15.Geometry" to="19.B"
+            - from="19.Geometry" to="31.A"
+            - from="23.Profile" to="27.Profile"
+            - from="27.Geometry" to="31.B"
+            - from="31.Geometry" to="1.Geometry"
+        }
+    }
+}

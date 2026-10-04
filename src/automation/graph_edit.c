@@ -16,6 +16,8 @@
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/modeling/model_authoring.h"
+#include "graph/modeling/model_compile.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
@@ -310,6 +312,9 @@ static behavior_domain domain_from_kind(const char *kind)
     if (!strcmp(kind, "field")) {
         return BEHAVIOR_DOMAIN_FIELD;
     }
+    if (!strcmp(kind, "model")) {
+        return BEHAVIOR_DOMAIN_MODEL;
+    }
     if (!strcmp(kind, "shape")) {
         return BEHAVIOR_DOMAIN_SHAPE;
     }
@@ -330,7 +335,10 @@ static int asset_has_external_graph_reference(const behavior_asset *asset)
     for (int graph_index = 0; graph_index < acount(asset->graphs); graph_index++) {
         const graph *g = asset->graphs[graph_index];
         for (int node_index = 0; node_index < acount(g->nodes); node_index++) {
-            if (g->nodes[node_index]->reference_asset) {
+            const node *n = g->nodes[node_index];
+            if (n->reference_asset &&
+                (n->desc == &NODE_CallFunction || n->desc == &NODE_CallPureFunction ||
+                 n->desc == &NODE_BehaviorExpression || n->desc == &NODE_CallMacro)) {
                 return 1;
             }
         }
@@ -694,15 +702,67 @@ static int parse_pin_value(
         );
         return -1;
     }
-    if (value->type != pin->type && !(pin->flags & PIN_FLAG_WILDCARD)) {
+    if (!(pin->flags & PIN_FLAG_WILDCARD) &&
+        (value->type != pin->type ||
+         (value->type == PIN_STRUCT && (value->type_name || pin->type_name) &&
+          (!value->type_name || !pin->type_name ||
+           strcmp(value->type_name, pin->type_name))))) {
         set_error(ctx, "value type does not match pin '%s'", pin->name ? pin->name : "?");
         return -1;
     }
     return 0;
 }
 
+/* Model instance inputs are sparse authored overrides. An omitted parameter
+ * inherits its definition's current default, including after that default changes. */
+static int model_override(edit_context *ctx, node *instance, const char *name)
+{
+    for (int i = 0; i < instance->input_count; i++) {
+        if (!strcmp(instance->input_pins[i].name, name)) {
+            return i;
+        }
+    }
+    const behavior_asset *target = NULL;
+    for (int i = -1; i < ctx->library_count; i++) {
+        const behavior_asset *candidate = i < 0 ? ctx->asset : ctx->libraries[i];
+        if (candidate->domain == BEHAVIOR_DOMAIN_MODEL && instance->reference_asset &&
+            !strcmp(candidate->name, instance->reference_asset)) {
+            target = candidate;
+            break;
+        }
+    }
+    shader_error error = { 0 };
+    int pin = model_instance_override(ctx->graph, instance, target, name, &error);
+    if (pin < 0) {
+        set_error(ctx, "%s", error.message);
+    }
+    return pin;
+}
+static int model_anchor_output(edit_context *ctx, node *instance, const char *name)
+{
+    const behavior_asset *target = NULL;
+    for (int i = -1; i < ctx->library_count; i++) {
+        const behavior_asset *candidate = i < 0 ? ctx->asset : ctx->libraries[i];
+        if (candidate->domain == BEHAVIOR_DOMAIN_MODEL && instance->reference_asset &&
+            !strcmp(candidate->name, instance->reference_asset)) {
+            target = candidate;
+            break;
+        }
+    }
+    shader_error error = { 0 };
+    int pin = model_instance_anchor(ctx->graph, instance, target, name, &error);
+    if (pin < 0) {
+        set_error(ctx, "%s", error.message);
+    }
+    return pin;
+}
+
 static int set_input(edit_context *ctx, node *n, yyjson_val *pin_json, yyjson_val *value_json, yyjson_val *type_json)
 {
+    if (!strcmp(n->desc->name, "Model Instance") && yyjson_is_str(pin_json) &&
+        model_override(ctx, n, yyjson_get_str(pin_json)) < 0) {
+        return -1;
+    }
     const pin_spec *pin = NULL;
     int index = pin_index(ctx, n, pin_json, 0, &pin);
     if (index < 0) {
@@ -716,7 +776,11 @@ static int set_input(edit_context *ctx, node *n, yyjson_val *pin_json, yyjson_va
     if (parse_pin_value(ctx, pin, value_json, type_json, &value)) {
         return -1;
     }
-    if (value.type != pin->type && (pin->flags & PIN_FLAG_WILDCARD) &&
+    if ((value.type != pin->type ||
+         (value.type == PIN_STRUCT && (value.type_name || pin->type_name) &&
+          (!value.type_name || !pin->type_name ||
+           strcmp(value.type_name, pin->type_name)))) &&
+        (pin->flags & PIN_FLAG_WILDCARD) &&
         graph_set_pin_type(ctx->graph, n, 0, index, value.type, value.type_name)) {
         set_error(ctx, "could not resolve wildcard input pin '%s'", pin->name ? pin->name : "?");
         return -1;
@@ -748,7 +812,11 @@ static int set_output(edit_context *ctx, node *n, yyjson_val *op)
     if (parse_pin_value(ctx, pin, value_json, yyjson_obj_get(op, "type"), &value)) {
         return -1;
     }
-    if (value.type != pin->type && (pin->flags & PIN_FLAG_WILDCARD) &&
+    if ((value.type != pin->type ||
+         (value.type == PIN_STRUCT && (value.type_name || pin->type_name) &&
+          (!value.type_name || !pin->type_name ||
+           strcmp(value.type_name, pin->type_name)))) &&
+        (pin->flags & PIN_FLAG_WILDCARD) &&
         graph_set_pin_type(ctx->graph, n, 1, index, value.type, value.type_name)) {
         set_error(ctx, "could not resolve wildcard output pin '%s'", pin->name ? pin->name : "?");
         return -1;
@@ -862,7 +930,7 @@ static int operation_add_node(edit_context *ctx, yyjson_val *op)
     yyjson_val *reference_id = yyjson_obj_get(op, "reference_id");
     yyjson_val *reference_name = yyjson_obj_get(op, "reference_name");
     yyjson_val *reference_asset_json = yyjson_obj_get(op, "reference_asset");
-    if (reference_id || reference_name) {
+    if (reference_id || reference_name || reference_asset_json) {
         uint64_t id = 0;
         const char *reference_name_value = NULL;
         if (reference_id && !value_uint(reference_id, &id)) {
@@ -1061,7 +1129,8 @@ static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
         if (!disconnect && !(from_pin->flags & PIN_FLAG_WILDCARD) &&
             !(to_pin->flags & PIN_FLAG_WILDCARD) &&
             ctx->asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
-            ctx->asset->domain != BEHAVIOR_DOMAIN_SHAPE) {
+            ctx->asset->domain != BEHAVIOR_DOMAIN_SHAPE &&
+            ctx->asset->domain != BEHAVIOR_DOMAIN_MODEL) {
             conversion = conversion_for_pins(from_pin, to_pin);
         }
         int result = disconnect
@@ -1287,6 +1356,44 @@ static int operation_set_ramp(edit_context *ctx, yyjson_val *op)
     return 0;
 }
 
+static int operation_set_model_reference(edit_context *ctx, yyjson_val *op)
+{
+    yyjson_val *value = yyjson_obj_get(op, "value");
+    if (yyjson_is_null(value)) {
+        model_reference reference = { 0 };
+        if (!behavior_asset_set_model_reference(ctx->asset, &reference)) {
+            set_error(ctx, "set_model_reference is only valid for model assets");
+            return -1;
+        }
+        return 0;
+    }
+    const char *image = yyjson_get_str(yyjson_obj_get(value, "image"));
+    yyjson_val *center = yyjson_obj_get(value, "center");
+    yyjson_val *span = yyjson_obj_get(value, "span");
+    yyjson_val *angle = yyjson_obj_get(value, "angle");
+    yyjson_val *locked = yyjson_obj_get(value, "locked");
+    if (!image || !yyjson_is_arr(center) || yyjson_arr_size(center) != 2 ||
+        !yyjson_is_num(yyjson_arr_get(center, 0)) ||
+        !yyjson_is_num(yyjson_arr_get(center, 1)) || !yyjson_is_num(span) ||
+        !yyjson_is_num(angle) || !yyjson_is_bool(locked)) {
+        set_error(ctx, "set_model_reference.value requires image, center[2], positive span, angle radians and locked boolean; null clears it");
+        return -1;
+    }
+    model_reference reference = {
+        .image = (char *)image,
+        .center = { (float)yyjson_get_num(yyjson_arr_get(center, 0)),
+                    (float)yyjson_get_num(yyjson_arr_get(center, 1)) },
+        .span = (float)yyjson_get_num(span),
+        .angle = (float)yyjson_get_num(angle),
+        .locked = yyjson_get_bool(locked)
+    };
+    if (!behavior_asset_set_model_reference(ctx->asset, &reference)) {
+        set_error(ctx, "model reference requires a model asset, a content-relative image key and finite alignment with positive span");
+        return -1;
+    }
+    return 0;
+}
+
 static int operation_set_bounds(edit_context *ctx, yyjson_val *op)
 {
     if (ctx->asset->domain != BEHAVIOR_DOMAIN_SHAPE) {
@@ -1413,6 +1520,41 @@ static int operation_add_pin(edit_context *ctx, yyjson_val *op)
     if (!string_value(yyjson_obj_get(op, "name"), &name) || !name[0]) {
         set_error(ctx, "add_pin.name is required");
         return -1;
+    }
+    if (!strcmp(n->desc->name, "Model Instance")) {
+        if (!strcmp(side, "output")) {
+            const char *type = yyjson_get_str(yyjson_obj_get(op, "type"));
+            const char *named = yyjson_get_str(yyjson_obj_get(op, "type_name"));
+            if ((type && strcmp(type, "handle") && strcmp(type, "Anchor3D")) ||
+                (named && strcmp(named, "Anchor3D")) ||
+                yyjson_obj_get(op, "default")) {
+                set_error(ctx, "Model Instance anchor output requires Anchor3D and no literal default");
+                return -1;
+            }
+            return model_anchor_output(ctx, n, name) < 0 ? -1 : 0;
+        }
+        int index = model_override(ctx, n, name);
+        if (index < 0) {
+            return -1;
+        }
+        const pin_spec *pin = &n->input_pins[index];
+        pin_type type = pin->type;
+        const char *type_name = pin->type_name;
+        yyjson_val *requested = yyjson_obj_get(op, "type");
+        yyjson_val *named = yyjson_obj_get(op, "type_name");
+        pin_container container;
+        if ((requested && type_from_value(requested, &type, &type_name)) ||
+            (named && !string_value(named, &type_name)) ||
+            container_from_value(yyjson_obj_get(op, "container"), &container) ||
+            container != PIN_CONTAINER_SINGLE || type != pin->type ||
+            ((type_name || pin->type_name) &&
+             (!type_name || !pin->type_name || strcmp(type_name, pin->type_name)))) {
+            set_error(ctx, "Model Instance override type must match declaration '%s'", name);
+            return -1;
+        }
+        yyjson_val *value = yyjson_obj_get(op, "default");
+        return value ? set_input(ctx, n, yyjson_obj_get(op, "name"), value, requested)
+                     : 0;
     }
     pin_type type = PIN_FLOW;
     const char *type_name = NULL;
@@ -2385,6 +2527,9 @@ static int apply_operation(edit_context *ctx, yyjson_val *op)
     if (!strcmp(name, "set_ramp")) {
         return operation_set_ramp(ctx, op);
     }
+    if (!strcmp(name, "set_model_reference")) {
+        return operation_set_model_reference(ctx, op);
+    }
     if (!strcmp(name, "set_bounds")) {
         return operation_set_bounds(ctx, op);
     }
@@ -2427,7 +2572,7 @@ static void add_shader_diagnostic(edit_context *ctx, yyjson_mut_val *diagnostics
     yyjson_mut_val *entry = yyjson_mut_arr_add_obj(ctx->doc, diagnostics);
     yyjson_mut_obj_add_str(ctx->doc, entry, "severity", "error");
     yyjson_mut_obj_add_uint(ctx->doc, entry, "node", error->node);
-    yyjson_mut_obj_add_str(ctx->doc, entry, "message", error->message);
+    yyjson_mut_obj_add_strcpy(ctx->doc, entry, "message", error->message);
 }
 
 static void add_message_diagnostic(
@@ -2439,7 +2584,7 @@ static void add_message_diagnostic(
 {
     yyjson_mut_val *entry = yyjson_mut_arr_add_obj(ctx->doc, diagnostics);
     yyjson_mut_obj_add_str(ctx->doc, entry, "severity", severity);
-    yyjson_mut_obj_add_str(ctx->doc, entry, "message", message ? message : "asset validation failed");
+    yyjson_mut_obj_add_strcpy(ctx->doc, entry, "message", message ? message : "asset validation failed");
 }
 
 static int validate_asset(edit_context *ctx)
@@ -2484,6 +2629,26 @@ static int validate_asset(edit_context *ctx)
             behavior_asset_free(linked);
             return CHIBI_AUTOMATION_VALIDATION_ERROR;
         }
+    }
+    if (validation_asset->domain == BEHAVIOR_DOMAIN_MODEL) {
+        model_program program;
+        model_program_init(&program);
+        shader_error error = { 0 };
+        bool valid = model_compile_with_catalog(
+            validation_asset,
+            ctx->libraries,
+            ctx->library_count,
+            &program,
+            &error
+        );
+        model_program_free(&program);
+        behavior_asset_free(linked);
+        if (!valid) {
+            add_shader_diagnostic(ctx, diagnostics, &error);
+            set_error(ctx, "%s", error.message);
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+        return CHIBI_AUTOMATION_OK;
     }
     compile_report report;
     compile_report_init(&report);

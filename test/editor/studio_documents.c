@@ -1068,6 +1068,7 @@ static void replay_close_stop_reopen_keeps_graph_layout()
 void test_ui_document_tabs();
 /* Assets ▸ New and Settings ▸ Project (test/editor/studio_new_assets.c). */
 void test_studio_new_assets();
+void test_studio_models();
 /* Workstream I: the Text Editor's code intelligence
    (test/editor/code_intelligence_studio.c). */
 void test_code_intelligence_studio();
@@ -3535,7 +3536,14 @@ static void component_vector_property()
     fixture_free(&f);
 }
 
-static int studio_documents_app(const char *program, bool run_properties_only)
+enum
+{
+    STUDIO_TEST_ALL,
+    STUDIO_TEST_PROPERTIES,
+    STUDIO_TEST_MODELS
+};
+
+static int studio_documents_app(const char *program, int scope)
 {
     CF_Result result = cf_make_app(
         "Studio documents",
@@ -3553,9 +3561,11 @@ static int studio_documents_app(const char *program, bool run_properties_only)
     }
     app_scene_renderer_initialize();
     app_input_initialize();
-    if (run_properties_only) {
+    if (scope == STUDIO_TEST_PROPERTIES) {
         large_enum_property();
         component_vector_property();
+    } else if (scope == STUDIO_TEST_MODELS) {
+        test_studio_models();
     } else {
         graph_layout_does_not_wiggle();
         graph_calculations_follow_edits();
@@ -3569,6 +3579,7 @@ static int studio_documents_app(const char *program, bool run_properties_only)
         reload_keeps_viewed_graph_saved();
         test_ui_document_tabs();
         test_studio_new_assets();
+        test_studio_models();
         /* UI wiring (workstream K) */
         ui_wiring_checks();
         /* Authored status bar (workstream J) */
@@ -3610,10 +3621,15 @@ static int studio_documents_app(const char *program, bool run_properties_only)
 
 int studio_documents_run(const char *program)
 {
-    return studio_documents_app(program, false);
+    return studio_documents_app(program, STUDIO_TEST_ALL);
 }
 
 int studio_properties_run(const char *program)
 {
-    return studio_documents_app(program, true);
+    return studio_documents_app(program, STUDIO_TEST_PROPERTIES);
+}
+
+int studio_models_run(const char *program)
+{
+    return studio_documents_app(program, STUDIO_TEST_MODELS);
 }

@@ -1,5 +1,6 @@
 #include "graph/shader/shader_graph.h"
 
+#include "graph/shader/shader_detail.h"
 #include "graph/shader/shader_effects.h"
 #include "graph/shader/shader_image.h"
 #include "support/array.h"
@@ -70,7 +71,15 @@ static const char *const names[] = { "Constant",
                                      "Beat Pulse",
                                      "Floor",
                                      "Sqrt",
-                                     "Sign" };
+                                     "Sign",
+                                     "PartPosition",
+                                     "Planar Mapping",
+                                     "Cylindrical Mapping",
+                                     "Normal Map",
+                                     "Bump",
+                                     "Triplanar Texture",
+                                     "Triplanar Texture Alpha",
+                                     "Decal Mask" };
 _Static_assert(sizeof names / sizeof *names == SHADER_OP_COUNT, "shader operation names");
 const char *shader_op_name(shader_op op)
 {
@@ -78,9 +87,14 @@ const char *shader_op_name(shader_op op)
 }
 int shader_op_inputs(shader_op op)
 {
+    if (shader_detail_op(op)) {
+        return op == SHADER_NORMAL_MAP || op == SHADER_BUMP || op == SHADER_DECAL_MASK
+                 ? 4
+                 : 3;
+    }
     if (op <= SHADER_TIME || op == SHADER_WORLD_POSITION ||
-        op == SHADER_BEAT_PHASE || op == SHADER_BEAT_PULSE ||
-        (op >= SHADER_UV && op <= SHADER_VIEW_DIRECTION)) {
+        op == SHADER_PART_POSITION || op == SHADER_BEAT_PHASE ||
+        op == SHADER_BEAT_PULSE || (op >= SHADER_UV && op <= SHADER_VIEW_DIRECTION)) {
         return 0;
     }
     if (op >= SHADER_MAPPING && op <= SHADER_FRACTAL_NOISE) {
@@ -96,7 +110,7 @@ int shader_op_inputs(shader_op op)
         (op >= SHADER_X && op <= SHADER_W) || op == SHADER_NORMALIZE ||
         op == SHADER_SATURATE || op == SHADER_IMAGE_TEXTURE ||
         op == SHADER_IMAGE_TEXTURE_ALPHA || op == SHADER_SURFACE_INFLUENCE ||
-        op >= SHADER_FLOOR) {
+        (op >= SHADER_FLOOR && op <= SHADER_SIGN)) {
         return 1;
     }
     if (op == SHADER_MIX || op == SHADER_SELECT || op == SHADER_SMOOTH_UNION ||
@@ -168,6 +182,12 @@ bool shader_graph_validate(const shader_graph *g, shader_error *error)
                 return fail(error, n->source_id, "Shader contains a cycle or missing input");
             }
         }
+        if (shader_detail_op(n->op)) {
+            if (!shader_detail_validate(g, n, error)) {
+                return false;
+            }
+            continue;
+        }
         int a = shader_op_inputs(n->op) > 0 ? g->nodes[n->input[0]].width : 0;
         int b = shader_op_inputs(n->op) > 1 ? g->nodes[n->input[1]].width : 0;
         int c = shader_op_inputs(n->op) > 2 ? g->nodes[n->input[2]].width : 0;
@@ -178,6 +198,7 @@ bool shader_graph_validate(const shader_graph *g, shader_error *error)
             case SHADER_UV: valid = n->width == 2; break;
             case SHADER_WORLD_POSITION:
             case SHADER_OBJECT_POSITION:
+            case SHADER_PART_POSITION:
             case SHADER_NORMAL:
             case SHADER_VIEW_DIRECTION: valid = n->width == 3; break;
             case SHADER_SURFACE_INFLUENCE:
@@ -302,19 +323,20 @@ static float smoothstep(float value, float low, float high)
     float t = fmaxf(0, fminf(1, (value - low) / (high - low)));
     return t * t * (3 - 2 * t);
 }
-bool shader_graph_eval_outputs(
+static bool eval_values(
     const shader_graph *g,
     const shader_sample_context *sample,
     const float (*params)[4],
-    float result[SHADER_OUTPUT_MAX][4],
+    float (*v)[4],
+    const bool *selected,
     shader_error *error
 )
 {
-    if (!shader_graph_validate(g, error)) {
-        return false;
-    }
-    float (*v)[4] = xcalloc((size_t)acount(g->nodes), sizeof *v);
+    memset(v, 0, (size_t)acount(g->nodes) * sizeof *v);
     for (int i = 0; i < acount(g->nodes); i++) {
+        if (selected && !selected[i]) {
+            continue;
+        }
         const shader_node *n = &g->nodes[i];
         float a[4] = { 0 }, b[4] = { 0 }, c[4] = { 0 };
         for (int j = 0; j < 4; j++) {
@@ -327,6 +349,12 @@ bool shader_graph_eval_outputs(
             if (shader_op_inputs(n->op) > 2) {
                 c[j] = component(g, v, n->input[2], j);
             }
+        }
+        if (shader_detail_op(n->op)) {
+            if (!shader_detail_eval(g, n, sample, params, (const float (*)[4])v, v[i], error)) {
+                return false;
+            }
+            continue;
         }
         if (n->op == SHADER_BEAT_PHASE || n->op == SHADER_BEAT_PULSE) {
             v[i][0] = n->op == SHADER_BEAT_PHASE ? sample->beat_phase
@@ -353,7 +381,6 @@ bool shader_graph_eval_outputs(
                     "Image Texture could not resolve '%s'",
                     source->key
                 );
-                free(v);
                 return fail(error, n->source_id, message);
             }
             memcpy(
@@ -399,6 +426,9 @@ bool shader_graph_eval_outputs(
                 case SHADER_TIME: v[i][j] = sample->time; break;
                 case SHADER_WORLD_POSITION:
                     v[i][j] = sample->world_position[j];
+                    break;
+                case SHADER_PART_POSITION:
+                    v[i][j] = sample->part_position[j];
                     break;
                 case SHADER_OBJECT_POSITION:
                     v[i][j] = sample->object_position[j];
@@ -476,12 +506,79 @@ bool shader_graph_eval_outputs(
             }
         }
     }
-    memset(result, 0, sizeof(float) * SHADER_OUTPUT_MAX * 4);
-    for (int i = 0; i < g->output_count; i++) {
-        memcpy(result[i], v[g->output[i]], sizeof result[i]);
-    }
-    free(v);
     return true;
+}
+bool shader_graph_eval_values_validated(
+    const shader_graph *g,
+    const shader_sample_context *sample,
+    const float (*params)[4],
+    float (*values)[4],
+    shader_error *error
+)
+{
+    return eval_values(g, sample, params, values, NULL, error);
+}
+bool shader_graph_eval_values(
+    const shader_graph *g,
+    const shader_sample_context *sample,
+    const float (*params)[4],
+    float (*values)[4],
+    shader_error *error
+)
+{
+    return shader_graph_validate(g, error) &&
+           shader_graph_eval_values_validated(g, sample, params, values, error);
+}
+bool shader_graph_eval_node_scratch(
+    const shader_graph *g,
+    const shader_sample_context *sample,
+    const float (*params)[4],
+    int root,
+    float (*values)[4],
+    float result[4],
+    shader_error *error
+)
+{
+    assert(root >= 0 && root < acount(g->nodes));
+    assert(acount(g->nodes) <= SHADER_NODE_MAX);
+    bool selected[SHADER_NODE_MAX] = { false };
+    selected[root] = true;
+    for (int i = root; i >= 0; i--) {
+        if (!selected[i]) {
+            continue;
+        }
+        const shader_node *n = &g->nodes[i];
+        for (int j = 0; j < shader_op_inputs(n->op); j++) {
+            selected[n->input[j]] = true;
+        }
+    }
+    if (!eval_values(g, sample, params, values, selected, error)) {
+        return false;
+    }
+    memcpy(result, values[root], sizeof(float) * 4);
+    return true;
+}
+bool shader_graph_eval_outputs(
+    const shader_graph *g,
+    const shader_sample_context *sample,
+    const float (*params)[4],
+    float result[SHADER_OUTPUT_MAX][4],
+    shader_error *error
+)
+{
+    if (!shader_graph_validate(g, error)) {
+        return false;
+    }
+    float (*values)[4] = xcalloc((size_t)acount(g->nodes), sizeof *values);
+    bool valid = shader_graph_eval_values(g, sample, params, values, error);
+    if (valid) {
+        memset(result, 0, sizeof(float) * SHADER_OUTPUT_MAX * 4);
+        for (int i = 0; i < g->output_count; i++) {
+            memcpy(result[i], values[g->output[i]], sizeof result[i]);
+        }
+    }
+    free(values);
+    return valid;
 }
 static void append(char **s, const char *fmt, ...)
 {
@@ -980,7 +1077,20 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
         }
     }
     append(&s, "#ifndef SG_INFLUENCE_DEFINED\n#define SG_INFLUENCE_DEFINED\n#ifndef SG_SCENE_INFLUENCE\nvec3 sg_scene_influence(vec3 position) { return vec3(0); }\nfloat sg_scene_beat_phase() { return 0.0; }\nfloat sg_scene_beat_pulse() { return 0.0; }\n#endif\n#endif\n");
-    append(&s, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
+    append(&s, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 part_position; vec3 object_from_world[3]; vec3 part_from_world[3]; vec3 uv_from_world[2]; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
+    bool details = false;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        details = details || shader_detail_op(g->nodes[i].op);
+    }
+    if (details) {
+        char *helpers = shader_detail_glsl_helpers(g, prefix, error);
+        if (!helpers) {
+            afree(s);
+            return NULL;
+        }
+        append(&s, "%s", helpers);
+        free(helpers);
+    }
     if (gradient) {
         append(&s, "vec3 %s(SGSample sg_sample, vec4 sg_params[32]) {\nbool sg_gradient_valid=true;\n", prefix);
     } else {
@@ -1032,6 +1142,9 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
                 break;
             case SHADER_SURFACE_INFLUENCE:
                 append(&s, "vec4(sg_scene_influence(%s.xyz),0.0)", a);
+                break;
+            case SHADER_PART_POSITION:
+                append(&s, "vec4(sg_sample.part_position,0.0)");
                 break;
             case SHADER_OBJECT_POSITION:
                 append(&s, "vec4(sg_sample.object_position,0.0)");
@@ -1274,6 +1387,18 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
             case SHADER_W:
                 append(&s, "vec4(%s.%c)", a, "xyzw"[n->op - SHADER_X]);
                 break;
+            case SHADER_PLANAR_MAPPING:
+            case SHADER_CYLINDRICAL_MAPPING:
+            case SHADER_NORMAL_MAP:
+            case SHADER_BUMP:
+            case SHADER_TRIPLANAR_TEXTURE:
+            case SHADER_TRIPLANAR_TEXTURE_ALPHA:
+            case SHADER_DECAL_MASK: {
+                char *expression = shader_detail_glsl_expression(g, n, prefix, i, a, b, c, d);
+                append(&s, "%s", expression);
+                free(expression);
+                break;
+            }
             case SHADER_OP_COUNT: assert(false);
         }
         append(&s, ";\n");

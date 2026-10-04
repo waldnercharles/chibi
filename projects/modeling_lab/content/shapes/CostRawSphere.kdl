@@ -1,0 +1,33 @@
+version 3
+name "CostRawSphere"
+domain "shape"
+bounds_x 1.0
+bounds_y 1.0
+id_counter 24
+description "Independent numerical equivalent of CostSphere. Its unit-radius distance is length(p)-1."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Shader Shape Output"
+            - id=3 type="Shader ObjectPosition"
+            - {
+                id 21
+                type "Behavior Expression"
+                reference_name "length(p) - 1"
+                inputs {
+                    p id=22 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=23 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Value" to="21.p"
+            - from="21.Result" to="1.Distance"
+        }
+    }
+    - id=5 kind="function" math_expression="length(p) - 1" entry_id=6
+}

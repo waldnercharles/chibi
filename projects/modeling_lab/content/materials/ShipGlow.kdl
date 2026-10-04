@@ -1,0 +1,30 @@
+version 3
+name "ShipGlow"
+domain "material"
+id_counter 10
+description "A simple existing material graph for the static ship study."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.12 y=0.46 z=0.72
+                    }
+                    Emission {
+                        default x=0.12 y=0.55 z=1.1
+                    }
+                    Roughness 0.4
+                    Metallic 0.05
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+        }
+    }
+}

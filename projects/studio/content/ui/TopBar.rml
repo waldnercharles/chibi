@@ -23,6 +23,7 @@
           <li command="newShape"/>
           <li command="newField"/>
           <li command="newShaderLibrary"/>
+          <li command="newModel"/>
           <hr/>
           <li command="newUiWidget"/>
           <li command="newUiDocument"/>

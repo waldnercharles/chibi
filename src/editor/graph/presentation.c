@@ -70,13 +70,20 @@ const char *ed_node_title_in(
     if (ed_component_title(n, buf, cap)) {
         return buf;
     }
-    if (n->reference_name && !strcmp(n->desc->name, "Shader Parameter")) {
+    if (n->reference_name && (!strcmp(n->desc->name, "Shader Parameter") ||
+                              !strcmp(n->desc->name, "Model Parameter") ||
+                              !strcmp(n->desc->name, "Model Part") ||
+                              !strcmp(n->desc->name, "Model Material Slot"))) {
         snprintf(buf, cap, "%s", n->reference_name);
         return buf;
     }
     if (n->reference_name && (!strcmp(n->desc->name, "Send Event") ||
                               !strcmp(n->desc->name, "Call Event"))) {
         snprintf(buf, cap, "%s %s", !strcmp(n->desc->name, "Send Event") ? "Send" : "Call", n->reference_name);
+        return buf;
+    }
+    if (!strcmp(n->desc->name, "Model Instance") && n->reference_asset) {
+        snprintf(buf, cap, "%s", n->reference_asset);
         return buf;
     }
     if (ed_is_graph_call(n)) {

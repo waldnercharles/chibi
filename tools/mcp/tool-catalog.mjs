@@ -149,6 +149,15 @@ const entries = [
     annotations: { readOnlyHint: true, idempotentHint: true, destructiveHint: false },
   },
   {
+    name: "bakeModel", operation: "bake_model", adapter: "native",
+    title: "Bake a declarative model",
+    description: "Export a saved declarative SDF model to a new atomic bundle: engine mesh JSON, Blender-compatible OBJ and provenance. Sampling and triangle ownership approximate geometry; live material references and part coordinates remain in JSON. No appearance bake or source changes. Existing destinations are refused.",
+    intentTerms: ["model", "mesh", "bake", "export", "obj"],
+    candidates: ["bakeModel"], legacyName: "bake_model",
+    nextSteps: ["Inspect the exported geometry in the editor or Blender; retain declarative source for edits and live materials."],
+    annotations: { readOnlyHint: false, idempotentHint: false, destructiveHint: false },
+  },
+  {
     name: "inspectGraph",
     operation: "inspect_graph",
     adapter: "native",

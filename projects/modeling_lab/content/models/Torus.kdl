@@ -1,0 +1,22 @@
+version 3
+name "Torus"
+domain "model"
+id_counter 7
+description "A ring around local Y with an open center."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - {
+                id 3
+                type "Model Torus"
+                inputs "Major Radius"=22.0 "Minor Radius"=8.0
+            }
+        }
+        (array)edges {
+            - from="3.Geometry" to="1.Geometry"
+        }
+    }
+}

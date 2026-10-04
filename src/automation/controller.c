@@ -1,6 +1,7 @@
 #include "automation/controller.h"
 
 #include "assets/asset_source.h"
+#include "assets/model_export.h"
 #include "assets/new_asset.h"
 #include "assets/project.h"
 #include "assets/prototype.h"
@@ -33,6 +34,8 @@
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
+#include "graph/modeling/model_compile.h"
+#include "graph/modeling/model_inspection.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
@@ -56,6 +59,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -92,6 +96,7 @@ static const asset_family ASSET_FAMILIES[] = {
     { "library", "libraries", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
     { "material", "materials", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_MATERIAL },
     { "shape", "shapes", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_SHAPE },
+    { "model", "models", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_SHAPE },
     { "field", "fields", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_FIELD },
     { "shader-library", "shader-libraries", ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
     { "system", "systems", ASSET_EXTENSION, ASSET_SYSTEM, REFERENCE_ASSET_SYSTEM },
@@ -234,6 +239,13 @@ static const contract_field CONTRACT_ASSET_REFERENCE[] = {
     { "path", "string", false, "Content-relative asset path, alternatively use kind and name." },
     { "kind", "string", false, "Asset family, required with name when path is omitted." },
     { "name", "string", false, "Asset name, required with kind when path is omitted." },
+};
+static const contract_field CONTRACT_BAKE_MODEL[] = {
+    { "project_root", "string", false, "Saved project directory; defaults to the controller root." },
+    { "model", "string", true, "Saved declarative model name." },
+    { "destination", "string", true, "New bundle directory; parent must exist. Existing output is retained and rejected." },
+    { "options", "object", false, "Bounded cell_size, max_axis_cells, max_triangles, max_samples, max_work and edge_iterations." },
+    { "overrides", "array", false, "Checked parameter snapshot keyed by asset, scope and parameter_id, with value components." },
 };
 static const contract_field CONTRACT_READ_ASSET[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -647,6 +659,17 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         1,
         true,
         true,
+        false,
+    },
+    {
+        "bake_model",
+        "Extract a bounded mesh from saved declarative source and atomically "
+        "publish an engine mesh, OBJ, MTL and provenance bundle.",
+        CONTRACT_BAKE_MODEL,
+        CONTRACT_FIELD_COUNT(CONTRACT_BAKE_MODEL),
+        1,
+        false,
+        false,
         false,
     },
     {
@@ -1494,7 +1517,8 @@ typedef struct
 static bool links_family(const asset_family *family)
 {
     return !strcmp(family->kind, "library") ||
-           !strcmp(family->kind, "shader-library") || !strcmp(family->kind, "event");
+           !strcmp(family->kind, "shader-library") ||
+           !strcmp(family->kind, "event") || !strcmp(family->kind, "model");
 }
 
 static void load_catalog_links(const char *root, const asset_entry *entries, catalog_links *links)
@@ -1641,6 +1665,23 @@ static const asset_family *family_by_reference(reference_asset_kind kind)
     return NULL;
 }
 
+/* Models share the runtime shape namespace, while an unresolved whole-model
+ * instance still has a known authored family for diagnostics and navigation. */
+static const char *reference_family_kind(const reference_index *index, int asset)
+{
+    const reference_asset *named = reference_index_asset_at(index, asset);
+    if (named->kind == REFERENCE_ASSET_SHAPE) {
+        for (int i = 0; i < reference_index_count(index); i++) {
+            const reference *r = reference_index_at(index, i);
+            if (r->role == REFERENCE_CALL && r->symbol.kind == REFERENCE_SYMBOL_ASSET &&
+                r->symbol.asset == asset) {
+                return "model";
+            }
+        }
+    }
+    return family_by_reference(named->kind)->kind;
+}
+
 static void catalog_reference_add(
     catalog_reference **references,
     const char *kind,
@@ -1777,7 +1818,7 @@ static void catalog_link_references(catalog_asset *assets, const reference_index
         catalog_asset *used = catalog[target] >= 0 ? &assets[catalog[target]] : NULL;
         catalog_reference_add(
             &source->dependencies,
-            used ? used->asset.family->kind : family_by_reference(named->kind)->kind,
+            used ? used->asset.family->kind : reference_family_kind(index, target),
             named->name,
             used != NULL
         );
@@ -1984,6 +2025,23 @@ static int build_catalog_from_entries(
     size_t error_size
 )
 {
+    for (int i = 0; i < acount(entries); i++) {
+        if (strcmp(entries[i].family->kind, "model")) {
+            continue;
+        }
+        for (int j = 0; j < acount(entries); j++) {
+            if (!strcmp(entries[j].family->kind, "shape") &&
+                !strcmp(entries[i].filename, entries[j].filename)) {
+                snprintf(
+                    error,
+                    error_size,
+                    "model and shape asset names must be unique: %s",
+                    entries[i].filename
+                );
+                return -1;
+            }
+        }
+    }
     catalog_asset *assets = NULL;
     bool graphs_cached = previous && catalog_links_unchanged(previous, entries);
     catalog_links links = { 0 };
@@ -2859,7 +2917,7 @@ static navigation_asset *navigation_assets(const catalog_asset *assets, const re
         named[i] = found ? (navigation_asset){ found->asset.family->kind,
                                                found->name,
                                                found->asset.relative }
-                         : (navigation_asset){ family_by_reference(asset->kind)->kind,
+                         : (navigation_asset){ reference_family_kind(index, i),
                                                asset->name,
                                                NULL };
     }
@@ -3058,6 +3116,12 @@ static void inspect_add_calls(
     qsort(nodes, (size_t)count, sizeof *nodes, inspect_node_compare);
     for (int i = 0; i < count; i++) {
         const node *call = nodes[i];
+        if (!strcmp(call->desc->name, "Model Parameter") ||
+            !strcmp(call->desc->name, "Model Part") ||
+            !strcmp(call->desc->name, "Model Material Slot") ||
+            !strcmp(call->desc->name, "Model Anchor")) {
+            continue;
+        }
         if (!call->reference_id && !call->reference_name && !call->reference_asset) {
             continue;
         }
@@ -3272,6 +3336,435 @@ static behavior_asset *link_project_libraries(
     size_t error_size
 );
 
+static int compile_project_graph(const char *, const behavior_asset *, compile_report *);
+static int load_model_catalog(const char *, behavior_asset ***, char *, size_t);
+
+static void model_parameter_values(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *entry,
+    const char *key,
+    const float *values,
+    int width
+)
+{
+    yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, entry, key);
+    for (int i = 0; i < width; i++) {
+        yyjson_mut_arr_add_real(doc, array, values[i]);
+    }
+}
+
+static void inspect_model_parameters(
+    const char *root,
+    const behavior_asset *asset,
+    const behavior_asset *authored,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *value
+)
+{
+    if (asset->domain != BEHAVIOR_DOMAIN_MODEL) {
+        return;
+    }
+    if (authored->reference.image) {
+        const model_reference *reference = &authored->reference;
+        yyjson_mut_val *entry = yyjson_mut_obj_add_obj(doc, value, "model_reference");
+        yyjson_mut_obj_add_strcpy(doc, entry, "image", reference->image);
+        model_parameter_values(doc, entry, "center", reference->center, 2);
+        yyjson_mut_obj_add_real(doc, entry, "span", reference->span);
+        yyjson_mut_obj_add_real(doc, entry, "angle", reference->angle);
+        yyjson_mut_obj_add_bool(doc, entry, "locked", reference->locked);
+    }
+    behavior_asset **models = NULL;
+    char message[256] = { 0 };
+    model_program program;
+    model_program_init(&program);
+    shader_error error = { 0 };
+    bool valid = load_model_catalog(root, &models, message, sizeof message) ==
+                 CHIBI_AUTOMATION_OK;
+    double compile_ms = 0;
+    if (valid) {
+        struct timespec start, end;
+        int status = clock_gettime(CLOCK_MONOTONIC, &start);
+        assert(!status);
+        valid = model_compile_with_catalog(
+            asset,
+            (const behavior_asset *const *)models,
+            acount(models),
+            &program,
+            &error
+        );
+        status = clock_gettime(CLOCK_MONOTONIC, &end);
+        assert(!status);
+        (void)status;
+        compile_ms = (double)(end.tv_sec - start.tv_sec) * 1000 +
+                     (double)(end.tv_nsec - start.tv_nsec) / 1000000;
+    }
+    yyjson_mut_val *compilation = yyjson_mut_obj_add_obj(doc, value, "model_compilation");
+    yyjson_mut_obj_add_bool(doc, compilation, "valid", valid);
+    int source_nodes = 0;
+    for (int i = 0; i < acount(authored->graphs); i++) {
+        source_nodes += acount(authored->graphs[i]->nodes);
+    }
+    yyjson_mut_obj_add_int(doc, compilation, "source_node_count", source_nodes);
+    yyjson_mut_obj_add_real(doc, compilation, "compile_ms", compile_ms);
+    if (!valid) {
+        yyjson_mut_obj_add_uint(doc, compilation, "diagnostic_node", error.node);
+        yyjson_mut_obj_add_strcpy(
+            doc,
+            compilation,
+            "diagnostic",
+            message[0] ? message : error.message
+        );
+    }
+    model_inspection inspection = { 0 };
+    if (valid) {
+        model_program_inspect(&program, &inspection);
+        int public_slots = inspection.public_slots;
+        int private_slots = inspection.private_slots;
+        yyjson_mut_obj_add_int(
+            doc,
+            compilation,
+            "expanded_shader_node_count",
+            acount(program.shader.nodes)
+        );
+        yyjson_mut_obj_add_int(doc, compilation, "public_parameter_slots", public_slots);
+        yyjson_mut_obj_add_int(doc, compilation, "private_parameter_slots", private_slots);
+        yyjson_mut_obj_add_int(doc, compilation, "part_count", acount(program.parts));
+        yyjson_mut_obj_add_int(
+            doc,
+            compilation,
+            "hit_shader_node_count",
+            acount(program.hit_shader.nodes)
+        );
+        yyjson_mut_obj_add_int(
+            doc,
+            compilation,
+            "material_slot_count",
+            acount(program.material_slots)
+        );
+        yyjson_mut_val *budgets = yyjson_mut_obj_add_obj(doc, compilation, "budgets");
+        yyjson_mut_obj_add_int(doc, budgets, "distance_nodes", inspection.distance_limit);
+        yyjson_mut_obj_add_int(doc, budgets, "hit_nodes", inspection.hit_limit);
+        yyjson_mut_obj_add_int(doc, budgets, "uniform_slots", inspection.parameter_limit);
+        yyjson_mut_obj_add_int(doc, budgets, "material_slots", inspection.material_limit);
+        yyjson_mut_obj_add_str(doc, compilation, "part_cost_semantics", "inclusive overlapping reachable distance IR nodes; counts are not additive");
+        yyjson_mut_val *dependencies = yyjson_mut_obj_add_arr(doc, compilation, "dependencies");
+        for (int i = 0; i < acount(program.dependencies); i++) {
+            yyjson_mut_arr_add_strcpy(doc, dependencies, program.dependencies[i]);
+        }
+        yyjson_mut_val *materials = yyjson_mut_obj_add_arr(doc, compilation, "materials");
+        for (int i = 0; i < acount(program.material_slots); i++) {
+            const model_material_slot *slot = &program.material_slots[i];
+            const behavior_asset *material = NULL;
+            for (int j = 0; j < acount(models); j++) {
+                if (models[j]->domain == BEHAVIOR_DOMAIN_MATERIAL &&
+                    !strcmp(models[j]->name, slot->material)) {
+                    material = models[j];
+                    break;
+                }
+            }
+            yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, materials);
+            yyjson_mut_obj_add_strcpy(doc, entry, "slot", slot->name);
+            yyjson_mut_obj_add_strcpy(doc, entry, "material", slot->material);
+            shader_graph graph;
+            shader_graph_init(&graph);
+            bool material_valid = material &&
+                                  shader_graph_from_graph(material->graph, &graph, &error);
+            yyjson_mut_obj_add_bool(doc, entry, "valid", material_valid);
+            if (material_valid) {
+                shader_inspection resource = shader_graph_inspect(&graph);
+                yyjson_mut_obj_add_int(doc, entry, "ir_nodes", resource.nodes);
+                yyjson_mut_obj_add_int(doc, entry, "uniform_slots", resource.uniforms);
+                yyjson_mut_obj_add_int(doc, entry, "image_variants", resource.images);
+                yyjson_mut_obj_add_int(doc, entry, "ramp_vec4s", resource.ramp_vec4s);
+                yyjson_mut_obj_add_int(
+                    doc,
+                    entry,
+                    "static_texture_sample_bound",
+                    resource.texture_samples
+                );
+                yyjson_mut_obj_add_int(
+                    doc,
+                    entry,
+                    "detail_helper_evaluations",
+                    resource.detail_expressions
+                );
+                yyjson_mut_obj_add_str(doc, entry, "sample_cost_semantics", "conservative static call bound per shading evaluation; not measured GPU work");
+            } else {
+                yyjson_mut_obj_add_strcpy(
+                    doc,
+                    entry,
+                    "diagnostic",
+                    material ? error.message : "missing material source"
+                );
+            }
+            shader_graph_free(&graph);
+        }
+        yyjson_mut_val *anchors = yyjson_mut_obj_add_arr(doc, compilation, "anchors");
+        float prepared[SHADER_PARAMETER_MAX][4];
+        model_bounds prepared_bounds;
+        bool prepared_ok = model_program_prepare(&program, NULL, prepared, &prepared_bounds, &error);
+        for (int i = 0; i < acount(program.anchors); i++) {
+            const model_anchor *anchor = &program.anchors[i];
+            yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, anchors);
+            yyjson_mut_obj_add_uint(doc, entry, "node", anchor->node);
+            yyjson_mut_obj_add_strcpy(doc, entry, "asset", anchor->asset);
+            yyjson_mut_obj_add_strcpy(doc, entry, "name", anchor->name);
+            yyjson_mut_obj_add_strcpy(doc, entry, "scope", anchor->scope);
+            float position[3], angles[3];
+            if (prepared_ok &&
+                model_program_anchor(&program, i, prepared, position, angles, &error)) {
+                model_parameter_values(doc, entry, "position", position, 3);
+                model_parameter_values(doc, entry, "angles", angles, 3);
+            }
+        }
+        yyjson_mut_val *parts = yyjson_mut_obj_add_arr(doc, compilation, "parts");
+        for (int i = 0; i < acount(program.parts); i++) {
+            const model_part *part = &program.parts[i];
+            yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, parts);
+            yyjson_mut_obj_add_uint(doc, entry, "node", part->node);
+            yyjson_mut_obj_add_strcpy(doc, entry, "asset", part->asset);
+            yyjson_mut_obj_add_strcpy(doc, entry, "name", part->name);
+            yyjson_mut_obj_add_strcpy(doc, entry, "path", part->path);
+            yyjson_mut_obj_add_int(doc, entry, "material_slot", part->material);
+            yyjson_mut_obj_add_int(
+                doc,
+                entry,
+                "inclusive_distance_nodes",
+                inspection.parts[i].distance_nodes
+            );
+        }
+        yyjson_mut_val *bounds = yyjson_mut_obj_add_obj(doc, compilation, "bounds");
+        yyjson_mut_obj_add_bool(doc, bounds, "empty", program.bounds.empty);
+        model_parameter_values(doc, bounds, "minimum", program.bounds.min, 3);
+        model_parameter_values(doc, bounds, "maximum", program.bounds.max, 3);
+    }
+    yyjson_mut_val *slots = yyjson_mut_obj_add_arr(doc, value, "model_material_slots");
+    if (valid) {
+        for (int i = 0; i < acount(program.material_slots); i++) {
+            const model_material_slot *slot = &program.material_slots[i];
+            yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, slots);
+            yyjson_mut_obj_add_uint(doc, entry, "id", slot->node);
+            yyjson_mut_obj_add_strcpy(doc, entry, "asset", slot->asset);
+            yyjson_mut_obj_add_strcpy(doc, entry, "name", slot->name);
+            yyjson_mut_obj_add_strcpy(doc, entry, "scope", slot->scope);
+            yyjson_mut_obj_add_strcpy(doc, entry, "material", slot->material);
+            yyjson_mut_obj_add_int(doc, entry, "slot", slot->slot);
+        }
+        yyjson_mut_val *dependencies = yyjson_mut_obj_add_arr(doc, compilation, "material_dependencies");
+        for (int i = 0; i < acount(program.material_dependencies); i++) {
+            yyjson_mut_arr_add_strcpy(doc, dependencies, program.material_dependencies[i]);
+        }
+    } else {
+        for (int g = 0; g < acount(asset->graphs); g++) {
+            for (int i = 0; i < acount(asset->graphs[g]->nodes); i++) {
+                const node *n = asset->graphs[g]->nodes[i];
+                if (strcmp(n->desc->name, "Model Material Slot")) {
+                    continue;
+                }
+                model_material_decl slot;
+                if (!model_material_get(n, &slot, &error)) {
+                    continue;
+                }
+                yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, slots);
+                yyjson_mut_obj_add_uint(doc, entry, "id", slot.id);
+                yyjson_mut_obj_add_strcpy(doc, entry, "asset", asset->name);
+                yyjson_mut_obj_add_strcpy(doc, entry, "name", slot.name);
+                yyjson_mut_obj_add_strcpy(doc, entry, "scope", "");
+                yyjson_mut_obj_add_strcpy(doc, entry, "material", slot.material);
+                yyjson_mut_obj_add_int(doc, entry, "slot", -1);
+            }
+        }
+    }
+    yyjson_mut_val *parameters = yyjson_mut_obj_add_arr(doc, value, "model_parameters");
+    if (valid) {
+        for (int i = 0; i < acount(program.parameters); i++) {
+            const model_parameter *parameter = &program.parameters[i];
+            if (parameter->hidden) {
+                continue;
+            }
+            yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, parameters);
+            yyjson_mut_obj_add_uint(doc, entry, "id", parameter->node);
+            yyjson_mut_obj_add_strcpy(doc, entry, "asset", parameter->asset);
+            yyjson_mut_obj_add_strcpy(doc, entry, "scope", parameter->scope);
+            yyjson_mut_obj_add_strcpy(doc, entry, "name", parameter->name);
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                entry,
+                "type",
+                pin_json_name(parameter->type)
+            );
+            if (parameter->type_name) {
+                yyjson_mut_obj_add_strcpy(doc, entry, "type_name", parameter->type_name);
+            }
+            yyjson_mut_obj_add_int(doc, entry, "width", parameter->width);
+            yyjson_mut_obj_add_int(doc, entry, "slot", parameter->slot);
+            yyjson_mut_obj_add_bool(doc, entry, "runtime", true);
+            model_parameter_values(
+                doc,
+                entry,
+                "default",
+                parameter->defaults,
+                parameter->width
+            );
+            model_parameter_values(
+                doc,
+                entry,
+                "minimum",
+                parameter->minimum,
+                parameter->width
+            );
+            model_parameter_values(
+                doc,
+                entry,
+                "maximum",
+                parameter->maximum,
+                parameter->width
+            );
+        }
+    }
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        for (int n = 0; n < acount(asset->graphs[g]->nodes); n++) {
+            const node *node = asset->graphs[g]->nodes[n];
+            if (node->desc != &NODE_ModelParameter) {
+                continue;
+            }
+            bool emitted = false;
+            for (int i = 0; i < acount(program.parameters); i++) {
+                const model_parameter *parameter = &program.parameters[i];
+                emitted |= !parameter->hidden && parameter->node == node->id &&
+                           !strcmp(parameter->asset, asset->name);
+            }
+            model_parameter_decl declaration;
+            if (emitted || !model_parameter_get(node, &declaration, &error)) {
+                continue;
+            }
+            yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, parameters);
+            yyjson_mut_obj_add_uint(doc, entry, "id", declaration.id);
+            yyjson_mut_obj_add_strcpy(doc, entry, "asset", asset->name);
+            yyjson_mut_obj_add_strcpy(doc, entry, "name", declaration.name);
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                entry,
+                "type",
+                pin_json_name(declaration.type)
+            );
+            if (declaration.type_name) {
+                yyjson_mut_obj_add_strcpy(doc, entry, "type_name", declaration.type_name);
+            }
+            yyjson_mut_obj_add_int(doc, entry, "width", declaration.width);
+            yyjson_mut_obj_add_bool(doc, entry, "runtime", false);
+            model_parameter_values(
+                doc,
+                entry,
+                "default",
+                declaration.defaults,
+                declaration.width
+            );
+            model_parameter_values(
+                doc,
+                entry,
+                "minimum",
+                declaration.minimum,
+                declaration.width
+            );
+            model_parameter_values(
+                doc,
+                entry,
+                "maximum",
+                declaration.maximum,
+                declaration.width
+            );
+        }
+    }
+    model_inspection_free(&inspection);
+    model_program_free(&program);
+    free_behavior_assets(models);
+}
+
+static int handle_bake_model(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *name = request_string(request, "model");
+    const char *destination = request_string(request, "destination");
+    model_export_options options = { .bake = model_bake_defaults() };
+    yyjson_val *settings = yyjson_obj_get(request, "options");
+    bool valid = name && destination && (!settings || yyjson_is_obj(settings));
+    const char *keys[] = { "cell_size",   "max_axis_cells", "max_triangles",
+                           "max_samples", "max_work",       "edge_iterations" };
+    for (int i = 0; valid && i < 6; i++) {
+        yyjson_val *v = settings ? yyjson_obj_get(settings, keys[i]) : NULL;
+        if (!v) {
+            continue;
+        }
+        double n = yyjson_get_num(v);
+        valid = yyjson_is_num(v) && isfinite(n) && n >= 0 &&
+                (i == 0 ? n <= FLT_MAX
+                        : floor(n) == n && n <= (i == 3 || i == 4 ? 9007199254740991.0
+                                                                  : INT_MAX));
+        if (!valid) {
+            break;
+        }
+        switch (i) {
+            case 0: options.bake.cell_size = (float)n; break;
+            case 1: options.bake.max_axis_cells = (int)n; break;
+            case 2: options.bake.max_triangles = (int)n; break;
+            case 3: options.bake.max_samples = (uint64_t)n; break;
+            case 4: options.bake.max_work = (uint64_t)n; break;
+            case 5: options.bake.edge_iterations = (int)n; break;
+        }
+    }
+    model_export_override overrides[SHADER_PARAMETER_MAX] = { 0 };
+    yyjson_val *array = yyjson_obj_get(request, "overrides");
+    valid &= !array || (yyjson_is_arr(array) &&
+                        yyjson_arr_size(array) <= SHADER_PARAMETER_MAX);
+    for (int i = 0; valid && array && i < (int)yyjson_arr_size(array); i++) {
+        yyjson_val *entry = yyjson_arr_get(array, (size_t)i);
+        yyjson_val *id = yyjson_obj_get(entry, "parameter_id");
+        yyjson_val *value = yyjson_obj_get(entry, "value");
+        overrides[i].asset = request_string(entry, "asset");
+        overrides[i].scope = request_string(entry, "scope");
+        valid = yyjson_is_obj(entry) && overrides[i].asset &&
+                overrides[i].scope && yyjson_is_uint(id) && yyjson_is_arr(value) &&
+                yyjson_arr_size(value) >= 1 && yyjson_arr_size(value) <= 4;
+        if (!valid) {
+            break;
+        }
+        overrides[i].parameter_id = yyjson_get_uint(id);
+        overrides[i].width = (int)yyjson_arr_size(value);
+        for (int j = 0; valid && j < overrides[i].width; j++) {
+            yyjson_val *v = yyjson_arr_get(value, (size_t)j);
+            valid = yyjson_is_num(v) && isfinite(yyjson_get_num(v)) &&
+                    fabs(yyjson_get_num(v)) <= FLT_MAX;
+            overrides[i].value[j] = (float)yyjson_get_num(v);
+        }
+    }
+    if (!valid) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "Invalid bake_model model, destination, options or parameter overrides.");
+        return -1;
+    }
+    options.overrides = overrides;
+    options.override_count = array ? (int)yyjson_arr_size(array) : 0;
+    size_t length = strlen(root) + sizeof "/content";
+    char *content = xmalloc(length);
+    snprintf(content, length, "%s/content", root);
+    model_export_summary summary = { 0 };
+    char error[512] = { 0 };
+    bool ok = model_export_bundle(content, name, destination, &options, &summary, error, sizeof error);
+    free(content);
+    if (!ok) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "destination", destination);
+    yyjson_mut_obj_add_int(result->doc, value, "triangles", summary.triangles);
+    yyjson_mut_obj_add_uint(result->doc, value, "samples", summary.samples);
+    yyjson_mut_obj_add_uint(result->doc, value, "work", summary.work);
+    yyjson_mut_obj_add_real(result->doc, value, "cell_diagonal", summary.cell_diagonal);
+    yyjson_mut_obj_add_real(result->doc, value, "max_sampled_residual", summary.max_residual);
+    yyjson_mut_obj_add_str(result->doc, value, "appearance", "Live material references retained; OBJ appearance is not baked.");
+    return 0;
+}
+
 static int handle_inspect_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -3376,7 +3869,8 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     /* Calls into libraries resolve as they will at runtime. */
     char link_error[256] = { 0 };
     behavior_asset *linked = link_project_libraries(root, asset, link_error, sizeof link_error);
-    behavior_asset_compile(linked ? linked : asset, &report);
+    compile_project_graph(root, linked ? linked : asset, &report);
+    inspect_model_parameters(root, linked ? linked : asset, asset, result->doc, value);
     behavior_asset_free(linked);
     inspect_add_variables(
         result->doc,
@@ -4376,6 +4870,7 @@ static behavior_asset *link_project_libraries(
     behavior_asset **libraries = NULL;
     const char *family = asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
                                  asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
+                                 asset->domain == BEHAVIOR_DOMAIN_MODEL ||
                                  asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY
                            ? "shader-library"
                            : "library";
@@ -4400,6 +4895,66 @@ static behavior_asset *link_project_libraries(
     free_behavior_assets(libraries);
     return linked;
 }
+
+static int load_model_catalog(const char *root, behavior_asset ***out, char *error, size_t error_size)
+{
+    int status = load_behavior_family_assets(root, family_by_kind("model"), out, error, error_size);
+    behavior_asset **materials = NULL;
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = load_behavior_family_assets(root, family_by_kind("material"), &materials, error, error_size);
+    }
+    for (int i = 0; status == CHIBI_AUTOMATION_OK && i < acount(materials); i++) {
+        behavior_asset *linked = link_project_libraries(root, materials[i], error, error_size);
+        if (!linked) {
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            break;
+        }
+        apush(*out, linked);
+    }
+    free_behavior_assets(materials);
+    return status;
+}
+
+static int compile_project_graph(const char *root, const behavior_asset *asset, compile_report *report)
+{
+    if (asset->domain != BEHAVIOR_DOMAIN_MODEL) {
+        return behavior_asset_compile(asset, report);
+    }
+    behavior_asset **models = NULL;
+    char load_error[256] = { 0 };
+    int loaded = load_model_catalog(root, &models, load_error, sizeof load_error);
+    model_program program;
+    model_program_init(&program);
+    shader_error error = { 0 };
+    bool valid = loaded == CHIBI_AUTOMATION_OK &&
+                 model_compile_with_catalog(
+                     asset,
+                     (const behavior_asset *const *)models,
+                     acount(models),
+                     &program,
+                     &error
+                 );
+    model_program_free(&program);
+    free_behavior_assets(models);
+    if (!valid) {
+        compile_diagnostic diagnostic = { .severity = CMPL_ERROR,
+                                          .rule = CMPL_RULE_OPERATOR,
+                                          .graph_id = asset->graph->graph_id,
+                                          .node_id = error.node };
+        snprintf(
+            diagnostic.message,
+            sizeof diagnostic.message,
+            "%s",
+            loaded == CHIBI_AUTOMATION_OK ? error.message : load_error
+        );
+        apush(report->items, diagnostic);
+        report->error_count++;
+    }
+    return report->error_count;
+}
+
+static int validate_prototype_shader(const char *, const char *, char *, size_t);
+static int validate_scene_dependencies(const char *, const char *, char *, size_t);
 
 static int handle_validate_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
@@ -4429,7 +4984,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             compile_report_init(&report);
             behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
             if (linked) {
-                errors = behavior_asset_compile(linked, &report);
+                errors = compile_project_graph(root, linked, &report);
             } else {
                 errors = 1;
                 add_load_diagnostic(result->doc, diagnostics, error);
@@ -4510,6 +5065,11 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 acount(prototype->components)
             );
             game_prototype_free(prototype);
+            if (validate_prototype_shader(root, json, load_error, sizeof load_error) !=
+                CHIBI_AUTOMATION_OK) {
+                errors = 1;
+                add_load_diagnostic(result->doc, diagnostics, load_error);
+            }
         }
     } else if (ref.family->loader == ASSET_UI) {
         errors = validate_ui(root, &ref, json, result->doc, diagnostics);
@@ -4532,6 +5092,11 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             yyjson_mut_obj_add_strcpy(result->doc, value, "scene_name", scene->name);
             yyjson_mut_obj_add_int(result->doc, value, "entities", acount(scene->entities));
             game_scene_document_free(scene);
+            if (validate_scene_dependencies(root, json, load_error, sizeof load_error) !=
+                CHIBI_AUTOMATION_OK) {
+                errors = 1;
+                add_load_diagnostic(result->doc, diagnostics, load_error);
+            }
         }
     }
     yyjson_mut_obj_add_bool(result->doc, value, "valid", errors == 0);
@@ -4621,17 +5186,26 @@ static int register_preview_assets(
    then shader libraries and the materials and shapes behaviors write to. */
 static int register_shared_assets(const char *root, game_prototype_preview *preview, char *error, size_t error_size)
 {
-    static const char *const FAMILIES[] = { "library",
-                                            "event",
-                                            "shader-library",
-                                            "material",
-                                            "shape" };
+    static const char *const FAMILIES[] = { "library",        "event",
+                                            "shader-library", "material",
+                                            "shape",          "model" };
     int status = CHIBI_AUTOMATION_OK;
     for (int f = 0; f < (int)(sizeof FAMILIES / sizeof *FAMILIES) &&
                     status == CHIBI_AUTOMATION_OK;
          f++) {
         behavior_asset **assets = NULL;
         status = load_behavior_family_assets(root, family_by_kind(FAMILIES[f]), &assets, error, error_size);
+        if (status == CHIBI_AUTOMATION_OK && !strcmp(FAMILIES[f], "model")) {
+            shader_error model_error = { 0 };
+            if (!render_shader_models_upsert(
+                    (const behavior_asset *const *)assets,
+                    acount(assets),
+                    &model_error
+                )) {
+                snprintf(error, error_size, "%s", model_error.message);
+                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            }
+        }
         if (status == CHIBI_AUTOMATION_OK &&
             register_preview_assets(preview, assets, error, error_size) != 0) {
             status = CHIBI_AUTOMATION_EXECUTION_ERROR;
@@ -8679,7 +9253,11 @@ static bool domain_offers(const char *domain, const node_desc *node)
     }
     bool shader = node->category && !strncmp(node->category, "Shader", 6);
     bool field = node->category && !strcmp(node->category, "Procedural Field");
-    const char *own = shader ? "shader" : field ? "field" : "behavior";
+    bool model = node->category && !strncmp(node->category, "Model", 5);
+    const char *own = model  ? "model"
+                    : shader ? "shader"
+                    : field  ? "field"
+                             : "behavior";
     return (!domain || !strcmp(domain, own)) && !component_generated_kind(node);
 }
 
@@ -9493,7 +10071,8 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
     if ((yyjson_obj_get(request, "query") && !query) ||
         (yyjson_obj_get(request, "domain") &&
          (!domain || (strcmp(domain, "shader") && strcmp(domain, "behavior") &&
-                      strcmp(domain, "field") && strcmp(domain, "system")))) ||
+                      strcmp(domain, "field") && strcmp(domain, "system") &&
+                      strcmp(domain, "model")))) ||
         (yyjson_obj_get(request, "pin_type") &&
          (!filter.pin_type || strlen(filter.pin_type) > 128)) ||
         (yyjson_obj_get(request, "pin_container") &&
@@ -9707,6 +10286,7 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
     behavior_asset **libraries = NULL;
     bool shader = !strcmp(ref.family->kind, "material") ||
                   !strcmp(ref.family->kind, "shape") ||
+                  !strcmp(ref.family->kind, "model") ||
                   !strcmp(ref.family->kind, "shader-library");
     status = load_behavior_family_assets(
         root,
@@ -9715,6 +10295,14 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
         error,
         sizeof error
     );
+    if (status == CHIBI_AUTOMATION_OK && !strcmp(ref.family->kind, "model")) {
+        behavior_asset **models = NULL;
+        status = load_model_catalog(root, &models, error, sizeof error);
+        for (int i = 0; i < acount(models); i++) {
+            apush(libraries, models[i]);
+        }
+        afree(models);
+    }
     if (status == CHIBI_AUTOMATION_OK && !shader) {
         behavior_asset **events = NULL;
         status = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
@@ -9841,6 +10429,89 @@ static int handle_edit_graph(const char *root, yyjson_val *request, response *re
     free(edited);
     free(source);
     return status == CHIBI_AUTOMATION_OK ? 0 : -1;
+}
+
+static int validate_shader_binding(const char *root, const GameShader *binding, char *error, size_t error_size)
+{
+    if (!binding) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    behavior_asset **sources = NULL;
+    int status = load_model_catalog(root, &sources, error, error_size);
+    const char *names[] = { binding->material, binding->shape };
+    const char *kinds[] = { "material", "shape" };
+    for (int i = 0; i < 2 && status == CHIBI_AUTOMATION_OK; i++) {
+        if (!names[i] || !*names[i]) {
+            continue;
+        }
+        bool model = false;
+        if (i == 0 || i == 1) {
+            for (int m = 0; m < acount(sources); m++) {
+                model |= sources[m]->domain == (i == 0 ? BEHAVIOR_DOMAIN_MATERIAL
+                                                       : BEHAVIOR_DOMAIN_MODEL) &&
+                         !strcmp(sources[m]->name, names[i]);
+            }
+        }
+        if (model) {
+            continue;
+        }
+        asset_ref ref = { 0 };
+        char *text = NULL;
+        status = load_named_asset(root, family_by_kind(kinds[i]), names[i], &ref, &text, NULL, NULL, error, error_size);
+        if (status == CHIBI_AUTOMATION_OK) {
+            behavior_asset *asset = behavior_asset_load(text);
+            if (!asset) {
+                snprintf(error, error_size, "%s", graph_last_error());
+                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            } else {
+                behavior_asset *linked = link_project_libraries(root, asset, error, error_size);
+                behavior_asset_free(asset);
+                if (!linked) {
+                    status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+                } else {
+                    apush(sources, linked);
+                }
+            }
+        }
+        free(text);
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        shader_error diagnostic = { 0 };
+        if (!render_shader_binding_sources_validate(
+                binding,
+                binding->parameters,
+                (const behavior_asset *const *)sources,
+                acount(sources),
+                &diagnostic
+            )) {
+            snprintf(error, error_size, "GameShader.parameters: %s", diagnostic.message);
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+    }
+    free_behavior_assets(sources);
+    return status;
+}
+
+static int validate_prototype_shader(const char *root, const char *text, char *error, size_t error_size)
+{
+    game_prototype_registry registry = {
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    };
+    game_prototype *prototype = game_prototype_load(text, &registry, error, error_size);
+    if (!prototype) {
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    int status = CHIBI_AUTOMATION_OK;
+    for (int i = 0; i < acount(prototype->components); i++) {
+        const game_prototype_component *component = &prototype->components[i];
+        if (!strcmp(component->desc->name, "GameShader")) {
+            status = validate_shader_binding(root, component->data, error, error_size);
+            break;
+        }
+    }
+    game_prototype_free(prototype);
+    return status;
 }
 
 static int validate_prototype_behaviors(const char *root, const char *json, char *error, size_t error_size)
@@ -9982,6 +10653,14 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
                     0) {
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
+            if (status == CHIBI_AUTOMATION_OK) {
+                status = validate_shader_binding(
+                    root,
+                    GAME_GameShader_get_const(world, actor),
+                    error,
+                    error_size
+                );
+            }
             ecs_world_free(world);
         }
         game_prototype_free(prototype);
@@ -10074,6 +10753,9 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         return -1;
     }
     status = validate_prototype_behaviors(root, edited, error, sizeof error);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = validate_prototype_shader(root, edited, error, sizeof error);
+    }
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         free(source);
@@ -10372,7 +11054,7 @@ static int handle_optimize_graph(const char *root, yyjson_val *request, response
             compile_report_init(&report);
             behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
             if (linked) {
-                behavior_asset_compile(linked, &report);
+                compile_project_graph(root, linked, &report);
                 inspect_add_validation(result->doc, value, linked, &report);
             }
             if (!linked || report.error_count) {
@@ -10924,7 +11606,7 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "profile_scenario") || !strcmp(operation, "status") ||
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
            !strcmp(operation, "validate_asset") ||
-           !strcmp(operation, "preview_field") ||
+           !strcmp(operation, "bake_model") || !strcmp(operation, "preview_field") ||
            !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
            !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
@@ -11022,6 +11704,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_asset_dependencies(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "find_references") || !strcmp(operation, "call_hierarchy")) {
         handle_navigation(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "bake_model")) {
+        handle_bake_model(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_graph")) {
         handle_inspect_graph(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_system")) {

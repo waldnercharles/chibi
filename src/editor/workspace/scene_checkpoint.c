@@ -498,6 +498,7 @@ static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
             int stage = domain == BEHAVIOR_DOMAIN_EVENT ? 2
                       : (domain == BEHAVIOR_DOMAIN_MATERIAL ||
                          domain == BEHAVIOR_DOMAIN_SHAPE ||
+                         domain == BEHAVIOR_DOMAIN_MODEL ||
                          domain == BEHAVIOR_DOMAIN_FIELD)
                           ? 1
                           : 0;

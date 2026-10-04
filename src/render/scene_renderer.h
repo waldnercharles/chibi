@@ -14,6 +14,14 @@ app_scene_renderer *app_scene_renderer_new();
 void app_scene_renderer_free(app_scene_renderer *renderer);
 void app_scene_renderer_set_parallel(app_scene_renderer *renderer, bool enabled);
 render_arena_work app_scene_renderer_last_work(const app_scene_renderer *renderer);
+void app_scene_renderer_set_model_inspection(
+    app_scene_renderer *renderer,
+    ecs_entity entity,
+    int part,
+    bool section,
+    const float normal[3],
+    float offset
+);
 void app_scene_renderer_set_sdf_batch_limit(app_scene_renderer *renderer, int limit);
 /* Capture overrides. Without these, the scene's authored settings apply. */
 void app_scene_renderer_set_hidden_rejection(app_scene_renderer *renderer, bool enabled);

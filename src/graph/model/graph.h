@@ -212,6 +212,7 @@ graph_comment_box *graph_add_comment_box(graph *g, const char *title, float x, f
 int graph_remove_comment_box(graph *g, uint64_t id);
 int graph_set_comment_box(graph *g, graph_comment_box *box, const char *title, uint32_t color);
 int graph_set_node_reference(graph *g, node *n, uint64_t reference_id, const char *reference_name);
+int graph_set_node_reference_asset(graph *g, node *n, const char *asset_name);
 int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin);
 /* The default value a new pin receives from its template. */
 pin_value graph_pin_initial_default(const pin_spec *template_pin);

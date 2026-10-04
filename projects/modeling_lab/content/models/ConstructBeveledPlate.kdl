@@ -1,0 +1,47 @@
+version 3
+name "ConstructBeveledPlate"
+domain "model"
+id_counter 27
+description "Matched outer footprint and depth with a profile-level circular through-hole and independent rounded or beveled rim."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - {
+                id 6
+                type "Model Profile Rectangle"
+                inputs {
+                    "Half Size" {
+                        default x=35.0 y=26.0
+                    }
+                }
+            }
+            - {
+                id 10
+                type "Model Profile Circle"
+                inputs {
+                    Radius 12.0
+                    Center {
+                        default x=-8.0 y=0.0
+                    }
+                }
+            }
+            - id=14 type="Model Profile Difference"
+            - {
+                id 18
+                type "Model Beveled Extrude"
+                inputs "Half Depth"=8.0 Width=4.0
+            }
+            - id=23 type="Model Part" reference_name="Perforated plate"
+        }
+        (array)edges {
+            - from="6.Profile" to="14.A"
+            - from="10.Profile" to="14.B"
+            - from="14.Profile" to="18.Profile"
+            - from="18.Geometry" to="23.Geometry"
+            - from="23.Geometry" to="1.Geometry"
+        }
+    }
+}

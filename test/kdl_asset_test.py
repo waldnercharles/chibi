@@ -99,7 +99,7 @@ object keep=1 /- omit=2 {
             with self.subTest(path=path.relative_to(ROOT)):
                 document = kdl_asset.loads(path.read_text())
                 if path.name == 'project.kdl':
-                    self.assertEqual(document['version'], 4)
+                    self.assertEqual(document['version'], 5)
                     self.assertTrue(document['start_scene'].endswith('.kdl'))
                     self.assertTrue((path.parent / document['content'] / document['start_scene']).is_file())
                 self.assertEqual(kdl_asset.loads(kdl_asset.dumps(document)), document)

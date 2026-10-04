@@ -1,0 +1,60 @@
+version 3
+name "ConstructConcaveBezier"
+domain "model"
+id_counter 22
+description "Six cubic spans with collinear handles form a concave bracket. Positive profile offset gives a rounded outer silhouette before extrusion."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - {
+                id 6
+                type "Model Profile Bezier"
+                inputs {
+                    "Control Points" {
+                        (array)default {
+                            - x=-32.0 y=-26.0
+                            - x=-10.666667 y=-26.0
+                            - x=10.666667 y=-26.0
+                            - x=32.0 y=-26.0
+                            - x=32.0 y=-19.0
+                            - x=32.0 y=-12.0
+                            - x=32.0 y=-5.0
+                            - x=18.666666 y=-5.0
+                            - x=5.3333335 y=-5.0
+                            - x=-8.0 y=-5.0
+                            - x=-8.0 y=5.3333335
+                            - x=-8.0 y=15.666667
+                            - x=-8.0 y=26.0
+                            - x=-16.0 y=26.0
+                            - x=-24.0 y=26.0
+                            - x=-32.0 y=26.0
+                            - x=-32.0 y=8.666667
+                            - x=-32.0 y=-8.666667
+                        }
+                    }
+                    Steps 3
+                }
+            }
+            - {
+                id 10
+                type "Model Profile Offset"
+                inputs Distance=3.0
+            }
+            - {
+                id 14
+                type "Model Extrude"
+                inputs "Half Depth"=7.0
+            }
+            - id=18 type="Model Part" reference_name="Concave expanded bracket"
+        }
+        (array)edges {
+            - from="6.Profile" to="10.Profile"
+            - from="10.Profile" to="14.Profile"
+            - from="14.Geometry" to="18.Geometry"
+            - from="18.Geometry" to="1.Geometry"
+        }
+    }
+}

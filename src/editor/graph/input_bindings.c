@@ -21,6 +21,7 @@ bool ed_source_scope_available(const editor *e)
         case BEHAVIOR_DOMAIN_LIBRARY:
         case BEHAVIOR_DOMAIN_MATERIAL:
         case BEHAVIOR_DOMAIN_SHAPE:
+        case BEHAVIOR_DOMAIN_MODEL:
         case BEHAVIOR_DOMAIN_EVENT_DEFINITION:
         case BEHAVIOR_DOMAIN_SHADER_LIBRARY: return true;
         case BEHAVIOR_DOMAIN_FIELD: return false;

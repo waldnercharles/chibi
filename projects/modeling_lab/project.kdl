@@ -1,0 +1,4 @@
+version 5
+name "Modeling Lab"
+content "content"
+start_scene "scenes/ModelPrimitiveStudy.kdl"

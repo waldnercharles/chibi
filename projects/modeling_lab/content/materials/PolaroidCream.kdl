@@ -1,0 +1,29 @@
+version 3
+name "PolaroidCream"
+domain "material"
+id_counter 10
+description "Cream surface for the photograph reconstruction; editable material constants."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.78 y=0.72 z=0.58
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.38
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+        }
+    }
+}

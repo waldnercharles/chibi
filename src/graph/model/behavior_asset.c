@@ -5,6 +5,7 @@
 #include "graph/runtime/value_array.h"
 #include "support/xalloc.h"
 
+#include <math.h>
 #include <stdatomic.h>
 #include <string.h>
 
@@ -13,6 +14,7 @@ static atomic_ullong behavior_asset_identity = 1;
 const char *behavior_domain_name(behavior_domain domain)
 {
     switch (domain) {
+        case BEHAVIOR_DOMAIN_MODEL: return "model";
         case BEHAVIOR_DOMAIN_FIELD: return "field";
         case BEHAVIOR_DOMAIN_EVENT: return "behavior";
         case BEHAVIOR_DOMAIN_LIBRARY: return "library";
@@ -28,7 +30,7 @@ bool behavior_domain_pure(behavior_domain domain)
 {
     return domain == BEHAVIOR_DOMAIN_MATERIAL || domain == BEHAVIOR_DOMAIN_SHAPE ||
            domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY ||
-           domain == BEHAVIOR_DOMAIN_FIELD;
+           domain == BEHAVIOR_DOMAIN_FIELD || domain == BEHAVIOR_DOMAIN_MODEL;
 }
 
 static int var_name_unique(const behavior_asset *asset, const char *name, uint64_t except_id)
@@ -229,6 +231,36 @@ void behavior_asset_set_description(behavior_asset *asset, const char *descripti
     if (copy) {
         asset->description = copy;
     }
+}
+
+bool behavior_asset_set_model_reference(behavior_asset *asset, const model_reference *reference)
+{
+    if (asset->domain != BEHAVIOR_DOMAIN_MODEL || !behavior_asset_mutable(asset)) {
+        return false;
+    }
+    if (!reference->image || !reference->image[0]) {
+        asset->reference = (model_reference){ 0 };
+        return true;
+    }
+    const char *segment = reference->image;
+    bool relative = segment[0] != '/' && !strchr(segment, '\\') &&
+                    !strchr(segment, ':');
+    while (*segment && relative) {
+        const char *end = strchr(segment, '/');
+        size_t size = end ? (size_t)(end - segment) : strlen(segment);
+        relative = size && !(size == 1 && segment[0] == '.') &&
+                   !(size == 2 && segment[0] == '.' && segment[1] == '.');
+        segment = end ? end + 1 : segment + size;
+    }
+    if (!relative || !isfinite(reference->center[0]) ||
+        !isfinite(reference->center[1]) || !isfinite(reference->angle) ||
+        !isfinite(reference->span) || reference->span <= 0) {
+        return false;
+    }
+    model_reference next = *reference;
+    next.image = graph_own_str(asset->graph, reference->image, strlen(reference->image));
+    asset->reference = next;
+    return true;
 }
 
 int behavior_asset_set_owner_type(behavior_asset *asset, const char *type_name)

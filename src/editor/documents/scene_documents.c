@@ -182,7 +182,7 @@ static char *document_default_path(app_scene_authoring *scene)
     } else if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
         const char *folders[] = { "behaviors", "libraries", "materials",
                                   "shapes",    "events",    "shader-libraries",
-                                  "fields" };
+                                  "fields",    "models" };
         folder = scene->definition ? folders[scene->definition->working->domain]
                                    : "behaviors";
         name = scene->definition ? scene->definition->name : NULL;

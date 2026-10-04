@@ -334,10 +334,10 @@ try {
   const operationProperties = graphTool?.inputSchema?.properties?.operations?.items?.properties || {};
   const prototypeOperationProperties = editPrototypeTool?.inputSchema?.properties?.operations?.items?.properties || {};
 
-  assert(tools.length === 31, `public tool catalog has ${tools.length} tools instead of 31`);
+  assert(tools.length === 32, `public tool catalog has ${tools.length} tools instead of 32`);
   assert(!tools.some((tool) => tool.name === "buildUi"), "ui documents are written as files, not built");
   assert(tools.find((tool) => tool.name === "inspectUi")?.annotations?.readOnlyHint === true, "ui inspection tool is missing");
-  assert(graphTool?.inputSchema?.properties?.kind?.enum?.join(",") === "behavior,event,library,material,shape,shader-library,field,system", "graph kind selector is incomplete");
+  assert(graphTool?.inputSchema?.properties?.kind?.enum?.join(",") === "behavior,event,library,material,shape,model,shader-library,field,system", "graph kind selector is incomplete");
   assert(graphTool?.title && ["material", "shader", "behavior", "event", "field", "system"].every((term) => graphTool.description.includes(term)), "authoring description does not expose its intent");
   assert(previewTool?.inputSchema?.properties?.width?.maximum === 512, "preview width limit is missing");
   assert(previewTool?.inputSchema?.properties?.camera?.properties?.center && previewTool.inputSchema.properties.sample_grid?.properties?.uv_min, "preview camera or sample grid controls are missing");
@@ -467,7 +467,7 @@ try {
   ]).get(2));
   assert(sceneAfterFailedRenames.ok === true && sceneAfterFailedRenames.result?.hash === sceneRename.result.after_hash && sceneAfterFailedRenames.result.document.entities?.length === 1, "invalid scene rename batches changed the published scene");
 
-  writeFileSync(join(projectRoot, "project.kdl"), "version 4\nname \"Studio\"\ncontent \"content\"\nstart_scene \"scenes/Studio.kdl\"\n");
+  writeFileSync(join(projectRoot, "project.kdl"), "version 5\nname \"Studio\"\ncontent \"content\"\nstart_scene \"scenes/Studio.kdl\"\n");
   const studioSceneCreateRun = runMcp(projectRoot, [
     initialize(),
     request(2, "buildScene", {

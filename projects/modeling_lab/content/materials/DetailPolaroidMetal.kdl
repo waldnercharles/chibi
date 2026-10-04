@@ -1,0 +1,71 @@
+version 3
+name "DetailPolaroidMetal"
+domain "material"
+id_counter 115
+description "Dark accessory-shoe recess represented by a bounded material mask on retained metal geometry."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Roughness 0.38
+                    Metallic 0.7
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=10 type="Shader PartPosition"
+            - {
+                id 36
+                type "Behavior Expression"
+                reference_name "vec3(p.x, p.z - 0.8, p.y - 8.06)"
+                inputs {
+                    p id=37 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=38 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 72
+                type "Shader Decal Mask"
+                inputs {
+                    "Half Size" {
+                        default x=1.1 y=0.12 z=0.04
+                    }
+                    Facing 0.05
+                }
+            }
+            - {
+                id 112
+                type "Behavior Expression"
+                reference_name "mix(vec3(0.34, 0.33, 0.27), vec3(0.025, 0.026, 0.022), slotMask)"
+                inputs {
+                    slotMask id=113 type="float"
+                }
+                outputs {
+                    Result id=114 type="struct" type_name="ShaderVec3"
+                }
+            }
+        }
+        (array)edges {
+            - from="10.Value" to="36.p"
+            - from="36.Result" to="72.Position"
+            - from="72.Value" to="112.slotMask"
+            - from="112.Result" to="1.Base Color"
+        }
+    }
+    - id=12 kind="function" math_expression="vec3(p.x, p.z - 0.8, p.y - 8.06)" entry_id=40
+    - id=78 kind="function" math_expression="mix(vec3(0.34, 0.33, 0.27), vec3(0.025, 0.026, 0.022), slotMask)" entry_id=79
+}

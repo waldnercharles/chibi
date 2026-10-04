@@ -1,0 +1,38 @@
+version 3
+name "ConstructBezierCable"
+domain "model"
+id_counter 16
+description "Two cubic spans sampled to sixteen capsule segments form a spatial cable with spherical ends and bends."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - {
+                id 6
+                type "Model Bezier Tube"
+                inputs {
+                    "Control Points" {
+                        (array)default {
+                            - x=-40.0 y=-20.0 z=0.0
+                            - x=-20.0 y=-45.0 z=8.0
+                            - x=10.0 y=-45.0 z=18.0
+                            - x=5.0 y=0.0 z=18.0
+                            - x=0.0 y=40.0 z=18.0
+                            - x=30.0 y=45.0 z=-8.0
+                            - x=42.0 y=14.0 z=-8.0
+                        }
+                    }
+                    Radius 4.0
+                    Steps 8
+                }
+            }
+            - id=12 type="Model Part" reference_name="Sampled cubic cable"
+        }
+        (array)edges {
+            - from="6.Geometry" to="12.Geometry"
+            - from="12.Geometry" to="1.Geometry"
+        }
+    }
+}

@@ -1,3 +1,5 @@
+#include "assets/model_export.h"
+#include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/material_raster.h"
@@ -5,6 +7,7 @@
 #include "render/mesh_surface.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
+#include "render/shader_program.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -15,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 enum
@@ -213,6 +217,27 @@ static bool pixel(
     free(albedo);
     free(normal);
     return ok;
+}
+
+/* Independent orthographic sphere intersections at the four 2x subpixel
+ * centers. Curved footprints retain the nearest/frontmost measured hit;
+ * material color still averages all four covered samples. */
+static float sphere_front(float radius, float x, float z)
+{
+    float closest_x = fabsf(x) - .25f, closest_z = fabsf(z) - .25f;
+    return sqrtf(radius * radius - closest_x * closest_x - closest_z * closest_z);
+}
+static float sphere_material(float x, float z)
+{
+    float sum = 0;
+    for (int y = 0; y < 2; y++) {
+        for (int k = 0; k < 2; k++) {
+            float sx = x + (k ? .25f : -.25f);
+            float sz = z + (y ? .25f : -.25f);
+            sum += sqrtf(100 - sx * sx - sz * sz) / 20;
+        }
+    }
+    return sum * .25f;
 }
 
 static bool coverage(render_material_raster *raster, int x, int y, float expected)
@@ -1029,10 +1054,443 @@ static bool prepared_surfaces(ecs_world *world, ecs_entity entity)
     return ok;
 }
 
+static bool scene_program_counters(const char *shape_name)
+{
+    ecs_world *world = ecs_world_new();
+    const ecs_component_desc *components[] = {
+        &GAME_COMPONENT_GameTransform,       &GAME_COMPONENT_GameGeometry3D,
+        &GAME_COMPONENT_GameVisualTransform, &GAME_COMPONENT_GameOrientation,
+        &GAME_COMPONENT_GameMaterial,        &GAME_COMPONENT_GameShader,
+        &GAME_COMPONENT_GameSdfSurface3D
+    };
+    for (int i = 0; i < (int)(sizeof components / sizeof *components); i++) {
+        assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
+    }
+    ecs_entity entity = actor(world, true, shape_name);
+    GameTransform position = { 0 };
+    assert(
+        ecs_world_record_add(world, entity, GAME_COMPONENT_GameTransform.id, &position, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    app_scene_renderer *renderer = app_scene_renderer_new();
+    engine_viewport *viewport = engine_viewport_new(WIDTH, HEIGHT);
+    engine_viewport_view view = { .width = WIDTH, .height = HEIGHT };
+    engine_viewport_set_view(viewport, &view);
+    game_particles *particles = game_particles_new();
+    cf_app_update(NULL);
+    bool ok = app_scene_renderer_draw(renderer, world, particles, viewport, NULL);
+    cf_app_draw_onto_screen(false);
+    render_mesh_material_work first = app_scene_renderer_mesh_work(renderer);
+    ok = ok && first.sdf_instances == 1 && first.sdf_draw_calls > 0 &&
+         first.sdf_program_count == 1 && first.sdf_program_compilations == 1;
+    if (ok) {
+        cf_app_update(NULL);
+        ok = app_scene_renderer_draw(renderer, world, particles, viewport, NULL);
+        cf_app_draw_onto_screen(false);
+        render_mesh_material_work second = app_scene_renderer_mesh_work(renderer);
+        ok = ok && second.sdf_instances == 1 &&
+             second.sdf_program_count == first.sdf_program_count &&
+             second.sdf_program_compilations == first.sdf_program_compilations;
+    }
+    if (!ok) {
+        fprintf(
+            stderr,
+            "Scene SDF program counters: instances=%d draws=%d programs=%d "
+            "compilations=%u; %s\n",
+            first.sdf_instances,
+            first.sdf_draw_calls,
+            first.sdf_program_count,
+            first.sdf_program_compilations,
+            app_scene_renderer_error(renderer)
+        );
+    }
+    game_particles_free(particles);
+    app_scene_renderer_free(renderer);
+    engine_viewport_free(viewport);
+    render_shader_clear_world(world);
+    ecs_world_free(world);
+    return ok;
+}
+
+static behavior_asset *model_image_material(int index, const char *key)
+{
+    char name[64];
+    snprintf(name, sizeof name, "SDF model image material %d", index);
+    behavior_asset *asset = behavior_asset_new(name);
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    node *image = operation(asset->graph, "Shader Image Texture");
+    pin_value value = { .type = PIN_STR, .str = key };
+    assert(!graph_set_pin_default(asset->graph, image, false, SHADER_IMAGE_INPUT_IMAGE, &value));
+    connect(asset->graph, image, shader_graph_add_output(asset->graph, false), 0);
+    shader_error error = { 0 };
+    assert(render_shader_upsert(asset, &error));
+    return asset;
+}
+static bool model_image_boundary()
+{
+    char directory[] = "content/sdf-model-images-XXXXXX";
+    assert(mkdtemp(directory));
+    char keys[9][256];
+    behavior_asset *materials[9];
+    for (int i = 0; i < 9; i++) {
+        snprintf(keys[i], sizeof keys[i], "%s/%d.png", directory, i);
+        CF_Pixel pixel = { .colors = { (uint8_t)(20 + i * 20), 80, 160, 255 } };
+        CF_Image image = { 1, 1, &pixel };
+        void *bytes;
+        int size;
+        assert(!cf_is_error(cf_image_save_png_to_memory(&image, &bytes, &size)));
+        FILE *file = fopen(keys[i], "wb");
+        assert(file && fwrite(bytes, 1, (size_t)size, file) == (size_t)size);
+        assert(!fclose(file));
+        cf_free(bytes);
+        materials[i] = model_image_material(i, keys[i]);
+    }
+    behavior_asset *asset = behavior_asset_new("SDF model eight image slots");
+    asset->domain = BEHAVIOR_DOMAIN_MODEL;
+    graph *g = asset->graph;
+    node *sphere = graph_add_node(g, &NODE_ModelSphere), *root = NULL;
+    node *output = model_graph_add_output(g);
+    shader_error error = { 0 };
+    unsigned valid_revision = 0;
+    int id = 0;
+    for (int i = 0; i < 9; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "Image%d", i);
+        node *slot = graph_add_node(g, &NODE_ModelMaterialSlot);
+        slot->reference_name = graph_own_str(g, name, strlen(name));
+        slot->reference_asset = graph_own_str(
+            g,
+            materials[i]->name,
+            strlen(materials[i]->name)
+        );
+        node *part = graph_add_node(g, &NODE_ModelPart);
+        part->reference_name = graph_own_str(g, name, strlen(name));
+        connect(g, sphere, part, 0);
+        connect(g, slot, part, 1);
+        if (root) {
+            node *combined = graph_add_node(g, &NODE_ModelUnion);
+            connect(g, root, combined, 0);
+            connect(g, part, combined, 1);
+            root = combined;
+        } else {
+            root = part;
+        }
+        connect(g, root, output, 0);
+        if (i != 7 && i != 8) {
+            continue;
+        }
+        bool published = render_shader_models_upsert((const behavior_asset *const *)&asset, 1, &error);
+        if (i == 7) {
+            assert(published);
+            id = render_shader_find(asset->name);
+            valid_revision = render_shader_revision();
+        } else {
+            assert(!published && strstr(error.message, "image"));
+            assert(render_shader_find(asset->name) == id);
+            assert(render_shader_revision() == valid_revision);
+        }
+        float table[MODEL_MATERIAL_SLOT_MAX + 1][4], parameters[32][4];
+        render_shader_set resources = { 0 };
+        assert(
+            render_shader_model_material_snapshot(id, NULL, (ecs_entity){ 0 }, NULL, 0, table, parameters, &resources, &error)
+        );
+        assert(resources.count == 8);
+        model_material_slot absent;
+        assert(!render_shader_model_material_slot(id, 8, &absent));
+        render_programs *programs = render_programs_new(RENDER_PROGRAM_SDF_MATERIAL);
+        int program = render_programs_prepare(programs, &resources);
+        assert(program && render_programs_count(programs) == 1);
+        assert(render_programs_successful_compilations(programs) == 1);
+        assert(render_programs_prepare(programs, &resources) == program);
+        assert(render_programs_count(programs) == 1);
+        assert(render_programs_successful_compilations(programs) == 1);
+        render_programs_free(programs);
+    }
+    assert(render_shader_model_remove(asset->name, &error));
+    behavior_asset_free(asset);
+    for (int i = 0; i < 9; i++) {
+        assert(render_shader_material_remove(materials[i]->name, &error));
+        behavior_asset_free(materials[i]);
+        assert(!unlink(keys[i]));
+    }
+    assert(!rmdir(directory));
+    printf("SDF model image resources: eight compile; ninth rejects and retains prior generation\n");
+    return true;
+}
+
+/* Saved-source bake -> ordinary imported mesh, compared against the live SDF.
+ * Interior samples avoid claiming that a finite tessellation reproduces edges.
+ * Mirrored parts exercise coordinate covectors; an asymmetric image exercises
+ * the source bounds box UV rather than a constant material. */
+static void bake_fixture_save(const char *root, const char *folder, behavior_asset *asset)
+{
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s/%s.kdl", root, folder, asset->name);
+    char *text = behavior_asset_save(asset);
+    FILE *file = fopen(path, "wb");
+    assert(file && text && fwrite(text, 1, strlen(text), file) == strlen(text));
+    assert(!fclose(file));
+    free(text);
+}
+static void bake_vector(graph *g, node *n, int input, float x, float y, float z)
+{
+    float vector[] = { x, y, z };
+    pin_value v = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = vector };
+    assert(!graph_set_pin_default(g, n, false, input, &v));
+}
+static bool model_bake_render()
+{
+    char root[] = "content/sdf-bake-render-XXXXXX";
+    assert(mkdtemp(root));
+    char path[512], image_key[512], bundle[512], error[512];
+    const char *folders[] = { "models", "materials" };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, folders[i]);
+        assert(!mkdir(path, 0700));
+    }
+    snprintf(image_key, sizeof image_key, "%s/uv.png", root);
+    CF_Pixel colors[64];
+    for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+            colors[y * 8 + x] = (CF_Pixel){
+                .colors = { (uint8_t)(20 + 25 * x), 60, (uint8_t)(20 + 25 * y), 255 }
+            };
+        }
+    }
+    CF_Image image = { 8, 8, colors };
+    void *bytes;
+    int size;
+    assert(!cf_is_error(cf_image_save_png_to_memory(&image, &bytes, &size)));
+    FILE *file = fopen(image_key, "wb");
+    assert(file && fwrite(bytes, 1, (size_t)size, file) == (size_t)size);
+    assert(!fclose(file));
+    cf_free(bytes);
+    behavior_asset *materials[2];
+    shader_error shader_error = { 0 };
+    for (int i = 0; i < 2; i++) {
+        materials[i] = behavior_asset_new(i ? "BakeMirrorMaterial" : "BakeImageMaterial");
+        materials[i]->domain = BEHAVIOR_DOMAIN_MATERIAL;
+        graph *g = materials[i]->graph;
+        node *out = shader_graph_add_output(g, false),
+             *texture = operation(g, "Shader Image Texture"),
+             *position = operation(g, "Shader PartPosition"),
+             *x = operation(g, "Shader X"), *bump = operation(g, "Shader Bump"),
+             *normal = operation(g, "Shader Normal");
+        pin_value key = { .type = PIN_STR, .str = image_key };
+        assert(!graph_set_pin_default(g, texture, false, SHADER_IMAGE_INPUT_IMAGE, &key));
+        connect(g, texture, out, 0);
+        connect(g, position, x, 0);
+        connect(g, x, bump, 0);
+        connect(g, normal, bump, 3);
+        scalar(g, bump, 1, .25f);
+        scalar(g, bump, 2, .05f);
+        node *roughness = parameter(g, "Roughness", 0, 1, i ? .8f : .2f);
+        connect(g, roughness, out, 2);
+        connect(g, bump, out, 4);
+        assert(render_shader_upsert(materials[i], &shader_error));
+        bake_fixture_save(root, "materials", materials[i]);
+    }
+    behavior_asset *model = behavior_asset_new("BakeGPUModel");
+    model->domain = BEHAVIOR_DOMAIN_MODEL;
+    graph *g = model->graph;
+    node *joined = graph_add_node(g, &NODE_ModelUnion);
+    for (int i = 0; i < 2; i++) {
+        node *box = graph_add_node(g, &NODE_ModelBox),
+             *part = graph_add_node(g, &NODE_ModelPart),
+             *slot = graph_add_node(g, &NODE_ModelMaterialSlot),
+             *translate = graph_add_node(g, &NODE_ModelTranslate);
+        bake_vector(g, box, 0, 8, 4, 8);
+        assert(!graph_set_node_reference(g, part, 0, i ? "Mirrored" : "Image"));
+        const char *label = i ? "MirrorSlot" : "ImageSlot";
+        slot->reference_name = graph_own_str(g, label, strlen(label));
+        slot->reference_asset = graph_own_str(
+            g,
+            materials[i]->name,
+            strlen(materials[i]->name)
+        );
+        connect(g, box, part, 0);
+        connect(g, slot, part, 1);
+        node *geometry = part;
+        if (i) {
+            node *reflect = graph_add_node(g, &NODE_ModelReflect);
+            connect(g, part, reflect, 0);
+            geometry = reflect; // Default axis X.
+        }
+        connect(g, geometry, translate, 0);
+        bake_vector(g, translate, 1, i ? 12 : -12, 0, 0);
+        connect(g, translate, joined, i);
+    }
+    connect(g, joined, model_graph_add_output(g), 0);
+    bake_fixture_save(root, "models", model);
+    assert(render_shader_models_upsert((const behavior_asset *const *)&model, 1, &shader_error));
+    snprintf(bundle, sizeof bundle, "%s/bundle", root);
+    model_export_options options = { .bake = model_bake_defaults() };
+    options.bake.cell_size = 1;
+    model_export_summary summary;
+    bool exported = model_export_bundle(root, model->name, bundle, &options, &summary, error, sizeof error);
+    if (!exported) {
+        fprintf(stderr, "GPU bake fixture: %s\n", error);
+    }
+    assert(exported);
+    snprintf(path, sizeof path, "%s/model.mesh.json", bundle);
+    ecs_world *world = ecs_world_new();
+    const ecs_component_desc *components[] = {
+        &GAME_COMPONENT_GameGeometry3D,    &GAME_COMPONENT_GameVisualTransform,
+        &GAME_COMPONENT_GameOrientation,   &GAME_COMPONENT_GameMaterial,
+        &GAME_COMPONENT_GameShader,        &GAME_COMPONENT_GameSdfSurface3D,
+        &GAME_COMPONENT_GameMeshSurface2D, &GAME_COMPONENT_GameMeshParts,
+        &GAME_COMPONENT_GameMeshAsset
+    };
+    for (int i = 0; i < (int)(sizeof components / sizeof *components); i++) {
+        assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
+    }
+    ecs_entity live = actor(world, true, model->name),
+               mesh = actor(world, false, NULL);
+    GameMeshAsset source = { .source = path };
+    const char *qualified = "\"material.ImageSlot.Roughness\" 0.35;\n"
+                            "\"material.MirrorSlot.Roughness\" 0.65;\n";
+    GAME_GameShader_get(world, live)->parameters = qualified;
+    GameShader mesh_binding = { .parameters = qualified };
+    assert(
+        ecs_world_record_add(world, mesh, GAME_COMPONENT_GameShader.id, &mesh_binding, 0) == ECS_OK
+    );
+    assert(
+        ecs_world_record_add(world, mesh, GAME_COMPONENT_GameMeshAsset.id, &source, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    *GAME_GameGeometry3D_get(world, mesh) = (GameGeometry3D){ .primitive = GAME_PRIMITIVE_BOX,
+                                                              .width = 1,
+                                                              .height = 1,
+                                                              .depth = 1 };
+    GAME_GameVisualTransform_get(world, live)->scale = 1.2f;
+    GAME_GameVisualTransform_get(world, mesh)->scale = 1.2f;
+    render_material_raster *raster = render_material_raster_new();
+    bool ok = raster && render_material_raster_resize(raster, WIDTH, HEIGHT);
+    render_material_entity layer = { .shape_type = RENDER_SHAPE_MESH };
+    render_material_view view = { -48, 40, WIDTH, HEIGHT };
+    float *reference[3] = { 0 }, *baked[3] = { 0 };
+    for (int pass = 0; ok && pass < 2; pass++) {
+        render_mesh_material_actor drawn = { pass ? mesh : live, { 0, 0 } };
+        ok = draw(raster, world, &drawn, 1, &layer, view);
+        render_material_textures t = render_material_raster_textures(raster);
+        float **pixels = pass ? baked : reference;
+        ok = ok && read_pixels(t.scene, &pixels[0]) &&
+             read_pixels(t.albedo, &pixels[1]) && read_pixels(t.normal, &pixels[2]);
+    }
+    const int samples[][2] = { { 32, 37 }, { 36, 43 }, { 60, 37 }, { 64, 43 } };
+    for (int i = 0; ok && i < 4; i++) {
+        int p = (samples[i][1] * WIDTH + samples[i][0]) * 4;
+        ok = near(reference[0][p + 3], 1, .03f, "bake reference interior") &&
+             near(baked[0][p + 3], 1, .03f, "bake mesh interior");
+        for (int channel = 0; ok && channel < 3; channel++) {
+            for (int c = 0; ok && c < 4; c++) {
+                ok = near(
+                    baked[channel][p + c],
+                    reference[channel][p + c],
+                    channel == 1 && c == 3 ? .1f : .035f,
+                    "baked live material/frame/box UV parity"
+                );
+            }
+        }
+    }
+    if (ok) {
+        int left = (37 * WIDTH + 32) * 4, right = (37 * WIDTH + 60) * 4;
+        ok = near(reference[2][left], -reference[2][right], .035f, "mirrored part bump sign") &&
+             near(reference[2][left + 3], .65f, .035f, "left named material gloss") &&
+             near(reference[2][right + 3], .35f, .035f, "right named material gloss") &&
+             fabsf(reference[2][left]) > .1f &&
+             fabsf(reference[1][left] - reference[1][right]) > .05f;
+    }
+    for (int i = 0; i < 3; i++) {
+        free(reference[i]);
+        free(baked[i]);
+    }
+    render_material_raster_free(raster);
+    render_shader_clear_world(world);
+    ecs_world_free(world);
+    assert(render_shader_model_remove(model->name, &shader_error));
+    behavior_asset_free(model);
+    for (int i = 0; i < 2; i++) {
+        assert(render_shader_material_remove(materials[i]->name, &shader_error));
+        snprintf(path, sizeof path, "%s/materials/%s.kdl", root, materials[i]->name);
+        assert(!unlink(path));
+        behavior_asset_free(materials[i]);
+    }
+    const char *files[] = { "model.mesh.json", "model.obj", "model.mtl", "provenance.json" };
+    for (int i = 0; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", bundle, files[i]);
+        assert(!unlink(path));
+    }
+    assert(!rmdir(bundle));
+    assert(!unlink(image_key));
+    snprintf(path, sizeof path, "%s/models/BakeGPUModel.kdl", root);
+    assert(!unlink(path));
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, folders[i]);
+        assert(!rmdir(path));
+    }
+    assert(!rmdir(root));
+    if (ok) {
+        printf("SDF bake GPU: named live materials, asymmetric box UV, reflected part frames and bump parity PASS\n");
+    }
+    return ok;
+}
+
+/* A sphere fallback keeps its object-space origin even when its model proxy
+ * has asymmetric bounds. Enlarging that proxy must preserve the visible output
+ * and the subsequent sphere depth-copy coverage. */
+static bool sphere_fallback_center(ecs_world *world, const char *shape)
+{
+    ecs_entity front = actor(world, false, NULL),
+               solid = actor(world, true, shape), back = actor(world, true, shape);
+    GameGeometry3D *box = GAME_GameGeometry3D_get(world, front);
+    box->width = WIDTH;
+    box->depth = HEIGHT;
+    box->elevation = 30;
+    GAME_GameGeometry3D_get(world, back)->elevation = -30;
+    render_mesh_surface proxy = { 0 };
+    model_bounds asymmetric = { .min = { -12, -12, -12 }, .max = { 102, 12, 12 } };
+    char error[256];
+    GameTransform position = { 0 };
+    bool ok = render_mesh_surface_build_with_bounds(world, solid, &position, &asymmetric, &proxy, error, sizeof error);
+    render_mesh_material_actor actors[] = { { .entity = front },
+                                            { .entity = solid },
+                                            { .entity = back } };
+    render_material_view view = { -48, 40, WIDTH, HEIGHT };
+    render_mesh_material *pass = render_mesh_material_new();
+    assert(pass && render_mesh_material_resize(pass, WIDTH, HEIGHT));
+    sdf_snapshot reference = { 0 }, actual = { 0 };
+    render_mesh_material_work before = { 0 }, after = { 0 };
+    if (ok) {
+        ok = batch_draw(pass, world, actors, 3, view, 1, &reference, &before);
+    }
+    actors[1].surface = &proxy;
+    if (ok) {
+        ok = batch_draw(pass, world, actors, 3, view, 1, &actual, &after) &&
+             snapshot_matches(&reference, &actual, "asymmetric sphere fallback") &&
+             before.depth_copies == 2 && after.depth_copies == 2 &&
+             before.depth_copy_pixels == after.depth_copy_pixels;
+    }
+    printf(
+        "SDF sphere fallback asymmetric proxy: %s; copy pixels %zu/%zu\n",
+        ok ? "PASS" : "FAIL",
+        before.depth_copy_pixels,
+        after.depth_copy_pixels
+    );
+    snapshot_free(&reference);
+    snapshot_free(&actual);
+    render_mesh_material_free(pass);
+    render_mesh_surface_free(&proxy);
+    return ok;
+}
+
 bool test_sdf_material()
 {
+    assert(model_bake_render());
+    assert(model_image_boundary());
     behavior_asset *sphere = shape(false), *torus = shape(true),
                    *material = surface();
+    assert(scene_program_counters(sphere->name));
     ecs_world *world = ecs_world_new();
     const ecs_component_desc *components[] = {
         &GAME_COMPONENT_GameGeometry3D,    &GAME_COMPONENT_GameVisualTransform,
@@ -1055,15 +1513,15 @@ bool test_sdf_material()
         // Curved geometry retains the frontmost actual quarter-pixel sample.
         // Shaded color still averages all four samples independently.
         ok = draw(raster, world, actors, 1, layers, view) &&
-             pixel(raster, 48, 40, 1, 0, sqrtf(99.875f), .025f, -.025f) &&
-             pixel(raster, 54, 40, 1, 0, sqrtf(60.875f), .625f, -.025f) &&
+             pixel(raster, 48, 40, 1, 0, sphere_front(10, .5f, .5f), .025f, -.025f) &&
+             pixel(raster, 54, 40, 1, 0, sphere_front(10, 6.5f, .5f), .625f, -.025f) &&
              coverage(raster, 59, 40, 0) && area(raster, 3.14159265f * 100);
         // The material must sample the first hit, rather than its bounding proxy.
         GAME_GameShader_get(world, solid)->material = material->name;
         if (ok) {
             ok = draw(raster, world, actors, 1, layers, view) &&
-                 pixel(raster, 48, 40, sqrtf(99.5f) / 20, 0, sqrtf(99.875f), .025f, -.025f) &&
-                 pixel(raster, 54, 40, sqrtf(57.5f) / 20, 0, sqrtf(60.875f), .625f, -.025f);
+                 pixel(raster, 48, 40, sphere_material(.5f, .5f), 0, sphere_front(10, .5f, .5f), .025f, -.025f) &&
+                 pixel(raster, 54, 40, sphere_material(6.5f, .5f), 0, sphere_front(10, 6.5f, .5f), .625f, -.025f);
         }
         GAME_GameShader_get(world, solid)->material = NULL;
     }
@@ -1091,7 +1549,7 @@ bool test_sdf_material()
     view.max_y += 120;
     if (ok) {
         ok = draw(raster, world, actors, 1, layers, view) &&
-             pixel(raster, 48, 40, 1, 0, -12 + sqrtf(224.875f), .25f / 15, -.25f / 15) &&
+             pixel(raster, 48, 40, 1, 0, -12 + sphere_front(15, .5f, .5f), .25f / 15, -.25f / 15) &&
              coverage(raster, 61, 40, 1) && coverage(raster, 64, 40, 0);
     }
     *GAME_GameVisualTransform_get(world, solid) = (GameVisualTransform){ .scale = 1 };
@@ -1133,9 +1591,9 @@ bool test_sdf_material()
                      40,
                      front ? 0 : 1,
                      front ? 1 : 0,
-                     front ? 13 : sqrtf(99.5f),
-                     front ? 0 : .05f,
-                     front ? 0 : -.05f
+                     front ? 13 : sphere_front(10, .5f, .5f),
+                     front ? 0 : .025f,
+                     front ? 0 : -.025f
                  );
         }
     }
@@ -1157,7 +1615,8 @@ bool test_sdf_material()
              coverage(raster, 48, 40, 1);
     }
     if (ok) {
-        ok = active_scratch_reuse(world, solid) && test_sdf_batches(world) &&
+        ok = sphere_fallback_center(world, sphere->name) &&
+             active_scratch_reuse(world, solid) && test_sdf_batches(world) &&
              indexed_graph_pairs(world) && batch_layers(raster, world, sphere->name);
     }
     render_material_raster_free(raster);

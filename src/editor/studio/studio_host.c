@@ -452,6 +452,7 @@ static bool forward_input(studio *s)
     }
     for (int b = 0; b < 3; b++) {
         in->pressed[b] = in->released[b] = false;
+        in->press_position[b] = false;
     }
     in->wheel = s->zoom_wheel = s->pinch = 0;
     asetlen(s->keys, 0);
@@ -523,6 +524,11 @@ static bool forward_input(studio *s)
                 rml_backend_process_input(s->backend, &move);
                 apush(s->graph.events, move);
                 in->down[b] = down;
+                if (down) {
+                    in->press_x[b] = input.x;
+                    in->press_y[b] = input.y;
+                    in->press_position[b] = true;
+                }
                 in->pressed[b] |= down;
                 in->released[b] |= !down;
                 input.type = down ? RML_INPUT_POINTER_DOWN : RML_INPUT_POINTER_UP;
@@ -715,6 +721,9 @@ static void draw_viewport(studio *s)
         .height = s->surface.rect.h * ui,
         .x = s->surface.x * ui,
         .y = s->surface.y * ui,
+        .press_x = s->surface.press_x[0] * ui,
+        .press_y = s->surface.press_y[0] * ui,
+        .press_position = s->surface.press_position[0],
         .hovered = s->surface.hovered,
         .focused = s->focus_area == area && !kit_wants_keyboard(s->kit),
         .blocked = kit_command_is_open(s->kit),

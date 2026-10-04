@@ -4,14 +4,61 @@
 #include "editor/studio/studio_internal.h"
 #include "render/ui.h"
 #include "support/array.h"
+#include "support/text_file.h"
+#include "support/xalloc.h"
 #include "test/suite_internal.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef __EMSCRIPTEN__
+#include <unistd.h>
+#endif
+
+#ifndef __EMSCRIPTEN__
+static void prefs_file_override()
+{
+    const char *before = getenv("CHIBI_STUDIO_PREFS_PATH");
+    char *previous = before ? xstrdup(before) : NULL;
+    char path[] = "/tmp/chibi-studio-prefs-XXXXXX";
+    int fd = mkstemp(path);
+    assert(fd >= 0 && !close(fd));
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    assert(fputs("{\"theme\":\"dark\",\"uiScale\":1.5,\"future\":42}", file) >= 0);
+    assert(!fclose(file));
+    assert(!setenv("CHIBI_STUDIO_PREFS_PATH", path, 1));
+    studio_prefs prefs = studio_prefs_load();
+    bool loaded = prefs.theme == STUDIO_THEME_DARK && prefs.ui_scale == 1.5f;
+    prefs.ui_scale = 2;
+    prefs.workspace = STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
+    prefs.layouts[STUDIO_WORKSPACE_HORIZONTAL_SPLIT].side_open = false;
+    bool saved = studio_prefs_save(&prefs);
+    studio_prefs reloaded = studio_prefs_load();
+    char *text = text_file_read(path);
+    yyjson_doc *doc = text ? yyjson_read(text, strlen(text), 0) : NULL;
+    bool retained = yyjson_get_int(yyjson_obj_get(yyjson_doc_get_root(doc), "future")) ==
+                    42;
+    test_check(loaded && saved && retained && studio_prefs_equal(&prefs, &reloaded), "an explicit preferences file owns load and save, preserving unrelated settings");
+    yyjson_doc_free(doc);
+    free(text);
+    char invalid[128];
+    snprintf(invalid, sizeof invalid, "%s/prefs.json", path);
+    assert(!setenv("CHIBI_STUDIO_PREFS_PATH", invalid, 1));
+    test_check(!studio_prefs_save(&prefs), "an invalid explicit preferences file fails without falling back to user storage");
+    if (previous) {
+        assert(!setenv("CHIBI_STUDIO_PREFS_PATH", previous, 1));
+    } else {
+        assert(!unsetenv("CHIBI_STUDIO_PREFS_PATH"));
+    }
+    free(previous);
+    assert(!unlink(path));
+}
+#endif
 
 static const char *text_at(yyjson_val *root, const char *pointer)
 {
@@ -1404,6 +1451,9 @@ void test_studio_settings()
 {
     independent_ui_deadlines();
     prefs_round_trip();
+#ifndef __EMSCRIPTEN__
+    prefs_file_override();
+#endif
     font_preferences();
     invalid_values();
     theme_presets();

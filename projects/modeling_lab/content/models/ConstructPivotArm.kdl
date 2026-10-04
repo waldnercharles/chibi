@@ -1,0 +1,101 @@
+version 3
+name "ConstructPivotArm"
+domain "model"
+id_counter 40
+description "An asymmetric arm rotates around an explicit remote pivot and then scales around the same point. Public angles retain the frame relationship."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - {
+                id 6
+                type "Model Parameter"
+                reference_name "Angles"
+                inputs {
+                    Default {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=0.0 y=0.0 z=0.7
+                    }
+                    Minimum {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=-3.1415927 y=-3.1415927 z=-3.1415927
+                    }
+                    Maximum {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=3.1415927 y=3.1415927 z=3.1415927
+                    }
+                }
+            }
+            - {
+                id 11
+                type "Model Rounded Box"
+                inputs {
+                    "Half Size" {
+                        default x=28.0 y=6.0 z=7.0
+                    }
+                    Radius 3.0
+                }
+            }
+            - {
+                id 15
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=25.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 19
+                type "Model Rotate Around"
+                inputs {
+                    Pivot {
+                        default x=-3.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 24
+                type "Model Scale Around"
+                inputs {
+                    Pivot {
+                        default x=-3.0 y=0.0 z=0.0
+                    }
+                    Factors {
+                        default x=1.0 y=1.2 z=1.0
+                    }
+                }
+            }
+            - {
+                id 29
+                type "Model Sphere"
+                inputs Radius=9.0
+            }
+            - {
+                id 32
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-3.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - id=36 type="Model Union"
+        }
+        (array)edges {
+            - from="6.Value" to="19.Angles"
+            - from="11.Geometry" to="15.Geometry"
+            - from="15.Geometry" to="19.Geometry"
+            - from="19.Geometry" to="24.Geometry"
+            - from="24.Geometry" to="36.A"
+            - from="29.Geometry" to="32.Geometry"
+            - from="32.Geometry" to="36.B"
+            - from="36.Geometry" to="1.Geometry"
+        }
+    }
+}

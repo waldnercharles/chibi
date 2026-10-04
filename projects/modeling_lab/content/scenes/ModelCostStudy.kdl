@@ -1,0 +1,587 @@
+version 1
+name "ModelCostStudy"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "StudyCamera"
+        components {
+            GameCamera width=600.0 height=400.0 focal_distance=0.0
+            GameHRC2D adaptive=#false resolution=0.5 min_resolution=0.5 surface_relief=0.0 ambient=0.12
+        }
+    }
+    - {
+        name "Light"
+        prototype "StudyLight"
+        components {
+            GameTransform x=-250.0 y=-145.0
+        }
+    }
+    - {
+        name "One model"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-210.0 y=-65.0
+            GameVisualTransform scale=38.0
+        }
+    }
+    - {
+        name "Raw equivalent"
+        prototype "CostRawSphere"
+        components {
+            GameTransform x=-90.0 y=-65.0
+            GameVisualTransform scale=38.0
+        }
+    }
+    - {
+        name "Complex construction"
+        prototype "CostConstruction"
+        components {
+            GameTransform x=115.0 y=-50.0
+            GameVisualTransform scale=4.0
+        }
+    }
+    - {
+        name "Shared instance 1"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-180.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 2"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-156.0 y=70.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 3"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-132.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 4"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-108.0 y=70.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 5"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-84.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 6"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-60.0 y=70.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 7"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-36.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 8"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-12.0 y=70.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 9"
+        prototype "CostSphere"
+        components {
+            GameTransform x=12.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 10"
+        prototype "CostSphere"
+        components {
+            GameTransform x=36.0 y=70.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 11"
+        prototype "CostSphere"
+        components {
+            GameTransform x=60.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 12"
+        prototype "CostSphere"
+        components {
+            GameTransform x=84.0 y=70.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 13"
+        prototype "CostSphere"
+        components {
+            GameTransform x=108.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 14"
+        prototype "CostSphere"
+        components {
+            GameTransform x=132.0 y=70.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 15"
+        prototype "CostSphere"
+        components {
+            GameTransform x=156.0 y=70.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 16"
+        prototype "CostSphere"
+        components {
+            GameTransform x=180.0 y=70.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 17"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-180.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 18"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-156.0 y=90.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 19"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-132.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 20"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-108.0 y=90.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 21"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-84.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 22"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-60.0 y=90.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 23"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-36.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 24"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-12.0 y=90.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 25"
+        prototype "CostSphere"
+        components {
+            GameTransform x=12.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 26"
+        prototype "CostSphere"
+        components {
+            GameTransform x=36.0 y=90.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 27"
+        prototype "CostSphere"
+        components {
+            GameTransform x=60.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 28"
+        prototype "CostSphere"
+        components {
+            GameTransform x=84.0 y=90.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 29"
+        prototype "CostSphere"
+        components {
+            GameTransform x=108.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 30"
+        prototype "CostSphere"
+        components {
+            GameTransform x=132.0 y=90.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 31"
+        prototype "CostSphere"
+        components {
+            GameTransform x=156.0 y=90.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 32"
+        prototype "CostSphere"
+        components {
+            GameTransform x=180.0 y=90.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 33"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-180.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 34"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-156.0 y=110.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 35"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-132.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 36"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-108.0 y=110.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 37"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-84.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 38"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-60.0 y=110.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 39"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-36.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 40"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-12.0 y=110.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 41"
+        prototype "CostSphere"
+        components {
+            GameTransform x=12.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 42"
+        prototype "CostSphere"
+        components {
+            GameTransform x=36.0 y=110.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 43"
+        prototype "CostSphere"
+        components {
+            GameTransform x=60.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 44"
+        prototype "CostSphere"
+        components {
+            GameTransform x=84.0 y=110.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 45"
+        prototype "CostSphere"
+        components {
+            GameTransform x=108.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 46"
+        prototype "CostSphere"
+        components {
+            GameTransform x=132.0 y=110.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 47"
+        prototype "CostSphere"
+        components {
+            GameTransform x=156.0 y=110.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 48"
+        prototype "CostSphere"
+        components {
+            GameTransform x=180.0 y=110.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 49"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-180.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 50"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-156.0 y=130.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 51"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-132.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 52"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-108.0 y=130.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 53"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-84.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 54"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-60.0 y=130.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 55"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-36.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 56"
+        prototype "CostSphere"
+        components {
+            GameTransform x=-12.0 y=130.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 57"
+        prototype "CostSphere"
+        components {
+            GameTransform x=12.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 58"
+        prototype "CostSphere"
+        components {
+            GameTransform x=36.0 y=130.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 59"
+        prototype "CostSphere"
+        components {
+            GameTransform x=60.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 60"
+        prototype "CostSphere"
+        components {
+            GameTransform x=84.0 y=130.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 61"
+        prototype "CostSphere"
+        components {
+            GameTransform x=108.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 62"
+        prototype "CostSphere"
+        components {
+            GameTransform x=132.0 y=130.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+    - {
+        name "Shared instance 63"
+        prototype "CostSphere"
+        components {
+            GameTransform x=156.0 y=130.0
+            GameVisualTransform scale=6.0
+        }
+    }
+    - {
+        name "Shared instance 64"
+        prototype "CostSphere"
+        components {
+            GameTransform x=180.0 y=130.0
+            GameVisualTransform scale=6.0
+            GameShader parameters="Radius 1.2\n"
+        }
+    }
+}

@@ -1,6 +1,7 @@
 #include "render/mesh_surface.h"
 
 #include "render/arena_geometry.h"
+#include "render/shader_catalog.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 
@@ -176,10 +177,11 @@ void render_mesh_surface_free(render_mesh_surface *surface)
     afree(surface->parts);
 }
 
-bool render_mesh_surface_build(
+bool render_mesh_surface_build_with_bounds(
     const ecs_world *world,
     ecs_entity entity,
     const GameTransform *position,
+    const model_bounds *override,
     render_mesh_surface *surface,
     char *error,
     size_t size
@@ -210,12 +212,53 @@ bool render_mesh_surface_build(
                                               transform->roll }
                                    : (CF_V3){ 0 };
         float angle = heading ? heading->radians : 0;
-        if (!isfinite(
-                position->x + position->y + shape->elevation + scale + angle +
-                rotation.x + rotation.y + rotation.z + shape->width +
-                shape->height + shape->depth
-            ) ||
-            scale < 0 || shape->width <= 0 || shape->height <= 0 || shape->depth <= 0) {
+        CF_V3 dimensions = { shape->width, shape->height, shape->depth };
+        CF_V3 center = { 0 };
+        const GameShader *binding = GAME_GameShader_get_const(world, entity);
+        int id = binding ? render_shader_find(binding->shape) : 0;
+        if (override) {
+            if (override->empty) {
+                return true;
+            }
+            dimensions = (CF_V3){ override->max[0] - override->min[0],
+                                  override->max[1] - override->min[1],
+                                  override->max[2] - override->min[2] };
+            center = (CF_V3){ (override->min[0] + override->max[0]) * .5f,
+                              (override->min[1] + override->max[1]) * .5f,
+                              (override->min[2] + override->max[2]) * .5f };
+        } else if (render_shader_is_model(id)) {
+            float parameters[32][4], min[3], max[3];
+            bool empty;
+            shader_error diagnostic = { 0 };
+            if (!render_shader_model_snapshot(
+                    id,
+                    (ecs_world *)world,
+                    entity,
+                    binding->parameters,
+                    parameters,
+                    min,
+                    max,
+                    &empty,
+                    &diagnostic
+                )) {
+                snprintf(error, size, "%s", diagnostic.message);
+                return false;
+            }
+            if (empty) {
+                return true;
+            }
+            dimensions = (CF_V3){ max[0] - min[0], max[1] - min[1], max[2] - min[2] };
+            center = (CF_V3){ max[0] * .5f + min[0] * .5f,
+                              max[1] * .5f + min[1] * .5f,
+                              max[2] * .5f + min[2] * .5f };
+        }
+        if (!isfinite(position->x) || !isfinite(position->y) ||
+            !isfinite(shape->elevation) || !isfinite(scale) || !isfinite(angle) ||
+            !isfinite(rotation.x) || !isfinite(rotation.y) || !isfinite(rotation.z) ||
+            !isfinite(dimensions.x) || !isfinite(dimensions.y) ||
+            !isfinite(dimensions.z) || !isfinite(center.x) ||
+            !isfinite(center.y) || !isfinite(center.z) || scale < 0 ||
+            dimensions.x <= 0 || dimensions.y <= 0 || dimensions.z <= 0) {
             snprintf(error, size, "SDF surface requires finite transforms and positive bounds.");
             return false;
         }
@@ -223,16 +266,18 @@ bool render_mesh_surface_build(
             return true;
         }
         render_mesh_surface_part part = {
-            .visual = { .part = { .primitive = GAME_PRIMITIVE_BOX,
-                                  .dimensions = { shape->width,
-                                                  shape->height,
-                                                  shape->depth } },
+            .visual = { .part = { .primitive = GAME_PRIMITIVE_BOX, .dimensions = dimensions },
                         .frame = cf_m4_from_trs(
                             (CF_V3){ position->x, shape->elevation, position->y },
                             game_visual_rotation(angle, rotation),
                             (CF_V3){ scale, scale, scale }
                         ) }
         };
+        part.sdf_center = center;
+        part.visual.frame = cf_mul_m4(
+            part.visual.frame,
+            cf_m4_from_trs(center, cf_quat(0, 0, 0, 1), (CF_V3){ 1, 1, 1 })
+        );
         part.vertices = sdf_proxy;
         part.vertex_count = 36;
         part.borrowed = true;
@@ -300,17 +345,39 @@ bool render_mesh_surface_build(
                         ) },
             .vertices = asset->vertices,
             .asset_identity = asset->identity,
+            .part_coordinates = asset->has_part_coordinates,
+            .uv_bounds = asset->has_uv_bounds,
+            .uv_min = asset->uv_min,
+            .uv_max = asset->uv_max,
             .borrowed = true
         };
         surface->min = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
         surface->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
         CF_M4x4 model = render_arena_visual_model(&part.visual);
-        for (int i = 0; i < acount(part.vertices); i++) {
+        for (int i = 0; i < render_mesh_surface_vertex_count(&part); i++) {
             CF_V3 p = cf_m4_transform_point(model, part.vertices[i].position);
             surface->min = cf_min_v3(surface->min, p);
             surface->max = cf_max_v3(surface->max, p);
         }
-        apush(surface->parts, part);
+        if (!acount(asset->groups)) {
+            apush(surface->parts, part);
+            return true;
+        }
+        for (int i = 0; i < acount(asset->groups); i++) {
+            const render_mesh_group *group = &asset->groups[i];
+            render_mesh_surface_part slice = part;
+            slice.vertices = asset->vertices + group->first;
+            slice.vertex_count = group->count;
+            slice.first_vertex = group->first;
+            slice.material_scope = group->material_scope;
+            snprintf(
+                slice.visual.part.material,
+                sizeof slice.visual.part.material,
+                "%s",
+                group->material
+            );
+            apush(surface->parts, slice);
+        }
         return true;
     }
     arena_visual visuals[ARENA_PART_LIMIT];
@@ -328,7 +395,7 @@ bool render_mesh_surface_build(
             return false;
         }
         CF_M4x4 model = render_arena_visual_model(&part.visual);
-        for (int v = 0; v < acount(part.vertices); v++) {
+        for (int v = 0; v < render_mesh_surface_vertex_count(&part); v++) {
             CF_V3 p = cf_m4_transform_point(model, part.vertices[v].position);
             surface->min = cf_min_v3(surface->min, p);
             surface->max = cf_max_v3(surface->max, p);
@@ -339,6 +406,18 @@ bool render_mesh_surface_build(
         surface->min = surface->max = (CF_V3){ 0 };
     }
     return true;
+}
+
+bool render_mesh_surface_build(
+    const ecs_world *world,
+    ecs_entity entity,
+    const GameTransform *position,
+    render_mesh_surface *surface,
+    char *error,
+    size_t size
+)
+{
+    return render_mesh_surface_build_with_bounds(world, entity, position, NULL, surface, error, size);
 }
 
 bool render_mesh_surface_bounds(

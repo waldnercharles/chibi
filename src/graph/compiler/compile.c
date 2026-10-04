@@ -9,6 +9,7 @@
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/modeling/model_compile.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
@@ -1143,6 +1144,19 @@ static int compile_lowered(const behavior_asset *asset, compile_report *out)
 
 int behavior_asset_compile(const behavior_asset *asset, compile_report *out)
 {
+    if (asset->domain == BEHAVIOR_DOMAIN_MODEL) {
+        compile_report_free(out);
+        compile_report_init(out);
+        model_program model;
+        model_program_init(&model);
+        shader_error error = { 0 };
+        if (!model_compile(asset, &model, &error)) {
+            compile_graph_id = asset->graph->graph_id;
+            emit(out, CMPL_ERROR, error.node, 0, CMPL_RULE_OPERATOR, "%s", error.message);
+        }
+        model_program_free(&model);
+        return out->error_count;
+    }
     if (behavior_asset_has_component_nodes(asset)) {
         return compile_lowered(asset, out);
     }

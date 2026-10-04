@@ -1,4 +1,5 @@
 #include "editor/collab/actions_scene.h"
+#include "editor/workspace/model_preview.h"
 #include "editor/workspace/scene_internal.h"
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
@@ -432,7 +433,8 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
     scene->render_viewport = viewport;
     app_runtime_target target = scene->active_runtime_target;
     scene_prototype_asset *prototype = previewed_prototype(scene);
-    bool preview = target == APP_RUNTIME_PREVIEW && prototype;
+    bool model = target == APP_RUNTIME_PREVIEW && scene->model_preview;
+    bool preview = target == APP_RUNTIME_PREVIEW && (prototype || model);
     engine_viewport_set_runtime(
         viewport,
         preview ? game_prototype_preview_runtime(scene->prototype_preview)
@@ -462,7 +464,7 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
     if (preview) {
         ecs_world *world = game_prototype_preview_world(scene->prototype_preview);
         ecs_entity entity = game_prototype_preview_entity(scene->prototype_preview);
-        perspective = GAME_GameGeometry3D_has(world, entity);
+        perspective = !model && GAME_GameGeometry3D_has(world, entity);
     }
     engine_viewport_set_perspective(viewport, perspective);
     bool camera_session = !preview && scene->runtime_snapshot_valid;
@@ -476,8 +478,12 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         engine_viewport_clear_arena_camera(viewport);
     }
     /* Prototype records are append-only; indices survive array reallocations. */
-    int camera_target = preview ? (int)(prototype - scene->prototypes) + 1 : 0;
-    scene_camera *camera = preview ? &prototype->camera : &scene->camera;
+    int camera_target = model   ? -2
+                      : preview ? (int)(prototype - scene->prototypes) + 1
+                                : 0;
+    scene_camera *camera = model   ? &scene->model_camera
+                         : preview ? &prototype->camera
+                                   : &scene->camera;
     bool fit = false;
     if (camera_target != scene->camera_target) {
         if (camera->saved) {
@@ -489,11 +495,17 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         app_scene_renderer_reset(scene->renderer);
         scene->camera_target = camera_target;
     }
+    if (model) {
+        if (fit) {
+            scene_model_preview_frame(scene);
+        }
+        scene_model_preview_update(scene);
+    }
     ecs_entity fit_entity = scene->reveal_actor;
     fit |= fit_entity.slot != 0;
     scene->reveal_actor = (ecs_entity){ 0 };
     /* Before the draw, so the frame that fits the camera shows it. */
-    if (fit) {
+    if (fit && !model) {
         fit_scene_view(
             viewport,
             preview ? game_prototype_preview_world(scene->prototype_preview)
@@ -517,13 +529,12 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         }
     }
     engine_viewport_controls controls = {
-        .session = target == APP_RUNTIME_PREVIEW ? prototype != NULL
-                                                 : scene->runtime_snapshot_valid,
+        .session = target == APP_RUNTIME_PREVIEW ? preview : scene->runtime_snapshot_valid,
         .editing = scene_can_move(scene),
         .playing = target == APP_RUNTIME_PREVIEW ? scene->preview_playing
                                                  : scene->runtime_playing,
     };
-    if (controls.session && !controls.editing) {
+    if (controls.session && !controls.editing && !model) {
         engine_viewport_view view;
         int authored = game_camera_view(
             preview ? game_prototype_preview_world(scene->prototype_preview)
@@ -541,7 +552,11 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         }
     }
     int drawn = engine_viewport_draw(viewport, &controls);
-    edit_scene_pointer(scene, viewport);
+    if (model) {
+        scene_model_preview_pointer(scene, viewport);
+    } else {
+        edit_scene_pointer(scene, viewport);
+    }
     engine_viewport_get_view(viewport, &camera->view);
     camera->saved = true;
     return drawn;

@@ -1,6 +1,7 @@
 #include "assets/behavior_loader.h"
 
 #include "graph/document/serialize.h"
+#include "render/shader_catalog.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -59,7 +60,7 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
     char **paths = NULL;
     const char *folders[] = { "libraries", "shader-libraries", "events",
                               "systems",   "fields",           "materials",
-                              "shapes",    "behaviors" };
+                              "shapes",    "models",           "behaviors" };
     for (int f = 0; f < (int)(sizeof folders / sizeof *folders); f++) {
         size_t size = strlen(content_root) + strlen(folders[f]) + 2;
         char *directory_path = xmalloc(size);
@@ -130,14 +131,33 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
         free(paths[i]);
     }
     afree(paths);
-    for (int pass = 0; pass < 3; pass++) {
+    const behavior_asset **models = NULL;
+    for (int i = 0; i < acount(pending); i++) {
+        if (pending[i]->working->domain == BEHAVIOR_DOMAIN_MODEL) {
+            apush(models, pending[i]->working);
+        }
+    }
+    bool models_ready = false;
+    for (int pass = 0; pass < 4; pass++) {
+        if (pass == 2) {
+            shader_error model_error = { 0 };
+            models_ready = !acount(models) ||
+                           render_shader_models_upsert(models, acount(models), &model_error);
+            if (!models_ready) {
+                load_error(content_root, "model dependencies", model_error.message);
+            }
+        }
         for (int i = 0; i < acount(pending); i++) {
             game_live_definition *definition = pending[i];
             if (!definition) {
                 continue;
             }
             behavior_domain domain = definition->working->domain;
-            int stage = domain == BEHAVIOR_DOMAIN_EVENT ? 2
+            if (domain == BEHAVIOR_DOMAIN_MODEL && !models_ready) {
+                continue;
+            }
+            int stage = domain == BEHAVIOR_DOMAIN_EVENT ? 3
+                      : domain == BEHAVIOR_DOMAIN_MODEL ? 2
                       : (domain == BEHAVIOR_DOMAIN_MATERIAL ||
                          domain == BEHAVIOR_DOMAIN_SHAPE ||
                          domain == BEHAVIOR_DOMAIN_FIELD)
@@ -166,6 +186,7 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
             loaded++;
         }
     }
+    afree(models);
     for (int i = 0; i < acount(pending); i++) {
         game_live_definition_free(pending[i]);
     }

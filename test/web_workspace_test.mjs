@@ -46,7 +46,7 @@ class Request {
       ? JSON.stringify({
         root: '/projects/sample-project/',
         assets: {
-          'projects/sample-project/project.kdl': "version 4\nname \"Sample Project\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n",
+          'projects/sample-project/project.kdl': "version 5\nname \"Sample Project\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n",
           'projects/sample-project/content/scenes/Start.kdl': "version 1\nname \"Start\"\n(array)entities\n",
         },
       })
@@ -97,16 +97,16 @@ assert.deepEqual([...files.get('/' + backdrop)], [10, 11], 'unchanged bytes stay
 assert(!files.has('/' + badge), 'a removed image leaves MEMFS');
 assert.equal(writes.length, 7, 'unchanged text and image files are not rewritten');
 assert(!files.has('/content/scenes/Arena3D.kdl'));
-assert.deepEqual(JSON.parse(Module.chibiCreateProject('Sample Project', 4)), {root: '/projects/sample-project/'});
-assert.deepEqual(JSON.parse(requests.at(-1).body), {name: 'Sample Project', version: 4});
+assert.deepEqual(JSON.parse(Module.chibiCreateProject('Sample Project', 5)), {root: '/projects/sample-project/'});
+assert.deepEqual(JSON.parse(requests.at(-1).body), {name: 'Sample Project', version: 5});
 assert.equal(files.get('/projects/sample-project/project.kdl'),
-  "version 4\nname \"Sample Project\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n");
+  "version 5\nname \"Sample Project\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n");
 assert.equal(files.get('/projects/sample-project/content/scenes/Start.kdl'),
   "version 1\nname \"Start\"\n(array)entities\n");
 
 const originalWriteFile = Module.FS.writeFile;
 const simmers = {
-  'projects/simmer/project.kdl': "version 4\nname \"Simmer\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n",
+  'projects/simmer/project.kdl': "version 5\nname \"Simmer\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n",
   'projects/simmer/content/scenes/Start.kdl': "version 1\nname \"Start\"\n(array)entities\n",
 };
 const projectRequestCount = requests.filter(request => request.path === '/__chibi/project').length;
@@ -130,11 +130,11 @@ Module.FS.writeFile = (path, value) => {
   }
   originalWriteFile(path, value);
 };
-const firstAttempt = JSON.parse(Module.chibiCreateProject('Simmer', 4));
+const firstAttempt = JSON.parse(Module.chibiCreateProject('Simmer', 5));
 assert.match(firstAttempt.error, /Cannot write/);
 assert.equal(files.get('/projects/simmer/project.kdl'), simmers['projects/simmer/project.kdl']);
 assert.equal(files.has(failedPath), false, 'a failed first sync leaves the start scene missing');
-assert.deepEqual(JSON.parse(Module.chibiCreateProject('Simmer', 4)), {root: '/projects/simmer/'});
+assert.deepEqual(JSON.parse(Module.chibiCreateProject('Simmer', 5)), {root: '/projects/simmer/'});
 assert.equal(files.get(failedPath), simmers['projects/simmer/content/scenes/Start.kdl']);
 assert.equal(requests.filter(request => request.path === '/__chibi/project').length,
   projectRequestCount + 1, 'retry mirrors the already-created project instead of creating a duplicate');

@@ -189,18 +189,70 @@ static pin_spec image_in[] = {
       .default_value = { .type = PIN_STR, .str = "" } },
     { .name = "Color Space",
       .type = PIN_I32,
+      .type_name = "ShaderImageColorSpace",
       .flags = PIN_FLAG_SETTING,
       .default_value = { .type = PIN_I32, .i = SHADER_IMAGE_SRGB } },
     { .name = "Filter",
       .type = PIN_I32,
+      .type_name = "ShaderImageFilter",
       .flags = PIN_FLAG_SETTING,
       .default_value = { .type = PIN_I32, .i = SHADER_IMAGE_BILINEAR } },
     { .name = "Wrap",
       .type = PIN_I32,
+      .type_name = "ShaderImageWrap",
       .flags = PIN_FLAG_SETTING,
       .default_value = { .type = PIN_I32, .i = SHADER_IMAGE_REPEAT } }
 };
 _Static_assert(sizeof image_in / sizeof *image_in == SHADER_IMAGE_INPUT_COUNT, "image pin schema");
+static pin_spec projection_in[] = { VECTOR_PIN("Position", 3),
+                                    VECTOR_PIN("Scale", 2),
+                                    VECTOR_PIN("Offset", 2),
+                                    { .name = "Axis",
+                                      .type = PIN_I32,
+                                      .type_name = "ShaderMappingAxis",
+                                      .flags = PIN_FLAG_SETTING,
+                                      .default_value = { .type = PIN_I32, .i = 1 } } };
+static pin_spec normal_map_in[] = { VECTOR_PIN("Color", 3),
+                                    VECTOR_PIN("UV", 2),
+                                    FLOAT_DEFAULT("Strength", 1),
+                                    FLOAT_DEFAULT("Distance", .001f),
+                                    { .name = "Convention",
+                                      .type = PIN_I32,
+                                      .type_name = "ShaderNormalConvention",
+                                      .flags = PIN_FLAG_SETTING,
+                                      .default_value = { .type = PIN_I32 } } };
+static pin_spec bump_in[] = { FLOAT_PIN("Height"),
+                              FLOAT_DEFAULT("Strength", 1),
+                              FLOAT_DEFAULT("Distance", .001f),
+                              VECTOR_PIN("Normal", 3) };
+static pin_spec triplanar_in[] = {
+    VECTOR_PIN("Position", 3),
+    FLOAT_DEFAULT("Sharpness", 4),
+    FLOAT_DEFAULT("Distance", .001f),
+    { .name = "Image",
+      .type = PIN_STR,
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_STR, .str = "" } },
+    { .name = "Color Space",
+      .type = PIN_I32,
+      .type_name = "ShaderImageColorSpace",
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_I32, .i = SHADER_IMAGE_SRGB } },
+    { .name = "Filter",
+      .type = PIN_I32,
+      .type_name = "ShaderImageFilter",
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_I32, .i = SHADER_IMAGE_BILINEAR } },
+    { .name = "Wrap",
+      .type = PIN_I32,
+      .type_name = "ShaderImageWrap",
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_I32, .i = SHADER_IMAGE_REPEAT } }
+};
+static pin_spec decal_in[] = { VECTOR_PIN("Position", 3),
+                               VECTOR_PIN("Half Size", 3),
+                               FLOAT_DEFAULT("Feather", .01f),
+                               FLOAT_DEFAULT("Facing", -1) };
 static pin_spec shape[] = { FLOAT_PIN("Distance") };
 #define NODE(symbol, label, count, pins, outs, text)                           \
     static node_desc symbol = { .name = "Shader " label,                       \
@@ -218,6 +270,7 @@ NODE(uv, "UV", 0, NULL, uv_out, "Returns normalized surface coordinates, 0 to 1 
 NODE(world_position, "WorldPosition", 0, NULL, vector3_out, "Returns the world-space position; 2D shapes map onto the XZ plane at zero height.");
 NODE(surface_influence, "Surface Influence", 1, influence_in, influence_out, "Returns the color of scene Surface Influence activity at Position, which defaults to world position; black with none.");
 NODE(object_position, "ObjectPosition", 0, NULL, vector3_out, "Returns the position in the solid's authored units, before actor rotation and translation; 2D maps to XZ.");
+NODE(part_position, "PartPosition", 0, NULL, vector3_out, "Returns position in the winning model part coordinate frame; ordinary surfaces use object coordinates.");
 NODE(normal, "Normal", 0, NULL, vector3_out, "Returns the world-space surface normal; +Y for 2D shapes.");
 NODE(view_direction, "ViewDirection", 0, NULL, vector3_out, "Returns the unit direction from the surface toward the camera; +Y for 2D shapes.");
 NODE(time_node, "Time", 0, NULL, scalar_out, "Returns simulation time in seconds.");
@@ -299,6 +352,65 @@ static node_desc image_node = {
                    "returning linear Color and Alpha; (0, 0) is the top-left.",
     .display_class = NODE_DISPLAY_PURE
 };
+NODE(planar_node, "Planar Mapping", 4, projection_in, uv_out, "Projects Position, defaulting to PartPosition, onto the selected axis plane, then scales and offsets UV.");
+NODE(cylindrical_node, "Cylindrical Mapping", 4, projection_in, uv_out, "Maps Position, defaulting to PartPosition, around the selected axis; U wraps one revolution and V follows the axis.");
+NODE(normal_map_node, "Normal Map", 5, normal_map_in, vector3_out, "Decodes linear RGB normal data into a world-space normal using the UV expression; Distance is world-unit derivative spacing. OpenGL uses +green, DirectX -green.");
+NODE(bump_node, "Bump", 4, bump_in, vector3_out, "Perturbs the world normal from six nearby evaluations of Height; Height and Distance are world units. Nested sampled derivative expressions are unsupported.");
+NODE(decal_node, "Decal Mask", 4, decal_in, scalar_out, "Masks Position inside Half Size with an inward Feather. Facing -1 disables face rejection; otherwise keeps normals facing mapped +Z above the threshold.");
+static node_desc triplanar_node = {
+    .name = "Shader Triplanar Texture",
+    .input_count = 7,
+    .inputs = triplanar_in,
+    .output_count = 2,
+    .outputs = color_alpha_out,
+    .category = "Shader",
+    .description = "Blends three samples of one image in Position space, "
+                   "defaulting to PartPosition. Sharpness controls axis "
+                   "blending; Distance is world-unit derivative spacing. Use "
+                   "Linear color space for data textures.",
+    .display_class = NODE_DISPLAY_PURE
+};
+static const enum_value_desc mapping_axes[] = { { 0, "SHADER_MAPPING_X", "X" },
+                                                { 1, "SHADER_MAPPING_Y", "Y" },
+                                                { 2, "SHADER_MAPPING_Z", "Z" } };
+static const enum_value_desc normal_conventions[] = {
+    { 0, "SHADER_NORMAL_OPENGL", "OpenGL (+Y)" },
+    { 1, "SHADER_NORMAL_DIRECTX", "DirectX (-Y)" }
+};
+static const enum_value_desc image_spaces[] = {
+    { SHADER_IMAGE_SRGB, "SHADER_IMAGE_SRGB", "sRGB color" },
+    { SHADER_IMAGE_LINEAR, "SHADER_IMAGE_LINEAR", "Linear data" }
+};
+static const enum_value_desc image_filters[] = {
+    { SHADER_IMAGE_NEAREST, "SHADER_IMAGE_NEAREST", "Nearest" },
+    { SHADER_IMAGE_BILINEAR, "SHADER_IMAGE_BILINEAR", "Bilinear" }
+};
+static const enum_value_desc image_wraps[] = {
+    { SHADER_IMAGE_REPEAT, "SHADER_IMAGE_REPEAT", "Repeat" },
+    { SHADER_IMAGE_CLAMP, "SHADER_IMAGE_CLAMP", "Clamp" }
+};
+static const enum_desc mapping_axis_type = { .name = "ShaderMappingAxis",
+                                             .values = mapping_axes,
+                                             .value_count = 3 };
+static const enum_desc normal_convention_type = {
+    .name = "ShaderNormalConvention",
+    .values = normal_conventions,
+    .value_count = 2
+};
+static const enum_desc image_space_type = { .name = "ShaderImageColorSpace",
+                                            .values = image_spaces,
+                                            .value_count = 2 };
+static const enum_desc image_filter_type = { .name = "ShaderImageFilter",
+                                             .values = image_filters,
+                                             .value_count = 2 };
+static const enum_desc image_wrap_type = { .name = "ShaderImageWrap",
+                                           .values = image_wraps,
+                                           .value_count = 2 };
+static const enum_desc *const enums[] = { &mapping_axis_type,
+                                          &normal_convention_type,
+                                          &image_space_type,
+                                          &image_filter_type,
+                                          &image_wrap_type };
 static node_desc surface_output = {
     .name = "Shader Surface Output",
     .input_count = 8,
@@ -365,6 +477,7 @@ static node_desc *const nodes[] = { &constant,
                                     &noise_node,
                                     &uv,
                                     &object_position,
+                                    &part_position,
                                     &normal,
                                     &view_direction,
                                     &mapping_node,
@@ -375,12 +488,20 @@ static node_desc *const nodes[] = { &constant,
                                     &fractal_node,
                                     &voronoi_node,
                                     &ramp_node,
-                                    &image_node };
+                                    &image_node,
+                                    &planar_node,
+                                    &cylindrical_node,
+                                    &normal_map_node,
+                                    &bump_node,
+                                    &triplanar_node,
+                                    &decal_node };
 const registry_pack SHADER_PACK = { .name = "shader",
                                     .nodes = nodes,
                                     .node_count = sizeof nodes / sizeof *nodes,
                                     .types = types,
-                                    .type_count = sizeof types / sizeof *types };
+                                    .type_count = sizeof types / sizeof *types,
+                                    .enums = enums,
+                                    .enum_count = sizeof enums / sizeof *enums };
 node *shader_graph_add_output(graph *g, bool shape_graph)
 {
     node *n = graph_add_node(g, shape_graph ? &shape_output : &surface_output);
@@ -446,6 +567,17 @@ bool shader_node_ramp_set(graph *g, node *n, const shader_ramp_stop *stops, int 
 }
 bool shader_graph_init_node(graph *g, node *n)
 {
+    if (n->desc == &planar_node || n->desc == &cylindrical_node) {
+        float scale[2] = { 1, 1 };
+        pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec2", .ptr = scale };
+        return graph_set_pin_default(g, n, 0, 1, &value) == 0;
+    }
+    if (n->desc == &normal_map_node || n->desc == &decal_node) {
+        float value3[3] = { .5f, .5f, n->desc == &normal_map_node ? 1 : .05f };
+        pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = value3 };
+        return graph_set_pin_default(g, n, 0, n->desc == &normal_map_node ? 0 : 1, &value) ==
+               0;
+    }
     if (n->desc == &surface_output) {
         const int vectors[] = { 0, 1, 4 };
         for (int j = 0; j < 3; j++) {

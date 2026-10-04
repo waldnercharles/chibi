@@ -1,0 +1,105 @@
+version 3
+name "ShelfFixture"
+domain "model"
+id_counter 43
+description "An unrelated prop uses shared panels and bounded linear arrays; no gameplay systems are required."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - id=3 type="Model Instance" reference_asset="SharedShelfPanel"
+            - {
+                id 5
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=12.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 9
+                type "Model Linear Array"
+                inputs {
+                    Count 3
+                    Step {
+                        default x=0.0 y=20.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 14
+                type "Model Box"
+                inputs {
+                    "Half Size" {
+                        default x=3.0 y=32.0 z=3.0
+                    }
+                }
+            }
+            - {
+                id 17
+                type "Model Part"
+                reference_name "Corner post"
+                inputs {
+                    Material id=42
+                }
+                outputs {
+                    Geometry id=19
+                }
+            }
+            - {
+                id 20
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=-45.0 y=32.0 z=-12.0
+                    }
+                }
+            }
+            - {
+                id 24
+                type "Model Linear Array"
+                inputs {
+                    Count 2
+                    Step {
+                        default x=90.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 29
+                type "Model Linear Array"
+                inputs {
+                    Count 2
+                    Step {
+                        default x=0.0 y=0.0 z=24.0
+                    }
+                }
+            }
+            - id=34 type="Model Union"
+            - {
+                id 38
+                type "Model Translate"
+                inputs {
+                    Offset {
+                        default x=0.0 y=-32.0 z=0.0
+                    }
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Geometry" to="5.Geometry"
+            - from="5.Geometry" to="9.Geometry"
+            - from="9.Geometry" to="34.A"
+            - from="14.Geometry" to="17.Geometry"
+            - from="17.Geometry" to="20.Geometry"
+            - from="20.Geometry" to="24.Geometry"
+            - from="24.Geometry" to="29.Geometry"
+            - from="29.Geometry" to="34.B"
+            - from="34.Geometry" to="38.Geometry"
+            - from="38.Geometry" to="1.Geometry"
+        }
+    }
+}

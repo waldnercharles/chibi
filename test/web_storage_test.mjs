@@ -89,6 +89,37 @@ const settle = () => new Promise(resolve => setTimeout(resolve, 10));
   assert.equal(bridge.chibiExportProject, undefined);
 }
 
+// Model bundles download with the local-server bridge too, preserving all four
+// artifact byte streams. An incomplete bundle fails before offering a download.
+{
+  const names = ['model.mesh.json', 'model.obj', 'model.mtl', 'provenance.json'];
+  const files = Object.fromEntries(names.map((name, i) => [`/tmp/bake/${name}`, `artifact ${i}\n`]));
+  const fs = makeFS(files);
+  const bridge = { FS: fs, chibiSaveAsset() { return 0; }, arguments: [] };
+  const page = launch('', fs, bridge);
+  assert.equal(bridge.chibiDownloadModelBundle('/tmp/bake', 'A Model'), true);
+  assert.equal(page.links.length, 1);
+  assert.equal(page.links[0].download, 'A_Model-mesh.zip');
+  const bytes = new Uint8Array(await page.links[0].href.arrayBuffer());
+  const view = new DataView(bytes.buffer);
+  let offset = 0;
+  for (const [i, name] of names.entries()) {
+    assert.equal(view.getUint32(offset, true), 0x04034b50);
+    assert.equal(view.getUint16(offset + 8, true), 0); // Stored, no compressor dependency.
+    const size = view.getUint32(offset + 18, true);
+    const length = view.getUint16(offset + 26, true);
+    assert.equal(new TextDecoder().decode(bytes.slice(offset + 30, offset + 30 + length)), name);
+    assert.equal(new TextDecoder().decode(bytes.slice(offset + 30 + length, offset + 30 + length + size)), `artifact ${i}\n`);
+    offset += 30 + length + size;
+    assert.equal(fs.file(`/tmp/bake/${name}`), `artifact ${i}\n`);
+  }
+  assert.equal(view.getUint32(offset, true), 0x02014b50);
+  assert.equal(view.getUint16(bytes.length - 12, true), 4);
+  assert.equal(bridge.chibiDownloadModelBundle('/tmp/missing', 'Missing'), false);
+  assert.equal(page.links.length, 1);
+  assert.match(page.errors[0], /Could not download model bundle/);
+}
+
 // Opening a sample the first time copies its folder into a project of the user's own.
 const fs = makeFS({
   '/projects/arena2d/project.kdl': manifest,
@@ -295,14 +326,14 @@ const failedFS = makeFS({
 }, '/workspace/sample-project/content/scenes/Start.kdl');
 const failed = launch('?project-root=projects/arena2d', failedFS);
 failed.start();
-assert.match(JSON.parse(failed.Module.chibiCreateProject('Sample Project', 4)).error, /Cannot write/);
+assert.match(JSON.parse(failed.Module.chibiCreateProject('Sample Project', 5)).error, /Cannot write/);
 assert.equal(failedFS.analyzePath('/workspace/sample-project').exists, false);
 
 // New projects use the typed name, have a valid start scene, and finish syncing before navigation.
-const created = JSON.parse(third.Module.chibiCreateProject('Sample Project', 4));
+const created = JSON.parse(third.Module.chibiCreateProject('Sample Project', 5));
 assert.equal(created.root, '/workspace/sample-project/');
 assert.equal(fs.file('/workspace/sample-project/project.kdl'),
-  "version 4\nname \"Sample Project\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n");
+  "version 5\nname \"Sample Project\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n");
 assert.equal(fs.file('/workspace/sample-project/content/scenes/Start.kdl'),
   "version 1\nname \"Start\"\n(array)entities\n");
 assert.ok(JSON.parse(third.Module.chibiProjects()).some(project =>

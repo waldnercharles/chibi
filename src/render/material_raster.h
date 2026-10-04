@@ -116,6 +116,9 @@ typedef struct
     int sdf_parameter_rows, sdf_parameter_uploads;
     int scratch_groups, depth_copies;
     size_t composition_pixels, depth_copy_pixels;
+    /* Current retained GPU cache size and cumulative successful GPU builds. */
+    int sdf_program_count;
+    unsigned sdf_program_compilations;
 } render_mesh_material_work;
 
 typedef struct
@@ -125,6 +128,18 @@ typedef struct
 } render_material_upload_work;
 /* Generic 2D uploads from the last draw, excluding mesh/SDF markers. */
 render_material_upload_work render_material_raster_upload_work(const render_material_raster *raster);
+
+typedef struct
+{
+    ecs_entity entity;
+    int part; /* -1 selects the complete model. */
+    bool section;
+    float normal[3], offset; /* Object-space keep dot(p,normal)<=offset. */
+} render_model_inspection;
+void render_material_raster_set_model_inspection(
+    render_material_raster *raster,
+    const render_model_inspection *inspection
+);
 
 /* Requires Cute app and shader directory set to render/shaders. NULL/false
  * reports unavailable GPU resources. The renderer owns all returned textures.

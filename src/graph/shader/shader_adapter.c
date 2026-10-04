@@ -73,10 +73,22 @@ int shader_node_input_context(const node *n, int pin, const char **label)
     if (!strcmp(name, "Shader Fresnel") && pin < 2) {
         context = pin == 0 ? SHADER_NORMAL : SHADER_VIEW_DIRECTION;
     }
+    if ((!strcmp(name, "Shader Bump") && pin == 3)) {
+        context = SHADER_NORMAL;
+    }
+    if (!strcmp(name, "Shader Normal Map") && pin == 1) {
+        context = SHADER_UV;
+    }
     if (pin == 0) {
         if (!strcmp(name, "Shader Mapping") || !strcmp(name, "Shader Gradient") ||
             !strcmp(name, "Shader Image Texture")) {
             context = SHADER_UV;
+        }
+        if (!strcmp(name, "Shader Planar Mapping") ||
+            !strcmp(name, "Shader Cylindrical Mapping") ||
+            !strcmp(name, "Shader Triplanar Texture") ||
+            !strcmp(name, "Shader Decal Mask")) {
+            context = SHADER_PART_POSITION;
         }
         if (!strcmp(name, "Shader Mapping3D")) {
             context = SHADER_OBJECT_POSITION;
@@ -93,6 +105,7 @@ int shader_node_input_context(const node *n, int pin, const char **label)
         switch (context) {
             case SHADER_UV: *label = "Surface UV"; break;
             case SHADER_OBJECT_POSITION: *label = "Object Position"; break;
+            case SHADER_PART_POSITION: *label = "Part Position"; break;
             case SHADER_WORLD_POSITION: *label = "World Position"; break;
             case SHADER_NORMAL: *label = "Surface Normal"; break;
             case SHADER_VIEW_DIRECTION: *label = "View Direction"; break;
@@ -250,24 +263,25 @@ static int operation(const node *n)
 }
 static int image_source(lowering *l, const node *n)
 {
-    if (n->input_count != SHADER_IMAGE_INPUT_COUNT ||
-        n->input_pins[SHADER_IMAGE_INPUT_IMAGE].type != PIN_STR ||
-        n->input_pins[SHADER_IMAGE_INPUT_IMAGE].container != PIN_CONTAINER_SINGLE) {
+    int image = !strcmp(n->desc->name, "Shader Triplanar Texture")
+                  ? 3
+                  : SHADER_IMAGE_INPUT_IMAGE;
+    int count = image + 4;
+    if (n->input_count != count || n->input_pins[image].type != PIN_STR ||
+        n->input_pins[image].container != PIN_CONTAINER_SINGLE) {
         return error(l, n->id, "Image Texture has an invalid image setting");
     }
-    for (int i = SHADER_IMAGE_INPUT_COLOR_SPACE; i < SHADER_IMAGE_INPUT_COUNT; i++) {
+    for (int i = image + 1; i < count; i++) {
         if (n->input_pins[i].type != PIN_I32 ||
             n->input_pins[i].container != PIN_CONTAINER_SINGLE) {
             return error(l, n->id, "Image Texture settings must be integer selections");
         }
     }
     const pin_spec *pins = n->input_pins;
-    shader_image_source source = {
-        .key = (char *)pins[SHADER_IMAGE_INPUT_IMAGE].default_value.str,
-        .color_space = pins[SHADER_IMAGE_INPUT_COLOR_SPACE].default_value.i,
-        .filter = pins[SHADER_IMAGE_INPUT_FILTER].default_value.i,
-        .wrap = pins[SHADER_IMAGE_INPUT_WRAP].default_value.i
-    };
+    shader_image_source source = { .key = (char *)pins[image].default_value.str,
+                                   .color_space = pins[image + 1].default_value.i,
+                                   .filter = pins[image + 2].default_value.i,
+                                   .wrap = pins[image + 3].default_value.i };
     if (!source.key || !*source.key) {
         return error(l, n->id, "Choose an image for Image Texture");
     }
@@ -330,13 +344,14 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
         op = SHADER_COLOR_RAMP_ALPHA;
     }
     int image = -1;
-    if (op == SHADER_IMAGE_TEXTURE) {
+    if (op == SHADER_IMAGE_TEXTURE || op == SHADER_TRIPLANAR_TEXTURE) {
         image = image_source(l, n);
         if (image < 0) {
             return -1;
         }
         if (pin == 1) {
-            op = SHADER_IMAGE_TEXTURE_ALPHA;
+            op = op == SHADER_IMAGE_TEXTURE ? SHADER_IMAGE_TEXTURE_ALPHA
+                                            : SHADER_TRIPLANAR_TEXTURE_ALPHA;
         }
     }
     shader_ramp_stop stops[SHADER_RAMP_MAX];
@@ -346,6 +361,16 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
         if (!shader_ramp_valid(stops, stop_count)) {
             return error(l, n->id, "Color Ramp needs 2 to 16 ordered, finite stops in [0,1]");
         }
+    }
+    int detail_setting = op == SHADER_PLANAR_MAPPING || op == SHADER_CYLINDRICAL_MAPPING
+                           ? 3
+                       : op == SHADER_NORMAL_MAP ? 4
+                                                 : -1;
+    if (detail_setting >= 0 && (n->input_pins[detail_setting].type != PIN_I32 ||
+                                n->input_pins[detail_setting].default_value.i < 0 ||
+                                n->input_pins[detail_setting].default_value.i >
+                                    (op == SHADER_NORMAL_MAP ? 1 : 2))) {
+        return error(l, n->id, "Invalid surface detail setting selection");
     }
     int setting = op == SHADER_GRADIENT ? 1 : stop_count ? 2 : -1;
     if (setting >= 0 &&
@@ -371,6 +396,9 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
     shader_node *ir = &l->ir->nodes[index];
     ir->source_id = n->id;
     ir->image = image;
+    if (detail_setting >= 0) {
+        ir->value[0] = n->input_pins[detail_setting].default_value.i;
+    }
     memcpy(ir->input, args, sizeof args);
     for (int i = 0; i < stop_count; i++) {
         apush(ir->ramp, stops[i]);

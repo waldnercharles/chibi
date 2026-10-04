@@ -661,9 +661,25 @@ void studio_member_properties(studio *s)
 
 /* Exec for a macro's pins, basic types, then registered structures and
    enums. */
-static type_choice *type_choices(bool exec)
+static type_choice *type_choices(bool exec, bool model)
 {
     type_choice *choices = NULL;
+    if (model) {
+        static const type_choice model_types[] = {
+            { "Float", PIN_F32, "float" },
+            { "Vector 2", PIN_STRUCT, "ShaderVec2" },
+            { "Vector 3", PIN_STRUCT, "ShaderVec3" },
+            { "Vector 4", PIN_STRUCT, "ShaderVec4" },
+            { "Geometry 3D", PIN_HANDLE, "Geometry3D" },
+            { "Profile 2D", PIN_HANDLE, "Profile2D" },
+            { "Material Slot", PIN_HANDLE, "ModelMaterialSlot" },
+            { "Anchor 3D", PIN_HANDLE, "Anchor3D" },
+        };
+        for (int i = 0; i < (int)(sizeof model_types / sizeof *model_types); i++) {
+            apush(choices, model_types[i]);
+        }
+        return choices;
+    }
     if (exec) {
         apush(choices, EXEC);
     }
@@ -760,7 +776,7 @@ bool studio_member_palette(studio *s)
                                                 m->pick.id
                                             )
                                           : NULL;
-    type_choice *choices = type_choices(exec);
+    type_choice *choices = type_choices(exec, member_editor(s)->asset->domain == BEHAVIOR_DOMAIN_MODEL);
     kit_command_item *items = NULL;
     for (int i = 0; i < acount(choices); i++) {
         kit_command_item item = type_item(&choices[i], i, TYPE_COUNT + exec);

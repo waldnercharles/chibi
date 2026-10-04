@@ -140,6 +140,7 @@ typedef enum
     STUDIO_COMMAND_NEW_SHAPE,
     STUDIO_COMMAND_NEW_FIELD,
     STUDIO_COMMAND_NEW_SHADER_LIBRARY,
+    STUDIO_COMMAND_NEW_MODEL,
     STUDIO_COMMAND_NEW_UI_WIDGET,
     STUDIO_COMMAND_NEW_UI_DOCUMENT,
     STUDIO_COMMAND_NEW_STYLESHEET,
@@ -1143,6 +1144,8 @@ uint64_t studio_graph_node(const studio *s);
 /* The comment frame selected on the canvas while no node is, or 0. */
 uint64_t studio_graph_comment(const studio *s);
 void studio_node_properties(studio *s);
+void studio_model_preview_controls(studio *s, const editor *e);
+void studio_model_reference_overlay(studio *s);
 void studio_rewire_toast(studio *s);
 /* Members: the open behavior's graphs, variables and named values. */
 void studio_members_header(studio *s, int area);

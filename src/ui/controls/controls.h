@@ -35,7 +35,7 @@
  *   End and the pointer move data-highlighted, and Enter or a click chooses,
  *   sending change with the option's value. Shown again, it clears its
  *   search and highlights the current option (aria-selected or
- *   data-current).
+ *   data-current). A `virtualized` one's app filters it (choice_list.c).
  * - <line-chart series="name ..." window unit precision reference min max
  *   fill live/>: Liveline's live line chart with Recharts' ticks. It draws
  *   the series C published under the names `series` lists

@@ -85,5 +85,7 @@ void studio_documents_scene_checks();
 /* The Behavior header, find bars, Text Editor header and Performance
    (workstream C2). */
 void studio_documents_chrome_checks();
+/* The palette, pickers and refactor popover (workstream C4). */
+void studio_documents_palette_checks();
 
 #endif

@@ -2158,9 +2158,10 @@ static bool sync_commands(studio *s, const studio_panel_sync *at)
  * icon }] }] }:
  * - fields.<Component>.<field>: every value of a reflected enum or named
  *   choice field (component_properties.h), as EnumField lists them;
- * - assets.<kind>: the project's assets of a kind (scene, prototype,
- *   behavior, event, material, shape, field, library, system, ui) by name,
- *   as AssetField lists them, and none, the label of choosing none;
+ * - assets.<kind>: a kind's (scene, prototype, behavior, event, material,
+ *   shape, field, library, system, ui) label and icon, and none, the label
+ *   of choosing none, as AssetField shows them; its picker lists the
+ *   assets (studio_pick.c);
  * - editors: the editor types by task, as an area header's menu lists them,
  *   each option with drawer, whether a drawer may show it, and each group
  *   with tools, whether the Studio panels that are tools follow it;
@@ -2253,47 +2254,6 @@ static void add_choices(yyjson_mut_doc *doc)
     yyjson_mut_obj_add_arr(doc, panels, "others");
 }
 
-/* Whether a kind's options name exactly `names`, in order. */
-static bool lists(yyjson_mut_val *table, const char **names)
-{
-    yyjson_mut_val *groups = member(table, "groups");
-    yyjson_mut_val *group = yyjson_mut_arr_size(groups)
-                              ? yyjson_mut_arr_get(groups, 0)
-                              : NULL;
-    yyjson_mut_val *options = group ? member(group, "options") : NULL;
-    if ((int)(options ? yyjson_mut_arr_size(options) : 0) != acount(names)) {
-        return false;
-    }
-    for (int i = 0; i < acount(names); i++) {
-        if (strcmp(text_at(yyjson_mut_arr_get(options, (size_t)i), "value"), names[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool show_assets(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *assets)
-{
-    const reference_index *index = app_scene_authoring_asset_index(s->scene);
-    bool changed = false;
-    for (int kind = 0; index && kind < REFERENCE_ASSET_KIND_COUNT; kind++) {
-        yyjson_mut_val *table = member(assets, studio_asset_kind_name(kind));
-        const char **names = studio_asset_names(index, kind);
-        if (!lists(table, names)) {
-            yyjson_mut_arr_clear(member(table, "groups"));
-            for (int i = 0; i < acount(names); i++) {
-                yyjson_mut_val *options = group_options(doc, table, studio_asset_kind_label(kind));
-                yyjson_mut_val *option = yyjson_mut_arr_add_obj(doc, options);
-                yyjson_mut_obj_add_strcpy(doc, option, "value", names[i]);
-                yyjson_mut_obj_add_strcpy(doc, option, "label", names[i]);
-            }
-            changed = true;
-        }
-        afree(names);
-    }
-    return changed;
-}
-
 /* The editor types are fixed; the panels follow the Studio scene's. */
 static bool sync_choices(studio *s, const studio_panel_sync *at)
 {
@@ -2306,7 +2266,7 @@ static bool sync_choices(studio *s, const studio_panel_sync *at)
     if (menu) {
         studio_editor_choices(s, at->doc, editors, panels);
     }
-    return show_assets(s, at->doc, member(at->variable, "assets")) || menu;
+    return menu;
 }
 
 /* ---------- The table ---------- */
@@ -2365,6 +2325,9 @@ const studio_panel_source studio_panel_sources[] = {
     { "graph_find", "GraphFind", studio_graph_find_add, studio_graph_find_sync, studio_graph_find_action },
     { "code_header", "CodeHeader", studio_code_header_add, studio_code_header_sync, studio_code_header_action },
     { "code_find", "CodeFind", studio_code_find_add, studio_code_find_sync, studio_code_find_action },
+    /* The palette and pickers (workstream C4); `palette_ui` with them. */
+    { "palette", NULL, studio_palette_add_variables, studio_palette_sync, studio_palette_action },
+    { "refactor", NULL, studio_refactor_add, studio_refactor_sync, studio_refactor_action },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

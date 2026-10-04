@@ -902,6 +902,8 @@ void studio_add_menu_close(studio *s)
     ui_events_free(s->add_menu.events);
     s->add_menu.events = NULL;
     s->add_menu.read = false;
+    afree(s->add_menu.matches);
+    s->add_menu.matches = NULL;
 }
 
 ui_event *studio_behavior_ui_events(studio *s)
@@ -923,81 +925,99 @@ ui_event *studio_behavior_ui_events(studio *s)
     return events;
 }
 
-bool studio_graph_palette(studio *s)
+/* Offers the open behavior's documents' events to the search, read once
+   while it is open. */
+static void read_catalog(studio *s)
 {
-    studio_graph *g = &s->graph;
-    editor *e = sg_graph_editor(s);
-    studio_graph_ui_data(s, false);
-    if (!g->spawn_pending) {
-        return false;
-    }
-    if (!kit_command_is_open(s->kit) || !studio_graph_active(s)) {
-        studio_add_menu_close(s);
-        g->spawn_pending = false;
-        if (e && e->spawn_link_pending) {
-            ed_cancel_snapshot(e);
-            e->spawn_link_pending = 0;
-        }
-        return false;
-    }
     if (!s->add_menu.read) {
         s->add_menu.events = studio_behavior_ui_events(s);
         s->add_menu.read = true;
         studio_graph_ui_data(s, true);
     }
-    editor_set_ui_event_catalog(e, s->add_menu.events, acount(s->add_menu.events));
-    ed_search_match *found = ed_search_matches(e, kit_command_query(s->kit));
+    editor_set_ui_event_catalog(
+        sg_graph_editor(s),
+        s->add_menu.events,
+        acount(s->add_menu.events)
+    );
+}
+
+void studio_graph_palette_entries(studio *s, const char *query, studio_palette_entry **entries)
+{
+    editor *e = sg_graph_editor(s);
+    read_catalog(s);
+    ed_search_match *found = ed_search_matches(e, query);
     /* For a dragged wire, nodes whose socket matches its type exactly come
        first, then conversions, then wildcards; each band keeps search order. */
-    ed_search_match *matches = NULL;
-    for (int band = 3; band >= 0; band--) {
-        for (int i = 0; i < acount(found); i++) {
+    ed_search_match **matches = (ed_search_match **)&s->add_menu.matches;
+    aclear(*matches);
+    for (int band = 3; band >= 0 && acount(*matches) < 200; band--) {
+        for (int i = 0; i < acount(found) && acount(*matches) < 200; i++) {
             if ((e->spawn_link_pending ? link_fit(e, &found[i]) : 3) == band) {
-                apush(matches, found[i]);
+                apush(*matches, found[i]);
             }
         }
     }
     afree(found);
-    int count = acount(matches) < 200 ? acount(matches) : 200;
-    kit_command_item *items = NULL;
-    for (int i = 0; i < count; i++) {
-        apush(
-            items,
-            ((kit_command_item){
-                .label = matches[i].name,
-                .group = matches[i].category,
-                .icon = matches[i].function ? KIT_ICON_FUNCTION
-                      : matches[i].host_event || matches[i].event || matches[i].ui_event ? KIT_ICON_EVENT
-                      : matches[i].variable ? KIT_ICON_FIELD
-                                            : 0,
-                .description = match_about(s, e, &matches[i]),
-            })
-        );
-    }
-    int chosen = kit_command_ranked(s->kit, items, acount(items));
-    if (chosen >= 0 && chosen < count) {
-        bool linked = e->spawn_link_pending;
-        ed_pin_view from = e->spawn_link_pin;
-        node *n = ed_spawn_match_at(e, &matches[chosen], g->spawn_x, g->spawn_y);
-        if (n) {
-            sg_select_only(e, n);
-            n->placed = true;
-            if (linked) {
-                place_on_wire(s, n, &from);
-            }
-        }
-        if (e->spawn_link_pending) {
-            /* Nothing took the wire: a comment, or a spawn the editor refused. */
-            ed_cancel_snapshot(e);
-            e->spawn_link_pending = 0;
-        }
-        g->spawn_pending = false;
+    for (int i = 0; i < acount(*matches); i++) {
+        const ed_search_match *m = &(*matches)[i];
+        studio_palette_entry *entry = studio_palette_add(entries, m->category, m->name);
+        entry->icon = m->function ? KIT_ICON_FUNCTION
+                    : m->host_event || m->event || m->ui_event ? KIT_ICON_EVENT
+                    : m->variable                              ? KIT_ICON_FIELD
+                                                               : 0;
+        const char *about = match_about(s, e, m);
+        snprintf(entry->about, sizeof entry->about, "%s", about ? about : "");
+        entry->index = i;
     }
     editor_set_ui_event_catalog(e, NULL, 0);
-    if (!g->spawn_pending) {
-        studio_add_menu_close(s);
+}
+
+void studio_graph_palette_choose(studio *s, const studio_palette_entry *entry)
+{
+    studio_graph *g = &s->graph;
+    editor *e = sg_graph_editor(s);
+    if (!g->spawn_pending || !studio_graph_active(s)) {
+        return;
     }
-    afree(items);
-    afree(matches);
-    return true;
+    read_catalog(s);
+    bool linked = e->spawn_link_pending;
+    ed_pin_view from = e->spawn_link_pin;
+    node *n = ed_spawn_match_at(e, &s->add_menu.matches[entry->index], g->spawn_x, g->spawn_y);
+    if (n) {
+        sg_select_only(e, n);
+        n->placed = true;
+        if (linked) {
+            place_on_wire(s, n, &from);
+        }
+    }
+    editor_set_ui_event_catalog(e, NULL, 0);
+    if (e->spawn_link_pending) {
+        /* Nothing took the wire: a comment, or a spawn the editor refused. */
+        ed_cancel_snapshot(e);
+        e->spawn_link_pending = 0;
+    }
+    g->spawn_pending = false;
+    studio_add_menu_close(s);
+}
+
+/* A search the palette closed without placing a node ends its spawn and
+   lets go of the wire it was dragged from. */
+void studio_graph_palette(studio *s)
+{
+    studio_graph *g = &s->graph;
+    editor *e = sg_graph_editor(s);
+    studio_graph_ui_data(s, false);
+    bool searching = s->palette.client == STUDIO_PALETTE_NODES;
+    if (!g->spawn_pending || (searching && studio_graph_active(s))) {
+        return;
+    }
+    if (searching) {
+        studio_palette_close(s);
+    }
+    studio_add_menu_close(s);
+    g->spawn_pending = false;
+    if (e && e->spawn_link_pending) {
+        ed_cancel_snapshot(e);
+        e->spawn_link_pending = 0;
+    }
 }

@@ -10,19 +10,21 @@
 #include "graph/document/events.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "ui/popover.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define POPOVER "refactor"
 #define LISTED 10 /* assets or uses a popover lists before "N more" */
 
 static void close_state(studio_refactor *r)
 {
     app_refactor_free(r->plan);
     afree(r->uses);
-    *r = (studio_refactor){ .undo = r->undo, .undo_toast = r->undo_toast };
+    *r = (studio_refactor){ .undo = r->undo,
+                            .undo_toast = r->undo_toast,
+                            .mounted = r->mounted };
 }
 
 /* The symbol with its asset found again, since the index may have been
@@ -60,7 +62,6 @@ static void begin(studio *s, studio_refactor_mode mode, reference_symbol symbol,
     snprintf(r->title, sizeof r->title, "%s", name);
     snprintf(r->name, sizeof r->name, "%s", name);
     r->opening = true;
-    r->focus = true;
 }
 
 static void plan(studio *s)
@@ -289,119 +290,193 @@ void studio_refactor_rename_event(studio *s, const char *event)
     open_rename(s, symbol, event);
 }
 
-/* ---------- Popover ---------- */
+/* ---------- The popover (Refactor.rml, the `refactor` source) ---------- */
 
-static void row(kit *k, const char *key, uint32_t icon, const char *label, const char *meta)
+/* Ids in Refactor.rml. */
+#define POPOVER_ID "refactor"
+#define NAME_ID "refactor-name"
+
+/* What the popover lists: a rename's assets and its mentions, or what
+   still uses a symbol being deleted. */
+typedef struct
 {
-    kit_push(k, key, NULL, "refactor-row");
-    kit_icon(k, "icon", "lead", icon);
-    kit_label(k, "label", "label", label);
-    if (meta) {
-        kit_label(k, "meta", "kbd", meta);
-    }
-    kit_pop(k);
+    uint32_t icon;
+    char label[192];
+    char meta[64];
+} listed_row;
+
+static void list_row(listed_row **rows, uint32_t icon, const char *label, const char *meta)
+{
+    apush(*rows, ((listed_row){ .icon = icon }));
+    snprintf(alast(*rows).label, sizeof alast(*rows).label, "%s", label);
+    snprintf(alast(*rows).meta, sizeof alast(*rows).meta, "%s", meta);
 }
 
-static void more_row(kit *k, int more)
+static void list_more(listed_row **rows, int more)
 {
     char text[32];
     snprintf(text, sizeof text, "%d more", more);
-    row(k, "more", KIT_ICON_MORE, text, NULL);
+    list_row(rows, KIT_ICON_MORE, text, "");
 }
 
-static void plan_rows(studio *s)
+static bool planned_now(const studio_refactor *r)
 {
-    kit *k = s->kit;
-    const app_refactor *plan = s->refactor.plan;
-    int count = app_refactor_count(plan);
+    return r->plan && !strcmp(r->planned, r->name);
+}
+
+/* A rename lists each asset it rewrites with the name it takes or how many
+   changes it makes, LISTED at most, and how often prose mentions it. */
+static void plan_rows(const studio_refactor *r, listed_row **rows)
+{
+    int count = app_refactor_count(r->plan);
     for (int i = 0; i < count && i < LISTED; i++) {
-        app_refactor_asset asset = app_refactor_at(plan, i);
-        char key[16], meta[64];
-        snprintf(key, sizeof key, "a%d", i);
+        app_refactor_asset asset = app_refactor_at(r->plan, i);
+        char meta[64];
         if (asset.renamed) {
             snprintf(meta, sizeof meta, "%s", asset.renamed);
         } else {
             snprintf(meta, sizeof meta, "%d", asset.changes);
         }
-        row(k, key, studio_asset_kind_icon(asset.kind), asset.name, meta);
+        list_row(rows, studio_asset_kind_icon(asset.kind), asset.name, meta);
     }
     if (count > LISTED) {
-        more_row(k, count - LISTED);
+        list_more(rows, count - LISTED);
     }
-    int mentions = app_refactor_mentions(plan);
+    int mentions = app_refactor_mentions(r->plan);
     if (mentions) {
         char text[48];
         snprintf(text, sizeof text, "%d %s", mentions, mentions == 1 ? "mention" : "mentions");
-        row(k, "mentions", KIT_ICON_WARNING, text, NULL);
+        list_row(rows, KIT_ICON_WARNING, text, "");
     }
 }
 
-static bool enter_pressed(const studio *s)
+static listed_row *rows_of(const studio_refactor *r)
 {
-    for (int i = 0; i < acount(s->keys); i++) {
-        if ((s->keys[i].key == SDLK_RETURN || s->keys[i].key == SDLK_KP_ENTER) &&
-            !s->keys[i].repeat) {
-            return true;
+    listed_row *rows = NULL;
+    if (r->mode == STUDIO_REFACTOR_RENAME && planned_now(r)) {
+        plan_rows(r, &rows);
+    }
+    for (int i = 0;
+         r->mode == STUDIO_REFACTOR_DELETE && i < acount(r->uses) && i < LISTED;
+         i++) {
+        list_row(&rows, KIT_ICON_REFERENCES, r->uses[i].text, "");
+    }
+    if (r->mode == STUDIO_REFACTOR_DELETE && acount(r->uses) > LISTED) {
+        list_more(&rows, acount(r->uses) - LISTED);
+    }
+    return rows;
+}
+
+static const char *const ROW_TEXTS[] = { "icon", "label", "meta" };
+static const char *const ITEM_TEXTS[] = { "icon", "label", "shortcut" };
+
+static void add_texts(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *const *names, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        yyjson_mut_obj_add_strcpy(doc, obj, names[i], "");
+    }
+}
+
+void studio_refactor_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *r = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "refactor");
+    yyjson_mut_obj_add_strcpy(doc, r, "title", "");
+    yyjson_mut_obj_add_strcpy(doc, r, "error", "");
+    yyjson_mut_obj_add_bool(doc, r, "rename", false);
+    yyjson_mut_obj_add_arr(doc, r, "rows");
+    yyjson_mut_val *apply = yyjson_mut_obj_add_obj(doc, r, "apply");
+    add_texts(doc, apply, ITEM_TEXTS, sizeof ITEM_TEXTS / sizeof *ITEM_TEXTS);
+    yyjson_mut_obj_add_bool(doc, apply, "checked", false);
+    yyjson_mut_obj_add_bool(doc, apply, "disabled", false);
+}
+
+static bool put_glyph(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *name, uint32_t icon)
+{
+    char glyph[5];
+    studio_glyph(glyph, icon);
+    return ui_data_put_text(doc, obj, name, glyph);
+}
+
+static bool show_rows(yyjson_mut_doc *doc, yyjson_mut_val *array, const listed_row *rows)
+{
+    int had = (int)yyjson_mut_arr_size(array);
+    bool changed = had != acount(rows);
+    for (int i = had; i < acount(rows); i++) {
+        add_texts(doc, yyjson_mut_arr_add_obj(doc, array), ROW_TEXTS, sizeof ROW_TEXTS / sizeof *ROW_TEXTS);
+    }
+    for (int i = had; i > acount(rows); i--) {
+        yyjson_mut_arr_remove_last(array);
+    }
+    yyjson_mut_val *item;
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(array);
+    for (int i = 0; (item = yyjson_mut_arr_iter_next(&it)); i++) {
+        changed |= put_glyph(doc, item, "icon", rows[i].icon);
+        changed |= ui_data_put_text(doc, item, "label", rows[i].label);
+        changed |= ui_data_put_text(doc, item, "meta", rows[i].meta);
+    }
+    return changed;
+}
+
+/* The title, a rename's error, its rows and the action that applies:
+   Rename once the name shown was planned, or Delete. */
+bool studio_refactor_sync(studio *s, const studio_panel_sync *at)
+{
+    studio_refactor *r = &s->refactor;
+    if (!r->mode || at->preview) {
+        return false;
+    }
+    bool rename = r->mode == STUDIO_REFACTOR_RENAME;
+    bool changed = ui_data_put_text(at->doc, at->variable, "title", r->title);
+    changed |= ui_data_put_text(at->doc, at->variable, "error", rename ? r->error : "");
+    changed |= ui_data_put_bool(at->variable, "rename", rename);
+    listed_row *rows = rows_of(r);
+    changed |= show_rows(at->doc, yyjson_mut_obj_get(at->variable, "rows"), rows);
+    afree(rows);
+    yyjson_mut_val *apply = yyjson_mut_obj_get(at->variable, "apply");
+    changed |= ui_data_put_text(at->doc, apply, "label", rename ? "Rename" : "Delete");
+    changed |= put_glyph(at->doc, apply, "icon", rename ? KIT_ICON_EDIT : KIT_ICON_TRASH);
+    return ui_data_put_bool(apply, "disabled", rename && !planned_now(r)) || changed;
+}
+
+/* name: the name as typed; enter: Enter in the name, which shows what a new
+   name rewrites, and applies it once shown; apply: the Rename or Delete
+   item. */
+void studio_refactor_action(studio *s, const char *action, const ui_activation *a)
+{
+    studio_refactor *r = &s->refactor;
+    if (!strcmp(action, "name") && a->argc && r->mode == STUDIO_REFACTOR_RENAME) {
+        snprintf(r->name, sizeof r->name, "%s", a->args[0]);
+    } else if (!strcmp(action, "enter") && r->mode == STUDIO_REFACTOR_RENAME) {
+        if (planned_now(r)) {
+            apply_rename(s);
+        } else if (strcmp(r->name, r->title)) {
+            plan(s);
         }
-    }
-    return false;
-}
-
-static void rename_body(studio *s)
-{
-    kit *k = s->kit;
-    studio_refactor *r = &s->refactor;
-    kit_push(k, "field", NULL, "refactor-field");
-    bool committed = kit_text_field(k, "name", r->name, sizeof r->name, NULL, 0);
-    if (r->focus) {
-        kit_focus(k);
-        r->focus = false;
-    }
-    kit_pop(k);
-    /* Enter on a new name shows what it rewrites; Enter again applies it. */
-    if (committed && strcmp(r->name, r->title)) {
-        plan(s);
-    }
-    bool current = r->plan && !strcmp(r->planned, r->name);
-    /* The Enter that planned a member's rename in its own field shows the
-       popover; only an Enter pressed while it shows applies. */
-    if (!committed && current && r->shown && enter_pressed(s)) {
-        apply_rename(s);
-        return;
-    }
-    if (r->error[0]) {
-        row(k, "error", KIT_ICON_WARNING, r->error, NULL);
-    }
-    if (current) {
-        plan_rows(s);
-    }
-    kit_menu_separator(k, "sep");
-    kit_menu_item_desc d = { .label = "Rename",
-                             .icon = KIT_ICON_EDIT,
-                             .checked = -1,
-                             .disabled = !current };
-    if (kit_menu_item(k, "apply", &d)) {
-        apply_rename(s);
-    }
-}
-
-static void delete_body(studio *s)
-{
-    kit *k = s->kit;
-    studio_refactor *r = &s->refactor;
-    int count = acount(r->uses);
-    for (int i = 0; i < count && i < LISTED; i++) {
-        char key[16];
-        snprintf(key, sizeof key, "u%d", i);
-        row(k, key, KIT_ICON_REFERENCES, r->uses[i].text, NULL);
-    }
-    if (count > LISTED) {
-        more_row(k, count - LISTED);
-    }
-    kit_menu_separator(k, "sep");
-    kit_menu_item_desc d = { .label = "Delete", .icon = KIT_ICON_TRASH, .checked = -1 };
-    if (kit_menu_item(k, "apply", &d)) {
+    } else if (!strcmp(action, "apply") && r->mode == STUDIO_REFACTOR_RENAME) {
+        if (planned_now(r)) {
+            apply_rename(s);
+        }
+    } else if (!strcmp(action, "apply") && r->mode == STUDIO_REFACTOR_DELETE) {
         confirm_delete(s);
+    }
+}
+
+/* Shows the popover at the pointer, its name field focused with the name
+   selected, as the kit's popover opened. */
+static void show(studio *s, rml_element *popover)
+{
+    studio_refactor *r = &s->refactor;
+    float ratio = studio_pixel_ratio(s);
+    popover_show(
+        popover,
+        &(popover_anchor){ .side = POPOVER_POINT,
+                           .box = { s->in.mouse_x * ratio, s->in.mouse_y * ratio, 0, 0 } }
+    );
+    rml_element *field = rml_element_query_selector(popover, "#" NAME_ID);
+    if (field && r->mode == STUDIO_REFACTOR_RENAME) {
+        rml_element_set_value(field, r->name);
+        rml_element_focus(field, true);
+        rml_element_select(field);
     }
 }
 
@@ -423,28 +498,27 @@ void studio_refactor_frame(studio *s)
         app_refactor_free(undo);
         app_refactor_free(redo);
     }
-    if (r->opening) {
-        kit_popup_open_at(k, POPOVER, s->in.mouse_x, s->in.mouse_y);
-        r->opening = false;
-    }
-    if (!kit_popup_begin(k, POPOVER, "menu refactor")) {
-        if (r->mode) {
-            close_state(r);
+    /* Its document lives while it asks; a host the kit removes lets its
+       mount go first. */
+    if (!r->mode) {
+        if (r->mounted) {
+            studio_ui_panel_detach(s, "Refactor");
+            r->mounted = false;
         }
         return;
     }
-    kit_menu_group(k, "title", r->title);
-    if (r->mode == STUDIO_REFACTOR_RENAME) {
-        rename_body(s);
-    } else if (r->mode == STUDIO_REFACTOR_DELETE) {
-        delete_body(s);
+    kit_document_begin(k, "refactor", "bar-place", true);
+    rml_element *host = studio_ui_panel(s, "refactor", "Refactor");
+    kit_document_end(k);
+    r->mounted = true;
+    rml_element *popover = host ? rml_element_query_selector(host, "#" POPOVER_ID)
+                                : NULL;
+    if (popover && r->opening) {
+        show(s, popover);
+        r->opening = false;
+    } else if (popover && r->mode && !popover_open(popover)) {
+        close_state(r);
     }
-    kit_popup_end(k);
-    /* Enter applies without activating an item, which would close it. */
-    if (!r->mode) {
-        kit_popup_close(k, POPOVER);
-    }
-    r->shown = r->mode != STUDIO_REFACTOR_CLOSED;
 }
 
 void studio_refactor_free(studio *s)

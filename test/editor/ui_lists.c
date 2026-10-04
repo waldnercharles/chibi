@@ -16,6 +16,7 @@
 #include "ui/rml_backend.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -434,6 +435,38 @@ static void list_checks(lists_fixture *f)
     test_check(rml_element_scroll_top(list) == 20000, "a following list at its bottom stays there as rows arrive");
     desc = (ui_list){ .count = 5, .reveal = -1 };
     test_check(ui_list_window(list, &desc, &state, &first) == 5 && first == 0, "a short list's window holds all of it");
+
+    /* Rows of several heights, as the palette's: a 10 dp heading every
+       tenth row, the rest 20 or 30 dp. */
+    static float tops[1001];
+    for (int i = 0; i < 1000; i++) {
+        tops[i + 1] = tops[i] + (i % 10 == 0 ? 10 : i % 3 == 0 ? 30 : 20);
+    }
+    state = (ui_list_state)UI_LIST_STATE_INIT;
+    desc = (ui_list){ .count = 1000, .row = 10, .tops = tops, .reveal = -1 };
+    rml_element_set_scroll_top(list, 0);
+    int mixed = ui_list_window(list, &desc, &state, &first);
+    frames(f, 1);
+    rml_element_property(spacer, "height", height, sizeof height);
+    bool sized = first == 0 && strtof(height, NULL) == tops[1000];
+    rml_element_set_scroll_top(list, tops[500]);
+    int middle = ui_list_window(list, &desc, &state, &first);
+    bool placed = middle == mixed && tops[first] <= tops[500] - 120 &&
+                  tops[first + 1] > tops[500] - 120 &&
+                  padding_top(spacer) == tops[first];
+    float view = rml_element_client_height(list);
+    desc.reveal = 900;
+    ui_list_window(list, &desc, &state, &first);
+    bool revealed_row = fabsf(rml_element_scroll_top(list) - (tops[901] - view)) < 0.5f;
+    desc.reveal = -1;
+    rml_element_set_scroll_top(list, tops[1000]);
+    bool ended = ui_list_window(list, &desc, &state, &first) == mixed &&
+                 first == 1000 - mixed;
+    test_check(
+        sized && placed && revealed_row && ended,
+        "rows of several heights size the spacer by their tops, start the "
+        "window at the row in view and reveal a row by its own height"
+    );
 }
 
 /* ---------- Widgets ---------- */

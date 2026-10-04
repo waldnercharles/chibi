@@ -53,4 +53,7 @@ name "Studio"
     - name="GraphFind" prototype="GraphFind"
     - name="CodeHeader" prototype="CodeHeader"
     - name="CodeFind" prototype="CodeFind"
+    - name="Palette" prototype="Palette"
+    - name="Picker" prototype="Picker"
+    - name="Refactor" prototype="Refactor"
 }

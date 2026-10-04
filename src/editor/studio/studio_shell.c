@@ -1614,7 +1614,7 @@ static void track_pointer(studio *s)
     if (s->in.pressed[0] || s->in.pressed[1] || s->in.pressed[2]) {
         /* Shell controls act on the last editor. A popup can overlap another
            pane geometrically without transferring its command context. */
-        if (s->hover_area >= 0 && !over_overlay(s) && !kit_command_is_open(s->kit)) {
+        if (s->hover_area >= 0 && !over_overlay(s) && !studio_palette_is_open(s)) {
             s->focus_area = s->hover_area;
         }
     }

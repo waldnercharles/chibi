@@ -1212,7 +1212,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
     }
     switch (command) {
         case STUDIO_COMMAND_SEARCH:
-            kit_command_open(s->kit, STUDIO_PALETTE_PLACEHOLDER);
+            studio_palette_open(s, STUDIO_PALETTE_SEARCH, STUDIO_PALETTE_PLACEHOLDER);
             break;
         case STUDIO_COMMAND_SETTINGS: studio_ui_show(s, "Settings"); break;
         case STUDIO_COMMAND_COLLABORATION:
@@ -1335,7 +1335,8 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
                 s,
                 STUDIO_PICK_PREVIEW,
                 studio_previewed_ui(s),
-                &(studio_pick_desc){ .kind = REFERENCE_ASSET_UI }
+                &(studio_pick_desc){ .kind = REFERENCE_ASSET_UI },
+                NULL
             );
             break;
         case STUDIO_COMMAND_NEW_SCENE:

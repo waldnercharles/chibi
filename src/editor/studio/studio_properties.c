@@ -1018,14 +1018,13 @@ static void apply(studio *s)
 
 void studio_add_component_open(studio *s)
 {
-    s->components.open = true;
     snprintf(
         s->components.prototype,
         sizeof s->components.prototype,
         "%s",
         selected_prototype(s->scene)->prototype->name
     );
-    kit_command_open(s->kit, "Search components");
+    studio_palette_open(s, STUDIO_PALETTE_COMPONENTS, "Search components");
 }
 
 static void add_component(studio *s, const char *prototype, const ecs_component_desc *desc)
@@ -1046,12 +1045,12 @@ static void add_component(studio *s, const char *prototype, const ecs_component_
     snprintf(s->components.added, sizeof s->components.added, "%s", desc->name);
 }
 
-/* A component the prototype lacks, as the command surface lists it. */
+/* A component the prototype lacks, as the palette lists it. */
 typedef struct
 {
     int order; /* its tab's, the current tab's first */
     char label[128];
-    const ecs_component_desc *desc;
+    int index; /* in the registry */
 } component_choice;
 
 static int by_tab_and_label(const void *a, const void *b)
@@ -1060,15 +1059,8 @@ static int by_tab_and_label(const void *a, const void *b)
     return x->order != y->order ? x->order - y->order : strcmp(x->label, y->label);
 }
 
-bool studio_component_palette(studio *s)
+void studio_component_entries(studio *s, studio_palette_entry **entries)
 {
-    if (!s->components.open) {
-        return false;
-    }
-    if (!kit_command_is_open(s->kit)) {
-        s->components.open = false;
-        return false;
-    }
     app_scene_authoring *scene = s->scene;
     scene_prototype_asset *asset = find_prototype(scene, s->components.prototype);
     int current = s->tab >= STUDIO_TAB_OBJECT && s->tab <= STUDIO_TAB_GAMEPLAY
@@ -1084,7 +1076,7 @@ bool studio_component_palette(studio *s)
             .order = (properties_tab_of(s, desc) - STUDIO_TAB_OBJECT - current +
                       COMPONENT_TAB_COUNT) %
                      COMPONENT_TAB_COUNT,
-            .desc = desc,
+            .index = i,
         };
         editor_component_label(desc->name, choice.label, sizeof choice.label);
         apush(choices, choice);
@@ -1092,25 +1084,28 @@ bool studio_component_palette(studio *s)
     if (acount(choices)) {
         qsort(choices, (size_t)acount(choices), sizeof *choices, by_tab_and_label);
     }
-    kit_command_item *items = NULL;
     for (int i = 0; i < acount(choices); i++) {
-        studio_tab tab = properties_tab_of(s, choices[i].desc);
-        apush(
-            items,
-            ((kit_command_item){ .label = choices[i].label,
-                                 .group = properties_tab_label(tab),
-                                 .keywords = choices[i].desc->name,
-                                 .icon = TAB_ICONS[tab] })
+        const ecs_component_desc *desc = scene->registry.components[choices[i].index];
+        studio_tab tab = properties_tab_of(s, desc);
+        studio_palette_entry *e = studio_palette_add(
+            entries,
+            properties_tab_label(tab),
+            choices[i].label
         );
+        snprintf(e->keywords, sizeof e->keywords, "%s", desc->name);
+        e->icon = TAB_ICONS[tab];
+        e->index = choices[i].index;
     }
-    int chosen = kit_command(s->kit, items, acount(items));
-    if (chosen >= 0) {
-        s->components.open = false;
-        add_component(s, s->components.prototype, choices[chosen].desc);
-    }
-    afree(items);
     afree(choices);
-    return true;
+}
+
+void studio_component_choose(studio *s, const studio_palette_entry *entry)
+{
+    add_component(
+        s,
+        s->components.prototype,
+        s->scene->registry.components[entry->index]
+    );
 }
 
 /* Destructive edits offer Undo in a toast while they are still the latest

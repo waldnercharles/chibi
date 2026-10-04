@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2 and C3 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2, C3 and C4 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -42,7 +42,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Status bar | Authored: `StatusBar.rml` with UI Scale's menu | `editor`, `commands`, `shell` | Done (W3 C3) |
 | Area header | `AreaHeader.rml`; editor type menu authored (F3, a Menu over `choices.editors`); editor controls in a native slot | `editor.areas`, `choices` | W3 C3; each panel's controls move with the panel |
 | Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, the Behavior header's View menu (GraphView, trigger included since F3) | Authored | | Done |
-| Properties: Object, Prototype, Scene, Behaviors | Authored (P1): `Properties.rml`, `PropertiesHeader.rml`; `studio_properties_view.c` publishes `properties`, `studio_properties.c` runs its intents | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep | Done; Add Component's search stays on the command surface (W3 C4) |
+| Properties: Object, Prototype, Scene, Behaviors | Authored (P1): `Properties.rml`, `PropertiesHeader.rml`; `studio_properties_view.c` publishes `properties`, `studio_properties.c` runs its intents | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep | Done; Add Component and the asset fields' pickers are the palette's (C4) |
 | Properties: Node, Member | `studio_graph_properties.c`, `studio_member_properties.c` | Literal editors, binding autocomplete, expression code, type picker, reorder grips | W4 G1 |
 | Outliner | Authored: `Outliner.rml`, `OutlinerHeader.rml`; the `outliner` source (`studio_outliner.c`) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | Done (W2 P2) |
 | Scene and Canvas headers | Authored: `SceneHeader.rml` over `scene` (`studio_scene.c`), `canvas` (`studio_canvas.c`) and `commands` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | Done (W3 C1) |
@@ -54,7 +54,8 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Text Editor | `CodeHeader.rml`, `CodeFind.rml` (C2); the surface in `studio_code.c`, `kit_code.c` (Zep) | Buffer, intelligence, Vim | Chrome done (C2); the Zep surface stays a native element |
 | Performance | `Performance.rml`, `PerformanceHeader.rml` over `<line-chart>` (C2) | Sample ring | Done (C2) |
 | Shell | Authored: `Workspace.rml` over the `workspace` source (`studio_shell.c`); each area a document in its place | Ratios, open states, maximize, the columns' laid-out sizes | Done (W3 C3) |
-| Palette, dropdowns, autocomplete, asset pickers | `kit_command.c`, `studio_palette.c`, `studio_pick.c`, `kit_popup.c` | Ranking, recents, prefixes, thumbnails | W3 C4; ranking stays in C |
+| Palette, asset pickers, Add Component, refactor popover | Authored (C4): `Palette.rml` and `Picker.rml` over the `palette` source (`studio_palette_view.c`), `Refactor.rml` over `refactor` (`studio_refactor.c`); clients `studio_palette.c`, `studio_pick.c`, Add Component, the add-node search | Ranking (`support/text_rank.h`), recents, prefixes, thumbnails, the window | Done (C4) |
+| Kit dropdowns and autocomplete | `kit_command.c` over `support/text_rank.h` | Graph literals, member types, `kit_select` | W4 G1 with the graph's literals |
 | Popups, menus, tooltips | `src/ui/popover.c` (F3) stacks, places and dismisses authored popovers and the kit's popups and runs menus; `kit_popup.c` emits the kit's | Placement, stacking, dismissal, typeahead | Done for the controller (F3); kit menus move to Menu with their panels; tooltips stay attribute-driven |
 | Toasts | `kit_toast.c` | Springs, swipe | Postponed |
 | Designer: Hierarchy, Details, Library | `studio_designer*.c` | `ui_design` edits, drop zones, CSS value types | W4 D1; Canvas guides native |
@@ -182,7 +183,7 @@ pointer and modifiers, so markup hears it with `data-event-contextmenu`.
 |---|---|---|
 | `<number-field>` | `kit_number.c` (done, F2: `src/ui/controls/number_field.c`; the parser is `src/support/number_expr.c`) | `value min max step precision integer float slider unit addon mixed readonly disabled invalid`; `input`/`change`; today's scrub threshold, Alt fine, Shift coarse, Ctrl snap, steppers, Tab; Escape cancels typing or a scrub; repaints text without layout |
 | `<color-field>` | `kit_color` (done, F2) | `value mixed readonly disabled`; opens its own picker as `<input type=color>` opens the OS one: `input` while open, `change` on close. Its picker is inside the field (`position: fixed; clip: none`), stacked, placed and dismissed by `popover.c` (F3), so it escapes its area |
-| `<choice-list>` | `kit_dropdown`'s list (F3; the kit's still runs its own) | `[role=option]` descendants with `value`, `data-label` or `.label`, `data-keywords`; its first `<input>` filters them by `text_search_score` (`data-filtered`, `data-empty`); Up, Down, Home, End and the pointer move `data-highlighted`; Enter or a click sends `change` with the option's value |
+| `<choice-list>` | `kit_dropdown`'s list (F3; the kit's still runs its own) and the palette's (C4) | `[role=option]` descendants with `value`, `data-label` or `.label`, `data-keywords`; its first `<input>` filters them by `text_search_score` (`data-filtered`, `data-empty`); Up, Down, PageUp, PageDown, Home, End, cmdk's Ctrl+N/P/J/K and the pointer move `data-highlighted`; Enter or a click sends `change` with the option's value. `virtualized` (C4): the app filters, orders and windows the options (`aria-posinset` each, `aria-setsize` and `highlight` on the list) and hears `highlight` (`ev.value`, `ev.pointer`) as keys and the pointer move it |
 | `<splitter>` | `kit_splitter` (done, F2; the kit's wrapper went with C3) | `axis min max value invert`; `input`/`change`; cursor |
 | `<live-text>` | `kit_live_label` (done, F2) | `value`; glyphs update without layout |
 | `<line-chart>` | `kit_chart.c` (done, C2: `src/ui/controls/line_chart.c`) | `series` names the series C publishes with `line_chart_publish` (times, values, color, `now`), as textures are named `kit:...`; `window unit precision reference min max fill live`; parts `.chart-tick`, `.chart-badge`, `.chart-hover`; a publish redraws the charts naming it without layout |
@@ -945,8 +946,8 @@ panel that has no fold of its own; a panel's fold is kept per component for
 the session, as Unity keeps a component's foldout; the field menu opens on a
 right press anywhere on the row, and Reset to Prototype on Position resets
 both axes; the Scene tab's settings record once a gesture ends, where the
-kit recorded every frame of a scrub. Open: an asset field takes no typed
-name an asset doesn't have yet (the kit's picker offered one).
+kit recorded every frame of a scrub. Since C4 an asset field's picker
+offers a name no asset has yet again, as `Use "name"`.
 
 #### P2: the Outliner (done)
 
@@ -1210,8 +1211,8 @@ tiles), `--studio-thumbnails` (every kind through the kind filter, the
 grid's keys, a 1,220-asset grid windowed), `--studio-lists` (an authored
 Assets row dragged into Collected) and `--ui-lists` (the Tile's skeleton).
 
-Open: two areas showing Assets share one window and one hover; Rename
-still opens the refactor popover, which is C4's; the list's rows are
+Open: two areas showing Assets share one window and one hover (Rename's
+refactor popover is authored since C4); the list's rows are
 siblings of one spacer, so a scroll restyles all of them, and each
 evaluates about 17 views (the TreeRow's and the drag and hover attributes
 on its use); selecting and the idle frame cost 1.2× and 1.4× the kit's.
@@ -1258,7 +1259,116 @@ after the first round; the Studio bench stops when a frame logs more than
 | C1 Scene (done) | Scene and Canvas headers, actions log, camera labels, notice line | About 460 lines of kit UI: C1, below |
 | C2 Editor chrome (done) | Behavior header (breadcrumbs, debug target), graph find bar; Text Editor header and find; Performance with `<line-chart>` | The kit's header, find and chart code: C2 results |
 | C3 Shell (done) | `Workspace.rml` (areas, `<splitter>`, drawer and side transitions, maximize); editor-type popover; `<menubar>`; play target, layout, UI Scale, debugger steps | ~600 lines and `kit_menubar_trigger`: C3 results |
-| C4 Palette | `Palette.rml` over ChoiceList (prefixes, pages, recents, thumbnails); asset pickers, Add Component, refactor popover; ranking moves to `support/` | ~500 lines of `kit_command` UI |
+| C4 Palette (done) | `Palette.rml` over ChoiceList (prefixes, pages, recents, thumbnails); asset pickers, Add Component, refactor popover; ranking moves to `support/` | ~500 lines of `kit_command` UI: C4 results |
+
+#### C4: the palette and pickers (done)
+
+One ranked list, the `palette` source (`studio_palette_view.c`), shows as
+`Palette.rml`, a modal over the editor (cmdk's Command.Dialog, in a
+`kit_modal_host`, so Tab keeps the focus in its field as the kit's did),
+or as `Picker.rml`, a popover under the field that opened it, in a
+document of its own, as Unreal's asset picker hangs under its property
+(Unity's Object Picker is a window; the kit's picker hung, so the
+dropdown stays). Both documents mount only while open. Its clients fill
+it and hear what is chosen, by a switch, not callbacks: the search
+(`studio_palette.c`: commands, settings, objects, assets, projects,
+scenarios, the active document's symbols; `>`, `@` and `?`; recent items
+first, frecency boosts), the graph's add-node search
+(`studio_graph_edit.c`, its own ranking, shown in order), Add Component
+(`studio_properties.c`) and the asset pickers (`studio_pick.c`).
+`Refactor.rml` is the rename-across-uses and safe-delete popover over the
+`refactor` source (`studio_refactor.c`), at the pointer, as JetBrains'
+Rename and Safe Delete ask: Enter on a new name lists each asset it
+rewrites with the name it takes or its change count and the mentions,
+Enter again or Rename applies it, and its toast's Undo puts every file
+back.
+
+- **One ranking** (`support/text_rank.h`): `text_search_score` plus a
+  boost, groups ordered by their best match, at most eight rows a group
+  while the palette filters, or entries kept in order. The palette, the
+  pickers and the kit's dropdowns and autocompletes share it, and labels
+  mark in bold what `text_search_match` matched, so the bold follows the
+  ranking (a typo match marks its letters; the kit's marker left those
+  plain). `<choice-list>`'s own filter keeps `text_search_score`; it
+  filters without reordering, since RmlUi has no `order`.
+- **Work only on change:** the client collects when the inputs (asset
+  index revision, objects) or the kind of query (prefix, typed or not)
+  change, ranking runs on each query, and the sync writes the window into
+  `palette` (rows: heading, label markup, about, meta, shortcut, icon,
+  image, place, current). The highlight lives apart in `palette_ui`: a key
+  evaluates one view. The kit re-collected, ranked and emitted every row
+  each frame it was open.
+- **The window:** the List holds group headings and rows of two heights
+  (`--row-heading`, `--row`, `--row-about`), so `ui_list` takes each
+  row's top (Virtuoso's item sizes), and reveal now counts the scroller's
+  top padding. 2,242 results keep 26 rows.
+- **`<choice-list virtualized>`** (Base UI's Combobox with `filter={null}`
+  and `virtualized`): the app filters, orders and windows; options carry
+  `aria-posinset`, the list `aria-setsize` and `highlight`; keys (Up,
+  Down, PageUp, PageDown, Home, End, cmdk's Ctrl+N/P/J/K) and the pointer
+  send `highlight` (`ev.value`, and `ev.pointer`, which scrolls nothing),
+  and keys pressed before the app answers move on from the place last
+  sent. Enter or a click sends `change` with the place.
+- **Pickers:** AssetField is the field alone now; a panel opens Studio's
+  picker on it with `emit('palette.pick', kind, value, none, 'typed')`,
+  and the field hears `change` with the name chosen, so Properties' and
+  the gallery's `data-event-change` stayed as they were. The picker
+  highlights the current asset as it opens, ranks as typed, offers
+  `Use "name"` for a name no asset has where the field allows it (the
+  kit's did, for every Properties asset field; P1 had lost it), and
+  closes on the field again, Escape or a press outside. Its placeholder
+  names the kind ("Search UI"), as the kit's did. `choices.assets` keeps
+  each kind's label, icon and none, and no longer lists every asset at
+  each refresh. The Designer's kit asset field anchors the same picker on
+  its element (`kit_item_element`); graph pins keep their kit dropdowns
+  (W4 G1).
+- **Deleted:** the kit's palette (`kit_command*`, its command state, keys,
+  rows, highlighting, backdrop and theme rules): `kit_command.c` 795 to
+  357 lines, the kit 549 lines out and 79 in. P1's per-row asset option
+  tables and `choices`' asset listing went with them.
+
+`UI_BENCH_PALETTE=1 ./build-release/test_suite --ui-bench studio` (case
+18: the Sandbox's commands, settings, objects and assets and 2,000 more
+assets, 2,242 results with nothing typed, at 1440×900, pixel scale 2),
+the kit build (`d84bc707` with the same case, driven by keys) and this one
+alternated process by process, three pairs, 1-minute load 8.4-10.8, so
+the times are provisional; ms, the mean of the pairs' medians of 31:
+
+| Case | Kit | Authored | Ratio | Views | Layouts | Elements in its document |
+|---|---:|---:|---:|---:|---:|---|
+| Open, 2 UI frames | 86.7 | 8.44 | 0.10× | 1,039 | 2 | 273 (kit 15,717) |
+| A keystroke, "qa" to "qab" (eight a group) | 4.95 | 4.20 | 0.85× | 134 | 1 | 121 (kit 82) |
+| A keystroke, "" to "b" (every result, then a few) | 57.9 | 4.34 | 0.075× | 354 | 1 | 273 |
+| Move the highlight | 39.9 | 2.70 | 0.068× | 1 | 1 | |
+| A UI frame with nothing changed | 11.6 | 1.23 | 0.11× | 0 | 0 | |
+
+A keystroke spends 0.7-1.0 ms in sync (ranking 2,242 entries and writing
+the window) and 1.2-1.4 ms in update; the kit spent its time emitting and
+laying out every row. Web shots (1600×1000, dark and light, compact and
+comfortable) before (`d84bc707`) and after: the palette empty, `toggle`
+with Down, `?`, a query nothing matches, the comfortable density's, the
+Document picker open and typed in, and the rename popover before and
+after Enter are identical pixel for pixel but for a caret; intentional
+differences: a query's results keep their group's heading in view (the
+kit scrolled its first row to the top, hiding it), the bold of a typo
+match, and the picker's placeholder.
+
+Checks: `--studio-palette` (also in `--studio-documents`): ⌘K's focus and
+window, Up, Down, Ctrl+N, Ctrl+P, PageDown, End and Home each in view, Tab
+and Escape, ranking under a heading with bold and spaces, a described
+row's height, the pointer and a still pointer, the empty state and a press
+outside, the picker's current asset, ranking, Enter as one Undo step and
+`Use "name"`, the field and Escape closing it, Add Component's groups, and
+the refactor popover's rename with its Undo and a used asset's delete;
+`--studio-panels` opens and closes the palette, a picker and the refactor
+popover every round with no RmlUi warning and the same views;
+`--ui-lists` rows of several heights; the palette checks in the shell
+surface retargeted.
+
+Open: graph pins' asset pickers, graph literal dropdowns, the member type
+dropdown and source autocompletes stay kit dropdowns (W4 G1); cmdk's
+pages and group jumps (Alt+Up/Down); a choice-list's own filter does not
+reorder by score, as `kit_select` did.
 
 #### C3: the shell (done)
 
@@ -1559,7 +1669,7 @@ of the kit build and this one match in the Behavior area within 1/255;
 Performance's charts differ only in their samples.
 
 `UI_BENCH_PERFORMANCE=1 ./build-release/test_suite --ui-bench studio`
-(case 15: Performance in the bottom area while the Sandbox plays, 1440×900,
+(case 17: Performance in the bottom area while the Sandbox plays, 1440×900,
 pixel scale 2), the kit build (`3777b63b`) and this one alternated process
 by process three times, 1-minute load 40-44 (provisional); ms, the range
 of the runs' medians:

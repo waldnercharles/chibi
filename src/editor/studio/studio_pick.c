@@ -1,8 +1,9 @@
-/* Asset pickers: a field naming an asset shows it as a select and chooses
- * another of its kind in an anchored search dropdown, as Unity's object field
- * and Unreal's asset picker search a project's assets. A choice waits for the
- * field that opened the pick, as the kit returns a control's input to its
- * next call. */
+/* Asset pickers, a client of the palette (studio_palette_view.c): a field
+ * naming an asset shows it as a select and chooses another of its kind in
+ * a searchable list under it, as Unity's object field and Unreal's asset
+ * picker search a project's assets. An authored AssetField hears the name
+ * chosen as change; a kit field takes it at its next call, as the kit
+ * returns a control's input; Preview UI Asset previews it. */
 #include "editor/studio/studio_internal.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -11,6 +12,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+
+/* What a pick's result does. */
+enum
+{
+    CHOOSE_NONE,
+    CHOOSE_ASSET,
+    CHOOSE_TYPED, /* a name no asset has yet */
+};
 
 static int by_name(const void *a, const void *b)
 {
@@ -42,9 +51,14 @@ const char **studio_asset_names(const reference_index *index, int kind)
     return names;
 }
 
-void studio_pick_open(studio *s, const char *key, const char *current, const studio_pick_desc *desc)
+void studio_pick_open(
+    studio *s,
+    const char *key,
+    const char *current,
+    const studio_pick_desc *desc,
+    rml_element *anchor
+)
 {
-    s->pick.open = true;
     s->pick.chosen = false;
     s->pick.kind = desc->kind;
     s->pick.text = desc->text;
@@ -53,11 +67,11 @@ void studio_pick_open(studio *s, const char *key, const char *current, const stu
     snprintf(s->pick.current, sizeof s->pick.current, "%s", current ? current : "");
     char placeholder[96];
     snprintf(placeholder, sizeof placeholder, "Search %s", studio_asset_kind_label(desc->kind));
-    if (!strcmp(key, STUDIO_PICK_PREVIEW)) {
-        kit_command_open(s->kit, placeholder);
+    if (!anchor) {
+        studio_palette_open(s, STUDIO_PALETTE_ASSETS, placeholder);
         return;
     }
-    kit_dropdown_open(s->kit, "asset-picker", placeholder);
+    studio_palette_open_at(s, STUDIO_PALETTE_ASSETS, placeholder, anchor);
 }
 
 static bool any_matches(const char *const *names, const char *query)
@@ -70,71 +84,55 @@ static bool any_matches(const char *const *names, const char *query)
     return false;
 }
 
-static void choose(studio *s, const char *value)
+void studio_pick_entries(studio *s, const char *query, studio_palette_entry **entries)
 {
-    s->pick.open = false;
-    if (!strcmp(s->pick.key, STUDIO_PICK_PREVIEW)) {
-        studio_preview_ui(s, value);
-        return;
-    }
-    snprintf(s->pick.value, sizeof s->pick.value, "%s", value);
-    s->pick.chosen = true;
-}
-
-bool studio_pick_palette(studio *s)
-{
-    if (!s->pick.open) {
-        return false;
-    }
-    bool field = strcmp(s->pick.key, STUDIO_PICK_PREVIEW) != 0;
-    bool open = field ? kit_dropdown_is_open(s->kit, "asset-picker")
-                      : kit_command_is_open(s->kit);
-    if (!open) {
-        s->pick.open = false;
-        return false;
-    }
     const reference_index *index = app_scene_authoring_asset_index(s->scene);
     const char **names = studio_asset_names(index, s->pick.kind);
     const char *group = studio_asset_kind_label(s->pick.kind);
     uint32_t icon = studio_asset_kind_icon(s->pick.kind);
-    kit_command_item *items = NULL;
     if (s->pick.none[0]) {
-        apush(items, ((kit_command_item){ .label = s->pick.none, .icon = KIT_ICON_CIRCLE }));
+        studio_palette_entry *none = studio_palette_add(entries, "", s->pick.none);
+        none->icon = KIT_ICON_CIRCLE;
+        none->kind = CHOOSE_NONE;
+        none->current = !s->pick.current[0];
     }
-    int first = acount(items);
     for (int i = 0; i < acount(names); i++) {
-        bool current = !strcmp(names[i], s->pick.current);
-        apush(
-            items,
-            ((kit_command_item){ .label = names[i],
-                                 .group = group,
-                                 .meta = current ? "Current" : NULL,
-                                 .icon = icon,
-                                 .current = current })
-        );
+        studio_palette_entry *e = studio_palette_add(entries, group, names[i]);
+        e->icon = icon;
+        e->kind = CHOOSE_ASSET;
+        e->current = !strcmp(names[i], s->pick.current);
     }
     /* A name no asset has yet, as typed, once no asset matches it: an exact
        match would otherwise rank it above the assets. */
-    const char *query = field ? kit_dropdown_query(s->kit, "asset-picker")
-                              : kit_command_query(s->kit);
-    bool typed = s->pick.text && query[0] && !any_matches(names, query);
-    if (typed) {
-        apush(
-            items,
-            ((kit_command_item){ .label = query,
-                                 .group = "Name",
-                                 .icon = KIT_ICON_EDIT,
-                                 .description = "No asset has this name yet" })
-        );
+    if (s->pick.text && query[0] && !any_matches(names, query)) {
+        char label[STUDIO_PALETTE_TEXT];
+        snprintf(label, sizeof label, "Use \"%s\"", query);
+        studio_palette_entry *typed = studio_palette_add(entries, "", label);
+        snprintf(typed->keywords, sizeof typed->keywords, "%s", query);
+        snprintf(typed->about, sizeof typed->about, "No asset has this name yet");
+        typed->icon = KIT_ICON_EDIT;
+        typed->kind = CHOOSE_TYPED;
     }
-    int chosen = field ? kit_dropdown(s->kit, "asset-picker", items, acount(items))
-                       : kit_command(s->kit, items, acount(items));
-    if (chosen >= 0) {
-        choose(s, chosen < first ? "" : items[chosen].label);
-    }
-    afree(items);
     afree(names);
-    return true;
+}
+
+void studio_pick_choose(studio *s, const studio_palette_entry *entry, rml_element *anchor)
+{
+    const char *value = entry->kind == CHOOSE_ASSET ? entry->label
+                      : entry->kind == CHOOSE_TYPED ? entry->keywords
+                                                    : "";
+    if (!strcmp(s->pick.key, STUDIO_PICK_PREVIEW)) {
+        studio_preview_ui(s, value);
+        return;
+    }
+    if (!strcmp(s->pick.key, STUDIO_PICK_FIELD)) {
+        if (anchor) {
+            rml_element_dispatch_value(anchor, "change", value, false);
+        }
+        return;
+    }
+    snprintf(s->pick.value, sizeof s->pick.value, "%s", value);
+    s->pick.chosen = true;
 }
 
 const char *studio_asset_field(
@@ -168,7 +166,7 @@ const char *studio_asset_field(
                                .flags = flags |
                                         (unresolved && !dragged ? KIT_INVALID : 0) };
     if (kit_picker(s->kit, "value", &picker)) {
-        studio_pick_open(s, key, value, desc);
+        studio_pick_open(s, key, value, desc, kit_item_element(s->kit));
     }
     kit_flag(s->kit, "data-drop-preview", dragged != NULL);
     bool editable = !(flags & (KIT_READONLY | KIT_DISABLED)) &&

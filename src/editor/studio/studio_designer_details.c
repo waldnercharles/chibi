@@ -285,11 +285,6 @@ typedef struct
     ui_buffer *b;
 } details;
 
-static bool shown(const details *x, const char *name)
-{
-    return studio_matches(x->s->property_search, name);
-}
-
 static const ui_source_attribute *attribute_of(const ui_source *rml, int element, const char *name)
 {
     const ui_source_element *el = &rml->elements[element];

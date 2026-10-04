@@ -1547,6 +1547,7 @@ typedef enum
 {
     DESIGNER_IDLE,
     DESIGNER_SELECT,
+    DESIGNER_SELECT_LIKE,
     DESIGNER_EDIT,
 } designer_case;
 
@@ -1560,6 +1561,9 @@ static void designer_change(studio *s, designer_case step, int run)
         case DESIGNER_IDLE: break;
         case DESIGNER_SELECT:
             designer_select(s, run & 1 ? DESIGNER_OK : DESIGNER_TITLE);
+            break;
+        case DESIGNER_SELECT_LIKE:
+            designer_select(s, run & 1 ? DESIGNER_OK : DESIGNER_CANCEL);
             break;
         case DESIGNER_EDIT: {
             ui_buffer *buffer;
@@ -1616,6 +1620,7 @@ static void designer(studio_bench *b)
     );
     designer_case_row(b, DESIGNER_IDLE, "Designer: a UI frame with nothing changed");
     designer_case_row(b, DESIGNER_SELECT, "Designer: select another element");
+    designer_case_row(b, DESIGNER_SELECT_LIKE, "Designer: select another button");
     designer_select(s, DESIGNER_ROOT);
     frames(b, 4);
     designer_case_row(b, DESIGNER_EDIT, "Designer: write the root's inline width");
@@ -1716,30 +1721,6 @@ static void select_element(studio_bench *b, int element)
     move_to(b->studio, 600 + (flip++ & 1), 300);
 }
 
-/* Prints, in dp, the boxes of the first elements the selectors in the
-   Properties area match, `;` separated. */
-static void print_boxes(studio *s, const char *selectors)
-{
-    float ratio = studio_pixel_ratio(s);
-    char list[512];
-    snprintf(list, sizeof list, "%s", selectors);
-    for (char *selector = strtok(list, ";"); selector; selector = strtok(NULL, ";")) {
-        rml_element *el = area_query(s, STUDIO_AREA_PROPERTIES, selector);
-        rml_vec2 at = el ? rml_element_absolute_offset(el, RML_BOX_BORDER)
-                         : (rml_vec2){ 0 };
-        rml_vec2 size = el ? rml_element_box_size(el, RML_BOX_BORDER)
-                           : (rml_vec2){ 0 };
-        printf(
-            "box %s: %.1f %.1f %.1f %.1f\n",
-            selector,
-            at.x / ratio,
-            at.y / ratio,
-            size.x / ratio,
-            size.y / ratio
-        );
-    }
-}
-
 /* With UI_BENCH_DESIGNER_CAPTURE set to a directory, native shots of the
    Hierarchy, Details and Library in dark and light, compact and
    comfortable: the rows with a selection, the row menu, the Add menu, a
@@ -1795,9 +1776,6 @@ static void capture_designer(studio_bench *b, const char *dir)
         move_to(s, 600, 300);
         select_element(b, DESIGNER_ROOT);
         shot(b, dir, name, "details");
-        if (getenv("UI_BENCH_BOXES_DETAILS") && v == 0) {
-            print_boxes(s, getenv("UI_BENCH_BOXES_DETAILS"));
-        }
         designer_press(b, area_query(s, STUDIO_AREA_PROPERTIES, ".designer-add"), 0);
         shot(b, dir, name, "details-add");
         popover_hide_all(context);
@@ -1820,9 +1798,6 @@ static void capture_designer(studio_bench *b, const char *dir)
         shot(b, dir, name, "details-text");
         select_element(b, -1);
         shot(b, dir, name, "document");
-        if (getenv("UI_BENCH_BOXES") && v == 0) {
-            print_boxes(s, getenv("UI_BENCH_BOXES"));
-        }
         rml_element *tile = studio_query(s, ".designer-tile");
         assert(tile);
         float x, y;

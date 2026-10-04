@@ -1033,12 +1033,24 @@ static uint64_t data_views(studio_fixture *f)
 
 /* One area turned from every authored panel to every other, round after
    round: RmlUi warns of no view it lost or could not bind, and the data
-   model keeps as many views as after the first round. */
-static void area_panels_take_turns()
+   model keeps as many views as after the first round. With `designer`, a UI
+   document is open, so the Outliner, Properties and Assets areas show the
+   Designer's Hierarchy, Details and Library (workstream D1), and the Scene
+   area its Canvas. */
+static void area_panels_take_turns(bool designer)
 {
     /* A behavior open, so Members lists it and GraphView's menus fill. */
     studio_fixture f = scene_open("projects/arena2d", "projects/arena2d/content/scenes/Sandbox.kdl", "Movement");
     studio *s = f.studio;
+    if (designer) {
+        char path[PATH_MAX];
+        s->prefs.code_apply_live = false;
+        assert(
+            realpath("projects/arena2d/content/ui/HUD.rml", path) &&
+            studio_open_ui_source(s, path, 1)
+        );
+        frames(&f, 4);
+    }
     /* The list, which streams no thumbnails between rounds. */
     s->prefs.assets_tile = STUDIO_ASSETS_LIST;
     s->applied = s->prefs;
@@ -1066,7 +1078,7 @@ static void area_panels_take_turns()
         /* The Scene area turns between the scene and a ui asset's Canvas,
            in its body and its header. */
         show_area_panel(&f, STUDIO_EDITOR_SCENE);
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; !designer && i < 2; i++) {
             studio_preview_ui(s, "HUD");
             frames(&f, 3);
             studio_preview_ui(s, NULL);
@@ -1088,16 +1100,22 @@ static void area_panels_take_turns()
     }
     test_check(
         kept,
-        "an area turned between every pair of authored panels, the drawer's "
-        "and side column's editors changed and each eased open and shut, "
-        "binds each one's views anew, none lost or piling up"
+        designer ? "with a UI document open, an area turned between every pair "
+                   "of editors shows the Hierarchy, Details, Library and the "
+                   "others in turn, binds each one's views anew, none lost or "
+                   "piling up"
+                 : "an area turned between every pair of authored panels, the "
+                   "drawer's and side column's editors changed and each eased "
+                   "open and shut, binds each one's views anew, none lost or "
+                   "piling up"
     );
     fixture_free(&f);
 }
 
 void studio_documents_panel_checks()
 {
-    area_panels_take_turns();
+    area_panels_take_turns(false);
+    area_panels_take_turns(true);
     ui_wiring_checks();
     preview_hears_keys();
     settings_records_shortcut();

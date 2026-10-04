@@ -366,7 +366,10 @@ run's arena (`flow_context_scratch`).
 **Found, not fixed (tooling):** edit_graph fails with no error (`ok:false`)
 when a batch adds a second Behavior Expression with the same source; a
 `connect` from a bool to a number input is dropped without a diagnostic;
-`add_variable_node` ignores `inputs` (use `set_input`); a bool cannot feed
+`add_variable_node` ignores `inputs` (use `set_input`); a `connect` from an
+event's `CF_V2` payload to a `CF_V2` input chose a GameTransform-to-CF_V2
+conversion (`game_transform_to_cf`), which ran right only because a
+GameTransform starts with its position (removed by hand); a bool cannot feed
 arithmetic or Select (no bool to number conversion), so folds are Branches.
 Studio's Add menu still lists the studio pack in every project.
 

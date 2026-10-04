@@ -30,8 +30,16 @@ name "Studio"
     - name="AreaHeader" prototype="AreaHeader"
     - name="Properties" prototype="Properties"
     - name="PropertiesHeader" prototype="PropertiesHeader"
-    - name="Outliner" prototype="Outliner"
-    - name="OutlinerHeader" prototype="OutlinerHeader"
+    - {
+        name "Outliner"
+        prototype "Outliner"
+        (array)behaviors "OutlinerInput" "OutlinerMenu" "OutlinerRename" "OutlinerRows"
+    }
+    - {
+        name "OutlinerHeader"
+        prototype "OutlinerHeader"
+        (array)behaviors "OutlinerHeaderInput"
+    }
     - {
         name "Widgets"
         prototype "Widgets"

@@ -39,6 +39,10 @@ typedef struct game_ui_element
     bool focus;     /* requested and not yet applied */
     bool click;     /* requested and not yet applied */
     int move_focus; /* a requested step through the matches; 0 for none */
+    /* A requested popover opening at a point in the document's pixels. */
+    bool popover;
+    float popover_x, popover_y;
+    int reveal; /* a requested list row to scroll into view; -1 for none */
     /* Where a presenter last measured the element scrolled, in dp. */
     bool measured;
     float scroll_top, view_height, content_height;
@@ -80,6 +84,12 @@ bool game_ui_click(game_ui *ui, uint64_t entity, const char *element);
 /* Moves focus `step` places through the elements the selector matches, from
  * the one that holds focus, wrapping at the ends. */
 bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int step);
+/* Opens the first match, a popover, at (`x`, `y`) in the document's pixels,
+ * as a context menu opens at the pointer. */
+bool game_ui_show_popover(game_ui *ui, uint64_t entity, const char *element, float x, float y);
+/* Scrolls row `row` of the matches, lists their presenter windows
+ * (data-list-rows), into view once, as Virtuoso's scrollToIndex does. */
+bool game_ui_reveal_row(game_ui *ui, uint64_t entity, const char *element, int row);
 /* Records where a presenter measured the element scrolled, in dp: how far
  * down, and the heights of its view and its content. A measurement is not a
  * setting, so presenters do not apply it back. */

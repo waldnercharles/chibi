@@ -455,6 +455,10 @@ set(APP_REGISTRY_PACKS
     CORE_COMPONENT_PACK
 )
 chibi_registry("${APP_REGISTRY}" ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+# The editor's targets also know Studio's editor nodes (studio_nodes.c), which
+# only Studio's own world binds a service for; games' runtimes never list them.
+set(EDITOR_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_registry.c)
+chibi_registry("${EDITOR_REGISTRY}" ${APP_REGISTRY_PACKS} STUDIO_PACK GAME_REGISTRY_PACK)
 
 
 function(chibi_watch_platform target)
@@ -472,7 +476,7 @@ function(chibi_watch_platform target)
 endfunction()
 
 set(HOST_SOURCES src/host/main.c src/host/module.c src/host/state_file.c src/host/stacktrace.c)
-add_library(chibi_sources OBJECT ${APP_SOURCES} ${APP_REGISTRY})
+add_library(chibi_sources OBJECT ${APP_SOURCES} ${EDITOR_REGISTRY})
 target_include_directories(chibi_sources PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(chibi_sources PRIVATE chibi_render editor engine runtime_support cute)
 chibi_enable_tracy(chibi_sources)
@@ -505,7 +509,7 @@ else()
     set_target_properties(chibi PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
-add_executable(chibi_ctl tools/chibi_ctl/main.c ${APP_REGISTRY})
+add_executable(chibi_ctl tools/chibi_ctl/main.c ${EDITOR_REGISTRY})
 add_dependencies(chibi_ctl generate_runtime_registry)
 target_include_directories(chibi_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_ctl PRIVATE automation chibi_render editor engine)
@@ -644,7 +648,7 @@ endif()
 
 # --- test registry: core and runtime_support packs for the consolidated suite ---
 set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
-chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGED_PACK WHOLE_SEARCH_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGED_PACK WHOLE_SEARCH_PACK ${APP_REGISTRY_PACKS} STUDIO_PACK GAME_REGISTRY_PACK)
 
 # --- test suite: consolidated headless regression checks --------------------
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
@@ -893,7 +897,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # The S0 UI bench's headless cases (docs/studio-rml-migration.md) under
     # Node: `node build-web/ui_bench.js` from the repository root. Natively
     # they run as `test_suite --ui-bench`.
-    add_executable(ui_bench test/ui_bench_main.c test/editor/ui_bench.c ${APP_REGISTRY})
+    add_executable(ui_bench test/ui_bench_main.c test/editor/ui_bench.c ${EDITOR_REGISTRY})
     add_dependencies(ui_bench generate_runtime_registry)
     target_include_directories(ui_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(ui_bench PRIVATE chibi_render editor engine)

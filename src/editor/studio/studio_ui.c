@@ -8,15 +8,19 @@
 #include "assets/scene_document.h"
 #include "editor/collab/collab.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/studio/studio_nodes.h"
 #include "graph/document/serialize.h"
 #include "render/ui.h"
+#include "runtime/behaviors/live.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/text_file.h"
 #include "support/tree_watch.h"
 #include "support/xalloc.h"
+#include "ui/drag.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,28 +51,40 @@ struct studio_ui
     ui_mount *areas[STUDIO_AREA_COUNT]; /* each area's panel, when it shows one */
     ui_mount *headers[STUDIO_AREA_COUNT];  /* each area's header */
     ui_mount *controls[STUDIO_AREA_COUNT]; /* an authored panel in each header */
+    studio_node_service nodes; /* the "studio" service its behaviors call */
     bool wake; /* authored activations waiting for a host emission */
     uint64_t ui_seen, save_seen, panels_seen;
     uint64_t prefs_seen; /* the settings revision Studio's preferences match */
 };
 
-/* The panel or area mount holding `element`, or NULL. */
-static ui_mount *mount_holding(studio_ui *ui, rml_element *element)
+/* The mount rooted at `root`, or NULL. */
+static ui_mount *mount_at(studio_ui *ui, rml_element *root)
 {
     for (int i = 0; i < acount(ui->panels); i++) {
-        if (ui->panels[i].mount && ui_mount_holds(ui->panels[i].mount, element)) {
+        if (ui->panels[i].mount && ui_mount_root(ui->panels[i].mount) == root) {
             return ui->panels[i].mount;
         }
     }
-    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-        if (ui->areas[i] && ui_mount_holds(ui->areas[i], element)) {
-            return ui->areas[i];
+    ui_mount *const *kinds[] = { ui->areas, ui->headers, ui->controls };
+    for (int k = 0; k < 3; k++) {
+        for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+            if (kinds[k][i] && ui_mount_root(kinds[k][i]) == root) {
+                return kinds[k][i];
+            }
         }
-        if (ui->headers[i] && ui_mount_holds(ui->headers[i], element)) {
-            return ui->headers[i];
-        }
-        if (ui->controls[i] && ui_mount_holds(ui->controls[i], element)) {
-            return ui->controls[i];
+    }
+    return NULL;
+}
+
+/* The innermost panel or area mount holding `element`, or NULL: a header's
+ * controls are a mount inside the AreaHeader's, and their events are the
+ * controls' panel's. */
+static ui_mount *mount_holding(studio_ui *ui, rml_element *element)
+{
+    for (rml_element *at = element; at; at = rml_element_parent(at)) {
+        ui_mount *m = mount_at(ui, at);
+        if (m) {
+            return m;
         }
     }
     return NULL;
@@ -203,10 +219,13 @@ static void free_world(studio_ui *ui)
     ui->prototypes = NULL;
 }
 
-/* A new world for the Studio scene; panels mount again in their hosts. */
-static bool open_world(studio_ui *ui, char *error, size_t size)
+/* A new world for the Studio scene, whose behaviors reach Studio through
+ * the editor nodes' service; panels mount again in their hosts. */
+static bool open_world(studio *s, studio_ui *ui, char *error, size_t size)
 {
     ui->world = game_prototype_preview_new(&ui->registry);
+    ui->nodes = (studio_node_service){ s, studio_node_run };
+    game_behavior_bind_service(game_prototype_preview_behaviors(ui->world), "studio", &ui->nodes);
     app_behavior_fixtures_load(game_prototype_preview_live(ui->world), NULL, ui->content_root);
     return launch(ui, error, size);
 }
@@ -238,13 +257,14 @@ static void follow_disk(studio *s)
     }
     free_world(ui);
     char error[256];
-    if (!open_world(ui, error, sizeof error)) {
+    if (!open_world(s, ui, error, sizeof error)) {
         report_error(s, "scenes/Studio.kdl", error);
     }
 }
 
-studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *error, size_t size)
+studio_ui *studio_ui_new(studio *s, const char *project_root, char *error, size_t size)
 {
+    rml_context *context = rml_backend_context(s->backend);
     studio_ui *ui = xcalloc(1, sizeof *ui);
     chibi_project project = { 0 };
     char manifest_error[256];
@@ -260,7 +280,7 @@ studio_ui *studio_ui_new(rml_context *context, const char *project_root, char *e
     ui->registry = (game_prototype_registry){ .components = GAME_REGISTRY_COMPONENTS,
                                               .component_count = GAME_REGISTRY_COMPONENT_COUNT };
     ui->listener = rml_listener_create(on_event, ui);
-    if (!open_world(ui, error, size)) {
+    if (!open_world(s, ui, error, size)) {
         studio_ui_free(ui);
         return NULL;
     }
@@ -364,9 +384,59 @@ static panel *find_panel(studio_ui *ui, const char *name)
     return NULL;
 }
 
-/* Sends a panel's events to its entity's behaviors, an input's value first,
- * unless they are Studio's (studio_panel_route). New Project's dialog takes
- * its own, its backdrop's Close among them. */
+/* The Studio project's declaration of event `name`, an event asset, or
+ * NULL when it declares none, as local events without a payload. */
+static const behavior_asset *declared_event(studio_ui *ui, const char *name)
+{
+    game_live_definition
+        *event = game_live_find_definition(game_prototype_preview_live(ui->world), name);
+    return event && event->working->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION
+             ? event->working
+             : NULL;
+}
+
+/* Runs `a` on `entity`'s behaviors now, or on every panel's when `entity`
+ * is none, its payload as its event asset declares, so what they set shows
+ * in the frame that sent it. */
+static void dispatch(studio *s, ecs_entity entity, const ui_activation *a)
+{
+    studio_ui *ui = s->ui;
+    pin_value values[16];
+    float pointer[2];
+    int count = ui_activation_payload(
+        a,
+        declared_event(ui, a->event),
+        s->mac ? RML_KM_META : RML_KM_CTRL,
+        pointer,
+        values,
+        16
+    );
+    if (count < 0) {
+        report_error(s, a->event, "declares a payload a UI event cannot carry");
+        return;
+    }
+    game_behavior_world *behaviors = game_prototype_preview_behaviors(ui->world);
+    flow_inputs inputs = { .values = values, .count = count };
+    if (entity.slot) {
+        game_behavior_dispatch(behaviors, entity, a->event, inputs, NULL);
+    } else {
+        game_behavior_dispatch_all(behaviors, a->event, inputs, NULL);
+    }
+}
+
+/* Runs the events behaviors sent each other meanwhile (Send Event), so a
+ * chain settles before the panel shows. */
+static void settle(studio_ui *ui)
+{
+    game_entities *entities = game_prototype_preview_entities(ui->world);
+    for (int round = 0; round < 8 && game_entities_pending_events(entities); round++) {
+        game_entities_dispatch_events(entities);
+    }
+}
+
+/* Sends a panel's events to its entity's behaviors now, an input's value
+ * first, unless they are Studio's (studio_panel_route). New Project's
+ * dialog takes its own, its backdrop's Close among them. */
 static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
 {
     studio_ui *ui = s->ui;
@@ -408,12 +478,38 @@ static void send_activations(studio *s, ui_mount *mount, ecs_entity entity)
                 a.value
             );
         }
-        game_entities_request_event(
-            game_prototype_preview_entities(ui->world),
-            entity,
-            a.event,
-            (flow_inputs){ 0 }
-        );
+        dispatch(s, entity, &a);
+    }
+}
+
+void studio_ui_send(studio *s, const char *name, const char *argument)
+{
+    if (!s->ui) {
+        return;
+    }
+    ui_activation a = { .argc = 1 };
+    snprintf(a.event, sizeof a.event, "%s", name);
+    snprintf(a.args[0], sizeof a.args[0], "%s", argument);
+    dispatch(s, (ecs_entity){ 0 }, &a);
+    settle(s->ui);
+    s->ui->wake = true;
+}
+
+/* While an asset is dragged over an object's element, data-object="<key>"
+   (an Outliner row), the object shows it in the Scene and the overlay
+   says what a drop does. */
+static void preview_drop(studio *s, ui_mount *mount, rml_element *host)
+{
+    rml_element *over = rml_element_query_selector(host, "[data-drop-over][data-object]");
+    ui_drag_item item;
+    if (!over || !ui_mount_holds(mount, over) || !ui_drag_over(over, &item)) {
+        return;
+    }
+    char key[24] = "";
+    rml_element_attribute(over, "data-object", key, sizeof key);
+    int actor = studio_object_index(s, key);
+    if (actor >= 0) {
+        studio_drop_preview(s, actor, item.type, item.payload);
     }
 }
 
@@ -496,6 +592,11 @@ void studio_ui_data_dirty_all(studio *s)
     rml_data_model_dirty_all(s->ui->data.model);
 }
 
+game_behavior_world *studio_ui_behaviors(studio *s)
+{
+    return game_prototype_preview_behaviors(s->ui->world);
+}
+
 rml_data_reads studio_ui_data_reads(const studio *s)
 {
     return s->ui ? rml_data_model_reads(s->ui->data.model) : (rml_data_reads){ 0 };
@@ -526,13 +627,16 @@ bool studio_ui_shortcut_focus(studio *s)
     if (!button) {
         return false;
     }
-    ui_mount *mount = mount_holding(ui, focus);
-    if (!mount) {
-        return false;
+    /* A button in the chrome, a header's controls among it. */
+    for (rml_element *at = focus; at; at = rml_element_parent(at)) {
+        ui_mount *mount = mount_at(ui, at);
+        const char *name = mount ? ui_mount_name(mount) : "";
+        if (!strcmp(name, "TopBar") || !strcmp(name, "AreaHeader") ||
+            !strcmp(name, "StatusBar")) {
+            return true;
+        }
     }
-    const char *name = ui_mount_name(mount);
-    return !strcmp(name, "TopBar") || !strcmp(name, "AreaHeader") ||
-           !strcmp(name, "StatusBar");
+    return false;
 }
 
 int studio_ui_keyboard_area(studio *s)
@@ -544,6 +648,9 @@ int studio_ui_keyboard_area(studio *s)
     }
     return focus_area(s, focus);
 }
+
+/* Rounds of events a panel's own effects may send in one frame. */
+#define EFFECT_ROUNDS 4
 
 /* Mounts the panel's document in `host` and runs its events. */
 static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host, const char *document)
@@ -558,14 +665,30 @@ static void show_panel(studio *s, panel *p, ui_mount **mount, rml_element *host,
         *mount = ui_mount_new(ui->content_root, document);
     }
     studio_sources_mounted(s, &ui->sources, &ui->data, p->name);
-    ui_data_bind_self(&ui->data, host, ecs_entity_to_u64(entity));
+    uint64_t id = ecs_entity_to_u64(entity);
+    ui_data_bind_self(&ui->data, host, id);
     if (ui_mount_sync(*mount, host, ui->listener, s->time)) {
         kit_style_sheet(s->kit, document, ui_mount_style(*mount));
     }
     game_ui *model = engine_ui(game_prototype_preview_runtime(ui->world));
-    ui_mount_measure(*mount, model, ecs_entity_to_u64(entity));
-    ui_mount_apply(*mount, model, ecs_entity_to_u64(entity));
-    send_activations(s, *mount, entity);
+    /* What behaviors asked for since (a list's reveal) applies before the
+       lists window, whose `window` events join the panel's activations;
+       then the behaviors refresh, as a panel source syncs, and what they
+       set shows in this frame. An effect can send events of its own (a
+       focus moved blurs a field, which commits it): they run in the same
+       frame too, a few rounds at most. */
+    ui_mount_apply(*mount, model, id);
+    ui_mount_measure(*mount, model, id);
+    for (int round = 0;
+         round == 0 || (round < EFFECT_ROUNDS && ui_mount_pending(*mount));
+         round++) {
+        send_activations(s, *mount, entity);
+        dispatch(s, entity, &(ui_activation){ .event = "Refresh" });
+        settle(ui);
+        ui_data_show_entities(&ui->data, model);
+        ui_mount_apply(*mount, model, id);
+    }
+    preview_drop(s, *mount, host);
     report(s, p, *mount);
 }
 
@@ -693,6 +816,49 @@ rml_element *studio_ui_area_view(studio *s, int area, const char *name, const ch
     kit_attr(s->kit, "data-alias-view", alias);
     show_panel(s, p, &s->ui->areas[area], host, document);
     return host;
+}
+
+/* Data-keys names for the keys an area's panel can bind: letters, digits
+   and the named keys; NULL for others. */
+static const char *key_label(SDL_Keycode key, char letter[2])
+{
+    switch (key) {
+        case SDLK_LEFT: return "Left";
+        case SDLK_RIGHT: return "Right";
+        case SDLK_UP: return "Up";
+        case SDLK_DOWN: return "Down";
+        case SDLK_HOME: return "Home";
+        case SDLK_END: return "End";
+        case SDLK_PAGEUP: return "PageUp";
+        case SDLK_PAGEDOWN: return "PageDown";
+        case SDLK_RETURN: return "Enter";
+        case SDLK_ESCAPE: return "Escape";
+        case SDLK_SPACE: return "Space";
+        case SDLK_TAB: return "Tab";
+        case SDLK_BACKSPACE: return "Backspace";
+        case SDLK_DELETE: return "Delete";
+        default: break;
+    }
+    if ((key >= SDLK_A && key <= SDLK_Z) || (key >= SDLK_0 && key <= SDLK_9)) {
+        letter[0] = (char)toupper((int)key);
+        letter[1] = '\0';
+        return letter;
+    }
+    return NULL;
+}
+
+bool studio_ui_area_key(studio *s, int area, SDL_Keycode key, SDL_Keymod mod)
+{
+    char letter[2];
+    const char *name = key_label(key, letter);
+    ui_mount *mount = s->ui && area >= 0 ? s->ui->areas[area] : NULL;
+    if (!name || !mount ||
+        (mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI | SDL_KMOD_ALT | SDL_KMOD_SHIFT)) ||
+        !ui_mount_area_key(mount, name)) {
+        return false;
+    }
+    s->ui_schedule.wake = true;
+    return true;
 }
 
 static void show_modal(studio *s, const char *name)

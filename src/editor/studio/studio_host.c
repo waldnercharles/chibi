@@ -933,7 +933,7 @@ static studio *create(
     s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
     assert(s->kit);
     s->prefs = host ? host->prefs : studio_prefs_load();
-    s->ui = studio_ui_new(rml_backend_context(s->backend), STUDIO_PROJECT, error, sizeof error);
+    s->ui = studio_ui_new(s, STUDIO_PROJECT, error, sizeof error);
     sync_theme(s);
     if (!s->ui) {
         fprintf(stderr, "Studio UI: %s\n", error);

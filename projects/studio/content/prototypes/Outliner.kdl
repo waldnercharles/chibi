@@ -2,3 +2,4 @@ name "Outliner"
 components {
     GAME.GameUi document="Outliner" hidden=#true
 }
+(array)behaviors "OutlinerInput" "OutlinerMenu" "OutlinerRename" "OutlinerRows"

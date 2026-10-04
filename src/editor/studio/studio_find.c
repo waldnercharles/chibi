@@ -264,7 +264,7 @@ void studio_open_reference(studio *s, const studio_reference *row)
     for (int i = 0; row->object && i < acount(scene->actors); i++) {
         if (scene->actors[i].name && !strcmp(scene->actors[i].name, row->place)) {
             select_instance(scene, i);
-            s->outliner_reveal = true;
+            studio_reveal_selection(s);
         }
     }
 }

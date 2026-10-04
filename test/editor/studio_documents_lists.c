@@ -173,7 +173,7 @@ static void drag_crosses_lists()
     snprintf(
         id,
         sizeof id,
-        "#outliner-list [data-id=\"%llu\"]",
+        "#outliner-list [data-object=\"%llu\"]",
         (unsigned long long)ecs_entity_to_u64(f.scene->actors[objects].entity)
     );
     rml_element *behavior = row_named(s, "#gallery-assets [data-drag]", "Teller");

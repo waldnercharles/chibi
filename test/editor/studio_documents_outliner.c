@@ -186,7 +186,7 @@ static rml_element *row_of(studio *s, int index)
     snprintf(
         selector,
         sizeof selector,
-        "#outliner-list [data-id=\"%llu\"]",
+        "#outliner-list [data-object=\"%llu\"]",
         (unsigned long long)ecs_entity_to_u64(s->scene->actors[index].entity)
     );
     return studio_element(s, selector);
@@ -498,14 +498,16 @@ static void filter_and_root()
     if (twisty) {
         click_in(&f, twisty, 0.5f, 0.5f, 0);
     }
-    bool folded = twisty && s->outliner_collapsed && !row_of(s, 0);
+    /* The root's fold is the Outliner's own view state (OutlinerRows), so
+       the rows under it tell whether it is open. */
+    bool folded = twisty && !row_of(s, 0);
     mouse_over(&f, STUDIO_AREA_OUTLINER);
     tap(SDL_SCANCODE_RIGHT);
     frames(&f, 3);
-    bool right = !s->outliner_collapsed && row_of(s, 0);
+    bool right = row_of(s, 0) != NULL;
     tap(SDL_SCANCODE_LEFT);
     frames(&f, 3);
-    bool left = s->outliner_collapsed;
+    bool left = !row_of(s, 0);
     rml_element *root = studio_element(s, "#outliner-list .outliner-root .name");
     float x, y;
     if (root) {
@@ -518,7 +520,7 @@ static void filter_and_root()
         }
         frames(&f, 3);
     }
-    bool doubled = root && !s->outliner_collapsed;
+    bool doubled = root && row_of(s, 0);
     if (!(filtered && none && folded && right && left && doubled)) {
         printf(
             "  filter: %d ('%s', count '%s', %d rows) none %d ('%s') folded %d "

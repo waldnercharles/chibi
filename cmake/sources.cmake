@@ -208,6 +208,8 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_members.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_member_properties.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_outliner.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_node_calls.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_output.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_panels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_performance.c

@@ -3,7 +3,8 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2, C3, C4, D1, G1 and I1 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2, C3, C4, D1, G1 and I1 done; the rest planned. The
+Outliner runs on KDL behaviors over editor nodes (Behavior-driven panels, a spike). The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -45,7 +46,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Settings, Shortcuts, Collaboration, NewProject, Dialog, Inspector panel, Data, Theme, the Behavior header's View menu (GraphView, trigger included since F3) | Authored | | Done |
 | Properties: Object, Prototype, Scene, Behaviors | Authored (P1): `Properties.rml`, `PropertiesHeader.rml`; `studio_properties_view.c` publishes `properties`, `studio_properties.c` runs its intents | Reflection, ECS reads, overrides and mixed values, `write_field` gestures, ranges and units from `Components.kdl`, live values at 20 Hz in Play, locks, search, Keep | Done; Add Component and the asset fields' pickers are the palette's (C4) |
 | Properties: Node, Member | Authored (G1): `Properties.rml`'s graph section and `GraphField.rml` over `graph_details` (`studio_graph_details.c`); `studio_graph_properties.c` and `studio_member_properties.c` write the rows and run their intents | Literal editors, binding autocomplete, expression code, type picker, reorder grips | Done (W4 G1) |
-| Outliner | Authored: `Outliner.rml`, `OutlinerHeader.rml`; the `outliner` source (`studio_outliner.c`) | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | Done (W2 P2) |
+| Outliner | Authored: `Outliner.rml`, `OutlinerHeader.rml` over KDL behaviors (OutlinerRows, OutlinerInput, OutlinerRename, OutlinerMenu, OutlinerHeaderInput) and the `studio` editor nodes (`studio_nodes.h`); no panel source | Selection (⌘/⇧), 10k-row virtualization, drops, rename, eye and lock, menu | Done (W2 P2); behavior-driven (spike) |
 | Scene and Canvas headers | Authored: `SceneHeader.rml` over `scene` (`studio_scene.c`), `canvas` (`studio_canvas.c`) and `commands` | Commands, tool, snap, grid, zoom, Show toggles, Canvas size, actions log | Done (W3 C1) |
 | Scene viewport | `Scene.rml` and `Canvas.rml` over `scene_view` and `canvas`; the `kit_surface` showing `kit:viewport` stays native in their slot | Texture, pointer input, camera labels | Done (C1): overlays authored; input stays in C |
 | Assets | `Assets.rml`, `AssetsHeader.rml` and `NewAsset.rml` over `assets`, `asset_view` and `asset_menus` (`studio_assets.c`, P3) | Index, filters, `kit:thumb:` textures, thumbnail budget, columns, keys, drag, New menu | Done (P3) |
@@ -116,8 +117,9 @@ properties: { mode, live, locked, lockTip, query,
 choices: { fields: { GameBody: { type: TABLE } }, assets: { prototype: TABLE },
   editors: TABLE, panels: { label, icon, tools: [], others: [] } }
 TABLE: { label, icon, groups: [{ label, options: [{ value, label, icon }] }] }
-outliner: { title, count, collapsed, total, row,
-  views: [{ first, query, rows: [{ id, label, icon, behaviors, selected, active, marked, hidden, locked, renaming }] }] }
+Outliner's self (its behaviors' Set UI Data): { root: { key, label, icon, parent, open, depth },
+  rootShown, count, total, notice, isolateTip, menu: { label, actor, live, spawnBreak: MenuItem },
+  rows: [SceneObjectRow: { key, label, icon, prototype, drop, depth, behaviors, active, marked, hidden, locked, renaming }] }
 ```
 
 Authoring data never binds two-way. Two-way bindings are for UI-local state
@@ -252,6 +254,189 @@ sources from a C registry.
 `kit_slot` keeps native content inside authored panels until its wave. Tests
 find authored elements by selector (`studio_find(s, area, selector, &rect)`),
 and each wave retargets its tests from kit paths.
+
+## Behavior-driven panels
+
+A panel's markup and styles should work with KDL behaviors on its prototype,
+as a game's UI does, not with a C panel source: C keeps capabilities, which
+behaviors call as nodes, and the native pieces that need native speed. The
+Outliner is the spike that proves it (branch of `editor-polish-design`,
+2026-10-03); its numbers are below.
+
+**References.** Unity's editor windows load UXML and USS, and a C#
+controller queries elements, registers callbacks and calls editor APIs
+(`Selection`, `Undo`); its `ListView` virtualizes natively, and windows hear
+`EditorApplication.hierarchyChanged`, `Selection.selectionChanged` and
+`OnInspectorUpdate` (10 Hz). Unreal's Editor Utility Widgets are UMG layouts
+whose Blueprint graphs call editor-only nodes (the Editor Actor Subsystem's
+Get and Set Selected Level Actors, Set Actor Label) that exist only in
+editor builds; its `ListView` and `TreeView` virtualize natively. Unreal's
+own Scene Outliner stays Slate C++. **Choice: Unreal's Editor Utility
+Widget**: a document (UMG) and behavior graphs (Blueprint) over an
+editor-only node pack, with Unity's editor events (`Refresh` as
+`OnInspectorUpdate`, `RevealObject` as `PingObject`) and native list
+windowing (Virtuoso's, `ListView`'s).
+
+**The editor node pack** (`src/editor/studio/studio_nodes.h`): the `studio`
+pack, registered only in the editor targets' registry (`EDITOR_REGISTRY`:
+chibi, chibi_ctl, the UI bench, test_suite), so games' runtimes never list
+it. Its nodes run on the `studio` service, Studio and one call
+(`studio_node_run`, a switch in `studio_node_calls.c`), which only Studio's
+own world binds (`game_behavior_bind_service`); elsewhere they fail with
+"Editor nodes require Studio". searchNodes offers them (category Studio)
+only in the Studio project. They are named for capabilities and name
+objects by key, the entity as text, as rows carry it:
+
+| Kind | Nodes |
+|---|---|
+| Reads | Scene Info (title, objects, filter), Selection (active, count, name, prototype), Object Selected, Object Row, Renaming Object, Editor State (editable, live, mac), Breaks When Spawned |
+| Queries, impure: they run once as they execute, as Unreal's Get All Actors is impure, where a pure read runs again for each node that takes it | Scene Objects (a window of `SceneObjectRow`s of the objects the filter shows, and how many it shows), Prototype Choices (`Choice`s for a ChoiceList) |
+| Effects | Select Object (Toggle, Extend), Rename Object (one Undo step), End Rename, Set Object Hidden, Set Object Locked, Isolate Object, Add Object, Drop on Object, Set Object Filter, Toggle Spawn Break |
+
+Menus keep running Studio's commands through MenuCommand
+(`emit('studio.<id>')`), so no Run Command node was needed.
+
+**Data.** Behaviors publish with Set UI Data on `self`; an array of structs
+becomes a list of objects, and a value that did not change changes nothing.
+Each entity's data is now its own data variable, `e<entity>`, bound when a
+document binds `self` (`rml_data_model_bind`): before, every entity shared
+`entities`, so any Set UI Data re-evaluated every `self` view in Studio. A
+panel's own data is one variable: the Outliner's selection travels in its
+rows (`active`, `marked`), so a click re-evaluates the window's rows (607
+views, in the frame of the click), where the C panel's `outliner` and
+`outliner_ui` split read 624 over the two frames it took. A hot value that
+must stay apart goes on an entity of its own, as OutlinerHeader holds the
+Add list.
+
+**Events.** Studio runs a panel's UI events on its entity's behaviors in the
+frame that sent them (`dispatch` in `studio_ui.c`, over
+`game_behavior_dispatch`), then `Refresh`, as a source syncs, then the
+events behaviors sent each other (Send Event), shows what they set and
+applies their UI effects before RmlUi lays the frame out; an effect that
+sends events of its own (a focus move blurs a field, which commits it) runs
+in up to four more rounds of the same frame. An event asset declares the
+payload: `ui_activation_payload` fills Shift, Alt, Mod (Command on a Mac,
+Control elsewhere) and Pointer (`CF_V2`, the document's pixels) from the
+DOM event, as a web handler reads `event.shiftKey` and `event.clientX`, and
+the rest from emit's arguments in order, read as each value's type. Studio
+sends `RevealObject` to every panel behavior after Up, Down, a Find jump or
+F2. `data-area-keys="Left:FoldRoot"` gives a panel the unmodified keys of
+its area, Blender's per-editor keymap. Events in a header's controls now
+reach the controls' panel, the innermost mount, not the AreaHeader. Games
+still queue UI events to the next tick.
+
+**What stays native.** List windowing: a List marked
+`data-list-rows="self.total"` is windowed by its host (`ui_list_window` in
+`ui_mount_measure`), which sends `window` (`ev.first`, `ev.count`), as
+Virtuoso's `rangeChanged`; Reveal UI List Row is its `scrollToIndex`.
+Filtering ten thousand objects, drop types, selection ranges, rename,
+history and view flags stay C behind nodes; popovers (Show UI Popover),
+drag (F4) and the Scene's drop preview over an element marked
+`data-object` stay in the host.
+
+**The Outliner's behaviors** (`projects/studio/content/behaviors`), on the
+Outliner and OutlinerHeader prototypes and their `Studio.kdl` entities:
+
+| Behavior | Events | What it does | Nodes, edges |
+|---|---|---|---|
+| OutlinerRows | Begin, ShowRows, Refresh, FoldRoot, UnfoldRoot, ToggleRoot, RootClicked, RevealObject | The root row, the window's rows, the count, the notice; folds the root (a twisty click is the only one that flips the state its row sends); unfolds and scrolls a revealed object into view | 59, 65 |
+| OutlinerInput | RowClicked, RowMenu, EyeClicked, LockClicked, RowDropped, ListDropped, SpawnBreak | Selects (Mod toggles, Shift extends), keeps a selection a right click lands in and opens the menu at the pointer, hides or isolates, locks, drops | 24, 35 |
+| OutlinerRename | RenameCommitted, RenameCancel, RenameEnter, RenameLeft, Refresh | Commits only while its row still renames (Escape ends it first), returns the keyboard to the list, closes a field left without a commit at the refresh after its events | 20, 20 |
+| OutlinerMenu | Begin, Refresh | The menu's heading, Break When Spawned's check, the Live items, the eye's Alt+click tip | 26, 30 |
+| OutlinerHeaderInput | Refresh, FilterTyped, AddObject | The filter (Set Object Filter, shown back when Studio clears it), Add's prototypes and editability | 11, 10 |
+
+The UI events with payloads are event assets in `content/events`
+(RowClicked, RowMenu, EyeClicked, LockClicked, RowDropped, ListDropped,
+RenameCommitted, RenameLeft, FilterTyped, AddObject, RootClicked,
+RevealObject, Refresh); FoldRoot and the others without one are local.
+The graphs were written through the native controller's `edit_graph`
+(buildGraph's operation) on this worktree, auto-arranged, then
+`optimizeGraph` and a comment pass.
+
+**Gaps closed, in shared code:** per-entity `self` variables (render/ui.c,
+rml.cpp); same-frame UI events with typed payloads, Refresh, settling and
+effect rounds (studio_ui.c, render/ui.c's `ui_activation_payload` and
+`ui_mount_pending`); native list windows with `window` events and one-shot
+reveal (render/ui.c); Show UI Popover and Reveal UI List Row (game.ui); area
+keys (`ui_mount_area_key`); events reaching the innermost mount
+(studio_ui.c); host services for behavior worlds (`game_behavior_bind_service`);
+Text Equal (expressions cannot compare text); flow nodes' outputs in the
+run's arena (`flow_context_scratch`).
+
+**Found, not fixed (tooling):** edit_graph fails with no error (`ok:false`)
+when a batch adds a second Behavior Expression with the same source; a
+`connect` from a bool to a number input is dropped without a diagnostic;
+`add_variable_node` ignores `inputs` (use `set_input`); a `connect` from an
+event's `CF_V2` payload to a `CF_V2` input chose a GameTransform-to-CF_V2
+conversion (`game_transform_to_cf`), which ran right only because a
+GameTransform starts with its position (removed by hand); a bool cannot feed
+arithmetic or Select (no bool to number conversion), so folds are Branches.
+Studio's Add menu still lists the studio pack in every project.
+
+**Results** (`--ui-bench studio`, case 23, `UI_BENCH_OUTLINER=1`): the
+Outliner over ten thousand objects, scrolled to the middle, each step
+through the UI as a hand would, until it shows; release builds of the base
+(`280dd327`) and the spike alternated process by process three times at a
+1-minute load of 7.8-8.4 (provisional; counts hold), whole Studio UI
+frames, medians:
+
+| Step | Base, C source (ms) | Spike, behaviors (ms) | Spike ÷ base | UI frames to show it | Views | Layouts | Behaviors (ms) |
+|---|---:|---:|---:|---|---:|---:|---:|
+| A UI frame with nothing changed | 1.007 / 0.891 / 0.913 | 1.141 / 1.262 / 1.148 | 1.26× | 1 / 1 | 0 / 0 | 0 / 0 | 0.19 |
+| Scroll step of 3 rows | 3.564 / 3.538 / 3.469 | 3.820 / 3.825 / 3.710 | 1.08× | 1 / 1 | 607 / 607 | 2 / 2 | 0.21 |
+| Click a row in view | 9.967 / 10.311 / 10.178 | 4.656 / 4.639 / 4.660 | 0.46× | 2 / 1 | 624 / 607 | 8 / 2 | 0.25 |
+| Rename in place: Enter until the row shows it | 4.716 / 4.569 / 4.533 | 4.941 / 4.852 / 5.053 | 1.07× | 1 / 1 | 1,189 / 1,190 | 2 / 2 | 0.40 |
+| A filter keystroke, "Marker 5" to "Marker 51" | 4.699 / 4.918 / 4.650 | 5.198 / 5.183 / 5.343 | 1.10× | 1 / 1 | 607 / 653 | 2 / 2 | 0.89 |
+
+Behavior time is `game_behavior_profile`'s inclusive time over the step's
+frames. The C source shows a click's selection a frame late (it syncs
+before the click's intent runs), so its click takes two UI frames; the
+behaviors show it in the frame of the click. Every refresh re-runs Scene
+Objects, a walk of every object through the filter (as the C source's sync
+did), and the five behaviors' Refresh: 0.19 ms idle, 0.89 ms when the
+filter changes what the walk matches. Scroll steps read 1,735 lookups to the
+C panel's 2,831. Scene Objects was first a pure read, which the
+interpreter runs again for each node taking it (four walks a refresh, 0.30
+ms idle and 3.0 ms per keystroke); as a query it runs once.
+
+**Parity:** native shots of the rows (a selection of two, a hidden and a
+locked object, a hovered row), the row menu and rename in place, dark and
+light, compact and comfortable (`UI_BENCH_OUTLINER_CAPTURE`, release builds
+of both), are identical at a 2% fuzz but for the caret's blink; the web
+build shows the same in both themes and densities. `--studio-outliner`,
+`--studio-documents`, `--studio-panels`, `--studio-lists`,
+`--scene-documents` and `make test` pass unchanged but for three
+checks that read state the behaviors now own: the root's fold is read from
+the rows shown, rows are found by `data-object`, and a game's preview binds
+`e<entity>` variables in place of `entities`.
+
+**Authoring cost:** the Outliner's C went from 800 lines to 224
+(`studio_outliner.c`: mounting, rename, Hide in Editor, ranges), and its
+three panel sources left the table. The behaviors are about 140 nodes and
+160 edges (1,014 lines of KDL, which tools write), plus 13 event assets
+(148 lines). The node pack is 796 lines of C (`studio_nodes.c` 407,
+`studio_node_calls.c` 300, the header 89) that other panels reuse; the
+shared gaps are about 450.
+
+**Recommendation.**
+- Convert next, with nodes of their own capability: Members (member rows,
+  select, rename, references; the Outliner's shape), Output (a log query
+  and filters; rows are already a native window), Assets' header and New
+  menu, and the header-only panels (SceneHeader, CodeHeader,
+  PerformanceHeader, BehaviorHeader's controls), whose state is mostly
+  `commands` and whose few intents become nodes.
+- Need more first: Properties (reflection rows and `write_field` gestures:
+  keep its C view model as a query node, `Object Fields`, and move only
+  its UI logic), the Palette and pickers (ranking stays native: a `Rank`
+  query), Assets' grid (thumbnails native, a query for the window).
+- Stay native: the graph canvas, Zep, the Scene viewport and gizmos,
+  ranking, thumbnails, list windowing, the Inspector's DOM walk.
+- Before more panels: change-driven Refresh (a revision the queries
+  compare, the shared follow-up for sources too), Studio's Add menu gating,
+  a bool Select or conversion, and the controller fixes above.
+- Open: two areas showing the Outliner share one entity and window (the
+  Inspector's limit too); the Canvas preview of Studio's own Outliner shows
+  no rows, as nothing runs its behaviors there.
 
 ## Performance
 
@@ -1027,6 +1212,10 @@ kit recorded every frame of a scrub. Since C4 an asset field's picker
 offers a name no asset has yet again, as `Use "name"`.
 
 #### P2: the Outliner (done)
+
+Since the Behavior-driven panels spike, its behaviors replace the
+`outliner`, `outliner_ui` and `outliner_header` sources described here; the
+markup, keys and checks are the same.
 
 The Outliner is `Outliner.rml` in each area that shows it (a List of
 TreeRows, `studio_ui_area_view` aliasing the area's item of
@@ -2234,8 +2423,9 @@ needs; shrink `kit.h`; update DESIGN decision 5, `studio-ui-authoring.md` and
   an area still clips or buries a popover under it.
 - The web build costs 1.3-1.7× more per view (S0); the guest Studio doubles UI cost.
 - Hot-reloading a panel mid-gesture drops the gesture.
-- The shared `entities`/`self` variable dirties every panel, so editor data
-  never goes through `self`.
+- Each entity's `self` data is its own variable since the Behavior-driven
+  panels spike; within one panel, every Set UI Data that changes a value
+  re-evaluates all the panel's `self` views.
 - Tests churn as kit paths become selectors.
 
 ## Open questions

@@ -3,6 +3,7 @@
 
 #include "assets/ui_document.h"
 #include "ecs/ecs.h"
+#include "graph/model/behavior_asset.h"
 #include "platform/cute.h"
 #include "render/skip.h"
 #include "runtime/behaviors/entities.h"
@@ -49,7 +50,7 @@ typedef struct ui_data
     rml_data_model *model;
     game_save *save; /* the one `save` shows */
     uint64_t save_seen;
-    uint64_t data_seen; /* the game_ui revision `entities` shows */
+    uint64_t data_seen; /* the game_ui revision the entities' variables show */
 } ui_data;
 
 /* Creates the model in `context` over `doc`, which it takes, adding `save`
@@ -70,9 +71,10 @@ bool ui_data_put_bool(yyjson_mut_val *object, const char *name, bool on);
 bool ui_data_put_int(yyjson_mut_val *object, const char *name, int number);
 bool ui_data_put_number(yyjson_mut_val *object, const char *name, double number);
 /* Binds `self` in the document mounted at `root` to `entity`'s data, which
- * behaviors set with Set UI Data and the model holds under `entities`; call
- * before the mount installs its markup. Binding the same entity again
- * changes nothing. */
+ * behaviors set with Set UI Data and the model holds as the entity's own
+ * variable, "e<entity>", so a change to one entity's data re-evaluates only
+ * the views bound to it; call before the mount installs its markup. Binding
+ * the same entity again changes nothing. */
 void ui_data_bind_self(ui_data *data, rml_element *root, uint64_t entity);
 /* Shows what behaviors set with Set UI Data since the last call, changing
  * values in place so views keep their bindings. */
@@ -119,6 +121,23 @@ typedef struct ui_activation
     rml_element_ref *anchor;
 } ui_activation;
 
+/* The payload a UI event takes from activation `a`, in the order `event`,
+ * the event asset declaring it, lists its payload (NULL declares none):
+ * Shift, Alt and Mod (bools; `primary` holds Mod's modifier bits, Meta on a
+ * Mac and Control elsewhere) and Pointer (CF_V2, in the document's pixels,
+ * stored in `pointer`) come from the DOM event, as a web handler reads
+ * event.shiftKey and event.clientX; each other value is emit's next argument
+ * read as its type (text, a number or a flag; strings borrow `a`). Returns
+ * how many values it wrote to `out`, or -1 for a payload a UI event cannot
+ * carry or more than `capacity`. */
+int ui_activation_payload(
+    const ui_activation *a,
+    const behavior_asset *event,
+    unsigned primary,
+    float pointer[2],
+    pin_value *out,
+    int capacity
+);
 ui_mount *ui_mount_new(const char *content_root, const char *name);
 void ui_mount_free(ui_mount *mount);
 const char *ui_mount_name(const ui_mount *mount);
@@ -133,6 +152,8 @@ const char *ui_mount_style(const ui_mount *mount);
 /* The last read error, or what RmlUi rejected in the markup it installed,
  * such as a binding's expression; "" when the asset loaded. */
 const char *ui_mount_error(const ui_mount *mount);
+/* The element the mount shows its asset in, or NULL while detached. */
+rml_element *ui_mount_root(const ui_mount *mount);
 /* Whether `element` is the mount's root or inside it. */
 bool ui_mount_holds(const ui_mount *mount, rml_element *element);
 /* Records the activation a key down in the mount's root makes, if any: a key
@@ -143,6 +164,12 @@ bool ui_mount_holds(const ui_mount *mount, rml_element *element);
  * keys unless bound on that control. Text inputs and textareas permit an
  * ancestor Escape binding. */
 void ui_mount_listen(ui_mount *mount, const rml_event *event);
+/* Records the activation key `key`, named as data-keys names it ("Left"),
+ * sends while the area showing the mount has the keyboard but nothing in
+ * it binds the key: data-area-keys="Key:Event ..." on its first element
+ * with one, an editor's own keymap, as Blender's. False when none binds
+ * it. */
+bool ui_mount_area_key(ui_mount *mount, const char *key);
 /* Records emit(`name`, args...) as sent by the binding `event` ran, on its
  * current element, which the mount holds. */
 void ui_mount_emit(
@@ -152,13 +179,21 @@ void ui_mount_emit(
     int argc,
     const char *const *args
 );
+/* Whether activations wait to be taken. */
+bool ui_mount_pending(const ui_mount *mount);
 /* Takes the oldest activation, releasing the anchor of the one taken before;
  * false when there is none. */
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
 /* Records under #id, in dp, where each element with an id and a
- * data-event-scroll binding is scrolled, for Get UI Scroll. */
+ * data-event-scroll binding is scrolled, for Get UI Scroll. First it windows
+ * the lists marked data-list-rows="<rows>" (ui/list.h, the List widget's
+ * scroller): it sizes each for its rows, scrolls a row data-list-reveal
+ * names (Reveal UI List Row) into view once, and sends `window` with
+ * ev.first and ev.count when the rows to show change, so a document's
+ * data-event-window="emit('ShowRows', ev.first, ev.count)" reaches its
+ * behaviors before they refresh. */
 void ui_mount_measure(ui_mount *mount, game_ui *model, uint64_t entity);
 
 /* ---------- Pages ---------- */

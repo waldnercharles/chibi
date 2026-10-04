@@ -9,6 +9,8 @@
 #include "support/ui_style.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
+#include "ui/list.h"
+#include "ui/popover.h"
 
 #include <SDL3/SDL_video.h>
 #include <assert.h>
@@ -19,6 +21,15 @@
 #include <string.h>
 
 /* ---------- Mounts ---------- */
+
+/* A list a mount windows (ui/list.h): an element marked data-list-rows,
+   such as the List widget's scroller, and the window it last sent. */
+typedef struct mount_list
+{
+    rml_element_ref *element;
+    ui_list_state state;
+    int first, length;
+} mount_list;
 
 struct ui_mount
 {
@@ -35,7 +46,16 @@ struct ui_mount
     rml_element_ref *taken; /* the anchor of the activation last taken */
     uint64_t applied;       /* the model revision already applied */
     bool autofocus; /* installed, and its autofocus element not yet focused */
+    mount_list *lists;
 };
+
+static void forget_lists(ui_mount *m)
+{
+    for (int i = 0; i < acount(m->lists); i++) {
+        rml_element_ref_destroy(m->lists[i].element);
+    }
+    asetlen(m->lists, 0);
+}
 
 /* The names data-keys binds, for keys that are not letters or digits. */
 static const struct
@@ -72,6 +92,8 @@ void ui_mount_free(ui_mount *m)
     }
     afree(m->pending);
     rml_element_ref_destroy(m->taken);
+    forget_lists(m);
+    afree(m->lists);
     free(m->content_root);
     free(m->name);
     free(m->markup);
@@ -218,6 +240,7 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         m->installed = true;
         m->applied = 0;
         m->autofocus = true;
+        forget_lists(m);
     }
     /* A host may keep the root hidden for a frame, and hidden elements refuse
        focus, so this repeats until the focus takes. */
@@ -237,6 +260,11 @@ void ui_mount_detach(ui_mount *m)
     }
     m->root = NULL;
     m->installed = false;
+}
+
+rml_element *ui_mount_root(const ui_mount *m)
+{
+    return m->root;
 }
 
 bool ui_mount_holds(const ui_mount *m, rml_element *element)
@@ -351,6 +379,24 @@ void ui_mount_listen(ui_mount *m, const rml_event *event)
     }
 }
 
+bool ui_mount_area_key(ui_mount *m, const char *key)
+{
+    rml_element *el = m->installed
+                        ? rml_element_query_selector(m->root, "[data-area-keys]")
+                        : NULL;
+    char bindings[256], name[128];
+    if (!el ||
+        rml_element_attribute(el, "data-area-keys", bindings, sizeof bindings) <= 0 ||
+        !bound_event(bindings, key, name, sizeof name)) {
+        return false;
+    }
+    ui_activation a = { .anchor = rml_element_ref_create(el) };
+    snprintf(a.event, sizeof a.event, "%s", name);
+    snprintf(a.id, sizeof a.id, "%s", rml_element_id(el));
+    apush(m->pending, a);
+    return true;
+}
+
 void ui_mount_emit(ui_mount *m, const rml_event *event, const char *name, int argc, const char *const *args)
 {
     rml_element *element = event->current;
@@ -375,6 +421,11 @@ void ui_mount_emit(ui_mount *m, const rml_event *event, const char *name, int ar
     apush(m->pending, a);
 }
 
+bool ui_mount_pending(const ui_mount *m)
+{
+    return acount(m->pending) > 0;
+}
+
 bool ui_mount_take(ui_mount *m, ui_activation *out)
 {
     int count = acount(m->pending);
@@ -387,6 +438,87 @@ bool ui_mount_take(ui_mount *m, ui_activation *out)
     memmove(m->pending, m->pending + 1, (size_t)(count - 1) * sizeof *m->pending);
     asetlen(m->pending, count - 1);
     return true;
+}
+
+/* An emit argument read as a payload value of `type`, or false for a type
+   a UI event cannot carry. */
+static bool argument_value(const char *text, pin_value *value)
+{
+    switch (value->type) {
+        case PIN_STR:
+        case PIN_NAME: value->str = text; return true;
+        case PIN_BOOL:
+            value->b = !strcmp(text, "true") || strtod(text, NULL) != 0;
+            return true;
+        case PIN_I32: value->i = (int)strtod(text, NULL); return true;
+        case PIN_F32: value->f = strtof(text, NULL); return true;
+        case PIN_F64: value->d = strtod(text, NULL); return true;
+        default: return false;
+    }
+}
+
+/* A payload value the DOM event gives, by its declared name; false for
+   one emit's arguments give. */
+static bool event_value(
+    const ui_activation *a,
+    const behavior_variable *v,
+    unsigned primary,
+    float pointer[2],
+    pin_value *value
+)
+{
+    static const struct
+    {
+        const char *name;
+        unsigned bits;
+    } MODIFIERS[] = { { "Shift", RML_KM_SHIFT }, { "Alt", RML_KM_ALT }, { "Mod", 0 } };
+    for (size_t i = 0; v->type == PIN_BOOL && i < sizeof MODIFIERS / sizeof *MODIFIERS;
+         i++) {
+        if (!strcmp(v->name, MODIFIERS[i].name)) {
+            value->b = (a->modifiers &
+                        (MODIFIERS[i].bits ? MODIFIERS[i].bits : primary)) != 0;
+            return true;
+        }
+    }
+    if (v->type == PIN_STRUCT && v->type_name &&
+        !strcmp(v->type_name, "CF_V2") && !strcmp(v->name, "Pointer")) {
+        pointer[0] = a->x;
+        pointer[1] = a->y;
+        value->ptr = pointer;
+        return true;
+    }
+    return false;
+}
+
+int ui_activation_payload(
+    const ui_activation *a,
+    const behavior_asset *event,
+    unsigned primary,
+    float pointer[2],
+    pin_value *out,
+    int capacity
+)
+{
+    int count = event ? acount(event->variables) : 0, argument = 0;
+    if (count > capacity) {
+        return -1;
+    }
+    for (int i = 0; i < count; i++) {
+        const behavior_variable *v = &event->variables[i];
+        out[i] = (pin_value){ .type = v->type, .type_name = v->type_name };
+        if (v->container != PIN_CONTAINER_SINGLE) {
+            return -1;
+        }
+        if (event_value(a, v, primary, pointer, &out[i])) {
+            continue;
+        }
+        const char *text = argument < a->argc ? a->args[argument] : "";
+        argument++;
+        if (!argument_value(text, &out[i])) {
+            return -1;
+        }
+    }
+    return count;
 }
 
 static void escape_text(char *out, size_t size, const char *text)
@@ -472,8 +604,21 @@ static void apply_element(rml_element *root, game_ui_element *e)
     if (e->move_focus && count) {
         move_focus(root, matches, count, e->move_focus);
     }
-    e->focus = e->click = false;
+    if (e->popover && count) {
+        popover_show(
+            matches[0],
+            &(popover_anchor){ .side = POPOVER_POINT,
+                               .box = { e->popover_x, e->popover_y, 0, 0 } }
+        );
+    }
+    for (int i = 0; e->reveal >= 0 && i < count; i++) {
+        char row[16];
+        snprintf(row, sizeof row, "%d", e->reveal);
+        rml_element_set_attribute(matches[i], "data-list-reveal", row);
+    }
+    e->focus = e->click = e->popover = false;
     e->move_focus = 0;
+    e->reveal = -1;
     free(matches);
 }
 
@@ -491,11 +636,68 @@ void ui_mount_apply(ui_mount *m, game_ui *model, uint64_t entity)
     m->applied = game_ui_revision(model);
 }
 
+/* What the mount keeps for list `element`, kept from its first window. */
+static mount_list *list_of(ui_mount *m, rml_element *element)
+{
+    for (int i = 0; i < acount(m->lists); i++) {
+        if (rml_element_ref_get(m->lists[i].element) == element) {
+            return &m->lists[i];
+        }
+    }
+    apush(
+        m->lists,
+        ((mount_list){ .element = rml_element_ref_create(element),
+                       .state = UI_LIST_STATE_INIT,
+                       .first = -1,
+                       .length = -1 })
+    );
+    return &alast(m->lists);
+}
+
+/* Windows each list marked data-list-rows (ui_list_window): sizes its spacer
+   for that many rows, scrolls the row a data-list-reveal names into view
+   once, as Reveal UI List Row asks, and sends `window` (ev.first, ev.count)
+   when the rows to show change, as Virtuoso's rangeChanged does, so its
+   document's behaviors fill the window in the same frame. */
+static void window_lists(ui_mount *m)
+{
+    rml_element *found[8];
+    int count = rml_element_query_selector_all(m->root, "[data-list-rows]", found, 8);
+    for (int i = 0; i < count && i < 8; i++) {
+        char text[32] = "";
+        rml_element_attribute(found[i], "data-list-rows", text, sizeof text);
+        ui_list list = { .count = atoi(text), .reveal = -1 };
+        if (rml_element_attribute(found[i], "data-list-reveal", text, sizeof text) > 0) {
+            list.reveal = atoi(text);
+            rml_element_remove_attribute(found[i], "data-list-reveal");
+        }
+        list.count = list.count > 0 ? list.count : 0;
+        mount_list *at = list_of(m, found[i]);
+        int first, length = ui_list_window(found[i], &list, &at->state, &first);
+        if (first == at->first && length == at->length) {
+            continue;
+        }
+        at->first = first;
+        at->length = length;
+        char start[16], rows[16];
+        snprintf(start, sizeof start, "%d", first);
+        snprintf(rows, sizeof rows, "%d", length);
+        rml_element_dispatch_texts(
+            found[i],
+            "window",
+            2,
+            (const char *const[]){ "first", "count" },
+            (const char *const[]){ start, rows }
+        );
+    }
+}
+
 void ui_mount_measure(ui_mount *m, game_ui *model, uint64_t entity)
 {
     if (!m->installed) {
         return;
     }
+    window_lists(m);
     rml_element *found[16];
     int count = rml_element_query_selector_all(m->root, "[id][data-event-scroll]", found, 16);
     float dp = rml_context_dp_ratio(rml_element_context(m->root));
@@ -526,7 +728,6 @@ void ui_data_init(ui_data *d, rml_context *context, yyjson_mut_doc *doc, rml_emi
     }
     yyjson_mut_obj_add_val(d->doc, root, "save", yyjson_mut_obj(d->doc));
     yyjson_mut_obj_add_bool(d->doc, yyjson_mut_obj_add_obj(d->doc, root, "system"), "dark", false);
-    yyjson_mut_obj_add_obj(d->doc, root, "entities");
     d->model = rml_data_model_create(context, UI_DATA_MODEL, d->doc, emit, user);
 }
 
@@ -695,24 +896,33 @@ void ui_data_sync(ui_data *d, game_save *save)
     rml_data_model_dirty(d->model, "save");
 }
 
-/* The object holding `entity`'s data under `entities`, made as needed. */
+/* `entity`'s variable: "e<entity>". */
+static void entity_key(char out[32], uint64_t entity)
+{
+    snprintf(out, 32, "e%llu", (unsigned long long)entity);
+}
+
+/* The object holding `entity`'s data, a variable of its own, so what one
+   entity's behaviors set dirties only the views bound to it (RmlUi dirties
+   by variable); made and bound as needed. */
 static yyjson_mut_val *entity_data(ui_data *d, uint64_t entity)
 {
-    yyjson_mut_val *entities = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "entities");
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(d->doc);
     char key[32];
-    snprintf(key, sizeof key, "e%llu", (unsigned long long)entity);
-    yyjson_mut_val *data = yyjson_mut_obj_get(entities, key);
+    entity_key(key, entity);
+    yyjson_mut_val *data = yyjson_mut_obj_get(root, key);
     if (!data) {
         data = yyjson_mut_obj(d->doc);
-        yyjson_mut_obj_add(entities, yyjson_mut_strcpy(d->doc, key), data);
+        yyjson_mut_obj_add(root, yyjson_mut_strcpy(d->doc, key), data);
+        rml_data_model_bind(d->model, key, data);
     }
     return data;
 }
 
 void ui_data_bind_self(ui_data *d, rml_element *root, uint64_t entity)
 {
-    char alias[48], bound[48] = "";
-    snprintf(alias, sizeof alias, "entities.e%llu", (unsigned long long)entity);
+    char alias[32], bound[32] = "";
+    entity_key(alias, entity);
     rml_element_attribute(root, "data-alias-self", bound, sizeof bound);
     if (strcmp(bound, alias)) {
         entity_data(d, entity);
@@ -838,23 +1048,40 @@ void ui_data_show_entities(ui_data *d, const game_ui *model)
         return;
     }
     qsort(changed, (size_t)acount(changed), sizeof *changed, by_revision);
+    uint64_t *dirty = NULL;
     for (int i = 0; i < acount(changed); i++) {
         const game_ui_datum *datum = changed[i];
         yyjson_mut_val
             *shown = data_at(d->doc, entity_data(d, datum->entity), datum->name);
         assign(d->doc, shown, datum->value);
         d->data_seen = datum->revision;
+        bool listed = false;
+        for (int j = 0; j < acount(dirty); j++) {
+            listed |= dirty[j] == datum->entity;
+        }
+        if (!listed) {
+            apush(dirty, datum->entity);
+        }
     }
     afree(changed);
-    rml_data_model_dirty(d->model, "entities");
+    for (int i = 0; i < acount(dirty); i++) {
+        char key[32];
+        entity_key(key, dirty[i]);
+        rml_data_model_dirty(d->model, key);
+    }
+    afree(dirty);
 }
 
+/* The entity's variable stays bound, emptied, as RmlUi cannot unbind one. */
 void ui_data_forget_entity(ui_data *d, uint64_t entity)
 {
-    yyjson_mut_val *entities = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "entities");
     char key[32];
-    snprintf(key, sizeof key, "e%llu", (unsigned long long)entity);
-    yyjson_mut_obj_remove_key(entities, key);
+    entity_key(key, entity);
+    yyjson_mut_val *data = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), key);
+    if (data) {
+        yyjson_mut_obj_clear(data);
+        rml_data_model_dirty(d->model, key);
+    }
 }
 
 void ui_data_free(ui_data *d)

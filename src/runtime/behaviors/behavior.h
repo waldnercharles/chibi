@@ -51,6 +51,10 @@ struct game_particles;
 void game_behavior_bind_particles(game_behavior_world *world, struct game_particles *particles);
 struct game_visibility;
 void game_behavior_bind_visibility(game_behavior_world *world, struct game_visibility *visibility);
+/* Binds a host service, as Studio's world binds "studio" for its editor
+ * nodes, into every instance from now on; `type_name` and `value` are
+ * borrowed and must outlive the world. */
+void game_behavior_bind_service(game_behavior_world *world, const char *type_name, void *value);
 
 #define GAME_BEHAVIOR_LOG_MESSAGE_MAX 256
 

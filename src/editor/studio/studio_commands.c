@@ -1067,7 +1067,7 @@ void studio_step_selection(studio *s, int direction, bool extend)
         } else {
             select_instance(s->scene, rows[next]);
         }
-        s->outliner_reveal = true;
+        studio_reveal_selection(s);
     }
     afree(rows);
 }
@@ -1521,8 +1521,7 @@ void studio_shortcuts(studio *s, bool field)
         if (editor == STUDIO_EDITOR_ASSETS && studio_assets_key(s, key.key, key.mod)) {
             continue;
         }
-        if (editor == STUDIO_EDITOR_OUTLINER &&
-            studio_outliner_key(s, key.key, key.mod)) {
+        if (studio_ui_area_key(s, area, key.key, key.mod)) {
             continue;
         }
         if (editor == STUDIO_EDITOR_OUTPUT && studio_output_key(s, key.key, key.mod)) {

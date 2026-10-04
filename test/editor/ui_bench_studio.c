@@ -1604,6 +1604,203 @@ static void palette(studio_bench *b)
     frames(b, 2);
 }
 
+/* ---------- 20: the Inspector over ten thousand elements ---------- */
+
+#define INSPECTOR_ITEMS 10000
+#define INSPECTOR_ROWS_MAX 1100
+
+/* The Inspector's tree, the authored List (workstream I1); before it, the
+   panel's own scroller ".inspect-tree". */
+static rml_element *inspector_tree(studio *s)
+{
+    rml_element *list = studio_query(s, "#inspector-list");
+    return list ? list : studio_query(s, ".inspect-tree");
+}
+
+/* The tree rows shown (templates left out), and how many lack the mark a
+   step leaves, which it instanced. */
+static int inspector_rows(rml_element *tree, bool mark, int *shown)
+{
+    static rml_element *rows[INSPECTOR_ROWS_MAX];
+    int count = rml_element_query_selector_all(tree, ".tree-row", rows, INSPECTOR_ROWS_MAX);
+    assert(count < INSPECTOR_ROWS_MAX);
+    int fresh = 0;
+    *shown = 0;
+    for (int i = 0; i < count; i++) {
+        if (!rml_element_is_visible(rows[i], false)) {
+            continue;
+        }
+        ++*shown;
+        fresh += !rml_element_has_attribute(rows[i], "data-bench");
+        if (mark) {
+            rml_element_set_attribute(rows[i], "data-bench", "");
+        }
+    }
+    return fresh;
+}
+
+typedef enum
+{
+    INSPECTOR_IDLE,
+    INSPECTOR_SELECT,
+    INSPECTOR_SCROLL,
+} inspector_step;
+
+/* One of the first items is selected in turn, as clicks on their rows; a
+   scroll step moves three rows. */
+static void inspector_change(studio *s, inspector_step step, int run, rml_element *tree, rml_element **items)
+{
+    char value[32] = "";
+    rml_element_property(tree, "--row", value, sizeof value);
+    float row = (float)atof(value) * studio_pixel_ratio(s);
+    switch (step) {
+        case INSPECTOR_IDLE: break;
+        case INSPECTOR_SELECT:
+            studio_inspect_select(s->inspect, items[100 + (run & 1)]);
+            s->ui_schedule.wake = true;
+            break;
+        case INSPECTOR_SCROLL:
+            rml_element_set_scroll_top(tree, (200 + 3 * (run + WARMUP)) * row);
+            break;
+    }
+}
+
+static void inspector_step_row(studio_bench *b, inspector_step step, const char *name, rml_element **items)
+{
+    studio *s = b->studio;
+    rml_element *tree = inspector_tree(s);
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    int instanced = 0, shown = 0;
+    inspector_rows(tree, true, &shown);
+    for (int run = -WARMUP; run < RUNS; run++) {
+        inspector_change(s, step, run, tree, items);
+        cf_app_update(NULL);
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        bench_counts now = studio_mark(s);
+        counts = (bench_counts){
+            .values = now.values - before.values,
+            .lookups = now.lookups - before.lookups,
+            .layouts = now.layouts - before.layouts,
+            .elements = rml_element_query_selector_all(rml_element_owner_document(tree), "*", NULL, 0)
+        };
+        instanced = inspector_rows(tree, true, &shown);
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    char label[200];
+    snprintf(label, sizeof label, "%s: %d rows shown, %d instanced", name, shown, instanced);
+    bench_row("20", label, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
+/* The Inspector in the Properties area over a document of ten thousand
+   elements, shown but not displayed, whose items are open in the tree: a UI
+   frame with nothing changed, a selection change and a scroll step of
+   three rows. Run each build's binary in turn for an A/B. */
+static void inspector_tree_case(studio_bench *b)
+{
+    studio *s = b->studio;
+    size_t size = INSPECTOR_ITEMS * 40 + 256, n = 0;
+    char *rml = malloc(size);
+    assert(rml);
+    n += (size_t)snprintf(rml + n, size - n, "<rml><body style=\"display: none; font-family: Geist;\"><div id=\"items\">");
+    for (int i = 0; i < INSPECTOR_ITEMS; i++) {
+        n += (size_t)snprintf(rml + n, size - n, "<div class=\"item\">Item %d</div>", i);
+    }
+    snprintf(rml + n, size - n, "</div></body></rml>");
+    rml_element *doc = rml_context_load_document_from_memory(rml_backend_context(s->backend), rml, "[bench]");
+    free(rml);
+    assert(doc);
+    rml_document_show(doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_NONE);
+    rml_element *container = rml_element_by_id(doc, "items");
+    static rml_element *items[INSPECTOR_ITEMS];
+    for (int i = 0; i < INSPECTOR_ITEMS; i++) {
+        items[i] = rml_element_child(container, i);
+    }
+    s->maximized = -1;
+    studio_area_show(s, STUDIO_AREA_PROPERTIES, STUDIO_EDITOR_PANEL, "Inspector");
+    frames(b, 6);
+    assert(s->inspect);
+    studio_inspect_select(s->inspect, items[100]);
+    s->ui_schedule.wake = true;
+    frames(b, 6);
+    rml_element *tree = inspector_tree(s);
+    assert(tree);
+    probe_documents(s);
+    float ratio = studio_pixel_ratio(s);
+    rml_vec2 size_dp = rml_element_box_size(tree, RML_BOX_BORDER);
+    int shown = 0;
+    inspector_rows(tree, false, &shown);
+    printf(
+        "|  | Inspector tree %.0fx%.0f dp over a document of %d elements; %d "
+        "rows in its "
+        "document | | | | | |\n",
+        size_dp.x / ratio,
+        size_dp.y / ratio,
+        INSPECTOR_ITEMS,
+        shown
+    );
+    inspector_step_row(b, INSPECTOR_IDLE, "Inspector: a UI frame with nothing changed", items);
+    inspector_step_row(b, INSPECTOR_SELECT, "Inspector: select another element", items);
+    inspector_step_row(b, INSPECTOR_SCROLL, "Inspector: scroll 3 rows", items);
+}
+
+/* With UI_BENCH_INSPECTOR_CAPTURE set to a directory, native shots of the
+   Inspector in the Properties area, with an element selected and with the
+   pointer over a row, in dark and light, compact and comfortable, with
+   reduced motion. The kit build and the authored one both take them. */
+static void capture_inspector(studio_bench *b, const char *dir)
+{
+    static const struct
+    {
+        const char *name;
+        studio_theme theme;
+        bool comfortable;
+    } VARIANTS[] = { { "dark-compact", STUDIO_THEME_DARK, false },
+                     { "dark-comfortable", STUDIO_THEME_DARK, true },
+                     { "light-compact", STUDIO_THEME_LIGHT, false },
+                     { "light-comfortable", STUDIO_THEME_LIGHT, true } };
+    studio *s = b->studio;
+    s->maximized = -1;
+    s->prefs.reduced_motion = true;
+    studio_area_show(s, STUDIO_AREA_PROPERTIES, STUDIO_EDITOR_PANEL, "Inspector");
+    frames(b, 10);
+    for (size_t v = 0; v < sizeof VARIANTS / sizeof *VARIANTS; v++) {
+        s->prefs.theme = VARIANTS[v].theme;
+        s->prefs.comfortable = VARIANTS[v].comfortable;
+        frames(b, 6);
+        rml_element *target = studio_query(s, "[data-ui=Inspector] .toolbar .pick .label");
+        assert(target && s->inspect);
+        studio_inspect_select(s->inspect, target);
+        s->ui_schedule.wake = true;
+        pointer(s, RML_INPUT_POINTER_MOVE, 5, 5);
+        shot(b, dir, VARIANTS[v].name, "inspector-selected");
+        rml_element *rows[32], *row = NULL;
+        rml_element *tree = inspector_tree(s);
+        int count = rml_element_query_selector_all(tree, ".tree-row", rows, 32),
+            seen = 0;
+        for (int i = 0; i < count && !row; i++) {
+            row = rml_element_is_visible(rows[i], false) && ++seen == 7 ? rows[i]
+                                                                        : NULL;
+        }
+        assert(row);
+        rml_vec2 at = rml_element_absolute_offset(row, RML_BOX_BORDER);
+        float ratio = studio_pixel_ratio(s);
+        pointer(s, RML_INPUT_POINTER_MOVE, at.x / ratio + 60, at.y / ratio + 6);
+        shot(b, dir, VARIANTS[v].name, "inspector-hover");
+        pointer(s, RML_INPUT_POINTER_MOVE, 5, 5);
+    }
+}
+
 /* ---------- Run ---------- */
 
 int ui_bench_studio(const char *program, bool members_only)
@@ -1640,6 +1837,22 @@ int ui_bench_studio(const char *program, bool members_only)
     /* UI_BENCH_PALETTE runs case 18 alone. */
     if (getenv("UI_BENCH_PALETTE")) {
         palette(&b);
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
+    /* UI_BENCH_INSPECTOR runs case 20 alone. */
+    if (getenv("UI_BENCH_INSPECTOR")) {
+        inspector_tree_case(&b);
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
+    /* UI_BENCH_INSPECTOR_CAPTURE takes the Inspector's native shots alone. */
+    if (getenv("UI_BENCH_INSPECTOR_CAPTURE")) {
+        capture_inspector(&b, getenv("UI_BENCH_INSPECTOR_CAPTURE"));
         bench_close(&b);
         app_input_shutdown();
         cf_destroy_app();
@@ -1692,6 +1905,9 @@ int ui_bench_studio(const char *program, bool members_only)
     }
     if (!members_only && !splitter_only) {
         assets(&b);
+    }
+    if (all) {
+        inspector_tree_case(&b);
     }
     /* Last: it leaves ten thousand objects in the scene. */
     if (all) {

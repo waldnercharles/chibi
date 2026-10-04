@@ -1434,13 +1434,22 @@ void studio_sources_free(studio_sources *src)
 /* ---------- Inspector ---------- */
 
 /* `inspector` is what the Inspector panel shows (studio_inspect.c): its
- * target and pick state, the Elements rows, and the selection's box,
- * styles, computed values and attributes. Its strings point at the
- * Inspector's own, which it keeps until its next read, so showing a model
- * allocates nothing once each list has its items; the items a list sheds
- * wait in `spare` until it grows again. The panel writes what it asks for:
- * select, toggle, hover and rule (rows, -1 for none), action ("source" for
- * Edit Source), target, and force (the pseudo classes forced). */
+ * target and pick state, and the selection's box, styles, computed values
+ * and attributes. Its strings point at the Inspector's own, which it keeps
+ * until its next read, so showing a model allocates nothing once each list
+ * has its items; the items a list sheds wait in `spare` until it grows
+ * again. The panel writes what it asks for: rule (a Styles row, -1 for
+ * none), action ("source" for Edit Source), target, and force (the pseudo
+ * classes forced).
+ *
+ * Its source keeps two variables apart, so a change reads only the views
+ * that bind it: `inspector_tree`, the window of Elements rows its List
+ * shows, each keyed by its element (the key is its address as text),
+ * and `inspector_ui`, the keys of the selected row and of the row a pick is
+ * over ("" for none), which TreeRow compares with each row's
+ * (data-alias-selection). A row sends inspector.click with its key and its
+ * open state, which its twisty may have flipped; the List sends
+ * inspector.scroll, which only wakes the source. */
 
 static const char *const TARGET_NAMES[STUDIO_INSPECT_TARGET_COUNT] = { "studio",
                                                                        "graph",
@@ -1454,18 +1463,20 @@ typedef struct item_shape
 {
     const char *const *texts;
     const char *const *flags;
+    const char *const *ints; /* or NULL */
 } item_shape;
 
-static const char *const ROW_TEXTS[] = { "indent", "tag",  "id", "classes",
-                                         "widget", "text", NULL };
-static const char *const ROW_FLAGS[] = { "node",     "parent",  "open",
-                                         "selected", "hovered", "hidden",
-                                         NULL };
+/* A TreeRow's item: the tag is its label; the icon and meta stay empty. */
+static const char *const ROW_TEXTS[] = { "key",     "label",  "id",
+                                         "classes", "widget", "text",
+                                         "icon",    "meta",   NULL };
+static const char *const ROW_FLAGS[] = { "parent", "open", "node", "hidden", NULL };
+static const char *const ROW_INTS[] = { "depth", NULL };
 static const char *const STYLE_TEXTS[] = { "selector", "origin", "name", "value", NULL };
 static const char *const STYLE_FLAGS[] = { "heading", "ancestor", "inherited", "linked", NULL };
 static const char *const PAIR_TEXTS[] = { "name", "value", NULL };
 static const char *const NO_FLAGS[] = { NULL };
-static const item_shape ROW = { ROW_TEXTS, ROW_FLAGS };
+static const item_shape ROW = { ROW_TEXTS, ROW_FLAGS, ROW_INTS };
 static const item_shape STYLE = { STYLE_TEXTS, STYLE_FLAGS };
 static const item_shape PAIR = { PAIR_TEXTS, NO_FLAGS };
 
@@ -1488,20 +1499,16 @@ static void add_inspector(yyjson_mut_doc *doc)
     static const char *const TEXTS[] = { "target", "shortcut", "title",
                                          "path",   "source",   "pseudo",
                                          "size",   "action",   NULL };
-    static const char *const FLAGS[] = { "picking",  "wide",   "graph",
-                                         "game",     "more",   "selection",
-                                         "detached", "native", "editable",
-                                         NULL };
-    static const char *const REQUESTS[] = { "select", "toggle", "hover", "rule" };
-    static const char *const LISTS[] = { "rows", "styles", "computed", "attributes" };
-    static const char *const SPARES[] = { "rows", "styles", "pairs" };
+    static const char *const FLAGS[] = { "picking", "wide",      "graph",
+                                         "game",    "selection", "detached",
+                                         "native",  "editable",  NULL };
+    static const char *const LISTS[] = { "styles", "computed", "attributes" };
+    static const char *const SPARES[] = { "styles", "pairs" };
     yyjson_mut_val *in = root_object(doc, "inspector");
     add_texts(doc, in, TEXTS);
     add_flags(doc, in, FLAGS);
     yyjson_mut_obj_add_str(doc, in, "tab", "styles"); /* the panel's own */
-    for (size_t i = 0; i < sizeof REQUESTS / sizeof *REQUESTS; i++) {
-        yyjson_mut_obj_add_int(doc, in, REQUESTS[i], -1);
-    }
+    yyjson_mut_obj_add_int(doc, in, "rule", -1);
     add_flags(doc, yyjson_mut_obj_add_obj(doc, in, "force"), PSEUDO_KEYS);
     yyjson_mut_val *box = yyjson_mut_obj_add_obj(doc, in, "box");
     for (size_t b = 0; b < sizeof BOX_KEYS / sizeof *BOX_KEYS; b++) {
@@ -1514,6 +1521,12 @@ static void add_inspector(yyjson_mut_doc *doc)
     for (size_t i = 0; i < sizeof SPARES / sizeof *SPARES; i++) {
         yyjson_mut_obj_add_arr(doc, spare, SPARES[i]);
     }
+    yyjson_mut_val *tree = root_object(doc, "inspector_tree");
+    yyjson_mut_obj_add_arr(doc, tree, "rows");
+    yyjson_mut_obj_add_arr(doc, tree, "spare");
+    yyjson_mut_val *ui = root_object(doc, "inspector_ui");
+    yyjson_mut_obj_add_str(doc, ui, "selected", "");
+    yyjson_mut_obj_add_str(doc, ui, "picked", "");
 }
 
 static yyjson_mut_val *member(yyjson_mut_val *obj, const char *key)
@@ -1554,10 +1567,7 @@ static int target_named(const char *name)
 static studio_inspect_input inspector_input(yyjson_mut_val *in)
 {
     studio_inspect_input input = {
-        .select = take(in, "select"),
-        .toggle = take(in, "toggle"),
         .rule = take(in, "rule"),
-        .hover = number_at(in, "hover"),
         .target = target_named(text_at(in, "target")),
         .source = !strcmp(text_at(in, "action"), "source"),
     };
@@ -1574,9 +1584,13 @@ static void point(yyjson_mut_val *obj, const char *key, const char *text)
     yyjson_mut_set_strn(member(obj, key), text, strlen(text));
 }
 
-static void flag(yyjson_mut_val *obj, const char *key, bool on)
+/* Whether the flag changed. */
+static bool flag(yyjson_mut_val *obj, const char *key, bool on)
 {
-    yyjson_mut_set_bool(member(obj, key), on);
+    yyjson_mut_val *value = member(obj, key);
+    bool changed = yyjson_mut_get_bool(value) != on;
+    yyjson_mut_set_bool(value, on);
+    return changed;
 }
 
 static yyjson_mut_val *make_item(yyjson_mut_doc *doc, const item_shape *shape)
@@ -1584,6 +1598,9 @@ static yyjson_mut_val *make_item(yyjson_mut_doc *doc, const item_shape *shape)
     yyjson_mut_val *item = yyjson_mut_obj(doc);
     add_texts(doc, item, shape->texts);
     add_flags(doc, item, shape->flags);
+    for (const char *const *key = shape->ints; key && *key; key++) {
+        yyjson_mut_obj_add_int(doc, item, *key, 0);
+    }
     return item;
 }
 
@@ -1608,34 +1625,42 @@ static void resize(
     }
 }
 
-static void show_item(
+/* Shows an item's members; true when a flag differed. */
+static bool show_item(
     yyjson_mut_val *item,
     const item_shape *shape,
     const char *const *texts,
     const bool *flags
 )
 {
+    bool changed = false;
     for (int t = 0; shape->texts[t]; t++) {
         point(item, shape->texts[t], texts[t]);
     }
     for (int f = 0; shape->flags[f]; f++) {
-        flag(item, shape->flags[f], flags[f]);
+        changed |= flag(item, shape->flags[f], flags[f]);
     }
+    return changed;
 }
 
-static void show_elements(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio_inspect_row *rows)
+/* The window of rows; true when a flag or depth differed, which a twisty's
+ * flip of `open` may leave. */
+static bool show_elements(yyjson_mut_doc *doc, yyjson_mut_val *tree, const studio_inspect_model *m)
 {
-    yyjson_mut_val *list = member(in, "rows");
-    resize(doc, list, member(member(in, "spare"), "rows"), acount(rows), &ROW);
+    yyjson_mut_val *list = member(tree, "rows");
+    bool changed = (int)yyjson_mut_arr_size(list) != acount(m->rows);
+    resize(doc, list, member(tree, "spare"), acount(m->rows), &ROW);
     yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(list);
-    for (int i = 0; i < acount(rows); i++) {
-        const studio_inspect_row *r = &rows[i];
-        const char *texts[] = { r->indent,  r->tag,    r->id,
-                                r->classes, r->widget, r->text };
-        bool flags[] = { r->node,     r->parent,  r->open,
-                         r->selected, r->hovered, r->hidden };
-        show_item(yyjson_mut_arr_iter_next(&it), &ROW, texts, flags);
+    for (int i = 0; i < acount(m->rows); i++) {
+        const studio_inspect_row *r = &m->rows[i];
+        const char *texts[] = { r->key,    r->tag,  r->id, r->classes,
+                                r->widget, r->text, "",    "" };
+        bool flags[] = { r->parent, r->open, r->node, r->hidden };
+        yyjson_mut_val *item = yyjson_mut_arr_iter_next(&it);
+        changed |= show_item(item, &ROW, texts, flags);
+        changed |= ui_data_put_int(item, "depth", r->depth);
     }
+    return changed;
 }
 
 static void show_styles(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio_inspect_style *styles)
@@ -1676,14 +1701,13 @@ static void show_inspector(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio
                      m->wide,
                      m->targets[STUDIO_INSPECT_GRAPH],
                      m->targets[STUDIO_INSPECT_GAME],
-                     m->more,
                      m->selection,
                      m->detached,
                      m->native,
                      m->editable };
-    static const char *const FLAGS[] = { "picking",  "wide",   "graph",
-                                         "game",     "more",   "selection",
-                                         "detached", "native", "editable" };
+    static const char *const FLAGS[] = { "picking", "wide",      "graph",
+                                         "game",    "selection", "detached",
+                                         "native",  "editable" };
     for (size_t f = 0; f < sizeof FLAGS / sizeof *FLAGS; f++) {
         flag(in, FLAGS[f], flags[f]);
     }
@@ -1695,7 +1719,6 @@ static void show_inspector(yyjson_mut_doc *doc, yyjson_mut_val *in, const studio
             point(member(member(in, "box"), BOX_KEYS[b]), EDGE_KEYS[e], m->box[b][e]);
         }
     }
-    show_elements(doc, in, m->rows);
     show_styles(doc, in, m->styles);
     show_pairs(doc, in, "computed", m->computed);
     show_pairs(doc, in, "attributes", m->attributes);
@@ -1714,15 +1737,47 @@ static const studio_inspect_model *inspector_model(studio *s, const studio_panel
     return studio_inspect_sync(s, &input);
 }
 
+/* The window of rows and the keys the rows compare, each dirtying only its
+ * own variable. */
+static void show_tree(const studio_panel_sync *at, const studio_inspect_model *m)
+{
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(at->doc);
+    bool rows = m->rows_revision != at->sources->inspected_rows;
+    at->sources->inspected_rows = m->rows_revision;
+    if (show_elements(at->doc, member(root, "inspector_tree"), m) || rows) {
+        rml_data_model_dirty(at->model, "inspector_tree");
+    }
+    if (m->marks_revision != at->sources->inspected_marks) {
+        at->sources->inspected_marks = m->marks_revision;
+        yyjson_mut_val *ui = member(root, "inspector_ui");
+        point(ui, "selected", m->selected_key);
+        point(ui, "picked", m->picked_key);
+        rml_data_model_dirty(at->model, "inspector_ui");
+    }
+}
+
 static bool sync_inspector(studio *s, const studio_panel_sync *at)
 {
     const studio_inspect_model *m = inspector_model(s, at);
-    if (!m || m->revision == at->sources->inspected) {
+    if (!m) {
+        return false;
+    }
+    show_tree(at, m);
+    if (m->revision == at->sources->inspected) {
         return false;
     }
     at->sources->inspected = m->revision;
     show_inspector(at->doc, at->variable, m);
     return true;
+}
+
+/* A row's click names its key and its open state; a scroll only wakes the
+ * source, which reads where the List is. */
+static void inspector_action(studio *s, const char *action, const ui_activation *a)
+{
+    if (!strcmp(action, "click") && a->argc == 2) {
+        studio_inspect_click(s, a->args[0], atoi(a->args[1]) != 0);
+    }
 }
 
 /* ---------- Editor (workstreams J and T) ---------- */
@@ -2275,7 +2330,7 @@ static bool sync_choices(studio *s, const studio_panel_sync *at)
  * (editor, commands, collaboration's status in the top bar) and the
  * Inspector, which reads nothing while hidden, sync at every refresh. */
 const studio_panel_source studio_panel_sources[] = {
-    { "inspector", NULL, add_inspector, sync_inspector, NULL },
+    { "inspector", NULL, add_inspector, sync_inspector, inspector_action },
     { "world", "Data", add_world, sync_world, NULL },
     { "theme", "Theme", add_theme, sync_theme, NULL },
     { "settings", "Settings", studio_settings_add, sync_settings, settings_action },

@@ -89,6 +89,7 @@ int studio_output_run(const char *program);
 void test_ui_lists();
 /* Members (workstream P5). */
 int studio_members_run(const char *program);
+int studio_inspector_run(const char *program);
 int studio_shell_run(const char *program);
 /* The Scene area (workstream C1). */
 int studio_scene_run(const char *program);
@@ -1065,6 +1066,11 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--studio-members") == 0) {
         registry_validate();
         return studio_members_run(program_name) || fails ? 1 : 0;
+    }
+    /* The UI Inspector (workstream I1): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-inspector") == 0) {
+        registry_validate();
+        return studio_inspector_run(program_name) || fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--studio-shell") == 0) {
         registry_validate();

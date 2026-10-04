@@ -108,6 +108,31 @@ typedef struct
     value_kind value;
 } pin_parts;
 
+/* Canvas menus (studio_graph_menu.c): a menu is written once, as the kit's
+ * immediate menus were. Described for GraphMenu.rml, each item adds an entry
+ * and returns false; run for the key a click chose, only that item returns
+ * true, so its code acts. Keys are unique within their menu or submenu. */
+typedef struct sg_menu sg_menu;
+bool sg_menu_item(
+    sg_menu *m,
+    const char *key,
+    const char *label,
+    uint32_t icon,
+    const char *shortcut,
+    bool disabled
+);
+/* A color choice: a dot tinted `swatch` (0xRRGGBBAA), marked when current. */
+bool sg_menu_swatch(sg_menu *m, const char *key, const char *label, uint32_t swatch, bool current, bool disabled);
+/* A separator above the next item. */
+void sg_menu_separator(sg_menu *m);
+/* The menu's heading. */
+void sg_menu_title(sg_menu *m, const char *title);
+/* Items until sg_submenu_end open beside this row. */
+void sg_submenu_begin(sg_menu *m, const char *key, const char *label, uint32_t icon);
+void sg_submenu_end(sg_menu *m);
+/* A node's menu (studio_graph.c). */
+void sg_node_menu(studio *s, sg_menu *m, node *n);
+
 /* Model access (studio_graph.c). */
 editor *sg_graph_editor(const studio *s);
 graph *sg_active_graph(const studio *s);
@@ -199,7 +224,7 @@ int sg_pin_links(const graph *gr, const node *n, int kind, int pin);
 /* Alt+click: every wire at the pin, as one undo step. */
 void sg_break_links(studio *s, node *n, int kind, int pin);
 void sg_add_run_pin(studio *s, node *n);
-void sg_pin_menu(studio *s, node *n, int kind, int pin);
+void sg_pin_menu(studio *s, sg_menu *m, node *n, int kind, int pin);
 bool sg_pin_renameable(const studio *s, const node *n, int kind, int p);
 void sg_rename_pin(studio *s, const node *n, int p);
 void sg_emit_pin_edit(studio *s, node *n, int p);
@@ -219,7 +244,7 @@ enum
     SG_EDGE_BOTTOM = 8,
 };
 void sg_emit_comment(studio *s, graph_comment_box *box);
-void sg_comment_menu(studio *s, graph_comment_box *box);
+void sg_comment_menu(studio *s, sg_menu *m, graph_comment_box *box);
 void sg_edit_title(studio *s, uint64_t comment);
 void sg_begin_resize(studio *s, graph_comment_box *box, unsigned edges);
 void sg_resize(studio *s);
@@ -227,7 +252,7 @@ void sg_end_resize(studio *s, bool cancel);
 const char *sg_resize_cursor(unsigned edges);
 void sg_emit_bubble(studio *s, node *n);
 void sg_edit_bubble(studio *s, uint64_t node_id);
-bool sg_node_comment_items(studio *s, node *n);
+bool sg_node_comment_items(studio *s, sg_menu *m, node *n);
 void sg_comment_properties(studio *s, node *n);
 /* The Node tab for a selected frame: its title and color. */
 void sg_frame_properties(studio *s, graph_comment_box *box);

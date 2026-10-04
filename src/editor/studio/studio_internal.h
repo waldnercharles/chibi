@@ -529,8 +529,11 @@ typedef struct
     float last_press_x, last_press_y;
     uint64_t menu_node; /* context menu target, or 0 */
     int menu_edge;      /* context menu wire, or -1 */
-    bool menu_request; /* open the context menu at menu_x, menu_y (window px) */
+    bool menu_request; /* open the context menu at menu_x, menu_y (window dp) */
     float menu_x, menu_y;
+    bool menu_open;    /* GraphMenu.rml shows (studio_graph_menu.c) */
+    bool menu_opening; /* show its popover at menu_x, menu_y this frame */
+    bool menu_mounted; /* its document showed last frame */
     uint64_t *unused; /* nodes no event reaches or whose values nothing reads */
     uint64_t expression_node; /* the expression being edited in Properties */
     char expression[512];
@@ -2751,5 +2754,18 @@ void studio_code_header_action(studio *s, const char *action, const ui_activatio
 void studio_code_find_add(yyjson_mut_doc *doc);
 bool studio_code_find_sync(studio *s, const studio_panel_sync *at);
 void studio_code_find_action(studio *s, const char *action, const ui_activation *a);
+
+/* ---------- Graph chrome (workstream G1) ---------- */
+
+/* `graph_menu` (studio_graph_menu.c, GraphMenu.rml): the canvas's open
+ * context menu, its heading (group.label) and items, each with key, label,
+ * icon, shortcut,
+ * swatch, disabled, current, sep (a separator above it) and sub (it opens
+ * its items). Action: run (an item's key). The frame mounts its document
+ * while it is open. */
+void studio_graph_menu_add(yyjson_mut_doc *doc);
+bool studio_graph_menu_sync(studio *s, const studio_panel_sync *at);
+void studio_graph_menu_action(studio *s, const char *action, const ui_activation *a);
+void studio_graph_menu_frame(studio *s);
 
 #endif

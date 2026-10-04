@@ -21,16 +21,6 @@ static const pin_spec *pin_of(const node *n, int kind, int pin)
     return kind == ED_PIN_OUTPUT ? &n->output_pins[pin] : &n->input_pins[pin];
 }
 
-static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled)
-{
-    kit_menu_item_desc d = { .label = label,
-                             .icon = icon,
-                             .shortcut = shortcut,
-                             .checked = -1,
-                             .disabled = disabled };
-    return kit_menu_item(k, key, &d);
-}
-
 static bool touches(const edge *ed, const node *n, int kind, uint64_t pin_id)
 {
     return kind == ED_PIN_OUTPUT ? ed->from_id == n->id && ed->from_pin_id == pin_id
@@ -66,22 +56,22 @@ static void warn(studio *s, const char *title)
 /* ---------- Links ---------- */
 
 /* One wire of several, named by the pin at its other end. */
-static bool link_items(studio *s, node *n, int kind, int p)
+static bool link_items(studio *s, sg_menu *m, node *n, int kind, int p)
 {
-    kit *k = s->kit;
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     bool readonly = sg_graph_readonly(s);
     int links = sg_pin_links(gr, n, kind, p);
     const char *label = links > 1 ? "Break All Links" : "Break Link";
     const char *chord = studio_chord(s, "Alt+Click");
-    if (menu_item(k, "break", label, KIT_ICON_CLOSE, chord, readonly || !links)) {
+    if (sg_menu_item(m, "break", label, KIT_ICON_CLOSE, chord, readonly || !links)) {
         sg_break_links(s, n, kind, p);
         return true;
     }
-    if (links < 2 || !kit_submenu_begin(k, "links", "Break Link To", 0)) {
+    if (links < 2) {
         return false;
     }
+    sg_submenu_begin(m, "links", "Break Link To", 0);
     uint64_t id = pin_of(n, kind, p)->id;
     bool broke = false;
     for (int i = 0; i < acount(gr->edges) && !broke; i++) {
@@ -99,13 +89,13 @@ static bool link_items(studio *s, node *n, int kind, int p)
         ed_pin_label(other, far, name, sizeof name);
         snprintf(text, sizeof text, "%s \xe2\x80\xba %s", title, name);
         snprintf(key, sizeof key, "l%d", i);
-        if (menu_item(k, key, text, 0, NULL, readonly)) {
+        if (sg_menu_item(m, key, text, 0, NULL, readonly)) {
             ed_snapshot_before(e);
             graph_remove_edge(gr, from, from_pin, to, to_pin);
             broke = true;
         }
     }
-    kit_submenu_end(k);
+    sg_submenu_end(m);
     return broke;
 }
 
@@ -254,14 +244,13 @@ static void name_value(studio *s, node *n, int p)
 }
 
 /* Name Value, or Remove Name once named. */
-static bool name_items(studio *s, node *n, int p)
+static bool name_items(studio *s, sg_menu *m, node *n, int p)
 {
-    kit *k = s->kit;
     graph *gr = sg_active_graph(s);
     bool readonly = sg_graph_readonly(s);
     const graph_local *local = graph_output_local(gr, n, p);
     if (local) {
-        if (!menu_item(k, "unname", "Remove Name", KIT_ICON_LOCAL, NULL, readonly)) {
+        if (!sg_menu_item(m, "unname", "Remove Name", KIT_ICON_LOCAL, NULL, readonly)) {
             return false;
         }
         ed_snapshot_before(sg_graph_editor(s));
@@ -269,30 +258,29 @@ static bool name_items(studio *s, node *n, int p)
         return true;
     }
     bool unused = !sg_pin_links(gr, n, ED_PIN_OUTPUT, p);
-    if (!menu_item(k, "name", "Name Value", KIT_ICON_LOCAL, NULL, readonly || unused)) {
+    if (!sg_menu_item(m, "name", "Name Value", KIT_ICON_LOCAL, NULL, readonly || unused)) {
         return false;
     }
     name_value(s, n, p);
     return true;
 }
 
-static bool value_items(studio *s, node *n, int kind, int p)
+static bool value_items(studio *s, sg_menu *m, node *n, int kind, int p)
 {
-    kit *k = s->kit;
     bool readonly = sg_graph_readonly(s);
     if (kind == ED_PIN_INPUT) {
         bool fixed = readonly || !resettable(s, n, p);
-        if (menu_item(k, "reset", "Reset to Default", KIT_ICON_RESET, NULL, fixed)) {
+        if (sg_menu_item(m, "reset", "Reset to Default", KIT_ICON_RESET, NULL, fixed)) {
             reset_pin(s, n, p);
             return true;
         }
     }
     if (promotable(s, pin_of(n, kind, p)) &&
-        menu_item(k, "promote", "Promote to Variable", KIT_ICON_VARIABLE, NULL, readonly)) {
+        sg_menu_item(m, "promote", "Promote to Variable", KIT_ICON_VARIABLE, NULL, readonly)) {
         promote(s, n, kind, p);
         return true;
     }
-    return kind == ED_PIN_OUTPUT && name_items(s, n, p);
+    return kind == ED_PIN_OUTPUT && name_items(s, m, n, p);
 }
 
 /* ---------- Struct fields ----------
@@ -369,14 +357,13 @@ static void recombine(graph *gr, node *n, int kind, int p)
     graph_hide_output_fields(gr, n, exposed_fields(n, p) ? p : field_parent(n, p));
 }
 
-static bool struct_items(studio *s, node *n, int kind, int p)
+static bool struct_items(studio *s, sg_menu *m, node *n, int kind, int p)
 {
-    kit *k = s->kit;
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     bool readonly = sg_graph_readonly(s);
     if (splittable(n, kind, p) &&
-        menu_item(k, "split", "Split Struct Pin", KIT_ICON_MAXIMIZE, NULL, readonly)) {
+        sg_menu_item(m, "split", "Split Struct Pin", KIT_ICON_MAXIMIZE, NULL, readonly)) {
         ed_snapshot_before(e);
         if (kind == ED_PIN_INPUT) {
             graph_split_pin(gr, n, 0, p);
@@ -387,7 +374,7 @@ static bool struct_items(studio *s, node *n, int kind, int p)
     }
     bool idle = readonly || !hides_field(gr, n, kind, p);
     if (recombinable(n, kind, p) &&
-        menu_item(k, "recombine", "Recombine Struct Pin", KIT_ICON_FRAME, NULL, idle)) {
+        sg_menu_item(m, "recombine", "Recombine Struct Pin", KIT_ICON_FRAME, NULL, idle)) {
         ed_snapshot_before(e);
         recombine(gr, n, kind, p);
         return true;
@@ -455,27 +442,26 @@ void sg_emit_pin_edit(studio *s, node *n, int p)
     }
 }
 
-void sg_pin_menu(studio *s, node *n, int kind, int p)
+void sg_pin_menu(studio *s, sg_menu *m, node *n, int kind, int p)
 {
-    kit *k = s->kit;
     char label[128];
     ed_pin_label(n, pin_of(n, kind, p), label, sizeof label);
-    kit_menu_group(k, "title", label);
+    sg_menu_title(m, label);
     if (sg_pin_renameable(s, n, kind, p) &&
-        menu_item(k, "rename", "Rename", KIT_ICON_EDIT, "F2", false)) {
+        sg_menu_item(m, "rename", "Rename", KIT_ICON_EDIT, "F2", false)) {
         sg_rename_pin(s, n, p);
         return;
     }
-    if (link_items(s, n, kind, p)) {
+    if (link_items(s, m, n, kind, p)) {
         return;
     }
     if (pin_of(n, kind, p)->kind == PIN_DATA &&
-        (value_items(s, n, kind, p) || struct_items(s, n, kind, p))) {
+        (value_items(s, m, n, kind, p) || struct_items(s, m, n, kind, p))) {
         return;
     }
     bool output = kind == ED_PIN_OUTPUT;
     if (graph_run_pin_removable(n, output, p) &&
-        menu_item(k, "remove", "Remove Pin", KIT_ICON_TRASH, NULL, sg_graph_readonly(s))) {
+        sg_menu_item(m, "remove", "Remove Pin", KIT_ICON_TRASH, NULL, sg_graph_readonly(s))) {
         ed_snapshot_before(sg_graph_editor(s));
         graph_remove_run_pin(sg_active_graph(s), n, output, p);
     }

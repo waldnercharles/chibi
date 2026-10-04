@@ -1318,6 +1318,14 @@ void rml_data_model_destroy(rml_data_model *model)
     delete model;
 }
 
+void rml_data_model_bind(rml_data_model *model, const char *name, yyjson_mut_val *value)
+{
+    Rml::DataModelConstructor constructor = model->context->GetDataModel(model->name);
+    bool bound = constructor && constructor.BindCustomDataVariable(name, Rml::DataVariable(&model->definition, value));
+    assert(bound);
+    (void)bound;
+}
+
 void rml_data_model_dirty(rml_data_model *model, const char *variable)
 {
     json_items_clear(model->items);

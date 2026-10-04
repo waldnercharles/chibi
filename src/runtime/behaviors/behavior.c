@@ -77,6 +77,7 @@ struct game_behavior_world
     struct game_entities *entities;
     struct game_particles *particles;
     struct game_visibility *visibility;
+    service_binding *services; /* the host's own, bound into every instance */
     behavior_asset_record *assets;
     behavior_attachment *attachments;
     retired_target retired;
@@ -474,6 +475,13 @@ static behavior_instance *acquire_instance(
     behavior_instance_bind_service(instance, "game.audio", world->audio);
     behavior_instance_bind_service(instance, "game.ui", world->ui);
     behavior_instance_bind_service(instance, "game.visibility", world->visibility);
+    for (int i = 0; i < acount(world->services); i++) {
+        behavior_instance_bind_service(
+            instance,
+            world->services[i].type_name,
+            world->services[i].value
+        );
+    }
     behavior_sink_context *context = (behavior_sink_context *)xcalloc(1, sizeof *context);
     context->world = world;
     context->attachment = -1;
@@ -639,6 +647,15 @@ void game_behavior_bind_visibility(game_behavior_world *world, struct game_visib
     }
 }
 
+void game_behavior_bind_service(game_behavior_world *world, const char *type_name, void *value)
+{
+    assert(type_name && type_name[0]);
+    apush(world->services, ((service_binding){ type_name, value }));
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_instance_bind_service(world->attachments[i].instance, type_name, value);
+    }
+}
+
 static bool asset_requires_serial(const behavior_asset *asset)
 {
     for (int i = 0; i < acount(asset->graphs); i++) {
@@ -696,6 +713,7 @@ void game_behavior_world_free(game_behavior_world *world)
         free(world->profile[i].event);
     }
     free(world->pump_results);
+    afree(world->services);
     game_save_free(world->save);
     game_audio_free(world->audio);
     game_ui_free(world->ui);

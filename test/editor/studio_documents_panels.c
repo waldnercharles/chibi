@@ -317,10 +317,20 @@ static void preview_binds_studio_data()
     studio_preview_ui(f.studio, "Bank");
     frames(&f, 3);
     yyjson_mut_val *variables = canvas_variables(f.studio);
-    bool game = yyjson_mut_obj_size(variables) == 3 &&
-                yyjson_mut_obj_get(variables, "save") &&
-                yyjson_mut_obj_get(variables, "system") &&
-                yyjson_mut_obj_get(variables, "entities");
+    /* Besides save and system, each entity's self data is a variable of
+       its own, "e<entity>". */
+    int entities = 0;
+    bool others = false;
+    yyjson_mut_val *key;
+    yyjson_mut_obj_iter it = yyjson_mut_obj_iter_with(variables);
+    while ((key = yyjson_mut_obj_iter_next(&it))) {
+        const char *name = yyjson_mut_get_str(key);
+        bool entity = name[0] == 'e' && name[1] >= '0' && name[1] <= '9';
+        entities += entity;
+        others |= !entity && strcmp(name, "save") && strcmp(name, "system");
+    }
+    bool game = yyjson_mut_obj_get(variables, "save") &&
+                yyjson_mut_obj_get(variables, "system") && entities > 0 && !others;
     if (!(listed && labeled && logged && game)) {
         printf("  %d %d %d %d: %d tabs, '%s'\n", listed, labeled, logged, game, tabs, label);
     }

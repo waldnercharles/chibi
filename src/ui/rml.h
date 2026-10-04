@@ -588,6 +588,9 @@ extern "C"
     );
     /* Removes the model from its context, unbinding its elements. */
     void rml_data_model_destroy(rml_data_model *model);
+    /* Binds `value`, a member the caller added to the root of the model's
+     * document, as variable `name`, before any markup binds it. */
+    void rml_data_model_bind(rml_data_model *model, const char *name, yyjson_mut_val *value);
     /* Updates what binds `variable` after its value changed. Views look up
      * array items in constant time (ui/json_items.h); a dirty variable makes
      * them list arrays again, so an item replaced in place shows. */

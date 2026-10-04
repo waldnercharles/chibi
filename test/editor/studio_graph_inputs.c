@@ -1,5 +1,5 @@
 /* Studio graph values are edited through the controls in their node rows. */
-#include "editor/studio/studio_internal.h"
+#include "editor/studio/studio_graph_internal.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
 #include "graph/model/registry.h"
@@ -11,6 +11,7 @@
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "test/suite_internal.h"
+#include "ui/popover.h"
 #include "ui/rml.h"
 
 #include <SDL3/SDL_events.h>
@@ -1309,32 +1310,34 @@ static void shader_values_and_collections_are_editable()
     key_event(SDL_SCANCODE_ESCAPE, true);
     key_event(SDL_SCANCODE_ESCAPE, false);
     frames(&f, 1);
-    char interpolation[128], interpolation_popup[192];
+    char interpolation[128];
     snprintf(interpolation, sizeof interpolation, "world/stage/n%llu/b/i2/v", (unsigned long long)ramp_id);
-    snprintf(interpolation_popup, sizeof interpolation_popup, "select:%s", interpolation);
-    kit_rect interpolation_anchor, interpolation_menu;
+    kit_rect interpolation_anchor;
     bool interpolation_visible = kit_find(f.studio->graph.kit, interpolation, &interpolation_anchor);
-    bool interpolation_open = interpolation_visible &&
-                              click_path(&f, interpolation) &&
-                              kit_dropdown_is_open(f.studio->graph.kit, interpolation_popup);
-    char interpolation_menu_path[224];
-    snprintf(interpolation_menu_path, sizeof interpolation_menu_path, "layer/@%s", interpolation_popup);
-    bool interpolation_anchored = interpolation_open &&
-                                  kit_find(f.studio->graph.kit, interpolation_menu_path, &interpolation_menu) &&
-                                  fabsf(
-                                      interpolation_anchor.x -
-                                      interpolation_menu.x
-                                  ) < 2 &&
-                                  interpolation_menu.y >= interpolation_anchor.y;
+    /* The canvas's choice opens Studio's picker under it, in Studio's
+       context, where the canvas surface shows the graph's. */
+    bool interpolation_open = interpolation_visible && click_path(&f, interpolation);
+    frames(&f, 2);
+    rml_element *picker = test_query(rml_backend_context(f.studio->backend), "#picker");
+    interpolation_open &= f.studio->palette.client == STUDIO_PALETTE_CHOICES &&
+                          picker && popover_open(picker);
+    bool interpolation_anchored = false;
+    if (interpolation_open) {
+        float scale = studio_pixel_ratio(f.studio),
+              ratio = studio_graph_pixel_ratio(f.studio);
+        kit_rect surface = f.studio->graph.surface.rect;
+        float x = surface.x * scale + interpolation_anchor.x * ratio;
+        float y = surface.y * scale + interpolation_anchor.y * ratio;
+        rml_vec2 at = rml_element_absolute_offset(picker, RML_BOX_BORDER);
+        interpolation_anchored = fabsf(at.x - x) < 2 && at.y >= y;
+    }
     bool interpolation_filtered = false;
     if (interpolation_open) {
         text_event("Smoothstep");
         frame(&f);
-        interpolation_filtered = !strcmp(
-            kit_dropdown_query(f.studio->graph.kit, interpolation_popup),
-            "Smoothstep"
-        );
+        interpolation_filtered = !strcmp(studio_palette_query(f.studio), "Smoothstep");
         enter(&f);
+        frames(&f, 2);
     }
     current_ramp = graph_node_by_id(editor_active_graph(f.graph), ramp_id);
     bool smoothstep = current_ramp && current_ramp->input_pins[2].default_value.i == 2;

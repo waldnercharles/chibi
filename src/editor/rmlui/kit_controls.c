@@ -415,13 +415,7 @@ static bool choice_select_items(
         w->value_el = raw(n->el, "span", "part value", NULL);
         raw_icon(n->el, "caret", KIT_ICON_DOWN);
     }
-    set_element_text(
-        w->value_el,
-        flags & KIT_MIXED               ? "\xe2\x80\x94"
-        : closed_label                  ? closed_label
-        : *value >= 0 && *value < count ? items[*value].label
-                                        : "-"
-    );
+    set_element_text(w->value_el, flags & KIT_MIXED ? "\xe2\x80\x94" : closed_label);
     set_flag(n, "data-mixed", flags & KIT_MIXED);
     set_flag(n, "data-readonly", flags & KIT_READONLY);
     set_flag(n, "data-disabled", flags & KIT_DISABLED);
@@ -435,7 +429,7 @@ static bool choice_select_items(
     bool changed = false;
     int selected = -1;
     if (open) {
-        selected = kit_dropdown(k, menu, items, count);
+        selected = dropdown_items(k, menu, items, count);
     }
     if (!locked(n) && selected >= 0 && selected < count) {
         changed = *value != selected;
@@ -475,11 +469,6 @@ bool kit_choice(kit *k, const char *key, int *value, const char *const *labels, 
         return kit_toggle_group(k, key, value, labels, count, flags);
     }
     return choice_select(k, key, value, labels, count, flags);
-}
-
-bool kit_choice_items(kit *k, const char *key, int *value, const kit_command_item *items, int count, unsigned flags)
-{
-    return choice_select_items(k, key, value, items, count, flags, NULL);
 }
 
 node *emit_input(kit *k, const char *key, node_kind kind, const char *cls, const char *placeholder)

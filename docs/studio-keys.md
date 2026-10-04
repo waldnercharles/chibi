@@ -126,6 +126,9 @@ Its fields and menus follow Menus, Search, popups and fields below (`Properties.
 | Escape | Put a scrubbed number back | `<number-field>` |
 | Right press | A field's menu (Reset and Apply to Prototype) on its row; a component's menu on its panel head | `studio_properties.c` |
 | K | Keep Changes while playing | `studio_commands.c` |
+| Up, Down, PageUp, PageDown, Home, End, Ctrl+N, Ctrl+P | Node tab, a graph input's source field: move in the list under it, which focusing the field opens and typing filters | `GraphField.rml`, `<choice-list>` |
+| Enter, Tab | Node tab, a source field: set the highlighted source or value, a typed literal first | `GraphField.rml`, `studio_graph_details.c` |
+| Escape | Node tab, a source field: shut its list, keeping the source; a text field: keep the model's text | `studio_graph_details.c` |
 
 ## Members
 
@@ -181,7 +184,7 @@ The Calls view's tree (`studio_calls.c`), with the pointer over Output, focus in
 
 ## UI Hierarchy and Canvas
 
-The Outliner and Scene while a UI document is open (`studio_designer.c`).
+The Outliner (the authored Hierarchy) and Scene while a UI document is open (`studio_designer.c`, `studio_designer_hierarchy.c`).
 
 | Key | Action |
 | --- | --- |

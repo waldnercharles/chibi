@@ -803,6 +803,21 @@ rml_element *studio_ui_area(studio *s, int area, const char *name)
     return host;
 }
 
+rml_element *studio_ui_area_view(studio *s, int area, const char *name, const char *views)
+{
+    panel *p;
+    const char *document = panel_document(s, name, &p);
+    if (!document) {
+        return NULL;
+    }
+    rml_element *host = kit_host(s->kit, "panel", "area-panel");
+    char alias[64];
+    snprintf(alias, sizeof alias, "%s[%d]", views, area);
+    kit_attr(s->kit, "data-alias-view", alias);
+    show_panel(s, p, &s->ui->areas[area], host, document);
+    return host;
+}
+
 /* Data-keys names for the keys an area's panel can bind: letters, digits
    and the named keys; NULL for others. */
 static const char *key_label(SDL_Keycode key, char letter[2])

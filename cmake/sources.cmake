@@ -189,6 +189,8 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_draw.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_find.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_header.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_menu.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_details.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_live.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_nav.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_disk.c
@@ -363,7 +365,10 @@ list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/ui_design.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_details.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_edit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_hierarchy.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_library.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_values.c
 )
 
 # Studio authoring workflows: assets dropped on fields and objects, and

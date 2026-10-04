@@ -1514,16 +1514,6 @@ void studio_properties_body(studio *s, int area)
     if (!host) {
         return;
     }
-    /* The Node and Member tabs stay native (workstream G1). */
-    if ((s->tab == STUDIO_TAB_NODE || s->tab == STUDIO_TAB_MEMBER) &&
-        kit_slot_begin(s->kit, "native", host, "#native")) {
-        if (s->tab == STUDIO_TAB_NODE) {
-            studio_node_properties(s);
-        } else {
-            studio_member_properties(s);
-        }
-        kit_slot_end(s->kit);
-    }
     /* Rename (F2) focuses the name while no area shows the Outliner. */
     if (s->rename.entity && !s->rename.outliner) {
         if (focus_input(host, "#name")) {

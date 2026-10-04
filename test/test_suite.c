@@ -96,7 +96,10 @@ int studio_scene_run(const char *program);
 /* The editor chrome (workstream C2). */
 int studio_chrome_run(const char *program);
 int studio_palette_run(const char *program);
+int studio_graph_chrome_run(const char *program);
 int studio_panels_run(const char *program);
+/* The visual designer (workstream D1). */
+int studio_designer_run(const char *program);
 int studio_graph_inputs_run(const char *program);
 /* Asset thumbnails. */
 void test_studio_minimap();
@@ -1072,6 +1075,11 @@ int main(int argc, char **argv)
         registry_validate();
         return studio_inspector_run(program_name) || fails ? 1 : 0;
     }
+    /* The visual designer (workstream D1): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-designer") == 0) {
+        registry_validate();
+        return studio_designer_run(program_name) || fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--studio-shell") == 0) {
         registry_validate();
         return studio_shell_run(program_name) || fails ? 1 : 0;
@@ -1091,6 +1099,12 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--studio-palette") == 0) {
         registry_validate();
         return studio_palette_run(program_name) || fails ? 1 : 0;
+    }
+    /* Graph chrome (workstream G1): the graph's menus and Properties' Node
+       and Member tabs, Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-graph-chrome") == 0) {
+        registry_validate();
+        return studio_graph_chrome_run(program_name) || fails ? 1 : 0;
     }
     /* Authored panels, game UI and the areas they take turns in: Studio's,
        in a hidden window. */

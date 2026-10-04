@@ -51,12 +51,13 @@ const char **studio_asset_names(const reference_index *index, int kind)
     return names;
 }
 
-void studio_pick_open(
+/* Starts a pick for `key`; `placeholder` names the kind's search. */
+static void pick_begin(
     studio *s,
     const char *key,
     const char *current,
     const studio_pick_desc *desc,
-    rml_element *anchor
+    char placeholder[96]
 )
 {
     s->pick.chosen = false;
@@ -65,13 +66,37 @@ void studio_pick_open(
     snprintf(s->pick.key, sizeof s->pick.key, "%s", key);
     snprintf(s->pick.none, sizeof s->pick.none, "%s", desc->none ? desc->none : "");
     snprintf(s->pick.current, sizeof s->pick.current, "%s", current ? current : "");
+    snprintf(placeholder, 96, "Search %s", studio_asset_kind_label(desc->kind));
+}
+
+void studio_pick_open(
+    studio *s,
+    const char *key,
+    const char *current,
+    const studio_pick_desc *desc,
+    rml_element *anchor
+)
+{
     char placeholder[96];
-    snprintf(placeholder, sizeof placeholder, "Search %s", studio_asset_kind_label(desc->kind));
+    pick_begin(s, key, current, desc, placeholder);
     if (!anchor) {
         studio_palette_open(s, STUDIO_PALETTE_ASSETS, placeholder);
         return;
     }
     studio_palette_open_at(s, STUDIO_PALETTE_ASSETS, placeholder, anchor);
+}
+
+void studio_pick_open_box(
+    studio *s,
+    const char *key,
+    const char *current,
+    const studio_pick_desc *desc,
+    const float box[4]
+)
+{
+    char placeholder[96];
+    pick_begin(s, key, current, desc, placeholder);
+    studio_palette_open_box(s, STUDIO_PALETTE_ASSETS, placeholder, box);
 }
 
 static bool any_matches(const char *const *names, const char *query)

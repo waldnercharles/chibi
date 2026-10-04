@@ -1115,6 +1115,7 @@ static uint64_t ui_state(studio *s)
         (uint64_t)acount(s->records),
         (uint64_t)acount(s->runtime_errors),
         (uint64_t)acount(scene->actors),
+        studio_designer_stamp(s),
         (uint64_t)s->tab,
         (uint64_t)s->maximized,
         s->pause.active,

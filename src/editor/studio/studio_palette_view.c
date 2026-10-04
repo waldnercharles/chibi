@@ -15,9 +15,13 @@
  * pointer move it and `change` as one is chosen. Both documents mount only
  * while open, so a closed palette costs nothing.
  *
+ * A field's list (a graph input's source field in Properties) is the
+ * client's markup over the same rows, under the field its text is typed in,
+ * as Base UI's Combobox lists under its input.
+ *
  * palette: { placeholder, empty, count,
  *   rows: [{ heading, label (markup, the match in bold), about, meta,
- *            shortcut, icon, image, place, current }] }
+ *            shortcut, tip, icon, image, place, current }] }
  * palette_ui: { highlight } */
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
@@ -83,6 +87,25 @@ void studio_palette_open_at(studio *s, studio_palette_client client, const char 
     s->ui_schedule.wake = true;
 }
 
+void studio_palette_open_field(studio *s, studio_palette_client client, rml_element *field)
+{
+    studio_palette_open_at(s, client, "", field);
+    s->palette.field = true;
+}
+
+void studio_palette_open_box(
+    studio *s,
+    studio_palette_client client,
+    const char *placeholder,
+    const float box[4]
+)
+{
+    reset(&s->palette, client, placeholder);
+    s->palette.anchored = s->palette.boxed = true;
+    memcpy(s->palette.box, box, sizeof s->palette.box);
+    s->ui_schedule.wake = true;
+}
+
 void studio_palette_close(studio *s)
 {
     reset(&s->palette, STUDIO_PALETTE_CLOSED, "");
@@ -142,6 +165,15 @@ static void collect(studio *s, studio_palette_state *p)
         case STUDIO_PALETTE_ASSETS:
             studio_pick_entries(s, p->query, &p->entries);
             break;
+        case STUDIO_PALETTE_SOURCES:
+            studio_graph_source_entries(s, p->query, &p->entries);
+            break;
+        case STUDIO_PALETTE_TYPES:
+            studio_member_type_entries(s, &p->entries);
+            break;
+        case STUDIO_PALETTE_CHOICES:
+            studio_graph_choice_entries(s, &p->entries);
+            break;
         case STUDIO_PALETTE_CLOSED: break;
     }
 }
@@ -153,8 +185,11 @@ static bool lists_anew(const studio_palette_state *p, const char *was)
         case STUDIO_PALETTE_SEARCH:
             return studio_search_lists_anew(was, p->query);
         case STUDIO_PALETTE_NODES:
-        case STUDIO_PALETTE_ASSETS: return true;
+        case STUDIO_PALETTE_ASSETS:
+        case STUDIO_PALETTE_SOURCES: return true;
         case STUDIO_PALETTE_COMPONENTS:
+        case STUDIO_PALETTE_TYPES:
+        case STUDIO_PALETTE_CHOICES:
         case STUDIO_PALETTE_CLOSED: return false;
     }
     return false;
@@ -193,6 +228,13 @@ static void choose(studio *s, int place)
             break;
         case STUDIO_PALETTE_ASSETS:
             studio_pick_choose(s, &entry, anchor);
+            break;
+        case STUDIO_PALETTE_SOURCES:
+            studio_graph_source_choose(s, &entry);
+            break;
+        case STUDIO_PALETTE_TYPES: studio_member_type_choose(s, &entry); break;
+        case STUDIO_PALETTE_CHOICES:
+            studio_graph_choice_choose(s, &entry);
             break;
         case STUDIO_PALETTE_CLOSED: break;
     }
@@ -271,8 +313,8 @@ static bool refresh(studio *s, studio_palette_state *p)
 
 /* ---------- The variables ---------- */
 
-static const char *const ROW_TEXTS[] = { "label", "about", "meta", "shortcut",
-                                         "icon",  "image", NULL };
+static const char *const ROW_TEXTS[] = { "label", "about", "meta",  "shortcut",
+                                         "tip",   "icon",  "image", NULL };
 
 static yyjson_mut_val *row_new(yyjson_mut_doc *doc)
 {
@@ -364,8 +406,9 @@ static bool show_entry(
 {
     const studio_palette_state *p = &s->palette;
     char label[STUDIO_PALETTE_TEXT * 16], icon[5] = "";
-    /* A picker's rows are plain, as the kit's dropdowns were. */
-    label_markup(e->label, p->anchored ? "" : p->ranked, label, sizeof label);
+    /* A picker's rows are plain, as the kit's dropdowns were; a field's
+       list marks what was typed, as the kit's autocompletes did. */
+    label_markup(e->label, p->anchored && !p->field ? "" : p->ranked, label, sizeof label);
     if (e->icon) {
         studio_glyph(icon, e->icon);
     }
@@ -375,6 +418,7 @@ static bool show_entry(
     changed |= ui_data_put_text(doc, row, "about", e->about);
     changed |= ui_data_put_text(doc, row, "meta", e->meta);
     changed |= ui_data_put_text(doc, row, "shortcut", e->shortcut);
+    changed |= ui_data_put_text(doc, row, "tip", e->tip);
     changed |= ui_data_put_text(doc, row, "icon", icon);
     changed |= ui_data_put_text(doc, row, "image", image ? image : "");
     changed |= ui_data_put_int(row, "place", place + 1);
@@ -578,12 +622,33 @@ static const char *const PANELS[] = {
     [STUDIO_PALETTE_PICKER] = "Picker",
 };
 
+/* A Studio project without the document, such as a served copy older than
+   the build, would leave the palette open, unseen and holding the keys. */
+static void missing(studio *s, const char *document)
+{
+    char text[96];
+    snprintf(text, sizeof text, "The Studio project has no %s document; update its copy", document);
+    kit_toast(
+        s->kit,
+        0,
+        &(kit_toast_desc){ .type = KIT_TOAST_ERROR,
+                           .title = "Palette unavailable",
+                           .description = text }
+    );
+    studio_record(s, KIT_TOAST_ERROR, text);
+    studio_palette_close(s);
+}
+
 /* The modal keeps the focus in its search field, as cmdk's dialog does,
    and shows a query its client set. */
 static void modal_frame(studio *s, studio_palette_state *p)
 {
     rml_element *host = studio_ui_dialog(s, "palette", PANELS[STUDIO_PALETTE_MODAL]);
-    rml_element *search = host ? rml_element_query_selector(host, "#" SEARCH_ID) : NULL;
+    if (!host) {
+        missing(s, PANELS[STUDIO_PALETTE_MODAL]);
+        return;
+    }
+    rml_element *search = rml_element_query_selector(host, "#" SEARCH_ID);
     if (!search) {
         return;
     }
@@ -606,8 +671,11 @@ static void picker_frame(studio *s, studio_palette_state *p)
     kit_document_begin(s->kit, "picker", "bar-place", true);
     rml_element *host = studio_ui_panel(s, "picker", PANELS[STUDIO_PALETTE_PICKER]);
     kit_document_end(s->kit);
-    rml_element *popover = host ? rml_element_query_selector(host, "#" PICKER_ID)
-                                : NULL;
+    if (!host) {
+        missing(s, PANELS[STUDIO_PALETTE_PICKER]);
+        return;
+    }
+    rml_element *popover = rml_element_query_selector(host, "#" PICKER_ID);
     rml_element *anchor = studio_palette_anchor(s);
     if (!popover || p->shown) {
         if (popover && !popover_open(popover)) {
@@ -615,11 +683,13 @@ static void picker_frame(studio *s, studio_palette_state *p)
         }
         return;
     }
-    if (!anchor) {
+    if (!anchor && !p->boxed) {
         studio_palette_close(s);
         return;
     }
-    popover_show(popover, &(popover_anchor){ .side = POPOVER_BELOW, .element = anchor, .trigger = anchor });
+    popover_anchor at = { .side = POPOVER_BELOW, .element = anchor, .trigger = anchor };
+    memcpy(at.box, p->box, sizeof at.box);
+    popover_show(popover, &at);
     p->shown = true;
 }
 
@@ -627,7 +697,7 @@ void studio_palette(studio *s)
 {
     studio_palette_state *p = &s->palette;
     studio_graph_palette(s);
-    studio_palette_mount want = !p->client  ? STUDIO_PALETTE_UNMOUNTED
+    studio_palette_mount want = !p->client || p->field ? STUDIO_PALETTE_UNMOUNTED
                               : p->anchored ? STUDIO_PALETTE_PICKER
                                             : STUDIO_PALETTE_MODAL;
     /* A host the kit removes lets its mount go first. */

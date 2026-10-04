@@ -1707,6 +1707,10 @@ sg_input_kind sg_input_view(studio *s, node *n, int p, char *text, size_t size)
     if (spec->kind != PIN_DATA) {
         return SG_INPUT_EXEC;
     }
+    if (spec->type == PIN_STR && spec->type_name &&
+        !strcmp(spec->type_name, "MaterialAsset")) {
+        return SG_INPUT_VALUE;
+    }
     pin_parts parts;
     sg_pin_parts_of(s, n, ED_PIN_INPUT, p, &parts);
     bool can_choose_source = parts.source_select && !sg_graph_readonly(s) &&

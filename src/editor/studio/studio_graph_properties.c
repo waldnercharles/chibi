@@ -510,6 +510,18 @@ static void value_row(gd_rows *r, const pin_row *pr, const gd_row *d)
         gd_put_choices(r, item, choices, choice_index(spec, &spec->default_value, choices));
         return;
     }
+    if (spec->type == PIN_STR && spec->type_name &&
+        !strcmp(spec->type_name, "MaterialAsset")) {
+        reference_asset_kind kind = REFERENCE_ASSET_MATERIAL;
+        const char *asset = spec->default_value.str ? spec->default_value.str : "";
+        char problem[192];
+        row.control = "asset";
+        row.invalid = gd_asset_problem(s, kind, asset, problem);
+        yyjson_mut_val *item = gd_next_row(r, &row);
+        gd_put_text(r, item, "text", asset);
+        gd_put_asset(r, item, kind, asset);
+        return;
+    }
     if (spec->type == PIN_BOOL || (width > 0 && !(spec->flags & PIN_FLAG_COLOR)) ||
         pin_string(spec->type) || (spec->type >= PIN_I8 && spec->type <= PIN_F64)) {
         leaf_row(r, pr, &row, &l, "", NULL);

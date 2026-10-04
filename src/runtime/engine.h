@@ -171,6 +171,10 @@ void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtim
 /* Shows `world`'s GameUi documents from content_root/ui over the scene
  * (render/ui.h). */
 void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, const char *content_root);
+/* The host's frame time in seconds, which the documents' transitions follow,
+ * so a fixed timestep replays them as it does the scene. Hosts set it before
+ * each draw; until then the documents hold still. */
+void engine_viewport_set_time(engine_viewport *viewport, double seconds);
 /* Presents `ui`, which the viewport takes, as the documents
  * engine_viewport_set_ui creates: for a host that gives them its own data
  * (render_ui_new). Call before the viewport has documents. */

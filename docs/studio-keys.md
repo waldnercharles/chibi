@@ -205,11 +205,13 @@ While a run is paused at a breakpoint, which selects the instance it stopped in;
 
 ## Menus, Search, popups and fields
 
-Menus and popovers, authored and the kit's alike (`src/ui/popover.c`), the kit's dropdowns and Search (`src/editor/rmlui/kit_popup.c`, `kit_command.c`) and the native controls (`src/ui/controls`: `<number-field>`, `<color-field>`, `<splitter>`, `<choice-list>`, `<line-chart>`).
+Menus and popovers, authored and the kit's alike (`src/ui/popover.c`), the kit's dropdowns (`src/editor/rmlui/kit_popup.c`, `kit_command.c`), Search and the asset pickers (`Palette.rml`, `Picker.rml`) and the native controls (`src/ui/controls`: `<number-field>`, `<color-field>`, `<splitter>`, `<choice-list>`, `<line-chart>`).
 
 | Key | Action |
 | --- | --- |
 | Up, Down, Home, End | Move in a menu, list or Search |
+| Ctrl+N, Ctrl+P, Ctrl+J, Ctrl+K; PageUp, PageDown | In Search, a picker or a choice list: next, previous (cmdk's); a view down or up |
+| Tab | In Search, stays in its field (a dialog's focus) |
 | A–Z | In a menu, highlight the first item whose label starts with the letters typed within half a second |
 | Right, Left | Open or close a submenu; in a menubar's menu, the next or previous menu |
 | Enter, Space | Choose |

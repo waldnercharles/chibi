@@ -957,6 +957,71 @@ static void shot(studio_bench *b, const char *dir, const char *variant, const ch
     assert(saved == 0);
 }
 
+/* ---------- 19: opening a menu (workstream F3) ---------- */
+
+#define MENU_FRAMES_MAX 8
+
+/* Whether the menu has been placed and shows, which is its first paint. */
+static bool menu_painted(rml_element *menu)
+{
+    return popover_open(menu) && !rml_element_has_attribute(menu, "data-unplaced");
+}
+
+/* The top bar's File menu opened by a press on its trigger, then closed:
+   the time from the press to the UI frame that first paints the menu (the
+   press's own work, which builds the menu's items, and those frames), the
+   frames that took, the views Studio's authored panels evaluated and the
+   elements in the top bar's document open (the line after the row gives
+   them closed). */
+static void menu_open(studio_bench *b)
+{
+    studio *s = b->studio;
+    s->maximized = -1;
+    /* Fades end at once, so each run starts with the menu closed. */
+    s->prefs.reduced_motion = true;
+    frames(b, 4);
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *trigger = studio_query(s, "[popovertarget=menu-file]");
+    rml_element *menu = studio_query(s, "#menu-file");
+    assert(trigger && menu);
+    rml_element *document = rml_element_owner_document(menu);
+    probe_documents(s);
+    int closed = rml_element_query_selector_all(document, "*", NULL, 0);
+    double ms[RUNS];
+    bench_counts counts = { 0 };
+    int painted_in = 0;
+    for (int run = -WARMUP; run < RUNS; run++) {
+        popover_hide_all(context);
+        frames(b, 3);
+        bench_counts before = studio_mark(s);
+        double t = bench_now(), phase[PHASE_COUNT];
+        press_element(s, trigger);
+        t = bench_now() - t;
+        int frame = 0;
+        do {
+            cf_app_update(NULL);
+            t += native_ui(s, phase);
+            cf_app_draw_onto_screen(true);
+            frame++;
+        } while (frame < MENU_FRAMES_MAX && !menu_painted(menu));
+        counts = studio_counts(s, before);
+        counts.elements = rml_element_query_selector_all(document, "*", NULL, 0);
+        painted_in = frame;
+        if (run >= 0) {
+            ms[run] = t;
+        }
+    }
+    popover_hide_all(context);
+    frames(b, 3);
+    bench_row("19", "opening the File menu: press to first paint", bench_stat_of(ms, RUNS), counts);
+    printf(
+        "|  | first painted in %d UI frame(s); the top bar's document holds %d "
+        "elements closed | | | | | | |\n",
+        painted_in,
+        closed
+    );
+}
+
 /* With UI_BENCH_CAPTURE set to a directory, native shots of the Behavior
    header, its graph picker and Graph menu, the graph's find bar and
    Performance in Play, in dark and light, compact and comfortable, with
@@ -1807,6 +1872,126 @@ static void capture_designer(studio_bench *b, const char *dir)
     }
 }
 
+/* ---------- 18: typing in the palette ---------- */
+
+/* Assets added to the Sandbox's for the palette to rank, with commands,
+   settings and objects: thousands of results with nothing typed. */
+#define PALETTE_ADDED 2000
+
+typedef enum
+{
+    PALETTE_OPEN,      /* ⌘K: the palette shows, 2 UI frames */
+    PALETTE_FILTERED,  /* "qa" to "qab" and back: few results a group */
+    PALETTE_EMPTIED,   /* "" to "b" and back: every result, then a few */
+    PALETTE_HIGHLIGHT, /* Down and Up */
+    PALETTE_IDLE,      /* a UI frame with nothing changed */
+} palette_step;
+
+static void palette_query(studio *s, const char *query)
+{
+    ui_activation a = { .argc = 1 };
+    snprintf(a.args[0], sizeof a.args[0], "%s", query);
+    studio_palette_action(s, "query", &a);
+}
+
+static void palette_change(studio_bench *b, palette_step step, int run)
+{
+    studio *s = b->studio;
+    switch (step) {
+        case PALETTE_OPEN:
+            studio_palette_close(s);
+            frames(b, 2);
+            studio_palette_open(s, STUDIO_PALETTE_SEARCH, STUDIO_PALETTE_PLACEHOLDER);
+            break;
+        case PALETTE_FILTERED: palette_query(s, run & 1 ? "qab" : "qa"); break;
+        case PALETTE_EMPTIED: palette_query(s, run & 1 ? "b" : ""); break;
+        case PALETTE_HIGHLIGHT: {
+            ui_activation a = { .argc = 1, .has_value = true, .value = (float)(run & 1) };
+            snprintf(a.args[0], sizeof a.args[0], "%d", run & 1);
+            studio_palette_action(s, "highlight", &a);
+            break;
+        }
+        case PALETTE_IDLE: break;
+    }
+}
+
+/* Times one step's UI work (two UI frames to open), counting the views
+   evaluated, the documents laid out and the elements of the overlay
+   layer's document, which holds the palette. */
+static void palette_case(studio_bench *b, palette_step step, const char *name)
+{
+    studio *s = b->studio;
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT], more[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        palette_change(b, step, run);
+        cf_app_update(NULL);
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        if (step == PALETTE_OPEN) {
+            t += native_ui(s, more);
+            for (int p = 0; p < PHASE_COUNT; p++) {
+                phase[p] += more[p];
+            }
+        }
+        cf_app_draw_onto_screen(true);
+        counts = studio_counts(s, before);
+        rml_element *search = studio_query(s, "#palette-search");
+        counts.elements = search ? rml_element_query_selector_all(
+                                       rml_element_owner_document(search),
+                                       "*",
+                                       NULL,
+                                       0
+                                   )
+                                 : 0;
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    bench_row("18", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
+/* The palette over the Sandbox's commands, settings, objects and assets
+   and 2,000 more assets: open it, type a keystroke that keeps few results
+   a group, one that empties the query and back, move the highlight, and an
+   idle frame. */
+static void palette(studio_bench *b)
+{
+    studio *s = b->studio;
+    for (int i = 0; i < PALETTE_ADDED; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "QaPalette%04d", i);
+        reference_index_add_asset(b->scene->asset_index, REFERENCE_ASSET_MATERIAL, name, NULL, name);
+    }
+    b->scene->asset_index_revision++;
+    s->maximized = -1;
+    frames(b, 2);
+    studio_palette_open(s, STUDIO_PALETTE_SEARCH, STUDIO_PALETTE_PLACEHOLDER);
+    frames(b, 4);
+    probe_new_documents(s);
+    printf(
+        "|  | Palette: %d results with nothing typed, %d rows in its window | "
+        "| | | | | |\n",
+        acount(s->palette.places),
+        studio_count(s, ".palette-row")
+    );
+    palette_case(b, PALETTE_OPEN, "Palette: open, 2 UI frames");
+    palette_case(b, PALETTE_FILTERED, "Palette: a keystroke, \"qa\" to \"qab\"");
+    palette_case(b, PALETTE_EMPTIED, "Palette: a keystroke, \"\" to \"b\"");
+    palette_query(s, "");
+    frames(b, 2);
+    palette_case(b, PALETTE_HIGHLIGHT, "Palette: move the highlight");
+    palette_case(b, PALETTE_IDLE, "Palette: a UI frame with nothing changed");
+    studio_palette_close(s);
+    frames(b, 2);
+}
+
 /* ---------- Run ---------- */
 
 int ui_bench_studio(const char *program, bool members_only)
@@ -1856,9 +2041,25 @@ int ui_bench_studio(const char *program, bool members_only)
         cf_destroy_app();
         return 0;
     }
+    /* UI_BENCH_PALETTE runs case 18 alone. */
+    if (getenv("UI_BENCH_PALETTE")) {
+        palette(&b);
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
     /* UI_BENCH_PERFORMANCE runs case 17 alone. */
     if (getenv("UI_BENCH_PERFORMANCE")) {
         performance_play(&b);
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
+    /* UI_BENCH_MENUS runs case 19 alone. */
+    if (getenv("UI_BENCH_MENUS")) {
+        menu_open(&b);
         bench_close(&b);
         app_input_shutdown();
         cf_destroy_app();
@@ -1885,6 +2086,7 @@ int ui_bench_studio(const char *program, bool members_only)
         output_log(&b);
         scene_overlays(&b);
         performance_play(&b);
+        menu_open(&b);
     }
     if (all || splitter_only) {
         splitter_drag(&b);
@@ -1897,6 +2099,7 @@ int ui_bench_studio(const char *program, bool members_only)
     }
     /* Last: it leaves ten thousand objects in the scene. */
     if (all) {
+        palette(&b);
         outliner_scroll(&b);
     }
     bench_close(&b);

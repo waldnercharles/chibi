@@ -288,7 +288,7 @@ static void connected_input_drags_commit_on_release()
         socket_press(&f, false);
     }
     disconnected &= !graph_input_source(gr, graph_node_by_id(gr, old_id), 0, &from, &pin) &&
-                    !kit_command_is_open(f.studio->kit) &&
+                    !studio_palette_is_open(f.studio) &&
                     acount(f.graph->undo) == history + 1;
     if (disconnected) {
         editor_undo(f.graph);

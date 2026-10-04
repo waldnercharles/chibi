@@ -251,14 +251,14 @@ static void prototype_components()
         frames(&f, 2);
     }
     bool button = click(&f, add, SDL_BUTTON_LEFT);
-    bool palette = kit_command_is_open(s->kit) && s->components.open;
+    bool palette = s->palette.client == STUDIO_PALETTE_COMPONENTS;
     text_event("Health");
     frames(&f, 2);
     tap(SDL_SCANCODE_RETURN);
     frames(&f, 3);
     char added[128], selector[192];
     snprintf(added, sizeof added, "%s", s->components.added);
-    bool gained = added[0] && prototype_has(f.scene, added) && !s->components.open;
+    bool gained = added[0] && prototype_has(f.scene, added) && !s->palette.client;
     const char *dot = strrchr(added, '.');
     snprintf(selector, sizeof selector, "section.panel[data-key=%s]", dot ? dot + 1 : added);
     rml_element *panel = shown_in(properties(s), selector);

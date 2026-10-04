@@ -4,7 +4,10 @@
    with room around it; the size and what uses the asset label the stage's
    bottom left, over the game UI's error. Storybook's Actions log lists each
    event the asset emitted, newest last, in a column beside the stage so it
-   never covers the asset; it follows new rows while at its end. */
+   never covers the asset; it follows new rows while at its end. Density
+   sets an action's height, and the stage keeps dark roles in every theme
+   (theme/viewport.rcss). */
+@import "theme/viewport.rcss";
 body.area-panel { padding: 0dp; overflow: hidden; }
 .viewport { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; display: flex; background-color: var(--viewport); }
 .canvas-stage { position: relative; flex: 1 1 0dp; overflow: hidden; background-color: #121214; }
@@ -23,6 +26,7 @@ body.area-panel { padding: 0dp; overflow: hidden; }
 .canvas-actions > [data-ui=List] { flex: 1 1 0dp; min-height: 0dp; }
 #canvas-actions-list { box-sizing: border-box; padding: 2dp 4dp; font-family: var(--font-numeric); }
 .canvas-action { display: flex; align-items: center; gap: 6dp; height: var(--studio-height-20, 20dp); padding: 0dp 6dp; border-radius: var(--r); white-space: nowrap; overflow: hidden; }
+body.comfortable .canvas-action { height: var(--studio-height-24, 24dp); }
 .canvas-action:hover { background-color: var(--accent); }
 .canvas-action .event { color: var(--primary-text); font-weight: 600; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .canvas-action .element { color: var(--muted-foreground); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }

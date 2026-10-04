@@ -87,5 +87,7 @@ void studio_documents_scene_checks();
 void studio_documents_chrome_checks();
 /* The visual designer's Hierarchy, Details and Library (workstream D1). */
 void studio_documents_designer_checks();
+/* The palette, pickers and refactor popover (workstream C4). */
+void studio_documents_palette_checks();
 
 #endif

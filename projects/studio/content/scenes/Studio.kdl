@@ -59,4 +59,7 @@ name "Studio"
     - name="HierarchyHeader" prototype="HierarchyHeader"
     - name="Library" prototype="Library"
     - name="LibraryHeader" prototype="LibraryHeader"
+    - name="Palette" prototype="Palette"
+    - name="Picker" prototype="Picker"
+    - name="Refactor" prototype="Refactor"
 }

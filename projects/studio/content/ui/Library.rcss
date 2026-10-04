@@ -14,6 +14,7 @@ body { width: 100%; height: 100%; margin: 0dp; padding: 0dp; overflow: hidden; }
     border-radius: var(--r-lg); border: 1dp var(--line); background-color: var(--card); cursor: pointer;
     transition: background-color border-color 0.11s cubic-out;
 }
+body.comfortable .designer-tile { width: 86dp; height: 62dp; }
 .designer-tile:hover { background-color: var(--accent); border-color: var(--border); }
 .designer-tile:active { background-color: var(--press); }
 .designer-tile .glyph { font-size: 18dp; color: var(--muted-foreground); pointer-events: none; }

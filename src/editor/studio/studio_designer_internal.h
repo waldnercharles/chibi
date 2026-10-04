@@ -4,7 +4,10 @@
 /* What the visual designer's files share: studio_designer.c keeps the
  * document, the selection, its changes and the Canvas;
  * studio_designer_hierarchy.c the Hierarchy, studio_designer_details.c
- * Details and studio_designer_library.c the Library and the Add menus. */
+ * Details and studio_designer_library.c the Library and the Add menus.
+ * Details' capabilities (values, document queries, changes) are plain C in
+ * studio_designer_values.c and studio_designer_edit.c
+ * (studio_designer_edit.h). */
 #include "editor/documents/ui_design.h"
 #include "editor/studio/studio_internal.h"
 #include "ui/list.h"

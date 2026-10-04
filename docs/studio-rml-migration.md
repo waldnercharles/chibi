@@ -3,7 +3,7 @@
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
-F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2, C3 and C4 done; the rest planned. The spike (S0) ran on a
+F1, F2, F3, F4, F5, P1, P2, P3, P4, P5, C1, C2, C3, C4 and D1 done; the rest planned. The spike (S0) ran on a
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
@@ -58,7 +58,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Kit dropdowns and autocomplete | `kit_command.c` over `support/text_rank.h` | Graph literals, member types, `kit_select` | W4 G1 with the graph's literals |
 | Popups, menus, tooltips | `src/ui/popover.c` (F3) stacks, places and dismisses authored popovers and the kit's popups and runs menus; `kit_popup.c` emits the kit's | Placement, stacking, dismissal, typeahead | Done for the controller (F3); kit menus move to Menu with their panels; tooltips stay attribute-driven |
 | Toasts | `kit_toast.c` | Springs, swipe | Postponed |
-| Designer: Hierarchy, Details, Library | `studio_designer*.c` | `ui_design` edits, drop zones, CSS value types | W4 D1; Canvas guides native |
+| Designer: Hierarchy, Details, Library | Authored (D1): `Hierarchy.rml`, `Details.rml`, `Library.rml` and their headers over the `hierarchy*`, `details*` and `library` sources (`studio_designer_hierarchy.c`, `_details.c`, `_library.c`) | `ui_design` edits, drop zones, CSS value types | Done (W4 D1); the Canvas, its guides and resize handles stay native |
 | UI Inspector | Authored panel; picking native | | W4 I1: virtualize its tree |
 
 ## Architecture
@@ -1331,7 +1331,7 @@ classes for an authored panel.
 `--ui-followups` checks a host in the kit's document and in an area's
 (`test/editor/kit_host.c`), `ui_document` the selectors. Reduced motion stays
 `@media (theme: reduced-motion)`. Left in the theme because their panels are
-still kit code: `body.comfortable .designer-tile` (Designer).
+still kit code: `body.comfortable .designer-tile` (Designer); D1 moved it into `Library.rcss`.
 
 Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
 `UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.
@@ -1808,8 +1808,144 @@ fix (`cf21ee38`) merged.
 | | Scope |
 |---|---|
 | G1 Graph chrome | Node, wire, pin and comment menus; add-node search; Node and Member tabs as PropertyRow kinds (binding chip, source autocomplete, expression field, type picker, reorder grips) |
-| D1 Designer | Hierarchy (TreeRow, drop zones), Details (lengths with units, colors, keywords, class chips, add popovers), Library (Tile) |
+| D1 Designer (done) | Hierarchy (TreeRow, drop zones), Details (lengths with units, colors, keywords, class chips, add popovers), Library (Tile): D1, below |
 | I1 Inspector | Its tree on `List`, removing the 1,000-row cap |
+
+#### D1: the Designer (done)
+
+The Outliner, Properties and Assets areas show the UI Designer's Hierarchy,
+Details and Library while a UI document is active (`studio_designer_active`),
+as three more panels of the same area hooks. The Canvas, its guides and its
+resize handles stay native (per-frame geometry, Postponed). Unity's UI
+Builder is the model for the three (a Hierarchy of elements, an Inspector of
+unit-bearing style fields with the element's classes as chips, a Library of
+tiles to drag in); Unreal's UMG Designer is the model for dragging a Library
+entry onto the hierarchy and for a widget element opening its widget.
+
+- **Hierarchy** is `Hierarchy.rml` (a `List` of `TreeRow`s) and
+  `HierarchyHeader.rml` (Filter, Add) over `hierarchy` (the window's rows and
+  folds), `hierarchy_ui` (selection and the row menu, apart so a click
+  re-reads only its views, as P2's `outliner_ui`), `hierarchy_carry` (the slot
+  a row carried with the keyboard marks) and `hierarchy_header`, in
+  `studio_designer_hierarchy.c`. Rows are windowed per area
+  (`ui_list_window`), keyed, and select, fold (twisty, Left and Right),
+  filter and walk as before. A row's `data-drag="ui"` and
+  `data-drop-zones="tree"` give the drop's `zone` (a container's top and
+  bottom quarters before and after, its middle inside; an element that holds
+  nothing takes halves), and TreeRow draws the line or fill; a Library tile
+  dropped on a row adds there. The row menu (`Menu` and `Submenu`, mounted
+  only while open) and Add list the same `library` items.
+- **Details** is `Details.rml` (a `PropertyRow` per value, one control by
+  `data-when` on `row.control`) and `DetailsHeader.rml` (search) over
+  `details` and `details_add` in `studio_designer_details.c`. Each value shows
+  in the control its type calls for: text fields (id, text, attributes,
+  bindings), `<number-field>`s for lengths and numbers (the unit beside the
+  value, scrubbing, a slider for opacity), `<color-field>`s, `EnumField`s for
+  a keyword (two or three keywords show as segments), `AssetField` for a ui
+  asset and class chips with a remove button. Every Add button opens one
+  popover (`details_add`) whose field suggests what the document names; a
+  value the document would not take warns with the reason and changes
+  nothing. A scrub's `input`s join one Undo step through the designer's
+  gesture key, `change` commits it and Escape puts the value back
+  (`ev.canceled`). Panel heads fold (`details.fold`); the open state is the
+  designer's, not the model's.
+- **Library** is `Library.rml` and `LibraryHeader.rml` over `library`
+  (`studio_designer_library.c`): the elements and the project's widgets as
+  tiles, filtered by the header, dragged into the Hierarchy or the Canvas or
+  clicked to add to the selection.
+- Edits stay in C. Each intent (`emit('hierarchy.drop', ...)`,
+  `details.change`, `library.add`) becomes one `ui_design_*` text edit, so one
+  Undo step; the markup never edits the document. Fast-changing state
+  (selection, renaming, the hovered row, the carry) has a variable of its own,
+  so a selection dirties a few hundred views, not the window's.
+- **Capabilities are plain C, apart from the panels' glue**, so they can
+  become behavior nodes when panels' logic moves to KDL graphs:
+  `studio_designer_values.c` (a property's control, a control's value as
+  document text, a new property's start value), `studio_designer_edit.c`
+  (attributes, the inline style, which rules match an element, what an Add
+  popover suggests, and `designer_set_text`, `designer_set_value` with its
+  one-Undo-step gesture and Escape, `designer_remove_target` and
+  `designer_add_value`), declared in `studio_designer_edit.h`; the
+  Hierarchy's moves, duplicate, wrap and delete stay in
+  `studio_designer.c` over `ui_design`. A change returns unchanged, changed
+  or refused with the document's reason; `studio_designer_details.c` only
+  turns a row id and a control's value into a call and shows the result.
+- **Deleted:** the kit's tree rows, drop marks, details fields, popups and
+  tiles in `studio_designer*.c` and the Designer's rules in
+  `theme/workspace.rcss`: about 1,800 lines out of the C, 73 of the theme.
+  The C grew by 1,260 net (3,260 to 4,520 lines in `studio_designer*.c` and
+  `.h`) because the sources now publish JSON shapes and handle intents where
+  the kit drew, and the capabilities have a header; the fold, carry and
+  keyboard code moved from `studio_designer.c` to
+  `studio_designer_hierarchy.c`, and Details's row shapes are the largest
+  part (1,000 lines). The panels are 110 lines of RML and 109 of RCSS.
+- **Keys** are unchanged (`docs/studio-keys.md`); the Hierarchy's keys still
+  run from `studio_designer_key`.
+
+Parity: the kit build (`3160b5f9`) and this one, native (shots by
+`UI_BENCH_DESIGNER_CAPTURE=<dir> ./build/test_suite --ui-bench studio`: rows,
+row menu, Add menu, a row dragged over the middle and top of another, Details
+of the root with the Add Class popover and a color picker, of a row with a
+keyword open, of a button with a binding, of the document, and the Library
+with a tile hovered; dark and light, compact and comfortable, 2880 by 1800)
+and web (1600 by 1000, the same states, by a script over `make web`) match
+pixel for pixel in the Hierarchy and the Library. Details matches but for the
+keyword dropdown's width, which is EnumField's (the list is as wide as the
+field's value, P1's known deviation). One kit detail was kept as the kit
+showed it, not as an earlier design said: Bindings values use the body font.
+
+Checks: `--studio-designer` (21, also in `--studio-documents`, in
+`test/editor/studio_documents_designer.c` over the arena's HUD with in-memory
+text): the Hierarchy's rows and counts; a click selects and a twisty folds
+without selecting; the filter and its empty state; the drop marks (inside,
+before, after); drops inside a container and before a leaf; a Library tile
+dropped on a row; the keyboard carry (arrows, Escape, Space); the row menu
+(Duplicate, Delete, Open Widget only for a widget) and the header's Add;
+Details' text commits (Enter and blur), the class chips and the Add popover
+(typed and picked), a length's scrub as one Undo step with Escape putting it
+back, opacity as a slider, a color in its picker, a keyword from its list and
+as segments, an inline property's remove, the document's rules with nothing
+selected, an invalid Add and the heads folding; the Library's tiles, its
+filter and a click. `--studio-panels`' area turns now run a second time with a
+UI document open, so the Hierarchy, Details, Library and Canvas turn with the
+other editors and bind each one's views anew with none lost.
+
+`UI_BENCH_DESIGNER=1 ./build-release/test_suite --ui-bench studio` (case 20:
+the arena's HUD with 40 added spans, 49 elements, the Hierarchy, Details and
+Library beside the Canvas, 1440 by 900, pixel scale 1), the integration
+branch's kit Designer (`00e3ceb8`) and this build alternated process by
+process three times, 1-minute load 32-36 (provisional; the counts do not
+depend on load). ms, the range of the runs' medians:
+
+| Case | Kit | Authored | Ratio | Views | Layouts kit / authored | Elements in its document |
+|---|---:|---:|---:|---:|---:|---:|
+| A UI frame with nothing changed | 1.16-1.26 | 0.80-0.97 | 0.63-0.84x | 0 | 0 / 0 | 877 / 1,169 |
+| Select another element | 3.65-3.73 | 4.56-5.15 | 1.2-1.4x | 1,406 | 4 / 4 | 769 / 1,009 |
+| Select another button (same rule, same rows) | 3.27-3.54 | 4.41-4.95 | 1.35-1.45x | 904 | 4 / 4 | 736 / 901 |
+| Write the root's inline width (re-parses, rewrites Details) | 1.74-1.86 | 1.41-1.59 | 0.76-0.86x | 333 | 0 / 0 | 864 / 1,118 |
+
+The first build of this wave, over `3160b5f9`, measured a selection at 1.6x
+the kit's (7.1 against 4.4 ms): the Hierarchy's row menu, its Add menus and
+Details' Add popover stayed built while closed. The integration branch's
+`data-template` Menu and Submenu mount them only while open, which took it to
+the table's ratio. What remains is Details. Measured before that merge, with
+Details's sync skipped a selection cost 2.6 ms and read 218 views, so Details
+was about 1,400 of its 1,600 reads and two thirds of its time. Every view
+under `details`, one variable, is evaluated on a selection. The cost is the
+row structure, not a widget: one `data-attr` on any element inside a row's
+`data-when` branch adds about 260 reads to a selection, whatever it binds and
+however many follow it, where the same branch with no view adds none
+(swapping the color field for a `<span>` with one attribute reproduces it),
+while an edit that changes one value stays at 333 views and no layout. Not
+explained; the data model's owner may know. A selection is a 1 to 2 ms frame
+above the kit's.
+
+Open: Details's JSON builders are the largest part of the C that remains and
+could shrink with a table-driven row shape. The Canvas keeps its guides in the
+kit's immediate mode. Observed in shared code, not changed here: EnumField's
+list is only as wide as its value; `data-for` leaves its hidden template as a
+sibling, so `:last-child` never matches the last generated row; margins
+collapse between siblings but not through a `use` wrapper's first child.
 
 ### Wave 5: removal
 

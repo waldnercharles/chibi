@@ -172,5 +172,3 @@ body > .area { height: 100%; }
 .designer-handle.e { cursor: ew-resize; }
 .designer-handle.s { cursor: ns-resize; }
 .designer-handle.se { cursor: nwse-resize; }
-/* The Library's comfortable tiles (Library.rcss has the rest). */
-body.comfortable .designer-tile { width: 86dp; height: 62dp; }

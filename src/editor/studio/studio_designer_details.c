@@ -9,6 +9,10 @@
  * moves the inline style into a new rule (workstream Q). With nothing
  * selected, Details lists every rule of the document's RCSS.
  *
+ * This file shapes data for the panel and turns its controls into calls;
+ * what a value is, what the document holds and each change to it are
+ * capabilities in plain C (studio_designer_edit.h), with no decisions here.
+ *
  * Details.rml and DetailsHeader.rml bind two sources. `details` holds the
  * panels, each a head and rows (the shape the panel builds one control from):
  *
@@ -35,249 +39,18 @@
  * kind and a target; .addPick and .addEnter add what it names; .fold a
  * panel; .source and .openRule open the Text Editor; .choices a keyword
  * list; .cancel puts a text field back. */
-#include "editor/studio/studio_designer_internal.h"
-#include "render/ui_check.h"
+#include "editor/studio/studio_designer_edit.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "ui/popover.h"
 
 #include <assert.h>
 #include <ctype.h>
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
-/* Suggestions an Add popover lists at once. */
-#define SUGGESTIONS 12
-
-/* ---------- Property types ---------- */
-
-typedef enum
-{
-    VALUE_TEXT,
-    VALUE_LENGTH,
-    VALUE_NUMBER,
-    VALUE_COLOR,
-    VALUE_KEYWORD,
-} value_kind;
-
-typedef struct
-{
-    const char *name;
-    value_kind kind;
-    const char *const *keywords;
-    int count;
-} property_type;
-
-#define KEYWORDS(list) list, (int)(sizeof list / sizeof *list)
-
-static const char *const DISPLAY[] = { "none",         "block", "inline",
-                                       "inline-block", "flex",  "inline-flex",
-                                       "table" };
-static const char *const POSITION[] = { "static", "relative", "absolute", "fixed" };
-static const char *const FLEX_DIRECTION[] = { "row", "row-reverse", "column", "column-reverse" };
-static const char *const FLEX_WRAP[] = { "nowrap", "wrap", "wrap-reverse" };
-static const char *const JUSTIFY[] = { "flex-start",   "flex-end",
-                                       "center",       "space-between",
-                                       "space-around", "space-evenly" };
-static const char *const ALIGN_ITEMS[] = { "flex-start", "flex-end", "center", "baseline", "stretch" };
-static const char *const ALIGN_SELF[] = { "auto",   "flex-start", "flex-end",
-                                          "center", "baseline",   "stretch" };
-static const char *const TEXT_ALIGN[] = { "left", "center", "right", "justify" };
-static const char *const OVERFLOW_MODES[] = { "visible", "hidden", "auto", "scroll" };
-static const char *const VISIBILITY[] = { "visible", "hidden" };
-static const char *const WHITE_SPACE[] = { "normal", "pre", "nowrap", "pre-wrap", "pre-line" };
-static const char *const FONT_STYLE[] = { "normal", "italic" };
-static const char *const FONT_WEIGHT[] = { "normal", "bold", "100", "200",
-                                           "300",    "400",  "500", "600",
-                                           "700",    "800",  "900" };
-static const char *const TEXT_TRANSFORM[] = { "none", "capitalize", "uppercase", "lowercase" };
-static const char *const TEXT_DECORATION[] = { "none", "underline", "overline", "line-through" };
-static const char *const TEXT_OVERFLOW[] = { "clip", "ellipsis" };
-static const char *const POINTER_EVENTS[] = { "auto", "none" };
-static const char *const BOX_SIZING[] = { "content-box", "border-box" };
-
-/* RCSS properties by the control their values take (RmlUi's property
- * reference); others edit as text. */
-static const property_type TYPES[] = {
-    { "width", VALUE_LENGTH },
-    { "height", VALUE_LENGTH },
-    { "min-width", VALUE_LENGTH },
-    { "max-width", VALUE_LENGTH },
-    { "min-height", VALUE_LENGTH },
-    { "max-height", VALUE_LENGTH },
-    { "left", VALUE_LENGTH },
-    { "top", VALUE_LENGTH },
-    { "right", VALUE_LENGTH },
-    { "bottom", VALUE_LENGTH },
-    { "margin", VALUE_LENGTH },
-    { "margin-top", VALUE_LENGTH },
-    { "margin-right", VALUE_LENGTH },
-    { "margin-bottom", VALUE_LENGTH },
-    { "margin-left", VALUE_LENGTH },
-    { "padding", VALUE_LENGTH },
-    { "padding-top", VALUE_LENGTH },
-    { "padding-right", VALUE_LENGTH },
-    { "padding-bottom", VALUE_LENGTH },
-    { "padding-left", VALUE_LENGTH },
-    { "border-width", VALUE_LENGTH },
-    { "border-top-width", VALUE_LENGTH },
-    { "border-right-width", VALUE_LENGTH },
-    { "border-bottom-width", VALUE_LENGTH },
-    { "border-left-width", VALUE_LENGTH },
-    { "border-radius", VALUE_LENGTH },
-    { "font-size", VALUE_LENGTH },
-    { "line-height", VALUE_LENGTH },
-    { "gap", VALUE_LENGTH },
-    { "row-gap", VALUE_LENGTH },
-    { "column-gap", VALUE_LENGTH },
-    { "letter-spacing", VALUE_LENGTH },
-    { "flex-basis", VALUE_LENGTH },
-    { "opacity", VALUE_NUMBER },
-    { "flex-grow", VALUE_NUMBER },
-    { "flex-shrink", VALUE_NUMBER },
-    { "z-index", VALUE_NUMBER },
-    { "color", VALUE_COLOR },
-    { "background-color", VALUE_COLOR },
-    { "border-color", VALUE_COLOR },
-    { "border-top-color", VALUE_COLOR },
-    { "border-right-color", VALUE_COLOR },
-    { "border-bottom-color", VALUE_COLOR },
-    { "border-left-color", VALUE_COLOR },
-    { "image-color", VALUE_COLOR },
-    { "display", VALUE_KEYWORD, KEYWORDS(DISPLAY) },
-    { "position", VALUE_KEYWORD, KEYWORDS(POSITION) },
-    { "flex-direction", VALUE_KEYWORD, KEYWORDS(FLEX_DIRECTION) },
-    { "flex-wrap", VALUE_KEYWORD, KEYWORDS(FLEX_WRAP) },
-    { "justify-content", VALUE_KEYWORD, KEYWORDS(JUSTIFY) },
-    { "align-content", VALUE_KEYWORD, KEYWORDS(JUSTIFY) },
-    { "align-items", VALUE_KEYWORD, KEYWORDS(ALIGN_ITEMS) },
-    { "align-self", VALUE_KEYWORD, KEYWORDS(ALIGN_SELF) },
-    { "text-align", VALUE_KEYWORD, KEYWORDS(TEXT_ALIGN) },
-    { "overflow", VALUE_KEYWORD, KEYWORDS(OVERFLOW_MODES) },
-    { "overflow-x", VALUE_KEYWORD, KEYWORDS(OVERFLOW_MODES) },
-    { "overflow-y", VALUE_KEYWORD, KEYWORDS(OVERFLOW_MODES) },
-    { "visibility", VALUE_KEYWORD, KEYWORDS(VISIBILITY) },
-    { "white-space", VALUE_KEYWORD, KEYWORDS(WHITE_SPACE) },
-    { "font-style", VALUE_KEYWORD, KEYWORDS(FONT_STYLE) },
-    { "font-weight", VALUE_KEYWORD, KEYWORDS(FONT_WEIGHT) },
-    { "text-transform", VALUE_KEYWORD, KEYWORDS(TEXT_TRANSFORM) },
-    { "text-decoration", VALUE_KEYWORD, KEYWORDS(TEXT_DECORATION) },
-    { "text-overflow", VALUE_KEYWORD, KEYWORDS(TEXT_OVERFLOW) },
-    { "pointer-events", VALUE_KEYWORD, KEYWORDS(POINTER_EVENTS) },
-    { "box-sizing", VALUE_KEYWORD, KEYWORDS(BOX_SIZING) },
-};
-
-static const property_type *type_of(const char *property)
-{
-    for (size_t i = 0; i < sizeof TYPES / sizeof *TYPES; i++) {
-        if (!strcmp(TYPES[i].name, property)) {
-            return &TYPES[i];
-        }
-    }
-    return NULL;
-}
-
-/* ---------- Values ---------- */
-
-/* A number and its unit alone, as "12dp", "50%" or "0.5". */
-static bool parse_number(const char *value, double *number, char *unit, size_t size)
-{
-    char *end;
-    *number = strtod(value, &end);
-    const char *start = end;
-    while (isalpha((unsigned char)*end) || *end == '%') {
-        end++;
-    }
-    size_t length = (size_t)(end - start);
-    if (start == value || *end || length >= size || !isfinite(*number)) {
-        return false;
-    }
-    snprintf(unit, size, "%.*s", (int)length, start);
-    return true;
-}
-
-static void format_value(char *out, size_t size, double value, int precision, const char *unit)
-{
-    char number[48];
-    snprintf(number, sizeof number, "%.*f", precision, value);
-    size_t length = strlen(number);
-    while (strchr(number, '.') &&
-           (number[length - 1] == '0' || number[length - 1] == '.')) {
-        number[--length] = '\0';
-    }
-    snprintf(out, size, "%s%s", strcmp(number, "-0") ? number : "0", unit);
-}
-
-static int hex_digit(char c)
-{
-    return isdigit((unsigned char)c)  ? c - '0'
-         : isxdigit((unsigned char)c) ? tolower((unsigned char)c) - 'a' + 10
-                                      : -1;
-}
-
-/* #rgb, #rgba, #rrggbb or #rrggbbaa as 0xRRGGBBAA. */
-static bool parse_color(const char *value, uint32_t *rgba)
-{
-    size_t digits = value[0] == '#' ? strlen(value + 1) : 0;
-    if (digits != 3 && digits != 4 && digits != 6 && digits != 8) {
-        return false;
-    }
-    bool shorthand = digits <= 4;
-    uint32_t color = 0;
-    for (size_t i = 1; i <= digits; i++) {
-        int v = hex_digit(value[i]);
-        if (v < 0) {
-            return false;
-        }
-        color = shorthand ? color << 8 | (uint32_t)(v * 17)
-                          : color << 4 | (uint32_t)v;
-    }
-    *rgba = digits == 3 || digits == 6 ? color << 8 | 0xffu : color;
-    return true;
-}
-
-static void format_color(char *out, size_t size, uint32_t rgba)
-{
-    if ((rgba & 0xffu) == 0xffu) {
-        snprintf(out, size, "#%06x", (unsigned)(rgba >> 8));
-    } else {
-        snprintf(out, size, "#%08x", (unsigned)rgba);
-    }
-}
-
-/* A property's control: its type's, or for a custom property its value's. */
-static value_kind kind_of(const char *property, const char *value, const property_type **type)
-{
-    *type = type_of(property);
-    uint32_t color;
-    double number;
-    char unit[8];
-    bool custom = !strncmp(property, "--", 2);
-    return *type                                ? (*type)->kind
-         : custom && parse_color(value, &color) ? VALUE_COLOR
-         : custom && parse_number(value, &number, unit, sizeof unit) ? VALUE_LENGTH
-                                                                     : VALUE_TEXT;
-}
-
-static const char *default_value(const char *property)
-{
-    const property_type *type = type_of(property);
-    switch (type ? type->kind : VALUE_TEXT) {
-        case VALUE_LENGTH: return "0dp";
-        case VALUE_NUMBER: return strcmp(property, "opacity") ? "0" : "1";
-        case VALUE_COLOR: return "#ffffff";
-        case VALUE_KEYWORD: return type->keywords[0];
-        case VALUE_TEXT: break;
-    }
-    return "none";
-}
-
-/* ---------- The document's side ---------- */
-
-/* What the Add popover's suggestions and a change work on. */
+/* What an intent works on. */
 typedef struct
 {
     studio *s;
@@ -285,51 +58,7 @@ typedef struct
     ui_buffer *b;
 } details;
 
-static const ui_source_attribute *attribute_of(const ui_source *rml, int element, const char *name)
-{
-    const ui_source_element *el = &rml->elements[element];
-    for (int i = 0; i < acount(el->attributes); i++) {
-        const ui_source_attribute *a = &el->attributes[i];
-        if ((size_t)(a->name_end - a->name_start) == strlen(name) &&
-            !strncmp(rml->text + a->name_start, name, strlen(name))) {
-            return a;
-        }
-    }
-    return NULL;
-}
-
-/* An attribute's value as written, which writes back unchanged. */
-static void written_value(const ui_source *rml, const ui_source_attribute *a, char *out, size_t size)
-{
-    int length = a && a->value_start >= 0 ? a->value_end - a->value_start : 0;
-    snprintf(out, size, "%.*s", length, length ? rml->text + a->value_start : "");
-}
-
-static void attribute_name(const ui_source *rml, const ui_source_attribute *a, char *out, size_t size)
-{
-    snprintf(out, size, "%.*s", a->name_end - a->name_start, rml->text + a->name_start);
-}
-
-/* Rows of their own show these. */
-static bool own_row(const char *tag, const char *name)
-{
-    return !strcmp(name, "id") || !strcmp(name, "class") ||
-           !strcmp(name, "style") || (!strcmp(tag, "use") && !strcmp(name, "ui"));
-}
-
 /* ---------- Add popovers ---------- */
-
-/* What an Add popover adds to: the element, or for a declaration its rule
- * (workstream Q); Extract to Class names the class the inline style moves
- * to. */
-typedef enum
-{
-    ADD_CLASS,
-    ADD_ATTRIBUTE,
-    ADD_STYLE,
-    ADD_DECLARATION,
-    ADD_EXTRACT,
-} add_kind;
 
 static const char *const ADD_TITLES[] = {
     "Add Class",    "Add Attribute",    "Add Property",
@@ -339,188 +68,6 @@ static const char *const ADD_HINTS[] = {
     "Class name",      "name=value",     "property: value",
     "property: value", "New class name",
 };
-
-/* Attributes RmlUi documents take besides id, class and style. */
-static const char *const ATTRIBUTES[] = {
-    "data-if",      "data-when", "data-for",  "data-event-click", "data-value",
-    "data-checked", "data-keys", "autofocus", "placeholder",      "type",
-    "value",        "src",       "disabled",
-};
-
-static bool has_class(const char *classes, const char *name, size_t length)
-{
-    for (const char *c = classes ? classes : ""; *c;) {
-        size_t n = strcspn(c, " \t\n");
-        if (n == length && !strncmp(c, name, n)) {
-            return true;
-        }
-        c += n + (c[n] != '\0');
-    }
-    return false;
-}
-
-static bool name_char(char c)
-{
-    return isalnum((unsigned char)c) || c == '-' || c == '_';
-}
-
-/* The classes the document's selectors name that the element lacks. */
-static void class_choices(const details *x, int element, char ***out)
-{
-    const ui_source_element *el = &x->d->rml->elements[element];
-    for (int r = 0; r < acount(x->d->rcss->rules); r++) {
-        for (const char *c = strchr(x->d->rcss->rules[r].selector, '.'); c;
-             c = strchr(c + 1, '.')) {
-            size_t n = 0;
-            while (name_char(c[1 + n])) {
-                n++;
-            }
-            char name[128];
-            snprintf(name, sizeof name, "%.*s", (int)n, c + 1);
-            if (n && !has_class(el->classes, name, n)) {
-                ui_source_list_add(out, name);
-            }
-        }
-    }
-}
-
-/* What an Add popover suggests for what is typed so far. */
-static char **suggestions(details *x, int element, add_kind kind)
-{
-    char **all = NULL, **matches = NULL;
-    if (kind == ADD_CLASS) {
-        class_choices(x, element, &all);
-    } else if (kind == ADD_ATTRIBUTE) {
-        for (size_t i = 0; i < sizeof ATTRIBUTES / sizeof *ATTRIBUTES; i++) {
-            if (!attribute_of(x->d->rml, element, ATTRIBUTES[i])) {
-                ui_source_list_add(&all, ATTRIBUTES[i]);
-            }
-        }
-    } else if (kind != ADD_EXTRACT) {
-        ui_check_property_names(&all);
-    }
-    for (int i = 0; i < acount(all); i++) {
-        if (studio_matches(x->d->add.text, all[i]) && acount(matches) < SUGGESTIONS) {
-            apush(matches, all[i]);
-        } else {
-            free(all[i]);
-        }
-    }
-    afree(all);
-    return matches;
-}
-
-/* "name=value", "property: value" or a name alone, split at `separator`. */
-static void split(const char *text, char separator, char *name, size_t name_size, char *value, size_t value_size)
-{
-    const char *at = strchr(text, separator);
-    int length = at ? (int)(at - text) : (int)strlen(text);
-    while (length > 0 && isspace((unsigned char)text[length - 1])) {
-        length--;
-    }
-    snprintf(name, name_size, "%.*s", length, text);
-    const char *rest = at ? at + 1 : "";
-    while (isspace((unsigned char)*rest) || *rest == '"') {
-        rest++;
-    }
-    snprintf(value, value_size, "%s", rest);
-    for (size_t n = strlen(value); n && (isspace((unsigned char)value[n - 1]) ||
-                                         value[n - 1] == '"' || value[n - 1] == ';');) {
-        value[--n] = '\0';
-    }
-}
-
-/* ---------- A value's control ---------- */
-
-/* What a property's value shows as: the control its type calls for, and
- * what that control reads. */
-typedef struct
-{
-    const char *control;       /* text, number, color, choice or toggle */
-    const property_type *type; /* a keyword's */
-    int keyword;               /* and which of them the value is */
-    char number[48], unit[8], color[16];
-    double step, min, max;
-    int precision;
-    bool integer, slider;
-} value_shape;
-
-static bool fine_unit(const char *unit)
-{
-    return !strcmp(unit, "em") || !strcmp(unit, "rem") || !strcmp(unit, "s");
-}
-
-/* A length scrubs with its unit, dp and percentages by ones, ems and
- * seconds by tenths, opacity as a slider. An unwritten unit reads as dp. A
- * value its type does not call a control for, as var(--x), is text. */
-static value_shape shape_of(const char *property, const char *value)
-{
-    value_shape v = { .control = "text", .min = -INFINITY, .max = INFINITY };
-    const property_type *type;
-    value_kind kind = kind_of(property, value, &type);
-    double number;
-    char unit[8];
-    uint32_t rgba;
-    if ((kind == VALUE_LENGTH || kind == VALUE_NUMBER) &&
-        parse_number(value, &number, unit, sizeof unit)) {
-        const char *shown_unit = unit[0] || kind != VALUE_LENGTH ? unit : "dp";
-        v.control = "number";
-        snprintf(v.number, sizeof v.number, "%.17g", number);
-        snprintf(v.unit, sizeof v.unit, "%s", shown_unit);
-        v.step = fine_unit(shown_unit) ? 0.1 : 1;
-        v.precision = 2;
-        v.integer = !strcmp(property, "z-index");
-        if (!strcmp(property, "opacity")) {
-            v.min = 0;
-            v.max = 1;
-            v.step = 0.01;
-            v.slider = true;
-        }
-    } else if (kind == VALUE_COLOR && parse_color(value, &rgba)) {
-        v.control = "color";
-        snprintf(v.color, sizeof v.color, "#%08x", (unsigned)rgba);
-    } else if (kind == VALUE_KEYWORD) {
-        for (int i = 0; i < type->count; i++) {
-            if (!strcmp(type->keywords[i], value)) {
-                v.control = type->count <= 3 ? "toggle" : "choice";
-                v.type = type;
-                v.keyword = i;
-            }
-        }
-    }
-    return v;
-}
-
-/* What a control sends back, as the text the document gets, for the value
- * `current`; false when it is not a value that control takes. */
-static bool value_text(const char *property, const char *current, const char *argument, char *out, size_t size)
-{
-    value_shape v = shape_of(property, current);
-    if (!strcmp(v.control, "number")) {
-        char *end;
-        double number = strtod(argument, &end);
-        if (end == argument || !isfinite(number)) {
-            return false;
-        }
-        format_value(out, size, number, v.precision, v.unit);
-        return true;
-    }
-    uint32_t rgba;
-    if (!strcmp(v.control, "color")) {
-        if (!parse_color(argument, &rgba)) {
-            return false;
-        }
-        format_color(out, size, rgba);
-        return true;
-    }
-    for (int i = 0; v.type && i < v.type->count; i++) {
-        if (!strcmp(v.type->keywords[i], argument)) {
-            snprintf(out, size, "%s", argument);
-            return true;
-        }
-    }
-    return false;
-}
 
 /* ---------- Data ---------- */
 
@@ -761,10 +308,10 @@ static void limit_text(char out[24], double limit)
 /* A keyword's choices: segments for up to three, else a list that holds only
  * the current one until it is opened (details.choices), so closed lists
  * build no elements. */
-static void keyword_row(rows *r, yyjson_mut_val *row, const char *id, const value_shape *shape)
+static void keyword_row(rows *r, yyjson_mut_val *row, const char *id, const designer_value_shape *shape)
 {
     view *v = r->v;
-    const property_type *type = shape->type;
+    const designer_property_type *type = shape->type;
     put_text(v, row, "value", type->keywords[shape->keyword]);
     if (type->count <= 3) {
         yyjson_mut_val *options = member(row, "options");
@@ -807,7 +354,7 @@ static void keyword_row(rows *r, yyjson_mut_val *row, const char *id, const valu
 static void value_row(rows *r, const char *id, const char *property, const char *value)
 {
     view *v = r->v;
-    value_shape shape = shape_of(property, value);
+    designer_value_shape shape = designer_value_shape_of(property, value);
     yyjson_mut_val *row = next_row(r, id, property, shape.control);
     put_flag(v, row, "remove", true);
     put_text(v, row, "text", value);
@@ -863,23 +410,9 @@ static void widget_row(rows *r, int element)
         return;
     }
     char value[128];
-    written_value(v->d->rml, attribute_of(v->d->rml, element, "ui"), value, sizeof value);
+    designer_attribute_text(v->d->rml, designer_attribute(v->d->rml, element, "ui"), value, sizeof value);
     yyjson_mut_val *row = next_row(r, "widget", "widget", "asset");
     put_text(v, row, "text", value);
-}
-
-/* The text of an element holding text alone, without the space around it. */
-static void element_text(const ui_source *rml, int element, char *out, size_t size)
-{
-    const ui_source_element *el = &rml->elements[element];
-    int start = el->open_end, end = el->close_start;
-    while (start < end && isspace((unsigned char)rml->text[start])) {
-        start++;
-    }
-    while (end > start && isspace((unsigned char)rml->text[end - 1])) {
-        end--;
-    }
-    snprintf(out, size, "%.*s", end - start, rml->text + start);
 }
 
 static void element_text_row(rows *r, int element)
@@ -889,7 +422,7 @@ static void element_text_row(rows *r, int element)
         return;
     }
     char text[512];
-    element_text(v->d->rml, element, text, sizeof text);
+    designer_element_text(v->d->rml, element, text, sizeof text);
     text_row(r, "text", "text", text, "None", false);
 }
 
@@ -900,7 +433,7 @@ static void id_row(rows *r, int element)
         return;
     }
     char value[128];
-    written_value(v->d->rml, attribute_of(v->d->rml, element, "id"), value, sizeof value);
+    designer_attribute_text(v->d->rml, designer_attribute(v->d->rml, element, "id"), value, sizeof value);
     text_row(r, "id", "id", value, "None", false);
 }
 
@@ -953,9 +486,10 @@ static void attributes_section(view *v, int element)
     for (int i = 0; i < acount(el->attributes); i++) {
         const ui_source_attribute *a = &el->attributes[i];
         char name[128], value[512];
-        attribute_name(rml, a, name, sizeof name);
-        written_value(rml, a, value, sizeof value);
-        if (!own_row(el->tag, name) && !ui_source_is_binding(name, (int)strlen(name))) {
+        designer_attribute_name(rml, a, name, sizeof name);
+        designer_attribute_text(rml, a, value, sizeof value);
+        if (!designer_own_attribute(el->tag, name) &&
+            !ui_source_is_binding(name, (int)strlen(name))) {
             attribute_row(&r, i, name, value);
         }
     }
@@ -982,8 +516,8 @@ static void bindings_section(view *v, int element)
     for (int i = 0; i < acount(el->attributes); i++) {
         const ui_source_attribute *a = &el->attributes[i];
         char name[128], value[512];
-        attribute_name(rml, a, name, sizeof name);
-        written_value(rml, a, value, sizeof value);
+        designer_attribute_name(rml, a, name, sizeof name);
+        designer_attribute_text(rml, a, value, sizeof value);
         if (ui_source_is_binding(name, (int)strlen(name))) {
             attribute_row(&r, i, name, value);
         }
@@ -993,40 +527,9 @@ static void bindings_section(view *v, int element)
 
 /* ---------- Inline style ---------- */
 
-typedef struct
-{
-    char property[128], value[256];
-} declaration;
-
-/* The inline style's declarations, in order, as `property: value` text. The
- * caller afrees the array. */
-static declaration *style_declarations(const ui_source *rml, int element)
-{
-    char style[1024];
-    written_value(rml, attribute_of(rml, element, "style"), style, sizeof style);
-    declaration *found = NULL;
-    for (const char *at = style; *at;) {
-        size_t length = strcspn(at, ";");
-        char text[512];
-        snprintf(text, sizeof text, "%.*s", (int)length, at);
-        at += length + (at[length] == ';');
-        declaration d;
-        split(text, ':', d.property, sizeof d.property, d.value, sizeof d.value);
-        const char *name = d.property;
-        while (isspace((unsigned char)*name)) {
-            name++;
-        }
-        if (name[0]) {
-            memmove(d.property, name, strlen(name) + 1);
-            apush(found, d);
-        }
-    }
-    return found;
-}
-
 static void style_section(view *v, int element)
 {
-    declaration *styles = style_declarations(v->d->rml, element);
+    designer_declaration *styles = designer_style_declarations(v->d->rml, element);
     rows r = begin_section(v, "style", "Inline Style", "style");
     for (int i = 0; i < acount(styles); i++) {
         if (listed(v, styles[i].property)) {
@@ -1045,157 +548,6 @@ static void style_section(view *v, int element)
 }
 
 /* ---------- Rules ---------- */
-
-/* Past a pseudo class, as :hover or :not(...), or an attribute test. */
-static int skip_test(const char *text, int at, int end, char kind)
-{
-    if (kind == '[') {
-        while (at < end && text[at] != ']') {
-            at++;
-        }
-        return at + (at < end);
-    }
-    at += at < end && text[at] == ':';
-    while (at < end && name_char(text[at])) {
-        at++;
-    }
-    for (int depth = 0; at < end && (depth || text[at] == '(');) {
-        depth += (text[at] == '(') - (text[at] == ')');
-        at++;
-    }
-    return at;
-}
-
-/* Whether a compound selector's tag, id and classes all hold for the
- * element. Pseudo classes and attribute tests are left out, so a rule for
- * a state, as :hover, shows too. */
-static bool compound_matches(const char *text, int start, int end, const ui_source_element *el)
-{
-    int at = start;
-    while (at < end && name_char(text[at])) {
-        at++;
-    }
-    bool named = at > start;
-    if (named && ((size_t)(at - start) != strlen(el->tag) ||
-                  strncasecmp(text + start, el->tag, (size_t)(at - start)))) {
-        return false;
-    }
-    if (!named && at < end && text[at] == '*') {
-        named = true;
-        at++;
-    }
-    while (at < end) {
-        char kind = text[at++];
-        if (kind == ':' || kind == '[') {
-            at = skip_test(text, at, end, kind);
-            continue;
-        }
-        int name = at;
-        while (at < end && name_char(text[at])) {
-            at++;
-        }
-        size_t length = (size_t)(at - name);
-        bool holds = kind == '.' ? has_class(el->classes, text + name, length)
-                   : kind == '#' ? el->id && strlen(el->id) == length &&
-                                       !strncmp(el->id, text + name, length)
-                                 : false;
-        if (!holds || !length) {
-            return false;
-        }
-        named = true;
-    }
-    return named;
-}
-
-/* One compound of a selector and the combinator before it: ' ', '>', '+',
- * '~', or 0 for the first. */
-typedef struct
-{
-    int start, end;
-    char combinator;
-} compound;
-
-enum
-{
-    COMPOUNDS = 16,
-};
-
-static int split_compounds(const char *text, int start, int end, compound *out)
-{
-    int count = 0;
-    char combinator = 0;
-    for (int at = start; at < end && count < COMPOUNDS;) {
-        if (text[at] == ' ' || strchr(">+~", text[at])) {
-            combinator = text[at] == ' ' && combinator ? combinator : text[at];
-            at++;
-            continue;
-        }
-        int from = at;
-        for (int depth = 0; at < end && (depth || !strchr(" >+~", text[at])); at++) {
-            depth += (text[at] == '(' || text[at] == '[') -
-                     (text[at] == ')' || text[at] == ']');
-        }
-        out[count] = (compound){ from, at, count ? combinator : 0 };
-        count++;
-        combinator = 0;
-    }
-    return count;
-}
-
-/* `body` in a document's RCSS names its host, above all its elements. */
-static bool host(const char *text, const compound *c)
-{
-    return c->end - c->start >= 4 && !strncmp(text + c->start, "body", 4) &&
-           !name_char(text[c->start + 4]);
-}
-
-/* Whether compounds [0, last] match `element` and its ancestors, right to
- * left. Sibling combinators are not checked, and a widget's own elements
- * between a <use> and its slot's content are not in the markup. */
-static bool matches_at(const ui_source *rml, const char *text, const compound *c, int last, int element)
-{
-    if (host(text, &c[last])) {
-        return true;
-    }
-    if (element < 0 ||
-        !compound_matches(text, c[last].start, c[last].end, &rml->elements[element])) {
-        return false;
-    }
-    if (last == 0 || c[last].combinator == '+' || c[last].combinator == '~') {
-        return true;
-    }
-    int parent = rml->elements[element].parent;
-    if (c[last].combinator == '>') {
-        return matches_at(rml, text, c, last - 1, parent);
-    }
-    for (int a = parent; a >= 0; a = rml->elements[a].parent) {
-        if (matches_at(rml, text, c, last - 1, a)) {
-            return true;
-        }
-    }
-    return host(text, &c[last - 1]);
-}
-
-/* Whether one of the selector's comma-separated selectors matches the
- * element in the markup. */
-static bool rule_matches(const ui_source *rml, const char *selector, int element)
-{
-    int length = (int)strlen(selector);
-    for (int start = 0; start < length;) {
-        int end = start;
-        for (int depth = 0; end < length && (selector[end] != ',' || depth); end++) {
-            depth += (selector[end] == '(') - (selector[end] == ')');
-        }
-        compound c[COMPOUNDS];
-        int count = split_compounds(selector, start, end, c);
-        if (count && !host(selector, &c[count - 1]) &&
-            matches_at(rml, selector, c, count - 1, element)) {
-            return true;
-        }
-        start = end + 1;
-    }
-    return false;
-}
 
 static void declaration_row(rows *r, int rule, int index)
 {
@@ -1244,7 +596,7 @@ static int rules(view *v, int element)
     for (int r = 0; r < acount(rcss->rules); r++) {
         const char *selector = rcss->rules[r].selector;
         if (selector[0] != '@' &&
-            (element < 0 || rule_matches(v->d->rml, selector, element))) {
+            (element < 0 || designer_rule_matches(v->d->rml, selector, element))) {
             rule_section(v, r);
             count++;
         }
@@ -1401,12 +753,12 @@ bool studio_details_popover_sync(studio *s, const studio_panel_sync *at)
                                         .kind = d->add.kind,
                                         .target = d->add.target };
     snprintf(seen->text, sizeof seen->text, "%s", d->add.text);
-    details x = { .s = s, .d = d, .b = b };
-    bool element_target = d->add.kind != ADD_DECLARATION;
-    int bound = element_target ? acount(d->rml->elements) : acount(d->rcss->rules);
-    char **choices = d->add.target >= 0 && d->add.target < bound
-                       ? suggestions(&x, d->add.target, (add_kind)d->add.kind)
-                       : NULL;
+    char **choices = designer_suggestions(
+        d,
+        d->add.target,
+        (designer_add_kind)d->add.kind,
+        d->add.text
+    );
     yyjson_mut_val *list = member(add, "suggestions");
     view v = { .s = s, .d = d, .b = b, .doc = at->doc };
     for (int i = 0; i < acount(choices); i++) {
@@ -1420,46 +772,29 @@ bool studio_details_popover_sync(studio *s, const studio_panel_sync *at)
 
 /* ---------- Intents ---------- */
 
-/* What a row's id names. */
-typedef enum
+/* The target a row's id names: "a<i>" an attribute, "id", "text", "widget",
+ * "s:<property>" an inline property, "d<rule>.<declaration>". */
+static bool parse_ref(const char *id, designer_target *t)
 {
-    REF_NONE,
-    REF_ATTRIBUTE,
-    REF_ID,
-    REF_TEXT,
-    REF_WIDGET,
-    REF_STYLE,
-    REF_DECLARATION,
-} ref_kind;
-
-typedef struct
-{
-    ref_kind kind;
-    int index, rule;
-    char property[128];
-} row_ref;
-
-static bool parse_ref(const char *id, row_ref *r)
-{
-    *r = (row_ref){ 0 };
+    *t = (designer_target){ 0 };
     if (!strcmp(id, "id")) {
-        r->kind = REF_ID;
+        t->kind = DESIGNER_TARGET_ID;
     } else if (!strcmp(id, "text")) {
-        r->kind = REF_TEXT;
+        t->kind = DESIGNER_TARGET_TEXT;
     } else if (!strcmp(id, "widget")) {
-        r->kind = REF_WIDGET;
+        t->kind = DESIGNER_TARGET_WIDGET;
     } else if (id[0] == 'a' && isdigit((unsigned char)id[1])) {
-        r->kind = REF_ATTRIBUTE;
-        r->index = atoi(id + 1);
+        t->kind = DESIGNER_TARGET_ATTRIBUTE;
+        t->index = atoi(id + 1);
     } else if (!strncmp(id, "s:", 2)) {
-        r->kind = REF_STYLE;
-        snprintf(r->property, sizeof r->property, "%s", id + 2);
+        t->kind = DESIGNER_TARGET_STYLE;
+        snprintf(t->property, sizeof t->property, "%s", id + 2);
     } else if (id[0] == 'd' && isdigit((unsigned char)id[1])) {
-        r->kind = REF_DECLARATION;
-        r->kind = sscanf(id + 1, "%d.%d", &r->rule, &r->index) == 2 ? REF_DECLARATION
-                                                                    : REF_NONE;
+        t->kind = sscanf(id + 1, "%d.%d", &t->rule, &t->index) == 2
+                    ? DESIGNER_TARGET_DECLARATION
+                    : DESIGNER_TARGET_NONE;
     }
-    return r->kind != REF_NONE;
+    return t->kind != DESIGNER_TARGET_NONE;
 }
 
 static bool init(studio *s, details *x)
@@ -1469,146 +804,30 @@ static bool init(studio *s, details *x)
     return x->d != NULL;
 }
 
-/* The declaration of a rule `r` names, or NULL. */
-static const ui_source_declaration *declaration_of(const details *x, const row_ref *r)
+/* What a refused change warns of. */
+static const char *change_failure(designer_target_kind kind)
 {
-    const ui_source_rule *rules_ = x->d->rcss->rules;
-    if (r->rule < 0 || r->rule >= acount(x->d->rcss->rules) || r->index < 0 ||
-        r->index >= acount(rules_[r->rule].declarations)) {
-        return NULL;
-    }
-    return &rules_[r->rule].declarations[r->index];
-}
-
-/* The text a row's value is in the document now; false when it names
- * nothing there. */
-static bool ref_text(const details *x, const row_ref *r, char *out, size_t size)
-{
-    const ui_source *rml = x->d->rml;
-    int element = x->d->selected;
-    out[0] = '\0';
-    if (r->kind == REF_DECLARATION) {
-        const ui_source_declaration *d = declaration_of(x, r);
-        snprintf(
-            out,
-            size,
-            "%.*s",
-            d ? d->value_end - d->value_start : 0,
-            d ? x->d->rcss->text + d->value_start : ""
-        );
-        return d != NULL;
-    }
-    if (element < 0 || element >= acount(rml->elements)) {
-        return false;
-    }
-    const ui_source_element *el = &rml->elements[element];
-    switch (r->kind) {
-        case REF_ATTRIBUTE:
-            if (r->index >= acount(el->attributes)) {
-                return false;
-            }
-            written_value(rml, &el->attributes[r->index], out, size);
-            return true;
-        case REF_ID:
-            written_value(rml, attribute_of(rml, element, "id"), out, size);
-            return true;
-        case REF_WIDGET:
-            written_value(rml, attribute_of(rml, element, "ui"), out, size);
-            return true;
-        case REF_TEXT: element_text(rml, element, out, size); return true;
-        case REF_STYLE: {
-            declaration *styles = style_declarations(rml, element);
-            bool found = false;
-            for (int i = 0; i < acount(styles); i++) {
-                if (!strcmp(styles[i].property, r->property)) {
-                    snprintf(out, size, "%s", styles[i].value);
-                    found = true;
-                }
-            }
-            afree(styles);
-            return found;
-        }
-        default: return false;
+    switch (kind) {
+        case DESIGNER_TARGET_ATTRIBUTE: return "Could not change the attribute";
+        case DESIGNER_TARGET_ID: return "Could not change the id";
+        case DESIGNER_TARGET_TEXT: return "Could not change the text";
+        case DESIGNER_TARGET_WIDGET: return "Could not change the widget";
+        default: return "Could not change the value";
     }
 }
 
-static void warn(details *x, bool ok, const char *error, const char *failed)
+static const char *removal_failure(designer_target_kind kind)
 {
-    if (!ok) {
-        designer_warn(x->s, failed, error);
-    }
+    return kind == DESIGNER_TARGET_STYLE ? "Could not remove the property"
+         : kind == DESIGNER_TARGET_DECLARATION
+             ? "Could not remove the declaration"
+             : "Could not change the attribute";
 }
 
-/* A scrub's or a picker's changes to one value join one undo step while
- * nothing else changed the text between them. */
-typedef struct
+static void show(const details *x, designer_change result, const char *failure, const char *error)
 {
-    int element; /* -1 for a rule */
-    int rule, declaration;
-    char property[128];
-} value_target;
-
-static void gesture_key(const value_target *t, char *key, size_t size)
-{
-    snprintf(key, size, "%d:%d:%d:%s", t->element, t->rule, t->declaration, t->property);
-}
-
-static void write_value(details *x, const value_target *t, const char *text, bool committed)
-{
-    studio_designer *d = x->d;
-    char key[sizeof d->gesture.key];
-    gesture_key(t, key, sizeof key);
-    bool mine = !strcmp(d->gesture.key, key);
-    bool join = d->gesture.active && mine && d->gesture.revision == x->b->revision;
-    unsigned before = x->b->revision;
-    char error[192] = "";
-    bool ok = t->element >= 0
-                ? ui_design_set_style(x->b, t->element, t->property, text, join, error, sizeof error)
-                : ui_design_set_declaration(x->b, t->rule, t->declaration, text, join, error, sizeof error);
-    d->gesture.active = ok && !committed && (join || x->b->revision != before);
-    snprintf(d->gesture.key, sizeof d->gesture.key, "%s", key);
-    d->gesture.revision = x->b->revision;
-    warn(x, ok, error, "Could not change the value");
-}
-
-/* The target a style or declaration row names, with its property. */
-static bool value_target_of(const details *x, const row_ref *r, value_target *t)
-{
-    if (r->kind == REF_STYLE && x->d->selected >= 0) {
-        *t = (value_target){ x->d->selected, -1, -1, "" };
-        snprintf(t->property, sizeof t->property, "%s", r->property);
-        return true;
-    }
-    const ui_source_declaration *decl = r->kind == REF_DECLARATION
-                                          ? declaration_of(x, r)
-                                          : NULL;
-    if (!decl) {
-        return false;
-    }
-    *t = (value_target){ -1, r->rule, r->index, "" };
-    snprintf(
-        t->property,
-        sizeof t->property,
-        "%.*s",
-        decl->property_end - decl->property_start,
-        x->d->rcss->text + decl->property_start
-    );
-    return true;
-}
-
-/* A <use>'s widget, chosen among the project's ui assets; none is no
- * widget, which a <use> cannot do without. */
-static void choose_widget(details *x, const char *name)
-{
-    char current[128], error[192] = "";
-    int element = x->d->selected;
-    if (element < 0 || !name[0]) {
-        return;
-    }
-    written_value(x->d->rml, attribute_of(x->d->rml, element, "ui"), current, sizeof current);
-    if (strcmp(name, current)) {
-        bool ok = ui_design_set_attribute(x->b, element, "ui", name, error, sizeof error);
-        warn(x, ok, error, "Could not change the widget");
+    if (result == DESIGNER_REFUSED) {
+        designer_warn(x->s, failure, error);
     }
 }
 
@@ -1619,46 +838,21 @@ static void choose_widget(details *x, const char *name)
 static void gesture(studio *s, const ui_activation *a, bool active)
 {
     details x;
-    row_ref ref;
-    value_target t;
-    char current[256], text[256];
-    if (a->argc < 2 || !init(s, &x) || !parse_ref(a->args[0], &ref)) {
+    designer_target t;
+    char error[192] = "";
+    if (a->argc < 2 || !init(s, &x) || !parse_ref(a->args[0], &t)) {
         return;
     }
-    if (ref.kind == REF_WIDGET) {
-        choose_widget(&x, a->args[1]);
-        return;
-    }
-    if (!value_target_of(&x, &ref, &t) || !ref_text(&x, &ref, current, sizeof current)) {
-        return;
-    }
-    studio_designer *d = x.d;
-    char key[sizeof d->gesture.key];
-    gesture_key(&t, key, sizeof key);
-    bool mine = d->gesture.active && !strcmp(d->gesture.key, key);
     bool canceled = !active && a->argc > 2 && !strcmp(a->args[2], "1");
-    if (canceled) {
-        if (mine && d->gesture.revision == x.b->revision && ui_buffer_can_undo(x.b)) {
-            ui_buffer_undo(x.b);
-        }
-        d->gesture.active = false;
-        return;
-    }
-    if (!value_text(t.property, current, a->args[1], text, sizeof text)) {
-        return;
-    }
-    if (!strcmp(text, current)) {
-        d->gesture.active &= !(mine && !active);
-        return;
-    }
-    write_value(&x, &t, text, !active);
+    designer_change result = designer_set_value(x.d, x.b, &t, a->args[1], active, canceled, error, sizeof error);
+    show(&x, result, change_failure(t.kind), error);
 }
 
 /* A text field puts the document's text back and lets go. */
-static void settle(const details *x, rml_element *field, const row_ref *ref)
+static void settle(const details *x, rml_element *field, const designer_target *t)
 {
     char text[512];
-    if (field && ref_text(x, ref, text, sizeof text)) {
+    if (field && designer_target_text(x->d, t, text, sizeof text)) {
         rml_element_set_value(field, text);
     }
     if (field) {
@@ -1667,51 +861,23 @@ static void settle(const details *x, rml_element *field, const row_ref *ref)
 }
 
 /* A text field's commit: emit('details.text', row); the field holds the
- * text, which can be longer than an argument. */
+ * text, which can be longer than an argument. A name or text the document
+ * refuses goes back to what it was; a value stays beside its warning. */
 static void commit_text(studio *s, const ui_activation *a)
 {
     details x;
-    row_ref ref;
+    designer_target t;
     rml_element *field = a->anchor ? rml_element_ref_get(a->anchor) : NULL;
-    if (!field || !a->argc || !init(s, &x) || !parse_ref(a->args[0], &ref)) {
+    if (!field || !a->argc || !init(s, &x) || !parse_ref(a->args[0], &t)) {
         return;
     }
-    char text[4096], current[4096], error[192] = "";
+    char text[4096], error[192] = "";
     rml_element_value(field, text, sizeof text);
-    if (!ref_text(&x, &ref, current, sizeof current) || !strcmp(text, current)) {
-        return;
-    }
-    int element = x.d->selected;
-    bool ok = false;
-    switch (ref.kind) {
-        case REF_ATTRIBUTE: {
-            char name[128];
-            attribute_name(x.d->rml, &x.d->rml->elements[element].attributes[ref.index], name, sizeof name);
-            ok = ui_design_set_attribute(x.b, element, name, text, error, sizeof error);
-            warn(&x, ok, error, "Could not change the attribute");
-            break;
-        }
-        case REF_ID:
-            ok = ui_design_set_attribute(x.b, element, "id", text[0] ? text : NULL, error, sizeof error);
-            warn(&x, ok, error, "Could not change the id");
-            break;
-        case REF_TEXT:
-            ok = ui_design_set_text(x.b, element, text, error, sizeof error);
-            warn(&x, ok, error, "Could not change the text");
-            break;
-        case REF_STYLE:
-        case REF_DECLARATION: {
-            value_target t;
-            if (value_target_of(&x, &ref, &t)) {
-                write_value(&x, &t, text, true);
-                ok = true;
-            }
-            break;
-        }
-        default: break;
-    }
-    if (!ok) {
-        settle(&x, field, &ref);
+    designer_change result = designer_set_text(x.d, x.b, &t, text, error, sizeof error);
+    show(&x, result, change_failure(t.kind), error);
+    bool value = t.kind == DESIGNER_TARGET_STYLE || t.kind == DESIGNER_TARGET_DECLARATION;
+    if (result == DESIGNER_REFUSED && !value) {
+        settle(&x, field, &t);
     }
 }
 
@@ -1719,35 +885,12 @@ static void commit_text(studio *s, const ui_activation *a)
 static void remove_row(studio *s, const ui_activation *a)
 {
     details x;
-    row_ref ref;
-    char error[192] = "", name[128];
-    if (!a->argc || !init(s, &x) || !parse_ref(a->args[0], &ref)) {
+    designer_target t;
+    char error[192] = "";
+    if (!a->argc || !init(s, &x) || !parse_ref(a->args[0], &t)) {
         return;
     }
-    studio_designer *d = x.d;
-    int element = d->selected;
-    switch (ref.kind) {
-        case REF_ATTRIBUTE:
-            if (element >= 0 &&
-                ref.index < acount(d->rml->elements[element].attributes)) {
-                attribute_name(d->rml, &d->rml->elements[element].attributes[ref.index], name, sizeof name);
-                bool ok = ui_design_set_attribute(x.b, element, name, NULL, error, sizeof error);
-                warn(&x, ok, error, "Could not change the attribute");
-            }
-            break;
-        case REF_STYLE: {
-            bool ok = ui_design_set_style(x.b, element, ref.property, NULL, false, error, sizeof error);
-            warn(&x, ok, error, "Could not remove the property");
-            break;
-        }
-        case REF_DECLARATION:
-            if (declaration_of(&x, &ref)) {
-                bool ok = ui_design_remove_declaration(x.b, ref.rule, ref.index, error, sizeof error);
-                warn(&x, ok, error, "Could not remove the declaration");
-            }
-            break;
-        default: break;
-    }
+    show(&x, designer_remove_target(x.d, x.b, &t, error, sizeof error), removal_failure(t.kind), error);
 }
 
 /* The Add popover for `kind` and `target` (an element, or a rule for a
@@ -1777,52 +920,13 @@ static void open_add(studio *s, const ui_activation *a)
     popover_show(popover, &(popover_anchor){ .side = POPOVER_BELOW, .element = button, .trigger = button });
 }
 
-/* Adds what the popover's text names to `target`: the element, or a
- * declaration's rule. */
-static bool add_value(details *x, int target, add_kind kind, const char *text)
+/* Adds what the popover's text names; whether it did. */
+static bool add_value(const details *x, int target, designer_add_kind kind, const char *text)
 {
-    char name[128], value[256], error[192] = "";
-    bool element_target = kind != ADD_DECLARATION;
-    if (target < 0 || target >= (element_target ? acount(x->d->rml->elements)
-                                                : acount(x->d->rcss->rules))) {
-        return false;
-    }
-    bool ok = false;
-    switch (kind) {
-        case ADD_CLASS:
-            ok = ui_design_class(x->b, target, text, true, error, sizeof error);
-            break;
-        case ADD_ATTRIBUTE:
-            split(text, '=', name, sizeof name, value, sizeof value);
-            ok = ui_design_set_attribute(x->b, target, name, value, error, sizeof error);
-            break;
-        case ADD_STYLE:
-        case ADD_DECLARATION:
-            split(text, ':', name, sizeof name, value, sizeof value);
-            ok = kind == ADD_STYLE ? ui_design_set_style(
-                                         x->b,
-                                         target,
-                                         name,
-                                         value[0] ? value : default_value(name),
-                                         false,
-                                         error,
-                                         sizeof error
-                                     )
-                                   : ui_design_add_declaration(
-                                         x->b,
-                                         target,
-                                         name,
-                                         value[0] ? value : default_value(name),
-                                         error,
-                                         sizeof error
-                                     );
-            break;
-        case ADD_EXTRACT:
-            ok = ui_design_extract_class(x->b, target, text, error, sizeof error);
-            break;
-    }
-    warn(x, ok, error, ADD_TITLES[kind]);
-    return ok;
+    char error[192] = "";
+    designer_change result = designer_add_value(x->d, x->b, target, kind, text, error, sizeof error);
+    show(x, result, ADD_TITLES[kind], error);
+    return result == DESIGNER_CHANGED;
 }
 
 void studio_details_action(studio *s, const char *action, const ui_activation *a)
@@ -1841,7 +945,7 @@ void studio_details_action(studio *s, const char *action, const ui_activation *a
     } else if (!strcmp(action, "removeClass") && x.d->selected >= 0) {
         char error[192] = "";
         bool ok = ui_design_class(x.b, x.d->selected, arg, false, error, sizeof error);
-        warn(&x, ok, error, "Could not remove the class");
+        show(&x, ok ? DESIGNER_CHANGED : DESIGNER_REFUSED, "Could not remove the class", error);
     } else if (!strcmp(action, "add")) {
         open_add(s, a);
     } else if (!strcmp(action, "addPick") || !strcmp(action, "addEnter")) {
@@ -1854,7 +958,8 @@ void studio_details_action(studio *s, const char *action, const ui_activation *a
         }
         const char *text = field ? typed : arg;
         if (text[0] &&
-            add_value(&x, x.d->add.target, (add_kind)x.d->add.kind, text) && field) {
+            add_value(&x, x.d->add.target, (designer_add_kind)x.d->add.kind, text) &&
+            field) {
             rml_element *popover = rml_element_by_id(rml_element_owner_document(field), "details-add");
             if (popover) {
                 popover_hide(popover);
@@ -1876,10 +981,10 @@ void studio_details_action(studio *s, const char *action, const ui_activation *a
     } else if (!strcmp(action, "choices")) {
         snprintf(x.d->choosing, sizeof x.d->choosing, "%s", arg);
     } else if (!strcmp(action, "cancel")) {
-        row_ref ref;
+        designer_target t;
         rml_element *field = a->anchor ? rml_element_ref_get(a->anchor) : NULL;
-        if (parse_ref(a->id, &ref)) {
-            settle(&x, field, &ref);
+        if (parse_ref(a->id, &t)) {
+            settle(&x, field, &t);
         }
     }
 }

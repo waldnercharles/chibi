@@ -185,6 +185,7 @@ void test_rcss()
     expands(".a, .b { .c, .d { x: 1; } }", ".a .c, .a .d, .b .c, .b .d { x: 1; }\n");
     expands(":root { --a: 1; } :root .x, :rooted { y: 2; }", "body { --a: 1; }\nbody .x, :rooted { y: 2; }\n");
     expands("[data-x=\"a,b\"] { :not(.y, .z) { x: 1 } }", "[data-x=\"a,b\"] :not(.y, .z) { x: 1; }\n");
+    expands(".empty {}", "");
     expands("// line\n.a { /* block */ background: url(//x.png); // after\n content: \"//not\"; }", ".a { background: url(//x.png); content: \"//not\"; }\n");
     expands(".a { color: red; @media (theme: dark) { color: blue; .b { x: 1; } } }", ".a { color: red; }\n@media (theme: dark) {\n.a { color: blue; }\n.a .b { x: 1; }\n}\n");
     expands("@keyframes pulse { 0% { opacity: 0; } 100% { opacity: 1; } }\n.a { animation: 1s pulse; }", "@keyframes pulse { 0% { opacity: 0; } 100% { opacity: 1; } }\n.a { animation: 1s pulse; }\n");

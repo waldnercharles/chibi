@@ -196,6 +196,21 @@ void run_kdl_text_checks()
         );
         av_doc_free(doc);
     }
+    bool owned_properties = true;
+    for (int i = 0; i < 16; i++) {
+        doc = av_doc_read("n a=1 b=2\n", error, sizeof error);
+        if (!doc) {
+            owned_properties = false;
+            break;
+        }
+        av_value *copy = av_value_copy(av_doc_root(doc));
+        av_doc_free(doc);
+        av_value *node = av_obj_get(copy, "n");
+        owned_properties &= av_get_int(av_obj_get(node, "a")) == 1 &&
+                            av_get_int(av_obj_get(node, "b")) == 2;
+        av_value_free(copy);
+    }
+    test_check(owned_properties, "Owned KDL parses release transferred property names and preserve copied values");
     doc = av_value_read("\"hello\\nworld\"", error, sizeof error);
     test_check(
         doc && av_is_str(av_doc_root(doc)) &&

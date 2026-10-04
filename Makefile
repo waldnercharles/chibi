@@ -50,7 +50,7 @@ WEB_PROFILE_BUILD_DIR ?= build-web-profile
 WEB_THREADS_BUILD_DIR ?= build-web-threads
 WEB_WORKERS ?= 4
 WEB_CMAKE_FLAGS ?=
-FAST_BUILD_DIR ?= build-debug
+FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
 BUILD_TARGET ?= chibi chibi_ctl
 VERBOSE ?= 0
@@ -58,6 +58,36 @@ export VERBOSE
 MAKEFLAGS += --no-print-directory
 QUIET = python3 tools/quiet.py
 TEST_ARGS ?=
+TEST_JOBS ?= 4
+TEST_TIMINGS ?= 0
+TEST_TOOL_TARGETS = \
+	test-tool-kdl-assets \
+	test-tool-fetchcontent-cache \
+	test-tool-configure-cache \
+	test-tool-dependency-package \
+	test-tool-package-web \
+	test-tool-publish-web \
+	test-tool-package-native \
+	test-tool-install-game-runtime \
+	test-tool-runtime-update-build \
+	test-tool-quiet \
+	test-tool-workspaces \
+	test-tool-workspace-retirement \
+	test-tool-workspace-make \
+	test-tool-workspace-install \
+	test-tool-mcp-package \
+	test-tool-web-serve \
+	test-tool-web-workspace \
+	test-tool-web-storage \
+	test-tool-web-frames \
+	test-tool-web-isolation \
+	test-tool-collab-client
+
+ifneq ($(strip $(TEST_ARGS)),)
+ifneq ($(MAKECMDGOALS),test-fast)
+$(error TEST_ARGS is only supported with test-fast as the sole make goal)
+endif
+endif
 # Apple Clang 17 does not unregister ASan globals on dlclose. Use installed
 # upstream LLVM for native sanitized reload tests, without disabling checks.
 NATIVE_TOOLCHAIN_FLAGS ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++)
@@ -70,12 +100,13 @@ TRACY_MCP_PYTHON ?= python3
 SANITIZERS ?= address,undefined
 SANITIZER_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=ON -DCHIBI_SANITIZERS=$(SANITIZERS) -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
+FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # AddressSanitizer reserves a large shadow-memory range on macOS. Disable
 # Apple's nano allocator before starting instrumented native binaries so the
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web publish-web web-serial web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-fast test-render clean
+.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web publish-web web-serial web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render clean
 
 all: build
 
@@ -98,8 +129,13 @@ help:
 		'make build-tracy    Build native RelWithDebInfo with Tracy enabled' \
 		'make run-tracy      Run the native Tracy profile' \
 		'make tracy-mcp      Build and run the official Tracy MCP server' \
-		'make test           Run generation, MCP, runtime, and headless checks' \
-		'make test-fast TEST_ARGS=--graph-optimize  Run one focused plain Debug check' \
+		'make test           Run the complete tooling and native regression gate' \
+		'make test-fast TEST_ARGS=--graph-optimize  Run one focused native selector' \
+		'make test-list      List focused native selectors (builds test_suite)' \
+		'make test-tools     Run isolated tooling tests, bounded parallelism' \
+		'make test-slow      Run the complete native suite and function audit' \
+		'make test-full      Alias for the complete tooling and native gate' \
+		'make test-compiler-parity  Run focused behavior compiler parity checks' \
 		'make test-render    Run GPU previews and hidden-window checks' \
 		'make benchmark      Run optimized benchmarks with symbols' \
 		'make dev            Run the RelWithDebInfo source reload host' \
@@ -256,38 +292,82 @@ format:
 check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
-test:
-	@$(QUIET) kdl_asset_test.py -- python3 test/kdl_asset_test.py
-	@$(QUIET) fetchcontent_cache_test.py -- python3 test/fetchcontent_cache_test.py
-	@$(QUIET) configure_cache_test.py -- python3 test/configure_cache_test.py
-	@$(QUIET) dependency_package_test.py -- python3 test/dependency_package_test.py
-	@$(QUIET) package_web_test.py -- python3 test/package_web_test.py
-	@$(QUIET) publish_web_test.py -- python3 test/publish_web_test.py
-	@$(QUIET) package_native_test.py -- python3 test/package_native_test.py
-	@$(QUIET) install_game_runtime_test.py -- python3 test/install_game_runtime_test.py
-	@$(QUIET) runtime_update_build_test.py -- python3 test/runtime_update_build_test.py
-	@$(QUIET) quiet_test.py -- python3 test/quiet_test.py
-	@$(QUIET) workspaces_test.py -- python3 test/workspaces_test.py
-	@$(QUIET) workspace_retirement_test.py -- python3 test/workspace_retirement_test.py
-	@$(QUIET) workspace_make_test.py -- python3 test/workspace_make_test.py
-	@$(QUIET) workspace_install_test.py -- python3 test/workspace_install_test.py
-	@$(QUIET) mcp-package-tests -- node --test test/mcp_package_test.mjs
-	@$(QUIET) web_serve_test.py -- python3 test/web_serve_test.py
-	@$(QUIET) web_workspace_test.mjs -- node test/web_workspace_test.mjs
-	@$(QUIET) web_storage_test.mjs -- node test/web_storage_test.mjs
-	@$(QUIET) web_frames_test.mjs -- node test/web_frames_test.mjs
-	@$(QUIET) web_isolation_test.mjs -- node test/web_isolation_test.mjs
-	@$(QUIET) collab_client_test.mjs -- node test/collab_client_test.mjs
+test: test-full
+
+test-full: test-tools
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) $(BUILD_DIR)/test_suite
+	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
+	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
+
+.PHONY: $(TEST_TOOL_TARGETS)
+test-tools:
+	+@$(MAKE) --no-print-directory -j$(TEST_JOBS) $(TEST_TOOL_TARGETS)
+
+test-tool-kdl-assets:
+	@$(QUIET) kdl_asset_test.py -- python3 test/kdl_asset_test.py
+test-tool-fetchcontent-cache:
+	@$(QUIET) fetchcontent_cache_test.py -- python3 test/fetchcontent_cache_test.py
+test-tool-configure-cache:
+	@$(QUIET) configure_cache_test.py -- python3 test/configure_cache_test.py
+test-tool-dependency-package:
+	@$(QUIET) dependency_package_test.py -- python3 test/dependency_package_test.py
+test-tool-package-web:
+	@$(QUIET) package_web_test.py -- python3 test/package_web_test.py
+test-tool-publish-web:
+	@$(QUIET) publish_web_test.py -- python3 test/publish_web_test.py
+test-tool-package-native:
+	@$(QUIET) package_native_test.py -- python3 test/package_native_test.py
+test-tool-install-game-runtime:
+	@$(QUIET) install_game_runtime_test.py -- python3 test/install_game_runtime_test.py
+test-tool-runtime-update-build:
+	@$(QUIET) runtime_update_build_test.py -- python3 test/runtime_update_build_test.py
+test-tool-quiet:
+	@$(QUIET) quiet_test.py -- python3 test/quiet_test.py
+test-tool-workspaces:
+	@$(QUIET) workspaces_test.py -- python3 test/workspaces_test.py
+test-tool-workspace-retirement:
+	@$(QUIET) workspace_retirement_test.py -- python3 test/workspace_retirement_test.py
+test-tool-workspace-make:
+	@$(QUIET) workspace_make_test.py -- python3 test/workspace_make_test.py
+test-tool-workspace-install:
+	@$(QUIET) workspace_install_test.py -- python3 test/workspace_install_test.py
+test-tool-mcp-package:
+	@$(QUIET) mcp-package-tests -- node --test test/mcp_package_test.mjs
+test-tool-web-serve:
+	@$(QUIET) web_serve_test.py -- python3 test/web_serve_test.py
+test-tool-web-workspace:
+	@$(QUIET) web_workspace_test.mjs -- node test/web_workspace_test.mjs
+test-tool-web-storage:
+	@$(QUIET) web_storage_test.mjs -- node test/web_storage_test.mjs
+test-tool-web-frames:
+	@$(QUIET) web_frames_test.mjs -- node test/web_frames_test.mjs
+test-tool-web-isolation:
+	@$(QUIET) web_isolation_test.mjs -- node test/web_isolation_test.mjs
+test-tool-collab-client:
+	@$(QUIET) collab_client_test.mjs -- node test/collab_client_test.mjs
+
+test-slow:
+	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
+	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target test_suite --parallel $(JOBS)
+	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
 
 test-fast:
-	@test -n "$(strip $(TEST_ARGS))" || { printf '%s\n' 'Set TEST_ARGS to a test_suite selector, such as --graph-optimize'; exit 2; }
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(DEBUG_CMAKE_FLAGS)
+	@test -n "$(strip $(TEST_ARGS))" || { printf '%s\n' 'Set TEST_ARGS to a focused test_suite selector, such as --graph-optimize'; exit 2; }
+	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(FAST_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) "$(FAST_BUILD_DIR)/test_suite" $(TEST_ARGS)
+	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) "$(FAST_BUILD_DIR)/test_suite" $(TEST_ARGS)
+
+test-list:
+	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(FAST_CMAKE_FLAGS)
+	@$(QUIET) build -- cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
+	@env $(NATIVE_RUNTIME_ENV) "$(FAST_BUILD_DIR)/test_suite" --list-tests
+
+test-compiler-parity:
+	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
+	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-behavior-backend test_suite --parallel $(JOBS)
+	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/test_suite" --behavior-parity
 
 test-render:
 	@if [ "$(shell uname -s)" = Darwin ] && [ "$(CHIBI_ALLOW_DESKTOP_RENDER_TESTS)" != 1 ]; then \

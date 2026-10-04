@@ -78,6 +78,7 @@ typedef enum
     SHADER_TRIPLANAR_TEXTURE,
     SHADER_TRIPLANAR_TEXTURE_ALPHA,
     SHADER_DECAL_MASK,
+    SHADER_SAMPLED_SDF,
     SHADER_OP_COUNT
 } shader_op;
 enum
@@ -140,7 +141,9 @@ typedef struct
     int parameter;
     uint64_t source_id;
     shader_ramp_stop *ramp; /* Owned stop array for Color Ramp operations. */
-    int image;              /* Index into the graph's image sources. */
+    float volume_range,
+        volume_lipschitz; /* Sampled-SDF metadata; value.xyz is half size, parameter is resolution. */
+    int image; /* Index into the graph's image sources. */
 } shader_node;
 /* Compiled, topologically ordered GPU expression IR; authored graphs use the ordinary graph model. */
 typedef struct

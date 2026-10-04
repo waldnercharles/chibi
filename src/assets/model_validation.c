@@ -3,6 +3,7 @@
 #include "assets/model_source.h"
 #include "graph/document/problems.h"
 #include "render/shader_catalog.h"
+#include "render/shader_images.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -13,8 +14,20 @@ bool model_content_validate(const char *root, char *error, size_t size)
 {
     assert(root && error && size);
     error[0] = '\0';
+    bool owns_filesystem = !cf_fs_get_base_directory();
+    if (owns_filesystem) {
+        CF_Result initialized = cf_fs_init(NULL);
+        if (cf_is_error(initialized)) {
+            snprintf(error, size, "%s", initialized.details);
+            return false;
+        }
+        render_images_clear();
+    }
     model_source_catalog source;
     bool valid = model_source_load(root, &source, error, size);
+    if (valid) {
+        valid = render_image_mount_content(root, error, size);
+    }
     model_saved_source *saved = source.saved;
     int models = source.model_count;
     const behavior_asset **catalog = source.catalog;
@@ -72,5 +85,9 @@ bool model_content_validate(const char *root, char *error, size_t size)
         compile_report_free(&report);
     }
     model_source_free(&source);
+    if (owns_filesystem) {
+        render_images_clear();
+        cf_fs_destroy();
+    }
     return valid;
 }

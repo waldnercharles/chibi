@@ -73,6 +73,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/shader/shader_adapter.c
+    src/graph/shader/shader_volume.c
     src/graph/modeling/model_nodes.c
     src/graph/modeling/model_compile.c
     src/graph/modeling/model_expand.c

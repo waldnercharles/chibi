@@ -3430,6 +3430,10 @@ static void inspect_model_parameters(
     model_inspection inspection = { 0 };
     if (valid) {
         model_program_inspect(&program, &inspection);
+        yyjson_mut_val *images = yyjson_mut_obj_add_arr(doc, compilation, "image_dependencies");
+        for (int i = 0; i < acount(program.shader.images); i++) {
+            yyjson_mut_arr_add_strcpy(doc, images, program.shader.images[i].key);
+        }
         int public_slots = inspection.public_slots;
         int private_slots = inspection.private_slots;
         yyjson_mut_obj_add_int(
@@ -4946,6 +4950,9 @@ static int compile_project_graph(const char *root, const behavior_asset *asset, 
                      &program,
                      &error
                  );
+    if (valid) {
+        valid = render_image_validate_volumes(&program.shader, &error);
+    }
     model_program_free(&program);
     free_behavior_assets(models);
     if (!valid) {
@@ -11781,6 +11788,27 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
             return response_finish(&result);
         }
     }
+    scenario_context image_context = { 0 };
+    bool needs_images = root && (!strcmp(operation, "edit_graph") ||
+                                 !strcmp(operation, "optimize_graph") ||
+                                 !strcmp(operation, "rename_symbol") ||
+                                 !strcmp(operation, "delete_symbol") ||
+                                 !strcmp(operation, "edit_prototype") ||
+                                 !strcmp(operation, "edit_scene") ||
+                                 !strcmp(operation, "validate_asset") ||
+                                 !strcmp(operation, "inspect_graph") ||
+                                 !strcmp(operation, "bake_model"));
+    if (needs_images) {
+        char error[256] = { 0 };
+        int status = scenario_mount_content(root, &image_context, error, sizeof error);
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(&result, exit_code, status, error);
+            scenario_context_free(&image_context);
+            free(root);
+            yyjson_doc_free(document);
+            return response_finish(&result);
+        }
+    }
     if (!strcmp(operation, "edit_graph")) {
         handle_edit_graph(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "edit_prototype")) {
@@ -11842,6 +11870,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     } else {
         handle_describe_registry(root_value, &result, exit_code);
     }
+    scenario_context_free(&image_context);
     free(root);
     yyjson_doc_free(document);
     return response_finish(&result);

@@ -1,4 +1,5 @@
 #include "graph/modeling/model_internal.h"
+#include "graph/shader/shader_volume.h"
 #include "support/xalloc.h"
 
 #include <float.h>
@@ -36,7 +37,8 @@ static node_desc *const descriptors[] = { &NODE_ModelSphere,
                                           &NODE_ModelBeveledExtrude,
                                           &NODE_ModelOffset,
                                           &NODE_ModelShell,
-                                          &NODE_ModelTubeSweep };
+                                          &NODE_ModelTubeSweep,
+                                          &NODE_ModelSampledSdf };
 bool model_fail(shader_error *error, uint64_t id, const char *message)
 {
     if (error) {
@@ -144,6 +146,24 @@ bool model_validate_node(const graph *g, const node *n, shader_error *error)
         (!geometry_pin(&n->output_pins[0]) ||
          strcmp(n->output_pins[0].type_name, n->desc->outputs[0].type_name))) {
         return model_fail(error, n->id, "Model construction requires a Geometry3D output");
+    }
+    if (op == MODEL_SAMPLED_SDF) {
+        shader_node spec = { .parameter = n->input_pins[2].default_value.i,
+                             .volume_range = model_number(n, 3),
+                             .volume_lipschitz = model_number(n, 4) };
+        model_vector(n, 1, spec.value);
+        const char *key = n->input_pins[0].default_value.str;
+        const char *base = key ? strrchr(key, '/') : NULL;
+        bool identity = base && strlen(base + 1) == 24 &&
+                        !strcmp(base + 17, ".sdf.png");
+        for (int i = 1; identity && i <= 16; i++) {
+            identity = (base[i] >= '0' && base[i] <= '9') ||
+                       (base[i] >= 'a' && base[i] <= 'f');
+        }
+        if (!shader_volume_contract(&spec) || !key ||
+            strncmp(key, "content/", 8) || strstr(key, "..") || !identity) {
+            return model_fail(error, n->id, "Sampled SDF needs finite metadata and a content-relative .sdf.png atlas");
+        }
     }
     if (op == MODEL_SPHERE) {
         if (model_number(n, 0) <= 0) {
@@ -293,6 +313,13 @@ bool model_bounds_visit(compiler *c, const node *n, double threshold, bound *out
         if (!model_constructive_bounds(c, n, threshold, out)) {
             c->depth--;
             return false;
+        }
+    } else if (op == MODEL_SAMPLED_SDF) {
+        float half[3];
+        model_vector(n, 1, half);
+        for (int axis = 0; axis < 3; axis++) {
+            out->min[axis] = -half[axis] - fmax(0, threshold);
+            out->max[axis] = half[axis] + fmax(0, threshold);
         }
     } else if (op == MODEL_PART) {
         if (!model_bounds_visit(c, model_child(c->source, n, 0), threshold, out)) {
@@ -478,6 +505,17 @@ bool model_finite_program(
                 b = component_range(g, ranges, n->input[1], axis);
             }
             switch (n->op) {
+                case SHADER_SAMPLED_SDF: {
+                    double squared = 0;
+                    for (int j = 0; j < 3; j++) {
+                        interval p = component_range(g, ranges, n->input[0], j);
+                        double maximum = fmax(fabs(p.lo), fabs(p.hi)) + n->value[j];
+                        squared += maximum * maximum;
+                    }
+                    value = (interval){ -n->volume_range,
+                                        n->volume_range + sqrt(squared) };
+                    break;
+                }
                 case SHADER_OBJECT_POSITION:
                     value = (interval){ fmin(bound->min[axis], bound->max[axis]),
                                         fmax(bound->min[axis], bound->max[axis]) };

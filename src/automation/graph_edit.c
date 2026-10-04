@@ -22,6 +22,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
+#include "render/shader_images.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/xalloc.h"
@@ -2687,6 +2688,9 @@ static int validate_asset(edit_context *ctx)
             &program,
             &error
         );
+        if (valid) {
+            valid = render_image_validate_volumes(&program.shader, &error);
+        }
         model_program_free(&program);
         behavior_asset_free(linked);
         if (!valid) {

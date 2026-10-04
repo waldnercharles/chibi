@@ -1,0 +1,4 @@
+version 5
+name "Sampled Blender Suzanne"
+content "content"
+start_scene "scenes/SuzanneFront.kdl"

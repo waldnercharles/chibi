@@ -1,0 +1,98 @@
+version 3
+name "SdfSuzanneOppositeCircle"
+id_counter 250
+description "Opposite-phase copy of SdfCoverageLightCircle for the isolated sampled Suzanne lighting demo."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="elapsed" type="float"
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 2
+                type "Event"
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=4 type="float" kind="data"
+                }
+            }
+            - {
+                id 17
+                type "Behavior Expression"
+                reference_name "elapsed += dt"
+                inputs {
+                    Exec id=21 kind="exec"
+                    elapsed {
+                        id 18
+                        type "float"
+                        binding kind="variable" source_asset="SdfSuzanneOppositeCircle" name="elapsed"
+                    }
+                    dt {
+                        id 19
+                        type "double"
+                        binding kind="delta_time"
+                    }
+                }
+                outputs {
+                    Then id=22 kind="exec"
+                    Result id=20 type="float"
+                }
+            }
+            - {
+                id 82
+                type "Behavior Expression"
+                reference_name "x = -60 * cos(elapsed * (2 * pi / 8))"
+                inputs {
+                    Exec id=86 kind="exec"
+                    x {
+                        id 83
+                        type "float"
+                        binding kind="component_field" component="GAME.GameTransform" field="x"
+                    }
+                    elapsed {
+                        id 84
+                        type "double"
+                        binding kind="variable" source_asset="SdfSuzanneOppositeCircle" name="elapsed"
+                    }
+                }
+                outputs {
+                    Then id=87 kind="exec"
+                    Result id=85 type="float"
+                }
+            }
+            - {
+                id 187
+                type "Behavior Expression"
+                reference_name "y = -60 * sin(elapsed * (2 * pi / 8))"
+                inputs {
+                    Exec id=191 kind="exec"
+                    y {
+                        id 188
+                        type "float"
+                        binding kind="component_field" component="GAME.GameTransform" field="y"
+                    }
+                    elapsed {
+                        id 189
+                        type "double"
+                        binding kind="variable" source_asset="SdfSuzanneOppositeCircle" name="elapsed"
+                    }
+                }
+                outputs {
+                    Then id=192 kind="exec"
+                    Result id=190 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="2.Then" to="17.Exec"
+            - from="17.Then" to="82.Exec"
+            - from="82.Then" to="187.Exec"
+        }
+    }
+    - id=5 kind="function" math_expression="elapsed += dt" entry_id=24
+    - id=40 kind="function" math_expression="x = -60 * cos(elapsed * (2 * pi / 8))" entry_id=89
+    - id=145 kind="function" math_expression="y = -60 * sin(elapsed * (2 * pi / 8))" entry_id=194
+}

@@ -141,7 +141,10 @@ void main()
         hit=true;
     }
 #endif
-    for(int step=0;step<128&&!hit;step++) {
+#ifndef SG_DISTANCE_LIPSCHITZ
+#define SG_DISTANCE_LIPSCHITZ 1.0
+#endif
+    for(int step=0;step<(SG_DISTANCE_LIPSCHITZ>1.0?512:128)&&!hit;step++) {
         point=start+ray*t;
         float distance=distance_at(point);
         evaluations++;
@@ -176,7 +179,7 @@ void main()
                 if(hit) break;
             }
         }
-        t+=max(abs(distance)*0.8,epsilon*0.25);
+        t+=SG_DISTANCE_LIPSCHITZ>1.0 ? abs(distance)*0.8/SG_DISTANCE_LIPSCHITZ : max(abs(distance)*0.8,epsilon*0.25);
         if(t>exit_distance) break;
     }
     if(!hit) {

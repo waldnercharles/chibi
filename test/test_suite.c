@@ -19,6 +19,7 @@
 
 void test_automation_graph_edit();
 void test_modeling();
+void test_model_sampled();
 void test_shader_detail();
 int test_shader_detail_gpu(const char *program);
 void test_model_surface();
@@ -284,6 +285,7 @@ TEST_CASE(all_checks)
     test_input_bindings();
     test_graph_optimizer();
     test_shader_graph();
+    test_model_sampled();
     test_modeling();
     test_shader_detail();
     test_model_surface();
@@ -476,6 +478,17 @@ int main(int argc, char **argv)
         extern int surface_gather_run(const char *program, bool gles);
         registry_validate();
         return surface_gather_run(program_name, !strcmp(argv[1], "--surface-gather-gles"));
+    }
+    if (argc >= 2 && !strcmp(argv[1], "--model-sampled")) {
+        extern void test_model_sampled();
+        registry_validate();
+        test_model_sampled();
+        return 0;
+    }
+    if (argc >= 2 && !strcmp(argv[1], "--model-sampled-gpu")) {
+        extern int test_model_sampled_gpu(const char *, const char *);
+        registry_validate();
+        return test_model_sampled_gpu(program_name, argc > 2 ? argv[2] : NULL);
     }
     if (argc == 2 && !strcmp(argv[1], "--shader-detail-gpu")) {
         registry_validate();

@@ -1,4 +1,5 @@
 #include "graph/modeling/model_internal.h"
+#include "graph/shader/shader_volume.h"
 #include "support/xalloc.h"
 
 #include <math.h>
@@ -149,6 +150,7 @@ static bool build_hit(model_program *p, const node *root, shader_error *error)
                                           .program = p,
                                           .error = error } };
     compiler *c = &builder.compiler;
+    shader_graph_copy_images(&p->hit_shader, &p->shader);
     bool named = false;
     for (int i = 0; i < acount(p->parts); i++) {
         named |= p->parts[i].distance >= 0;
@@ -252,6 +254,7 @@ bool model_program_part_shaders(
     }
     shader_graph selected;
     shader_graph_init(&selected);
+    shader_graph_copy_images(&selected, &bp.proof);
     int count = acount(bp.proof.nodes), *remap = xmalloc(count * sizeof *remap);
     bool *used = xcalloc(count, sizeof *used);
     require_value(&bp.proof, used, p->parts[part].distance);
@@ -299,7 +302,8 @@ bool model_program_hit(
         }
         prepared = defaults;
     }
-    shader_sample_context sample = { 0 };
+    shader_sample_context sample = { .resolve_image = program->resolve_image,
+                                     .image_userdata = program->image_userdata };
     memcpy(sample.object_position, object_position, sizeof sample.object_position);
     for (int i = 0; i < 3; i++) {
         if (!isfinite(object_position[i])) {

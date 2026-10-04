@@ -230,6 +230,7 @@ bool studio_canvas_draw(studio *s, engine_viewport_host_input *input)
     /* The theme is the root's class, as a page's .dark tokens expect. */
     render_ui_set_overlay(ui, c->asset, c->light ? "light" : "dark");
     engine_viewport_set_host_input(c->viewport, input);
+    engine_viewport_set_time(c->viewport, s->time);
     engine_viewport_draw(c->viewport, &(engine_viewport_controls){ .playing = true });
     ui_activation a;
     while (render_ui_take_overlay_activation(ui, &a)) {

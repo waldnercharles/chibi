@@ -67,6 +67,10 @@ parentheses precedence needs. Converted inputs are named after their source:
 a parameter's name, a shader or field built-in (`X`, `UV`), or a component
 field as `transform_x`.
 
+A bool wired into an input the expression reads as a number counts as 1 for
+true and 0 for false, through a conversion on the body's own wire; an input the
+expression uses as a bool, as in `a && !b`, stays a bool. `flag * 8` is 8 or 0.
+
 Inputs and the result infer their connected graph types. Numeric operators support
 scalar broadcasting across reflected numeric structs such as `CF_V2` and
 `GameTransform`; the result keeps the aggregate type. Use member access such as

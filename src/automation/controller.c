@@ -1054,7 +1054,12 @@ static char *response_finish(response *result)
     yyjson_mut_obj_add_bool(result->doc, result->root, "ok", result->ok);
     char *json = yyjson_mut_write(result->doc, 0, NULL);
     yyjson_mut_doc_free(result->doc);
-    return json ? json : xstrdup("{\"contract\":1,\"ok\":false}");
+    return json ? json
+                : xstrdup(
+                      "{\"contract\":1,\"ok\":false,\"error\":{\"code\":"
+                      "\"execution_failed\","
+                      "\"message\":\"the response could not be serialized\"}}"
+                  );
 }
 
 static const operation_descriptor *operation_by_name(const char *name)

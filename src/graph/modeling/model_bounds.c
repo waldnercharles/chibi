@@ -315,6 +315,7 @@ bool model_bounds_visit(compiler *c, const node *n, double threshold, bound *out
             return false;
         }
     } else if (op == MODEL_SAMPLED_SDF) {
+        out->empty = false;
         float half[3];
         model_vector(n, 1, half);
         for (int axis = 0; axis < 3; axis++) {

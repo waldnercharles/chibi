@@ -46,6 +46,8 @@ struct engine_viewport
     render_audio *audio;
     ui_world ui_world; /* no documents while its ecs is NULL */
     render_ui *ui;
+    double ui_time;  /* engine_viewport_set_time's */
+    double ui_drawn; /* ui_time at the documents' last draw, -1 before it */
     bool ui_capture; /* the documents took the pointer last frame */
     bool ui_typing;  /* they had the keyboard and a text field had focus */
     engine_viewport_render_fn render;
@@ -133,6 +135,21 @@ void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, co
     }
 }
 
+void engine_viewport_set_time(engine_viewport *viewport, double seconds)
+{
+    assert(seconds >= 0);
+    viewport->ui_time = seconds;
+}
+
+/* The host's time since the documents last drew. Their first draw steps
+   none, as their context joins RmlUi's shared clock where it stands. */
+static double ui_step(engine_viewport *viewport)
+{
+    double drawn = viewport->ui_drawn;
+    viewport->ui_drawn = viewport->ui_time;
+    return drawn < 0 ? 0 : fmax(0, viewport->ui_time - drawn);
+}
+
 void engine_viewport_adopt_ui(engine_viewport *viewport, render_ui *ui)
 {
     assert(!viewport->ui);
@@ -173,6 +190,7 @@ engine_viewport *engine_viewport_new(int width, int height)
     engine_viewport_reset_camera(viewport);
     viewport->requested_width = width;
     viewport->requested_height = height;
+    viewport->ui_drawn = -1;
     viewport->canvas = viewport_canvas(width, height);
     if (!viewport->canvas.id) {
         free(viewport);
@@ -401,7 +419,7 @@ static void draw_viewport_canvas(engine_viewport *viewport)
             &viewport->ui_world,
             viewport->width,
             viewport->height,
-            CF_DELTA_TIME
+            ui_step(viewport)
         );
         render_ui_composite(viewport->ui, viewport->canvas);
     }

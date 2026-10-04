@@ -232,6 +232,8 @@ static bool render_scene(
         ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 0, 0 });
         ImGui_PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
         ImGui_Begin("Scene", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+        /* Its documents step a fixed frame each, as its simulation does. */
+        engine_viewport_set_time(scene.viewport, i * ENGINE_FIXED_SECONDS);
         engine_viewport_image(scene.viewport, width, height);
         ImGui_End();
         ImGui_PopStyleVarEx(2);

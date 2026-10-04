@@ -397,6 +397,7 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
         UI_DOCUMENT_PAUSE_MENU,
         playing ? NULL : menu_state(status)
     );
+    engine_viewport_set_time(game->viewport, now);
     int drawn = engine_viewport_image(game->viewport, size.x, size.y);
     if (game->interactive) {
         render_audio_update(

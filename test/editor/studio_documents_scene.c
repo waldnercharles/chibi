@@ -1,9 +1,10 @@
 /* The Scene area in Studio (workstream C1): SceneHeader's tools, snapping
  * and grid increment, View menu and View Zoom, and Frame, which run
  * Studio's commands; Scene's overlays over the scene, its camera labels
- * moving without laying out; the Canvas's header and Actions log; and a
- * guest Studio's header. With CHIBI_SCENE_CAPTURE_DIR set it writes native
- * shots of the area's states in the four variants. */
+ * moving without laying out; the Canvas's header and Actions log; a
+ * guest Studio's header; and the game's documents keeping Studio's clock.
+ * With CHIBI_SCENE_CAPTURE_DIR set it writes native shots of the area's
+ * states in the four variants. */
 
 #include "render/screenshot.h"
 #include "support/array.h"
@@ -18,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define SANDBOX "projects/arena2d"
 
@@ -372,6 +374,45 @@ static void capture_scene(const char *dir)
     }
 }
 
+#define SLOW_FRAMES 4
+#define SLOW_FRAME_MICROSECONDS 100000
+
+/* Whether frames that each take six times the frame time they are given
+   step RmlUi's clock by that frame time alone. */
+static bool steps_frame_time(studio_fixture *f)
+{
+    double start = rml_elapsed_time();
+    for (int i = 0; i < SLOW_FRAMES; i++) {
+        usleep(SLOW_FRAME_MICROSECONDS);
+        frames(f, 1);
+    }
+    double stepped = rml_elapsed_time() - start;
+    if (fabs(stepped - SLOW_FRAMES * FRAME_SECONDS) > 1e-6) {
+        printf("  stepped %.4f s over %d frames\n", stepped, SLOW_FRAMES);
+        return false;
+    }
+    return true;
+}
+
+/* RmlUi's clock, which all documents share, follows the frame time Studio
+   is given however long its frames take, while the game's documents show in
+   the Scene and in the Canvas, so a fixed timestep replays transitions. */
+static void documents_keep_frame_time()
+{
+    studio_fixture f = vault_open();
+    frames(&f, 2);
+    bool scene = steps_frame_time(&f);
+    studio_preview_ui(f.studio, "Bank");
+    frames(&f, 2);
+    bool canvas = f.studio->canvas && steps_frame_time(&f);
+    test_check(
+        scene && canvas,
+        "the game's documents in the Scene and the Canvas step RmlUi's "
+        "clock by Studio's frame time, not the wall clock"
+    );
+    fixture_free(&f);
+}
+
 void studio_documents_scene_checks()
 {
     const char *dir = getenv("CHIBI_SCENE_CAPTURE_DIR");
@@ -384,4 +425,5 @@ void studio_documents_scene_checks()
     overlays_follow_the_scene();
     canvas_header_and_actions();
     guest_header();
+    documents_keep_frame_time();
 }

@@ -9,6 +9,7 @@
 #include "support/text_overlay.h"
 #include "test/editor/studio_documents.h"
 #include "test/suite_internal.h"
+#include "ui/motion.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -29,14 +30,17 @@ enum
     VIEW_CALLS,
 };
 
-/* Output in the drawer, showing `view`. */
+/* Output in the drawer, showing `view`, once the drawer has eased open. */
 static void show_output(studio_fixture *f, int view)
 {
     studio *s = f->studio;
     studio_show_editor(s, STUDIO_EDITOR_OUTPUT);
     s->output_view = view;
     s->ui_schedule.wake = true;
-    frames(f, 4);
+    frames(f, 2);
+    rml_element *drawer = studio_element(s, ".drawer[data-open]");
+    assert(drawer);
+    frames(f, (int)ceil(motion_transition_time(drawer) / FRAME_SECONDS) + 2);
 }
 
 /* The shown rows `selector` matches in Output, in document order, but its

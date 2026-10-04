@@ -805,6 +805,7 @@ static void draw_viewport(studio *s)
     if (input.escape && (input.focused || input.hovered)) {
         app_scene_authoring_view_through_camera(s->scene, false);
     }
+    engine_viewport_set_time(s->viewport, s->time);
     app_scene_authoring_draw_viewport(s->scene, s->viewport);
     rml_backend_set_texture(s->backend, "viewport", engine_viewport_texture(s->viewport));
     studio_ui_error(s, render_ui_error(engine_viewport_ui(s->viewport)));

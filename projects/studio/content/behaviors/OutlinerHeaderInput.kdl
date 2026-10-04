@@ -1,0 +1,62 @@
+version 3
+name "OutlinerHeaderInput"
+id_counter 45
+description "The Outliner's header: the filter field sets the object filter the rows and Up and Down follow, and shows it when Studio clears it; Add lists the scene's prototypes and places the one chosen, while the scene is editable."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Event" reference_name="Refresh"
+            - id=3 type="Editor State"
+            - id=7 type="Scene Info"
+            - id=11 type="Prototype Choices"
+            - {
+                id 13
+                type "Set UI Data"
+                inputs Name="editable"
+            }
+            - {
+                id 19
+                type "Set UI Data"
+                inputs Name="filter"
+            }
+            - {
+                id 25
+                type "Set UI Data"
+                inputs Name="prototypes"
+            }
+            - {
+                id 31
+                type "Event"
+                reference_name "FilterTyped"
+                outputs {
+                    Filter id=33 declaration_id=1 type="const char *" kind="data"
+                }
+            }
+            - id=34 type="Set Object Filter"
+            - {
+                id 38
+                type "Event"
+                reference_name "AddObject"
+                outputs {
+                    Prototype id=40 declaration_id=1 type="const char *" kind="data"
+                }
+            }
+            - id=41 type="Add Object"
+        }
+        (array)edges {
+            - from="1.Then" to="13.Exec"
+            - from="3.Editable" to="13.Value"
+            - from="7.Filter" to="19.Value"
+            - from="11.Options" to="25.Value"
+            - from="13.Then" to="19.Exec"
+            - from="19.Then" to="25.Exec"
+            - from="31.Then" to="34.Exec"
+            - from="31.Filter" to="34.Filter"
+            - from="38.Then" to="41.Exec"
+            - from="38.Prototype" to="41.Prototype"
+        }
+    }
+}

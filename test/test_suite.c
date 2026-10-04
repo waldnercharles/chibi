@@ -109,6 +109,9 @@ bool test_rmlui_binding();
 /* Activations' arguments, event context and anchor, and contextmenu
    (test/editor/ui_activations.c, workstream F1). */
 void test_ui_activations();
+/* Game documents' events reach behaviors in the update that follows, typed
+   (test/editor/game_ui_events.c). */
+void test_game_ui_events();
 /* Studio's editor nodes only in Studio's project
    (test/editor/studio_nodes_gate.c). */
 void test_studio_nodes_gate();
@@ -326,6 +329,7 @@ TEST_CASE(all_checks)
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
     test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data, follow array edits with constant-time item lookups, lay out text in flex rows, build data-when copies and send input and change from text fields");
     test_ui_activations();
+    test_game_ui_events();
     test_studio_nodes_gate();
     /* UI source maps (workstream A) */
     test_ui_sources();
@@ -1296,6 +1300,11 @@ int main(int argc, char **argv)
     /* ---------- Lists and drag (workstream F4) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-lists")) {
         test_ui_lists();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--game-ui-events")) {
+        test_game_ui_events();
+        test_game_ui_presenter();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--studio-nodes-gate")) {

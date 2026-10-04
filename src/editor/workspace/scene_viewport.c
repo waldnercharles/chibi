@@ -511,7 +511,7 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         .ecs = scene->world,
         .page = app_scene_authoring_page(scene),
         .model = engine_ui(scene->runtime),
-        .entities = scene->live->entities,
+        .live = scene->live,
         .save = game_behavior_save(scene->live->behaviors),
         .revealed = selected ? ecs_entity_to_u64(selected->entity) : 0,
         .hidden = scene_view_skip(scene, APP_SCENE_VIEW_HIDDEN, &scene->view_hidden)
@@ -521,7 +521,7 @@ int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewpor
         ui = (ui_world){ .ecs = game_prototype_preview_world(p),
                          .page = app_scene_authoring_page(scene),
                          .model = engine_ui(game_prototype_preview_runtime(p)),
-                         .entities = game_prototype_preview_entities(p),
+                         .live = game_prototype_preview_live(p),
                          .save = game_behavior_save(game_prototype_preview_behaviors(p)),
                          .preview = true };
     }

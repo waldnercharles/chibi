@@ -352,6 +352,19 @@ static void ui_wiring_checks()
     preview_binds_studio_data();
 }
 
+/* The scene object showing a game document, the Vault. */
+static ecs_entity vault_entity(const studio_fixture *f)
+{
+    for (int i = 0; i < acount(f->scene->actors); i++) {
+        ecs_entity entity = f->scene->actors[i].entity;
+        if (GAME_GameUi_has(f->scene->world, entity)) {
+            return entity;
+        }
+    }
+    assert(!"The Vault shows a game document");
+    return (ecs_entity){ 0 };
+}
+
 /* The Canvas preview takes the keys typed while its area has the keyboard,
    so the asset's data-keys bindings send their events, and not while
    another area has it. */
@@ -387,25 +400,28 @@ static void preview_hears_keys()
     );
     studio_preview_ui(s, NULL);
     frames(&f, 3);
-    game_entities *entities = f.scene->live->entities;
-    int before = game_entities_pending_events(entities);
+    /* The Vault's behaviors count the Close events its document sends. */
+    const char *const closes[] = { "Close" };
+    ui_probe editing_heard = { 0 }, playing_heard = { 0 };
+    test_ui_probe_events(f.scene->live, vault_entity(&f), closes, 1, &editing_heard);
     key_event(SDL_SCANCODE_C, true);
     key_event(SDL_SCANCODE_C, false);
     frames(&f, 2);
-    bool editing = game_entities_pending_events(entities) == before;
+    bool editing = editing_heard.count == 0;
     studio_runtime(s, APP_RUNTIME_PLAY);
     frames(&f, 3);
-    before = game_entities_pending_events(entities);
+    test_ui_probe_events(f.scene->live, vault_entity(&f), closes, 1, &playing_heard);
     key_event(SDL_SCANCODE_C, true);
     key_event(SDL_SCANCODE_C, false);
-    /* The key reaches the document, whose activation reaches Vault a frame
-       later, before the next scene frame runs it. */
+    /* The key reaches the document, whose activation reaches Vault's
+       behaviors in the frame that follows. */
     frames(&f, 2);
-    bool playing = game_entities_pending_events(entities) == before + 1;
+    bool playing = playing_heard.count == 1;
     test_check(editing && playing, "the focused Scene's game documents take keys while the scene plays");
     text_overlay_set(BANK, NULL);
     text_overlay_set(BANK_STYLES, NULL);
     fixture_free(&f);
+    test_ui_probes_free();
 }
 
 /* Recording consumes key and text events before the normal shortcut and

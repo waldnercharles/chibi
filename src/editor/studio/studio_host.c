@@ -776,6 +776,7 @@ static void draw_viewport(studio *s)
         .blocked = studio_palette_is_open(s),
         .wheel = s->surface.wheel,
         .alt = (s->mods & SDL_KMOD_ALT) != 0,
+        .modifiers = rml_key_modifiers(s, s->mods),
         .escape = studio_key_pressed(s, SDLK_ESCAPE) && !kit_wants_keyboard(s->kit),
     };
     input.keys = s->game_input;

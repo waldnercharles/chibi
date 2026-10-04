@@ -490,7 +490,14 @@ static bool event_value(
     return false;
 }
 
-int ui_activation_payload(
+/* The payload `a` takes under `event`, the event asset declaring it (NULL
+ * declares none), in its order: bool Shift, Alt and Mod (`primary` holds
+ * Mod's modifier bits) and CF_V2 Pointer come from the DOM event, as a web
+ * handler reads event.shiftKey and event.clientX; each other value is emit's
+ * next argument read as its type (strings borrow `a`). Returns how many
+ * values it wrote to `out`, or -1 for a payload a UI event cannot carry or
+ * more than `capacity`. */
+static int ui_activation_payload(
     const ui_activation *a,
     const behavior_asset *event,
     unsigned primary,
@@ -519,6 +526,36 @@ int ui_activation_payload(
         }
     }
     return count;
+}
+
+/* The event asset `live` holds under `name`, or NULL when it declares none:
+ * a local event without a payload. */
+static const behavior_asset *declared_event(game_live_world *live, const char *name)
+{
+    game_live_definition *event = game_live_find_definition(live, name);
+    return event && event->working->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION
+             ? event->working
+             : NULL;
+}
+
+/* Values an event's payload may hold; a UI event declares a few. */
+#define PAYLOAD_MAX 16
+
+bool ui_activation_send(game_live_world *live, ecs_entity entity, const ui_activation *a, unsigned primary)
+{
+    pin_value values[PAYLOAD_MAX];
+    float pointer[2];
+    int count = ui_activation_payload(a, declared_event(live, a->event), primary, pointer, values, PAYLOAD_MAX);
+    if (count < 0) {
+        return false;
+    }
+    flow_inputs inputs = { .values = values, .count = count };
+    if (entity.slot) {
+        game_behavior_dispatch(live->behaviors, entity, a->event, inputs, NULL);
+    } else {
+        game_behavior_dispatch_all(live->behaviors, a->event, inputs, NULL);
+    }
+    return true;
 }
 
 static void escape_text(char *out, size_t size, const char *text)
@@ -1213,6 +1250,7 @@ struct render_ui
     float scale;
     float reference; /* the dp the canvas's height spans */
     char error[256];
+    char failure[256]; /* an activation the last update could not send */
 };
 
 static void on_event(void *user, const rml_event *event);
@@ -1455,29 +1493,38 @@ bool render_ui_wants_text(const render_ui *ui)
     return !strcmp(tag, "textarea") || (!strcmp(tag, "input") && field);
 }
 
-/* Sends each view's activations to its entity, an input's value first. */
+/* Mod's modifier bits in a game, whose hosts trade Command and Control on a
+ * Mac as they do for keys (viewport.c). */
+#define GAME_PRIMARY RML_KM_CTRL
+
+/* Sends each view's activations to its entity's behaviors now, an input's
+ * value first, so what they set shows in this update. They wait while a
+ * spawn initializes, as the engine holds the events it queues. */
 static void send_activations(render_ui *ui, const ui_world *world)
 {
     game_ui *model = world->model;
-    game_entities *entities = world->entities;
+    game_live_world *live = world->live;
+    ui->failure[0] = '\0';
     for (int i = 0; i < acount(ui->views); i++) {
         ui_view *view = &ui->views[i];
         ui_activation a;
         if (view->mount && model) {
             ui_mount_measure(view->mount, model, view->entity);
         }
-        while (view->mount && ui_mount_take(view->mount, &a)) {
+        while (view->mount && !(live && game_entities_initializing(live->entities)) &&
+               ui_mount_take(view->mount, &a)) {
             if (model && a.has_value && a.id[0]) {
                 char selector[160];
                 snprintf(selector, sizeof selector, "#%s", a.id);
                 game_ui_set_value(model, view->entity, selector, a.value);
             }
-            if (entities) {
-                game_entities_request_event(
-                    entities,
-                    ecs_entity_from_u64(view->entity),
-                    a.event,
-                    (flow_inputs){ 0 }
+            if (live &&
+                !ui_activation_send(live, ecs_entity_from_u64(view->entity), &a, GAME_PRIMARY)) {
+                snprintf(
+                    ui->failure,
+                    sizeof ui->failure,
+                    "%s declares a payload a UI event cannot carry",
+                    a.event
                 );
             }
         }
@@ -1576,7 +1623,8 @@ static void install_styles(render_ui *ui)
     afree(names);
 }
 
-/* Reports the page's error, else the first mount's. */
+/* Reports the page's error, else the first mount's, else an activation that
+ * could not be sent. */
 static void collect_error(render_ui *ui)
 {
     snprintf(ui->error, sizeof ui->error, "%s", ui->page.error);
@@ -1585,6 +1633,9 @@ static void collect_error(render_ui *ui)
         if (m) {
             snprintf(ui->error, sizeof ui->error, "%s", ui_mount_error(m));
         }
+    }
+    if (!ui->error[0]) {
+        snprintf(ui->error, sizeof ui->error, "%s", ui->failure);
     }
 }
 

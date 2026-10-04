@@ -163,7 +163,7 @@ static bool render_scene(
         ui_world ui = { .ecs = game_prototype_preview_world(scene.preview),
                         .page = chibi_preview_page(run),
                         .model = engine_ui(preview_runtime),
-                        .entities = game_prototype_preview_entities(scene.preview) };
+                        .live = game_prototype_preview_live(scene.preview) };
         engine_viewport_set_ui(scene.viewport, &ui, content_root);
     }
     /* Captures settle ImGui for two frames. Performance runs first warm the

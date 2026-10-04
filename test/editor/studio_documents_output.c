@@ -9,6 +9,7 @@
 #include "support/text_overlay.h"
 #include "test/editor/studio_documents.h"
 #include "test/suite_internal.h"
+#include "ui/motion.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -29,14 +30,17 @@ enum
     VIEW_CALLS,
 };
 
-/* Output in the drawer, showing `view`. */
+/* Output in the drawer, showing `view`, once the drawer has eased open. */
 static void show_output(studio_fixture *f, int view)
 {
     studio *s = f->studio;
     studio_show_editor(s, STUDIO_EDITOR_OUTPUT);
     s->output_view = view;
     s->ui_schedule.wake = true;
-    frames(f, 4);
+    frames(f, 2);
+    rml_element *drawer = studio_element(s, ".drawer[data-open]");
+    assert(drawer);
+    frames(f, (int)ceil(motion_transition_time(drawer) / FRAME_SECONDS) + 2);
 }
 
 /* The shown rows `selector` matches in Output, in document order, but its
@@ -546,6 +550,30 @@ static void filter_and_clear()
     fixture_free(&f);
 }
 
+/* Output's own RCSS sizes its rows by the density the kit sets on the area's
+   document, and follows a change. */
+static void density_follows()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    frames(&f, 3);
+    print(&f, 3, "Density");
+    show_output(&f, VIEW_LOG);
+    float heights[3];
+    for (int i = 0; i < 3; i++) {
+        s->prefs.comfortable = i == 1;
+        s->ui_schedule.wake = true;
+        frames(&f, 4);
+        rml_element *rows[ROWS_MAX];
+        heights[i] = shown(s, ".output-log", rows)
+                       ? rml_element_box_size(rows[0], RML_BOX_BORDER).y
+                       : 0;
+    }
+    /* In pixels, at the window's scale: 20dp compact, 24dp comfortable. */
+    test_check(heights[0] > 0 && heights[1] * 20 == heights[0] * 24 && heights[2] == heights[0], "Output's rows are 20dp compact and 24dp comfortable, and follow a change of density");
+    fixture_free(&f);
+}
+
 void studio_documents_output_checks()
 {
     views_switch();
@@ -556,4 +584,5 @@ void studio_documents_output_checks()
     find_opens();
     calls_tree();
     filter_and_clear();
+    density_follows();
 }

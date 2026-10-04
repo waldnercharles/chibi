@@ -65,7 +65,7 @@
               <input type="text" class="part value" data-attr-id="row.id" data-attr-aria-label="row.label" data-attr-value="row.text" data-attr-placeholder="row.mixed ? '&#x2014;' : ''" data-attrif-readonly="row.readonly" data-keys="Escape:properties.cancel" data-event-change="emit('properties.change', row.id, ev.value)"/>
             </div>
           </div>
-          <div class="kind" data-when="row.control == 'asset'"><use ui="AssetField" data-alias-table="row.table" data-alias-value="row.text" data-attr-data-row="row.id" data-attr-data-drop="row.drop" data-drop-hint="Assign" data-attr-data-tip="row.problem" data-attrif-data-drop-preview="row.preview" data-attrif-data-readonly="row.readonly" data-attrif-data-invalid="row.invalid" data-event-click="emit('properties.choices', row.id)" data-event-change="emit('properties.change', row.id, ev.value)" data-event-drop="emit('properties.drop', row.id, ev.payload)"/></div>
+          <div class="kind" data-when="row.control == 'asset'"><use ui="AssetField" data-alias-table="row.table" data-alias-value="row.text" data-attr-data-row="row.id" data-attr-data-drop="row.drop" data-drop-hint="Assign" data-attr-data-tip="row.problem" data-attrif-data-drop-preview="row.preview" data-attrif-data-readonly="row.readonly" data-attrif-data-invalid="row.invalid" data-event-click="emit('palette.pick', row.kind, row.text, row.table.none, 'typed')" data-event-change="emit('properties.change', row.id, ev.value)" data-event-drop="emit('properties.drop', row.id, ev.payload)"/></div>
           <span class="muted" data-when="row.control == 'label'">{{ row.text }}</span>
         </use>
       </div>

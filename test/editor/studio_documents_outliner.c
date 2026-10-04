@@ -22,6 +22,7 @@
 #include "test/editor/studio_documents.h"
 #include "test/suite_internal.h"
 #include "ui/input_feel.h"
+#include "ui/motion.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
@@ -440,7 +441,13 @@ static void row_menu()
     if (duplicate) {
         click_in(&f, duplicate, 0.5f, 0.5f, 0);
     }
-    bool ran = acount(f.scene->actors) == objects + 2 &&
+    /* The click closes the menu, which fades out, then hides. */
+    rml_element *leaving = studio_element(s, "#outliner-menu[data-open]");
+    bool closed = !leaving || rml_element_has_attribute(leaving, "data-ending-style");
+    if (leaving) {
+        frames(&f, (int)ceil(motion_transition_time(leaving) / FRAME_SECONDS) + 1);
+    }
+    bool ran = acount(f.scene->actors) == objects + 2 && closed &&
                !studio_element(s, "#outliner-menu[data-open]");
     if (!(opened && kept && ran)) {
         printf("  menu: opened %d kept %d ran %d, '%s', %d items\n", opened, kept, ran, heading, count);

@@ -239,9 +239,9 @@ static yyjson_mut_val *axis_new(yyjson_mut_doc *doc)
 
 static yyjson_mut_val *row_new(yyjson_mut_doc *doc)
 {
-    static const char *const TEXTS[] = { "id",    "label",   "tip",
-                                         "about", "control", "unit",
-                                         "text",  "drop",    "problem" };
+    static const char *const TEXTS[] = { "id",      "label", "tip",  "about",
+                                         "control", "unit",  "text", "drop",
+                                         "problem", "kind" };
     static const char *const ROOMS[] = { "value", "min", "max", "step" };
     static const char *const FLAGS[] = { "shown",    "overridden", "mixed",
                                          "readonly", "invalid",    "integer",
@@ -648,33 +648,12 @@ static void asset_row(rows *r, row_desc d, const asset_desc *asset)
             ? ""
             : studio_asset_kind_name(asset->kind)
     );
-    /* An open list follows the assets as they change. */
-    bool open = !strcmp(s->properties.choosing, d.id);
-    char key[64];
-    snprintf(
-        key,
-        sizeof key,
-        "%s:%" PRIu64,
-        studio_asset_kind_name(asset->kind),
-        open ? s->scene->asset_index_revision + 1 : 0
-    );
-    bool rebuild;
-    yyjson_mut_val *table = table_of(v, row, key, &rebuild);
+    /* The field's picker lists the kind's assets (palette.pick). */
+    put_text(v, row, "kind", studio_asset_kind_name(asset->kind));
+    yyjson_mut_val *table = member(row, "table");
     put_text(v, table, "label", studio_asset_kind_label(asset->kind));
     put_glyph(v, table, "icon", studio_asset_kind_icon(asset->kind));
     put_text(v, table, "none", asset->none);
-    if (!rebuild || !open) {
-        return;
-    }
-    const char **names = studio_asset_names(index, asset->kind);
-    for (int i = 0; i < acount(names); i++) {
-        yyjson_mut_val
-            *options = group_options(v, table, studio_asset_kind_label(asset->kind));
-        yyjson_mut_val *option = yyjson_mut_arr_add_obj(v->doc, options);
-        yyjson_mut_obj_add_strcpy(v->doc, option, "value", names[i]);
-        yyjson_mut_obj_add_strcpy(v->doc, option, "label", names[i]);
-    }
-    afree(names);
 }
 
 /* ---------- Reflected fields ---------- */

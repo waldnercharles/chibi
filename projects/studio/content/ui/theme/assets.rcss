@@ -52,6 +52,3 @@
 .tooltip .tip-image { display: block; width: 256dp; height: 256dp; margin: 0.28em 0em 0.5em; border-radius: var(--r); }
 .tooltip[data-image] .tip-head span { overflow: hidden; text-overflow: ellipsis; }
 
-/* A palette result's thumbnail in its icon's place. */
-.cmd-item[data-picture] > .icon { width: 22dp; height: 22dp; }
-.cmd-item .picture { display: block; width: 22dp; height: 22dp; border-radius: 3dp; }

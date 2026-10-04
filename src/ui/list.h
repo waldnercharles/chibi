@@ -5,12 +5,13 @@
  * scrolling element: a scroller whose first child, the spacer, is as tall
  * as every row, of which only a window, the rows in view and an overscan
  * beyond each edge, is shown, starting at the spacer's padding-top (the
- * spacer's box-sizing is border-box). Rows have one fixed height. The
+ * spacer's box-sizing is border-box). The
  * window keeps its length while the list scrolls, so a data-for over it
  * reuses its elements and only their values change. A following list (a
  * log) stays at the bottom, the scroller's padding below the last row, as
  * rows arrive while it was within 4 dp of it; reveal scrolls the least that
- * brings a row into view.
+ * brings a row into view. Rows are one height, or give their tops when they
+ * differ, as a list's group headings and items do (Virtuoso's item sizes).
  *
  * projects/studio's List widget is such a scroller; the kit's kit_list is
  * one too. */
@@ -21,8 +22,11 @@
 
 typedef struct ui_list
 {
-    int count;      /* rows */
-    float row;      /* row height in dp; 0 reads the scroller's --row */
+    int count; /* rows */
+    float row; /* row height in dp, the shortest with tops; 0 reads --row */
+    /* Each row's top in dp and then the end of the last (count + 1), or
+       NULL when every row is `row` tall. */
+    const float *tops;
     int reveal;     /* a row to scroll into view once it changes; -1, none */
     float overscan; /* dp shown beyond each edge of the view; 0, 120 */
     bool follow;    /* stays at the bottom as rows arrive while it was there */

@@ -327,7 +327,7 @@ static void end_link(studio *s, graph_hit hit)
         g->spawn_pending = true;
         g->spawn_x = g->world_x;
         g->spawn_y = g->world_y;
-        kit_command_open(s->kit, "Add a node for this wire");
+        studio_palette_open(s, STUDIO_PALETTE_NODES, "Add a node for this wire");
     }
 }
 
@@ -724,7 +724,7 @@ static void release(studio *s, graph_hit hit)
                 g->spawn_pending = true;
                 g->spawn_x = g->world_x;
                 g->spawn_y = g->world_y;
-                kit_command_open(s->kit, "Add a node");
+                studio_palette_open(s, STUDIO_PALETTE_NODES, "Add a node");
             }
             break;
         }
@@ -782,7 +782,7 @@ void sg_replay(studio *s)
     }
     in->wheel = 0;
     g->press_button = -1;
-    bool blocked = kit_command_is_open(s->kit) ||
+    bool blocked = studio_palette_is_open(s) ||
                    (kit_wants_pointer(s->kit) && !g->surface.hovered);
     for (int i = 0; i < acount(g->events); i++) {
         rml_input ev = g->events[i];
@@ -1024,7 +1024,7 @@ void sg_shortcuts(studio *s)
         sg_frame_nodes(s, acount(e->selected) > 0, true);
     }
     if (!over || kit_wants_keyboard(s->kit) || kit_wants_keyboard(g->kit) ||
-        kit_command_is_open(s->kit)) {
+        studio_palette_is_open(s)) {
         return;
     }
     for (int i = 0; i < acount(s->keys); i++) {
@@ -1094,7 +1094,7 @@ void sg_shortcuts(studio *s)
                 g->spawn_pending = true;
                 g->spawn_x = g->world_x;
                 g->spawn_y = g->world_y;
-                kit_command_open(s->kit, "Add a node");
+                studio_palette_open(s, STUDIO_PALETTE_NODES, "Add a node");
             }
         } else if (!mod && !shift && key == SDLK_C && !sg_graph_readonly(s)) {
             sg_frame_selection(s);

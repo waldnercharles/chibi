@@ -1,0 +1,75 @@
+diff --git a/Source/Core/DataViewDefault.cpp b/Source/Core/DataViewDefault.cpp
+--- a/Source/Core/DataViewDefault.cpp
++++ b/Source/Core/DataViewDefault.cpp
+@@ -652,6 +652,28 @@
+ 	return true;
+ }
+ 
++DataViewTemplate::DataViewTemplate(Element* element) : DataView(element, 0) {}
++
++StringList DataViewTemplate::GetVariableNameList() const
++{
++	return {};
++}
++
++bool DataViewTemplate::Update(DataModel&)
++{
++	return false;
++}
++
++bool DataViewTemplate::Initialize(DataModel&, Element*, const String&, const String&)
++{
++	return true;
++}
++
++void DataViewTemplate::Release()
++{
++	delete this;
++}
++
+ DataViewAlias::DataViewAlias(Element* element) : DataView(element, 0) {}
+ 
+ StringList DataViewAlias::GetVariableNameList() const
+diff --git a/Source/Core/DataViewDefault.h b/Source/Core/DataViewDefault.h
+--- a/Source/Core/DataViewDefault.h
++++ b/Source/Core/DataViewDefault.h
+@@ -171,6 +171,20 @@
+ 	Element* instance = nullptr;
+ };
+ 
++// The structural 'data-template': the element's content is a template. RmlUi builds none of it and keeps its markup,
++// unparsed, in the element's 'rmlui-inner-rml' attribute, for native code to build with SetInnerRML() and remove with
++// SetInnerRML(""), as Base UI's popups mount while open. Like data-for it cancels the element's other data views.
++class DataViewTemplate final : public DataView {
++public:
++	DataViewTemplate(Element* element);
++	StringList GetVariableNameList() const override;
++	bool Update(DataModel& model) override;
++	bool Initialize(DataModel& model, Element* element, const String& expression, const String& modifier) override;
++
++protected:
++	void Release() override;
++};
++
+ class DataViewAlias final : public DataView {
+ public:
+ 	DataViewAlias(Element* element);
+diff --git a/Source/Core/Factory.cpp b/Source/Core/Factory.cpp
+--- a/Source/Core/Factory.cpp
++++ b/Source/Core/Factory.cpp
+@@ -122,6 +122,7 @@
+ 
+ 	DataViewInstancerDefault<DataViewFor> structural_data_view_for;
+ 	DataViewInstancerDefault<DataViewWhen> structural_data_view_when;
++	DataViewInstancerDefault<DataViewTemplate> structural_data_view_template;
+ 
+ 	// Data binding controllers
+ 	DataControllerInstancerDefault<DataControllerEvent> data_controller_event;
+@@ -247,6 +248,7 @@
+ 	RegisterDataViewInstancer(&default_instancers.data_view_alias,          "alias",   false);
+ 	RegisterDataViewInstancer(&default_instancers.structural_data_view_for, "for",     true );
+ 	RegisterDataViewInstancer(&default_instancers.structural_data_view_when, "when",   true );
++	RegisterDataViewInstancer(&default_instancers.structural_data_view_template, "template", true );
+ 	// clang-format on
+ 
+ 	// Data binding controllers

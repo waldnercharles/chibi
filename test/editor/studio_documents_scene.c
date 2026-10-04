@@ -1,9 +1,10 @@
 /* The Scene area in Studio (workstream C1): SceneHeader's tools, snapping
  * and grid increment, View menu and View Zoom, and Frame, which run
  * Studio's commands; Scene's overlays over the scene, its camera labels
- * moving without laying out; the Canvas's header and Actions log; and a
- * guest Studio's header. With CHIBI_SCENE_CAPTURE_DIR set it writes native
- * shots of the area's states in the four variants. */
+ * moving without laying out; the Canvas's header and Actions log; a
+ * guest Studio's header; and the game's documents keeping Studio's clock.
+ * With CHIBI_SCENE_CAPTURE_DIR set it writes native shots of the area's
+ * states in the four variants. */
 
 #include "render/screenshot.h"
 #include "support/array.h"
@@ -18,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define SANDBOX "projects/arena2d"
 
@@ -325,6 +327,56 @@ static void guest_header()
     fixture_free(&f);
 }
 
+/* The Scene's and Canvas's own RCSS reads the classes the kit sets on the
+   area's document, as the settings change: the viewport keeps dark roles in
+   a light theme, and the Canvas's Actions rows follow the density. */
+static void panel_rules_follow_body()
+{
+    studio_fixture f = sandbox_open();
+    studio *s = f.studio;
+    s->prefs.theme = STUDIO_THEME_DARK;
+    frames(&f, 4);
+    char dark[32] = "", light[32] = "";
+    rml_element *label = in_panel(s, "Scene", ".view-label");
+    if (label) {
+        rml_element_property(label, "color", dark, sizeof dark);
+    }
+    s->prefs.theme = STUDIO_THEME_LIGHT;
+    frames(&f, 4);
+    label = in_panel(s, "Scene", ".view-label");
+    if (label) {
+        rml_element_property(label, "color", light, sizeof light);
+    }
+    test_check(
+        !strcmp(dark, "#e6e8ec") && !strcmp(light, "#e8edf5"),
+        "the Scene's own RCSS keeps the viewport's dark roles in a light theme "
+        "and follows a theme change"
+    );
+    studio_preview_ui(s, "HUD");
+    studio_active_layout(s)->canvas_actions_open = true;
+    apush(
+        s->canvas->actions,
+        ((studio_canvas_action){ .count = 1, .event = "Repair", .element = "#repair" })
+    );
+    s->ui_schedule.wake = true;
+    frames(&f, 4);
+    float heights[3];
+    for (int i = 0; i < 3; i++) {
+        s->prefs.comfortable = i == 1;
+        s->ui_schedule.wake = true;
+        frames(&f, 4);
+        rml_element *row = in_panel(s, "Canvas", ".canvas-action:not([data-for])");
+        heights[i] = row ? rml_element_box_size(row, RML_BOX_BORDER).y : 0;
+    }
+    test_check(
+        heights[0] > 0 && heights[1] * 20 == heights[0] * 24 &&
+            heights[2] == heights[0],
+        "the Canvas's own RCSS sizes its Actions rows 20dp compact and 24dp "
+        "comfortable, as the density changes"
+    );
+    fixture_free(&f);
+}
+
 static void capture(studio_fixture *f, const char *dir, const char *variant, const char *state)
 {
     char path[PATH_MAX];
@@ -372,6 +424,45 @@ static void capture_scene(const char *dir)
     }
 }
 
+#define SLOW_FRAMES 4
+#define SLOW_FRAME_MICROSECONDS 100000
+
+/* Whether frames that each take six times the frame time they are given
+   step RmlUi's clock by that frame time alone. */
+static bool steps_frame_time(studio_fixture *f)
+{
+    double start = rml_elapsed_time();
+    for (int i = 0; i < SLOW_FRAMES; i++) {
+        usleep(SLOW_FRAME_MICROSECONDS);
+        frames(f, 1);
+    }
+    double stepped = rml_elapsed_time() - start;
+    if (fabs(stepped - SLOW_FRAMES * FRAME_SECONDS) > 1e-6) {
+        printf("  stepped %.4f s over %d frames\n", stepped, SLOW_FRAMES);
+        return false;
+    }
+    return true;
+}
+
+/* RmlUi's clock, which all documents share, follows the frame time Studio
+   is given however long its frames take, while the game's documents show in
+   the Scene and in the Canvas, so a fixed timestep replays transitions. */
+static void documents_keep_frame_time()
+{
+    studio_fixture f = vault_open();
+    frames(&f, 2);
+    bool scene = steps_frame_time(&f);
+    studio_preview_ui(f.studio, "Bank");
+    frames(&f, 2);
+    bool canvas = f.studio->canvas && steps_frame_time(&f);
+    test_check(
+        scene && canvas,
+        "the game's documents in the Scene and the Canvas step RmlUi's "
+        "clock by Studio's frame time, not the wall clock"
+    );
+    fixture_free(&f);
+}
+
 void studio_documents_scene_checks()
 {
     const char *dir = getenv("CHIBI_SCENE_CAPTURE_DIR");
@@ -383,5 +474,7 @@ void studio_documents_scene_checks()
     view_menu_and_zoom();
     overlays_follow_the_scene();
     canvas_header_and_actions();
+    panel_rules_follow_body();
     guest_header();
+    documents_keep_frame_time();
 }

@@ -87,5 +87,7 @@ void studio_documents_scene_checks();
 void studio_documents_chrome_checks();
 /* The UI Inspector's tree (workstream I1). */
 void studio_documents_inspector_checks();
+/* The palette, pickers and refactor popover (workstream C4). */
+void studio_documents_palette_checks();
 
 #endif

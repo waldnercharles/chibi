@@ -1,6 +1,6 @@
 /* Virtualized list windows (list.h), the kit's kit_list ported to any
  * element: what Virtuoso computes from the scroll position, with rows of one
- * height. */
+ * height or of the heights their tops give. */
 #include "ui/list.h"
 
 #include <assert.h>
@@ -26,6 +26,29 @@ static float row_height(rml_element *scroller, const ui_list *list)
     return row;
 }
 
+static float top_of(const ui_list *list, float row, int i)
+{
+    return list->tops ? list->tops[i] : (float)i * row;
+}
+
+/* The row at `y` dp from the top, before the first or past the last. */
+static int row_at(const ui_list *list, float row, float y)
+{
+    if (!list->tops) {
+        return (int)floorf(y / row);
+    }
+    int low = 0, high = list->count;
+    while (low < high) {
+        int mid = (low + high + 1) / 2;
+        if (list->tops[mid] <= y) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    return low;
+}
+
 /* Pinned while the view is at the bottom. Where it is counts only once it
  * moved since the last call: a scroll set before the content grew stops at
  * the old bottom until the content lays out, and is still pinned. */
@@ -37,19 +60,21 @@ static float follow(ui_list_state *state, const ui_list *list, float total, floa
     return list->follow && state->at_bottom ? fmaxf(total - view, 0) : scroll;
 }
 
-/* Scrolls the least to bring a newly revealed row into view. */
-static float reveal(const ui_list_state *state, const ui_list *list, float row, float view, float scroll)
+/* Scrolls the least to bring a newly revealed row into view, its top
+   `above` dp below the scroller's padding edge. */
+static float reveal(const ui_list_state *state, const ui_list *list, float row, float above, float view, float scroll)
 {
     if (list->reveal < 0 || list->reveal >= list->count ||
         list->reveal == state->revealed) {
         return scroll;
     }
-    float top = list->reveal * row;
+    float top = above + top_of(list, row, list->reveal),
+          bottom = above + top_of(list, row, list->reveal + 1);
     if (top < scroll) {
         return top;
     }
-    if (top + row > scroll + view) {
-        return top + row - view;
+    if (bottom > scroll + view) {
+        return bottom - view;
     }
     return scroll;
 }
@@ -74,11 +99,14 @@ int ui_list_window(rml_element *scroller, const ui_list *list, ui_list_state *st
     /* The scroller's padding scrolls with the rows, so its end is past it. */
     float padding = rml_element_box_size(scroller, RML_BOX_PADDING).y -
                     rml_element_box_size(scroller, RML_BOX_CONTENT).y;
-    float total = list->count * row + padding / ratio;
+    float above = rml_element_absolute_offset(scroller, RML_BOX_CONTENT).y -
+                  rml_element_absolute_offset(scroller, RML_BOX_PADDING).y;
+    float rows = top_of(list, row, list->count);
+    float total = rows + padding / ratio;
     float view = rml_element_client_height(scroller) / ratio;
     float scrolled = rml_element_scroll_top(scroller);
     float scroll = follow(state, list, total, view, scrolled / ratio);
-    scroll = reveal(state, list, row, view, scroll);
+    scroll = reveal(state, list, row, above / ratio, view, scroll);
     state->revealed = list->reveal;
     scroll = fminf(fmaxf(scroll, 0), fmaxf(total - view, 0));
     if (fabsf(scroll * ratio - scrolled) >= 1) {
@@ -90,10 +118,10 @@ int ui_list_window(rml_element *scroller, const ui_list *list, ui_list_state *st
     float extent = view > 0 ? view : UNLAID_VIEW;
     int length = (int)ceilf((extent + 2 * overscan) / row) + 1;
     length = length < list->count ? length : list->count;
-    int start = (int)floorf((scroll - overscan) / row);
+    int start = row_at(list, row, scroll - overscan);
     start = start > list->count - length ? list->count - length : start;
     *first = start > 0 ? start : 0;
-    set_dp(spacer, "height", list->count * row);
-    set_dp(spacer, "padding-top", *first * row);
+    set_dp(spacer, "height", rows);
+    set_dp(spacer, "padding-top", top_of(list, row, *first));
     return length;
 }

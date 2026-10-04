@@ -504,7 +504,7 @@ rml_data_reads studio_ui_data_reads(const studio *s)
 bool studio_ui_shortcut_focus(studio *s)
 {
     if (!s || !s->ui || !s->backend || !s->kit || kit_has_popup(s->kit) ||
-        kit_command_is_open(s->kit) || studio_ui_modal_open(s)) {
+        studio_palette_is_open(s) || studio_ui_modal_open(s)) {
         return false;
     }
     studio_ui *ui = s->ui;
@@ -591,6 +591,26 @@ rml_element *studio_ui_panel(studio *s, const char *key, const char *name)
     rml_element *host = kit_host(s->kit, key, "panel-host");
     show_panel(s, p, &p->mount, host, document);
     return host;
+}
+
+rml_element *studio_ui_dialog(studio *s, const char *key, const char *name)
+{
+    panel *p;
+    const char *document = panel_document(s, name, &p);
+    if (!document) {
+        return NULL;
+    }
+    rml_element *host = kit_modal_host(s->kit, key);
+    show_panel(s, p, &p->mount, host, document);
+    return host;
+}
+
+void studio_ui_panel_detach(studio *s, const char *name)
+{
+    panel *p = s->ui ? find_panel(s->ui, name) : NULL;
+    if (p) {
+        ui_mount_detach(p->mount);
+    }
 }
 
 /* The alias takes when the mount binds the host to the data model, as a

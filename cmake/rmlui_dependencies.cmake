@@ -56,8 +56,10 @@ function(chibi_rmlui_dependencies)
     # An element moved under the same data model keeps its views bound, as a
     # DOM move keeps a page's bindings; unbinding and binding them anew fails
     # for evaluated text and built data-for children, and leaves views behind.
+    # data-template keeps an element's content unbuilt, its markup in
+    # rmlui-inner-rml, for native code to mount while it shows (a popover's).
     set(patches "")
-    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when event-propagation variable-line-height move-keeps-data)
+    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when event-propagation variable-line-height move-keeps-data data-template)
         list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-${name}.patch")
     endforeach()
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})

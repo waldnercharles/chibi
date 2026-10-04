@@ -40,6 +40,8 @@ static const char STYLE[] =
     "menubar { display: flex; } input { display: block; width: 100px; "
     "height: 20px; }"
     "#trigger { position: absolute; left: 140px; top: 10px; }"
+    ".popup { opacity: 1; transition: opacity 0.1s cubic-out; }"
+    ".popup[data-starting-style], .popup[data-ending-style] { opacity: 0; }"
     ".choice-list [data-filtered] { display: none; }"
     "color-field { display: block; width: 40px; height: 20px; }"
     ".picker { width: 200px; height: 220px; }";
@@ -277,6 +279,92 @@ static void close_fixture(popover_fixture *f)
     rml_data_model_destroy(f->model);
     yyjson_mut_doc_free(f->data);
     rml_backend_destroy(f->backend);
+}
+
+/* The elements under `selector`'s element. */
+static int built_under(popover_fixture *f, const char *selector)
+{
+    return rml_element_query_selector_all(by_id(f, selector), "*", NULL, 0);
+}
+
+/* The text of the menu's first item shown (not a data-for template). */
+static void first_item(popover_fixture *f, char *out, size_t size)
+{
+    rml_element *labels[16];
+    int count = test_query_all(f->context, "#menu .menu-item .label", labels, 16);
+    out[0] = '\0';
+    for (int i = 0; i < count && i < 16 && !out[0]; i++) {
+        rml_element *node = rml_element_first_child(labels[i]);
+        if (node && rml_element_is_visible(labels[i], true)) {
+            rml_element_text(node, out, size);
+        }
+    }
+}
+
+static void set_first_label(popover_fixture *f, const char *label)
+{
+    yyjson_mut_val *items = yyjson_mut_obj_get(yyjson_mut_doc_get_root(f->data), "items");
+    yyjson_mut_set_str(yyjson_mut_obj_get(yyjson_mut_arr_get(items, 0), "label"), label);
+    rml_data_model_dirty(f->model, "items");
+    frames(f, 2);
+}
+
+/* A popover with data-template (Menu and Submenu) builds its items while it
+   shows and holds nothing closed: no elements, no views, so a change to
+   what its items show reads no value; opening builds them with the current
+   value, closing keeps them through the fade and then removes them. */
+static void mounted_while_open(popover_fixture *f)
+{
+    rml_data_reads before = rml_data_model_reads(f->model);
+    set_first_label(f, "Cut!");
+    rml_data_reads after = rml_data_model_reads(f->model);
+    test_check(
+        built_under(f, "#menu") == 0 && built_under(f, "#file-menu") == 0 &&
+            after.values == before.values && after.lookups == before.lookups,
+        "a closed menu holds no elements and binds nothing: a change to what "
+        "its items show evaluates no view"
+    );
+    click(f, "#trigger");
+    char label[32];
+    first_item(f, label, sizeof label);
+    int built = built_under(f, "#menu");
+    test_check(
+        open(f, "#menu") && built > 0 && !strcmp(label, "Cut!") &&
+            built_under(f, "#menu #submenu") == 0 &&
+            rml_data_model_reads(f->model).values > after.values,
+        "opening a menu builds its items bound to the current values, and the "
+        "submenu in it stays unbuilt"
+    );
+    key(f, RML_KEY_ESCAPE);
+    bool fading = !open(f, "#menu") && built_under(f, "#menu") == built &&
+                  rml_element_has_attribute(by_id(f, "#menu"), "data-ending-style");
+    click(f, "#trigger");
+    first_item(f, label, sizeof label);
+    test_check(
+        fading && open(f, "#menu") && built_under(f, "#menu") == built &&
+            !strcmp(label, "Cut!"),
+        "a closed menu keeps its items through its fade, and opening it again "
+        "during the fade keeps them"
+    );
+    key(f, RML_KEY_ESCAPE);
+    pause_for(f, 0.3);
+    test_check(
+        !open(f, "#menu") && built_under(f, "#menu") == 0 &&
+            !rml_element_has_attribute(by_id(f, "#menu"), "data-open"),
+        "the end of a menu's fade removes its items"
+    );
+    click(f, "#trigger");
+    hover(f, center(by_id(f, "#menu .submenu > .menu-item")));
+    pause_for(f, 0.15);
+    bool sub = open(f, "#menu #submenu") && built_under(f, "#menu #submenu") > 0;
+    key(f, RML_KEY_ESCAPE);
+    key(f, RML_KEY_ESCAPE);
+    pause_for(f, 0.3);
+    test_check(
+        sub && !open(f, "#menu") && built_under(f, "#menu") == 0,
+        "a submenu builds when it opens, and closing its menu removes both"
+    );
+    set_first_label(f, "Cut");
 }
 
 /* A menu by the edge of area A reaches over area B and stays above it once
@@ -612,6 +700,7 @@ void test_ui_popovers()
     bool opened = open_fixture(&f);
     test_check(opened, "the menu widgets expand");
     if (opened) {
+        mounted_while_open(&f);
         above_areas(&f);
         menu_keys(&f);
         menubar(&f);

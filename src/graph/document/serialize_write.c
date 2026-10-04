@@ -889,6 +889,18 @@ static void name_bindings(av_doc *doc, av_value *value, const graph *g)
     }
 }
 
+/* Expressions with one source share a name, so their calls keep the ID. */
+static bool graph_name_shared(const behavior_asset *asset, const graph *target)
+{
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *other = asset->graphs[i];
+        if (other != target && other->name && !strcmp(other->name, target->name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 av_value *behavior_asset_to_disk_value(av_doc *doc, const behavior_asset *asset)
 {
     av_value *root = behavior_asset_to_value(doc, asset);
@@ -905,6 +917,7 @@ av_value *behavior_asset_to_disk_value(av_doc *doc, const behavior_asset *asset)
                 continue;
             }
             const char *name = NULL;
+            bool shared = false;
             if (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable) {
                 const behavior_variable
                     *variable = behavior_asset_find_variable_by_id(asset, n->reference_id);
@@ -913,9 +926,12 @@ av_value *behavior_asset_to_disk_value(av_doc *doc, const behavior_asset *asset)
             if (serialize_local_call(n) || n->desc == &NODE_CallMacro) {
                 const graph *target = behavior_asset_find_graph(asset, n->reference_id);
                 name = target && target->name && *target->name ? target->name : NULL;
+                shared = name && graph_name_shared(asset, target);
             }
             if (name) {
                 av_obj_set(doc, value, "reference_name", av_str(doc, name));
+            }
+            if (name && !shared) {
                 av_obj_remove_key(value, "reference_id");
             }
         }

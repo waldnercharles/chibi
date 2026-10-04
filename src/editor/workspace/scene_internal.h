@@ -213,6 +213,7 @@ struct app_scene_authoring
     /* The selection each recent step began and ended with (scene_actors.c). */
     scene_step_selection *step_selections;
     scene_selection_set frame_selection; /* as the frame began */
+    uint64_t selection_revision; /* grows when a frame begins with another selection than the last */
     uint64_t seen_step;
     ecs_entity reveal_actor;
     ecs_entity runtime_selected;

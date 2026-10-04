@@ -944,6 +944,7 @@ int main(int argc, char **argv)
         registry_validate();
         test_compiled_loops();
         test_compiled_conversions();
+        test_compiled_selects();
         return 0;
     }
     if (argc > 1 && strcmp(argv[1], "--whole-alias") == 0) {

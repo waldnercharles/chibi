@@ -317,20 +317,19 @@ Add list.
 
 **Events.** Studio runs a panel's UI events on its entity's behaviors in the
 frame that sent them (`dispatch` in `studio_ui.c`, over
-`game_behavior_dispatch`), then `Refresh`, as a source syncs, then the
-events behaviors sent each other (Send Event), shows what they set and
-applies their UI effects before RmlUi lays the frame out; an effect that
-sends events of its own (a focus move blurs a field, which commits it) runs
-in up to four more rounds of the same frame. An event asset declares the
-payload: `ui_activation_send` (`render/ui.h`) fills Shift, Alt, Mod (Command
-on a Mac, Control elsewhere) and Pointer (`CF_V2`, the document's pixels)
-from the DOM event, as a web handler reads `event.shiftKey` and
-`event.clientX`, and the rest from emit's arguments in order, read as each
-value's type. Studio sends `RevealObject` to every panel behavior after Up,
-Down, a Find jump or F2. `data-area-keys="Left:FoldRoot"` gives a panel the
-unmodified keys of its area, Blender's per-editor keymap. Events in a
-header's controls now reach the controls' panel, the innermost mount, not the
-AreaHeader.
+`game_behavior_dispatch`), then `Refresh` when it is due (next paragraph),
+as a source syncs, then the events behaviors sent each other (Send Event),
+shows what they set and applies their UI effects before RmlUi lays the
+frame out; an effect that sends events of its own (a focus move blurs a
+field, which commits it) runs in up to four more rounds of the same frame. An event asset declares the
+payload: `ui_activation_send` (`render/ui.h`) fills Shift, Alt, Mod (Command on a Mac,
+Control elsewhere) and Pointer (`CF_V2`, the document's pixels) from the
+DOM event, as a web handler reads `event.shiftKey` and `event.clientX`, and
+the rest from emit's arguments in order, read as each value's type. Studio
+sends `RevealObject` to every panel behavior after Up, Down, a Find jump or
+F2. `data-area-keys="Left:FoldRoot"` gives a panel the unmodified keys of
+its area, Blender's per-editor keymap. Events in a header's controls now
+reach the controls' panel, the innermost mount, not the AreaHeader.
 
 Games' UI events run the same way. `render_ui_update` sends each document's
 activations to its entity's behaviors with `ui_activation_send`, the call
@@ -346,6 +345,42 @@ event cannot carry (a list) runs nothing and shows as the documents' error.
 Activations wait in their mount while a spawn initializes, as the engine
 holds its own events. Events behaviors send each other (Send Event) still
 wait for the next simulation step, where Studio settles them in the frame.
+
+**Refresh is change-driven.** `Refresh` is where a panel's behaviors query
+and publish, as a source's sync does, and it runs only when something the
+panel depends on changed, with no plumbing in the behaviors. Studio keeps one
+coarse editor revision for what the editor nodes read. Its stamp
+(`studio_nodes_stamp`, in `studio_node_calls.c` beside the reads it stands
+for) mixes counters their owners keep and none walks objects: the asset
+index's generation, which every scene edit, rename, add, delete, behavior
+attach, repoint and prototype edit invalidates, and its revision; the
+history's Undo and Redo heads; the object and prototype counts; the
+selection (`selection_revision`, which `scene_selection_track` counts in each
+frame that begins with another selection or active object); the view store's
+revision (hidden and locked); editable and live; the rename in place; the
+object filter; the scene's path; and the spawn breaks. `studio_ui_tick`
+takes it every frame; when it moved the revision grows and a UI frame is due,
+so a change nobody sent an event for (an Undo, a remote edit) shows by the
+next frame.
+
+A panel's entity refreshes in `show_panel` when its revision is behind, when
+its document is new to it (the first mount, another document in its host) and
+after any UI event its mount sent in that frame's rounds, `window` events
+among them, so a scroll refreshes and a click shows its effect in its own
+frame. `studio_ui_send` (RevealObject) and a reloaded behavior make every
+panel due. Events behaviors send each other (Send Event) do not: a behavior
+publishes in the handler of the event that changed its state. A node that
+reads something new adds its counter to the stamp; one that reads values
+changing while the scene plays (none yet) adds a tick at the live rate, so
+Play refreshes a panel only when what it reads moved (the stamp held across
+120 Play frames of the Sandbox; Play and Stop move it). Tests, one per
+thing the Outliner shows (`refresh_follows_changes`, `stamp_follows_reads`,
+`--studio-outliner`): a forced idle UI frame runs no Refresh; a name Properties commits and its Undo, a selection the Scene
+makes, Hide in Editor, an added object, the filter Studio sets, an asset the
+project gains and Play and Stop each reach the rows or Add; the stamp moves
+with the selection, a spawn break, a rename in place, an attached behavior,
+Undo and Play. A row added or a filter cleared reaches the List's rows one
+frame after, when the List has laid out its new length, as before.
 
 **What stays native.** List windowing: a List marked
 `data-list-rows="self.total"` is windowed by its host (`ui_list_window` in
@@ -422,6 +457,33 @@ C panel's 2,831. Scene Objects was first a pure read, which the
 interpreter runs again for each node taking it (four walks a refresh, 0.30
 ms idle and 3.0 ms per keystroke); as a query it runs once.
 
+**Change-driven Refresh** (fx-refresh, release builds of `168677b4`, the
+base, and this branch, alternated three times at a 1-minute load of 12-13,
+so ratios, not milliseconds, hold; whole Studio UI frames, medians):
+
+| Step | Base, C source (ms) | Behaviors (ms) | Ratio | Views | Lookups | Layouts | Behavior time, runs |
+|---|---:|---:|---:|---:|---:|---:|---|
+| A UI frame with nothing changed | 1.071 / 1.021 / 0.977 | 0.906 / 0.962 / 0.893 | 0.89× | 0 | 0 | 0 | 0 ms, 0 (was 0.19 ms, 4 Refresh events) |
+| Scroll step of 3 rows | 3.462 / 3.511 / 3.422 | 3.418 / 3.678 / 3.622 | 1.05× | 607 | 1,735 (base 2,831) | 2 | 0.16 ms, 4 |
+| Click a row in view | 10.259 / 10.643 / 10.179 | 4.722 / 4.848 / 4.632 | 0.46× | 607 | 1,735 | 2 | 0.22 ms, 4 |
+| Rename in place | 4.438 / 4.713 / 4.601 | 4.753 / 4.842 / 4.876 | 1.05× | 1,190 | 3,404 | 2 | 0.35 ms, 9 |
+| A filter keystroke | 4.958 / 4.557 / 4.819 | 4.953 / 5.094 / 5.146 | 1.06× | 653 | 1,882 | 2 | 0.92 ms, 6 |
+
+The idle Outliner is now below the C source (0.89×) and runs no behavior;
+the other steps hold their spike ratios, their Refresh being due by the
+event or the list window that sent it. The idle frame also lost a cost every
+panel paid since the spike: `preview_drop` queried each mount's DOM for
+`[data-drop-over][data-object]` every frame, and now asks `ui_drag_active`
+first (a mount's `show_panel` fell from 64 to 45 µs for Properties and
+Outliner, 25-30 µs in the base). What remains above the base in `show_panel`
+is `ui_mount_measure`: since the spike it also runs `window_lists`, a
+selector query for `[data-list-rows]` in every mount every frame, beside the
+older `[id][data-event-scroll]` one. On the idle frame over fourteen mounts
+the two cost 123 µs (the Outliner's `ui_list_window` among it) and 51 µs, of
+0.9 ms. A mount whose expanded markup holds neither attribute needs neither
+query: search the text once when it loads (shared code in `render/ui.c`,
+left to its owner).
+
 **Parity:** native shots of the rows (a selection of two, a hidden and a
 locked object, a hovered row), the row menu and rename in place, dark and
 light, compact and comfortable (`UI_BENCH_OUTLINER_CAPTURE`, release builds
@@ -454,9 +516,10 @@ shared gaps are about 450.
   query), Assets' grid (thumbnails native, a query for the window).
 - Stay native: the graph canvas, Zep, the Scene viewport and gizmos,
   ranking, thumbnails, list windowing, the Inspector's DOM walk.
-- Before more panels: change-driven Refresh (a revision the queries
-  compare, the shared follow-up for sources too), Studio's Add menu gating,
-  a bool Select or conversion, and the controller fixes above.
+- Before more panels: Studio's Add menu gating, a bool Select or
+  conversion, and the controller fixes above (change-driven Refresh is done:
+  a panel's nodes add their counters to `studio_nodes_stamp`; sources
+  follow the shared follow-up below).
 - Open: two areas showing the Outliner share one entity and window (the
   Inspector's limit too); the Canvas preview of Studio's own Outliner shows
   no rows, as nothing runs its behaviors there.
@@ -1518,7 +1581,19 @@ costs recur across panels and belong in shared code, not in each panel:
 - **Change-driven sync**: a shown panel's source syncs every refresh and
   walks its data even when nothing changed (Assets' idle frame 1.4×). Sources
   should compare a revision (asset index, scene history step, log serial)
-  and return before walking.
+  and return before walking. Behavior panels did this for `Refresh`
+  (Behavior-driven panels). Measured for sources on the idle UI frame of the
+  Outliner bench (0.9 ms, 0.44 of it sync; release, load 12): `commands` 124
+  µs, `properties` 124, `editor` 108, `scene_view` 50 in every layout;
+  `assets` 76 (the grid's tiles 61, the List's id lookup 8) while Assets
+  shows; `inspector` 565 while the Inspector shows (2.4 ms idle frame). None
+  has a cheap revision yet: Assets' tiles also read the thumbnails, which
+  arrive when they are rendered, the List's scroll and width, which only the
+  DOM knows, and the pointer's hover; `commands`, `editor` and `properties`
+  read a state `ui_state` only approximates, since the kit re-emitted every
+  frame with UI work; and the Inspector's walk has no document revision to
+  compare (below). A source that opts in needs a stamp over everything it
+  reads, thumbnails and DOM geometry included.
 - **Sibling restyles**: RmlUi restyles every sibling of a changed element, so
   a selection in a flat list restyles all rows (Assets groups tiles in lines
   to contain it). Contain it in the List widget or patch RmlUi. TreeRow and

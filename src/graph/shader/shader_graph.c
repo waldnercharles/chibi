@@ -3,6 +3,7 @@
 #include "graph/shader/shader_detail.h"
 #include "graph/shader/shader_effects.h"
 #include "graph/shader/shader_image.h"
+#include "graph/shader/shader_volume.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -79,7 +80,8 @@ static const char *const names[] = { "Constant",
                                      "Bump",
                                      "Triplanar Texture",
                                      "Triplanar Texture Alpha",
-                                     "Decal Mask" };
+                                     "Decal Mask",
+                                     "Sampled SDF" };
 _Static_assert(sizeof names / sizeof *names == SHADER_OP_COUNT, "shader operation names");
 const char *shader_op_name(shader_op op)
 {
@@ -108,9 +110,9 @@ int shader_op_inputs(shader_op op)
     }
     if ((op >= SHADER_ABS && op <= SHADER_LENGTH) ||
         (op >= SHADER_X && op <= SHADER_W) || op == SHADER_NORMALIZE ||
-        op == SHADER_SATURATE || op == SHADER_IMAGE_TEXTURE ||
-        op == SHADER_IMAGE_TEXTURE_ALPHA || op == SHADER_SURFACE_INFLUENCE ||
-        (op >= SHADER_FLOOR && op <= SHADER_SIGN)) {
+        op == SHADER_SAMPLED_SDF || op == SHADER_SATURATE ||
+        op == SHADER_IMAGE_TEXTURE || op == SHADER_IMAGE_TEXTURE_ALPHA ||
+        op == SHADER_SURFACE_INFLUENCE || (op >= SHADER_FLOOR && op <= SHADER_SIGN)) {
         return 1;
     }
     if (op == SHADER_MIX || op == SHADER_SELECT || op == SHADER_SMOOTH_UNION ||
@@ -278,6 +280,17 @@ bool shader_graph_validate(const shader_graph *g, shader_error *error)
                 valid = n->width == (n->op == SHADER_COLOR_RAMP ? 3 : 1) &&
                         a == 1 && b == 1;
                 break;
+            case SHADER_SAMPLED_SDF:
+                valid = n->width == 1 && a == 3 && shader_volume_contract(n) &&
+                        n->image >= 0 && n->image < acount(g->images);
+                if (valid) {
+                    const shader_image_source *image = &g->images[n->image];
+                    valid = shader_image_source_valid(image) &&
+                            image->color_space == SHADER_IMAGE_LINEAR &&
+                            image->filter == SHADER_IMAGE_NEAREST &&
+                            image->wrap == SHADER_IMAGE_CLAMP;
+                }
+                break;
             case SHADER_IMAGE_TEXTURE:
             case SHADER_IMAGE_TEXTURE_ALPHA:
                 if (n->image < 0 || n->image >= acount(g->images) ||
@@ -364,6 +377,15 @@ static bool eval_values(
         if (n->op == SHADER_SURFACE_INFLUENCE) {
             if (sample->resolve_influence) {
                 sample->resolve_influence(sample->influence_userdata, a, v[i]);
+            }
+            continue;
+        }
+        if (n->op == SHADER_SAMPLED_SDF) {
+            shader_image_view image = { 0 };
+            if (!sample->resolve_image ||
+                !sample->resolve_image(sample->image_userdata, &g->images[n->image], &image) ||
+                !shader_volume_eval(n, &image, a, &v[i][0])) {
+                return fail(error, n->source_id, "Sampled SDF image could not be resolved");
             }
             continue;
         }
@@ -1057,6 +1079,13 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
     }
     char *s = NULL;
     for (int i = 0; i < acount(g->nodes); i++) {
+        if (g->nodes[i].op == SHADER_SAMPLED_SDF) {
+            char *volume = shader_volume_glsl(&g->nodes[i], prefix, i);
+            append(&s, "%s", volume);
+            free(volume);
+        }
+    }
+    for (int i = 0; i < acount(g->nodes); i++) {
         if (gradient && !reachable[i]) {
             continue;
         }
@@ -1321,6 +1350,9 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
                 break;
             case SHADER_COLOR_RAMP_ALPHA:
                 append(&s, "vec4(%s_ramp_%d(%s.x,%s.x).a)", prefix, i, a, b);
+                break;
+            case SHADER_SAMPLED_SDF:
+                append(&s, "vec4(%s_volume_%d(%s.xyz))", prefix, i, a);
                 break;
             case SHADER_IMAGE_TEXTURE:
                 append(&s, "vec4(%s_image_%d(%s.xy).rgb,0.0)", prefix, n->image, a);

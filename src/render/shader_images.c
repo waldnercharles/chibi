@@ -1,5 +1,6 @@
 #include "render/shader_images.h"
 
+#include "graph/shader/shader_volume.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -147,6 +148,50 @@ static CF_Result decode(const char *key, CF_Image *image)
     return result;
 }
 
+static bool sampled_identity(const char *key, const CF_Image *image)
+{
+    size_t length = strlen(key);
+    if (length < 8 || strcmp(key + length - 8, ".sdf.png")) {
+        return true;
+    }
+    const char *name = strrchr(key, '/');
+    name = name ? name + 1 : key;
+    if (strlen(name) != 24) {
+        return false;
+    }
+    uint64_t expected = 0;
+    for (int i = 0; i < 16; i++) {
+        char c = name[i];
+        int digit = c >= '0' && c <= '9' ? c - '0'
+                  : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                                         : -1;
+        if (digit < 0) {
+            return false;
+        }
+        expected = (expected << 4) | (unsigned)digit;
+    }
+    uint64_t hash = UINT64_C(14695981039346656037);
+    const unsigned char *bytes = (const unsigned char *)image->pix;
+    for (size_t i = 0; i < (size_t)image->w * image->h * 4; i++) {
+        hash = (hash ^ bytes[i]) * UINT64_C(1099511628211);
+    }
+    return hash == expected;
+}
+bool render_image_validate_volumes(const shader_graph *g, shader_error *error)
+{
+    for (int i = 0; i < acount(g->nodes); i++) {
+        if (g->nodes[i].op == SHADER_SAMPLED_SDF) {
+            const shader_node *n = &g->nodes[i];
+            shader_image_view view = { 0 };
+            if (!render_image_variant(&g->images[n->image], error) ||
+                !render_image_resolve(NULL, &g->images[n->image], &view) ||
+                !shader_volume_validate(n, &view, error)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
 bool render_image_reload(const char *key, char *message, size_t size)
 {
     int index = find_source(key);
@@ -161,6 +206,8 @@ bool render_image_reload(const char *key, char *message, size_t size)
         snprintf(source->error, sizeof source->error, "%s: %s", key, result.details);
     } else if (fresh.w <= 0 || fresh.h <= 0 || fresh.w > INT_MAX / 4 / fresh.h) {
         snprintf(source->error, sizeof source->error, "%s: image dimensions exceed the upload limit.", key);
+    } else if (!sampled_identity(key, &fresh)) {
+        snprintf(source->error, sizeof source->error, "%s: sampled SDF pixel digest does not match its immutable filename.", key);
     } else {
         CF_Texture *textures = NULL;
         bool valid = true;

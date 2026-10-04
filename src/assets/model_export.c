@@ -2,6 +2,7 @@
 
 #include "assets/model_source.h"
 #include "render/shader_catalog.h"
+#include "render/shader_images.h"
 #include "support/array.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
@@ -189,6 +190,10 @@ static yyjson_mut_doc *provenance(
     yyjson_mut_obj_add_str(doc, root, "appearance", "Live material references retained in mesh groups. OBJ/MTL contains geometry, normals, approximate box UVs and neutral placeholder material slots. No texture or procedural appearance bake.");
     yyjson_mut_obj_add_str(doc, root, "approximation", "Marching tetrahedra sampled surface. Thin features below cell resolution can be lost. Ownership/material boundaries are chosen per triangle centroid. Residual is a sampled diagnostic, not a Hausdorff error bound.");
     yyjson_mut_obj_add_str(doc, root, "source_hash_algorithm", "fnv1a64");
+    yyjson_mut_val *images = yyjson_mut_obj_add_arr(doc, root, "image_dependencies");
+    for (int i = 0; i < acount(program->shader.images); i++) {
+        yyjson_mut_arr_add_strcpy(doc, images, program->shader.images[i].key);
+    }
     yyjson_mut_val *saved = yyjson_mut_obj_add_arr(doc, root, "saved_catalog");
     for (int i = 0; i < acount(sources->saved); i++) {
         yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, saved);
@@ -309,8 +314,20 @@ bool model_export_bundle(
         snprintf(error, size, "Export destination must be a new directory.");
         return false;
     }
+    bool owns_filesystem = !cf_fs_get_base_directory();
+    if (owns_filesystem) {
+        CF_Result initialized = cf_fs_init(NULL);
+        if (cf_is_error(initialized)) {
+            snprintf(error, size, "%s", initialized.details);
+            return false;
+        }
+        render_images_clear();
+    }
     model_source_catalog sources;
     bool ok = model_source_load(root, &sources, error, size);
+    if (ok) {
+        ok = render_image_mount_content(root, error, size);
+    }
     const behavior_asset *source = NULL;
     for (int i = 0; ok && i < acount(sources.saved); i++) {
         if (strcmp(sources.saved[i].asset->name, name)) {
@@ -349,6 +366,10 @@ bool model_export_bundle(
     if (ok) {
         ok = model_compile_with_catalog(source, sources.catalog, acount(sources.catalog), &program, &diagnostic);
     }
+    if (ok) {
+        ok = render_image_validate_volumes(&program.shader, &diagnostic);
+    }
+    program.resolve_image = render_image_resolve;
     float parameters[SHADER_PARAMETER_MAX][4] = { { 0 } };
     if (ok) {
         ok = model_program_parameters(&program, parameters, &diagnostic);
@@ -434,5 +455,9 @@ bool model_export_bundle(
     model_bake_result_free(&bake);
     model_program_free(&program);
     model_source_free(&sources);
+    if (owns_filesystem) {
+        render_images_clear();
+        cf_fs_destroy();
+    }
     return ok;
 }

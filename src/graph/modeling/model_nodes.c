@@ -23,6 +23,17 @@
       .type_name = "Geometry3D",                                               \
       .default_value = { .type = PIN_HANDLE, .type_name = "Geometry3D" } }
 static float ones[3] = { 1, 1, 1 };
+static pin_spec sampled_inputs[] = { { .name = "Image",
+                                       .type = PIN_STR,
+                                       .flags = PIN_FLAG_SETTING,
+                                       .default_value = { .type = PIN_STR, .str = "" } },
+                                     VECTOR("Half Size", ones),
+                                     { .name = "Resolution",
+                                       .type = PIN_I32,
+                                       .flags = PIN_FLAG_SETTING,
+                                       .default_value = { .type = PIN_I32, .i = 2 } },
+                                     FLOAT("Range", 1),
+                                     FLOAT("Lipschitz", 2) };
 static pin_spec sphere_inputs[] = { FLOAT("Radius", 1) };
 static pin_spec box_inputs[] = { VECTOR("Half Size", ones) };
 static pin_spec rounded_inputs[] = { VECTOR("Half Size", ones), FLOAT("Radius", .1f) };
@@ -55,6 +66,7 @@ static pin_spec output_inputs[] = { GEOMETRY("Geometry") };
                          .category = group,                                    \
                          .description = text,                                  \
                          .display_class = NODE_DISPLAY_PURE }
+SOLID(NODE_ModelSampledSdf, "Model Sampled SDF", sampled_inputs, "Model/Primitives", "A dense signed-distance lattice in an immutable RG16 PNG atlas. Samples include the box endpoints. Negative is inside; metadata and a positive outer border are validated before publication. Image must use a content-addressed .sdf.png name.");
 SOLID(NODE_ModelSphere, "Model Sphere", sphere_inputs, "Model/Primitives", "A centered sphere with a positive radius below sqrt(FLT_MAX / 3) in local project units.");
 SOLID(NODE_ModelBox, "Model Box", box_inputs, "Model/Primitives", "A centered box with positive outer half sizes along X, Y and Z.");
 SOLID(NODE_ModelRoundedBox, "Model Rounded Box", rounded_inputs, "Model/Primitives", "A rounded box whose outer half sizes remain fixed; Radius is between zero and the smallest half size.");
@@ -440,7 +452,8 @@ static const enum_desc axis_type = { .name = "ModelAxis",
                                      .values = axes,
                                      .value_count = 3 };
 static const enum_desc *const enums[] = { &axis_type, &shell_side_type };
-static node_desc *const nodes[] = { &NODE_ModelSphere,
+static node_desc *const nodes[] = { &NODE_ModelSampledSdf,
+                                    &NODE_ModelSphere,
                                     &NODE_ModelBox,
                                     &NODE_ModelRoundedBox,
                                     &NODE_ModelCylinder,

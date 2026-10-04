@@ -655,6 +655,7 @@ chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGE
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
     test/graph/*.c test/ecs/*.c test/runtime/*.c test/editor/*.c test/support/*.c)
 add_executable(test_suite
+    test/model_sampled.c
     test/automation_preview.c
     test/asset_value.c test/asset_source.c test/kdl_text.c
     test/collab_protocol.c test/collab_replay.c

@@ -3,6 +3,7 @@
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
 #include "graph/runtime/flow.h"
+#include "graph/shader/shader_volume.h"
 #include "render/mesh_asset.h"
 #include "render/shader_images.h"
 #include "runtime/generated.h"
@@ -270,9 +271,12 @@ char *render_shader_model_preview_glsl(int index, int part, shader_error *error)
         free(h);
         return NULL;
     }
-    size_t size = strlen(d) + strlen(h) + 1;
-    char *result = xmalloc(size);
-    snprintf(result, size, "%s%s", d, h);
+    char *result = NULL;
+    for (int i = 0; i < acount(assets[index - 1].images); i++) {
+        append(&result, "vec4 sg_preview_distance_image_%d(vec2 uv){return sg_asset_%d_image_%d(uv); }\n", i, index, i);
+        append(&result, "vec4 sg_preview_hit_image_%d(vec2 uv){return sg_asset_%d_image_%d(uv); }\n", i, index, i);
+    }
+    append(&result, "%s%s", d, h);
     free(d);
     free(h);
     return result;
@@ -639,6 +643,12 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
     parameter_revision++;
     return true;
 }
+float render_shader_distance_lipschitz(int index)
+{
+    return index > 0 && index <= acount(assets)
+             ? shader_graph_lipschitz(&assets[index - 1].graph)
+             : 1;
+}
 static bool model_asset_prepare(
     const behavior_asset *source,
     int id,
@@ -664,6 +674,21 @@ static bool model_asset_prepare(
     model_program_inspect(&fresh->model, &fresh->inspection);
     fresh->inspection.image_limit = RENDER_SHADER_IMAGE_MAX;
     fresh->inspection.ramp_limit = RENDER_SHADER_RAMP_VEC4_MAX;
+    if (!render_image_validate_volumes(&fresh->model.shader, error)) {
+        free_asset(fresh);
+        *fresh = (shader_asset){ 0 };
+        return false;
+    }
+    fresh->model.resolve_image = render_image_resolve;
+    for (int i = 0; i < acount(fresh->model.shader.images); i++) {
+        int variant = render_image_variant(&fresh->model.shader.images[i], error);
+        if (!variant || acount(fresh->images) >= RENDER_SHADER_IMAGE_MAX) {
+            free_asset(fresh);
+            *fresh = (shader_asset){ 0 };
+            return false;
+        }
+        apush(fresh->images, variant);
+    }
     fresh->graph = fresh->model.shader;
     shader_graph_init(&fresh->model.shader);
     model_bounds bounds;
@@ -1393,6 +1418,19 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
                 set_slot(set, assets[i].images[j])
             );
         }
+        if (assets[i].is_model) {
+            for (int j = 0; j < acount(assets[i].images); j++) {
+                append(
+                    &text,
+                    "vec4 sg_asset_%d_hit_image_%d(vec2 uv){return "
+                    "sg_asset_%d_image_%d(uv); }\n",
+                    i + 1,
+                    j,
+                    i + 1,
+                    j
+                );
+            }
+        }
         char name[64];
         snprintf(name, sizeof name, "sg_asset_%d", i + 1);
         shader_error error = { 0 };
@@ -1417,6 +1455,11 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         }
     }
     if (set->shape) {
+        append(
+            &text,
+            "#define SG_DISTANCE_LIPSCHITZ %.9g\n",
+            shader_graph_lipschitz(&assets[set->shape - 1].graph)
+        );
         char name[64];
         snprintf(name, sizeof name, "sg_gradient_%d", set->shape);
         shader_error error = { 0 };
@@ -2083,6 +2126,10 @@ static bool source_parameter_asset(
         if (!model_compile_with_catalog(source, catalog, count, &result->model, error)) {
             return false;
         }
+        if (!render_image_validate_volumes(&result->model.shader, error)) {
+            return false;
+        }
+        result->model.resolve_image = render_image_resolve;
         result->graph = result->model.shader;
         shader_graph_init(&result->model.shader);
         for (int i = 0; i < acount(result->model.parameters); i++) {

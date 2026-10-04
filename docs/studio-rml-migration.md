@@ -1857,7 +1857,7 @@ entry onto the hierarchy and for a widget element opening its widget.
   `details.change`, `library.add`) becomes one `ui_design_*` text edit, so one
   Undo step; the markup never edits the document. Fast-changing state
   (selection, renaming, the hovered row, the carry) has a variable of its own,
-  so a selection dirties a few hundred views, not the window's.
+  so a selection reads about 220 views outside Details, not the window's.
 - **Capabilities are plain C, apart from the panels' glue**, so they can
   become behavior nodes when panels' logic moves to KDL graphs:
   `studio_designer_values.c` (a property's control, a control's value as
@@ -1891,8 +1891,12 @@ with a tile hovered; dark and light, compact and comfortable, 2880 by 1800)
 and web (1600 by 1000, the same states, by a script over `make web`) match
 pixel for pixel in the Hierarchy and the Library. Details matches but for the
 keyword dropdown's width, which is EnumField's (the list is as wide as the
-field's value, P1's known deviation). One kit detail was kept as the kit
-showed it, not as an earlier design said: Bindings values use the body font.
+field's value, P1's known deviation). Re-shot on the web after merging
+`00e3ceb8`, against that branch's kit Designer, all 52 states (dark and
+light, compact and comfortable) match pixel for pixel but for that dropdown;
+native shots after the merge (1x) were looked over, not compared. One kit
+detail was kept as the kit showed it, not as an earlier design said:
+Bindings values use the body font.
 
 Checks: `--studio-designer` (21, also in `--studio-documents`, in
 `test/editor/studio_documents_designer.c` over the arena's HUD with in-memory
@@ -1937,8 +1941,8 @@ row structure, not a widget: one `data-attr` on any element inside a row's
 however many follow it, where the same branch with no view adds none
 (swapping the color field for a `<span>` with one attribute reproduces it),
 while an edit that changes one value stays at 333 views and no layout. Not
-explained; the data model's owner may know. A selection is a 1 to 2 ms frame
-above the kit's.
+explained; the data model's owner may know. A selection costs 1 to 1.5 ms more
+than the kit's frame.
 
 Open: Details's JSON builders are the largest part of the C that remains and
 could shrink with a table-driven row shape. The Canvas keeps its guides in the

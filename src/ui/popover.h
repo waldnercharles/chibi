@@ -36,6 +36,13 @@
  *   data-highlighted on a menu's highlighted item, and data-popup-open on
  *   the trigger of an open popover (Base UI's). Closed, it lays out and
  *   draws nothing ([popover]:not([data-open]) is display: none).
+ * - data-template (Base UI's Popup, mounted only while open): a popover that
+ *   carries it holds no elements and no data views while closed. Its content
+ *   is built when it is shown, bound to the data of that moment, and removed
+ *   with its views once it has faded out. Like data-for it cancels the
+ *   popover's own other data views, and opening it again during its fade
+ *   keeps the content. Menu and Submenu have it; a popover without it stays
+ *   built.
  *
  * C owners, such as the kit, stack their own elements with popover_show and
  * see them close through popover_open; those are placed and dismissed here

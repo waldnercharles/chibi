@@ -327,6 +327,56 @@ static void guest_header()
     fixture_free(&f);
 }
 
+/* The Scene's and Canvas's own RCSS reads the classes the kit sets on the
+   area's document, as the settings change: the viewport keeps dark roles in
+   a light theme, and the Canvas's Actions rows follow the density. */
+static void panel_rules_follow_body()
+{
+    studio_fixture f = sandbox_open();
+    studio *s = f.studio;
+    s->prefs.theme = STUDIO_THEME_DARK;
+    frames(&f, 4);
+    char dark[32] = "", light[32] = "";
+    rml_element *label = in_panel(s, "Scene", ".view-label");
+    if (label) {
+        rml_element_property(label, "color", dark, sizeof dark);
+    }
+    s->prefs.theme = STUDIO_THEME_LIGHT;
+    frames(&f, 4);
+    label = in_panel(s, "Scene", ".view-label");
+    if (label) {
+        rml_element_property(label, "color", light, sizeof light);
+    }
+    test_check(
+        !strcmp(dark, "#e6e8ec") && !strcmp(light, "#e8edf5"),
+        "the Scene's own RCSS keeps the viewport's dark roles in a light theme "
+        "and follows a theme change"
+    );
+    studio_preview_ui(s, "HUD");
+    studio_active_layout(s)->canvas_actions_open = true;
+    apush(
+        s->canvas->actions,
+        ((studio_canvas_action){ .count = 1, .event = "Repair", .element = "#repair" })
+    );
+    s->ui_schedule.wake = true;
+    frames(&f, 4);
+    float heights[3];
+    for (int i = 0; i < 3; i++) {
+        s->prefs.comfortable = i == 1;
+        s->ui_schedule.wake = true;
+        frames(&f, 4);
+        rml_element *row = in_panel(s, "Canvas", ".canvas-action:not([data-for])");
+        heights[i] = row ? rml_element_box_size(row, RML_BOX_BORDER).y : 0;
+    }
+    test_check(
+        heights[0] > 0 && heights[1] * 20 == heights[0] * 24 &&
+            heights[2] == heights[0],
+        "the Canvas's own RCSS sizes its Actions rows 20dp compact and 24dp "
+        "comfortable, as the density changes"
+    );
+    fixture_free(&f);
+}
+
 static void capture(studio_fixture *f, const char *dir, const char *variant, const char *state)
 {
     char path[PATH_MAX];
@@ -424,6 +474,7 @@ void studio_documents_scene_checks()
     view_menu_and_zoom();
     overlays_follow_the_scene();
     canvas_header_and_actions();
+    panel_rules_follow_body();
     guest_header();
     documents_keep_frame_time();
 }

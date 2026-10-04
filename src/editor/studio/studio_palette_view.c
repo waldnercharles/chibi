@@ -622,12 +622,33 @@ static const char *const PANELS[] = {
     [STUDIO_PALETTE_PICKER] = "Picker",
 };
 
+/* A Studio project without the document, such as a served copy older than
+   the build, would leave the palette open, unseen and holding the keys. */
+static void missing(studio *s, const char *document)
+{
+    char text[96];
+    snprintf(text, sizeof text, "The Studio project has no %s document; update its copy", document);
+    kit_toast(
+        s->kit,
+        0,
+        &(kit_toast_desc){ .type = KIT_TOAST_ERROR,
+                           .title = "Palette unavailable",
+                           .description = text }
+    );
+    studio_record(s, KIT_TOAST_ERROR, text);
+    studio_palette_close(s);
+}
+
 /* The modal keeps the focus in its search field, as cmdk's dialog does,
    and shows a query its client set. */
 static void modal_frame(studio *s, studio_palette_state *p)
 {
     rml_element *host = studio_ui_dialog(s, "palette", PANELS[STUDIO_PALETTE_MODAL]);
-    rml_element *search = host ? rml_element_query_selector(host, "#" SEARCH_ID) : NULL;
+    if (!host) {
+        missing(s, PANELS[STUDIO_PALETTE_MODAL]);
+        return;
+    }
+    rml_element *search = rml_element_query_selector(host, "#" SEARCH_ID);
     if (!search) {
         return;
     }
@@ -650,8 +671,11 @@ static void picker_frame(studio *s, studio_palette_state *p)
     kit_document_begin(s->kit, "picker", "bar-place", true);
     rml_element *host = studio_ui_panel(s, "picker", PANELS[STUDIO_PALETTE_PICKER]);
     kit_document_end(s->kit);
-    rml_element *popover = host ? rml_element_query_selector(host, "#" PICKER_ID)
-                                : NULL;
+    if (!host) {
+        missing(s, PANELS[STUDIO_PALETTE_PICKER]);
+        return;
+    }
+    rml_element *popover = rml_element_query_selector(host, "#" PICKER_ID);
     rml_element *anchor = studio_palette_anchor(s);
     if (!popover || p->shown) {
         if (popover && !popover_open(popover)) {

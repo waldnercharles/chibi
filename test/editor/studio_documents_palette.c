@@ -554,8 +554,38 @@ static void refactor_renames_and_deletes()
     remove_project(root);
 }
 
+/* A Studio project without the palette's document, as a web workspace's
+   copy of it older than the build is, closes the palette and records why
+   instead of leaving it open, unseen and holding the keys. The frame runs
+   once without the Studio UI: the project has no such panel to mount. */
+static void palette_without_document()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    frames(&f, 2);
+    int records = acount(s->records);
+    studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    bool opened = studio_palette_is_open(s);
+    studio_ui *ui = s->ui;
+    s->ui = NULL;
+    studio_palette(s);
+    s->ui = ui;
+    bool recorded = acount(s->records) == records + 1 &&
+                    strstr(s->records[records].text, "no Palette document") &&
+                    s->records[records].kind == KIT_TOAST_ERROR;
+    test_check(opened && !studio_palette_is_open(s) && recorded, "a palette whose document the Studio project lacks closes with an error recorded");
+    studio_command_run(s, STUDIO_COMMAND_SEARCH);
+    frames(&f, 2);
+    test_check(
+        studio_palette_is_open(s) && studio_element(s, "#palette-search"),
+        "the palette opens again once the document is there"
+    );
+    fixture_free(&f);
+}
+
 void studio_documents_palette_checks()
 {
+    palette_without_document();
     palette_keys_and_window();
     palette_ranks_and_marks();
     asset_field_picks();

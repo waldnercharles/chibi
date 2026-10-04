@@ -2,6 +2,7 @@
  * window: Studio's documents over the Sandbox at 1440x900, its
  * Properties showing the Player (authored since P1) against the S0 spike,
  * and whether a popover escapes an area's clipping. */
+#include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
@@ -12,12 +13,15 @@
 #include "graph/model/registry.h"
 #include "render/scene_renderer.h"
 #include "render/screenshot.h"
+#include "support/text_edit.h"
 #include "test/editor/ui_bench.h"
 #include "test/suite_internal.h"
+#include "ui/drag.h"
 #include "ui/popover.h"
 #include "ui/rml.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1907,6 +1911,390 @@ static void node_tab(studio_bench *b)
     node_case_step(&c, NODE_IDLE, "Node tab: a UI frame with nothing changed");
 }
 
+/* ---------- 22: the visual designer ---------- */
+
+#define DESIGNER_ITEMS 40
+
+/* The elements of designer_document, in outline order. */
+enum
+{
+    DESIGNER_ROOT,
+    DESIGNER_TITLE,
+    DESIGNER_ROW,
+    DESIGNER_OK,
+    DESIGNER_CANCEL,
+    DESIGNER_CHECK,
+    DESIGNER_IMAGE,
+    DESIGNER_USE,
+    DESIGNER_GROUP,
+};
+
+static const char DESIGNER_RCSS
+    [] = ".panel { display: block; width: 240dp; color: #ffffff; "
+         "border-radius: 6dp; font-size: 13dp; }\n"
+         ".row button { color: #ff0000; flex-grow: 1; z-index: 2; }\n"
+         ".title { font-weight: bold; text-align: center; }\n"
+         "#root:hover { opacity: 1; }\n"
+         ".big { font-size: 16dp; }\n";
+
+/* A document with every kind of Details value, and `items` spans in its
+   group, as the Hierarchy's rows. */
+static void designer_document(char *out, size_t size, int items)
+{
+    size_t length = (size_t)snprintf(
+        out,
+        size,
+        "<div id=\"root\" class=\"panel\" style=\"width: 280dp; height: 220dp; "
+        "opacity: 0.85; background-color: #22334488; box-sizing: "
+        "border-box\">\n"
+        "  <span class=\"title big\" data-if=\"shown\">Title</span>\n"
+        "  <div class=\"row\" style=\"display: flex; padding: 6dp; margin: 2dp "
+        "4dp; "
+        "justify-content: space-between\">\n"
+        "    <button id=\"ok\" data-event-click=\"emit('Ok')\">OK</button>\n"
+        "    <button id=\"cancel\" class=\"secondary\">Cancel</button>\n"
+        "    <input type=\"checkbox\"/>\n"
+        "  </div>\n"
+        "  <img src=\"icon.png\"/>\n"
+        "  <use ui=\"Meter\" id=\"meter\"/>\n"
+        "  <div class=\"group\">\n"
+    );
+    for (int i = 0; i < items && length + 64 < size; i++) {
+        length += (size_t)snprintf(out + length, size - length, "    <span>Item %d</span>\n", i);
+    }
+    snprintf(out + length, size - length, "  </div>\n</div>\n");
+}
+
+/* HUD.rml of the arena open as a UI document, its text replaced in memory
+   with the designer document, with Hierarchy, Details and Library beside the
+   Canvas. Nothing is saved. */
+static void designer_open(studio_bench *b, int items)
+{
+    studio *s = b->studio;
+    s->maximized = -1;
+    s->prefs.code_apply_live = false;
+    s->prefs.reduced_motion = true;
+    char path[PATH_MAX];
+    bool real = realpath(ARENA "/content/ui/HUD.rml", path) != NULL;
+    assert(real && studio_open_ui_source(s, path, 1));
+    frames(b, 4);
+    ui_buffer *buffer = studio_ui_buffer(s);
+    static char markup[16384];
+    designer_document(markup, sizeof markup, items);
+    text_edit rml = { 0, (int)strlen(ui_buffer_text(buffer, UI_PART_RML)), markup };
+    ui_buffer_edit(buffer, UI_PART_RML, &rml, 1);
+    text_edit rcss = { 0, (int)strlen(ui_buffer_text(buffer, UI_PART_RCSS)), DESIGNER_RCSS };
+    ui_buffer_edit(buffer, UI_PART_RCSS, &rcss, 1);
+    studio_show_editor(s, STUDIO_EDITOR_ASSETS);
+    frames(b, 6);
+}
+
+/* The Hierarchy's rows, native or authored, are the Outliner area's
+   tree rows. */
+static int designer_rows(studio *s, rml_element **rows, int max)
+{
+    rml_element *all[MAX_ROWS];
+    int found = 0;
+    rml_context *context = rml_backend_context(s->backend);
+    float ratio = studio_pixel_ratio(s);
+    kit_rect area = s->areas[STUDIO_AREA_OUTLINER].rect;
+    for (int d = 0; d < rml_context_document_count(context); d++) {
+        int count = rml_element_query_selector_all(rml_context_document(context, d), ".tree-row", all, MAX_ROWS);
+        for (int i = 0; i < count && i < MAX_ROWS && found < max; i++) {
+            rml_vec2 at = rml_element_absolute_offset(all[i], RML_BOX_BORDER);
+            float x = at.x / ratio, y = at.y / ratio;
+            if (x >= area.x && x < area.x + area.w && y >= area.y &&
+                y < area.y + area.h && rml_element_is_visible(all[i], true)) {
+                rows[found++] = all[i];
+            }
+        }
+    }
+    return found;
+}
+
+/* The row whose meta starts with `meta` ("#ok"), or the document's row
+   for NULL. */
+static rml_element *designer_row(studio *s, const char *meta)
+{
+    rml_element *rows[MAX_ROWS];
+    int count = designer_rows(s, rows, MAX_ROWS);
+    for (int i = 0; i < count; i++) {
+        rml_element *held = rml_element_query_selector(rows[i], ".meta");
+        char text[96] = "";
+        if (held) {
+            rml_element_inner_rml(held, text, sizeof text);
+        }
+        if (meta ? !strncmp(text, meta, strlen(meta)) : i == 0) {
+            return rows[i];
+        }
+    }
+    return NULL;
+}
+
+typedef enum
+{
+    DESIGNER_IDLE,
+    DESIGNER_SELECT,
+    DESIGNER_SELECT_LIKE,
+    DESIGNER_EDIT,
+} designer_case;
+
+/* What one run of a designer case changes before its UI work: the selection
+   alternates between two elements, or the root's inline width is edited as
+   a scrub's commit writes it. */
+static void designer_change(studio *s, designer_case step, int run)
+{
+    static int serial;
+    switch (step) {
+        case DESIGNER_IDLE: break;
+        case DESIGNER_SELECT:
+            designer_select(s, run & 1 ? DESIGNER_OK : DESIGNER_TITLE);
+            break;
+        case DESIGNER_SELECT_LIKE:
+            designer_select(s, run & 1 ? DESIGNER_OK : DESIGNER_CANCEL);
+            break;
+        case DESIGNER_EDIT: {
+            ui_buffer *buffer;
+            studio_designer *d = designer_state(s, &buffer);
+            char value[24], error[192] = "";
+            snprintf(value, sizeof value, "%ddp", 300 + serial++);
+            bool ok = ui_design_set_style(buffer, d->selected, "width", value, false, error, sizeof error);
+            assert(ok);
+            break;
+        }
+    }
+}
+
+static void designer_case_row(studio_bench *b, designer_case step, const char *name)
+{
+    studio *s = b->studio;
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        designer_change(s, step, run);
+        cf_app_update(NULL);
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        counts = studio_counts(s, before);
+        frames(b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    bench_row("22", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
+/* The designer over DESIGNER_ITEMS spans: a UI frame with nothing changed,
+   a selection change, and an inline width written to the selected root,
+   which re-parses the document and rewrites Details. Run each build's
+   binary in turn for an A/B. */
+static void designer(studio_bench *b)
+{
+    studio *s = b->studio;
+    designer_open(b, DESIGNER_ITEMS);
+    probe_documents(s);
+    rml_element *rows[MAX_ROWS];
+    printf(
+        "|  | Designer over %d elements; %d Hierarchy rows shown | | | | | | "
+        "|\n",
+        DESIGNER_GROUP + 1 + DESIGNER_ITEMS,
+        designer_rows(s, rows, MAX_ROWS)
+    );
+    designer_case_row(b, DESIGNER_IDLE, "Designer: a UI frame with nothing changed");
+    designer_case_row(b, DESIGNER_SELECT, "Designer: select another element");
+    designer_case_row(b, DESIGNER_SELECT_LIKE, "Designer: select another button");
+    designer_select(s, DESIGNER_ROOT);
+    frames(b, 4);
+    designer_case_row(b, DESIGNER_EDIT, "Designer: write the root's inline width");
+}
+
+/* The input helpers of studio_documents.c, whose header would clash with
+   this file's frames. */
+void mouse_move(const studio *s, float x, float y);
+void graph_drag_button(const studio *s, float x, float y, bool down);
+
+/* The pointer to (x, y) in dp for the kit, which reads SDL's, and for RmlUi. */
+static void move_to(studio *s, float x, float y)
+{
+    mouse_move(s, x, y);
+    pointer(s, RML_INPUT_POINTER_MOVE, x, y);
+}
+
+static void center_of(studio *s, rml_element *el, float *x, float *y)
+{
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    *x = (at.x + size.x / 2) / ratio;
+    *y = (at.y + size.y / 2) / ratio;
+}
+
+/* A press and release on `el` with the pointer there. */
+static void designer_press(studio_bench *b, rml_element *el, int button)
+{
+    assert(el);
+    studio *s = b->studio;
+    float x, y;
+    center_of(s, el, &x, &y);
+    move_to(s, x, y);
+    frames(b, 1);
+    rml_input input = { .x = x, .y = y, .button = button };
+    input.type = RML_INPUT_POINTER_DOWN;
+    rml_backend_process_input(s->backend, &input);
+    input.type = RML_INPUT_POINTER_UP;
+    rml_backend_process_input(s->backend, &input);
+}
+
+/* The first element `selector` matches inside area `area`. */
+static rml_element *area_query(studio *s, int area, const char *selector)
+{
+    rml_element *found[MAX_ROWS];
+    rml_context *context = rml_backend_context(s->backend);
+    float ratio = studio_pixel_ratio(s);
+    kit_rect rect = s->areas[area].rect;
+    for (int d = 0; d < rml_context_document_count(context); d++) {
+        int count = rml_element_query_selector_all(rml_context_document(context, d), selector, found, MAX_ROWS);
+        for (int i = 0; i < count && i < MAX_ROWS; i++) {
+            rml_vec2 at = rml_element_absolute_offset(found[i], RML_BOX_BORDER);
+            float x = at.x / ratio, y = at.y / ratio;
+            if (x >= rect.x && x < rect.x + rect.w && y >= rect.y &&
+                y < rect.y + rect.h && rml_element_is_visible(found[i], true)) {
+                return found[i];
+            }
+        }
+    }
+    return NULL;
+}
+
+/* Presses `from`, carries it past the drag threshold to `x`, `y` (dp) and
+   holds it there. */
+static void designer_carry(studio_bench *b, rml_element *from, float x, float y)
+{
+    studio *s = b->studio;
+    float ratio = studio_pixel_ratio(s);
+    rml_vec2 start = rml_element_absolute_offset(from, RML_BOX_BORDER);
+    float sx = start.x / ratio + 30, sy = start.y / ratio + 6;
+    move_to(s, sx, sy);
+    frames(b, 1);
+    graph_drag_button(s, sx, sy, true);
+    frames(b, 1);
+    move_to(s, sx - 12, sy);
+    frames(b, 2);
+    move_to(s, x, y);
+    frames(b, 4);
+}
+
+static void designer_release(studio_bench *b)
+{
+    studio *s = b->studio;
+    ui_drag_cancel(rml_backend_context(s->backend));
+    frames(b, 3);
+    graph_drag_button(s, 1, 1, false);
+    frames(b, 2);
+}
+
+/* Selects an element and asks for a refresh with a pointer move, which the
+   builds before the authored panels needed to show it before their idle
+   refresh. */
+static void select_element(studio_bench *b, int element)
+{
+    static int flip;
+    designer_select(b->studio, element);
+    move_to(b->studio, 600 + (flip++ & 1), 300);
+}
+
+/* With UI_BENCH_DESIGNER_CAPTURE set to a directory, native shots of the
+   Hierarchy, Details and Library in dark and light, compact and
+   comfortable: the rows with a selection, the row menu, the Add menu, a
+   row dragged over the middle and top of another, Details of the root
+   with an Add Class popover and a color picker, of a row with a keyword
+   open, of a button with a binding, and of the document, and the Library
+   with a tile hovered. The pointer rests over the Canvas between shots. */
+static void capture_designer(studio_bench *b, const char *dir)
+{
+    static const struct
+    {
+        const char *name;
+        studio_theme theme;
+        bool comfortable;
+    } VARIANTS[] = { { "dark-compact", STUDIO_THEME_DARK, false },
+                     { "dark-comfortable", STUDIO_THEME_DARK, true },
+                     { "light-compact", STUDIO_THEME_LIGHT, false },
+                     { "light-comfortable", STUDIO_THEME_LIGHT, true } };
+    studio *s = b->studio;
+    designer_open(b, 3);
+    float ratio = studio_pixel_ratio(s);
+    rml_context *context = rml_backend_context(s->backend);
+    for (size_t v = 0; v < sizeof VARIANTS / sizeof *VARIANTS; v++) {
+        const char *name = VARIANTS[v].name;
+        s->prefs.theme = VARIANTS[v].theme;
+        s->prefs.comfortable = VARIANTS[v].comfortable;
+        move_to(s, 600, 300);
+        select_element(b, DESIGNER_OK);
+        shot(b, dir, name, "rows");
+        designer_press(b, designer_row(s, "#ok"), 1);
+        shot(b, dir, name, "menu");
+        popover_hide_all(context);
+        move_to(s, 600, 300);
+        frames(b, 6);
+        designer_press(b, studio_query(s, "[data-tip=Add]"), 0);
+        shot(b, dir, name, "add");
+        popover_hide_all(context);
+        move_to(s, 600, 300);
+        frames(b, 6);
+        rml_element *target = designer_row(s, ".row");
+        rml_vec2 at = rml_element_absolute_offset(target, RML_BOX_BORDER);
+        rml_vec2 size = rml_element_box_size(target, RML_BOX_BORDER);
+        designer_carry(
+            b,
+            designer_row(s, "#cancel"),
+            (at.x + size.x / 2) / ratio,
+            (at.y + size.y * 0.5f) / ratio
+        );
+        shot(b, dir, name, "drag-inside");
+        move_to(s, (at.x + size.x / 2) / ratio, (at.y + size.y * 0.1f) / ratio);
+        shot(b, dir, name, "drag-before");
+        designer_release(b);
+        move_to(s, 600, 300);
+        select_element(b, DESIGNER_ROOT);
+        shot(b, dir, name, "details");
+        designer_press(b, area_query(s, STUDIO_AREA_PROPERTIES, ".designer-add"), 0);
+        shot(b, dir, name, "details-add");
+        popover_hide_all(context);
+        move_to(s, 600, 300);
+        frames(b, 6);
+        designer_press(b, area_query(s, STUDIO_AREA_PROPERTIES, "color-field"), 0);
+        shot(b, dir, name, "details-color");
+        popover_hide_all(context);
+        move_to(s, 600, 300);
+        frames(b, 6);
+        select_element(b, DESIGNER_ROW);
+        move_to(s, 600, 300);
+        shot(b, dir, name, "details-row");
+        designer_press(b, area_query(s, STUDIO_AREA_PROPERTIES, ".field.select"), 0);
+        shot(b, dir, name, "details-keyword");
+        popover_hide_all(context);
+        move_to(s, 600, 300);
+        frames(b, 6);
+        select_element(b, DESIGNER_TITLE);
+        shot(b, dir, name, "details-text");
+        select_element(b, -1);
+        shot(b, dir, name, "document");
+        rml_element *tile = studio_query(s, ".designer-tile");
+        assert(tile);
+        float x, y;
+        center_of(s, tile, &x, &y);
+        move_to(s, x, y);
+        shot(b, dir, name, "library");
+    }
+}
+
 int ui_bench_studio(const char *program, bool members_only)
 {
     CF_Result result = cf_make_app(
@@ -1941,6 +2329,22 @@ int ui_bench_studio(const char *program, bool members_only)
     /* UI_BENCH_NODE runs case 21 alone. */
     if (getenv("UI_BENCH_NODE")) {
         node_tab(&b);
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
+    /* UI_BENCH_DESIGNER_CAPTURE takes D1's native shots alone, and
+       UI_BENCH_DESIGNER runs case 22 alone. */
+    if (getenv("UI_BENCH_DESIGNER_CAPTURE")) {
+        capture_designer(&b, getenv("UI_BENCH_DESIGNER_CAPTURE"));
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
+    if (getenv("UI_BENCH_DESIGNER")) {
+        designer(&b);
         bench_close(&b);
         app_input_shutdown();
         cf_destroy_app();

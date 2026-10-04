@@ -58,11 +58,11 @@ static void designer_selection_reveals_hierarchy()
     d->closed = true;
     s->ui_schedule.wake = true;
     frames(&f, 2);
-    bool hidden = !studio_element(s, ".designer-tree .tree-row[data-selected] .name");
+    bool hidden = !studio_element(s, "#hierarchy-list .tree-row[data-selected] .name");
     designer_select(s, 1);
     s->ui_schedule.wake = true;
     frames(&f, 3);
-    rml_element *name = studio_element(s, ".designer-tree .tree-row[data-selected] .name");
+    rml_element *name = studio_element(s, "#hierarchy-list .tree-row[data-selected] .name");
     char text[32] = "";
     if (name) {
         rml_element_inner_rml(name, text, sizeof text);

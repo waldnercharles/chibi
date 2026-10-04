@@ -295,6 +295,7 @@ typedef enum
     RUN_CHROME,     /* the editor chrome alone (--studio-chrome) */
     RUN_PANELS,     /* the authored panel checks alone (--studio-panels) */
     RUN_INSPECTOR,  /* the UI Inspector alone (--studio-inspector) */
+    RUN_DESIGNER,   /* the visual designer alone (--studio-designer) */
     RUN_PALETTE,    /* the palette and pickers alone (--studio-palette) */
     RUN_GRAPH_CHROME, /* graph menus, Node and Member tabs (--studio-graph-chrome) */
 } studio_run;
@@ -328,6 +329,7 @@ static int studio_documents_app(const char *program, studio_run run)
         case RUN_CHROME: studio_documents_chrome_checks(); break;
         case RUN_PANELS: studio_documents_panel_checks(); break;
         case RUN_INSPECTOR: studio_documents_inspector_checks(); break;
+        case RUN_DESIGNER: studio_documents_designer_checks(); break;
         case RUN_PALETTE: studio_documents_palette_checks(); break;
         case RUN_GRAPH_CHROME: studio_documents_graph_chrome_checks(); break;
         case RUN_ALL:
@@ -346,6 +348,7 @@ static int studio_documents_app(const char *program, studio_run run)
             studio_documents_scene_checks();
             studio_documents_chrome_checks();
             studio_documents_inspector_checks();
+            studio_documents_designer_checks();
             studio_documents_palette_checks();
             studio_documents_graph_chrome_checks();
             break;
@@ -417,6 +420,12 @@ int studio_panels_run(const char *program)
 int studio_inspector_run(const char *program)
 {
     return studio_documents_app(program, RUN_INSPECTOR);
+}
+
+/* The visual designer (workstream D1) alone. */
+int studio_designer_run(const char *program)
+{
+    return studio_documents_app(program, RUN_DESIGNER);
 }
 
 /* The palette, pickers and refactor popover (workstream C4) alone. */

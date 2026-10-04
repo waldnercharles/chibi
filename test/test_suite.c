@@ -98,6 +98,8 @@ int studio_chrome_run(const char *program);
 int studio_palette_run(const char *program);
 int studio_graph_chrome_run(const char *program);
 int studio_panels_run(const char *program);
+/* The visual designer (workstream D1). */
+int studio_designer_run(const char *program);
 int studio_graph_inputs_run(const char *program);
 /* Asset thumbnails. */
 void test_studio_minimap();
@@ -1072,6 +1074,11 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--studio-inspector") == 0) {
         registry_validate();
         return studio_inspector_run(program_name) || fails ? 1 : 0;
+    }
+    /* The visual designer (workstream D1): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-designer") == 0) {
+        registry_validate();
+        return studio_designer_run(program_name) || fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--studio-shell") == 0) {
         registry_validate();

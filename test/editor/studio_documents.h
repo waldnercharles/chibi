@@ -87,6 +87,8 @@ void studio_documents_scene_checks();
 void studio_documents_chrome_checks();
 /* The UI Inspector's tree (workstream I1). */
 void studio_documents_inspector_checks();
+/* The visual designer's Hierarchy, Details and Library (workstream D1). */
+void studio_documents_designer_checks();
 /* The palette, pickers and refactor popover (workstream C4). */
 void studio_documents_palette_checks();
 /* The graph's menus and Properties' Node and Member tabs (workstream G1). */

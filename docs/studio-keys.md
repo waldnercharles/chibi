@@ -184,7 +184,7 @@ The Calls view's tree (`studio_calls.c`), with the pointer over Output, focus in
 
 ## UI Hierarchy and Canvas
 
-The Outliner and Scene while a UI document is open (`studio_designer.c`).
+The Outliner (the authored Hierarchy) and Scene while a UI document is open (`studio_designer.c`, `studio_designer_hierarchy.c`).
 
 | Key | Action |
 | --- | --- |

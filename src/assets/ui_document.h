@@ -84,8 +84,12 @@ bool ui_document_expand(
 char *ui_document_sources(const char *rml, const char *asset, int first);
 /* Owned RCSS whose rules only match inside elements with data-ui="name":
  * `body` in a selector names that element, and other selectors match within
- * it. @media blocks are scoped too; other at-rules are kept as written. Each
- * line of expanded RCSS (rcss_expand) keeps its line, so its map holds. */
+ * it. The classes right after `body` name the document's body as well:
+ * `body.dark .x` matches inside the element when it or the body has `dark`,
+ * and `body:not(.dark) .x` when the body lacks it, so a panel's RCSS follows
+ * the theme and density classes its host sets on the document. @media blocks
+ * are scoped too; other at-rules are kept as written. Each line of expanded
+ * RCSS (rcss_expand) keeps its line, so its map holds. */
 char *ui_document_scope(const char *rcss, const char *name);
 /* Appends the name of each widget the markup uses directly to `names`. */
 void ui_document_use_names(const char *rml, char ***names);

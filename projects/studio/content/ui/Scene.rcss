@@ -5,7 +5,8 @@
    out, the label naming the scene and selection, the camera's zoom, Live
    while a session runs, the generated world's progress and the notice line.
    A guest Studio fills the surface and shows none of them. The scene keeps
-   dark roles in every theme (theme/workspace.rcss). */
+   dark roles in every theme (theme/viewport.rcss). */
+@import "theme/viewport.rcss";
 body.area-panel { padding: 0dp; overflow: hidden; }
 .viewport { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; background-color: var(--viewport); }
 .scene-surface { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; }

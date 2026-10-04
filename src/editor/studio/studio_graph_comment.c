@@ -52,12 +52,6 @@ static void emit_dp(kit *k, const char *property, float value)
     kit_style(k, property, text);
 }
 
-static bool item(kit *k, const char *key, const char *label, uint32_t icon, bool disabled)
-{
-    kit_menu_item_desc d = { .label = label, .icon = icon, .checked = -1, .disabled = disabled };
-    return kit_menu_item(k, key, &d);
-}
-
 /* A title or, over several lines, a comment edited in place: text holds the
    model's value and, on Enter or when focus leaves, the committed one.
    Editing ends with focus. */
@@ -143,75 +137,40 @@ void sg_emit_comment(studio *s, graph_comment_box *box)
     kit_pop(k);
 }
 
-void sg_comment_menu(studio *s, graph_comment_box *box)
+void sg_comment_menu(studio *s, sg_menu *m, graph_comment_box *box)
 {
-    kit *k = s->kit;
     editor *e = sg_graph_editor(s);
     graph *gr = sg_active_graph(s);
     bool readonly = sg_graph_readonly(s);
-    if (item(k, "rename", "Rename", KIT_ICON_EDIT, readonly)) {
+    if (sg_menu_item(m, "rename", "Rename", KIT_ICON_EDIT, NULL, readonly)) {
         sg_edit_title(s, box->id);
         return;
     }
-    if (kit_submenu_begin(k, "color", "Color", KIT_ICON_MATERIAL)) {
-        for (int i = 0; i < (int)(sizeof FRAME_COLORS / sizeof *FRAME_COLORS); i++) {
-            char key[16];
-            snprintf(key, sizeof key, "c%d", i);
-            uint32_t color = FRAME_COLORS[i].color;
-            kit_menu_item_desc d = { .label = FRAME_COLORS[i].label,
-                                     .swatch = color ? color : DEFAULT_SWATCH,
-                                     .checked = -1,
-                                     .current = box->color == color,
-                                     .disabled = readonly };
-            if (kit_menu_item(k, key, &d) && box->color != color) {
+    sg_submenu_begin(m, "color", "Color", KIT_ICON_MATERIAL);
+    for (int i = 0; i < (int)(sizeof FRAME_COLORS / sizeof *FRAME_COLORS); i++) {
+        char key[16];
+        snprintf(key, sizeof key, "c%d", i);
+        uint32_t color = FRAME_COLORS[i].color;
+        uint32_t swatch = color ? color : DEFAULT_SWATCH;
+        if (sg_menu_swatch(m, key, FRAME_COLORS[i].label, swatch, box->color == color, readonly)) {
+            if (box->color != color) {
                 ed_snapshot_before(e);
                 graph_set_comment_box(gr, box, box->title ? box->title : "", color);
             }
+            return;
         }
-        kit_submenu_end(k);
     }
-    kit_menu_separator(k, "s0");
-    if (item(k, "delete", "Delete Comment", KIT_ICON_TRASH, readonly)) {
+    sg_submenu_end(m);
+    sg_menu_separator(m);
+    if (sg_menu_item(m, "delete", "Delete Comment", KIT_ICON_TRASH, NULL, readonly)) {
         ed_snapshot_before(e);
         graph_remove_comment_box(gr, box->id);
     }
 }
 
-/* Unreal's comment Details: the title, and a color from the full picker as
-   well as the menu's palette. A color gesture is one undo step. */
-void sg_frame_properties(studio *s, graph_comment_box *box)
+uint32_t sg_frame_color(const graph_comment_box *box)
 {
-    kit *k = s->kit;
-    studio_graph *g = &s->graph;
-    editor *e = sg_graph_editor(s);
-    graph *gr = sg_active_graph(s);
-    unsigned flags = sg_graph_readonly(s) ? KIT_READONLY : 0;
-    const char *title = box->title ? box->title : "";
-    sg_identity(k, KIT_ICON_COMMENT, title[0] ? title : "Comment", "Comment");
-    if (kit_panel_begin(k, "frame", "Comment", NULL, true)) {
-        char text[256];
-        snprintf(text, sizeof text, "%s", title);
-        kit_prop_begin(k, "title", "Title");
-        if (kit_text_field(k, "v", text, sizeof text, "Comment", flags) &&
-            strcmp(text, title)) {
-            ed_snapshot_before(e);
-            graph_set_comment_box(gr, box, text, box->color);
-        }
-        kit_prop_end(k);
-        uint32_t color = box->color ? box->color : DEFAULT_SWATCH;
-        kit_prop_begin(k, "color", "Color");
-        bool changed = kit_color(k, "v", &color, flags);
-        bool active = kit_item_active(k);
-        if (changed && !g->value_editing) {
-            ed_snapshot_before(e);
-        }
-        if (changed) {
-            graph_set_comment_box(gr, box, title, color);
-        }
-        g->value_editing = active && (changed || g->value_editing);
-        kit_prop_end(k);
-    }
-    kit_panel_end(k);
+    return box->color ? box->color : DEFAULT_SWATCH;
 }
 
 /* ---------- Resizing ---------- */
@@ -299,7 +258,7 @@ void sg_edit_bubble(studio *s, uint64_t node_id)
     s->graph.comment_focus = true;
 }
 
-static void set_comment(studio *s, node *n, const char *text, bool hidden)
+void sg_set_node_comment(studio *s, node *n, const char *text, bool hidden)
 {
     if (!strcmp(text, n->comment ? n->comment : "") && hidden == n->comment_hidden) {
         return;
@@ -346,52 +305,29 @@ void sg_emit_bubble(studio *s, node *n)
     char text[COMMENT_TEXT];
     snprintf(text, sizeof text, "%s", n->comment ? n->comment : "");
     if (edit_field(s, text, sizeof text, true, &g->bubble_edit)) {
-        set_comment(s, n, text, n->comment_hidden);
+        sg_set_node_comment(s, n, text, n->comment_hidden);
     }
     kit_pop(k);
 }
 
 /* The node menu's comment items; true when one ran. */
-bool sg_node_comment_items(studio *s, node *n)
+bool sg_node_comment_items(studio *s, sg_menu *m, node *n)
 {
-    kit *k = s->kit;
     bool readonly = sg_graph_readonly(s);
-    if (item(k, "comment", n->comment ? "Edit Comment" : "Add Comment", KIT_ICON_COMMENT, readonly)) {
+    if (sg_menu_item(m, "comment", n->comment ? "Edit Comment" : "Add Comment", KIT_ICON_COMMENT, NULL, readonly)) {
         sg_edit_bubble(s, n->id);
         return true;
     }
-    if (n->comment && item(
-                          k,
+    if (n->comment && sg_menu_item(
+                          m,
                           "bubble",
                           n->comment_hidden ? "Show Comment" : "Hide Comment",
                           n->comment_hidden ? KIT_ICON_EYE : KIT_ICON_EYE_OFF,
+                          NULL,
                           readonly
                       )) {
-        set_comment(s, n, n->comment, !n->comment_hidden);
+        sg_set_node_comment(s, n, n->comment, !n->comment_hidden);
         return true;
     }
     return false;
-}
-
-/* The Node tab's comment rows (Unreal's Details). */
-void sg_comment_properties(studio *s, node *n)
-{
-    kit *k = s->kit;
-    unsigned flags = sg_graph_readonly(s) ? KIT_READONLY : 0;
-    char text[COMMENT_TEXT];
-    snprintf(text, sizeof text, "%s", n->comment ? n->comment : "");
-    kit_prop_begin(k, "comment", "Comment");
-    if (kit_text_area(k, "v", text, sizeof text, NULL, flags)) {
-        set_comment(s, n, text, n->comment_hidden);
-    }
-    kit_prop_end(k);
-    if (!n->comment) {
-        return;
-    }
-    bool shown = !n->comment_hidden;
-    kit_prop_begin(k, "bubble", "Show Comment");
-    if (kit_checkbox(k, "v", &shown, NULL, flags ? KIT_DISABLED : 0)) {
-        set_comment(s, n, n->comment, !shown);
-    }
-    kit_prop_end(k);
 }

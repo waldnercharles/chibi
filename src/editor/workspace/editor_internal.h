@@ -5,8 +5,9 @@
 #include "support/asset_value.h"
 
 #define ED_HIST_MAX 64
-#define ED_LOG_MAX 128
+#define ED_LOG_MAX 1024
 #define ED_LOG_MESSAGE 256
+#define ED_LOG_ORIGIN 64
 
 typedef enum ed_pin_kind
 {
@@ -31,7 +32,7 @@ typedef struct ed_link_ref
 
 typedef struct ed_log_entry
 {
-    const node *origin;
+    char origin[ED_LOG_ORIGIN]; /* what printed it, labeled as it printed */
     double timestamp;
     unsigned long step;
     char message[ED_LOG_MESSAGE];
@@ -76,6 +77,7 @@ struct editor
 {
     behavior_asset *asset;
     editor_ui_context ui_context;
+    bool studio_nodes; /* the project is Studio's own, whose world runs Studio's editor nodes */
     graph *active_graph;
     ed_graph_caller *graph_callers;
     eval_view *ev;
@@ -88,9 +90,6 @@ struct editor
     const behavior_instance *inspection_instance; /* borrowed runtime target */
     const flow_run *inspection_run; /* borrowed runtime activation */
     bool inspection_blocked;
-    const behavior_instance_trace_entry *inspection_trace;
-    int inspection_trace_count;
-    uint64_t inspection_trace_revision, flow_activity_epoch;
     struct ed_flow_activity_index *flow_activity;
     unsigned edit_revision;
     const behavior_asset *edit_revision_asset;
@@ -101,8 +100,10 @@ struct editor
     compile_report compile;
     behavior_asset *compiled; /* the linked snapshot compile describes; NULL when unlinked */
     double monotonic_time;
+    /* A ring: line i, 0 the oldest, is log[(log_dropped + i) % ED_LOG_MAX]. */
     ed_log_entry log[ED_LOG_MAX];
     int log_count;
+    int64_t log_dropped;        /* lines dropped from the front or cleared */
     char optimize_summary[192]; /* what the last Optimize changed */
     bool arrange_pending;
 
@@ -174,9 +175,8 @@ bool ed_simplify_component_getter(
 int ed_optimize_graph(editor *e);
 void ed_show_error(editor *e, const char *message);
 void ed_clear_connect_error(editor *e);
-/* Lazy activity index owns copied timestamps, never runtime storage. */
+/* Lazy activity index owns copied counts, never runtime storage. */
 void ed_flow_activity_free(editor *e);
-uint64_t ed_flow_activity_records_indexed(const editor *e);
 
 bool ed_inspection_blocked(const editor *e);
 const behavior_instance *ed_display_instance(const editor *e);

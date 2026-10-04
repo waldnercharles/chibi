@@ -150,6 +150,46 @@ static void prefs_round_trip()
     free(json);
 }
 
+/* View › Show's toggles are preferences: Generated World, Lighting and
+ * Camera Frames start on and Fog of War off, they save under "scene", and each
+ * Show command is checked as its preference is. View Through Camera's Shift+C
+ * and Keypad 0 reach it in the Scene area and collide with nothing there. */
+static void scene_view_preferences()
+{
+    studio_prefs p = studio_prefs_default();
+    bool defaults = p.scene_world && p.scene_lighting && !p.scene_fog && p.scene_cameras;
+    p.scene_world = false;
+    p.scene_fog = true;
+    char *json = studio_prefs_write(&p, NULL);
+    studio_prefs back = studio_prefs_read(json);
+    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    yyjson_val *root = yyjson_doc_get_root(doc);
+    bool saved = yyjson_is_false(yyjson_ptr_get(root, "/scene/generatedWorld")) &&
+                 yyjson_is_true(yyjson_ptr_get(root, "/scene/fog")) &&
+                 studio_prefs_equal(&p, &back) && !back.scene_world && back.scene_fog;
+    yyjson_doc_free(doc);
+    free(json);
+    studio *s = xcalloc(1, sizeof *s);
+    s->prefs = back;
+    bool checked = studio_command_checked(s, STUDIO_COMMAND_SHOW_WORLD) == 0 &&
+                   studio_command_checked(s, STUDIO_COMMAND_SHOW_LIGHTING) == 1 &&
+                   studio_command_checked(s, STUDIO_COMMAND_SHOW_FOG) == 1 &&
+                   studio_command_checked(s, STUDIO_COMMAND_SHOW_CAMERAS) == 1;
+    free(s);
+    studio_command camera = STUDIO_COMMAND_VIEW_THROUGH_CAMERA;
+    bool keys = studio_command_for_key(&p, SDLK_C, SDL_KMOD_SHIFT, STUDIO_EDITOR_SCENE, true) ==
+                    (int)camera &&
+                studio_command_for_key(&p, SDLK_KP_0, 0, STUDIO_EDITOR_SCENE, false) ==
+                    (int)camera &&
+                studio_command_conflict(&p, camera, "Shift+C", true) < 0 &&
+                studio_command_conflict(&p, camera, "Shift+C", false) < 0;
+    test_check(
+        defaults && saved && checked && keys,
+        "Scene view toggles default, save and check as preferences, and "
+        "View Through Camera's chords reach it without collisions"
+    );
+}
+
 static const studio_setting *setting_named(const char *key)
 {
     for (int i = 0; i < studio_setting_count; i++) {
@@ -537,6 +577,201 @@ static void shortcut_recording()
     );
 }
 
+/* No two commands share a default chord or alias where both can act, on
+ * either platform, every binding parses, and Keyboard Shortcuts lists each
+ * command's area. */
+static void shortcut_defaults()
+{
+    studio_prefs prefs = studio_prefs_default();
+    bool unique = true, valid = true, grouped = true;
+    for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
+        const char *chords[5];
+        int count = studio_command_bindings(&prefs, (studio_command)c, chords, 5);
+        for (int i = 0; i < count; i++) {
+            valid &= studio_chord_valid(chords[i]);
+        }
+        for (int mac = 0; count && mac < 2; mac++) {
+            int other = studio_command_conflict(&prefs, (studio_command)c, chords[0], mac);
+            if (other >= 0) {
+                printf(
+                    "  %s conflicts with %s\n",
+                    studio_command_id((studio_command)c),
+                    studio_command_id((studio_command)other)
+                );
+            }
+            unique &= other < 0;
+        }
+        grouped &= studio_keymap_area(studio_command_group((studio_command)c));
+    }
+    test_check(unique && valid && grouped, "default shortcuts are unique where they act, parse, and have a Keyboard Shortcuts area");
+}
+
+/* The areas each object, find and transport key acts in. */
+static void shortcut_areas()
+{
+    studio_prefs p = studio_prefs_default();
+    SDL_Keymod ctrl = SDL_KMOD_CTRL, cmd = SDL_KMOD_GUI;
+    bool deletes = studio_command_for_key(&p, SDLK_BACKSPACE, 0, STUDIO_EDITOR_OUTLINER, true) ==
+                       STUDIO_COMMAND_DELETE &&
+                   studio_command_for_key(&p, SDLK_BACKSPACE, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_DELETE &&
+                   studio_command_for_key(&p, SDLK_DELETE, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_DELETE &&
+                   studio_command_for_key(&p, SDLK_X, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_DELETE &&
+                   studio_command_for_key(&p, SDLK_BACKSPACE, 0, STUDIO_EDITOR_ASSETS, false) <
+                       0;
+    bool duplicates = studio_command_for_key(&p, SDLK_D, cmd, STUDIO_EDITOR_SCENE, true) ==
+                          STUDIO_COMMAND_DUPLICATE &&
+                      studio_command_for_key(&p, SDLK_D, ctrl, STUDIO_EDITOR_OUTLINER, false) ==
+                          STUDIO_COMMAND_DUPLICATE &&
+                      studio_command_for_key(&p, SDLK_D, SDL_KMOD_SHIFT, STUDIO_EDITOR_SCENE, false) ==
+                          STUDIO_COMMAND_DUPLICATE &&
+                      studio_command_for_key(&p, SDLK_D, SDL_KMOD_SHIFT, STUDIO_EDITOR_OUTPUT, false) <
+                          0 &&
+                      studio_command_for_key(&p, SDLK_D, ctrl, STUDIO_EDITOR_BEHAVIOR, false) <
+                          0;
+    bool selects = studio_command_for_key(&p, SDLK_A, ctrl, STUDIO_EDITOR_OUTLINER, false) ==
+                       STUDIO_COMMAND_SELECT_ALL &&
+                   studio_command_for_key(&p, SDLK_A, ctrl, STUDIO_EDITOR_BEHAVIOR, false) <
+                       0 &&
+                   studio_command_for_key(&p, SDLK_ESCAPE, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_DESELECT &&
+                   studio_command_for_key(&p, SDLK_ESCAPE, 0, STUDIO_EDITOR_BEHAVIOR, false) <
+                       0 &&
+                   studio_command_for_key(&p, SDLK_HOME, 0, STUDIO_EDITOR_SCENE, false) ==
+                       STUDIO_COMMAND_FRAME_ALL &&
+                   studio_command_for_key(&p, SDLK_HOME, 0, STUDIO_EDITOR_BEHAVIOR, false) <
+                       0;
+    bool finds = true;
+    static const studio_editor FINDS[] = {
+        STUDIO_EDITOR_BEHAVIOR,   STUDIO_EDITOR_CODE,   STUDIO_EDITOR_OUTLINER,
+        STUDIO_EDITOR_PROPERTIES, STUDIO_EDITOR_ASSETS, STUDIO_EDITOR_OUTPUT,
+        STUDIO_EDITOR_MEMBERS
+    };
+    for (size_t i = 0; i < sizeof FINDS / sizeof *FINDS; i++) {
+        finds &= studio_command_for_key(&p, SDLK_F, cmd, FINDS[i], true) ==
+                 STUDIO_COMMAND_FIND;
+    }
+    finds &= studio_command_for_key(&p, SDLK_F, cmd, STUDIO_EDITOR_SCENE, true) < 0;
+    bool transport = studio_command_for_key(&p, SDLK_F5, SDL_KMOD_SHIFT, STUDIO_EDITOR_BEHAVIOR, true) ==
+                         STUDIO_COMMAND_STOP &&
+                     studio_command_for_key(&p, SDLK_SLASH, cmd, STUDIO_EDITOR_CODE, true) ==
+                         STUDIO_COMMAND_KEYBOARD_SHORTCUTS &&
+                     studio_command_for_key(&p, SDLK_SLASH, ctrl, STUDIO_EDITOR_COUNT, false) ==
+                         STUDIO_COMMAND_KEYBOARD_SHORTCUTS;
+    test_check(deletes && duplicates, "Delete, Backspace and X delete, and Shift+D and Mod+D duplicate, objects only over the Scene and Outliner");
+    test_check(selects && finds && transport, "Select All, Deselect, Frame All, Find, Stop and Keyboard Shortcuts act in their areas");
+}
+
+/* Text fields keep the primary modifier's editing keys; Studio takes the
+ * rest. Option's composed characters dispatch as the key's letter. */
+static void shortcut_text_keys()
+{
+    bool text = studio_text_key(SDLK_A) && studio_text_key(SDLK_C) &&
+                studio_text_key(SDLK_V) && studio_text_key(SDLK_X) &&
+                studio_text_key(SDLK_Z) && studio_text_key(SDLK_Y) &&
+                studio_text_key(SDLK_LEFT) && studio_text_key(SDLK_BACKSPACE);
+    bool commands = !studio_text_key(SDLK_K) && !studio_text_key(SDLK_S) &&
+                    !studio_text_key(SDLK_EQUALS) && !studio_text_key(SDLK_SLASH);
+    SDL_KeyboardEvent option_g = { .key = 0xa9,
+                                   .scancode = SDL_SCANCODE_G,
+                                   .mod = SDL_KMOD_LALT };
+    SDL_KeyboardEvent copyright = { .key = 0xa9, .scancode = SDL_SCANCODE_G };
+    SDL_KeyboardEvent option_f5 = { .key = SDLK_F5,
+                                    .scancode = SDL_SCANCODE_F5,
+                                    .mod = SDL_KMOD_LALT };
+    bool composed = studio_event_key(&option_g) == SDLK_G &&
+                    studio_event_key(&copyright) == 0xa9 &&
+                    studio_event_key(&option_f5) == SDLK_F5;
+    char shown[64];
+    studio_chord_format(shown, sizeof shown, "Backspace", true);
+    bool glyphs = !strcmp(shown, "Delete");
+    studio_chord_format(shown, sizeof shown, "Backspace", false);
+    glyphs &= !strcmp(shown, "Backspace");
+    studio_chord_format(shown, sizeof shown, "Mod+Up", true);
+    glyphs &= !strcmp(shown, "\xe2\x8c\x98\xe2\x86\x91");
+    studio_chord_format(shown, sizeof shown, "Ctrl+Space", true);
+    glyphs &= !strcmp(shown, "\xe2\x8c\x83 Space");
+    studio_chord_format(shown, sizeof shown, "Escape", false);
+    glyphs &= !strcmp(shown, "Esc");
+    test_check(text && commands, "a focused field keeps the clipboard, undo and caret chords and passes the rest to Studio");
+    test_check(composed && glyphs, "Option-composed keys dispatch as their letter, and menus write arrows as glyphs and a Mac's delete keys by name");
+}
+
+/* The `shortcuts` group named `label`, or NULL. */
+static yyjson_mut_val *sheet_group(yyjson_mut_doc *doc, const char *label)
+{
+    yyjson_mut_val *sheet = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "shortcuts");
+    yyjson_mut_val *groups = yyjson_mut_obj_get(sheet, "groups");
+    for (size_t i = 0; i < yyjson_mut_arr_size(groups); i++) {
+        yyjson_mut_val *group = yyjson_mut_arr_get(groups, i);
+        if (!strcmp(yyjson_mut_get_str(yyjson_mut_obj_get(group, "label")), label)) {
+            return group;
+        }
+    }
+    return NULL;
+}
+
+/* The keys of the group's row labeled `label`, joined by spaces. */
+static void sheet_keys(yyjson_mut_val *group, const char *label, char *out, size_t size)
+{
+    out[0] = '\0';
+    yyjson_mut_val *rows = group ? yyjson_mut_obj_get(group, "rows") : NULL;
+    for (size_t i = 0; rows && i < yyjson_mut_arr_size(rows); i++) {
+        yyjson_mut_val *row = yyjson_mut_arr_get(rows, i);
+        if (strcmp(yyjson_mut_get_str(yyjson_mut_obj_get(row, "label")), label)) {
+            continue;
+        }
+        yyjson_mut_val *keys = yyjson_mut_obj_get(row, "keys");
+        size_t used = 0;
+        for (size_t k = 0; k < yyjson_mut_arr_size(keys); k++) {
+            used += (size_t)snprintf(
+                out + used,
+                size - used,
+                "%s%s",
+                k ? " " : "",
+                yyjson_mut_get_str(yyjson_mut_arr_get(keys, k))
+            );
+        }
+    }
+}
+
+/* Keyboard Shortcuts lists commands by area with their effective chords,
+ * then the keys editors take themselves, and searches all of it. */
+static void shortcut_sheet()
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
+    studio_keymap_add(doc);
+    studio_prefs prefs = studio_prefs_default();
+    studio_keymap_cache cache = { 0 };
+    bool shown = studio_keymap_show(doc, &prefs, false, &cache);
+    bool cached = !studio_keymap_show(doc, &prefs, false, &cache);
+    char keys[128];
+    sheet_keys(sheet_group(doc, "Global"), "Search", keys, sizeof keys);
+    bool search = !strcmp(keys, "Ctrl+K Ctrl+P");
+    sheet_keys(sheet_group(doc, "Behavior"), "Duplicate nodes", keys, sizeof keys);
+    bool fixed = !strcmp(keys, "Shift+D Ctrl+D");
+    sheet_keys(sheet_group(doc, "Text Editor"), "Start and end of the text", keys, sizeof keys);
+    bool platform = !strcmp(keys, "Ctrl+Home Ctrl+End");
+    snprintf(prefs.shortcuts[STUDIO_COMMAND_SAVE], STUDIO_CHORD_SIZE, "Mod+Shift+S");
+    bool rebound = studio_keymap_show(doc, &prefs, false, &cache);
+    sheet_keys(sheet_group(doc, "Global"), "Save", keys, sizeof keys);
+    rebound &= !strcmp(keys, "Ctrl+Shift+S");
+    yyjson_mut_val *sheet = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "shortcuts");
+    yyjson_mut_set_str(yyjson_mut_obj_get(sheet, "query"), "breakpoint");
+    studio_keymap_show(doc, &prefs, true, &cache);
+    bool found = yyjson_mut_get_int(yyjson_mut_obj_get(sheet, "matches")) == 1 &&
+                 sheet_group(doc, "Behavior") && !sheet_group(doc, "Global");
+    yyjson_mut_set_str(yyjson_mut_obj_get(sheet, "query"), "no such key");
+    studio_keymap_show(doc, &prefs, true, &cache);
+    bool empty = yyjson_mut_get_int(yyjson_mut_obj_get(sheet, "matches")) == 0 &&
+                 !yyjson_mut_arr_size(yyjson_mut_obj_get(sheet, "groups"));
+    test_check(shown && cached && search && fixed && platform && rebound && found && empty, "Keyboard Shortcuts lists effective chords and editor keys by area and searches them");
+    yyjson_mut_doc_free(doc);
+}
+
 /* Authored panels bind the preferences as saved keys: a panel's change
  * applies, an invalid one is dropped, and the save shows the preferences. */
 static void save_mirror()
@@ -788,6 +1023,35 @@ static void page_rows()
     page_close(&f);
 }
 
+/* A shortcut row lists its default's aliases until it is rebound; a chord
+ * two commands share counts on the page, and "conflict" finds them. */
+static void page_shortcut_aliases()
+{
+    page_fixture f;
+    page_open(&f);
+    set_text(&f, f.page, "category", "keyboard");
+    studio_settings_sync(&f.view, f.doc, true);
+    yyjson_mut_val *search = row_named(&f, "command.search");
+    bool aliased = !strcmp(yyjson_mut_get_str(member(search, "aliases")), "Also Ctrl+P") &&
+                   !yyjson_mut_get_str(
+                       member(row_named(&f, "command.save"), "aliases")
+                   )[0] &&
+                   yyjson_mut_get_real(member(f.page, "conflicts")) == 0;
+    snprintf(f.prefs.shortcuts[STUDIO_COMMAND_SAVE], STUDIO_CHORD_SIZE, "Mod+P");
+    studio_settings_sync(&f.view, f.doc, false);
+    bool counted = yyjson_mut_get_real(member(f.page, "conflicts")) == 2;
+    set_text(&f, f.page, "query", "conflict");
+    studio_settings_sync(&f.view, f.doc, true);
+    char keys[256];
+    shown(&f, keys, sizeof keys);
+    test_check(
+        aliased && counted && !strcmp(keys, "command.save command.search"),
+        "a shortcut row lists its aliases, and the Keyboard page counts and "
+        "finds conflicting chords"
+    );
+    page_close(&f);
+}
+
 /* Stable bindings may reuse parsed presentation, while live command state
  * and edits from either the model or shortcut recorder still reach the page. */
 static void page_shortcut_refresh()
@@ -885,7 +1149,8 @@ static void page_keyboard_and_project()
     bool override = !strcmp(f.prefs.shortcuts[STUDIO_COMMAND_SEARCH], "Mod+S") &&
                     !strcmp(yyjson_mut_get_str(member(search, "conflict")), "Also assigned to Save");
 
-    yyjson_mut_set_bool(member(search, "record"), true);
+    /* The Record button's settings.record action (studio_panel_route). */
+    f.view.recording = STUDIO_COMMAND_SEARCH + 1;
     studio_settings_sync(&f.view, f.doc, true);
     bool recording = f.view.recording == STUDIO_COMMAND_SEARCH + 1 &&
                      yyjson_mut_get_bool(member(search, "recording"));
@@ -913,7 +1178,8 @@ static void page_keyboard_and_project()
         "replacement and stores defaults without an override"
     );
 
-    yyjson_mut_set_bool(member(search, "record"), true);
+    /* The Record button's settings.record action (studio_panel_route). */
+    f.view.recording = STUDIO_COMMAND_SEARCH + 1;
     studio_settings_sync(&f.view, f.doc, true);
     bool started = f.view.recording == STUDIO_COMMAND_SEARCH + 1;
     set_text(&f, f.page, "query", "");
@@ -943,7 +1209,7 @@ static void page_keyboard_and_project()
     yyjson_mut_val *name = row_named(&f, "project.name");
     yyjson_mut_val *start = row_named(&f, "project.startScene");
     bool shown_name = !strcmp(yyjson_mut_get_str(member(name, "value")), "Arena") &&
-                      yyjson_mut_arr_size(member(name, "text")) == 1 &&
+                      !strcmp(yyjson_mut_get_str(member(name, "control")), "text") &&
                       !yyjson_mut_get_bool(member(name, "modified"));
     set_text(&f, name, "value", "Neon Swarm");
     set_text(&f, start, "value", "scenes/Boss.kdl");
@@ -988,9 +1254,9 @@ static void on_event(void *user, const rml_event *event)
     ui_mount_listen(user, event);
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
+static void on_emit(void *user, const rml_event *event, const char *name, int argc, const char *const *args)
 {
-    ui_mount_emit(user, event->current, name, value);
+    ui_mount_emit(user, event, name, argc, args);
 }
 
 /* A frame in studio_ui_frame's order: the saved keys, the page, then the
@@ -1146,9 +1412,8 @@ static void page_mount()
     rml_element *mono_probe = rml_element_create_child(f.host, "span", NULL);
     rml_element_set_attribute(mono_probe, "class", "code-completions");
     rml_element_set_inner_rml(mono_probe, "Glyphs");
-    if (body) {
-        rml_element_set_class(body, "dark", true);
-    }
+    /* On every kit document: the dialog is in the layer's. */
+    kit_set_body_class(f.k, "dark", true);
     rml_backend_update(f.backend, 1.0 / 60.0);
     char family[64] = { 0 }, size[32] = { 0 }, line[32] = { 0 };
     char mono_family[64] = { 0 }, mono_size[32] = { 0 };
@@ -1185,9 +1450,7 @@ static void page_mount()
                    rml_font_string_width(mono_face, "Glyphs") > 0 &&
                    standard_metrics.line_spacing <= 25 &&
                    mono_metrics.line_spacing <= 20;
-    if (body) {
-        rml_element_set_class(body, "comfortable", true);
-    }
+    kit_set_body_class(f.k, "comfortable", true);
     rml_backend_update(f.backend, 1.0 / 60.0);
     float comfortable_height = font_control
                                  ? rml_element_box_size(font_control, RML_BOX_BORDER)
@@ -1294,7 +1557,7 @@ static void page_mount()
     bool graph_shown = graph && !strcmp(text_of_page(&f.page, "category"), "graph") &&
                        !text_of_page(&f.page, "query")[0] &&
                        visible(&f, "select", &select) == 1 &&
-                       visible(&f, ".switch input", &radio) == 3;
+                       visible(&f, ".switch input", &radio) == 4;
     uint64_t settled = rml_data_model_writes(f.data.model);
     for (int i = 0; i < 3; i++) {
         mount_frame(&f);
@@ -1331,10 +1594,22 @@ static void page_mount()
     if (record_visible) {
         click(&f, record_button);
     }
+    /* The button sends emit('settings.record', row.key), which Studio routes
+       to the Settings source (studio_panel_route); here the test does. */
+    mount_frame(&f);
+    ui_activation a;
+    bool emitted = false;
+    while (ui_mount_take(f.mount, &a)) {
+        if (!strcmp(a.event, "settings.record") && a.argc == 1 &&
+            !strcmp(a.args[0], "command.search")) {
+            emitted = true;
+            f.page.view.recording = STUDIO_COMMAND_SEARCH + 1;
+        }
+    }
     for (int i = 0; i < 3; i++) {
         mount_frame(&f);
     }
-    bool listening = record_visible &&
+    bool listening = record_visible && emitted &&
                      f.page.view.recording == STUDIO_COMMAND_SEARCH + 1 &&
                      visible(&f, ".recording", &record_button) == 1 &&
                      visible(&f, ".record-shortcut", &record_button) == 0;
@@ -1398,7 +1673,7 @@ static void page_mount()
 }
 
 /* Drive emissions only when the kit asks for them, while its context advances
- * on every simulation frame. Springs and toast expiry must survive that split. */
+ * on every simulation frame. Toast expiry must survive that split. */
 static void independent_ui_deadlines()
 {
     rml_backend *backend = rml_backend_create(800, 600, 1);
@@ -1410,25 +1685,22 @@ static void independent_ui_deadlines()
                            .mouse_y = -1000 };
     kit_begin(k, &in);
     kit_root(k, "app");
-    kit_spring(k, "readout", 0, 0.35f);
     kit_end(k);
     rml_backend_update(backend, 1.0 / 60.0);
 
     in.time = 1.0 / 60.0;
     kit_begin(k, &in);
     kit_root(k, "app");
-    float value = kit_spring(k, "readout", 100, 0.35f);
     kit_toast(k, 0, &(kit_toast_desc){ .title = "Scheduled", .duration = 0.2 });
     kit_end(k);
     rml_backend_update(backend, 1.0 / 60.0);
-    bool moving = value < 100 && kit_idle_time(k) == 0;
+    bool waiting = kit_idle_time(k) < 0.2;
     double next = in.time + kit_idle_time(k);
     for (int i = 2; i <= 180; i++) {
         in.time = i / 60.0;
         if (in.time >= next) {
             kit_begin(k, &in);
             kit_root(k, "app");
-            value = kit_spring(k, "readout", 100, 0.35f);
             kit_end(k);
             rml_backend_update(backend, 1.0 / 60.0);
             next = in.time + kit_idle_time(k);
@@ -1436,12 +1708,10 @@ static void independent_ui_deadlines()
             rml_backend_update(backend, 1.0 / 60.0);
         }
     }
-    rml_element *document = rml_context_document(rml_backend_context(backend), 0);
     test_check(
-        moving && fabsf(value - 100) < 0.01f &&
-            !rml_element_query_selector(document, ".toast"),
-        "independent UI deadlines advance a live spring and expire its toast "
-        "while simulation keeps ticking"
+        waiting && !test_query(rml_backend_context(backend), ".toast"),
+        "independent UI deadlines expire a toast while simulation keeps "
+        "ticking"
     );
     kit_destroy(k);
     rml_backend_destroy(backend);
@@ -1451,6 +1721,7 @@ void test_studio_settings()
 {
     independent_ui_deadlines();
     prefs_round_trip();
+    scene_view_preferences();
 #ifndef __EMSCRIPTEN__
     prefs_file_override();
 #endif
@@ -1461,9 +1732,14 @@ void test_studio_settings()
     shortcut_chords();
     shortcut_dispatch();
     shortcut_recording();
+    shortcut_defaults();
+    shortcut_areas();
+    shortcut_text_keys();
+    shortcut_sheet();
     save_mirror();
     page_rows();
     page_keyboard_and_project();
     page_shortcut_refresh();
+    page_shortcut_aliases();
     page_mount();
 }

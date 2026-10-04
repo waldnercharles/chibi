@@ -56,7 +56,8 @@ static void render_game(void *user)
             scene->live->particles,
             &camera,
             game->viewport,
-            scene->runtime
+            scene->runtime,
+            (render_skip){ 0 }
         );
         return;
     }
@@ -145,12 +146,12 @@ app_game_presentation *app_game_presentation_new(
     scene->render_viewport = viewport;
     engine_viewport_set_perspective(viewport, scene->perspective);
     engine_viewport_request_resize(viewport, cf_app_get_canvas_width(), cf_app_get_canvas_height());
-    fit_scene_view(viewport, scene->world, (ecs_entity){ 0 });
+    fit_scene_view(viewport, scene->world, NULL, 0);
     engine_viewport_set_render_callback(viewport, render_game, game);
     ui_world ui = { .ecs = scene->world,
                     .page = app_scene_authoring_page(scene),
                     .model = engine_ui(scene->runtime),
-                    .entities = scene->live->entities,
+                    .live = scene->live,
                     .save = game_behavior_save(scene->live->behaviors) };
     engine_viewport_set_ui(viewport, &ui, scene->content_root);
     return game;
@@ -396,6 +397,7 @@ int app_game_presentation_frame(app_game_presentation *game, double now)
         UI_DOCUMENT_PAUSE_MENU,
         playing ? NULL : menu_state(status)
     );
+    engine_viewport_set_time(game->viewport, now);
     int drawn = engine_viewport_image(game->viewport, size.x, size.y);
     if (game->interactive) {
         render_audio_update(

@@ -155,11 +155,12 @@ static bool lists_tree(studio_inspect *in, rml_context *context, const kit *k, r
     const studio_inspect_row *p = row_tagged(m, "p", false);
     bool ok = closed && acount(m->rows) == 5 && m->rows[0].open && div &&
               div->open && div->depth == 1 && !strcmp(div->id, "#title") &&
-              !strcmp(div->classes, ".card.big") && !strcmp(div->widget, "Card") &&
-              hello && hello->depth == 2 && span && span->selected &&
-              !span->parent && !strcmp(span->text, "world") && p &&
-              !p->parent && !strcmp(p->text, "Label") &&
-              !strcmp(m->title, "span") && m->selection && !m->detached;
+              !strcmp(div->classes, ".card.big") &&
+              !strcmp(div->widget, "Card") && hello && hello->depth == 2 &&
+              span && m->selected_row == span - m->rows && !span->parent &&
+              !strcmp(span->text, "world") && p && !p->parent &&
+              !strcmp(p->text, "Label") && !strcmp(m->title, "span") &&
+              m->selection && !m->detached;
     if (!ok) {
         printf("  rows %d title '%s'\n", acount(m->rows), m->title);
     }

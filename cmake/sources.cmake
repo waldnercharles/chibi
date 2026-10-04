@@ -152,6 +152,7 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_edit.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_file.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_overlay.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_rank.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/text_search.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/tree_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.c
@@ -193,6 +194,10 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/highlight.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/ui/labels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_assets.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnails.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnail_cache.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnail_graph.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_thumbnail_kinds.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_calls.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_debug.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_definition.c
@@ -201,6 +206,10 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_comment.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_draw.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_find.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_header.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_menu.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_details.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_live.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_nav.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_disk.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_edit.c
@@ -214,9 +223,14 @@ set(EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_graph_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_host.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_keys.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_keymap.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_members.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_member_properties.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_outliner.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_nodes.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_node_calls.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_output.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_panels.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_performance.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prefs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_projects.c
@@ -260,10 +274,15 @@ set(APP_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scenario_playback.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_runtime.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_tabs.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_viewport.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/model_preview.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_gizmo.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_overlays.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_world_preview.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/scene_renderer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_fragment.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_preview.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/screenshot.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/sdf_shapes.c
 )
@@ -293,6 +312,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/new_asset.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/model_validation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/prototype_instance.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scene_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/scenario_document.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/physics_settings.c
@@ -305,6 +325,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/nodes/vector_nodes.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/appearance_geometry.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/material.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/render/material_lod.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_catalog.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shader_images.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/render/mesh_asset.c
@@ -351,6 +372,7 @@ list(APPEND RUNTIME_SUPPORT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/ui_ev
 list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_canvas.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_palette.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_palette_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_pick.c
 )
 
@@ -366,5 +388,30 @@ list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/ui_design.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_details.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_edit.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_hierarchy.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_library.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_values.c
 )
+
+# Studio authoring workflows: assets dropped on fields and objects, and
+# prototype actions on instances.
+list(APPEND APP_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/workspace/scene_asset_drop.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/scene_prototype_actions.c
+)
+list(APPEND EDITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_drop.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_prototype_actions.c
+)
+
+# Native controls (workstream F2): what number fields show and read.
+list(APPEND CORE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/support/number_expr.c)
+
+# Lists and drag (workstream F4): the widget gallery's List, TreeRow and
+# Tile samples over the project's assets.
+list(APPEND EDITOR_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_gallery.c)
+
+# Properties (workstream P1): the `properties` source its authored panel
+# binds.
+list(APPEND EDITOR_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_properties_view.c)

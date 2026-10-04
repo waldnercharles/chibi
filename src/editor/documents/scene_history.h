@@ -23,6 +23,10 @@ void scene_history_clear(scene_history *history);
 void scene_history_begin_group(scene_history *history);
 void scene_history_end_group(scene_history *history);
 uint64_t scene_history_group_id(const scene_history *history, bool redo);
+/* The head step's id on the Undo or Redo stack: its group's, or a lone
+ * edit's own. Ids grow with each new step and never repeat; zero means an
+ * empty stack or an edit restored from a capture. */
+uint64_t scene_history_step_id(const scene_history *history, bool redo);
 /* Records an already-applied transform edit. A no-op preserves redo. */
 bool scene_history_push(scene_history *history, ecs_entity entity, GameTransform before, GameTransform after);
 typedef struct
@@ -96,6 +100,21 @@ const scene_behavior_edit *scene_history_peek_behaviors(
     ecs_entity *entity
 );
 void scene_history_complete_behaviors(scene_history *history, bool redo);
+
+/* A prototype's definition before and after a step that changed it from the
+ * scene, as Apply Overrides to Prototype does, so one Undo covers the
+ * prototype and the instances that follow it. History owns copies. The app
+ * replays it: peek returns the definition the head restores (before on Undo,
+ * after on Redo), or NULL unless the head is one; complete after success. */
+typedef struct
+{
+    const char *name;
+    av_value *before;
+    av_value *after;
+} scene_prototype_edit;
+bool scene_history_push_prototype(scene_history *history, const scene_prototype_edit *edit);
+const scene_prototype_edit *scene_history_peek_prototype(const scene_history *history, bool redo);
+void scene_history_complete_prototype(scene_history *history, bool redo);
 
 /* Records an already-applied rename of the entity's object; history owns
  * copies of the names. An unchanged name preserves both stacks. The app

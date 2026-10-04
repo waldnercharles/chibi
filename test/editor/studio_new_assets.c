@@ -12,6 +12,7 @@
 #include "support/asset_text.h"
 #include "support/text_file.h"
 #include "test/suite_internal.h"
+#include "ui/popover.h"
 
 #include <SDL3/SDL_events.h>
 #include <assert.h>
@@ -242,6 +243,13 @@ static const reference_asset_kind INDEXED[STUDIO_NEW_KIND_COUNT] = {
     REFERENCE_ASSET_UI,       REFERENCE_ASSET_UI,
 };
 
+/* Whether NewAsset's name popover is open. */
+static bool asking(studio *s)
+{
+    rml_element *popover = test_query(rml_backend_context(s->backend), "#new-asset-name");
+    return popover && popover_open(popover);
+}
+
 /* Each New … command asks for a name, Enter makes the asset, and Studio
    opens it. */
 static void creates_every_kind()
@@ -252,7 +260,7 @@ static void creates_every_kind()
     for (int kind = 0; kind < STUDIO_NEW_KIND_COUNT; kind++) {
         studio_command_run(s, (studio_command)(STUDIO_COMMAND_NEW_SCENE + kind));
         frames(&f, 2);
-        bool asked = kit_popup_is_open(s->kit, "new-asset-name");
+        bool asked = asking(s);
         char name[64];
         snprintf(name, sizeof name, "%s", s->new_asset.name);
         press(SDL_SCANCODE_RETURN);
@@ -278,7 +286,7 @@ static void creates_every_kind()
         const reference_index *index = app_scene_authoring_asset_index(f.scene);
         bool indexed = reference_index_find_asset(index, INDEXED[kind], file, NULL) >= 0;
         bool open = opened(f.scene, kind, name, file);
-        bool closed = !kit_popup_is_open(s->kit, "new-asset-name");
+        bool closed = !asking(s);
         if (!(asked && text && canonical_text && indexed && open && closed)) {
             printf(
                 "  %s: asked %d, written %d, canonical %d, automatic %d, "
@@ -302,6 +310,9 @@ static void creates_every_kind()
         );
         free(again);
         free(text);
+        /* A UI document takes the focus once it reveals its first line,
+           which would close a popover opened meanwhile. */
+        frames(&f, 4);
     }
     studio_new_asset_start(s, NEW_ASSET_BEHAVIOR);
     bool numbered = !strcmp(s->new_asset.name, "NewBehavior2");
@@ -310,7 +321,7 @@ static void creates_every_kind()
     press(SDL_SCANCODE_RETURN);
     frames(&f, 2);
     bool refused = strstr(s->new_asset.error, "NewScene already exists") != NULL &&
-                   kit_popup_is_open(s->kit, "new-asset-name");
+                   asking(s);
     test_check(numbered && refused, "a new asset's default name is free, and a taken name asks again");
     fixture_free(&f);
 }
@@ -320,22 +331,78 @@ static void menu_puts_filter_first()
 {
     new_fixture f = fixture_new();
     studio *s = f.studio;
+    studio_active_layout(s)->editors[STUDIO_AREA_TOP] = STUDIO_EDITOR_ASSETS;
+    s->maximized = STUDIO_AREA_TOP;
     s->assets_kind = REFERENCE_ASSET_BEHAVIOR;
+    frames(&f, 3);
+    rml_context *context = rml_backend_context(s->backend);
+    rml_element *button = test_query(context, "#asset-new-button");
+    if (button) {
+        rml_element_click(button);
+    }
     frames(&f, 2);
-    kit_popup_open_at(s->kit, "new-asset", 10, 10);
-    frames(&f, 2);
-    kit_rect behavior, scene;
-    bool shown = kit_find(s->kit, "layer/@new-asset/newBehavior", &behavior) &&
-                 kit_find(s->kit, "layer/@new-asset/newScene", &scene);
-    test_check(shown && behavior.y < scene.y, "the New menu lists the Assets filter's kind first");
+    rml_element *labels[64];
+    int count = test_query_all(context, "#asset-new .menu-item .label", labels, 64);
+    int behavior = -1, scene = -1, shown = 0;
+    rml_element *item = NULL;
+    for (int i = 0; i < count && i < 64; i++) {
+        char text[64] = "";
+        if (!rml_element_is_visible(labels[i], true)) {
+            continue;
+        }
+        rml_element_inner_rml(labels[i], text, sizeof text);
+        if (behavior < 0 && !strcmp(text, "Behavior")) {
+            behavior = shown;
+            item = rml_element_parent(rml_element_parent(labels[i]));
+        }
+        scene = scene < 0 && !strcmp(text, "Scene") ? shown : scene;
+        shown++;
+    }
+    if (!(behavior >= 0 && behavior < scene)) {
+        printf(
+            "  New menu: button %d, %d items shown, Behavior %d, Scene %d\n",
+            button != NULL,
+            shown,
+            behavior,
+            scene
+        );
+    }
+    test_check(behavior >= 0 && behavior < scene, "the New menu lists the Assets filter's kind first");
+    /* Choosing a kind asks for its name under the button, selected. */
+    if (item) {
+        rml_element_click(item);
+    }
+    frames(&f, 4);
+    rml_element *field = test_query(context, "#new-asset-name input");
+    int start = -1, end = -1;
+    if (field) {
+        rml_element_selection_range(field, &start, &end);
+    }
+    rml_element *popover = test_query(context, "#new-asset-name");
+    bool below = popover && button &&
+                 rml_element_absolute_offset(popover, RML_BOX_BORDER).y >=
+                     rml_element_absolute_offset(button, RML_BOX_BORDER).y +
+                         rml_element_box_size(button, RML_BOX_BORDER).y;
+    bool selected = field && rml_context_focus_element(context) == field &&
+                    start == 0 && end == (int)strlen(s->new_asset.name);
+    if (!(asking(s) && below && selected)) {
+        printf(
+            "  New name: asking %d, below %d, selection %d..%d of '%s'\n",
+            asking(s),
+            below,
+            start,
+            end,
+            s->new_asset.name
+        );
+    }
+    test_check(asking(s) && below && selected, "a kind from the New menu asks for its name under the button, the offered name selected");
     fixture_free(&f);
 }
 
 static rml_element *settings_element(studio *s, const char *selector)
 {
-    rml_element *doc = rml_context_document(rml_backend_context(s->backend), 0);
     rml_element *matches[16];
-    int count = rml_element_query_selector_all(doc, selector, matches, 16);
+    int count = test_query_all(rml_backend_context(s->backend), selector, matches, 16);
     for (int i = 0; i < count && i < 16; i++) {
         if (rml_element_is_visible(matches[i], true)) {
             return matches[i];

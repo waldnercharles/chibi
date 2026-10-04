@@ -19,16 +19,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The GPU entity is the prefix before the separately uploaded parameters. */
+/* The GPU entity is the prefix before the separately uploaded parameters:
+ * the material's, then the shape's. */
 enum
 {
-    GPU_ENTITY_BYTES = offsetof(render_material_entity, material_parameters)
+    GPU_ENTITY_BYTES = offsetof(render_material_entity, material_parameters),
+    PARAMETER_BYTES = sizeof(render_material_entity) - GPU_ENTITY_BYTES
 };
 _Static_assert(sizeof(render_material_entity) == 1360, "entity std430 stride");
 _Static_assert(offsetof(render_material_entity, points) == 80, "entity point offset");
 _Static_assert(offsetof(render_material_entity, scene) == 144, "entity material offset");
 _Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offset");
 _Static_assert(GPU_ENTITY_BYTES == 336, "entity GPU size");
+_Static_assert(PARAMETER_BYTES == 1024, "material and shape parameters");
 
 typedef struct
 {
@@ -36,6 +39,12 @@ typedef struct
     bool mesh;
     render_shader_set set;
 } material_batch;
+
+typedef struct
+{
+    float layer;
+    int index;
+} draw_order;
 
 struct render_material_raster
 {
@@ -66,6 +75,8 @@ struct render_material_raster
     CF_Canvas canvases[2];
     int result;
     render_material_entity *sorted;
+    /* Sorting scratch: layers and source indices, cheaper to move than entities. */
+    draw_order *order;
     int width, height, tiles, capacity, index_capacity;
     int sdf_batch_limit;
     GameSurfaceQuality quality;
@@ -189,6 +200,7 @@ void render_material_raster_free(render_material_raster *r)
         cf_destroy_material(r->material);
     }
     afree(r->sorted);
+    afree(r->order);
     afree(r->group_meshes);
     afree(r->batch_meshes);
     for (int i = 0; i < acount(r->spatial_surfaces); i++) {
@@ -225,6 +237,9 @@ bool render_material_raster_resize(render_material_raster *r, int width, int hei
     if (r->width == width && r->height == height) {
         return true;
     }
+    /* Its material keeps last frame's bindings, which WebGL validates on
+       each draw; draws bind what they sample. */
+    cf_material_clear_textures(r->material);
     free_targets(r);
     r->canvases[0] = render_material_canvas(width, height);
     if (!r->canvases[0].id) {
@@ -256,7 +271,8 @@ static bool reserve_entities(render_material_raster *r, int count)
         capacity *= 2;
     }
     count = capacity;
-    if (count > INT_MAX / (int)sizeof(render_material_entity) || count > INT_MAX / 1024) {
+    if (count > INT_MAX / (int)sizeof(render_material_entity) ||
+        count > INT_MAX / PARAMETER_BYTES) {
         return false;
     }
     CF_StorageBuffer entities = buffer(count * GPU_ENTITY_BYTES);
@@ -537,11 +553,11 @@ static float entity_emission_scale(
 
 static int compare(const void *a, const void *b)
 {
-    const render_material_entity *x = a, *y = b;
-    if (x->wobble[3] != y->wobble[3]) {
-        return x->wobble[3] < y->wobble[3] ? -1 : 1;
+    const draw_order *x = a, *y = b;
+    if (x->layer != y->layer) {
+        return x->layer < y->layer ? -1 : 1;
     }
-    return (x->time[1] > y->time[1]) - (x->time[1] < y->time[1]);
+    return (x->index > y->index) - (x->index < y->index);
 }
 
 static void uniform(render_material_raster *r, const char *name, void *data, CF_UniformType type, int n)
@@ -907,13 +923,18 @@ bool render_material_raster_draw_mixed(
         !reserve_parameters(r, parameter_blocks)) {
         return false;
     }
-    asetlen(r->sorted, count);
+    /* Stable by layer: sorting each entity's layer and index moves a few
+       bytes, where sorting entities would move each one log n times. */
+    asetlen(r->order, count);
     for (int i = 0; i < count; i++) {
-        r->sorted[i] = entities[i];
-        r->sorted[i].time[1] = (float)i;
+        r->order[i] = (draw_order){ entities[i].wobble[3], i };
     }
     if (count) {
-        qsort(r->sorted, (size_t)count, sizeof *r->sorted, compare);
+        qsort(r->order, (size_t)count, sizeof *r->order, compare);
+    }
+    asetlen(r->sorted, count);
+    for (int i = 0; i < count; i++) {
+        r->sorted[i] = entities[r->order[i].index];
     }
     for (int i = 0; i < count; i++) {
         r->sorted[i].time[2] = entity_emission_scale(&r->sorted[i], view, r->width, r->height);

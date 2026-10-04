@@ -32,17 +32,34 @@ function(chibi_rmlui_dependencies)
     endif()
     # Web behavior RmlUi lacks: CSS color-mix(), so theme roles derive from a
     # few tokens at runtime; HTML's radio groups, which need a name; Vue's
-    # bindings, whose v-model leaves an input being edited alone and has a
-    # lazy form, and whose empty style values unset; CSS's anonymous flex
-    # items, so text inside a flex container shows; as in browsers,
-    # setting a style to the value it holds lays nothing out; and a handler
-    # for data-if, so presence keeps a leaving element shown while its exit
-    # transitions run (src/ui/motion.c), as the web's exit animations do.
+    # bindings, whose v-model leaves an input being edited alone, and whose
+    # empty style values unset; CSS's anonymous flex items, so text inside a
+    # flex container shows; as in browsers, setting a style to the value it
+    # holds lays nothing out; and a handler for data-if, so presence keeps a
+    # leaving element shown while its exit transitions run (src/ui/motion.c),
+    # as the web's exit animations do.
     # Resolved var() values keep their authored source for the inspector.
     # Text with locally managed content still lays out after font changes.
     # Variables resolving to dp lengths recompute when the pixel ratio changes.
+    # A blurred box-shadow blurs its whole shape before the box clips it, as in
+    # browsers, so an offset shadow with negative spread keeps its strength.
+    # Text fields send HTML's input on each edit and change once on commit
+    # (Enter, or leaving the field after an edit); data-value follows input as
+    # Vue's v-model does, and data-value-lazy change, as v-model.lazy.
+    # data-when, Vue's v-if, builds its element while true and removes it and
+    # its views while false, where data-if (v-show) only hides it.
+    # As in browsers, input and change events' propagation can be stopped, so
+    # a native control keeps its inner fields' events to itself
+    # (src/ui/controls).
+    # A font-size or line-height set by var() follows its variable, as other
+    # properties do, so a density change re-lays out line-height: var(--h).
+    # An element moved under the same data model keeps its views bound, as a
+    # DOM move keeps a page's bindings; unbinding and binding them anew fails
+    # for evaluated text and built data-for children, and leaves views behind.
+    # data-template keeps an element's content unbuilt, its markup in
+    # rmlui-inner-rml, for native code to mount while it shows (a popover's).
     set(patches "")
-    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation)
+    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when event-propagation variable-line-height move-keeps-data data-template)
         list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-${name}.patch")
     endforeach()
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})

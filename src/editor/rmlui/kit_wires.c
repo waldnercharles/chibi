@@ -18,9 +18,13 @@
 #define CURVE_SAMPLES 24
 #define DASH 6.0f
 #define DASH_GAP 4.0f
-#define FLOW_SPACING 32.0f
-#define FLOW_SPEED 60.0f
-#define FLOW_RADIUS 2.5f
+/* Bubbles: spacing and speed in screen dp, so they read alike at any zoom;
+   the radius follows the zoom between screen-dp bounds. */
+#define FLOW_SPACING 30.0f
+#define FLOW_SPEED 120.0f
+#define FLOW_RADIUS 3.0f
+#define FLOW_RADIUS_MIN 2.0f
+#define FLOW_RADIUS_MAX 4.0f
 /* Pieces of a wire's shape that fit without the heap. */
 #define SHAPE_PIECES 16
 
@@ -38,7 +42,7 @@ typedef struct wire_data
     uint32_t color;
     float width;
     unsigned flags;
-    float flow;
+    float flow, pulse;
     float flow_width;
     uint32_t flow_color;
     vec2 resolved_from, resolved_to;
@@ -54,14 +58,14 @@ typedef struct wires_element
     float grid, grid_x, grid_y;
     uint32_t grid_color, grid_major;
     vec2 camera;
-    float dp;
-    bool dirty, flow_dirty, built, grid_built;
+    float dp, flow_scale;
+    bool dirty, glow_dirty, bubbles_dirty, built, grid_built;
     float grid_dp, grid_step, grid_phase_x, grid_phase_y;
     uint32_t grid_cached_color, grid_cached_major;
     rml_vec2 grid_size;
     /* Retained sampled curves in world pixels. Picking converts to local dp. */
     vec2 **drawn;
-    rml_geometry *geometry, *flow_geometry, *grid_geometry;
+    rml_geometry *geometry, *glow_geometry, *bubble_geometry, *grid_geometry;
 } wires_element;
 
 /* The dot element's user data. */
@@ -254,19 +258,23 @@ static void stroke_dashes(mesh *m, const vec2 *p, float width, rml_color color, 
     afree(run);
 }
 
-/* Markers move from source to target, spaced evenly along the wire. */
-static void flow_markers(mesh *m, const vec2 *path, const wire_data *w, float dp)
+/* Bubbles move from source to target, spaced evenly along the wire, each a
+   soft halo around a core in the wire's hot color. */
+static void bubbles(mesh *m, const vec2 *path, const wire_data *w, float dp, float scale)
 {
     int n = acount(path);
-    float spacing = FLOW_SPACING * dp, total = 0;
+    float spacing = FLOW_SPACING * scale, total = 0;
     for (int i = 1; i < n; i++) {
         total += hypotf(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y);
     }
-    if (total <= 0) {
+    float radius = math_clamp(FLOW_RADIUS * dp, FLOW_RADIUS_MIN * scale, FLOW_RADIUS_MAX * scale) *
+                   w->pulse;
+    if (total <= 0 || radius < 0.25f) {
         return;
     }
-    float phase = fmodf(w->flow * FLOW_SPEED * dp, spacing);
-    rml_color color = premultiply(w->color, 1);
+    float phase = fmodf(w->flow * FLOW_SPEED * scale, spacing);
+    uint32_t color = w->flow_color ? w->flow_color : w->color;
+    rml_color core = premultiply(color, 1), halo = premultiply(color, 0.3f);
     float along = 0;
     int seg = 1;
     for (float d = phase; d < total; d += spacing) {
@@ -275,7 +283,8 @@ static void flow_markers(mesh *m, const vec2 *path, const wire_data *w, float dp
             float l = hypotf(b.x - a.x, b.y - a.y);
             if (along + l >= d) {
                 vec2 at = vec2_add(a, vec2_scale(vec2_sub(b, a), (d - along) / math_max(1e-5f, l)));
-                disc(m, at, FLOW_RADIUS * dp, color, 1);
+                disc(m, at, radius + scale, halo, 1);
+                disc(m, at, radius, core, 1);
                 break;
             }
             along += l;
@@ -509,35 +518,47 @@ static void wires_render(rml_element *el, void *user)
             wire_path(&m, w, i, dp);
         }
         upload(&w->geometry, manager, &m);
-        w->flow_dirty = true;
+        w->glow_dirty = w->bubbles_dirty = true;
         w->built = true;
         w->dirty = false;
         w->dp = dp;
     }
-    if (w->flow_dirty) {
+    if (w->glow_dirty) {
         mesh m = { 0 };
         for (int i = 0; i < acount(w->wires); i++) {
             const wire_data *wire = &w->wires[i];
-            if (!(wire->flags & KIT_WIRE_FLOW)) {
-                continue;
-            }
-            wire_data overlay = *wire;
-            overlay.color = wire->flow_color ? wire->flow_color : wire->color;
             if (wire->flow_width > 0) {
-                overlay.width = wire->flow_width;
-                draw_wire(&m, w->drawn[i], &overlay, dp);
+                wire_data glow = *wire;
+                glow.color = wire->flow_color ? wire->flow_color : wire->color;
+                glow.width = wire->flow_width;
+                draw_wire(&m, w->drawn[i], &glow, dp);
             }
-            flow_markers(&m, w->drawn[i], &overlay, dp);
         }
-        upload(&w->flow_geometry, manager, &m);
-        w->flow_dirty = false;
+        upload(&w->glow_geometry, manager, &m);
+        w->glow_dirty = false;
+    }
+    /* Moving bubbles rebuild alone, each frame they move. */
+    if (w->bubbles_dirty) {
+        mesh m = { 0 };
+        float scale = w->flow_scale > 0 ? w->flow_scale : dp;
+        for (int i = 0; i < acount(w->wires); i++) {
+            const wire_data *wire = &w->wires[i];
+            if ((wire->flags & KIT_WIRE_FLOW) && wire->pulse > 0) {
+                bubbles(&m, w->drawn[i], wire, dp, scale);
+            }
+        }
+        upload(&w->bubble_geometry, manager, &m);
+        w->bubbles_dirty = false;
     }
     rml_vec2 at = { origin.x - w->camera.x * dp, origin.y - w->camera.y * dp };
     if (w->geometry) {
         rml_geometry_render(w->geometry, at);
     }
-    if (w->flow_geometry) {
-        rml_geometry_render(w->flow_geometry, at);
+    if (w->glow_geometry) {
+        rml_geometry_render(w->glow_geometry, at);
+    }
+    if (w->bubble_geometry) {
+        rml_geometry_render(w->bubble_geometry, at);
     }
 }
 
@@ -563,7 +584,8 @@ static void wires_release(void *user)
     afree(w->wires);
     drawn_free(w);
     rml_geometry_destroy(w->geometry);
-    rml_geometry_destroy(w->flow_geometry);
+    rml_geometry_destroy(w->glow_geometry);
+    rml_geometry_destroy(w->bubble_geometry);
     rml_geometry_destroy(w->grid_geometry);
     free(w);
 }
@@ -616,6 +638,7 @@ static bool copy_wire(wire_data *out, const kit_wire *in)
     out->width = width;
     out->flags = in->flags;
     out->flow = in->flow;
+    out->pulse = in->pulse;
     out->flow_width = in->flow_width;
     out->flow_color = in->flow_color;
     return changed;
@@ -635,14 +658,19 @@ void kit_wires(kit *k, const char *key, const char *cls, const kit_wires_desc *d
     w->grid_color = d->grid_color;
     w->grid_major = d->grid_major_color;
     resize_wires(w, math_max(d->count, 0));
+    w->bubbles_dirty |= w->flow_scale != d->flow_scale;
+    w->flow_scale = d->flow_scale;
     for (int i = 0; i < d->count; i++) {
-        w->flow_dirty |= (w->wires[i].flags & KIT_WIRE_FLOW) !=
-                             (d->wires[i].flags & KIT_WIRE_FLOW) ||
-                         ((d->wires[i].flags & KIT_WIRE_FLOW) &&
-                          (w->wires[i].flow != d->wires[i].flow ||
-                           w->wires[i].flow_width != d->wires[i].flow_width ||
-                           w->wires[i].flow_color != d->wires[i].flow_color));
-        w->dirty |= copy_wire(&w->wires[i], &d->wires[i]);
+        const wire_data *was = &w->wires[i];
+        const kit_wire *is = &d->wires[i];
+        bool flowing = (is->flags & KIT_WIRE_FLOW) && is->pulse > 0;
+        w->glow_dirty |= was->flow_width != is->flow_width ||
+                         (is->flow_width > 0 && was->flow_color != is->flow_color);
+        w->bubbles_dirty |= flowing !=
+                                ((was->flags & KIT_WIRE_FLOW) && was->pulse > 0) ||
+                            (flowing && (was->flow != is->flow || was->pulse != is->pulse ||
+                                         was->flow_color != is->flow_color));
+        w->dirty |= copy_wire(&w->wires[i], is);
     }
 }
 
@@ -743,11 +771,14 @@ static void draw_dot(mesh *m, rml_element *el, const kit_dot_desc *desc)
     }
 }
 
+/* A dot has no data until kit_dot or its shape and fill attributes give it
+   some, which an authored <kit-dot> in a data-for template never gets:
+   until then it draws nothing. */
 static void dot_render(rml_element *el, void *user)
 {
     dot_element *dot = user;
     rml_render_manager *manager = rml_element_render_manager(el);
-    if (!manager) {
+    if (!manager || !dot) {
         return;
     }
     if (!dot->built) {
@@ -762,17 +793,43 @@ static void dot_render(rml_element *el, void *user)
 static void dot_resize(rml_element *, void *user)
 {
     dot_element *dot = user;
-    dot->built = false;
+    if (dot) {
+        dot->built = false;
+    }
 }
 
 static void dot_release(void *user)
 {
     dot_element *dot = user;
-    rml_geometry_destroy(dot->geometry);
-    free(dot);
+    if (dot) {
+        rml_geometry_destroy(dot->geometry);
+        free(dot);
+    }
 }
 
-static const rml_element_hooks dot_hooks = { dot_render, dot_resize, dot_release };
+/* An authored <kit-dot shape="circle|square|arrow" fill="#rrggbbaa">, as
+   Members shows a variable's type: filled, without a ring. */
+static void dot_attribute(rml_element *el, void *, const char *name)
+{
+    if (strcmp(name, "shape") && strcmp(name, "fill")) {
+        return;
+    }
+    dot_element *dot = element_data(el, sizeof *dot);
+    char shape[16] = "", fill[16] = "";
+    rml_element_attribute(el, "shape", shape, sizeof shape);
+    rml_element_attribute(el, "fill", fill, sizeof fill);
+    dot->desc.shape = !strcmp(shape, "square") ? KIT_DOT_SQUARE
+                    : !strcmp(shape, "arrow")  ? KIT_DOT_ARROW
+                                               : KIT_DOT_CIRCLE;
+    dot->desc.fill = fill[0] == '#' ? (uint32_t)strtoul(fill + 1, NULL, 16) : 0;
+    dot->desc.ring = dot->desc.fill;
+    dot->built = false;
+}
+
+static const rml_element_hooks dot_hooks = { .render = dot_render,
+                                             .resize = dot_resize,
+                                             .release = dot_release,
+                                             .attribute = dot_attribute };
 
 void register_dot_element()
 {

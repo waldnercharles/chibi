@@ -1,6 +1,8 @@
 /* Graph canvas input: replayed window events, gestures and shortcuts. */
 #include "editor/studio/studio_graph_internal.h"
+#include "platform/cute.h"
 #include "support/array.h"
+#include "ui/input_feel.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -11,7 +13,6 @@ enum
     CURVE_POINTS = 256,
 };
 
-static const float THRESHOLD = 3; /* window px before a press drags */
 static const float WIRE_HIT = 10; /* window px: a 20 px wire target */
 static const float SNAP = 16;     /* graph units: half a drawn grid cell */
 
@@ -326,7 +327,7 @@ static void end_link(studio *s, graph_hit hit)
         g->spawn_pending = true;
         g->spawn_x = g->world_x;
         g->spawn_y = g->world_y;
-        kit_command_open(s->kit, "Add a node for this wire");
+        studio_palette_open(s, STUDIO_PALETTE_NODES, "Add a node for this wire");
     }
 }
 
@@ -395,12 +396,12 @@ static bool spawn_held(studio *s)
 }
 
 /* Scrolling zooms at the pointer, from a wheel or a trackpad alike (Blender,
-   Unreal); panning is a middle, right or Space drag. A notch is about 15%, and
-   one event never more than doubles or halves the zoom. */
+   Unreal), at the rate every canvas zooms; panning is a middle, right or
+   Space drag. */
 static void wheel(studio *s, const rml_input *ev)
 {
     studio_graph *g = &s->graph;
-    float factor = fminf(fmaxf(powf(2, -ev->wheel_y * 0.2f), 0.5f), 2.0f);
+    float factor = feel_zoom_scale(feel_zoom_notches(-ev->wheel_y));
     sg_zoom_at(s, g->zoom * factor, ev->x, ev->y);
 }
 
@@ -581,7 +582,7 @@ static void drag(studio *s)
     editor *e = sg_graph_editor(s);
     switch (g->gesture) {
         case STUDIO_GRAPH_PRESS:
-            if (drag_distance(s) < THRESHOLD || sg_graph_readonly(s)) {
+            if (drag_distance(s) < FEEL_DRAG_DP || sg_graph_readonly(s)) {
                 break;
             }
             g->gesture = STUDIO_GRAPH_MOVE;
@@ -623,14 +624,14 @@ static void drag(studio *s)
             finish_box(s);
             break;
         case STUDIO_GRAPH_RIGHT:
-            if (drag_distance(s) >= THRESHOLD) {
+            if (drag_distance(s) >= FEEL_DRAG_DP) {
                 g->gesture = STUDIO_GRAPH_PAN;
             }
             break;
         case STUDIO_GRAPH_RESIZE: sg_resize(s); break;
         case STUDIO_GRAPH_REROUTE: {
             /* A drag moves the point by the pointer's travel; a click leaves it. */
-            if (drag_distance(s) < THRESHOLD) {
+            if (drag_distance(s) < FEEL_DRAG_DP) {
                 break;
             }
             edge *ed = &sg_active_graph(s)->edges[g->reroute_edge];
@@ -723,7 +724,7 @@ static void release(studio *s, graph_hit hit)
                 g->spawn_pending = true;
                 g->spawn_x = g->world_x;
                 g->spawn_y = g->world_y;
-                kit_command_open(s->kit, "Add a node");
+                studio_palette_open(s, STUDIO_PALETTE_NODES, "Add a node");
             }
             break;
         }
@@ -781,7 +782,7 @@ void sg_replay(studio *s)
     }
     in->wheel = 0;
     g->press_button = -1;
-    bool blocked = kit_command_is_open(s->kit) ||
+    bool blocked = studio_palette_is_open(s) ||
                    (kit_wants_pointer(s->kit) && !g->surface.hovered);
     for (int i = 0; i < acount(g->events); i++) {
         rml_input ev = g->events[i];
@@ -820,6 +821,11 @@ void sg_replay(studio *s)
                             ((ev.modifiers & RML_INPUT_MOD_META) ? KIT_MOD_META : 0u);
             if (ev.type == RML_INPUT_POINTER_WHEEL) {
                 if (popup_open && !blocked) {
+                    /* A popup scrolls the distance the editor's lists do. */
+                    float ratio = studio_graph_pixel_ratio(s),
+                          scale = cf_app_get_pixel_scale();
+                    ev.wheel_x = feel_scroll_units(ev.wheel_x, ratio, scale);
+                    ev.wheel_y = feel_scroll_units(ev.wheel_y, ratio, scale);
                     rml_backend_process_input(g->backend, &ev);
                 } else if (!popup_open) {
                     wheel(s, &g->events[i]);
@@ -836,9 +842,10 @@ void sg_replay(studio *s)
                 snprintf(g->press_path, sizeof g->press_path, "%s", path ? path : "");
                 float wx = g->events[i].x, wy = g->events[i].y;
                 g->double_click = ev.button == 0 &&
-                                  s->time - g->last_press_time < 0.3 &&
+                                  s->time - g->last_press_time <
+                                      FEEL_DOUBLE_CLICK_SECONDS &&
                                   hypotf(wx - g->last_press_x, wy - g->last_press_y) <
-                                      THRESHOLD;
+                                      FEEL_DOUBLE_CLICK_DP;
                 g->last_press_time = g->double_click ? 0 : s->time;
                 g->last_press_x = wx;
                 g->last_press_y = wy;
@@ -1017,7 +1024,7 @@ void sg_shortcuts(studio *s)
         sg_frame_nodes(s, acount(e->selected) > 0, true);
     }
     if (!over || kit_wants_keyboard(s->kit) || kit_wants_keyboard(g->kit) ||
-        kit_command_is_open(s->kit)) {
+        studio_palette_is_open(s)) {
         return;
     }
     for (int i = 0; i < acount(s->keys); i++) {
@@ -1038,8 +1045,6 @@ void sg_shortcuts(studio *s)
         bool alt = s->keys[i].mod & SDL_KMOD_ALT;
         if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
             sg_delete_selection(s);
-        } else if (mod && key == SDLK_F) {
-            sg_find_open(s);
         } else if (shift && alt && key == SDLK_F) {
             if (acount(e->selected) && studio_node_referable(e->selected[0])) {
                 studio_find_node_references(s, e->selected[0]);
@@ -1089,7 +1094,7 @@ void sg_shortcuts(studio *s)
                 g->spawn_pending = true;
                 g->spawn_x = g->world_x;
                 g->spawn_y = g->world_y;
-                kit_command_open(s->kit, "Add a node");
+                studio_palette_open(s, STUDIO_PALETTE_NODES, "Add a node");
             }
         } else if (!mod && !shift && key == SDLK_C && !sg_graph_readonly(s)) {
             sg_frame_selection(s);

@@ -1,6 +1,5 @@
+/* The native <color-field>: a swatch whose picker (plane, hue, RGBA hex and
+   Opacity) opens as <input type=color>'s would. Bind data-attr-value to a
+   "#rrggbbaa" value; input runs while the picker is open and change once
+   when it closes. */
 body { display: flex; flex: 1 1 0dp; }
-.swatched .swatch {
-  flex: 0 0 auto; width: 14dp; height: 14dp; margin-left: 4dp;
-  border-radius: 3dp; border: 1dp var(--border);
-}
-.swatched input.value { padding-left: 5dp; }

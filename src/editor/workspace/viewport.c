@@ -6,6 +6,7 @@
 #include "runtime/engine.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "ui/input_feel.h"
 
 #include <assert.h>
 #include <imgui/dcimgui.h>
@@ -46,6 +47,8 @@ struct engine_viewport
     render_audio *audio;
     ui_world ui_world; /* no documents while its ecs is NULL */
     render_ui *ui;
+    double ui_time;  /* engine_viewport_set_time's */
+    double ui_drawn; /* ui_time at the documents' last draw, -1 before it */
     bool ui_capture; /* the documents took the pointer last frame */
     bool ui_typing;  /* they had the keyboard and a text field had focus */
     engine_viewport_render_fn render;
@@ -76,7 +79,7 @@ static viewport_io host_io(engine_viewport *viewport)
         .alt = in->alt,
         .wheel = in->wheel,
         .drag_sq = viewport->press_distance_sq,
-        .drag_threshold = 3,
+        .drag_threshold = FEEL_DRAG_DP,
     };
     for (int b = 0; b < 3; b++) {
         v.down[b] = in->down[b];
@@ -136,6 +139,21 @@ void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, co
     }
 }
 
+void engine_viewport_set_time(engine_viewport *viewport, double seconds)
+{
+    assert(seconds >= 0);
+    viewport->ui_time = seconds;
+}
+
+/* The host's time since the documents last drew. Their first draw steps
+   none, as their context joins RmlUi's shared clock where it stands. */
+static double ui_step(engine_viewport *viewport)
+{
+    double drawn = viewport->ui_drawn;
+    viewport->ui_drawn = viewport->ui_time;
+    return drawn < 0 ? 0 : fmax(0, viewport->ui_time - drawn);
+}
+
 void engine_viewport_adopt_ui(engine_viewport *viewport, render_ui *ui)
 {
     assert(!viewport->ui);
@@ -176,6 +194,7 @@ engine_viewport *engine_viewport_new(int width, int height)
     engine_viewport_reset_camera(viewport);
     viewport->requested_width = width;
     viewport->requested_height = height;
+    viewport->ui_drawn = -1;
     viewport->canvas = viewport_canvas(width, height);
     if (!viewport->canvas.id) {
         free(viewport);
@@ -416,14 +435,29 @@ static void draw_viewport_canvas(engine_viewport *viewport)
             &viewport->ui_world,
             viewport->width,
             viewport->height,
-            CF_DELTA_TIME
+            ui_step(viewport)
         );
         render_ui_composite(viewport->ui, viewport->canvas);
     }
 }
 
+/* ImGui's modifiers as RmlUi's. On macOS Command edits text (select all,
+   copy, paste) where RmlUi expects Control, so the two trade places. */
+static unsigned ui_modifiers(const ImGuiIO *io)
+{
+#ifdef __APPLE__
+    bool control = io->KeySuper, meta = io->KeyCtrl;
+#else
+    bool control = io->KeyCtrl, meta = io->KeySuper;
+#endif
+    return (control ? RML_INPUT_MOD_CONTROL : 0u) |
+           (io->KeyShift ? RML_INPUT_MOD_SHIFT : 0u) |
+           (io->KeyAlt ? RML_INPUT_MOD_ALT : 0u) | (meta ? RML_INPUT_MOD_META : 0u);
+}
+
 /* Replays a pointer over the displayed image into the game documents in
-   canvas pixels. `at` is relative to the image, `size` its size. */
+   canvas pixels, the modifier keys held (RML_INPUT_MOD_*) with it, which
+   their events carry. `at` is relative to the image, `size` its size. */
 static void ui_pointer(
     engine_viewport *viewport,
     CF_V2 at,
@@ -431,7 +465,8 @@ static void ui_pointer(
     bool hovered,
     bool pressed,
     bool released,
-    bool active
+    bool active,
+    unsigned modifiers
 )
 {
     viewport->ui_capture = false;
@@ -441,17 +476,20 @@ static void ui_pointer(
     float x = at.x * (float)viewport->width / size.x;
     float y = at.y * (float)viewport->height / size.y;
     rml_input_type move = hovered ? RML_INPUT_POINTER_MOVE : RML_INPUT_POINTER_LEAVE;
-    unsigned captured = render_ui_input(viewport->ui, &(rml_input){ .type = move, .x = x, .y = y });
+    unsigned captured = render_ui_input(
+        viewport->ui,
+        &(rml_input){ .type = move, .x = x, .y = y, .modifiers = modifiers }
+    );
     if (pressed) {
         captured |= render_ui_input(
             viewport->ui,
-            &(rml_input){ .type = RML_INPUT_POINTER_DOWN, .x = x, .y = y }
+            &(rml_input){ .type = RML_INPUT_POINTER_DOWN, .x = x, .y = y, .modifiers = modifiers }
         );
     }
     if (released) {
         captured |= render_ui_input(
             viewport->ui,
-            &(rml_input){ .type = RML_INPUT_POINTER_UP, .x = x, .y = y }
+            &(rml_input){ .type = RML_INPUT_POINTER_UP, .x = x, .y = y, .modifiers = modifiers }
         );
     }
     viewport->ui_capture = (captured & RML_INPUT_CAPTURE_POINTER) != 0;
@@ -514,7 +552,8 @@ static bool navigate_viewport(engine_viewport *viewport, const viewport_io *io, 
     if (zoom) {
         float x = io->mouse.x / size.x - 0.5f;
         float y = 0.5f - io->mouse.y / size.y;
-        float scale = powf(1.1f, -io->wheel);
+        /* The rate every canvas zooms; the host clamped each notch. */
+        float scale = 1 / feel_zoom_scale(io->wheel);
         scale = fmaxf(.0001f / before.span_width, fminf(100000.0f / before.span_width, scale));
         CF_V2 anchor;
         bool anchored = pointer_world(viewport, (CF_V2){ 2 * x, 2 * y }, &anchor);
@@ -577,7 +616,6 @@ static void capture_viewport_pointer(engine_viewport *viewport, const viewport_i
     pointer->world_y = world.y;
     pointer->hovered = io->hovered && io->mouse.x >= 0 && io->mouse.y >= 0 &&
                        io->mouse.x < size.x && io->mouse.y < size.y;
-    pointer->delete_pressed = io->focused && app_input_pressed(APP_INPUT_DELETE);
     snprintf(
         pointer->dropped_prototype,
         sizeof pointer->dropped_prototype,
@@ -634,7 +672,7 @@ void engine_viewport_ui_input(engine_viewport *viewport, bool active)
                  io->MousePos.y - viewport->image_min.y };
     CF_V2 size = viewport->image_size;
     bool inside = at.x >= 0 && at.y >= 0 && at.x < size.x && at.y < size.y;
-    ui_pointer(viewport, at, size, inside, io->MouseClicked[0], io->MouseReleased[0], active);
+    ui_pointer(viewport, at, size, inside, io->MouseClicked[0], io->MouseReleased[0], active, ui_modifiers(io));
     ui_wheel(viewport, at, size, inside, io->MouseWheel, active);
 }
 
@@ -676,20 +714,6 @@ static rml_input_key ui_key(ImGuiKey key)
         }
     }
     return RML_INPUT_KEY_UNKNOWN;
-}
-
-/* ImGui's modifiers as RmlUi's. On macOS Command edits text (select all,
-   copy, paste) where RmlUi expects Control, so the two trade places. */
-static unsigned ui_modifiers(const ImGuiIO *io)
-{
-#ifdef __APPLE__
-    bool control = io->KeySuper, meta = io->KeyCtrl;
-#else
-    bool control = io->KeyCtrl, meta = io->KeySuper;
-#endif
-    return (control ? RML_INPUT_MOD_CONTROL : 0u) |
-           (io->KeyShift ? RML_INPUT_MOD_SHIFT : 0u) |
-           (io->KeyAlt ? RML_INPUT_MOD_ALT : 0u) | (meta ? RML_INPUT_MOD_META : 0u);
 }
 
 /* Appends code point `c` to `text` as UTF-8. */
@@ -779,7 +803,8 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
         in->hovered,
         in->pressed[0],
         in->released[0],
-        controls->playing
+        controls->playing,
+        in->modifiers
     );
     bool scrolled = ui_wheel(
         viewport,

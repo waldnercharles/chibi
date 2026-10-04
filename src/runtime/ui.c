@@ -3,6 +3,7 @@
 #include "graph/document/serialize.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
+#include "platform/cute.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -90,7 +91,10 @@ static game_ui_element *change(game_ui *ui, uint64_t entity, const char *element
     if (!e) {
         apush(
             ui->elements,
-            ((game_ui_element){ .entity = entity, .selector = xstrdup(element), .visible = -1 })
+            ((game_ui_element){ .entity = entity,
+                                .selector = xstrdup(element),
+                                .visible = -1,
+                                .reveal = -1 })
         );
         e = &alast(ui->elements);
     }
@@ -211,6 +215,29 @@ bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int s
     return true;
 }
 
+bool game_ui_show_popover(game_ui *ui, uint64_t entity, const char *element, float x, float y)
+{
+    game_ui_element *e = isfinite(x) && isfinite(y) ? change(ui, entity, element)
+                                                    : NULL;
+    if (!e) {
+        return false;
+    }
+    e->popover = true;
+    e->popover_x = x;
+    e->popover_y = y;
+    return true;
+}
+
+bool game_ui_reveal_row(game_ui *ui, uint64_t entity, const char *element, int row)
+{
+    game_ui_element *e = row >= 0 ? change(ui, entity, element) : NULL;
+    if (!e) {
+        return false;
+    }
+    e->reveal = row;
+    return true;
+}
+
 /* A path bindings can reach under self: a word, then words or list indices,
    each after a '.': "score", "items.2.name". */
 static bool data_path(const char *path)
@@ -285,7 +312,10 @@ void game_ui_measure(
     if (!e) {
         apush(
             ui->elements,
-            ((game_ui_element){ .entity = entity, .selector = xstrdup(element), .visible = -1 })
+            ((game_ui_element){ .entity = entity,
+                                .selector = xstrdup(element),
+                                .visible = -1,
+                                .reveal = -1 })
         );
         e = &alast(ui->elements);
     }
@@ -399,6 +429,19 @@ static const char *move_focus_call(void *ui, const pin_value *a, pin_value *)
     return game_ui_move_focus(ui, a[0].u64, a[1].str, a[2].i) ? NULL : INVALID_UI;
 }
 
+static const char *popover_call(void *ui, const pin_value *a, pin_value *)
+{
+    const CF_V2 *at = a[2].ptr;
+    return at && game_ui_show_popover(ui, a[0].u64, a[1].str, at->x, at->y)
+             ? NULL
+             : INVALID_UI;
+}
+
+static const char *reveal_call(void *ui, const pin_value *a, pin_value *)
+{
+    return game_ui_reveal_row(ui, a[0].u64, a[1].str, a[2].i) ? NULL : INVALID_UI;
+}
+
 static const char *scroll_call(void *ui, const pin_value *a, pin_value *results)
 {
     const game_ui_element *e = a[1].str ? find(ui, a[0].u64, a[1].str) : NULL;
@@ -496,6 +539,14 @@ static pin_spec MOVE_FOCUS_IN[] = { EXEC_IN,
                                       .type = PIN_I32,
                                       .type_name = "int",
                                       .default_value = { .type = PIN_I32, .i = 1 } } };
+static pin_spec POPOVER_IN[] = { EXEC_IN,
+                                 ENTITY_IN,
+                                 ELEMENT_IN,
+                                 { .name = "At", .type = PIN_STRUCT, .type_name = "CF_V2" } };
+static pin_spec REVEAL_IN[] = { EXEC_IN,
+                                ENTITY_IN,
+                                ELEMENT_IN,
+                                { .name = "Row", .type = PIN_I32, .type_name = "int" } };
 static pin_spec THEN_OUT[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC } };
 static pin_spec GET_IN[] = { ENTITY_IN, ELEMENT_IN };
 static pin_spec GET_OUT[] = {
@@ -596,6 +647,28 @@ EFFECT_NODE(
     "match the Element selector.",
     MOVE_FOCUS_IN,
     move_focus_call
+);
+
+EFFECT_NODE(
+    SHOW_POPOVER,
+    "Show UI Popover",
+    "context menu right click popup open pointer point widget element selector",
+    "Opens the entity's first popover that matches the Element selector at "
+    "At, a point in the document's pixels, as a context menu opens at the "
+    "pointer a UI event's Pointer gives.",
+    POPOVER_IN,
+    popover_call
+);
+EFFECT_NODE(
+    REVEAL_ROW,
+    "Reveal UI List Row",
+    "scroll into view list virtual window row index show widget element "
+    "selector",
+    "Scrolls the least that brings row Row, counted from 0, of the entity's "
+    "lists that match the Element selector into view, in the window their "
+    "presenter keeps for data-list-rows rows.",
+    REVEAL_IN,
+    reveal_call
 );
 
 /* Any value has a native representation, so the node takes a wildcard; an array
@@ -713,10 +786,11 @@ static node_desc GET_VALUE = {
     .access = &READ
 };
 
-static node_desc *const NODES[] = { &SET_TEXT,    &SET_CLASS, &SET_STYLE,
-                                    &SET_VISIBLE, &SET_VALUE, &SET_DATA,
-                                    &FOCUS,       &CLICK,     &MOVE_FOCUS,
-                                    &GET_VALUE,   &GET_SCROLL };
+static node_desc *const NODES[] = { &SET_TEXT,     &SET_CLASS,  &SET_STYLE,
+                                    &SET_VISIBLE,  &SET_VALUE,  &SET_DATA,
+                                    &FOCUS,        &CLICK,      &MOVE_FOCUS,
+                                    &SHOW_POPOVER, &REVEAL_ROW, &GET_VALUE,
+                                    &GET_SCROLL };
 const registry_pack GAME_UI_PACK = { .name = "game.ui",
                                      .nodes = NODES,
                                      .node_count = sizeof NODES / sizeof *NODES };

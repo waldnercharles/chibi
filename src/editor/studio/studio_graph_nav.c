@@ -62,7 +62,7 @@ static void see(studio_graph *g, const studio_visit *visit)
 
 /* Records the open graph and its breadcrumb once it differs from the graph
    last seen, which a Text Editor place does not change. */
-static void track(studio *s)
+void sg_nav_track(studio *s)
 {
     studio_graph *g = &s->graph;
     studio_visit visit = here(s);
@@ -119,7 +119,7 @@ static void step(studio *s, int direction)
 {
     studio_graph *g = &s->graph;
     if (studio_graph_active(s)) {
-        track(s);
+        sg_nav_track(s);
     }
     int at = g->visit + direction;
     while (at >= 0 && at < acount(g->visits)) {
@@ -141,7 +141,7 @@ void studio_nav_jump(studio *s, const ui_code_place *from, const ui_code_place *
 {
     studio_graph *g = &s->graph;
     if (studio_graph_active(s)) {
-        track(s);
+        sg_nav_track(s);
     }
     studio_visit visits[2] = { { .kind = APP_EDITOR_DOCUMENT_UI, .place = *from },
                                { .kind = APP_EDITOR_DOCUMENT_UI, .place = *to } };
@@ -178,117 +178,5 @@ void sg_nav_keys(studio *s)
         if ((s->keys[i].mod & SDL_KMOD_ALT) && (key == SDLK_LEFT || key == SDLK_RIGHT)) {
             step(s, key == SDLK_RIGHT ? 1 : -1);
         }
-    }
-}
-
-static void history_buttons(studio *s)
-{
-    kit *k = s->kit;
-    kit_button_desc back = { .icon = KIT_ICON_BACK,
-                             .tip = "Back",
-                             .shortcut = studio_chord(s, "Alt+\xe2\x86\x90"),
-                             .flags = can_step(s, -1) ? 0 : KIT_DISABLED };
-    if (kit_button(k, "back", &back)) {
-        step(s, -1);
-    }
-    kit_button_desc forward = { .icon = KIT_ICON_FORWARD,
-                                .tip = "Forward",
-                                .shortcut = studio_chord(s, "Alt+\xe2\x86\x92"),
-                                .flags = can_step(s, 1) ? 0 : KIT_DISABLED };
-    if (kit_button(k, "forward", &forward)) {
-        step(s, 1);
-    }
-}
-
-static const char *graph_label(const graph *gr)
-{
-    return gr->name && gr->name[0] ? gr->name : "Event Graph";
-}
-
-/* The behavior's crumb finds its references and switches to another asset
-   of its kind. */
-static void asset_crumb(studio *s)
-{
-    kit *k = s->kit;
-    app_scene_authoring *scene = s->scene;
-    const reference_index *index = app_scene_authoring_asset_index(scene);
-    reference_asset_kind kind = scene->graph_document_kind == APP_EDITOR_DOCUMENT_SYSTEM
-                                  ? REFERENCE_ASSET_SYSTEM
-                                  : reference_domain_kind(
-                                        sg_graph_editor(s)->asset->domain
-                                    );
-    kit_button_desc crumb = { .label = scene->graph_document_id,
-                              .icon = studio_asset_kind_icon(kind),
-                              .cls = "crumb" };
-    if (kit_button(k, "asset", &crumb)) {
-        kit_popup_open(k, "crumb-asset");
-    }
-    if (!kit_popup_begin(k, "crumb-asset", "menu")) {
-        return;
-    }
-    kit_menu_item_desc refs = { .label = "Find References",
-                                .icon = KIT_ICON_REFERENCES,
-                                .checked = -1 };
-    if (kit_menu_item(k, "refs", &refs)) {
-        studio_find_document_references(s);
-    }
-    /* The other assets of its kind, to switch to (the prototype's All
-       Behaviors). */
-    if (kind != REFERENCE_ASSET_SYSTEM &&
-        kit_submenu_begin(k, "all", studio_asset_kind_label(kind), studio_asset_kind_icon(kind))) {
-        for (int i = 0; index && i < reference_index_asset_count(index); i++) {
-            const reference_asset *asset = reference_index_asset_at(index, i);
-            if (asset->kind != kind || asset->unresolved) {
-                continue;
-            }
-            char key[16];
-            snprintf(key, sizeof key, "a%d", i);
-            kit_menu_item_desc d = {
-                .label = asset->name,
-                .icon = studio_asset_kind_icon(kind),
-                .checked = -1,
-                .current = !strcmp(asset->name, scene->graph_document_id)
-            };
-            if (kit_menu_item(k, key, &d) && !d.current) {
-                finish_transform_edit(scene, false);
-                app_scene_authoring_open_asset(scene, i);
-            }
-        }
-        kit_submenu_end(k);
-    }
-    kit_popup_end(k);
-}
-
-static void separator(kit *k, int index)
-{
-    char key[16];
-    snprintf(key, sizeof key, "sep%d", index);
-    kit_icon(k, key, "crumb-sep", KIT_ICON_RIGHT);
-}
-
-/* Back and Forward, then the behavior and the calls entered to reach this
-   graph; the open graph's own crumb follows (studio_behavior_header). */
-void sg_nav_header(studio *s)
-{
-    kit *k = s->kit;
-    editor *e = sg_graph_editor(s);
-    track(s);
-    history_buttons(s);
-    kit_push(k, "crumbs", NULL, "crumbs");
-    asset_crumb(s);
-    separator(k, 0);
-    for (int i = 0; i < editor_graph_history_count(e); i++) {
-        uint64_t id = e->graph_callers[i].graph_id;
-        const graph *caller = behavior_asset_find_graph(e->asset, id);
-        if (!caller) {
-            continue;
-        }
-        char key[16];
-        snprintf(key, sizeof key, "caller%d", i);
-        kit_button_desc crumb = { .label = graph_label(caller), .cls = "crumb" };
-        if (kit_button(k, key, &crumb)) {
-            editor_graph_ancestor(e, i);
-        }
-        separator(k, i + 1);
     }
 }

@@ -56,6 +56,17 @@ typedef struct
     int begin_state; /* 0 pending, 1 started, -1 failed. */
 } behavior_attachment;
 
+/* The inspected instance after its entity's destruction
+   (game_behavior_retired_target); it no longer runs. */
+typedef struct
+{
+    behavior_instance *instance;
+    ecs_entity entity;
+    uint64_t sequence;
+    char *asset_name;
+    const behavior_asset *definition;
+} retired_target;
+
 struct game_behavior_world
 {
     ecs_world *ecs;
@@ -66,8 +77,10 @@ struct game_behavior_world
     struct game_entities *entities;
     struct game_particles *particles;
     struct game_visibility *visibility;
+    service_binding *services; /* the host's own, bound into every instance */
     behavior_asset_record *assets;
     behavior_attachment *attachments;
+    retired_target retired;
     int **attachments_by_slot; /* Ordered indices into the broadcast array. */
     uint32_t attachment_slot_count;
     behavior_update_row *updates;
@@ -462,6 +475,13 @@ static behavior_instance *acquire_instance(
     behavior_instance_bind_service(instance, "game.audio", world->audio);
     behavior_instance_bind_service(instance, "game.ui", world->ui);
     behavior_instance_bind_service(instance, "game.visibility", world->visibility);
+    for (int i = 0; i < acount(world->services); i++) {
+        behavior_instance_bind_service(
+            instance,
+            world->services[i].type_name,
+            world->services[i].value
+        );
+    }
     behavior_sink_context *context = (behavior_sink_context *)xcalloc(1, sizeof *context);
     context->world = world;
     context->attachment = -1;
@@ -477,7 +497,8 @@ static behavior_instance *acquire_instance(
     return instance;
 }
 
-static void release_instance(behavior_asset_record *asset, behavior_instance *instance)
+/* Parts an instance from its world's schedule, sinks and profile. */
+static void unbind_instance(behavior_instance *instance)
 {
     instance->services_changed = NULL;
     instance->activations_changed = NULL;
@@ -489,11 +510,66 @@ static void release_instance(behavior_asset_record *asset, behavior_instance *in
     free(instance->sink_user);
     instance->sink = NULL;
     instance->sink_user = NULL;
+    instance->profile = NULL;
+    instance->profile_user = NULL;
+}
+
+static void release_instance(behavior_asset_record *asset, behavior_instance *instance)
+{
+    unbind_instance(instance);
     if (behavior_instance_pool_release(instance) == 0) {
         apush(asset->pool, instance);
         return;
     }
     behavior_instance_destroy(instance);
+}
+
+void game_behavior_release_retired(game_behavior_world *world)
+{
+    behavior_instance_destroy(world->retired.instance);
+    free(world->retired.asset_name);
+    world->retired = (retired_target){ 0 };
+}
+
+/* The inspected instance outlives its entity, until the debugger lets go. */
+static void release_attachment(game_behavior_world *world, const behavior_attachment *attachment)
+{
+    if (!attachment->instance->debug_target) {
+        release_instance(attachment->asset, attachment->instance);
+        return;
+    }
+    game_behavior_release_retired(world);
+    unbind_instance(attachment->instance);
+    world->retired = (retired_target){
+        .instance = attachment->instance,
+        .entity = attachment->entity,
+        .sequence = attachment->sequence,
+        .asset_name = xstrdup(attachment->asset->name),
+        .definition = attachment->asset->definition,
+    };
+}
+
+/* A retired instance runs its asset's definition, which is about to change. */
+static void release_retired_asset(game_behavior_world *world, const behavior_asset_record *asset)
+{
+    if (world->retired.instance && !strcmp(world->retired.asset_name, asset->name)) {
+        game_behavior_release_retired(world);
+    }
+}
+
+bool game_behavior_retired_target(const game_behavior_world *world, game_behavior_attachment_info *out)
+{
+    if (!world->retired.instance) {
+        return false;
+    }
+    *out = (game_behavior_attachment_info){
+        .entity = world->retired.entity,
+        .asset_name = world->retired.asset_name,
+        .definition = world->retired.definition,
+        .instance = world->retired.instance,
+        .sequence = world->retired.sequence,
+    };
+    return true;
 }
 
 /* Releases finished runs. A run that failed after it waited, or after the
@@ -571,6 +647,15 @@ void game_behavior_bind_visibility(game_behavior_world *world, struct game_visib
     }
 }
 
+void game_behavior_bind_service(game_behavior_world *world, const char *type_name, void *value)
+{
+    assert(type_name && type_name[0]);
+    apush(world->services, ((service_binding){ type_name, value }));
+    for (int i = 0; i < acount(world->attachments); i++) {
+        behavior_instance_bind_service(world->attachments[i].instance, type_name, value);
+    }
+}
+
 static bool asset_requires_serial(const behavior_asset *asset)
 {
     for (int i = 0; i < acount(asset->graphs); i++) {
@@ -598,6 +683,7 @@ void game_behavior_world_free(game_behavior_world *world)
     afree(world->updates);
     afree(world->update_spans);
     behavior_update_free_kernels(world->update_kernels);
+    game_behavior_release_retired(world);
     while (acount(world->attachments)) {
         behavior_attachment *attachment = &alast(world->attachments);
         release_instance(attachment->asset, attachment->instance);
@@ -627,6 +713,7 @@ void game_behavior_world_free(game_behavior_world *world)
         free(world->profile[i].event);
     }
     free(world->pump_results);
+    afree(world->services);
     game_save_free(world->save);
     game_audio_free(world->audio);
     game_ui_free(world->ui);
@@ -669,6 +756,7 @@ int game_behavior_unregister_asset(
                 return -1;
             }
         }
+        release_retired_asset(world, asset);
         *definition = asset->definition;
         clear_update_bindings(world);
         mark_attachment_change(world, 0);
@@ -803,6 +891,7 @@ int game_behavior_replace_asset(
     if (behavior_program_diagnostic(behavior_program_publish(definition))) {
         return -1;
     }
+    release_retired_asset(world, asset);
     clear_update_bindings(world);
     ecs_entity *entities = NULL;
     for (int i = 0; i < acount(world->attachments); i++) {
@@ -876,6 +965,7 @@ int game_behavior_preview_asset(
     if (behavior_program_diagnostic(behavior_program_publish(definition))) {
         return -1;
     }
+    release_retired_asset(world, asset);
     clear_update_bindings(world);
     destroy_asset_pool(asset);
     for (int i = 0; i < acount(world->attachments); i++) {
@@ -1144,7 +1234,7 @@ static int detach_entities(
             world->attachments[retained++] = attachment;
             continue;
         }
-        release_instance(attachment.asset, attachment.instance);
+        release_attachment(world, &attachment);
     }
     free(selected);
     asetlen(world->attachments, retained);
@@ -1825,6 +1915,12 @@ int game_behavior_attachment_count(const game_behavior_world *world)
     return world ? acount(world->attachments) : 0;
 }
 
+game_behavior_attachment_info game_behavior_attachment_info_index(game_behavior_world *world, int index)
+{
+    assert(index >= 0 && index < acount(world->attachments));
+    return info_of(&world->attachments[index]);
+}
+
 int game_behavior_attachment_count_for_entity(const game_behavior_world *world, ecs_entity entity)
 {
     if (!world) {
@@ -1945,9 +2041,13 @@ void game_behavior_inspect(game_behavior_world *world, const behavior_instance *
     }
     for (int i = 0; i < acount(world->attachments); i++) {
         behavior_attachment *attachment = &world->attachments[i];
-        bool enabled = attachment->debug_hold || attachment->instance == instance;
+        bool target = attachment->instance == instance;
+        bool enabled = attachment->debug_hold || target;
         if (attachment->instance->trace_enabled != enabled) {
             behavior_instance_set_trace_enabled(attachment->instance, enabled);
+        }
+        if (attachment->instance->debug_target != target) {
+            behavior_instance_set_debug_target(attachment->instance, target);
         }
     }
 }

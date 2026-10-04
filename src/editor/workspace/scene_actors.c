@@ -159,7 +159,9 @@ void remove_selected(app_scene_authoring *scene)
     remove_actor_at(scene, scene->selected);
 }
 
-static av_value *capture_actor_state(app_scene_authoring *scene, const scene_actor *actor)
+/* The object's components and behaviors, spawning as an instance of the
+   prototype whose identity is `identity`. */
+static av_value *actor_state_as(app_scene_authoring *scene, const scene_actor *actor, const char *identity)
 {
     game_prototype *state = game_prototype_capture_entity(
         actor->name,
@@ -171,7 +173,7 @@ static av_value *capture_actor_state(app_scene_authoring *scene, const scene_act
         return NULL;
     }
     free(state->identity);
-    state->identity = xstrdup(actor->base->identity);
+    state->identity = xstrdup(identity);
     int count = game_behavior_attachment_count_for_entity(
         scene->live->behaviors,
         actor->entity
@@ -188,6 +190,11 @@ static av_value *capture_actor_state(app_scene_authoring *scene, const scene_act
     av_value *value = game_prototype_to_value(state);
     game_prototype_free(state);
     return value;
+}
+
+static av_value *capture_actor_state(app_scene_authoring *scene, const scene_actor *actor)
+{
+    return actor_state_as(scene, actor, actor->base->identity);
 }
 
 static bool actor_name_used(const app_scene_authoring *scene, const char *name)
@@ -430,6 +437,8 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene)
                               .retained = retained };
     int result = remove_actor_at(scene, scene->selected);
     if (!result) {
+        /* An object added later under this name starts shown. */
+        scene_view_rename(scene, name, NULL);
         bool recorded = !collab_record_history() ||
                         scene_history_push_actor(scene->history, entity, &edit);
         assert(recorded);
@@ -563,6 +572,364 @@ int app_scene_authoring_duplicate_instance(app_scene_authoring *scene)
     return result;
 }
 
+int scene_repoint_actor(app_scene_authoring *scene, int index, const char *prototype)
+{
+    scene_prototype_asset *asset = find_prototype(scene, prototype);
+    scene_actor *actor = &scene->actors[index];
+    assert(asset && strcmp(actor->prototype_name, prototype));
+    scene_actor_edit removed = {
+        .index = index,
+        .identity = actor->identity,
+        .name = xstrdup(actor->name),
+        .prototype_name = xstrdup(actor->prototype_name),
+        .base = game_prototype_to_value(actor->base),
+        .state = capture_actor_state(scene, actor),
+        .retained = scene_retention_save(actor->retained),
+    };
+    scene_actor_edit added = removed;
+    added.prototype_name = prototype;
+    added.base = game_prototype_to_value(asset->prototype);
+    added.state = actor_state_as(scene, actor, asset->prototype->identity);
+    added.created = true;
+    ecs_entity old = actor->entity, entity = { 0 };
+    int result = removed.state && added.state ? remove_actor_at(scene, index) : -1;
+    if (result == 0 && restore_actor(scene, &added, &entity) != 0) {
+        result = restore_actor(scene, &removed, &entity);
+        assert(result == 0);
+        result = -1;
+    }
+    if (result == 0) {
+        scene_history_begin_group(scene->history);
+        scene_history_push_actor(scene->history, old, &removed);
+        scene_history_push_actor(scene->history, entity, &added);
+        scene_history_end_group(scene->history);
+        scene->scene_dirty = true;
+        asset_index_invalidate(scene);
+    }
+    free((char *)removed.name);
+    free((char *)removed.prototype_name);
+    av_value_free(removed.base);
+    av_value_free(removed.state);
+    av_value_free(removed.retained);
+    av_value_free(added.base);
+    av_value_free(added.state);
+    return result;
+}
+
+/* The selected objects' identities, in scene order. The caller frees the
+   array. */
+static uint64_t *selection_identities(const app_scene_authoring *scene)
+{
+    uint64_t *identities = NULL;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (scene_instance_selected(scene, i)) {
+            apush(identities, scene->actors[i].identity);
+        }
+    }
+    return identities;
+}
+
+/* Selects the objects `identities` names, `active` active. */
+static void select_identities(app_scene_authoring *scene, const uint64_t *identities, uint64_t active)
+{
+    scene->selected = -1;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        bool marked = false;
+        for (int j = 0; j < acount(identities) && !marked; j++) {
+            marked = scene->actors[i].identity == identities[j];
+        }
+        scene->actors[i].marked = marked;
+        if (marked && (scene->selected < 0 || scene->actors[i].identity == active)) {
+            scene->selected = i;
+        }
+    }
+    scene->runtime_selected = (ecs_entity){ 0 };
+}
+
+/* ---------- Selection around history steps ---------- */
+
+/* Unity keeps the selection in its Undo steps; recent steps are enough. */
+#define STEP_SELECTIONS_MAX 256
+
+static scene_selection_set selection_now(const app_scene_authoring *scene)
+{
+    const scene_actor *active = selected_actor((app_scene_authoring *)scene);
+    return (scene_selection_set){ .ids = selection_identities(scene),
+                                  .active = active ? active->identity : 0 };
+}
+
+static void selection_set_free(scene_selection_set *set)
+{
+    afree(set->ids);
+}
+
+static void step_selection_free(scene_step_selection *entry)
+{
+    selection_set_free(&entry->before);
+    selection_set_free(&entry->after);
+}
+
+static bool selection_same(const scene_selection_set *a, const scene_selection_set *b)
+{
+    return a->active == b->active && acount(a->ids) == acount(b->ids) &&
+           (!acount(a->ids) ||
+            !memcmp(a->ids, b->ids, (size_t)acount(a->ids) * sizeof *a->ids));
+}
+
+/* A step the last frame added remembers the selection the frame began with
+   and the one it ended with; then this frame's selection is noted, and
+   counted when it is not the last frame's. */
+void scene_selection_track(app_scene_authoring *scene)
+{
+    scene_selection_set now = selection_now(scene);
+    scene->selection_revision += !selection_same(&scene->frame_selection, &now);
+    uint64_t step = scene_history_step_id(scene->history, false);
+    if (step > scene->seen_step) {
+        if (acount(scene->step_selections) == STEP_SELECTIONS_MAX) {
+            step_selection_free(&scene->step_selections[0]);
+            memmove(
+                scene->step_selections,
+                scene->step_selections + 1,
+                (STEP_SELECTIONS_MAX - 1) * sizeof *scene->step_selections
+            );
+            asetlen(scene->step_selections, STEP_SELECTIONS_MAX - 1);
+        }
+        apush(
+            scene->step_selections,
+            ((scene_step_selection){ .step = step,
+                                     .before = scene->frame_selection,
+                                     .after = now })
+        );
+        scene->frame_selection = (scene_selection_set){ 0 };
+        scene->seen_step = step;
+        now = selection_now(scene);
+    }
+    selection_set_free(&scene->frame_selection);
+    scene->frame_selection = now;
+}
+
+void scene_selection_free(app_scene_authoring *scene)
+{
+    for (int i = 0; i < acount(scene->step_selections); i++) {
+        step_selection_free(&scene->step_selections[i]);
+    }
+    afree(scene->step_selections);
+    selection_set_free(&scene->frame_selection);
+}
+
+static const scene_step_selection *step_selection(const app_scene_authoring *scene, uint64_t step)
+{
+    for (int i = acount(scene->step_selections) - 1; step && i >= 0; i--) {
+        if (scene->step_selections[i].step == step) {
+            return &scene->step_selections[i];
+        }
+    }
+    return NULL;
+}
+
+/* Moves an object by `offset` as one recorded transform edit. */
+static void move_actor(app_scene_authoring *scene, ecs_entity entity, GameTransform offset)
+{
+    const GameTransform *position = GAME_GameTransform_get_const(scene->world, entity);
+    if (!position) {
+        return;
+    }
+    begin_transform_edit(scene, entity);
+    write_transform_edit(
+        scene,
+        entity,
+        (GameTransform){ position->x + offset.x, position->y + offset.y }
+    );
+    finish_transform_edit(scene, false);
+}
+
+int scene_duplicate_selection(app_scene_authoring *scene, GameTransform offset)
+{
+    finish_transform_edit(scene, false);
+    uint64_t *sources = selection_identities(scene);
+    uint64_t *copies = NULL;
+    uint64_t active = selected_actor(scene) ? selected_actor(scene)->identity : 0;
+    uint64_t active_copy = 0;
+    int result = 0;
+    scene_history_begin_group(scene->history);
+    for (int i = 0; i < acount(sources) && !result; i++) {
+        scene_actor *source = scene_actor_by_identity(scene, sources[i]);
+        assert(source);
+        scene->selected = (int)(source - scene->actors);
+        result = app_scene_authoring_duplicate_instance(scene);
+        if (result) {
+            break;
+        }
+        scene_actor *copy = &alast(scene->actors);
+        move_actor(scene, copy->entity, offset);
+        apush(copies, copy->identity);
+        active_copy = sources[i] == active ? copy->identity : active_copy;
+    }
+    scene_history_end_group(scene->history);
+    select_identities(scene, result ? sources : copies, result ? active : active_copy);
+    afree(sources);
+    afree(copies);
+    return result;
+}
+
+char *scene_copy_selection(app_scene_authoring *scene)
+{
+    finish_transform_edit(scene, false);
+    char name[256];
+    scene_document_name(scene, name, sizeof name);
+    game_scene_document *document = game_scene_document_new(name);
+    int result = 0;
+    for (int i = 0; i < acount(scene->actors) && !result; i++) {
+        if (scene_instance_selected(scene, i)) {
+            result = scene_document_add_actor(scene, document, &scene->actors[i]);
+        }
+    }
+    char *text = !result && acount(document->entities)
+                   ? game_scene_document_save(document)
+                   : NULL;
+    game_scene_document_free(document);
+    return text;
+}
+
+/* A pasted object keeps its name unless another object has it. */
+static int paste_name(
+    const app_scene_authoring *scene,
+    const game_scene_entity *entity,
+    char *name,
+    size_t size
+)
+{
+    if (!actor_name_used(scene, entity->name)) {
+        snprintf(name, size, "%s", entity->name);
+        return 0;
+    }
+    return next_actor_name(scene, entity->prototype, name, size);
+}
+
+/* Spawns the document's objects; on failure none remain. */
+static int spawn_pasted(app_scene_authoring *scene, const game_scene_document *document)
+{
+    int first = acount(scene->actors);
+    for (int i = 0; i < acount(document->entities); i++) {
+        char name[256];
+        if (paste_name(scene, &document->entities[i], name, sizeof name) != 0 ||
+            scene_spawn_entity(scene, &document->entities[i], name) != 0) {
+            while (acount(scene->actors) > first) {
+                remove_actor_at(scene, acount(scene->actors) - 1);
+            }
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/* The move that lands the objects from `first` on where `place` asks. */
+static GameTransform paste_move(app_scene_authoring *scene, int first, scene_paste_place place)
+{
+    CF_V2 min = { INFINITY, INFINITY }, max = { -INFINITY, -INFINITY };
+    for (int i = first; i < acount(scene->actors); i++) {
+        const GameTransform
+            *at = GAME_GameTransform_get_const(scene->world, scene->actors[i].entity);
+        if (at) {
+            min = (CF_V2){ fminf(min.x, at->x), fminf(min.y, at->y) };
+            max = (CF_V2){ fmaxf(max.x, at->x), fmaxf(max.y, at->y) };
+        }
+    }
+    GameTransform move = place.offset;
+    if (place.center && min.x <= max.x) {
+        move = (GameTransform){ place.center->x - (min.x + max.x) / 2,
+                                place.center->y - (min.y + max.y) / 2 };
+    }
+    if (place.snap > 0) {
+        move.x = roundf(move.x / place.snap) * place.snap;
+        move.y = roundf(move.y / place.snap) * place.snap;
+    }
+    return move;
+}
+
+/* Records a pasted object as created, as adding one does. */
+static void record_created(app_scene_authoring *scene, int index)
+{
+    scene_actor *actor = &scene->actors[index];
+    av_value *state = capture_actor_state(scene, actor);
+    av_value *base = game_prototype_to_value(actor->base);
+    av_value *retained = scene_retention_save(actor->retained);
+    scene_actor_edit edit = { .index = index,
+                              .identity = actor->identity,
+                              .name = actor->name,
+                              .prototype_name = actor->prototype_name,
+                              .base = base,
+                              .state = state,
+                              .retained = retained,
+                              .created = true };
+    bool recorded = state && base &&
+                    scene_history_push_actor(scene->history, actor->entity, &edit);
+    assert(recorded);
+    av_value_free(state);
+    av_value_free(base);
+    av_value_free(retained);
+}
+
+int scene_paste(app_scene_authoring *scene, const char *text, scene_paste_place place)
+{
+    char error[256];
+    game_scene_document *document = text && text[0]
+                                      ? game_scene_document_load(text, error, sizeof error)
+                                      : NULL;
+    if (!document || !acount(document->entities)) {
+        snprintf(scene->message, sizeof scene->message, "The clipboard holds no objects.");
+        game_scene_document_free(document);
+        return -1;
+    }
+    /* Collaboration replays named actions, and pasting is not one. */
+    if (collab_active()) {
+        snprintf(scene->message, sizeof scene->message, "Paste waits until the collaboration ends.");
+        game_scene_document_free(document);
+        return -1;
+    }
+    for (int i = 0; i < acount(document->entities); i++) {
+        if (scene_validate_entity(scene, &document->entities[i]) != 0) {
+            game_scene_document_free(document);
+            return -1;
+        }
+    }
+    finish_transform_edit(scene, false);
+    bool was_dirty = scene->scene_dirty;
+    int first = acount(scene->actors);
+    uint64_t *selection = selection_identities(scene);
+    uint64_t active = selected_actor(scene) ? selected_actor(scene)->identity : 0;
+    int spawned = spawn_pasted(scene, document);
+    game_scene_document_free(document);
+    if (spawned != 0) {
+        select_identities(scene, selection, active);
+        scene->scene_dirty = was_dirty;
+        afree(selection);
+        return -1;
+    }
+    afree(selection);
+    GameTransform move = paste_move(scene, first, place);
+    scene_history_begin_group(scene->history);
+    for (int i = first; i < acount(scene->actors); i++) {
+        const GameTransform
+            *at = GAME_GameTransform_get_const(scene->world, scene->actors[i].entity);
+        if (at) {
+            write_position(
+                scene,
+                scene->actors[i].entity,
+                (GameTransform){ at->x + move.x, at->y + move.y }
+            );
+        }
+        record_created(scene, i);
+        scene->actors[i].marked = true;
+    }
+    scene_history_end_group(scene->history);
+    scene->selected = acount(scene->actors) - 1;
+    scene->scene_dirty = true;
+    asset_index_invalidate(scene);
+    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    return acount(scene->actors) - first;
+}
+
 static int actor_index(const app_scene_authoring *scene, ecs_entity entity)
 {
     for (int i = 0; i < acount(scene->actors); i++) {
@@ -575,6 +942,7 @@ static int actor_index(const app_scene_authoring *scene, ecs_entity entity)
 
 static void set_actor_name(app_scene_authoring *scene, scene_actor *actor, const char *name)
 {
+    scene_view_rename(scene, actor->name, name);
     free(actor->name);
     actor->name = xstrdup(name);
     scene->scene_dirty = true;
@@ -696,6 +1064,18 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
         scene_history_complete_physics(scene->history, redo);
         return 0;
     }
+    const scene_prototype_edit *prototype = scene_history_peek_prototype(scene->history, redo);
+    if (prototype) {
+        if (scene_restore_prototype(
+                scene,
+                prototype->name,
+                redo ? prototype->after : prototype->before
+            ) != 0) {
+            return -1;
+        }
+        scene_history_complete_prototype(scene->history, redo);
+        return 0;
+    }
     ecs_entity entity;
     const char *name = scene_history_peek_rename(scene->history, redo, &entity);
     if (name) {
@@ -778,16 +1158,42 @@ static int replay_scene_edit_one(app_scene_authoring *scene, bool redo)
 int replay_scene_edit(app_scene_authoring *scene, bool redo)
 {
     uint64_t group = scene_history_group_id(scene->history, redo);
+    const scene_step_selection
+        *recorded = step_selection(scene, scene_history_step_id(scene->history, redo));
+    uint64_t *touched = NULL; /* the objects the steps edited or restored */
     int applied = 0;
     do {
+        int count = acount(scene->actors);
         if (replay_scene_edit_one(scene, redo) != 0) {
             while (applied-- > 0) {
                 int restored = replay_scene_edit_one(scene, !redo);
                 assert(restored == 0);
             }
+            afree(touched);
             return -1;
+        }
+        if (acount(scene->actors) >= count && selected_actor(scene)) {
+            apush(touched, selected_actor(scene)->identity);
         }
         applied++;
     } while (group && scene_history_group_id(scene->history, redo) == group);
+    /* Undo restores the selection the step began with, Redo the one it
+       ended with. */
+    if (recorded) {
+        const scene_selection_set *set = redo ? &recorded->after : &recorded->before;
+        select_identities(scene, set->ids, set->active);
+        afree(touched);
+        return 0;
+    }
+    /* A step of several objects leaves those it kept selected, as it found
+       them. */
+    int kept = 0;
+    for (int i = 0; i < acount(touched); i++) {
+        kept += scene_actor_by_identity(scene, touched[i]) != NULL;
+    }
+    if (kept > 1) {
+        select_identities(scene, touched, alast(touched));
+    }
+    afree(touched);
     return 0;
 }

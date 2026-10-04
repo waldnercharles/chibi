@@ -3,8 +3,10 @@
 
 #include "assets/ui_document.h"
 #include "ecs/ecs.h"
+#include "graph/model/behavior_asset.h"
 #include "platform/cute.h"
-#include "runtime/behaviors/entities.h"
+#include "render/skip.h"
+#include "runtime/behaviors/live.h"
 #include "runtime/save.h"
 #include "runtime/ui.h"
 #include "support/file_watch.h"
@@ -13,20 +15,21 @@
 
 /* What shown documents read and act on. Only `ecs` is required: without
  * `page` documents show on a bare page, without `model` as authored, without
- * `entities` activations reach no one, and without `save` documents bind an
+ * `live` activations reach no one, and without `save` documents bind an
  * empty `save`. A preview shows documents their GameUi keeps hidden, as an
  * editor previews a dialog before anything opens it; `revealed` shows one
  * entity's the same way, as the editor shows the object selected in a scene
- * it edits. */
+ * it edits, and `hidden` none of the entities an editor hides. */
 typedef struct ui_world
 {
     ecs_world *ecs;
     const char *page; /* the scene's root ui document (ui_page) */
     game_ui *model;
-    game_entities *entities;
+    game_live_world *live; /* the behaviors activations reach, and their events */
     game_save *save;
     bool preview;
     uint64_t revealed; /* an entity (ecs_entity_to_u64), or 0 for none */
+    render_skip hidden;
 } ui_world;
 
 /* ---------- Data ---------- */
@@ -47,7 +50,7 @@ typedef struct ui_data
     rml_data_model *model;
     game_save *save; /* the one `save` shows */
     uint64_t save_seen;
-    uint64_t data_seen; /* the game_ui revision `entities` shows */
+    uint64_t data_seen; /* the game_ui revision the entities' variables show */
 } ui_data;
 
 /* Creates the model in `context` over `doc`, which it takes, adding `save`
@@ -61,10 +64,17 @@ void ui_data_sync(ui_data *data, game_save *save);
 /* Sets `value` to a copy of `text` unless it holds it already; the JSON keeps
  * what it copies until it is freed, so views update values in place. */
 void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *text);
+/* Set `object`'s member `name`, which it holds, in place; true when the value
+ * changed, so a source reports a change only when a view would show one. */
+bool ui_data_put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text);
+bool ui_data_put_bool(yyjson_mut_val *object, const char *name, bool on);
+bool ui_data_put_int(yyjson_mut_val *object, const char *name, int number);
+bool ui_data_put_number(yyjson_mut_val *object, const char *name, double number);
 /* Binds `self` in the document mounted at `root` to `entity`'s data, which
- * behaviors set with Set UI Data and the model holds under `entities`; call
- * before the mount installs its markup. Binding the same entity again
- * changes nothing. */
+ * behaviors set with Set UI Data and the model holds as the entity's own
+ * variable, "e<entity>", so a change to one entity's data re-evaluates only
+ * the views bound to it; call before the mount installs its markup. Binding
+ * the same entity again changes nothing. */
 void ui_data_bind_self(ui_data *data, rml_element *root, uint64_t entity);
 /* Shows what behaviors set with Set UI Data since the last call, changing
  * values in place so views keep their bindings. */
@@ -86,17 +96,41 @@ void ui_data_free(ui_data *data);
  * (support/ui_style.h). */
 typedef struct ui_mount ui_mount;
 
+/* The arguments emit('Event', ...) passes after its name, as text; more are
+ * dropped. */
+#define UI_ACTIVATION_ARGS 4
+
 /* An activation: the event emitted or bound to a key, the id of the element
- * whose binding sent it ("" when it has none), and its value: emit's second
- * argument, or an input's. */
+ * whose binding sent it ("" when it has none), emit's arguments, and its
+ * value: the first argument as a number, or an input's. The DOM event that
+ * sent it gives the modifier keys (rml_key_modifier bits), the mouse button
+ * and the pointer in context pixels. `anchor` holds the element whose binding
+ * sent it, where a popover opens; it reads NULL once that element is gone,
+ * and lives until the mount's next take or its free. */
 typedef struct ui_activation
 {
     char event[128];
     char id[128];
+    int argc;
+    char args[UI_ACTIVATION_ARGS][128];
     bool has_value;
     float value;
+    unsigned modifiers;
+    int button;
+    float x, y;
+    rml_element_ref *anchor;
 } ui_activation;
 
+/* Runs activation `a` on `entity`'s behaviors in `live` now, or on every
+ * entity's for an entity of none, so what they set shows in the frame that
+ * sent it. Its payload is what the event asset `live` holds under its name
+ * declares (none for a local event), in order: Shift, Alt and Mod (bools;
+ * `primary` holds Mod's modifier bits, Meta on a Mac and Control elsewhere)
+ * and Pointer (CF_V2, in the document's pixels) come from the DOM event, as a
+ * web handler reads event.shiftKey and event.clientX; each other value is
+ * emit's next argument read as its type (text, a number or a flag). False,
+ * running nothing, for a payload a UI event cannot carry. */
+bool ui_activation_send(game_live_world *live, ecs_entity entity, const ui_activation *a, unsigned primary);
 ui_mount *ui_mount_new(const char *content_root, const char *name);
 void ui_mount_free(ui_mount *mount);
 const char *ui_mount_name(const ui_mount *mount);
@@ -111,6 +145,8 @@ const char *ui_mount_style(const ui_mount *mount);
 /* The last read error, or what RmlUi rejected in the markup it installed,
  * such as a binding's expression; "" when the asset loaded. */
 const char *ui_mount_error(const ui_mount *mount);
+/* The element the mount shows its asset in, or NULL while detached. */
+rml_element *ui_mount_root(const ui_mount *mount);
 /* Whether `element` is the mount's root or inside it. */
 bool ui_mount_holds(const ui_mount *mount, rml_element *element);
 /* Records the activation a key down in the mount's root makes, if any: a key
@@ -121,16 +157,36 @@ bool ui_mount_holds(const ui_mount *mount, rml_element *element);
  * keys unless bound on that control. Text inputs and textareas permit an
  * ancestor Escape binding. */
 void ui_mount_listen(ui_mount *mount, const rml_event *event);
-/* Records `event` as emitted by the binding on `element`, which the mount
- * holds, with `value`, emit's second argument, as its value, or else an
- * input's; NULL for none. */
-void ui_mount_emit(ui_mount *mount, rml_element *element, const char *event, const char *value);
-/* Takes the oldest activation; false when there is none. */
+/* Records the activation key `key`, named as data-keys names it ("Left"),
+ * sends while the area showing the mount has the keyboard but nothing in
+ * it binds the key: data-area-keys="Key:Event ..." on its first element
+ * with one, an editor's own keymap, as Blender's. False when none binds
+ * it. */
+bool ui_mount_area_key(ui_mount *mount, const char *key);
+/* Records emit(`name`, args...) as sent by the binding `event` ran, on its
+ * current element, which the mount holds. */
+void ui_mount_emit(
+    ui_mount *mount,
+    const rml_event *event,
+    const char *name,
+    int argc,
+    const char *const *args
+);
+/* Whether activations wait to be taken. */
+bool ui_mount_pending(const ui_mount *mount);
+/* Takes the oldest activation, releasing the anchor of the one taken before;
+ * false when there is none. */
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
 /* Records under #id, in dp, where each element with an id and a
- * data-event-scroll binding is scrolled, for Get UI Scroll. */
+ * data-event-scroll binding is scrolled, for Get UI Scroll. First it windows
+ * the lists marked data-list-rows="<rows>" (ui/list.h, the List widget's
+ * scroller): it sizes each for its rows, scrolls a row data-list-reveal
+ * names (Reveal UI List Row) into view once, and sends `window` with
+ * ev.first and ev.count when the rows to show change, so a document's
+ * data-event-window="emit('ShowRows', ev.first, ev.count)" reaches its
+ * behaviors before they refresh. */
 void ui_mount_measure(ui_mount *mount, game_ui *model, uint64_t entity);
 
 /* ---------- Pages ---------- */
@@ -177,8 +233,11 @@ void render_ui_free(render_ui *ui);
 /* The documents' data model, in which the host shows the variables it gave
  * render_ui_new. */
 ui_data *render_ui_data(render_ui *ui);
-/* Shows `world`'s GameUi documents. An input's change first stores its value
- * in the model under `#id` for Get UI Value. */
+/* Shows `world`'s GameUi documents. First it sends the documents' activations
+ * to their entities' behaviors (ui_activation_send), an input's change
+ * storing its value in the model under `#id` for Get UI Value, so what they
+ * set shows in this update; they wait for the next while a spawn
+ * initializes. */
 void render_ui_update(render_ui *ui, const ui_world *world, int width, int height, double dt);
 /* Shows the host's ui asset `name` above the world's documents with `state`
  * as its root's class, or hides it when `state` is NULL, from the next
@@ -196,6 +255,16 @@ unsigned render_ui_input(render_ui *ui, const rml_input *input);
 bool render_ui_wants_text(const render_ui *ui);
 /* Draws the documents over `target` without clearing it. */
 void render_ui_composite(render_ui *ui, CF_Canvas target);
+/* The same for one region of the documents' canvas, x0 y0 x1 y1 as
+ * fractions of its size from the top left, stretched over `target`. */
+void render_ui_composite_region(render_ui *ui, CF_Canvas target, const float region[4]);
+/* The dp the canvas's height spans, 720 by default and for 0: a host that
+ * shows a small document large lays it out on a smaller screen. */
+void render_ui_set_reference_height(render_ui *ui, float dp);
+/* The region, in those fractions, that the overlay's content covers after
+ * the last update; false when it shows nothing. A host frames a document's
+ * content with it, as a thumbnail frames a widget. */
+bool render_ui_overlay_bounds(const render_ui *ui, float bounds[4]);
 /* The first mount's error, or "" when every shown asset loaded. */
 const char *render_ui_error(const render_ui *ui);
 /* The RmlUi context the documents live in, for inspecting them. */

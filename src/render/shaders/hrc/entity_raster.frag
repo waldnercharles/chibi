@@ -702,6 +702,7 @@ void main()
         float sdf = evaluate_sdf(local_p, e);
         vec2 half_size = shader_half_size(e);
         vec2 material_pos = material_position(e, local_p, world_pos);
+        // Pieces of one shape share a block of material and shape parameters.
         vec4 graph_output[8];
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {

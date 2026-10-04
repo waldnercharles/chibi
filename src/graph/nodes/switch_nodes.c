@@ -23,6 +23,7 @@ static pin_spec switch_outputs[] = {
 static pin_spec select_inputs[] = {
     { "Index", PIN_I32, "int", PIN_DATA },
     { "Option0", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
+    { "Option1", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
 };
 static pin_spec select_outputs[] = {
     { "Return Value", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
@@ -128,7 +129,7 @@ node_desc NODE_SwitchEnum = {
 };
 node_desc NODE_Select = {
     .name = "Select",
-    .input_count = 2,
+    .input_count = 3,
     .output_count = 1,
     .inputs = select_inputs,
     .outputs = select_outputs,
@@ -136,9 +137,11 @@ node_desc NODE_Select = {
     .fn = select_value,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Utilities",
-    .keywords = "select ternary option",
-    .description = "Returns the Option input chosen by zero-based Index; an "
-                   "out-of-range Index fails evaluation.",
+    .keywords = "select choose pick value ternary if else bool true false "
+                "option index",
+    .description = "Returns the Option input chosen by zero-based Index. "
+                   "A bool Index picks Option1 when true and Option0 when "
+                   "false. An out-of-range Index fails evaluation.",
 };
 
 static node_desc *const SWITCH_NODES[] = {

@@ -1173,6 +1173,13 @@ static int load_variable(behavior_asset *asset, av_value *v)
     return 0;
 }
 
+/* Calls reach an expression by ID, so two expressions with one source may
+   share the name that source gives them. Every other graph name is unique. */
+static bool expression_titled_by_source(const graph *g)
+{
+    return g->math_expression && !strcmp(g->name, g->math_expression);
+}
+
 static int load_behavior_asset_graph(behavior_asset *asset, av_value *obj, uint64_t requested_counter, int is_default)
 {
     if (!av_is_obj(obj)) {
@@ -1204,10 +1211,16 @@ static int load_behavior_asset_graph(behavior_asset *asset, av_value *obj, uint6
     if (!is_default && read_id(av_obj_get(obj, "id"), &graph_id, "graph.id")) {
         return -1;
     }
+    av_value *expression = av_obj_get(obj, "math_expression");
+    bool titled_by_source = av_is_str(expression) &&
+                            !strcmp(av_get_str(expression), av_get_str(name_value));
     for (int i = 0; !is_default && i < acount(asset->graphs); i++) {
         if (asset->graphs[i]->graph_id == graph_id) {
             serialize_error_set("duplicate graph ID");
             return -1;
+        }
+        if (titled_by_source && expression_titled_by_source(asset->graphs[i])) {
+            continue;
         }
         if (!strcmp(asset->graphs[i]->name, av_get_str(name_value))) {
             serialize_error_set("duplicate graph name: %s", av_get_str(name_value));
@@ -1248,7 +1261,6 @@ static int load_behavior_asset_graph(behavior_asset *asset, av_value *obj, uint6
         }
         g->source_asset = graph_own_str(g, av_get_str(source_asset), av_get_len(source_asset));
     }
-    av_value *expression = av_obj_get(obj, "math_expression");
     if (expression) {
         if (!av_is_str(expression) || kind != GRAPH_FUNCTION) {
             serialize_error_set("math_expression must be source text on a function graph");

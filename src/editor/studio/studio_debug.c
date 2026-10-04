@@ -199,15 +199,21 @@ static void add_error(studio *s, const studio_runtime_error *error)
 }
 
 /* The log is drained each frame: its nodes belong to the running definition,
-   which the next applied edit replaces. */
+   which the next applied edit replaces. What the game prints goes to
+   Output's Log under its behavior's name, as Print String reaches Unreal's
+   Output Log while playing; failures go to Runtime. */
 static void collect_errors(studio *s, game_behavior_world *world)
 {
+    editor *log = s->scene->graph_editor;
     for (int i = 0; i < game_behavior_log_count(world); i++) {
         game_behavior_log_info info;
         int read = game_behavior_log_info_at(world, i, &info);
         assert(read == 0);
         (void)read;
         if (!info.failure) {
+            if (log) {
+                editor_log_print(log, info.asset_name, info.message);
+            }
             continue;
         }
         studio_runtime_error error = { .count = 1 };
@@ -260,8 +266,9 @@ static flow_run *paused_run(const studio *s, game_behavior_attachment_info *info
 }
 
 /* A new pause, or a step, shows its node, as Unreal jumps to it, and makes its
-   instance the debug target so pins read its values. The target's pin comes
-   back once the run continues. */
+   instance the debug target so pins read its values; a new pause in the scene
+   also selects its object, as Unreal's debugger selects the instance a
+   breakpoint stops in. The target's pin comes back once the run continues. */
 static void follow_pause(studio *s)
 {
     app_scene_authoring *scene = s->scene;
@@ -291,6 +298,9 @@ static void follow_pause(studio *s)
     if (!s->pause.holding) {
         s->pause.holding = true;
         s->pause.pinned = scene->debug_pinned;
+        if (scene->active_runtime_target == APP_RUNTIME_SCENE) {
+            app_scene_authoring_select_entity(scene, info.entity);
+        }
     }
     if (s->pause.at.asset[0] && open_graph(s, &s->pause.at)) {
         node *n = shown_node(s, &s->pause.at);
@@ -330,46 +340,68 @@ void studio_debug_frame(studio *s)
     follow_pause(s);
 }
 
-/* ---------- Transport and call stack ---------- */
+/* ---------- Break when spawned ---------- */
 
-/* Visual Studio's keys, which Unreal follows. */
-static const char *const DEBUG_IDS[] = { "resume", "over", "into", "out" };
-static const studio_command STUDIO_DEBUG_COMMANDS[] = {
-    STUDIO_COMMAND_RESUME,
-    STUDIO_COMMAND_STEP_OVER,
-    STUDIO_COMMAND_STEP_INTO,
-    STUDIO_COMMAND_STEP_OUT,
-};
-
-void studio_debug_steps(studio *s)
+void studio_toggle_spawn_break(studio *s, const char *prototype)
 {
-    for (int c = STUDIO_STEP_OVER; c <= STUDIO_STEP_OUT; c++) {
-        studio_command command = STUDIO_DEBUG_COMMANDS[c];
-        studio_command_info info = studio_command_describe(s, command);
-        kit_button_desc d = { .icon = info.icon,
-                              .tip = info.label,
-                              .shortcut = info.shortcut };
-        if (kit_button(s->kit, DEBUG_IDS[c], &d)) {
-            studio_command_run(s, command);
-        }
+    bool on = !app_scene_authoring_spawn_break(s->scene, prototype);
+    app_scene_authoring_set_spawn_break(s->scene, prototype, on);
+    char report[160];
+    snprintf(report, sizeof report, on ? "Play pauses when a %s spawns" : "A %s spawning no longer pauses Play", prototype);
+    studio_report(s, report);
+}
+
+void studio_spawn_break_item(studio *s, const char *prototype)
+{
+    kit_menu_item_desc d = {
+        .label = "Break When Spawned",
+        .checked = app_scene_authoring_spawn_break(s->scene, prototype),
+    };
+    if (kit_menu_item(s->kit, "spawn-break", &d)) {
+        studio_toggle_spawn_break(s, prototype);
     }
 }
 
-void studio_debug_menu(studio *s)
+/* ---------- Playback speed ---------- */
+
+/* Unity's Time.timeScale and Unreal's slomo as steps, as Chrome DevTools
+   offers its animations' speeds. */
+const double studio_speeds[] = { STUDIO_SPEED_MIN, 0.25, 0.5, 1, STUDIO_SPEED_MAX };
+const int studio_speed_count = sizeof studio_speeds / sizeof *studio_speeds;
+
+void studio_speed_label(double speed, char *buf, size_t size)
 {
-    for (int c = STUDIO_RESUME; c <= STUDIO_STEP_OUT; c++) {
-        studio_command command = STUDIO_DEBUG_COMMANDS[c];
-        studio_command_info info = studio_command_describe(s, command);
-        kit_menu_item_desc d = { .label = info.menu,
-                                 .icon = info.icon,
-                                 .shortcut = info.shortcut,
-                                 .checked = -1,
-                                 .disabled = !studio_command_enabled(s, command) };
-        if (kit_menu_item(s->kit, DEBUG_IDS[c], &d)) {
-            studio_command_run(s, command);
-        }
+    snprintf(buf, size, "%g\xc3\x97", speed);
+}
+
+void studio_speed_text(const studio *s, char *buf, size_t size)
+{
+    double speed = app_scene_authoring_time_scale(s->scene);
+    buf[0] = '\0';
+    if (speed != 1) {
+        studio_speed_label(speed, buf, size);
     }
 }
+
+void studio_speed_step(studio *s, int direction)
+{
+    double speed = app_scene_authoring_time_scale(s->scene),
+           next = direction ? speed : 1;
+    /* The last match is the nearest step: up from the top, down from the bottom. */
+    for (int i = 0; i < studio_speed_count; i++) {
+        double up = studio_speeds[studio_speed_count - 1 - i],
+               down = studio_speeds[i];
+        if (direction > 0 && up > speed) {
+            next = up;
+        }
+        if (direction < 0 && down < speed) {
+            next = down;
+        }
+    }
+    app_scene_authoring_set_time_scale(s->scene, next);
+}
+
+/* ---------- Call stack ---------- */
 
 typedef struct
 {

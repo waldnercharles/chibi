@@ -41,6 +41,7 @@ struct material_stream
     FILE *file;
     int columns, rows;
     material_stream_state state;
+    bool waiting;
 };
 
 material_stream *material_stream_new(material_stream_desc desc)
@@ -448,7 +449,13 @@ bool material_stream_update(
     CHIBI_TRACE_ZONE_BEGIN(prefetch_zone, "Terrain prefetch");
     loaded = loaded && prefetch(s, fields, views, count, budget, error, size);
     CHIBI_TRACE_ZONE_END(prefetch_zone);
+    s->waiting = s->pending.samples || next_tile(s, views, count, false, &key);
     return loaded;
+}
+
+bool material_stream_waiting(const material_stream *s)
+{
+    return s->waiting;
 }
 
 const material_stream_tile *material_stream_tiles(const material_stream *s, int *count)

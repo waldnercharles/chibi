@@ -276,7 +276,7 @@ static float model_ray_hit(ecs_world *world, ecs_entity entity, int id, CF_Ray3 
     return FLT_MAX;
 }
 
-ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc)
+ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc, render_skip skip)
 {
     CF_Ray3 ray = render_arena_ray(camera, ndc);
     CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
@@ -290,6 +290,9 @@ ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
+        if (render_skip_has(skip, entity)) {
+            continue;
+        }
         int model = entity_model(world, entity);
         if (model) {
             float t = model_ray_hit(world, entity, model, ray);

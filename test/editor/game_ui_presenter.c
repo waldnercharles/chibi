@@ -606,10 +606,17 @@ void test_game_ui_presenter()
     assert(GAME_GameUi_add(world, menu, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameUi_get(world, menu) = (GameUi){ .document = "Menu" };
+    /* The documents' events reach their entity's behaviors as they update. */
+    ui_probe heard = { 0 };
+    const char *const emitted[] = { "Resume", "A",     "B",     "Go",
+                                    "Choose", "Row",   "First", "Last",
+                                    "Locked", "Field", "Hit" };
+    int emitted_count = (int)(sizeof emitted / sizeof *emitted);
+    test_ui_probe_events(live, menu, emitted, emitted_count, &heard);
     game_ui *model = game_behavior_ui(live->behaviors);
     ui_world w = { .ecs = world,
                    .model = model,
-                   .entities = live->entities,
+                   .live = live,
                    .save = game_behavior_save(live->behaviors) };
     render_ui *ui = render_ui_new(root, NULL);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
@@ -628,17 +635,18 @@ void test_game_ui_presenter()
     visibility_layout(ui, &w, world, menu, folder);
     page_text_binding(ui, &w, folder);
 
-    int before = game_entities_pending_events(live->entities);
+    int before = heard.count;
     click(ui, 40, 20);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(
-        game_entities_pending_events(live->entities) == before + 1,
-        "clicking an element that emits an event queues it for the entity"
+        heard.count == before + 1 && !strcmp(heard.event, "Resume"),
+        "clicking an element that emits an event delivers it to the entity's "
+        "behaviors in the update that follows"
     );
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     click(ui, 900, 600);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    test_check(game_entities_pending_events(live->entities) == before, "clicking outside every emitting element sends nothing");
+    test_check(heard.count == before, "clicking outside every emitting element sends nothing");
 
     test_write_ui(folder, "Menu", "", NULL);
     render_ui_update(ui, &w, 1280, 720, 1.1);
@@ -646,13 +654,10 @@ void test_game_ui_presenter()
         strstr(render_ui_error(ui), "ui/Menu.rml") != NULL,
         "an invalid edit reports its asset and keeps the last valid document"
     );
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     click(ui, 40, 20);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    test_check(
-        game_entities_pending_events(live->entities) == before + 1,
-        "the last valid document keeps working after an invalid edit"
-    );
+    test_check(heard.count == before + 1, "the last valid document keeps working after an invalid edit");
 
     char event[32];
     test_write_ui(
@@ -662,7 +667,7 @@ void test_game_ui_presenter()
         "body { pointer-events: auto; } #go { display: block; width: 200dp; "
         "height: 60dp; } body.done #go { display: none; }\n"
     );
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     render_ui_set_overlay(ui, "Pause", "paused");
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     click(ui, 40, 20);
@@ -670,7 +675,7 @@ void test_game_ui_presenter()
     bool taken = render_ui_take_overlay_event(ui, event, sizeof event) &&
                  !strcmp(event, "Resume") &&
                  !render_ui_take_overlay_event(ui, event, sizeof event);
-    test_check(taken && game_entities_pending_events(live->entities) == before, "an overlay activation waits for its host and covers the world's documents");
+    test_check(taken && heard.count == before, "an overlay activation waits for its host and covers the world's documents");
     render_ui_set_overlay(ui, "Pause", "done");
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     click(ui, 40, 20);
@@ -680,13 +685,10 @@ void test_game_ui_presenter()
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     click(ui, 40, 20);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    test_check(
-        game_entities_pending_events(live->entities) == before + 1,
-        "a hidden overlay lets clicks reach the world's documents"
-    );
+    test_check(heard.count == before + 1, "a hidden overlay lets clicks reach the world's documents");
     test_remove_ui(folder, "Pause");
 
-    ecs_world_destroy_entity(world, menu);
+    assert(game_behavior_destroy_entity(live->behaviors, menu) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     game_ui_set_text(model, ecs_entity_to_u64(menu), "resume", "Go");
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
@@ -703,24 +705,22 @@ void test_game_ui_presenter()
     ecs_entity strip = ecs_world_create_entity(world);
     assert(GAME_GameUi_add(world, strip, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
+    test_ui_probe_events(live, strip, emitted, emitted_count, &heard);
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Tags" };
     game_ui_set_visible(model, ecs_entity_to_u64(strip), ".tag", false);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     click(ui, 40, 20);
     click(ui, 40, 90);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    bool hidden = game_entities_pending_events(live->entities) == before;
+    bool hidden = heard.count == before;
     game_ui_set_visible(model, ecs_entity_to_u64(strip), ".tag", true);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     click(ui, 40, 20);
     click(ui, 40, 90);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    test_check(
-        hidden && game_entities_pending_events(live->entities) == before + 2,
-        "a selector applies a setting to every element it matches"
-    );
+    test_check(hidden && heard.count == before + 2, "a selector applies a setting to every element it matches");
     test_remove_ui(folder, "Tags");
 
     test_write_ui(folder, "Host", "<use ui=\"Button\" id=\"go\">Go</use>\n", NULL);
@@ -732,17 +732,16 @@ void test_game_ui_presenter()
     );
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Host" };
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     click(ui, 40, 20);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    bool used = !render_ui_error(ui)[0] &&
-                game_entities_pending_events(live->entities) == before + 1;
+    bool used = !render_ui_error(ui)[0] && heard.count == before + 1;
     test_write_ui(folder, "Button", "<div class=\"button\"><slot/></div>\n", ".button { display: block; height: 60dp; }\n");
     render_ui_update(ui, &w, 1280, 720, 1.1);
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     click(ui, 40, 20);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    test_check(used && game_entities_pending_events(live->entities) == before, "a widget's events reach its host's entity, and editing it reloads the host");
+    test_check(used && heard.count == before, "a widget's events reach its host's entity, and editing it reloads the host");
     test_remove_ui(folder, "Host");
     test_remove_ui(folder, "Button");
 
@@ -793,14 +792,14 @@ void test_game_ui_presenter()
     );
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Keys" };
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     render_ui_input(ui, &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = RML_INPUT_KEY_ENTER });
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    bool keyed = game_entities_pending_events(live->entities) == before + 1;
+    bool keyed = heard.count == before + 1;
     game_ui_click(model, ecs_entity_to_u64(strip), "#row");
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    test_check(keyed && game_entities_pending_events(live->entities) == before + 2, "data-keys sends an event from the autofocused element, and Click UI Element clicks");
+    test_check(keyed && heard.count == before + 2, "data-keys sends an event from the autofocused element, and Click UI Element clicks");
     test_remove_ui(folder, "Keys");
 
     test_write_ui(
@@ -844,18 +843,18 @@ void test_game_ui_presenter()
     key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_TAB);
     bool disabled_skipped = focused(button_context, "last");
 
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_ENTER);
     key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_ENTER);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    bool enter_once = game_entities_pending_events(live->entities) == before + 1;
+    bool enter_once = heard.count == before + 1;
     rml_element_focus(inside, true);
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_SPACE);
     key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_SPACE);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    bool space_once = game_entities_pending_events(live->entities) == before + 1;
+    bool space_once = heard.count == before + 1;
 
     assert(game_save_set(w.save, "enabled", "true"));
     assert(game_save_commit(w.save));
@@ -867,11 +866,11 @@ void test_game_ui_presenter()
     bool enabled_after_binding = focused(button_context, "locked");
 
     rml_element_focus(field, true);
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     key(ui, RML_INPUT_KEY_PRESS, RML_INPUT_KEY_ENTER);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    bool input_keeps_native_keys = game_entities_pending_events(live->entities) == before;
+    bool input_keeps_native_keys = heard.count == before;
     key(ui, RML_INPUT_KEY_RELEASE, RML_INPUT_KEY_ENTER);
     test_check(
         authored_disabled && enabled_button_tabbable && nested_tabbable &&
@@ -894,14 +893,10 @@ void test_game_ui_presenter()
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Tall" };
     w.page = "Page";
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     click(ui, 40, 60);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    test_check(
-        !render_ui_error(ui)[0] &&
-            game_entities_pending_events(live->entities) == before + 1,
-        "a scene's root document styles the documents shown on it"
-    );
+    test_check(!render_ui_error(ui)[0] && heard.count == before + 1, "a scene's root document styles the documents shown on it");
     w.page = NULL;
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_remove_ui(folder, "Page");
@@ -921,18 +916,15 @@ void test_game_ui_presenter()
     );
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Panel", .hidden = true };
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    before = game_entities_pending_events(live->entities);
+    before = heard.count;
     click(ui, 40, 20);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    bool unseen = game_entities_pending_events(live->entities) == before;
+    bool unseen = heard.count == before;
     w.revealed = ecs_entity_to_u64(strip);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     click(ui, 40, 20);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
-    test_check(
-        unseen && game_entities_pending_events(live->entities) == before + 1,
-        "a hidden GameUi shows while the editor reveals its entity"
-    );
+    test_check(unseen && heard.count == before + 1, "a hidden GameUi shows while the editor reveals its entity");
     w.revealed = 0;
     test_remove_ui(folder, "Panel");
     overlay_on_page(root);
@@ -940,6 +932,7 @@ void test_game_ui_presenter()
 
     render_ui_free(ui);
     game_live_world_free(live);
+    test_ui_probes_free();
     ecs_world_free(world);
     test_remove_ui(folder, "Menu");
     rmdir(folder);

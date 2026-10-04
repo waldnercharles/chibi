@@ -1,5 +1,6 @@
 /* The RmlUi C binding (rml.h): type conversions and forwarding only. */
 #include "ui/rml.h"
+#include "ui/json_items.h"
 
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Dictionary.h>
@@ -141,6 +142,7 @@ SAME_EVENT(TRANSITIONEND, Transitionend);
 SAME_EVENT(CHANGE, Change);
 SAME_EVENT(SUBMIT, Submit);
 SAME_EVENT(TABCHANGE, Tabchange);
+SAME_EVENT(INPUT, Input);
 
 SAME(RML_BOX_MARGIN, Rml::BoxArea::Margin);
 SAME(RML_BOX_BORDER, Rml::BoxArea::Border);
@@ -241,6 +243,35 @@ rml_vec2 vec2(Rml::Vector2f v)
 rml_color color(Rml::Colourb c)
 {
     return { c.red, c.green, c.blue, c.alpha };
+}
+
+rml_color color(Rml::ColourbPremultiplied c)
+{
+    return { c.red, c.green, c.blue, c.alpha };
+}
+
+/* The stops live in `stops`, which must outlive the parameters. */
+rml_effect_parameters effect_parameters(const Rml::Dictionary &parameters, Rml::Vector<rml_color_stop> &stops)
+{
+    rml_effect_parameters p = {};
+    p.value = Rml::Get(parameters, "value", 0.0f);
+    p.sigma = Rml::Get(parameters, "sigma", 0.0f);
+    p.angle = Rml::Get(parameters, "angle", 0.0f);
+    p.offset = vec2(Rml::Get(parameters, "offset", Rml::Vector2f()));
+    p.color = color(Rml::Get(parameters, "color", Rml::Colourb(0, 0, 0, 0)));
+    p.p0 = vec2(Rml::Get(parameters, "p0", Rml::Vector2f()));
+    p.p1 = vec2(Rml::Get(parameters, "p1", Rml::Vector2f()));
+    p.center = vec2(Rml::Get(parameters, "center", Rml::Vector2f()));
+    p.radius = vec2(Rml::Get(parameters, "radius", Rml::Vector2f()));
+    p.repeating = Rml::Get(parameters, "repeating", false);
+    if (const Rml::Variant *list = Rml::GetIf(parameters, "color_stop_list")) {
+        for (const Rml::ColorStop &stop : list->GetReference<Rml::ColorStopList>()) {
+            stops.push_back({ stop.position.number, color(stop.color) });
+        }
+    }
+    p.stops = stops.data();
+    p.stop_count = stops.size();
+    return p;
 }
 
 size_t copy(const Rml::String &string, char *buffer, size_t size)
@@ -415,12 +446,19 @@ public:
         return fn->save_layer_as_texture ? fn->save_layer_as_texture(user) : 0;
     }
 
+    Rml::CompiledFilterHandle SaveLayerAsMaskImage() override
+    {
+        return fn->save_layer_as_mask_image ? fn->save_layer_as_mask_image(user) : 0;
+    }
+
     Rml::CompiledFilterHandle CompileFilter(const Rml::String &name, const Rml::Dictionary &parameters) override
     {
-        const Rml::Variant *sigma = Rml::GetIf(parameters, "sigma");
-        return fn->compile_filter
-                 ? fn->compile_filter(user, name.c_str(), sigma ? sigma->Get<float>() : 0.0f)
-                 : 0;
+        if (!fn->compile_filter) {
+            return 0;
+        }
+        Rml::Vector<rml_color_stop> stops;
+        const rml_effect_parameters p = effect_parameters(parameters, stops);
+        return fn->compile_filter(user, name.c_str(), &p);
     }
 
     void ReleaseFilter(Rml::CompiledFilterHandle filter) override
@@ -430,28 +468,61 @@ public:
         }
     }
 
+    Rml::CompiledShaderHandle CompileShader(const Rml::String &name, const Rml::Dictionary &parameters) override
+    {
+        if (!fn->compile_shader) {
+            return 0;
+        }
+        Rml::Vector<rml_color_stop> stops;
+        const rml_effect_parameters p = effect_parameters(parameters, stops);
+        return fn->compile_shader(user, name.c_str(), &p);
+    }
+
+    void RenderShader(
+        Rml::CompiledShaderHandle shader,
+        Rml::CompiledGeometryHandle geometry,
+        Rml::Vector2f translation,
+        Rml::TextureHandle texture
+    ) override
+    {
+        if (fn->render_shader) {
+            fn->render_shader(user, shader, geometry, vec2(translation), texture);
+        }
+    }
+
+    void ReleaseShader(Rml::CompiledShaderHandle shader) override
+    {
+        if (fn->release_shader) {
+            fn->release_shader(user, shader);
+        }
+    }
+
 private:
     const rml_render_interface *fn;
     void *user;
 };
 
+/* The parameters RmlUi's events carry the modifier keys in. */
+static const struct
+{
+    const char *name;
+    unsigned bit;
+} MODIFIER_PARAMETERS[] = {
+    { "ctrl_key", RML_KM_CTRL },
+    { "shift_key", RML_KM_SHIFT },
+    { "alt_key", RML_KM_ALT },
+    { "meta_key", RML_KM_META },
+    { "caps_lock_key", RML_KM_CAPSLOCK },
+    { "num_lock_key", RML_KM_NUMLOCK },
+    { "scroll_lock_key", RML_KM_SCROLLLOCK },
+};
+
 rml_event convert(Rml::Event &event)
 {
-    static const struct
-    {
-        const char *name;
-        unsigned bit;
-    } modifiers[] = {
-        { "ctrl_key", RML_KM_CTRL },
-        { "shift_key", RML_KM_SHIFT },
-        { "alt_key", RML_KM_ALT },
-        { "meta_key", RML_KM_META },
-        { "caps_lock_key", RML_KM_CAPSLOCK },
-        { "num_lock_key", RML_KM_NUMLOCK },
-        { "scroll_lock_key", RML_KM_SCROLLLOCK },
-    };
     rml_event e = {};
-    e.id = (rml_event_id)event.GetId();
+    /* A custom event, such as contextmenu, has no rml_event_id. */
+    e.id = event.GetId() < Rml::EventId::NumDefinedIds ? (rml_event_id)event.GetId()
+                                                        : RML_EVENT_INVALID;
     e.target = wrap(event.GetTargetElement());
     e.current = wrap(event.GetCurrentElement());
     e.drag_element = wrap(
@@ -461,7 +532,7 @@ rml_event convert(Rml::Event &event)
     e.mouse_y = event.GetParameter<float>("mouse_y", 0);
     e.button = event.GetParameter<int>("button", 0);
     e.key = (rml_key)event.GetParameter<int>("key_identifier", 0);
-    for (const auto &modifier : modifiers) {
+    for (const auto &modifier : MODIFIER_PARAMETERS) {
         if (event.GetParameter<int>(modifier.name, 0)) {
             e.modifiers |= modifier.bit;
         }
@@ -530,6 +601,24 @@ protected:
         }
     }
 
+    void OnLayout() override
+    {
+        if (hooks->layout) {
+            hooks->layout(wrap(this), user);
+        }
+    }
+
+    void OnAttributeChange(const Rml::ElementAttributes &changed) override
+    {
+        Rml::Element::OnAttributeChange(changed);
+        if (!hooks->attribute) {
+            return;
+        }
+        for (const auto &attribute : changed) {
+            hooks->attribute(wrap(this), user, attribute.first.c_str());
+        }
+    }
+
 private:
     const rml_element_hooks *hooks;
 };
@@ -571,15 +660,17 @@ yyjson_mut_val *json(void *ptr)
 class JsonDefinition final : public Rml::VariableDefinition
 {
 public:
-    JsonDefinition(yyjson_mut_doc *doc)
+    JsonDefinition(yyjson_mut_doc *doc, json_items *items)
       : Rml::VariableDefinition(Rml::DataVariableType::Scalar)
       , doc(doc)
+      , items(items)
     {
     }
 
     bool Get(void *ptr, Rml::Variant &variant) override
     {
         yyjson_mut_val *v = json(ptr);
+        reads.values++;
         switch (yyjson_mut_get_type(v)) {
         case YYJSON_TYPE_NULL:
             variant.Clear();
@@ -640,11 +731,12 @@ public:
     Rml::DataVariable Child(void *ptr, const Rml::DataAddressEntry &address) override
     {
         yyjson_mut_val *v = json(ptr);
+        reads.lookups++;
         if (yyjson_mut_is_arr(v) && address.name == "size") {
             return Rml::MakeLiteralIntVariable(Size(ptr));
         }
         if (yyjson_mut_is_arr(v)) {
-            yyjson_mut_val *item = yyjson_mut_arr_get(v, (size_t)address.index);
+            yyjson_mut_val *item = json_items_get(items, v, (size_t)address.index);
             return item ? Rml::DataVariable(this, item) : Rml::DataVariable();
         }
         if (!yyjson_mut_is_obj(v)) {
@@ -661,10 +753,12 @@ public:
     }
 
     uint64_t writes = 0;
+    rml_data_reads reads = {};
     Rml::Vector<yyjson_mut_val *> written; /* each once, until taken */
 
 private:
     yyjson_mut_doc *doc;
+    json_items *items;
 };
 
 } // namespace
@@ -869,9 +963,11 @@ rml_element *rml_element_create_child(rml_element *parent, const char *tag, rml_
 
 void rml_element_move_child(rml_element *parent, rml_element *child, rml_element *before)
 {
-    Rml::Element *c = element(child);
-    Rml::ElementPtr moved = c->GetParentNode()->RemoveChild(c);
-    element(parent)->InsertBefore(std::move(moved), element(before));
+    Rml::Element *c = element(child), *p = element(parent);
+    Rml::Element *from = c->GetParentNode();
+    bool same_model = c->GetDataModel() && c->GetDataModel() == p->GetDataModel();
+    Rml::ElementPtr moved = same_model ? from->RemoveChildToMove(c) : from->RemoveChild(c);
+    p->InsertBefore(std::move(moved), element(before));
 }
 
 void rml_element_remove_child(rml_element *parent, rml_element *child)
@@ -1142,6 +1238,18 @@ void rml_event_stop_propagation(const rml_event *event)
     static_cast<Rml::Event *>(event->native)->StopPropagation();
 }
 
+bool rml_element_dispatch_event(rml_element *e, const char *type, const rml_event *event)
+{
+    Rml::Dictionary parameters;
+    parameters["mouse_x"] = event->mouse_x;
+    parameters["mouse_y"] = event->mouse_y;
+    parameters["button"] = event->button;
+    for (const auto &modifier : MODIFIER_PARAMETERS) {
+        parameters[modifier.name] = (event->modifiers & modifier.bit) ? 1 : 0;
+    }
+    return element(e)->DispatchEvent(type, parameters);
+}
+
 /* ---------- Data models ---------- */
 
 struct rml_data_model
@@ -1149,13 +1257,17 @@ struct rml_data_model
     rml_data_model(Rml::Context *context, const char *name, yyjson_mut_doc *doc)
       : context(context)
       , name(name)
-      , definition(doc)
+      , items(json_items_new())
+      , definition(doc, items)
     {
     }
+
+    ~rml_data_model() { json_items_free(items); }
 
     Rml::Context *context;
     Rml::String name;
     Rml::DataModelHandle handle;
+    json_items *items;
     JsonDefinition definition;
 };
 
@@ -1181,11 +1293,22 @@ rml_data_model *rml_data_model_create(
         "emit",
         [emit, user](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &arguments) {
             rml_event e = convert(event);
-            Rml::String name = arguments.empty() ? "" : arguments[0].Get<Rml::String>();
-            Rml::String value = arguments.size() > 1 ? arguments[1].Get<Rml::String>() : "";
-            emit(user, &e, name.c_str(), arguments.size() > 1 ? value.c_str() : nullptr);
+            Rml::Vector<Rml::String> texts;
+            for (const Rml::Variant &argument : arguments) {
+                texts.push_back(argument.Get<Rml::String>());
+            }
+            Rml::Vector<const char *> args;
+            for (size_t i = 1; i < texts.size(); i++) {
+                args.push_back(texts[i].c_str());
+            }
+            emit(user, &e, texts.empty() ? "" : texts[0].c_str(), (int)args.size(), args.data());
         }
     );
+    /* stop(), as Vue's .stop modifier: the event goes no further, so a
+       button in a row keeps its click from the row's handler. */
+    constructor.BindEventCallback("stop", [](Rml::DataModelHandle, Rml::Event &event, const Rml::VariantList &) {
+        event.StopPropagation();
+    });
     return model;
 }
 
@@ -1195,14 +1318,34 @@ void rml_data_model_destroy(rml_data_model *model)
     delete model;
 }
 
+void rml_data_model_bind(rml_data_model *model, const char *name, yyjson_mut_val *value)
+{
+    Rml::DataModelConstructor constructor = model->context->GetDataModel(model->name);
+    bool bound = constructor && constructor.BindCustomDataVariable(name, Rml::DataVariable(&model->definition, value));
+    assert(bound);
+    (void)bound;
+}
+
 void rml_data_model_dirty(rml_data_model *model, const char *variable)
 {
+    json_items_clear(model->items);
     model->handle.DirtyVariable(variable);
+}
+
+void rml_data_model_dirty_all(rml_data_model *model)
+{
+    json_items_clear(model->items);
+    model->handle.DirtyAllVariables();
 }
 
 uint64_t rml_data_model_writes(const rml_data_model *model)
 {
     return model->definition.writes;
+}
+
+rml_data_reads rml_data_model_reads(const rml_data_model *model)
+{
+    return model->definition.reads;
 }
 
 void rml_element_set_data_model(rml_element *e, const char *name)
@@ -1522,6 +1665,7 @@ rml_vec2 rml_event_wheel(const rml_event *event)
 
 SAME_KEY(OEM_1);
 SAME_KEY(OEM_COMMA);
+SAME_KEY(OEM_2);
 SAME_KEY(OEM_4);
 SAME_KEY(OEM_6);
 
@@ -1634,4 +1778,124 @@ void rml_set_data_if_handler(rml_data_if_fn fn)
 {
     data_if_fn = fn;
     Rml::SetDataIfHandler(fn ? data_if : nullptr);
+}
+
+/* ---------- One document per area (workstream F5) ---------- */
+
+void rml_document_copy_style_sheet(rml_element *d, rml_element *source)
+{
+    const Rml::StyleSheetContainer *sheet = document(source)->GetStyleSheetContainer();
+    if (sheet) {
+        document(d)->SetStyleSheetContainer(sheet->CombineStyleSheetContainer(Rml::StyleSheetContainer()));
+    }
+}
+
+/* ---------- Native controls (workstream F2) ---------- */
+
+void rml_element_dispatch_value(rml_element *e, const char *type, const char *value, bool canceled)
+{
+    Rml::Dictionary parameters;
+    parameters["value"] = Rml::String(value);
+    parameters["canceled"] = canceled;
+    parameters["name"] = element(e)->GetAttribute<Rml::String>("name", "");
+    element(e)->DispatchEvent(type, parameters, true, true);
+}
+
+void rml_element_add_named_listener(rml_element *e, const char *type, rml_listener *l, bool capture)
+{
+    element(e)->AddEventListener(type, unwrap<Listener>(l), capture);
+}
+
+/* ---------- Lists and drag (workstream F4) ---------- */
+
+namespace {
+
+/* Forwards a context's creation and destruction; RmlUi unregisters it at
+ * shutdown, which frees it. */
+class ContextHooks final : public Rml::Plugin
+{
+public:
+    explicit ContextHooks(const rml_context_hooks *hooks)
+      : hooks(hooks)
+    {
+    }
+
+    int GetEventClasses() override { return EVT_BASIC; }
+
+    void OnContextCreate(Rml::Context *c) override
+    {
+        if (hooks->create) {
+            hooks->create(wrap(c));
+        }
+    }
+
+    void OnContextDestroy(Rml::Context *c) override
+    {
+        if (hooks->destroy) {
+            hooks->destroy(wrap(c));
+        }
+    }
+
+    void OnShutdown() override { delete this; }
+
+private:
+    const rml_context_hooks *hooks;
+};
+
+} // namespace
+
+void rml_add_context_hooks(const rml_context_hooks *hooks)
+{
+    Rml::RegisterPlugin(new ContextHooks(hooks));
+}
+
+/* ---------- Members (workstream P5) ---------- */
+
+namespace {
+
+/* Forwards each element's creation; RmlUi unregisters it at shutdown,
+ * which frees it. */
+class ElementCreated final : public Rml::Plugin
+{
+public:
+    explicit ElementCreated(void (*created)(rml_element *))
+      : created(created)
+    {
+    }
+
+    int GetEventClasses() override { return EVT_BASIC | EVT_ELEMENT; }
+
+    void OnElementCreate(Rml::Element *e) override { created(wrap(e)); }
+
+    void OnShutdown() override { delete this; }
+
+private:
+    void (*created)(rml_element *);
+};
+
+} // namespace
+
+void rml_add_element_created(void (*created)(rml_element *element))
+{
+    Rml::RegisterPlugin(new ElementCreated(created));
+}
+
+rml_element *rml_context_root(rml_context *c)
+{
+    return wrap(context(c)->GetRootElement());
+}
+
+bool rml_element_dispatch_texts(
+    rml_element *e,
+    const char *type,
+    int count,
+    const char *const *names,
+    const char *const *values
+)
+{
+    Rml::Dictionary parameters;
+    for (int i = 0; i < count; i++) {
+        parameters[names[i]] = Rml::String(values[i]);
+    }
+    return element(e)->DispatchEvent(type, parameters, true, true);
 }

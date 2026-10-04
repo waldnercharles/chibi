@@ -1,0 +1,20 @@
+diff --git a/Source/Core/GeometryBoxShadow.cpp b/Source/Core/GeometryBoxShadow.cpp
+--- a/Source/Core/GeometryBoxShadow.cpp
++++ b/Source/Core/GeometryBoxShadow.cpp
+@@ -218,8 +218,15 @@
+ 			{
+ 				Mesh mesh = mesh_padding_border;
+ 				Geometry geometry_padding_border = render_manager.MakeGeometry(std::move(mesh));
+-				render_manager.SetClipMask(ClipMaskOperation::SetInverse, &geometry_padding_border, info.element_offset_in_texture);
++				// As in browsers, a blurred shadow blurs its whole shape and is clipped to outside the
++				// element only when composited. Clipping before the blur would drop the light the box hides.
++				if (blur)
++					render_manager.DisableClipMask();
++				else
++					render_manager.SetClipMask(ClipMaskOperation::SetInverse, &geometry_padding_border, info.element_offset_in_texture);
+ 				geometry_shadow.Render(shadow_offset + info.element_offset_in_texture);
++				if (blur)
++					render_manager.SetClipMask(ClipMaskOperation::SetInverse, &geometry_padding_border, info.element_offset_in_texture);
+ 			}
+ 
+ 			if (blur)

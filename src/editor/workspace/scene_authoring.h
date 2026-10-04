@@ -63,6 +63,19 @@ int app_scene_authoring_set_debug_target(
     const char *asset_name
 );
 void app_scene_authoring_set_debug_pinned(app_scene_authoring *scene, bool pinned);
+/* Debugs the entity's instance of the open behavior, or nothing for a null
+ * entity (No target), until the selection or the open behavior changes, as
+ * Unreal's debug object menu does. -1 when it has no such instance. */
+int app_scene_authoring_choose_debug_target(app_scene_authoring *scene, ecs_entity entity);
+/* Debugs the newest scene instance of the open behavior on a `prototype`
+ * object, or the first to spawn, and each newer one as the game spawns it
+ * (Unreal's debug filter), until a target is chosen or selected. */
+void app_scene_authoring_follow_newest(app_scene_authoring *scene, const char *prototype);
+/* Selects a running scene object, placed or spawned, keeping an open
+ * behavior's tab, as the debugger does for the instance it stops in. */
+int app_scene_authoring_select_entity(app_scene_authoring *scene, ecs_entity entity);
+/* While no graph area shows the open behavior, no instance traces. */
+void app_scene_authoring_set_debug_hidden(app_scene_authoring *scene, bool hidden);
 
 typedef enum
 {
@@ -168,6 +181,15 @@ int app_scene_authoring_runtime_command(
     app_runtime_command command
 );
 app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *scene);
+/* Playback speed for both runtimes (engine_set_time_scale); Stop returns it
+ * to 1, as Unity's Play Mode does Time.timeScale. */
+void app_scene_authoring_set_time_scale(app_scene_authoring *scene, double scale);
+double app_scene_authoring_time_scale(const app_scene_authoring *scene);
+/* Break When Spawned, per prototype: the playing scene pauses after the
+ * frame that spawns one and selects it, which makes it the debug target.
+ * Kept for the editor session, as breakpoints set while debugging are. */
+bool app_scene_authoring_spawn_break(const app_scene_authoring *scene, const char *prototype);
+void app_scene_authoring_set_spawn_break(app_scene_authoring *scene, const char *prototype, bool on);
 const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene);
 int app_scene_authoring_save(app_scene_authoring *scene, const char *path);
 int app_scene_authoring_load(app_scene_authoring *scene, const char *path);
@@ -206,6 +228,48 @@ app_editor_document_context app_scene_authoring_document(const app_scene_authori
 void app_scene_authoring_update(app_scene_authoring *scene, bool ui_active);
 int app_scene_authoring_draw_viewport(app_scene_authoring *scene, engine_viewport *viewport);
 void app_scene_authoring_render(void *user);
+
+/* What the Scene view shows of the game while the scene is edited, as Unity's
+ * Scene view effects and Unreal's Show flags; a session shows the game. A
+ * new scene shows lighting only. */
+typedef struct
+{
+    /* Terrain, clouds and liquids as the game's first frame generates them,
+       without Begin, behaviors or a step. */
+    bool generated_world;
+    bool lighting; /* HRC lighting; off shows material colors unlit */
+    bool fog;      /* the fog of war as the game starts */
+    bool cameras;  /* each GameCamera's frame, labeled */
+} app_scene_view_options;
+void app_scene_authoring_set_view_options(app_scene_authoring *scene, app_scene_view_options options);
+/* The generated world has waited on regeneration or streaming long enough to
+ * say so. */
+bool app_scene_authoring_world_pending(const app_scene_authoring *scene);
+/* Why the world could not generate, or "". */
+const char *app_scene_authoring_world_error(const app_scene_authoring *scene);
+
+/* View Through Camera (Blender's Numpad 0): frames the Scene view exactly on
+ * a GameCamera's span, the selected object's or else the first enabled one's,
+ * and follows it until the view moves or a session starts. Leaving restores
+ * the view from before. -1 without a camera or before the first draw. */
+int app_scene_authoring_view_through_camera(app_scene_authoring *scene, bool on);
+bool app_scene_authoring_viewing_through_camera(const app_scene_authoring *scene);
+/* The span View Through Camera would show; false without a camera. */
+bool app_scene_authoring_camera_framing(app_scene_authoring *scene, engine_viewport_view *view);
+
+typedef struct
+{
+    const char *name; /* the object's, borrowed until the scene changes */
+    float x, y; /* the frame's top-left corner in the view, fractions from its top-left */
+    bool active, disabled, selected;
+} app_scene_camera_label;
+/* The camera frames the Scene view draws, as of its last draw, for a host's
+ * labels: their count, writing at most `max`. */
+int app_scene_authoring_camera_labels(
+    app_scene_authoring *scene,
+    app_scene_camera_label *labels,
+    int max
+);
 int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time);
 int app_scene_authoring_move(app_scene_authoring *scene, float x, float y);
 /* Sample aiming independently of movement; points use game coordinates. */
@@ -221,6 +285,23 @@ int app_scene_authoring_delete_instance(app_scene_authoring *scene);
  * Nothing references objects by name, so nothing else changes. -1 with the
  * message set when the name is refused. */
 int app_scene_authoring_rename_instance(app_scene_authoring *scene, ecs_entity entity, const char *name);
+
+/* Editor view state (Blender's Outliner eye and selectability, Unity's Scene
+ * visibility and pickability): while the scene is edited, its view leaves
+ * hidden objects out and picks neither hidden nor locked ones. It belongs to
+ * the editor, by scene file and object name, never to the scene, its Undo or
+ * Play. */
+enum
+{
+    APP_SCENE_VIEW_HIDDEN = 1 << 0,
+    APP_SCENE_VIEW_LOCKED = 1 << 1,
+};
+unsigned app_scene_authoring_actor_view(app_scene_authoring *scene, int actor);
+void app_scene_authoring_set_actor_view(app_scene_authoring *scene, int actor, unsigned flags);
+/* Every scene's view state by scene path, in memory until the host binds the
+ * store to storage (game_save_open) and commits it. */
+typedef struct game_save game_save;
+game_save *app_scene_authoring_view_store(app_scene_authoring *scene);
 int app_scene_authoring_set_instance_behavior(
     app_scene_authoring *scene,
     const char *asset_name,

@@ -19,6 +19,9 @@ const char *text_overlay_text(const char *path);
  * while it has none. */
 unsigned long long text_overlay_revision(const char *path);
 
+/* A number that changes with each set or removal of any overlay. */
+unsigned long long text_overlay_generation();
+
 /* Removes every overlay. */
 void text_overlay_clear();
 

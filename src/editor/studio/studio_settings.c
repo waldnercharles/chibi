@@ -15,6 +15,7 @@
 
 const studio_settings_category_info studio_settings_categories[STUDIO_SETTINGS_CATEGORY_COUNT] = {
     [STUDIO_SETTINGS_APPEARANCE] = { "appearance", "Appearance", KIT_ICON_MATERIAL, false },
+    [STUDIO_SETTINGS_SCENE] = { "scene", "Scene", KIT_ICON_VIEWPORT, false },
     [STUDIO_SETTINGS_GRAPH] = { "graph", "Graph", KIT_ICON_GRAPH, false },
     [STUDIO_SETTINGS_TEXT] = { "text", "Text Editor", KIT_ICON_EXPRESSION, false },
     [STUDIO_SETTINGS_KEYBOARD] = { "keyboard", "Keyboard", KIT_ICON_KEYBOARD, false },
@@ -95,6 +96,12 @@ static const studio_setting_choice UI_SCALES[] = {
     { "1.75", "175%" }, { "2", "200%" },
 };
 
+/* The grid increments snapping offers, in world units: 32 is a meter. */
+static const studio_setting_choice GRID_INCREMENTS[] = {
+    { "1", "1" },   { "4", "4" },   { "8", "8" },     { "16", "16" },
+    { "32", "32" }, { "64", "64" }, { "128", "128" },
+};
+
 #define FIELD(name)                                                            \
     offsetof(studio_prefs, name), sizeof(((studio_prefs *)0)->name)
 #define CHOICES(list) list, (int)(sizeof list / sizeof *list)
@@ -167,6 +174,48 @@ const studio_setting studio_settings[] = {
       .max = 18,
       .step = 1,
       .fallback = 13 },
+    /* The Scene view's Show toggles (View › Show), as Unity's Scene view
+       effects and Unreal's Show flags. */
+    { .key = "scene.generatedWorld",
+      .save = "sceneGeneratedWorld",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Generated World",
+      .description = "While you edit, the Scene shows terrain, clouds and "
+                     "liquids as the game's first frame makes them.",
+      .keywords = "procedural terrain field material fluid cave preview "
+                  "realtime",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_world),
+      .fallback = 1 },
+    { .key = "scene.lighting",
+      .save = "sceneLighting",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Lighting",
+      .description = "Lights the edited scene as the game does. Off shows "
+                     "material colors unlit.",
+      .keywords = "hrc radiance light shadows unlit",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_lighting),
+      .fallback = 1 },
+    { .key = "scene.fog",
+      .save = "sceneFog",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Fog of War",
+      .description = "Covers the edited scene with its fog of war as the "
+                     "game starts.",
+      .keywords = "visibility vision explored conceal",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_fog) },
+    { .key = "scene.cameraFrames",
+      .save = "sceneCameraFrames",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Camera Frames",
+      .description = "Outlines what each camera shows, labeled with its "
+                     "object's name.",
+      .keywords = "camera frustum view bounds overlay",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_cameras),
+      .fallback = 1 },
     { .key = "wires",
       .save = "wires",
       .category = STUDIO_SETTINGS_GRAPH,
@@ -207,6 +256,15 @@ const studio_setting studio_settings[] = {
       .type = STUDIO_SETTING_BOOL,
       FIELD(compact_nodes),
       .fallback = 1 },
+    { .key = "debug.liveValues",
+      .save = "liveValues",
+      .category = STUDIO_SETTINGS_GRAPH,
+      .label = "Show Live Values",
+      .description = "While the debug target runs, every data output shows "
+                     "the value it last carried.",
+      .keywords = "watch debug values chips play running inspect",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(live_values) },
     { .key = "code.vim",
       .save = "codeVim",
       .category = STUDIO_SETTINGS_TEXT,
@@ -258,6 +316,39 @@ const studio_setting studio_settings[] = {
       .type = STUDIO_SETTING_BOOL,
       FIELD(code_wrap),
       .fallback = 1 },
+    { .key = "scene.grid",
+      .save = "sceneGrid",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Show Grid",
+      .description = "Draws the grid under objects while a 2D scene is "
+                     "edited.",
+      .keywords = "lines axes overlay",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_grid),
+      .fallback = 1 },
+    { .key = "scene.snap",
+      .save = "sceneSnap",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Snap to Grid",
+      .description = "Moved and resized objects land on the grid increment, "
+                     "and rotations on 15\xc2\xb0 steps. Holding Ctrl while "
+                     "dragging does the opposite.",
+      .keywords = "magnet align round increment",
+      .type = STUDIO_SETTING_BOOL,
+      FIELD(scene_snap) },
+    { .key = "scene.gridIncrement",
+      .save = "sceneGridIncrement",
+      .category = STUDIO_SETTINGS_SCENE,
+      .label = "Grid Increment",
+      .description = "The grid's spacing in world units, and the step "
+                     "snapping moves by. 32 units are a meter.",
+      .keywords = "size spacing step snap units",
+      .type = STUDIO_SETTING_NUMBER,
+      FIELD(scene_increment),
+      CHOICES(GRID_INCREMENTS),
+      .min = 1,
+      .max = 128,
+      .fallback = 32 },
 };
 const int studio_setting_count = sizeof studio_settings / sizeof *studio_settings;
 

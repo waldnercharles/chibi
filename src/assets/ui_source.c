@@ -257,10 +257,11 @@ static void paint_text(painter *p, int start, int end)
 
 bool ui_source_is_binding(const char *name, int length)
 {
-    static const char *const EXACT[] = { "data-if",      "data-for",
-                                         "data-value",   "data-value-lazy",
-                                         "data-checked", "data-visible",
-                                         "data-rml",     NULL };
+    static const char *const EXACT[] = {
+        "data-if",      "data-when",       "data-for",
+        "data-value",   "data-value-lazy", "data-checked",
+        "data-visible", "data-rml",        NULL
+    };
     static const char *const PREFIXES[] = {
         "data-event-",  "data-class-", "data-style-", "data-attr-",
         "data-attrif-", "data-alias-", NULL

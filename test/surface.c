@@ -1100,7 +1100,15 @@ static void draw(fixture *f, const behavior_asset *preview, float time, CF_Pixel
     cf_app_update(NULL);
     bool ok = preview
                 ? render_arena_preview(f->renderer, preview, &f->camera, NULL, time, &(render_arena_activity){ 0 })
-                : render_arena_draw(f->renderer, f->world, f->particles, &f->camera, time, NULL);
+                : render_arena_draw(
+                      f->renderer,
+                      f->world,
+                      f->particles,
+                      &f->camera,
+                      time,
+                      NULL,
+                      (render_skip){ 0 }
+                  );
     if (!ok) {
         fprintf(stderr, "Surface draw: %s\n", render_arena_error(f->renderer));
     }
@@ -1160,7 +1168,9 @@ static void visual_errors()
             ->material = "Missing surface material";
         cf_draw3d_stats();
         cf_app_update(NULL);
-        assert(!render_arena_draw(f.renderer, f.world, f.particles, &f.camera, 0, NULL));
+        assert(
+            !render_arena_draw(f.renderer, f.world, f.particles, &f.camera, 0, NULL, (render_skip){ 0 })
+        );
         assert(strstr(render_arena_error(f.renderer), messages[failure]));
         cf_app_draw_onto_screen(false);
         assert(cf_draw3d_stats().instances == 0);

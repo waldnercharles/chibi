@@ -538,8 +538,58 @@ static bool name_char(char c)
     return isalnum((unsigned char)c) || c == '-' || c == '_';
 }
 
-/* Writes one selector matching inside the scope: `body` names the scoped
- * element itself. */
+/* The length of the class qualifiers `.name` and `:not(.name, ...)` that
+ * start `s`, and whether one is a :not; zero when a negation holds anything
+ * but classes. */
+static size_t class_qualifiers(const char *s, size_t length, bool *negated)
+{
+    size_t at = 0;
+    while (at < length) {
+        if (s[at] == '.') {
+            for (at++; at < length && name_char(s[at]); at++) {
+            }
+            continue;
+        }
+        if (strncmp(s + at, ":not(", 5) != 0) {
+            break;
+        }
+        size_t close = at + 5;
+        while (close < length && (name_char(s[close]) || strchr(". ,", s[close]))) {
+            close++;
+        }
+        if (close >= length || s[close] != ')') {
+            return 0;
+        }
+        *negated = true;
+        at = close + 1;
+    }
+    return at;
+}
+
+/* Whether `rest` is nothing, or a descendant combinator and what follows. */
+static bool descends(const char *rest, size_t length)
+{
+    size_t space = 0;
+    while (space < length && isspace((unsigned char)rest[space])) {
+        space++;
+    }
+    return space == length || (space > 0 && !strchr(">+~", rest[space]));
+}
+
+/* Writes `s` on one line, so that a second copy adds no line to the map. */
+static void put_flat(char **out, const char *s, size_t length)
+{
+    for (size_t i = 0; i < length; i++) {
+        put(out, s[i] == '\n' ? " " : s + i, 1);
+    }
+}
+
+/* Writes one selector matching inside the scope. `body` names the scoped
+ * element itself, and the classes after it name the page's body too, which
+ * the scoped element does not carry: `body.dark .row` matches inside the
+ * scope when the element or the page's body has `dark`, and
+ * `body:not(.dark) .row` when the page's body lacks it. Any other qualifier
+ * or combinator after `body` asks only the element. */
 static void put_selector(char **out, const char *scope, const char *s, size_t length)
 {
     while (length && isspace((unsigned char)*s)) {
@@ -549,13 +599,38 @@ static void put_selector(char **out, const char *scope, const char *s, size_t le
     while (length && isspace((unsigned char)s[length - 1])) {
         length--;
     }
-    put(out, scope, strlen(scope));
-    if (length >= 4 && !strncmp(s, "body", 4) && (length == 4 || !name_char(s[4]))) {
-        put(out, s + 4, length - 4);
+    bool body = length >= 4 && !strncmp(s, "body", 4) &&
+                (length == 4 || !name_char(s[4]));
+    if (!body) {
+        put(out, scope, strlen(scope));
+        put(out, " ", 1);
+        put(out, s, length);
         return;
     }
+    bool negated = false;
+    size_t classes = class_qualifiers(s + 4, length - 4, &negated);
+    const char *rest = s + 4 + classes;
+    size_t rest_length = length - 4 - classes;
+    bool page = classes && descends(rest, rest_length);
+    if (!page || !negated) {
+        put(out, scope, strlen(scope));
+        put(out, s + 4, length - 4);
+    }
+    if (!page) {
+        return;
+    }
+    if (!negated) {
+        put(out, ", ", 2);
+    }
+    put(out, "body", 4);
+    put(out, s + 4, classes);
     put(out, " ", 1);
-    put(out, s, length);
+    put(out, scope, strlen(scope));
+    if (negated) {
+        put(out, rest, rest_length);
+        return;
+    }
+    put_flat(out, rest, rest_length);
 }
 
 /* Writes the selector list [p, end) with each selector scoped. */
@@ -874,7 +949,7 @@ typedef struct
 {
     const char *at;
     size_t length;
-    bool change; /* the handler is data-event-change */
+    bool change; /* the handler is data-event-change or data-event-input */
 } emit_span;
 
 /* Appends the emit('Name') calls of the data-event-* handlers among the
@@ -909,7 +984,8 @@ static void emit_spans(const char *p, const char *end, emit_span **spans)
         if (!close) {
             return;
         }
-        bool change = equals - type == 6 && !strncmp(type, "change", 6);
+        bool change = (equals - type == 6 && !strncmp(type, "change", 6)) ||
+                      (equals - type == 5 && !strncmp(type, "input", 5));
         for (const char *e = value; e + 6 < close; e++) {
             if (strncmp(e, "emit(", 5) || (e[5] != '"' && e[5] != '\'')) {
                 continue;

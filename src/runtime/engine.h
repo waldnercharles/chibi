@@ -61,6 +61,12 @@ engine_focus engine_get_focus(const engine *engine);
 int engine_set_playing(engine *engine, bool playing);
 bool engine_is_playing(const engine *engine);
 int engine_step(engine *engine);
+/* Simulation seconds per wall second while playing (Unity's Time.timeScale,
+ * Unreal's slomo): fixed steps keep their length and run less or more often,
+ * so behaviors, physics, particles and material time slow alike while frames
+ * still draw at the display's rate. Step advances one tick at any scale. */
+void engine_set_time_scale(engine *engine, double scale);
+double engine_time_scale(const engine *engine);
 int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error);
 /* Host input ingress: hold the latest movement/aim sample across fixed steps. */
 int engine_sample_movement(engine *engine, float x, float y);
@@ -127,6 +133,9 @@ typedef struct engine_viewport_host_input
     bool down[3], pressed[3], released[3];
     float wheel;
     bool alt;
+    /* The modifier keys held (RML_INPUT_MOD_*), traded as the keys' are, so
+       Control is a game's Mod (Command on a Mac) in its events' payloads. */
+    unsigned modifiers;
     bool escape;
     char dropped_prototype[256];
     /* Key presses and typed text the host passes on, in order, kept until
@@ -154,7 +163,6 @@ typedef struct engine_viewport_pointer
     bool released;
     bool dragging;
     bool cancel;
-    bool delete_pressed;
     char dropped_prototype[256];
 } engine_viewport_pointer;
 
@@ -169,6 +177,10 @@ void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtim
 /* Shows `world`'s GameUi documents from content_root/ui over the scene
  * (render/ui.h). */
 void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, const char *content_root);
+/* The host's frame time in seconds, which the documents' transitions follow,
+ * so a fixed timestep replays them as it does the scene. Hosts set it before
+ * each draw; until then the documents hold still. */
+void engine_viewport_set_time(engine_viewport *viewport, double seconds);
 /* Presents `ui`, which the viewport takes, as the documents
  * engine_viewport_set_ui creates: for a host that gives them its own data
  * (render_ui_new). Call before the viewport has documents. */

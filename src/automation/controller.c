@@ -18,10 +18,12 @@
 #include "automation/graph_optimize.h"
 #include "automation/navigation.h"
 #include "automation/prototype_edit.h"
+#include "automation/prototype_instance.h"
 #include "automation/scene_edit.h"
 #include "automation/ui_edit.h"
 #include "ecs/ecs.h"
 #include "editor/documents/component_presentation.h"
+#include "editor/studio/studio_nodes.h"
 #include "graph/authoring/describe.h"
 #include "graph/authoring/layout.h"
 #include "graph/compiler/behavior_program.h"
@@ -386,6 +388,7 @@ static const contract_field CONTRACT_EDIT_PROTOTYPE[] = {
     { "create", "boolean", false, "Create a new asset without replacing existing content." },
     { "expected_hash", "string", false, "Required current asset hash when editing." },
     { "dry_run", "boolean", false, "Validate and return results without writing." },
+    { "source_instance", "object", false, "A scene entity {scene, entity, fields?}: with create, the new prototype starts as a copy of it; otherwise the fields it overrides, or the fields named, are applied to this prototype, the one it is an instance of." },
     { "operations", "array", true, "Atomic semantic component, field, and behavior edit batch, at most 128 operations." },
 };
 static const contract_field CONTRACT_EDIT_SCENE[] = {
@@ -1074,7 +1077,12 @@ static char *response_finish(response *result)
     yyjson_mut_obj_add_bool(result->doc, result->root, "ok", result->ok);
     char *json = yyjson_mut_write(result->doc, 0, NULL);
     yyjson_mut_doc_free(result->doc);
-    return json ? json : xstrdup("{\"contract\":1,\"ok\":false}");
+    return json ? json
+                : xstrdup(
+                      "{\"contract\":1,\"ok\":false,\"error\":{\"code\":"
+                      "\"execution_failed\","
+                      "\"message\":\"the response could not be serialized\"}}"
+                  );
 }
 
 static const operation_descriptor *operation_by_name(const char *name)
@@ -1512,6 +1520,7 @@ typedef struct
 {
     behavior_asset **assets;
     char error[256];
+    bool studio; /* the project is Studio's, whose world runs its editor nodes */
 } catalog_links;
 
 static bool links_family(const asset_family *family)
@@ -1582,6 +1591,9 @@ static void catalog_validate_asset(const catalog_links *links, catalog_asset *as
                 acount(links->assets),
                 &report
             ));
+            if (!links->studio) {
+                studio_nodes_check(behavior, &report);
+            }
             catalog_add_report(asset, &report);
             compile_report_free(&report);
         }
@@ -2044,7 +2056,7 @@ static int build_catalog_from_entries(
     }
     catalog_asset *assets = NULL;
     bool graphs_cached = previous && catalog_links_unchanged(previous, entries);
-    catalog_links links = { 0 };
+    catalog_links links = { .studio = studio_project_is(root) };
     bool linked = false;
     int status = 0;
     for (int i = 0; i < acount(entries) && !status; i++) {
@@ -4985,6 +4997,9 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
             if (linked) {
                 errors = compile_project_graph(root, linked, &report);
+                errors += studio_project_is(root)
+                            ? 0
+                            : studio_nodes_check(asset, &report);
             } else {
                 errors = 1;
                 add_load_diagnostic(result->doc, diagnostics, error);
@@ -9245,9 +9260,14 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
 
 /* Behavior graphs author component nodes, which lower to the generated nodes
  * System graphs use directly; Systems offer the nodes their compiler turns
- * into bytecode. No domain offers every domain's authoring nodes. */
-static bool domain_offers(const char *domain, const node_desc *node)
+ * into bytecode. No domain offers every domain's authoring nodes, and only
+ * the Studio project, whose world runs them, offers Studio's editor nodes
+ * (category Studio). */
+static bool domain_offers(const char *domain, const node_desc *node, bool studio)
 {
+    if (!studio && studio_node_is(node)) {
+        return false;
+    }
     if (domain && !strcmp(domain, "system")) {
         return game_system_node_supported(node);
     }
@@ -9275,6 +9295,7 @@ typedef struct
     behavior_asset **definitions;
     ui_event *ui;
     ui_data_binding *bindings;
+    bool studio; /* the Studio project, which runs Studio's editor nodes */
 } project_events;
 
 static bool defined_event(const project_events *events, const char *name)
@@ -9880,7 +9901,8 @@ static void add_node_outline(
     yyjson_mut_val *categories = yyjson_mut_obj_add_obj(doc, value, "categories");
     for (int i = 0; i < registry_node_count(); i++) {
         const node_desc *node = registry_node(i);
-        if (!domain_offers(domain, node) || component_generated_kind(node)) {
+        if (!domain_offers(domain, node, project->studio) ||
+            component_generated_kind(node)) {
             continue;
         }
         const char *category = node->category && node->category[0] ? node->category
@@ -9936,7 +9958,7 @@ static node_match *node_candidates(
 {
     node_match *matches = NULL;
     for (int i = 0; i < registry_node_count(); i++) {
-        if (domain_offers(domain, registry_node(i))) {
+        if (domain_offers(domain, registry_node(i), project->studio)) {
             apush(matches, ((node_match){ .desc = registry_node(i) }));
         }
     }
@@ -10095,7 +10117,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page, include_pins or behavior");
         return -1;
     }
-    project_events events = { 0 };
+    project_events events = { .studio = studio_project_is(root) };
     char error[256] = "";
     int status = behavior_vocabulary(domain)
                    ? load_project_events(root, behavior, &events, error, sizeof error)
@@ -10674,6 +10696,79 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
     return status;
 }
 
+/* buildPrototype's source_instance (automation/prototype_instance.h): the
+ * prototype text the edit starts from in `start`. */
+static int start_from_instance(
+    const char *root,
+    yyjson_val *instance,
+    const asset_ref *ref,
+    const char *source,
+    response *result,
+    yyjson_mut_val *value,
+    char **start,
+    char *error,
+    size_t size
+)
+{
+    const char *scene = request_string(instance, "scene");
+    const char *entity = request_string(instance, "entity");
+    yyjson_val *fields = yyjson_obj_get(instance, "fields");
+    bool create = !source;
+    if (!scene || !entity || (fields && (!yyjson_is_arr(fields) || create))) {
+        return set_error(error, size, "source_instance needs scene and entity names; fields apply to the prototype it is an instance of"),
+               CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    asset_ref scene_ref, prototype_ref;
+    char *scene_text = NULL, *prototype_text = NULL, prototype[256];
+    int status = load_named_asset(
+        root,
+        family_by_kind("scene"),
+        scene,
+        &scene_ref,
+        &scene_text,
+        NULL,
+        NULL,
+        error,
+        size
+    );
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = automation_instance_prototype(scene_text, entity, prototype, sizeof prototype, error, size);
+    }
+    char *name = asset_name_from_filename(ref->filename);
+    if (status == CHIBI_AUTOMATION_OK && create) {
+        status = load_named_asset(
+            root,
+            family_by_kind("prototype"),
+            prototype,
+            &prototype_ref,
+            &prototype_text,
+            NULL,
+            NULL,
+            error,
+            size
+        );
+    } else if (status == CHIBI_AUTOMATION_OK && strcmp(prototype, name)) {
+        snprintf(error, size, "%s is an instance of %s", entity, prototype);
+        status = CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        game_prototype_registry registry = {
+            .components = GAME_REGISTRY_COMPONENTS,
+            .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+        };
+        automation_instance from = { scene_text,
+                                     entity,
+                                     create ? prototype_text : source,
+                                     create ? name : NULL,
+                                     fields };
+        status = automation_prototype_from_instance(&from, &registry, result->doc, value, start, error, size);
+    }
+    free(name);
+    free(prototype_text);
+    free(scene_text);
+    return status;
+}
+
 static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     yyjson_val *create_value = yyjson_obj_get(request, "create");
@@ -10735,6 +10830,16 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         free(source);
         return -1;
     }
+    char *start = NULL;
+    yyjson_val *instance = yyjson_obj_get(request, "source_instance");
+    if (instance) {
+        status = start_from_instance(root, instance, &ref, source, result, value, &start, error, sizeof error);
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, error);
+            free(source);
+            return -1;
+        }
+    }
     if (create) {
         char *name = asset_name_from_filename(ref.filename);
         source = new_asset_text(NEW_ASSET_PROTOTYPE, name);
@@ -10745,7 +10850,17 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
     char *edited = NULL;
-    status = automation_prototype_edit(source, &registry, request, result->doc, value, &edited, error, sizeof error);
+    status = automation_prototype_edit(
+        start ? start : source,
+        &registry,
+        request,
+        result->doc,
+        value,
+        &edited,
+        error,
+        sizeof error
+    );
+    free(start);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         free(source);

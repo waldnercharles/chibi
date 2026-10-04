@@ -13,6 +13,7 @@
 #include "graph/nodes/conv_nodes.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/number_expr.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -31,11 +32,12 @@ typedef enum
     SOURCE_EDIT_EXPRESSION,
     SOURCE_EDIT_INLINE_INPUTS,
     SOURCE_EXPAND_INLINE,
+    SOURCE_TYPED_EXPRESSION, /* Properties: a folded expression's new source */
 } source_kind;
 
 static void inline_popup_key(char *out, size_t size, const node *target, uint64_t input_pin);
 
-typedef struct
+typedef struct studio_graph_source
 {
     source_kind kind;
     pin_binding binding; /* IDs and kind only; strings live in the arrays below. */
@@ -316,7 +318,7 @@ static bool parse_input_literal(const pin_spec *spec, const char *text, pin_valu
         bool exact = parse_integer_text(text, is_unsigned, &signed_value, &unsigned_value);
         double number = 0;
         if (!exact &&
-            (!kit_number_parse(text, numeric_value(&spec->default_value), &number) ||
+            (!number_expr_eval(text, numeric_value(&spec->default_value), &number) ||
              trunc(number) != number)) {
             return false;
         }
@@ -393,7 +395,7 @@ static bool parse_input_literal(const pin_spec *spec, const char *text, pin_valu
     }
     if (spec->type == PIN_F32 || spec->type == PIN_F64) {
         double number;
-        if (!kit_number_parse(text, numeric_value(&spec->default_value), &number)) {
+        if (!number_expr_eval(text, numeric_value(&spec->default_value), &number)) {
             return false;
         }
         if (spec->type == PIN_F32) {
@@ -1692,4 +1694,152 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
         open_pending_inline_popup(s, k, n, spec->id);
     }
     emit_inline_values_popup(s, k, n, p);
+}
+
+/* ---------- Properties' inputs (workstream G1) ---------- */
+
+sg_input_kind sg_input_view(studio *s, node *n, int p, char *text, size_t size)
+{
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    const pin_spec *spec = &n->input_pins[p];
+    text[0] = '\0';
+    if (spec->kind != PIN_DATA) {
+        return SG_INPUT_EXEC;
+    }
+    pin_parts parts;
+    sg_pin_parts_of(s, n, ED_PIN_INPUT, p, &parts);
+    bool can_choose_source = parts.source_select && !sg_graph_readonly(s) &&
+                             !(spec->flags & PIN_FLAG_SETTING);
+    int source_pin = -1;
+    node *source = input_source(gr, n, p, &source_pin);
+    pin_binding resolved = { 0 };
+    const pin_binding *binding = current_binding(gr, n, p, source, source_pin, &resolved);
+    bool expression = private_expression_source(e->asset, gr, source, n, p);
+    bool compound_literal = !source && !binding &&
+                            (parts.value == VALUE_VECTOR || parts.value == VALUE_COLOR ||
+                             parts.value == VALUE_COMPOUND);
+    if (can_choose_source && !compound_literal) {
+        graph_input_display(e, spec, &parts, source, source_pin, expression, binding, text, size);
+        return SG_INPUT_SOURCE;
+    }
+    if (parts.value == VALUE_CHIP) {
+        snprintf(text, size, "%s", parts.chip);
+        return SG_INPUT_CHIP;
+    }
+    if (parts.value != VALUE_NONE) {
+        return SG_INPUT_VALUE;
+    }
+    if (source) {
+        graph_input_display(e, spec, &parts, source, source_pin, expression, binding, text, size);
+        return SG_INPUT_CHIP;
+    }
+    bool editable = ed_pin_editable(gr, n, ED_PIN_INPUT, p) &&
+                    !(spec->flags & PIN_FLAG_SETTING);
+    return editable ? SG_INPUT_VALUE : SG_INPUT_NONE;
+}
+
+/* The input whose source list is open, or NULL. */
+static node *listed_input(studio *s, int *p)
+{
+    studio_graph *g = &s->graph;
+    node *n = sg_node_by_id(s, g->details.source_node);
+    *p = g->details.source_pin;
+    return n && *p >= 0 && *p < n->input_count ? n : NULL;
+}
+
+void sg_source_open(studio *s, node *n, int p, const char *row, rml_element *field)
+{
+    studio_graph *g = &s->graph;
+    g->details.source_node = n->id;
+    g->details.source_pin = p;
+    g->details.source_shown = false;
+    snprintf(g->details.source, sizeof g->details.source, "%s", row);
+    studio_palette_open_field(s, STUDIO_PALETTE_SOURCES, field);
+}
+
+/* What the source list offers for its query, as the canvas's field offers:
+   values of the input's type, bindings and outputs that fit it, and, for a
+   folded expression, the source typed. */
+void studio_graph_source_entries(studio *s, const char *query, studio_palette_entry **entries)
+{
+    studio_graph *g = &s->graph;
+    afree(g->details.source_choices);
+    g->details.source_choices = NULL;
+    int p;
+    node *n = listed_input(s, &p);
+    if (!n) {
+        return;
+    }
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    source_choice **choices = &g->details.source_choices;
+    int source_pin = -1;
+    node *source = input_source(gr, n, p, &source_pin);
+    pin_binding resolved = { 0 };
+    const pin_binding *binding = current_binding(gr, n, p, source, source_pin, &resolved);
+    add_sources(s, n, p, query, choices, source, source_pin, binding);
+    add_typed_choices(e, n, p, query, source || binding, choices);
+    pin_value literal;
+    if (private_expression_source(e->asset, gr, source, n, p) && query[0] &&
+        !parse_input_literal(&n->input_pins[p], query, &literal)) {
+        add_choice(
+            choices,
+            SOURCE_TYPED_EXPRESSION,
+            query,
+            "",
+            query,
+            NULL,
+            "Use this expression",
+            KIT_ICON_EXPRESSION,
+            10000,
+            false,
+            NULL,
+            source->id,
+            source_pin
+        );
+    }
+    for (int i = 0; i < acount(*choices); i++) {
+        const source_choice *choice = &(*choices)[i];
+        studio_palette_entry
+            *entry = studio_palette_add(entries, choice->group, choice->label);
+        snprintf(entry->keywords, sizeof entry->keywords, "%s", choice->keywords);
+        snprintf(entry->meta, sizeof entry->meta, "%s", choice->meta);
+        /* A described result's tooltip names it, then says what it does. */
+        snprintf(entry->about, sizeof entry->about, "%s", choice->description);
+        snprintf(entry->tip, sizeof entry->tip, "%s", choice->label);
+        entry->icon = choice->icon;
+        entry->boost = choice->boost;
+        entry->current = choice->current;
+        entry->kind = i;
+    }
+}
+
+void studio_graph_source_choose(studio *s, const studio_palette_entry *entry)
+{
+    studio_graph *g = &s->graph;
+    int p;
+    node *n = listed_input(s, &p);
+    if (!n || entry->kind < 0 || entry->kind >= acount(g->details.source_choices)) {
+        return;
+    }
+    source_choice choice = g->details.source_choices[entry->kind];
+    if (choice.kind == SOURCE_TYPED_EXPRESSION) {
+        node *expression = sg_node_by_id(s, choice.node_id);
+        if (expression && sg_set_expression_source(s, expression, choice.label) != 0 &&
+            g->expression_error[0]) {
+            sg_show_error(s, g->expression_error);
+        }
+        return;
+    }
+    apply_choice(s, NULL, n, p, &choice);
+    if (choice.kind == SOURCE_EDIT_INLINE_INPUTS) {
+        snprintf(g->details.popup, sizeof g->details.popup, "%s", g->details.source);
+    }
+}
+
+void sg_source_free(studio *s)
+{
+    afree(s->graph.details.source_choices);
+    s->graph.details.source_choices = NULL;
 }

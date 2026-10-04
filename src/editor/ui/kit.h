@@ -12,7 +12,8 @@ extern "C"
 {
 #endif
 
-    /* Immediate-mode calls reconciled onto a retained RmlUi document.
+    /* Immediate-mode calls reconciled onto retained RmlUi documents: the
+     * kit's, its overlay layer's and those kit_document_begin opens.
      *
      * Each frame the editor emits its UI with keyed calls. Elements are created
      * on first use, updated when their properties change and removed when a
@@ -51,9 +52,13 @@ extern "C"
         KIT_ACTIVE = 1 << 4, /* active tree row */
         KIT_INVALID = 1 << 5,
         KIT_SECRET = 1 << 6, /* text fields mask their value (passwords, tokens) */
+        /* Several objects' values differ: a field shows a dash, a checkbox a
+           dash in its box, as Unity's mixed values (data-mixed). */
+        KIT_MIXED = 1 << 7,
     };
 
-    /* Borrowed Rml::Context*; the document stays loaded until kit_destroy. */
+    /* Borrowed Rml::Context*; the kit's documents stay loaded until
+     * kit_destroy. */
     kit *kit_create(void *context, const char *document_path);
     void kit_destroy(kit *k);
     /* RCSS that precedes the document's own stylesheet: the tokens and control
@@ -91,10 +96,19 @@ extern "C"
     void kit_root(kit *k, const char *element_id);
     void kit_push(kit *k, const char *key, const char *tag, const char *cls);
     void kit_pop(kit *k);
+    /* Places a box with `cls` and emits what follows, until
+     * kit_document_end, into a document of its own shown over the box, as
+     * an <iframe> shows one (ui/iframe.h): a change inside lays out only
+     * that document. With `fit` the box takes the document's height. The
+     * box is the last item. The document adds no step to the paths of what
+     * it holds, so their keys must also differ from the box's siblings'. */
+    void kit_document_begin(kit *k, const char *key, const char *cls, bool fit);
+    void kit_document_end(kit *k);
     void kit_leaf(kit *k, const char *key, const char *tag, const char *cls);
     void kit_label(kit *k, const char *key, const char *cls, const char *text);
-    /* A changing, single-line readout. Equal-width values update glyphs
-     * locally; size and typography changes still use normal layout. */
+    /* A changing, single-line readout: the native <live-text>. Equal-width
+     * values update glyphs locally; size and typography changes still use
+     * normal layout. */
     void kit_live_label(kit *k, const char *key, const char *cls, const char *text);
     void kit_icon(kit *k, const char *key, const char *cls, uint32_t codepoint);
     /* A span whose content is markup the caller built and escaped, e.g. by
@@ -115,10 +129,6 @@ extern "C"
      * with a spring (FLIP). Reduced motion makes both immediate. */
     void kit_presence(kit *k);
     void kit_layout(kit *k);
-    /* Motion's useSpring: a value that eases toward target over `duration`
-     * seconds without bounce and keeps its velocity when the target moves.
-     * Keyed under the current parent; reduced motion returns the target. */
-    float kit_spring(kit *k, const char *key, float target, float duration);
 
     /* NumberFlow: digits spin to each new value with the trend of the change
      * and keep their place value. For discrete changes (counts, zoom steps); a
@@ -138,8 +148,8 @@ extern "C"
 
     /* Last-item queries, valid until the next emitted item. */
     bool kit_item_clicked(kit *k);
-    bool kit_item_context_clicked(kit *k); /* right press; open a context menu */
-    bool kit_item_active(kit *k);          /* scrubbing, editing or held */
+    bool kit_item_pressed(kit *k);   /* the primary button went down on it */
+    bool kit_item_active(kit *k);    /* scrubbing, editing or held */
     bool kit_item_committed(kit *k); /* a gesture or edit finished this frame */
     kit_rect kit_item_rect(kit *k);  /* logical pixels, latest layout */
     bool kit_item_hovered(kit *k); /* under the pointer and not clipped away */
@@ -156,6 +166,10 @@ extern "C"
     const char *kit_classes(kit *k, const char *base, const kit_class *list, int count);
     /* A copy of text that lives until kit_end, for labels built per frame. */
     const char *kit_string(kit *k, const char *text);
+    /* Puts text on the system clipboard, the browser's too in the web build,
+       where a paste with no field focused hands the browser's text back to
+       SDL's clipboard before the Mod+V key arrives. */
+    void kit_clipboard_set(const char *text);
 #define KIT_CX(k, base, ...)                                                   \
     kit_classes(                                                               \
         k,                                                                     \
@@ -192,6 +206,7 @@ extern "C"
         const char *tip;
         const char *shortcut;
         unsigned flags;
+        const char *description; /* the tip's second line, as kit_tip's */
     } kit_button_desc;
     bool kit_button(kit *k, const char *key, const kit_button_desc *desc);
 
@@ -204,16 +219,14 @@ extern "C"
         bool single_precision; /* edit text round-trips a float rather than a double */
         bool slider;           /* bounded values draw a fill */
         const char *unit;
-        const char *addon; /* leading label inside the field, e.g. "X" */
-        const char *addon_cls;
+        const char *addon;     /* leading label inside the field, e.g. "X" */
+        const char *addon_cls; /* the field's data-axis, e.g. "x" */
         unsigned flags;
     } kit_number_desc;
-    /* Scrub, click-to-type, expressions and keyboard steps; see the kit contract.
+    /* The native <number-field> (ui/controls/controls.h): scrub, click-to-type,
+     * expressions (support/number_expr.h) and keyboard steps.
      * kit_item_committed() is true once per gesture; record Undo there. */
     bool kit_number(kit *k, const char *key, double *value, const kit_number_desc *desc);
-    /* Parse the arithmetic syntax used by kit_number, including relative
-     * operators; returns false for invalid or non-finite results. */
-    bool kit_number_parse(const char *text, double current, double *out);
     bool kit_checkbox(kit *k, const char *key, bool *value, const char *label, unsigned flags);
     /* Up to three options render as a toggle group, more as a select. */
     bool kit_choice(kit *k, const char *key, int *value, const char *const *labels, int count, unsigned flags);
@@ -229,17 +242,13 @@ extern "C"
     bool kit_text_area(kit *k, const char *key, char *buffer, size_t size, const char *placeholder, unsigned flags);
     /* Filters live; returns true whenever the text changes. Escape clears. */
     bool kit_search(kit *k, const char *key, char *buffer, size_t size, const char *placeholder);
-    /* RGBA as 0xRRGGBBAA. Live while the picker is open; commits on close. */
+    /* RGBA as 0xRRGGBBAA: the native <color-field>, live while its picker is
+     * open; commits on close. */
     bool kit_color(kit *k, const char *key, uint32_t *rgba, unsigned flags);
 
     /* Containers. */
     bool kit_panel_begin(kit *k, const char *key, const char *title, const char *badge, bool default_open);
     void kit_panel_end(kit *k);
-    /* After kit_panel_end: the panel's header shows a menu button while it is
-     * hovered, as Unity's component header and Blender's modifier panels offer
-     * their operations. True on the frame the button is pressed or the header
-     * right-pressed; open the panel's menu at the pointer. */
-    bool kit_panel_menu(kit *k);
     void kit_prop_begin(kit *k, const char *key, const char *label);
     void kit_prop_end(kit *k);
 
@@ -317,21 +326,16 @@ extern "C"
     bool kit_submenu_begin(kit *k, const char *key, const char *label, uint32_t icon);
     void kit_submenu_end(kit *k);
 
-    /* A menubar trigger opens its popup on press; hovering another trigger
-     * while one is open switches (Base UI Menubar). While open it begins the
-     * popup and returns true: emit items, then kit_popup_end. */
-    bool kit_menubar_trigger(kit *k, const char *key, const char *label);
-
-    /* Command palette (cmdk). Emit items while open; returns the chosen index
-     * or -1. A description shows as a muted second line under the label.
-     * Items rank by text_search_score on their label, then their keywords,
-     * plus their boost, as for items used recently. */
+    /* An item of a searchable list (a select's dropdown, an autocomplete). A
+     * description shows as a muted second line under the label. Items rank
+     * by support/text_rank.h on their label, then their keywords, plus their
+     * boost. The palette and Studio's pickers are authored (Palette.rml,
+     * Picker.rml). */
     typedef struct kit_command_item
     {
         const char *label;
         const char *group;
         const char *meta;
-        const char *shortcut;
         const char *keywords;
         uint32_t icon;
         const char *description;
@@ -344,30 +348,8 @@ extern "C"
         bool submitted; /* Enter without an active suggestion; caller validates text */
         bool canceled; /* Escape restored the displayed value */
     } kit_autocomplete_result;
-    void kit_command_open(kit *k, const char *placeholder);
-    bool kit_command_is_open(const kit *k);
-    int kit_command(kit *k, const kit_command_item *items, int count);
-    /* The same, ranked against `query` rather than the typed text, as the
-     * text after a prefix such as '>'. */
-    int kit_command_filtered(kit *k, const kit_command_item *items, int count, const char *query);
-    /* Items already filtered and ranked by the caller for the current query,
-     * shown in order and grouped by first appearance. */
-    int kit_command_ranked(kit *k, const kit_command_item *items, int count);
-    const char *kit_command_query(const kit *k);
-    /* Replaces the typed text, as choosing a prefix does. */
-    void kit_command_set_query(kit *k, const char *query);
-
-    /* A searchable choice list anchored to its trigger. Search ranks labels
-     * and keywords, keeps groups together, and returns the selected item's
-     * original index. Call kit_dropdown each frame while open. Calling open
-     * again from its same trigger closes it. open_at takes an anchor rect in
-     * overlay coordinates and uses the last emitted item as the trigger for
-     * popup ownership and focus restoration. */
-    void kit_dropdown_open(kit *k, const char *key, const char *placeholder);
-    void kit_dropdown_open_at(kit *k, const char *key, kit_rect anchor, const char *placeholder);
+    /* Whether a select's searchable choice list (`select:<path>`) is open. */
     bool kit_dropdown_is_open(const kit *k, const char *key);
-    const char *kit_dropdown_query(const kit *k, const char *key);
-    int kit_dropdown(kit *k, const char *key, const kit_command_item *items, int count);
     /* Inline text input with an anchored, list-only suggestion popup. `key` is
      * the local child key in the current kit container. `value` remains caller-
      * owned and is never changed; query is NULL while closed and empty before
@@ -387,20 +369,6 @@ extern "C"
     );
     /* Close after accepting a submitted free-text value. */
     void kit_autocomplete_close(kit *k, const char *key);
-    /* A select field backed by searchable, grouped/icon choices. `value` is
-     * the selected item index, as for kit_choice. */
-    bool kit_choice_items(
-        kit *k,
-        const char *key,
-        int *value,
-        const kit_command_item *items,
-        int count,
-        unsigned flags
-    );
-
-    /* Splitter: drag along axis 0 (x) or 1 (y). Returns true while value changes.
-     */
-    bool kit_splitter(kit *k, const char *key, int axis, float *value, float minimum, float maximum, bool invert);
 
     /* A surface shows a host texture ("kit:<name>") and receives raw pointer
      * input. Its returned element lasts while this key is emitted. */
@@ -427,6 +395,8 @@ extern "C"
      * from a ui asset (render/ui.h). It lasts while its key is emitted. Keys
      * typed inside it are the content's, except Escape and Tab in a popup. */
     rml_element *kit_host(kit *k, const char *key, const char *cls);
+    /* The last item's element, where an authored popover anchors. */
+    rml_element *kit_item_element(kit *k);
     /* A host that covers the window above the editor and takes the pointer, for
      * hosted modal content such as a dialog. While it shows, Tab and Shift+Tab
      * move the focus through its content only (Base UI's Dialog). */
@@ -467,11 +437,15 @@ extern "C"
     /* True once, the frame after the toast's action was pressed. */
     bool kit_toast_action(kit *k, int id);
 
-    /* Drag and drop (dnd-kit). The last item becomes a source: moving 5 dp with
-     * the button held, or holding 200 ms within 10 dp, picks it up; an overlay
-     * follows the pointer and Escape cancels. The last item becomes a target
-     * for one type: it is marked data-drop-over while a matching drag is over
-     * it and returns true, with the payload, on the frame a drop lands. */
+    /* Drag and drop (dnd-kit), thin wrappers over the drag every document
+     * shares (ui/drag.h), so kit and authored lists drag into each other. The
+     * last item becomes a source (data-drag): moving FEEL_DRAG_DP with the
+     * button held picks it up; an overlay follows the pointer and Escape
+     * cancels. The last item becomes a target (data-drop) for `type`, and for
+     * each other type another call names: while a drag it accepts runs it is
+     * marked data-drop-accept, and data-drop-over while that drag is over it;
+     * it returns true, with the payload, in the frame after a drop of `type`
+     * lands on it. */
     typedef struct kit_drag_desc
     {
         const char *type; /* e.g. "prototype" */
@@ -481,35 +455,15 @@ extern "C"
     } kit_drag_desc;
     void kit_drag_source(kit *k, const kit_drag_desc *desc);
     bool kit_drop_target(kit *k, const char *type, char *payload, size_t size);
+    /* While a drag the last target accepts is over it (dnd-kit's `over`), its
+     * type and payload, so the target can preview the drop. */
+    bool kit_drop_hover(kit *k, char *type, size_t type_size, char *payload, size_t size);
+    /* What dropping here would do, under the overlay's label until the
+     * pointer reaches another target, as dnd-kit announces a drag over a
+     * droppable. */
+    void kit_drag_hint(kit *k, const char *text);
     /* A drag of this type (any when NULL) is in progress. */
     bool kit_dragging(const kit *k, const char *type);
-
-    /* Live line chart (Liveline, with Recharts' ticks). Series are time-ascending
-     * samples; the right edge is `now` and `window` seconds are shown. The range
-     * follows the data with a 12% margin and eases toward it; curves never
-     * overshoot a sample. The chart's `color` draws the first series and its
-     * `border-color` the grid. Returns the time under the pointer, or -1. */
-    typedef struct kit_chart_series
-    {
-        const float *times; /* seconds, ascending */
-        const float *values;
-        int count;
-        uint32_t color; /* 0xRRGGBBAA; 0 uses the chart's color */
-    } kit_chart_series;
-    typedef struct kit_chart_desc
-    {
-        const kit_chart_series *series;
-        int series_count;
-        double now;
-        float window;    /* seconds; 0 means 30 */
-        float min, max;  /* both 0: the range follows the data */
-        float reference; /* a dashed line such as a frame budget; 0 none */
-        const char *unit;
-        int precision;
-        bool fill; /* area under the first series */
-        bool live; /* pulse the newest point */
-    } kit_chart_desc;
-    float kit_chart(kit *k, const char *key, const char *cls, const kit_chart_desc *desc);
 
     /* Node-editor wires and the canvas grid, drawn by one element (xyflow
      * edges, Blender noodles). A wire end anchors to the center of the element
@@ -527,7 +481,9 @@ extern "C"
     enum
     {
         KIT_WIRE_DASHED = 1 << 0,
-        KIT_WIRE_FLOW = 1 << 1, /* markers travel from source to target */
+        /* Bubbles travel from source to target at a constant on-screen speed,
+         * evenly spaced, sized by `pulse` (Unreal's execution pulses). */
+        KIT_WIRE_FLOW = 1 << 1,
     };
     typedef struct kit_wire
     {
@@ -538,9 +494,10 @@ extern "C"
         uint32_t color; /* 0xRRGGBBAA */
         float width;    /* dp; 0 means 1.5 */
         unsigned flags;
-        float flow;          /* seconds, the marker phase with KIT_WIRE_FLOW */
-        float flow_width;    /* optional hot stroke width in dp; 0 none */
-        uint32_t flow_color; /* hot stroke/marker color; 0 uses color */
+        float flow;       /* seconds, the bubbles' phase with KIT_WIRE_FLOW */
+        float pulse;      /* the bubbles' size, 0 to 1 */
+        float flow_width; /* optional hot stroke width in dp; 0 none */
+        uint32_t flow_color; /* hot stroke/bubble color; 0 uses color */
     } kit_wire;
     typedef struct kit_wires_desc
     {
@@ -551,6 +508,9 @@ extern "C"
         float grid;               /* line spacing in dp; 0 draws no grid */
         float grid_x, grid_y; /* grid coordinate at the element's top-left */
         uint32_t grid_color, grid_major_color;
+        /* Screen pixels per dp without the canvas's zoom, in which bubble
+         * spacing and speed stay constant; 0 uses the canvas's dp ratio. */
+        float flow_scale;
     } kit_wires_desc;
     void kit_wires(kit *k, const char *key, const char *cls, const kit_wires_desc *desc);
     /* The cubic pieces of a wire drawn in `style` through `count` knots, given
@@ -585,6 +545,9 @@ extern "C"
     /* True while focus can receive typed characters, including a focused number
      * field. */
     bool kit_accepts_text(const kit *k);
+    /* True while an input or textarea has focus: a text field, not a code
+     * editor or a hosted control. */
+    bool kit_input_focused(const kit *k);
     bool kit_wants_pointer(const kit *k);
     /* Width in dp of one line of the configured standard face at `size` dp
      * and `weight` (400 regular),
@@ -631,8 +594,8 @@ extern "C"
     void kit_highlight(kit *k, const char *key, const kit_highlight_desc *desc, const char *cls);
     /* A readable path for `element`: the key path of one the kit emitted,
      * else the nearest emitted ancestor's path and tag#id.class steps below
-     * it. True when the kit draws it, rather than content mounted in a
-     * kit_host or an element of another document. */
+     * it. True when the kit draws it, in any of its documents, rather than
+     * content mounted in a kit_host or an element of another document. */
     bool kit_element_path(const kit *k, rml_element *element, char *out, size_t size);
     /* tag#id.class.class, as a selector names the element. */
     void kit_element_selector(rml_element *element, char *out, size_t size);

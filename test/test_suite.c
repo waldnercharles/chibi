@@ -96,9 +96,43 @@ int scene_documents_run(const char *program);
 int studio_documents_run(const char *program);
 int studio_models_run(const char *program);
 int studio_properties_run(const char *program);
+/* Lists and drag (workstream F4). */
+int studio_lists_run(const char *program);
+/* The Outliner (workstream P2). */
+int studio_outliner_run(const char *program);
+int studio_output_run(const char *program);
+void test_ui_lists();
+/* Members (workstream P5). */
+int studio_members_run(const char *program);
+int studio_inspector_run(const char *program);
+int studio_shell_run(const char *program);
+/* The Scene area (workstream C1). */
+int studio_scene_run(const char *program);
+/* The editor chrome (workstream C2). */
+int studio_chrome_run(const char *program);
+int studio_palette_run(const char *program);
+int studio_graph_chrome_run(const char *program);
+int studio_panels_run(const char *program);
+/* The visual designer (workstream D1). */
+int studio_designer_run(const char *program);
 int studio_graph_inputs_run(const char *program);
+/* Asset thumbnails. */
+void test_studio_minimap();
+int studio_thumbnails_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
+/* Activations' arguments, event context and anchor, and contextmenu
+   (test/editor/ui_activations.c, workstream F1). */
+void test_ui_activations();
+/* Game documents' events reach behaviors in the update that follows, typed
+   (test/editor/game_ui_events.c). */
+void test_game_ui_events();
+/* Studio's editor nodes only in Studio's project
+   (test/editor/studio_nodes_gate.c). */
+void test_studio_nodes_gate();
+/* The S0 UI bench (test/editor/ui_bench.h). */
+int ui_bench_headless();
+int ui_bench_studio(const char *program, bool members_only);
 int rmlui_render_run(const char *program, bool gles);
 /* Trackpad pinch (G). */
 void test_studio_pinch();
@@ -121,6 +155,12 @@ void test_code_intelligence();
 
 /* ---------- Settings (workstream F) ---------- */
 void test_studio_settings();
+/* The Scene view's game preview while editing. */
+void test_scene_view();
+/* One selection model, commands on the selection and the object clipboard. */
+void test_scene_selection();
+/* The graph debug target while the game runs. */
+void test_debug_target();
 /* Visual designer (workstream H). */
 void test_ui_designer();
 
@@ -129,12 +169,21 @@ void test_kit_slot();
 
 /* ---------- Wave 2 follow-ups (workstream P) ---------- */
 void test_studio_zoom();
+/* The Scene's transform tools. */
+void test_scene_gizmo(const char *program);
 
 /* ---------- Native elements for authored UI (workstream N) ---------- */
 void test_ui_motion();
 
 /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
 void test_arena_hud();
+
+/* ---------- One document per area (workstream F5) ---------- */
+void test_kit_documents();
+/* ---------- Native controls (workstream F2) ---------- */
+void test_ui_controls();
+/* ---------- Popovers (workstream F3) ---------- */
+void test_ui_popovers();
 
 static int fails;
 
@@ -270,6 +319,9 @@ TEST_CASE(all_checks)
     test_tree_watch();
     test_rcss();
     test_scene_debug();
+    test_scene_view();
+    test_scene_selection();
+    test_debug_target();
     test_appearance_geometry();
     test_mesh_surface();
     test_mesh_asset();
@@ -278,6 +330,7 @@ TEST_CASE(all_checks)
     test_movement_trail();
     test_sdf_motion();
     test_material();
+    test_material_lod();
     test_wave();
     test_scene_history();
     test_enemy_attack();
@@ -293,6 +346,7 @@ TEST_CASE(all_checks)
     test_collab_replay();
     test_text_overlay();
     test_studio_commands();
+    test_studio_minimap();
     test_ui_document();
     test_game_ui();
     test_game_ui_presenter();
@@ -301,7 +355,10 @@ TEST_CASE(all_checks)
     /* Trackpad pinch (G). */
     test_studio_pinch();
     test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
-    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data and lay out text in flex rows");
+    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data, follow array edits with constant-time item lookups, lay out text in flex rows, build data-when copies and send input and change from text fields");
+    test_ui_activations();
+    test_game_ui_events();
+    test_studio_nodes_gate();
     /* UI source maps (workstream A) */
     test_ui_sources();
     /* UI documents (workstream D). */
@@ -326,10 +383,19 @@ TEST_CASE(all_checks)
     test_ui_designer();
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */
     test_studio_zoom();
+    test_scene_gizmo(program_name);
     /* ---------- Native elements for authored UI (workstream N) ---------- */
     test_ui_motion();
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
     test_arena_hud();
+    /* ---------- One document per area (workstream F5) ---------- */
+    test_kit_documents();
+    /* ---------- Native controls (workstream F2) ---------- */
+    test_ui_controls();
+    /* ---------- Popovers (workstream F3) ---------- */
+    test_ui_popovers();
+    /* ---------- Lists and drag (workstream F4) ---------- */
+    test_ui_lists();
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
@@ -419,6 +485,16 @@ int main(int argc, char **argv)
         extern int sdf_material_run(const char *program);
         registry_validate();
         return sdf_material_run(program_name);
+    }
+    /* Thumbnails persist nowhere but where a test puts them. */
+    setenv("CHIBI_THUMBNAIL_CACHE", "", 1);
+    /* Checks start from default preferences and never touch the user's:
+       every build shares their file, and other sessions change it. */
+    char prefs[] = "/tmp/chibi-test-prefs-XXXXXX";
+    if (!getenv("CHIBI_PREFS_DIR")) {
+        char *made = mkdtemp(prefs);
+        assert(made);
+        setenv("CHIBI_PREFS_DIR", made, 1);
     }
     if (argc == 2 && !strcmp(argv[1], "--mesh-material")) {
         extern int mesh_material_run(const char *program);
@@ -971,6 +1047,7 @@ int main(int argc, char **argv)
         registry_validate();
         test_compiled_loops();
         test_compiled_conversions();
+        test_compiled_selects();
         return 0;
     }
     if (argc > 1 && strcmp(argv[1], "--whole-alias") == 0) {
@@ -1061,6 +1138,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--editor-flow") == 0) {
         registry_validate();
         test_editor_flow();
+        test_debug_target();
         run_runtime_instance_checks();
         return fails ? 1 : 0;
     }
@@ -1073,7 +1151,12 @@ int main(int argc, char **argv)
         registry_validate();
         int documents = studio_documents_run(program_name);
         int graph_inputs = studio_graph_inputs_run(program_name);
-        return documents || graph_inputs || fails ? 1 : 0;
+        int thumbnails = studio_thumbnails_run(program_name);
+        return documents || graph_inputs || thumbnails || fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--studio-thumbnails") == 0) {
+        registry_validate();
+        return studio_thumbnails_run(program_name) || fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--studio-models") == 0) {
         registry_validate();
@@ -1083,9 +1166,82 @@ int main(int argc, char **argv)
         registry_validate();
         return studio_graph_inputs_run(program_name) || fails ? 1 : 0;
     }
+    /* Lists and drag (workstream F4): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-lists") == 0) {
+        registry_validate();
+        return studio_lists_run(program_name) || fails ? 1 : 0;
+    }
+    /* The Outliner (workstream P2): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-outliner") == 0) {
+        registry_validate();
+        return studio_outliner_run(program_name) || fails ? 1 : 0;
+    }
+    /* Output (workstream P4): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-output") == 0) {
+        registry_validate();
+        return studio_output_run(program_name) || fails ? 1 : 0;
+    }
+    /* Members (workstream P5): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-members") == 0) {
+        registry_validate();
+        return studio_members_run(program_name) || fails ? 1 : 0;
+    }
+    /* The UI Inspector (workstream I1): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-inspector") == 0) {
+        registry_validate();
+        return studio_inspector_run(program_name) || fails ? 1 : 0;
+    }
+    /* The visual designer (workstream D1): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-designer") == 0) {
+        registry_validate();
+        return studio_designer_run(program_name) || fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--studio-shell") == 0) {
+        registry_validate();
+        return studio_shell_run(program_name) || fails ? 1 : 0;
+    }
+    /* The Scene area (workstream C1): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-scene") == 0) {
+        registry_validate();
+        return studio_scene_run(program_name) || fails ? 1 : 0;
+    }
+    /* The editor chrome (workstream C2): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-chrome") == 0) {
+        registry_validate();
+        return studio_chrome_run(program_name) || fails ? 1 : 0;
+    }
+    /* The palette, pickers and refactor popover (workstream C4): Studio's,
+       in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-palette") == 0) {
+        registry_validate();
+        return studio_palette_run(program_name) || fails ? 1 : 0;
+    }
+    /* Graph chrome (workstream G1): the graph's menus and Properties' Node
+       and Member tabs, Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-graph-chrome") == 0) {
+        registry_validate();
+        return studio_graph_chrome_run(program_name) || fails ? 1 : 0;
+    }
+    /* Authored panels, game UI and the areas they take turns in: Studio's,
+       in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-panels") == 0) {
+        registry_validate();
+        return studio_panels_run(program_name) || fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--studio-properties") == 0) {
         registry_validate();
         return studio_properties_run(program_name) || fails ? 1 : 0;
+    }
+    /* The S0 UI bench; `headless`, `studio` or `members` runs only those
+       cases. */
+    if (argc > 1 && strcmp(argv[1], "--ui-bench") == 0) {
+        registry_validate();
+        const char *only = argc > 2 ? argv[2] : "";
+        bool members = strcmp(only, "members") == 0,
+             headless = strcmp(only, "studio") != 0 && !members,
+             studio = strcmp(only, "headless") != 0;
+        int failed = headless ? ui_bench_headless() : 0;
+        return failed || (studio && ui_bench_studio(program_name, members)) ? 1 : 0;
     }
     /* UI documents (workstream D). */
     if (argc > 1 && strcmp(argv[1], "--ui-documents") == 0) {
@@ -1094,6 +1250,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--rmlui-binding") == 0) {
+        return test_rmlui_binding() ? 0 : 1;
     }
     /* Visual designer (workstream H) alone. */
     if (argc > 1 && strcmp(argv[1], "--ui-designer") == 0) {
@@ -1258,6 +1417,11 @@ int main(int argc, char **argv)
         test_kit_slot();
         return fails ? 1 : 0;
     }
+    /* ---------- One document per area (workstream F5) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--kit-documents")) {
+        test_kit_documents();
+        return fails ? 1 : 0;
+    }
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-followups")) {
         test_game_ui_presenter();
@@ -1272,6 +1436,30 @@ int main(int argc, char **argv)
         test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
         test_ui_motion();
         test_kit_slot();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Native controls (workstream F2) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-controls")) {
+        test_ui_controls();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Popovers (workstream F3) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-popovers")) {
+        test_ui_popovers();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Lists and drag (workstream F4) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-lists")) {
+        test_ui_lists();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--game-ui-events")) {
+        test_game_ui_events();
+        test_game_ui_presenter();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--studio-nodes-gate")) {
+        test_studio_nodes_gate();
         return fails ? 1 : 0;
     }
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */

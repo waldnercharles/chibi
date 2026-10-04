@@ -9,7 +9,9 @@
 #include "render/geometry_2d.h"
 #include "render/gpu_clock.h"
 #include "render/gpu_timing.h"
+#include "render/grid_2d.h"
 #include "render/material.h"
+#include "render/material_lod.h"
 #include "render/material_raster.h"
 #include "render/mesh_projection.h"
 #include "render/mesh_surface.h"
@@ -64,6 +66,10 @@ struct app_scene_renderer
     GameStarfield2D background_style;
     engine_viewport_camera background_camera;
     bool background_valid, gpu_clock;
+    /* A host's grid under the scene (app_scene_renderer_set_grid), and the
+       one the background shows. */
+    float grid, background_grid;
+    bool unlit, fogless; /* app_scene_renderer_set_view */
     /* The scene's GPU work each frame, for adaptive lighting resolution. */
     render_gpu_span span;
     /* Without GPU timestamps, the previous frame's start in ticks. */
@@ -74,7 +80,9 @@ struct app_scene_renderer
     render_mesh_material_actor *meshes;
     render_mesh_surface *mesh_surfaces;
     render_material_border_cache *border;
+    render_material_lod *lod;
     draw_actor *actors;
+    render_skip skip; /* the entities the current draw leaves out */
     ecs_world *world;
     engine_viewport_camera camera;
     int width, height;
@@ -162,6 +170,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     afree(renderer->fragment_programs);
     afree(renderer->entities);
     render_material_border_cache_free(renderer->border);
+    render_material_lod_free(renderer->lod);
     afree(renderer->actors);
     free(renderer);
 }
@@ -191,6 +200,44 @@ int app_scene_renderer_particle_count(const app_scene_renderer *renderer)
 {
     return renderer && renderer->arena ? render_arena_particle_count(renderer->arena)
                                        : 0;
+}
+
+void app_scene_renderer_set_view(app_scene_renderer *renderer, bool unlit, bool fogless)
+{
+    renderer->unlit = unlit;
+    renderer->fogless = fogless;
+}
+
+/* The fog of war over the frame, unless the view leaves it out. */
+static bool draw_fog(
+    app_scene_renderer *renderer,
+    const engine *runtime,
+    const engine_viewport_camera *frame,
+    const render_arena_camera *camera
+)
+{
+    return renderer->fogless || render_fog_draw(
+                                    renderer->fog,
+                                    engine_visibility(runtime),
+                                    frame,
+                                    camera,
+                                    renderer->time
+                                );
+}
+
+/* Without fog, only an object's own hidden state hides it. */
+static bool entity_shown(
+    const app_scene_renderer *renderer,
+    const engine *runtime,
+    ecs_world *world,
+    ecs_entity entity
+)
+{
+    if (!renderer->fogless) {
+        return engine_entity_visible(runtime, world, entity);
+    }
+    const GameRenderState *state = GAME_GameRenderState_get_const(world, entity);
+    return !runtime || !state || !state->hidden;
 }
 
 static bool arena_environment(app_scene_renderer *renderer, ecs_world *world, GameEnvironment *settings)
@@ -278,7 +325,8 @@ bool app_scene_renderer_draw3d(
     const game_particles *particles,
     const render_arena_camera *camera,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 )
 {
     if (!renderer) {
@@ -301,17 +349,11 @@ bool app_scene_renderer_draw3d(
     }
     bool drawn = arena_finish(
         renderer,
-        render_arena_draw(renderer->arena, world, particles, camera, renderer->time, runtime)
+        render_arena_draw(renderer->arena, world, particles, camera, renderer->time, runtime, skip)
     );
     engine_viewport_camera frame;
     engine_viewport_get_camera(viewport, &frame);
-    return drawn && render_fog_draw(
-                        renderer->fog,
-                        engine_visibility(runtime),
-                        &frame,
-                        camera,
-                        renderer->time
-                    );
+    return drawn && draw_fog(renderer, runtime, &frame, camera);
 }
 
 void app_scene_renderer_reset(app_scene_renderer *renderer)
@@ -325,6 +367,11 @@ void app_scene_renderer_reset(app_scene_renderer *renderer)
     if (renderer && renderer->radiance) {
         render_radiance_reset(renderer->radiance);
     }
+}
+
+int app_scene_renderer_material_pieces(const app_scene_renderer *renderer)
+{
+    return acount(renderer->entities);
 }
 
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status)
@@ -572,6 +619,19 @@ static void mask_edges(
     }
 }
 
+/* The coarsest level up to level that keeps a mask's border as thick as
+ * authored: whole cells of that level must still make up the border's. */
+static int border_level(const material_mask *mask, float border_width, int level)
+{
+    int cells = (int)ceilf(border_width / mask->cell_size);
+    int coarsest = 0;
+    while (coarsest < level && cells % 2 == 0) {
+        cells /= 2;
+        coarsest++;
+    }
+    return coarsest;
+}
+
 /* Marks the entities appended since first as the pieces of a tile group, and
  * pads their bounds for the pixel footprint their coverage integrates. */
 static void tile_group(app_scene_renderer *renderer, int first, float group)
@@ -772,6 +832,10 @@ static bool collect(
         renderer->border = render_material_border_cache_new(65536, 16u * 1024 * 1024);
     }
     render_material_border_cache_begin(renderer->border);
+    if (!renderer->lod) {
+        renderer->lod = render_material_lod_new();
+    }
+    render_material_lod_begin(renderer->lod);
     asetlen(renderer->entities, 0);
     aclear(renderer->meshes);
     renderer->tile_groups = 0;
@@ -779,7 +843,8 @@ static bool collect(
     collect_order(renderer, world);
     for (int actor = 0; actor < acount(renderer->actors); actor++) {
         ecs_entity entity = renderer->actors[actor].entity;
-        if (!engine_entity_visible(runtime, world, entity)) {
+        if (!entity_shown(renderer, runtime, world, entity) ||
+            render_skip_has(renderer->skip, entity)) {
             continue;
         }
         const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
@@ -912,6 +977,17 @@ static bool collect(
         }
         const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
         if (mask) {
+            /* Distant masks draw a coarser level, about a piece per pixel. */
+            int level = render_material_lod_level(
+                renderer->lod,
+                mask->cell_size,
+                .5f / renderer->pixel_aa
+            );
+            if (appearance.border_width > 0 &&
+                GAME_GameMaterial_get_const(world, entity)) {
+                level = border_level(mask, appearance.border_width, level);
+            }
+            mask = render_material_lod_get(renderer->lod, mask, level);
             float padding = fmaxf(appearance.antialias, renderer->pixel_aa);
             material_rect bounds = { 0,
                                      0,
@@ -1259,16 +1335,11 @@ static bool scene_surface_quality(app_scene_renderer *renderer, ecs_world *world
     return true;
 }
 
-static CF_Texture scene_background(
-    app_scene_renderer *renderer,
-    ecs_world *world,
-    const engine_viewport_camera *camera
-)
+static bool starfield(ecs_world *world, GameStarfield2D *style)
 {
-    GameStarfield2D style = { 0 };
     ecs_component_id component = GAME_COMPONENT_GameStarfield2D.id;
     if (!ecs_world_component(world, component)) {
-        return (CF_Texture){ 0 };
+        return false;
     }
     ecs_query query;
     int result = ecs_query_begin(world, &query, &component, 1);
@@ -1276,42 +1347,30 @@ static CF_Texture scene_background(
     ecs_entity entity;
     bool found = ecs_query_next(&query, &entity);
     if (found) {
-        style = *GAME_GameStarfield2D_get_const(world, entity);
+        *style = *GAME_GameStarfield2D_get_const(world, entity);
     }
     ecs_query_end(&query);
-    if (!found) {
-        return (CF_Texture){ 0 };
-    }
-    if (!renderer->background.id) {
-        renderer->background = cf_make_canvas(
-            cf_canvas_defaults(renderer->width, renderer->height)
-        );
-        renderer->background_valid = false;
-    }
+    return found;
+}
+
+static void draw_starfield(app_scene_renderer *renderer, GameStarfield2D *style, CF_Aabb screen)
+{
     if (!renderer->background_shader.id) {
         renderer->background_shader = cf_make_draw_shader("starfield.shd");
     }
-    if (renderer->background_valid &&
-        !memcmp(&style, &renderer->background_style, sizeof style) &&
-        !memcmp(camera, &renderer->background_camera, sizeof *camera)) {
-        return cf_canvas_get_target(renderer->background);
-    }
-    renderer->background_style = style;
-    renderer->background_camera = *camera;
-    renderer->background_valid = true;
-    CF_V2 center = { camera->center_x, camera->center_y };
-    CF_V2 span = { camera->span_width, camera->span_height };
+    CF_V2 center = cf_center(screen);
+    CF_V2 span = { screen.max.x - screen.min.x, screen.max.y - screen.min.y };
     cf_draw_push_shader(renderer->background_shader);
     cf_draw_set_uniform("camera_pos", &center, CF_UNIFORM_TYPE_FLOAT2, 1);
     cf_draw_set_uniform("world_size", &span, CF_UNIFORM_TYPE_FLOAT2, 1);
-    cf_draw_set_uniform("far_layer", &style.far_layer, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw_set_uniform("middle_layer", &style.middle_layer, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw_set_uniform("near_layer", &style.near_layer, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw_set_uniform("parallax", &style.parallax, CF_UNIFORM_TYPE_FLOAT3, 1);
-    const unsigned colors[] = { style.color_a,
-                                style.color_b,
-                                style.color_c,
-                                style.color_d };
+    cf_draw_set_uniform("far_layer", &style->far_layer, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("middle_layer", &style->middle_layer, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("near_layer", &style->near_layer, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("parallax", &style->parallax, CF_UNIFORM_TYPE_FLOAT3, 1);
+    const unsigned colors[] = { style->color_a,
+                                style->color_b,
+                                style->color_c,
+                                style->color_d };
     const char *names[] = { "palette_a", "palette_b", "palette_c", "palette_d" };
     for (int i = 0; i < 4; i++) {
         float rgba[] = { (colors[i] >> 24) / 255.f,
@@ -1320,12 +1379,65 @@ static CF_Texture scene_background(
                          (colors[i] & 255) / 255.f };
         cf_draw_set_uniform(names[i], rgba, CF_UNIFORM_TYPE_FLOAT4, 1);
     }
-    CF_Aabb screen = { .min = { center.x - span.x * .5f, center.y - span.y * .5f },
-                       .max = { center.x + span.x * .5f, center.y + span.y * .5f } };
     cf_draw_quad_fill(screen, 0);
     cf_draw_pop_shader();
+}
+
+/* What shows where no material covers the view: the world's starfield and
+   the host's grid, or none. */
+static CF_Texture scene_background(
+    app_scene_renderer *renderer,
+    ecs_world *world,
+    const engine_viewport_camera *camera
+)
+{
+    GameStarfield2D style = { 0 };
+    bool stars = starfield(world, &style);
+    if (!stars && !renderer->grid) {
+        return (CF_Texture){ 0 };
+    }
+    if (!renderer->background.id) {
+        renderer->background = cf_make_canvas(
+            cf_canvas_defaults(renderer->width, renderer->height)
+        );
+        renderer->background_valid = false;
+    }
+    if (renderer->background_valid &&
+        !memcmp(&style, &renderer->background_style, sizeof style) &&
+        !memcmp(camera, &renderer->background_camera, sizeof *camera) &&
+        renderer->background_grid == renderer->grid) {
+        return cf_canvas_get_target(renderer->background);
+    }
+    renderer->background_style = style;
+    renderer->background_camera = *camera;
+    renderer->background_grid = renderer->grid;
+    renderer->background_valid = true;
+    CF_V2 center = { camera->center_x, camera->center_y };
+    CF_V2 span = { camera->span_width, camera->span_height };
+    CF_Aabb screen = { .min = { center.x - span.x * .5f, center.y - span.y * .5f },
+                       .max = { center.x + span.x * .5f, center.y + span.y * .5f } };
+    if (stars) {
+        draw_starfield(renderer, &style, screen);
+    } else {
+        cf_draw_push_color(cf_color_black());
+        cf_draw_quad_fill(screen, 0);
+        cf_draw_pop_color();
+    }
+    if (renderer->grid > 0) {
+        /* The backdrop is linear light the presentation exposes. */
+        float exposure = renderer->lighting.tone_mapping > 0
+                           ? renderer->lighting.exposure
+                           : 0;
+        render_grid_2d_draw(renderer->grid, screen, span.x / (float)renderer->width, exp2f(-exposure));
+    }
     cf_render_to(renderer->background, true);
     return cf_canvas_get_target(renderer->background);
+}
+
+void app_scene_renderer_set_grid(app_scene_renderer *renderer, float increment)
+{
+    assert(isfinite(increment) && increment >= 0);
+    renderer->grid = increment;
 }
 
 bool app_scene_renderer_draw(
@@ -1333,13 +1445,15 @@ bool app_scene_renderer_draw(
     ecs_world *world,
     const game_particles *particles,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 )
 {
     if (!renderer) {
         return false;
     }
     initialize_resources(renderer);
+    renderer->skip = skip;
     double gpu_ms;
     while (renderer->radiance && render_gpu_span_take(&renderer->span, &gpu_ms)) {
         render_radiance_frame_time(renderer->radiance, gpu_ms);
@@ -1375,7 +1489,7 @@ bool app_scene_renderer_draw(
     if (!scene_lighting(renderer, world, &flat)) {
         return false;
     }
-    if (!renderer->raster || !renderer->radiance) {
+    if (!renderer->raster || !renderer->radiance || renderer->unlit) {
         /* This is a supported rendering path, not a scene error. Its status is
          * available in the renderer diagnostics without covering the game. */
         renderer->error[0] = '\0';
@@ -1391,6 +1505,13 @@ bool app_scene_renderer_draw(
         if (!prepare_fragments(renderer)) {
             return false;
         }
+        if (renderer->grid > 0) {
+            CF_Aabb view = { .min = { camera.center_x - camera.span_width * .5f,
+                                      camera.center_y - camera.span_height * .5f },
+                             .max = { camera.center_x + camera.span_width * .5f,
+                                      camera.center_y + camera.span_height * .5f } };
+            render_grid_2d_draw(renderer->grid, view, camera.span_width / (float)width, 0);
+        }
         for (int i = 0; i < acount(renderer->entities); i++) {
             render_shader_fragment_draw(
                 renderer->fragment,
@@ -1399,13 +1520,7 @@ bool app_scene_renderer_draw(
                 flat
             );
         }
-        return render_fog_draw(
-            renderer->fog,
-            engine_visibility(runtime),
-            &camera,
-            NULL,
-            renderer->time
-        );
+        return draw_fog(renderer, runtime, &camera, NULL);
     }
     render_view_2d_frame frame;
     render_radiance_settings radiance = render_radiance_get_settings(renderer->radiance);
@@ -1570,13 +1685,7 @@ bool app_scene_renderer_draw(
         (CF_V2){ camera.center_x, camera.center_y },
         (CF_V2){ camera.span_width, camera.span_height }
     );
-    return render_fog_draw(
-        renderer->fog,
-        engine_visibility(runtime),
-        &camera,
-        NULL,
-        renderer->time
-    );
+    return draw_fog(renderer, runtime, &camera, NULL);
 }
 
 void app_scene_renderer_set_parallel(app_scene_renderer *renderer, bool enabled)

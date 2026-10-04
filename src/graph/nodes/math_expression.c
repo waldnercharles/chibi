@@ -1667,12 +1667,14 @@ static bool scalar_number(const pin_spec *pin)
 
 /* Behavior arithmetic runs in double. A number of another width converts on
    its way in or out, so it neither retypes an operation away from its
-   literals nor reaches an int as raw bits. */
+   literals nor reaches an int as raw bits. A bool read as a number is 1 or 0. */
 static int connect_number(graph *g, value_source from, node *to, int pin)
 {
     const pin_spec *out = &from.node->output_pins[from.pin];
     const pin_spec *in = &to->input_pins[pin];
-    bool numbers = scalar_number(out) && scalar_number(in) && out->type != in->type;
+    bool flag = out->type == PIN_BOOL && conversion_for(PIN_BOOL, in->type);
+    bool numbers = (scalar_number(out) || flag) && scalar_number(in) &&
+                   out->type != in->type;
     bool widened = numbers && in->type == PIN_F64 && (in->flags & PIN_FLAG_WILDCARD);
     const node_desc *conversion = numbers ? conversion_for(out->type, in->type) : NULL;
     int rc = graph_connect_data_conversion(g, from.node, from.pin, to, pin, conversion);
@@ -2498,6 +2500,14 @@ static void retype_result(graph *caller, node *call, int output, const pin_spec 
     afree(consumers);
 }
 
+static bool bool_wire(const graph *caller, const node *call, int pin)
+{
+    node *source = NULL;
+    int source_pin = -1;
+    return call->input_pins[pin].type == PIN_BOOL &&
+           graph_input_source(caller, call, pin, &source, &source_pin);
+}
+
 static void synchronize_call(graph *caller, node *call, const node *entry, const node *ret)
 {
     bool entry_exec = false;
@@ -2576,8 +2586,11 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
                        (call->input_pins[parameter].type == PIN_STRUCT &&
                         strcmp(call->input_pins[parameter].type_name, entry_pin->type_name) !=
                             0));
+        /* A bool wired into a generic input stays a bool; the body reads it
+           as a number through a conversion. */
         if ((entry_pin->flags & PIN_FLAG_WILDCARD) &&
-            !generic_expression_value(&call->input_pins[parameter])) {
+            !generic_expression_value(&call->input_pins[parameter]) &&
+            !bool_wire(caller, call, parameter)) {
             retype = true;
         }
         if (retype) {

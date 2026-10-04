@@ -32,7 +32,7 @@ These are our decisions, drawing on the references above. Distances are screen d
 
 - **Zoom:**
   - Range 0.1–2.0.
-  - Continuous and anchored at the cursor: `zoom · 2^(−Δy · 0.002)` per pixel of wheel delta, which is about ×1.15 per mouse notch (xyflow).
+  - Continuous and anchored at the cursor: `zoom · 2^(0.2 · notches)`, about ×1.15 a mouse notch, and a browser's 100 px of trackpad scroll is a notch, so `2^(−Δy · 0.002)` per pixel (xyflow). Every zoomable canvas shares the rate (`src/ui/input_feel.h`).
   - The focal point stays fixed for the whole wheel gesture; a gesture ends 150 ms after its last event (d3, Node-RED).
   - Fitting never zooms past 1:1 (n8n, Rete).
 - **Scrolling zooms,** from a mouse wheel or a trackpad alike, as Blender and Unreal do. One event never more than doubles or halves the zoom.
@@ -51,8 +51,8 @@ These are our decisions, drawing on the references above. Distances are screen d
 ### Selection and nodes
 
 - **Clicks and drags:**
-  - A press becomes a drag after 3 dp of movement, by distance only (Blender; ComfyUI's ADR).
-  - The double-click window is 300 ms.
+  - A press becomes a drag after 4 dp of movement, by distance only (Blender's 3 px; ComfyUI's ADR), as everywhere in Studio.
+  - The double-click window is 500 ms and 3 dp, the operating systems' and RmlUi's, as everywhere in Studio.
 - **Box selection:**
   - A left-drag on empty canvas draws a box that selects nodes it intersects (tldraw, Svelte Flow).
   - Shift adds and Ctrl subtracts (Blender, ComfyUI).
@@ -171,8 +171,10 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
 
 ### Debugging
 
+- **Debug target:** while the game runs, the graph shows one instance, which follows the selection; the header's target menu lists every running instance, searchable, and No target (Unreal's debug object). Only the target records activity: a count and the last time per wire (`behavior_instance_record_activity`), and its latest completed run per event for values. Where compiled code carries no observers, the target runs it interpreted, so every wire and value is recorded; other instances keep their compiled code.
 - **Execution:**
-  - Executed exec wires pulse. Markers are spaced 30 units apart and move at 150 units/s for 2 s (imgui-node-editor `Flow`); flow-heat timings stay.
+  - Wires the target ran pulse (Unreal): bubbles 30 screen dp apart travel at 120 screen dp/s, whole while the wire fires again within 0.1 s, then shrink to nothing over 0.4 s. A data wire pulses when its consumer pulls its value. Execution wires also keep the flow-heat glow for about 2.6 s. Reduce Motion shows only the glow.
+  - A node the target is running wears a rim that fades over 0.4 s; its title's tooltip gives its run count and last run.
   - The running node gets a 3 dp accent outline, and errors a red one (ComfyUI, Unity).
   - Branches that didn't run draw dashed (Rivet).
 - **Breakpoints:** F9 toggles a breakpoint, drawn as a red octagon; outlined means disabled (Unreal).
@@ -187,7 +189,7 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - A node with an error or warning gets a badge on its top edge whose tooltip gives the message (Blender's node warnings).
   - While the scene plays, a node where runs failed gets an error badge.
   - Output ▸ Problems lists diagnostics as "Graph › Node" and the message (Unreal's Compiler Results). Output ▸ Runtime lists failed runs as "Behavior › Node", one row per node and message with a count (Unreal's PIE message log). A row opens the node's graph, selects the node and frames it.
-- **Values:** Watch Values in the node menu watches its data pins. Watched pins show value bubbles beside their sockets, and hovering a pin shows its value the same way (Unreal, Blender). Values come from the inspected run, such as one paused at a breakpoint, or from the preview for pins it can evaluate; previews can't read bindings.
+- **Values:** Watch Values in the node menu watches its data pins. Watched pins show value bubbles beside their sockets, and hovering a pin shows its value the same way (Unreal, Blender). Show Live Values gives every data output a quieter chip (Unreal's watches everywhere), refreshed ten times a second. Values come from the inspected run, such as one paused at a breakpoint, else from the target's latest completed runs; a pure output reads as what its consumer received. Without a running target they come from the preview for pins it can evaluate; previews can't read bindings.
 - **Timings:** an optional per-node timing overlay (Blender).
 
 ### Automatic layout

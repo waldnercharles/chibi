@@ -1078,14 +1078,14 @@ static bool scene_program_counters(const char *shape_name)
     engine_viewport_set_view(viewport, &view);
     game_particles *particles = game_particles_new();
     cf_app_update(NULL);
-    bool ok = app_scene_renderer_draw(renderer, world, particles, viewport, NULL);
+    bool ok = app_scene_renderer_draw(renderer, world, particles, viewport, NULL, (render_skip){ 0 });
     cf_app_draw_onto_screen(false);
     render_mesh_material_work first = app_scene_renderer_mesh_work(renderer);
     ok = ok && first.sdf_instances == 1 && first.sdf_draw_calls > 0 &&
          first.sdf_program_count == 1 && first.sdf_program_compilations == 1;
     if (ok) {
         cf_app_update(NULL);
-        ok = app_scene_renderer_draw(renderer, world, particles, viewport, NULL);
+        ok = app_scene_renderer_draw(renderer, world, particles, viewport, NULL, (render_skip){ 0 });
         cf_app_draw_onto_screen(false);
         render_mesh_material_work second = app_scene_renderer_mesh_work(renderer);
         ok = ok && second.sdf_instances == 1 &&

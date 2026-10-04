@@ -391,18 +391,19 @@ target_link_libraries(authoring_graph PUBLIC runtime_support core)
 
 add_library(automation STATIC src/automation/controller.c src/automation/field_preview.c
     src/automation/graph_optimize.c src/automation/navigation.c
-    src/automation/prototype_edit.c src/automation/scene_edit.c src/automation/asset_write.c)
+    src/automation/prototype_edit.c src/automation/prototype_instance.c src/automation/scene_edit.c
+    src/automation/asset_write.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core authoring_graph editor)
 
 # --- material rasterization and radiance transport --------------------------
 add_library(chibi_render STATIC src/render/fog.c src/render/material_raster.c src/render/fluid_raster.c src/render/reflections.c src/render/radiance.c src/render/post_2d.c src/render/gpu_timing.c
-    src/render/geometry_2d.c
+    src/render/geometry_2d.c src/render/grid_2d.c
     src/render/mesh_surface.c src/render/mesh_material.c
     src/render/arena3d.c src/render/arena_geometry.c src/render/arena_influence.c
     src/render/arena_parts.c src/render/arena_visual.c src/render/arena_trail.c
     src/render/arena_camera.c src/render/arena_pick.c src/render/arena_post.c
-    src/render/ui.c)
+    src/render/field_image.c src/render/ui.c)
 target_include_directories(chibi_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_render PUBLIC runtime_support core cute chibi_ui)
 if(APPLE)
@@ -456,6 +457,10 @@ set(APP_REGISTRY_PACKS
     CORE_COMPONENT_PACK
 )
 chibi_registry("${APP_REGISTRY}" ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+# The editor's targets also know Studio's editor nodes (studio_nodes.c), which
+# only Studio's own world binds a service for; games' runtimes never list them.
+set(EDITOR_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_registry.c)
+chibi_registry("${EDITOR_REGISTRY}" ${APP_REGISTRY_PACKS} STUDIO_PACK GAME_REGISTRY_PACK)
 
 
 function(chibi_watch_platform target)
@@ -473,7 +478,7 @@ function(chibi_watch_platform target)
 endfunction()
 
 set(HOST_SOURCES src/host/main.c src/host/module.c src/host/state_file.c src/host/stacktrace.c)
-add_library(chibi_sources OBJECT ${APP_SOURCES} ${APP_REGISTRY})
+add_library(chibi_sources OBJECT ${APP_SOURCES} ${EDITOR_REGISTRY})
 target_include_directories(chibi_sources PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(chibi_sources PRIVATE chibi_render editor engine runtime_support cute)
 chibi_enable_tracy(chibi_sources)
@@ -506,7 +511,7 @@ else()
     set_target_properties(chibi PROPERTIES LINKER_LANGUAGE CXX)
 endif()
 
-add_executable(chibi_ctl tools/chibi_ctl/main.c ${APP_REGISTRY})
+add_executable(chibi_ctl tools/chibi_ctl/main.c ${EDITOR_REGISTRY})
 add_dependencies(chibi_ctl generate_runtime_registry)
 target_include_directories(chibi_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_ctl PRIVATE automation chibi_render editor engine)
@@ -608,6 +613,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/content/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/content/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/modeling_lab/content/*"
+        "${CMAKE_CURRENT_SOURCE_DIR}/projects/studio/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/rmlui/resources/*"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/*")
     set_property(TARGET chibi APPEND PROPERTY LINK_DEPENDS
@@ -616,6 +622,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/arena2d/project.kdl"
         "${CMAKE_CURRENT_SOURCE_DIR}/projects/modeling_lab/project.kdl"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_cache.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_frames.js"
@@ -626,6 +633,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_options(chibi PRIVATE
         "--shell-file=${CHIBI_WEB_SHELL}"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_storage.js"
+        "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_cache.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/collab/storage.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_launch.js"
         "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/tools/web_frames.js"
@@ -649,7 +657,7 @@ endif()
 
 # --- test registry: core and runtime_support packs for the consolidated suite ---
 set(TEST_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/test_registry.c)
-chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGED_PACK WHOLE_SEARCH_PACK ${APP_REGISTRY_PACKS} GAME_REGISTRY_PACK)
+chibi_registry("${TEST_REGISTRY}" WHOLE_ALIAS_PACK WHOLE_VALUE_PACK WHOLE_MANAGED_PACK WHOLE_SEARCH_PACK ${APP_REGISTRY_PACKS} STUDIO_PACK GAME_REGISTRY_PACK)
 
 # --- test suite: consolidated headless regression checks --------------------
 file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
@@ -708,8 +716,14 @@ add_executable(test_suite
     src/editor/workspace/scene_actors.c
     src/editor/workspace/scene_runtime.c
     src/editor/workspace/scene_tabs.c
+    src/editor/workspace/scene_view.c
     src/editor/workspace/scene_viewport.c
     src/editor/workspace/model_preview.c
+    src/editor/workspace/scene_gizmo.c
+    src/editor/workspace/scene_overlays.c
+    src/editor/workspace/scene_world_preview.c
+    src/editor/workspace/scene_asset_drop.c
+    src/editor/documents/scene_prototype_actions.c
     src/editor/documents/scene_disk.c
     src/editor/documents/scene_document.c
     src/editor/documents/scene_documents.c
@@ -740,7 +754,9 @@ add_executable(test_suite
     test/sdf_motion.c
     src/render/sdf_shapes.c
     src/render/scene_renderer.c
+    src/render/shader_preview.c
     test/material.c
+    test/material_lod.c
     test/wave.c
     test/radiance.c
     test/material_sampling.c
@@ -913,6 +929,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:behavior_backend_smoke>"
         COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:runtime_backend_smoke>"
         DEPENDS behavior_backend_smoke runtime_backend_smoke VERBATIM)
+    # The S0 UI bench's headless cases (docs/studio-rml-migration.md) under
+    # Node: `node build-web/ui_bench.js` from the repository root. Natively
+    # they run as `test_suite --ui-bench`.
+    add_executable(ui_bench test/ui_bench_main.c test/editor/ui_bench.c ${EDITOR_REGISTRY})
+    add_dependencies(ui_bench generate_runtime_registry)
+    target_include_directories(ui_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(ui_bench PRIVATE chibi_render editor engine)
+    target_compile_options(ui_bench PRIVATE -UNDEBUG)
+    target_link_options(ui_bench PRIVATE "-sENVIRONMENT=node" "-sNODERAWFS=1" "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1")
+    set_target_properties(ui_bench PROPERTIES LINKER_LANGUAGE CXX)
 else()
     add_custom_target(check-behavior-backend
         COMMAND "$<TARGET_FILE:behavior_backend_smoke>"

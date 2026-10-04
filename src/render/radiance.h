@@ -59,6 +59,31 @@ typedef struct
     int rung, rungs;
 } render_radiance_status;
 render_radiance_status render_radiance_get_status(const render_radiance *radiance);
+/* Deterministic submission bounds, not measured texture fetches or timings.
+ * Gather skips closed probes and may end visibility tests early. Blur counts
+ * the four-quadrant taps in its two axes, excluding seed/filter work. */
+typedef struct
+{
+    GameHRCSurfaceMode mode;
+    int cells, block;
+    size_t candidates, visibility_taps, blur_quadrant_fetches;
+} render_surface_work;
+render_surface_work render_radiance_surface_work(const render_radiance *radiance);
+
+/* Work submitted by the latest draw. Bytes describes allocated horizon targets,
+ * not driver overhead or bandwidth. Builds counts the directional bake pass. */
+typedef struct
+{
+    int builds, pixels, directions;
+    /* Submitted passes, not GPU cache-hit counts. */
+    int pack_passes, fused_packs, dirty_passes, reuse_passes, reproject_passes;
+    int hierarchy_passes, tiles_x, tiles_y;
+    size_t canvas_bytes;
+} render_horizon_work;
+render_horizon_work render_radiance_horizon_work(const render_radiance *radiance);
+/* Optional inspection: red is one for tiles whose horizons must be rebuilt.
+ * Borrowed texture; reading it back is deliberately outside the frame path. */
+CF_Texture render_radiance_horizon_dirty_texture(const render_radiance *radiance);
 /* Inputs are borrowed RGBA16F textures at the configured padded size. */
 bool render_radiance_draw(
     render_radiance *radiance,

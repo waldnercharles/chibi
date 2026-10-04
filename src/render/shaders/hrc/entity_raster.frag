@@ -43,7 +43,11 @@ layout(set = 3, binding = 0) uniform uniform_block {
     float u_world_min_x;
     float u_world_max_y;
     vec2 u_unit_per_px;
+    vec4 u_plane_right;
+    vec4 u_plane_down;
+    vec4 u_plane_target;
     int u_tiles_x;
+    int u_has_previous;
     int u_first_entity;
     int u_last_entity;
     int u_metaball_group;
@@ -272,9 +276,47 @@ float evaluate_sdf(vec2 local_p, Entity e)
 
 vec4 unpack_color(vec4 p) { return p; }
 
+// Ordinary authored shapes live on world Y=0. Mesh resolve coordinates stay
+// in the camera plane and never use this inverse mapping.
+vec2 plane_pixel;
+float plane_height;
+bool plane_position(vec2 screen, out vec3 hit)
+{
+    vec3 right = u_plane_right.xyz, down = u_plane_down.xyz;
+    vec3 up = cross(down, right), target = u_plane_target.xyz;
+    vec3 offset = right * (screen.x - target.x) + down * (-screen.y - target.z);
+    float focal = u_plane_right.w;
+    if (focal > 0.0) {
+        vec3 eye = target + up * focal;
+        vec3 ray = offset - up * focal;
+        if (abs(ray.y) < 1e-5) return false;
+        float t = -eye.y / ray.y;
+        if (t * focal < 1.0) return false;
+        hit = eye + ray * t;
+    } else {
+        if (abs(up.y) < 1e-5) return false;
+        vec3 origin = target + offset;
+        hit = origin - up * (origin.y / up.y);
+    }
+    return !any(isnan(hit)) && !any(isinf(hit)) && all(lessThan(abs(hit),vec3(1e20)));
+}
+
+void plane_surface(inout vec4 surface, inout float height)
+{
+    if (u_plane_target.w == 0.0) return;
+    vec3 right = u_plane_right.xyz, down = u_plane_down.xyz;
+    vec3 up = cross(down, right);
+    vec2 tilt = surface.xy;
+    vec3 normal = normalize(vec3(tilt.x, sqrt(max(1.0-dot(tilt,tilt), 1e-6)), -tilt.y));
+    surface.xy = vec2(dot(normal,right), -dot(normal,down));
+    float t2 = dot(surface.xy,surface.xy);
+    if (dot(normal,up) <= 0.0 && t2 > 1e-8) surface.xy *= 0.999 * inversesqrt(t2);
+    height = clamp(plane_height + height * up.y, -65504.0, 65504.0);
+}
+
 float circle_emission_half_width(Entity e)
 {
-    float max_pixel = max(u_unit_per_px.x, u_unit_per_px.y);
+    float max_pixel = max(plane_pixel.x, plane_pixel.y);
     return max(1.5 * max_pixel, max(e.aa, 0.0) * 0.5);
 }
 
@@ -339,7 +381,7 @@ void layer_over(vec4 sc, vec4 em, vec4 tr, vec4 al, vec4 surface, float height)
     normal_acc = mix(normal_acc, surface, sc.a);
     relief_acc = mix(relief_acc, height, sc.a);
     relief_cover = sc.a + relief_cover * (1.0 - sc.a);
-    mesh_cover *= 1.0 - sc.a;
+    mesh_cover = (u_plane_target.w != 0.0 ? sc.a : 0.0) + mesh_cover * (1.0 - sc.a);
     emission_over(em, tr.a > 0.0);
     tau_acc += dot(tr.rgb, vec3(1.0 / 3.0)) * (1.0 - absorption_cover);
     absorption_cover += tr.a * (1.0 - absorption_cover);
@@ -435,8 +477,25 @@ void main()
         u_world_max_y - (float(pixel.y) + 0.5) * u_unit_per_px.y
     );
 
+    plane_pixel = u_unit_per_px;
+    plane_height = 0.0;
+    bool plane_valid = true;
+    if (u_plane_target.w != 0.0) {
+        vec3 hit, hx, hy;
+        plane_valid = plane_position(world_pos, hit);
+        if (plane_valid) {
+            // Compute the authored-space pixel footprint before divergent work.
+            bool vx = plane_position(world_pos + vec2(u_unit_per_px.x,0.0), hx);
+            bool vy = plane_position(world_pos - vec2(0.0,u_unit_per_px.y), hy);
+            if (vx) plane_pixel.x = length(hx.xz-hit.xz);
+            if (vy) plane_pixel.y = length(hy.xz-hit.xz);
+            plane_height = dot(hit-u_plane_target.xyz, cross(u_plane_down.xyz,u_plane_right.xyz));
+            world_pos = vec2(hit.x,-hit.z);
+        }
+    }
+
     // Tile entity list.
-    uint total = tile_end - tile_begin;
+    uint total = plane_valid ? tile_end - tile_begin : 0u;
     uint base = tile_begin;
 
     scene_acc = vec4(0);
@@ -456,7 +515,7 @@ void main()
     // Earlier batches continue as displayed emission, absorbing wherever they
     // absorbed, over the whole pixel.
     // A leading mesh batch has no previous material layer.
-    if (u_first_entity > 0) {
+    if (u_has_previous != 0) {
         scene_acc = texelFetch(u_prev_scene, pixel, 0);
         vec4 prev_source = texelFetch(u_prev_source, pixel, 0);
         emission_acc.rgb = prev_source.rgb * texelFetch(u_prev_cover, pixel, 0).r;
@@ -474,33 +533,59 @@ void main()
 #endif
 
 #ifdef SG_MESH_LAYER
-    // Color and coverage resolve all four subpixels; geometry retains one
+    // Color and coverage resolve the configured subpixels; geometry retains one
     // visible face. Averaging unrelated heights invents a sloping surface.
     vec2 mesh_uv = (gl_FragCoord.xy - u_mesh_rect.xy) / u_mesh_rect.zw;
     if (all(greaterThanEqual(mesh_uv, vec2(0))) && all(lessThan(mesh_uv, vec2(1)))) {
-        ivec2 size = textureSize(u_mesh_scene, 0);
-        ivec2 first = ivec2(floor(mesh_uv * vec2(size) - 0.5));
+        ivec2 size = ivec2(u_mesh_extent);
+        int samples = int(round(float(size.x) / u_mesh_rect.z));
+        float sample_scale = 1.0 / float(samples);
+        float weight = sample_scale * sample_scale;
+        ivec2 first = ivec2(floor(mesh_uv * vec2(size) - (samples == 2 ? 0.5 : 0.0)));
         vec4 sc = vec4(0), em = vec4(0), tr = vec4(0), al = vec4(0);
         vec4 selected_normal = vec4(0);
         float selected_height = 0.0;
         bool selected = false;
-        for (int y = 0; y < 2; y++) {
-            for (int x = 0; x < 2; x++) {
+        vec4 raw_normal=vec4(0);
+        float raw_height=0.0, first_plane_height=0.0;
+        vec3 first_normal=vec3(0);
+        int covered_samples=0;
+        bool coherent_plane=true;
+        for (int y = 0; y < samples; y++) {
+            for (int x = 0; x < samples; x++) {
                 ivec2 p = clamp(first + ivec2(x, y), ivec2(0), size - 1);
                 vec4 scene = texelFetch(u_mesh_scene, p, 0);
                 vec4 sample_albedo = texelFetch(u_mesh_albedo, p, 0);
-                sc += scene * 0.25;
-                em += texelFetch(u_mesh_emission, p, 0) * 0.25;
-                tr += texelFetch(u_mesh_absorption, p, 0) * 0.25;
-                al += sample_albedo * 0.25;
+                sc += scene * weight;
+                em += texelFetch(u_mesh_emission, p, 0) * weight;
+                tr += texelFetch(u_mesh_absorption, p, 0) * weight;
+                al += sample_albedo * weight;
                 if (scene.a <= 0.0) continue;
                 vec4 normal = texelFetch(u_mesh_normal, p, 0);
                 float height = sample_albedo.a;
                 float ny = sqrt(max(1.0 - dot(normal.xy, normal.xy), 0.0));
+                if(covered_samples==0||height>raw_height) {
+                    raw_height=height; raw_normal=normal;
+                }
                 // Evaluate this face at the output pixel's center, so a tilted
                 // plane does not acquire a quarter-pixel height offset.
-                vec2 offset = (vec2(p) + 0.5 - mesh_uv * vec2(size)) * 0.5 * u_unit_per_px;
+                vec2 offset = (vec2(p) + 0.5 - mesh_uv * vec2(size)) * sample_scale * u_unit_per_px;
                 if (ny > 0.01) height += dot(normal.xy, vec2(offset.x, -offset.y)) / ny;
+                else coherent_plane=false;
+                vec3 face_normal=vec3(normal.x,ny,normal.y);
+                if(covered_samples==0) {
+                    first_normal=face_normal; first_plane_height=height;
+                } else {
+                    // A 0.01 chord (about 0.57 degrees) distinguishes a plane
+                    // from curved/creased samples. Height agreement also rejects
+                    // parallel adjacent layers; 0.2% covers RGBA16F quantization.
+                    float height_tolerance=max(0.002*max(abs(height),abs(first_plane_height)),
+                        0.02*max(u_unit_per_px.x,u_unit_per_px.y));
+                    vec3 normal_delta=face_normal-first_normal;
+                    if(dot(normal_delta,normal_delta)>0.0001||abs(height-first_plane_height)>height_tolerance)
+                        coherent_plane=false;
+                }
+                covered_samples++;
                 // Strict comparison keeps ties deterministic in scan order.
                 if (!selected || height > selected_height) {
                     selected = true;
@@ -510,8 +595,15 @@ void main()
             }
         }
         if (sc.a > 0.0) {
+            // Tangent extrapolation is safe only when multiple samples confirm
+            // the same plane. Curvature, silhouettes and sharp adjacent faces
+            // retain the raw frontmost sample instead of inventing a height.
+            if(!coherent_plane||covered_samples<2) {
+                selected_height=raw_height; selected_normal=raw_normal;
+            }
             layer_over(sc, em, tr, vec4(al.rgb, sc.a), selected_normal, selected_height);
-            mesh_cover += sc.a;
+            // An active plane camera already marks this layer geometric.
+            if (u_plane_target.w == 0.0) mesh_cover += sc.a;
         }
     }
 #endif
@@ -612,11 +704,11 @@ void main()
         vec4 graph_output[8];
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
-            for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+32u+uint(p)];
+            for(int p=0;p<32;p++) parameters[p]=shader_parameters[floatBitsToUint(e.simulation_time.y)+32u+uint(p)];
             sg_dispatch_2d(int(e.reserved1), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             sdf = graph_output[0].x;
         }
-        float aa = e.aa > 0.0 ? e.aa : max(u_unit_per_px.x, u_unit_per_px.y) * 0.5;
+        float aa = e.aa > 0.0 ? e.aa : max(plane_pixel.x, plane_pixel.y) * 0.5;
         bool filtered_circle_emission = e.shape_type == SHAPE_CIRCLE &&
                                         e.thickness <= 0.0 && e.border_thickness <= 0.0 &&
                                         e.reserved0 <= 0.0 && e.reserved1 <= 0.0 &&
@@ -628,7 +720,7 @@ void main()
                                       : aa;
         // Tile group pieces cover the pixel's footprint, at least a pixel wide.
         bool tiled = e.tile_group != 0.0 && e.shape_type == SHAPE_BOX;
-        float footprint = 0.5 * max(aa, max(u_unit_per_px.x, u_unit_per_px.y));
+        float footprint = 0.5 * max(aa, max(plane_pixel.x, plane_pixel.y));
         float reach = tiled ? 1.4143 * footprint : aa;
         // Uncovered pixels need no material; metaballs still blend beyond their edge.
         if (e.metaball_group == 0u && sdf >= reach &&
@@ -636,7 +728,7 @@ void main()
         vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
         float height = 0.0;
         if (e.reserved0 > 0.0) {
-            for(int p=0;p<32;p++) parameters[p]=shader_parameters[eidx*64u+uint(p)];
+            for(int p=0;p<32;p++) parameters[p]=shader_parameters[floatBitsToUint(e.simulation_time.y)+uint(p)];
             sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
             e.albedo=graph_output[2]; e.absorption=graph_output[3];
@@ -645,6 +737,8 @@ void main()
             surface.xyw = graph_output[4].xyz;
             height = graph_output[4].w;
         }
+
+        plane_surface(surface, height);
 
         if (e.metaball_group > 0u) {
             // Accumulate into metaball group.
@@ -715,6 +809,10 @@ void main()
             float cover = bsc.a + sc.a * (1.0 - bsc.a);
             normal_acc = mix(normal_acc, surface, cover);
             relief_acc = mix(relief_acc, height, cover);
+            if (u_plane_target.w != 0.0) {
+                relief_cover = cover + relief_cover * (1.0-cover);
+                mesh_cover = cover + mesh_cover * (1.0-cover);
+            }
 
             // Emission and absorption.
             vec4 em = unpack_color(e.emission); em.rgb *= em.a;
@@ -762,7 +860,7 @@ void main()
     // Composite metaball groups on top.
     for (int g = 0; g < MAX_METABALL_GROUPS; g++) {
         if (!mb_active[g]) continue;
-        float aa = mb_aa[g] > 0.0 ? mb_aa[g] : max(u_unit_per_px.x, u_unit_per_px.y) * 0.5;
+        float aa = mb_aa[g] > 0.0 ? mb_aa[g] : max(plane_pixel.x, plane_pixel.y) * 0.5;
         float bt = mb_border_thickness[g];
 
         if (bt > 0.0) {

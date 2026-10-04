@@ -1,0 +1,56 @@
+version 1
+name "HrcReuseChangingLights"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "SdfOptimizationCamera"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameCamera width=620.0 height=400.0 focal_distance=0.0
+            GameHRC2D surface_shadow_mode="Horizon8" ambient=0.08 fog=0.02 bounce_intensity=0.12
+        }
+    }
+    - {
+        name "Continuous receiver"
+        prototype "SdfHorizonCanopy"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameVisualTransform scale=1.7
+            GameShader material="SdfCyan"
+        }
+    }
+    - {
+        name "West cyan"
+        prototype "SdfLight"
+        components {
+            GameTransform x=-240.0 y=0.0
+            GameMaterial emission_color=0x38d9edff
+        }
+    }
+    - {
+        name "East amber"
+        prototype "SdfLight"
+        components {
+            GameTransform x=240.0 y=0.0
+            GameMaterial emission_color=0xffac54ff
+        }
+    }
+    - {
+        name "Animated source"
+        prototype "SdfLight"
+        components {
+            GameTransform x=220.0 y=0.0
+            GameMaterial emission_color=0xec749fff
+        }
+        (array)behaviors "HrcReuseLightSweep"
+    }
+    - {
+        name "Static raised blocker"
+        prototype "SdfRoundedBox"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameVisualTransform scale=0.6
+            GameGeometry3D elevation=45.0
+        }
+    }
+}

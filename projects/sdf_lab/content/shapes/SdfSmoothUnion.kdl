@@ -1,0 +1,78 @@
+version 3
+name "SdfSmoothUnion"
+domain "shape"
+bounds_x 48.0
+bounds_y 48.0
+id_counter 157
+description "Smooth union of two offset spheres with a 12-unit blend."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Shader Shape Output"
+            - id=3 type="Shader ObjectPosition"
+            - {
+                id 38
+                type "Behavior Expression"
+                reference_name "length(p - vec3(-15, 0, 0)) - 23"
+                inputs {
+                    p id=39 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=40 type="float"
+                }
+            }
+            - {
+                id 72
+                type "Behavior Expression"
+                reference_name "length(p - vec3(15, 0, 0)) - 23"
+                inputs {
+                    p id=73 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=74 type="float"
+                }
+            }
+            - {
+                id 114
+                type "Behavior Expression"
+                reference_name "clamp(0.5 + 0.5 * (right - left) / 12, 0, 1)"
+                inputs {
+                    right id=115 type="float"
+                    left id=116 type="float"
+                }
+                outputs {
+                    Result id=117 type="float"
+                }
+            }
+            - {
+                id 152
+                type "Behavior Expression"
+                reference_name "mix(right, left, blend) - 12 * blend * (1 - blend)"
+                inputs {
+                    right id=153 type="float"
+                    left id=154 type="float"
+                    blend id=155 type="float"
+                }
+                outputs {
+                    Result id=156 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Value" to="38.p"
+            - from="3.Value" to="72.p"
+            - from="38.Result" to="114.left"
+            - from="38.Result" to="152.left"
+            - from="72.Result" to="114.right"
+            - from="72.Result" to="152.right"
+            - from="114.Result" to="152.blend"
+            - from="152.Result" to="1.Distance"
+        }
+    }
+    - id=7 kind="function" math_expression="length(p - vec3(-15, 0, 0)) - 23" entry_id=8
+    - id=41 kind="function" math_expression="length(p - vec3(15, 0, 0)) - 23" entry_id=42
+    - id=75 kind="function" math_expression="clamp(0.5 + 0.5 * (right - left) / 12, 0, 1)" entry_id=76
+    - id=118 kind="function" math_expression="mix(right, left, blend) - 12 * blend * (1 - blend)" entry_id=119
+}

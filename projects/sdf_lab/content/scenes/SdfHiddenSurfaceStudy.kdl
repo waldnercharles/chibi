@@ -1,0 +1,123 @@
+version 1
+name "SdfHiddenSurfaceStudy"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "SdfOptimizationCamera"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameCamera width=640.0 height=400.0 focal_distance=0.0
+            GameHRC2D surface_shadow_mode="Horizon8" ambient=0.25 fog=0.01 bounce_intensity=0.1
+        }
+    }
+    - {
+        name "Cyan light"
+        prototype "SdfLight"
+        components {
+            GameTransform x=-280.0 y=-150.0
+            GameMaterial emission_color=0x38d9edff
+        }
+    }
+    - {
+        name "Amber light"
+        prototype "SdfLight"
+        components {
+            GameTransform x=280.0 y=150.0
+            GameMaterial emission_color=0xffac54ff
+        }
+    }
+    - {
+        name "Hidden complex under mesh"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-160.0 y=-70.0
+            GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader material="SdfRose" parameters="Radius 25\nBore 8\n"
+        }
+    }
+    - {
+        name "Near opaque mesh"
+        prototype "SdfComparisonMesh"
+        components {
+            GameTransform x=-160.0 y=-70.0
+            GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
+            GameGeometry3D width=82.0 height=20.0 depth=82.0 elevation=80.0
+            GameShader material="SdfCyan"
+        }
+    }
+    - {
+        name "Visible through hole"
+        prototype "SdfSmoothUnion"
+        components {
+            GameTransform x=0.0 y=-70.0
+            GameVisualTransform scale=0.8 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader material="SdfAmber"
+        }
+    }
+    - {
+        name "Near SDF with hole"
+        prototype "SdfBoredBox"
+        components {
+            GameTransform x=0.0 y=-70.0
+            GameVisualTransform scale=1.5 pitch=0.0 yaw=0.0 roll=0.0
+            GameGeometry3D elevation=160.0
+            GameShader material="SdfCyan"
+        }
+    }
+    - {
+        name "Partially hidden torus"
+        prototype "SdfTorus"
+        components {
+            GameTransform x=160.0 y=-70.0
+            GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
+        }
+    }
+    - {
+        name "Partial opaque mesh"
+        prototype "SdfComparisonMesh"
+        components {
+            GameTransform x=180.0 y=-70.0
+            GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
+            GameGeometry3D width=36.0 height=20.0 depth=84.0 elevation=80.0
+            GameShader material="SdfRose"
+        }
+    }
+    - {
+        name "Hidden under solid SDF"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=-120.0 y=95.0
+            GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader shape="SdfGradientNoise"
+        }
+    }
+    - {
+        name "Solid SDF cover"
+        prototype "SdfRoundedBox"
+        components {
+            GameTransform x=-120.0 y=95.0
+            GameVisualTransform scale=1.5 pitch=0.0 yaw=0.0 roll=0.0
+            GameGeometry3D elevation=160.0
+            GameShader material="SdfAmber"
+        }
+    }
+    - {
+        name "Moving-hidden complex"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=120.0 y=95.0
+            GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
+        }
+    }
+    - {
+        name "Moving blocker"
+        prototype "SdfComparisonMesh"
+        components {
+            GameTransform x=0.0 y=95.0
+            GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
+            GameGeometry3D width=76.0 height=20.0 depth=78.0 elevation=80.0
+            GameShader material="SdfCyan"
+        }
+        (array)behaviors "HrcReuseBlockerSweep"
+    }
+}

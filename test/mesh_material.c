@@ -339,7 +339,21 @@ static bool perspective_meshes(render_material_raster *raster, ecs_world *world)
     assert(
         render_mesh_project_bounds(view, (CF_V3){ 8, 30, 5 }, (CF_V3){ 12, 32, 9 }, &lo, &hi)
     );
-    assert(lo.x == view.min_x && hi.x == view.min_x + view.width);
+    assert(lo.x == -54 && hi.x == 74 && lo.y == -57 && hi.y == 71);
+    /* A small near-plane intersection needs a small crop, not a full canvas. */
+    assert(render_mesh_project_bounds(
+        view,
+        (CF_V3){ 9.875f, 30, 6.875f },
+        (CF_V3){ 10.125f, 32, 7.125f },
+        &lo,
+        &hi
+    ));
+    assert(lo.x == 6 && hi.x == 14 && lo.y == 3 && hi.y == 11);
+    /* This entire clipped volume is off-screen even though it crosses near. */
+    assert(
+        render_mesh_project_bounds(view, (CF_V3){ 20, 30, 5 }, (CF_V3){ 22, 32, 9 }, &lo, &hi)
+    );
+    assert(lo.x > view.min_x + view.width);
     assert(
         !render_mesh_project_bounds(view, (CF_V3){ 8, 33, 5 }, (CF_V3){ 12, 34, 9 }, &lo, &hi)
     );
@@ -437,6 +451,26 @@ static bool perspective_meshes(render_material_raster *raster, ecs_world *world)
         free(normals);
         free(colors);
     }
+    /* A narrow volume straddles the near plane. Its visible side face still
+     * renders, while material work stays below the old full-canvas fallback. */
+    actor.position.x = 10.375f;
+    GameGeometry3D *near = GAME_GameGeometry3D_get(world, entity);
+    near->width = near->depth = .25f;
+    near->height = .25f;
+    near->elevation = 31;
+    if (ok) {
+        ok = draw(raster, world, actor, &layer, 1, view);
+        render_mesh_material_work work = render_material_raster_mesh_work(raster);
+        ok &= work.surface_pixels > 0 && work.surface_pixels < WIDTH * HEIGHT / 4;
+        float area, emission;
+        bool partial;
+        ok &= energy(raster, WIDTH, HEIGHT, &area, &emission, &partial);
+        ok &= area > 1;
+        if (!ok) {
+            fprintf(stderr, "Near-plane crop: surface area %g, active work %d pixels\n", area, work.surface_pixels);
+        }
+    }
+    near->width = near->depth = 8;
     actor.position.x = 10;
     GAME_GameGeometry3D_get(world, entity)->height = .002f;
     // Crop origin changes independently of the eye: the same card must remain

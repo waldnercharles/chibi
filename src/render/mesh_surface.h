@@ -9,11 +9,12 @@ typedef struct
     arena_visual visual;
     /* Primitive-local triangle list. Owned array; model includes dimensions. */
     render_mesh_surface_vertex *vertices;
+    int vertex_count; /* Nonzero for immutable shared triangle storage. */
     uint64_t asset_identity; /* Zero for generated primitive geometry. */
-    bool borrowed;           /* Catalog-owned vertices when true. */
+    bool borrowed; /* Catalog or immutable shared storage when true. */
 } render_mesh_surface_part;
 
-typedef struct
+typedef struct render_mesh_surface
 {
     render_mesh_surface_part *parts;
     CF_V3 min, max; /* World X, elevation Y, gameplay Y in Z. */
@@ -35,6 +36,8 @@ bool render_mesh_surface_build(
     char *error,
     size_t size
 );
+const char *render_mesh_surface_lod_shape(const GameSdfSurface3D *sdf, float pixels, bool disabled);
+int render_mesh_surface_vertex_count(const render_mesh_surface_part *part);
 void render_mesh_surface_free(render_mesh_surface *surface);
 bool render_mesh_surface_bounds(
     const ecs_world *world,

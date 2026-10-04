@@ -1,0 +1,7 @@
+name "SdfOptimizationCamera"
+components {
+    GAME.GameCamera focal_distance=650.0 height=400.0 width=620.0
+    GAME.GameHRC2D ambient=0.05 bloom=0.03 bounce_hysteresis=0.65 bounce_intensity=0.2 exposure=0.6 falloff=1.0 feedback=#true fog=0.08 intensity=3.0 min_resolution=0.5 particle_focal_length=300.0 radiance_hysteresis=0.65 resolution=0.5 specular=1.0 surface_bevel=1.0 surface_radius=24.0 surface_relief=1.5 target_fps=60.0 trace_levels=3 upscale_mode="Edge aware" upscale_threshold=0.1
+    (object)GAME.GameSurfaceQuality
+    (object)GAME.GameTransform
+}

@@ -11,7 +11,16 @@ layout(set=1,binding=0) uniform uniform_block {
     vec4 u_rect;
     vec2 u_depth;
     vec4 u_eye;
+    vec4 u_camera[4];
 };
+vec3 camera_point(vec3 world)
+{
+    if(u_camera[3].w<0.5) return world;
+    vec3 target=vec3(u_camera[0].w,u_camera[1].w,u_camera[2].w);
+    vec3 delta=world-target;
+    return vec3(target.x+dot(delta,u_camera[0].xyz),dot(delta,u_camera[1].xyz),
+        target.z+dot(delta,u_camera[2].xyz));
+}
 void main()
 {
     vec4 p=vec4(in_pos,1);
@@ -23,16 +32,18 @@ void main()
     v_uv=in_uv;
     v_local=in_pos;
     v_object_normal=in_normal;
-    gl_Position=vec4((v_world.x-u_rect.x)/u_rect.z*2.0-1.0,
-        (-v_world.z-u_rect.y)/u_rect.w*2.0+1.0,
-        (u_depth.y-v_world.y)/(u_depth.y-u_depth.x),1);
+    vec3 aligned=camera_point(v_world);
+    gl_Position=vec4((aligned.x-u_rect.x)/u_rect.z*2.0-1.0,
+        (-aligned.z-u_rect.y)/u_rect.w*2.0+1.0,
+        (u_depth.y-aligned.y)/(u_depth.y-u_depth.x),1);
     if (u_eye.w > 0.5) {
-        float d=u_eye.y-v_world.y, w=d/u_eye.y;
+        float focal=u_camera[3].x;
+        float d=focal-aligned.y, w=d/focal;
         gl_Position=vec4(
-            2.0*(v_world.x-u_eye.x)/u_rect.z
-                +(2.0*(u_eye.x-u_rect.x)/u_rect.z-1.0)*w,
-            2.0*(-v_world.z+u_eye.z)/u_rect.w
-                +(2.0*(-u_eye.z-u_rect.y)/u_rect.w+1.0)*w,
-            u_depth.y/(u_depth.y-u_depth.x)*(d-u_depth.x)/u_eye.y,w);
+            2.0*(aligned.x-u_camera[0].w)/u_rect.z
+                +(2.0*(u_camera[0].w-u_rect.x)/u_rect.z-1.0)*w,
+            2.0*(-aligned.z+u_camera[2].w)/u_rect.w
+                +(2.0*(-u_camera[2].w-u_rect.y)/u_rect.w+1.0)*w,
+            u_depth.y/(u_depth.y-u_depth.x)*(d-u_depth.x)/focal,w);
     }
 }

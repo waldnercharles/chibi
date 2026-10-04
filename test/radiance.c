@@ -43,7 +43,8 @@ static float half_value(uint16_t value)
 {
     int exponent = (value >> 10) & 31;
     int mantissa = value & 1023;
-    float result = exponent ? ldexpf(1 + mantissa / 1024.0f, exponent - 15)
+    float result = exponent == 31 ? (mantissa ? NAN : INFINITY)
+                 : exponent ? ldexpf(1 + mantissa / 1024.0f, exponent - 15)
                             : ldexpf((float)mantissa, -24);
     return value & 0x8000 ? -result : result;
 }
@@ -1029,7 +1030,7 @@ static bool surface_rgb(const uint16_t *pixels, float result[2])
 
 /* Keep RGB attached to its incident direction: opposing colors must respond
  * independently to a banked normal, including when one path is occluded. */
-static bool directional_surface_colors(render_material_raster *raster)
+static bool directional_surface_colors(render_material_raster *raster, GameHRCShadowMode shadow_mode)
 {
     render_radiance *radiance = render_radiance_new();
     CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
@@ -1044,6 +1045,8 @@ static bool directional_surface_colors(render_material_raster *raster)
     lighting.tone_mapping = 1;
     bool ok = canvas.id && radiance && render_radiance_resize(radiance, SIDE, SIDE) &&
               render_radiance_set_lighting(radiance, lighting);
+    lighting.surface_shadow_mode = shadow_mode;
+    ok &= render_radiance_set_lighting(radiance, lighting);
     float responses[3][2] = { 0 };
     const float tilts[] = { -.75f, .75f, 0 };
     behavior_asset *materials[3] = { 0 };
@@ -1134,8 +1137,10 @@ static bool directional_surface_colors(render_material_raster *raster)
         responses[2][1]
     );
     printf(
-        "directional surface colors: banks R/B %.3f %.3f; blocked/open red "
+        "directional surface colors mode=%d: banks R/B %.3f %.3f; blocked/open "
+        "red "
         "%.4f/%.4f blue %.4f/%.4f %s\n",
+        shadow_mode,
         red_ratio,
         blue_ratio,
         blocked[0],
@@ -1151,6 +1156,135 @@ static bool directional_surface_colors(render_material_raster *raster)
         cf_destroy_canvas(canvas);
     }
     render_radiance_free(radiance);
+    return ok;
+}
+
+static bool horizon_work_matches(const render_radiance *radiance, int size, GameHRCShadowMode mode)
+{
+    render_horizon_work work = render_radiance_horizon_work(radiance);
+    int directions = mode == GAME_HRC_SHADOW_HORIZON4 ? 4 : 8;
+    bool ok = work.builds == 1 && work.pixels == size * size &&
+              work.directions == directions &&
+              work.canvas_bytes == (size_t)size * size * (directions == 4 ? 16 : 24);
+    if (!ok) {
+        fprintf(
+            stderr,
+            "horizon work mode=%d size=%d: builds %d pixels %d directions %d "
+            "bytes %zu\n",
+            mode,
+            size,
+            work.builds,
+            work.pixels,
+            work.directions,
+            work.canvas_bytes
+        );
+    }
+    return ok;
+}
+
+/* Rebuild visibility from current height and coverage, even without resetting
+ * transport. Moving a height-only ridge must not leave its old horizon behind;
+ * an uncovered gap stops the bounded scan before a detached ridge. */
+static bool horizon_updates(render_material_raster *raster, GameHRCShadowMode shadow_mode)
+{
+    render_radiance *radiance = render_radiance_new();
+    CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas canvas = cf_make_canvas(params);
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    lighting.radiance_hysteresis = 1;
+    lighting.surface_radius = 12;
+    lighting.surface_relief = 1.5f;
+    lighting.surface_bevel = lighting.specular = 0;
+    lighting.surface_shadow_mode = shadow_mode;
+    lighting.debug_view = 8;
+    behavior_asset *ridge = tilted_material("Horizon moving ridge", 0, 1);
+    shader_error error;
+    pin_value height = { .type = PIN_F32, .f = 12 };
+    bool ok = canvas.id && radiance && ridge &&
+              graph_set_pin_default(ridge->graph, ridge->graph->nodes[0], 0, 7, &height) ==
+                  0 &&
+              render_shader_upsert(ridge, &error) &&
+              render_radiance_set_lighting(radiance, lighting);
+    render_material_entity scene[] = { emitter(), lit_wall(6, 1.5f), lit_wall(1, 1.5f) };
+    scene[0].border_thickness = 0;
+    scene[1].points[1] = scene[2].points[1] = 18;
+    scene[1].extent[1] = scene[2].extent[1] = 20;
+    scene[2].reserved[0] = (float)render_shader_find("Horizon moving ridge");
+    uint16_t changed[PIXELS * 4], fresh[PIXELS * 4];
+    float largest_error = 0, gap_visibility = 0;
+    /* Resize down and back up, retaining the radiance object and GPU capacity. */
+    const int sizes[] = { SIDE, SIDE, SIDE, SIDE, 64, SIDE };
+    for (int stage = 0; stage < 6 && ok; stage++) {
+        int size = sizes[stage], count = stage == 2 ? 2 : 3;
+        /* The original x=-4 ridge's antialiased edge joined the receiver's
+         * coverage at >= .5. Leave a rasterized gap at both pixel spacings. */
+        scene[2].pos[0] = stage >= 3 ? -6 : stage == 1 ? 4 : -4;
+        scene[1].points[0] = stage >= 3 ? 1.25f : 6;
+        scene[1].extent[0] = scene[1].points[0] + 1;
+        if (stage == 0 || size != sizes[stage - 1]) {
+            cf_destroy_canvas(canvas);
+            params = cf_canvas_defaults(size, size);
+            params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+            canvas = cf_make_canvas(params);
+            ok = canvas.id && render_material_raster_resize(raster, size, size) &&
+                 render_radiance_resize(radiance, size, size);
+        }
+        if (!ok) {
+            break;
+        }
+        ok = draw_frames_scaled(raster, radiance, canvas, scene, count, size, SIDE, 1, false) &&
+             horizon_work_matches(radiance, size, shadow_mode) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), changed, size * size) &&
+             draw_scaled(raster, radiance, canvas, scene, count, size, SIDE, 1) &&
+             horizon_work_matches(radiance, size, shadow_mode) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), fresh, size * size);
+        for (int pixel = 0; pixel < size * size && ok; pixel++) {
+            for (int channel = 0; channel < 3; channel++) {
+                float a = half_value(changed[4 * pixel + channel]);
+                float b = half_value(fresh[4 * pixel + channel]);
+                float difference = fabsf(a - b);
+                largest_error = fmaxf(largest_error, difference);
+                if (!isfinite(a + b) || difference >= .002f) {
+                    printf(
+                        "horizon mismatch stage %d mode %d pixel %d channel %d "
+                        "values %.6f %.6f\n",
+                        stage,
+                        shadow_mode,
+                        pixel,
+                        channel,
+                        a,
+                        b
+                    );
+                    ok = false;
+                }
+            }
+        }
+        if (stage >= 3 && ok) {
+            int center = 4 * ((size / 2) * size + size / 2);
+            gap_visibility = half_value(changed[center + 2]);
+            uint16_t coverage[PIXELS * 4];
+            int gap_x = (int)(size * 0.5f - 3.0f * size / SIDE);
+            int gap_pixel = 4 * ((size / 2) * size + gap_x);
+            ok &= read_hdr_texture(render_material_raster_textures(raster).cover, coverage, size * size) &&
+                  half_value(coverage[gap_pixel + 1]) < .5f;
+            ok &= gap_visibility > .99f;
+        }
+    }
+    printf(
+        "horizon updates mode=%d: reset error %.6f gap visibility %.4f %s\n",
+        shadow_mode,
+        largest_error,
+        gap_visibility,
+        ok ? "PASS" : "FAIL"
+    );
+    behavior_asset_free(ridge);
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    render_radiance_free(radiance);
+    ok &= render_material_raster_resize(raster, SIDE, SIDE);
     return ok;
 }
 
@@ -1176,6 +1310,431 @@ static float surface_history_difference(const uint16_t *a, const uint16_t *b)
 /* Received surface light obeys the same temporal setting as open-space GI.
  * A small source translation retains useful clamped history in its gradient;
  * a reset must discard it, and continued rendering must converge. */
+/* Cached visibility must depend on geometry, not lights or stale camera pixels. */
+static bool horizon_draw_view(
+    render_material_raster *raster,
+    render_radiance *radiance,
+    CF_Canvas canvas,
+    const render_material_entity *scene,
+    int count,
+    int size,
+    render_view_2d view
+)
+{
+    cf_app_update(NULL);
+    bool ok = render_material_raster_draw(raster, scene, count, view);
+    render_radiance_inputs inputs = { .material = render_material_raster_textures(raster) };
+    cf_draw_push();
+    cf_draw_projection(cf_ortho_2d(0, 0, size, size));
+    if (ok) {
+        ok = render_radiance_draw(radiance, inputs, view, canvas);
+    }
+    cf_draw_pop();
+    cf_app_draw_onto_screen(false);
+    return ok;
+}
+static bool horizon_compare(
+    CF_Canvas canvas,
+    render_material_raster *raster,
+    render_radiance *fresh,
+    const render_material_entity *scene,
+    int count,
+    int size,
+    render_view_2d view,
+    float tolerance,
+    float *maximum
+)
+{
+    uint16_t a[PIXELS * 4], b[PIXELS * 4];
+    bool ok = read_hdr_texture(cf_canvas_get_target(canvas), a, size * size);
+    render_radiance_reset(fresh);
+    ok = ok && horizon_draw_view(raster, fresh, canvas, scene, count, size, view) &&
+         read_hdr_texture(cf_canvas_get_target(canvas), b, size * size);
+    for (int i = 0; ok && i < size * size * 4; i++) {
+        float av = half_value(a[i]), bv = half_value(b[i]);
+        *maximum = fmaxf(*maximum, fabsf(av - bv));
+        if (!isfinite(av + bv) || fabsf(av - bv) > tolerance) {
+            fprintf(stderr, "horizon reuse parity channel%d values%g/%g tolerance%g\n", i, av, bv, tolerance);
+            ok = false;
+        }
+    }
+    return ok;
+}
+static bool horizon_dirty_counts(render_radiance *radiance, int size, int *dirty, int *total)
+{
+    int tiles = (size + 15) / 16;
+    *total = tiles * tiles;
+    *dirty = 0;
+    uint16_t pixels[PIXELS * 4];
+    CF_Texture mask = render_radiance_horizon_dirty_texture(radiance);
+    bool ok = mask.id && read_hdr_texture(mask, pixels, *total);
+    for (int i = 0; ok && i < *total; i++) {
+        float red = half_value(pixels[i * 4]);
+        if (!isfinite(red) || red < 0 || red > 1) {
+            ok = false;
+        }
+        *dirty += red > .5f;
+    }
+    return ok;
+}
+static bool horizon_reuse_sequence(
+    render_material_raster *raster,
+    GameHRCShadowMode mode,
+    bool fused,
+    bool reproject,
+    bool hierarchy
+)
+{
+    render_radiance *cached = render_radiance_new(), *fresh = render_radiance_new();
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    lighting.resolution = .5f;
+    lighting.radiance_hysteresis = 1;
+    lighting.surface_radius = 12;
+    lighting.surface_relief = 1.5f;
+    lighting.surface_bevel = lighting.specular = 0;
+    lighting.surface_shadow_mode = mode;
+    // Raw HDR bypasses frame-dependent display dithering during parity checks.
+    lighting.tone_mapping = GAME_HRC_TONE_AGX;
+    lighting.debug_view = 8;
+    lighting.horizon_hierarchy = hierarchy;
+    GameHRC2D reference = lighting;
+    lighting.horizon_fuse_relief = fused;
+    lighting.horizon_cache = true;
+    lighting.horizon_reproject = reproject;
+    behavior_asset *ridge = tilted_material("Horizon cache ridge", 0, 1);
+    pin_value height = { .type = PIN_F32, .f = 12 };
+    shader_error error;
+    bool ok = cached && fresh && ridge &&
+              !graph_set_pin_default(ridge->graph, ridge->graph->nodes[0], 0, 7, &height) &&
+              render_shader_upsert(ridge, &error);
+    render_material_entity scene[] = { emitter(),         lit_wall(6, 1.5f),
+                                       lit_wall(1, 1.5f), lit_wall(6, 1.5f),
+                                       lit_wall(1, 1.5f), emitter() };
+    scene[0].border_thickness = 0;
+    memset(scene[0].scene, 0, sizeof scene[0].scene);
+    memset(scene[0].border_scene, 0, sizeof scene[0].border_scene);
+    scene[1].points[1] = scene[2].points[1] = 18;
+    scene[1].extent[1] = scene[2].extent[1] = 20;
+    scene[2].pos[0] = -4;
+    scene[2].reserved[0] = (float)render_shader_find(ridge->name);
+    // A second lit receiver and raised blocker are outside the initial view,
+    // then enter the newly exposed strip during the large camera translation.
+    scene[3].pos[0] = 80;
+    scene[4].pos[0] = 84;
+    scene[5].pos[0] = 100;
+    scene[3].points[1] = scene[4].points[1] = 18;
+    scene[3].extent[1] = scene[4].extent[1] = 20;
+    scene[4].reserved[0] = (float)render_shader_find(ridge->name);
+    scene[5].border_thickness = 0;
+    memset(scene[5].scene, 0, sizeof scene[5].scene);
+    memset(scene[5].border_scene, 0, sizeof scene[5].border_scene);
+    CF_Canvas canvas = { 0 };
+    float max_error = 0;
+    int size = SIDE;
+    render_view_2d view = { .min_x = -64,
+                            .max_y = 64,
+                            .width = 128,
+                            .height = 128,
+                            .crop_max_u = 1,
+                            .crop_max_v = 1 };
+    for (int stage = 0; ok && stage < 15; stage++) {
+        int count = 0;
+        render_material_entity active[6];
+        if (stage == 1) {
+            scene[0].emission[1] = .15f;
+        }
+        if (stage == 2) {
+            scene[0].pos[0] = -26;
+        }
+        if (stage == 3) {
+            scene[2].pos[0] = 4;
+        }
+        if (stage == 5) {
+            scene[2].pos[0] = -6;
+            scene[1].points[0] = 1.25f;
+            scene[1].extent[0] = 2.25f;
+        }
+        if (stage == 6) {
+            view.min_x += 1;
+            view.center_x += 1;
+        }
+        if (stage == 7) {
+            view.max_y += 2;
+            view.center_y += 2;
+        }
+        if (stage == 8) {
+            view.min_x += .25f;
+            view.center_x += .25f;
+        }
+        if (stage == 9) {
+            view.min_x += 40;
+            view.center_x += 40;
+        }
+        if (stage == 10) {
+            render_radiance_reset(cached);
+        }
+        if (stage == 11) {
+            size = 64;
+        }
+        if (stage == 12) {
+            size = SIDE;
+        }
+        if (stage == 13) {
+            lighting.surface_shadow_mode = reference.surface_shadow_mode = mode == GAME_HRC_SHADOW_HORIZON4
+                                                                             ? GAME_HRC_SHADOW_HORIZON8
+                                                                             : GAME_HRC_SHADOW_HORIZON4;
+        }
+        if (stage == 14) {
+            lighting.horizon_fuse_relief = !lighting.horizon_fuse_relief;
+        }
+        if (stage == 0 || stage == 11 || stage == 12) {
+            if (canvas.id) {
+                cf_destroy_canvas(canvas);
+            }
+            CF_CanvasParams params = cf_canvas_defaults(size, size);
+            params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+            canvas = cf_make_canvas(params);
+            ok = canvas.id && render_material_raster_resize(raster, size, size) &&
+                 render_radiance_resize(cached, size, size) &&
+                 render_radiance_resize(fresh, size, size);
+        }
+        for (int i = 0; i < 6; i++) {
+            if (stage != 4 || i != 2) {
+                active[count++] = scene[i];
+            }
+        }
+        ok = ok && render_radiance_set_lighting(cached, lighting) &&
+             render_radiance_set_lighting(fresh, reference) &&
+             horizon_draw_view(raster, cached, canvas, active, count, size, view);
+        int dirty = 0, total = 0;
+        render_horizon_work work = render_radiance_horizon_work(cached);
+        ok = ok && horizon_dirty_counts(cached, size, &dirty, &total);
+        bool effective_reproject = reproject && (!hierarchy || stage == 9);
+        bool all = stage == 0 || stage == 8 || stage == 10 || stage == 11 ||
+                   stage == 12 || stage == 13 || stage == 14 ||
+                   (!effective_reproject && (stage == 6 || stage == 7 || stage == 9));
+        bool unchanged = stage == 1 || stage == 2;
+        if (ok) {
+            ok = (!all || dirty == total) && (!unchanged || dirty == 0) &&
+                 work.reuse_passes == (all ? 0 : 1) && work.dirty_passes > 0 &&
+                 work.tiles_x * work.tiles_y == total;
+        }
+        if (ok && (stage == 3 || stage == 4 || stage == 5)) {
+            ok = dirty > 0;
+        }
+        if (ok && effective_reproject && (stage == 6 || stage == 7 || stage == 9)) {
+            ok = work.reproject_passes == 1 && dirty > 0;
+        }
+        if (ok) {
+            ok = work.fused_packs == (lighting.horizon_fuse_relief ? 1 : 0) &&
+                 work.pack_passes == (lighting.horizon_fuse_relief ? 0 : 1);
+        }
+        if (ok) {
+            ok = horizon_compare(canvas, raster, fresh, active, count, size, view, .003f, &max_error);
+        }
+        if (ok) {
+            // Check actual shaded output as well as diagnostic visibility.
+            lighting.debug_view = reference.debug_view = 0;
+            ok = render_radiance_set_lighting(cached, lighting) &&
+                 render_radiance_set_lighting(fresh, reference) &&
+                 horizon_draw_view(raster, cached, canvas, active, count, size, view) &&
+                 horizon_compare(canvas, raster, fresh, active, count, size, view, .003f, &max_error);
+            lighting.debug_view = reference.debug_view = 8;
+        }
+        if (!ok) {
+            fprintf(
+                stderr,
+                "horizon cache mode%d fused%d reproject%d stage%d dirty%d/%d "
+                "passes(reuse%d,reproject%d,pack%d,fused%d)\n",
+                mode,
+                fused,
+                reproject,
+                stage,
+                dirty,
+                total,
+                work.reuse_passes,
+                work.reproject_passes,
+                work.pack_passes,
+                work.fused_packs
+            );
+        }
+    }
+    printf(
+        "horizon reuse mode%d fused%d reproject%d hierarchy%d: max_error%g "
+        "%s\n",
+        mode,
+        fused,
+        reproject,
+        hierarchy,
+        max_error,
+        ok ? "PASS" : "FAIL"
+    );
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    render_radiance_free(cached);
+    render_radiance_free(fresh);
+    behavior_asset_free(ridge);
+    ok = render_material_raster_resize(raster, SIDE, SIDE) && ok;
+    return ok;
+}
+
+static behavior_asset *horizon_height_material(const char *name, float slope, float height)
+{
+    behavior_asset *material = tilted_material(name, -slope, 1);
+    if (!material) {
+        return NULL;
+    }
+    graph *g = material->graph;
+    node *output = g->nodes[0];
+    shader_error error;
+    if (slope == 0) {
+        pin_value value = { .type = PIN_F32, .f = height };
+        if (graph_set_pin_default(g, output, 0, 7, &value)) {
+            behavior_asset_free(material);
+            return NULL;
+        }
+    } else {
+        node *position = graph_add_node(g, registry_node_by_name("Shader WorldPosition")),
+             *x = graph_add_node(g, registry_node_by_name("Shader X")),
+             *multiply = graph_add_node(g, registry_node_by_name("Shader Multiply")),
+             *offset = graph_add_node(g, registry_node_by_name("Shader Add"));
+        pin_value scale = { .type = PIN_F32, .f = slope },
+                  bias = { .type = PIN_F32, .f = height };
+        if (graph_connect_data(g, position, 0, x, 0) ||
+            graph_connect_data(g, x, 0, multiply, 0) ||
+            graph_set_pin_default(g, multiply, 0, 1, &scale) ||
+            graph_connect_data(g, multiply, 0, offset, 0) ||
+            graph_set_pin_default(g, offset, 0, 1, &bias) ||
+            graph_connect_data(g, offset, 0, output, 7)) {
+            behavior_asset_free(material);
+            return NULL;
+        }
+    }
+    if (!render_shader_upsert(material, &error)) {
+        behavior_asset_free(material);
+        return NULL;
+    }
+    return material;
+}
+static bool horizon_hierarchy_quality(render_material_raster *raster, GameHRCShadowMode mode)
+{
+    render_radiance *approx = render_radiance_new(), *fine = render_radiance_new();
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    lighting.radiance_hysteresis = 1;
+    lighting.surface_radius = 12;
+    lighting.surface_relief = 1.5f;
+    lighting.surface_bevel = lighting.specular = 0;
+    lighting.surface_shadow_mode = mode;
+    lighting.debug_view = 8;
+    GameHRC2D reference = lighting;
+    lighting.horizon_hierarchy = true;
+    behavior_asset *plane = horizon_height_material("Hierarchy flat plane", 0, 0),
+                   *ramp = horizon_height_material("Hierarchy shallow ramp", .1f, 0),
+                   *ridge = horizon_height_material("Hierarchy raised ridge", 0, 6);
+    CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas canvas = cf_make_canvas(params);
+    bool ok = approx && fine && plane && ramp && ridge && canvas.id &&
+              render_material_raster_resize(raster, SIDE, SIDE) &&
+              render_radiance_resize(approx, SIDE, SIDE) &&
+              render_radiance_resize(fine, SIDE, SIDE) &&
+              render_radiance_set_lighting(approx, lighting) &&
+              render_radiance_set_lighting(fine, reference);
+    render_view_2d view = { .min_x = -16,
+                            .max_y = 16,
+                            .width = 32,
+                            .height = 32,
+                            .crop_max_u = 1,
+                            .crop_max_v = 1 };
+    render_material_entity scene[] = { emitter(), lit_wall(6, 1.5f), lit_wall(1, 1.5f) };
+    scene[0].pos[0] = -12;
+    scene[0].radius = 2;
+    scene[0].extent[0] = scene[0].extent[1] = 4;
+    scene[0].border_thickness = 0;
+    scene[1].points[1] = scene[2].points[1] = 18;
+    scene[1].extent[1] = scene[2].extent[1] = 20;
+    scene[2].pos[0] = -2;
+    scene[2].reserved[0] = (float)render_shader_find(ridge->name);
+    const char *names[] = { "plane", "ramp", "ridge", "gap" };
+    for (int shape = 0; ok && shape < 4; shape++) {
+        int count = shape < 2 ? 2 : 3;
+        scene[1].reserved[0] = (float)render_shader_find(
+            shape == 1 ? ramp->name : plane->name
+        );
+        if (shape == 3) {
+            scene[1].points[0] = 1.25f;
+            scene[1].extent[0] = 2.25f;
+            scene[2].pos[0] = -6;
+        }
+        uint16_t a[PIXELS * 4], b[PIXELS * 4], cover[PIXELS * 4];
+        render_radiance_reset(approx);
+        render_radiance_reset(fine);
+        ok = horizon_draw_view(raster, approx, canvas, scene, count, SIDE, view) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), a, PIXELS);
+        render_horizon_work work = render_radiance_horizon_work(approx);
+        ok = ok && work.hierarchy_passes > 0 &&
+             horizon_draw_view(raster, fine, canvas, scene, count, SIDE, view) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), b, PIXELS) &&
+             read_hdr_texture(render_material_raster_textures(raster).cover, cover, PIXELS);
+        double error = 0, visibility = 0;
+        int samples = 0;
+        float max_error = 0;
+        for (int i = 0; ok && i < PIXELS; i++) {
+            float av = half_value(a[i * 4 + 2]), bv = half_value(b[i * 4 + 2]);
+            if (!isfinite(av + bv) || av < -.002f || av > 1.002f) {
+                ok = false;
+            }
+            if (half_value(cover[i * 4 + 1]) < .5f) {
+                continue;
+            }
+            float d = fabsf(av - bv);
+            error += d;
+            max_error = fmaxf(max_error, d);
+            visibility += av;
+            samples++;
+        }
+        float mean_error = samples ? (float)(error / samples) : 1;
+        float mean_visibility = samples ? (float)(visibility / samples) : 0;
+        int center = 4 * ((SIDE / 2) * SIDE + SIDE / 2);
+        float center_visibility = half_value(a[center + 2]),
+              fine_center = half_value(b[center + 2]);
+        ok = ok && samples > 100 && mean_error < .003f && max_error < .003f;
+        if (shape < 2) {
+            ok = ok && mean_visibility > .95f && center_visibility > .99f;
+        }
+        if (shape == 2) {
+            ok = ok && fine_center < .5f && center_visibility <= fine_center + .15f;
+        }
+        if (shape == 3) {
+            ok = ok && center_visibility > .99f && fine_center > .99f;
+        }
+        printf(
+            "horizon hierarchy mode%d %s: mean_error%g max_error%g "
+            "mean_visibility%g center%g fine_center%g %s\n",
+            mode,
+            names[shape],
+            mean_error,
+            max_error,
+            mean_visibility,
+            center_visibility,
+            fine_center,
+            ok ? "PASS" : "FAIL"
+        );
+    }
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    render_radiance_free(approx);
+    render_radiance_free(fine);
+    behavior_asset_free(plane);
+    behavior_asset_free(ramp);
+    behavior_asset_free(ridge);
+    return ok;
+}
+
 static bool surface_history(render_material_raster *raster)
 {
     render_radiance *radiance = render_radiance_new();
@@ -2052,7 +2611,20 @@ int test_radiance()
     extern bool test_radiance_intervals();
     extern bool test_radiance_history();
     extern bool test_material_sampling();
+    extern bool test_material_raster_uploads();
     extern bool test_mesh_material();
+    extern bool test_sdf_material();
+    extern bool test_sdf_quality();
+    extern bool test_sdf_visibility();
+    extern bool test_camera_orbit();
+    extern bool test_camera_centered_orbit();
+    extern bool test_camera_emitter_orbit();
+    extern bool test_camera_plane();
+    extern bool test_surface_gather();
+    extern bool test_surface_depth();
+    extern bool test_sdf_spatial();
+    extern int test_shader_program_gpu();
+    extern int test_shader_graph_gpu();
     render_material_raster *raster = render_material_raster_new();
     render_radiance *radiance = render_radiance_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
@@ -2237,7 +2809,23 @@ int test_radiance()
         ok &= fluid_lighting(raster, radiance, canvas, levels);
     }
     ok &= surface_lighting(raster, radiance, canvas);
-    ok &= directional_surface_colors(raster);
+    const GameHRCShadowMode shadow_modes[] = { GAME_HRC_SHADOW_REFERENCE,
+                                               GAME_HRC_SHADOW_HORIZON4,
+                                               GAME_HRC_SHADOW_HORIZON8 };
+    for (int mode = 0; mode < 3; mode++) {
+        ok &= directional_surface_colors(raster, shadow_modes[mode]);
+        if (mode) {
+            ok &= horizon_updates(raster, shadow_modes[mode]);
+            ok &= horizon_hierarchy_quality(raster, shadow_modes[mode]);
+            for (int fused = 0; fused < 2; fused++) {
+                for (int reproject = 0; reproject < 2; reproject++) {
+                    for (int hierarchy = 0; hierarchy < 2; hierarchy++) {
+                        ok &= horizon_reuse_sequence(raster, shadow_modes[mode], fused, reproject, hierarchy);
+                    }
+                }
+            }
+        }
+    }
     ok &= surface_history(raster);
     ok &= split_luminance_transport(raster, canvas);
     ok &= fractional_cells(raster, canvas);
@@ -2247,7 +2835,18 @@ int test_radiance()
     ok &= test_radiance_intervals();
     ok &= test_radiance_history();
     ok &= test_material_sampling();
+    ok &= test_material_raster_uploads();
     ok &= test_mesh_material();
+    ok &= test_sdf_material();
+    ok &= test_sdf_quality();
+    ok &= test_sdf_visibility();
+    ok &= test_camera_orbit();
+    ok &= test_camera_centered_orbit();
+    ok &= test_camera_emitter_orbit();
+    ok &= test_camera_plane();
+    ok &= test_surface_gather();
+    ok &= test_surface_depth();
+    ok &= test_sdf_spatial();
     if (canvas.id) {
         cf_destroy_canvas(canvas);
     }
@@ -2256,6 +2855,14 @@ int test_radiance()
     }
     if (raster) {
         render_material_raster_free(raster);
+    }
+    // This test clears the shared shader catalog; run after other renderer
+    // resources are released, while the caller still owns the GPU context.
+    ok &= test_shader_program_gpu() == 0;
+    if (cf_query_backend() == CF_BACKEND_TYPE_GLES3) {
+        puts("shader math/gradient compute tests SKIP: GLES 3.0 has no compute shaders");
+    } else {
+        ok &= test_shader_graph_gpu() == 0;
     }
     printf("radiance %s: HRC transport, surface channels, absorption, reset and resize\n", ok ? "PASS" : "FAIL");
     return !ok;

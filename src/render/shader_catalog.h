@@ -12,6 +12,8 @@ const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
 bool render_shader_parameters_validate(int index, const char *text, shader_error *error);
 bool render_shader_is_shape(int index);
+/* Exact centered sphere with a constant or scalar parameter radius. */
+bool render_shader_sphere_radius(int index, const float parameters[32][4], float *radius);
 bool render_shader_may_be_transparent(int index);
 bool render_shader_sample(
     int index,
@@ -32,6 +34,8 @@ typedef struct
 {
     int images[RENDER_SHADER_IMAGE_MAX];
     int count;
+    /* Nonzero shape selects only this SDF shape/material pair. */
+    int shape, material;
 } render_shader_set;
 bool render_shader_set_add(render_shader_set *set, int asset, shader_error *error);
 int render_shader_ramp_vec4_count(const render_shader_set *set);

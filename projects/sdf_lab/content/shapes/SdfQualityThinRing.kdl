@@ -1,0 +1,33 @@
+version 3
+name "SdfQualityThinRing"
+domain "shape"
+bounds_x 140.0
+bounds_y 140.0
+id_counter 79
+description "Thin torus: resolves a real opening at several projected sizes."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Shader Shape Output"
+            - id=3 type="Shader ObjectPosition"
+            - {
+                id 34
+                type "Behavior Expression"
+                reference_name "length(vec2(length(position.xz) - 27, position.y)) - 2"
+                inputs {
+                    position id=35 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=36 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Value" to="34.position"
+            - from="34.Result" to="1.Distance"
+        }
+    }
+    - id=5 kind="function" math_expression="length(vec2(length(position.xz) - 27, position.y)) - 2" entry_id=38
+}

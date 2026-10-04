@@ -1,0 +1,10 @@
+name "SdfTorus"
+components {
+    GAME.GameGeometry3D depth=96.0 height=96.0 width=96.0
+    GAME.GameMaterial absorption=1.0 edge_light=1.0 emission_multiplier=1.0
+    (object)GAME.GameOrientation
+    GAME.GameSdfSurface3D enabled=#true
+    GAME.GameShader material="SdfIvory" shape="SdfTorus"
+    (object)GAME.GameTransform
+    GAME.GameVisualTransform pitch=0.45 roll=-0.12 scale=1.0
+}

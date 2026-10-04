@@ -62,17 +62,19 @@ static inline void checkpoint_free_strings(char **strings)
 
 static inline yyjson_mut_val *checkpoint_camera(yyjson_mut_doc *doc, engine_viewport_view view)
 {
-    double values[] = { view.center_x, view.center_y, view.width, view.height };
-    return yyjson_mut_arr_with_real(doc, values, 4);
+    double values[] = { view.center_x, view.center_y,         view.width,
+                        view.height,   view.focal_distance,   view.yaw,
+                        view.pitch,    view.target_elevation, view.roll };
+    return yyjson_mut_arr_with_real(doc, values, 9);
 }
 
 static inline bool checkpoint_read_camera(yyjson_val *array, engine_viewport_view *view)
 {
-    if (!yyjson_is_arr(array) || yyjson_arr_size(array) != 4) {
+    if (!yyjson_is_arr(array) || yyjson_arr_size(array) != 9) {
         return false;
     }
-    float values[4];
-    for (int i = 0; i < 4; i++) {
+    float values[9];
+    for (int i = 0; i < 9; i++) {
         yyjson_val *value = yyjson_arr_get(array, i);
         if (!yyjson_is_num(value) || !isfinite(yyjson_get_num(value))) {
             return false;
@@ -82,7 +84,12 @@ static inline bool checkpoint_read_camera(yyjson_val *array, engine_viewport_vie
             return false;
         }
     }
-    *view = (engine_viewport_view){ values[0], values[1], values[2], values[3] };
+    if (values[4] < 0 || (values[4] > 0 && values[4] <= 1)) {
+        return false;
+    }
+    *view = (engine_viewport_view){ values[0], values[1], values[2],
+                                    values[3], values[4], values[5],
+                                    values[6], values[7], values[8] };
     return true;
 }
 

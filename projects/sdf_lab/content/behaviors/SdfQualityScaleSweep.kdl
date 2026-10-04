@@ -1,0 +1,74 @@
+version 3
+name "SdfQualityScaleSweep"
+id_counter 129
+description "Changes projected bounds across a graph LOD cutoff; geometry remains deterministic."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="elapsed" type="float"
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 2
+                type "Event"
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=4 type="float" kind="data"
+                }
+            }
+            - {
+                id 17
+                type "Behavior Expression"
+                reference_name "elapsed += dt"
+                inputs {
+                    Exec id=21 kind="exec"
+                    elapsed {
+                        id 18
+                        type "float"
+                        binding kind="variable" source_asset="SdfQualityScaleSweep" name="elapsed"
+                    }
+                    dt {
+                        id 19
+                        type "double"
+                        binding kind="delta_time"
+                    }
+                }
+                outputs {
+                    Then id=22 kind="exec"
+                    Result id=20 type="float"
+                }
+            }
+            - {
+                id 72
+                type "Behavior Expression"
+                reference_name "scale = 0.23 + 0.2 * sin(elapsed * 1.4)"
+                inputs {
+                    Exec id=76 kind="exec"
+                    scale {
+                        id 73
+                        type "float"
+                        binding kind="component_field" component="GAME.GameVisualTransform" field="scale"
+                    }
+                    elapsed {
+                        id 74
+                        type "double"
+                        binding kind="variable" source_asset="SdfQualityScaleSweep" name="elapsed"
+                    }
+                }
+                outputs {
+                    Then id=77 kind="exec"
+                    Result id=75 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="2.Then" to="17.Exec"
+            - from="17.Then" to="72.Exec"
+        }
+    }
+    - id=5 kind="function" math_expression="elapsed += dt" entry_id=24
+    - id=40 kind="function" math_expression="scale = 0.23 + 0.2 * sin(elapsed * 1.4)" entry_id=79
+}

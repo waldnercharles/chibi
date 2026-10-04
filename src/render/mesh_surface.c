@@ -10,6 +10,60 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Shared immutable proxy; dimensions and transforms belong to each surface. */
+static render_mesh_surface_vertex sdf_proxy[] = {
+    { .position = { -0.5, -0.5, -0.5 }, .normal = { -1, 0, 0 } },
+    { .position = { -0.5, -0.5, 0.5 }, .normal = { -1, 0, 0 } },
+    { .position = { -0.5, 0.5, 0.5 }, .normal = { -1, 0, 0 } },
+    { .position = { -0.5, -0.5, -0.5 }, .normal = { -1, 0, 0 } },
+    { .position = { -0.5, 0.5, 0.5 }, .normal = { -1, 0, 0 } },
+    { .position = { -0.5, 0.5, -0.5 }, .normal = { -1, 0, 0 } },
+    { .position = { 0.5, -0.5, -0.5 }, .normal = { 1, 0, 0 } },
+    { .position = { 0.5, 0.5, -0.5 }, .normal = { 1, 0, 0 } },
+    { .position = { 0.5, 0.5, 0.5 }, .normal = { 1, 0, 0 } },
+    { .position = { 0.5, -0.5, -0.5 }, .normal = { 1, 0, 0 } },
+    { .position = { 0.5, 0.5, 0.5 }, .normal = { 1, 0, 0 } },
+    { .position = { 0.5, -0.5, 0.5 }, .normal = { 1, 0, 0 } },
+    { .position = { -0.5, -0.5, -0.5 }, .normal = { 0, -1, 0 } },
+    { .position = { 0.5, -0.5, -0.5 }, .normal = { 0, -1, 0 } },
+    { .position = { 0.5, -0.5, 0.5 }, .normal = { 0, -1, 0 } },
+    { .position = { -0.5, -0.5, -0.5 }, .normal = { 0, -1, 0 } },
+    { .position = { 0.5, -0.5, 0.5 }, .normal = { 0, -1, 0 } },
+    { .position = { -0.5, -0.5, 0.5 }, .normal = { 0, -1, 0 } },
+    { .position = { -0.5, 0.5, -0.5 }, .normal = { 0, 1, 0 } },
+    { .position = { -0.5, 0.5, 0.5 }, .normal = { 0, 1, 0 } },
+    { .position = { 0.5, 0.5, 0.5 }, .normal = { 0, 1, 0 } },
+    { .position = { -0.5, 0.5, -0.5 }, .normal = { 0, 1, 0 } },
+    { .position = { 0.5, 0.5, 0.5 }, .normal = { 0, 1, 0 } },
+    { .position = { 0.5, 0.5, -0.5 }, .normal = { 0, 1, 0 } },
+    { .position = { -0.5, -0.5, -0.5 }, .normal = { 0, 0, -1 } },
+    { .position = { -0.5, 0.5, -0.5 }, .normal = { 0, 0, -1 } },
+    { .position = { 0.5, 0.5, -0.5 }, .normal = { 0, 0, -1 } },
+    { .position = { -0.5, -0.5, -0.5 }, .normal = { 0, 0, -1 } },
+    { .position = { 0.5, 0.5, -0.5 }, .normal = { 0, 0, -1 } },
+    { .position = { 0.5, -0.5, -0.5 }, .normal = { 0, 0, -1 } },
+    { .position = { -0.5, -0.5, 0.5 }, .normal = { 0, 0, 1 } },
+    { .position = { 0.5, -0.5, 0.5 }, .normal = { 0, 0, 1 } },
+    { .position = { 0.5, 0.5, 0.5 }, .normal = { 0, 0, 1 } },
+    { .position = { -0.5, -0.5, 0.5 }, .normal = { 0, 0, 1 } },
+    { .position = { 0.5, 0.5, 0.5 }, .normal = { 0, 0, 1 } },
+    { .position = { -0.5, 0.5, 0.5 }, .normal = { 0, 0, 1 } },
+};
+
+const char *render_mesh_surface_lod_shape(const GameSdfSurface3D *sdf, float pixels, bool disabled)
+{
+    if (disabled || !sdf || !sdf->enabled || !sdf->low_detail_shape ||
+        !*sdf->low_detail_shape) {
+        return NULL;
+    }
+    return pixels <= sdf->low_detail_pixels ? sdf->low_detail_shape : NULL;
+}
+
+int render_mesh_surface_vertex_count(const render_mesh_surface_part *part)
+{
+    return part->vertex_count ? part->vertex_count : acount(part->vertices);
+}
+
 static void add_triangle(render_mesh_surface_vertex **vertices, CF_V3 a, CF_V3 b, CF_V3 c)
 {
     CF_V3 normal = cf_norm_v3(cf_cross_v3(cf_sub_v3(b, a), cf_sub_v3(c, a)));
@@ -105,15 +159,21 @@ bool render_mesh_surface_vertices(
     }
 }
 
-void render_mesh_surface_free(render_mesh_surface *surface)
+static void clear_surface(render_mesh_surface *surface)
 {
     for (int i = 0; i < acount(surface->parts); i++) {
         if (!surface->parts[i].borrowed) {
             afree(surface->parts[i].vertices);
         }
     }
+    aclear(surface->parts);
+    surface->min = surface->max = (CF_V3){ 0 };
+}
+
+void render_mesh_surface_free(render_mesh_surface *surface)
+{
+    clear_surface(surface);
     afree(surface->parts);
-    memset(surface, 0, sizeof *surface);
 }
 
 bool render_mesh_surface_build(
@@ -125,11 +185,68 @@ bool render_mesh_surface_build(
     size_t size
 )
 {
-    render_mesh_surface_free(surface);
+    clear_surface(surface);
     if (!GAME_GameGeometry3D_get_const(world, entity) ||
         (!position && !GAME_GameTransform_get_const(world, entity))) {
         snprintf(error, size, "Mesh Surface 2D requires Geometry3D and Transform.");
         return false;
+    }
+    const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(world, entity);
+    if (sdf && sdf->enabled) {
+        if (sdf->low_detail_shape && *sdf->low_detail_shape &&
+            (!isfinite(sdf->low_detail_pixels) || sdf->low_detail_pixels <= 0)) {
+            snprintf(error, size, "SDF low-detail graph requires a finite positive pixel cutoff.");
+            return false;
+        }
+        const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
+        const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
+        const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
+        if (!position) {
+            position = GAME_GameTransform_get_const(world, entity);
+        }
+        float scale = transform ? transform->scale : 1;
+        CF_V3 rotation = transform ? (CF_V3){ transform->pitch,
+                                              transform->yaw,
+                                              transform->roll }
+                                   : (CF_V3){ 0 };
+        float angle = heading ? heading->radians : 0;
+        if (!isfinite(
+                position->x + position->y + shape->elevation + scale + angle +
+                rotation.x + rotation.y + rotation.z + shape->width +
+                shape->height + shape->depth
+            ) ||
+            scale < 0 || shape->width <= 0 || shape->height <= 0 || shape->depth <= 0) {
+            snprintf(error, size, "SDF surface requires finite transforms and positive bounds.");
+            return false;
+        }
+        if (scale == 0) {
+            return true;
+        }
+        render_mesh_surface_part part = {
+            .visual = { .part = { .primitive = GAME_PRIMITIVE_BOX,
+                                  .dimensions = { shape->width,
+                                                  shape->height,
+                                                  shape->depth } },
+                        .frame = cf_m4_from_trs(
+                            (CF_V3){ position->x, shape->elevation, position->y },
+                            game_visual_rotation(angle, rotation),
+                            (CF_V3){ scale, scale, scale }
+                        ) }
+        };
+        part.vertices = sdf_proxy;
+        part.vertex_count = 36;
+        part.borrowed = true;
+        surface->min = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
+        surface->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
+        CF_M4x4 model = render_arena_visual_model(&part.visual);
+        for (int i = 0; i < 8; i++) {
+            CF_V3 corner = { i & 1 ? .5f : -.5f, i & 2 ? .5f : -.5f, i & 4 ? .5f : -.5f };
+            CF_V3 p = cf_m4_transform_point(model, corner);
+            surface->min = cf_min_v3(surface->min, p);
+            surface->max = cf_max_v3(surface->max, p);
+        }
+        apush(surface->parts, part);
+        return true;
     }
     const GameMeshAsset *imported = GAME_GameMeshAsset_get_const(world, entity);
     if (imported && imported->source && *imported->source) {
@@ -266,7 +383,7 @@ bool render_mesh_surface_pick(const render_mesh_surface *surface, CF_V2 position
     for (int i = 0; i < acount(surface->parts); i++) {
         const render_mesh_surface_part *part = &surface->parts[i];
         CF_M4x4 model = render_arena_visual_model(&part->visual);
-        for (int v = 0; v < acount(part->vertices); v += 3) {
+        for (int v = 0; v < render_mesh_surface_vertex_count(part); v += 3) {
             CF_V3 a = cf_m4_transform_point(model, part->vertices[v].position);
             CF_V3 b = cf_m4_transform_point(model, part->vertices[v + 1].position);
             CF_V3 c = cf_m4_transform_point(model, part->vertices[v + 2].position);

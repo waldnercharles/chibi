@@ -1,0 +1,74 @@
+version 3
+name "SdfCameraYawSway"
+id_counter 151
+description "Small side-to-side camera yaw at fixed tilt: plus/minus 0.3 radians over sixteen seconds. Every world object remains fixed."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="elapsed" type="float"
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 2
+                type "Event"
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=4 type="float" kind="data"
+                }
+            }
+            - {
+                id 17
+                type "Behavior Expression"
+                reference_name "elapsed += dt"
+                inputs {
+                    Exec id=21 kind="exec"
+                    elapsed {
+                        id 18
+                        type "float"
+                        binding kind="variable" source_asset="SdfCameraYawSway" name="elapsed"
+                    }
+                    dt {
+                        id 19
+                        type "double"
+                        binding kind="delta_time"
+                    }
+                }
+                outputs {
+                    Then id=22 kind="exec"
+                    Result id=20 type="float"
+                }
+            }
+            - {
+                id 79
+                type "Behavior Expression"
+                reference_name "yaw = 0.3 * sin(elapsed * (2 * pi / 16))"
+                inputs {
+                    Exec id=83 kind="exec"
+                    yaw {
+                        id 80
+                        type "float"
+                        binding kind="component_field" component="GAME.GameCamera" field="yaw"
+                    }
+                    elapsed {
+                        id 81
+                        type "double"
+                        binding kind="variable" source_asset="SdfCameraYawSway" name="elapsed"
+                    }
+                }
+                outputs {
+                    Then id=84 kind="exec"
+                    Result id=82 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="2.Then" to="17.Exec"
+            - from="17.Then" to="79.Exec"
+        }
+    }
+    - id=5 kind="function" math_expression="elapsed += dt" entry_id=24
+    - id=40 kind="function" math_expression="yaw = 0.3 * sin(elapsed * (2 * pi / 16))" entry_id=86
+}

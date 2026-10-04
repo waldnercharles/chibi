@@ -1,0 +1,46 @@
+version 3
+name "SdfCoverageSlab"
+domain "shape"
+bounds_x 90.0
+bounds_y 90.0
+id_counter 150
+description "Stationary broad rounded slab: a simple lighting receiver without animation or material emission."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Shader Shape Output"
+            - id=3 type="Shader ObjectPosition"
+            - {
+                id 30
+                type "Behavior Expression"
+                reference_name "abs(p) - vec3(82, 6, 82)"
+                inputs {
+                    p id=31 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=32 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 73
+                type "Behavior Expression"
+                reference_name "length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0) - 4"
+                inputs {
+                    offset id=74 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=75 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Value" to="30.p"
+            - from="30.Result" to="73.offset"
+            - from="73.Result" to="1.Distance"
+        }
+    }
+    - id=5 kind="function" math_expression="abs(p) - vec3(82, 6, 82)" entry_id=126
+    - id=33 kind="function" math_expression="length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0) - 4" entry_id=77
+}

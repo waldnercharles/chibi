@@ -44,6 +44,13 @@ struct app_scene_renderer
     render_fog *fog;
     bool arena_attempted, parallel_disabled, resources_attempted;
     render_material_raster *raster;
+    int sdf_batch_limit;
+    GameSurfaceQuality surface_quality;
+    GameHRCShadowMode shadow_mode;
+    bool quality_override, shadow_override, sdf_trace_debug;
+    bool hidden_rejection, spatial_scratch;
+    unsigned horizon_reuse_mask;
+    GameHRC2D horizon_reuse;
     render_fluid_raster *fluid;
     render_radiance *radiance;
     /* HDR presentation for tone-mapped 2D scenes. */
@@ -64,6 +71,7 @@ struct app_scene_renderer
     int tile_groups;
     render_material_entity *entities;
     render_mesh_material_actor *meshes;
+    render_mesh_surface *mesh_surfaces;
     render_material_border_cache *border;
     draw_actor *actors;
     ecs_world *world;
@@ -90,7 +98,10 @@ void app_scene_renderer_initialize()
 
 app_scene_renderer *app_scene_renderer_new()
 {
-    return xcalloc(1, sizeof(app_scene_renderer));
+    app_scene_renderer *renderer = xcalloc(1, sizeof(app_scene_renderer));
+    renderer->hidden_rejection = true;
+    renderer->spatial_scratch = true;
+    return renderer;
 }
 
 static void initialize_resources(app_scene_renderer *renderer)
@@ -101,6 +112,11 @@ static void initialize_resources(app_scene_renderer *renderer)
     renderer->resources_attempted = true;
     renderer->fog = render_fog_new();
     renderer->raster = render_material_raster_new();
+    if (renderer->raster) {
+        render_material_raster_set_sdf_batch_limit(renderer->raster, renderer->sdf_batch_limit);
+        render_material_raster_set_hidden_rejection(renderer->raster, renderer->hidden_rejection);
+        render_material_raster_set_spatial_scratch(renderer->raster, renderer->spatial_scratch);
+    }
     renderer->radiance = render_radiance_new();
     /* Adaptive lighting resolution times lighting with GPU timestamps. */
     renderer->gpu_clock = cf_query_backend() == CF_BACKEND_TYPE_METAL &&
@@ -114,6 +130,10 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     }
     render_material_raster_free(renderer->raster);
     afree(renderer->meshes);
+    for (int i = 0; i < acount(renderer->mesh_surfaces); i++) {
+        render_mesh_surface_free(&renderer->mesh_surfaces[i]);
+    }
+    afree(renderer->mesh_surfaces);
     render_fluid_raster_free(renderer->fluid);
     render_arena_free(renderer->arena);
     render_arena_post_free(renderer->post);
@@ -606,6 +626,19 @@ static bool mask_visible(
     float y = -origin.y - s * rect.x - c * rect.y;
     float rx = (fabsf(c) * rect.width + fabsf(s) * rect.height) * .5f + padding;
     float ry = (fabsf(s) * rect.width + fabsf(c) * rect.height) * .5f + padding;
+    if (view.yaw != 0 || view.pitch != 0 || view.roll != 0 ||
+        view.target_elevation != 0) {
+        CF_V2 lo, hi;
+        return render_mesh_project_bounds(
+                   view,
+                   (CF_V3){ x - rx, 0, -y - ry },
+                   (CF_V3){ x + rx, 0, -y + ry },
+                   &lo,
+                   &hi
+               ) &&
+               hi.x >= view.min_x && lo.x <= view.min_x + view.width &&
+             -lo.y >= view.max_y - view.height && -hi.y <= view.max_y;
+    }
     return x + rx >= view.min_x && x - rx <= view.min_x + view.width &&
            y + ry >= view.max_y - view.height && y - ry <= view.max_y;
 }
@@ -663,10 +696,14 @@ static void collect_chunks(
     for (int i = 0; i < count; i++) {
         const material_chunk *chunk = &chunks[i];
         float scale = material_chunk_scale(chunk), radius = chunk->radius * scale;
-        if (radius <= .05f || chunk->position.x + radius < view.min_x ||
-            chunk->position.x - radius > view.min_x + view.width ||
-            -chunk->position.y + radius < view.max_y - view.height ||
-            -chunk->position.y - radius > view.max_y) {
+        if (radius <= .05f ||
+            !mask_visible(
+                view,
+                (GameTransform){ chunk->position.x, chunk->position.y },
+                (material_rect){ .width = radius * 2, .height = radius * 2 },
+                0,
+                0
+            )) {
             continue;
         }
         if (chunk->source != cached) {
@@ -746,28 +783,37 @@ static bool collect(
         const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
         const GameShader *binding = GAME_GameShader_get_const(world, entity);
         const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(world, entity);
-        if (mesh && mesh->enabled) {
+        const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(world, entity);
+        if ((mesh && mesh->enabled) || (sdf && sdf->enabled)) {
             const GameVisualTransform *pose = GAME_GameVisualTransform_get_const(world, entity);
             if (pose && pose->scale == 0) {
                 continue;
             }
             GameTransform position = *GAME_GameTransform_get_const(world, entity);
             engine_render_position(runtime, entity, &position);
-            render_mesh_surface surface = { 0 };
+            int index = acount(renderer->meshes);
+            if (index == acount(renderer->mesh_surfaces)) {
+                apush(renderer->mesh_surfaces, ((render_mesh_surface){ 0 }));
+            }
+            render_mesh_surface *surface = &renderer->mesh_surfaces[index];
             if (!render_mesh_surface_build(
                     world,
                     entity,
                     &position,
-                    &surface,
+                    surface,
                     renderer->error,
                     sizeof renderer->error
                 )) {
-                render_mesh_surface_free(&surface);
                 return false;
             }
             CF_V2 min, max;
-            bool visible = render_mesh_project_bounds(view, surface.min, surface.max, &min, &max);
-            render_mesh_surface_free(&surface);
+            bool visible = render_mesh_project_bounds(
+                view,
+                surface->min,
+                surface->max,
+                &min,
+                &max
+            );
             if (!visible || max.x < view.min_x || min.x > view.min_x + view.width ||
                 -min.y < view.max_y - view.height || -max.y > view.max_y) {
                 continue;
@@ -777,7 +823,21 @@ static bool collect(
                 .wobble = { 0, 0, 0, renderer->actors[actor].layer },
                 .points = { (float)acount(renderer->meshes) }
             };
-            apush(renderer->meshes, ((render_mesh_material_actor){ entity, position }));
+            float pixels = fmaxf(
+                (max.x - min.x) * renderer->raster_width / view.width,
+                (max.y - min.y) * renderer->raster_height / view.height
+            );
+            const char *detail = render_mesh_surface_lod_shape(
+                sdf,
+                pixels,
+                renderer->surface_quality.disable_sdf_lod
+            );
+            apush(
+                renderer->meshes,
+                ((render_mesh_material_actor){ .entity = entity,
+                                               .position = position,
+                                               .sdf_shape = detail })
+            );
             apush(renderer->entities, draw);
             continue;
         }
@@ -1031,6 +1091,9 @@ static bool collect(
         GameTransform position = { particle->position.x, particle->position.y };
         append_entity(renderer, &position, &appearance, 0, NULL, NULL);
     }
+    for (int i = 0; i < acount(renderer->meshes); i++) {
+        renderer->meshes[i].surface = &renderer->mesh_surfaces[i];
+    }
     return true;
 }
 
@@ -1056,6 +1119,10 @@ static render_view_2d padded_view(
        .crop_max_u = (output_width + pad_pixels) / (float)(output_width + 2 * pad_pixels),
        .crop_max_v = (output_height + pad_pixels) / (float)(output_height + 2 * pad_pixels),
        .focal_distance = camera->focal_distance,
+       .yaw = camera->yaw,
+       .pitch = camera->pitch,
+       .roll = camera->roll,
+       .target_elevation = camera->target_elevation,
        .center_x = camera->center_x,
        .center_y = camera->center_y };
 }
@@ -1077,6 +1144,26 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
             }
         }
         ecs_query_end(&query);
+    }
+    if (renderer->shadow_override) {
+        lighting.surface_shadow_mode = renderer->shadow_mode;
+    }
+    if (renderer->horizon_reuse_mask & 1) {
+        lighting.horizon_fuse_relief = renderer->horizon_reuse.horizon_fuse_relief;
+    }
+    if (renderer->horizon_reuse_mask & 2) {
+        lighting.horizon_cache = renderer->horizon_reuse.horizon_cache;
+    }
+    if (renderer->horizon_reuse_mask & 4) {
+        lighting.horizon_reproject = renderer->horizon_reuse.horizon_reproject;
+    }
+    if (renderer->horizon_reuse_mask & 8) {
+        lighting.horizon_hierarchy = renderer->horizon_reuse.horizon_hierarchy;
+    }
+    if (renderer->sdf_trace_debug) {
+        lighting.debug_view = GAME_HRC_DEBUG_SCENE;
+        lighting.tone_mapping = GAME_HRC_TONE_CLAMP;
+        lighting.bloom = 0;
     }
     char notes[400] = "";
     if (settings > 0) {
@@ -1103,6 +1190,39 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
         snprintf(renderer->error, sizeof renderer->error, "HRC could not allocate its lighting resources.");
         return false;
     }
+    return true;
+}
+
+static bool scene_surface_quality(app_scene_renderer *renderer, ecs_world *world)
+{
+    GameSurfaceQuality quality = renderer->surface_quality;
+    if (!renderer->quality_override) {
+        quality = (GameSurfaceQuality){ 0 };
+        ecs_component_id component = GAME_COMPONENT_GameSurfaceQuality.id;
+        ecs_query query;
+        if (ecs_world_component(world, component) &&
+            ecs_query_begin(world, &query, &component, 1) == ECS_OK) {
+            ecs_entity entity;
+            while (ecs_query_next(&query, &entity)) {
+                if (!ecs_entity_is_retiring(world, entity)) {
+                    quality = *GAME_GameSurfaceQuality_get_const(world, entity);
+                    break;
+                }
+            }
+            ecs_query_end(&query);
+        }
+    }
+    if (quality.resolution < GAME_SURFACE_SUPERSAMPLED ||
+        quality.resolution > GAME_SURFACE_FULL || !isfinite(quality.sdf_pixel_error) ||
+        quality.sdf_pixel_error < 0 || quality.sdf_pixel_error > 1 ||
+        quality.sdf_normal_mode < GAME_SDF_NORMAL_CENTRAL ||
+        quality.sdf_normal_mode > GAME_SDF_NORMAL_ANALYTIC) {
+        snprintf(renderer->error, sizeof renderer->error, "Invalid surface quality settings.");
+        return false;
+    }
+    renderer->surface_quality = quality;
+    render_material_raster_set_quality(renderer->raster, quality);
+    render_material_raster_set_sdf_trace_debug(renderer->raster, renderer->sdf_trace_debug);
     return true;
 }
 
@@ -1232,7 +1352,7 @@ bool app_scene_renderer_draw(
             return false;
         }
         if (acount(renderer->meshes)) {
-            snprintf(renderer->error, sizeof renderer->error, "GameMeshSurface2D requires the HRC material renderer");
+            snprintf(renderer->error, sizeof renderer->error, "3D surfaces require the HRC material renderer");
             return false;
         }
         if (!prepare_fragments(renderer)) {
@@ -1304,10 +1424,15 @@ bool app_scene_renderer_draw(
                          0.5f;
     render_material_view view = frame.view;
     view.focal_distance = camera.focal_distance;
+    view.yaw = camera.yaw;
+    view.pitch = camera.pitch;
+    view.roll = camera.roll;
+    view.target_elevation = camera.target_elevation;
     view.center_x = camera.center_x;
     view.center_y = camera.center_y;
     CHIBI_TRACE_ZONE_BEGIN(collect_zone, "Material collect");
-    bool collected = collect(renderer, world, particles, runtime, view);
+    bool collected = scene_surface_quality(renderer, world) &&
+                     collect(renderer, world, particles, runtime, view);
     CHIBI_TRACE_ZONE_END(collect_zone);
     if (!collected) {
         return false;
@@ -1433,4 +1558,67 @@ render_arena_work app_scene_renderer_last_work(const app_scene_renderer *rendere
 {
     return renderer->arena ? render_arena_last_work(renderer->arena)
                            : (render_arena_work){ 0 };
+}
+
+void app_scene_renderer_set_sdf_batch_limit(app_scene_renderer *renderer, int limit)
+{
+    assert(limit >= 0 && limit <= RENDER_SDF_BATCH_LIMIT);
+    renderer->sdf_batch_limit = limit;
+    if (renderer->raster) {
+        render_material_raster_set_sdf_batch_limit(renderer->raster, limit);
+    }
+}
+
+void app_scene_renderer_set_hidden_rejection(app_scene_renderer *renderer, bool enabled)
+{
+    renderer->hidden_rejection = enabled;
+    if (renderer->raster) {
+        render_material_raster_set_hidden_rejection(renderer->raster, enabled);
+    }
+}
+
+void app_scene_renderer_set_spatial_scratch(app_scene_renderer *renderer, bool enabled)
+{
+    renderer->spatial_scratch = enabled;
+    if (renderer->raster) {
+        render_material_raster_set_spatial_scratch(renderer->raster, enabled);
+    }
+}
+
+void app_scene_renderer_set_surface_quality(app_scene_renderer *renderer, GameSurfaceQuality quality)
+{
+    renderer->surface_quality = quality;
+    renderer->quality_override = true;
+}
+void app_scene_renderer_set_sdf_trace_debug(app_scene_renderer *renderer, bool enabled)
+{
+    renderer->sdf_trace_debug = enabled;
+}
+void app_scene_renderer_set_shadow_mode(app_scene_renderer *renderer, GameHRCShadowMode mode)
+{
+    assert(mode >= GAME_HRC_SHADOW_REFERENCE && mode <= GAME_HRC_SHADOW_HORIZON8);
+    renderer->shadow_mode = mode;
+    renderer->shadow_override = true;
+}
+void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned mask, GameHRC2D values)
+{
+    renderer->horizon_reuse_mask = mask;
+    renderer->horizon_reuse = values;
+}
+
+render_surface_work app_scene_renderer_surface_work(const app_scene_renderer *renderer)
+{
+    return renderer->radiance ? render_radiance_surface_work(renderer->radiance)
+                              : (render_surface_work){ 0 };
+}
+
+render_horizon_work app_scene_renderer_horizon_work(const app_scene_renderer *renderer)
+{
+    return renderer->radiance ? render_radiance_horizon_work(renderer->radiance)
+                              : (render_horizon_work){ 0 };
+}
+render_mesh_material_work app_scene_renderer_mesh_work(const app_scene_renderer *renderer)
+{
+    return renderer->raster ? render_material_raster_mesh_work(renderer->raster)
+                            : (render_mesh_material_work){ 0 };
 }

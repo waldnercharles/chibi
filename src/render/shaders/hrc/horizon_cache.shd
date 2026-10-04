@@ -1,0 +1,29 @@
+#ifdef HRC_CACHE_HIERARCHY
+layout(set = 2, binding = 4) uniform sampler2D u_previous_cardinal;
+#ifdef HRC_HORIZON_FOUR
+layout(set = 2, binding = 5) uniform sampler2D u_dirty;
+#else
+layout(set = 2, binding = 5) uniform sampler2D u_previous_diagonal;
+layout(set = 2, binding = 6) uniform sampler2D u_dirty;
+#endif
+#else
+layout(set = 2, binding = 1) uniform sampler2D u_previous_cardinal;
+#ifdef HRC_HORIZON_FOUR
+layout(set = 2, binding = 2) uniform sampler2D u_dirty;
+#else
+layout(set = 2, binding = 2) uniform sampler2D u_previous_diagonal;
+layout(set = 2, binding = 3) uniform sampler2D u_dirty;
+#endif
+#endif
+bool reuse_horizon(ivec2 p)
+{
+    if (u_cache_valid == 0 || texelFetch(u_dirty, p / u_cache_tile, 0).r > 0.5) return false;
+    ivec2 previous = p + u_cache_offset;
+    ivec2 size = textureSize(u_previous_cardinal, 0);
+    if (any(lessThan(previous, ivec2(0))) || any(greaterThanEqual(previous, size))) return false;
+    out_cardinal = texelFetch(u_previous_cardinal, previous, 0);
+#ifndef HRC_HORIZON_FOUR
+    out_diagonal = texelFetch(u_previous_diagonal, previous, 0);
+#endif
+    return true;
+}

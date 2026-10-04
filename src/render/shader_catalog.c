@@ -363,6 +363,9 @@ static bool render_shader_set_contains(const render_shader_set *set, int id)
     if (id <= 0) {
         return true;
     }
+    if (set->shape && id != set->shape && id != set->material) {
+        return false;
+    }
     const shader_asset *asset = &assets[id - 1];
     for (int i = 0; i < acount(asset->images); i++) {
         if (set_slot(set, asset->images[i]) < 0) {
@@ -451,6 +454,57 @@ void render_shader_ramp_payload(const render_shader_set *set, float (*payload)[4
     }
 }
 
+/* Recognize only an exact centered sphere. Radius may animate or bind to an
+ * instance parameter, but must not depend on the point being evaluated. */
+static bool sphere_graph(const shader_graph *graph)
+{
+    const shader_node *distance = &graph->nodes[graph->output[0]];
+    if (distance->op != SHADER_SUBTRACT) {
+        return false;
+    }
+    const shader_node *length = &graph->nodes[distance->input[0]];
+    if (length->op != SHADER_LENGTH ||
+        graph->nodes[length->input[0]].op != SHADER_OBJECT_POSITION) {
+        return false;
+    }
+    bool spatial[SHADER_NODE_MAX] = { 0 };
+    for (int i = 0; i < acount(graph->nodes); i++) {
+        const shader_node *node = &graph->nodes[i];
+        switch (node->op) {
+            case SHADER_POSITION:
+            case SHADER_UV:
+            case SHADER_OBJECT_POSITION:
+            case SHADER_WORLD_POSITION:
+            case SHADER_NORMAL:
+            case SHADER_VIEW_DIRECTION:
+            case SHADER_SURFACE_INFLUENCE: spatial[i] = true; break;
+            default:
+                for (int j = 0; j < shader_op_inputs(node->op); j++) {
+                    spatial[i] |= spatial[node->input[j]];
+                }
+                break;
+        }
+    }
+    return !spatial[distance->input[1]];
+}
+
+bool render_shader_sphere_radius(int index, const float parameters[32][4], float *radius)
+{
+    if (!index || !assets[index - 1].shape || !sphere_graph(&assets[index - 1].graph)) {
+        return false;
+    }
+    const shader_graph *g = &assets[index - 1].graph;
+    const shader_node *node = &g->nodes[g->nodes[g->output[0]].input[1]];
+    if (node->op == SHADER_CONSTANT) {
+        *radius = node->value[0];
+    } else if (node->op == SHADER_PARAMETER) {
+        *radius = parameters[node->parameter][0];
+    } else {
+        return false;
+    }
+    return isfinite(*radius) && *radius > 0;
+}
+
 char *render_shader_glsl(const render_shader_set *set, int sampler_set, int first_binding)
 {
     char *text = NULL;
@@ -491,6 +545,30 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
             append(&text, "%s\n", glsl);
         }
         free(glsl);
+    }
+    if (set->shape) {
+        char name[64];
+        snprintf(name, sizeof name, "sg_gradient_%d", set->shape);
+        shader_error error = { 0 };
+        char *gradient = shader_graph_glsl_gradient_named(
+            &assets[set->shape - 1].graph,
+            name,
+            &error
+        );
+        append(&text, "#define SG_ANALYTIC_GRADIENT %d\n", gradient != NULL);
+        if (gradient) {
+            append(&text, "%s\n#define SG_GRADIENT_CALL(context,values) %s(context,values)\n", gradient, name);
+        }
+        free(gradient);
+        append(
+            &text,
+            "#define SG_ANALYTIC_SPHERE %d\n",
+            sphere_graph(&assets[set->shape - 1].graph)
+        );
+        append(&text, "#define SG_SHAPE_CALL(id,context,values,result) sg_asset_%d(context,values,result)\n", set->shape);
+        if (set->material) {
+            append(&text, "#define SG_MATERIAL_CALL(id,context,values,result) sg_asset_%d(context,values,result)\n", set->material);
+        }
     }
     append(&text, "void sg_dispatch(int id,SGSample sg_context,vec4 values[32],out vec4 result[8]) {\n for(int i=0;i<8;i++) result[i]=vec4(0);\n switch(id) {\n");
     for (int i = 0; i < acount(assets); i++) {

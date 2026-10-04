@@ -26,6 +26,7 @@ struct engine_viewport
     float view_width;
     float view_height;
     float focal_distance;
+    float yaw, pitch, target_elevation, roll;
     bool panning;
     bool pointer_active;
     bool perspective;
@@ -256,11 +257,11 @@ void engine_viewport_fit(engine_viewport *viewport, float min_x, float min_y, fl
 
 void engine_viewport_get_view(const engine_viewport *viewport, engine_viewport_view *view)
 {
-    *view = (engine_viewport_view){ viewport->center_x,
-                                    viewport->center_y,
-                                    viewport->view_width,
-                                    viewport->view_height,
-                                    viewport->focal_distance };
+    *view = (engine_viewport_view){
+        viewport->center_x,    viewport->center_y,         viewport->view_width,
+        viewport->view_height, viewport->focal_distance,   viewport->yaw,
+        viewport->pitch,       viewport->target_elevation, viewport->roll
+    };
 }
 
 void engine_viewport_set_view(engine_viewport *viewport, const engine_viewport_view *view)
@@ -275,6 +276,14 @@ void engine_viewport_set_view(engine_viewport *viewport, const engine_viewport_v
     assert(isfinite(view->focal_distance) && view->focal_distance >= 0);
     assert(view->focal_distance == 0 || view->focal_distance > 1);
     viewport->focal_distance = view->focal_distance;
+    assert(
+        isfinite(view->yaw) && isfinite(view->pitch) && isfinite(view->roll) &&
+        isfinite(view->target_elevation)
+    );
+    viewport->yaw = view->yaw;
+    viewport->pitch = view->pitch;
+    viewport->roll = view->roll;
+    viewport->target_elevation = view->target_elevation;
     viewport->panning = false;
 }
 
@@ -298,7 +307,11 @@ void engine_viewport_get_camera(const engine_viewport *viewport, engine_viewport
                                         viewport->center_y,
                                         width,
                                         height,
-                                        viewport->focal_distance };
+                                        viewport->focal_distance,
+                                        viewport->yaw,
+                                        viewport->pitch,
+                                        viewport->target_elevation,
+                                        viewport->roll };
 }
 
 void engine_viewport_set_arena_showcase(engine_viewport *viewport, float time)

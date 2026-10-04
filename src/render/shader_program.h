@@ -13,6 +13,7 @@ typedef enum
     RENDER_PROGRAM_RASTER,
     RENDER_PROGRAM_RASTER_ACCUMULATE,
     RENDER_PROGRAM_RASTER_MESH,
+    RENDER_PROGRAM_SDF_MATERIAL,
     RENDER_PROGRAM_MESH_MATERIAL
 } render_program_kind;
 typedef struct render_programs render_programs;

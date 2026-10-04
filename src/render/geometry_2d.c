@@ -23,7 +23,8 @@ bool render_geometry_2d_mesh_bounds(
 )
 {
     const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(world, entity);
-    return mesh && mesh->enabled &&
+    const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(world, entity);
+    return ((mesh && mesh->enabled) || (sdf && sdf->enabled)) &&
            render_mesh_surface_bounds(world, entity, position, min, max, error, size);
 }
 

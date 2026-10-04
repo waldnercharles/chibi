@@ -12,6 +12,8 @@ layout(set = 2, binding = 9) uniform sampler2D surface_q1;
 layout(set = 2, binding = 10) uniform sampler2D surface_q2;
 layout(set = 2, binding = 11) uniform sampler2D surface_q3;
 layout(set = 2, binding = 12) uniform sampler2D cover_tex;
+layout(set = 2, binding = 13) uniform sampler2D horizon_cardinal;
+layout(set = 2, binding = 14) uniform sampler2D horizon_diagonal;
 
 layout(set = 3, binding = 1) uniform shd_uniforms
 {
@@ -30,6 +32,9 @@ layout(set = 3, binding = 1) uniform shd_uniforms
     int linear_output;
     float world_per_px;
     float reconstruction_threshold;
+    int horizon_directions;
+    int surface_mode;
+    float surface_thickness;
 };
 
 #include "color.shd"
@@ -97,9 +102,33 @@ vec4 quadrant_at(int i, vec2 uv)
     return texture(surface_q3, uv);
 }
 
+float horizon_angle(ivec2 p, int direction)
+{
+    if (horizon_directions == 4) return texelFetch(horizon_cardinal, p, 0)[direction];
+    if ((direction & 1) == 0) return texelFetch(horizon_cardinal, p, 0)[direction / 2];
+    return texelFetch(horizon_diagonal, p, 0)[direction / 2];
+}
+
+float horizon_shadow(vec2 uv, vec2 toward)
+{
+    const float TAU = 6.283185307179586;
+    float azimuth = mod(atan(-toward.y, toward.x) + TAU, TAU);
+    float sector = azimuth * float(horizon_directions) / TAU;
+    int first = int(floor(sector)) % horizon_directions;
+    int next = (first + 1) % horizon_directions;
+    ivec2 size = textureSize(horizon_cardinal, 0);
+    ivec2 p = clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1);
+    float angle = mix(horizon_angle(p, first), horizon_angle(p, next), fract(sector));
+    float elevation = atan(1.0 / surface_params.y);
+    // A small angular transition avoids a hard threshold. This is explicitly
+    // an alternative to the reference's height-penetration softness.
+    return smoothstep(angle - 0.03, angle + 0.03, elevation);
+}
+
 float surface_shadow(vec2 uv, vec2 toward, vec2 relief)
 {
     if (surface_params.y <= 0.0 || relief.y <= 0.5) return 1.0;
+    if (horizon_directions > 0) return horizon_shadow(uv, toward);
     const float STEP = 0.6;
     vec2 pixel_uv = 1.0 / vec2(textureSize(albedo_tex, 0));
     vec2 step_uv = vec2(toward.x, -toward.y) * (STEP / world_per_px) * pixel_uv;
@@ -130,6 +159,60 @@ vec3 sample_fluence(vec2 uv)
                texelFetch(fluence_tex, p01, 0).rgb * weights.z +
                texelFetch(fluence_tex, p11, 0).rgb * weights.w;
     return max(sum / total, vec3(0));
+}
+
+// Geometry remains an exact sample and rejects faces across depth or normal
+// boundaries. The low-resolution pass has already denoised the radiance.
+void depth_surface_sample(ivec2 p, float spatial, vec3 n,
+                          float height, float sigma,
+                          inout vec3 light, inout float total)
+{
+    ivec2 size = textureSize(surface_q0, 0);
+    if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, size))) return;
+    if (spatial <= 0.0) return;
+    vec4 geometry = texelFetch(surface_q2, p, 0);
+    if (geometry.a < 0.5) return;
+    float agreement = dot(n, geometry.xyz);
+    if (agreement < 0.5) return;
+    vec4 sample_light = texelFetch(surface_q0, p, 0);
+    float dz = (height - sample_light.a) / sigma;
+    if (abs(dz) > 1.0) return;
+    float weight = spatial * pow(agreement, 8.0) * exp(-dz * dz);
+    light += max(sample_light.rgb, vec3(0)) * weight;
+    total += weight;
+}
+
+vec3 depth_surface_light(vec2 uv, vec3 n, float height)
+{
+    ivec2 size = textureSize(surface_q0, 0);
+    vec2 grid = uv * vec2(size) - 0.5;
+    ivec2 base = ivec2(floor(grid));
+    vec2 fraction = fract(grid);
+    float sigma = max(max(surface_thickness * 0.25, world_per_px * 8.0), 0.001);
+    vec3 light = vec3(0);
+    float total = 0.0;
+    for (int y = 0; y < 2; y++) {
+        for (int x = 0; x < 2; x++) {
+            vec2 w = mix(vec2(1.0) - fraction, fraction, vec2(x, y));
+            depth_surface_sample(base + ivec2(x, y), w.x * w.y,
+                                 n, height, sigma, light, total);
+        }
+    }
+    if (total > 1e-6) return light / total;
+    // Thin silhouettes may miss all four receiver cells. Borrow only from
+    // compatible nearby geometry, never because valid samples are dark.
+    ivec2 center = ivec2(floor(grid + 0.5));
+    for (int y = -2; y <= 2; y++) {
+        for (int x = -2; x <= 2; x++) {
+            ivec2 p = center + ivec2(x, y);
+            if (all(greaterThanEqual(p, base)) && all(lessThanEqual(p, base + 1))) continue;
+            vec2 offset = vec2(p) - grid;
+            float spatial = max(1.0 - dot(offset, offset) / 6.25, 0.0);
+            depth_surface_sample(p, spatial * spatial,
+                                 n, height, sigma, light, total);
+        }
+    }
+    return total > 1e-6 ? light / total : vec3(0);
 }
 
 // GGX distribution, height-correlated Smith visibility and Schlick Fresnel for
@@ -215,7 +298,7 @@ vec4 shader(vec4 color, ShaderParams params)
     vec2 suv = source_uv * surface_map.xy;
     vec2 dx = vec2(surface_map.z, 0), dy = vec2(0, surface_map.w);
     float open = max(quadrant_at(0, suv).a, 0.0);
-    if (solid && !mesh && surface_params.x > 0.0) {
+    if (solid && !mesh && surface_params.x > 0.0 && surface_mode == 0) {
         vec2 outward = 0.5 * surface_sigma * vec2(
             quadrant_at(0, suv + dx).a - quadrant_at(0, suv - dx).a,
             quadrant_at(0, suv - dy).a - quadrant_at(0, suv + dy).a);
@@ -227,7 +310,15 @@ vec4 shader(vec4 color, ShaderParams params)
     float energy = 0.0, shadow_sum = 0.0;
     vec2 axes[4] = vec2[4](vec2(1, 0), vec2(0, -1), vec2(-1, 0), vec2(0, 1));
     vec2 relief = relief_at(source_uv);
-    if (solid && surface_params.x > 0.0) {
+    if (solid && surface_params.x > 0.0 && surface_mode == 2) {
+        surface_light = depth_surface_light(suv, n, relief.x) * intensity;
+        surface_shaded = surface_light * albedo * normal.z;
+        vec4 direction = texture(surface_q3, suv);
+        dominant = direction.xy;
+        energy = 1.0;
+        shadow_sum = direction.z;
+    }
+    if (solid && surface_params.x > 0.0 && surface_mode != 2) {
         float reach = clamp((2.0 * open - 0.05) / 0.95, 0.0, 1.0);
         float gain = reach * normal.z * intensity / max(open, 1e-4);
         float gloss = clamp(normal.w, 0.0, 1.0);
@@ -235,13 +326,19 @@ vec4 shader(vec4 color, ShaderParams params)
             vec3 q = max(quadrant_at(i, suv).rgb, vec3(0));
             float power = dot(q, LUMA);
             if (power <= 1e-8) continue;
-            vec2 gradient = vec2(
-                dot(quadrant_at(i, suv + dx).rgb - quadrant_at(i, suv - dx).rgb, LUMA),
-                dot(quadrant_at(i, suv - dy).rgb - quadrant_at(i, suv + dy).rgb, LUMA));
-            vec2 slope = 0.5 * surface_sigma * gradient / power;
-            vec2 toward = axes[i] + slope / max(1.0, length(slope));
-            toward -= axes[i] * min(dot(toward, axes[i]) - 0.2, 0.0);
-            toward = normalize(toward);
+            // Gather's visibility changes are not light-source gradients.
+            // Its probes already follow these four axes; bending directions
+            // from sparse visibility would create false specular highlights.
+            vec2 toward = axes[i];
+            if (surface_mode == 0) {
+                vec2 gradient = vec2(
+                    dot(quadrant_at(i, suv + dx).rgb - quadrant_at(i, suv - dx).rgb, LUMA),
+                    dot(quadrant_at(i, suv - dy).rgb - quadrant_at(i, suv + dy).rgb, LUMA));
+                vec2 slope = 0.5 * surface_sigma * gradient / power;
+                toward += slope / max(1.0, length(slope));
+                toward -= axes[i] * min(dot(toward, axes[i]) - 0.2, 0.0);
+                toward = normalize(toward);
+            }
             vec3 l = normalize(vec3(toward * surface_params.y, 1.0));
             float shadow = surface_shadow(source_uv, toward, relief);
             float diffuse = max(dot(n, l), 0.0) / l.z;
@@ -260,7 +357,11 @@ vec4 shader(vec4 color, ShaderParams params)
     if (mode == 8) return vec4(dominant * 0.5 + 0.5, energy > 0.0 ? shadow_sum / energy : 1.0, 1.0);
     if (mode == 9) return vec4(n * 0.5 + 0.5, 1.0);
 
-    vec3 lit = incident * albedo + surface_shaded + max(albedo * shadow_floor, visibility.rgb);
+    // Both estimates contain direct light. Taking their envelope avoids adding
+    // the same emission twice; the depth estimate does not feed temporal bounce.
+    vec3 lit = surface_mode == 2 ? max(incident * albedo, surface_shaded)
+                                : incident * albedo + surface_shaded;
+    lit += max(albedo * shadow_floor, visibility.rgb);
     vec3 out_linear = fluence * fog + emission * intensity + scene.rgb * ambient + lit;
     vec2 background_uv = clamp(screen_uv + distortion / (crop_uv.zw - crop_uv.xy), vec2(0), vec2(1));
     out_linear += texture(background_tex, background_uv).rgb * (1.0 - scene.a);

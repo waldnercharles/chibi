@@ -67,12 +67,21 @@ typedef struct
     const char *backend;
     bool pass_timestamps;
     char *initial_state, *final_state;
+    render_mesh_material_work mesh_work;
+    render_horizon_work horizon_work;
+    render_surface_work surface_work;
 } render_measurement;
 
 typedef struct
 {
-    int width, height, frames, capture_frame;
+    int width, height, frames, capture_frame, sdf_batch_limit;
     bool frozen, pass_timing, pass_detail;
+    bool quality_override, shadow_override, sdf_trace_debug;
+    bool hidden_rejection, spatial_scratch;
+    GameSurfaceQuality quality;
+    GameHRCShadowMode shadow_mode;
+    unsigned horizon_reuse_mask;
+    GameHRC2D horizon_reuse;
     const char *capture_path;
     /* Optional raw RGBA8 file receiving every measured frame. */
     const char *frames_path;
@@ -140,6 +149,23 @@ static bool render_scene(
         }
     }
     if (ok) {
+        app_scene_renderer_set_sdf_batch_limit(scene.renderer, options->sdf_batch_limit);
+        if (options->quality_override) {
+            app_scene_renderer_set_surface_quality(scene.renderer, options->quality);
+        }
+        if (options->shadow_override) {
+            app_scene_renderer_set_shadow_mode(scene.renderer, options->shadow_mode);
+        }
+        if (options->horizon_reuse_mask) {
+            app_scene_renderer_set_horizon_reuse(
+                scene.renderer,
+                options->horizon_reuse_mask,
+                options->horizon_reuse
+            );
+        }
+        app_scene_renderer_set_sdf_trace_debug(scene.renderer, options->sdf_trace_debug);
+        app_scene_renderer_set_hidden_rejection(scene.renderer, options->hidden_rejection);
+        app_scene_renderer_set_spatial_scratch(scene.renderer, options->spatial_scratch);
         engine_viewport_set_perspective(scene.viewport, scene.perspective);
         engine_viewport_view view;
         int camera = game_camera_view(
@@ -298,6 +324,9 @@ static bool render_scene(
         app_scene_renderer_lighting_status(scene.renderer, &lighting);
         measurement->resolution = lighting.resolution;
         measurement->scene_gpu_ms = lighting.gpu_ms;
+        measurement->mesh_work = app_scene_renderer_mesh_work(scene.renderer);
+        measurement->horizon_work = app_scene_renderer_horizon_work(scene.renderer);
+        measurement->surface_work = app_scene_renderer_surface_work(scene.renderer);
         ok = chibi_preview_readback(width, height, png, error, size);
     }
     if (scene.viewport) {
@@ -310,6 +339,99 @@ static bool render_scene(
     render_shader_catalog_clear();
     cf_destroy_app();
     return ok;
+}
+
+static bool surface_quality_options(yyjson_val *root, preview_options *options, char *error, size_t size)
+{
+    yyjson_val *quality = yyjson_obj_get(root, "surface_quality");
+    options->quality_override = quality != NULL;
+    if (quality) {
+        yyjson_val *samples = yyjson_obj_get(quality, "samples");
+        yyjson_val *pixel = yyjson_obj_get(quality, "pixel_error");
+        yyjson_val *normal = yyjson_obj_get(quality, "normal_samples");
+        yyjson_val *lod = yyjson_obj_get(quality, "lod");
+        if (!yyjson_is_obj(quality) ||
+            (samples && (!yyjson_is_int(samples) || (yyjson_get_sint(samples) != 1 &&
+                                                     yyjson_get_sint(samples) != 2))) ||
+            (pixel && (!yyjson_is_num(pixel) || yyjson_get_num(pixel) < 0 ||
+                       yyjson_get_num(pixel) > 1)) ||
+            (normal && (!yyjson_is_int(normal) || (yyjson_get_sint(normal) != 0 &&
+                                                   yyjson_get_sint(normal) != 4 &&
+                                                   yyjson_get_sint(normal) != 6))) ||
+            (lod && !yyjson_is_bool(lod))) {
+            snprintf(error, size, "surface_quality requires samples 1 or 2, pixel_error 0 to 1, normal_samples 0, 4 or 6, and boolean lod");
+            return false;
+        }
+        options->quality = (GameSurfaceQuality){
+            .resolution = samples && yyjson_get_sint(samples) == 1
+                            ? GAME_SURFACE_FULL
+                            : GAME_SURFACE_SUPERSAMPLED,
+            .sdf_pixel_error = pixel ? (float)yyjson_get_num(pixel) : 0,
+            .sdf_normal_mode = normal && yyjson_get_sint(normal) == 0 ? GAME_SDF_NORMAL_ANALYTIC
+                             : normal && yyjson_get_sint(normal) == 4
+                                 ? GAME_SDF_NORMAL_TETRAHEDRAL
+                                 : GAME_SDF_NORMAL_CENTRAL,
+            .disable_sdf_lod = lod && !yyjson_get_bool(lod)
+        };
+    }
+    yyjson_val *directions = yyjson_obj_get(root, "horizon_directions");
+    options->shadow_override = directions != NULL;
+    if (directions) {
+        int64_t value = yyjson_get_sint(directions);
+        if (!yyjson_is_int(directions) || (value != 0 && value != 4 && value != 8)) {
+            snprintf(error, size, "horizon_directions must be 0, 4 or 8");
+            return false;
+        }
+        options->shadow_mode = value == 8 ? GAME_HRC_SHADOW_HORIZON8
+                             : value == 4 ? GAME_HRC_SHADOW_HORIZON4
+                                          : GAME_HRC_SHADOW_REFERENCE;
+    }
+    yyjson_val *reuse = yyjson_obj_get(root, "horizon_reuse");
+    if (reuse) {
+        if (!yyjson_is_obj(reuse)) {
+            snprintf(error, size, "horizon_reuse must be an object");
+            return false;
+        }
+        const char *names[] = { "fuse_relief", "cache", "reproject", "hierarchy" };
+        bool *values[] = { &options->horizon_reuse.horizon_fuse_relief,
+                           &options->horizon_reuse.horizon_cache,
+                           &options->horizon_reuse.horizon_reproject,
+                           &options->horizon_reuse.horizon_hierarchy };
+        size_t index, count;
+        yyjson_val *key, *value;
+        yyjson_obj_foreach(reuse, index, count, key, value)
+        {
+            int field = -1;
+            for (int i = 0; i < 4; i++) {
+                if (!strcmp(yyjson_get_str(key), names[i])) {
+                    field = i;
+                }
+            }
+            if (field < 0 || !yyjson_is_bool(value)) {
+                snprintf(error, size, "horizon_reuse supports only boolean fuse_relief, cache, reproject and hierarchy");
+                return false;
+            }
+            options->horizon_reuse_mask |= 1u << field;
+            *values[field] = yyjson_get_bool(value);
+        }
+    }
+    const char *names[] = { "hidden_rejection", "spatial_scratch" };
+    bool *values[] = { &options->hidden_rejection, &options->spatial_scratch };
+    for (int i = 0; i < 2; i++) {
+        yyjson_val *value = yyjson_obj_get(root, names[i]);
+        if (value && !yyjson_is_bool(value)) {
+            snprintf(error, size, "%s must be a boolean", names[i]);
+            return false;
+        }
+        *values[i] = value ? yyjson_get_bool(value) : true;
+    }
+    yyjson_val *debug = yyjson_obj_get(root, "sdf_trace_debug");
+    if (debug && !yyjson_is_bool(debug)) {
+        snprintf(error, size, "sdf_trace_debug must be a boolean");
+        return false;
+    }
+    options->sdf_trace_debug = yyjson_get_bool(debug);
+    return true;
 }
 
 char *chibi_scene_preview_handle(const char *request, const char *default_root, int *exit_code)
@@ -358,6 +480,11 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         }
     }
     yyjson_val *freeze = yyjson_obj_get(root, "freeze_simulation");
+    yyjson_val *batch_limit = yyjson_obj_get(root, "sdf_batch_limit");
+    if (batch_limit && (!yyjson_is_int(batch_limit) || yyjson_get_sint(batch_limit) < 0 ||
+                        yyjson_get_sint(batch_limit) > RENDER_SDF_BATCH_LIMIT)) {
+        snprintf(error, sizeof error, "sdf_batch_limit must be an integer between 0 and %d", RENDER_SDF_BATCH_LIMIT);
+    }
     yyjson_val *pass_timing = yyjson_obj_get(root, "pass_timing");
     yyjson_val *pass_detail = yyjson_obj_get(root, "pass_timing_detail");
     yyjson_val *frames_value = yyjson_obj_get(root, "capture_frames");
@@ -392,16 +519,22 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         (capture && (render_frames <= 2 || capture_at >= render_frames))) {
         snprintf(error, sizeof error, "capture_frame must select a rendered frame in a performance run");
     }
-    preview_options options = { .width = width,
-                                .height = height,
-                                .frames = render_frames,
-                                .capture_frame = capture_at,
-                                .frozen = yyjson_get_bool(freeze),
-                                .pass_timing = yyjson_get_bool(pass_timing),
-                                .pass_detail = yyjson_get_bool(pass_detail),
-                                .capture_path = capture_path,
-                                .frames_path = frames_path };
+    preview_options options = {
+        .width = width,
+        .height = height,
+        .frames = render_frames,
+        .capture_frame = capture_at,
+        .sdf_batch_limit = batch_limit ? (int)yyjson_get_sint(batch_limit) : 0,
+        .frozen = yyjson_get_bool(freeze),
+        .pass_timing = yyjson_get_bool(pass_timing),
+        .pass_detail = yyjson_get_bool(pass_detail),
+        .capture_path = capture_path,
+        .frames_path = frames_path
+    };
     render_measurement measurement = { 0 };
+    if (!error[0]) {
+        surface_quality_options(root, &options, error, sizeof error);
+    }
     char *png = NULL;
     bool ok = false;
     int status = error[0] ? CHIBI_AUTOMATION_INVALID_REQUEST
@@ -442,7 +575,8 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             yyjson_mut_obj_add_strcpy(response, result, "metal_capture", capture_path);
         }
         yyjson_mut_val *performance = yyjson_mut_obj_add_obj(response, result, "performance");
-        bool instrumented = capture_path != NULL || options.pass_timing || frames_path;
+        bool instrumented = capture_path != NULL || options.pass_timing ||
+                            frames_path || options.sdf_trace_debug;
         const char *metal_hud = getenv("MTL_HUD_ENABLED");
         instrumented |= metal_hud && !strcmp(metal_hud, "1");
 #ifdef CHIBI_ENABLE_TRACY
@@ -481,6 +615,245 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             performance,
             "scene_gpu_ms",
             measurement.scene_gpu_ms
+        );
+        yyjson_mut_val *work = yyjson_mut_obj_add_obj(response, performance, "mesh_work");
+        yyjson_mut_obj_add_str(response, work, "scope", "last rendered frame surface submissions");
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "sdf_batch_limit",
+            options.sdf_batch_limit ? options.sdf_batch_limit : RENDER_SDF_BATCH_LIMIT
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "draw_calls",
+            measurement.mesh_work.draw_calls
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "sdf_draw_calls",
+            measurement.mesh_work.sdf_draw_calls
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "sdf_instances",
+            measurement.mesh_work.sdf_instances
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "sdf_uploads",
+            measurement.mesh_work.sdf_uploads
+        );
+        yyjson_mut_obj_add_uint(
+            response,
+            work,
+            "sdf_upload_bytes",
+            measurement.mesh_work.sdf_upload_bytes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "surface_builds",
+            measurement.mesh_work.surface_builds
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "surface_reuses",
+            measurement.mesh_work.surface_reuses
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "sdf_program_prepares",
+            measurement.mesh_work.sdf_program_prepares
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "sdf_lod_instances",
+            measurement.mesh_work.sdf_lod_instances
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "surface_pixels",
+            measurement.mesh_work.surface_pixels
+        );
+        yyjson_mut_obj_add_uint(
+            response,
+            work,
+            "sdf_pair_probes",
+            measurement.mesh_work.sdf_pair_probes
+        );
+        yyjson_mut_obj_add_uint(
+            response,
+            work,
+            "sdf_parameter_probes",
+            measurement.mesh_work.sdf_parameter_probes
+        );
+        yyjson_mut_obj_add_uint(
+            response,
+            work,
+            "sdf_parameter_upload_bytes",
+            measurement.mesh_work.sdf_parameter_upload_bytes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "sdf_parameter_rows",
+            measurement.mesh_work.sdf_parameter_rows
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "sdf_parameter_uploads",
+            measurement.mesh_work.sdf_parameter_uploads
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "surface_capacity_pixels",
+            measurement.mesh_work.surface_capacity_pixels
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "scratch_groups",
+            measurement.mesh_work.scratch_groups
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "composition_pixels",
+            measurement.mesh_work.composition_pixels
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "depth_copies",
+            measurement.mesh_work.depth_copies
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            work,
+            "depth_copy_pixels",
+            measurement.mesh_work.depth_copy_pixels
+        );
+        yyjson_mut_val *surface = yyjson_mut_obj_add_obj(response, performance, "surface_work");
+        yyjson_mut_obj_add_str(response, surface, "scope", "submission_upper_bounds");
+        yyjson_mut_obj_add_int(
+            response,
+            surface,
+            "mode",
+            measurement.surface_work.mode
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            surface,
+            "cells",
+            measurement.surface_work.cells
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            surface,
+            "block",
+            measurement.surface_work.block
+        );
+        yyjson_mut_obj_add_uint(
+            response,
+            surface,
+            "candidates",
+            measurement.surface_work.candidates
+        );
+        yyjson_mut_obj_add_uint(
+            response,
+            surface,
+            "visibility_taps",
+            measurement.surface_work.visibility_taps
+        );
+        yyjson_mut_obj_add_uint(
+            response,
+            surface,
+            "blur_quadrant_fetches",
+            measurement.surface_work.blur_quadrant_fetches
+        );
+        yyjson_mut_val *horizon = yyjson_mut_obj_add_obj(response, performance, "horizon_work");
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "builds",
+            measurement.horizon_work.builds
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "pixels",
+            measurement.horizon_work.pixels
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "directions",
+            measurement.horizon_work.directions
+        );
+        yyjson_mut_obj_add_uint(
+            response,
+            horizon,
+            "canvas_bytes",
+            measurement.horizon_work.canvas_bytes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "pack_passes",
+            measurement.horizon_work.pack_passes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "fused_packs",
+            measurement.horizon_work.fused_packs
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "dirty_passes",
+            measurement.horizon_work.dirty_passes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "reuse_passes",
+            measurement.horizon_work.reuse_passes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "reproject_passes",
+            measurement.horizon_work.reproject_passes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "hierarchy_passes",
+            measurement.horizon_work.hierarchy_passes
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "tiles_x",
+            measurement.horizon_work.tiles_x
+        );
+        yyjson_mut_obj_add_int(
+            response,
+            horizon,
+            "tiles_y",
+            measurement.horizon_work.tiles_y
         );
         if (options.pass_timing) {
             /* Average milliseconds per rendered frame, in submission order. */

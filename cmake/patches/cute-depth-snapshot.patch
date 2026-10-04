@@ -1,0 +1,97 @@
+--- a/include/cute_graphics.h
++++ b/include/cute_graphics.h
+@@ -1695,6 +1695,15 @@
+  */
+ CF_API CF_Texture CF_CALL cf_canvas_get_depth_stencil_target(CF_Canvas canvas);
+ 
++/* GPU-only depth snapshot. Distinct, single-sample canvases must have the same
++ * extent and depth format. Copies the rectangle at identical coordinates;
++ * color is untouched; destination stencil is unspecified. To sample the
++ * destination depth, include CF_TEXTURE_USAGE_SAMPLER_BIT in its
++ * depth_stencil_target.usage at creation. Coordinates use the backend's native
++ * render-target origin, matching texelFetch. This ends the current render pass;
++ * reapply canvas, shader, viewport and scissor before the next draw. */
++CF_API void CF_CALL cf_canvas_copy_depth(CF_Canvas source, CF_Canvas destination, int x, int y, int width, int height);
++
+ /**
+  * @function cf_clear_canvas
+  * @category graphics
+--- a/src/cute_graphics.cpp
++++ b/src/cute_graphics.cpp
+@@ -1246,6 +1246,7 @@
+ CF_DISPATCH_SHIM(CF_Texture, canvas_get_target, (CF_Canvas canvas_handle), canvas_handle)
+ CF_DISPATCH_SHIM(CF_Texture, canvas_get_target2, (CF_Canvas canvas_handle, int index), canvas_handle, index)
+ CF_DISPATCH_SHIM(CF_Texture, canvas_get_depth_stencil_target, (CF_Canvas canvas_handle), canvas_handle)
++CF_DISPATCH_SHIM_VOID(canvas_copy_depth, (CF_Canvas source, CF_Canvas destination, int x, int y, int width, int height), source, destination, x, y, width, height)
+ CF_DISPATCH_SHIM_VOID(canvas_get_size, (CF_Canvas canvas_handle, int* w, int* h), canvas_handle, w, h)
+ CF_DISPATCH_SHIM_VOID(clear_canvas, (CF_Canvas canvas_handle), canvas_handle)
+ CF_DISPATCH_SHIM_VOID(canvas_set_clear_color, (CF_Canvas canvas_handle, CF_Color color), canvas_handle, color)
+--- a/src/cute_graphics_gles.cpp
++++ b/src/cute_graphics_gles.cpp
+@@ -180,6 +180,7 @@
+ 	GLuint fbo;
+ 	GLuint color;
+ 	GLuint depth;
+ 	bool has_depth;
+ 	bool has_stencil;
++	CF_PixelFormat depth_format;
+ 
+@@ -1438,6 +1439,7 @@
+ 		params.depth_stencil_target.height = c->h;
+ 	}
+ 	CF_GL_PixelFormatInfo* depth_info = s_find_pixel_format_info(params.depth_stencil_target.pixel_format);
++	c->depth_format = params.depth_stencil_target.pixel_format;
+ 	c->has_depth = depth_info && (depth_info->caps & CF_GL_FMT_CAP_DEPTH);
+ 	c->has_stencil = depth_info && depth_info->has_stencil && (depth_info->caps & CF_GL_FMT_CAP_STENCIL);
+ 	if (params.depth_stencil_target.usage & CF_TEXTURE_USAGE_SAMPLER_BIT) {
+@@ -1560,6 +1562,26 @@
+ 	// and it is backed by a depth texture rather than a renderbuffer.
+ 	CF_GL_Canvas* c = (CF_GL_Canvas*)(uintptr_t)ch.id;
+ 	return c ? c->cf_depth : CF_Texture{};
++}
++
++void cf_gles_canvas_copy_depth(CF_Canvas source, CF_Canvas destination, int x, int y, int width, int height)
++{
++	CF_GL_Canvas* src = (CF_GL_Canvas*)(uintptr_t)source.id;
++	CF_GL_Canvas* dst = (CF_GL_Canvas*)(uintptr_t)destination.id;
++	CF_ASSERT(src && dst && src != dst && src->has_depth && dst->has_depth);
++	CF_ASSERT(src->w == dst->w && src->h == dst->h && src->depth_format == dst->depth_format);
++	CF_ASSERT(x >= 0 && y >= 0 && width > 0 && height > 0 && x <= src->w - width && y <= src->h - height);
++	// A blit must not inherit the last draw's crop. Restore the actual state so
++	// the cached render state remains valid on the next draw.
++	bool scissor = g_ctx.current_state.scissor_enabled;
++	if (scissor) glDisable(GL_SCISSOR_TEST);
++	glBindFramebuffer(GL_READ_FRAMEBUFFER, src->fbo);
++	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dst->fbo);
++	glBlitFramebuffer(x, y, x + width, y + height,
++		x, y, x + width, y + height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
++	glBindFramebuffer(GL_FRAMEBUFFER, g_ctx.fbo);
++	if (scissor) glEnable(GL_SCISSOR_TEST);
++	CF_POLL_OPENGL_ERROR();
+ }
+ 
+ static inline void s_clear_canvas(const CF_GL_Canvas* canvas)
+--- a/src/cute_graphics_sdlgpu.cpp
++++ b/src/cute_graphics_sdlgpu.cpp
+@@ -1681,6 +1681,21 @@
+ 	return canvas->cf_depth_stencil;
+ }
+ 
++void cf_sdlgpu_canvas_copy_depth(CF_Canvas source, CF_Canvas destination, int x, int y, int width, int height)
++{
++	CF_CanvasInternal* src = (CF_CanvasInternal*)source.id;
++	CF_CanvasInternal* dst = (CF_CanvasInternal*)destination.id;
++	CF_ASSERT(src && dst && src != dst && src->depth_stencil && dst->depth_stencil);
++	CF_ASSERT(src->sample_count == CF_SAMPLE_COUNT_1 && dst->sample_count == CF_SAMPLE_COUNT_1);
++	CF_ASSERT(!src->attached && !dst->attached);
++	CF_ASSERT(src->w == dst->w && src->h == dst->h);
++	CF_ASSERT(x >= 0 && y >= 0 && width > 0 && height > 0 && x <= src->w - width && y <= src->h - height);
++	CF_TextureInternal* src_tex = (CF_TextureInternal*)src->cf_depth_stencil.id;
++	CF_TextureInternal* dst_tex = (CF_TextureInternal*)dst->cf_depth_stencil.id;
++	CF_ASSERT(src_tex->format == dst_tex->format);
++	cf_sdlgpu_texture_copy_region(dst->cf_depth_stencil, x, y, src->cf_depth_stencil, x, y, width, height);
++}
++
+ CF_Readback cf_sdlgpu_canvas_readback2(CF_Canvas canvas_handle, int index)
+ {
+ 	CF_CanvasInternal* canvas = (CF_CanvasInternal*)canvas_handle.id;

@@ -1,0 +1,28 @@
+version 3
+name "SdfOrbitMagentaEmitter"
+domain "material"
+id_counter 10
+description "Fixed color emission for orbit light/depth proof. Authored separately from the nonemissive GI receivers."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.95 y=0.18 z=0.65
+                    }
+                    Emission {
+                        default x=0.7125 y=0.135 z=0.4875
+                    }
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+        }
+    }
+}

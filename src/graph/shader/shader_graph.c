@@ -647,7 +647,277 @@ static int *canonical_nodes(const shader_graph *g)
     return canon;
 }
 
-char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, int ramp_base, shader_error *error)
+/* Rows are derivatives of each value component with respect to object XYZ. */
+static bool gradient_op(shader_op op)
+{
+    switch (op) {
+        case SHADER_CONSTANT:
+        case SHADER_PARAMETER:
+        case SHADER_OBJECT_POSITION:
+        case SHADER_TIME:
+        case SHADER_ADD:
+        case SHADER_SUBTRACT:
+        case SHADER_MULTIPLY:
+        case SHADER_DIVIDE:
+        case SHADER_MIN:
+        case SHADER_MAX:
+        case SHADER_ABS:
+        case SHADER_SIN:
+        case SHADER_COS:
+        case SHADER_LENGTH:
+        case SHADER_DOT:
+        case SHADER_MIX:
+        case SHADER_SELECT:
+        case SHADER_UNION:
+        case SHADER_INTERSECTION:
+        case SHADER_DIFFERENCE:
+        case SHADER_SMOOTH_UNION:
+        case SHADER_VECTOR2:
+        case SHADER_VECTOR3:
+        case SHADER_VECTOR4:
+        case SHADER_X:
+        case SHADER_Y:
+        case SHADER_Z:
+        case SHADER_W:
+        case SHADER_CLAMP:
+        case SHADER_SATURATE:
+        case SHADER_SQRT:
+        case SHADER_NORMALIZE: return true;
+        default: return false;
+    }
+}
+
+static void gradient_glsl(char **text, const shader_graph *g, int id, const bool *spatial)
+{
+    const shader_node *n = &g->nodes[id];
+    append(text, "vec3 d%d[4];\n", id);
+    for (int channel = 0; channel < n->width; channel++) {
+        char a[32] = "", b[32] = "", c[32] = "";
+        char da[32] = "", db[32] = "", dc[32] = "";
+        char *value[] = { a, b, c }, *derivative[] = { da, db, dc };
+        for (int input = 0; input < 3 && input < shader_op_inputs(n->op); input++) {
+            int node = n->input[input],
+                component = g->nodes[node].width == 1 ? 0 : channel;
+            snprintf(value[input], 32, "v%d[%d]", node, component);
+            snprintf(derivative[input], 32, "d%d[%d]", node, component);
+        }
+        append(text, "d%d[%d]=", id, channel);
+        switch (n->op) {
+            case SHADER_CONSTANT:
+            case SHADER_PARAMETER:
+            case SHADER_TIME: append(text, "vec3(0.0)"); break;
+            case SHADER_OBJECT_POSITION:
+                append(text, "vec3(%d,%d,%d)", channel == 0, channel == 1, channel == 2);
+                break;
+            case SHADER_ADD:
+            case SHADER_SUBTRACT:
+                append(text, "%s%s%s", da, n->op == SHADER_ADD ? "+" : "-", db);
+                break;
+            case SHADER_MULTIPLY:
+                append(text, "%s*%s+%s*%s", da, b, db, a);
+                break;
+            case SHADER_DIVIDE:
+                append(text, "%s==0.0?vec3(0.0):(%s*%s-%s*%s)/(%s*%s)", b, da, b, db, a, b, b);
+                break;
+            case SHADER_MIN:
+            case SHADER_MAX:
+            case SHADER_UNION:
+            case SHADER_INTERSECTION:
+            case SHADER_DIFFERENCE: {
+                bool minimum = n->op == SHADER_MIN || n->op == SHADER_UNION;
+                const char *negate = n->op == SHADER_DIFFERENCE ? "-" : "";
+                append(text, "%s%s%s%s?%s:%s%s", a, minimum ? "<=" : ">=", negate, b, da, negate, db);
+                break;
+            }
+            case SHADER_ABS: append(text, "sign(%s)*%s", a, da); break;
+            case SHADER_SIN: append(text, "cos(%s)*%s", a, da); break;
+            case SHADER_COS: append(text, "-sin(%s)*%s", a, da); break;
+            case SHADER_SQRT:
+                append(text, "%s>0.0?%s/(2.0*v%d[%d]):vec3(0.0)", a, da, id, channel);
+                break;
+            case SHADER_NORMALIZE: {
+                int input = n->input[0];
+                append(text, "scale%d>0.0?(%s-v%d[%d]*(vec3(0.0)", id, da, id, channel);
+                for (int k = 0; k < n->width; k++) {
+                    append(text, "+v%d[%d]*d%d[%d]", id, k, input, k);
+                }
+                const char *sw[] = { "", ".x", ".xy", ".xyz", "" };
+                append(text, "))/scale%d/length(v%d%s/scale%d):vec3(0.0)", id, input, sw[n->width], id);
+                break;
+            }
+            case SHADER_LENGTH:
+            case SHADER_DOT: {
+                int width = g->nodes[n->input[0]].width;
+                append(text, "vec3(0.0)");
+                for (int k = 0; k < width; k++) {
+                    append(
+                        text,
+                        "+v%d[%d]*d%d[%d]",
+                        n->input[0],
+                        k,
+                        n->input[n->op == SHADER_DOT ? 1 : 0],
+                        k
+                    );
+                    if (n->op == SHADER_DOT) {
+                        append(text, "+v%d[%d]*d%d[%d]", n->input[1], k, n->input[0], k);
+                    }
+                }
+                if (n->op == SHADER_LENGTH) {
+                    append(text, "; if(v%d.x>0.0)d%d[%d]/=v%d.x", id, id, channel, id);
+                }
+                break;
+            }
+            case SHADER_MIX:
+                append(text, "mix(%s,%s,%s)+(%s-%s)*%s", da, db, c, b, a, dc);
+                break;
+            case SHADER_CLAMP:
+                append(
+                    text,
+                    "%s<min(%s,%s)?(%s<=%s?%s:%s):(%s>max(%s,%s)?(%s>=%s?%s:%s)"
+                    ":%s)",
+                    a,
+                    b,
+                    c,
+                    b,
+                    c,
+                    db,
+                    dc,
+                    a,
+                    b,
+                    c,
+                    b,
+                    c,
+                    db,
+                    dc,
+                    da
+                );
+                break;
+            case SHADER_SATURATE:
+                append(text, "%s<0.0||%s>1.0?vec3(0.0):%s", a, a, da);
+                break;
+            case SHADER_SELECT:
+                append(text, "v%d.x!=0.0?%s:%s", n->input[2], db, da);
+                break;
+            case SHADER_SMOOTH_UNION:
+                append(
+                    text,
+                    "%s<=%s?%s:%s; if(v%d.x>0.0) { float "
+                    "h=clamp(0.5+0.5*(v%d.x-v%d.x)/v%d.x,0.0,1.0); "
+                    "d%d[%d]=mix(d%d[0],d%d[0],h)-h*(1.0-h)*d%d[0]; }",
+                    a,
+                    b,
+                    da,
+                    db,
+                    n->input[2],
+                    n->input[1],
+                    n->input[0],
+                    n->input[2],
+                    id,
+                    channel,
+                    n->input[1],
+                    n->input[0],
+                    n->input[2]
+                );
+                break;
+            case SHADER_VECTOR2:
+            case SHADER_VECTOR3:
+            case SHADER_VECTOR4:
+                if (channel < n->width) {
+                    append(text, "d%d[0]", n->input[channel]);
+                } else {
+                    append(text, "vec3(0.0)");
+                }
+                break;
+            case SHADER_X:
+            case SHADER_Y:
+            case SHADER_Z:
+            case SHADER_W:
+                append(text, "d%d[%d]", n->input[0], g->nodes[n->input[0]].width == 1 ? 0 : n->op - SHADER_X);
+                break;
+            default: assert(false);
+        }
+        append(text, n->op == SHADER_SMOOTH_UNION ? "\n" : ";\n");
+        if (n->op == SHADER_DIVIDE) {
+            append(text, "if(%s==0.0)sg_gradient_valid=false;\n", b);
+        }
+        if (n->op == SHADER_ABS) {
+            append(text, "if(%s==0.0 && any(notEqual(%s,vec3(0))))sg_gradient_valid=false;\n", a, da);
+        }
+        if (n->op == SHADER_MIN || n->op == SHADER_MAX ||
+            n->op == SHADER_UNION || n->op == SHADER_INTERSECTION ||
+            n->op == SHADER_DIFFERENCE || n->op == SHADER_SMOOTH_UNION) {
+            const char *negate = n->op == SHADER_DIFFERENCE ? "-" : "";
+            append(text, "if(%s==%s%s && any(notEqual(%s,%s%s))", a, negate, b, da, negate, db);
+            if (n->op == SHADER_SMOOTH_UNION) {
+                append(text, " && v%d.x<=0.0", n->input[2]);
+            }
+            append(text, ")sg_gradient_valid=false;\n");
+        }
+        if (n->op == SHADER_LENGTH) {
+            append(text, "if(v%d.x==0.0 && (", id);
+            int input = n->input[0];
+            for (int component = 0; component < g->nodes[input].width; component++) {
+                append(text, "%sany(notEqual(d%d[%d],vec3(0)))", component ? "||" : "", input, component);
+            }
+            append(text, "))sg_gradient_valid=false;\n");
+        }
+        if (n->op == SHADER_CLAMP) {
+            append(text, "if(%s==%s && any(notEqual(%s,%s)))sg_gradient_valid=false;\n", b, c, db, dc);
+            append(
+                text,
+                "if(%s==min(%s,%s) && "
+                "any(notEqual(%s,(%s<=%s?%s:%s))))sg_gradient_valid=false;\n",
+                a,
+                b,
+                c,
+                da,
+                b,
+                c,
+                db,
+                dc
+            );
+            append(
+                text,
+                "if(%s==max(%s,%s) && "
+                "any(notEqual(%s,(%s>=%s?%s:%s))))sg_gradient_valid=false;\n",
+                a,
+                b,
+                c,
+                da,
+                b,
+                c,
+                db,
+                dc
+            );
+        }
+        if (n->op == SHADER_SATURATE) {
+            append(text, "if((%s==0.0||%s==1.0) && any(notEqual(%s,vec3(0))))sg_gradient_valid=false;\n", a, a, da);
+        }
+        if (n->op == SHADER_SQRT && spatial[n->input[0]]) {
+            append(text, "if(%s==0.0)sg_gradient_valid=false;\n", a);
+        }
+        if (n->op == SHADER_NORMALIZE && spatial[n->input[0]]) {
+            append(text, "if(scale%d==0.0)sg_gradient_valid=false;\n", id);
+        }
+        if (n->op == SHADER_SELECT && spatial[n->input[2]]) {
+            /* A condition can cross zero even with a zero derivative there. */
+            append(text, "if(v%d.x==0.0)sg_gradient_valid=false;\n", n->input[2]);
+        }
+        if (n->op == SHADER_SMOOTH_UNION) {
+            append(
+                text,
+                "if(v%d.x==0.0 && %s==%s && "
+                "any(notEqual(d%d[0],vec3(0))))sg_gradient_valid=false;\n",
+                n->input[2],
+                a,
+                b,
+                n->input[2]
+            );
+        }
+    }
+}
+
+static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base, bool gradient, shader_error *error)
 {
     if (!shader_graph_validate(g, error)) {
         return NULL;
@@ -662,8 +932,37 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
             return NULL;
         }
     }
+    bool reachable[SHADER_NODE_MAX] = { false }, spatial[SHADER_NODE_MAX] = { false };
+    if (gradient) {
+        if (!g->output_count) {
+            return NULL;
+        }
+        reachable[g->output[0]] = true;
+        for (int i = acount(g->nodes) - 1; i >= 0; i--) {
+            if (!reachable[i]) {
+                continue;
+            }
+            if (!gradient_op(g->nodes[i].op)) {
+                return NULL;
+            }
+            for (int j = 0; j < shader_op_inputs(g->nodes[i].op); j++) {
+                reachable[g->nodes[i].input[j]] = true;
+            }
+        }
+    }
+    if (gradient) {
+        for (int i = 0; i < acount(g->nodes); i++) {
+            spatial[i] = g->nodes[i].op == SHADER_OBJECT_POSITION;
+            for (int j = 0; j < shader_op_inputs(g->nodes[i].op); j++) {
+                spatial[i] |= spatial[g->nodes[i].input[j]];
+            }
+        }
+    }
     char *s = NULL;
     for (int i = 0; i < acount(g->nodes); i++) {
+        if (gradient && !reachable[i]) {
+            continue;
+        }
         if (g->nodes[i].op == SHADER_NOISE ||
             (g->nodes[i].op >= SHADER_MAPPING &&
              g->nodes[i].op <= SHADER_COLOR_RAMP_ALPHA)) {
@@ -672,6 +971,9 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
         }
     }
     for (int i = 0; i < acount(g->nodes); i++) {
+        if (gradient && !reachable[i]) {
+            continue;
+        }
         if (g->nodes[i].op == SHADER_COLOR_RAMP ||
             g->nodes[i].op == SHADER_COLOR_RAMP_ALPHA) {
             ramp_glsl(&s, &g->nodes[i], prefix, i, ramp_offset(g, i, ramp_base));
@@ -679,11 +981,18 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
     }
     append(&s, "#ifndef SG_INFLUENCE_DEFINED\n#define SG_INFLUENCE_DEFINED\n#ifndef SG_SCENE_INFLUENCE\nvec3 sg_scene_influence(vec3 position) { return vec3(0); }\nfloat sg_scene_beat_phase() { return 0.0; }\nfloat sg_scene_beat_pulse() { return 0.0; }\n#endif\n#endif\n");
     append(&s, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
-    append(&s, "void %s(SGSample sg_sample, vec4 sg_params[32], out vec4 sg_out[8]) {\n", prefix);
-    int *canon = canonical_nodes(g);
+    if (gradient) {
+        append(&s, "vec3 %s(SGSample sg_sample, vec4 sg_params[32]) {\nbool sg_gradient_valid=true;\n", prefix);
+    } else {
+        append(&s, "void %s(SGSample sg_sample, vec4 sg_params[32], out vec4 sg_out[8]) {\n", prefix);
+    }
+    int *canon = gradient ? NULL : canonical_nodes(g);
     for (int i = 0; i < acount(g->nodes); i++) {
         const shader_node *n = &g->nodes[i];
-        if (canon[i] != i) {
+        if (gradient && !reachable[i]) {
+            continue;
+        }
+        if (!gradient && canon[i] != i) {
             append(&s, "vec4 v%d = v%d;\n", i, canon[i]);
             continue;
         }
@@ -834,6 +1143,9 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
                     i,
                     i
                 );
+                if (gradient) {
+                    gradient_glsl(&s, g, i, spatial);
+                }
                 continue;
             }
             case SHADER_NOISE: {
@@ -936,6 +1248,9 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
                     a,
                     c
                 );
+                if (gradient) {
+                    gradient_glsl(&s, g, i, spatial);
+                }
                 continue;
             case SHADER_VECTOR2:
                 append(&s, "vec4(%s.x,%s.x,0.0,0.0)", a, b);
@@ -962,8 +1277,14 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
             case SHADER_OP_COUNT: assert(false);
         }
         append(&s, ";\n");
+        if (gradient) {
+            gradient_glsl(&s, g, i, spatial);
+        }
     }
-    for (int i = 0; i < SHADER_OUTPUT_MAX; i++) {
+    if (gradient) {
+        append(&s, "return sg_gradient_valid?d%d[0]:vec3(uintBitsToFloat(0x7fc00000u));\n", g->output[0]);
+    }
+    for (int i = 0; !gradient && i < SHADER_OUTPUT_MAX; i++) {
         if (i < g->output_count) {
             append(&s, "sg_out[%d]=v%d;\n", i, g->output[i]);
         } else {
@@ -976,6 +1297,166 @@ char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, i
     memcpy(result, s, (size_t)acount(s) + 1);
     afree(s);
     return result;
+}
+
+char *shader_graph_glsl_named_ramps(const shader_graph *g, const char *prefix, int ramp_base, shader_error *error)
+{
+    return graph_glsl(g, prefix, ramp_base, false, error);
+}
+
+/* Lower compound distance builders into the same arithmetic IR used by the
+ * value emitter and differentiator. Only output[0]'s reachable nodes are copied. */
+static int gradient_node(shader_graph *g, shader_op op, int width, int a, int b, int c, int d)
+{
+    int id = shader_graph_add(g, op, width);
+    int inputs[] = { a, b, c, d };
+    memcpy(g->nodes[id].input, inputs, sizeof inputs);
+    return id;
+}
+
+static int gradient_constant(shader_graph *g, float value)
+{
+    int id = shader_graph_add(g, SHADER_CONSTANT, 1);
+    g->nodes[id].value[0] = value;
+    return id;
+}
+
+static int gradient_component(shader_graph *g, int node, int channel)
+{
+    return gradient_node(g, SHADER_X + channel, 1, node, -1, -1, -1);
+}
+
+static int gradient_mapping(shader_graph *g, const shader_node *n, const int *input)
+{
+    int scaled = gradient_node(g, SHADER_MULTIPLY, n->width, input[0], input[3], -1, -1);
+    int p[3] = { -1, -1, -1 };
+    for (int i = 0; i < n->width; i++) {
+        p[i] = gradient_component(g, scaled, i);
+    }
+    int radians = gradient_constant(g, .017453292519943295f);
+    for (int axis = n->width == 2 ? 2 : 0; axis < 3; axis++) {
+        int angle = n->width == 2 ? input[2] : gradient_component(g, input[2], axis);
+        angle = gradient_node(g, SHADER_MULTIPLY, 1, angle, radians, -1, -1);
+        int cosine = gradient_node(g, SHADER_COS, 1, angle, -1, -1, -1);
+        int sine = gradient_node(g, SHADER_SIN, 1, angle, -1, -1, -1);
+        int a = (axis + 1) % 3, b = (axis + 2) % 3;
+        int cx = gradient_node(g, SHADER_MULTIPLY, 1, cosine, p[a], -1, -1);
+        int sy = gradient_node(g, SHADER_MULTIPLY, 1, sine, p[b], -1, -1);
+        int sx = gradient_node(g, SHADER_MULTIPLY, 1, sine, p[a], -1, -1);
+        int cy = gradient_node(g, SHADER_MULTIPLY, 1, cosine, p[b], -1, -1);
+        p[a] = gradient_node(g, SHADER_SUBTRACT, 1, cx, sy, -1, -1);
+        p[b] = gradient_node(g, SHADER_ADD, 1, sx, cy, -1, -1);
+    }
+    int rotated = gradient_node(
+        g,
+        n->width == 2 ? SHADER_VECTOR2 : SHADER_VECTOR3,
+        n->width,
+        p[0],
+        p[1],
+        p[2],
+        -1
+    );
+    return gradient_node(g, SHADER_ADD, n->width, rotated, input[1], -1, -1);
+}
+
+static int gradient_compound(shader_graph *g, const shader_node *n, const int *input)
+{
+    int a = input[0], b = input[1], c = input[2];
+    switch (n->op) {
+        case SHADER_MAPPING:
+        case SHADER_MAPPING3D: return gradient_mapping(g, n, input);
+        case SHADER_CIRCLE: {
+            int length = gradient_node(g, SHADER_LENGTH, 1, a, -1, -1, -1);
+            return gradient_node(g, SHADER_SUBTRACT, 1, length, b, -1, -1);
+        }
+        case SHADER_BOX: {
+            int zero = gradient_constant(g, 0);
+            int absolute = gradient_node(g, SHADER_ABS, 2, a, -1, -1, -1);
+            int q = gradient_node(g, SHADER_SUBTRACT, 2, absolute, b, -1, -1);
+            int positive = gradient_node(g, SHADER_MAX, 2, q, zero, -1, -1);
+            int outside = gradient_node(g, SHADER_LENGTH, 1, positive, -1, -1, -1);
+            int x = gradient_component(g, q, 0), y = gradient_component(g, q, 1);
+            int maximum = gradient_node(g, SHADER_MAX, 1, x, y, -1, -1);
+            int inside = gradient_node(g, SHADER_MIN, 1, maximum, zero, -1, -1);
+            return gradient_node(g, SHADER_ADD, 1, outside, inside, -1, -1);
+        }
+        case SHADER_REMAP:
+        case SHADER_SMOOTHSTEP: {
+            int low = n->op == SHADER_REMAP ? gradient_component(g, b, 0) : b;
+            int high = n->op == SHADER_REMAP ? gradient_component(g, b, 1) : c;
+            int numerator = gradient_node(g, SHADER_SUBTRACT, n->width, a, low, -1, -1);
+            int denominator = gradient_node(g, SHADER_SUBTRACT, 1, high, low, -1, -1);
+            int t = gradient_node(g, SHADER_DIVIDE, n->width, numerator, denominator, -1, -1);
+            int bounded = gradient_node(g, SHADER_SATURATE, n->width, t, -1, -1, -1);
+            if (n->op == SHADER_SMOOTHSTEP) {
+                int two = gradient_constant(g, 2), three = gradient_constant(g, 3);
+                int twice = gradient_node(g, SHADER_MULTIPLY, n->width, bounded, two, -1, -1);
+                int factor = gradient_node(g, SHADER_SUBTRACT, n->width, three, twice, -1, -1);
+                int square = gradient_node(g, SHADER_MULTIPLY, n->width, bounded, bounded, -1, -1);
+                return gradient_node(g, SHADER_MULTIPLY, n->width, square, factor, -1, -1);
+            }
+            t = gradient_node(g, SHADER_SELECT, n->width, t, bounded, input[3], -1);
+            int to_low = gradient_component(g, c, 0),
+                to_high = gradient_component(g, c, 1);
+            return gradient_node(g, SHADER_MIX, n->width, to_low, to_high, t, -1);
+        }
+        default: return -1;
+    }
+}
+
+static bool gradient_lower(const shader_graph *source, shader_graph *result)
+{
+    bool reachable[SHADER_NODE_MAX] = { false };
+    int mapping[SHADER_NODE_MAX];
+    reachable[source->output[0]] = true;
+    for (int i = acount(source->nodes) - 1; i >= 0; i--) {
+        if (!reachable[i]) {
+            continue;
+        }
+        for (int j = 0; j < shader_op_inputs(source->nodes[i].op); j++) {
+            reachable[source->nodes[i].input[j]] = true;
+        }
+    }
+    for (int i = 0; i < acount(source->nodes); i++) {
+        if (!reachable[i]) {
+            continue;
+        }
+        const shader_node *n = &source->nodes[i];
+        int inputs[4] = { -1, -1, -1, -1 };
+        for (int j = 0; j < shader_op_inputs(n->op); j++) {
+            inputs[j] = mapping[n->input[j]];
+        }
+        int id = gradient_compound(result, n, inputs);
+        if (id < 0) {
+            if (!gradient_op(n->op)) {
+                return false;
+            }
+            id = shader_graph_add(result, n->op, n->width);
+            result->nodes[id] = *n;
+            memcpy(result->nodes[id].input, inputs, sizeof inputs);
+        }
+        mapping[i] = id;
+        if (acount(result->nodes) > SHADER_NODE_MAX) {
+            return false;
+        }
+    }
+    result->output[0] = mapping[source->output[0]];
+    result->output_count = 1;
+    return true;
+}
+
+char *shader_graph_glsl_gradient_named(const shader_graph *g, const char *prefix, shader_error *error)
+{
+    if (!shader_graph_validate(g, error)) {
+        return NULL;
+    }
+    shader_graph lowered;
+    shader_graph_init(&lowered);
+    char *source = gradient_lower(g, &lowered)
+                     ? graph_glsl(&lowered, prefix, -1, true, error)
+                     : NULL;
+    shader_graph_free(&lowered);
+    return source;
 }
 
 char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_error *error)

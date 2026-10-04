@@ -1,0 +1,44 @@
+version 3
+name "SdfInstanceTint"
+domain "material"
+id_counter 12
+description "Tint is an independent per-entity vector parameter. Only the four parameter controls use this material; the crowd uses GameMaterial fallback colors."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=1.0 y=1.0 z=1.0
+                    }
+                    Emission {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                    Metallic 0.12
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+            - {
+                id 10
+                type "Shader Parameter"
+                reference_name "Tint"
+                outputs {
+                    Value {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=0.64 y=0.69 z=0.74
+                    }
+                }
+            }
+        }
+        (array)edges {
+            - from="10.Value" to="1.Base Color"
+        }
+    }
+}

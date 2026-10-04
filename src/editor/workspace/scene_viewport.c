@@ -76,7 +76,8 @@ static bool appearance_bounds(
 static bool visual_bounds(const ecs_world *world, ecs_entity entity, bool effects, CF_Aabb *bounds)
 {
     const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(world, entity);
-    if (mesh && mesh->enabled) {
+    const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(world, entity);
+    if ((mesh && mesh->enabled) || (sdf && sdf->enabled)) {
         CF_V2 min, max;
         char error[128];
         if (!render_geometry_2d_mesh_bounds(world, entity, NULL, &min, &max, error, sizeof error)) {
@@ -200,7 +201,8 @@ static ecs_entity pick_scene_entity(app_scene_authoring *scene, float x, float y
         }
         const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(scene->world, entity);
         const GameAppearance *appearance = GAME_GameAppearance_get_const(scene->world, entity);
-        if (mesh && mesh->enabled) {
+        const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(scene->world, entity);
+        if ((mesh && mesh->enabled) || (sdf && sdf->enabled)) {
             render_mesh_surface surface = { 0 };
             char error[128];
             float height;

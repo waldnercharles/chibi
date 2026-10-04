@@ -195,6 +195,7 @@ typedef struct engine_viewport_camera
     float span_width;
     float span_height;
     float focal_distance;
+    float yaw, pitch, target_elevation, roll;
 } engine_viewport_camera;
 
 /* Logical camera framing, independent of viewport aspect ratio. */
@@ -205,6 +206,7 @@ typedef struct engine_viewport_view
     float width;
     float height;
     float focal_distance;
+    float yaw, pitch, target_elevation, roll;
 } engine_viewport_view;
 
 void engine_viewport_get_view(const engine_viewport *viewport, engine_viewport_view *view);

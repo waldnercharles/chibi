@@ -6,6 +6,7 @@
 #include "runtime/generated.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* Source Neon-Swarm shape identifiers; polygons cover both chevron variants. */
@@ -92,11 +93,38 @@ typedef render_view_2d render_material_view;
 
 typedef struct render_material_raster render_material_raster;
 
+struct render_mesh_surface;
 typedef struct
 {
     ecs_entity entity;
     GameTransform position;
+    const struct render_mesh_surface *surface; /* Borrowed for this draw. */
+    const char *sdf_shape; /* Optional authored detail graph; parameters remain entity-bound. */
 } render_mesh_material_actor;
+
+enum
+{
+    RENDER_SDF_BATCH_LIMIT = 256
+};
+typedef struct
+{
+    int draw_calls, sdf_draw_calls, sdf_instances, sdf_uploads;
+    int surface_builds, surface_reuses, sdf_program_prepares;
+    int sdf_lod_instances, surface_pixels, surface_capacity_pixels;
+    size_t sdf_upload_bytes;
+    size_t sdf_pair_probes, sdf_parameter_probes, sdf_parameter_upload_bytes;
+    int sdf_parameter_rows, sdf_parameter_uploads;
+    int scratch_groups, depth_copies;
+    size_t composition_pixels, depth_copy_pixels;
+} render_mesh_material_work;
+
+typedef struct
+{
+    int entity_records, parameter_blocks;
+    size_t entity_bytes, parameter_bytes, parameter_buffer_bytes;
+} render_material_upload_work;
+/* Generic 2D uploads from the last draw, excluding mesh/SDF markers. */
+render_material_upload_work render_material_raster_upload_work(const render_material_raster *raster);
 
 /* Requires Cute app and shader directory set to render/shaders. NULL/false
  * reports unavailable GPU resources. The renderer owns all returned textures.
@@ -105,6 +133,16 @@ render_material_raster *render_material_raster_new();
 void render_material_raster_free(render_material_raster *raster);
 const char *render_material_raster_error(const render_material_raster *raster);
 bool render_material_raster_resize(render_material_raster *raster, int width, int height);
+/* Zero uses the default limit; one permits matched unbatched comparisons. */
+void render_material_raster_set_sdf_batch_limit(render_material_raster *raster, int limit);
+void render_material_raster_set_quality(render_material_raster *raster, GameSurfaceQuality quality);
+void render_material_raster_set_sdf_trace_debug(render_material_raster *raster, bool enabled);
+/* Both optimizations default on; disable for matched rendering comparisons. */
+void render_material_raster_set_spatial_scratch(render_material_raster *raster, bool enabled);
+void render_material_raster_set_hidden_rejection(render_material_raster *raster, bool enabled);
+/* Surface work sums ordered scratch groups; surface_capacity_pixels is the
+ * peak retained scratch allocation, reused by those groups. */
+render_mesh_material_work render_material_raster_mesh_work(const render_material_raster *raster);
 bool render_material_raster_draw(
     render_material_raster *raster,
     const render_material_entity *entities,

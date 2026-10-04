@@ -1,0 +1,33 @@
+version 3
+name "SdfTorus"
+domain "shape"
+bounds_x 48.0
+bounds_y 48.0
+id_counter 81
+description "Ring around the local Y axis. The opening is real geometry."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Shader Shape Output"
+            - id=3 type="Shader ObjectPosition"
+            - {
+                id 36
+                type "Behavior Expression"
+                reference_name "length(vec2(length(p.xz) - 27, p.y)) - 10"
+                inputs {
+                    p id=37 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=38 type="float"
+                }
+            }
+        }
+        (array)edges {
+            - from="3.Value" to="36.p"
+            - from="36.Result" to="1.Distance"
+        }
+    }
+    - id=7 kind="function" math_expression="length(vec2(length(p.xz) - 27, p.y)) - 10" entry_id=40
+}

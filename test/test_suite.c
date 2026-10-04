@@ -317,6 +317,47 @@ int main(int argc, char **argv)
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 2 && !strcmp(argv[1], "--shader-graph-gpu")) {
+        extern int shader_graph_gpu_run(const char *program);
+        return shader_graph_gpu_run(program_name);
+    }
+    if (argc == 2 && !strcmp(argv[1], "--sdf-quality")) {
+        extern int sdf_quality_run(const char *program);
+        return sdf_quality_run(program_name);
+    }
+    if (argc == 2 && !strcmp(argv[1], "--sdf-spatial")) {
+        extern int sdf_spatial_run(const char *program);
+        registry_validate();
+        return sdf_spatial_run(program_name);
+    }
+    if (argc == 2 && !strcmp(argv[1], "--sdf-visibility")) {
+        extern int sdf_visibility_run(const char *program);
+        registry_validate();
+        return sdf_visibility_run(program_name);
+    }
+    if (argc == 2 && (!strcmp(argv[1], "--camera-orbit") ||
+                      !strcmp(argv[1], "--camera-orbit-gles"))) {
+        extern int camera_orbit_run(const char *program, bool gles);
+        registry_validate();
+        return camera_orbit_run(program_name, !strcmp(argv[1], "--camera-orbit-gles"));
+    }
+    if (argc == 2 && (!strcmp(argv[1], "--surface-depth") ||
+                      !strcmp(argv[1], "--surface-depth-gles"))) {
+        extern int surface_depth_run(const char *program, bool gles);
+        registry_validate();
+        return surface_depth_run(program_name, !strcmp(argv[1], "--surface-depth-gles"));
+    }
+    if (argc == 2 && (!strcmp(argv[1], "--surface-gather") ||
+                      !strcmp(argv[1], "--surface-gather-gles"))) {
+        extern int surface_gather_run(const char *program, bool gles);
+        registry_validate();
+        return surface_gather_run(program_name, !strcmp(argv[1], "--surface-gather-gles"));
+    }
+    if (argc == 2 && !strcmp(argv[1], "--sdf-material")) {
+        extern int sdf_material_run(const char *program);
+        registry_validate();
+        return sdf_material_run(program_name);
+    }
     if (argc == 2 && !strcmp(argv[1], "--mesh-material")) {
         extern int mesh_material_run(const char *program);
         registry_validate();

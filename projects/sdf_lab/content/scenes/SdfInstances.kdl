@@ -1,0 +1,611 @@
+version 1
+name "SdfInstances"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "SdfCamera"
+        components {
+            GameCamera width=600.0 height=420.0 focal_distance=0.0
+            GameHRC2D ambient=0.1 fog=0.025 bounce_intensity=0.16
+        }
+    }
+    - {
+        name "Cyan light"
+        prototype "SdfLight"
+        components {
+            GameTransform x=-252.0 y=-25.0
+            GameMaterial emission_color=0x38d9edff
+        }
+    }
+    - {
+        name "Amber light"
+        prototype "SdfLight"
+        components {
+            GameTransform x=252.0 y=10.0
+            GameMaterial emission_color=0xffac54ff
+        }
+    }
+    - {
+        name "Rose light"
+        prototype "SdfLight"
+        components {
+            GameTransform x=0.0 y=-167.0
+            GameMaterial emission_color=0xec749fff
+        }
+    }
+    - {
+        name "Shared instance 1"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-185.5 y=-109.5
+            GameOrientation radians=-0.39
+            GameVisualTransform scale=0.5 pitch=0.3 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x5baab5ff albedo=0x5baab5ff absorption=0.76 edge_light=0.8 emission_color=0x5baab5ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 2"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-128.53334 y=-111.13921
+            GameOrientation radians=-0.26
+            GameVisualTransform scale=0.58 pitch=0.45 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xd59c68ff albedo=0xd59c68ff absorption=0.82 edge_light=0.9 emission_color=0xd59c68ff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 3"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-80.52216 y=-114.2655
+            GameOrientation radians=-0.13
+            GameVisualTransform scale=0.66 pitch=0.6 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0xbe758aff albedo=0xbe758aff absorption=0.88 edge_light=1.0 emission_color=0xbe758aff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 4"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-30.203259 y=-115.46244
+            GameOrientation radians=0.0
+            GameVisualTransform scale=0.74 pitch=0.75 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x89aaa1ff albedo=0x89aaa1ff absorption=0.94 edge_light=0.8 emission_color=0x89aaa1ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 5"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=28.476454 y=-113.422
+            GameOrientation radians=0.13
+            GameVisualTransform scale=0.82 pitch=0.3 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xa3b0bdff albedo=0xa3b0bdff absorption=1.0 edge_light=0.9 emission_color=0xa3b0bdff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 6"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=82.69395 y=-110.37399
+            GameOrientation radians=0.26
+            GameVisualTransform scale=0.5 pitch=0.45 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0x8797c0ff albedo=0x8797c0ff absorption=0.76 edge_light=1.0 emission_color=0x8797c0ff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 7"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=129.7005 y=-109.6493
+            GameOrientation radians=0.39
+            GameVisualTransform scale=0.58 pitch=0.6 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x5baab5ff albedo=0x5baab5ff absorption=0.82 edge_light=0.8 emission_color=0x5baab5ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 8"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=183.02745 y=-112.03988
+            GameOrientation radians=-0.39
+            GameVisualTransform scale=0.66 pitch=0.75 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xd59c68ff albedo=0xd59c68ff absorption=0.88 edge_light=0.9 emission_color=0xd59c68ff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 9"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-182.06335 y=-69.93328
+            GameOrientation radians=-0.26
+            GameVisualTransform scale=0.74 pitch=0.3 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0xbe758aff albedo=0xbe758aff absorption=0.94 edge_light=1.0 emission_color=0xbe758aff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 10"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-130.91304 y=-70.16757
+            GameOrientation radians=-0.13
+            GameVisualTransform scale=0.82 pitch=0.45 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x89aaa1ff albedo=0x89aaa1ff absorption=1.0 edge_light=0.8 emission_color=0x89aaa1ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 11"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-83.34559 y=-67.486725
+            GameOrientation radians=0.0
+            GameVisualTransform scale=0.5 pitch=0.6 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xa3b0bdff albedo=0xa3b0bdff absorption=0.76 edge_light=0.9 emission_color=0xa3b0bdff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 12"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-27.095997 y=-64.82038
+            GameOrientation radians=0.13
+            GameVisualTransform scale=0.58 pitch=0.75 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0x8797c0ff albedo=0x8797c0ff absorption=0.82 edge_light=1.0 emission_color=0x8797c0ff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 13"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=30.499172 y=-65.08235
+            GameOrientation radians=0.26
+            GameVisualTransform scale=0.66 pitch=0.3 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x5baab5ff albedo=0x5baab5ff absorption=0.88 edge_light=0.8 emission_color=0x5baab5ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 14"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=79.06545 y=-67.98634
+            GameOrientation radians=0.39
+            GameVisualTransform scale=0.74 pitch=0.45 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xd59c68ff albedo=0xd59c68ff absorption=0.94 edge_light=0.9 emission_color=0xd59c68ff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 15"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=128.61281 y=-70.35886
+            GameOrientation radians=-0.39
+            GameVisualTransform scale=0.82 pitch=0.6 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0xbe758aff albedo=0xbe758aff absorption=1.0 edge_light=1.0 emission_color=0xbe758aff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 16"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=186.93623 y=-69.60719
+            GameOrientation radians=-0.26
+            GameVisualTransform scale=0.5 pitch=0.75 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x89aaa1ff albedo=0x89aaa1ff absorption=0.76 edge_light=0.8 emission_color=0x89aaa1ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 17"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-181.98291 y=-21.552769
+            GameOrientation radians=-0.13
+            GameVisualTransform scale=0.58 pitch=0.3 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xa3b0bdff albedo=0xa3b0bdff absorption=0.82 edge_light=0.9 emission_color=0xa3b0bdff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 18"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-134.84254 y=-19.533487
+            GameOrientation radians=0.0
+            GameVisualTransform scale=0.66 pitch=0.45 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0x8797c0ff albedo=0x8797c0ff absorption=0.88 edge_light=1.0 emission_color=0x8797c0ff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 19"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-82.413445 y=-20.756035
+            GameOrientation radians=0.13
+            GameVisualTransform scale=0.74 pitch=0.6 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x5baab5ff albedo=0x5baab5ff absorption=0.94 edge_light=0.8 emission_color=0x5baab5ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 20"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-23.406689 y=-23.8844
+            GameOrientation radians=0.26
+            GameVisualTransform scale=0.82 pitch=0.75 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xd59c68ff albedo=0xd59c68ff absorption=1.0 edge_light=0.9 emission_color=0xd59c68ff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 21"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=28.616331 y=-25.499882
+            GameOrientation radians=0.39
+            GameVisualTransform scale=0.5 pitch=0.3 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0xbe758aff albedo=0xbe758aff absorption=0.76 edge_light=1.0 emission_color=0xbe758aff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 22"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=75.861336 y=-23.83707
+            GameOrientation radians=-0.39
+            GameVisualTransform scale=0.58 pitch=0.45 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x89aaa1ff albedo=0x89aaa1ff absorption=0.82 edge_light=0.8 emission_color=0x89aaa1ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 23"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=131.32132 y=-20.713097
+            GameOrientation radians=-0.26
+            GameVisualTransform scale=0.66 pitch=0.6 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xa3b0bdff albedo=0xa3b0bdff absorption=0.88 edge_light=0.9 emission_color=0xa3b0bdff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 24"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=189.4424 y=-19.541866
+            GameOrientation radians=-0.13
+            GameVisualTransform scale=0.74 pitch=0.75 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0x8797c0ff albedo=0x8797c0ff absorption=0.94 edge_light=1.0 emission_color=0x8797c0ff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Interleaved triangle plinth"
+        prototype "SdfComparisonMesh"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameGeometry3D width=110.0 height=12.0 depth=55.0 elevation=-18.0
+            GameVisualTransform scale=1.0 pitch=0.0 roll=0.0
+            GameShader material=""
+            GameMaterial scene=0x738293ff albedo=0x738293ff
+        }
+    }
+    - {
+        name "Shared instance 25"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-185.33723 y=23.396694
+            GameOrientation radians=0.0
+            GameVisualTransform scale=0.82 pitch=0.3 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x5baab5ff albedo=0x5baab5ff absorption=1.0 edge_light=0.8 emission_color=0x5baab5ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 26"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-136.48434 y=20.35534
+            GameOrientation radians=0.13
+            GameVisualTransform scale=0.5 pitch=0.45 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xd59c68ff albedo=0xd59c68ff absorption=0.76 edge_light=0.9 emission_color=0xd59c68ff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 27"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-78.63605 y=19.657686
+            GameOrientation radians=0.26
+            GameVisualTransform scale=0.58 pitch=0.6 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0xbe758aff albedo=0xbe758aff absorption=0.82 edge_light=1.0 emission_color=0xbe758aff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 28"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-22.738285 y=22.066135
+            GameOrientation radians=0.39
+            GameVisualTransform scale=0.66 pitch=0.75 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x89aaa1ff albedo=0x89aaa1ff absorption=0.88 edge_light=0.8 emission_color=0x89aaa1ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 29"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=24.666698 y=24.948715
+            GameOrientation radians=-0.39
+            GameVisualTransform scale=0.74 pitch=0.3 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xa3b0bdff albedo=0xa3b0bdff absorption=0.94 edge_light=0.9 emission_color=0xa3b0bdff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 30"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=76.21071 y=25.15532
+            GameOrientation radians=-0.26
+            GameVisualTransform scale=0.82 pitch=0.45 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0x8797c0ff albedo=0x8797c0ff absorption=1.0 edge_light=1.0 emission_color=0x8797c0ff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 31"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=135.18092 y=22.460169
+            GameOrientation radians=-0.13
+            GameVisualTransform scale=0.5 pitch=0.6 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x5baab5ff albedo=0x5baab5ff absorption=0.76 edge_light=0.8 emission_color=0x5baab5ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 32"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=188.09845 y=19.808546
+            GameOrientation radians=0.0
+            GameVisualTransform scale=0.58 pitch=0.75 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xd59c68ff albedo=0xd59c68ff absorption=0.82 edge_light=0.9 emission_color=0xd59c68ff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 33"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-188.85051 y=65.09817
+            GameOrientation radians=0.13
+            GameVisualTransform scale=0.66 pitch=0.3 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0xbe758aff albedo=0xbe758aff absorption=0.88 edge_light=1.0 emission_color=0xbe758aff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 34"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-134.23506 y=68.01253
+            GameOrientation radians=0.26
+            GameVisualTransform scale=0.74 pitch=0.45 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x89aaa1ff albedo=0x89aaa1ff absorption=0.94 edge_light=0.8 emission_color=0x89aaa1ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 35"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-75.702385 y=70.3668
+            GameOrientation radians=0.39
+            GameVisualTransform scale=0.82 pitch=0.6 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xa3b0bdff albedo=0xa3b0bdff absorption=1.0 edge_light=0.9 emission_color=0xa3b0bdff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 36"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-25.743542 y=69.58821
+            GameOrientation radians=-0.39
+            GameVisualTransform scale=0.5 pitch=0.75 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0x8797c0ff albedo=0x8797c0ff absorption=0.76 edge_light=1.0 emission_color=0x8797c0ff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 37"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=22.507454 y=66.52761
+            GameOrientation radians=-0.26
+            GameVisualTransform scale=0.58 pitch=0.3 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x5baab5ff albedo=0x5baab5ff absorption=0.82 edge_light=0.8 emission_color=0x5baab5ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 38"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=79.77238 y=64.52965
+            GameOrientation radians=-0.13
+            GameVisualTransform scale=0.66 pitch=0.45 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xd59c68ff albedo=0xd59c68ff absorption=0.88 edge_light=0.9 emission_color=0xd59c68ff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 39"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=136.42236 y=65.77771
+            GameOrientation radians=0.0
+            GameVisualTransform scale=0.74 pitch=0.6 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0xbe758aff albedo=0xbe758aff absorption=0.94 edge_light=1.0 emission_color=0xbe758aff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 40"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=184.21687 y=68.907906
+            GameOrientation radians=0.13
+            GameVisualTransform scale=0.82 pitch=0.75 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x89aaa1ff albedo=0x89aaa1ff absorption=1.0 edge_light=0.8 emission_color=0x89aaa1ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 41"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-189.0917 y=115.49953
+            GameOrientation radians=0.26
+            GameVisualTransform scale=0.5 pitch=0.3 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xa3b0bdff albedo=0xa3b0bdff absorption=0.76 edge_light=0.9 emission_color=0xa3b0bdff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 42"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-130.29134 y=113.81325
+            GameOrientation radians=0.39
+            GameVisualTransform scale=0.58 pitch=0.45 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0x8797c0ff albedo=0x8797c0ff absorption=0.82 edge_light=1.0 emission_color=0x8797c0ff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 43"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-76.47744 y=110.69184
+            GameOrientation radians=-0.39
+            GameVisualTransform scale=0.66 pitch=0.6 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x5baab5ff albedo=0x5baab5ff absorption=0.88 edge_light=0.8 emission_color=0x5baab5ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 44"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-29.48755 y=109.5464
+            GameOrientation radians=-0.26
+            GameVisualTransform scale=0.74 pitch=0.75 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xd59c68ff albedo=0xd59c68ff absorption=0.94 edge_light=0.9 emission_color=0xd59c68ff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 45"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=24.247297 y=111.628685
+            GameOrientation radians=-0.13
+            GameVisualTransform scale=0.82 pitch=0.3 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0xbe758aff albedo=0xbe758aff absorption=1.0 edge_light=1.0 emission_color=0xbe758aff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Shared instance 46"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=83.06805 y=114.66315
+            GameOrientation radians=0.0
+            GameVisualTransform scale=0.5 pitch=0.45 roll=-0.16
+            GameGeometry3D width=72.0 height=48.0 depth=64.0 elevation=-4.0
+            GameMaterial scene=0x89aaa1ff albedo=0x89aaa1ff absorption=0.76 edge_light=0.8 emission_color=0x89aaa1ff emission_intensity=0.008
+        }
+    }
+    - {
+        name "Shared instance 47"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=133.83325 y=115.33371
+            GameOrientation radians=0.13
+            GameVisualTransform scale=0.58 pitch=0.6 roll=0.0
+            GameGeometry3D width=80.0 height=56.0 depth=72.0 elevation=0.0
+            GameMaterial scene=0xa3b0bdff albedo=0xa3b0bdff absorption=0.82 edge_light=0.9 emission_color=0xa3b0bdff emission_intensity=0.011
+        }
+    }
+    - {
+        name "Shared instance 48"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=181.5884 y=112.90757
+            GameOrientation radians=0.26
+            GameVisualTransform scale=0.66 pitch=0.75 roll=0.16
+            GameGeometry3D width=88.0 height=64.0 depth=80.0 elevation=4.0
+            GameMaterial scene=0x8797c0ff albedo=0x8797c0ff absorption=0.88 edge_light=1.0 emission_color=0x8797c0ff emission_intensity=0.014
+        }
+    }
+    - {
+        name "Parameter control 1"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-108.0 y=166.0
+            GameVisualTransform scale=0.72 pitch=0.65 roll=0.0
+            GameShader material="SdfInstanceTint" parameters="Radius 15\nBore 4\n(array)Tint 0.28 0.58 0.66\n"
+        }
+    }
+    - {
+        name "Parameter control 2"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=-36.0 y=166.0
+            GameVisualTransform scale=0.72 pitch=0.65 roll=0.0
+            GameShader material="SdfInstanceTint" parameters="Radius 18\nBore 6\n(array)Tint 0.42000000000000004 0.49999999999999994 0.55\n"
+        }
+    }
+    - {
+        name "Parameter control 3"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=36.0 y=166.0
+            GameVisualTransform scale=0.72 pitch=0.65 roll=0.0
+            GameShader material="SdfInstanceTint" parameters="Radius 21\nBore 8\n(array)Tint 0.56 0.41999999999999993 0.44000000000000006\n"
+        }
+    }
+    - {
+        name "Parameter control 4"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=108.0 y=166.0
+            GameVisualTransform scale=0.72 pitch=0.65 roll=0.0
+            GameShader material="SdfInstanceTint" parameters="Radius 24\nBore 10\n(array)Tint 0.7000000000000001 0.33999999999999997 0.33\n"
+        }
+    }
+}

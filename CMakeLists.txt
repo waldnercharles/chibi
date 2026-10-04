@@ -534,6 +534,7 @@ set(CHIBI_ASSET_ROOTS
     ${CMAKE_SOURCE_DIR}/projects/arena2d
     ${CMAKE_SOURCE_DIR}/projects/SpaceCadet
     ${CMAKE_SOURCE_DIR}/projects/hrc_lab
+    ${CMAKE_SOURCE_DIR}/projects/sdf_lab
     ${CMAKE_SOURCE_DIR}/projects/studio
     ${CMAKE_SOURCE_DIR}/test/fixtures
     ${CMAKE_SOURCE_DIR}/test/fixtures/studio)
@@ -547,6 +548,7 @@ add_custom_target(check-assets ${CHIBI_ASSET_CHECKS} DEPENDS chibi_ctl VERBATIM)
 find_program(NODE_EXECUTABLE node)
 if(NODE_EXECUTABLE)
     add_custom_target(check-mcp
+        COMMAND ${NODE_EXECUTABLE} --test ${CMAKE_SOURCE_DIR}/test/mcp_horizon_options_test.mjs
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_SKIP_GPU=1
@@ -721,6 +723,17 @@ add_executable(test_suite
     test/radiance.c
     test/material_sampling.c
     test/mesh_material.c
+    test/material_raster.c
+    test/sdf_material.c
+    test/sdf_quality.c
+    test/sdf_visibility.c
+    test/camera_orbit.c
+    test/camera_centered_orbit.c
+    test/camera_emitter_orbit.c
+    test/camera_plane.c
+    test/surface_gather.c
+    test/surface_depth.c
+    test/sdf_spatial.c
     test/mesh_surface.c
     test/mesh_asset.c
     test/radiance_history.c

@@ -596,6 +596,46 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMeshSurface2D)
 }
 GameMeshSurface2D;
 
+/* Bounded 3D distance graph evaluated in authored units; lighting stays planar. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameSdfSurface3D)
+{
+    bool enabled;
+    /* Optional simpler Shape graph below the projected pixel span. Both
+     * shapes must fit the same Geometry3D bounds and parameter bindings. */
+    const char *low_detail_shape;
+    float low_detail_pixels;
+}
+GameSdfSurface3D;
+
+typedef enum
+{
+    GAME_SURFACE_SUPERSAMPLED,
+    GAME_SURFACE_FULL,
+} GameSurfaceResolution;
+
+typedef enum
+{
+    GAME_SDF_NORMAL_CENTRAL,
+    GAME_SDF_NORMAL_TETRAHEDRAL,
+    GAME_SDF_NORMAL_ANALYTIC,
+} GameSdfNormalMode;
+
+/* Optional scene surface quality. Zero initialization preserves the reference
+ * renderer. Place one on the camera or another scene settings entity. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceQuality)
+{
+    /* Supersampled uses twice each canvas dimension; Full uses one sample. */
+    GameSurfaceResolution resolution;
+    /* Projected pixel tolerance for refined SDF tracing; zero uses the
+     * original distance-bound tolerance. Supported range is zero to one. */
+    float sdf_pixel_error;
+    /* Central uses six field samples; Tetrahedral uses four. */
+    GameSdfNormalMode sdf_normal_mode;
+    /* Reference comparison retaining each object's full-detail graph. */
+    bool disable_sdf_lod;
+}
+GameSurfaceQuality;
+
 /* Optional imported triangle geometry; Surface graphs read its exported UVs. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameMeshAsset)
 {
@@ -714,8 +754,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
     float height;
     CF_V2 offset;
     bool disabled;
-    /* Zero is orthographic; positive distance places the mesh camera on +Y. */
+    /* Zero is orthographic; positive distance places the eye along the
+     * camera's depth axis from its target. */
     float focal_distance;
+    /* Radians. Yaw turns around world +Y; pitch tilts away from the default
+     * top-down view. Transform and offset give the target's gameplay position. */
+    float yaw;
+    float pitch;
+    /* Turns the image right/down axes around the view direction. */
+    float roll;
+    float target_elevation;
 }
 GameCamera;
 
@@ -893,6 +941,20 @@ typedef enum
     GAME_HRC_TONE_AGX NODE_NAME("AgX"),
 } GameHRCToneMapping;
 
+typedef enum
+{
+    GAME_HRC_SHADOW_REFERENCE,
+    GAME_HRC_SHADOW_HORIZON4,
+    GAME_HRC_SHADOW_HORIZON8,
+} GameHRCShadowMode;
+
+typedef enum
+{
+    GAME_HRC_SURFACE_BLUR,
+    GAME_HRC_SURFACE_GATHER,
+    GAME_HRC_SURFACE_DEPTH NODE_NAME("Depth thickness"),
+} GameHRCSurfaceMode;
+
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
     /* Finest light grid as a fraction of the padded canvas; 0.5 solves one
@@ -964,9 +1026,23 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     /* World units that light received near a solid's surface reaches into it,
      * scaled by GameMaterial.edge_light. Zero disables surface lighting. */
     float surface_radius;
+    /* Blur spreads open-space light; Gather uses bounded visibility probes.
+     * Depth thickness gathers visible emission with finite-depth occluders. */
+    GameHRCSurfaceMode surface_mode;
+    /* Screen-plane reach in project units for Depth thickness mode. */
+    float surface_depth_radius;
+    /* Assumed camera-depth thickness of visible surfaces in project units. */
+    float surface_thickness;
     /* Sideways reach of nearby light relative to its height above the plane;
      * larger values deepen normal-mapped relief. */
     float surface_relief;
+    /* Local heightfield visibility; horizons store four or eight azimuths. */
+    GameHRCShadowMode surface_shadow_mode;
+    /* Independent horizon experiments. False keeps the reference submission. */
+    bool horizon_fuse_relief;
+    bool horizon_cache;
+    bool horizon_reproject;
+    bool horizon_hierarchy;
     /* Outward tilt of solid normals near silhouettes, which catches rim light. */
     float surface_bevel;
     /* Gain of glossy highlights on solids with low material roughness. */
@@ -999,6 +1075,8 @@ static inline GameHRC2D game_hrc2d_defaults()
                         .trace_levels = 3,
                         .feedback = true,
                         .surface_radius = 24,
+                        .surface_depth_radius = 128,
+                        .surface_thickness = 12,
                         .surface_relief = 1.5f,
                         .surface_bevel = 1,
                         .specular = 1 };

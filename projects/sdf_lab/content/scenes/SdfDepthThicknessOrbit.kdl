@@ -1,0 +1,109 @@
+version 1
+name "SdfDepthThicknessOrbit"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "SdfOptimizationCamera"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameCamera width=500.0 height=320.0 focal_distance=700.0 yaw=1.5707964 roll=1.5707964 pitch=0.0 target_elevation=0.0
+            GameHRC2D surface_shadow_mode="Horizon8" ambient=0.0 fog=0.0 bounce_intensity=0.0 surface_mode="Depth thickness" surface_depth_radius=128.0 surface_thickness=12.0 shadow_floor=0.0 bloom=0.0 feedback=#false
+        }
+        (array)behaviors "SdfCameraCenteredOrbit"
+    }
+    - {
+        name "Cyan light"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=-215.0 y=-45.0
+            GameMaterial emission_color=0x38d9edff scene=0xffffffff albedo=0xffffffff emission_intensity=0.45 emission_multiplier=1.0 absorption=0.0
+            GameGeometry3D width=64.0 height=64.0 depth=64.0 elevation=0.0
+            GameVisualTransform scale=0.2 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader shape="SdfSphere" material=""
+        }
+    }
+    - {
+        name "Amber light"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=215.0 y=45.0
+            GameMaterial emission_color=0xffac54ff scene=0xffffffff albedo=0xffffffff emission_intensity=0.45 emission_multiplier=1.0 absorption=0.0
+            GameGeometry3D width=64.0 height=64.0 depth=64.0 elevation=0.0
+            GameVisualTransform scale=0.2 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader shape="SdfSphere" material=""
+        }
+    }
+    - {
+        name "Rounded box rotated"
+        prototype "SdfRoundedBox"
+        components {
+            GameTransform x=-150.0 y=-70.0
+            GameOrientation radians=0.35
+            GameVisualTransform scale=0.95 pitch=0.55 roll=0.25
+            GameShader material="SdfCyan"
+        }
+    }
+    - {
+        name "Rounded box small tilted"
+        prototype "SdfRoundedBox"
+        components {
+            GameTransform x=-50.0 y=-70.0
+            GameOrientation radians=-0.45
+            GameVisualTransform scale=0.65 pitch=-0.35 roll=-0.2
+            GameShader material="SdfAmber"
+        }
+    }
+    - {
+        name "Torus opening"
+        prototype "SdfTorus"
+        components {
+            GameTransform x=50.0 y=-70.0
+            GameVisualTransform scale=0.95 pitch=0.65 roll=0.15
+        }
+    }
+    - {
+        name "Hard difference bore"
+        prototype "SdfBoredBox"
+        components {
+            GameTransform x=150.0 y=-70.0
+            GameVisualTransform scale=0.95 pitch=0.1 roll=-0.15
+            GameShader material="SdfRose"
+        }
+    }
+    - {
+        name "Smooth union blend"
+        prototype "SdfSmoothUnion"
+        components {
+            GameTransform x=-150.0 y=65.0
+            GameVisualTransform scale=0.95 pitch=0.3 roll=0.2
+            GameShader material="SdfAmber"
+        }
+    }
+    - {
+        name "Breathing sphere animated"
+        prototype "SdfBreathingSphere"
+        components {
+            GameTransform x=-50.0 y=65.0
+            GameVisualTransform scale=0.9
+            GameShader material="SdfCyan"
+        }
+    }
+    - {
+        name "Parameterized CSG"
+        prototype "SdfInstance"
+        components {
+            GameTransform x=50.0 y=65.0
+            GameVisualTransform scale=1.05 pitch=0.6 roll=-0.2
+            GameShader material="SdfInstanceTint" parameters="Radius 25\nBore 10\n(array)Tint 0.65 0.3 0.48\n"
+        }
+    }
+    - {
+        name "Noise fallback"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=150.0 y=65.0
+            GameVisualTransform scale=0.95
+            GameShader shape="SdfGradientNoise" material="SdfIvory"
+        }
+    }
+}

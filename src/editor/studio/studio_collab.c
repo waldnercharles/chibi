@@ -1,6 +1,7 @@
 #include "editor/collab/collab.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/workspace/checkpoint.h"
 #include "editor/workspace/editor_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -115,11 +116,7 @@ static char *capture(studio *s, bool pointer)
     }
     engine_viewport_view camera;
     engine_viewport_get_view(s->viewport, &camera);
-    double camera_values[] = { camera.center_x,
-                               camera.center_y,
-                               camera.width,
-                               camera.height };
-    yyjson_mut_obj_add_val(doc, root, "scene_camera", yyjson_mut_arr_with_real(doc, camera_values, 4));
+    yyjson_mut_obj_add_val(doc, root, "scene_camera", checkpoint_camera(doc, camera));
     yyjson_mut_val *graph = yyjson_mut_obj_add_obj(doc, root, "graph_camera");
     yyjson_mut_obj_add_uint(doc, graph, "id", s->graph.graph_id);
     yyjson_mut_obj_add_val(doc, graph, "zoom", number(doc, sg_zoom(s)));
@@ -238,10 +235,11 @@ bool studio_collab_restore(studio *s, const char *json)
     yyjson_val *family = yyjson_obj_get(root, "family");
     yyjson_val *layouts = yyjson_obj_get(root, "layouts");
     yyjson_val *camera_array = yyjson_obj_get(root, "scene_camera");
+    engine_viewport_view camera;
     if (!yyjson_is_obj(root) || !yyjson_is_str(family) ||
         strcmp(yyjson_get_str(family), "presentation") || !yyjson_is_arr(layouts) ||
         yyjson_arr_size(layouts) != STUDIO_WORKSPACE_COUNT ||
-        !yyjson_is_arr(camera_array) || yyjson_arr_size(camera_array) != 4) {
+        !checkpoint_read_camera(camera_array, &camera)) {
         yyjson_doc_free(doc);
         return false;
     }
@@ -252,15 +250,6 @@ bool studio_collab_restore(studio *s, const char *json)
             yyjson_doc_free(doc);
             return false;
         }
-    }
-    double camera_values[4];
-    for (int i = 0; i < 4; i++) {
-        yyjson_val *value = yyjson_arr_get(camera_array, i);
-        if (!yyjson_is_num(value) || !isfinite(yyjson_get_num(value))) {
-            yyjson_doc_free(doc);
-            return false;
-        }
-        camera_values[i] = yyjson_get_num(value);
     }
     int workspace = (int)yyjson_get_int(yyjson_obj_get(root, "workspace"));
     if (workspace < 0 || workspace >= STUDIO_WORKSPACE_COUNT) {
@@ -285,10 +274,6 @@ bool studio_collab_restore(studio *s, const char *json)
             scene_tabs_activate(s->scene, index);
         }
     }
-    engine_viewport_view camera = { (float)camera_values[0],
-                                    (float)camera_values[1],
-                                    (float)camera_values[2],
-                                    (float)camera_values[3] };
     if (camera.width > 0 && camera.height > 0) {
         engine_viewport_set_view(s->viewport, &camera);
         s->scene->camera.view = camera;

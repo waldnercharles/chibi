@@ -3,8 +3,11 @@
 #include "render/fullscreen.h"
 #include "render/gpu_timing.h"
 #include "render/mesh_material.h"
+#include "render/mesh_projection.h"
+#include "render/mesh_surface.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
+#include "render/spatial_groups.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -40,7 +43,12 @@ struct render_material_raster
      * the previous batch's targets. */
     render_programs *programs, *accumulate, *mesh_composite;
     render_mesh_material *mesh_pass;
-    render_mesh_material_actor *group_meshes;
+    render_mesh_material_actor *group_meshes, *batch_meshes;
+    render_mesh_surface *spatial_surfaces;
+    render_spatial_actor *spatial_actors;
+    render_pixel_rect *spatial_rects;
+    int *spatial_membership, *spatial_offsets, *spatial_order, *spatial_cursor;
+    bool disable_spatial_scratch, disable_hidden_rejection;
     material_batch *batches;
     char error[256];
     CF_Material material;
@@ -48,6 +56,9 @@ struct render_material_raster
     CF_StorageBuffer entities, offsets, indices, parameters;
     unsigned char *entity_data;
     float *parameter_data;
+    int *gpu_indices;
+    int parameter_capacity, parameter_buffer_bytes;
+    render_material_upload_work upload_work;
     uint32_t *tile_offsets, *tile_cursor, *tile_indices;
     /* Batches alternate between these; see render_material_textures. The
      * second is made when a frame first has several batches. */
@@ -55,7 +66,53 @@ struct render_material_raster
     int result;
     render_material_entity *sorted;
     int width, height, tiles, capacity, index_capacity;
+    int sdf_batch_limit;
+    GameSurfaceQuality quality;
+    bool sdf_trace_debug;
+    render_mesh_material_work mesh_work;
 };
+
+void render_material_raster_set_spatial_scratch(render_material_raster *r, bool enabled)
+{
+    r->disable_spatial_scratch = !enabled;
+}
+void render_material_raster_set_hidden_rejection(render_material_raster *r, bool enabled)
+{
+    r->disable_hidden_rejection = !enabled;
+    if (r->mesh_pass) {
+        render_mesh_material_set_hidden_rejection(r->mesh_pass, enabled);
+    }
+}
+
+void render_material_raster_set_sdf_batch_limit(render_material_raster *r, int limit)
+{
+    assert(limit >= 0 && limit <= RENDER_SDF_BATCH_LIMIT);
+    r->sdf_batch_limit = limit;
+    if (r->mesh_pass) {
+        render_mesh_material_set_sdf_batch_limit(r->mesh_pass, limit);
+    }
+}
+
+void render_material_raster_set_quality(render_material_raster *r, GameSurfaceQuality quality)
+{
+    r->quality = quality;
+    if (r->mesh_pass) {
+        render_mesh_material_set_quality(r->mesh_pass, quality);
+    }
+}
+
+void render_material_raster_set_sdf_trace_debug(render_material_raster *r, bool enabled)
+{
+    r->sdf_trace_debug = enabled;
+    if (r->mesh_pass) {
+        render_mesh_material_set_sdf_trace_debug(r->mesh_pass, enabled);
+    }
+}
+
+render_mesh_material_work render_material_raster_mesh_work(const render_material_raster *r)
+{
+    return r->mesh_work;
+}
 
 static void free_targets(render_material_raster *r)
 {
@@ -79,6 +136,7 @@ static void free_targets(render_material_raster *r)
     }
     r->offsets = r->indices = r->entities = r->parameters = (CF_StorageBuffer){ 0 };
     r->width = r->height = r->tiles = r->capacity = r->index_capacity = 0;
+    r->parameter_capacity = r->parameter_buffer_bytes = 0;
 }
 
 render_material_raster *render_material_raster_new()
@@ -114,11 +172,23 @@ void render_material_raster_free(render_material_raster *r)
     }
     afree(r->sorted);
     afree(r->group_meshes);
+    afree(r->batch_meshes);
+    for (int i = 0; i < acount(r->spatial_surfaces); i++) {
+        render_mesh_surface_free(&r->spatial_surfaces[i]);
+    }
+    afree(r->spatial_surfaces);
+    afree(r->spatial_actors);
+    afree(r->spatial_rects);
+    afree(r->spatial_membership);
+    afree(r->spatial_offsets);
+    afree(r->spatial_order);
+    afree(r->spatial_cursor);
     afree(r->tile_offsets);
     afree(r->tile_cursor);
     afree(r->tile_indices);
     free(r->entity_data);
     free(r->parameter_data);
+    afree(r->gpu_indices);
     free(r);
 }
 
@@ -172,28 +242,50 @@ static bool reserve_entities(render_material_raster *r, int count)
         return false;
     }
     CF_StorageBuffer entities = buffer(count * GPU_ENTITY_BYTES);
-    CF_StorageBuffer parameters = buffer(count * 1024);
-    if (!entities.id || !parameters.id) {
-        if (parameters.id) {
-            cf_destroy_storage_buffer(parameters);
-        }
-        if (entities.id) {
-            cf_destroy_storage_buffer(entities);
-        }
+    if (!entities.id) {
         return false;
     }
     if (r->entities.id) {
         cf_destroy_storage_buffer(r->entities);
     }
+    r->entity_data = xrealloc(r->entity_data, (size_t)count * GPU_ENTITY_BYTES);
+    r->entities = entities;
+    r->capacity = count;
+    return true;
+}
+
+static bool reserve_parameters(render_material_raster *r, int blocks)
+{
+    if (r->parameters.id && blocks <= r->parameter_capacity) {
+        return true;
+    }
+    int capacity = r->parameter_capacity ? r->parameter_capacity : 1;
+    while (capacity < blocks) {
+        if (capacity > INT_MAX / 2048) {
+            return false;
+        }
+        capacity *= 2;
+    }
+    int bytes = blocks ? capacity * 1024 : 16;
+    CF_StorageBuffer parameters = buffer(bytes);
+    if (!parameters.id) {
+        return false;
+    }
     if (r->parameters.id) {
         cf_destroy_storage_buffer(r->parameters);
     }
     r->parameters = parameters;
-    r->entity_data = xrealloc(r->entity_data, (size_t)count * GPU_ENTITY_BYTES);
-    r->parameter_data = xrealloc(r->parameter_data, (size_t)count * 1024);
-    r->entities = entities;
-    r->capacity = count;
+    r->parameter_data = xrealloc(r->parameter_data, (size_t)bytes);
+    r->parameter_capacity = blocks ? capacity : 0;
+    r->parameter_buffer_bytes = bytes;
     return true;
+}
+
+render_material_upload_work render_material_raster_upload_work(const render_material_raster *r)
+{
+    render_material_upload_work work = r->upload_work;
+    work.parameter_buffer_bytes = r->parameter_buffer_bytes;
+    return work;
 }
 
 static bool reserve_indices(render_material_raster *r, int count)
@@ -262,6 +354,40 @@ static bool entity_tile_rect(
     tile_rect *rect
 )
 {
+    if (render_mesh_camera_orbit(view)) {
+        CF_V3 basis[3];
+        render_mesh_camera_basis(view, basis);
+        if (view.focal_distance <= 0 && fabsf(basis[1].y) < 1e-5f) {
+            return false;
+        }
+        float ex = entity->extent[0] + pad, ey = entity->extent[1] + pad;
+        CF_V2 lo, hi;
+        if (!render_mesh_project_bounds(
+                view,
+                (CF_V3){ entity->pos[0] - ex, 0, -entity->pos[1] - ey },
+                (CF_V3){ entity->pos[0] + ex, 0, -entity->pos[1] + ey },
+                &lo,
+                &hi
+            )) {
+            return false;
+        }
+        /* Filtering is in authored units; retain its projected pixel fringe. */
+        float fringe = pad > 0 ? 3 : 0;
+        return tile_axis_range(
+                   (lo.x - view.min_x) * px - fringe,
+                   (hi.x - view.min_x) * px + fringe,
+                   tiles_x,
+                   &rect->x0,
+                   &rect->x1
+               ) &&
+               tile_axis_range(
+                   (view.max_y + lo.y) * py - fringe,
+                   (view.max_y + hi.y) * py + fringe,
+                   tiles_y,
+                   &rect->y0,
+                   &rect->y1
+               );
+    }
     float center_x = (entity->pos[0] - view.min_x) * px;
     float center_y = (view.max_y - entity->pos[1]) * py;
     float extent_x = (entity->extent[0] + pad) * px;
@@ -345,7 +471,7 @@ static bool bin_entities(
         for (int y = rect.y0; y <= rect.y1; y++) {
             for (int x = rect.x0; x <= rect.x1; x++) {
                 int tile = y * tiles_x + x;
-                r->tile_indices[r->tile_cursor[tile]++] = (uint32_t)i;
+                r->tile_indices[r->tile_cursor[tile]++] = (uint32_t)r->gpu_indices[i];
             }
         }
     }
@@ -383,8 +509,8 @@ static float entity_emission_scale(
     int height
 )
 {
-    if (!circle_emission_filterable(entity) || !isfinite(entity->radius) ||
-        entity->radius <= 0) {
+    if (render_mesh_camera_orbit(view) || !circle_emission_filterable(entity) ||
+        !isfinite(entity->radius) || entity->radius <= 0) {
         return 1;
     }
     float half_width = circle_filter_half_width(entity->aa, view.width / width, view.height / height);
@@ -528,6 +654,192 @@ static bool prepare_batches(render_material_raster *r)
     return true;
 }
 
+static int prepare_spatial_groups(
+    render_material_raster *r,
+    ecs_world *world,
+    const material_batch *batch,
+    const render_mesh_material_actor *meshes,
+    render_material_view view
+)
+{
+    int count = batch->last - batch->first;
+    aclear(r->batch_meshes);
+    for (int i = batch->first; i < batch->last; i++) {
+        apush(r->batch_meshes, meshes[(int)r->sorted[i].points[0]]);
+    }
+    asetlen(r->spatial_actors, count);
+    asetlen(r->spatial_membership, count);
+    for (int i = 0; i < acount(r->spatial_surfaces); i++) {
+        render_mesh_surface_free(&r->spatial_surfaces[i]);
+    }
+    asetlen(r->spatial_surfaces, count);
+    memset(r->spatial_surfaces, 0, (size_t)count * sizeof *r->spatial_surfaces);
+    render_pixel_rect full = { 0, 0, r->width, r->height };
+    for (int i = 0; i < count; i++) {
+        render_mesh_material_actor *actor = &r->batch_meshes[i];
+        render_pixel_rect rect = full;
+        if (!r->disable_spatial_scratch) {
+            if (!actor->surface) {
+                if (!render_mesh_surface_build(
+                        world,
+                        actor->entity,
+                        &actor->position,
+                        &r->spatial_surfaces[i],
+                        r->error,
+                        sizeof r->error
+                    )) {
+                    return 0;
+                }
+                actor->surface = &r->spatial_surfaces[i];
+                r->mesh_work.surface_builds++;
+            }
+            CF_V2 lo, hi;
+            if (render_mesh_project_bounds(
+                    view,
+                    actor->surface->min,
+                    actor->surface->max,
+                    &lo,
+                    &hi
+                )) {
+                rect = render_mesh_pixel_bounds(view, lo, hi, r->width, r->height);
+            }
+        }
+        r->spatial_actors[i] = (render_spatial_actor){ rect, i, 0 };
+    }
+    int groups = render_spatial_partition(r->spatial_actors, count, 0);
+    asetlen(r->spatial_rects, groups);
+    for (int i = 0; i < groups; i++) {
+        r->spatial_rects[i] = (render_pixel_rect){ r->width, r->height, 0, 0 };
+    }
+    for (int i = 0; i < count; i++) {
+        const render_spatial_actor *actor = &r->spatial_actors[i];
+        r->spatial_membership[actor->actor] = actor->group;
+        render_pixel_rect *rect = &r->spatial_rects[actor->group];
+        if (actor->rect.x < rect->x) {
+            rect->x = actor->rect.x;
+        }
+        if (actor->rect.y < rect->y) {
+            rect->y = actor->rect.y;
+        }
+        if (actor->rect.right > rect->right) {
+            rect->right = actor->rect.right;
+        }
+        if (actor->rect.bottom > rect->bottom) {
+            rect->bottom = actor->rect.bottom;
+        }
+    }
+    asetlen(r->spatial_offsets, groups + 1);
+    memset(r->spatial_offsets, 0, (size_t)(groups + 1) * sizeof *r->spatial_offsets);
+    for (int i = 0; i < count; i++) {
+        r->spatial_offsets[r->spatial_membership[i] + 1]++;
+    }
+    for (int i = 0; i < groups; i++) {
+        r->spatial_offsets[i + 1] += r->spatial_offsets[i];
+    }
+    asetlen(r->spatial_cursor, groups);
+    memcpy(r->spatial_cursor, r->spatial_offsets, (size_t)groups * sizeof *r->spatial_cursor);
+    asetlen(r->spatial_order, count);
+    for (int i = 0; i < count; i++) {
+        r->spatial_order[r->spatial_cursor[r->spatial_membership[i]]++] = i;
+    }
+    return groups;
+}
+
+static void compose_batch(
+    render_material_raster *r,
+    const material_batch *batch,
+    int index,
+    CF_StorageBuffer inputs[4],
+    render_pixel_rect clip,
+    bool clear
+)
+{
+    const char *previous[] = { "u_prev_scene",
+                               "u_prev_source",
+                               "u_prev_albedo",
+                               "u_prev_normal",
+                               "u_prev_cover" };
+    const int targets[] = { 0, 1, 2, 3, 5 };
+    for (int t = 0; (index || batch->mesh) && t < 5; t++) {
+        cf_material_set_texture_fs(
+            r->material,
+            previous[t],
+            cf_canvas_get_target2(r->canvases[(index - 1) & 1], targets[t])
+        );
+    }
+    CF_Shader shader = render_programs_bind_raster(
+        batch->mesh ? r->mesh_composite
+        : index     ? r->accumulate
+                    : r->programs,
+        batch->program,
+        r->material
+    );
+    cf_apply_canvas(r->canvases[index & 1], clear);
+    cf_apply_mesh(r->mesh);
+    cf_apply_shader(shader, r->material);
+    cf_apply_fs_storage_buffers(inputs, 4);
+    cf_apply_viewport(0, 0, r->width, r->height);
+    cf_apply_scissor(clip.x, clip.y, clip.right - clip.x, clip.bottom - clip.y);
+    cf_draw_elements();
+    if (batch->mesh) {
+        r->mesh_work.composition_pixels += (size_t)(clip.right - clip.x) *
+                                           (clip.bottom - clip.y);
+        render_gpu_timing_mark("Mesh composition");
+    }
+}
+
+static bool draw_mesh_group(render_material_raster *r, ecs_world *world, render_material_view view, float time)
+{
+    if (!r->mesh_pass ||
+        !render_mesh_material_resize(r->mesh_pass, r->width, r->height) ||
+        !render_mesh_material_draw(r->mesh_pass, world, r->group_meshes, acount(r->group_meshes), view, time)) {
+        snprintf(
+            r->error,
+            sizeof r->error,
+            "Mesh material: %s",
+            r->mesh_pass ? render_mesh_material_error(r->mesh_pass) : "resource allocation failed"
+        );
+        return false;
+    }
+    render_mesh_material_work work = render_mesh_material_last_work(r->mesh_pass);
+    r->mesh_work.draw_calls += work.draw_calls;
+    r->mesh_work.sdf_draw_calls += work.sdf_draw_calls;
+    r->mesh_work.sdf_instances += work.sdf_instances;
+    r->mesh_work.sdf_uploads += work.sdf_uploads;
+    r->mesh_work.sdf_upload_bytes += work.sdf_upload_bytes;
+    r->mesh_work.surface_builds += work.surface_builds;
+    r->mesh_work.surface_reuses += work.surface_reuses;
+    r->mesh_work.sdf_program_prepares += work.sdf_program_prepares;
+    r->mesh_work.sdf_lod_instances += work.sdf_lod_instances;
+    r->mesh_work.surface_pixels += work.surface_pixels;
+    if (work.surface_capacity_pixels > r->mesh_work.surface_capacity_pixels) {
+        r->mesh_work.surface_capacity_pixels = work.surface_capacity_pixels;
+    }
+    r->mesh_work.sdf_pair_probes += work.sdf_pair_probes;
+    r->mesh_work.sdf_parameter_probes += work.sdf_parameter_probes;
+    r->mesh_work.sdf_parameter_upload_bytes += work.sdf_parameter_upload_bytes;
+    r->mesh_work.sdf_parameter_rows += work.sdf_parameter_rows;
+    r->mesh_work.sdf_parameter_uploads += work.sdf_parameter_uploads;
+    r->mesh_work.depth_copies += work.depth_copies;
+    r->mesh_work.depth_copy_pixels += work.depth_copy_pixels;
+    r->mesh_work.scratch_groups++;
+    render_gpu_timing_mark("Mesh material");
+    render_mesh_material_textures textures = render_mesh_material_get_textures(r->mesh_pass);
+    cf_material_set_texture_fs(r->material, "u_mesh_scene", textures.scene);
+    cf_material_set_texture_fs(r->material, "u_mesh_emission", textures.emission);
+    cf_material_set_texture_fs(r->material, "u_mesh_absorption", textures.absorption);
+    cf_material_set_texture_fs(r->material, "u_mesh_albedo", textures.albedo);
+    cf_material_set_texture_fs(r->material, "u_mesh_normal", textures.normal);
+    float rect[4];
+    render_mesh_material_rect(r->mesh_pass, rect);
+    uniform(r, "u_mesh_rect", rect, CF_UNIFORM_TYPE_FLOAT4, 1);
+    int active[2];
+    render_mesh_material_extent(r->mesh_pass, active, NULL);
+    float extent[2] = { (float)active[0], (float)active[1] };
+    uniform(r, "u_mesh_extent", extent, CF_UNIFORM_TYPE_FLOAT2, 1);
+    return true;
+}
+
 bool render_material_raster_draw_mixed(
     render_material_raster *r,
     const render_material_entity *entities,
@@ -540,9 +852,14 @@ bool render_material_raster_draw_mixed(
 )
 {
     assert(r && count >= 0 && (entities || !count));
+    r->mesh_work = (render_mesh_material_work){ 0 };
+    r->upload_work = (render_material_upload_work){ 0 };
     if (!r->width || !isfinite(view.min_x) || !isfinite(view.max_y) ||
         !isfinite(view.width) || !isfinite(view.height) || view.width <= 0 ||
-        view.height <= 0) {
+        view.height <= 0 || !isfinite(view.yaw) || !isfinite(view.pitch) ||
+        !isfinite(view.roll) || !isfinite(view.target_elevation) ||
+        !isfinite(view.focal_distance) ||
+        (view.focal_distance > 0 && view.focal_distance <= RENDER_MESH_NEAR)) {
         return false;
     }
     for (int i = 0; i < count; i++) {
@@ -559,7 +876,17 @@ bool render_material_raster_draw_mixed(
             return false;
         }
     }
-    if (!reserve_entities(r, count ? count : 1)) {
+    int ordinary = 0, parameter_blocks = 0;
+    for (int i = 0; i < count; i++) {
+        if (entities[i].shape_type == RENDER_SHAPE_MESH) {
+            continue;
+        }
+        ordinary++;
+        parameter_blocks += entities[i].reserved[0] > 0 ||
+                            entities[i].reserved[1] > 0;
+    }
+    if (!reserve_entities(r, ordinary ? ordinary : 1) ||
+        !reserve_parameters(r, parameter_blocks)) {
         return false;
     }
     asetlen(r->sorted, count);
@@ -576,14 +903,38 @@ bool render_material_raster_draw_mixed(
     if (!prepare_batches(r)) {
         return false;
     }
-    if (count) {
-        for (int i = 0; i < count; i++) {
-            memcpy(r->entity_data + (size_t)i * GPU_ENTITY_BYTES, &r->sorted[i], GPU_ENTITY_BYTES);
-            memcpy(r->parameter_data + (size_t)i * 256, r->sorted[i].material_parameters, 1024);
+    asetlen(r->gpu_indices, count + 1);
+    int record = 0, block = 0;
+    for (int i = 0; i < count; i++) {
+        r->gpu_indices[i] = record;
+        const render_material_entity *entity = &r->sorted[i];
+        if (entity->shape_type == RENDER_SHAPE_MESH) {
+            continue;
         }
-        cf_update_storage_buffer(r->entities, r->entity_data, count * GPU_ENTITY_BYTES);
-        cf_update_storage_buffer(r->parameters, r->parameter_data, count * 1024);
+        unsigned char *data = r->entity_data + (size_t)record++ * GPU_ENTITY_BYTES;
+        memcpy(data, entity, GPU_ENTITY_BYTES);
+        uint32_t parameter_base = 0;
+        if (entity->reserved[0] > 0 || entity->reserved[1] > 0) {
+            parameter_base = (uint32_t)block * 64;
+            memcpy(r->parameter_data + (size_t)block++ * 256, entity->material_parameters, 1024);
+        }
+        // Sorting uses the CPU-only time[1] lane. Its uploaded bits address
+        // compact parameters; entity and tile indices remain independent.
+        memcpy(data + offsetof(render_material_entity, time) + sizeof(float), &parameter_base, sizeof parameter_base);
     }
+    r->gpu_indices[count] = record;
+    if (record) {
+        cf_update_storage_buffer(r->entities, r->entity_data, record * GPU_ENTITY_BYTES);
+    }
+    if (block) {
+        cf_update_storage_buffer(r->parameters, r->parameter_data, block * 1024);
+    }
+    r->upload_work = (render_material_upload_work){
+        .entity_records = record,
+        .parameter_blocks = block,
+        .entity_bytes = (size_t)record * GPU_ENTITY_BYTES,
+        .parameter_bytes = (size_t)block * 1024,
+    };
     int tx = (r->width + 15) / 16, ty = (r->height + 15) / 16;
     float units[2] = { view.width / r->width, view.height / r->height };
     float pixels[2] = { r->width / view.width, r->height / view.height };
@@ -610,93 +961,76 @@ bool render_material_raster_draw_mixed(
     uniform(r, "u_world_min_x", &view.min_x, CF_UNIFORM_TYPE_FLOAT, 1);
     uniform(r, "u_world_max_y", &view.max_y, CF_UNIFORM_TYPE_FLOAT, 1);
     uniform(r, "u_unit_per_px", units, CF_UNIFORM_TYPE_FLOAT2, 1);
+    CF_V3 basis[3], target = render_mesh_camera_target(view);
+    render_mesh_camera_basis(view, basis);
+    float right[4] = { basis[0].x, basis[0].y, basis[0].z, view.focal_distance };
+    float down[4] = { basis[2].x, basis[2].y, basis[2].z, 0 };
+    float plane[4] = { target.x, target.y, target.z, render_mesh_camera_orbit(view) };
+    uniform(r, "u_plane_right", right, CF_UNIFORM_TYPE_FLOAT4, 1);
+    uniform(r, "u_plane_down", down, CF_UNIFORM_TYPE_FLOAT4, 1);
+    uniform(r, "u_plane_target", plane, CF_UNIFORM_TYPE_FLOAT4, 1);
     uniform(r, "u_tiles_x", &tx, CF_UNIFORM_TYPE_INT, 1);
     CF_StorageBuffer inputs[] = { r->entities, r->offsets, r->indices, r->parameters };
-    /* Every target but visibility, which the raster leaves zero. */
-    const char *previous[] = { "u_prev_scene",
-                               "u_prev_source",
-                               "u_prev_albedo",
-                               "u_prev_normal",
-                               "u_prev_cover" };
-    const int targets[] = { 0, 1, 2, 3, 5 };
+    render_pixel_rect full = { 0, 0, r->width, r->height };
     cf_push_gpu_label("Material raster batches");
     for (int i = 0; i < acount(r->batches); i++) {
         const material_batch *batch = &r->batches[i];
-        int last = batch->mesh ? batch->first : batch->last;
-        uniform(r, "u_first_entity", (void *)&batch->first, CF_UNIFORM_TYPE_INT, 1);
+        int first = r->gpu_indices[batch->first];
+        int last = batch->mesh ? first : r->gpu_indices[batch->last];
+        int has_previous = i > 0;
+        uniform(r, "u_has_previous", &has_previous, CF_UNIFORM_TYPE_INT, 1);
+        uniform(r, "u_first_entity", &first, CF_UNIFORM_TYPE_INT, 1);
         uniform(r, "u_last_entity", &last, CF_UNIFORM_TYPE_INT, 1);
         uniform(r, "u_metaball_group", (void *)&batch->group, CF_UNIFORM_TYPE_INT, 1);
-        if (batch->mesh) {
-            render_gpu_timing_mark("Material shapes");
-            if (!r->mesh_pass) {
-                r->mesh_pass = render_mesh_material_new();
+        if (!batch->mesh) {
+            compose_batch(r, batch, i, inputs, full, true);
+            continue;
+        }
+        render_gpu_timing_mark("Material shapes");
+        if (!r->mesh_pass) {
+            r->mesh_pass = render_mesh_material_new();
+            if (r->mesh_pass) {
+                render_mesh_material_set_sdf_batch_limit(r->mesh_pass, r->sdf_batch_limit);
+                render_mesh_material_set_quality(r->mesh_pass, r->quality);
+                render_mesh_material_set_sdf_trace_debug(r->mesh_pass, r->sdf_trace_debug);
+                render_mesh_material_set_hidden_rejection(r->mesh_pass, !r->disable_hidden_rejection);
             }
+        }
+        int groups = prepare_spatial_groups(r, world, batch, meshes, view);
+        if (!groups || !r->mesh_pass) {
+            if (!r->error[0]) {
+                snprintf(r->error, sizeof r->error, "Mesh group allocation failed");
+            }
+            cf_pop_gpu_label();
+            return false;
+        }
+        for (int group = 0; group < groups; group++) {
             aclear(r->group_meshes);
-            for (int actor = batch->first; actor < batch->last; actor++) {
-                apush(r->group_meshes, meshes[(int)r->sorted[actor].points[0]]);
+            // Preserve original order, including equal-depth ties, inside leaves.
+            for (int at = r->spatial_offsets[group];
+                 at < r->spatial_offsets[group + 1];
+                 at++) {
+                apush(r->group_meshes, r->batch_meshes[r->spatial_order[at]]);
             }
-            if (!r->mesh_pass ||
-                !render_mesh_material_resize(r->mesh_pass, r->width, r->height) ||
-                !render_mesh_material_draw(
-                    r->mesh_pass,
-                    world,
-                    r->group_meshes,
-                    acount(r->group_meshes),
-                    view,
-                    time
-                )) {
-                snprintf(
-                    r->error,
-                    sizeof r->error,
-                    "Mesh material: %s",
-                    r->mesh_pass ? render_mesh_material_error(r->mesh_pass) : "resource allocation failed"
-                );
+            if (!draw_mesh_group(r, world, view, time)) {
                 cf_pop_gpu_label();
                 return false;
             }
-            render_gpu_timing_mark("Mesh material");
-            render_mesh_material_textures textures = render_mesh_material_get_textures(
-                r->mesh_pass
-            );
-            cf_material_set_texture_fs(r->material, "u_mesh_scene", textures.scene);
-            cf_material_set_texture_fs(r->material, "u_mesh_emission", textures.emission);
-            cf_material_set_texture_fs(
-                r->material,
-                "u_mesh_absorption",
-                textures.absorption
-            );
-            cf_material_set_texture_fs(r->material, "u_mesh_albedo", textures.albedo);
-            cf_material_set_texture_fs(r->material, "u_mesh_normal", textures.normal);
-            float rect[4];
-            render_mesh_material_rect(r->mesh_pass, rect);
-            uniform(r, "u_mesh_rect", rect, CF_UNIFORM_TYPE_FLOAT4, 1);
-        }
-        // WebGL validates every active sampler even when the leading mesh
-        // skips previous-layer reads. Bind the other canvas rather than
-        // retaining last frame's bindings, which may alias this draw target.
-        for (int t = 0; (i || batch->mesh) && t < 5; t++) {
-            cf_material_set_texture_fs(
-                r->material,
-                previous[t],
-                cf_canvas_get_target2(r->canvases[(i - 1) & 1], targets[t])
-            );
-        }
-        CF_Shader shader = render_programs_bind_raster(
-            batch->mesh ? r->mesh_composite
-            : i         ? r->accumulate
-                        : r->programs,
-            batch->program,
-            r->material
-        );
-        cf_apply_canvas(r->canvases[i & 1], true);
-        cf_apply_mesh(r->mesh);
-        cf_apply_shader(shader, r->material);
-        cf_apply_fs_storage_buffers(inputs, 4);
-        cf_apply_viewport(0, 0, r->width, r->height);
-        cf_apply_scissor(0, 0, r->width, r->height);
-        cf_draw_elements();
-        if (batch->mesh) {
-            render_gpu_timing_mark("Mesh composition");
+            if (!group && has_previous && groups > 1) {
+                // Copy the immutable prior batch once. Each disjoint leaf then
+                // writes only its own pixels, without a canvas feedback loop.
+                float empty[] = { -2, -2, 1, 1 };
+                uniform(r, "u_mesh_rect", empty, CF_UNIFORM_TYPE_FLOAT4, 1);
+                compose_batch(r, batch, i, inputs, full, true);
+                float rect[4];
+                render_mesh_material_rect(r->mesh_pass, rect);
+                uniform(r, "u_mesh_rect", rect, CF_UNIFORM_TYPE_FLOAT4, 1);
+            }
+            bool clear = !group && (!has_previous || groups == 1);
+            render_pixel_rect clip = groups == 1 && has_previous
+                                       ? full
+                                       : r->spatial_rects[group];
+            compose_batch(r, batch, i, inputs, clip, clear);
         }
     }
     cf_pop_gpu_label();

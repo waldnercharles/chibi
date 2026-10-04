@@ -34,11 +34,16 @@ int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_vi
                                        -position.y - camera->offset.y,
                                        camera->width,
                                        camera->height,
-                                       camera->focal_distance };
+                                       camera->focal_distance,
+                                       camera->yaw,
+                                       camera->pitch,
+                                       camera->target_elevation,
+                                       camera->roll };
         if (found || !isfinite(out->center_x) || !isfinite(out->center_y) ||
-            !isfinite(out->width) || !isfinite(out->height) ||
-            out->width <= 0 || out->height <= 0 ||
-            !isfinite(out->focal_distance) || out->focal_distance < 0 ||
+            !isfinite(out->width) || !isfinite(out->height) || out->width <= 0 ||
+            out->height <= 0 || !isfinite(out->focal_distance) ||
+            out->focal_distance < 0 || !isfinite(out->yaw) || !isfinite(out->pitch) ||
+            !isfinite(out->roll) || !isfinite(out->target_elevation) ||
             (out->focal_distance > 0 && out->focal_distance <= 1)) {
             found = -1;
             break;

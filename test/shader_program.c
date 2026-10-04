@@ -383,6 +383,62 @@ static void capacity_checks()
     }
 }
 
+static void indexed_sets_checks()
+{
+    enum
+    {
+        COUNT = 20
+    };
+    behavior_asset *shapes[COUNT];
+    render_shader_set sets[COUNT];
+    int ids[COUNT];
+    for (int i = 0; i < COUNT; i++) {
+        char name[64];
+        snprintf(name, sizeof name, "Indexed program sphere %d", i);
+        shapes[i] = behavior_asset_new(name);
+        shapes[i]->domain = BEHAVIOR_DOMAIN_SHAPE;
+        shapes[i]->bounds[0] = shapes[i]->bounds[1] = (float)i + 2;
+        graph *g = shapes[i]->graph;
+        node *position = shader_test_node(g, "Shader ObjectPosition");
+        node *length = shader_test_node(g, "Shader Length");
+        node *distance = shader_test_node(g, "Shader Subtract");
+        assert(!graph_connect_data(g, position, 0, length, 0));
+        assert(!graph_connect_data(g, length, 0, distance, 0));
+        assert(!graph_connect_data(g, distance, 0, shader_graph_add_output(g, true), 0));
+        pin_value radius = { .type = PIN_F32, .f = (float)i + 1 };
+        assert(!graph_set_pin_default(g, distance, 0, 1, &radius));
+        sets[i] = (render_shader_set){ .shape = publish(shapes[i]) };
+    }
+    render_programs *programs = render_programs_new(RENDER_PROGRAM_SDF_MATERIAL);
+    for (int i = 0; i < COUNT; i++) {
+        ids[i] = render_programs_prepare(programs, &sets[i]);
+        assert(ids[i]);
+        for (int j = 0; j < i; j++) {
+            assert(ids[i] != ids[j]);
+        }
+    }
+    unsigned warm = render_shader_compile_count();
+    // Reverse/repeated lookup must survive table growth without recompiling.
+    for (int pass = 0; pass < 3; pass++) {
+        for (int i = COUNT - 1; i >= 0; i--) {
+            assert(render_programs_prepare(programs, &sets[i]) == ids[i]);
+        }
+    }
+    assert(render_shader_compile_count() == warm);
+    graph *g = shapes[0]->graph;
+    node *distance = g->nodes[2];
+    pin_value radius = { .type = PIN_F32, .f = 2.5f };
+    assert(!graph_set_pin_default(g, distance, 0, 1, &radius));
+    assert(publish(shapes[0]) == sets[0].shape);
+    assert(render_programs_prepare(programs, &sets[0]) == ids[0]);
+    assert(render_shader_compile_count() == warm + 1);
+    render_programs_free(programs);
+    for (int i = 0; i < COUNT; i++) {
+        behavior_asset_free(shapes[i]);
+    }
+    render_shader_catalog_clear();
+}
+
 int test_shader_program_gpu()
 {
     render_shader_catalog_clear();
@@ -395,6 +451,8 @@ int test_shader_program_gpu()
     behavior_asset_free(asset);
     offsets_checks();
     capacity_checks();
+    render_shader_catalog_clear();
+    indexed_sets_checks();
     render_shader_catalog_clear();
     puts("shader program GPU PASS: Arena, fragment and compute ramp payloads, structural recompiles, program offsets, compile failure retention and ramp capacity");
     return 0;

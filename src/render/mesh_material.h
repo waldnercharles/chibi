@@ -18,12 +18,22 @@ bool render_mesh_material_draw(
     render_material_view view,
     float time
 );
+/* 0 selects the default 256; 1 draws each SDF separately with the same shader. */
+void render_mesh_material_set_sdf_batch_limit(render_mesh_material *pass, int limit);
+void render_mesh_material_set_quality(render_mesh_material *pass, GameSurfaceQuality quality);
+/* 0: shaded output; 1: surviving trace/normal calls; 2: include hidden rejects. */
+void render_mesh_material_set_sdf_trace_debug(render_mesh_material *pass, int mode);
+void render_mesh_material_set_hidden_rejection(render_mesh_material *pass, bool enabled);
+render_mesh_material_work render_mesh_material_last_work(const render_mesh_material *pass);
 const char *render_mesh_material_error(const render_mesh_material *pass);
 render_mesh_material_textures render_mesh_material_get_textures(const render_mesh_material *pass);
-/* Pixel-aligned destination rectangle. Scratch has twice these dimensions.
+/* Pixel-aligned destination rectangle. Scratch uses the selected sample scale.
  * All five targets store raw premultiplied material layers, not lit color.
- * Albedo alpha is world elevation plus graph height. Normal is (X,-Z,gain,gloss).
+ * Albedo alpha is camera-plane elevation plus graph height. Normal stores
+ * camera-plane (right,-down,gain,gloss); graph contexts remain world-space.
  * All actors share depth; scratch clears once for the group's first draw.
- * Scratch capacity can extend outside the group and destination; clear is zero. */
+ * Active pixels start at target origin. Allocation capacity may be larger. */
 void render_mesh_material_rect(const render_mesh_material *pass, float rect[4]);
+/* Raw target pixels; either output may be NULL. Sample only the active extent. */
+void render_mesh_material_extent(const render_mesh_material *pass, int active[2], int capacity[2]);
 #endif

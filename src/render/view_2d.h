@@ -18,6 +18,8 @@ typedef struct
     float crop_max_v;
     /* Mesh projection around the unpadded camera center. Zero is orthographic. */
     float focal_distance, center_x, center_y;
+    /* Orbit angles in radians; target elevation is in world units. */
+    float yaw, pitch, target_elevation, roll;
 } render_view_2d;
 
 typedef struct

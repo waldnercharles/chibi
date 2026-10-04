@@ -1,0 +1,132 @@
+version 1
+name "Sdf25DCamera"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "SdfOptimizationCamera"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameCamera width=780.0 height=520.0 focal_distance=650.0 yaw=0.0 pitch=0.55 target_elevation=60.0
+            GameSurfaceQuality resolution="Full" sdf_normal_mode="Analytic" sdf_pixel_error=0.0 disable_sdf_lod=#true
+            GameHRC2D surface_mode="Gather" surface_shadow_mode="Horizon8" ambient=0.0 fog=0.0 shadow_floor=0.0 bloom=0.0 bounce_intensity=0.18 intensity=4.0 exposure=0.8 surface_radius=128.0 surface_relief=1.2 lighting_margin=125.0 resolution=0.5 min_resolution=0.5 adaptive=#false
+        }
+        (array)behaviors "SdfCameraYawSway"
+    }
+    - {
+        name "Flat reference plane"
+        prototype "SdfCameraFlatReceiver"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameAppearance shape="Box" width=490.0 height=280.0 color=0x293441ff
+            GameMaterial scene=0x293441ff albedo=0x293441ff absorption=0.0 emission_intensity=0.0
+        }
+    }
+    - {
+        name "Flat orientation stripe"
+        prototype "SdfCameraFlatReceiver"
+        components {
+            GameTransform x=0.0 y=-135.0
+            GameAppearance shape="Box" width=190.0 height=10.0 color=0x7b8894ff
+            GameMaterial scene=0x7b8894ff albedo=0x7b8894ff absorption=0.0 emission_intensity=0.0
+        }
+    }
+    - {
+        name "Cyan opposing sphere"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=0.0 y=-60.0
+            GameGeometry3D elevation=60.0
+            GameVisualTransform scale=1.6 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader material="SdfCyan"
+            GameMaterial emission_intensity=0.0
+        }
+    }
+    - {
+        name "Rose opposing bored box"
+        prototype "SdfBoredBox"
+        components {
+            GameTransform x=0.0 y=60.0
+            GameGeometry3D elevation=60.0
+            GameVisualTransform scale=1.4 pitch=0.15 yaw=0.0 roll=-0.15
+            GameShader material="SdfRose"
+            GameMaterial emission_intensity=0.0
+        }
+    }
+    - {
+        name "West low torus"
+        prototype "SdfTorus"
+        components {
+            GameTransform x=-140.0 y=0.0
+            GameGeometry3D elevation=0.0
+            GameVisualTransform scale=1.15 pitch=0.45 yaw=0.0 roll=0.1
+            GameShader material="SdfAmber"
+            GameMaterial emission_intensity=0.0
+        }
+    }
+    - {
+        name "East raised mesh"
+        prototype "SdfComparisonMesh"
+        components {
+            GameTransform x=140.0 y=0.0
+            GameGeometry3D elevation=130.0
+            GameVisualTransform scale=1.2 pitch=0.45 yaw=0.0 roll=-0.15
+            GameShader material="SdfIvory"
+            GameMaterial emission_intensity=0.0
+        }
+    }
+    - {
+        name "South low mesh"
+        prototype "SdfComparisonMesh"
+        components {
+            GameTransform x=105.0 y=105.0
+            GameGeometry3D elevation=0.0
+            GameVisualTransform scale=0.85 pitch=0.5 yaw=0.0 roll=0.2
+            GameShader material="SdfCyan"
+            GameMaterial emission_intensity=0.0
+        }
+    }
+    - {
+        name "North raised sphere"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=-115.0 y=-95.0
+            GameGeometry3D elevation=130.0
+            GameVisualTransform scale=0.75 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader material="SdfAmber"
+            GameMaterial emission_intensity=0.0
+        }
+    }
+    - {
+        name "Cyan fixed3D emitter"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=-205.0 y=-50.0
+            GameGeometry3D elevation=200.0
+            GameVisualTransform scale=0.32 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader material="SdfOrbitCyanEmitter"
+            GameMaterial emission_intensity=1.0
+        }
+    }
+    - {
+        name "Amber fixed3D emitter"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=205.0 y=55.0
+            GameGeometry3D elevation=180.0
+            GameVisualTransform scale=0.32 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader material="SdfOrbitAmberEmitter"
+            GameMaterial emission_intensity=1.0
+        }
+    }
+    - {
+        name "Magenta fixed3D emitter"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=0.0 y=-150.0
+            GameGeometry3D elevation=220.0
+            GameVisualTransform scale=0.32 pitch=0.0 yaw=0.0 roll=0.0
+            GameShader material="SdfOrbitMagentaEmitter"
+            GameMaterial emission_intensity=1.0
+        }
+    }
+}

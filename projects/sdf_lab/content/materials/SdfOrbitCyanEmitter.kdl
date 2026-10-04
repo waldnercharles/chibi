@@ -1,0 +1,28 @@
+version 3
+name "SdfOrbitCyanEmitter"
+domain "material"
+id_counter 10
+description "Fixed color emission for orbit light/depth proof. Authored separately from the nonemissive GI receivers."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.12 y=0.8 z=0.95
+                    }
+                    Emission {
+                        default x=0.09 y=0.6 z=0.7125
+                    }
+                    Normal {
+                        default x=0.0 y=0.0 z=0.0
+                    }
+                }
+            }
+        }
+    }
+}

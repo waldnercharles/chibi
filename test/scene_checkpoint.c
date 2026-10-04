@@ -979,13 +979,20 @@ static int test_scene_checkpoint()
     assert(app_scene_authoring_add_instance(fixture.scene, "ReloadPrototype") == 0);
     assert(app_scene_authoring_open_behavior(fixture.scene, "ReloadBehavior") == 0);
     assert(editor_spawn(fixture.graph, registry_node_by_name("Integer"), 12, 34));
-    fixture.scene->camera = (scene_camera){ .view = { 10, 20, 300, 200 }, .saved = true };
+    fixture.scene->camera = (scene_camera){
+        .view = { 10, 20, 300, 200, 600, .7f, 1.1f, 50, .4f },
+        .saved = true
+    };
     fixture = roundtrip(&fixture);
     assert(fixture.scene->scene_dirty && acount(fixture.scene->actors) == 1);
     assert(
         acount(fixture.scene->prototypes) == 1 && fixture.scene->prototypes[0].dirty
     );
     assert(fixture.scene->camera.saved && fixture.scene->camera.view.center_x == 10);
+    assert(fixture.scene->camera.view.focal_distance == 600);
+    assert(fixture.scene->camera.view.yaw == .7f && fixture.scene->camera.view.pitch == 1.1f);
+    assert(fixture.scene->camera.view.target_elevation == 50);
+    assert(fixture.scene->camera.view.roll == .4f);
     assert(acount(editor_active_graph(fixture.graph)->nodes) == 1);
     assert(
         GAME_GameTransform_get_const(fixture.world, fixture.scene->actors[0].entity)

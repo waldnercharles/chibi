@@ -1,0 +1,90 @@
+version 1
+name "HrcReuseThinGaps"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "SdfOptimizationCamera"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameCamera width=620.0 height=400.0 focal_distance=0.0
+            GameHRC2D surface_shadow_mode="Horizon8" ambient=0.08 fog=0.02 bounce_intensity=0.12
+        }
+    }
+    - {
+        name "West cyan"
+        prototype "SdfLight"
+        components {
+            GameTransform x=-240.0 y=0.0
+            GameMaterial emission_color=0x38d9edff
+        }
+    }
+    - {
+        name "East amber"
+        prototype "SdfLight"
+        components {
+            GameTransform x=240.0 y=0.0
+            GameMaterial emission_color=0xffac54ff
+        }
+    }
+    - {
+        name "Continuous smooth receiver"
+        prototype "SdfHorizonCanopy"
+        components {
+            GameTransform x=-130.0 y=15.0
+            GameVisualTransform scale=0.8
+        }
+    }
+    - {
+        name "Thin ring opening"
+        prototype "SdfQualityThinRing"
+        components {
+            GameTransform x=-130.0 y=15.0
+            GameGeometry3D elevation=28.0
+            GameVisualTransform scale=1.0 pitch=0.25
+        }
+    }
+    - {
+        name "Gap 4 hill 1"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=85.0 y=-75.0
+            GameVisualTransform scale=0.85 pitch=0.0
+            GameShader material="SdfAmber"
+        }
+    }
+    - {
+        name "Gap 4 hill 2"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=140.0 y=-75.0
+            GameVisualTransform scale=0.85 pitch=0.0
+            GameShader material="SdfAmber"
+        }
+    }
+    - {
+        name "Gap 10 hill 1"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=85.0 y=60.0
+            GameVisualTransform scale=0.85 pitch=0.0
+            GameShader material="SdfAmber"
+        }
+    }
+    - {
+        name "Gap 10 hill 2"
+        prototype "SdfSphere"
+        components {
+            GameTransform x=146.0 y=60.0
+            GameVisualTransform scale=0.85 pitch=0.0
+            GameShader material="SdfAmber"
+        }
+    }
+    - {
+        name "Small narrow bore"
+        prototype "SdfQualityNarrowCut"
+        components {
+            GameTransform x=-130.0 y=110.0
+            GameVisualTransform scale=0.3
+        }
+    }
+}

@@ -6,7 +6,13 @@
 layout(set = 2, binding = 0) uniform sampler2D u_source;
 layout(set = 2, binding = 1) uniform sampler2D u_bounce;
 
+#ifdef HRC_PACK_RELIEF
+#include "hrc/relief_sample.shd"
+layout(location = 0) out vec4 out_relief;
+layout(location = 1) out vec4 out_value;
+#else
 layout(location = 0) out vec4 out_value;
+#endif
 
 layout(set = 3, binding = 0) uniform uniform_block
 {
@@ -25,6 +31,9 @@ layout(set = 3, binding = 0) uniform uniform_block
 void main()
 {
 	ivec2 p = ivec2(gl_FragCoord.xy);
+	#ifdef HRC_PACK_RELIEF
+	out_relief = packed_relief(p);
+	#endif
 	vec3 bounce;
 	vec4 step = near_step(p, 1.0, bounce);
 	out_value = vec4(step.rgb + (1.0 - step.a) * bounce, max(texelFetch(u_source, p, 0).a, 0.0));

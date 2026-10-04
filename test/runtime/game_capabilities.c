@@ -176,6 +176,14 @@ void test_game_capabilities()
     assert(view.focal_distance == 0);
     GAME_GameCamera_get(world, player)->focal_distance = 900;
     assert(game_camera_view(world, NULL, &view) == 1 && view.focal_distance == 900);
+    GAME_GameCamera_get(world, player)->yaw = 1.2f;
+    GAME_GameCamera_get(world, player)->pitch = .8f;
+    GAME_GameCamera_get(world, player)->target_elevation = 60;
+    assert(game_camera_view(world, NULL, &view) == 1);
+    assert(view.yaw == 1.2f && view.pitch == .8f && view.target_elevation == 60);
+    GAME_GameCamera_get(world, player)->yaw = NAN;
+    assert(game_camera_view(world, NULL, &view) == -1);
+    GAME_GameCamera_get(world, player)->yaw = 0;
     GAME_GameCamera_get(world, player)->focal_distance = 1;
     assert(game_camera_view(world, NULL, &view) == -1);
     GAME_GameCamera_get(world, player)->focal_distance = 0;

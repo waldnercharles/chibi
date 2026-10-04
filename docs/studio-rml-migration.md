@@ -1335,6 +1335,13 @@ classes for an authored panel.
 `@media (theme: reduced-motion)`. Left in the theme because their panels are
 still kit code: `body.comfortable .designer-tile` (Designer).
 
+- **List reveal with top padding**: `ui_list_window`'s reveal measures a
+  row from the scroller's top padding, so a padded list stops about the
+  padding short (the Inspector avoids padding; the Outliner shows it).
+- **Change-driven sync, DOM side**: the Inspector walks every open element
+  at each refresh while it shows, because RmlUi documents have no revision
+  to compare.
+
 Re-measure every Wave 2 bench case (`--ui-bench studio`, `members`,
 `UI_BENCH_ASSETS=1`) with `uptime` below 4 before and after each fix.
 

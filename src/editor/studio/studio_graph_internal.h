@@ -335,11 +335,14 @@ typedef struct gd_rows
     size_t count;
     bool open;
 } gd_rows;
-/* What every row shows; `control` names its control. */
+/* What every row shows; `control` names its control and `def` a param
+   row's default's. A heading heads a popover's rows; `removable` gives an
+   item its remove button, or an array its Add item; `fixed` keeps a param's
+   container. */
 typedef struct gd_row
 {
-    const char *id, *label, *about, *control;
-    bool readonly, invalid;
+    const char *id, *label, *about, *control, *def;
+    bool readonly, invalid, heading, removable, fixed;
 } gd_row;
 /* How a number edits: Base UI's NumberField attributes. */
 typedef struct gd_number_shape
@@ -365,8 +368,10 @@ void gd_put_axes(gd_rows *r, yyjson_mut_val *row, const double *values, int coun
 /* A choice's options, each valued by its place, `current` that of the
    value; listed only while the choice is open. */
 void gd_put_choices(gd_rows *r, yyjson_mut_val *row, const editor_choices *choices, int current);
-/* An asset field's kind, picker and problem. */
+/* An asset field's kind, picker and problem; the problem, when no asset has
+   its name, also goes in `problem` for the row's `invalid`. */
 void gd_put_asset(gd_rows *r, yyjson_mut_val *row, reference_asset_kind kind, const char *value);
+bool gd_asset_problem(studio *s, reference_asset_kind kind, const char *value, char problem[192]);
 /* A type's swatch, as Members colors it, and its label. */
 void gd_put_type(gd_rows *r, yyjson_mut_val *row, const pin_spec *pin, const char *label);
 /* The rows of a row's popover. */

@@ -651,18 +651,6 @@ pin_spec sm_variable_pin(const behavior_variable *v)
                        .default_value = v->default_value };
 }
 
-void sm_swatch(studio *s, const char *key, const pin_spec *pin)
-{
-    uint32_t color = sg_pin_color(s, pin);
-    kit_dot_desc dot = { pin->kind == PIN_EXEC ? KIT_DOT_ARROW
-                         : pin->container == PIN_CONTAINER_SINGLE ? KIT_DOT_CIRCLE
-                                                                  : KIT_DOT_SQUARE,
-                         color,
-                         color,
-                         0 };
-    kit_dot(s->kit, key, "member-swatch", &dot);
-}
-
 /* ---------- Uses ---------- */
 
 static const char *const ROLE_WORDS[REFERENCE_ROLE_COUNT] = {

@@ -93,6 +93,19 @@ void studio_palette_open_field(studio *s, studio_palette_client client, rml_elem
     s->palette.field = true;
 }
 
+void studio_palette_open_box(
+    studio *s,
+    studio_palette_client client,
+    const char *placeholder,
+    const float box[4]
+)
+{
+    reset(&s->palette, client, placeholder);
+    s->palette.anchored = s->palette.boxed = true;
+    memcpy(s->palette.box, box, sizeof s->palette.box);
+    s->ui_schedule.wake = true;
+}
+
 void studio_palette_close(studio *s)
 {
     reset(&s->palette, STUDIO_PALETTE_CLOSED, "");
@@ -158,6 +171,9 @@ static void collect(studio *s, studio_palette_state *p)
         case STUDIO_PALETTE_TYPES:
             studio_member_type_entries(s, &p->entries);
             break;
+        case STUDIO_PALETTE_CHOICES:
+            studio_graph_choice_entries(s, &p->entries);
+            break;
         case STUDIO_PALETTE_CLOSED: break;
     }
 }
@@ -173,6 +189,7 @@ static bool lists_anew(const studio_palette_state *p, const char *was)
         case STUDIO_PALETTE_SOURCES: return true;
         case STUDIO_PALETTE_COMPONENTS:
         case STUDIO_PALETTE_TYPES:
+        case STUDIO_PALETTE_CHOICES:
         case STUDIO_PALETTE_CLOSED: return false;
     }
     return false;
@@ -216,6 +233,9 @@ static void choose(studio *s, int place)
             studio_graph_source_choose(s, &entry);
             break;
         case STUDIO_PALETTE_TYPES: studio_member_type_choose(s, &entry); break;
+        case STUDIO_PALETTE_CHOICES:
+            studio_graph_choice_choose(s, &entry);
+            break;
         case STUDIO_PALETTE_CLOSED: break;
     }
 }
@@ -639,11 +659,13 @@ static void picker_frame(studio *s, studio_palette_state *p)
         }
         return;
     }
-    if (!anchor) {
+    if (!anchor && !p->boxed) {
         studio_palette_close(s);
         return;
     }
-    popover_show(popover, &(popover_anchor){ .side = POPOVER_BELOW, .element = anchor, .trigger = anchor });
+    popover_anchor at = { .side = POPOVER_BELOW, .element = anchor, .trigger = anchor };
+    memcpy(at.box, p->box, sizeof at.box);
+    popover_show(popover, &at);
     p->shown = true;
 }
 

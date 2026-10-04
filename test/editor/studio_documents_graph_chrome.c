@@ -404,15 +404,9 @@ static void source_field()
     sg_select_only(f.graph, atan);
     frames(&f, 6);
     rml_element *input = shown_in(details_row(s, "Y"), ".source-field input");
-    char list_id[64];
-    snprintf(list_id, sizeof list_id, "list-n%llu.i0", (unsigned long long)id);
     press_in_view(&f, input);
     frames(&f, 4);
-    rml_element *list = NULL;
-    rml_context *context = rml_backend_context(s->backend);
-    for (int i = 0; !list && i < rml_context_document_count(context); i++) {
-        list = rml_element_by_id(rml_context_document(context, i), list_id);
-    }
+    rml_element *list = shown_in(details_row(s, "Y"), ".popup.autocomplete");
     rml_element *rows[64];
     int listed = shown_items(list, ".menu-item", rows, 64);
     bool opened = list && popover_open(list) && listed > 0;
@@ -434,38 +428,56 @@ static void source_field()
     if (!set) {
         printf("  source set: y %g steps %d open %d\n", y, acount(f.graph->undo) - undo, popover_open(list));
     }
+    /* Typed text stays in the field as the list follows it. */
     input = shown_in(details_row(s, "Y"), ".source-field input");
     press_in_view(&f, input);
     frames(&f, 3);
-    text_event("zz");
-    frames(&f, 2);
+    char typed[64] = "";
+    for (const char *c = "zz"; *c; c++) {
+        text_event((char[]){ *c, 0 });
+        frames(&f, 2);
+    }
+    if (input) {
+        rml_element_value(input, typed, sizeof typed);
+    }
     tap(SDL_SCANCODE_ESCAPE);
     frames(&f, 4);
     char shown[64] = "";
     if (input) {
         rml_element_value(input, shown, sizeof shown);
     }
-    bool kept = !popover_open(list) && !strcmp(shown, "2.5") &&
-                acount(f.graph->undo) == undo + 1;
-    if (!(opened && offered && set && kept)) {
+    bool kept = strstr(typed, "zz") && !popover_open(list) &&
+                !strcmp(shown, "2.5") && acount(f.graph->undo) == undo + 1;
+    /* A tab with nothing changing evaluates none of its views. */
+    frames(&f, 4);
+    rml_data_reads before = studio_ui_data_reads(s);
+    frames(&f, 6);
+    rml_data_reads after = studio_ui_data_reads(s);
+    bool idle = after.values == before.values;
+    if (!(opened && offered && set && kept && idle)) {
         printf(
             "  source: opened %d (%d rows) offered %d ('%s') set %d kept %d "
-            "('%s')\n",
+            "('%s', typed '%s') idle %d (%llu views)\n",
             opened,
             listed,
             offered,
             label,
             set,
             kept,
-            shown
+            shown,
+            typed,
+            idle,
+            (unsigned long long)(after.values - before.values)
         );
     }
     test_check(
         opened && offered && set && kept,
         "an input's source field lists what fits under it, offers a typed "
-        "literal first and sets it with Enter as one Undo step; Escape shuts "
-        "the list and keeps the source"
+        "literal first and sets it with Enter as one Undo step; typed text "
+        "stays as the list follows it, and Escape shuts the list and keeps the "
+        "source"
     );
+    test_check(idle, "the Node tab evaluates no view while nothing changes");
     fixture_free(&f);
 }
 

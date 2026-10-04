@@ -324,22 +324,21 @@ extern "C"
     bool kit_submenu_begin(kit *k, const char *key, const char *label, uint32_t icon);
     void kit_submenu_end(kit *k);
 
-    /* An item of a searchable list (dropdowns, autocompletes). A description
-     * shows as a muted second line under the label. Items rank by
-     * support/text_rank.h on their label, then their keywords, plus their
-     * boost. The command palette is authored (Studio's Palette.rml). */
+    /* An item of a searchable list (a select's dropdown, an autocomplete). A
+     * description shows as a muted second line under the label. Items rank
+     * by support/text_rank.h on their label, then their keywords, plus their
+     * boost. The palette and Studio's pickers are authored (Palette.rml,
+     * Picker.rml). */
     typedef struct kit_command_item
     {
         const char *label;
         const char *group;
         const char *meta;
-        const char *shortcut;
         const char *keywords;
         uint32_t icon;
         const char *description;
         int boost;
         bool current;
-        const char *image; /* a "kit:<name>" picture in the icon's place, or NULL */
     } kit_command_item;
     typedef struct kit_autocomplete_result
     {
@@ -350,11 +349,8 @@ extern "C"
     /* A searchable choice list anchored to its trigger. Search ranks labels
      * and keywords, keeps groups together, and returns the selected item's
      * original index. Call kit_dropdown each frame while open. Calling open
-     * again from its same trigger closes it. open_at takes an anchor rect in
-     * overlay coordinates and uses the last emitted item as the trigger for
-     * popup ownership and focus restoration. */
+     * again from its same trigger closes it. */
     void kit_dropdown_open(kit *k, const char *key, const char *placeholder);
-    void kit_dropdown_open_at(kit *k, const char *key, kit_rect anchor, const char *placeholder);
     bool kit_dropdown_is_open(const kit *k, const char *key);
     const char *kit_dropdown_query(const kit *k, const char *key);
     int kit_dropdown(kit *k, const char *key, const kit_command_item *items, int count);
@@ -377,16 +373,6 @@ extern "C"
     );
     /* Close after accepting a submitted free-text value. */
     void kit_autocomplete_close(kit *k, const char *key);
-    /* A select field backed by searchable, grouped/icon choices. `value` is
-     * the selected item index, as for kit_choice. */
-    bool kit_choice_items(
-        kit *k,
-        const char *key,
-        int *value,
-        const kit_command_item *items,
-        int count,
-        unsigned flags
-    );
 
     /* A surface shows a host texture ("kit:<name>") and receives raw pointer
      * input. Its returned element lasts while this key is emitted. */

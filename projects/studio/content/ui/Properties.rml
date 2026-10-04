@@ -119,7 +119,7 @@
             <div class="type-pick" data-when="row.control == 'type'"><kit-dot class="member-swatch" data-attr-shape="row.swatch" data-attr-fill="row.color"></kit-dot><button class="btn subtle type-button" data-attrif-data-disabled="row.readonly" data-event-click="emit('graph_details.type', row.id)"><span class="label">{{ row.type }}</span></button></div>
             <div class="kind" data-when="row.control == 'struct' || row.control == 'array'">
               <button class="btn sm" popovertarget="values" data-attr-data-tip="row.control == 'struct' ? row.name : ''" data-attrif-data-disabled="row.readonly"><span class="icon">{{ row.control == 'struct' ? '&#xf0a66;' : '&#xeb86;' }}</span><span class="label">{{ row.text }}</span></button>
-              <div class="popup popover menu" popover id="values" data-attrif-data-struct="row.control == 'struct'">
+              <div class="popup popover menu" popover data-template id="values">
                 <span class="muted" data-if="row.control == 'struct'">{{ row.name }}</span>
                 <div class="graph-sub" data-for="sub : row.sub">
                   <span class="muted graph-sub-heading" data-if="sub.heading">{{ sub.label }}</span>
@@ -132,7 +132,7 @@
                 <button class="btn subtle sm" data-if="row.control == 'array'" data-attrif-data-disabled="row.readonly || !row.removable" data-event-click="emit('graph_details.add', row.id)"><span class="icon">&#xea60;</span><span class="label">Add item</span></button>
               </div>
             </div>
-            <div class="popup popover graph-inline-values" popover data-when="row.control == 'source'" data-attr-id="'pop-' + row.id">
+            <div class="popup popover graph-inline-values" popover data-template>
               <span class="graph-inline-heading">Inline inputs</span>
               <div class="graph-inline-part" data-for="sub : row.sub">
                 <span class="graph-inline-title" data-if="sub.heading">{{ sub.label }}</span>

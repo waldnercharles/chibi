@@ -481,15 +481,6 @@ void kit_dropdown_open(kit *k, const char *key, const char *placeholder)
     dropdown_open_on(k, key, placeholder, k->last);
 }
 
-void kit_dropdown_open_at(kit *k, const char *key, kit_rect anchor, const char *placeholder)
-{
-    popup *p = dropdown_open_on(k, key, placeholder, k->last);
-    if (p) {
-        str_set(&p->anchor_path, NULL);
-        p->anchor = anchor;
-    }
-}
-
 bool kit_dropdown_is_open(const kit *k, const char *key)
 {
     popup *p = popup_find(k, key);

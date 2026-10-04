@@ -14,8 +14,6 @@ const graph_local *sm_local(const studio *s);
 pin_spec sm_variable_pin(const behavior_variable *v);
 /* A type as the type picker names it: "Float", "Vector Array". */
 const char *sm_type_label(const pin_spec *pin, char *out, size_t size);
-/* A type swatch colored as the canvas colors its sockets. */
-void sm_swatch(studio *s, const char *key, const pin_spec *pin);
 /* Records `before`, a snapshot taken before an edit, as one undo step when
    the edit succeeded; frees it otherwise. Returns `ok`. */
 bool sm_record(editor *e, behavior_asset *before, bool ok);

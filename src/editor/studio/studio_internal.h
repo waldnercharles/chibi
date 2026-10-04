@@ -587,6 +587,16 @@ typedef struct
         char error[192];
         char error_source[512]; /* its source then */
     } details;
+    /* The canvas's pickers: the control whose picker is open, and a
+       choice's options and the one chosen (studio_graph_literals.c). */
+    char picker[192];
+    struct
+    {
+        char key[192];
+        const struct editor_choices *choices;
+        int current, chosen;
+        bool taken;
+    } choice;
 } studio_graph;
 
 typedef enum
@@ -854,7 +864,8 @@ typedef enum
     STUDIO_PALETTE_COMPONENTS, /* Add Component (studio_properties.c) */
     STUDIO_PALETTE_ASSETS,     /* an asset pick (studio_pick.c) */
     STUDIO_PALETTE_SOURCES, /* a graph input's source field in Properties (studio_graph_values.c) */
-    STUDIO_PALETTE_TYPES, /* a member's type (studio_member_properties.c) */
+    STUDIO_PALETTE_TYPES,   /* a member's type (studio_member_properties.c) */
+    STUDIO_PALETTE_CHOICES, /* a graph canvas choice (studio_graph_literals.c) */
 } studio_palette_client;
 
 /* Which document shows the list. */
@@ -900,6 +911,8 @@ typedef struct studio_palette_state
     studio_palette_client client;
     bool anchored; /* a picker under `anchor`, else the modal palette */
     bool field; /* the list of `anchor`, a field typed in, which its client shows */
+    bool boxed;   /* a picker under `box`, a control in another context */
+    float box[4]; /* x, y, width and height in Studio's pixels */
     rml_element_ref *anchor;
     bool shown; /* the picker's popover showed */
     studio_palette_mount mounted;
@@ -1395,6 +1408,14 @@ void studio_palette_open_at(
 /* Opens `client`'s list of the field `field`, typed in, which the client's
    markup shows over the palette's rows (a graph input's source field). */
 void studio_palette_open_field(studio *s, studio_palette_client client, rml_element *field);
+/* Opens a picker for `client` under `box` (x, y, width, height in Studio's
+   pixels), a control the graph canvas's own context draws. */
+void studio_palette_open_box(
+    studio *s,
+    studio_palette_client client,
+    const char *placeholder,
+    const float box[4]
+);
 void studio_palette_close(studio *s);
 /* Whether the modal palette is open; an open picker is a popover. */
 bool studio_palette_is_open(const studio *s);
@@ -2037,6 +2058,14 @@ void studio_pick_open(
     const char *current,
     const studio_pick_desc *desc,
     rml_element *anchor
+);
+/* Opens it under `box`, in Studio's pixels (studio_palette_open_box). */
+void studio_pick_open_box(
+    studio *s,
+    const char *key,
+    const char *current,
+    const studio_pick_desc *desc,
+    const float box[4]
 );
 /* The palette's results while it picks an asset: none, the kind's assets
    and, when a name may be typed, the typed name no asset has yet. */
@@ -2801,5 +2830,9 @@ void studio_graph_source_choose(studio *s, const studio_palette_entry *entry);
 /* The type picker's results and choice (studio_member_properties.c). */
 void studio_member_type_entries(studio *s, studio_palette_entry **entries);
 void studio_member_type_choose(studio *s, const studio_palette_entry *entry);
+/* A graph canvas choice's picker: its choices and the one chosen
+   (studio_graph_literals.c). */
+void studio_graph_choice_entries(studio *s, studio_palette_entry **entries);
+void studio_graph_choice_choose(studio *s, const studio_palette_entry *entry);
 
 #endif

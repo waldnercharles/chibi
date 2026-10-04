@@ -45,6 +45,8 @@
 struct gd_view
 {
     studio *s;
+    uint32_t icon; /* the heading, written once the tab has named it */
+    char name[256], of[160], empty[64];
     yyjson_mut_doc *doc;
     yyjson_mut_val *root;
     yyjson_mut_val *values; /* graph_values */
@@ -292,15 +294,24 @@ static void trim(gd_view *v, yyjson_mut_val *list, size_t count)
 
 void gd_identity(gd_view *v, uint32_t icon, const char *name, const char *of)
 {
-    yyjson_mut_val *id = member(v->root, "identity");
-    put_glyph(v, id, "icon", icon);
-    put_text(v, id, "name", name);
-    put_text(v, id, "of", of);
+    v->icon = icon;
+    snprintf(v->name, sizeof v->name, "%s", name);
+    snprintf(v->of, sizeof v->of, "%s", of);
 }
 
 void gd_empty(gd_view *v, const char *text)
 {
-    put_text(v, v->root, "empty", text);
+    snprintf(v->empty, sizeof v->empty, "%s", text);
+}
+
+/* Writes the heading and the empty state, once a sync. */
+static void put_heading(gd_view *v)
+{
+    yyjson_mut_val *id = member(v->root, "identity");
+    put_glyph(v, id, "icon", v->icon);
+    put_text(v, id, "name", v->name);
+    put_text(v, id, "of", v->of);
+    put_text(v, v->root, "empty", v->empty);
 }
 
 /* ---------- Panels ---------- */
@@ -408,12 +419,12 @@ yyjson_mut_val *gd_next_row(gd_rows *r, const gd_row *d)
     put_text(v, row, "tip", d->about && d->about[0] ? d->label : "");
     put_text(v, row, "about", d->about);
     put_text(v, row, "control", d->control);
-    put_text(v, row, "def", "");
+    put_text(v, row, "def", d->def);
     put_flag(v, row, "readonly", d->readonly);
     put_flag(v, row, "invalid", d->invalid);
-    put_flag(v, row, "heading", false);
-    put_flag(v, row, "removable", false);
-    put_flag(v, row, "fixed", false);
+    put_flag(v, row, "heading", d->heading);
+    put_flag(v, row, "removable", d->removable);
+    put_flag(v, row, "fixed", d->fixed);
     return row;
 }
 
@@ -538,10 +549,9 @@ static void gd_put_table(gd_rows *r, yyjson_mut_val *row, const char *label, uin
 /* An asset field: its kind's picker (palette.pick), drops of its kind, and
    the problem when no asset has its name. Events are names: host, action
    and ui events have no asset. */
-void gd_put_asset(gd_rows *r, yyjson_mut_val *row, reference_asset_kind kind, const char *value)
+bool gd_asset_problem(studio *s, reference_asset_kind kind, const char *value, char problem[192])
 {
-    gd_view *v = r->v;
-    const reference_index *index = app_scene_authoring_asset_index(v->s->scene);
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
     bool named = value[0] && index && kind != REFERENCE_ASSET_EVENT;
     const reference_asset *found = named
                                      ? reference_index_asset_at(
@@ -549,13 +559,20 @@ void gd_put_asset(gd_rows *r, yyjson_mut_val *row, reference_asset_kind kind, co
                                            reference_index_find_name(index, kind, value)
                                        )
                                      : NULL;
-    char problem[192] = "";
+    problem[0] = '\0';
     if (named && (!found || found->unresolved)) {
-        snprintf(problem, sizeof problem, "No %s asset is named %s", studio_asset_kind_name(kind), value);
+        snprintf(problem, 192, "No %s asset is named %s", studio_asset_kind_name(kind), value);
     }
+    return problem[0] != '\0';
+}
+
+void gd_put_asset(gd_rows *r, yyjson_mut_val *row, reference_asset_kind kind, const char *value)
+{
+    gd_view *v = r->v;
+    char problem[192];
+    gd_asset_problem(v->s, kind, value, problem);
     bool readonly = yyjson_mut_get_bool(member(row, "readonly"));
     put_text(v, row, "problem", problem);
-    put_flag(v, row, "invalid", problem[0]);
     put_text(v, row, "kind", studio_asset_kind_name(kind));
     put_text(v, row, "drop", readonly || kind == REFERENCE_ASSET_EVENT ? "" : studio_asset_kind_name(kind));
     gd_put_table(r, row, studio_asset_kind_label(kind), studio_asset_kind_icon(kind), "None");
@@ -652,8 +669,6 @@ bool studio_graph_details_sync(studio *s, const studio_panel_sync *at)
                   .doc = at->doc,
                   .root = at->variable,
                   .values = member(yyjson_mut_doc_get_root(at->doc), "graph_values") };
-    put_text(&v, v.root, "empty", "");
-    gd_identity(&v, 0, "", "");
     if (!studio_graph_active(s)) {
         gd_empty(&v, node ? "No node selected" : "No member selected");
     } else if (node) {
@@ -662,6 +677,7 @@ bool studio_graph_details_sync(studio *s, const studio_panel_sync *at)
         studio_member_details(s, &v);
     }
     put_text(&v, v.root, "view", node ? "node" : "member");
+    put_heading(&v);
     hide_panels(&v);
     /* A field whose edit was put back, or whose list closed, shows the
        model's text again: views compare with what the field holds. */
@@ -786,13 +802,22 @@ static rml_element *by_id(studio *s, const char *id)
     return found;
 }
 
-/* Shows the popover `prefix`-row once its document built it, under the
-   row's field; true while it is open. */
-static bool shown(studio *s, const char *prefix, const char *row, bool *showing)
+/* The popover `selector` names in the row whose field has id `row`. */
+static rml_element *row_popover(rml_element *field, const char *selector)
 {
-    char id[GD_ROW_ID + 8];
-    snprintf(id, sizeof id, "%s%s", prefix, row);
-    rml_element *popover = by_id(s, id), *field = by_id(s, row);
+    rml_element *row = field;
+    while (row && !rml_element_is_class_set(row, "prop")) {
+        row = rml_element_parent(row);
+    }
+    return row ? rml_element_query_selector(row, selector) : NULL;
+}
+
+/* Shows the row's popover `selector` names under the row's field once its
+   document built it; true while it is open. */
+static bool shown(studio *s, const char *selector, const char *row, bool *showing)
+{
+    rml_element *field = by_id(s, row);
+    rml_element *popover = field ? row_popover(field, selector) : NULL;
     if (!*showing) {
         if (popover && field) {
             popover_show(
@@ -812,13 +837,13 @@ static void source_frame(studio *s)
 {
     studio_graph *g = &s->graph;
     bool listing = s->palette.client == STUDIO_PALETTE_SOURCES;
-    if (listing && shown(s, "list-", g->details.source, &g->details.source_shown)) {
+    if (listing &&
+        shown(s, ".popup.autocomplete", g->details.source, &g->details.source_shown)) {
         return;
     }
-    char id[GD_ROW_ID + 8];
-    snprintf(id, sizeof id, "list-%s", g->details.source);
-    rml_element *list = by_id(s, id);
-    if (list) {
+    rml_element *field = by_id(s, g->details.source);
+    rml_element *list = field ? row_popover(field, ".popup.autocomplete") : NULL;
+    if (list && popover_open(list)) {
         popover_hide(list);
     }
     if (listing) {
@@ -835,7 +860,7 @@ static void source_frame(studio *s)
 static void popup_frame(studio *s)
 {
     studio_graph *g = &s->graph;
-    if (shown(s, "pop-", g->details.popup, &g->details.popup_shown)) {
+    if (shown(s, ".graph-inline-values", g->details.popup, &g->details.popup_shown)) {
         return;
     }
     g->details.popup[0] = '\0';

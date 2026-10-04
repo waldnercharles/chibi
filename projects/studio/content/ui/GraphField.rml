@@ -24,7 +24,7 @@
     <div class="field autocomplete" data-attrif-data-open="graph_details_ui.source == field.id">
       <input type="text" class="part value" role="combobox" aria-autocomplete="list" data-attr-id="field.id" data-attr-aria-label="field.label" data-attr-aria-expanded="graph_details_ui.source == field.id ? 'true' : 'false'" data-attr-value="field.text" data-attr-placeholder="field.placeholder" data-keys="Escape:graph_details.escape Tab:graph_details.tab" data-event-focus="emit('graph_details.source', field.id)" data-event-input="emit('graph_details.query', field.id, ev.value)"/>
     </div>
-    <div class="popup autocomplete" popover role="listbox" data-attr-id="'list-' + field.id">
+    <div class="popup autocomplete" popover role="listbox">
       <div class="source-list" data-when="graph_details_ui.source == field.id">
         <use ui="List" id="palette-list" data-event-scroll="emit('palette.scroll')">
           <div class="source-row" data-for="row : palette.rows">

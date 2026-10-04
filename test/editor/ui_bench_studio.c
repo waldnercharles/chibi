@@ -2,12 +2,14 @@
  * window: Studio's documents over the Sandbox at 1440x900, its
  * Properties showing the Player (authored since P1) against the S0 spike,
  * and whether a popover escapes an area's clipping. */
+#include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/studio/studio_thumbnails.h"
 #include "editor/ui/kit.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/model/registry.h"
 #include "render/scene_renderer.h"
 #include "render/screenshot.h"
 #include "test/editor/ui_bench.h"
@@ -1604,6 +1606,108 @@ static void palette(studio_bench *b)
     frames(b, 2);
 }
 
+/* ---------- 20: Properties' Node tab (workstream G1) ---------- */
+
+typedef enum
+{
+    NODE_SELECT, /* select the other of two nodes: the tab rebinds */
+    NODE_EDIT,   /* a vector literal's axis grows, as a typed value does */
+    NODE_IDLE,   /* a UI frame with nothing changed */
+} node_step;
+
+typedef struct node_case
+{
+    studio_bench *b;
+    uint64_t nodes[2]; /* a Direction To and an Atan2 */
+    int target;        /* Direction To's Target */
+} node_case;
+
+static void node_change(node_case *c, node_step step, int run)
+{
+    studio *s = c->b->studio;
+    editor *e = sg_graph_editor(s);
+    graph *gr = sg_active_graph(s);
+    node *n = graph_node_by_id(gr, c->nodes[run & 1]);
+    if (step == NODE_SELECT) {
+        sg_select_only(e, n);
+        return;
+    }
+    if (step == NODE_EDIT) {
+        node *direction = graph_node_by_id(gr, c->nodes[0]);
+        const pin_spec *pin = &direction->input_pins[c->target];
+        const float *was = pin->default_value.ptr;
+        float vector[2] = { was ? was[0] + 1 : 1, was ? was[1] : 0 };
+        pin_value value = pin->default_value;
+        value.ptr = vector;
+        int set = graph_set_pin_default(gr, direction, 0, c->target, &value);
+        assert(set == 0);
+    }
+}
+
+/* Times one step's UI frame, counting the views evaluated, the documents
+   laid out and the elements of Properties' document. */
+static void node_case_step(node_case *c, node_step step, const char *name)
+{
+    studio *s = c->b->studio;
+    double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
+    bench_counts counts = { 0 };
+    for (int run = -WARMUP; run < RUNS; run++) {
+        node_change(c, step, run);
+        cf_app_update(NULL);
+        bench_counts before = studio_mark(s);
+        double t = native_ui(s, phase);
+        cf_app_draw_onto_screen(true);
+        counts = studio_counts(s, before);
+        rml_element *area = studio_query(s, "[data-ui=Properties]");
+        counts.elements = area ? rml_element_query_selector_all(
+                                     rml_element_owner_document(area),
+                                     "*",
+                                     NULL,
+                                     0
+                                 )
+                               : 0;
+        frames(c->b, 1);
+        if (run < 0) {
+            continue;
+        }
+        ms[run] = t;
+        for (int p = 0; p < PHASE_COUNT; p++) {
+            phases[p][run] = phase[p];
+        }
+    }
+    bench_row("20", name, bench_stat_of(ms, RUNS), counts);
+    phase_row("phases", phases);
+}
+
+/* Properties' Node tab beside the Behavior area over Movement: a node
+   selection change between a Direction To and an Atan2, a literal edit of
+   the Direction To's Target, and an idle frame. */
+static void node_tab(studio_bench *b)
+{
+    studio *s = b->studio;
+    s->maximized = -1;
+    studio_show_editor(s, STUDIO_EDITOR_BEHAVIOR);
+    studio_show_editor(s, STUDIO_EDITOR_PROPERTIES);
+    frames(b, 4);
+    editor *e = sg_graph_editor(s);
+    node *direction = editor_spawn(e, registry_node_by_name("Direction To"), 40, 40);
+    node *atan = editor_spawn(e, registry_node_by_name("Atan2"), 40, 240);
+    node_case c = { .b = b, .nodes = { direction->id, atan->id }, .target = -1 };
+    for (int p = 0; p < direction->input_count; p++) {
+        c.target = !strcmp(direction->input_pins[p].name, "Target") ? p : c.target;
+    }
+    assert(c.target >= 0);
+    sg_select_only(e, direction);
+    frames(b, 6);
+    probe_documents(s);
+    printf("|  | Node tab: tab %d | | | | | | |\n", s->tab);
+    node_case_step(&c, NODE_SELECT, "Node tab: select the other node");
+    sg_select_only(e, graph_node_by_id(sg_active_graph(s), c.nodes[0]));
+    frames(b, 4);
+    node_case_step(&c, NODE_EDIT, "Node tab: a vector literal's axis grows");
+    node_case_step(&c, NODE_IDLE, "Node tab: a UI frame with nothing changed");
+}
+
 /* ---------- Run ---------- */
 
 int ui_bench_studio(const char *program, bool members_only)
@@ -1632,6 +1736,14 @@ int ui_bench_studio(const char *program, bool members_only)
     /* UI_BENCH_CAPTURE takes C2's native shots alone. */
     if (getenv("UI_BENCH_CAPTURE")) {
         capture_chrome(&b, getenv("UI_BENCH_CAPTURE"));
+        bench_close(&b);
+        app_input_shutdown();
+        cf_destroy_app();
+        return 0;
+    }
+    /* UI_BENCH_NODE runs case 20 alone. */
+    if (getenv("UI_BENCH_NODE")) {
+        node_tab(&b);
         bench_close(&b);
         app_input_shutdown();
         cf_destroy_app();

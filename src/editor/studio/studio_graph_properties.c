@@ -346,20 +346,15 @@ static void item_rows(gd_rows *r, const pin_row *pr, const leaf *l)
         snprintf(label, sizeof label, "Item %d", i + 1);
         leaf item;
         leaf_at(&l->value, &l->shape, step, &item);
-        size_t first = r->count;
         double range[2] = { 1, 0 };
         if (ramp) {
             sg_ramp_range(array, i, &range[0], &range[1]);
         }
-        leaf_row(
-            r,
-            pr,
-            &(gd_row){ .id = id, .label = label, .readonly = pr->readonly },
-            &item,
-            step,
-            ramp ? range : NULL
-        );
-        gd_put_flag(r, yyjson_mut_arr_get(r->list, first), "removable", !(ramp && array->count <= 2));
+        gd_row row = { .id = id,
+                       .label = label,
+                       .readonly = pr->readonly,
+                       .removable = !(ramp && array->count <= 2) };
+        leaf_row(r, pr, &row, &item, step, ramp ? range : NULL);
     }
 }
 
@@ -389,7 +384,8 @@ static void leaf_row(
     }
     if (shape->type == PIN_STRUCT) {
         row.control = "heading";
-        gd_put_flag(r, gd_next_row(r, &row), "heading", true);
+        row.heading = true;
+        gd_next_row(r, &row);
         field_rows(r, pr, l, path, range);
         return;
     }
@@ -415,7 +411,10 @@ static void leaf_row(
             asset = l->owner && l->field
                       ? reference_named_field_kind(l->owner->name, l->field->name)
                       : REFERENCE_ASSET_KIND_COUNT;
+        char problem[192];
         row.control = asset != REFERENCE_ASSET_KIND_COUNT ? "asset" : "text";
+        row.invalid = asset != REFERENCE_ASSET_KIND_COUNT &&
+                      gd_asset_problem(pr->s, asset, value->str ? value->str : "", problem);
         item = gd_next_row(r, &row);
         gd_put_text(r, item, "text", value->str ? value->str : "");
         if (asset != REFERENCE_ASSET_KIND_COUNT) {
@@ -482,6 +481,8 @@ static void value_row(gd_rows *r, const pin_row *pr, const gd_row *d)
             return;
         }
         row.control = array ? "array" : "struct";
+        /* An array's Add item, which a full ramp disables. */
+        row.removable = array && sg_array_can_add(&spec->default_value, spec);
         yyjson_mut_val *item = gd_next_row(r, &row);
         const pin_array *items = spec->default_value.ptr;
         int count = items ? items->count : 0;
@@ -492,8 +493,6 @@ static void value_row(gd_rows *r, const pin_row *pr, const gd_row *d)
         }
         gd_put_text(r, item, "text", array ? text : "Edit");
         gd_put_text(r, item, "name", title);
-        /* An array's Add item, which a full ramp disables. */
-        gd_put_flag(r, item, "removable", array && sg_array_can_add(&spec->default_value, spec));
         gd_rows sub = gd_sub(r, item);
         if (array) {
             item_rows(&sub, pr, &l);
@@ -554,8 +553,9 @@ static void inline_rows(gd_rows *r, studio *s, node *target, int p)
         row_id(id, 'n', part->id, 'p', 0);
         gd_row heading = { .id = id,
                            .label = ed_node_title(e, part, title, sizeof title),
-                           .control = "title" };
-        gd_put_flag(r, gd_next_row(r, &heading), "heading", true);
+                           .control = "title",
+                           .heading = true };
+        gd_next_row(r, &heading);
         for (int k = 0; k < part->input_count; k++) {
             if (part->input_pins[k].kind != PIN_DATA ||
                 !ed_pin_visible(gr, part, ED_PIN_INPUT, k)) {

@@ -127,8 +127,23 @@ static bool value_editable(const pin_spec *pin)
 }
 
 /* The control a default of `pin`'s type edits with, as the canvas edits pin
-   values: numbers and vectors scrub. Writes the value's members into `row`. */
-static const char *put_default(gd_rows *r, yyjson_mut_val *row, const pin_spec *pin, const pin_value *value)
+   values: numbers and vectors scrub. */
+static const char *default_control(const pin_spec *pin)
+{
+    if (pin->type == PIN_ENUM) {
+        return "choice";
+    }
+    if (pin->type == PIN_BOOL) {
+        return "bool";
+    }
+    if (pin_vector_width(pin) > 0) {
+        return "vector";
+    }
+    return pin->type == PIN_STR || pin->type == PIN_NAME ? "text" : "number";
+}
+
+/* Writes a default's value into `row`, for its default_control. */
+static void put_default(gd_rows *r, yyjson_mut_val *row, const pin_spec *pin, const pin_value *value)
 {
     if (pin->type == PIN_ENUM) {
         const editor_choices *choices = editor_choices_for_enum(pin->type_name);
@@ -137,11 +152,11 @@ static const char *put_default(gd_rows *r, yyjson_mut_val *row, const pin_spec *
             current = editor_choice_at(choices, i).value == value->e ? i : current;
         }
         gd_put_choices(r, row, choices, current);
-        return "choice";
+        return;
     }
     if (pin->type == PIN_BOOL) {
         gd_put_flag(r, row, "checked", value->b);
-        return "bool";
+        return;
     }
     if (pin_vector_width(pin) > 0) {
         double axes[4] = { 0 };
@@ -155,12 +170,12 @@ static const char *put_default(gd_rows *r, yyjson_mut_val *row, const pin_spec *
                                   .min = -INFINITY,
                                   .max = INFINITY };
         gd_put_axes(r, row, axes, pin_vector_width(pin), &shape);
-        return "vector";
+        return;
     }
     if (pin->type == PIN_STR || pin->type == PIN_NAME) {
         gd_put_text(r, row, "text", value->str ? value->str : "");
         gd_put_text(r, row, "placeholder", "");
-        return "text";
+        return;
     }
     bool integer = pin->type < PIN_F32;
     gd_number_shape shape = { .integer = integer,
@@ -170,7 +185,6 @@ static const char *put_default(gd_rows *r, yyjson_mut_val *row, const pin_spec *
                               .min = -INFINITY,
                               .max = INFINITY };
     gd_put_number(r, row, sg_literal_number(value), &shape);
-    return "number";
 }
 
 /* ---------- Variables ---------- */
@@ -205,11 +219,11 @@ static void variable_details(gd_view *v, studio *s, const behavior_variable *var
     if (d.open) {
         row_id(id, 'v', var->id, "d");
         if (value_editable(&pin)) {
-            yyjson_mut_val *row = gd_next_row(
-                &d,
-                &(gd_row){ .id = id, .label = "Value", .control = "", .readonly = fixed }
-            );
-            gd_put_text(&d, row, "control", put_default(&d, row, &pin, &var->default_value));
+            gd_row row = { .id = id,
+                           .label = "Value",
+                           .control = default_control(&pin),
+                           .readonly = fixed };
+            put_default(&d, gd_next_row(&d, &row), &pin, &var->default_value);
         } else {
             label_row(&d, id, "Value", sm_type_label(&pin, type, sizeof type));
         }
@@ -244,16 +258,20 @@ static void signature_row(gd_rows *r, studio *s, graph *g, bool result, const pi
     char id[GD_ROW_ID], part[32];
     snprintf(part, sizeof part, "p%" PRIu64, pin->id);
     row_id(id, 'g', g->graph_id, part);
-    yyjson_mut_val *row = gd_next_row(r, &(gd_row){ .id = id, .control = "param", .readonly = fixed });
+    bool defaults = !result && value_editable(pin);
+    gd_row desc = { .id = id,
+                    .control = "param",
+                    .def = defaults ? default_control(pin) : "",
+                    .readonly = fixed,
+                    .fixed = pin->kind == PIN_EXEC };
+    yyjson_mut_val *row = gd_next_row(r, &desc);
     gd_put_text(r, row, "name", pin->name ? pin->name : "");
     gd_put_text(r, row, "drop", fixed ? "" : result ? "result" : "parameter");
     put_type(r, row, pin);
     gd_put_int(r, row, "container", pin->container);
-    gd_put_flag(r, row, "fixed", pin->kind == PIN_EXEC);
-    const char *control = !result && value_editable(pin)
-                            ? put_default(r, row, pin, &pin->default_value)
-                            : "";
-    gd_put_text(r, row, "def", control);
+    if (defaults) {
+        put_default(r, row, pin, &pin->default_value);
+    }
 }
 
 static void signature_panel(gd_view *v, studio *s, graph *g, bool result)
@@ -500,10 +518,12 @@ static void pick_type(studio *s, uint64_t id, uint64_t pin_id, const ui_activati
 
 /* ---------- Edits ---------- */
 
+/* A refused edit's field shows the member's text again. */
 static void refused(studio *s, bool ok, const char *title)
 {
     if (!ok) {
         sm_refused(s, title);
+        s->graph.details.redraw = true;
     }
 }
 

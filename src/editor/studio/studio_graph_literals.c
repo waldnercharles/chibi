@@ -72,6 +72,51 @@ static bool pin_string(pin_type type)
     return type == PIN_STR || type == PIN_NAME;
 }
 
+/* ---------- The canvas's pickers ---------- */
+
+/* The last control's box in Studio's pixels, where its picker hangs: the
+   graph's own context draws into the canvas surface. */
+static void canvas_box(const studio *s, kit *k, float box[4])
+{
+    kit_rect r = kit_item_rect(k);
+    kit_rect surface = s->graph.surface.rect;
+    float scale = studio_pixel_ratio(s), ratio = studio_graph_pixel_ratio(s);
+    box[0] = surface.x * scale + r.x * ratio;
+    box[1] = surface.y * scale + r.y * ratio;
+    box[2] = r.w * ratio;
+    box[3] = r.h * ratio;
+}
+
+/* Whether a click on canvas control `key` opens its picker: a click while
+   it is open, or on the press that just closed it from outside the picker,
+   shuts it, as a select does. */
+static bool picker_opens(studio *s, const char *key, bool clicked)
+{
+    studio_graph *g = &s->graph;
+    bool mine = !strcmp(g->picker, key);
+    bool open = mine && s->palette.client && s->palette.boxed;
+    if (!clicked) {
+        if (mine && !open) {
+            g->picker[0] = '\0';
+        }
+        return false;
+    }
+    if (mine) {
+        if (open) {
+            studio_palette_close(s);
+        }
+        g->picker[0] = '\0';
+        return false;
+    }
+    snprintf(g->picker, sizeof g->picker, "%s", key);
+    return true;
+}
+
+static bool picker_open(const studio *s, const char *key)
+{
+    return !strcmp(s->graph.picker, key) && s->palette.client && s->palette.boxed;
+}
+
 static const char *graph_asset_field(
     studio *s,
     kit *k,
@@ -90,7 +135,7 @@ static const char *graph_asset_field(
                                        )
                                      : NULL;
     bool unresolved = named && (!found || found->unresolved);
-    char tip[192] = "", popup[224], placeholder[96];
+    char tip[192] = "", pick[192];
     if (unresolved) {
         snprintf(tip, sizeof tip, "No %s asset is named %s", studio_asset_kind_name(kind), value);
     }
@@ -99,54 +144,83 @@ static const char *graph_asset_field(
                                .icon = studio_asset_kind_icon(kind),
                                .tip = tip[0] ? tip : NULL,
                                .flags = flags | (unresolved ? KIT_INVALID : 0) };
-    if (kit_picker(k, "asset", &picker) && !(flags & KIT_READONLY)) {
-        snprintf(popup, sizeof popup, "%s-assets", key);
-        snprintf(placeholder, sizeof placeholder, "Search %s", studio_asset_kind_label(kind));
-        kit_dropdown_open(k, popup, placeholder);
-    } else {
-        snprintf(popup, sizeof popup, "%s-assets", key);
+    snprintf(pick, sizeof pick, "graph:%s-assets", key);
+    bool clicked = kit_picker(k, "asset", &picker) && !(flags & KIT_READONLY);
+    kit_flag(k, "data-open", picker_open(s, pick));
+    if (picker_opens(s, pick, clicked)) {
+        float box[4];
+        canvas_box(s, k, box);
+        studio_pick_open_box(
+            s,
+            pick,
+            value,
+            &(studio_pick_desc){ .kind = kind, .none = "None", .text = true },
+            box
+        );
     }
-    if (!kit_dropdown_is_open(k, popup)) {
+    if (!s->pick.chosen || strcmp(s->pick.key, pick)) {
         return NULL;
     }
-    const char **names = studio_asset_names(index, kind);
-    kit_command_item *items = NULL;
-    int none = 1;
-    apush(items, ((kit_command_item){ .label = "None", .icon = KIT_ICON_CLOSE }));
-    for (int i = 0; i < acount(names); i++) {
-        apush(
-            items,
-            ((kit_command_item){ .label = names[i],
-                                 .group = studio_asset_kind_label(kind),
-                                 .icon = studio_asset_kind_icon(kind),
-                                 .current = value && !strcmp(names[i], value) })
+    s->pick.chosen = false;
+    return s->pick.value;
+}
+
+/* A choice's picker lists every option, its value's current. */
+void studio_graph_choice_entries(studio *s, studio_palette_entry **entries)
+{
+    const editor_choices *choices = s->graph.choice.choices;
+    for (int i = 0; choices && i < editor_choices_count(choices); i++) {
+        editor_choice choice = editor_choice_at(choices, i);
+        studio_palette_entry *entry = studio_palette_add(
+            entries,
+            choice.group ? choice.group : "",
+            choice.label ? choice.label : choice.name
         );
-    }
-    const char *query = kit_dropdown_query(k, popup);
-    bool exact = false;
-    for (int i = 0; i < acount(names); i++) {
-        exact |= strcasecmp(query, names[i]) == 0;
-    }
-    bool typed = query[0] && !exact;
-    if (typed) {
-        apush(
-            items,
-            ((kit_command_item){ .label = query,
-                                 .group = "Name",
-                                 .icon = KIT_ICON_EDIT,
-                                 .description = "Use this asset name" })
+        snprintf(
+            entry->keywords,
+            sizeof entry->keywords,
+            "%s",
+            choice.name ? choice.name : ""
         );
+        entry->icon = choice.icon;
+        entry->current = i == s->graph.choice.current;
+        entry->kind = i;
     }
-    int selected = kit_dropdown(k, popup, items, acount(items));
-    const char *chosen = NULL;
-    if (selected >= 0) {
-        chosen = selected < none                 ? ""
-               : selected < none + acount(names) ? names[selected - none]
-                                                 : query;
+}
+
+void studio_graph_choice_choose(studio *s, const studio_palette_entry *entry)
+{
+    s->graph.choice.chosen = entry->kind;
+    s->graph.choice.taken = true;
+}
+
+/* The place of the option chosen for canvas control `key` this frame, or
+   -1; a click on the control opens its picker under it. */
+static int choice_pick(
+    studio *s,
+    kit *k,
+    const char *key,
+    bool clicked,
+    const editor_choices *choices,
+    int current,
+    const char *placeholder
+)
+{
+    studio_graph *g = &s->graph;
+    if (picker_opens(s, key, clicked)) {
+        snprintf(g->choice.key, sizeof g->choice.key, "%s", key);
+        g->choice.choices = choices;
+        g->choice.current = current;
+        g->choice.taken = false;
+        float box[4];
+        canvas_box(s, k, box);
+        studio_palette_open_box(s, STUDIO_PALETTE_CHOICES, placeholder, box);
     }
-    afree(items);
-    afree(names);
-    return chosen;
+    if (!g->choice.taken || strcmp(g->choice.key, key)) {
+        return -1;
+    }
+    g->choice.taken = false;
+    return g->choice.chosen;
 }
 
 double sg_literal_number(const pin_value *value)
@@ -415,7 +489,7 @@ void sg_write_literal_alpha(const pin_spec *spec, pin_value *value, arena *scrat
     pin_write_field(value->ptr, field, component);
 }
 
-static bool enum_control(kit *k, const char *key, const pin_spec *shape, pin_value *value, unsigned flags)
+static bool enum_control(studio *s, kit *k, const char *key, const pin_spec *shape, pin_value *value, unsigned flags)
 {
     const editor_choices *choices = editor_choices_for_enum(shape->type_name);
     int count = choices ? editor_choices_count(choices) : 0;
@@ -423,31 +497,20 @@ static bool enum_control(kit *k, const char *key, const pin_spec *shape, pin_val
         kit_label(k, key, "muted", "Missing enum values");
         return false;
     }
-    char dropdown[192], current[128];
-    snprintf(dropdown, sizeof dropdown, "%s-options", key);
+    char pick[192], current[128];
+    snprintf(pick, sizeof pick, "graph:%s-options", key);
     const char *label = registry_enum_label(shape->type_name, value->e);
     snprintf(current, sizeof current, "%s", label ? label : "Choose value");
     kit_button_desc button = { .label = current,
                                .variant = KIT_GHOST,
                                .size = KIT_SM,
                                .flags = flags };
-    if (kit_button(k, "enum", &button) && !(flags & KIT_READONLY)) {
-        kit_dropdown_open(k, dropdown, "Choose value");
-    }
-    kit_command_item *items = NULL;
+    bool clicked = kit_button(k, "enum", &button) && !(flags & KIT_READONLY);
+    int at = -1;
     for (int i = 0; i < count; i++) {
-        editor_choice choice = editor_choice_at(choices, i);
-        apush(
-            items,
-            ((kit_command_item){ .label = choice.label ? choice.label : choice.name,
-                                 .group = choice.group,
-                                 .keywords = choice.name,
-                                 .icon = choice.icon,
-                                 .current = choice.value == value->e })
-        );
+        at = editor_choice_at(choices, i).value == value->e ? i : at;
     }
-    int selected = kit_dropdown(k, dropdown, items, acount(items));
-    afree(items);
+    int selected = choice_pick(s, k, pick, clicked, choices, at, "Choose value");
     if (selected < 0) {
         return false;
     }
@@ -977,7 +1040,7 @@ static bool edit_literal_value(
         return edit_struct_control(s, k, key, value, shape, scratch, flags, state, depth, range);
     }
     if (shape->type == PIN_ENUM) {
-        bool changed = enum_control(k, key, shape, value, flags);
+        bool changed = enum_control(s, k, key, shape, value, flags);
         state->changed |= changed;
         return changed;
     }
@@ -1171,8 +1234,11 @@ static bool edit_compound(studio *s, kit *k, node *n, int output, int p, const p
     return state.changed;
 }
 
+/* A pin's choice as a select whose picker lists the choices. */
 static bool choice_control(
+    studio *s,
     kit *k,
+    int output,
     const pin_spec *spec,
     pin_value *value,
     const editor_choices *choices,
@@ -1192,22 +1258,16 @@ static bool choice_control(
             break;
         }
     }
-    kit_command_item *items = NULL;
-    for (int i = 0; i < count; i++) {
-        editor_choice choice = editor_choice_at(choices, i);
-        apush(
-            items,
-            ((kit_command_item){ .label = choice.label,
-                                 .group = choice.group,
-                                 .keywords = choice.name,
-                                 .icon = choice.icon,
-                                 .current = i == current })
-        );
-    }
-    int index = current;
-    bool changed = kit_choice_items(k, "v", &index, items, count, flags);
-    afree(items);
-    if (!changed || index < 0 || index >= count || index == current) {
+    char pick[64];
+    snprintf(pick, sizeof pick, "graph:pin-%" PRIu64 "-%d", spec->id, output);
+    kit_picker_desc picker = { .value = current >= 0
+                                          ? editor_choice_at(choices, current).label
+                                          : "-",
+                               .flags = flags };
+    bool clicked = kit_picker(k, "v", &picker) && !(flags & KIT_READONLY);
+    kit_flag(k, "data-open", picker_open(s, pick));
+    int index = choice_pick(s, k, pick, clicked, choices, current, "Search options");
+    if (index < 0 || index >= count || index == current) {
         return false;
     }
     editor_choice selected = editor_choice_at(choices, index);
@@ -1247,7 +1307,7 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
     char text[256];
     int count = choices ? editor_choices_count(choices) : 0;
     if (count > 0) {
-        changed = choice_control(k, spec, &value, choices, flags);
+        changed = choice_control(s, k, output, spec, &value, choices, flags);
     } else if (spec->type == PIN_BOOL) {
         bool b = value.b;
         if (kit_checkbox(k, "v", &b, NULL, flags)) {

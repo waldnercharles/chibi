@@ -310,6 +310,12 @@ void studio_graph_menu_frame(studio *s)
     g->menu_mounted = true;
     rml_element *popover = host ? rml_element_query_selector(host, "#" MENU_ID) : NULL;
     if (popover && g->menu_opening) {
+        /* A press on the canvas leaves a field it took the focus from, so
+           the menu, which keeps the focus where it is, hears the keys. */
+        rml_element *focus = rml_context_focus_element(rml_backend_context(s->backend));
+        if (focus) {
+            rml_element_blur(focus);
+        }
         float ratio = studio_pixel_ratio(s);
         popover_show(
             popover,

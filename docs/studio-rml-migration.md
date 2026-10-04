@@ -8,6 +8,78 @@ Outliner runs on KDL behaviors over editor nodes (Behavior-driven panels, a spik
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
+## Remaining work
+
+One list of what is left, as of 2026-10-04; details live in the sections
+named.
+
+**Land the branch**
+- [ ] Merge `main` (SDF rendering, model authoring) and resolve conflicts in
+  CMakeLists.txt, cmake/sources.cmake, the Studio shell, properties and
+  scene, viewport and tests; re-run `make test`, `make check-format` and the
+  hidden suites.
+
+**Behavior-driven panels** (on hold until the user says go; Behavior-driven
+panels ▸ Recommendation)
+- [ ] Convert Members, Output, Assets' header and New menu, and the
+  header-only panels (SceneHeader, CodeHeader, PerformanceHeader,
+  BehaviorHeader's controls).
+- [ ] Then Properties' UI logic (keep its view model as an `Object Fields`
+  query node), the palette and pickers (a `Rank` query), Assets' grid.
+- [ ] Gaps left by the gating work: the Text Editor's KDL completion lists
+  `studio` nodes in every project; `buildGraph` accepts a `studio` node in a
+  game behavior (only `validateAsset` refuses it); the project-wide Problems
+  scope doesn't flag them; events behaviors send each other from a game UI
+  event still wait for the next simulation step.
+- [ ] Tooling: `Select` can't grow past two options over MCP; connecting a
+  wildcard node's output resets the group's authored defaults.
+- [ ] Two areas showing one behavior panel share one entity and list
+  window; the Canvas preview of Studio's own Outliner shows no rows.
+
+**Wave 5: removal** (Waves ▸ Wave 5)
+- [ ] Delete the kit controls, list, command and menu code nothing uses
+  (`kit_dropdown` still serves the Designer's `kit_select`;
+  `kit_autocomplete` serves graph node bodies); shrink `kit.h`; update
+  DESIGN decision 5, `studio-ui-authoring.md`, `editor-ui-references.md`.
+
+**Performance** (Shared follow-ups after Wave 2; re-measure with `uptime`
+below 4 first)
+- [ ] Keyed `data-for` (rows match by index today).
+- [ ] Change-driven sync for the C sources still syncing every frame
+  (`commands`, `properties`, `editor`, `assets`, `inspector`).
+- [ ] Sibling restyles in flat lists; the `data-attr` inside `data-when`
+  cost (D1); the per-frame list-window query; list reveal short by the
+  scroller's top padding; the Inspector's DOM walk.
+
+**Widget and behavior bugs**
+- [ ] A right press doesn't move focus, so a focused field keeps keys a
+  context menu should take (G1 blurs on open; popover.c should own it).
+- [ ] EnumField's dropdown is only as wide as its value; `data-for`'s hidden
+  template breaks `:last-child`; margins don't collapse through a `use`
+  wrapper's first child.
+- [ ] Two areas showing Members, Assets, Output or the Inspector share one
+  list window; Output's hover highlight moves with a following row under a
+  still pointer; the debug target list updates while the Behavior header
+  shows, even closed.
+- [ ] Stencil clip edges aren't anti-aliased (GPU backend).
+
+**Postponed** (Postponed): graph node bodies and their literals, Zep's
+surface, per-frame geometry, toasts, tooltips' controller, Outliner
+reorder/reparent (needs scene hierarchy first).
+
+**Open questions** (Open questions): 1, 2, 4, 6 and 7.
+
+**Needs the user**
+- [ ] Native macOS trackpad check: SDL counts 10 pt as a wheel notch, so
+  scrolling may be about 10× too fast outside the browser.
+- [ ] The graph's two-finger scroll: zoom or pan.
+- [ ] Terrain material LOD threshold (recommendation: keep 1 px).
+
+**Process**
+- [ ] The web editor loads Studio's own UI from the served workspace copy,
+  so a stale copy silently breaks new panels (the palette now fails loud);
+  serve `projects/studio` from the checkout instead.
+
 ## Target
 
 Every Studio surface is RML for structure, RCSS for style and, where it helps,

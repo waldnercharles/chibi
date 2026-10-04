@@ -1548,12 +1548,12 @@ typedef enum
     DESIGNER_IDLE,
     DESIGNER_SELECT,
     DESIGNER_EDIT,
-} designer_step;
+} designer_case;
 
 /* What one run of a designer case changes before its UI work: the selection
    alternates between two elements, or the root's inline width is edited as
    a scrub's commit writes it. */
-static void designer_change(studio *s, designer_step step, int run)
+static void designer_change(studio *s, designer_case step, int run)
 {
     static int serial;
     switch (step) {
@@ -1573,7 +1573,7 @@ static void designer_change(studio *s, designer_step step, int run)
     }
 }
 
-static void designer_step_row(studio_bench *b, designer_step step, const char *name)
+static void designer_case_row(studio_bench *b, designer_case step, const char *name)
 {
     studio *s = b->studio;
     double ms[RUNS], phases[PHASE_COUNT][RUNS], phase[PHASE_COUNT];
@@ -1614,11 +1614,11 @@ static void designer(studio_bench *b)
         DESIGNER_GROUP + 1 + DESIGNER_ITEMS,
         designer_rows(s, rows, MAX_ROWS)
     );
-    designer_step_row(b, DESIGNER_IDLE, "Designer: a UI frame with nothing changed");
-    designer_step_row(b, DESIGNER_SELECT, "Designer: select another element");
+    designer_case_row(b, DESIGNER_IDLE, "Designer: a UI frame with nothing changed");
+    designer_case_row(b, DESIGNER_SELECT, "Designer: select another element");
     designer_select(s, DESIGNER_ROOT);
     frames(b, 4);
-    designer_step_row(b, DESIGNER_EDIT, "Designer: write the root's inline width");
+    designer_case_row(b, DESIGNER_EDIT, "Designer: write the root's inline width");
 }
 
 /* The input helpers of studio_documents.c, whose header would clash with
@@ -1706,6 +1706,40 @@ static void designer_release(studio_bench *b)
     frames(b, 2);
 }
 
+/* Selects an element and asks for a refresh with a pointer move, which the
+   builds before the authored panels needed to show it before their idle
+   refresh. */
+static void select_element(studio_bench *b, int element)
+{
+    static int flip;
+    designer_select(b->studio, element);
+    move_to(b->studio, 600 + (flip++ & 1), 300);
+}
+
+/* Prints, in dp, the boxes of the first elements the selectors in the
+   Properties area match, `;` separated. */
+static void print_boxes(studio *s, const char *selectors)
+{
+    float ratio = studio_pixel_ratio(s);
+    char list[512];
+    snprintf(list, sizeof list, "%s", selectors);
+    for (char *selector = strtok(list, ";"); selector; selector = strtok(NULL, ";")) {
+        rml_element *el = area_query(s, STUDIO_AREA_PROPERTIES, selector);
+        rml_vec2 at = el ? rml_element_absolute_offset(el, RML_BOX_BORDER)
+                         : (rml_vec2){ 0 };
+        rml_vec2 size = el ? rml_element_box_size(el, RML_BOX_BORDER)
+                           : (rml_vec2){ 0 };
+        printf(
+            "box %s: %.1f %.1f %.1f %.1f\n",
+            selector,
+            at.x / ratio,
+            at.y / ratio,
+            size.x / ratio,
+            size.y / ratio
+        );
+    }
+}
+
 /* With UI_BENCH_DESIGNER_CAPTURE set to a directory, native shots of the
    Hierarchy, Details and Library in dark and light, compact and
    comfortable: the rows with a selection, the row menu, the Add menu, a
@@ -1733,7 +1767,7 @@ static void capture_designer(studio_bench *b, const char *dir)
         s->prefs.theme = VARIANTS[v].theme;
         s->prefs.comfortable = VARIANTS[v].comfortable;
         move_to(s, 600, 300);
-        designer_select(s, DESIGNER_OK);
+        select_element(b, DESIGNER_OK);
         shot(b, dir, name, "rows");
         designer_press(b, designer_row(s, "#ok"), 1);
         shot(b, dir, name, "menu");
@@ -1759,8 +1793,11 @@ static void capture_designer(studio_bench *b, const char *dir)
         shot(b, dir, name, "drag-before");
         designer_release(b);
         move_to(s, 600, 300);
-        designer_select(s, DESIGNER_ROOT);
+        select_element(b, DESIGNER_ROOT);
         shot(b, dir, name, "details");
+        if (getenv("UI_BENCH_BOXES_DETAILS") && v == 0) {
+            print_boxes(s, getenv("UI_BENCH_BOXES_DETAILS"));
+        }
         designer_press(b, area_query(s, STUDIO_AREA_PROPERTIES, ".designer-add"), 0);
         shot(b, dir, name, "details-add");
         popover_hide_all(context);
@@ -1771,7 +1808,7 @@ static void capture_designer(studio_bench *b, const char *dir)
         popover_hide_all(context);
         move_to(s, 600, 300);
         frames(b, 6);
-        designer_select(s, DESIGNER_ROW);
+        select_element(b, DESIGNER_ROW);
         move_to(s, 600, 300);
         shot(b, dir, name, "details-row");
         designer_press(b, area_query(s, STUDIO_AREA_PROPERTIES, ".field.select"), 0);
@@ -1779,10 +1816,13 @@ static void capture_designer(studio_bench *b, const char *dir)
         popover_hide_all(context);
         move_to(s, 600, 300);
         frames(b, 6);
-        designer_select(s, DESIGNER_TITLE);
+        select_element(b, DESIGNER_TITLE);
         shot(b, dir, name, "details-text");
-        designer_select(s, -1);
+        select_element(b, -1);
         shot(b, dir, name, "document");
+        if (getenv("UI_BENCH_BOXES") && v == 0) {
+            print_boxes(s, getenv("UI_BENCH_BOXES"));
+        }
         rml_element *tile = studio_query(s, ".designer-tile");
         assert(tile);
         float x, y;

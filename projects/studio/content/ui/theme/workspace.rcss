@@ -180,17 +180,10 @@ body.comfortable .output-row, body.comfortable .output-log { height: var(--studi
 .new-asset-field .field { height: var(--studio-height-24, 24dp); }
 .new-asset-error { display: flex; align-items: center; gap: 8dp; min-height: var(--h); padding: 0dp 8dp 0dp 6dp; color: var(--destructive); }
 
-/* Visual designer (workstream H): a UI document's Hierarchy, Details and
-   Library, and its outlines in the Canvas. */
+/* Visual designer (workstream H): the Hierarchy, Details and Library are
+   authored (Hierarchy.rcss, Details.rcss, Library.rcss); the theme keeps
+   their headers' label and the Canvas's outlines. */
 .designer-mode { display: block; flex: 0 0 auto; padding: 0dp 6dp 0dp 2dp; font-weight: 600; color: var(--foreground); white-space: nowrap; }
-.designer-tree .tree-row { tab-index: none; }
-.designer-tree .tree-row .name { flex: 0 1 auto; }
-.designer-tree .tree-row .meta { flex: 1 1 0dp; margin-left: 2dp; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.designer-tree .tree-row .bound { font-size: 12dp; width: 14dp; color: var(--link); pointer-events: none; }
-/* Where a drag lands: a line above or below the row, or the row itself. */
-.designer-tree .tree-row[data-drop-zone=before] { border-color: transparent; border-top-color: var(--primary); background-color: transparent; }
-.designer-tree .tree-row[data-drop-zone=after] { border-color: transparent; border-bottom-color: var(--primary); background-color: transparent; }
-.designer-tree .tree-row[data-drop-zone=inside] { border-color: var(--primary); background-color: var(--primary-soft); }
 /* The Canvas: the element under the pointer, a drop's target and the
    selection, labeled as UMG labels its selected widget. */
 .inspect-highlight.designer-hover .band.content { background-color: transparent; border: 1dp var(--primary-edge); }
@@ -208,38 +201,5 @@ body.comfortable .output-row, body.comfortable .output-log { height: var(--studi
 .designer-handle.e { cursor: ew-resize; }
 .designer-handle.s { cursor: ns-resize; }
 .designer-handle.se { cursor: nwse-resize; }
-/* Details. */
-.designer-details .prop .remove { flex: 0 0 auto; opacity: 0; transition: opacity 0.11s cubic-out; }
-.designer-details .prop:hover .remove { opacity: 1; }
-.designer-chips { display: flex; flex: 1 1 0dp; flex-wrap: wrap; align-items: center; gap: 4dp; min-height: var(--h); }
-.designer-chip { display: flex; align-items: center; height: var(--studio-height-20, 20dp); padding: 0dp 1dp 0dp 7dp; border-radius: 10dp; background-color: var(--secondary); color: var(--foreground); white-space: nowrap; }
-.designer-chip .btn { width: 16dp; height: 16dp; border-radius: 8dp; }
-.designer-chip .btn .icon { font-size: 10dp; color: var(--muted-foreground); }
-.designer-chips .designer-add { width: 20dp; height: 20dp; border-radius: 10dp; padding: 0dp; }
-.designer-bindings .field .value { font-family: var(--studio-code-font-family, jetbrains mono); font-size: var(--studio-mono-font-11, 11dp); color: var(--link); }
-.designer-more { display: flex; margin-top: 6dp; }
-.designer-more .btn { flex: 1 1 0dp; justify-content: center; color: var(--muted-foreground); }
-.designer-origin { display: flex; align-items: center; gap: 6dp; height: var(--studio-height-20, 20dp); margin-bottom: 2dp; font-size: var(--studio-font-11, 11dp); color: var(--faint-foreground); }
-.designer-origin .within { color: var(--muted-foreground); white-space: nowrap; }
-.designer-origin .btn { height: var(--studio-height-18, 18dp); padding: 0dp 4dp; gap: 3dp; font-size: var(--studio-font-11, 11dp); color: var(--muted-foreground); font-family: var(--font-numeric); }
-.designer-origin .btn .icon { font-size: 10dp; width: 11dp; }
-.designer-none, .designer-hint { display: block; padding: 6dp 4dp; font-size: var(--studio-font-11, 11dp); color: var(--faint-foreground); }
-.popup.designer-add-menu { width: 240dp; }
-.designer-add-field { display: block; padding: 2dp 4dp 4dp; }
-.designer-add-field .field { height: var(--studio-height-24, 24dp); }
-/* Library: tiles to drag into the Hierarchy or the Canvas. */
-.designer-library { position: absolute; left: 0dp; top: 0dp; right: 0dp; bottom: 0dp; overflow-y: auto; padding: 4dp 8dp 10dp; }
-.designer-section { display: block; padding: 8dp 2dp 5dp; }
-.designer-section .title { font-size: var(--studio-font-11, 11dp); font-weight: 600; color: var(--muted-foreground); }
-.designer-tiles { display: flex; flex-wrap: wrap; gap: 6dp; }
-.designer-tile {
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5dp; width: 78dp; height: 56dp;
-    border-radius: var(--r-lg); border: 1dp var(--line); background-color: var(--card); cursor: pointer;
-    transition: background-color border-color 0.11s cubic-out;
-}
-.designer-tile:hover { background-color: var(--accent); border-color: var(--border); }
-.designer-tile:active { background-color: var(--press); }
-.designer-tile .glyph { font-size: 18dp; color: var(--muted-foreground); pointer-events: none; }
-.designer-tile:hover .glyph { color: var(--primary-text); }
-.designer-tile .label { pointer-events: none; max-width: 70dp; font-size: var(--studio-font-11, 11dp); color: var(--foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The Library's comfortable tiles (Library.rcss has the rest). */
 body.comfortable .designer-tile { width: 86dp; height: 62dp; }

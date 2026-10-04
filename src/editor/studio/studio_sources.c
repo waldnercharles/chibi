@@ -2365,6 +2365,18 @@ const studio_panel_source studio_panel_sources[] = {
     { "graph_find", "GraphFind", studio_graph_find_add, studio_graph_find_sync, studio_graph_find_action },
     { "code_header", "CodeHeader", studio_code_header_add, studio_code_header_sync, studio_code_header_action },
     { "code_find", "CodeFind", studio_code_find_add, studio_code_find_sync, studio_code_find_action },
+    /* The visual designer (workstream D1). */
+    { "library", NULL, studio_library_add, studio_library_sync, studio_library_action },
+    { "hierarchy", "Hierarchy", studio_hierarchy_add, studio_hierarchy_sync, studio_hierarchy_action },
+    { "hierarchy_ui", "Hierarchy", studio_hierarchy_ui_add, studio_hierarchy_ui_sync, NULL },
+    { "hierarchy_carry", "Hierarchy", studio_hierarchy_carry_add, studio_hierarchy_carry_sync, NULL },
+    { "hierarchy_header",
+      "HierarchyHeader",
+      studio_hierarchy_header_add,
+      studio_hierarchy_header_sync,
+      NULL },
+    { "details", "Details", studio_details_add, studio_details_sync, studio_details_action },
+    { "details_add", "Details", studio_details_popover_add, studio_details_popover_sync, NULL },
 };
 const int studio_panel_source_count = (int)(sizeof studio_panel_sources /
                                             sizeof *studio_panel_sources);

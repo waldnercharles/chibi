@@ -2,11 +2,12 @@
 #define CHIBI_EDITOR_STUDIO_DESIGNER_INTERNAL_H
 
 /* What the visual designer's files share: studio_designer.c keeps the
- * document, the selection, the Hierarchy and the Canvas;
- * studio_designer_details.c shows Details; studio_designer_library.c the
- * Library and the Add menus. */
+ * document, the selection, its changes and the Canvas;
+ * studio_designer_hierarchy.c the Hierarchy, studio_designer_details.c
+ * Details and studio_designer_library.c the Library and the Add menus. */
 #include "editor/documents/ui_design.h"
 #include "editor/studio/studio_internal.h"
+#include "ui/list.h"
 
 /* The drag type of Hierarchy rows ("#<element>") and Library items (their
  * markup). */
@@ -41,6 +42,14 @@ void designer_resize_css(
     float css[2]
 );
 
+/* A row of the Hierarchy: an element, or -1 for the document, and its depth
+ * under the document. */
+typedef struct tree_row
+{
+    int element;
+    int depth;
+} tree_row;
+
 struct studio_designer
 {
     char path[1024];       /* the UI document the rest describes */
@@ -56,8 +65,31 @@ struct studio_designer
     unsigned cursor_seen; /* the buffer's revision then */
     bool closed;          /* the Hierarchy folds the document */
     char **folded;        /* places ("0.2.1") of the elements it folds */
+    unsigned folds;       /* counts the changes to closed and folded */
     char filter[128];     /* the Hierarchy's */
+    tree_row *tree;       /* its rows, the document's first (array) */
+    struct designer_tree_seen
+    {
+        bool built, closed;
+        unsigned parsed, folds, generation; /* generation counts the listings */
+        char filter[128];
+    } tree_seen; /* what `tree` lists */
+    struct designer_view_seen
+    {
+        bool built;
+        unsigned generation;
+        int first, length;
+    } views[STUDIO_AREA_COUNT]; /* each area's window as last written */
+    ui_list_state lists[STUDIO_AREA_COUNT]; /* and the List's own state */
+    char twisty[16]; /* the row whose twisty folded in the last sync */
     char library_filter[128];
+    struct
+    {
+        bool built;
+        uint64_t revision; /* the asset index's when the items were listed */
+        char asset[128];   /* the document then, which the widgets leave out */
+        char filter[128];
+    } library_seen; /* what the `library` source last showed */
     struct
     {
         bool active;  /* a scrub or picker session made the last undo step */
@@ -88,9 +120,27 @@ struct studio_designer
     } resize;
     struct
     {
-        bool focus; /* focus the field on its first frame */
+        int kind, target; /* what the Add popover adds, and to what */
+        int focus;        /* frames the field may still ask for the focus */
+        char text[192];   /* what is typed in it */
+    } add;                /* the Add popover Details' buttons share */
+    struct designer_add_seen
+    {
+        bool built;
+        unsigned parsed;
+        int kind, target;
         char text[192];
-    } add; /* the field of an Add popover (class, attribute) */
+    } add_seen;        /* what the popover's suggestions list */
+    char **shut;       /* the keys of the Details panels folded (array) */
+    unsigned shuts;    /* counts the changes to shut */
+    char choosing[40]; /* the keyword row whose list is open */
+    struct designer_details_seen
+    {
+        bool built;
+        unsigned parsed, shuts;
+        int selected;
+        char search[128], choosing[40];
+    } details_seen; /* what the `details` source last showed */
     /* Workstream Q: a Hierarchy row carried with the keyboard, as dnd-kit's
        keyboard sensor carries one: the element, the slot it would drop in
        (an index of ui_design_slots', and that slot), and the buffer's
@@ -114,6 +164,35 @@ studio_designer *designer_state(studio *s, ui_buffer **b);
 void designer_select(studio *s, int element);
 /* Visible bounds of a source element, including expanded widget roots. */
 kit_rect studio_designer_element_box(rml_element *element);
+/* Moves element `element` to `place` of `target`; selects it, or warns why
+ * it cannot. */
+void designer_move(studio *s, ui_buffer *b, int element, int target, ui_source_place place);
+/* A drop: a row's payload ("#<element>") moves it, a Library item's markup
+ * is added. */
+void designer_drop(studio *s, const char *payload, int target, ui_source_place place);
+/* The selection's changes. */
+void designer_duplicate(studio *s);
+void designer_wrap(studio *s);
+void designer_delete(studio *s);
+/* Opens the widget a <use> element shows, beside the document. */
+void designer_open_widget(studio *s, int element);
+
+/* The Hierarchy's model (studio_designer_hierarchy.c): folds and the keyboard
+ * sensor, which studio_designer_key drives. */
+void designer_hierarchy_forget(studio_designer *d);
+/* Frees Details' folded panels. */
+void designer_details_forget(studio_designer *d);
+/* Shows the selection's row: unfolds its ancestors, clears a filter that
+ * hides it and scrolls to it. */
+void designer_reveal(studio_designer *d);
+void designer_step(studio *s, studio_designer *d, int direction);
+void designer_fold_selected(studio_designer *d, bool fold);
+void designer_pick_up(studio *s, studio_designer *d, const ui_buffer *b);
+void designer_carry_key(studio *s, studio_designer *d, ui_buffer *b, SDL_Keycode key);
+void designer_keep_carry(studio *s, studio_designer *d, const ui_buffer *b);
+/* The element whose Hierarchy row the pointer is over, or -1. */
+int designer_hovered_row(studio *s);
+
 /* A change's warning toast. */
 void designer_warn(studio *s, const char *title, const char *error);
 /* An element's name as the Hierarchy shows it: its tag, or a <use>'s widget. */
@@ -122,10 +201,5 @@ uint32_t designer_element_icon(const ui_source *rml, int element);
 /* Adds markup for element `target` (-1 the document): inside a container,
  * else after it; selects what it added. */
 void designer_add(studio *s, int target, const char *markup, const char *label);
-
-/* Library (studio_designer_library.c): the Add menu's items, the elements
- * then the project's widgets; true when one was chosen, with its markup in
- * `markup` and its label in `label`. */
-bool designer_add_items(studio *s, char *markup, size_t size, char *label, size_t label_size);
 
 #endif

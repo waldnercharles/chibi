@@ -359,6 +359,7 @@ list(APPEND EDITOR_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/documents/ui_design.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_details.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_hierarchy.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/editor/studio/studio_designer_library.c
 )
 

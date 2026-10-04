@@ -2341,6 +2341,49 @@ typedef struct studio_panel_source
 extern const studio_panel_source studio_panel_sources[];
 extern const int studio_panel_source_count;
 
+/* ---------- The Designer's panels (workstream D1) ---------- */
+
+/* Library.rml, Hierarchy.rml and Details.rml, each with a header, are the
+ * visual designer's areas (studio_designer*.c) over the sources below. */
+
+/* `library` lists the elements and the project's widgets as tiles and as the
+ * Add menus' items; library.add takes an item's markup and label and adds it
+ * to the selection. */
+void studio_library_add(yyjson_mut_doc *doc);
+bool studio_library_sync(studio *s, const studio_panel_sync *at);
+void studio_library_action(studio *s, const char *action, const ui_activation *a);
+
+/* `hierarchy` (studio_designer_hierarchy.c): the document's row and each
+ * area's window of the elements' rows, with hierarchy.click, .open, .menu
+ * and .drop naming a row by key, .duplicate, .wrap, .source, .widget and
+ * .delete acting on the element the row menu opened for, and .scroll
+ * waking the source. `hierarchy_ui` holds the selected row's key and the
+ * row menu, `hierarchy_carry` the row carried with the keyboard and
+ * `hierarchy_header` what the header's Add says. */
+void studio_hierarchy_add(yyjson_mut_doc *doc);
+bool studio_hierarchy_sync(studio *s, const studio_panel_sync *at);
+void studio_hierarchy_action(studio *s, const char *action, const ui_activation *a);
+void studio_hierarchy_ui_add(yyjson_mut_doc *doc);
+bool studio_hierarchy_ui_sync(studio *s, const studio_panel_sync *at);
+void studio_hierarchy_carry_add(yyjson_mut_doc *doc);
+bool studio_hierarchy_carry_sync(studio *s, const studio_panel_sync *at);
+void studio_hierarchy_header_add(yyjson_mut_doc *doc);
+bool studio_hierarchy_header_sync(studio *s, const studio_panel_sync *at);
+/* `details` (studio_designer_details.c): the selected element's panels, or
+ * the document's rules, with details.input and .change taking a row's id and
+ * value, .text a text field's commit, .remove, .removeClass, .add, .addPick,
+ * .addEnter, .fold, .source, .openRule, .choices and .cancel. `details_add`
+ * is the Add popover its buttons share. */
+void studio_details_add(yyjson_mut_doc *doc);
+bool studio_details_sync(studio *s, const studio_panel_sync *at);
+void studio_details_action(studio *s, const char *action, const ui_activation *a);
+void studio_details_popover_add(yyjson_mut_doc *doc);
+bool studio_details_popover_sync(studio *s, const studio_panel_sync *at);
+/* What the Designer's panels show, hashed into the UI refresh's state: the
+ * document's revision, the selection and the folds. 0 without a UI
+ * document. */
+uint64_t studio_designer_stamp(studio *s);
+
 /* Syncs the sources of `panel` as it mounts, unless the last UI refresh
  * showed it already, so a panel never shows stale data for a frame. */
 void studio_sources_mounted(studio *s, studio_sources *sources, ui_data *data, const char *panel);

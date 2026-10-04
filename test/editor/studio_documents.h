@@ -85,5 +85,7 @@ void studio_documents_scene_checks();
 /* The Behavior header, find bars, Text Editor header and Performance
    (workstream C2). */
 void studio_documents_chrome_checks();
+/* The visual designer's Hierarchy, Details and Library (workstream D1). */
+void studio_documents_designer_checks();
 
 #endif

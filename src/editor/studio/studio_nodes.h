@@ -13,6 +13,7 @@
 #include "support/arena.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef enum studio_node_op
 {
@@ -85,5 +86,9 @@ const char *studio_node_run(
     arena *storage,
     pin_value *out
 );
+
+/* A number that differs whenever something the nodes read changed, and is
+   the same while nothing did (studio_node_calls.c). */
+uint64_t studio_nodes_stamp(const struct studio *s);
 
 #endif

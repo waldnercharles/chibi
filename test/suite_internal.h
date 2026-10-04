@@ -52,6 +52,7 @@ int bench_batch(const char *path, int count, int frames, int rotation);
 void test_compiled_components();
 void test_compiled_loops();
 void test_compiled_conversions();
+void test_compiled_selects();
 void test_compiled_aliases();
 void test_compiled_stores();
 void test_managed_reuse();

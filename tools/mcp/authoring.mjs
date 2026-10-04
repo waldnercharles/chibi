@@ -130,7 +130,7 @@ const operationProperties = {
   },
   inputs: {
     type: "object",
-    description: "Input pin defaults keyed by pin name.",
+    description: "Input pin defaults keyed by pin name, for add_node and add_variable_node.",
   },
   reference_id: {
     type: "integer",

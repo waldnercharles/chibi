@@ -820,6 +820,7 @@ void test_compiled_behaviors()
     test_compiled_states(NULL);
     test_compiled_multigate(NULL);
     test_compiled_conversions();
+    test_compiled_selects();
     test_compiled_aliases();
     test_compiled_stores();
     test_managed_reuse();

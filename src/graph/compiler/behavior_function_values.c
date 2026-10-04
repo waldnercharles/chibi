@@ -589,6 +589,21 @@ done:
     afree(returns);
     return result;
 }
+/* A number of type `to` holding 1 or 0. */
+static int bit_constant(builder *b, pin_type to, bool one)
+{
+    pin_value value = { .type = to };
+    switch (to) {
+        case PIN_U8: value.u8 = one; break;
+        case PIN_I32: value.i = one; break;
+        case PIN_I64: value.i64 = one; break;
+        default: value.d = one; break;
+    }
+    return behavior_lower_value(
+        b,
+        (behavior_function_instruction){ .op = BF_CONSTANT, .type = to, .value = value }
+    );
+}
 static int numeric_cast(builder *b, int slot, const node_desc *conversion, pin_type to)
 {
     if (slot < 0) {
@@ -602,21 +617,23 @@ static int numeric_cast(builder *b, int slot, const node_desc *conversion, pin_t
                     (conversion == &NODE_To_Integer64 && to == PIN_I64)) &&
                    (from == PIN_F32 || from == PIN_F64 ||
                     (from == PIN_I32 && to == PIN_I64));
-    if (!real && !integer) {
+    bool flag = from == PIN_BOOL && conversion == conversion_for(from, to);
+    if (!real && !integer && !flag) {
         return -1;
     }
     const char *name = to == PIN_F64 ? "double"
                      : to == PIN_U8  ? "byte"
                      : to == PIN_I32 ? "int"
                                      : "int64";
-    return behavior_lower_named_constant(
-        b,
-        behavior_lower_value(
-            b,
-            (behavior_function_instruction){ .op = BF_CAST, .type = to, .left = slot, .right = slot }
-        ),
-        name
-    );
+    int value = flag
+                  ? select_value(b, slot, bit_constant(b, to, true), bit_constant(b, to, false))
+                  : behavior_lower_value(
+                        b,
+                        (
+                            behavior_function_instruction
+                        ){ .op = BF_CAST, .type = to, .left = slot, .right = slot }
+                    );
+    return behavior_lower_named_constant(b, value, name);
 }
 static int to_name(builder *b, int source)
 {

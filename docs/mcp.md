@@ -552,6 +552,25 @@ Studio's code actions are operations too, and `ref` names what they create:
 - `promote_to_variable` gives an input a Get of a new variable, or an output a
   Set; `name` defaults to the pin's name.
 
+`connect` joins pins of one type directly. Where the types differ and a
+conversion exists, it stores the conversion on the wire, as Studio does when
+you drop one pin on the other: a bool feeds any number (true is 1, false is 0),
+an integer widens, and a real truncates and saturates into an integer. A wire
+no conversion carries fails the batch with `data connection was rejected`, and
+one a Behavior Expression drops when it regenerates its input fails it with
+`data connection was dropped when its expression regenerated`. Both name the two
+pins by node, name and type, for example `String.Value (const char *) to
+Sine.Value (double)`; a wire is never lost silently.
+
+`add_variable_node` takes `inputs` as `add_node` does, so
+`{"op":"add_variable_node","kind":"set","variable":"hp","inputs":{"Value":5}}`
+sets the default of the node's `Value` pin.
+
+Choose a value by a bool with `Select`: wire the bool to `Index` and two
+values of one type to `Option0` (false) and `Option1` (true). The bool reaches
+the integer `Index` through the conversion above; an integer `Index` counts
+from 0 and fails evaluation when out of range. Both options are evaluated.
+
 `add_pin`, `remove_pin` and `set_pin` on a function's or macro's Entry outputs
 or Return inputs edit its signature, so every call to it follows: a renamed
 input keeps its wires on each call, and a new input shows its `default`.
@@ -568,6 +587,9 @@ resolve `reference_name` without a numeric graph ID.
 
 Add a Behavior Expression with `add_node` and its `source` text, for example
 `{"op":"add_node","type":"Behavior Expression","source":"vec2(x, y)","ref":"motion"}`.
+Two expressions may share a source; each is its own node with its own generated
+graph, and a saved asset keeps each call's graph by `reference_id` when the
+names are shared.
 Use `set_expression` with the node selector and new `source` to regenerate it;
 valid edits reconcile pins and disconnect incompatible wires, while invalid edits
 leave the previous generated graph in place. Inputs match by name, as in
@@ -633,9 +655,10 @@ field ordering:
 ```
 
 Pass `dry_run: true` to validate and obtain predicted hashes without saving.
-A failed operation or validation leaves the authored file unchanged. Successful
-batches publish one complete file, and concurrent MCP writes to the same asset
-are serialized. The hash is checked again just before publication; this is
+A failed operation or validation leaves the authored file unchanged and returns
+its reason in `error.message`, with `failed_operation` naming the operation.
+Successful batches publish one complete file, and concurrent MCP writes to the
+same asset are serialized. The hash is checked again just before publication; this is
 not a locking protocol shared with unrelated filesystem writers.
 
 These are asset edits on disk, without an editor undo entry. An open editor

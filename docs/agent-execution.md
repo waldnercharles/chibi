@@ -50,6 +50,27 @@ neither side above 640. Lower resolution is useful for iteration but can hide
 fine detail and representative memory pressure. One output cannot prove history
 convergence, motion or temporal stability.
 
+Bounded previews and MP4 capture use the native controller's **hidden-window**
+renderer, save their output, then exit. They do not launch the Studio editor.
+Shader previews already use this mode. Hidden-window rendering is headless from
+the user's perspective, but is not a simulation-only run or a guarantee of a
+window-system-free backend: SDL/Vulkan may still require a display context, and
+rendering still consumes graphics memory and GPU work (or software-renderer CPU).
+The native response reports `window_hidden`.
+
+When the backend needs a display and none is available, use the existing Xvfb
+fallback around the bounded command, explicitly reporting the display context:
+
+```sh
+xvfb-run -a env CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb python3 tools/agent.py preview preview.json --project-root projects/your-game --output /tmp/preview-result.json
+```
+
+The same prefix works for `mp4`; the renderer's frame, resolution, RSS and time
+budgets remain active. Xvfb supplies a virtual display, not a GPU or a free render.
+If Xvfb/display initialization is unavailable, report the failure instead of
+launching Studio or retrying an unbounded renderer. Explicit full-profile
+performance runs retain their existing window mode; editor/UI tests are unchanged.
+
 Example `preview.json`:
 
 ```json

@@ -23,8 +23,13 @@ class PolicyTest(unittest.TestCase):
         source.write_text('''
 #include "automation/execution_policy.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 int main(int argc, char **argv) {
+    if (argc == 3) {
+        puts(chibi_preview_hidden(atoi(argv[2])) ? "hidden" : "visible");
+        return 0;
+    }
     yyjson_doc *doc = yyjson_read(argv[1], strlen(argv[1]), 0);
     const char *error = chibi_render_policy(yyjson_doc_get_root(doc));
     puts(error ? error : "allowed");
@@ -43,6 +48,15 @@ int main(int argc, char **argv) {
     def policy(self, request, profile='iteration', opt_in='0'):
         env = dict(os.environ, CHIBI_EXECUTION_PROFILE=profile, CHIBI_ALLOW_FULL_GPU=opt_in)
         return subprocess.check_output([str(self.binary), json.dumps(request)], env=env, text=True).strip()
+
+    def test_preview_and_capture_are_hidden_without_changing_hardware_benchmarks(self):
+        for profile, opt_in, frames, expected in [
+                ('iteration', '0', 1, 'hidden'), ('mp4', '0', 180, 'hidden'),
+                ('hardware', '1', 2, 'hidden'), ('hardware', '1', 180, 'visible')]:
+            env = dict(os.environ, CHIBI_EXECUTION_PROFILE=profile, CHIBI_ALLOW_FULL_GPU=opt_in)
+            result = subprocess.check_output([str(self.binary), '--window-mode', str(frames)],
+                                             env=env, text=True).strip()
+            self.assertEqual(result, expected)
 
     def test_preview_default_and_warmup(self):
         self.assertEqual(self.policy(dict(operation='preview_scene')), 'allowed')

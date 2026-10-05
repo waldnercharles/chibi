@@ -1,4 +1,5 @@
 #include "automation/controller.h"
+#include "automation/execution_policy.h"
 #include "automation/gpu_capture.h"
 #include "automation/render_preview.h"
 #include "diagnostics/tracy.h"
@@ -126,7 +127,7 @@ static bool render_scene(
         width,
         height,
         CF_APP_OPTIONS_NO_AUDIO_BIT |
-            (render_frames > 2 ? 0 : CF_APP_OPTIONS_HIDDEN_BIT) |
+            (chibi_preview_hidden(render_frames) ? CF_APP_OPTIONS_HIDDEN_BIT : 0) |
             (options->capture_path ? CF_APP_OPTIONS_GFX_METAL_BIT : 0),
         NULL
     );
@@ -615,6 +616,7 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
     yyjson_mut_obj_add_bool(response, object, "ok", ok);
     yyjson_mut_obj_add_bool(response, object, "full_verification", false);
     yyjson_mut_obj_add_str(response, object, "coverage", "scene-preview");
+    yyjson_mut_obj_add_bool(response, object, "window_hidden", chibi_preview_hidden(render_frames));
     yyjson_mut_obj_add_int(
         response,
         object,

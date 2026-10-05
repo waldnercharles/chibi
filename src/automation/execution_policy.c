@@ -82,3 +82,8 @@ void chibi_render_deadline(void)
     signal(SIGALRM, deadline);
     alarm(chibi_execution_is("mp4") ? 120 : 30);
 }
+
+bool chibi_preview_hidden(int render_frames)
+{
+    return !chibi_execution_hardware() || render_frames <= 2;
+}

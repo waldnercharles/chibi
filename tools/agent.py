@@ -91,7 +91,9 @@ def main():
                                            pixels=640*360, max_side=640, seconds=30),
                               mp4=dict(output_frames='3..180', fps=60, duration_seconds=3,
                                        warmup_frames='0..32', seconds=120, raw_bytes=256*1024*1024),
-                              render_rss_mib=2048, next_command=NEXT)))
+                              render_rss_mib=2048, render_mode='hidden-window',
+                              display_context='backend/display required; bounded xvfb-run fallback documented',
+                              next_command=NEXT)))
         return 0
     if args.action == 'hardware-check':
         if os.environ.get('CHIBI_EXECUTION_PROFILE') == 'hardware' and os.environ.get('CHIBI_ALLOW_FULL_GPU') == '1':
@@ -148,6 +150,8 @@ def main():
             # Preserve the existing authoring response, including its encoded image and diagnostics.
             args.output.write_text(json.dumps(response) + '\n')
     return report('passed', 'bounded_artifact_created_not_full_verification', output=str(args.output),
+                  render_mode='hidden-window',
+                  display_context=os.environ.get('CHIBI_PREVIEW_DISPLAY_CONTEXT', 'backend-default'),
                   output_frames=args.frames if args.action == 'mp4' else 1,
                   warmup_frames=request.get('gpu_warmup_frames', 1 if request.get('operation') == 'preview_scene' else 0))
 

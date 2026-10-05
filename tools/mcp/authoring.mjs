@@ -612,7 +612,7 @@ const shaderAssetSelectorProperties = {
 
 const previewSceneDefinition = {
   name: "previewScene", operation: "preview_scene",
-  description: "Render a running scene or prototype. Iteration defaults: one output frame, one GPU warmup frame, at most 640x360 pixels and 30 seconds; blocked budgets are errors, not passes. This is focused evidence, not full verification. Returns a PNG. Inputs and saved state use the scenario contract; storage stays isolated.",
+  description: "Render a running scene or prototype through the native hidden-window renderer, without launching Studio. A graphics/display context may still be required. Iteration defaults: one output frame, one GPU warmup frame, at most 640x360 pixels and 30 seconds; blocked budgets are errors, not passes. This is focused evidence, not full verification. Returns a PNG. Inputs and saved state use the scenario contract; storage stays isolated.",
   inputSchema: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: {
     kind: { type: "string", enum: ["scene", "prototype"] }, name: { type: "string" },
     width: { type: "integer", minimum: 64, maximum: 2048, default: 640 },

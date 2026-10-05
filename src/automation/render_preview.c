@@ -416,6 +416,7 @@ static void response_init(preview_response *response)
     response->diagnostics = yyjson_mut_obj_add_arr(response->doc, response->result, "diagnostics");
     yyjson_mut_obj_add_bool(response->doc, response->root, "full_verification", false);
     yyjson_mut_obj_add_str(response->doc, response->root, "coverage", "bounded-preview");
+    yyjson_mut_obj_add_bool(response->doc, response->root, "window_hidden", true);
     response->status = PREVIEW_OK;
     yyjson_mut_doc_set_root(response->doc, response->root);
 }

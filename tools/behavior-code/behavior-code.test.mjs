@@ -283,6 +283,45 @@ test('diagnostics span the original RHS tokens with compact and multiline operat
   }
 });
 
+test('integer array and set defaults enforce signed 32-bit boundaries', () => {
+  for (const declaration of ['int[] values', 'set<int> values']) {
+    const valid = `behavior Bounds { state ${declaration} = [-2147483648, 2147483647]; on Tick() {} }`;
+    assert.deepEqual(parseBehavior(valid).stateVariables[0].default, [-2147483648, 2147483647]);
+    assert.deepEqual(parseBehavior(`behavior Bounds { state ${declaration} = []; on Tick() {} }`).stateVariables[0].default, []);
+
+    for (const literal of ['-2147483649', '2147483648']) {
+      const invalid = `behavior Bounds {\n  state ${declaration} = [${literal}];\n  on Tick() {}\n}`;
+      assert.throws(() => parseBehavior(invalid), (error) => {
+        assert.match(error.message, /signed 32-bit integers/);
+        assert.equal(invalid.slice(error.span.start, error.span.end), literal);
+        assert.equal(error.span.line, 2);
+        return true;
+      });
+    }
+  }
+});
+
+test('float array and set defaults fit finite binary32 values', () => {
+  for (const declaration of ['float[] values', 'set<float> values']) {
+    const valid = `behavior Bounds { state ${declaration} = [3.4028234663852886e38, -3.4028234663852886e38]; on Tick() {} }`;
+    assert.deepEqual(
+      parseBehavior(valid).stateVariables[0].default,
+      [3.4028234663852886e38, -3.4028234663852886e38]
+    );
+    assert.deepEqual(parseBehavior(`behavior Bounds { state ${declaration} = []; on Tick() {} }`).stateVariables[0].default, []);
+
+    for (const literal of ['1e309', '1e39', '-1e39']) {
+      const invalid = `behavior Bounds {\n  state ${declaration} = [${literal}];\n  on Tick() {}\n}`;
+      assert.throws(() => parseBehavior(invalid), (error) => {
+        assert.match(error.message, /finite float32 literals/);
+        assert.equal(invalid.slice(error.span.start, error.span.end), literal);
+        assert.equal(error.span.line, 2);
+        return true;
+      });
+    }
+  }
+});
+
 test('string collection defaults decode escapes and reject unsupported escapes and NUL', () => {
   const source = String.raw`behavior Strings { state string[] values = ["a\nb", "a\"b", "c\\d", "\u{1f642}"]; on Tick() {} }`;
   assert.deepEqual(parseBehavior(source).stateVariables[0].default, ['a\nb', 'a"b', 'c\\d', '🙂']);

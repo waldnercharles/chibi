@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 const TOKEN = /\s+|\/\/[^\n]*|\+=|-=|\*=|\/=|==|!=|<=|>=|&&|\|\||[A-Za-z_][A-Za-z0-9_]*|(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[{}(),:;.=+*/<>!\[\]-]/gy;
 const ANNOTATION = /^\/\/\s*@node\s+([A-Za-z][A-Za-z0-9_-]*)\s*$/;
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
 
 export function parseBehavior(source) {
   const tokens = tokenize(source);
@@ -172,16 +174,22 @@ export function parseBehavior(source) {
       expect('[');
       const values = [];
       while (!peek(']')) {
-        let sign = 1;
-        if (peek('-')) { next(); sign = -1; }
+        const signToken = peek('-') ? next() : null;
+        const sign = signToken ? -1 : 1;
         const valueToken = next();
+        const literalToken = signToken ? { ...valueToken, start: signToken.start } : valueToken;
         let value;
         if (/^(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?$/.test(valueToken.value)) value = sign * Number(valueToken.value);
         else if (sign === 1 && (valueToken.value === 'true' || valueToken.value === 'false')) value = valueToken.value === 'true';
         else if (sign === 1 && (/^"/.test(valueToken.value) || /^'/.test(valueToken.value))) value = decodeStringLiteral(valueToken, fail);
         else fail(valueToken, 'state array defaults must be scalar literals');
-        if (elementType.value === 'int' && (!Number.isInteger(value) || typeof value !== 'number')) fail(valueToken, 'int collections require integer literals');
-        if (elementType.value === 'float' && typeof value !== 'number') fail(valueToken, 'float collections require numeric literals');
+        if (elementType.value === 'int' && (!Number.isInteger(value) || value < INT32_MIN || value > INT32_MAX)) {
+          fail(literalToken, 'int collection defaults must be signed 32-bit integers');
+        }
+        if (elementType.value === 'float' &&
+            (typeof value !== 'number' || !Number.isFinite(value) || !Number.isFinite(Math.fround(value)))) {
+          fail(literalToken, 'float collection defaults must be finite float32 literals');
+        }
         if (elementType.value === 'bool' && typeof value !== 'boolean') fail(valueToken, 'bool collections require boolean literals');
         if (elementType.value === 'string' && typeof value !== 'string') fail(valueToken, 'string collections require string literals');
         values.push(value);

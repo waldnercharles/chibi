@@ -25,6 +25,7 @@ class ValidationPlanTest(unittest.TestCase):
         self.change('candidate')
         self.git('branch', 'source')
         self.args = ['--base', 'base', '--source', 'source', '--scope', 'focused',
+                     '--confirm-eligible-members',
                      '--review-note', 'Reviewer checked graph callers and build effects',
                      '--selector=--graph-optimize']
         self.saved = Path(self.temp.name) / 'plan.json'
@@ -87,6 +88,19 @@ class ValidationPlanTest(unittest.TestCase):
         for args in [['--base', 'base', '--scope', 'focused'],
                      [*self.args, '--review-note', ' ']]:
             self.assertEqual(self.invoke(args)[0], 2)
+
+    def test_member_eligibility_requires_fresh_operator_confirmation_in_every_scope(self):
+        self.save()
+        unconfirmed = [arg for arg in self.args if arg != '--confirm-eligible-members']
+        for scope in ['focused', 'unknown', 'mixed']:
+            code, plan, error = self.invoke([*unconfirmed, '--scope', scope])
+            self.assertEqual(code, 2)
+            self.assertIsNone(plan)
+            self.assertIn('holds and required approvals', error)
+        self.assertEqual(self.invoke([*unconfirmed, '--verify', str(self.saved)])[0], 2)
+        self.assertEqual(self.verify()[1]['member_eligibility'], 'operator-confirmed; not independently verified')
+        self.assertEqual(self.invoke(['--base', 'base'])[1]['member_eligibility'], 'not-declared')
+        self.assertEqual(self.invoke(['--base', 'base', '--confirm-eligible-members'])[0], 2)
 
     def test_unknown_empty_and_combined_selectors_fail(self):
         for selector in ['', '--not-a-test', '--graph-optimize --materials', '--graph-optimize;false']:

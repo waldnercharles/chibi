@@ -73,6 +73,15 @@ loads and release validation remain unchanged. This removes redundant full runs
 on component PRs; it does not replace CUT50/CUT61 profiling and optimization of
 the actual slow tests.
 
+Batch-policy approval does not clear an explicit PR/ticket hold or a denied-action
+approval requirement. The integration owner must enumerate every source member
+and dependency, verify independent review and eligibility under the existing
+approval rules, and retain the supporting approval references. Held code must
+not enter an integration PR through cherry-picks, merges, copied patches or
+dependencies to evade its hold. A new PR number or passing batch gate does not
+clear the original restriction. Obtain the required approval through the existing
+process before admitting it; no new authorization mechanism is created here.
+
 1. **Name the integration owner.** One owner coordinates the batch, build slot,
    source review, evidence and eventual landing. Fetch main normally and record
    its full SHA. Pin each PR's full source SHA, dependencies and review result;
@@ -107,7 +116,9 @@ the actual slow tests.
    release validation when preparing a release. Do not substitute previews for
    assertions or lower thresholds to gain speed.
 5. **Verify identity and land one combination.** Before landing, fetch main and
-   source refs again. Compare the pinned base, all source SHAs, candidate SHA/tree
+   source refs again and recheck every member's holds and required approvals.
+   Eligibility can change without a Git change; a new hold blocks landing.
+   Compare the pinned base, all source SHAs, candidate SHA/tree
    and validation configuration with the evidence; verify a clean worktree again.
    The proposed landing tree must equal the tested tree, and its main parent/base
    must be the pinned main. Land the complete combination in one atomic main
@@ -164,15 +175,23 @@ requirements, not waived by a successful development batch.
 After source review, on a clean committed worktree:
 
 ```sh
-python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize > /tmp/cut62-plan.json
+python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --confirm-eligible-members --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize > /tmp/cut62-plan.json
 # Repeat the identical arguments after fetching main/source refs, adding:
-python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize --verify /tmp/cut62-plan.json
+python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --confirm-eligible-members --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize --verify /tmp/cut62-plan.json
 make test-tool-validation-plan
 ```
 
 Repeat `--source` for every batch member and `--selector` for relevant existing
 CPU/GPU allowlisted selectors; `--tools` adds `make test-tools`. The default scope
 is `unknown`; `unknown` and `mixed` list the full gate instead of focused commands.
+Any declared source members require `--confirm-eligible-members`, including when
+verifying a saved plan. Supply it only after freshly checking every member's
+review, holds and required approvals. It records an operator statement, grants
+no authority and cannot clear a hold or replace a denied-action approval. The
+helper does not query the approval system; the owner retains those references
+separately. Without source members it reports eligibility as `not-declared`, so
+a generic plan is not an eligible batch roster. Omitting a held source from the
+roster does not make its code eligible.
 Classification is a reviewer's recorded declaration, never inferred from paths.
 Review notes are data and are never executed. This helper only resolves local
 refs and lists commands, changed paths, exact base/head/tree and pending gates.

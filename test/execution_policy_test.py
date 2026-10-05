@@ -7,8 +7,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'tools'))
+from gpu_capabilities import classify_devices
+
 spec = importlib.util.spec_from_file_location('agent', ROOT / 'tools/agent.py')
 agent = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(agent)
@@ -57,6 +61,39 @@ int main(int argc, char **argv) {
             result = subprocess.check_output([str(self.binary), '--window-mode', str(frames)],
                                              env=env, text=True).strip()
             self.assertEqual(result, expected)
+
+    def test_failed_health_probe_does_not_prevent_CPU_planning(self):
+        with patch.object(agent.subprocess, 'run', side_effect=subprocess.TimeoutExpired('probe', 5)):
+            health = agent.startup_health()
+        self.assertEqual(health['status'], 'unavailable')
+        self.assertEqual(health['discovery_timeout_seconds'], 5)
+        self.assertFalse(agent.test_plan('logic', health)['gpu_startup'])
+        self.assertEqual(agent.test_plan('render', health)['status'], 'blocked')
+
+    def test_capability_type_not_device_name_drives_classification(self):
+        self.assertEqual(classify_devices([dict(type=4, name='RTX-looking CPU label')]), 'software')
+        self.assertEqual(classify_devices([dict(type=2, name='llvmpipe-looking GPU label')]), 'hardware')
+        self.assertEqual(classify_devices([dict(type=1)]), 'hardware')
+        self.assertEqual(classify_devices([dict(type=3)]), 'unknown')
+        self.assertEqual(classify_devices([]), 'unknown')
+
+    def test_purpose_and_capabilities_choose_bounded_work(self):
+        unavailable = dict(status='unavailable', devices=[], acceleration='unknown')
+        self.assertFalse(agent.test_plan('logic', unavailable)['gpu_startup'])
+        self.assertEqual(agent.test_plan('render', unavailable)['status'], 'blocked')
+        for acceleration, size in [('hardware', [320, 180]), ('software', [96, 64])]:
+            health = dict(status='enumerated', devices=[dict(type=2 if acceleration == 'hardware' else 4)],
+                          acceleration=acceleration)
+            plan = agent.test_plan('render', health)
+            self.assertTrue(plan['gpu_startup'])
+            self.assertEqual(plan['render_seconds'], 60)
+            self.assertEqual(plan['reference_resolution'], 'unchanged')
+            self.assertEqual(plan['preview_size'], size)
+            self.assertFalse(plan['full_verification'])
+            self.assertEqual(plan['pending'][0]['status'], 'pending')
+            temporal = agent.test_plan('temporal', health)
+            self.assertTrue(temporal['requires_explicit_mp4_request'])
+            self.assertEqual(temporal['output_frames'], 60)
 
     def test_preview_default_and_warmup(self):
         self.assertEqual(self.policy(dict(operation='preview_scene')), 'allowed')

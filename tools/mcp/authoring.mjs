@@ -867,6 +867,7 @@ function controllerPath(root) {
 }
 
 export function renderRequest(root, request, requestId) {
+  const started = performance.now();
   const executable = controllerPath(root);
   const hardware = process.env.CHIBI_EXECUTION_PROFILE === "hardware" && process.env.CHIBI_ALLOW_FULL_GPU === "1";
   const timeout = hardware ? renderTimeout() : Math.min(renderTimeout(), process.env.CHIBI_EXECUTION_PROFILE === "mp4" ? 120000 : 30000);
@@ -875,10 +876,12 @@ export function renderRequest(root, request, requestId) {
     let settled = false;
     let buffer = "";
     let stderr = "";
+    let activeDevice = null;
     let timer = null;
     let memoryTimer = null;
     const child = spawn(executable, ["--render", "--project-root", root], {
       cwd: root,
+      env: { ...process.env, SDL_LOGGING: process.env.SDL_LOGGING || "gpu=info" },
       stdio: ["pipe", "pipe", "pipe"],
     });
     const finish = (value) => {
@@ -893,6 +896,20 @@ export function renderRequest(root, request, requestId) {
       if (requestId !== undefined) {
         activeRenders.delete(String(requestId));
       }
+      value.execution = {
+        profile: process.env.CHIBI_EXECUTION_PROFILE || "iteration",
+        elapsed_seconds: (performance.now() - started) / 1000,
+        time_budget_seconds: timeout / 1000,
+        rss_budget_mib: !hardware && process.platform === "linux" ? 2048 : null,
+        width: value.result?.preview?.width ?? null,
+        height: value.result?.preview?.height ?? null,
+        planned_gpu_frames: value.planned_gpu_frames ?? null,
+        window_hidden: value.window_hidden ?? null,
+        active_backend: value.result?.backend ?? null,
+        active_device: activeDevice,
+        device_scope: activeDevice ? "renderer_log" : "not_reported",
+        display_context: process.env.CHIBI_PREVIEW_DISPLAY_CONTEXT || "backend-default",
+      };
       resolveRequest(value);
     };
     if (!hardware && process.platform === "linux") {
@@ -932,7 +949,10 @@ export function renderRequest(root, request, requestId) {
       }
     });
     child.stderr.on("data", (chunk) => {
-      stderr = `${stderr}${chunk}`.slice(-4096);
+      const combined = `${stderr}${chunk}`;
+      const device = /Vulkan Device: ([^\r\n]+)/.exec(combined);
+      if (device) activeDevice = device[1];
+      stderr = combined.slice(-4096);
     });
     child.on("error", (error) => {
       finish(failedRender(request.operation || "preview_shader", "process_error", `chibi_ctl --render failed: ${error.message}`));

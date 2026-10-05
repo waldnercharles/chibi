@@ -12,10 +12,19 @@ class InstanceInfo(c.Structure):
                 ('extensions', c.c_uint32), ('extension_names', c.c_void_p)]
 
 
+def classify_devices(devices):
+    """Classify Vulkan's reported type, never the hostname or driver filename."""
+    if any(device['type'] in (1, 2) for device in devices):
+        return 'hardware'
+    if devices and all(device['type'] == 4 for device in devices):
+        return 'software'
+    return 'unknown'  # Virtual/other devices do not prove physical acceleration.
+
+
 def probe():
     result = dict(driver=os.getenv('VK_DRIVER_FILES', 'loader-default'),
                   device_nodes=glob.glob('/dev/dri/*') + glob.glob('/dev/nvidia*'),
-                  devices=[], hardware_available=False)
+                  devices=[], hardware_available=False, acceleration='unknown', backend='Vulkan')
     try:
         vulkan = c.CDLL('libvulkan.so.1')
     except OSError as error:
@@ -46,7 +55,8 @@ def probe():
             device_type = int.from_bytes(buffer.raw[16:20], 'little')
             result['devices'].append(dict(type=device_type,
                                           name=buffer.raw[20:276].split(b'\0')[0].decode()))
-        result['hardware_available'] = any(d['type'] in (1, 2, 3) for d in result['devices'])
+        result['acceleration'] = classify_devices(result['devices'])
+        result['hardware_available'] = result['acceleration'] == 'hardware'
         return dict(result, status='enumerated', scope='discovery_only_not_render_validation')
     finally:
         vulkan.vkDestroyInstance(instance, None)

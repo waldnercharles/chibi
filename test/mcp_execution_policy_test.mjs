@@ -15,6 +15,15 @@ test("render process errors and timeouts cannot be reported as passes", async ()
   process.env.CHIBI_RENDER_CTL_TIMEOUT_MS = "1000";
   const fixture = text => writeFileSync(executable, `#!${process.execPath}\n${text}\n`, { mode: 0o700 });
   try {
+    fixture('console.error("Vulkan Device: fixture GPU"); console.log(JSON.stringify({ok:true,window_hidden:true,planned_gpu_frames:2,result:{backend:"VULKAN",preview:{width:96,height:64}}}));');
+    const success = await renderRequest(directory, { operation: "preview_scene" });
+    assert.equal(success.execution.active_device, "fixture GPU");
+    assert.equal(success.execution.window_hidden, true);
+    assert.equal(success.execution.width, 96);
+    assert.equal(success.execution.height, 64);
+    assert.equal(success.execution.planned_gpu_frames, 2);
+    assert.equal(success.execution.time_budget_seconds, 1);
+    assert.ok(success.execution.elapsed_seconds >= 0);
     fixture('console.log(JSON.stringify({ok:true})); process.exit(7);');
     const failed = await renderRequest(directory, { operation: "preview_scene" });
     assert.equal(failed.ok, false);

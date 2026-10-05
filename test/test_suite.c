@@ -504,6 +504,7 @@ static void print_test_selectors()
     puts("  Narrower costly checks: --automation-search --automation-refactor --automation-profile-scenario-inputs --editor-commands");
     puts("  Focused CPU checks: --shader-graph-codegen --prototype-preview-lifetime");
     puts("  GPU/render coverage: make test-render");
+    puts("Use make agent-list for workload classifications; full/mixed checks require CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1.");
     puts("The no-selector invocation is the full all_checks suite; --whole-function-audit is a separate full-coverage check.");
 }
 

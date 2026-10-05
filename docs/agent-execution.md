@@ -13,16 +13,33 @@ physical GPU is present. CI explicitly opts in, retaining its previous coverage.
 # In this saved cloud environment, if present:
 source /workspace/.cloud-tools/activate.sh
 python3 tools/agent.py doctor
+python3 tools/agent.py plan logic    # or render / temporal
 make agent-list
 make build BUILD_TARGET='test_suite chibi_ctl'
 make agent-test AGENT_SELECTOR=--graph-optimize
 make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu
 ```
 
-`doctor` enumerates Vulkan devices without rendering. Device type 4 is CPU. On
+The agent wrapper runs lightweight discovery in an isolated process with a
+five-second deadline before test/preview/capture actions. A failed loader is
+reported and does not prevent CPU-only work.
+`plan logic|render|temporal` chooses focused commands using the explicit purpose
+and discovered capabilities. Logic plans avoid render initialization even when
+no graphics device exists. Render plans keep native reference assertions intact;
+hardware/software classification only guides preview resolution and reporting,
+not assertion thresholds or authorization for full suites. Temporal plans require
+an explicit MP4 request before their suggested capture command is executed.
+
+`doctor` enumerates Vulkan devices without rendering. Device type 4 is CPU; integrated/discrete types identify hardware candidates.
+Virtual/other types remain unknown rather than being called hardware acceleration. On
 2026-10-05 this environment exposed no `/dev/dri` or NVIDIA device, and both the
 activated ICD and normal loader discovery reported only llvmpipe (LLVM 19.1.7).
 Installed hardware ICD files alone do not establish accessible hardware.
+Discovery is not a rendered-device guarantee: execution results separately report
+the actual native backend and device name from renderer logs when available,
+or explicitly leave the device unknown. They also include image dimensions,
+planned frame counts, elapsed wall time, and time/RSS budgets. MCP render results
+carry the same execution metadata. Full checks remain explicitly pending.
 
 The default `CHIBI_EXECUTION_PROFILE=iteration` allows reviewed CPU selectors and
 bounded authoring previews. `test/execution_selectors.h` is the CPU allowlist.
@@ -120,8 +137,85 @@ checks, and the next full-gate command. A blocked budget or unknown selector exi
 nonzero. Do not describe partial coverage, timeouts or blocked checks as a green
 merge gate.
 
+Activation and provisioning are owned by CUT-49/CUT-52. This change consumes the
+existing environment and does not own setup scripts or installation state.
+
 Smallest saved-cloud-start change: keep the existing dependency activation and
 caches, and optionally export `CHIBI_EXECUTION_PROFILE=iteration` (already the
 code default). Run `doctor` once when capabilities change. No new installation,
 driver changes, security changes, network changes or unpublished setup scripts
 are required. This change does not edit the saved cloud setup.
+
+## Bounded artifact validation (2026-10-05)
+
+At the isolated PR151 base `95d70d0d`, the ASan/UBSan build exercised the existing
+`projects/arena2d` scene `HRCSinglePixel` through Xvfb and Vulkan llvmpipe. Request:
+
+```json
+{"operation":"preview_scene","kind":"scene","name":"HRCSinglePixel","width":96,"height":64,"gpu_warmup_frames":1}
+```
+
+With that JSON saved as `/tmp/chibi-agent-feature-validation/request.json`, the
+commands below produced actual artifacts (use fresh output paths when repeating):
+
+```sh
+source /workspace/.cloud-tools/activate.sh
+xvfb-run -a env CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb python3 tools/agent.py preview /tmp/chibi-agent-feature-validation/request.json --project-root projects/arena2d --output /tmp/chibi-agent-feature-validation/preview.json
+xvfb-run -a env CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb python3 tools/agent.py mp4 /tmp/chibi-agent-feature-validation/request.json --project-root projects/arena2d --frames 60 --output /tmp/chibi-agent-feature-validation/capture.mp4
+ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=codec_name,width,height,pix_fmt,r_frame_rate,nb_read_frames,duration -of json /tmp/chibi-agent-feature-validation/capture.mp4
+```
+
+The first preview correctly failed at process exit: LeakSanitizer identified
+1,048,768 leaked bytes in Cute's draw uniform arena. The existing sanitizer
+cleanup patch now destroys that arena when destroying the draw context. No
+sanitizer suppression or assertion change was used. After rebuilding:
+
+- Preview: clean exit 0, 3.71 seconds including Xvfb/wrapper startup, one output
+  plus one warmup frame, native `window_hidden:true` and `planned_gpu_frames:2`.
+  Decoded PNG was 96x64 with 359 distinct colors and opaque alpha; inspected
+  pixels showed the small source and faint receiver, rather than a blank image.
+- MP4: clean exit 0, 6.05 seconds including rendering and encoding; 60 output
+  frames plus one warmup frame. Exact raw capture size was checked before
+  encoding. ffprobe and full decode confirmed H.264/yuv420p, 96x64, 60 fps,
+  60 decoded frames, and 1.000 seconds. The decoded RGB stream was 1,105,920
+  bytes, with eight distinct frames and 137 distinct colors in its first frame.
+- Observed peak child RSS was 891,460 KiB for preview and 1,052,136 KiB for video,
+  below the 2048 MiB stop budget. Render deadlines remained 30/120 seconds,
+  with a separate 30-second encoder deadline. Raw video was 1,474,560 bytes,
+  below the 256 MiB limit. No budgets were increased.
+
+These are functional artifact-path checks on a CPU renderer, not hardware GPU
+performance, temporal convergence, representative-resolution quality, or full
+regression certification. Xvfb provided a virtual display; both bounded native
+render paths used hidden windows and never launched Studio. The 11 CPU policy
+tests and MCP failure/timeout test passed again after the cleanup correction.
+
+## CUT-51 publication checkpoint
+
+Reconciled onto PR151 candidate `be4d5c0d`, then stable main
+`de73cb85652f43694957377dfc3607d2e15da386`; those base trees are identical. The
+draw uniform cleanup is already supplied by main, so the policy change has no
+dependency-patch diff. The original `a772e85c` branch and its artifact evidence
+remain preserved separately.
+
+The reconciled ASan/UBSan build passed 14 CPU policy checks, including typed
+hardware/software discovery, unknown/virtual devices, bounded health-probe
+failure, logic/render/temporal plans, warmup, budgets, and refusal paths. The MCP
+subprocess regression checks success metadata and ensures process failures or
+timeouts cannot become passes. MCP schema/package and workspace Make checks
+also passed. Focused native graph-optimizer, sampled-model CPU, and runtime
+execution selectors passed; no full GPU suite ran.
+
+The `HRCSinglePixel` request above also passed at 96x64 on the reconciled tree:
+preview used one output plus one warmup frame (3.765 seconds); a three-output
+MP4 smoke capture used one warmup frame (3.912 seconds). The preview decoded to
+359 colors. ffprobe confirmed H.264, 96x64, three frames at 60 fps and 0.05 seconds.
+The capture result reported the actual Vulkan device as
+`llvmpipe (LLVM 19.1.7, 256 bits)`, `window_hidden:true`, Xvfb context, four planned
+GPU frames, and unchanged 120-second render / 30-second encoding / 2048 MiB RSS
+budgets. Earlier one-second/60-frame validation remains recorded above.
+
+This is publication evidence for focused functionality, not full hardware
+certification. Representative hardware/backend gates remain pending; inherited
+GLES and NVK LeakSanitizer limitations remain owned by CUT-54/CUT-55. Startup
+provisioning/activation changes remain owned by CUT-49/CUT-52.

@@ -7,11 +7,13 @@
 #include "ui/iframe.h"
 
 #include "support/array.h"
+#include "ui/iframe_profile.h"
 
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 /* The bars fit in the first pass and the areas they move follow in the
    second; a third finds nothing left to move. A layout whose heights keep
@@ -28,6 +30,52 @@ typedef struct iframe
 } iframe;
 
 static iframe *iframes;
+
+static bool profiling;
+static iframe_profile_phase phase;
+static iframe_profile_sample samples[IFRAME_PROFILE_PHASES];
+
+static double profile_clock()
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec + (double)t.tv_nsec / 1e9;
+}
+
+void iframe_profile_enable(bool enabled)
+{
+    profiling = enabled;
+    phase = IFRAME_PROFILE_OUTSIDE;
+    memset(samples, 0, sizeof samples);
+}
+
+void iframe_profile_begin(iframe_profile_phase next)
+{
+    if (profiling) {
+        assert(phase == IFRAME_PROFILE_OUTSIDE);
+        phase = next;
+        samples[phase].calls++;
+        samples[phase].started = profile_clock();
+    }
+}
+
+void iframe_profile_end()
+{
+    if (profiling) {
+        samples[phase].seconds += profile_clock() - samples[phase].started;
+        phase = IFRAME_PROFILE_OUTSIDE;
+    }
+}
+
+iframe_profile_phase iframe_profile_current()
+{
+    return phase;
+}
+
+iframe_profile_sample iframe_profile_get(iframe_profile_phase which)
+{
+    return samples[which];
+}
 
 void iframe_attach(rml_element *document, rml_element *element, bool fit)
 {
@@ -84,6 +132,9 @@ static bool take_box(iframe *f, rml_element *document, rml_element *element)
     }
     f->at = at;
     f->size = size;
+    if (profiling) {
+        samples[phase].boxes++;
+    }
     set_pixels(document, "left", at.x);
     set_pixels(document, "top", at.y);
     set_pixels(document, "width", size.x);
@@ -116,6 +167,9 @@ static bool take_height(iframe *f, rml_element *document, rml_element *element)
         return false;
     }
     f->height = height;
+    if (profiling) {
+        samples[phase].heights++;
+    }
     set_pixels(document, "height", height);
     set_pixels(element, "height", height);
     rml_document_update(document);
@@ -126,6 +180,9 @@ static bool take_height(iframe *f, rml_element *document, rml_element *element)
 /* Places context's documents once; true when any moved. */
 static bool settle_pass(rml_context *context)
 {
+    if (profiling) {
+        samples[phase].passes++;
+    }
     bool moved = false;
     for (int i = 0; i < acount(iframes);) {
         iframe *f = &iframes[i];
@@ -159,7 +216,12 @@ static void lay_out_holders(rml_context *context)
         }
         if (!seen) {
             apush(holders, holder);
+            double start = profiling ? profile_clock() : 0;
             rml_document_update(holder);
+            if (profiling) {
+                samples[phase].holder_updates++;
+                samples[phase].holder_seconds += profile_clock() - start;
+            }
         }
     }
     afree(holders);

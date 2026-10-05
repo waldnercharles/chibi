@@ -16,6 +16,7 @@
 #include "ui/drag.h"
 #include "ui/focus_within.h"
 #include "ui/iframe.h"
+#include "ui/iframe_profile.h"
 #include "ui/motion.h"
 #include "ui/popover.h"
 #include "ui/rml.h"
@@ -1143,9 +1144,15 @@ void rml_backend_update(rml_backend *backend, double delta_seconds)
     backend->frame_dirty = true;
     backend->stats.context_updates++;
     driven = backend;
+    iframe_profile_begin(IFRAME_PROFILE_PRE);
     iframes_settle(backend->context);
+    iframe_profile_end();
+    iframe_profile_begin(IFRAME_PROFILE_CONTEXT);
     rml_context_update(backend->context);
+    iframe_profile_end();
+    iframe_profile_begin(IFRAME_PROFILE_POST);
     iframes_settle(backend->context);
+    iframe_profile_end();
     presence_settle(backend->context);
     popovers_settle(backend->context);
     autofocus_settle(backend->context);

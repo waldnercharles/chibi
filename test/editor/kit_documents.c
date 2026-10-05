@@ -4,11 +4,14 @@
  * focus, keys and pointer with the rest; the layer stays above them all. */
 #include "editor/ui/kit.h"
 #include "test/suite_internal.h"
+#include "ui/iframe_profile.h"
 #include "ui/popover.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define PROBED 8
@@ -17,21 +20,75 @@
    document lays out all of its elements at once. */
 static rml_element *probed[PROBED];
 static int layouts[PROBED];
+static bool profile_enabled;
+static int profile_frame;
+static int probe_updates[PROBED][IFRAME_PROFILE_PHASES];
+static int probe_layouts[PROBED][IFRAME_PROFILE_PHASES];
 
-static void count_layout(rml_element *element, void *)
+static int probe_index(rml_element *element)
 {
     rml_element *document = rml_element_owner_document(element);
     for (int i = 0; i < PROBED; i++) {
         if (!probed[i] || probed[i] == document) {
             probed[i] = document;
-            layouts[i]++;
-            return;
+            return i;
         }
     }
     assert(!"too many probed documents");
+    return 0;
 }
 
-static const rml_element_hooks PROBE = { .layout = count_layout };
+static void count_update(rml_element *element, void *)
+{
+    if (profile_enabled) {
+        probe_updates[probe_index(element)][iframe_profile_current()]++;
+    }
+}
+
+static void count_layout(rml_element *element, void *)
+{
+    int i = probe_index(element);
+    layouts[i]++;
+    if (profile_enabled) {
+        probe_layouts[i][iframe_profile_current()]++;
+    }
+}
+
+static const rml_element_hooks PROBE = { .update = count_update, .layout = count_layout };
+
+static void print_profile()
+{
+    static const char *names[] = { "outside", "pre", "context", "post" };
+    for (int p = 0; p < IFRAME_PROFILE_PHASES; p++) {
+        iframe_profile_sample s = iframe_profile_get(p);
+        printf(
+            "IFRAME_PROFILE {\"frame\":%d,\"phase\":\"%s\",\"calls\":%d,"
+            "\"started\":%.9f,\"seconds\":%.9f,\"holder_updates\":%d,"
+            "\"holder_seconds\":%.9f,\"boxes\":%d,\"heights\":%d,"
+            "\"passes\":%d,\"probes\":[",
+            profile_frame,
+            names[p],
+            s.calls,
+            s.started,
+            s.seconds,
+            s.holder_updates,
+            s.holder_seconds,
+            s.boxes,
+            s.heights,
+            s.passes
+        );
+        for (int i = 0; i < PROBED && probed[i]; i++) {
+            printf(
+                "%s{\"document\":%d,\"updates\":%d,\"layouts\":%d}",
+                i ? "," : "",
+                i,
+                probe_updates[i][p],
+                probe_layouts[i][p]
+            );
+        }
+        puts("]}");
+    }
+}
 
 static int layouts_of(rml_element *document)
 {
@@ -79,6 +136,12 @@ static void nested_popover(rml_element *host)
    edge and a label, B a label; under them a bar that fits its content. */
 static void frame(documents_fixture *f)
 {
+    if (profile_enabled) {
+        iframe_profile_enable(true);
+        memset(probe_updates, 0, sizeof probe_updates);
+        memset(probe_layouts, 0, sizeof probe_layouts);
+        profile_frame++;
+    }
     kit *k = f->k;
     kit_begin(k, &f->in);
     kit_root(k, "app");
@@ -138,6 +201,9 @@ static void frame(documents_fixture *f)
     kit_document_end(k);
     kit_end(k);
     rml_backend_update(f->backend, 1.0 / 60.0);
+    if (profile_enabled) {
+        print_profile();
+    }
     f->in.time += 1.0 / 60.0;
 }
 
@@ -396,6 +462,9 @@ static void lifetime(documents_fixture *f)
 
 void test_kit_documents()
 {
+    const char *profile = getenv("CHIBI_IFRAME_PROFILE");
+    profile_enabled = profile && !strcmp(profile, "1");
+    profile_frame = 0;
     documents_fixture f = { .text_a = "A", .text_b = "B" };
     f.backend = rml_backend_create(640, 480, 1);
     /* After the backend starts RmlUi, whose factory holds instancers. */
@@ -411,9 +480,24 @@ void test_kit_documents()
     focus_across(&f);
     inspect(&f);
     lifetime(&f);
+    if (profile_enabled) {
+        rml_backend_stats stats = rml_backend_get_stats(f.backend);
+        printf(
+            "IFRAME_BACKEND {\"frames\":%d,\"context_updates\":%llu,"
+            "\"render_captures\":%llu,\"render_passes\":%llu,"
+            "\"geometry_compiles\":%llu}\n",
+            profile_frame,
+            (unsigned long long)stats.context_updates,
+            (unsigned long long)stats.render_captures,
+            (unsigned long long)stats.render_passes,
+            (unsigned long long)stats.geometry_compiles
+        );
+    }
     kit_destroy(f.k);
     rml_backend_destroy(f.backend);
     rml_instancer_destroy(instancer);
     memset(probed, 0, sizeof probed);
     memset(layouts, 0, sizeof layouts);
+    iframe_profile_enable(false);
+    profile_enabled = false;
 }

@@ -70,15 +70,24 @@ def projects(workspace):
     return [manifest.parent for manifest in manifests if manifest.is_file()]
 
 
-def workspace_files(workspace):
+def project_mounts(workspace, studio=None):
+    """Browser paths stay stable; Studio belongs to the serving checkout."""
+    mounts = {project.relative_to(workspace).as_posix(): project for project in projects(workspace)}
+    if studio is not None:
+        mounts['projects/studio'] = studio
+    return mounts
+
+
+def workspace_files(workspace, studio=None):
     """Each project's manifest and supported content assets, relative to the workspace."""
     files = {}
-    for project in projects(workspace):
-        files[str((project / 'project.kdl').relative_to(workspace))] = project / 'project.kdl'
+    for name, project in project_mounts(workspace, studio).items():
+        prefix = PurePosixPath(name)
+        files[str(prefix / 'project.kdl')] = project / 'project.kdl'
         content = content_directory(project)
         for path in content.rglob('*'):
             if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS | IMAGE_EXTENSIONS and path.resolve().is_relative_to(content.resolve()):
-                files[str(path.relative_to(workspace))] = path
+                files[str(prefix / path.relative_to(project))] = path
     return files
 
 
@@ -88,11 +97,11 @@ def workspace_asset(path):
     return path.read_text()
 
 
-def workspace_assets(workspace):
-    return {name: workspace_asset(path) for name, path in workspace_files(workspace).items()}
+def workspace_assets(workspace, studio=None):
+    return {name: workspace_asset(path) for name, path in workspace_files(workspace, studio).items()}
 
 
-def create_project(workspace, request):
+def create_project(workspace, request, studio=None):
     """Create a project beside the bundled samples and return its initial files."""
     name = request['name']
     version = request['version']
@@ -106,7 +115,7 @@ def create_project(workspace, request):
     parent.mkdir(parents=True, exist_ok=True)
     project_id = base
     index = 2
-    while (parent / project_id).exists():
+    while (parent / project_id).exists() or (studio is not None and project_id == 'studio'):
         project_id = f'{base}-{index}'
         index += 1
     root = parent / project_id
@@ -140,8 +149,9 @@ def create_project(workspace, request):
 class WorkspaceWatch:
     """Versions the workspace's files so the browser can follow edits made on disk."""
 
-    def __init__(self, workspace):
+    def __init__(self, workspace, studio=None):
         self.workspace = workspace
+        self.studio = studio
         self.version = 0
         self.stamps = self.scan()
         self.changed = {}  # path -> the version that last changed it
@@ -149,7 +159,7 @@ class WorkspaceWatch:
 
     def scan(self):
         stamps = {}
-        for name, path in workspace_files(self.workspace).items():
+        for name, path in workspace_files(self.workspace, self.studio).items():
             try:
                 info = path.stat()
             except OSError:
@@ -176,8 +186,8 @@ class WorkspaceWatch:
             version = self.version
             names = [name for name, changed in self.changed.items() if changed > since]
         files = {}
-        current = workspace_files(self.workspace)
-        roots = [(project.resolve(), content_directory(project).resolve()) for project in projects(self.workspace)]
+        current = workspace_files(self.workspace, self.studio)
+        roots = [(project.resolve(), content_directory(project).resolve()) for project in project_mounts(self.workspace, self.studio).values()]
         for name in names:
             path = current.get(name)
             if path is None:
@@ -201,12 +211,21 @@ class WorkspaceWatch:
         return version, files
 
 
-def save_asset(workspace, request):
-    path = (workspace / request['path'].lstrip('/')).resolve()
+def save_asset(workspace, request, studio=None):
+    name = PurePosixPath(request['path'].lstrip('/'))
+    if '..' in name.parts:
+        raise ValueError('Saves must stay inside a project content directory')
+    mounts = project_mounts(workspace, studio)
+    # Prefer a nested project to the workspace's root project.
+    prefix = next((root for root in sorted(mounts, key=len, reverse=True)
+                   if name.is_relative_to(root)), None)
+    if prefix is None:
+        raise ValueError('Saves must stay inside a project content directory')
+    path = (mounts[prefix] / name.relative_to(prefix)).resolve()
     text = request['text']
-    contents = [content_directory(project).resolve() for project in projects(workspace)]
+    contents = [content_directory(project).resolve() for project in mounts.values()]
     # Settings rewrites a project's manifest, which is never removed.
-    manifest = text is not None and path in [(project / 'project.kdl').resolve() for project in projects(workspace)]
+    manifest = text is not None and path in [(project / 'project.kdl').resolve() for project in mounts.values()]
     image_delete = text is None and path.suffix.lower() in IMAGE_EXTENSIONS
     if not manifest and ((path.suffix.lower() not in TEXT_EXTENSIONS and not image_delete) or
                          not any(path.is_relative_to(content) for content in contents)):
@@ -236,21 +255,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build', type=Path, default=Path('build-web'))
     parser.add_argument('--workspace', type=Path, default=Path(__file__).resolve().parents[1],
-                        help='directory whose project.kdl and projects/* the browser can open')
+                        help='directory whose projects the browser can open; Studio UI comes from this server checkout')
     parser.add_argument('--project', type=Path, default=Path('projects/arena2d'))
     parser.add_argument('--port', type=int, default=8099)
     parser.add_argument('--isolated', action='store_true',
                         help='send the isolation headers required by the threaded build')
     args = parser.parse_args()
     workspace = args.workspace.resolve()
-    project = next((mount for mount in projects(workspace) if mount.resolve() == args.project.resolve()), None)
+    studio = Path(__file__).resolve().parents[1] / 'projects/studio'
+    mounts = project_mounts(workspace, studio)
+    selected = next((name for name, mount in mounts.items()
+                     if args.project.resolve() in (mount.resolve(), (workspace / name).resolve())), None)
+    project = mounts.get(selected)
     if project is None:
         parser.error(f'{args.project} must have a project.kdl in {workspace} or its projects directory; '
                      'linked projects need their target checkout')
     # The browser mirrors the workspace at its file system root.
-    start = str(PurePosixPath('/') / project.relative_to(workspace).as_posix())
+    start = str(PurePosixPath('/') / selected)
     token = secrets.token_urlsafe(32)
-    watch = WorkspaceWatch(workspace)
+    watch = WorkspaceWatch(workspace, studio)
 
     # Once a second, as native Studio polls its files; each scan walks every project.
     def follow():
@@ -317,7 +340,7 @@ def main():
                     return
                 if url.path == '/__chibi/assets':
                     version = watch.version
-                    self.send_json(workspace_assets(workspace), version)
+                    self.send_json(workspace_assets(workspace, studio), version)
                     return
                 # Waits for the next edit on disk, so the page can mirror it at once.
                 if url.path == '/__chibi/changes':
@@ -349,7 +372,7 @@ def main():
                 body = self.rfile.read(length)
                 if self.path == '/__chibi/project':
                     try:
-                        created = create_project(workspace, json.loads(body))
+                        created = create_project(workspace, json.loads(body), studio)
                         watch.poll()
                     except (ValueError, KeyError, TypeError, OSError) as error:
                         self.send_json({'error': str(error)}, watch.version, 400)
@@ -357,7 +380,7 @@ def main():
                     self.send_json(created, watch.version)
                     return
                 try:
-                    save_asset(workspace, json.loads(body))
+                    save_asset(workspace, json.loads(body), studio)
                 except (ValueError, KeyError, TypeError, OSError) as error:
                     self.send_error(400, str(error))
                     return

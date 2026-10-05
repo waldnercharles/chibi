@@ -188,7 +188,101 @@ class WorkspaceSaves(unittest.TestCase):
         self.assertFalse((self.project / 'outside.kdl').exists())
 
 
+class StudioCheckoutAssets(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.workspace = Path(self.directory.name).resolve()
+        game = self.workspace / 'projects/bloom'
+        (game / 'content').mkdir(parents=True)
+        (game / 'project.kdl').write_text('content "content"\n')
+        self.studio = self.workspace / 'checkout/projects/studio'
+        self.stale = self.workspace / 'projects/studio'
+        for root, label in ((self.studio, 'active'), (self.stale, 'stale')):
+            (root / 'content/ui').mkdir(parents=True)
+            (root / 'project.kdl').write_text('content "content"\n')
+            (root / 'content/ui/Panel.rml').write_text(label)
+        (self.stale / 'content/ui/Removed.rml').write_text('obsolete')
+        self.panel = 'projects/studio/content/ui/Panel.rml'
+
+    def test_checkout_overrides_stale_workspace_and_reload(self):
+        # Reproduce the previous server's source before applying the mount.
+        self.assertEqual(server.workspace_assets(self.workspace)[self.panel], 'stale')
+        for _ in range(2):
+            assets = server.workspace_assets(self.workspace, self.studio)
+            self.assertEqual(assets[self.panel], 'active')
+            self.assertNotIn('projects/studio/content/ui/Removed.rml', assets)
+            self.assertIn('projects/bloom/project.kdl', assets)
+        shutil.rmtree(self.stale)
+        self.assertEqual(server.workspace_assets(self.workspace, self.studio)[self.panel], 'active')
+
+    def test_checkout_watch_saves_and_removals(self):
+        watch = server.WorkspaceWatch(self.workspace, self.studio)
+        (self.stale / 'content/ui/Panel.rml').write_text('ignored change')
+        watch.poll()
+        self.assertEqual(watch.changes(0, 0), (0, {}))
+        for version in (1, 2):
+            text = f'<div>revision {version}</div>'
+            server.save_asset(self.workspace, {'path': '/' + self.panel, 'text': text}, self.studio)
+            watch.poll()
+            self.assertEqual(watch.changes(version - 1, 0), (version, {self.panel: text}))
+            self.assertEqual(server.workspace_assets(self.workspace, self.studio)[self.panel], text)
+        server.save_asset(self.workspace, {'path': self.panel, 'text': None}, self.studio)
+        watch.poll()
+        self.assertEqual(watch.changes(2, 0), (3, {self.panel: None}))
+        self.assertEqual((self.stale / 'content/ui/Panel.rml').read_text(), 'ignored change')
+
+    def test_checkout_manifest_and_external_edits(self):
+        watch = server.WorkspaceWatch(self.workspace, self.studio)
+        manifest = 'content "content"\nname "Checkout"\n'
+        server.save_asset(self.workspace, {'path': 'projects/studio/project.kdl', 'text': manifest}, self.studio)
+        (self.studio / 'content/ui/New.rml').write_text('new panel')
+        watch.poll()
+        self.assertEqual(watch.changes(0, 0), (1, {
+            'projects/studio/project.kdl': manifest,
+            'projects/studio/content/ui/New.rml': 'new panel',
+        }))
+
+    def test_checkout_saves_cannot_escape_mount(self):
+        (self.studio / 'content/escape').symlink_to(self.workspace, target_is_directory=True)
+        for path in ('projects/studio/content/../../outside.rml',
+                     'projects/studio/content/escape/outside.rml',
+                     'projects/studio/private.rml'):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                server.save_asset(self.workspace, {'path': path, 'text': 'bad'}, self.studio)
+
+    def test_new_project_does_not_shadow_studio_when_workspace_copy_is_missing(self):
+        shutil.rmtree(self.stale)
+        created = server.create_project(self.workspace, {'name': 'Studio', 'version': 1}, self.studio)
+        self.assertEqual(created['root'], '/projects/studio-2/')
+
+
 class WebServeLaunch(unittest.TestCase):
+    def test_launch_mounts_studio_from_server_checkout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / 'workspace'
+            workspace.mkdir()
+            build = root / 'build'
+            build.mkdir()
+            for suffix in ('html', 'js', 'wasm', 'data'):
+                (build / f'chibi.{suffix}').write_text('')
+            (build / 'chibi.html').write_text('<script src=chibi.js></script>')
+            studio = Path(server.__file__).resolve().parents[1] / 'projects/studio'
+            argv = ['web_serve.py', '--workspace', str(workspace), '--project',
+                    str(studio), '--build', str(build)]
+            with patch.object(sys, 'argv', argv), \
+                    patch.object(server, 'WorkspaceWatch', wraps=server.WorkspaceWatch) as watch, \
+                    patch.object(server, 'inject_workspace_bridge', wraps=server.inject_workspace_bridge) as bridge, \
+                    patch.object(server, 'ThreadingHTTPServer',
+                                 side_effect=OSError(errno.EADDRINUSE, 'Address already in use')) as http, \
+                    contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    server.main()
+            watch.assert_called_once_with(workspace, studio)
+            http.assert_called_once()
+            self.assertIn('"/projects/studio"', bridge.call_args.args[1])
+
     def test_bridge_precedes_quoted_and_minified_loaders(self):
         for entry in (
             '<script src="chibi-default.js"></script>',

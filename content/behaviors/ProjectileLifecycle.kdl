@@ -1,0 +1,81 @@
+version 3
+name "ProjectileLifecycle"
+id_counter 237
+description "Compiled from the bounded behavior-code prototype subset."
+owner_type "ecs.entity"
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 1
+                type "Event"
+                reference_name "Tick"
+                outputs {
+                    DeltaSeconds id=3 type="float" kind="data"
+                }
+            }
+            - {
+                id 4
+                type "Self"
+                outputs {
+                    Self type_name="ecs.entity" default=0
+                }
+            }
+            - {
+                id 18
+                type "Behavior Expression"
+                reference_name "_bc_component_0_age += _bc_event_DeltaSeconds"
+                inputs {
+                    Exec id=22 kind="exec"
+                    _bc_component_0_age {
+                        id 190
+                        type "float"
+                        binding kind="component_field" component="GAME.GameProjectile" field="age"
+                    }
+                    _bc_event_DeltaSeconds id=191
+                }
+                outputs {
+                    Then id=23 kind="exec"
+                    Result id=21 type="float"
+                }
+            }
+            - {
+                id 67
+                type "Behavior Expression"
+                reference_name "_bc_component_0_age >= _bc_component_0_lifetime"
+                inputs {
+                    Exec id=71 kind="exec"
+                    _bc_component_0_age {
+                        id 204
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameProjectile" field="age"
+                    }
+                    _bc_component_0_lifetime {
+                        id 205
+                        type "double"
+                        flags 0
+                        binding kind="component_field" component="GAME.GameProjectile" field="lifetime"
+                    }
+                }
+                outputs {
+                    True id=72 kind="exec"
+                    False id=73 kind="exec"
+                    Result id=70 type="bool"
+                }
+            }
+            - id=74 type="Destroy Entity"
+        }
+        (array)edges {
+            - from="1.Then" to="18.Exec"
+            - from="1.DeltaSeconds" to="18._bc_event_DeltaSeconds"
+            - from="4.Self" to="74.Entity"
+            - from="18.Then" to="67.Exec"
+            - from="67.True" to="74.Exec"
+        }
+    }
+    - id=6 kind="function" math_expression="_bc_component_0_age += _bc_event_DeltaSeconds" entry_id=207
+    - id=55 kind="function" math_expression="_bc_component_0_age >= _bc_component_0_lifetime" entry_id=193
+}

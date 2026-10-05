@@ -42,9 +42,12 @@ static const pin_array *set_value(const pin_value *v)
 static pin_value set_result(arena *a, const pin_array *source)
 {
     pin_array *copy = pin_array_snapshot_to_arena(a, source);
+    if (!copy) {
+        return (pin_value){ .type = PIN_STRUCT, .container = PIN_CONTAINER_SET };
+    }
     pin_array_index(a, copy);
     return (pin_value){ .type = source->element_type,
-                        .type_name = copy ? copy->type_name : NULL,
+                        .type_name = copy->type_name,
                         .container = PIN_CONTAINER_SET,
                         .ptr = copy };
 }
@@ -99,6 +102,41 @@ static pin_value set_add(const pin_value *inputs, int count, arena *a)
     return set_result(a, &source);
 }
 
+static pin_value set_remove(const pin_value *inputs, int count, arena *a)
+{
+    (void)count;
+    const pin_array *set = set_value(&inputs[0]);
+    int removed = pin_array_find(set, &inputs[1]);
+    int length = set ? set->count : 0;
+    int result_count = length - (removed >= 0);
+    pin_value *items = arena_alloc(a, (size_t)result_count * sizeof *items);
+    if (result_count && !items) {
+        return (pin_value){ .type = PIN_STRUCT, .container = PIN_CONTAINER_SET };
+    }
+    if (removed < 0 && length) {
+        memcpy(items, set->items, (size_t)length * sizeof *items);
+    } else if (removed >= 0) {
+        if (removed) {
+            memcpy(items, set->items, (size_t)removed * sizeof *items);
+        }
+        if (removed + 1 < length) {
+            memcpy(
+                items + removed,
+                set->items + removed + 1,
+                (size_t)(length - removed - 1) * sizeof *items
+            );
+        }
+    }
+    pin_array source = {
+        .element_type = set ? set->element_type : inputs[0].type,
+        .type_name = set ? set->type_name : inputs[0].type_name,
+        .count = result_count,
+        .capacity = result_count,
+        .items = items,
+    };
+    return set_result(a, &source);
+}
+
 #define VALUE_CALL(operation)                                                                                  \
     static const char *operation##_call(arena *storage, const pin_value *inputs, int count, pin_value *result) \
     {                                                                                                          \
@@ -111,6 +149,7 @@ static pin_value set_add(const pin_value *inputs, int count, arena *a)
     }
 VALUE_CALL(set_make)
 VALUE_CALL(set_add)
+VALUE_CALL(set_remove)
 VALUE_CALL(set_contains)
 #undef VALUE_CALL
 static const node_access set_value_access = { .flags = NODE_EFFECT_PURE };
@@ -153,6 +192,23 @@ node_desc NODE_SetAdd = {
     .description = "Returns a copy of Set with Item added, unchanged if an "
                    "equal item is already present.",
 };
+node_desc NODE_SetRemove = {
+    .work = NODE_WORK_SET_COPY,
+    .name = "Set Remove",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = set_item_inputs,
+    .outputs = set_make_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = set_remove,
+    .host_call = &(const node_host_call){ .value = set_remove_call },
+    .access = &set_value_access,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Set",
+    .keywords = "set remove delete item",
+    .description = "Returns a copy of Set with Item removed, unchanged if the "
+                   "item is absent.",
+};
 node_desc NODE_SetContains = {
     .work = NODE_WORK_SET,
     .name = "Set Contains",
@@ -186,6 +242,7 @@ node_desc NODE_SetLength = {
 
 static node_desc *const SET_MAP_NODES[] = { &NODE_MakeSet,
                                             &NODE_SetAdd,
+                                            &NODE_SetRemove,
                                             &NODE_SetContains,
                                             &NODE_SetLength };
 

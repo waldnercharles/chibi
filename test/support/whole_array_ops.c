@@ -385,7 +385,6 @@ static void set_semantics()
         const pin_array *extended = added.ptr;
         assert(extended && extended->count == 4 && source->count == 3);
         assert(pin_value_equal(&extended->items[3], &operands[1]));
-        arena_free(&input);
         if (kind == ARRAY_OP_STRUCTS) {
             const whole_managed *record = extended->items[3].ptr;
             assert(record->count == 4 && !strcmp(record->label, "four"));
@@ -396,14 +395,122 @@ static void set_semantics()
             assert(!strcmp(extended->items[3].str, "four"));
         }
         assert(!strcmp(added.type_name, extended->type_name));
+        pin_value remove_present[] = { args[0], args[2] };
+        pin_value removed = registry_node_by_name("Set Remove")->fn(remove_present, 2, &output);
+        const pin_array *shortened = removed.ptr;
+        assert(removed.container == PIN_CONTAINER_SET && shortened && shortened->count == 2);
+        assert(pin_value_equal(&shortened->items[0], &source->items[0]));
+        assert(pin_value_equal(&shortened->items[1], &source->items[2]));
+        assert(source->count == 3 && pin_value_equal(&source->items[1], &args[2]));
+        pin_value remove_absent[] = { args[0], other->items[1] };
+        pin_value unchanged = registry_node_by_name("Set Remove")->fn(remove_absent, 2, &output);
+        const pin_array *same = unchanged.ptr;
+        assert(same && same->count == 3);
+        for (int i = 0; i < same->count; i++) {
+            assert(pin_value_equal(&same->items[i], &source->items[i]));
+        }
+        arena_free(&input);
         arena_free(&output);
     }
+}
+
+static void entity_set_semantics()
+{
+    arena output = { 0 };
+    pin_value first = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 17 };
+    pin_value second = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 29 };
+    pin_value third = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 41 };
+    pin_value fourth = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 53 };
+    pin_value values[] = { first, second, first };
+    pin_value made = registry_node_by_name("Make Set")->fn(values, 3, &output);
+    const pin_array *set = made.ptr;
+    assert(
+        made.type == PIN_HANDLE && made.container == PIN_CONTAINER_SET && set &&
+        set->count == 2
+    );
+    assert(pin_value_equal(&set->items[0], &first) && pin_value_equal(&set->items[1], &second));
+
+    pin_value contains_args[] = { made, second };
+    assert(registry_node_by_name("Set Contains")->fn(contains_args, 2, &output).b);
+    contains_args[1] = fourth;
+    assert(!registry_node_by_name("Set Contains")->fn(contains_args, 2, &output).b);
+
+    pin_value duplicate_args[] = { made, first };
+    pin_value duplicate = registry_node_by_name("Set Add")->fn(duplicate_args, 2, &output);
+    assert(((const pin_array *)duplicate.ptr)->count == 2);
+    pin_value add_args[] = { made, third };
+    pin_value added = registry_node_by_name("Set Add")->fn(add_args, 2, &output);
+    const pin_array *extended = added.ptr;
+    assert(extended && extended->count == 3 && set->count == 2);
+    assert(pin_value_equal(&extended->items[2], &third));
+
+    pin_value remove_args[] = { added, second };
+    pin_value removed = registry_node_by_name("Set Remove")->fn(remove_args, 2, &output);
+    const pin_array *shortened = removed.ptr;
+    assert(shortened && shortened->count == 2 && set->count == 2 && extended->count == 3);
+    assert(pin_value_equal(&shortened->items[0], &first));
+    assert(pin_value_equal(&shortened->items[1], &third));
+
+    remove_args[1] = fourth;
+    pin_value unchanged = registry_node_by_name("Set Remove")->fn(remove_args, 2, &output);
+    const pin_array *same = unchanged.ptr;
+    assert(same && same->count == 3);
+    for (int i = 0; i < same->count; i++) {
+        assert(pin_value_equal(&same->items[i], &extended->items[i]));
+    }
+    arena_free(&output);
+}
+
+static void set_remove_flow()
+{
+    pin_value values[] = {
+        { .type = PIN_I32, .type_name = "int", .i = 1 },
+        { .type = PIN_I32, .type_name = "int", .i = 2 },
+        { .type = PIN_I32, .type_name = "int", .i = 3 },
+    };
+    pin_array initial = { .element_type = PIN_I32,
+                          .type_name = "int",
+                          .count = 3,
+                          .capacity = 3,
+                          .items = values };
+    pin_value default_value = { .type = PIN_I32,
+                                .type_name = "int",
+                                .container = PIN_CONTAINER_SET,
+                                .ptr = &initial };
+    behavior_asset *asset = behavior_asset_new("Set Remove flow");
+    assert(
+        behavior_asset_add_variable(asset, "Seen", PIN_I32, "int", PIN_CONTAINER_SET, &default_value, "")
+    );
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(!graph_set_event_name(g, event, "Tick"));
+    node *get = variable(asset, g, 0, false);
+    node *remove = graph_add_node(g, registry_node_by_name("Set Remove"));
+    assert(remove);
+    assert(!graph_set_pin_type(g, remove, false, 1, PIN_I32, "int"));
+    assert(!graph_set_pin_default(g, remove, false, 1, &(pin_value){ .type = PIN_I32, .i = 2 }));
+    node *set = variable(asset, g, 0, true);
+    assert(!graph_connect_data(g, get, 0, remove, 0));
+    assert(!graph_connect_data(g, remove, 0, set, 1));
+    assert(!graph_connect_exec(g, event, 0, set, 0, 0));
+
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(instance, false);
+    flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    const pin_array *result = instance->variables[0].ptr;
+    assert(instance->variables[0].container == PIN_CONTAINER_SET && result && result->count == 2);
+    assert(result->items[0].i == 1 && result->items[1].i == 3);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
 }
 void whole_array_op_smoke()
 {
     extern void test_value_index();
     test_value_index();
     set_semantics();
+    entity_set_semantics();
+    set_remove_flow();
     owned_tick();
     owned_tick_arrays();
     for (int operation = 0; operation < ARRAY_OP_COUNT; operation++) {

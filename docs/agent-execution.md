@@ -259,7 +259,9 @@ hardware remains pending. No driver or desktop configuration is changed here.
 The runner owns its detached process group until completion. A finally block
 terminates any remaining group members and reaps the direct child after Ctrl-C,
 monitoring exceptions, time/RSS limits, failure, or normal completion. Ctrl-C
-returns a structured interrupted result and exit 130. Descendant-liveness tests
+returns a structured interrupted result and exit 130. SIGTERM also unwinds cleanup,
+reports `terminated_by_SIGTERM`, and exits 143; a real CLI subprocess regression
+checks termination of its detached child and descendant. Descendant-liveness tests
 exercise a real SIGINT, a monitoring exception, and a parent that exits before
 its child; no GPU is used for these regressions.
 

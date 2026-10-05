@@ -22,6 +22,14 @@ HEALTH = None
 NEXT = 'CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 make test test-render'
 
 
+class TerminationRequested(BaseException):
+    """SIGTERM must unwind the same cleanup scopes as Ctrl-C."""
+
+
+def terminate(_signal, _frame):
+    raise TerminationRequested()
+
+
 def report(status, reason, **extra):
     value = dict(ok=status == 'passed', status=status, reason=reason,
                  coverage='focused-iteration', full_verification=False,
@@ -230,8 +238,12 @@ def main():
 
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, terminate)
     try:
         sys.exit(main())
+    except TerminationRequested:
+        report('blocked', 'terminated_by_SIGTERM')
+        sys.exit(143)
     except KeyboardInterrupt:
         report('blocked', 'interrupted')
         sys.exit(130)

@@ -231,6 +231,54 @@ int main(int argc, char **argv) {
                             except ProcessLookupError:
                                 pass
 
+    @unittest.skipUnless(Path('/proc/self/status').exists(), 'process liveness uses Linux proc')
+    def test_cli_SIGTERM_cleans_detached_child_and_descendant(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pids_file = root / 'pids.json'
+            executable = root / 'test_suite'
+            executable.write_text(f'#!{sys.executable}\n' +
+                                  'import os,sys,json,subprocess,time\n'
+                                  'child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(30)"])\n'
+                                  f'open({str(pids_file)!r},"w").write(json.dumps([os.getpid(),child.pid]))\n'
+                                  'time.sleep(30)\n')
+            executable.chmod(0o700)
+            wrapper = subprocess.Popen([sys.executable, 'tools/agent.py', '--build-dir', directory,
+                                        'test', '--', '--graph-optimize'], cwd=ROOT,
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            pids = []
+            try:
+                deadline = time.monotonic() + 8
+                while not pids_file.exists() and time.monotonic() < deadline:
+                    time.sleep(.01)
+                self.assertTrue(pids_file.exists(), 'fixture child never started')
+                pids = json.loads(pids_file.read_text())
+                wrapper.send_signal(signal.SIGTERM)
+                stdout, _ = wrapper.communicate(timeout=5)
+                self.assertEqual(wrapper.returncode, 143)
+                self.assertEqual(json.loads(stdout)['reason'], 'terminated_by_SIGTERM')
+                for pid in pids:
+                    deadline = time.monotonic() + 3
+                    while time.monotonic() < deadline:
+                        try:
+                            state = Path(f'/proc/{pid}/stat').read_text().split(') ')[1][0]
+                        except FileNotFoundError:
+                            break
+                        if state == 'Z':
+                            break
+                        time.sleep(.01)
+                    else:
+                        self.fail(f'child {pid} remained alive after wrapper SIGTERM')
+            finally:
+                if wrapper.poll() is None:
+                    wrapper.kill()
+                wrapper.communicate()
+                for pid in pids:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+
     @unittest.skipUnless(Path('/proc/self/status').exists(), 'RSS monitoring uses Linux proc')
     def test_resident_memory_budget(self):
         with self.assertRaisesRegex(RuntimeError, 'resident_memory_budget_exceeded'):

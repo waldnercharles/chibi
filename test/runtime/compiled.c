@@ -398,6 +398,200 @@ static bool whole_function_has_owned_set_add(const behavior_function *function)
     return false;
 }
 
+static bool same_traversal_edge(const flow_traversal *a, const flow_traversal *b)
+{
+    return a->from_id == b->from_id && a->from_pin_id == b->from_pin_id &&
+           a->to_id == b->to_id && a->to_pin_id == b->to_pin_id && a->kind == b->kind;
+}
+
+static bool same_traversal(const flow_traversal *a, const flow_traversal *b)
+{
+    return same_traversal_edge(a, b) && a->timestamp == b->timestamp &&
+           a->activation == b->activation;
+}
+
+static const behavior_instance_activity *whole_function_find_activity(
+    const behavior_instance *instance,
+    const flow_traversal *traversal
+)
+{
+    int capacity = 0;
+    uint64_t generation = 0;
+    const behavior_instance_activity
+        *table = behavior_instance_activity_table(instance, &capacity, &generation);
+    for (int i = 0; table && i < capacity; i++) {
+        if (table[i].count && same_traversal_edge(&table[i].last, traversal)) {
+            return &table[i];
+        }
+    }
+    return NULL;
+}
+
+static void whole_function_assert_activity_matches(
+    const behavior_instance *expected,
+    const behavior_instance *actual
+)
+{
+    int expected_capacity = 0, actual_capacity = 0;
+    uint64_t expected_generation = 0, actual_generation = 0;
+    const behavior_instance_activity *expected_table = behavior_instance_activity_table(
+        expected,
+        &expected_capacity,
+        &expected_generation
+    );
+    const behavior_instance_activity *
+        actual_table = behavior_instance_activity_table(actual, &actual_capacity, &actual_generation);
+    int expected_used = 0, actual_used = 0;
+    for (int i = 0; expected_table && i < expected_capacity; i++) {
+        if (!expected_table[i].count) {
+            continue;
+        }
+        expected_used++;
+        const behavior_instance_activity
+            *found = whole_function_find_activity(actual, &expected_table[i].last);
+        assert(found && found->count == expected_table[i].count);
+        assert(same_traversal(&found->last, &expected_table[i].last));
+    }
+    for (int i = 0; actual_table && i < actual_capacity; i++) {
+        actual_used += actual_table[i].count != 0;
+    }
+    assert(expected_used == actual_used);
+}
+
+static void whole_function_owned_set_add_traversals()
+{
+    set_watch_fixture fixture = whole_function_set_watch_fixture();
+    graph *g = fixture.asset->graph;
+    assert(!graph_set_pin_watch(g, fixture.set, 0, 1, 1));
+    assert(behavior_function_owned_set_add_candidate(fixture.asset, g, fixture.add));
+    behavior_program_publish(fixture.asset);
+    const behavior_function *function = behavior_program_function(
+        behavior_program_graph(fixture.asset->program, g),
+        fixture.event
+    );
+    assert(function && function->pin_watches && whole_function_has_owned_set_add(function));
+
+    const behavior_backend backends[] = {
+        BEHAVIOR_ORACLE,
+        BEHAVIOR_SLJIT,
+        BEHAVIOR_BYTECODE,
+    };
+    flow_traversal oracle_traversals[BEHAVIOR_ASSET_INSTANCE_TRACE_MAX];
+    int oracle_count = 0;
+    behavior_instance *oracle_instance = NULL;
+    for (int i = 0; i < (int)(sizeof backends / sizeof backends[0]); i++) {
+        behavior_backend backend = backends[i];
+        if (backend == BEHAVIOR_SLJIT && !graph_sljit_available()) {
+            continue;
+        }
+        behavior_instance *instance = behavior_instance_create(fixture.asset, NULL, NULL, NULL);
+        assert(instance && !behavior_instance_set_backend(instance, backend));
+        behavior_instance_set_trace_enabled(instance, 1);
+        flow_error error = { 0 };
+        flow_run *run = behavior_instance_dispatch(instance, "Append", (flow_inputs){ 0 }, &error);
+        assert(run && flow_run_status(run) == FLOW_COMPLETED);
+        if (backend != BEHAVIOR_ORACLE) {
+            assert(run->whole_function_executed && flow_run_backend(run) == backend);
+            assert(whole_function_has_owned_set_add(function));
+        }
+        int count = 0;
+        const flow_traversal *traversals = flow_run_traversals(run, &count);
+        assert(count > 0 && count <= BEHAVIOR_ASSET_INSTANCE_TRACE_MAX);
+        if (backend == BEHAVIOR_ORACLE) {
+            oracle_count = count;
+            memcpy(oracle_traversals, traversals, (size_t)count * sizeof *traversals);
+            oracle_instance = instance;
+        } else {
+            if (count != oracle_count) {
+                fprintf(stderr, "owned set trace mismatch for backend %d: oracle=%d compiled=%d\n", backend, oracle_count, count);
+                for (int j = 0; j < oracle_count; j++) {
+                    fprintf(
+                        stderr,
+                        "  oracle[%d] %llu:%llu -> %llu:%llu kind=%d "
+                        "step=%lu\n",
+                        j,
+                        (unsigned long long)oracle_traversals[j].from_id,
+                        (unsigned long long)oracle_traversals[j].from_pin_id,
+                        (unsigned long long)oracle_traversals[j].to_id,
+                        (unsigned long long)oracle_traversals[j].to_pin_id,
+                        oracle_traversals[j].kind,
+                        oracle_traversals[j].activation
+                    );
+                }
+                for (int j = 0; j < count; j++) {
+                    fprintf(
+                        stderr,
+                        "  compiled[%d] %llu:%llu -> %llu:%llu kind=%d "
+                        "step=%lu\n",
+                        j,
+                        (unsigned long long)traversals[j].from_id,
+                        (unsigned long long)traversals[j].from_pin_id,
+                        (unsigned long long)traversals[j].to_id,
+                        (unsigned long long)traversals[j].to_pin_id,
+                        traversals[j].kind,
+                        traversals[j].activation
+                    );
+                }
+            }
+            assert(count == oracle_count);
+            for (int j = 0; j < count; j++) {
+                assert(same_traversal(&traversals[j], &oracle_traversals[j]));
+            }
+            whole_function_assert_activity_matches(oracle_instance, instance);
+            behavior_instance_destroy(instance);
+        }
+        if (backend == BEHAVIOR_ORACLE) {
+            const flow_traversal *get_to_add = NULL, *add_to_set = NULL;
+            for (int j = 0; j < count; j++) {
+                const flow_traversal *traversal = &traversals[j];
+                if (traversal->kind != GRAPH_EDGE_DATA) {
+                    continue;
+                }
+                if (traversal->from_id == fixture.get_set->id &&
+                    traversal->from_pin_id == fixture.get_set->output_pins[0].id &&
+                    traversal->to_id == fixture.add->id &&
+                    traversal->to_pin_id == fixture.add->input_pins[0].id) {
+                    assert(!get_to_add);
+                    get_to_add = traversal;
+                }
+                if (traversal->from_id == fixture.add->id &&
+                    traversal->from_pin_id == fixture.add->output_pins[0].id &&
+                    traversal->to_id == fixture.set->id &&
+                    traversal->to_pin_id == fixture.set->input_pins[1].id) {
+                    assert(!add_to_set);
+                    add_to_set = traversal;
+                }
+            }
+            assert(get_to_add && add_to_set);
+            assert(add_to_set < get_to_add);
+            assert(whole_function_find_activity(instance, get_to_add));
+            assert(whole_function_find_activity(instance, add_to_set));
+        }
+    }
+    assert(oracle_instance);
+    behavior_instance_destroy(oracle_instance);
+    behavior_asset_free(fixture.asset);
+
+    set_watch_fixture untraced = whole_function_set_watch_fixture();
+    behavior_program_publish(untraced.asset);
+    const behavior_function *untraced_function = behavior_program_function(
+        behavior_program_graph(untraced.asset->program, untraced.asset->graph),
+        untraced.event
+    );
+    assert(untraced_function && whole_function_has_owned_set_add(untraced_function));
+    behavior_instance *instance = behavior_instance_create(untraced.asset, NULL, NULL, NULL);
+    assert(instance && !behavior_instance_set_backend(instance, BEHAVIOR_BYTECODE));
+    behavior_instance_set_trace_enabled(instance, 0);
+    flow_error error = { 0 };
+    flow_run *run = behavior_instance_dispatch(instance, "Append", (flow_inputs){ 0 }, &error);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED && run->whole_function_executed);
+    int traversal_count = 0;
+    flow_run_traversals(run, &traversal_count);
+    assert(traversal_count == 0);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(untraced.asset);
+}
+
 static void assert_watched_f64_set(const pin_value *value, int count)
 {
     assert(value->type == PIN_F64 && value->container == PIN_CONTAINER_SET);
@@ -1475,6 +1669,7 @@ void test_compiled_behaviors()
     whole_function_scalar_watches(BEHAVIOR_BYTECODE);
     whole_function_set_watches(BEHAVIOR_SLJIT);
     whole_function_set_watches(BEHAVIOR_BYTECODE);
+    whole_function_owned_set_add_traversals();
     for (set_watch_case watch_case = SET_WATCH_UNWATCHED;
          watch_case < SET_WATCH_CASE_COUNT;
          watch_case++) {

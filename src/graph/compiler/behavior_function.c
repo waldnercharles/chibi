@@ -122,12 +122,19 @@ bool behavior_function_owned_set_add_candidate(
     return consumers == 1 && owned_set_add_setter(asset, g, setter, &matched_add) &&
            matched_add == add;
 }
-static int owned_set_add_item(builder *b, const node *setter)
+static int owned_set_add_item(builder *b, node *setter)
 {
     node *add;
     if (!owned_set_add_setter(b->asset, b->graph, setter, &add)) {
         return -1;
     }
+    node *source;
+    int source_pin;
+    if (!graph_input_source(b->graph, add, 0, &source, &source_pin)) {
+        return -1;
+    }
+    behavior_lower_trace(b, add, 0, setter, 1, GRAPH_EDGE_DATA);
+    behavior_lower_trace(b, source, source_pin, add, 0, GRAPH_EDGE_DATA);
     return behavior_lower_input(b, add, 1);
 }
 

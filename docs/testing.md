@@ -253,3 +253,57 @@ each small code change. Prefer the closest focused selector during iteration
 and retain `make test` as the complete gate. Tool tests now run concurrently
 in isolated processes with a four-worker default; raising `TEST_JOBS`
 increases CPU and memory pressure.
+
+### Depth snapshot fixture and Zink endpoint clears
+
+The SDF visibility depth snapshot fixture clears its source depth to `.75` before
+its unchanged full-canvas `.25` seed draw. That triangle covers every pixel of the
+8×8 target, with depth writes and `ALWAYS` enabled; the clear value is not a test
+expectation. All source color/depth, copied depth, and `.125` redraw assertions
+remain unchanged. In the earlier unknown-device offscreen check, deliberately
+using `LESS` instead of `ALWAYS` rejected the `.5` overwrite, failing all four
+cropped color/depth and copied-depth assertions. That mutation was not part of
+the later identity-verified Zink/NVK A/B.
+
+This is a **test-fixture isolation workaround**, not a production renderer or
+driver fix. It removes **clear-`1` plus `ALWAYS` coverage** from this copy fixture,
+which previously cleared only to `1`; clear `0` was tested only in the standalone
+matrix. It retains the full seed, cropped overwrite, depth-copy, and later
+source-redraw checks. The underlying driver issue remains open as CUT-54 /
+[issue #159](https://github.com/waldnercharles/c-blueprints/issues/159); the private
+upstream report has not been submitted.
+
+Matched diagnostic runs used the original fixture from base `7b35b66d` and the
+`.75` change from candidate `44744b5e`, with identical assertions, identity guard,
+launcher, build settings, and 120-second bound. Before either seed, both logged
+SDL `offscreen`, GL vendor `Mesa`, renderer
+`zink Vulkan 1.4(NVIDIA GeForce RTX 4080 SUPER (NVK AD103) (MESA_NVK))`, and
+OpenGL ES 3.2 Mesa 26.2.3. EGL enumeration selected index `1`, render node
+`/dev/dri/renderD128`, verified through sysfs as vendor/device `10de:2702`.
+
+| Matched Zink/NVK engine fixture | Result |
+| --- | --- |
+| Original clear `1.0` | FAIL, exit 1, 0.31 s: four pre-copy center pixels have color/depth `.25`, expected `.5` |
+| Candidate clear `.75` | PASS, exit 0, 0.32 s: unchanged source/copy/redraw assertions |
+
+These runs used ASan/UBSan with the repository render policy
+`ASAN_OPTIONS=detect_leaks=0` and `UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`.
+They establish fixture isolation on that route, not full-suite verification.
+Earlier uninstrumented offscreen GLES/Vulkan passes have unknown device identity;
+a separate identity-probed clear-`1` engine baseline passed on AMD RadeonSI.
+Those results must not be presented as Zink validation. SDL's offscreen path can
+select a different EGL device than the Vulkan ICD or desktop GPU.
+
+The preserved standalone GLES reproducer checks color only and fails the original
+clear-`1` case on both Zink/NVK and Zink/Lavapipe. A separate six-case clear matrix
+on Zink/NVK found that clear `1` leaves `.25` instead of `.5`, clear `0` leaves
+`.5` instead of a later `.125`, and clear `.75` passes both sequences. These are
+separate from the engine fixture's sampled-depth assertions. The Zink
+ALWAYS-to-LE/GE optimization, commit `a58cbdaabfb2f5734df24d40c754d9009883c4a1`,
+is strongly implicated by the matrix but not proven by bisection or driver revert.
+
+Private CUT-54 evidence retains the raw logs, matched diagnostic source diff,
+upstream draft, and original `cut54-repro.c` with SHA-256
+`6c006bbad7430b80e140fbd046933de244c0439c943a73f020fb6c505b0234a4`.
+The failing standalone remains unchanged; this workaround does not resolve its
+failure or establish that ordinary rendering with endpoint clears is correct.

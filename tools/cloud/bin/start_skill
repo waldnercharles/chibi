@@ -5,8 +5,19 @@ repo=$(cd "$(dirname "$0")/../../.." && pwd -P)
 source "$repo/tools/cloud/activate.sh"
 profile=base
 if [[ ${1-} == --modeling ]]; then profile=modeling; shift; fi
-for tool in "$CC" "$CXX" cmake ninja ccache emcc node python3 clang-format; do
-    command -v "$tool" >/dev/null || { echo "Missing $tool; run bash $repo/tools/cloud/setup.sh" >&2; exit 1; }
+prefix=${CHIBI_CLOUD_TOOLS:-/workspace/.cloud-tools}
+missing() { echo "Missing $1; run bash $repo/tools/cloud/setup.sh" >&2; exit 1; }
+for tool in "$prefix/root/usr/lib/llvm-19/bin/llvm-ar" \
+    "$prefix/root/usr/lib/llvm-19/bin/llvm-nm" \
+    "$prefix/root/usr/lib/llvm-19/bin/wasm-ld" "$prefix/root/usr/bin/wasm-opt" \
+    "$CC" "$CXX" cmake ninja ccache emcc node python3 clang-format; do
+    command -v "$tool" >/dev/null || missing "$tool"
+done
+for file in "$prefix/emscripten-config" \
+    "$prefix/root/usr/lib/llvm-19/lib/clang/19/include/stddef.h" \
+    "$prefix/root/usr/lib/llvm-19/lib/clang/19/lib/linux/libclang_rt.asan-x86_64.a" \
+    "$prefix/root/usr/share/emscripten/node_modules/acorn/package.json"; do
+    [[ -f $file ]] || missing "$file"
 done
 if [[ $profile == modeling ]]; then bash "$repo/tools/cloud/modeling_setup.sh" --check; fi
 if [[ ${1-} == -- ]]; then shift; fi

@@ -3,6 +3,7 @@
 set -euo pipefail
 root=${CHIBI_CLOUD_TOOLS:-/workspace/.cloud-tools}
 [[ $root == /* ]] || { echo 'CHIBI_CLOUD_TOOLS must be an absolute path.' >&2; exit 1; }
+[[ ! $root =~ [[:space:]] ]] || { echo 'CHIBI_CLOUD_TOOLS cannot contain whitespace: Make toolchain flags require a single path.' >&2; exit 1; }
 script_dir=$(cd "$(dirname "$0")" && pwd -P)
 version=4.3.2+dfsg-2
 
@@ -32,7 +33,8 @@ esac
 # Pinned official packages, including packages already installed on the host.
 # APT resolves missing dependencies against the host Debian package database.
 # The parent setup prepares verified Debian archive sources and package lists.
-archives="$root/apt/modeling-archives"
+archives=$(mktemp -d "$root/apt/modeling-transaction.XXXXXX")
+trap 'rm -rf "$archives"' EXIT
 mkdir -p "$archives/partial" "$root/root" "$root/bin"
 export APT_CONFIG="$root/apt.conf"
 apt-get --download-only --reinstall --no-install-recommends -y \

@@ -23,9 +23,25 @@ cat > "$tmp/main.c" <<'C'
 #include <stdio.h>
 int main(void) { puts("C23 compiler preflight passed"); return 0; }
 C
-cmake -S "$tmp" -B "$tmp/build" -G Ninja
+# Match Makefile's expansion of the toolchain flag string into configure args.
+cat > "$tmp/configure.mk" <<'MAKE'
+configure:
+	cmake -S "$(SOURCE)" -B "$(SOURCE)/build" -G Ninja $(NATIVE_TOOLCHAIN_FLAGS)
+MAKE
+make -f "$tmp/configure.mk" SOURCE="$tmp" configure
+[[ $(sed -n 's/^LIBCLANG_ROOT:UNINITIALIZED=//p' "$tmp/build/CMakeCache.txt") == "${CHIBI_CLOUD_TOOLS:-/workspace/.cloud-tools}/root/usr/lib/llvm-19" ]]
 cmake --build "$tmp/build" --parallel 2
 "$tmp/build/smoke"
-emcmake cmake --version
+cat > "$tmp/main.cpp" <<'CPP'
+#include <iostream>
+int main() { std::cout << "C++ compiler preflight passed\n"; }
+CPP
+"$CXX" "$tmp/main.cpp" -o "$tmp/cxx"
+"$tmp/cxx"
+"$CC" -fsanitize=address,undefined "$tmp/main.c" -o "$tmp/sanitizers"
+"$tmp/sanitizers"
+# Compile AND execute optimized WebAssembly: exercise LLVM, wasm-ld and Binaryen.
+EMCC_CORES=2 emcc "$tmp/main.c" -O2 -sENVIRONMENT=node -sSINGLE_FILE=1 -o "$tmp/smoke.js"
+node "$tmp/smoke.js"
 "$repo/tools/cloud/bin/start_skill"
 printf 'Activation and compiler smoke passed\n'

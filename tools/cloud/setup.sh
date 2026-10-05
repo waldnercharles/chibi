@@ -4,6 +4,7 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/../.." && pwd -P)
 prefix=${CHIBI_CLOUD_TOOLS:-/workspace/.cloud-tools}
 [[ $prefix == /* ]] || { echo 'CHIBI_CLOUD_TOOLS must be an absolute path.' >&2; exit 1; }
+[[ ! $prefix =~ [[:space:]] ]] || { echo 'CHIBI_CLOUD_TOOLS cannot contain whitespace: Make toolchain flags require a single path.' >&2; exit 1; }
 profile=${1:-base}
 [[ $profile == base || $profile == modeling ]] || { echo 'Usage: setup.sh [base|modeling]' >&2; exit 2; }
 . /etc/os-release
@@ -26,12 +27,18 @@ Dir::Cache::archives "$prefix/apt/archives";
 APT::Sandbox::User "$(id -un)";
 CONFIG
 export APT_CONFIG="$prefix/apt.conf"
-packages=(clang-19 libclang-19-dev cmake ninja-build ccache libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev xvfb xauth emscripten)
+# These roots include every workspace-local executable used by Emscripten.
+# Runtime shared-library dependencies may still be supplied by the Debian host.
+packages=(llvm-19 llvm-19-runtime llvm-19-tools lld-19 binaryen clang-19 libclang-19-dev libclang-common-19-dev libclang-rt-19-dev cmake ninja-build ccache libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev xvfb xauth emscripten node-acorn)
 apt-get update
-apt-get --download-only -y -o Debug::NoLocking=1 install "${packages[@]}"
+# Extract only this transaction. Old archive versions must never be replayed.
+archives=$(mktemp -d "$prefix/apt/transaction.XXXXXX")
+trap 'rm -rf "$archives"' EXIT
+mkdir -p "$archives/partial"
+apt-get --download-only -y -o Debug::NoLocking=1 -o "Dir::Cache::archives=$archives" install "${packages[@]}"
 # Explicit roots must also exist locally when the host already has them installed.
-(cd "$prefix/apt/archives" && apt-get download "${packages[@]}")
-for pkg in "$prefix"/apt/archives/*.deb; do
+(cd "$archives" && apt-get download "${packages[@]}")
+for pkg in "$archives"/*.deb; do
     case "$pkg" in */nodejs_*.deb|*/nodejs-doc_*.deb) continue;; esac
     dpkg-deb -x "$pkg" "$prefix/root"
 done
@@ -46,6 +53,10 @@ for p in root.rglob('*'):
             p.unlink()
             p.symlink_to(host)
 PY
+# The platform Node is not Debian's patched Node; expose Debian's JS dependency
+# through standard package resolution rather than installing another Node runtime.
+mkdir -p "$prefix/root/usr/share/emscripten/node_modules"
+ln -sfn ../../nodejs/acorn "$prefix/root/usr/share/emscripten/node_modules/acorn"
 [[ -x $prefix/python/bin/python ]] || python3 -m venv "$prefix/python"
 "$prefix/python/bin/pip" install --no-cache-dir --disable-pip-version-check 'cmake==4.2.3' 'clang-format==22.*'
 python3 - "$prefix" "$(command -v node)" <<'PY'
@@ -55,4 +66,4 @@ p = Path(sys.argv[1])
 (p / 'emscripten-config').write_text(f'LLVM_ROOT = {str(p / "root/usr/lib/llvm-19/bin")!r}\nBINARYEN_ROOT = {str(p / "root/usr")!r}\nNODE_JS = {[sys.argv[2]]!r}\nCACHE = {str(p / "emscripten-cache")!r}\n')
 PY
 if [[ $profile == modeling ]]; then bash "$repo/tools/cloud/modeling_setup.sh"; fi
-"$repo/tools/cloud/bin/start_skill"
+timeout 180 "$repo/tools/cloud/bin/start_skill" -- bash "$repo/tools/cloud/smoke.sh"

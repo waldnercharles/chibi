@@ -4,6 +4,7 @@ _chibi_cloud_activate() {
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
     prefix=${CHIBI_CLOUD_TOOLS:-/workspace/.cloud-tools}
     [[ $prefix == /* ]] || { echo 'CHIBI_CLOUD_TOOLS must be an absolute path.' >&2; return 1; }
+    [[ ! $prefix =~ [[:space:]] ]] || { echo 'CHIBI_CLOUD_TOOLS cannot contain whitespace: Make toolchain flags require a single path.' >&2; return 1; }
     if [[ ! -x $prefix/root/usr/bin/clang-19 || ! -x $prefix/python/bin/cmake ]]; then
         printf 'Cloud toolchain missing at %s. Run: bash %s/tools/cloud/setup.sh\n' "$prefix" "$repo" >&2
         return 1
@@ -22,13 +23,12 @@ _chibi_cloud_activate() {
     for item in "$prefix/root/usr/lib/llvm-19/bin" "$prefix/root/usr/bin" "$prefix/root/usr/share/emscripten" "$prefix/python/bin" "$prefix/bin" "$repo/tools/cloud/bin"; do
         _chibi_prepend PATH "$item"
     done
-    for name in LD_LIBRARY_PATH LIBRARY_PATH; do
+    for name in LD_LIBRARY_PATH; do
         _chibi_prepend "$name" "$prefix/root/usr/lib/llvm-19/lib"
         _chibi_prepend "$name" "$prefix/root/usr/lib/x86_64-linux-gnu"
     done
-    for name in C_INCLUDE_PATH CPLUS_INCLUDE_PATH; do
-        _chibi_prepend "$name" "$prefix/root/usr/include"
-    done
+    # CMake's prefix locates native headers/libraries. Global C/C++ include or
+    # LIBRARY_PATH overrides would contaminate Emscripten's target sysroot.
     _chibi_prepend CMAKE_PREFIX_PATH "$prefix/root/usr"
     _chibi_prepend PKG_CONFIG_PATH "$prefix/root/usr/share/pkgconfig"
     _chibi_prepend PKG_CONFIG_PATH "$prefix/root/usr/lib/x86_64-linux-gnu/pkgconfig"

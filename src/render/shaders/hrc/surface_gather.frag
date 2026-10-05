@@ -19,6 +19,7 @@ layout(set = 3, binding = 0) uniform uniform_block
     float u_radius;
     float u_relief;
     int u_block;
+    int u_debug_view;
 };
 
 vec3 quadrant(int i, vec2 uv)
@@ -63,6 +64,7 @@ void main()
     ivec2 p = clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1);
     vec4 geometry = texelFetch(u_cover, p, 0);
     float height = geometry.g > 1e-6 ? texelFetch(u_albedo, p, 0).a / geometry.g : 0.0;
+    bool debug_probes = u_debug_view == 12;
     if (geometry.b > geometry.g * 0.5 && geometry.g > 1e-6) {
         vec2 tilt = texelFetch(u_normal, p, 0).xy / geometry.g;
         float nz = sqrt(max(1.0 - dot(tilt, tilt), 0.0));
@@ -74,6 +76,9 @@ void main()
     for (int i = 0; i < 4; i++) {
         vec3 light = vec3(0);
         float openness = 0.0;
+        float candidates = 0.0;
+        float visibility_tests = 0.0;
+        float visible_candidates = 0.0;
         // Uniform radial quadrature preserves face reach without Gaussian
         // convolution across unrelated geometry. Missing/blocked probes stay
         // in the denominator rather than amplifying the surviving light.
@@ -86,11 +91,33 @@ void main()
             // floor remains a valid probe despite its opaque display color.
             float open = exp(-max(texture(u_source, sample_uv).a, 0.0));
             if (open <= 1e-6) continue;
+            if (debug_probes) candidates += 1.0;
             openness += open;
-            float visible = geometry.g > 0.5 ? visibility(uv, offset, height, distance) : 1.0;
+            float visible = 1.0;
+            if (geometry.g > 0.5) {
+                if (debug_probes) visibility_tests += 1.0;
+                visible = visibility(uv, offset, height, distance);
+                if (debug_probes) visible_candidates += visible;
+            }
             light += max(quadrant(i, sample_uv), vec3(0)) * open * visible;
         }
-        gathered[i] = vec4(light, openness) / 3.0;
+        if (debug_probes) {
+            float visible_fraction = visibility_tests > 0.0
+                ? visible_candidates / visibility_tests : 0.0;
+            gathered[i] = vec4(candidates / 3.0,
+                               visibility_tests / 3.0,
+                               visible_fraction,
+                               openness / 3.0);
+        } else {
+            gathered[i] = vec4(light, openness) / 3.0;
+        }
+    }
+    if (debug_probes) {
+        out_q0 = gathered[0];
+        out_q1 = gathered[1];
+        out_q2 = gathered[2];
+        out_q3 = gathered[3];
+        return;
     }
     // Composite uses quadrant zero's alpha as the shared receiver reach.
     float open = 0.25 * (gathered[0].a + gathered[1].a + gathered[2].a + gathered[3].a);

@@ -1363,11 +1363,15 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
         cf_material_set_uniform_fs(mat, "u_radius", &radius, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_relief", &relief, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_block", block, CF_UNIFORM_TYPE_INT, 1);
+        int debug_view = hrc->lighting.debug_view;
+        cf_material_set_uniform_fs(mat, "u_debug_view", &debug_view, CF_UNIFORM_TYPE_INT, 1);
         s_draw_region(hrc, hrc->surface_gather_shd, hrc->surface_canvas[0], width, height);
         hrc->surface_work.candidates = (size_t)width * height * 12;
         hrc->surface_work.visibility_taps = (size_t)width * height * 48;
         render_gpu_timing_detail("Surface gather");
-        s_dispatch_surface_filter(hrc, *block);
+        if (hrc->lighting.debug_view != GAME_HRC_DEBUG_GATHER_PROBES) {
+            s_dispatch_surface_filter(hrc, *block);
+        }
         return sigma / (float)*block;
     }
     /* A seed fragment fetches its block's taps in turn. Blocks of 4 pixels or
@@ -1897,7 +1901,7 @@ static const s_int_range s_int_ranges[] = {
       GAME_HRC_GATHER_AUTO,
       "gather_resolution" },
     { offsetof(GameHRC2D, upscale_mode), 0, 3, "upscale_mode" },
-    { offsetof(GameHRC2D, debug_view), 0, 9, "debug_view" },
+    { offsetof(GameHRC2D, debug_view), 0, GAME_HRC_DEBUG_GATHER_PROBES, "debug_view" },
     { offsetof(GameHRC2D, trace_levels), HRC_MIN_TRACE_LEVELS, HRC_MAX_TRACE_LEVELS, "trace_levels" },
     { offsetof(GameHRC2D, tone_mapping), 0, 1, "tone_mapping" },
     { offsetof(GameHRC2D, surface_shadow_mode), 0, 2, "surface_shadow_mode" },
@@ -2309,19 +2313,20 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
                                                  "surface_q2",
                                                  "surface_q3" };
     for (int i = 0; i < 4; i++) {
-        cf_draw_set_texture(
-            surface_names[i],
-            surface_sigma > 0
-                ? cf_canvas_get_target2(
-                      lighting.surface_mode == GAME_HRC_SURFACE_DEPTH
-                          ? (hrc->depth_has_history && lighting.surface_depth_temporal
-                                 ? hrc->depth_history[hrc->depth_ping]
-                                 : hrc->surface_canvas[1])
-                          : hrc->surface_history[hrc->surface_ping],
-                      i
-                  )
-                : hrc->black
-        );
+        CF_Texture surface_texture = hrc->black;
+        if (lighting.debug_view == GAME_HRC_DEBUG_TRANSPORT_QUADRANTS) {
+            surface_texture = cf_canvas_get_target2(hrc->gather_canvas, 2 + i);
+        } else if (surface_sigma > 0) {
+            CF_Canvas surface_output = lighting.debug_view == GAME_HRC_DEBUG_GATHER_PROBES
+                                         ? hrc->surface_canvas[0]
+                                     : lighting.surface_mode == GAME_HRC_SURFACE_DEPTH
+                                         ? (hrc->depth_has_history && lighting.surface_depth_temporal
+                                                ? hrc->depth_history[hrc->depth_ping]
+                                                : hrc->surface_canvas[1])
+                                         : hrc->surface_history[hrc->surface_ping];
+            surface_texture = cf_canvas_get_target2(surface_output, i);
+        }
+        cf_draw_set_texture(surface_names[i], surface_texture);
     }
     float world_per_px = view.width / (float)hrc->canvas_w;
     cf_draw_set_uniform("world_per_px", &world_per_px, CF_UNIFORM_TYPE_FLOAT, 1);

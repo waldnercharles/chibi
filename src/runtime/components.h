@@ -933,6 +933,9 @@ typedef enum
     GAME_HRC_DEBUG_SURFACE_LIGHT NODE_NAME("Surface light"),
     GAME_HRC_DEBUG_LIGHT_DIRECTION NODE_NAME("Light direction"),
     GAME_HRC_DEBUG_SHADING_NORMALS NODE_NAME("Shading normals"),
+    GAME_HRC_DEBUG_TRANSPORT_QUADRANTS NODE_NAME("HRC transport quadrants"),
+    GAME_HRC_DEBUG_SURFACE_QUADRANTS NODE_NAME("Surface quadrants"),
+    GAME_HRC_DEBUG_GATHER_PROBES NODE_NAME("Gather probes"),
 } GameHRCDebugView;
 
 typedef enum
@@ -1032,7 +1035,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     float upscale_threshold;
     /* 0 draws the lit frame; 1 scene, 2 emission, 3 transmittance, 4 albedo,
      * 5 received light, 6 normals, 7 surface light, 8 dominant light
-     * direction, 9 shading normals. */
+     * direction, 9 shading normals, 10 transport quadrants, 11 surface
+     * quadrants, 12 Gather probes. */
     GameHRCDebugView debug_view;
     /* Perspective distance for particles: raised particles scale by
      * focal / (focal + elevation). */

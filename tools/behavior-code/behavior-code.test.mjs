@@ -81,6 +81,24 @@ function mappedGraph(behavior, map) {
   };
 }
 
+function checkedInContactGraph(map, kdl) {
+  const nodes = Object.entries(map.refs).map(([ref, id]) => {
+    const multiline = new RegExp(String.raw`\bid\s+${id}\s+type\s+"([^"]+)"(?:\s+reference_name\s+"([^"]+)")?`).exec(kdl);
+    const compact = new RegExp(String.raw`\bid=${id}\s+type="([^"]+)"`).exec(kdl);
+    const match = multiline ?? compact;
+    assert(match, `checked-in ContactRegistry graph is missing node ${id}`);
+    assert.equal(match[1], map.types[ref]);
+    return { id, type: match[1], ...(match[2] ? { reference_name: match[2] } : {}) };
+  });
+  const edges = [...kdl.matchAll(/-\s+from="([^"]+)"\s+to="([^"]+)"/g)].map(([, from, to]) => {
+    const saved = map.edges.find((edge) => `${edge.from}.${edge.from_pin}` === from && `${edge.to}.${edge.to_pin}` === to);
+    assert(saved, `checked-in ContactRegistry map is missing graph edge ${from} -> ${to}`);
+    return { from, to, kind: saved.kind };
+  });
+  assert.equal(edges.length, map.edges.length);
+  return { nodes, edges };
+}
+
 function statementBySource(behavior, source) {
   return behavior.handlers[0].body.find((statement) => statement.source === source);
 }
@@ -265,7 +283,7 @@ test('diagnostics span the original RHS tokens with compact and multiline operat
   }
 });
 
-test('string collection defaults decode escapes and reject unsupported escapes', () => {
+test('string collection defaults decode escapes and reject unsupported escapes and NUL', () => {
   const source = String.raw`behavior Strings { state string[] values = ["a\nb", "a\"b", "c\\d", "\u{1f642}"]; on Tick() {} }`;
   assert.deepEqual(parseBehavior(source).stateVariables[0].default, ['a\nb', 'a"b', 'c\\d', '🙂']);
   const invalid = String.raw`behavior Strings { state string[] values = ["bad\q"]; on Tick() {} }`;
@@ -274,6 +292,14 @@ test('string collection defaults decode escapes and reject unsupported escapes',
     assert.equal(invalid.slice(error.span.start, error.span.end), '"bad\\q"');
     return true;
   });
+  for (const literal of [String.raw`"a\0b"`, String.raw`"a\u0000b"`, String.raw`"a\u{0}b"`, `"a${'\0'}b"`]) {
+    const invalidNul = `behavior Strings { state string[] values = [${literal}]; on Tick() {} }`;
+    assert.throws(() => parseBehavior(invalidNul), (error) => {
+      assert.equal(error.code, 'E_STRING_NUL');
+      assert.equal(invalidNul.slice(error.span.start, error.span.end), literal);
+      return true;
+    });
+  }
 });
 
 test('event names and payload members resolve explicitly; old field selectors are rejected', () => {
@@ -514,7 +540,57 @@ test('graph exports newly bound component inputs as source aliases and validates
 
   node.reference_name = '_bc_component_0_age += _bc_component_0_speed';
   delete node.inputs._bc_component_0_speed;
-  assert.throws(() => graphToSource(source, behavior, graph, map, registry), { code: 'E_NAME_UNRESOLVED' });
+  assert.throws(() => graphToSource(source, behavior, graph, map, registry), /_bc_component_0_speed has no verified source binding or supported default/);
+});
+
+test('graph export preserves a colliding component field name used as a constant input', () => {
+  const source = `behavior GraphConstant {
+  on Tick(GameProjectile projectile) {
+    projectile.age += event.dt;
+  }
+}`;
+  const { behavior, map } = compileModel(source);
+  const expression = behavior.handlers[0].body[0];
+  const graph = mappedGraph(behavior, map);
+  const node = graph.nodes.find((candidate) => candidate.id === map.refs[expression.id]);
+  node.reference_name = '_bc_component_0_age += speed + _bc_event_DeltaSeconds';
+  node.inputs = {
+    _bc_component_0_age: { binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'age' } },
+    speed: { default: 2 },
+  };
+
+  const exported = graphToSource(source, behavior, graph, map, registry);
+  assert.match(exported, /projectile\.age \+= 2 \+ event\.dt/);
+  assert.doesNotMatch(exported, /projectile\.speed/);
+  assertPlannedConnections(compileModel(exported, map).behavior);
+
+  delete node.inputs.speed.default;
+  assert.throws(() => graphToSource(source, behavior, graph, map, registry), /speed has no verified source binding or supported default/);
+});
+
+test('graph export keeps a wired loop binding when its pin also has a default', () => {
+  const source = `behavior LoopBinding {
+  state float[] increments = [2];
+  on Tick(GameProjectile projectile) {
+    for (increment in increments) {
+      projectile.age += increment;
+    }
+  }
+}`;
+  const { behavior, map } = compileModel(source);
+  const expression = behavior.handlers[0].body[0].body[0];
+  const graph = mappedGraph(behavior, map);
+  const node = graph.nodes.find((candidate) => candidate.id === map.refs[expression.id]);
+  node.reference_name = expression.resolvedSource;
+  node.inputs = {
+    _bc_component_0_age: { binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'age' } },
+    increment: { default: 2 },
+  };
+
+  const exported = graphToSource(source, behavior, graph, map, registry);
+  assert.match(exported, /for \(increment in increments\)/);
+  assert.match(exported, /projectile\.age \+= increment/);
+  assert.doesNotMatch(exported, /projectile\.age \+= 2/);
 });
 
 test('source edits that retarget a set rebuild both semantic variable nodes', () => {
@@ -561,6 +637,21 @@ test('source edits that retarget a set rebuild both semantic variable nodes', ()
   const changedGraph = mappedGraph(old.behavior, old.map);
   changedGraph.nodes.find((candidate) => candidate.id === setterId).reference_name = 'b';
   assert.throws(() => updateGraphOperations(changed.behavior, old.map, changedGraph), /no longer matches its source binding/);
+});
+
+test('legacy ContactRegistry map adds the new Set Add getter using the checked-in graph', () => {
+  const contactSource = readFileSync(new URL('./examples/ContactRegistry.code', import.meta.url), 'utf8');
+  const map = JSON.parse(readFileSync(new URL('./examples/ContactRegistry.code.map.json', import.meta.url), 'utf8'));
+  const kdl = readFileSync(new URL('../../content/behaviors/ContactRegistry.kdl', import.meta.url), 'utf8');
+  const { behavior } = compileModel(contactSource);
+  const graph = checkedInContactGraph(map, kdl);
+  const getterRef = 'source-2-set-source';
+
+  assert.equal(map.refs[getterRef], undefined);
+  const plan = updateGraphOperations(behavior, map, graph);
+  assert(plan.added.has(getterRef));
+  assert(plan.operations.some((operation) => operation.op === 'add_variable_node'
+    && operation.ref === getterRef && operation.variable === 'contacted'));
 });
 
 test('the published array and set example resolves through the same source path', () => {

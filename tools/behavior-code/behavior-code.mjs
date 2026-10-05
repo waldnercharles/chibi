@@ -293,6 +293,7 @@ function decodeStringLiteral(token, fail) {
     fail(token, `unsupported string escape \\${escape}`, 'E_STRING_ESCAPE');
   }
   if (quote !== '"' && quote !== "'") fail(token, 'invalid string literal');
+  if (result.includes('\0')) fail(token, 'string literals cannot contain NUL characters', 'E_STRING_NUL');
   return result;
 }
 
@@ -829,8 +830,13 @@ export function sourceGraphReferences(behavior) {
 }
 
 function mappedGraphReferences(map, fallbackBehavior = null) {
-  if (map.node_references) return map.node_references;
-  if (fallbackBehavior) return sourceGraphReferences(fallbackBehavior);
+  const mapped = new Set(Object.keys(map.refs ?? {}));
+  if (map.node_references) {
+    return Object.fromEntries(Object.entries(map.node_references).filter(([ref]) => mapped.has(ref)));
+  }
+  if (fallbackBehavior) {
+    return Object.fromEntries(Object.entries(sourceGraphReferences(fallbackBehavior)).filter(([ref]) => mapped.has(ref)));
+  }
   const references = {};
   let states = [];
   try { states = JSON.parse(map.state_signature ?? '[]'); } catch {}
@@ -849,7 +855,7 @@ function mappedGraphReferences(map, fallbackBehavior = null) {
     }
   };
   for (const handler of map.source_tree?.handlers ?? []) visit(handler.body);
-  return references;
+  return Object.fromEntries(Object.entries(references).filter(([ref]) => mapped.has(ref)));
 }
 
 export function buildOperations(behavior, selectors = null) {
@@ -1251,10 +1257,24 @@ export function graphToSource(source, behavior, graph, map, registry) {
         }
         graphSource = graphSource.replace(new RegExp('(^|[^A-Za-z0-9_])' + internal + '(?![A-Za-z0-9_])', 'g'), '$1' + field.alias + '.' + binding.field);
       }
+      const sourceNames = new Set([
+        'event', 'pi', 'e',
+        ...handler.params.map((parameter) => parameter.name),
+        ...(statement.loopBindings ?? []).map((loop) => loop.name),
+      ]);
       for (const symbol of expressionSymbols(graphSource ?? '')) {
+        if (sourceNames.has(symbol)) continue;
         const input = node.inputs?.[symbol];
         const binding = input?.binding;
-        if (!binding) continue;
+        if (!binding) {
+          if (input && Object.hasOwn(input, 'default')) {
+            const literal = graphInputDefaultSource(input);
+            if (literal === null) throw new Error('input ' + symbol + ' has a default outside the supported scalar literal subset');
+            graphSource = graphSource.replace(new RegExp('(^|[^A-Za-z0-9_])' + symbol + '(?![A-Za-z0-9_])', 'g'), '$1' + literal);
+            continue;
+          }
+          throw new Error('input ' + symbol + ' has no verified source binding or supported default');
+        }
         if (binding.kind !== 'component_field' || !binding.field) {
           throw new Error('input ' + symbol + ' has a graph binding that the source subset cannot represent');
         }
@@ -1321,6 +1341,15 @@ export function graphToSource(source, behavior, graph, map, registry) {
 
 function selectorText(binding) {
   throw new Error('graph binding is outside the supported source subset: ' + binding.kind);
+}
+
+function graphInputDefaultSource(input) {
+  if (!input || !Object.hasOwn(input, 'default')) return null;
+  const value = input.default;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return String(value);
+  if (typeof value === 'string') return JSON.stringify(value);
+  return null;
 }
 
 export function readBehaviorFile(path) {

@@ -422,7 +422,8 @@ static bool depth_snapshot_backend()
                          "void main(){gl_Position=vec4(in_pos,0.0,1.0);}\n";
     const char
         *seed_source = "layout(location=0) out vec4 out_value;\n"
-                       "layout(set=3,binding=0) uniform uniform_block {vec4 seed;};\n"
+                       "layout(set=3,binding=0) uniform uniform_block {vec4 "
+                       "seed;};\n"
                        "void main(){gl_FragDepth=seed.x;out_value=seed;}\n";
     const char
         *decode_source = "layout(location=0) out vec4 out_value;\n"

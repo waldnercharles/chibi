@@ -202,6 +202,7 @@ struct app_scene_authoring
     char *preview_prototype_id;
     int runtime_preview_prototype;
     scene_actor *actors;
+    char **component_strings; /* Keeps scene-authored component string fields alive. */
     scene_prototype_asset *prototypes;
     scene_content_entry *content;
     reference_index *asset_index;

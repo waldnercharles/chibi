@@ -184,13 +184,21 @@ void run_prototype_checks(void)
         "instance capture stores sparse field overrides"
     );
     av_value *sparse = test_read_asset_value("GameHealth { current 7; }; ");
+    char **owned_strings = NULL;
     ecs_entity override_entity = { 0 };
     test_check(
         base &&
             game_prototype_spawn(base, world, &hooks, &override_entity, error, sizeof error) ==
                 ECS_OK &&
-            game_prototype_apply_components_value(world, override_entity, sparse, &registry, error, sizeof error) ==
-                0 &&
+            game_prototype_apply_components_value(
+                world,
+                override_entity,
+                sparse,
+                &registry,
+                &owned_strings,
+                error,
+                sizeof error
+            ) == 0 &&
             GAME_GameHealth_get(world, override_entity)->current == 7 &&
             GAME_GameHealth_get(world, override_entity)->maximum == 50,
         "sparse field overrides apply without zeroing sibling fields"
@@ -215,6 +223,7 @@ void run_prototype_checks(void)
         "editing/freeing a prototype does not change spawned entity values"
     );
     ecs_world_free(world);
+    game_prototype_owned_strings_free(owned_strings);
     test_check(health != NULL, "descriptor lookup is independent of component C types");
 }
 

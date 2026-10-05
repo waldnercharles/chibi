@@ -491,6 +491,7 @@ static void print_test_selectors()
 {
     puts("Common focused native selectors (pass one to make test-fast):");
     puts("  authoring/graphs: --automation-authoring --graph-arrange --graph-editing --graph-inline --graph-optimize --graph-signature --graph-overhaul");
+    puts("  assets/support: --asset-documents --rcss --tree-watch");
     puts("  runtime/compiler: --runtime-execution --behavior-parity --compiled-behaviors --simulation --system-arithmetic");
     puts("  Studio/UI: --editor-graph --editor-flow --scene-documents --studio-documents --studio-models --studio-lists --studio-outliner --studio-output --studio-properties --ui-documents --ui-designer --ui-controls --ui-popovers --ui-lists --rmlui-kit --code-intelligence --ui-motion");
     puts("  modeling/materials: --model-constructive --model-bake --model-export --model-inspection --modeling --materials --material-thermal --material-mpm");
@@ -682,6 +683,14 @@ int main(int argc, char **argv)
         test_asset_source();
         test_asset_code_checkpoint();
         run_graph_document_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--rcss")) {
+        test_rcss();
+        return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--tree-watch")) {
+        test_tree_watch();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--arrange-bench")) {

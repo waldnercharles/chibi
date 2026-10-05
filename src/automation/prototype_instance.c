@@ -115,6 +115,7 @@ static int compose(
     const game_scene_entity *entity,
     const game_prototype_registry *registry,
     ecs_entity *out,
+    char ***owned_strings,
     char *error,
     size_t size
 )
@@ -124,7 +125,7 @@ static int compose(
     }
     if (game_prototype_spawn_components(base, world, out, error, size) != ECS_OK ||
         (entity->components &&
-         game_prototype_apply_components_value(world, *out, entity->components, registry, error, size) !=
+         game_prototype_apply_components_value(world, *out, entity->components, registry, owned_strings, error, size) !=
              0)) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
@@ -150,9 +151,11 @@ int automation_prototype_from_instance(
                              ? game_prototype_load(instance->prototype_text, registry, error, error_size)
                              : NULL;
     ecs_world *world = ecs_world_new();
+    char **component_strings = NULL;
     ecs_entity spawned = { 0 };
-    int status = base ? compose(world, base, entity, registry, &spawned, error, error_size)
-                      : CHIBI_AUTOMATION_VALIDATION_ERROR;
+    int status = base
+                   ? compose(world, base, entity, registry, &spawned, &component_strings, error, error_size)
+                   : CHIBI_AUTOMATION_VALIDATION_ERROR;
     if (status == CHIBI_AUTOMATION_OK && instance->name) {
         game_prototype *made = game_prototype_from_instance(
             instance->name,
@@ -182,6 +185,7 @@ int automation_prototype_from_instance(
         status = CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     ecs_world_free(world);
+    game_prototype_owned_strings_free(component_strings);
     game_prototype_free(base);
     game_scene_document_free(scene);
     return status;

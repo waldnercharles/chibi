@@ -207,6 +207,7 @@ static int refresh_prototype_actor(
             actor->entity,
             overrides,
             &scene->registry,
+            &scene->component_strings,
             error,
             sizeof error
         ) != 0) {

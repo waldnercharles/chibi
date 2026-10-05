@@ -1763,6 +1763,7 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         remove_selected(scene);
     }
     afree(scene->actors);
+    game_prototype_owned_strings_free(scene->component_strings);
     afree(scene->marquee_base);
     scene_view_free(scene);
     reference_index_free(scene->asset_index);

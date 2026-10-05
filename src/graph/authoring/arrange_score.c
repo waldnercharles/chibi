@@ -168,14 +168,9 @@ static void ar_draw(const arrange_graph *g, const arrange_point *pos, arrange_ro
         if (l->custom_handles) {
             apush(d->pieces, ar_handles_of(l, from, to));
         } else {
-            arrange_path(
-                style,
-                from,
-                to,
-                d->routes.points + first,
-                d->routes.start[i + 1] - first,
-                &d->pieces
-            );
+            int knot_count = d->routes.start[i + 1] - first;
+            const arrange_point *knots = knot_count ? d->routes.points + first : NULL;
+            arrange_path(style, from, to, knots, knot_count, &d->pieces);
         }
         ar_wire w = { .first = acount(d->points), .min = from, .max = from, .monotone = true };
         apush(d->points, from);

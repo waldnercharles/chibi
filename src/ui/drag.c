@@ -141,7 +141,9 @@ static rml_element **query(rml_element *root, const char *selector)
     rml_element **all = NULL;
     asetlen(all, count);
     if (count <= QUERY_BATCH) {
-        memcpy(all, batch, (size_t)count * sizeof *all);
+        if (count) {
+            memcpy(all, batch, (size_t)count * sizeof *all);
+        }
         return all;
     }
     rml_element_query_selector_all(root, selector, all, count);

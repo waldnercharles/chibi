@@ -241,8 +241,15 @@ int apply_components_value(app_scene_authoring *scene, ecs_entity entity, av_val
     }
     char error[256];
     game_prototype_registry registry = app_component_registry();
-    if (game_prototype_apply_components_value(scene->world, entity, components, &registry, error, sizeof error) !=
-        0) {
+    if (game_prototype_apply_components_value(
+            scene->world,
+            entity,
+            components,
+            &registry,
+            &scene->component_strings,
+            error,
+            sizeof error
+        ) != 0) {
         snprintf(scene->message, sizeof scene->message, "Could not apply overrides: %s", error);
         return -1;
     }
@@ -311,6 +318,7 @@ int scene_validate_entity(app_scene_authoring *scene, const game_scene_entity *e
     ecs_world *world = ecs_world_new();
     int result = 0;
     char error[256] = { 0 };
+    char **component_strings = NULL;
     for (int i = 0; i < scene->registry.component_count; i++) {
         if (ecs_world_register_component(world, scene->registry.components[i], NULL) !=
             ECS_OK) {
@@ -329,11 +337,13 @@ int scene_validate_entity(app_scene_authoring *scene, const game_scene_entity *e
             actor,
             entity->components,
             &scene->registry,
+            &component_strings,
             error,
             sizeof error
         );
     }
     ecs_world_free(world);
+    game_prototype_owned_strings_free(component_strings);
     if (result != 0) {
         snprintf(
             scene->message,

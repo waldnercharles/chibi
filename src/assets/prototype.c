@@ -74,6 +74,14 @@ static char *own_string(game_prototype *prototype, const char *text)
     return copy;
 }
 
+void game_prototype_owned_strings_free(char **strings)
+{
+    for (int i = 0; i < acount(strings); i++) {
+        free(strings[i]);
+    }
+    afree(strings);
+}
+
 const ecs_component_desc *game_prototype_registry_find(
     const game_prototype_registry *registry,
     const char *name
@@ -667,10 +675,7 @@ void game_prototype_free(game_prototype *prototype)
     }
     afree(prototype->detached_components);
     afree(prototype->graphs);
-    for (int i = 0; i < acount(prototype->strings); i++) {
-        free(prototype->strings[i]);
-    }
-    afree(prototype->strings);
+    game_prototype_owned_strings_free(prototype->strings);
     free(prototype->name);
     free(prototype->identity);
     free(prototype->tag.name);
@@ -1188,11 +1193,13 @@ int game_prototype_apply_components_value(
     ecs_entity entity,
     av_value *components,
     const game_prototype_registry *registry,
+    char ***owned_strings,
     char *error,
     size_t error_size
 )
 {
-    if (!world || !registry || !components || !ecs_entity_is_alive(world, entity)) {
+    if (!world || !registry || !components || !owned_strings ||
+        !ecs_entity_is_alive(world, entity)) {
         set_error(error, error_size, "invalid component override arguments");
         return -1;
     }
@@ -1208,6 +1215,9 @@ int game_prototype_apply_components_value(
         const ecs_component_desc *desc = game_prototype_registry_find(registry, av_get_str(key));
         if (!desc) {
             set_error(error, error_size, "unknown override component %s", av_get_str(key));
+            for (int i = 0; i < acount(parser.strings); i++) {
+                apush(*owned_strings, parser.strings[i]);
+            }
             afree(parser.strings);
             return -1;
         }
@@ -1215,6 +1225,9 @@ int game_prototype_apply_components_value(
             if (ecs_component_has(world, entity, desc->id) &&
                 ecs_world_record_remove(world, entity, desc->id, 0) != ECS_OK) {
                 set_error(error, error_size, "override component %s could not be removed", desc->name);
+                for (int i = 0; i < acount(parser.strings); i++) {
+                    apush(*owned_strings, parser.strings[i]);
+                }
                 afree(parser.strings);
                 return -1;
             }
@@ -1223,12 +1236,18 @@ int game_prototype_apply_components_value(
         if (!ecs_component_has(world, entity, desc->id) &&
             ecs_world_record_add(world, entity, desc->id, NULL, 0) != ECS_OK) {
             set_error(error, error_size, "override component %s could not be added", desc->name);
+            for (int i = 0; i < acount(parser.strings); i++) {
+                apush(*owned_strings, parser.strings[i]);
+            }
             afree(parser.strings);
             return -1;
         }
     }
     if (ecs_world_apply_commands(world) != ECS_OK) {
         set_error(error, error_size, "component override application failed");
+        for (int i = 0; i < acount(parser.strings); i++) {
+            apush(*owned_strings, parser.strings[i]);
+        }
         afree(parser.strings);
         return -1;
     }
@@ -1240,9 +1259,15 @@ int game_prototype_apply_components_value(
         }
         if (apply_component_override(&parser, world, entity, registry, desc, av_obj_iter_get_val(key), error, error_size) !=
             0) {
+            for (int i = 0; i < acount(parser.strings); i++) {
+                apush(*owned_strings, parser.strings[i]);
+            }
             afree(parser.strings);
             return -1;
         }
+    }
+    for (int i = 0; i < acount(parser.strings); i++) {
+        apush(*owned_strings, parser.strings[i]);
     }
     afree(parser.strings);
     return 0;

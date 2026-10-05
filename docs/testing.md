@@ -22,7 +22,8 @@ or option is rejected with status 2 rather than silently ignored. With no
 selector, `test_suite` runs the full `all_checks` suite. When a selector accepts
 positional arguments, pass them after the selector as ordinary Make arguments.
 
-The common focused selector list includes authoring and graph checks such as
+The common focused selector list includes asset/support checks such as
+`--asset-documents`, `--rcss`, and `--tree-watch`; authoring and graph checks such as
 `--automation-authoring`, `--graph-editing`, and `--graph-optimize`;
 runtime/compiler checks such as `--runtime-execution`, `--behavior-parity`,
 and `--simulation`; Studio checks such as `--editor-graph`,

@@ -20,6 +20,7 @@ struct game_prototype_preview
     ecs_entity entity;
     ecs_entity *entities;
     engine *runtime;
+    char **component_strings;
 };
 
 game_entities *game_prototype_preview_entities(game_prototype_preview *preview)
@@ -92,6 +93,7 @@ void game_prototype_preview_free(game_prototype_preview *preview)
     engine_free(preview->runtime);
     game_live_world_free(preview->live);
     ecs_world_free(preview->world);
+    game_prototype_owned_strings_free(preview->component_strings);
     free(preview);
 }
 
@@ -260,6 +262,7 @@ int game_prototype_preview_launch_scene(
                                           entity,
                                           entities[i].components,
                                           entities[i].prototype->registry,
+                                          &preview->component_strings,
                                           error,
                                           error_size
                                       ) != 0) {

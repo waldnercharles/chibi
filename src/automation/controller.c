@@ -1413,7 +1413,9 @@ static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
             catalog_member_add(asset, "entity", request_string(entity, "name"));
         }
     }
-    qsort(asset->members, (size_t)acount(asset->members), sizeof *asset->members, catalog_member_compare);
+    if (acount(asset->members) > 1) {
+        qsort(asset->members, (size_t)acount(asset->members), sizeof *asset->members, catalog_member_compare);
+    }
 }
 
 static void catalog_add_diagnostic(
@@ -1847,8 +1849,12 @@ static void catalog_link_references(catalog_asset *assets, const reference_index
     for (int i = 0; i < acount(assets); i++) {
         catalog_reference *dependencies = assets[i].dependencies;
         catalog_reference *dependents = assets[i].dependents;
-        qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
-        qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+        if (acount(dependencies) > 1) {
+            qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
+        }
+        if (acount(dependents) > 1) {
+            qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+        }
     }
 }
 
@@ -2173,7 +2179,9 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
         closedir(directory);
         free(directory_path);
     }
-    qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    if (acount(entries) > 1) {
+        qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    }
     *out = entries;
     return 0;
 }
@@ -3064,7 +3072,9 @@ static void inspect_add_sorted_array(
     }
     /* Documents already order edges canonically. */
     if (!edges) {
-        qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+        if (item_count > 1) {
+            qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+        }
     }
     for (int i = 0; i < item_count; i++) {
         yyjson_mut_val *copy = yyjson_val_mut_copy(doc, items[i].value);
@@ -3125,7 +3135,9 @@ static void inspect_add_calls(
     for (int i = 0; i < count; i++) {
         nodes[i] = source->nodes[i];
     }
-    qsort(nodes, (size_t)count, sizeof *nodes, inspect_node_compare);
+    if (count > 1) {
+        qsort(nodes, (size_t)count, sizeof *nodes, inspect_node_compare);
+    }
     for (int i = 0; i < count; i++) {
         const node *call = nodes[i];
         if (!strcmp(call->desc->name, "Model Parameter") ||
@@ -3178,7 +3190,9 @@ static void inspect_add_effects(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     for (int i = 0; i < read_count; i++) {
         ordered_reads[i] = effects->reads[i];
     }
-    qsort(ordered_reads, (size_t)read_count, sizeof *ordered_reads, compare_uint64);
+    if (read_count > 1) {
+        qsort(ordered_reads, (size_t)read_count, sizeof *ordered_reads, compare_uint64);
+    }
     for (int i = 0; i < read_count; i++) {
         yyjson_mut_arr_add_uint(doc, reads, ordered_reads[i]);
     }
@@ -3191,7 +3205,9 @@ static void inspect_add_effects(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     for (int i = 0; i < write_count; i++) {
         ordered_writes[i] = effects->writes[i];
     }
-    qsort(ordered_writes, (size_t)write_count, sizeof *ordered_writes, compare_uint64);
+    if (write_count > 1) {
+        qsort(ordered_writes, (size_t)write_count, sizeof *ordered_writes, compare_uint64);
+    }
     for (int i = 0; i < write_count; i++) {
         yyjson_mut_arr_add_uint(doc, writes, ordered_writes[i]);
     }
@@ -3315,7 +3331,9 @@ static void inspect_add_variables(yyjson_mut_doc *doc, yyjson_mut_val *object, y
             .id = inspect_json_uint(yyjson_obj_get(item, "id")),
         };
     }
-    qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+    if (item_count > 1) {
+        qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+    }
     for (int i = 0; i < item_count; i++) {
         yyjson_mut_arr_add_val(variables, yyjson_val_mut_copy(doc, items[i].value));
     }
@@ -6656,7 +6674,9 @@ static double costliest_percentile(const scenario_profile_frame *sorted, int cou
 static void add_profile_frames(yyjson_mut_doc *doc, yyjson_mut_val *timing, scenario_profile_frame *frames)
 {
     int count = acount(frames);
-    qsort(frames, (size_t)count, sizeof *frames, compare_frame_cost);
+    if (count > 1) {
+        qsort(frames, (size_t)count, sizeof *frames, compare_frame_cost);
+    }
     yyjson_mut_val *distribution = yyjson_mut_obj_add_obj(doc, timing, "frame_ms");
     if (count) {
         yyjson_mut_obj_add_real(doc, distribution, "p50", costliest_percentile(frames, count, 50));
@@ -10191,7 +10211,9 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         }
         apush(matches, match);
     }
-    qsort(matches, (size_t)acount(matches), sizeof *matches, node_match_compare);
+    if (acount(matches) > 1) {
+        qsort(matches, (size_t)acount(matches), sizeof *matches, node_match_compare);
+    }
     yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
     int total = acount(matches);
     for (int i = offset; i < total && i < offset + limit; i++) {
@@ -10677,9 +10699,17 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
                     ECS_OK) {
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
+            char **component_strings = NULL;
             if (status == CHIBI_AUTOMATION_OK && entity->components &&
-                game_prototype_apply_components_value(world, actor, entity->components, &registry, error, error_size) !=
-                    0) {
+                game_prototype_apply_components_value(
+                    world,
+                    actor,
+                    entity->components,
+                    &registry,
+                    &component_strings,
+                    error,
+                    error_size
+                ) != 0) {
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
             if (status == CHIBI_AUTOMATION_OK) {
@@ -10691,6 +10721,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
                 );
             }
             ecs_world_free(world);
+            game_prototype_owned_strings_free(component_strings);
         }
         game_prototype_free(prototype);
         for (int behavior = 0;

@@ -111,3 +111,35 @@ each small code change. Prefer the closest focused selector during iteration
 and retain `make test` as the complete gate. Tool tests now run concurrently
 in isolated processes with a four-worker default; raising `TEST_JOBS`
 increases CPU and memory pressure.
+
+### Depth snapshot fixture and Zink endpoint clears
+
+The SDF visibility depth snapshot fixture clears its source depth to `.75` before
+its unchanged full-canvas `.25` seed draw. That triangle covers every pixel of the
+8×8 target, with depth writes and `ALWAYS` enabled; the clear value is not a test
+expectation. All source color/depth, copied depth, and `.125` redraw assertions
+remain unchanged. An incorrect `LESS` comparison would accept the initial `.25`
+seed but reject the later `.5` crop, so the existing assertions still detect it.
+
+The non-endpoint clear is intended to avoid an observed Mesa 26.2.3 Zink
+limitation, tracked in
+[issue #159](https://github.com/waldnercharles/c-blueprints/issues/159): after a full
+clear to `1`, a standalone GLES `ALWAYS` draw at `.5` following `.25` leaves the
+crop at `.25`. With clear `0`, a later `.125` draw leaves `.5`; clear `.75` passes
+both sequences. The standalone checks color only and reproduces on Zink with
+both NVK and Lavapipe; the engine fixture separately checks sampled depth.
+Zink's ALWAYS-to-LE/GE optimization, commit
+`a58cbdaabfb2f5734df24d40c754d9009883c4a1`, is strongly implicated by the matrix,
+but has not been proven by bisection or a reverted-driver test. The failing
+standalone and raw logs are preserved in the private CUT-54 investigation evidence;
+no upstream report has been submitted. This fixture adjustment is not a driver
+fix or a claim that ordinary rendering with endpoint depth clears is unaffected.
+
+Validation on base `7b35b66d` used the existing SDF visibility selectors with
+`SDL_VIDEO_DRIVER=offscreen`: `.75` passed GLES and Vulkan, while deliberately
+changing `ALWAYS` to `LESS` failed the unchanged `.5` color/depth overwrite and
+copied-depth assertions. However, the same offscreen GLES selector also passed
+with clear `1.0`. These selectors do not log the selected device, so that A/B
+comparison establishes preserved coverage, not a demonstrated failure-to-pass
+repair in the offscreen route. The standalone Zink failure evidence remains
+separate; this candidate still requires independent review.

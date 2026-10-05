@@ -1,0 +1,2 @@
+binary=/workspace/c-blueprints/build-release/chibi_ctl
+project_root=/workspace/c-blueprints/projects/sdf_lab

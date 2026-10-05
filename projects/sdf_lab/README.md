@@ -852,13 +852,33 @@ eight-second sweep spans the short loop.
 
 `HrcCornellModesBlur`, `HrcCornellModesGather` and `HrcCornellModesDepth` reuse
 the same open cutaway, camera, materials, raised blocker, area emitter and
-eight-second light sweep. The only scene setting changed among these files is
-`GameHRC2D.surface_mode`. The three-panel clip labels each mode and uses a
-common readability fill (`ambient=0.06`) with `exposure=0.2`, `fog=0`, HRC
-`intensity=3`, `resolution=0.5`, and half-resolution gather. Feedback is off
-and `bounce_intensity=0` in all three. The Depth mode also uses
-`surface_depth_gain=1`, `surface_thickness=12`, low quality, and bounded
-segments. These are comparison settings, not calibrated lighting values.
+eight-second light sweep. `GameHRC2D.surface_mode` is their only differing
+lighting setting. Each uses `ambient=0`, `fog=0.3`, `exposure=0.2`, HRC
+`intensity=3`, `resolution=0.5`, half-resolution gather, and disabled feedback
+with `bounce_intensity=0`. The fog term displays received HRC fluence in open
+camera-plane regions; it adds no constant scene-color fill and is not
+volumetric scattering. Every solid receiver has `edge_light=1`; the shared
+`surface_radius=128` reaches from the raised emitter to the receiver area in
+this room, while `surface_relief=1.5` and `surface_bevel=1` match the renderer
+defaults. SDF material emission is zero on the floor, walls, blocks,
+plinth and blocker; only the moving area emitter has nonzero emission
+(`emission_intensity=6`).
+
+`edge_light` is packed into the solid-surface normal and zero disables surface
+receiving. Depth thickness multiplies its direct contribution by the value;
+Blur and Gather use its positive value to classify a solid receiver but do not
+scale their gathered light by its magnitude. The scenes set it to 1 so each
+mode receives the full supported surface response.
+
+The modes reuse the same receiver settings but approximate lighting
+differently. Blur smooths the screen-plane HRC quadrants; Gather uses a bounded
+set of quadrant visibility probes; Depth thickness gathers emitters with
+camera-relative geometry and a 12-unit assumed slab. Blur and Gather use the
+shared 128-unit receiver reach, relief and material receiver gain. Depth uses
+the separate `surface_depth_gain=1`, `surface_depth_radius=260`, low sampling
+quality and bounded segments. Gain 1 avoids the earlier 8× direct-term
+amplification. These values are diagnostic settings, not calibrated energy
+units.
 
 ![Native Vulkan render of the Cornell-inspired scene in Depth thickness mode](evidence/hrc-cornell-modes-depth.png)
 
@@ -878,21 +898,34 @@ build-release/chibi --play --project-root projects/sdf_lab \
 shows the three current modes side by side. It samples 60 images from 240
 320×180 Vulkan frames and plays them at 15 fps for four seconds; the emitter
 therefore traverses roughly half of its eight-second path. The comparison
-isolates each mode's camera-relative surface treatment. It does not compare
-bounce lighting, and the scene is not a full 3D path-traced Cornell box.
+isolates each mode's camera-relative surface treatment. It keeps real
+received-light shading enabled while leaving bounce off for this mode-only
+comparison; the flat-HRC fixture below shows the separate feedback path. In
+this depth-separated emitter setup, the captured Blur panel remains dark and
+Gather returns sparse highlights, while Depth thickness lights the floor and
+colored blocks. This matches the source paths: Blur/Gather sample screen-plane
+HRC quadrants, and Gather uses fixed bounded probes without tracing SDFs or
+enumerating emitters ([surface_gather.frag](../../src/render/shaders/hrc/surface_gather.frag#L1));
+Depth thickness has a separate camera-relative emitter and slab solve. The
+scene is an open 2.5D cutaway, not a full 3D path-traced Cornell box.
 
-The separate bounce toggle remains
-`HrcCornellCutaway` versus `HrcCornellCutawayNoBounce` above. Its matched
-control keeps the direct Depth settings fixed while turning off HRC feedback.
-The bounce shader multiplies albedo by gathered far-field radiance
-([bounce.frag](../../src/render/shaders/hrc/bounce.frag#L21)); the compositor
-adds the Depth surface term later and explicitly excludes it from temporal
-bounce ([composite.shd](../../src/render/shaders/hrc/composite.shd#L372)). The
-shared direct Depth light can therefore dominate that on/off comparison. In
-frame 45 of the existing bounce comparison clip, the rendered areas differ by
-about 1.09/255 mean absolute pixel value; about 2.6% of pixels differ by more
-than 2/255. This is a small sampled difference, not a reference measurement of
-indirect transport.
+The corrected flat-HRC bounce on/off capture is
+[`cornell2d-bounce-comparison.png`](../hrc_lab/evidence/cornell2d-bounce-comparison.png).
+It keeps ambient 0, fog 0.3, radius 128 and `edge_light=1`, then changes only
+feedback and bounce intensity (0.35 versus 0). The bounce shader multiplies
+albedo by gathered far-field radiance
+([bounce.frag](../../src/render/shaders/hrc/bounce.frag#L21)); frame 239 differs
+by 1.75/255 mean absolute pixel value, with 21% of pixels differing by more
+than 2/255. This is a small measured HRC feedback effect, not a path-traced
+reference.
+
+The older 3D cutaway toggle `HrcCornellCutaway` versus
+`HrcCornellCutawayNoBounce` keeps its experimental `surface_depth_gain=8`
+setting for historical evidence. In that compositor the Depth surface term is
+added later and excluded from temporal bounce
+([composite.shd](../../src/render/shaders/hrc/composite.shd#L372)), so the
+shared amplified direct light can dominate its on/off difference. Use the
+receiver-enabled 2D comparison above when evaluating the feedback control.
 
 ### Historical flat-HRC comparison
 
@@ -900,11 +933,13 @@ indirect transport.
 compares the existing flat `HRCLabCornell2D` fixture rendered by pre-Depth
 commit `8cb3ba2c72217ce58b4fd8381e99e864d185527a` and by the current Blur
 mode. For the historical load, a temporary copy of the same fixture omitted
-only the newer `surface_mode` and `surface_depth_*` fields unsupported by that
-revision. Both sides used the same remaining scene data and 320×180 native
-Vulkan capture settings. The complete 240-frame raw sequences were
-byte-identical in this fixture. This is a flat 2D compatibility baseline; it
-does not claim the historical renderer had the newer camera-relative Depth
+only the newer `surface_mode`, `surface_depth_gain`, and `surface_thickness`
+fields unsupported by that revision. The supported surface controls were
+matched: ambient 0, fog 0.3, surface radius 128, relief 1.5, bevel 1, and
+receiver `edge_light=1`. Both sides used the same remaining scene data and
+320×180 native Vulkan capture settings. The complete 240-frame raw sequences
+were byte-identical in this fixture. This is a flat 2D compatibility baseline;
+it does not claim the historical renderer had the newer camera-relative Depth
 mode.
 
 The rendered frames are 320×180 per panel, with 240 captured frames sampled

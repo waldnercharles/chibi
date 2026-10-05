@@ -1,0 +1,2 @@
+binary=/tmp/c-blueprints-predepth-build/chibi_ctl
+project_root=/tmp/hrc-predepth-project

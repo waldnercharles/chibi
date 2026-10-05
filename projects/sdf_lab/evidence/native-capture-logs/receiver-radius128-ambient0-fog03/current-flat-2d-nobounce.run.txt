@@ -1,0 +1,2 @@
+binary=/workspace/c-blueprints/build-release/chibi_ctl
+project_root=/tmp/hrc-cornell-nobounce-project

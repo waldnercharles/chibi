@@ -7,7 +7,7 @@ name "HrcCornellModesBlur"
         components {
             GameTransform x=0.0 y=0.0
             GameCamera width=470.0 height=264.0 focal_distance=650.0 yaw=0.0 pitch=0.88 roll=0.0 target_elevation=68.0
-            GameHRC2D surface_mode="Blur" adaptive=#false ambient=0.06 bloom=0.0 bounce_hysteresis=1.0 bounce_intensity=0.0 color_resolution="Full" exposure=0.2 falloff=1.0 feedback=#false fog=0.0 gather_resolution="Half" intensity=3.0 min_resolution=0.5 radiance_hysteresis=1.0 resolution=0.5 shadow_floor=0.0 surface_bevel=1.0 surface_depth_emitters="Uniform material proxies" surface_depth_gain=1.0 surface_depth_near_detail=#true surface_depth_quality="Low" surface_depth_radius=260.0 surface_depth_shadow_softness=0.05 surface_depth_temporal=#false surface_depth_visibility="Bounded segments" surface_radius=24.0 surface_relief=1.5 surface_thickness=12.0 specular=1.0 trace_levels=3
+            GameHRC2D surface_mode="Blur" adaptive=#false ambient=0.0 bloom=0.0 bounce_hysteresis=1.0 bounce_intensity=0.0 color_resolution="Full" exposure=0.2 falloff=1.0 feedback=#false fog=0.3 gather_resolution="Half" intensity=3.0 min_resolution=0.5 radiance_hysteresis=1.0 resolution=0.5 shadow_floor=0.0 surface_bevel=1.0 surface_depth_emitters="Uniform material proxies" surface_depth_gain=1.0 surface_depth_near_detail=#true surface_depth_quality="Low" surface_depth_radius=260.0 surface_depth_shadow_softness=0.05 surface_depth_temporal=#false surface_depth_visibility="Bounded segments" surface_radius=128.0 surface_relief=1.5 surface_thickness=12.0 specular=1.0 trace_levels=3
         }
     }
     - {
@@ -18,7 +18,7 @@ name "HrcCornellModesBlur"
             GameGeometry3D depth=230.0 elevation=0.0 height=14.0 width=300.0
             GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
             GameShader material="SdfIvory"
-            GameMaterial absorption=1.0 albedo=0xc6c9c5ff edge_light=0.0 scene=0xc6c9c5ff
+            GameMaterial absorption=1.0 albedo=0xc6c9c5ff edge_light=1.0 scene=0xc6c9c5ff
         }
     }
     - {
@@ -29,7 +29,7 @@ name "HrcCornellModesBlur"
             GameGeometry3D depth=10.0 elevation=88.0 height=164.0 width=280.0
             GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
             GameShader material="SdfIvory"
-            GameMaterial absorption=1.0 albedo=0xc6c9c5ff edge_light=0.0 scene=0xc6c9c5ff
+            GameMaterial absorption=1.0 albedo=0xc6c9c5ff edge_light=1.0 scene=0xc6c9c5ff
         }
     }
     - {
@@ -40,7 +40,7 @@ name "HrcCornellModesBlur"
             GameGeometry3D depth=214.0 elevation=86.0 height=160.0 width=16.0
             GameVisualTransform scale=1.0 pitch=0.0 yaw=-0.42 roll=0.0
             GameShader material="SdfCornellRed"
-            GameMaterial absorption=1.0 albedo=0xb3413cff edge_light=0.0 scene=0xb3413cff
+            GameMaterial absorption=1.0 albedo=0xb3413cff edge_light=1.0 scene=0xb3413cff
         }
     }
     - {
@@ -51,7 +51,7 @@ name "HrcCornellModesBlur"
             GameGeometry3D depth=214.0 elevation=86.0 height=160.0 width=16.0
             GameVisualTransform scale=1.0 pitch=0.0 yaw=0.42 roll=0.0
             GameShader material="SdfCornellGreen"
-            GameMaterial absorption=1.0 albedo=0x3b814dff edge_light=0.0 scene=0x3b814dff
+            GameMaterial absorption=1.0 albedo=0x3b814dff edge_light=1.0 scene=0x3b814dff
         }
     }
     - {
@@ -62,7 +62,7 @@ name "HrcCornellModesBlur"
             GameGeometry3D depth=60.0 elevation=29.0 height=44.0 width=60.0
             GameVisualTransform scale=1.0 pitch=0.18 yaw=0.24 roll=-0.08
             GameShader shape="SdfBox" material="SdfCyan"
-            GameMaterial absorption=1.0 albedo=0x248f9eff edge_light=0.2 scene=0x248f9eff
+            GameMaterial absorption=1.0 albedo=0x248f9eff edge_light=1.0 scene=0x248f9eff
         }
     }
     - {
@@ -73,7 +73,7 @@ name "HrcCornellModesBlur"
             GameGeometry3D depth=62.0 elevation=17.0 height=20.0 width=62.0
             GameVisualTransform scale=1.0 pitch=0.0 yaw=0.0 roll=0.0
             GameShader material="SdfIvory"
-            GameMaterial absorption=1.0 albedo=0xb8bbb8ff edge_light=0.0 scene=0xb8bbb8ff
+            GameMaterial absorption=1.0 albedo=0xb8bbb8ff edge_light=1.0 scene=0xb8bbb8ff
         }
     }
     - {
@@ -84,7 +84,7 @@ name "HrcCornellModesBlur"
             GameGeometry3D depth=60.0 elevation=43.0 height=44.0 width=60.0
             GameVisualTransform scale=0.78 pitch=-0.16 yaw=-0.3 roll=0.12
             GameShader shape="SdfBox" material="SdfAmber"
-            GameMaterial absorption=1.0 albedo=0xb36329ff edge_light=0.2 scene=0xb36329ff
+            GameMaterial absorption=1.0 albedo=0xb36329ff edge_light=1.0 scene=0xb36329ff
         }
     }
     - {
@@ -95,7 +95,7 @@ name "HrcCornellModesBlur"
             GameGeometry3D depth=24.0 elevation=39.0 height=64.0 width=16.0
             GameVisualTransform scale=1.0 pitch=0.0 yaw=0.1 roll=0.0
             GameShader material="SdfIvory"
-            GameMaterial absorption=1.0 albedo=0x6f7474ff edge_light=0.0 scene=0x6f7474ff
+            GameMaterial absorption=1.0 albedo=0x6f7474ff edge_light=1.0 scene=0x6f7474ff
         }
     }
     - {

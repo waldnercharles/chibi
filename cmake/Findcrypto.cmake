@@ -28,6 +28,24 @@ function(chibi_crypto_dependencies)
             "Supply a crypto target with its link dependencies, or align OpenSSL discovery "
             "with crypto_LIBRARY and crypto_INCLUDE_DIR.")
     endif()
+    # FindOpenSSL can retain explicit library/header paths while reading another
+    # installation's pkg-config dependencies. Check its actual (possibly cached)
+    # result and the libcrypto.pc provider required by openssl.pc.
+    if(_OPENSSL_FOUND)
+        pkg_get_variable(CHIBI_CRYPTO_LIBDIR libcrypto libdir)
+        pkg_get_variable(CHIBI_CRYPTO_INCLUDEDIR libcrypto includedir)
+        foreach(metadata IN ITEMS _OPENSSL CHIBI_CRYPTO)
+            file(REAL_PATH "${${metadata}_LIBDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}crypto${CMAKE_STATIC_LIBRARY_SUFFIX}" metadata_library)
+            file(REAL_PATH "${${metadata}_INCLUDEDIR}" metadata_include)
+            if(NOT ${metadata}_LIBDIR OR NOT ${metadata}_INCLUDEDIR OR
+               NOT metadata_library STREQUAL selected_library OR NOT metadata_include STREQUAL selected_include)
+                message(FATAL_ERROR "pkg-config OpenSSL metadata does not match s2n's selected crypto library/headers. "
+                    "Selected: ${selected_library}, ${selected_include}. "
+                    "Metadata: ${metadata_library}, ${metadata_include}. "
+                    "Align pkg-config with the selected provider or supply a crypto target with its link dependencies.")
+            endif()
+        endforeach()
+    endif()
     get_target_property(links OpenSSL::Crypto INTERFACE_LINK_LIBRARIES)
     if(links)
         set_property(TARGET AWS::crypto PROPERTY INTERFACE_LINK_LIBRARIES "${links}")

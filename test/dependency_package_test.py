@@ -273,6 +273,70 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result.stdout + result.stderr
 
+    @unittest.skipUnless(shutil.which("pkg-config"), "pkg-config required")
+    def test_real_openssl_rejects_mixed_provider_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name in ("a", "b"):
+                provider = root / name
+                (provider / "lib").mkdir(parents=True)
+                (provider / "include/openssl").mkdir(parents=True)
+                # Discovery-only fixtures; the export test below exercises linking.
+                (provider / "lib/libcrypto.a").touch()
+                (provider / "include/openssl/ssl.h").touch()
+                (provider / "include/openssl/opensslv.h").write_text(
+                    "#define OPENSSL_VERSION_NUMBER 0x30000000L\n")
+            selected = root / "a"
+            alias = root / "alias"
+            alias.symlink_to(selected, target_is_directory=True)
+            upstream = root / "cmake/modules"
+            upstream.mkdir(parents=True)
+            (upstream / "Findcrypto.cmake").write_text(
+                "add_library(AWS::crypto UNKNOWN IMPORTED)\n"
+                "set_target_properties(AWS::crypto PROPERTIES\n"
+                ' IMPORTED_LOCATION "${crypto_LIBRARY}"\n'
+                ' INTERFACE_INCLUDE_DIRECTORIES "${crypto_INCLUDE_DIR}")\n')
+            (root / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 4.2)\nproject(provenance C)\n"
+                f'list(PREPEND CMAKE_MODULE_PATH "{TOOLS.parent}/cmake")\n'
+                f'set(s2n_SOURCE_DIR "{root}")\n'
+                f'set(crypto_LIBRARY "{selected}/lib/libcrypto.a")\n'
+                f'set(crypto_INCLUDE_DIR "{selected}/include")\n'
+                'set(OPENSSL_CRYPTO_LIBRARY "${crypto_LIBRARY}" CACHE FILEPATH "")\n'
+                'set(OPENSSL_INCLUDE_DIR "${crypto_INCLUDE_DIR}" CACHE PATH "")\n'
+                "find_package(crypto REQUIRED)\n"
+                'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/links.txt" CONTENT '
+                '"$<TARGET_PROPERTY:AWS::crypto,INTERFACE_LINK_LIBRARIES>")\n')
+            for name, lib, include, expected in (
+                ("aligned", selected, selected, 0),
+                ("canonical-alias", alias, alias, 0),
+                ("mixed", root / "b", root / "b", 1),
+                ("split-crypto", root / "b", root / "b", 1),
+                ("library-only", root / "b", selected, 1),
+                ("headers-only", selected, root / "b", 1),
+            ):
+                with self.subTest(name=name):
+                    metadata = root / name / "pkgconfig"
+                    metadata.mkdir(parents=True)
+                    fields = f"libdir={lib}/lib\nincludedir={include}/include\n"
+                    (metadata / "libcrypto.pc").write_text(fields +
+                        "Name: fixture crypto\nDescription: provider fixture\nVersion: 3.0.0\n"
+                        "Libs: -L${libdir} -lcrypto\nLibs.private: -lfixture_closure\n"
+                        "Cflags: -I${includedir}\n")
+                    openssl_fields = (f"libdir={selected}/lib\nincludedir={selected}/include\n"
+                        if name == "split-crypto" else fields)
+                    (metadata / "openssl.pc").write_text(openssl_fields +
+                        "Name: fixture OpenSSL\nDescription: provider fixture\nVersion: 3.0.0\n"
+                        "Requires: libcrypto\n")
+                    build = root / f"build-{name}"
+                    with mock.patch.dict(package.os.environ, {"PKG_CONFIG_PATH": str(metadata),
+                            "PKG_CONFIG_LIBDIR": str(metadata), "PKG_CONFIG_SYSROOT_DIR": ""}):
+                        output = self.run_cmake("-S", root, "-B", build, expected=expected)
+                    if expected:
+                        self.assertIn("pkg-config OpenSSL metadata does not match", output)
+                    else:
+                        self.assertIn("fixture_closure", (build / "links.txt").read_text())
+
     def test_directory_scoped_crypto_survives_clean_and_reused_imports(self):
         for kind in ("STATIC", "SHARED", "BUILT", "CUSTOM"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:

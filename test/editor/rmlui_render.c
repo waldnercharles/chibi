@@ -457,7 +457,7 @@ static void check_gradients()
     enum
     {
         WIDTH = 96,
-        HEIGHT = 56
+        HEIGHT = 80
     };
     rml_backend *ui = rml_backend_create(WIDTH, HEIGHT, 1);
     assert(ui);
@@ -476,9 +476,12 @@ static void check_gradients()
         "#masked { left: 72px; top: 28px; width: 16px; height: 24px; "
         "background-color: #ff0000; "
         "mask-image: linear-gradient(90deg, #000000ff, #00000000); }"
+        "#many { left: 8px; top: 56px; width: 64px; height: 12px; "
+        "decorator: linear-gradient(90deg, #ff0000 0%, #00ff00 20%, "
+        "#0000ff 40%, #ffff00 60%, #ff00ff 80%, #00ffff 100%); }"
         "</style></head><body>"
         "<div id=\"linear\"/><div id=\"radial\"/><div id=\"stripes\"/><div "
-        "id=\"masked\"/>"
+        "id=\"masked\"/><div id=\"many\"/>"
         "</body></rml>",
         "gradients"
     );
@@ -500,6 +503,18 @@ static void check_gradients()
     assert(near_color(pixels[40 * WIDTH + 42], 255, 0, 0, 255));
     assert(near_color(pixels[40 * WIDTH + 46], 0, 255, 0, 255));
     assert(near_color(pixels[40 * WIDTH + 50], 255, 0, 0, 255));
+    /* Six stops cross the packed UBO vec4 boundary and exercise static lookup
+       for both stop positions and colors on GLES. */
+    assert(near_color(pixels[62 * WIDTH + 8], 255, 0, 0, 255));
+    assert(near_color(pixels[62 * WIDTH + 21], 0, 255, 0, 255));
+    assert(near_color(pixels[62 * WIDTH + 34], 0, 0, 255, 255));
+    assert(near_color(pixels[62 * WIDTH + 47], 255, 255, 0, 255));
+    assert(near_color(pixels[62 * WIDTH + 59], 255, 0, 255, 255));
+    CF_Pixel final_stop = pixels[62 * WIDTH + 71];
+    assert(
+        final_stop.colors.r < 45 && final_stop.colors.g > 210 &&
+        final_stop.colors.b > 230
+    );
     /* A mask image fades the element as its gradient's alpha does. */
     CF_Pixel opaque = pixels[40 * WIDTH + 73], faded = pixels[40 * WIDTH + 86];
     assert(opaque.colors.r > 240 && opaque.colors.a > 220);

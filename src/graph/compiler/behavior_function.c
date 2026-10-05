@@ -830,9 +830,17 @@ static bool lower_definition(
             const node_desc *desc = n->desc;
             for (int p = 0; p < n->input_count; p++) {
                 b.recording |= managed_pin(&n->input_pins[p]);
+                if (n->input_pins[p].flags & PIN_FLAG_WATCH) {
+                    b.recording = true;
+                    b.function->pin_watches = true;
+                }
             }
             for (int p = 0; p < n->output_count; p++) {
                 b.recording |= managed_pin(&n->output_pins[p]);
+                if (n->output_pins[p].flags & PIN_FLAG_WATCH) {
+                    b.recording = true;
+                    b.function->pin_watches = true;
+                }
             }
             b.recording |= desc == &NODE_Delay || desc == &NODE_RetriggerableDelay ||
                            behavior_lower_is_switch(desc) ||

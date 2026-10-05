@@ -263,7 +263,7 @@ struct behavior_function
     behavior_function_suspension *suspensions;
     behavior_function_point *points;
     bool waits, breakpoints, batchable, managed, custom_lowering, uses_storage,
-        checkpoints;
+        checkpoints, pin_watches;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;
@@ -311,7 +311,7 @@ typedef struct behavior_function_component
 static inline bool behavior_function_inspectable(const behavior_function *f)
 {
     return f->waits || f->host_calls != NULL || f->calls != NULL ||
-           f->managed || f->custom_lowering || f->checkpoints;
+           f->managed || f->custom_lowering || f->checkpoints || f->pin_watches;
 }
 int behavior_function_run_once(
     const behavior_function *function,

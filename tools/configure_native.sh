@@ -7,8 +7,15 @@ shift
 if [ "$(uname -s)" = Linux ] && [ ! -f "$build_dir/CMakeCache.txt" ] &&
     [ -z "${CC:-}${CXX:-}${CMAKE_TOOLCHAIN_FILE:-}" ]; then
     selected=0
+    definition=0
     for argument do
+        if [ "$definition" -eq 1 ]; then
+            argument="-D$argument"
+            definition=0
+        fi
         case "$argument" in
+            -D) definition=1 ;;
+            --toolchain|--toolchain=*|-C*) selected=1 ;;
             -DCMAKE_C_COMPILER=*|-DCMAKE_C_COMPILER:*=*|\
             -DCMAKE_CXX_COMPILER=*|-DCMAKE_CXX_COMPILER:*=*|\
             -DCMAKE_TOOLCHAIN_FILE=*|-DCMAKE_TOOLCHAIN_FILE:*=*) selected=1 ;;

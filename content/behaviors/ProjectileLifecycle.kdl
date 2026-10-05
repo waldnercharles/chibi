@@ -31,10 +31,11 @@ owner_type "ecs.entity"
                     Exec id=22 kind="exec"
                     _bc_component_0_age {
                         id 190
+                        display_name "projectile.age"
                         type "float"
                         binding kind="component_field" component="GAME.GameProjectile" field="age"
                     }
-                    _bc_event_DeltaSeconds id=191
+                    _bc_event_DeltaSeconds id=191 display_name="event.dt"
                 }
                 outputs {
                     Then id=23 kind="exec"
@@ -49,12 +50,14 @@ owner_type "ecs.entity"
                     Exec id=71 kind="exec"
                     _bc_component_0_age {
                         id 204
+                        display_name "projectile.age"
                         type "double"
                         flags 0
                         binding kind="component_field" component="GAME.GameProjectile" field="age"
                     }
                     _bc_component_0_lifetime {
                         id 205
+                        display_name "projectile.lifetime"
                         type "double"
                         flags 0
                         binding kind="component_field" component="GAME.GameProjectile" field="lifetime"

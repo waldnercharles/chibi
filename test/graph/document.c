@@ -145,6 +145,43 @@ void run_graph_document_checks()
         graph_free(&source);
     }
 
+    /* Editor pin labels persist separately from internal identifiers and pin IDs. */
+    {
+        graph source;
+        graph_init(&source);
+        node *sum = graph_add_node(&source, registry_node_by_name("Add"));
+        uint64_t input_id = sum->input_pins[0].id;
+        test_check(
+            graph_set_pin_display_name(&source, sum, 0, 0, "projectile.age") == 0,
+            "graph pins accept a presentation-only display label"
+        );
+        test_check(
+            sum->input_pins[0].id == input_id && !strcmp(sum->input_pins[0].name, "A"),
+            "setting a display label keeps the internal pin name and ID "
+            "unchanged"
+        );
+        char *before = graph_save(&source);
+        graph *copy = before ? graph_load(before) : NULL;
+        node *copied_sum = copy ? graph_node_by_id(copy, sum->id) : NULL;
+        char *after = copy ? graph_save(copy) : NULL;
+        test_check(
+            copied_sum && copied_sum->input_pins[0].id == input_id &&
+                !strcmp(copied_sum->input_pins[0].name, "A") &&
+                copied_sum->input_pins[0].display_name &&
+                !strcmp(copied_sum->input_pins[0].display_name, "projectile.age"),
+            "graph documents roundtrip display labels without changing pin "
+            "identity"
+        );
+        test_check(before && after && !strcmp(before, after), "display label graph save/load/save is deterministic");
+        free(before);
+        free(after);
+        if (copy) {
+            graph_free(copy);
+            free(copy);
+        }
+        graph_free(&source);
+    }
+
     /* 9. comprehensive v3 authored-field round trip. */
     {
         graph full;

@@ -12,6 +12,7 @@
     "source-2": 21,
     "source-3": 38,
     "source-4-set-op": 77,
+    "source-4-set-source": 130,
     "source-4": 81
   },
   "types": {
@@ -23,6 +24,7 @@
     "source-2": "Branch",
     "source-3": "Behavior Expression",
     "source-4-set-op": "Set Add",
+    "source-4-set-source": "Get Variable",
     "source-4": "Set Variable"
   },
   "edges": [
@@ -83,7 +85,7 @@
       "kind": "exec"
     },
     {
-      "from": 5,
+      "from": 130,
       "from_pin": "Value",
       "to": 77,
       "to_pin": "Set",

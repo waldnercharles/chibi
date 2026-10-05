@@ -91,6 +91,13 @@ test('lowers aliases to typed component bindings and event data wires', () => {
     ['_bc_component_0_age', 'component', 'GAME.GameProjectile', 'age'],
     ['_bc_component_0_lifetime', 'component', 'GAME.GameProjectile', 'lifetime'],
   ]);
+  assert.deepEqual(operations.filter((op) => op.op === 'set_pin' && op.display_name)
+    .map(({ pin, display_name }) => [pin, display_name]), [
+      ['_bc_component_0_age', 'projectile.age'],
+      ['_bc_event_DeltaSeconds', 'event.dt'],
+      ['_bc_component_0_age', 'projectile.age'],
+      ['_bc_component_0_lifetime', 'projectile.lifetime'],
+    ]);
   assert(operations.some((op) => op.op === 'connect' && op.kind === 'data' && op.from_pin === 'DeltaSeconds' && op.to_pin === '_bc_event_DeltaSeconds'));
 });
 
@@ -158,7 +165,8 @@ test('graph expression edits export qualified source and retain event aliases', 
     nodes: [
       { id: nodeIds.event, type: 'Event', reference_name: 'Tick', out: ['Then: exec', 'DeltaSeconds: float'] },
       { id: nodeIds.step, type: 'Behavior Expression', reference_name: '_bc_component_0_age += _bc_event_DeltaSeconds', inputs: {
-        _bc_component_0_age: { binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'age' } },
+        _bc_component_0_age: { display_name: 'projectile.age', binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'age' } },
+        _bc_event_DeltaSeconds: { display_name: 'event.dt' },
       }, in: ['Exec: exec'], out: ['Then: exec'] },
       { id: nodeIds.branch, type: 'Behavior Expression', reference_name: '_bc_component_0_age > _bc_component_0_lifetime', inputs: {
         _bc_component_0_age: { binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'lifetime' } },
@@ -180,6 +188,7 @@ test('graph expression edits export qualified source and retain event aliases', 
   assert.match(result, /if \(projectile\.lifetime > projectile\.lifetime\)/);
   assert.match(result, /event\.dt/);
   assert.match(result, /Keep expiry behavior readable/);
+  assert.doesNotMatch(result, /_bc_(?:component|event)_/);
   assert.doesNotMatch(result, /@node/);
   const roundtrip = compileModel(result, map);
   assert.equal(roundtrip.behavior.handlers[0].body[1].id, behavior.handlers[0].body[1].id);
@@ -274,13 +283,14 @@ test('typed sets lower membership, insertion and removal through core graph node
   assertPlannedConnections(behavior);
   assert(operations.some((op) => op.op === 'add_variable' && op.name === 'seen' && op.container === 'set'));
   assert(operations.some((op) => op.op === 'add_node' && op.type === 'Set Add'));
+  assert(operations.some((op) => op.op === 'add_variable_node' && op.kind === 'get' && op.variable === 'seen'));
   assert(operations.some((op) => op.op === 'add_node' && op.type === 'Set Remove'));
   assert(operations.some((op) => op.op === 'add_node' && op.type === 'Set Contains'));
   assert(operations.some((op) => op.op === 'add_node' && op.type === 'Branch'));
   assert(operations.some((op) => op.op === 'connect' && op.from_pin === 'Set' && op.to_pin === 'Value'));
   assert(operations.some((op) => op.op === 'connect' && op.from_pin === 'Return Value' && op.to_pin === 'Condition'));
   assert.deepEqual(sourceGraphShape(behavior).map(({ type }) => type), [
-    'Get Variable', 'Get Variable', 'Event', 'ForEach', 'Set Add', 'Set Variable',
+    'Get Variable', 'Get Variable', 'Event', 'ForEach', 'Set Add', 'Get Variable', 'Set Variable',
     'Set Contains', 'Branch', 'Set Remove', 'Set Variable',
   ]);
   const unsupported = `behavior Bad { state set<int> seen = []; on Tick() { seen.add(1); } }`;

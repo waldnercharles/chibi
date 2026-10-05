@@ -116,7 +116,7 @@ void ed_pin_label(const node *n, const pin_spec *pin, char *buf, size_t cap)
     }
     /* An expression's inputs are the names its source text uses. */
     if (n->desc == &NODE_BehaviorExpression && pin->kind == PIN_DATA && pin->name) {
-        snprintf(buf, cap, "%s", pin->name);
+        snprintf(buf, cap, "%s", pin->display_name && pin->display_name[0] ? pin->display_name : pin->name);
         return;
     }
     editor_identifier_label(pin->name ? pin->name : "Pin", buf, cap);

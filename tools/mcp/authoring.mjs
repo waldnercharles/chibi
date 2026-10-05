@@ -122,6 +122,10 @@ const operationProperties = {
     type: "string",
     description: "Node, pin, or event name.",
   },
+  display_name: {
+    type: ["string", "null"],
+    description: "Optional editor-only pin label for set_pin; null clears it. Does not change the internal pin name or identity.",
+  },
   pin: {
     description: "Pin name or zero-based pin index.",
   },

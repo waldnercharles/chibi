@@ -127,7 +127,8 @@ static int apply_pin(graph *g, node *n, int output, int i, av_value *v, load_ref
     if ((name && !av_is_str(name)) || (kind && !av_is_str(kind)) ||
         (type && !serialize_read_pin_type(type, &type_value)) ||
         read_pin_str(g, v, "type_name", &p->type_name) ||
-        read_pin_str(g, v, "split_type_name", &p->split_type_name)) {
+        read_pin_str(g, v, "split_type_name", &p->split_type_name) ||
+        read_pin_str(g, v, "display_name", &p->display_name)) {
         serialize_error_set(
             "node %llu has malformed pin %d",
             (unsigned long long)n->id,
@@ -137,6 +138,9 @@ static int apply_pin(graph *g, node *n, int output, int i, av_value *v, load_ref
     }
     if (name) {
         p->name = graph_own_str(g, av_get_str(name), av_get_len(name));
+    }
+    if (p->display_name && !p->display_name[0]) {
+        p->display_name = NULL;
     }
     p->type = type_value;
     if (kind) {

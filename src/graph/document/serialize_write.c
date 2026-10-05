@@ -150,6 +150,7 @@ static void write_pin_fields(av_doc *doc, av_value *o, const graph *g, const pin
         av_obj_set(doc, o, "declaration_id", av_uint(doc, p->declaration_id));
     }
     write_str_change(doc, o, "name", p->name, base->name);
+    write_str_change(doc, o, "display_name", p->display_name, base->display_name);
     bool retyped = p->type != base->type;
     if (retyped) {
         av_obj_set(doc, o, "type", av_str(doc, serialize_pin_type_name(p->type)));

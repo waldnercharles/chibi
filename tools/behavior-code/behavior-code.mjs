@@ -764,6 +764,7 @@ export function sourceGraphShape(behavior) {
       }
       if (statement.kind === 'set_mutation') {
         nodes.push({ ref: setMutationRef(statement.id), type: statement.method === 'add' ? 'Set Add' : 'Set Remove' });
+        if (statement.method === 'add') nodes.push({ ref: setMutationSourceRef(statement.id), type: 'Get Variable' });
       }
       const type = statement.kind === 'destroy' ? 'Destroy Entity'
         : statement.kind === 'foreach' ? 'ForEach'
@@ -804,6 +805,7 @@ export function buildOperations(behavior, selectors = null) {
       if (statement.kind === 'expression') {
         add({ op: 'add_node', type: 'Behavior Expression', source: statement.resolvedSource ?? statement.source, ref: refs.get(statement.id) });
         addBindings(add, refs.get(statement.id), statement.resolvedSource ?? statement.source, handler.params, statement.componentInputs);
+        addExpressionDisplayNames(add, refs.get(statement.id), statement, handler, statement.resolvedSource ?? statement.source);
       }
       if (statement.kind === 'if') {
         if (statement.conditionSet) {
@@ -812,11 +814,15 @@ export function buildOperations(behavior, selectors = null) {
         } else {
           add({ op: 'add_node', type: 'Behavior Expression', source: statement.resolvedCondition ?? statement.condition, ref: refs.get(statement.id) });
           addBindings(add, refs.get(statement.id), statement.resolvedCondition ?? statement.condition, handler.params, statement.componentInputs);
+          addExpressionDisplayNames(add, refs.get(statement.id), statement, handler, statement.resolvedCondition ?? statement.condition);
         }
       }
       if (statement.kind === 'foreach') add({ op: 'add_node', type: 'ForEach', ref: refs.get(statement.id) });
       if (statement.kind === 'set_mutation') {
         add({ op: 'add_node', type: statement.method === 'add' ? 'Set Add' : 'Set Remove', ref: refs.get(setMutationRef(statement.id)) });
+        if (statement.method === 'add') {
+          add({ op: 'add_variable_node', ref: refs.get(setMutationSourceRef(statement.id)), variable: statement.set, kind: 'get' });
+        }
         add({ op: 'add_variable_node', ref: refs.get(statement.id), variable: statement.set, kind: 'set' });
       }
       if (statement.kind === 'destroy') add({ op: 'add_node', type: 'Destroy Entity', ref: refs.get(statement.id) });
@@ -847,7 +853,8 @@ export function buildOperations(behavior, selectors = null) {
         }
       }
       if (statement.kind === 'set_mutation') {
-        add({ op: 'connect', from: refs.get(stateGetRef(statement.set)), from_pin: 'Value',
+        const setSource = statement.method === 'add' ? setMutationSourceRef(statement.id) : stateGetRef(statement.set);
+        add({ op: 'connect', from: refs.get(setSource), from_pin: 'Value',
           to: refs.get(setMutationRef(statement.id)), to_pin: 'Set', kind: 'data' });
         if (statement.setOperand.kind === 'loop') {
           add({ op: 'connect', from: refs.get(statement.setOperand.statement.id), from_pin: 'Array Element',
@@ -885,6 +892,23 @@ function addBindings(add, node, expression, params, componentInputs = []) {
   }
 }
 
+function addExpressionDisplayNames(add, node, statement, handler, expression) {
+  const used = new Set(expressionSymbols(expression));
+  for (const input of statement.componentInputs ?? []) {
+    if (!used.has(input.name)) continue;
+    const displayName = input.alias && input.field ? `${input.alias}.${input.field}` : input.name;
+    add({ op: 'set_pin', node, pin: input.name, display_name: displayName });
+  }
+  for (const internal of statement.eventInputs ?? []) {
+    if (!used.has(internal)) continue;
+    const payload = handler.eventFields?.[internal];
+    if (!payload) continue;
+    const sourceName = payload.alias || payload.pin;
+    add({ op: 'set_pin', node, pin: internal,
+      display_name: sourceName ? `event.${sourceName}` : internal });
+  }
+}
+
 function connectSequence(add, refs, statements, start) {
   let previous = start;
   for (const statement of statements) {
@@ -916,6 +940,7 @@ export function eventRef(event) {
 function stateVariableRef(name) { return 'state-variable-' + name; }
 function stateGetRef(name) { return 'state-get-' + name; }
 export function setMutationRef(id) { return id + '-set-op'; }
+function setMutationSourceRef(id) { return id + '-set-source'; }
 export function setConditionRef(id) { return id + '-set-test'; }
 function graphType(type) { return type === 'string' ? 'const char *' : type === 'entity' ? 'handle' : type; }
 
@@ -948,7 +973,10 @@ export function expectedConnections(behavior, refs) {
       }
       if (statement.kind === 'destroy') add('self', 'Self', statement.id, 'Entity', 'data');
       if (statement.kind === 'set_mutation') {
-        add(stateGetRef(statement.set), 'Value', setMutationRef(statement.id), 'Set', 'data');
+        const setSource = statement.method === 'add' && refs[setMutationSourceRef(statement.id)] !== undefined
+          ? setMutationSourceRef(statement.id)
+          : stateGetRef(statement.set);
+        add(setSource, 'Value', setMutationRef(statement.id), 'Set', 'data');
         if (statement.setOperand.kind === 'loop') {
           add(statement.setOperand.statement.id, 'Array Element', setMutationRef(statement.id), 'Item', 'data');
         }
@@ -1093,6 +1121,9 @@ export function updateGraphOperations(behavior, map, graph, fallbackBehavior = n
     if ((operation.op === 'add_node' || operation.op === 'add_self_node' || operation.op === 'add_variable_node') && added.has(operation.ref)) operations.push(operation);
   }
   for (const operation of planned) if (operation.op === 'bind_input') operations.push(operation);
+  for (const operation of planned) {
+    if (operation.op === 'set_pin' && operation.display_name !== undefined) operations.push(operation);
+  }
   for (const operation of planned) if (operation.op === 'connect') operations.push(operation);
   return { operations, selectors, added };
 }
@@ -1104,10 +1135,12 @@ export function updateOperations(behavior, refs) {
       if (statement.kind === 'expression') {
         operations.push({ op: 'set_expression', node: Number(refs[statement.id]), source: statement.resolvedSource ?? statement.source });
         addBindings((operation) => operations.push({ ...operation, node: Number(refs[statement.id]) }), Number(refs[statement.id]), statement.resolvedSource ?? statement.source, handler.params, statement.componentInputs);
+        addExpressionDisplayNames((operation) => operations.push({ ...operation, node: Number(refs[statement.id]) }), Number(refs[statement.id]), statement, handler, statement.resolvedSource ?? statement.source);
       }
       if (statement.kind === 'if' && !statement.conditionSet) {
         operations.push({ op: 'set_expression', node: Number(refs[statement.id]), source: statement.resolvedCondition ?? statement.condition });
         addBindings((operation) => operations.push({ ...operation, node: Number(refs[statement.id]) }), Number(refs[statement.id]), statement.resolvedCondition ?? statement.condition, handler.params, statement.componentInputs);
+        addExpressionDisplayNames((operation) => operations.push({ ...operation, node: Number(refs[statement.id]) }), Number(refs[statement.id]), statement, handler, statement.resolvedCondition ?? statement.condition);
       }
     }
   }

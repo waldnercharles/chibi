@@ -98,6 +98,14 @@
  // cf_destroy_draw; cf_draw3d_process renders one mesh command from s_process_command after
 --- a/src/cute_draw.cpp
 +++ b/src/cute_draw.cpp
+@@ -1137,6 +1137,7 @@
+ 	cf_destroy_texture(s_draw->white_texture);
+ 	atlas_cache_term(&s_draw->atlas_cache);
+ 	cf_destroy_material(s_draw->material);
++	cf_destroy_arena(&s_draw->uniform_arena);
+ 	s_draw->~CF_Draw();
+ 	CF_FREE(s_draw);
+ }
 @@ -2525,7 +2525,6 @@
  	CF_Font* font = (CF_Font*)CF_NEW(CF_Font);
  	font->file_data = (uint8_t*)data;

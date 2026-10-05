@@ -425,13 +425,15 @@ static bool depth_snapshot_backend()
                        "layout(set=3,binding=0) uniform uniform_block {vec4 "
                        "seed;};\n"
                        "void main(){gl_FragDepth=seed.x;out_value=seed;}\n";
-    const char
-        *decode_source = "layout(location=0) out vec4 out_value;\n"
-                         "layout(set=2,binding=0) uniform sampler2D "
-                         "depth_image;\n"
-                         "void main(){float "
-                         "d=texelFetch(depth_image,ivec2(gl_FragCoord.xy),0).r;"
-                         "out_value=vec4(d,d,d,1);}\n";
+    const char *decode_source = "layout(location=0) out vec4 out_value;\n"
+                                "layout(set=2,binding=0) uniform sampler2D "
+                                "depth_image;\n"
+                                "layout(set=2,binding=1) uniform sampler2D "
+                                "color_image;\n"
+                                "void main(){ivec2 p=ivec2(gl_FragCoord.xy);"
+                                "float d=texelFetch(depth_image,p,0).r;"
+                                "float c=texelFetch(color_image,p,0).r;"
+                                "out_value=vec4(c,d,0,1);}\n";
     CF_Shader seed = cf_make_shader_from_source(vertex, seed_source);
     CF_Shader decode = cf_make_shader_from_source(vertex, decode_source);
     CF_Mesh mesh = render_make_pass_mesh();
@@ -473,6 +475,7 @@ static bool depth_snapshot_backend()
         /* Confirm the source contains the crop before testing the depth blit.
          * Decode into a distinct canvas to avoid sampling an attached texture. */
         cf_material_set_texture_fs(decode_material, "depth_image", cf_canvas_get_depth_stencil_target(source));
+        cf_material_set_texture_fs(decode_material, "color_image", cf_canvas_get_target(source));
         cf_apply_canvas(output, true);
         cf_apply_mesh(mesh);
         cf_apply_shader(decode, decode_material);
@@ -481,19 +484,34 @@ static bool depth_snapshot_backend()
         cf_draw_elements();
         cf_app_draw_onto_screen(false);
         float *source_pixels = NULL;
-        ok &= read(cf_canvas_get_target(output), SIDE, SIDE, SIDE, SIDE, &source_pixels);
-        for (int y = 0; y < SIDE && ok; y++) {
+        bool source_read = read(cf_canvas_get_target(output), SIDE, SIDE, SIDE, SIDE, &source_pixels);
+        ok &= source_read;
+        for (int y = 0; y < SIDE && source_read && source_pixels; y++) {
             for (int x = 0; x < SIDE; x++) {
                 bool cropped = x >= 3 && x < 5 && y >= 3 && y < 5;
                 float expected = cropped ? .5f : .25f;
-                float actual = source_pixels[(y * SIDE + x) * 4];
-                if (fabsf(actual - expected) > .001f) {
-                    fprintf(stderr, "Depth snapshot source before copy pixel %d,%d: %g != %g\n", x, y, actual, expected);
+                int i = (y * SIDE + x) * 4;
+                float color = source_pixels[i];
+                float depth = source_pixels[i + 1];
+                if (fabsf(color - expected) > .001f || fabsf(depth - expected) > .001f) {
+                    fprintf(
+                        stderr,
+                        "Depth snapshot source before copy pixel %d,%d: color "
+                        "%g != %g; depth %g != %g\n",
+                        x,
+                        y,
+                        color,
+                        expected,
+                        depth,
+                        expected
+                    );
                     ok = false;
                 }
             }
         }
         free(source_pixels);
+        /* The readback draw ended the current SDL_GPU command buffer. */
+        cf_app_update(NULL);
 
         /* Leave a real cropped draw as the last backend state before blitting. */
         cf_apply_canvas(source, false);
@@ -519,6 +537,7 @@ static bool depth_snapshot_backend()
                 "depth_image",
                 cf_canvas_get_depth_stencil_target(inputs[input])
             );
+            cf_material_set_texture_fs(decode_material, "color_image", cf_canvas_get_target(source));
             cf_apply_canvas(output, true);
             cf_apply_mesh(mesh);
             cf_apply_shader(decode, decode_material);
@@ -527,21 +546,29 @@ static bool depth_snapshot_backend()
             cf_draw_elements();
             cf_app_draw_onto_screen(false);
             float *pixels = NULL;
-            ok &= read(cf_canvas_get_target(output), SIDE, SIDE, SIDE, SIDE, &pixels);
-            for (int y = 0; y < SIDE && ok; y++) {
+            bool output_read = read(cf_canvas_get_target(output), SIDE, SIDE, SIDE, SIDE, &pixels);
+            ok &= output_read;
+            for (int y = 0; y < SIDE && output_read && pixels; y++) {
                 for (int x = 0; x < SIDE; x++) {
                     bool cropped = x >= 3 && x < 5 && y >= 3 && y < 5;
-                    float expected = cropped ? (input ? .125f : .5f) : .25f;
-                    float actual = pixels[(y * SIDE + x) * 4];
-                    if (fabsf(actual - expected) > .001f) {
+                    float expected_depth = cropped ? (input ? .125f : .5f) : .25f;
+                    float expected_color = cropped ? .125f : .25f;
+                    int i = (y * SIDE + x) * 4;
+                    float color = pixels[i];
+                    float depth = pixels[i + 1];
+                    if (fabsf(color - expected_color) > .001f ||
+                        fabsf(depth - expected_depth) > .001f) {
                         fprintf(
                             stderr,
-                            "Depth snapshot backend %s pixel %d,%d: %g != %g\n",
+                            "Depth snapshot backend %s pixel %d,%d: color %g "
+                            "!= %g; depth %g != %g\n",
                             input ? "source redraw" : "full copy",
                             x,
                             y,
-                            actual,
-                            expected
+                            color,
+                            expected_color,
+                            depth,
+                            expected_depth
                         );
                         ok = false;
                     }

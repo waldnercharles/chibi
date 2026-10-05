@@ -43,7 +43,7 @@ For now, `.code` is authoring input, `.map.json` retains stable graph identities
 node --test tools/behavior-code/behavior-code.test.mjs
 ```
 
-The 26 Node tests cover parser/resolver diagnostics, component and event lowering, persistent array/set operation plans, iteration scope, identity preservation, graph topology validation, and graph-to-source rewriting. Native validation accepted all three behavior sources. The full `make test` gate passed in Debug with address and undefined-behavior sanitizers enabled; the native suite took 476.4 seconds and the whole-function audit took 2.3 seconds. The gate reported no sanitizer findings.
+The 27 Node tests cover parser/resolver diagnostics, component and event lowering, persistent array/set operation plans, iteration scope, identity preservation, graph topology validation, and graph-to-source rewriting. Native validation accepted all three behavior sources. The full `make test` gate passed in Debug with address and undefined-behavior sanitizers enabled; the native suite took 476.4 seconds and the whole-function audit took 2.3 seconds. The gate reported no sanitizer findings.
 
 Four native simulation steps at `1/60` second produce `GameProjectile.age = 0.16666667` in the collection-loop probe, with one live entity and no behavior failures. The lifecycle probe removes its projectile by frame six with no behavior failures, exercising deferred destruction. These are functional results, not timing claims.
 

@@ -593,6 +593,35 @@ test('graph export keeps a wired loop binding when its pin also has a default', 
   assert.doesNotMatch(exported, /projectile\.age \+= 2/);
 });
 
+test('graph export uses the default when a loop-name input has no Array Element wire', () => {
+  const source = `behavior UnwiredLoopName {
+  state float[] increments = [10];
+  on Tick(GameProjectile projectile) {
+    for (increment in increments) {
+      projectile.age += event.dt;
+    }
+  }
+}`;
+  const { behavior, map } = compileModel(source);
+  const expression = behavior.handlers[0].body[0].body[0];
+  const graph = mappedGraph(behavior, map);
+  const node = graph.nodes.find((candidate) => candidate.id === map.refs[expression.id]);
+  node.reference_name = '_bc_component_0_age += increment + _bc_event_DeltaSeconds';
+  node.inputs = {
+    _bc_component_0_age: { binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'age' } },
+    _bc_event_DeltaSeconds: {},
+    increment: { default: 2 },
+  };
+  assert(!graph.edges.some((edge) => edge.to === `${node.id}.increment`));
+
+  const exported = graphToSource(source, behavior, graph, map, registry);
+  assert.match(exported, /projectile\.age \+= 2 \+ event\.dt/);
+  assertPlannedConnections(compileModel(exported, map).behavior);
+
+  delete node.inputs.increment.default;
+  assert.throws(() => graphToSource(source, behavior, graph, map, registry), /increment has no verified source binding or supported default/);
+});
+
 test('source edits that retarget a set rebuild both semantic variable nodes', () => {
   const source = `behavior Retarget {
   state int[] ids = [1];

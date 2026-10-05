@@ -1257,10 +1257,24 @@ export function graphToSource(source, behavior, graph, map, registry) {
         }
         graphSource = graphSource.replace(new RegExp('(^|[^A-Za-z0-9_])' + internal + '(?![A-Za-z0-9_])', 'g'), '$1' + field.alias + '.' + binding.field);
       }
+      const wiredLoops = new Set();
+      for (const loop of statement.loopBindings ?? []) {
+        const sourceId = Number(map.refs[loop.statement.id]);
+        if (!Number.isSafeInteger(sourceId) || !node) continue;
+        const wired = (graph.edges ?? []).some((edge) => {
+          const from = endpoint(edge.from);
+          const to = endpoint(edge.to);
+          const sourceNode = nodes.get(from.id);
+          const kind = edge.kind ?? (pinType(sourceNode, 'out', from.pin) === 'exec' ? 'exec' : 'data');
+          return from.id === sourceId && from.pin === 'Array Element'
+            && to.id === node.id && to.pin === loop.name && kind === 'data';
+        });
+        if (wired) wiredLoops.add(loop.name);
+      }
       const sourceNames = new Set([
         'event', 'pi', 'e',
         ...handler.params.map((parameter) => parameter.name),
-        ...(statement.loopBindings ?? []).map((loop) => loop.name),
+        ...wiredLoops,
       ]);
       for (const symbol of expressionSymbols(graphSource ?? '')) {
         if (sourceNames.has(symbol)) continue;

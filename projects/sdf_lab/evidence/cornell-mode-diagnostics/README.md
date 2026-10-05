@@ -1,11 +1,14 @@
 # HRC quadrant, Gather, and bounce diagnostics
 
-These nine stills come from `chibi_ctl`'s native `preview_scene` renderer.
-The first seven are opt-in debug views of the authored flat 2D Cornell fixture
-and the matched camera-relative Blur/Gather scenes. The final pair uses the
+These nine checked-in stills come from `chibi_ctl`'s native `preview_scene`
+renderer. The first seven are opt-in debug views of the authored flat 2D Cornell
+fixture and matched camera-relative Blur/Gather scenes. The final pair uses the
 flat fixture's `Fluence` view with only `bounce_intensity` changed from 0 to
-0.35. Project copies are made under `/tmp`; the capture script changes no
-authored project scene. Each run records source and temporary-scene hashes,
+0.35. They were captured before the current diagnostic band remap and Depth
+unsupported marker were added, so they do not show those latest shader changes.
+The capture script can regenerate them and now also offers a Depth-mode case.
+Project copies are made under `/tmp`; the capture script changes no authored
+project scene. Each fresh run records source and temporary-scene hashes,
 request/response data, stderr, and image hash beside the PNG.
 
 ## Reproduce
@@ -18,6 +21,10 @@ xvfb-run -a python3 tools/hrc_cornell_diagnostic.py \
   --build build-release --width 320 --height 180 --render-frames 256
 ```
 
+Use repeated `--case <name>` options for a bounded subset; case names are the
+PNG filename stems. Each renderer process has a 180-second timeout by default
+and can be adjusted with `--timeout`.
+
 The request asks for one final image after advancing simulation. The native
 response reports frame 257, 240 performance samples, and 240 warmup frames.
 Captures run one at a time at 320×180, HRC resolution 0.5, and half-resolution
@@ -28,24 +35,32 @@ software Vulkan ICD `lvp_icd.json` / `libvulkan_lvp.so` (Mesa lavapipe
 are in the JSON responses; they are software-renderer diagnostics, not GPU
 performance claims.
 
-The RGB of views 10 and 11 is displayed with
-`log1p(max(energy, 0) * 65535) / log1p(65535)` to preserve weak field
-structure in the 8-bit preview. This display transform is not part of HRC
-lighting. The bottom strip shows alpha in grayscale. In view 10 raw HRC
-quadrants have alpha 1 (the gather pass writes it as a sentinel); that strip
-does not represent opacity. In view 11 alpha is the processed openness field
-seeded from open camera-plane pixels. In view 12 it is per-direction openness
-divided by the three possible probes.
+The current shader and a fresh run's per-case `display_transfer` record the
+following mapping. The checked-in manifest and images are still the earlier
+nine-case run. Views 10 and 11 use
+`log1p(max(energy, 0) * 65535) / log1p(65535)` for RGB; this display transform
+is not part of HRC lighting. Their top 82% band maps the complete field height
+to RGB; the bottom 18% band independently maps the complete field height to
+alpha in grayscale. In view 10 raw HRC quadrants have alpha 1 (the gather pass
+writes it as a sentinel), so that strip is constant and does not represent
+opacity. In view 11 Blur/Gather alpha is the processed openness field. Depth
+thickness packs diffuse/depth, specular/gloss, normal/validity, and
+direction/shadow rather than four light quadrants; view 11 returns a magenta
+unsupported marker for that mode.
 
 For view 12, each 2×2 tile is one HRC direction in shader order q0, q1, q2,
-q3: +X, +Y, −X, −Y in texture coordinates. RGB is actual probe data:
+q3: +X, +Y, −X, −Y in texture coordinates. The top 68% band maps the
+complete probe field to RGB; the bottom 32% maps the complete field to
+openness in grayscale. Each rendered pixel selects its nearest low-resolution
+cell with `texelFetch`; discrete fractions are not bilinearly interpolated.
+RGB is actual probe data:
 
 - Red: in-bounds, open candidates divided by three possible radial samples.
 - Green: candidates tested for height visibility divided by three. Empty
   receiver pixels have no height query.
 - Blue: visible candidates divided by the number of visibility tests, or zero
   when there were no tests.
-- The lower grayscale strip: open weight divided by three.
+- Alpha in the lower grayscale strip: open weight divided by three.
 
 Candidates outside the image or behind closed source pixels are skipped.
 Gather takes three radial samples for each of four directions and checks an
@@ -68,6 +83,10 @@ SDF or loop over emitters.
 | [flat-fluence-bounce-off.png](flat-fluence-bounce-off.png) | `HRCLabCornell2D`, Fluence, `bounce_intensity=0` | Matched control. |
 | [flat-fluence-bounce-on.png](flat-fluence-bounce-on.png) | `HRCLabCornell2D`, Fluence, `bounce_intensity=0.35` | Same authored scene and feedback setting; only intensity differs. |
 
+To render the additional Depth marker with the current shader, run the script
+with `--case camera-depth-surface`. That PNG is not part of the checked-in
+nine-image set.
+
 The isolated bounce pair's 8-bit PNGs differ by 0.666/255 mean absolute RGB
 channel value; 3.90% of channel values differ by more than 2/255, and 7.47%
 of pixels have at least one channel beyond that threshold. This measures the
@@ -88,7 +107,8 @@ surface height is available at a pixel. The open-front Cornell cutaway is a
 no volumetric scattering phase function here; fog/glow and emissive pixels are
 not evidence of volumetrics.
 
-The machine-readable run data, requests, responses, and renderer stderr logs
-are in this directory. `manifest.json` lists the controller hash, requests,
-per-case image hashes, and performance responses. The confirmed persistent
-Library IDs for all nine PNGs are in `library_ids.json`.
+The machine-readable data, requests, responses, and renderer stderr logs for
+the checked-in nine captures are in this directory. A fresh script run writes
+the controller hash, requests, per-case image hashes, exact display transfer,
+timeout, and performance responses to `manifest.json`. The confirmed
+persistent Library IDs for the checked-in PNGs are in `library_ids.json`.

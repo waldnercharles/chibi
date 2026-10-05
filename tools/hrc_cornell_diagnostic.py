@@ -26,9 +26,16 @@ CASES = [
     ("camera-gather-transport", "projects/sdf_lab", "HrcCornellModesGather", "HRC transport quadrants"),
     ("camera-gather-surface", "projects/sdf_lab", "HrcCornellModesGather", "Surface quadrants"),
     ("camera-gather-probes", "projects/sdf_lab", "HrcCornellModesGather", "Gather probes"),
+    ("camera-depth-surface", "projects/sdf_lab", "HrcCornellModesDepth", "Surface quadrants"),
     ("flat-fluence-bounce-off", "projects/hrc_lab", "HRCLabCornell2D", "Fluence", 0.0),
     ("flat-fluence-bounce-on", "projects/hrc_lab", "HRCLabCornell2D", "Fluence", 0.35),
 ]
+DISPLAY_TRANSFERS = {
+    "HRC transport quadrants": "log1p(max(energy, 0) * 65535) / log1p(65535); raw HRC alpha is a constant sentinel",
+    "Surface quadrants": "log1p(max(energy, 0) * 65535) / log1p(65535) for Blur/Gather; magenta unsupported marker for Depth thickness",
+    "Gather probes": "nearest-cell RGB fractions (candidates/3, visibility-tests/3, visible/tests); alpha is openness/3; clamped to [0,1]",
+    "Fluence": "fluence * 5; output is clipped by the preview target, not log-mapped",
+}
 
 
 def sha256(path):
@@ -93,6 +100,10 @@ def main():
     parser.add_argument("--width", type=int, default=320)
     parser.add_argument("--height", type=int, default=180)
     parser.add_argument("--render-frames", type=int, default=256)
+    parser.add_argument("--timeout", type=int, default=180,
+                        help="maximum seconds allowed for each renderer process")
+    parser.add_argument("--case", action="append", choices=[case[0] for case in CASES],
+                        help="capture only this named case; repeat to select several")
     args = parser.parse_args()
 
     build = args.build.resolve()
@@ -103,6 +114,11 @@ def main():
         raise SystemExit("--render-frames must be in [2, 3600]")
     if not (64 <= args.width <= 4096 and 64 <= args.height <= 4096):
         raise SystemExit("width and height must be in [64, 4096]")
+    if not (1 <= args.timeout <= 3600):
+        raise SystemExit("--timeout must be in [1, 3600]")
+
+    selected = set(args.case or [case[0] for case in CASES])
+    cases = [case for case in CASES if case[0] in selected]
 
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -117,14 +133,15 @@ def main():
         "freeze_simulation": False,
         "width": args.width,
         "height": args.height,
-        "output_count": len(CASES),
-        "display_transfer": "RGB log1p(energy * 65535) / log1p(65535); alpha is shown in a separate strip",
+        "output_count": len(cases),
+        "timeout_seconds_per_case": args.timeout,
+        "display_transfers": DISPLAY_TRANSFERS,
         "cases": [],
     }
 
     with tempfile.TemporaryDirectory(prefix="hrc-cornell-diagnostic-") as temp:
         scratch = Path(temp)
-        for case in CASES:
+        for case in cases:
             name, project_rel, scene_name, debug_view = case[:4]
             bounce_intensity = case[4] if len(case) > 4 else None
             project_source = ROOT / project_rel
@@ -158,9 +175,23 @@ def main():
                 str(ctl), "--project-root", str(project_copy),
                 "--render-request", str(request_path),
             ]
-            run = subprocess.run(
-                command, cwd=ROOT, text=True, capture_output=True, check=False,
-            )
+            try:
+                run = subprocess.run(
+                    command, cwd=ROOT, text=True, capture_output=True,
+                    check=False, timeout=args.timeout,
+                )
+            except subprocess.TimeoutExpired as error:
+                stderr = error.stderr or ""
+                stdout = error.stdout or ""
+                if isinstance(stderr, bytes):
+                    stderr = stderr.decode(errors="replace")
+                if isinstance(stdout, bytes):
+                    stdout = stdout.decode(errors="replace")
+                (output / f"{name}.log").write_text(stderr)
+                (output / f"{name}.stdout.txt").write_text(stdout)
+                raise SystemExit(
+                    f"Render timed out after {args.timeout}s for {name}; see {output / f'{name}.log'}"
+                )
             (output / f"{name}.log").write_text(run.stderr)
             if run.returncode:
                 (output / f"{name}.stdout.txt").write_text(run.stdout)
@@ -183,6 +214,8 @@ def main():
                 "scene": scene_name,
                 "debug_view": debug_view,
                 "bounce_intensity_override": bounce_intensity,
+                "display_transfer": DISPLAY_TRANSFERS[debug_view],
+                "timeout_seconds": args.timeout,
                 "source_scene_sha256": sha256(original_scene),
                 "debug_scene_sha256": sha256(copied_scene),
                 "project_root": str(project_copy),
@@ -202,7 +235,7 @@ def main():
             print(f"{name}: {args.width}x{args.height}, {summary['backend']}")
 
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"Wrote {len(CASES)} single-frame diagnostics to {output}")
+    print(f"Wrote {len(cases)} single-frame diagnostics to {output}")
 
 
 if __name__ == "__main__":

@@ -222,6 +222,28 @@ static bool draw_scaled(
     return draw_frames_scaled(raster, radiance, canvas, entities, count, size, world, frames, true);
 }
 
+static bool draw_view_once(
+    render_material_raster *raster,
+    render_radiance *radiance,
+    CF_Canvas canvas,
+    const render_material_entity *entities,
+    int count,
+    render_view_2d view
+)
+{
+    cf_app_update(NULL);
+    bool ok = render_material_raster_draw(raster, entities, count, view);
+    render_radiance_inputs inputs = { .material = render_material_raster_textures(raster) };
+    cf_draw_push();
+    cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+    if (ok) {
+        ok = render_radiance_draw(radiance, inputs, view, canvas);
+    }
+    cf_draw_pop();
+    cf_app_draw_onto_screen(false);
+    return ok;
+}
+
 static bool solve_scaled(
     render_material_raster *raster,
     render_radiance *radiance,
@@ -1794,6 +1816,152 @@ static bool surface_history(render_material_raster *raster)
     return ok;
 }
 
+static bool surface_history_after_probe_transition(render_material_raster *raster)
+{
+    render_radiance *transition = render_radiance_new();
+    render_radiance *reference = render_radiance_new();
+    CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas canvas = cf_make_canvas(params);
+    GameHRC2D normal = game_hrc2d_defaults();
+    normal.adaptive = normal.feedback = false;
+    normal.ambient = normal.fog = 0;
+    normal.surface_mode = GAME_HRC_SURFACE_GATHER;
+    normal.surface_radius = 32;
+    normal.surface_relief = 1.5f;
+    normal.surface_bevel = normal.specular = 0;
+    normal.radiance_hysteresis = .3f;
+    normal.debug_view = GAME_HRC_DEBUG_NORMAL;
+    render_material_entity scene[] = { emitter(), lit_wall(6, 1.5f) };
+    scene[0].emission[1] = scene[0].border_emission[1] = 2.0f;
+    render_view_2d view = { .min_x = -64,
+                            .max_y = 64,
+                            .width = SIDE,
+                            .height = SIDE,
+                            .crop_max_u = 1,
+                            .crop_max_v = 1 };
+    uint16_t transitioned[PIXELS * 4], reset[PIXELS * 4];
+    bool ok = transition && reference && canvas.id &&
+              render_material_raster_resize(raster, SIDE, SIDE) &&
+              render_radiance_resize(transition, SIDE, SIDE) &&
+              render_radiance_resize(reference, SIDE, SIDE) &&
+              render_radiance_set_lighting(transition, normal) &&
+              render_radiance_set_lighting(reference, normal);
+    for (int frame = 0; frame < 12 && ok; frame++) {
+        ok = draw_view_once(raster, transition, canvas, scene, 2, view) &&
+             draw_view_once(raster, reference, canvas, scene, 2, view);
+    }
+
+    if (ok) {
+        GameHRC2D probes = normal;
+        probes.debug_view = GAME_HRC_DEBUG_GATHER_PROBES;
+        view.min_x = -61;
+        view.max_y = 62;
+        scene[0].pos[0] = -8;
+        ok = render_radiance_set_lighting(transition, probes) &&
+             render_radiance_set_lighting(reference, normal) &&
+             draw_view_once(raster, transition, canvas, scene, 2, view) &&
+             draw_view_once(raster, reference, canvas, scene, 2, view);
+    }
+
+    if (ok) {
+        view.min_x = -58;
+        view.max_y = 60;
+        scene[0].pos[0] = 20;
+        ok = draw_view_once(raster, transition, canvas, scene, 2, view) &&
+             draw_view_once(raster, reference, canvas, scene, 2, view);
+    }
+
+    if (ok) {
+        ok = render_radiance_set_lighting(transition, normal);
+        GameHRC2D no_surface_history = normal;
+        no_surface_history.surface_radius = 0;
+        ok = ok && render_radiance_set_lighting(reference, no_surface_history) &&
+             render_radiance_set_lighting(reference, normal) &&
+             draw_view_once(raster, transition, canvas, scene, 2, view) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), transitioned, PIXELS) &&
+             draw_view_once(raster, reference, canvas, scene, 2, view) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), reset, PIXELS);
+    }
+    float error = ok ? surface_history_difference(transitioned, reset) : INFINITY;
+    ok &= error < .0001f;
+    printf("surface history after normal/probes/normal with camera and light motion: %.6f %s\n", error, ok ? "PASS" : "FAIL");
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    render_radiance_free(transition);
+    render_radiance_free(reference);
+    return ok;
+}
+
+static bool magenta_marker(const uint16_t *pixels)
+{
+    int count = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        int p = 4 * i;
+        count += half_value(pixels[p]) > .95f && half_value(pixels[p + 1]) < .05f &&
+                 half_value(pixels[p + 2]) > .95f;
+    }
+    return count > PIXELS * .95f;
+}
+
+static bool surface_mode_debug_views(render_material_raster *raster)
+{
+    render_radiance *radiance = render_radiance_new();
+    CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas canvas = cf_make_canvas(params);
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    lighting.surface_radius = 24;
+    lighting.surface_depth_radius = 128;
+    lighting.surface_depth_gain = 1;
+    lighting.surface_thickness = 12;
+    lighting.radiance_hysteresis = .25f;
+    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_QUADRANTS;
+    render_material_entity scene[] = { emitter(), lit_wall(6, 1.5f) };
+    render_view_2d view = { .min_x = -64,
+                            .max_y = 64,
+                            .width = SIDE,
+                            .height = SIDE,
+                            .crop_max_u = 1,
+                            .crop_max_v = 1 };
+    uint16_t pixels[PIXELS * 4];
+    bool ok = radiance && canvas.id &&
+              render_material_raster_resize(raster, SIDE, SIDE) &&
+              render_radiance_resize(radiance, SIDE, SIDE);
+    for (int mode = GAME_HRC_SURFACE_BLUR; mode <= GAME_HRC_SURFACE_DEPTH && ok;
+         mode++) {
+        lighting.surface_mode = (GameHRCSurfaceMode)mode;
+        ok = render_radiance_set_lighting(radiance, lighting) &&
+             draw_view_once(raster, radiance, canvas, scene, 2, view) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), pixels, PIXELS);
+        if (ok) {
+            bool is_magenta = magenta_marker(pixels);
+            ok = mode == GAME_HRC_SURFACE_DEPTH ? is_magenta : !is_magenta;
+            printf("surface quadrant debug mode %d: %s\n", mode, ok ? "PASS" : "FAIL");
+        }
+
+        lighting.debug_view = GAME_HRC_DEBUG_GATHER_PROBES;
+        if (ok) {
+            ok = render_radiance_set_lighting(radiance, lighting) &&
+                 draw_view_once(raster, radiance, canvas, scene, 2, view) &&
+                 read_hdr_texture(cf_canvas_get_target(canvas), pixels, PIXELS);
+        }
+        if (ok) {
+            bool is_magenta = magenta_marker(pixels);
+            ok = mode == GAME_HRC_SURFACE_GATHER ? !is_magenta : is_magenta;
+            printf("Gather probe debug mode %d: %s\n", mode, ok ? "PASS" : "FAIL");
+        }
+        lighting.debug_view = GAME_HRC_DEBUG_SURFACE_QUADRANTS;
+    }
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    render_radiance_free(radiance);
+    return ok;
+}
+
 static bool fluid_lighting(
     render_material_raster *raster,
     render_radiance *radiance,
@@ -2827,6 +2995,8 @@ int test_radiance()
         }
     }
     ok &= surface_history(raster);
+    ok &= surface_history_after_probe_transition(raster);
+    ok &= surface_mode_debug_views(raster);
     ok &= split_luminance_transport(raster, canvas);
     ok &= fractional_cells(raster, canvas);
     ok &= liquid_refraction(raster, radiance, canvas);

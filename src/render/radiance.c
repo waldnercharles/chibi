@@ -1371,6 +1371,8 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
         render_gpu_timing_detail("Surface gather");
         if (hrc->lighting.debug_view != GAME_HRC_DEBUG_GATHER_PROBES) {
             s_dispatch_surface_filter(hrc, *block);
+        } else {
+            hrc->surface_has_history = false;
         }
         return sigma / (float)*block;
     }
@@ -2002,12 +2004,15 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
         radiance->window_sum = radiance->cost_above = 0;
         memset(radiance->rung_ratio, 0, sizeof radiance->rung_ratio);
     }
-    if (radiance->lighting.surface_mode != lighting.surface_mode ||
-        radiance->lighting.surface_radius != lighting.surface_radius ||
-        radiance->lighting.surface_relief != lighting.surface_relief) {
+    GameHRC2D prior = radiance->lighting;
+    if (radiance->authored_lighting && prior.debug_view != lighting.debug_view) {
         radiance->surface_has_history = false;
     }
-    GameHRC2D prior = radiance->lighting;
+    if (prior.surface_mode != lighting.surface_mode ||
+        prior.surface_radius != lighting.surface_radius ||
+        prior.surface_relief != lighting.surface_relief) {
+        radiance->surface_has_history = false;
+    }
     if (prior.surface_mode != lighting.surface_mode ||
         prior.surface_radius != lighting.surface_radius ||
         prior.surface_depth_radius != lighting.surface_depth_radius ||
@@ -2316,6 +2321,8 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
         CF_Texture surface_texture = hrc->black;
         if (lighting.debug_view == GAME_HRC_DEBUG_TRANSPORT_QUADRANTS) {
             surface_texture = cf_canvas_get_target2(hrc->gather_canvas, 2 + i);
+        } else if (lighting.debug_view == GAME_HRC_DEBUG_SURFACE_QUADRANTS && lighting.surface_mode == GAME_HRC_SURFACE_DEPTH) {
+            surface_texture = hrc->black;
         } else if (surface_sigma > 0) {
             CF_Canvas surface_output = lighting.debug_view == GAME_HRC_DEBUG_GATHER_PROBES
                                          ? hrc->surface_canvas[0]

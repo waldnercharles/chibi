@@ -85,6 +85,8 @@ os.execvp(sys.argv[1], sys.argv[1:])
         self.environment.pop("CHIBI_DEPENDENCY_PACKAGES", None)
         self.environment.pop("SDKROOT", None)
         self.environment.pop("CC", None)
+        self.environment.pop("CXX", None)
+        self.environment.pop("CMAKE_TOOLCHAIN_FILE", None)
 
     def executable(self, path, source):
         path.write_text("#!/usr/bin/env python3\n" + source)
@@ -100,6 +102,70 @@ os.execvp(sys.argv[1], sys.argv[1:])
 
     def calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+    def test_linux_prefers_clang_only_without_a_compiler_selection(self):
+        for name in ("clang", "clang++"):
+            self.executable(self.binary / name, 'print("fixture clang")\n')
+        cases = (
+            ("fresh", {}, [], None, True),
+            ("other-definition", {}, ["-D", "CHIBI_ENABLE_TRACY=ON"], None, True),
+            ("cached", {}, [], "CMAKE_C_COMPILER:FILEPATH=/custom/gcc\n", False),
+            ("cc", {"CC": "custom-cc"}, [], None, False),
+            ("cxx", {"CXX": "custom-cxx"}, [], None, False),
+            ("toolchain-env", {"CMAKE_TOOLCHAIN_FILE": "/custom/toolchain"}, [], None, False),
+            ("compiler", {}, ["-DCMAKE_C_COMPILER:FILEPATH=/custom/gcc"], None, False),
+            ("cxx-compiler", {}, ["-DCMAKE_CXX_COMPILER=/custom/g++"], None, False),
+            ("toolchain", {}, ["-DCMAKE_TOOLCHAIN_FILE=/custom/toolchain"], None, False),
+        )
+        for name, environment, arguments, cache, automatic in cases:
+            with self.subTest(name=name):
+                build = self.source / name
+                if cache:
+                    build.mkdir()
+                    (build / "CMakeCache.txt").write_text(cache)
+                self.environment.update(environment)
+                before = len(self.calls()) if self.log.exists() else 0
+                self.configure("native", build, *arguments)
+                for key in environment:
+                    self.environment.pop(key)
+                calls = [call for call in self.calls()[before:] if call[0] in ("package", "cmake")]
+                self.assertEqual(len(calls), 2)
+                for call in calls:
+                    self.assertEqual("-DCMAKE_C_COMPILER=clang" in call, automatic)
+                    self.assertEqual("-DCMAKE_CXX_COMPILER=clang++" in call, automatic)
+                    for argument in arguments:
+                        self.assertIn(argument, call)
+
+    def test_linux_explicit_cmake_inputs_survive_repeated_configuration(self):
+        for name in ("clang", "clang++"):
+            self.executable(self.binary / name, 'print("fixture clang")\n')
+        # The package helper accepts only joined -D definitions. Private builds
+        # pass other CMake arguments through without changing their spelling.
+        self.environment["CHIBI_DEPENDENCY_PACKAGES"] = "0"
+        cases = (
+            ("toolchain-split", ["--toolchain", "/custom tools/toolchain.cmake"]),
+            ("toolchain-equals", ["--toolchain=/custom tools/toolchain.cmake"]),
+            ("preload-split", ["-C", "/custom tools/preload.cmake"]),
+            ("preload-joined", ["-C/custom tools/preload.cmake"]),
+            ("compiler-split", ["-D", "CMAKE_C_COMPILER=/custom tools/gcc"]),
+            ("compiler-typed", ["-D", "CMAKE_C_COMPILER:FILEPATH=/custom tools/gcc"]),
+            ("cxx-split", ["-D", "CMAKE_CXX_COMPILER=/custom tools/g++"]),
+            ("toolchain-definition", ["-D", "CMAKE_TOOLCHAIN_FILE:FILEPATH=/custom tools/toolchain.cmake"]),
+        )
+        for name, arguments in cases:
+            with self.subTest(name=name):
+                build = self.source / name
+                before = len(self.calls()) if self.log.exists() else 0
+                self.configure("native", build, *arguments)
+                added = self.calls()[before:]
+                self.assertFalse(any(call[0] == "package" for call in added))
+                cmake = next(call for call in added if call[0] == "cmake")
+                self.assertEqual(cmake[-len(arguments):], arguments)
+                self.assertNotIn("-DCMAKE_C_COMPILER=clang", cmake)
+                self.assertNotIn("-DCMAKE_CXX_COMPILER=clang++", cmake)
+                before = len(self.calls())
+                self.configure("native", build, *arguments)
+                self.assertEqual(len(self.calls()), before)
 
     def test_native_sdk_selection_uses_same_sdk_for_package_and_consumer(self):
         self.executable(self.binary / "uname", 'print("Darwin")\n')

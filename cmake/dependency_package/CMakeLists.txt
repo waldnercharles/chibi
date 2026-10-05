@@ -75,6 +75,29 @@ file(WRITE "${config}" "include(CMakeFindDependencyMacro)\n")
 if(TARGET Threads::Threads)
     file(APPEND "${config}" "find_dependency(Threads)\n")
 endif()
+# s2n's system crypto and Threads imports are directory-scoped, so TARGET
+# checks here cannot see them. Evaluate crypto properties in s2n's scope and
+# preserve the library it actually selected (static, shared, or custom).
+if(TARGET s2n)
+    get_target_property(s2n_links s2n INTERFACE_LINK_LIBRARIES)
+    if("Threads::Threads" IN_LIST s2n_links AND NOT TARGET Threads::Threads)
+        file(APPEND "${config}" "find_dependency(Threads)\n")
+    endif()
+    if("AWS::crypto" IN_LIST s2n_links)
+        set(crypto_config "${CMAKE_CURRENT_BINARY_DIR}/chibi-crypto.cmake")
+        file(GENERATE OUTPUT "${crypto_config}" CONTENT
+"if(NOT TARGET AWS::crypto)
+    add_library(AWS::crypto UNKNOWN IMPORTED)
+    set_target_properties(AWS::crypto PROPERTIES
+        IMPORTED_LOCATION [==[$<TARGET_PROPERTY:AWS::crypto,IMPORTED_LOCATION>]==]
+        IMPORTED_LINK_INTERFACE_LANGUAGES [==[$<TARGET_PROPERTY:AWS::crypto,IMPORTED_LINK_INTERFACE_LANGUAGES>]==]
+        INTERFACE_INCLUDE_DIRECTORIES [==[$<TARGET_PROPERTY:AWS::crypto,INTERFACE_INCLUDE_DIRECTORIES>]==])
+    add_dependencies(AWS::crypto Threads::Threads)
+endif()
+" TARGET s2n)
+        file(APPEND "${config}" "include([==[${crypto_config}]==])\n")
+    endif()
+endif()
 if(TARGET OpenGL::GL)
     file(APPEND "${config}" "find_dependency(OpenGL)\n")
 endif()

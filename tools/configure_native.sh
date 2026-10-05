@@ -2,6 +2,30 @@
 set -eu
 build_dir=$1
 shift
+# Match the native CI compiler on fresh Linux builds. Explicit toolchains,
+# environment selections, and existing CMake caches remain authoritative.
+if [ "$(uname -s)" = Linux ] && [ ! -f "$build_dir/CMakeCache.txt" ] &&
+    [ -z "${CC:-}${CXX:-}${CMAKE_TOOLCHAIN_FILE:-}" ]; then
+    selected=0
+    definition=0
+    for argument do
+        if [ "$definition" -eq 1 ]; then
+            argument="-D$argument"
+            definition=0
+        fi
+        case "$argument" in
+            -D) definition=1 ;;
+            --toolchain|--toolchain=*|-C*) selected=1 ;;
+            -DCMAKE_C_COMPILER=*|-DCMAKE_C_COMPILER:*=*|\
+            -DCMAKE_CXX_COMPILER=*|-DCMAKE_CXX_COMPILER:*=*|\
+            -DCMAKE_TOOLCHAIN_FILE=*|-DCMAKE_TOOLCHAIN_FILE:*=*) selected=1 ;;
+        esac
+    done
+    if [ "$selected" -eq 0 ] && command -v clang >/dev/null 2>&1 &&
+        command -v clang++ >/dev/null 2>&1; then
+        set -- "$@" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+    fi
+fi
 # Keep framework headers and compiler system headers on the same selected SDK.
 sdk=${SDKROOT:-}
 compiler=${CC:-cc}

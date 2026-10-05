@@ -130,6 +130,8 @@ are pinned in CMake. On macOS, the Makefile uses Homebrew
 LLVM when installed: Apple's Clang 17 ASan runtime does not correctly unregister
 dynamic-library globals during unload. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
 `CC` and `CXX` for CMake to select another compiler.
+Fresh Linux Make builds prefer installed Clang, matching native CI; existing
+CMake caches and explicit compiler or toolchain selections are preserved.
 Native configuration preserves an explicitly selected SDK; otherwise it uses
 the selected compiler's SDK for both framework lookup and compilation.
 

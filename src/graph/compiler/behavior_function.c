@@ -63,6 +63,7 @@ static bool owned_set_add_setter(
     }
     if (add->breakpoint || source->breakpoint || source->disabled ||
         (add->input_pins[0].flags & PIN_FLAG_WATCH) ||
+        (add->input_pins[1].flags & PIN_FLAG_WATCH) ||
         (add->output_pins[0].flags & PIN_FLAG_WATCH) ||
         (source->output_pins[0].flags & PIN_FLAG_WATCH)) {
         return false;

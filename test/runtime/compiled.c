@@ -1,5 +1,7 @@
+#include "graph/compiler/behavior_function_internal.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/document/library.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/runtime.h"
 #include "test/instance_bank_fixture.h"
@@ -130,6 +132,134 @@ static void compiled_counter(behavior_backend backend)
     } else {
         assert(eval_oracle_calls() > eval_before && flow_oracle_calls() > flow_before);
     }
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+}
+
+static void whole_function_set_watches(behavior_backend backend)
+{
+    if (backend == BEHAVIOR_SLJIT && !graph_sljit_available()) {
+        return;
+    }
+
+    pin_value initial_items[] = { { .type = PIN_F64, .type_name = "double", .d = 10.5 } };
+    pin_array initial_set = { .element_type = PIN_F64,
+                              .type_name = "double",
+                              .count = 1,
+                              .capacity = 1,
+                              .items = initial_items };
+    pin_value initial = { .type = PIN_F64,
+                          .type_name = "double",
+                          .container = PIN_CONTAINER_SET,
+                          .ptr = &initial_set };
+    pin_value item = { .type = PIN_I32, .type_name = "int", .i = 7 };
+    behavior_asset *asset = behavior_asset_new("Watched owned set append");
+    behavior_variable *set_variable = behavior_asset_add_variable(
+        asset,
+        "Items",
+        PIN_F64,
+        "double",
+        PIN_CONTAINER_SET,
+        &initial,
+        ""
+    );
+    behavior_variable *item_variable = behavior_asset_add_variable(
+        asset,
+        "Next",
+        PIN_I32,
+        "int",
+        PIN_CONTAINER_SINGLE,
+        &item,
+        ""
+    );
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(!graph_set_event_name(g, event, "Append"));
+    node *get_set = behavior_asset_add_get_node(asset, set_variable->id);
+    node *get_item = behavior_asset_add_get_node(asset, item_variable->id);
+    node *add = graph_add_node(g, registry_node_by_name("Set Add"));
+    assert(add);
+    assert(!graph_set_pin_type(g, add, 0, 0, PIN_F64, "double"));
+    assert(!graph_set_pin_container(g, add, 0, 0, PIN_CONTAINER_SET));
+    assert(!graph_set_pin_type(g, add, 0, 1, PIN_F64, "double"));
+    assert(!graph_set_pin_type(g, add, 1, 0, PIN_F64, "double"));
+    assert(!graph_set_pin_container(g, add, 1, 0, PIN_CONTAINER_SET));
+    node *set = behavior_asset_add_set_node(asset, set_variable->id);
+    assert(!graph_connect_data(g, get_set, 0, add, 0));
+    assert(!graph_connect_data_conversion(g, get_item, 0, add, 1, &NODE_To_Real));
+    assert(graph_input_conversion(g, add, 1) == &NODE_To_Real);
+    assert(!graph_connect_data(g, add, 0, set, 1));
+    assert(!graph_connect_exec(g, event, 0, set, 0, 0));
+
+    assert(!graph_set_pin_watch(g, add, 0, 1, 1));
+    assert(!behavior_function_owned_set_add_candidate(asset, g, add));
+    assert(!graph_set_pin_watch(g, get_set, 1, 0, 1));
+    assert(!graph_set_pin_watch(g, add, 0, 0, 1));
+    assert(!graph_set_pin_watch(g, add, 1, 0, 1));
+    assert(!graph_set_pin_watch(g, set, 0, 1, 1));
+    assert(!graph_set_pin_watch(g, set, 1, 1, 1));
+
+    behavior_program_publish(asset);
+    const behavior_function *function = behavior_program_function(
+        behavior_program_graph(asset->program, g),
+        event
+    );
+    assert(function);
+    for (int i = 0; i < acount(function->instructions); i++) {
+        const behavior_function_instruction *instruction = &function->instructions[i];
+        assert(instruction->op != BF_STORE_VALUE || instruction->offset != BF_STORE_VALUE_SET_ADD);
+    }
+
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    assert(!behavior_instance_set_backend(instance, backend));
+    behavior_instance_set_trace_enabled(instance, 1);
+    arena snapshot_storage = { 0 };
+    pin_value before;
+    assert(!behavior_instance_copy_variable(instance, set_variable->id, &snapshot_storage, &before));
+    const pin_array *snapshot = before.ptr;
+    assert(snapshot && snapshot->count == 1 && snapshot->items[0].d == 10.5);
+
+    flow_error error = { 0 };
+    flow_run *run = behavior_instance_dispatch(instance, "Append", (flow_inputs){ 0 }, &error);
+    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    pin_value watched;
+    assert(flow_run_watch_output(run, get_set, 0, &watched) == 0);
+    const pin_array *getter_value = watched.ptr;
+    assert(watched.type == PIN_F64 && watched.container == PIN_CONTAINER_SET);
+    assert(getter_value && getter_value->count == 1 && getter_value->items[0].d == 10.5);
+
+    assert(flow_run_watch_input(run, add, 0, &watched) == 0);
+    const pin_array *add_set_input = watched.ptr;
+    assert(watched.type == PIN_F64 && watched.container == PIN_CONTAINER_SET);
+    assert(add_set_input && add_set_input->count == 1 && add_set_input->items[0].d == 10.5);
+    assert(flow_run_watch_output(run, get_item, 0, &watched) == 0);
+    assert(watched.type == PIN_I32 && watched.i == 7);
+    assert(flow_run_watch_input(run, add, 1, &watched) == 0);
+    assert(watched.type == PIN_F64 && watched.d == 7.0);
+
+    assert(flow_run_watch_output(run, add, 0, &watched) == 0);
+    const pin_array *added = watched.ptr;
+    assert(watched.type == PIN_F64 && watched.container == PIN_CONTAINER_SET);
+    assert(
+        added && added->count == 2 && added->items[0].d == 10.5 &&
+        added->items[1].d == 7.0
+    );
+    assert(flow_run_watch_input(run, set, 1, &watched) == 0);
+    const pin_array *set_input = watched.ptr;
+    assert(watched.type == PIN_F64 && watched.container == PIN_CONTAINER_SET);
+    assert(set_input && set_input->count == 2 && set_input->items[1].d == 7.0);
+    assert(flow_run_watch_output(run, set, 1, &watched) == 0);
+    const pin_array *set_output = watched.ptr;
+    assert(watched.type == PIN_F64 && watched.container == PIN_CONTAINER_SET);
+    assert(set_output && set_output->count == 2 && set_output->items[1].d == 7.0);
+
+    const pin_array *current = instance->variables[0].ptr;
+    assert(
+        current && current->count == 2 && current->items[0].d == 10.5 &&
+        current->items[1].d == 7.0
+    );
+    assert(snapshot->count == 1 && snapshot->items[0].d == 10.5);
+    arena_free(&snapshot_storage);
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
 }

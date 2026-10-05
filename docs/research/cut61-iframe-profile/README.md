@@ -152,3 +152,12 @@ specified initial fixture did not show material avoidable cost. `workspace_layou
 `area_documents`, native UI acceptance, web build, GPU/Studio suites, and full
 verification remain **not run**. Source review and Fedora render acceptance are
 separately coordinated. Nothing is merged, pushed, or published.
+
+## Representative capture preparation
+
+The later, separately authorized native capture preparation is documented in
+[`native-preparation.md`](native-preparation.md). It adds an exact lifecycle
+selector and opt-in context/outer-frame reporting, without a runtime optimization
+or RmlUi internal patch. The initial measurements above remain tied to their
+original source and artifacts. Branch publication is now authorized for Fedora
+verification; native execution remains separately scheduled.

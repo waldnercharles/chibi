@@ -69,6 +69,7 @@ int tab_named(const app_scene_authoring *scene, const char *label);
 void studio_documents_graph_checks();
 void studio_documents_shell_checks();
 void studio_documents_panel_checks();
+void studio_documents_panel_lifecycle_check();
 void studio_documents_outliner_checks();
 /* The fields alone, for --studio-properties. */
 void studio_documents_property_field_checks();

@@ -10,6 +10,7 @@
 #include "render/scene_renderer.h"
 #include "runtime/generated.h"
 #include "test/suite_internal.h"
+#include "ui/iframe_profile.h"
 #include "ui/input_feel.h"
 
 #include <SDL3/SDL_events.h>
@@ -18,6 +19,62 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
+
+static bool profile_lifecycle;
+static int profile_frames;
+static double profile_frame_seconds;
+
+static double profile_now()
+{
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec + (double)t.tv_nsec / 1e9;
+}
+
+static void profile_frame(double started, double seconds, rml_backend_stats before, rml_backend_stats after)
+{
+    static const char *names[] = { "outside", "pre", "context", "post" };
+    double phase_seconds = 0;
+    for (int i = 0; i < iframe_profile_record_count(); i++) {
+        iframe_profile_record r = iframe_profile_record_get(i);
+        iframe_profile_sample s = r.sample;
+        phase_seconds += s.seconds;
+        printf(
+            "STUDIO_IFRAME {\"frame\":%d,\"context\":\"%s\",\"phase\":\"%s\","
+            "\"started\":%.9f,\"seconds\":%.9f,\"calls\":%d,\"holder_updates\":"
+            "%d,"
+            "\"holder_seconds\":%.9f,\"boxes\":%d,\"heights\":%d,\"passes\":%d}"
+            "\n",
+            profile_frames,
+            r.context,
+            names[r.phase],
+            s.started,
+            s.seconds,
+            s.calls,
+            s.holder_updates,
+            s.holder_seconds,
+            s.boxes,
+            s.heights,
+            s.passes
+        );
+    }
+    printf(
+        "STUDIO_FRAME {\"frame\":%d,\"started\":%.9f,\"seconds\":%.9f,"
+        "\"phase_seconds\":%.9f,\"outside_phase_seconds\":%.9f,"
+        "\"host_updates\":%llu,\"host_retained_frames\":%llu,"
+        "\"host_render_captures\":%llu,\"host_render_passes\":%llu}\n",
+        profile_frames,
+        started,
+        seconds,
+        phase_seconds,
+        seconds - phase_seconds,
+        (unsigned long long)(after.context_updates - before.context_updates),
+        (unsigned long long)(after.retained_frames - before.retained_frames),
+        (unsigned long long)(after.render_captures - before.render_captures),
+        (unsigned long long)(after.render_passes - before.render_passes)
+    );
+}
 
 /* Studio over scene `scene` of the project at `project` with `behavior`
    open. */
@@ -76,6 +133,14 @@ void fixture_free(studio_fixture *f)
    canvas draws, so a reload lands between the scene and Studio frames. */
 void frame_delta(studio_fixture *f, bool reload, double delta_seconds)
 {
+    double started = 0;
+    rml_backend_stats before = { 0 };
+    if (profile_lifecycle) {
+        iframe_profile_enable(true);
+        profile_frames++;
+        before = rml_backend_get_stats(f->studio->backend);
+        started = profile_now();
+    }
     f->time += delta_seconds;
     cf_app_update(NULL);
     app_input_frame();
@@ -86,6 +151,11 @@ void frame_delta(studio_fixture *f, bool reload, double delta_seconds)
     }
     studio_frame(f->studio, delta_seconds);
     cf_app_draw_onto_screen(true);
+    if (profile_lifecycle) {
+        double seconds = profile_now() - started;
+        profile_frame_seconds += seconds;
+        profile_frame(started, seconds, before, rml_backend_get_stats(f->studio->backend));
+    }
 }
 
 void frame(studio_fixture *f, bool reload)
@@ -287,18 +357,19 @@ void test_code_intelligence_studio();
 typedef enum
 {
     RUN_ALL,
-    RUN_PROPERTIES, /* the fields alone (--studio-properties) */
-    RUN_LISTS,      /* lists and drag alone (--studio-lists) */
-    RUN_OUTLINER,   /* the Outliner alone (--studio-outliner) */
-    RUN_OUTPUT,     /* Output alone (--studio-output) */
-    RUN_MEMBERS,    /* Members alone (--studio-members) */
-    RUN_SHELL,      /* the shell alone (--studio-shell) */
-    RUN_SCENE,      /* the Scene area alone (--studio-scene) */
-    RUN_CHROME,     /* the editor chrome alone (--studio-chrome) */
-    RUN_PANELS,     /* the authored panel checks alone (--studio-panels) */
-    RUN_INSPECTOR,  /* the UI Inspector alone (--studio-inspector) */
-    RUN_DESIGNER,   /* the visual designer alone (--studio-designer) */
-    RUN_PALETTE,    /* the palette and pickers alone (--studio-palette) */
+    RUN_PROPERTIES,      /* the fields alone (--studio-properties) */
+    RUN_LISTS,           /* lists and drag alone (--studio-lists) */
+    RUN_OUTLINER,        /* the Outliner alone (--studio-outliner) */
+    RUN_OUTPUT,          /* Output alone (--studio-output) */
+    RUN_MEMBERS,         /* Members alone (--studio-members) */
+    RUN_SHELL,           /* the shell alone (--studio-shell) */
+    RUN_SCENE,           /* the Scene area alone (--studio-scene) */
+    RUN_CHROME,          /* the editor chrome alone (--studio-chrome) */
+    RUN_PANELS,          /* the authored panel checks alone (--studio-panels) */
+    RUN_PANEL_LIFECYCLE, /* exactly area_panels_take_turns(false) */
+    RUN_INSPECTOR,       /* the UI Inspector alone (--studio-inspector) */
+    RUN_DESIGNER,        /* the visual designer alone (--studio-designer) */
+    RUN_PALETTE,         /* the palette and pickers alone (--studio-palette) */
     RUN_GRAPH_CHROME, /* graph menus, Node and Member tabs (--studio-graph-chrome) */
     RUN_MODELS,       /* model authoring in Studio (--studio-models) */
 } studio_run;
@@ -332,6 +403,9 @@ static int studio_documents_app(const char *program, studio_run run)
         case RUN_SCENE: studio_documents_scene_checks(); break;
         case RUN_CHROME: studio_documents_chrome_checks(); break;
         case RUN_PANELS: studio_documents_panel_checks(); break;
+        case RUN_PANEL_LIFECYCLE:
+            studio_documents_panel_lifecycle_check();
+            break;
         case RUN_INSPECTOR: studio_documents_inspector_checks(); break;
         case RUN_DESIGNER: studio_documents_designer_checks(); break;
         case RUN_PALETTE: studio_documents_palette_checks(); break;
@@ -424,6 +498,30 @@ int studio_chrome_run(const char *program)
 int studio_panels_run(const char *program)
 {
     return studio_documents_app(program, RUN_PANELS);
+}
+
+int studio_panel_lifecycle_run(const char *program)
+{
+    const char *profile = getenv("CHIBI_IFRAME_PROFILE");
+    profile_lifecycle = profile && !strcmp(profile, "1");
+    profile_frames = 0;
+    profile_frame_seconds = 0;
+    double started = profile_lifecycle ? profile_now() : 0;
+    int result = studio_documents_app(program, RUN_PANEL_LIFECYCLE);
+    if (profile_lifecycle) {
+        printf(
+            "STUDIO_CASE {\"case\":\"area_panels_take_turns(false)\","
+            "\"frames\":%d,\"expected_frames\":2016,\"seconds\":%.9f,"
+            "\"frame_seconds\":%.9f,\"app_result\":%d}\n",
+            profile_frames,
+            profile_now() - started,
+            profile_frame_seconds,
+            result
+        );
+        iframe_profile_enable(false);
+    }
+    profile_lifecycle = false;
+    return result;
 }
 
 /* The UI Inspector (workstream I1) alone. */

@@ -1144,13 +1144,13 @@ void rml_backend_update(rml_backend *backend, double delta_seconds)
     backend->frame_dirty = true;
     backend->stats.context_updates++;
     driven = backend;
-    iframe_profile_begin(IFRAME_PROFILE_PRE);
+    iframe_profile_begin(IFRAME_PROFILE_PRE, backend->context_name);
     iframes_settle(backend->context);
     iframe_profile_end();
-    iframe_profile_begin(IFRAME_PROFILE_CONTEXT);
+    iframe_profile_begin(IFRAME_PROFILE_CONTEXT, backend->context_name);
     rml_context_update(backend->context);
     iframe_profile_end();
-    iframe_profile_begin(IFRAME_PROFILE_POST);
+    iframe_profile_begin(IFRAME_PROFILE_POST, backend->context_name);
     iframes_settle(backend->context);
     iframe_profile_end();
     presence_settle(backend->context);

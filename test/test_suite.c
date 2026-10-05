@@ -124,6 +124,7 @@ int studio_chrome_run(const char *program);
 int studio_palette_run(const char *program);
 int studio_graph_chrome_run(const char *program);
 int studio_panels_run(const char *program);
+int studio_panel_lifecycle_run(const char *program);
 /* The visual designer (workstream D1). */
 int studio_designer_run(const char *program);
 int studio_graph_inputs_run(const char *program);
@@ -503,6 +504,7 @@ static void print_test_selectors()
     puts("  collaboration: --collab");
     puts("  Narrower costly checks: --automation-search --automation-refactor --automation-profile-scenario-inputs --editor-commands");
     puts("  Focused CPU checks: --shader-graph-codegen --prototype-preview-lifetime");
+    puts("  Native panel lifecycle: --studio-panel-lifecycle (exactly area_panels_take_turns(false)); append validate for graphics-free selection validation");
     puts("  GPU/render coverage: make test-render");
     puts("Use make agent-list for workload classifications; full/mixed checks require CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1.");
     puts("The no-selector invocation is the full all_checks suite; --whole-function-audit is a separate full-coverage check.");
@@ -546,6 +548,16 @@ int main(int argc, char **argv)
         setvbuf(stdout, NULL, _IOLBF, 0);
         print_test_selectors();
         return 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--studio-panel-lifecycle")) {
+        if (argc == 3 && !strcmp(argv[2], "validate")) {
+            puts("{\"selector\":\"--studio-panel-lifecycle\",\"case\":\"area_panels_take_turns(false)\",\"expected_frames\":2016,\"graphics_started\":false,\"validation_only\":true}");
+            return 0;
+        }
+        if (argc != 2) {
+            fputs("usage: test_suite --studio-panel-lifecycle [validate]\n", stderr);
+            return 2;
+        }
     }
     for (int i = 2; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == '-') {
@@ -1427,6 +1439,10 @@ int main(int argc, char **argv)
     }
     /* Authored panels, game UI and the areas they take turns in: Studio's,
        in a hidden window. */
+    if (argc == 2 && !strcmp(argv[1], "--studio-panel-lifecycle")) {
+        registry_validate();
+        return studio_panel_lifecycle_run(program_name) || fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--studio-panels") == 0) {
         registry_validate();
         return studio_panels_run(program_name) || fails ? 1 : 0;

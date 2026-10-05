@@ -34,6 +34,8 @@ static iframe *iframes;
 static bool profiling;
 static iframe_profile_phase phase;
 static iframe_profile_sample samples[IFRAME_PROFILE_PHASES];
+static iframe_profile_sample before;
+static iframe_profile_record current_record, *records;
 
 static double profile_clock()
 {
@@ -47,13 +49,20 @@ void iframe_profile_enable(bool enabled)
     profiling = enabled;
     phase = IFRAME_PROFILE_OUTSIDE;
     memset(samples, 0, sizeof samples);
+    aclear(records);
+    if (!enabled) {
+        afree(records);
+    }
 }
 
-void iframe_profile_begin(iframe_profile_phase next)
+void iframe_profile_begin(iframe_profile_phase next, const char *context)
 {
     if (profiling) {
         assert(phase == IFRAME_PROFILE_OUTSIDE);
         phase = next;
+        before = samples[phase];
+        snprintf(current_record.context, sizeof current_record.context, "%s", context);
+        current_record.phase = phase;
         samples[phase].calls++;
         samples[phase].started = profile_clock();
     }
@@ -63,6 +72,18 @@ void iframe_profile_end()
 {
     if (profiling) {
         samples[phase].seconds += profile_clock() - samples[phase].started;
+        iframe_profile_sample s = samples[phase];
+        current_record.sample = (iframe_profile_sample){
+            .calls = s.calls - before.calls,
+            .holder_updates = s.holder_updates - before.holder_updates,
+            .boxes = s.boxes - before.boxes,
+            .heights = s.heights - before.heights,
+            .passes = s.passes - before.passes,
+            .seconds = s.seconds - before.seconds,
+            .holder_seconds = s.holder_seconds - before.holder_seconds,
+            .started = s.started,
+        };
+        apush(records, current_record);
         phase = IFRAME_PROFILE_OUTSIDE;
     }
 }
@@ -75,6 +96,17 @@ iframe_profile_phase iframe_profile_current()
 iframe_profile_sample iframe_profile_get(iframe_profile_phase which)
 {
     return samples[which];
+}
+
+int iframe_profile_record_count()
+{
+    return acount(records);
+}
+
+iframe_profile_record iframe_profile_record_get(int index)
+{
+    assert(index >= 0 && index < acount(records));
+    return records[index];
 }
 
 void iframe_attach(rml_element *document, rml_element *element, bool fit)

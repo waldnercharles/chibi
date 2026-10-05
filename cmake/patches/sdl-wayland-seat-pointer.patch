@@ -1,0 +1,27 @@
+Backport SDL 79b40ad3975431cbab09f29ad90b5aef469131d8 to release-3.4.0.
+Skip seat cursor requests when the seat has no wl_pointer.
+https://github.com/libsdl-org/SDL/commit/79b40ad3975431cbab09f29ad90b5aef469131d8
+
+--- a/src/video/wayland/SDL_waylandmouse.c
++++ b/src/video/wayland/SDL_waylandmouse.c
+@@ -1165,12 +1165,14 @@
+     Wayland_PointerObject obj;
+ 
+     wl_list_for_each (seat, &d->seat_list, link) {
+-        obj.wl_pointer = seat->pointer.wl_pointer;
+-        obj.is_pointer = true;
+-        if (mouse->focus && mouse->focus->internal == seat->pointer.focus) {
+-            Wayland_CursorStateSetCursor(&seat->pointer.cursor_state, &obj, seat->pointer.focus, seat->pointer.enter_serial, cursor);
+-        } else if (!seat->pointer.focus) {
+-            Wayland_CursorStateSetCursor(&seat->pointer.cursor_state, &obj, seat->pointer.focus, seat->pointer.enter_serial, NULL);
++        if (seat->pointer.wl_pointer) {
++            obj.wl_pointer = seat->pointer.wl_pointer;
++            obj.is_pointer = true;
++            if (mouse->focus && mouse->focus->internal == seat->pointer.focus) {
++                Wayland_CursorStateSetCursor(&seat->pointer.cursor_state, &obj, seat->pointer.focus, seat->pointer.enter_serial, cursor);
++            } else if (!seat->pointer.focus) {
++                Wayland_CursorStateSetCursor(&seat->pointer.cursor_state, &obj, seat->pointer.focus, seat->pointer.enter_serial, NULL);
++            }
+         }
+ 
+         SDL_WaylandPenTool *tool;

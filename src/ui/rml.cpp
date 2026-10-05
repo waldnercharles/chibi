@@ -860,6 +860,11 @@ bool rml_context_update(rml_context *c)
     return context(c)->Update();
 }
 
+bool rml_context_update_profiled(rml_context *c, double seconds[RML_UPDATE_PARTS])
+{
+    return context(c)->Update(seconds);
+}
+
 bool rml_context_render(rml_context *c)
 {
     return context(c)->Render();

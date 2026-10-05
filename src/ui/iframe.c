@@ -82,7 +82,12 @@ void iframe_profile_end()
             .seconds = s.seconds - before.seconds,
             .holder_seconds = s.holder_seconds - before.holder_seconds,
             .started = s.started,
+            .context_calls = s.context_calls - before.context_calls,
         };
+        for (int i = 0; i < RML_UPDATE_PARTS; i++) {
+            current_record.sample.context_seconds[i] = s.context_seconds[i] -
+                                                       before.context_seconds[i];
+        }
         apush(records, current_record);
         phase = IFRAME_PROFILE_OUTSIDE;
     }
@@ -96,6 +101,15 @@ iframe_profile_phase iframe_profile_current()
 iframe_profile_sample iframe_profile_get(iframe_profile_phase which)
 {
     return samples[which];
+}
+
+void iframe_profile_context_add(const double seconds[RML_UPDATE_PARTS])
+{
+    assert(profiling && phase == IFRAME_PROFILE_CONTEXT);
+    samples[phase].context_calls++;
+    for (int i = 0; i < RML_UPDATE_PARTS; i++) {
+        samples[phase].context_seconds[i] += seconds[i];
+    }
 }
 
 int iframe_profile_record_count()

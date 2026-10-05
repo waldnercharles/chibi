@@ -1148,7 +1148,13 @@ void rml_backend_update(rml_backend *backend, double delta_seconds)
     iframes_settle(backend->context);
     iframe_profile_end();
     iframe_profile_begin(IFRAME_PROFILE_CONTEXT, backend->context_name);
-    rml_context_update(backend->context);
+    if (iframe_profile_current() == IFRAME_PROFILE_CONTEXT) {
+        double seconds[RML_UPDATE_PARTS];
+        rml_context_update_profiled(backend->context, seconds);
+        iframe_profile_context_add(seconds);
+    } else {
+        rml_context_update(backend->context);
+    }
     iframe_profile_end();
     iframe_profile_begin(IFRAME_PROFILE_POST, backend->context_name);
     iframes_settle(backend->context);

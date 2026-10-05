@@ -44,8 +44,7 @@ static void profile_frame(double started, double seconds, rml_backend_stats befo
             "STUDIO_IFRAME {\"frame\":%d,\"context\":\"%s\",\"phase\":\"%s\","
             "\"started\":%.9f,\"seconds\":%.9f,\"calls\":%d,\"holder_updates\":"
             "%d,"
-            "\"holder_seconds\":%.9f,\"boxes\":%d,\"heights\":%d,\"passes\":%d}"
-            "\n",
+            "\"holder_seconds\":%.9f,\"boxes\":%d,\"heights\":%d,\"passes\":%d",
             profile_frames,
             r.context,
             names[r.phase],
@@ -58,6 +57,25 @@ static void profile_frame(double started, double seconds, rml_backend_stats befo
             s.heights,
             s.passes
         );
+        if (s.context_calls) {
+            double *t = s.context_seconds;
+            printf(
+                ",\"context_calls\":%d,\"model_update_seconds\":%.9f,\"root_"
+                "update_"
+                "seconds\":%.9f,"
+                "\"layout_position_seconds\":%.9f,\"release_documents_"
+                "seconds\":%.9f,\"other_"
+                "context_seconds\":%.9f",
+                s.context_calls,
+                t[RML_UPDATE_MODELS],
+                t[RML_UPDATE_ROOT],
+                t[RML_UPDATE_LAYOUT],
+                t[RML_UPDATE_RELEASE],
+                s.seconds - t[RML_UPDATE_MODELS] - t[RML_UPDATE_ROOT] -
+                    t[RML_UPDATE_LAYOUT] - t[RML_UPDATE_RELEASE]
+            );
+        }
+        puts("}");
     }
     printf(
         "STUDIO_FRAME {\"frame\":%d,\"started\":%.9f,\"seconds\":%.9f,"

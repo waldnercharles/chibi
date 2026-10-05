@@ -1,0 +1,79 @@
+diff --git a/Include/RmlUi/Core/Context.h b/Include/RmlUi/Core/Context.h
+--- a/Include/RmlUi/Core/Context.h
++++ b/Include/RmlUi/Core/Context.h
+@@ -55,7 +55,9 @@
+ 
+ 	/// Updates all elements in the context's documents.
+ 	/// This must be called before Context::Render, but after any elements have been changed, added, or removed.
+-	bool Update();
++	/// Optional four disjoint durations in seconds: data models, root update, layout/position, document release.
++	/// A null pointer performs no timing; callers own the array and aggregate outside these boundaries.
++	bool Update(double* profile_seconds = nullptr);
+ 	/// Renders all visible elements in the context's documents.
+ 	bool Render();
+ 
+diff --git a/Source/Core/Context.cpp b/Source/Core/Context.cpp
+--- a/Source/Core/Context.cpp
++++ b/Source/Core/Context.cpp
+@@ -17,6 +17,7 @@
+ #include "ScrollController.h"
+ #include "StreamFile.h"
+ #include <algorithm>
++#include <chrono>
+ #include <clocale>
+ #include <iterator>
+ #include <limits>
+@@ -178,7 +179,12 @@
+ 	return density_independent_pixel_ratio;
+ }
+ 
+-bool Context::Update()
++static double UpdateProfileTime()
++{
++	return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
++}
++
++bool Context::Update(double* profile_seconds)
+ {
+ 	RMLUI_ZoneScoped;
+ 	DebugVerifyLocaleSetting();
+@@ -193,8 +199,11 @@
+ 		UpdateHoverChain(mouse_position);
+ 
+ 	// Update all the data models before updating properties and layout.
++	double profile_start = profile_seconds ? UpdateProfileTime() : 0;
+ 	for (auto& data_model : data_models)
+ 		data_model.second->Update(true);
++	if (profile_seconds)
++		profile_seconds[0] = UpdateProfileTime() - profile_start;
+ 
+ 	// The style definition of each document should be independent of each other. By manually resetting these flags we avoid unnecessary definition
+ 	// lookups in unrelated documents, such as when adding a new document. Adding an element dirties the parent definition, which in this case is the
+@@ -202,7 +211,12 @@
+ 	root->dirty_definition = false;
+ 	root->dirty_child_definitions = false;
+ 
++	profile_start = profile_seconds ? UpdateProfileTime() : 0;
+ 	root->Update(density_independent_pixel_ratio, Vector2f(dimensions));
++	if (profile_seconds)
++		profile_seconds[1] = UpdateProfileTime() - profile_start;
++
++	profile_start = profile_seconds ? UpdateProfileTime() : 0;
+ 
+ 	for (int i = 0; i < root->GetNumChildren(); ++i)
+ 	{
+@@ -213,8 +227,14 @@
+ 		}
+ 	}
+ 
++	if (profile_seconds)
++		profile_seconds[2] = UpdateProfileTime() - profile_start;
++
+ 	// Release any documents that were unloaded during the update.
++	profile_start = profile_seconds ? UpdateProfileTime() : 0;
+ 	ReleaseUnloadedDocuments();
++	if (profile_seconds)
++		profile_seconds[3] = UpdateProfileTime() - profile_start;
+ 
+ 	return true;
+ }

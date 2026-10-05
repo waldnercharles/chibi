@@ -426,6 +426,17 @@ extern "C"
      * blink or a transition; infinity when only input can change it. */
     double rml_context_next_update_delay(const rml_context *context);
     bool rml_context_update(rml_context *context);
+    /* Opt-in disjoint Context::Update timings, in seconds. Keep this order
+     * aligned with cmake/patches/rmlui-context-update-profile.patch. */
+    typedef enum rml_update_part
+    {
+        RML_UPDATE_MODELS,
+        RML_UPDATE_ROOT,
+        RML_UPDATE_LAYOUT,
+        RML_UPDATE_RELEASE,
+        RML_UPDATE_PARTS,
+    } rml_update_part;
+    bool rml_context_update_profiled(rml_context *context, double seconds[RML_UPDATE_PARTS]);
     bool rml_context_render(rml_context *context);
     rml_element *rml_context_load_document(rml_context *context, const char *path);
     /* `source_url` names the document in messages and resolves relative paths. */

@@ -86,7 +86,26 @@ static void print_profile()
                 probe_layouts[i][p]
             );
         }
-        puts("]}");
+        printf("]");
+        if (s.context_calls) {
+            double *t = s.context_seconds;
+            printf(
+                ",\"context_calls\":%d,\"model_update_seconds\":%.9f,\"root_"
+                "update_"
+                "seconds\":%.9f,"
+                "\"layout_position_seconds\":%.9f,\"release_documents_"
+                "seconds\":%.9f,\"other_"
+                "context_seconds\":%.9f",
+                s.context_calls,
+                t[RML_UPDATE_MODELS],
+                t[RML_UPDATE_ROOT],
+                t[RML_UPDATE_LAYOUT],
+                t[RML_UPDATE_RELEASE],
+                s.seconds - t[RML_UPDATE_MODELS] - t[RML_UPDATE_ROOT] -
+                    t[RML_UPDATE_LAYOUT] - t[RML_UPDATE_RELEASE]
+            );
+        }
+        puts("}");
     }
 }
 

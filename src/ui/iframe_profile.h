@@ -4,6 +4,8 @@
 /* Opt-in, single-threaded diagnostic for document update fixtures.
  * Timings include instrumentation; probe callbacks cover only documents
  * containing the fixture's custom element, not every RmlUi element. */
+#include "ui/rml.h"
+
 #include <stdbool.h>
 
 typedef enum iframe_profile_phase
@@ -19,6 +21,8 @@ typedef struct iframe_profile_sample
 {
     int calls, holder_updates, boxes, heights, passes;
     double seconds, holder_seconds, started;
+    int context_calls;
+    double context_seconds[RML_UPDATE_PARTS];
 } iframe_profile_sample;
 
 typedef struct iframe_profile_record
@@ -33,6 +37,7 @@ void iframe_profile_begin(iframe_profile_phase phase, const char *context);
 void iframe_profile_end();
 iframe_profile_phase iframe_profile_current();
 iframe_profile_sample iframe_profile_get(iframe_profile_phase phase);
+void iframe_profile_context_add(const double seconds[RML_UPDATE_PARTS]);
 int iframe_profile_record_count();
 iframe_profile_record iframe_profile_record_get(int index);
 

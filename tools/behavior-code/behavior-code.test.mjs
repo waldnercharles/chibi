@@ -289,7 +289,7 @@ test('integer array and set defaults enforce signed 32-bit boundaries', () => {
     assert.deepEqual(parseBehavior(valid).stateVariables[0].default, [-2147483648, 2147483647]);
     assert.deepEqual(parseBehavior(`behavior Bounds { state ${declaration} = []; on Tick() {} }`).stateVariables[0].default, []);
 
-    for (const literal of ['-2147483649', '2147483648']) {
+    for (const literal of ['-2147483649', '2147483648', '1.5', '-1.5']) {
       const invalid = `behavior Bounds {\n  state ${declaration} = [${literal}];\n  on Tick() {}\n}`;
       assert.throws(() => parseBehavior(invalid), (error) => {
         assert.match(error.message, /signed 32-bit integers/);
@@ -310,7 +310,7 @@ test('float array and set defaults fit finite binary32 values', () => {
     );
     assert.deepEqual(parseBehavior(`behavior Bounds { state ${declaration} = []; on Tick() {} }`).stateVariables[0].default, []);
 
-    for (const literal of ['1e309', '1e39', '-1e39']) {
+    for (const literal of ['1e309', '-1e309', '1e39', '-1e39']) {
       const invalid = `behavior Bounds {\n  state ${declaration} = [${literal}];\n  on Tick() {}\n}`;
       assert.throws(() => parseBehavior(invalid), (error) => {
         assert.match(error.message, /finite float32 literals/);

@@ -810,6 +810,12 @@ second ellipse while all blockers and the camera remain still. The paired
 `HrcCornellCutawayNoBounce` scene uses the same geometry, motion and direct
 Depth settings, with `feedback=false` and `bounce_intensity=0`.
 
+![Native renderer capture of HrcCornellCutaway in Depth thickness mode](evidence/hrc-cornell-cutaway-depth.png)
+
+The image above is a 640×360 capture from the native Vulkan preview renderer.
+The labeled on/off animation is in
+[HrcCornell-HRC-feedback-comparison-15fps.mp4](evidence/HrcCornell-HRC-feedback-comparison-15fps.mp4).
+
 Launch the comparison with the native Release executable:
 
 ```sh
@@ -837,7 +843,7 @@ optical depth and emission; it has no volumetric phase-function scattering, so
 the scene uses no smoke or fog. Bounded segment queries can still miss blockers
 narrower than their sample spacing.
 
-`HrcCornell-HRC-feedback-comparison-15fps.mp4` is a labeled split-screen of
-both scenes. It samples warmed native Vulkan renders at 640×360, then keeps
-every fourth frame from the 60 Hz sequence for 15 fps playback; no frames are
-interpolated. The emitter's eight-second sweep spans the short loop.
+The video is a labeled split-screen of both scenes. Each half samples warmed
+native Vulkan renders at 640×360, then keeps every fourth frame from the 60 Hz
+sequence for 15 fps playback; no frames are interpolated. The emitter's
+eight-second sweep spans the short loop.

@@ -1,3 +1,12 @@
+## Cloud session startup
+
+In the Debian workspace cloud environment (`/workspace/.cloud-tools`), run
+`tools/cloud/bin/start_skill` before project work. Run each subsequent toolchain
+command through `tools/cloud/bin/start_skill -- <command> [args...]`; shell state
+is not preserved between tool calls. Use `--modeling` before Blender work. Missing
+setup stops with a recovery command. See [cloud setup](docs/cloud-setup.md) for
+provisioning, supported shell modes, and the platform startup limitation.
+
 - When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. When the change stops projects saved by earlier builds from loading, bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and the `version` in every `project.kdl`.
 - Follow YAGNI principles, and boring solutions.
 - Shared source implements components, nodes, functions, and systems reusable across games. Authored assets own scene composition, game rules, visual choices, and tuning.

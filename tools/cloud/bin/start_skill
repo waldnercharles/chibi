@@ -1,0 +1,19 @@
+#!/bin/bash
+# Explicit per-command preflight: works without inherited shell state.
+set -euo pipefail
+repo=$(cd "$(dirname "$0")/../../.." && pwd -P)
+source "$repo/tools/cloud/activate.sh"
+profile=base
+if [[ ${1-} == --modeling ]]; then profile=modeling; shift; fi
+for tool in "$CC" "$CXX" cmake ninja ccache emcc node python3 clang-format; do
+    command -v "$tool" >/dev/null || { echo "Missing $tool; run bash $repo/tools/cloud/setup.sh" >&2; exit 1; }
+done
+if [[ $profile == modeling ]]; then bash "$repo/tools/cloud/modeling_setup.sh" --check; fi
+if [[ ${1-} == -- ]]; then shift; fi
+if (( $# )); then exec "$@"; fi
+"$CC" --version | head -1
+cmake --version | head -1
+printf 'Ninja '; ninja --version
+printf 'Node '; node --version
+python3 --version
+printf 'Ready: %s (%s profile)\n' "$repo" "$profile"

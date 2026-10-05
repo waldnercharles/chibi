@@ -4,6 +4,7 @@
 #include "ecs/ecs.h"
 #include "graph/model/behavior_asset.h"
 #include "render/particles.h"
+#include "render/skip.h"
 #include "runtime/components.h"
 
 #include <cute_math3d.h>
@@ -36,7 +37,9 @@ bool render_arena_screen_bounds(
 );
 /* Canvas framing rectangle with a 20 percent fit margin. */
 CF_Aabb render_arena_fit(const CF_V3 *points, int count, float aspect);
-ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc);
+
+/* The nearest entity under `ndc` that `skip` does not hold. */
+ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc, render_skip skip);
 
 struct engine;
 typedef struct render_arena render_arena;
@@ -60,7 +63,8 @@ bool render_arena_draw(
     const game_particles *particles,
     const render_arena_camera *camera,
     float time,
-    const struct engine *runtime
+    const struct engine *runtime,
+    render_skip skip
 );
 #define RENDER_ARENA_PREVIEW_RADIUS 50.0f
 /* Scene inputs a lone preview surface would otherwise read as zero. */
@@ -69,10 +73,20 @@ typedef struct
     float beat_phase, beat_pulse;
     float influence[3]; /* Linear color at the origin, fading out at the preview radius. */
 } render_arena_activity;
-/* A sphere of RENDER_ARENA_PREVIEW_RADIUS at the origin, using the same surface path. */
+/* A sphere of RENDER_ARENA_PREVIEW_RADIUS at the origin, using the same surface
+ * path, after registering the asset (render_shader_upsert). */
 bool render_arena_preview(
     render_arena *arena,
     const behavior_asset *asset,
+    const render_arena_camera *camera,
+    const char *parameters_json,
+    float time,
+    const render_arena_activity *activity
+);
+/* The same sphere for a material the catalog already holds, by its id. */
+bool render_arena_preview_material(
+    render_arena *arena,
+    int material,
     const render_arena_camera *camera,
     const char *parameters_json,
     float time,

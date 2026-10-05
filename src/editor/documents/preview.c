@@ -1,4 +1,5 @@
 #include "editor/graph/eval_view.h"
+#include "editor/studio/studio_nodes.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/problems.h"
@@ -28,6 +29,9 @@ void ed_compile(editor *e)
     compile_report_init(&e->compile);
     behavior_asset_free(e->compiled);
     e->compiled = behavior_asset_validate(e->asset, e->asset_catalog, acount(e->asset_catalog), &e->compile);
+    if (!e->studio_nodes) {
+        studio_nodes_check(e->asset, &e->compile);
+    }
 }
 
 unsigned editor_edit_revision(const editor *e)
@@ -126,29 +130,17 @@ void editor_set_inspection_instance(editor *e, const behavior_instance *instance
     if (!e) {
         return;
     }
-    if (instance != e->inspection_instance) {
-        e->flow_activity_epoch++;
-    }
-    if (!instance && e->inspection_instance) {
-        e->inspection_trace = NULL;
-        e->inspection_trace_count = 0;
-    }
     e->inspection_instance = instance;
 }
 
 void editor_set_inspection_blocked(editor *e, bool blocked)
 {
-    if (e->inspection_blocked != blocked) {
-        e->flow_activity_epoch++;
-    }
     e->inspection_blocked = blocked;
     if (!blocked) {
         return;
     }
     e->inspection_instance = NULL;
     e->inspection_run = NULL;
-    e->inspection_trace = NULL;
-    e->inspection_trace_count = 0;
     eval_view_set_instance(e->ev, NULL);
     eval_view_set_run(e->ev, NULL);
 }
@@ -158,34 +150,7 @@ void editor_set_inspection_run(editor *e, const flow_run *run)
     if (!e) {
         return;
     }
-    if (e->inspection_run != run) {
-        e->flow_activity_epoch++;
-    }
     e->inspection_run = run;
-}
-
-void editor_set_inspection_trace_revision(
-    editor *e,
-    const behavior_instance_trace_entry *trace,
-    int count,
-    uint64_t revision
-)
-{
-    if (!e) {
-        return;
-    }
-    e->inspection_trace = trace;
-    e->inspection_trace_count = count > 0 ? count : 0;
-    e->inspection_trace_revision = revision;
-}
-
-void editor_set_inspection_trace(editor *e, const behavior_instance_trace_entry *trace, int count)
-{
-    if (!e) {
-        return;
-    }
-    e->flow_activity_epoch++;
-    editor_set_inspection_trace_revision(e, trace, count, 0);
 }
 
 int editor_log_count(const editor *e)
@@ -193,35 +158,43 @@ int editor_log_count(const editor *e)
     return e->log_count;
 }
 
-editor_log_line editor_log_at(const editor *e, int index, char *origin, size_t origin_size)
+editor_log_line editor_log_at(const editor *e, int index)
 {
     assert(index >= 0 && index < e->log_count);
-    const ed_log_entry *entry = &e->log[index];
-    snprintf(origin, origin_size, "%s", "Unknown");
-    if (entry->origin && entry->origin->desc) {
-        editor_node_label(entry->origin->desc, origin, origin_size);
-    }
-    return (editor_log_line){ entry->timestamp, entry->step, entry->message };
+    int64_t serial = e->log_dropped + index;
+    const ed_log_entry *entry = &e->log[serial % ED_LOG_MAX];
+    return (
+        editor_log_line
+    ){ serial, entry->timestamp, entry->step, entry->origin, entry->message };
 }
 
 void editor_clear_log(editor *e)
 {
+    e->log_dropped += e->log_count;
     e->log_count = 0;
 }
 
-static void ed_log_sink(const node *origin, const char *message, void *user)
+void editor_log_print(editor *e, const char *origin, const char *message)
 {
-    editor *e = (editor *)user;
-    if (!e) {
-        return;
-    }
     if (e->log_count == ED_LOG_MAX) {
-        memmove(e->log, e->log + 1, (size_t)(ED_LOG_MAX - 1) * sizeof *e->log);
+        e->log_dropped++;
+        e->log_count--;
     }
-    ed_log_entry *entry = &e->log[e->log_count < ED_LOG_MAX ? e->log_count++ : ED_LOG_MAX - 1];
-    entry->origin = origin;
+    ed_log_entry *entry = &e->log[(e->log_dropped + e->log_count++) % ED_LOG_MAX];
     const flow_run *run = ed_display_run(e);
     entry->timestamp = e->monotonic_time;
     entry->step = run ? flow_run_steps(run) : 0;
+    snprintf(entry->origin, sizeof entry->origin, "%s", origin);
     snprintf(entry->message, sizeof entry->message, "%s", message ? message : "");
+}
+
+/* The label is copied as the line prints: the preview's nodes go with its
+   next reset. */
+static void ed_log_sink(const node *origin, const char *message, void *user)
+{
+    char label[ED_LOG_ORIGIN] = "Unknown";
+    if (origin && origin->desc) {
+        editor_node_label(origin->desc, label, sizeof label);
+    }
+    editor_log_print(user, label, message);
 }

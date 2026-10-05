@@ -264,14 +264,75 @@ static int has_preview_value(const eval_view *v, const node *n)
     return state && runtime_node_computed(state);
 }
 
+static int run_value(const flow_run *run, const node *n, int output, int pin, pin_value *out)
+{
+    return output ? flow_run_watch_output(run, n, pin, out)
+                  : flow_run_watch_input(run, n, pin, out);
+}
+
+bool eval_view_live(const eval_view *v)
+{
+    int count = 0;
+    if (v->instance) {
+        behavior_instance_retained_runs(v->instance, &count);
+    }
+    return v->run || count;
+}
+
+static int recorded_value(const eval_view *v, const node *n, int output, int pin, pin_value *out)
+{
+    if (v->run && run_value(v->run, n, output, pin, out) == 0) {
+        return 0;
+    }
+    int count = 0;
+    flow_run *const *runs = v->instance
+                              ? behavior_instance_retained_runs(v->instance, &count)
+                              : NULL;
+    for (int i = count - 1; i >= 0; i--) {
+        if (run_value(runs[i], n, output, pin, out) == 0) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
+int eval_view_live_value(const eval_view *v, const graph *g, const node *n, int output, int pin, pin_value *out)
+{
+    int found = recorded_value(v, n, output, pin, out);
+    if (found == 0 || !output) {
+        return found;
+    }
+    /* Pure nodes evaluate inside their consumers, which record the value as
+       an input; any consumer of this output read the same value. */
+    uint64_t pin_id = n->output_pins[pin].id;
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *e = &g->edges[i];
+        node *to = e->kind == GRAPH_EDGE_DATA && e->from_id == n->id &&
+                           e->from_pin_id == pin_id
+                     ? graph_node_by_id(g, e->to_id)
+                     : NULL;
+        int is_output = 0, input = -1;
+        if (to && graph_pin_by_id(to, e->to_pin_id, &is_output, &input) &&
+            !is_output && recorded_value(v, to, 0, input, out) == 0) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
+const char *eval_view_format_value(const eval_view *v, const pin_value *value)
+{
+    return eval_view_format(v, value);
+}
+
 const char *eval_view_output(const eval_view *v, const node *n, int pin)
 {
     if (!n || pin < 0 || pin >= n->output_count || n->output_pins[pin].kind != PIN_DATA) {
         return "";
     }
-    if (v && v->run) {
+    if (v && eval_view_live(v)) {
         pin_value value;
-        if (flow_run_watch_output(v->run, n, pin, &value) != 0) {
+        if (recorded_value(v, n, 1, pin, &value) != 0) {
             return "";
         }
         return eval_view_format(v, &value);
@@ -298,9 +359,9 @@ const char *eval_view_input(const eval_view *v, const graph *g, const node *n, i
         (spec->flags & PIN_FLAG_DEFAULT_SELF) && !spec->default_value.u64) {
         return "Self";
     }
-    if (v && v->run) {
+    if (v && eval_view_live(v)) {
         pin_value value;
-        if (flow_run_watch_input(v->run, n, pin, &value) != 0) {
+        if (recorded_value(v, n, 0, pin, &value) != 0) {
             return "";
         }
         return eval_view_format(v, &value);

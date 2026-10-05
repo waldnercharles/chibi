@@ -1,12 +1,17 @@
-/* Studio kit: immediate-mode calls reconciled onto a retained RmlUi document.
+/* Studio kit: immediate-mode calls reconciled onto retained RmlUi documents:
+ * the kit's document, its layer and the documents kit_document_begin shows
+ * over the boxes it places, which lay out apart (ui/iframe.h).
  * This file keys, updates and retires nodes and routes RmlUi events to the
- * controllers in kit_number.c, kit_controls.c, kit_popup.c and kit_command.c.
+ * controllers in kit_controls.c, kit_popup.c and kit_command.c; number and
+ * color fields and splitters are native controls (ui/controls/controls.h).
  * They implement the Base UI contracts recorded in
  * docs/prototypes/studio/kit.html; the C editor owns every model value. */
 #include "editor/rmlui/kit_internal.h"
 #include "support/resources.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"
+#include "ui/iframe.h"
+#include "ui/popover.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -116,31 +121,6 @@ void utf8(char out[static 5], uint32_t cp)
         cp >>= 6;
     }
     out[0] = (char)(lead[count] | cp);
-}
-
-void format_number(char out[static NUMBER_TEXT], double v, int precision, bool integer)
-{
-    if (!isfinite(v)) {
-        snprintf(out, NUMBER_TEXT, "-");
-        return;
-    }
-    if (integer) {
-        snprintf(out, NUMBER_TEXT, "%.0f", v);
-        return;
-    }
-    snprintf(out, NUMBER_TEXT, "%.*f", precision > 0 ? precision : 0, v);
-    if (strchr(out, '.')) {
-        size_t length = strlen(out);
-        while (length && out[length - 1] == '0') {
-            out[--length] = 0;
-        }
-        if (length && out[length - 1] == '.') {
-            out[--length] = 0;
-        }
-    }
-    if (strcmp(out, "-0") == 0) {
-        snprintf(out, NUMBER_TEXT, "0");
-    }
 }
 
 const char *frame_format(kit *k, const char *format, ...)
@@ -304,71 +284,6 @@ void set_element_text(rml_element *el, const char *text)
     free(rml);
 }
 
-/* Numeric labels are one line. Keep their normal baseline and update the
- * glyphs locally; replacing a text child makes the whole document
- * format again. Only a changed shaped width needs normal box layout. */
-void set_line_text(rml_element *label, const char *text)
-{
-    rml_element *child = rml_element_first_child(label);
-    if (!child) {
-        set_element_text(label, text);
-        return;
-    }
-    int width = rml_element_string_width(child, text);
-    if (width <= 0) {
-        /* The first normal layout resolves the font and baseline. */
-        rml_element_set_text(child, text);
-        return;
-    }
-    rml_element_suppress_text_layout(child);
-    float edges = rml_element_box_size(label, RML_BOX_BORDER).x -
-                  rml_element_box_size(label, RML_BOX_CONTENT).x;
-    char size[32];
-    snprintf(size, sizeof size, "%gpx", width + edges);
-    rml_element_set_property(label, "width", size);
-    char current[128];
-    if (rml_element_text(child, current, sizeof current) >= sizeof current ||
-        strcmp(current, text) != 0) {
-        rml_element_set_text(child, text);
-        rml_element_clear_text_lines(child);
-        rml_element_add_text_line(child, (rml_vec2){ 0, 0 }, text);
-    }
-}
-
-/* A fixed-width number's text is right aligned in its content box. The text
- * node retains the position normal layout gave it; offset its new glyph line
- * from that origin rather than changing the flex item or document layout.
- * Overflow uses normal layout so RmlUi keeps its native ellipsis behavior. */
-void set_right_line_text(rml_element *label, const char *text)
-{
-    rml_element *child = rml_element_first_child(label);
-    char current[NUMBER_TEXT];
-    if (!child || rml_element_text(child, current, sizeof current) >= sizeof current) {
-        set_element_text(label, text);
-        return;
-    }
-    if (!strcmp(current, text)) {
-        return;
-    }
-    float available = rml_element_box_size(label, RML_BOX_CONTENT).x;
-    int width = rml_element_string_width(child, text);
-    int old_width = rml_element_string_width(child, current);
-    if (width <= 0 || old_width <= 0 || width > available || old_width > available) {
-        set_element_text(label, text);
-        return;
-    }
-    rml_vec2 origin = rml_element_absolute_offset(child, RML_BOX_CONTENT);
-    rml_vec2 parent = rml_element_absolute_offset(label, RML_BOX_CONTENT);
-    rml_element_suppress_text_layout(child);
-    rml_element_set_text(child, text);
-    rml_element_clear_text_lines(child);
-    rml_element_add_text_line(
-        child,
-        (rml_vec2){ parent.x + available - width - origin.x, 0 },
-        text
-    );
-}
-
 rml_element *raw(rml_element *parent, const char *tag, const char *cls, const char *text)
 {
     rml_element *el = rml_element_create_child(parent, tag, NULL);
@@ -414,22 +329,12 @@ static void strings_free(char **strings)
 
 static void widget_free(widget *w)
 {
-    char *owned[] = { w->unit,  w->addon,   w->addon_cls,
-                      w->draft, w->applied, w->label,
-                      w->meta,  w->badge,   w->placeholder };
+    char *owned[] = { w->addon, w->draft, w->applied,    w->label,
+                      w->meta,  w->badge, w->placeholder };
     for (size_t i = 0; i < sizeof owned / sizeof *owned; i++) {
         free(owned[i]);
     }
     strings_free(w->labels);
-}
-
-static void chart_free(chart_state *c)
-{
-    if (!c) {
-        return;
-    }
-    afree(c->labels);
-    free(c);
 }
 
 void node_free(node *n)
@@ -443,11 +348,10 @@ void node_free(node *n)
     free(n->cls);
     free(n->text);
     free(n->tag);
-    free(n->drop_type);
+    drop_types_clear(n);
     pairs_free(n->attrs);
     pairs_free(n->styles);
     widget_free(&n->w);
-    chart_free(n->chart);
     free(n);
 }
 
@@ -466,12 +370,18 @@ static void index_node(kit *k, node *n)
     cf_map_set(k->by_path, h, n);
 }
 
+static void close_document(kit *k, node *n);
+
 /* An index entry goes only while it is n's: a native slot's nodes outlive
- * their elements, whose addresses may already index new nodes. */
+ * their elements, whose addresses may already index new nodes. A node's
+ * own document closes with it. */
 void unmap(kit *k, node *n)
 {
     for (int i = 0; i < acount(n->children); i++) {
         unmap(k, n->children[i]);
+    }
+    if (n->document) {
+        close_document(k, n);
     }
     forget_motion(k, n);
     if (cf_map_get(k->by_element, element_key(n->el)) == n) {
@@ -482,11 +392,6 @@ void unmap(kit *k, node *n)
     }
     if (k->last == n) {
         k->last = NULL;
-    }
-    for (int i = 0; i < acount(k->triggers); i++) {
-        if (k->triggers[i] == n) {
-            k->triggers[i] = NULL;
-        }
     }
     for (int i = 0; i < cf_map_size(k->popups); i++) {
         popup *p = k->popups[i];
@@ -627,8 +532,8 @@ node *emit_in(kit *k, node *parent, const char *key, node_kind kind, const char 
     }
     parent->cursor++;
     n->frame = k->frame;
-    free(n->drop_type);
-    n->drop_type = NULL;
+    drop_types_clear(n);
+    n->drag_source = false;
     set_class(n, cls);
     k->last = n;
     return n;
@@ -677,17 +582,6 @@ node *path_node(const kit *k, const char *path)
     return n && str_eq(n->path, path) ? n : NULL;
 }
 
-/* Picker content lives in a layer popup; route its events to the owning field.
- */
-static node *owner(const kit *k, node *n)
-{
-    if (!n || n->kind != KIND_POPUP || strncmp(n->key, "@color:", 7) != 0) {
-        return n;
-    }
-    node *field = path_node(k, n->key + 7);
-    return field ? field : n;
-}
-
 bool within(rml_element *el, rml_element *ancestor)
 {
     for (; el; el = rml_element_parent(el)) {
@@ -719,6 +613,21 @@ void nodes_remove(node **list, const node *n)
     asetlen(list, kept);
 }
 
+static int document_index(const kit *k, const rml_element *document)
+{
+    for (int i = 0; i < acount(k->documents); i++) {
+        if (k->documents[i] == document) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool owns_document(const kit *k, const rml_element *document)
+{
+    return document_index(k, document) >= 0;
+}
+
 /* ---------- Popups ---------- */
 
 popup *popup_find(const kit *k, const char *key)
@@ -748,8 +657,7 @@ static void popup_free(popup *p)
     free(p->parent);
     free(p->dropdown_placeholder);
     free(p->dropdown_trigger_path);
-    free(p->sub_hover);
-    free(p->typed);
+    free(p->anchor_path);
     free(p->trigger);
     afree(p->items);
     free(p);
@@ -767,8 +675,9 @@ unsigned event_modifiers(const rml_event *e)
 
 static void mousedown(kit *k, const rml_event *e, node *n)
 {
-    popup_press(k, n, e->target);
-    command_press(k, e->target);
+    /* An outside press closed them in popover.c: they emit no more. */
+    forget_closed_popups(k);
+    popup_press(k, e->target);
     if (!n) {
         return;
     }
@@ -781,23 +690,13 @@ static void mousedown(kit *k, const rml_event *e, node *n)
     }
     n->events |= EV_PRESS;
     k->keyboard_edit = false;
-    switch (n->kind) {
-        case KIND_NUMBER: number_press(k, n, e); break;
-        case KIND_TRIGGER: trigger_press(k, n, e); break;
-        default: control_press(k, n, e); break;
-    }
 }
 
 static void click(kit *k, const rml_event *e, node *n)
 {
-    if (k->drag.active) {
-        return;
-    }
     switch (n->kind) {
-        case KIND_NUMBER: number_click(k, n); return;
         case KIND_MENU_ITEM:
         case KIND_SUBMENU: menu_click(k, n); return;
-        case KIND_COMMAND_ITEM: command_click(k, n); return;
         case KIND_BOX:
             /* A click on a label or icon is also a click on the boxes around
                it, as DOM clicks bubble, so a whole row or tab answers. */
@@ -807,20 +706,6 @@ static void click(kit *k, const rml_event *e, node *n)
             return;
         default: control_click(k, n, e->target); return;
     }
-}
-
-static void drag(kit *k, const rml_event *e)
-{
-    rml_element *dragged = e->drag_element ? e->drag_element : e->target;
-    node *n = owner(k, node_for(k, dragged));
-    if (!n) {
-        return;
-    }
-    if (n->kind == KIND_NUMBER) {
-        number_drag(k, n, e);
-        return;
-    }
-    control_drag(k, n, e);
 }
 
 /* The modal host emitted last, or NULL: kit_modal_host's hosts are the
@@ -835,47 +720,9 @@ static rml_element *top_modal(const kit *k)
     return NULL;
 }
 
-/* Whether Tab can focus `el`, as RmlUi's own Tab search decides. */
-static bool tabbable(rml_element *el)
-{
-    char tab[8], focus[8];
-    rml_element_property(el, "tab-index", tab, sizeof tab);
-    rml_element_property(el, "focus", focus, sizeof focus);
-    return !strcmp(tab, "auto") && strcmp(focus, "none") != 0 &&
-           !rml_element_has_attribute(el, "data-disabled") &&
-           rml_element_is_visible(el, true);
-}
-
-/* Move among enabled, visible tab stops in document order. A modal wraps;
-   a nonmodal popover excludes its own contents when leaving for the document.
- */
-bool focus_step(rml_element *root, rml_element *from, int step, bool wrap, rml_element *skip)
-{
-    int count = rml_element_query_selector_all(root, "*", NULL, 0), kept = 0, at = -1;
-    rml_element **stops = xmalloc((size_t)(count + 1) * sizeof *stops);
-    rml_element_query_selector_all(root, "*", stops, count);
-    for (int i = 0; i < count; i++) {
-        if (tabbable(stops[i]) && (!skip || !within(stops[i], skip))) {
-            at = stops[i] == from ? kept : at;
-            stops[kept++] = stops[i];
-        }
-    }
-    int next = at < 0 ? (step > 0 ? 0 : kept - 1) : at + step;
-    if (wrap && kept) {
-        next = (next % kept + kept) % kept;
-    }
-    bool moved = next >= 0 && next < kept && rml_element_focus(stops[next], true);
-    if (moved) {
-        rml_element_scroll_into_view(stops[next], RML_SCROLL_NEAREST, RML_SCROLL_NEAREST);
-    }
-    free(stops);
-    return moved;
-}
-
 static bool trap_focus(kit *k, const rml_event *e)
 {
-    rml_element *modal = e->key == RML_KEY_TAB && !k->command.open ? top_modal(k)
-                                                                   : NULL;
+    rml_element *modal = e->key == RML_KEY_TAB ? top_modal(k) : NULL;
     if (!modal) {
         return false;
     }
@@ -884,12 +731,19 @@ static bool trap_focus(kit *k, const rml_event *e)
     return true;
 }
 
+/* An open menu takes the keys its trigger would: popover.c runs it. */
+static bool menu_open(kit *k)
+{
+    rml_element *top = popover_top(k->context);
+    return top && !rml_element_is_class_set(top, "popover") &&
+           !rml_element_has_attribute(top, "popover");
+}
+
 static void keydown(kit *k, const rml_event *e, node *n)
 {
     k->keyboard_edit = true;
-    if (k->drag.active && e->key == RML_KEY_ESCAPE) {
-        drag_cancel(k);
-        rml_event_stop_propagation(e);
+    /* An open color picker takes its own keys, Escape and Tab included. */
+    if (n && n->kind == KIND_COLOR && color_field_open(n->el)) {
         return;
     }
     if (trap_focus(k, e)) {
@@ -908,42 +762,26 @@ static void keydown(kit *k, const rml_event *e, node *n)
                        n->kind == KIND_AUTOCOMPLETE || n->kind == KIND_NUMBER ||
                        (n->kind == KIND_COLOR && e->target == n->el) ||
                        is_input(e->target));
-    bool popup_keys = !entry || e->key == RML_KEY_ESCAPE || e->key == RML_KEY_TAB;
-    if (dropdown_key(k, e, n) || command_key(k, e) ||
-        (popup_keys && popup_key(k, e)) || !n) {
-        return;
-    }
-    if (n->kind == KIND_NUMBER) {
-        number_key(k, n, e);
+    if (dropdown_key(k, e, n) || !n || (!entry && menu_open(k))) {
         return;
     }
     control_key(k, n, e);
 }
 
-static void blur(kit *k, const rml_event *e, node *n)
+static void blur(const rml_event *e, node *n)
 {
-    if (!n) {
-        return;
+    if (n) {
+        control_blur(n, e->target);
     }
-    if (n->kind == KIND_NUMBER) {
-        number_blur(k, n, e->target);
-        return;
-    }
-    control_blur(n, e->target);
 }
 
 static void on_event(void *user, const rml_event *e)
 {
     kit *k = user;
     check_slots(k);
-    node *n = owner(k, node_for(k, e->target));
+    node *n = node_for(k, e->target);
     switch (e->id) {
         case RML_EVENT_MOUSEDOWN: mousedown(k, e, n); break;
-        case RML_EVENT_MOUSEUP:
-            if (n && n->kind == KIND_NUMBER) {
-                number_release(n);
-            }
-            break;
         case RML_EVENT_CLICK:
             if (n) {
                 click(k, e, n);
@@ -954,29 +792,21 @@ static void on_event(void *user, const rml_event *e)
                 n->events |= EV_DOUBLE;
             }
             break;
-        case RML_EVENT_DRAGSTART:
-        case RML_EVENT_DRAG:
-        case RML_EVENT_DRAGEND: drag(k, e); break;
         case RML_EVENT_KEYDOWN: keydown(k, e, n); break;
-        case RML_EVENT_CHANGE:
-            if (!command_change(k, e->target) && n) {
+        /* The kit's fields take each edit; they commit on their own keys. */
+        case RML_EVENT_INPUT:
+            if (n) {
                 control_change(k, n, e->target);
             }
             break;
         case RML_EVENT_FOCUS:
-            popup_focus(k, e->target);
             if (n) {
                 control_focus(k, n, e->target);
             }
             break;
-        case RML_EVENT_BLUR: blur(k, e, n); break;
-        /* Rows the results bring under a still pointer fire mouseover but
-           no mousemove, so they leave the selection on the best match, as
-           cmdk's do. */
+        case RML_EVENT_BLUR: blur(e, n); break;
         case RML_EVENT_MOUSEMOVE:
-            if (n && n->kind == KIND_COMMAND_ITEM) {
-                command_hover(k, n);
-            } else if (n) {
+            if (n) {
                 menu_hover(k, n);
             }
             break;
@@ -985,11 +815,9 @@ static void on_event(void *user, const rml_event *e)
 }
 
 static const rml_event_id kit_events[] = {
-    RML_EVENT_MOUSEDOWN, RML_EVENT_MOUSEUP,   RML_EVENT_CLICK,
-    RML_EVENT_DBLCLICK,  RML_EVENT_DRAGSTART, RML_EVENT_DRAG,
-    RML_EVENT_DRAGEND,   RML_EVENT_KEYDOWN,   RML_EVENT_CHANGE,
-    RML_EVENT_MOUSEOVER, RML_EVENT_FOCUS,     RML_EVENT_BLUR,
-    RML_EVENT_MOUSEMOVE,
+    RML_EVENT_MOUSEDOWN, RML_EVENT_CLICK, RML_EVENT_DBLCLICK,
+    RML_EVENT_KEYDOWN,   RML_EVENT_INPUT, RML_EVENT_MOUSEOVER,
+    RML_EVENT_FOCUS,     RML_EVENT_BLUR,  RML_EVENT_MOUSEMOVE,
 };
 
 #define KIT_EVENT_COUNT (sizeof kit_events / sizeof *kit_events)
@@ -1009,7 +837,8 @@ static void sheet_name(const kit *k, const char *key, char *name, size_t size)
 
 /* The theme is the document's stylesheet: the Studio project styles every
  * kit document, so Studio edits its own chrome. Each sheet is recorded with
- * where its lines came from, as its maker recorded them (ui_style_map). */
+ * where its lines came from, as its maker recorded them (ui_style_map). The
+ * kit's other documents take copies, read once. */
 static void restyle(kit *k)
 {
     char name[160];
@@ -1030,6 +859,9 @@ static void restyle(kit *k)
             );
         }
         ui_style_set(name, extra, ui_style_map(extra));
+    }
+    for (int i = 1; i < acount(k->documents); i++) {
+        rml_document_copy_style_sheet(k->documents[i], k->doc);
     }
     k->restyle = false;
 }
@@ -1067,6 +899,100 @@ void kit_set_standard_font_family(kit *k, const char *family)
     str_set(&k->standard_font_family, family);
 }
 
+/* ---------- Documents ---------- */
+
+/* Listens to the document, styles it as the kit's are and gives it the
+ * body classes the kit set. */
+static void add_document(kit *k, rml_element *document)
+{
+    apush(k->documents, document);
+    for (size_t i = 0; i < KIT_EVENT_COUNT; i++) {
+        rml_element_add_event_listener(document, kit_events[i], k->listener, true);
+    }
+    for (int i = 0; i < acount(k->body_classes); i++) {
+        rml_element_set_class(document, k->body_classes[i], true);
+    }
+    if (document != k->doc && !k->restyle) {
+        rml_document_copy_style_sheet(document, k->doc);
+    }
+}
+
+static void stop_listening(kit *k, rml_element *document)
+{
+    for (size_t e = 0; e < KIT_EVENT_COUNT; e++) {
+        rml_element_remove_event_listener(document, kit_events[e], k->listener, true);
+    }
+}
+
+/* Hosted content holds its owner's listeners, which may be gone by the time
+ * the context releases a closed document, so the content goes first. Closing
+ * moves the pointer's hover, whose events the kit's other documents hear. */
+static void remove_document(kit *k, rml_element *document)
+{
+    int i = document_index(k, document);
+    assert(i >= 0);
+    memmove(
+        &k->documents[i],
+        &k->documents[i + 1],
+        (size_t)(acount(k->documents) - 1 - i) * sizeof *k->documents
+    );
+    asetlen(k->documents, acount(k->documents) - 1);
+    rml_element_set_inner_rml(document, "");
+    rml_document_close(document);
+}
+
+/* A document of the kit's own, at the URL of the kit's document so that
+ * relative paths resolve alike; it takes no focus as it shows. */
+static rml_element *open_document(kit *k, const char *rml)
+{
+    char *url = NULL;
+    str_catf(&url, "%s/%s", resource_ui(), k->document);
+    rml_element *document = rml_context_load_document_from_memory(k->context, rml, url);
+    free(url);
+    assert(document);
+    add_document(k, document);
+    rml_document_show(document, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_NONE);
+    return document;
+}
+
+/* The layer is a document over all the others, so popups, tooltips,
+ * toasts, the palette and dialogs show above every area; its body takes the
+ * classes of the document's, whose variables its content reads. */
+static rml_element *open_layer(kit *k)
+{
+    rml_element *layer = open_document(k, "<rml><body id=\"layer\"/></rml>");
+    char classes[256];
+    size_t length = rml_element_class_names(k->doc, classes, sizeof classes);
+    assert(length < sizeof classes);
+    rml_element_set_class_names(layer, classes);
+    return layer;
+}
+
+/* n's children go into a document of their own, shown over n's element,
+ * and keep the paths they would have without it. */
+static void open_node_document(kit *k, node *n, bool fit)
+{
+    assert(!acount(n->children));
+    if (cf_map_get(k->by_path, str_hash(n->path)) == n) {
+        cf_map_del(k->by_path, str_hash(n->path));
+    }
+    str_set(&n->path, n->parent->path);
+    n->container = open_document(k, "<rml><body/></rml>");
+    n->document = true;
+    iframe_attach(n->container, n->el, fit);
+}
+
+/* Its nodes are gone, so the hover events closing sends reach none. */
+static void close_document(kit *k, node *n)
+{
+    iframe_detach(n->container);
+    release_exiting_within(k, n->container);
+    stop_listening(k, n->container);
+    remove_document(k, n->container);
+    n->container = n->el;
+    n->document = false;
+}
+
 /* ---------- API ---------- */
 
 kit *kit_create(void *context, const char *document_path)
@@ -1075,7 +1001,6 @@ kit *kit_create(void *context, const char *document_path)
     k->context = context;
     k->frame = 1;
     k->surface_button = -1;
-    k->command.chosen = -1;
     char *path = NULL;
     str_catf(&path, "%s/%s", resource_ui(), document_path);
     k->doc = rml_context_load_document(k->context, path);
@@ -1083,17 +1008,16 @@ kit *kit_create(void *context, const char *document_path)
     assert(k->doc);
     k->document = xstrdup(document_path);
     k->restyle = true; /* on the first frame, after the owner sets a theme */
+    /* It stays under the documents shown over it, which RmlUi raises above
+       their siblings as they take focus. */
+    rml_element_set_property(k->doc, "z-index", "0");
     rml_document_show(k->doc, RML_MODAL_NONE, RML_FOCUS_AUTO, RML_SCROLL_FLAG_AUTO);
-    register_chart_element();
     register_wires_element();
     register_dot_element();
     register_code_element();
     k->listener = rml_listener_create(on_event, k);
-    for (size_t i = 0; i < KIT_EVENT_COUNT; i++) {
-        rml_element_add_event_listener(k->doc, kit_events[i], k->listener, true);
-    }
-    rml_element *layer = rml_element_by_id(k->doc, "layer");
-    assert(layer);
+    add_document(k, k->doc);
+    rml_element *layer = open_layer(k);
     k->layer = node_new(KIND_ROOT);
     k->layer->el = k->layer->container = layer;
     str_set(&k->layer->path, "layer");
@@ -1119,36 +1043,24 @@ static void kit_free(kit *k)
         popup_free(k->popups[i]);
     }
     cf_map_free(k->popups);
-    for (int i = 0; i < cf_map_size(k->springs); i++) {
-        free(k->springs[i].key);
-    }
-    cf_map_free(k->springs);
     for (int i = 0; i < acount(k->toasts); i++) {
         free(k->toasts[i].title);
         free(k->toasts[i].description);
         free(k->toasts[i].action);
     }
     afree(k->toasts);
-    drag_state *d = &k->drag;
-    char *drag_strings[] = { d->type,   d->payload, d->label,
-                             d->source, d->over,    d->target };
-    for (size_t i = 0; i < sizeof drag_strings / sizeof *drag_strings; i++) {
-        free(drag_strings[i]);
-    }
-    free(k->command.placeholder);
-    free(k->command.query);
-    afree(k->command.shown);
     free(k->surface_capture);
+    free(k->tip_image);
     strings_free(k->strings);
     cf_map_free(k->by_element);
     cf_map_free(k->by_path);
     cf_map_free(k->toast_actions);
     afree(k->stack);
-    afree(k->popup_stack);
-    afree(k->triggers);
     afree(k->emitting);
     afree(k->entering);
     afree(k->layout_nodes);
+    afree(k->documents);
+    strings_free(k->body_classes);
     free(k->document);
     free(k->theme);
     free(k->standard_font_family);
@@ -1161,15 +1073,19 @@ void kit_destroy(kit *k)
     if (!k) {
         return;
     }
-    for (size_t i = 0; i < KIT_EVENT_COUNT; i++) {
-        rml_element_remove_event_listener(k->doc, kit_events[i], k->listener, true);
+    /* The kit hears nothing while its nodes outlive their elements. */
+    for (int i = 0; i < acount(k->documents); i++) {
+        stop_listening(k, k->documents[i]);
     }
-    /* The context releases a closed document later, and hosted content
-       holds its owner's listeners, which may be gone by then. */
-    for (int i = 0; i < acount(k->roots); i++) {
-        rml_element_set_inner_rml(k->roots[i]->el, "");
+    /* Those kit_document_begin opened, shown in elements, then the layer
+       and the kit's own. */
+    while (acount(k->documents)) {
+        rml_element *document = alast(k->documents);
+        if (acount(k->documents) > 2) {
+            iframe_detach(document);
+        }
+        remove_document(k, document);
     }
-    rml_document_close(k->doc);
     rml_listener_destroy(k->listener);
     kit_free(k);
 }
@@ -1196,11 +1112,8 @@ void kit_begin(kit *k, const kit_frame_input *input)
         /* Resolve authored metrics before native lists read them this frame. */
         rml_context_update(k->context);
     }
-    aclear(k->triggers);
-    place_popups(k);
-    drag_begin_frame(k);
-    repeat_steppers(k);
-    open_hovered_submenus(k);
+    size_popups(k);
+    drag_frame(k);
     k->layer->cursor = 0;
     k->layer->frame = k->frame;
 }
@@ -1214,19 +1127,19 @@ void kit_end(kit *k)
         restyle(k);
     }
     close_root(k);
-    close_activated_menus(k);
+    forget_closed_popups(k);
     toasts_frame(k);
-    drag_end_frame(k);
     prune(k, k->layer);
     end_slots(k);
-    if (!k->command.open) {
-        k->command_backdrop = NULL;
-    }
     update_tooltip(k);
     motion_frame(k);
     for (int i = 0; i < cf_map_size(k->by_path); i++) {
-        k->by_path[i]->events = 0;
-        k->by_path[i]->w.committed = false;
+        node *n = k->by_path[i];
+        if (n->frame == k->frame) {
+            drag_flush(n);
+        }
+        n->events = 0;
+        n->w.committed = false;
     }
     strings_free(k->strings);
     k->strings = NULL;
@@ -1279,6 +1192,22 @@ void kit_leaf(kit *k, const char *key, const char *tag, const char *cls)
     emit(k, key, KIND_BOX, tag, cls);
 }
 
+void kit_document_begin(kit *k, const char *key, const char *cls, bool fit)
+{
+    node *n = emit(k, key, KIND_BOX, "div", cls);
+    if (!n->document) {
+        open_node_document(k, n, fit);
+    }
+    push_node(k, n);
+}
+
+void kit_document_end(kit *k)
+{
+    node *n = alast(k->stack);
+    assert(n->document);
+    pop_node(k);
+}
+
 rml_element *kit_host(kit *k, const char *key, const char *cls)
 {
     node *n = emit(k, key, KIND_BOX, "div", cls);
@@ -1313,9 +1242,8 @@ void kit_label(kit *k, const char *key, const char *cls, const char *text)
 
 void kit_live_label(kit *k, const char *key, const char *cls, const char *text)
 {
-    node *n = emit(k, key, KIND_BOX, "span", cls);
-    rml_element_set_property(n->el, "white-space", "nowrap");
-    set_line_text(n->el, text);
+    node *n = emit(k, key, KIND_BOX, "live-text", cls);
+    set_attr(n, "value", text);
 }
 
 void kit_icon(kit *k, const char *key, const char *cls, uint32_t codepoint)
@@ -1366,9 +1294,9 @@ bool kit_item_clicked(kit *k)
     return k->last && (k->last->events & EV_CLICK);
 }
 
-bool kit_item_context_clicked(kit *k)
+bool kit_item_pressed(kit *k)
 {
-    return k->last && (k->last->events & EV_CONTEXT);
+    return k->last && (k->last->events & EV_PRESS);
 }
 
 bool kit_item_active(kit *k)
@@ -1377,11 +1305,11 @@ bool kit_item_active(kit *k)
     if (!n) {
         return false;
     }
-    const widget *w = &n->w;
-    bool picker = n->kind == KIND_COLOR &&
-                  kit_popup_is_open(k, frame_format(k, "color:%s", n->path));
-    return w->scrubbing || w->editing || w->step_dir || w->focused || picker ||
-           (w->pressing && n->kind != KIND_NUMBER);
+    switch (n->kind) {
+        case KIND_NUMBER: return number_field_active(n->el);
+        case KIND_COLOR: return color_field_open(n->el);
+        default: return n->w.focused;
+    }
 }
 
 bool kit_item_committed(kit *k)
@@ -1392,6 +1320,11 @@ bool kit_item_committed(kit *k)
 kit_rect kit_item_rect(kit *k)
 {
     return k->last ? element_rect(k, k->last->el) : (kit_rect){ 0 };
+}
+
+rml_element *kit_item_element(kit *k)
+{
+    return k->last ? k->last->el : NULL;
 }
 
 bool kit_item_hovered(kit *k)
@@ -1424,15 +1357,18 @@ const char *kit_classes(kit *k, const char *base, const kit_class *list, int cou
 
 bool kit_wants_keyboard(const kit *k)
 {
-    if (k->command.open || acount(k->popup_stack)) {
+    if (popover_top(k->context)) {
         return true;
     }
     rml_element *focus = rml_context_focus_element(k->context);
     /* A focused number field handles its own keys during RmlUi dispatch; global
-       shortcuts still apply unless text is being edited. Hosted content and a
-       code editor own the keyboard while they hold focus. */
+       shortcuts still apply unless text is being edited. A modal's hosted
+       content and a code editor own the keyboard while they hold focus; a
+       list or button an area or the chrome hosts passes it on, as a page's
+       do, so the area under the pointer still takes its keys. */
     node *n = focus ? node_for(k, focus) : NULL;
-    return focus && (is_input(focus) || (n && (n->hosted || n->kind == KIND_CODE)));
+    bool modal = n && n->hosted && n->parent == k->layer;
+    return focus && (is_input(focus) || modal || (n && n->kind == KIND_CODE));
 }
 
 bool kit_accepts_text(const kit *k)
@@ -1443,6 +1379,12 @@ bool kit_accepts_text(const kit *k)
     }
     node *n = element_node(k, focus);
     return is_input(focus) || (n && (n->kind == KIND_NUMBER || n->kind == KIND_CODE));
+}
+
+bool kit_input_focused(const kit *k)
+{
+    rml_element *focus = rml_context_focus_element(k->context);
+    return focus && is_input(focus);
 }
 
 bool kit_wants_text(const kit *k, kit_rect *caret)
@@ -1461,14 +1403,14 @@ bool kit_wants_text(const kit *k, kit_rect *caret)
 
 bool kit_wants_pointer(const kit *k)
 {
-    if (k->command.open || acount(k->popup_stack)) {
+    if (popover_top(k->context)) {
         return true;
     }
     if (!str_eq(k->surface_capture, "")) {
         return false;
     }
     rml_element *hover = rml_context_hover_element(k->context);
-    if (!hover || hover == k->doc) {
+    if (!hover || rml_element_owner_document(hover) == hover) {
         return false;
     }
     node *n = element_node(k, hover);
@@ -1522,7 +1464,7 @@ void kit_focus(kit *k)
 void kit_blur(kit *k)
 {
     rml_element *focus = rml_context_focus_element(k->context);
-    if (focus && focus != k->doc) {
+    if (focus && rml_element_owner_document(focus) != focus) {
         rml_element_blur(focus);
     }
 }
@@ -1573,5 +1515,18 @@ void kit_set_theme(kit *k, const char *name, bool active)
 
 void kit_set_body_class(kit *k, const char *name, bool on)
 {
-    rml_element_set_class(k->doc, name, on);
+    int at = -1;
+    for (int i = 0; i < acount(k->body_classes); i++) {
+        at = strcmp(k->body_classes[i], name) ? at : i;
+    }
+    if (on && at < 0) {
+        apush(k->body_classes, xstrdup(name));
+    }
+    if (!on && at >= 0) {
+        free(k->body_classes[at]);
+        adel(k->body_classes, at);
+    }
+    for (int i = 0; i < acount(k->documents); i++) {
+        rml_element_set_class(k->documents[i], name, on);
+    }
 }

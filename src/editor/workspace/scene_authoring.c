@@ -470,7 +470,7 @@ ecs_entity selected_scene_entity(const app_scene_authoring *scene)
              : (ecs_entity){ 0 };
 }
 
-const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity entity)
+const char *scene_entity_prototype(const app_scene_authoring *scene, ecs_entity entity)
 {
     for (int i = 0; i < acount(scene->prototypes); i++) {
         const game_prototype *prototype = scene->prototypes[i].prototype;
@@ -482,7 +482,13 @@ const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity en
             return prototype->name;
         }
     }
-    return "Entity";
+    return NULL;
+}
+
+const char *runtime_entity_label(const app_scene_authoring *scene, ecs_entity entity)
+{
+    const char *prototype = scene_entity_prototype(scene, entity);
+    return prototype ? prototype : "Entity";
 }
 
 scene_prototype_asset *prototype_at(app_scene_authoring *scene, int index)
@@ -705,15 +711,90 @@ void select_instance(app_scene_authoring *scene, int actor_index)
     }
 }
 
+bool scene_instance_selected(const app_scene_authoring *scene, int index)
+{
+    return scene->actors[index].marked || index == scene->selected;
+}
+
+int scene_selection_count(const app_scene_authoring *scene)
+{
+    int count = 0;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        count += scene_instance_selected(scene, i);
+    }
+    return count;
+}
+
+void scene_toggle_instance(app_scene_authoring *scene, int index)
+{
+    assert(index >= 0 && index < acount(scene->actors));
+    finish_transform_edit(scene, false);
+    scene->runtime_selected = (ecs_entity){ 0 };
+    if (scene->selected >= 0) {
+        scene->actors[scene->selected].marked = true;
+    }
+    bool selected = !scene->actors[index].marked;
+    scene->actors[index].marked = selected;
+    if (selected) {
+        scene->selected = index;
+        return;
+    }
+    /* Unity's: the active object leaves for another selected one. */
+    scene->selected = -1;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->selected = scene->actors[i].marked ? i : scene->selected;
+    }
+}
+
+void scene_select_range(app_scene_authoring *scene, const int *rows, int from, int to)
+{
+    finish_transform_edit(scene, false);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = false;
+    }
+    int step = from <= to ? 1 : -1;
+    for (int r = from; r != to + step; r += step) {
+        scene->actors[rows[r]].marked = true;
+    }
+    scene->runtime_selected = (ecs_entity){ 0 };
+    scene->selected = rows[to];
+}
+
+static void select_spawned(app_scene_authoring *scene, ecs_entity entity)
+{
+    finish_transform_edit(scene, scene->dragging_actor);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = false;
+    }
+    scene->runtime_selected = entity;
+    scene->selected = -1;
+}
+
 int app_scene_authoring_select_runtime_entity(app_scene_authoring *scene, ecs_entity entity)
 {
     if (!scene || !game_entities_owns(scene->live->entities, entity)) {
         return -1;
     }
-    finish_transform_edit(scene, scene->dragging_actor);
-    scene->runtime_selected = entity;
-    scene->selected = -1;
+    select_spawned(scene, entity);
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    return 0;
+}
+
+int app_scene_authoring_select_entity(app_scene_authoring *scene, ecs_entity entity)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
+            select_instance(scene, i);
+            return 0;
+        }
+    }
+    if (!game_entities_owns(scene->live->entities, entity)) {
+        return -1;
+    }
+    select_spawned(scene, entity);
+    if (scene->document.kind != APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    }
     return 0;
 }
 
@@ -722,6 +803,11 @@ bool scene_can_move(const app_scene_authoring *scene)
     return scene->active_runtime_target == APP_RUNTIME_SCENE &&
            !scene->runtime_playing && !scene->runtime_step &&
            !game_entities_initializing(scene->live->entities);
+}
+
+bool scene_editing(const app_scene_authoring *scene)
+{
+    return scene_can_move(scene) && !scene->runtime_snapshot_valid;
 }
 
 void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform position)
@@ -812,11 +898,8 @@ void scene_property_value_free(pin_value *value)
     *value = (pin_value){ 0 };
 }
 
-void finish_property_edit(app_scene_authoring *scene)
+static void commit_property_edit(app_scene_authoring *scene)
 {
-    if (!scene->property_actor.slot) {
-        return;
-    }
     scene_field_edit *edit = &scene->property_edit;
     scene_actor *actor = NULL;
     uint64_t identity = scene_actor_identity(scene, scene->property_actor);
@@ -894,6 +977,56 @@ void finish_property_edit(app_scene_authoring *scene)
     scene->property_actor = (ecs_entity){ 0 };
 }
 
+/* Records each other object a multi-object edit wrote, as the edit itself. */
+static void commit_property_others(
+    app_scene_authoring *scene,
+    scene_field_target *others,
+    ecs_component_id component,
+    int field
+)
+{
+    for (int i = 0; i < acount(others); i++) {
+        pin_value after = { 0 };
+        if (ecs_component_read_field(scene->world, others[i].entity, component, field, &after) ==
+                ECS_OK &&
+            !pin_value_equal(&others[i].before, &after)) {
+            scene->property_actor = others[i].entity;
+            scene->property_edit = (scene_field_edit){ .component = component,
+                                                       .field = field };
+            bool copied = scene_property_value_copy(
+                              &scene->property_edit.before,
+                              others[i].before
+                          ) &&
+                          scene_property_value_copy(&scene->property_edit.after, after);
+            assert(copied);
+            scene->property_dirty = true;
+            commit_property_edit(scene);
+            scene->scene_dirty = true;
+        }
+        scene_property_value_free(&others[i].before);
+    }
+}
+
+void finish_property_edit(app_scene_authoring *scene)
+{
+    if (!scene->property_actor.slot) {
+        return;
+    }
+    scene_field_target *others = scene->property_others;
+    scene->property_others = NULL;
+    ecs_component_id component = scene->property_edit.component;
+    int field = scene->property_edit.field;
+    if (acount(others)) {
+        scene_history_begin_group(scene->history);
+    }
+    commit_property_edit(scene);
+    commit_property_others(scene, others, component, field);
+    if (acount(others)) {
+        scene_history_end_group(scene->history);
+    }
+    afree(others);
+}
+
 void begin_transform_edit(app_scene_authoring *scene, ecs_entity entity)
 {
     finish_transform_edit(scene, false);
@@ -905,6 +1038,10 @@ void begin_transform_edit(app_scene_authoring *scene, ecs_entity entity)
 
 void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTransform position)
 {
+    if (scene->runtime_snapshot_valid) {
+        write_position(scene, entity, position);
+        return;
+    }
     if (scene_collab_is_editor() && scene->edit_actor.slot &&
         ecs_entity_to_u64(scene->edit_actor) == ecs_entity_to_u64(entity)) {
         scene->edit_after = position;
@@ -915,10 +1052,26 @@ void write_transform_edit(app_scene_authoring *scene, ecs_entity entity, GameTra
     }
 }
 
+/* A move in the running scene changes only its world, which Stop replaces
+   with the authored scene; nothing records it. */
+static void finish_live_move(app_scene_authoring *scene, bool cancel)
+{
+    if (cancel && GAME_GameTransform_has(scene->world, scene->edit_actor)) {
+        write_position(scene, scene->edit_actor, scene->edit_before);
+    }
+    scene->edit_actor = (ecs_entity){ 0 };
+    scene->dragging_actor = false;
+}
+
 void finish_transform_edit(app_scene_authoring *scene, bool cancel)
 {
     finish_property_edit(scene);
+    scene_gizmo_finish(scene, cancel);
     if (!scene->edit_actor.slot) {
+        return;
+    }
+    if (scene->runtime_snapshot_valid) {
+        finish_live_move(scene, cancel);
         return;
     }
     const GameTransform
@@ -1001,26 +1154,168 @@ static game_behavior_world *debug_behaviors(app_scene_authoring *scene, app_runt
              : scene->live->behaviors;
 }
 
-void sync_editor_inspection(app_scene_authoring *scene)
+/* The only live instance of the open behavior, when it has exactly one. */
+static bool sole_instance(app_scene_authoring *scene, game_behavior_attachment_info *out)
+{
+    game_behavior_world *behaviors = debug_behaviors(scene, scene->active_runtime_target);
+    int found = 0;
+    for (int i = 0; i < game_behavior_attachment_count(behaviors) && found < 2; i++) {
+        game_behavior_attachment_info info = game_behavior_attachment_info_index(behaviors, i);
+        if (!strcmp(info.asset_name, scene->definition->name)) {
+            *out = info;
+            found++;
+        }
+    }
+    return found == 1;
+}
+
+/* Whether the selection, the open behavior or the session changed since the
+   debug target last followed them. A target chosen in between, from the
+   graph header or by the debugger, stays until one of them does. */
+static bool follow_changed(app_scene_authoring *scene)
+{
+    app_runtime_target target = scene->active_runtime_target;
+    ecs_entity entity = target == APP_RUNTIME_PREVIEW
+                          ? game_prototype_preview_entity(scene->prototype_preview)
+                          : selected_scene_entity(scene);
+    uint64_t session = scene->debug_sessions[target];
+    const char *asset = scene->definition->name;
+    if (scene->debug_followed.asset && !strcmp(scene->debug_followed.asset, asset) &&
+        ecs_entity_to_u64(scene->debug_followed.entity) == ecs_entity_to_u64(entity) &&
+        scene->debug_followed.session == session &&
+        scene->debug_followed.target == target) {
+        return false;
+    }
+    free(scene->debug_followed.asset);
+    scene->debug_followed.asset = xstrdup(asset);
+    scene->debug_followed.entity = entity;
+    scene->debug_followed.session = session;
+    scene->debug_followed.target = target;
+    return true;
+}
+
+/* Makes the instance the debug target. Its prototype stays with it, so a
+   destroyed target keeps its name. */
+static void target_instance(
+    app_scene_authoring *scene,
+    app_runtime_target target,
+    const game_behavior_attachment_info *info
+)
+{
+    const char *prototype = target == APP_RUNTIME_SCENE
+                              ? scene_entity_prototype(scene, info->entity)
+                              : NULL;
+    scene->debug_target = target;
+    scene_debug_select(&scene->debug, info, scene->debug_sessions[target]);
+    scene->debug.prototype = prototype ? xstrdup(prototype) : NULL;
+}
+
+static void stop_following_newest(app_scene_authoring *scene)
+{
+    free(scene->debug_newest);
+    scene->debug_newest = NULL;
+}
+
+/* Unreal's debug object: the selected object's instance of the open behavior,
+   else its only instance; selecting something without it keeps the target.
+   A target the selection gives ends Follow newest. */
+static void follow_selection(app_scene_authoring *scene)
+{
+    if (scene->debug_pinned || !scene->definition || !scene->definition->name ||
+        !follow_changed(scene)) {
+        return;
+    }
+    game_behavior_attachment_info info;
+    if (selected_behavior_attachment(scene, &info)) {
+        stop_following_newest(scene);
+        target_instance(scene, scene->active_runtime_target, &info);
+        return;
+    }
+    if (!scene->debug_newest && sole_instance(scene, &info)) {
+        target_instance(scene, scene->active_runtime_target, &info);
+    }
+}
+
+/* The scene's latest instance of the open behavior on a `prototype` object:
+   attachments count up, so the greatest sequence is the newest. */
+static bool newest_instance(app_scene_authoring *scene, const char *prototype, game_behavior_attachment_info *out)
+{
+    game_behavior_world *behaviors = scene->live->behaviors;
+    bool found = false;
+    for (int i = game_behavior_attachment_count(behaviors) - 1; i >= 0; i--) {
+        game_behavior_attachment_info info = game_behavior_attachment_info_index(behaviors, i);
+        if ((found && info.sequence <= out->sequence) ||
+            strcmp(info.asset_name, scene->definition->name)) {
+            continue;
+        }
+        const char *made = scene_entity_prototype(scene, info.entity);
+        if (made && !strcmp(made, prototype)) {
+            *out = info;
+            found = true;
+        }
+    }
+    return found;
+}
+
+/* Whether the target is a scene instance of this session. */
+static bool scene_target(const app_scene_authoring *scene)
+{
+    return scene->debug.asset_name && scene->debug_target == APP_RUNTIME_SCENE &&
+           scene->debug.session == scene->debug_sessions[APP_RUNTIME_SCENE];
+}
+
+/* Follow newest (Unreal's debug filter): an instance the game spawns of the
+   followed prototype becomes the target, so short-lived ones are watched
+   from their first frame; a destroyed one stays until the next spawns. */
+static void follow_newest(app_scene_authoring *scene)
 {
     game_behavior_attachment_info info;
-    if (!scene->debug_pinned && selected_behavior_attachment(scene, &info) &&
-        (!scene->debug.asset_name || scene->debug_target != scene->active_runtime_target ||
-         ecs_entity_to_u64(scene->debug.entity) != ecs_entity_to_u64(info.entity) ||
-         strcmp(scene->debug.asset_name, info.asset_name))) {
-        scene->debug_target = scene->active_runtime_target;
-        scene_debug_select(&scene->debug, &info, scene->debug_sessions[scene->debug_target]);
+    if (!scene->debug_newest || scene->debug_pinned || !scene->definition ||
+        scene->active_runtime_target != APP_RUNTIME_SCENE ||
+        !newest_instance(scene, scene->debug_newest, &info) ||
+        (scene_target(scene) && info.sequence <= scene->debug.sequence)) {
+        return;
     }
+    target_instance(scene, APP_RUNTIME_SCENE, &info);
+}
+
+/* The target's live instance, or its retired one once its entity is gone. */
+static bool resolve_target(app_scene_authoring *scene, game_behavior_attachment_info *out)
+{
+    app_runtime_target target = scene->debug_target;
+    game_behavior_world *behaviors = debug_behaviors(scene, target);
+    uint64_t session = scene->debug_sessions[target];
+    if (scene_debug_resolve(&scene->debug, debug_world(scene, target), behaviors, session, out)) {
+        return true;
+    }
+    scene->debug_destroyed = scene_debug_retired(&scene->debug, behaviors, session, out);
+    return scene->debug_destroyed;
+}
+
+/* A retired instance lives while it is the target. A scene without a
+   preview, as game_behavior_inspect allows, has no preview world. */
+static void release_retired(app_scene_authoring *scene)
+{
+    for (int target = APP_RUNTIME_PREVIEW; target <= APP_RUNTIME_SCENE; target++) {
+        game_behavior_world *behaviors = debug_behaviors(scene, target);
+        game_behavior_attachment_info retired;
+        if (behaviors && game_behavior_retired_target(behaviors, &retired) &&
+            !(scene->debug_destroyed && target == (int)scene->debug_target)) {
+            game_behavior_release_retired(behaviors);
+        }
+    }
+}
+
+void sync_editor_inspection(app_scene_authoring *scene)
+{
+    follow_selection(scene);
+    follow_newest(scene);
+    game_behavior_attachment_info info;
     scene->debug_status = APP_DEBUG_NONE;
+    scene->debug_destroyed = false;
     if (scene->debug.asset_name) {
         scene->debug_status = APP_DEBUG_UNAVAILABLE;
-        if (scene_debug_resolve(
-                &scene->debug,
-                debug_world(scene, scene->debug_target),
-                debug_behaviors(scene, scene->debug_target),
-                scene->debug_sessions[scene->debug_target],
-                &info
-            )) {
+        if (resolve_target(scene, &info)) {
             scene->debug_status = APP_DEBUG_OTHER_GRAPH;
             if (scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR &&
                 scene->graph_document_id &&
@@ -1041,35 +1336,68 @@ void sync_editor_inspection(app_scene_authoring *scene)
         }
     }
     bool available = scene->debug_status == APP_DEBUG_AVAILABLE;
+    bool running = available && !scene->debug_destroyed;
+    /* Only the target pays for tracing, and only while a graph shows it. */
+    bool traced = running && !scene->debug_hidden;
     for (int target = APP_RUNTIME_PREVIEW; target <= APP_RUNTIME_SCENE; target++) {
         game_behavior_inspect(
             debug_behaviors(scene, target),
-            available && target == (int)scene->debug_target ? info.instance : NULL
+            traced && target == (int)scene->debug_target ? info.instance : NULL
         );
     }
     bool behavior = scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR;
     editor_set_inspection_blocked(scene->graph_editor, behavior && !available);
     const flow_run *run = NULL;
-    const behavior_instance_trace_entry *trace = NULL;
-    int trace_count = 0;
-    if (available) {
-        for (int i = acount(info.instance->activations) - 1; i >= 0; i--) {
-            flow_state state = flow_run_status(info.instance->activations[i]);
-            if (state != FLOW_COMPLETED && state != FLOW_FAILED) {
-                run = info.instance->activations[i];
-                break;
-            }
+    for (int i = running ? acount(info.instance->activations) - 1 : -1; i >= 0; i--) {
+        flow_state state = flow_run_status(info.instance->activations[i]);
+        if (state != FLOW_COMPLETED && state != FLOW_FAILED) {
+            run = info.instance->activations[i];
+            break;
         }
-        trace = behavior_instance_trace(info.instance, &trace_count);
     }
     editor_set_inspection_instance(scene->graph_editor, available ? info.instance : NULL);
     editor_set_inspection_run(scene->graph_editor, run);
-    editor_set_inspection_trace_revision(
-        scene->graph_editor,
-        trace,
-        trace_count,
-        available ? behavior_instance_trace_revision(info.instance) : 0
-    );
+    release_retired(scene);
+}
+
+int app_scene_authoring_choose_debug_target(app_scene_authoring *scene, ecs_entity entity)
+{
+    game_behavior_world *behaviors = debug_behaviors(scene, scene->active_runtime_target);
+    game_behavior_attachment_info info = { 0 };
+    for (int i = 0; entity.slot && !info.asset_name &&
+                    i < game_behavior_attachment_count_for_entity(behaviors, entity);
+         i++) {
+        game_behavior_attachment_info candidate;
+        if (game_behavior_attachment_info_at(behaviors, entity, i, &candidate) == 0 &&
+            !strcmp(candidate.asset_name, scene->definition->name)) {
+            info = candidate;
+        }
+    }
+    if (entity.slot && !info.asset_name) {
+        return -1;
+    }
+    stop_following_newest(scene);
+    scene_debug_clear(&scene->debug);
+    if (info.asset_name) {
+        target_instance(scene, scene->active_runtime_target, &info);
+    }
+    sync_editor_inspection(scene);
+    return 0;
+}
+
+void app_scene_authoring_follow_newest(app_scene_authoring *scene, const char *prototype)
+{
+    char *name = xstrdup(prototype);
+    stop_following_newest(scene);
+    scene->debug_newest = name;
+    /* The newest running now, else the first to spawn. */
+    scene_debug_clear(&scene->debug);
+    sync_editor_inspection(scene);
+}
+
+void app_scene_authoring_set_debug_hidden(app_scene_authoring *scene, bool hidden)
+{
+    scene->debug_hidden = hidden;
 }
 
 int app_scene_authoring_set_debug_target(
@@ -1089,8 +1417,7 @@ int app_scene_authoring_set_debug_target(
         game_behavior_attachment_info info;
         if (game_behavior_attachment_info_at(behaviors, entity, i, &info) == 0 &&
             !strcmp(info.asset_name, asset_name)) {
-            scene_debug_select(&scene->debug, &info, scene->debug_sessions[target]);
-            scene->debug_target = target;
+            target_instance(scene, target, &info);
             scene->debug_pinned = true;
             sync_editor_inspection(scene);
             return 0;
@@ -1102,6 +1429,10 @@ int app_scene_authoring_set_debug_target(
 void app_scene_authoring_set_debug_pinned(app_scene_authoring *scene, bool pinned)
 {
     scene->debug_pinned = pinned;
+    if (!pinned) {
+        free(scene->debug_followed.asset);
+        scene->debug_followed.asset = NULL; /* follow the selection again */
+    }
     sync_editor_inspection(scene);
 }
 
@@ -1148,12 +1479,14 @@ app_scene_authoring *app_scene_authoring_new_with_content_root(
         return NULL;
     }
     scene->content_root = xstrdup(content_root);
+    scene_view_init(scene);
     scene->asset_index = reference_index_new();
     scene->asset_index_generation = 1;
     content_refresh(scene);
     scene->selected = -1;
     scene->selected_prototype = -1;
     scene->runtime_preview_prototype = -1;
+    scene->view_options = (app_scene_view_options){ .lighting = true };
     scene_tabs_initialize(scene);
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
     editor_set_value_formatter(graph_editor, format_entity_value, scene);
@@ -1401,7 +1734,9 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     if (!scene) {
         return;
     }
-    scene_debug_clear(&scene->debug);
+    scene_kept_clear(scene);
+    scene_field_previews_clear(scene);
+    scene_selection_free(scene);
     scenario_document_free(scene->scenario);
     av_value_free(scene->scenario_saved_state);
     free(scene->ui);
@@ -1428,6 +1763,9 @@ void app_scene_authoring_free(app_scene_authoring *scene)
         remove_selected(scene);
     }
     afree(scene->actors);
+    game_prototype_owned_strings_free(scene->component_strings);
+    afree(scene->marquee_base);
+    scene_view_free(scene);
     reference_index_free(scene->asset_index);
     scene_tabs_free(scene);
     scene_history_free(scene->history);
@@ -1454,6 +1792,15 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     free(scene->current_scene_tab_key);
     free(scene->document_id);
     free(scene->graph_document_id);
+    /* Removing the actors above syncs the debug target. */
+    scene_debug_clear(&scene->debug);
+    free(scene->debug_followed.asset);
+    free(scene->debug_newest);
+    for (int i = 0; i < acount(scene->spawn_breaks); i++) {
+        free(scene->spawn_breaks[i]);
+    }
+    afree(scene->spawn_breaks);
+    afree(scene->spawn_seen);
     free(scene);
 }
 
@@ -1556,6 +1903,7 @@ static void refresh_asset_index(app_scene_authoring *scene, bool ui_active)
 
 void app_scene_authoring_update(app_scene_authoring *scene, bool ui_active)
 {
+    scene_selection_track(scene);
     refresh_catalogs(scene);
     refresh_asset_index(scene, ui_active);
 }

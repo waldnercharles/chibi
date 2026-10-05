@@ -62,6 +62,21 @@ bool ui_design_set_style(
     char *error,
     size_t size
 );
+/* Sets several of the element's inline style properties as one undo step,
+ * as a Canvas resize sets its width and height. */
+typedef struct ui_design_style
+{
+    const char *property;
+    const char *value;
+} ui_design_style;
+bool ui_design_set_styles(
+    ui_buffer *b,
+    int element,
+    const ui_design_style *styles,
+    int count,
+    char *error,
+    size_t size
+);
 /* Replaces the text an element holds when it holds no elements. */
 bool ui_design_set_text(ui_buffer *b, int element, const char *text, char *error, size_t size);
 /* Replaces the value of declaration `declaration` of rule `rule`. */

@@ -503,11 +503,13 @@ static void gradient_codegen()
     derivative_program(&g);
     shader_error error = { 0 };
     int original = g.output[0];
+    g.output[0] = derivative_node(&g, SHADER_ABS, 1, original, -1, -1, -1);
     int world = shader_graph_add(&g, SHADER_WORLD_POSITION, 3);
     int unsupported = derivative_node(&g, SHADER_LENGTH, 1, world, -1, -1, -1);
     char *source = shader_graph_glsl_gradient_named(&g, "test_gradient", &error);
     assert(
         source && strstr(source, "vec3 test_gradient(") &&
+        strstr(source, "sg_gradient_tolerance*length(") &&
         !strstr(source, "vec4(sg_sample.world_position")
     );
     free(source);

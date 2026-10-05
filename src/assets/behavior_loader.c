@@ -88,7 +88,9 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
         closedir(directory);
         free(directory_path);
     }
-    qsort(paths, (size_t)acount(paths), sizeof *paths, path_compare);
+    if (acount(paths) > 1) {
+        qsort(paths, (size_t)acount(paths), sizeof *paths, path_compare);
+    }
     game_live_definition **pending = NULL;
     int loaded = 0;
     for (int i = 0; i < acount(paths); i++) {

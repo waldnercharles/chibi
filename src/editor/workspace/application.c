@@ -8,6 +8,7 @@
 #include "editor/collab/collab.h"
 #include "editor/collab/workspace.h"
 #include "editor/studio/studio.h"
+#include "editor/studio/studio_nodes.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/game_presentation.h"
 #include "editor/workspace/gameplay_input.h"
@@ -323,6 +324,7 @@ static bool open_workspace(
         chibi_project_free(&project);
         return false;
     }
+    editor_set_studio_nodes(graph_editor, studio_project_is(project.root));
     authoring = app_scene_authoring_new_with_content_root(
         world,
         live,

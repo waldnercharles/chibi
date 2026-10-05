@@ -42,5 +42,8 @@ int highlight_runs(highlight_language language, const char *text, int length, hi
  * run. Returns the length written, cut to fit size between whole characters,
  * so every tag and entity stays whole. */
 size_t highlight_markup(highlight_language language, const char *text, char *out, size_t size);
+/* Writes text as RmlUi markup that shows it as is, in no runs, cut between
+   whole characters to fit size. */
+size_t highlight_escape(const char *text, char *out, size_t size);
 
 #endif

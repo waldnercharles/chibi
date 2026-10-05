@@ -119,10 +119,15 @@ static bool pick_checks()
             primitive == GAME_PRIMITIVE_TETRAHEDRON ? (CF_V3){ -.4f, -.4f, 3 }
                                                     : (CF_V3){ 0, 0, 3 }
         );
-        ecs_entity
-            hit = render_arena_pick(world, &camera, (CF_V2){ probe.x, probe.y });
+        ecs_entity hit = render_arena_pick(
+            world,
+            &camera,
+            (CF_V2){ probe.x, probe.y },
+            (render_skip){ 0 }
+        );
         bool ok = ecs_entity_to_u64(hit) == ecs_entity_to_u64(near) &&
-                  !render_arena_pick(world, &camera, (CF_V2){ 0.98f, 0.98f }).slot;
+                  !render_arena_pick(world, &camera, (CF_V2){ 0.98f, 0.98f }, (render_skip){ 0 })
+                       .slot;
         ecs_world_free(world);
         if (!ok) {
             fprintf(stderr, "arena3d picking primitive %d failed\n", primitive);
@@ -256,7 +261,7 @@ static bool render(ecs_world *world, const render_arena_camera *camera, CF_Pixel
     assert(canvas.id && arena);
     cf_canvas_set_clear_color(canvas, (CF_Color){ 0, 0, 0, 1 });
     cf_app_update(NULL);
-    bool ok = render_arena_draw(arena, world, particles, camera, 0, NULL);
+    bool ok = render_arena_draw(arena, world, particles, camera, 0, NULL, (render_skip){ 0 });
     geometry_work = render_arena_last_work(arena);
     cf_render_to(canvas, true);
     ok &= render_arena_post_process(post);
@@ -384,7 +389,12 @@ static bool prism_checks(CF_Pixel *pixels)
             bool in_bounds = bounded && ndc.x > bounds.min.x &&
                              ndc.x < bounds.max.x && ndc.y > bounds.min.y &&
                              ndc.y < bounds.max.y;
-            ecs_entity hit = render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y });
+            ecs_entity hit = render_arena_pick(
+                world,
+                &camera,
+                (CF_V2){ ndc.x, ndc.y },
+                (render_skip){ 0 }
+            );
             bool picked = ecs_entity_to_u64(hit) == ecs_entity_to_u64(entity);
             int light = brightness(pixels, &camera, point);
             bool inside = i < 2;
@@ -467,7 +477,12 @@ static bool octahedron_checks(CF_Pixel *pixels)
             point.z = sinf(angle) * samples[sample].x +
                       cosf(angle) * samples[sample].z;
             CF_V3 ndc = render_arena_project(&camera, point);
-            ecs_entity hit = render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y });
+            ecs_entity hit = render_arena_pick(
+                world,
+                &camera,
+                (CF_V2){ ndc.x, ndc.y },
+                (render_skip){ 0 }
+            );
             bool picked = ecs_entity_to_u64(hit) == ecs_entity_to_u64(entity);
             int light = brightness(pixels, &camera, point);
             bool inside = sample < 2;
@@ -501,7 +516,7 @@ static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
     bool before[225];
     for (int i = 0; i < 225; i++) {
         CF_V2 point = { (i % 15 - 7) * .065f, (i / 15 - 7) * .065f };
-        before[i] = render_arena_pick(world, &camera, point).slot != 0;
+        before[i] = render_arena_pick(world, &camera, point, (render_skip){ 0 }).slot != 0;
     }
     /* Eight canonical tetrahedra reconstruct every visible face of the source solid. */
     arena_parts parts = { .count = 8 };
@@ -531,12 +546,13 @@ static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
     ok &= changed < 20;
     for (int i = 0; i < 225; i++) {
         CF_V2 point = { (i % 15 - 7) * .065f, (i / 15 - 7) * .065f };
-        ok &= (render_arena_pick(world, &camera, point).slot != 0) == before[i];
+        ok &= (render_arena_pick(world, &camera, point, (render_skip){ 0 }).slot !=
+               0) == before[i];
     }
     GAME_GameVisualTransform_get(world, entity)->scale = 0;
     CF_V3 bounds[8];
     ok &= !render_arena_entity_bounds(world, entity, bounds);
-    ok &= !render_arena_pick(world, &camera, (CF_V2){ 0 }).slot;
+    ok &= !render_arena_pick(world, &camera, (CF_V2){ 0 }, (render_skip){ 0 }).slot;
     if (!ok) {
         fprintf(stderr, "composed visual mismatch: %d pixels changed across exact tetrahedron decomposition\n", changed);
     }
@@ -566,11 +582,11 @@ static bool polygon_visuals(CF_Pixel *pixels)
         ok &= render(world, &camera, pixels);
         CF_V3 ndc = render_arena_project(&camera, solid[i]);
         bool visible = brightness(pixels, &camera, solid[i]) > 40 &&
-                       render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y })
+                       render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
                                .slot == entity.slot;
         if (i < 3) {
             ndc = render_arena_project(&camera, hole[i]);
-            visible &= !render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y })
+            visible &= !render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
                             .slot &&
                        brightness(pixels, &camera, hole[i]) == 0;
         }
@@ -631,13 +647,13 @@ static bool centered_triangles()
             ok &= fabsf(minimum.x + 2.0f / 3) < .0001f &&
                   fabsf(maximum.x - 4.0f / 3) < .0001f;
             ok &= fabsf(maximum.z - minimum.z - 2) < .0001f;
-            bool picked_center = render_arena_pick(world, &camera, (CF_V2){ 0 }).slot ==
-                                 entity.slot;
+            bool picked_center = render_arena_pick(world, &camera, (CF_V2){ 0 }, (render_skip){ 0 })
+                                     .slot == entity.slot;
             ok &= picked_center == (primitive == GAME_PRIMITIVE_TRIANGLE);
             CF_V3 edge = cf_m4_transform_point(rotation, (CF_V3){ 1.0f / 3 - .04f, 0, .44f });
             CF_V3 ndc = render_arena_project(&camera, edge);
-            ok &= render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }).slot ==
-                  entity.slot;
+            ok &= render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
+                      .slot == entity.slot;
         }
         ecs_world_free(world);
     }
@@ -670,7 +686,7 @@ static bool frame_parts(CF_Pixel *before, CF_Pixel *after)
     bool ok = render(world, &camera, before), hits[625];
     for (int i = 0; i < 625; i++) {
         CF_V2 point = { (i % 25 - 12) * .04f, (i / 25 - 12) * .04f };
-        hits[i] = render_arena_pick(world, &camera, point).slot != 0;
+        hits[i] = render_arena_pick(world, &camera, point, (render_skip){ 0 }).slot != 0;
     }
     CF_M4x4 frame = cf_m4_from_trs(
         (CF_V3){ 0 },
@@ -716,7 +732,8 @@ static bool frame_parts(CF_Pixel *before, CF_Pixel *after)
     ok &= changed < 20;
     for (int i = 0; i < 625; i++) {
         CF_V2 point = { (i % 25 - 12) * .04f, (i / 25 - 12) * .04f };
-        ok &= (render_arena_pick(world, &camera, point).slot != 0) == hits[i];
+        ok &= (render_arena_pick(world, &camera, point, (render_skip){ 0 }).slot !=
+               0) == hits[i];
     }
     if (!ok) {
         fprintf(stderr, "frame breakup changed source coverage or lighting at birth (%d pixels)\n", changed);

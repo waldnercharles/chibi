@@ -40,27 +40,27 @@ reference for spacing, alignment, and motion as well as appearance.
 
 | Library | Problem | Kit equivalent | State |
 | --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; anchored searchable choices: `kit_dropdown`, with `kit_picker` as the asset-field trigger) and `kit_number.c`; popups, menus (color swatches: `kit_menu_item_desc.swatch`; a panel header's menu: `kit_panel_menu`) and tooltips in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog and KeyHint | Done |
+| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; anchored searchable choices: `kit_select`'s dropdown, with `kit_picker` as the canvas literals' trigger for Studio's picker) and the native `<number-field>` and `<color-field>` (`src/ui/controls`, which `kit_number` and `kit_color` emit); popups and menus on `src/ui/popover.c`, the HTML popover attribute with one stack for authored popovers and the kit's (`kit_popup.c` emits the kit's: color swatches `kit_menu_item_desc.swatch`, a panel header's menu `kit_panel_menu`), and tooltips (a picture above the text: `kit_tip_image`) in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog, KeyHint; Menu, MenuItem, MenuCommand, MenuGroup, MenuSeparator, Submenu, MenuCheck and MenuOption over popover.c; ChoiceList over the native `<choice-list>`, with EnumField and AssetField; and over the native controls NumberField, VectorField, ColorField, Checkbox, PropertyRow, Panel and Splitter | Done |
 | [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
-| [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `kit_command` (`kit_command.c`), Studio's palette (`studio_palette.c`) | Done; pages and group jumps open |
-| [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | `kit_number` (`kit_number.c`; scrub, fine/coarse/snap) | Partial; rubber-band and spring controls open |
+| [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `Palette.rml` and `Picker.rml` over `<choice-list virtualized>` and the `palette` source (`studio_palette_view.c`; clients `studio_palette.c`, `studio_pick.c`), ranked by `support/text_rank.h`, which the kit's dropdowns share | Done; pages and group jumps open |
+| [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | The native `<number-field>` (`src/ui/controls/number_field.c`; scrub, fine/coarse/snap, Escape cancels a scrub), which `kit_number` emits and authored UI uses as NumberField | Partial; rubber-band and spring controls open |
 | [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout` (`kit_motion.c`); springs in `src/ui/motion.c`. Authored UI, the editor's and games': `presence` on a `data-if` element | Done |
 | [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | The native `<number-flow>` element (`src/ui/text_motion.c`), which `kit_number_flow` emits | Done |
 | [Torph](https://github.com/lochie/torph) | Text continuity when a label changes | The native `<morph-text>` element (`src/ui/text_motion.c`), which `kit_morph` and `kit_button_desc.morph` emit | Done; place-value numbers open |
 | [Sonner](https://github.com/emilkowalski/sonner) | Toast notifications | `kit_toast` (`kit_toast.c`) | Done; Alt+T focus open |
-| [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs | `kit_list` (`kit_list.c`), fixed row height | Done; measured heights open |
-| [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | `kit_drag_source`, `kit_drop_target` (`kit_drag.c`); the Hierarchy's keyboard sensor over the sortable tree's slots (`ui_design_slots`) | Done; a kit keyboard sensor for other lists and auto-scroll open |
+| [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs, grids | `ui_list_window` (`src/ui/list.c`) on any scroller, fixed row height, a window that keeps its length; authored UI's `List` widget, and `kit_list`, a wrapper over it; a grid (VirtuosoGrid) is a list of rows of tiles, as Assets' | Done; measured heights open |
+| [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | One drag for every document (`src/ui/drag.c`): `data-drag` sources, `data-drop` targets of one or several types with tree or list zones, `data-drop-accept`/`-over`/`-zone` marks, a bubbling `drop` event, `ui_drag_over` (dnd-kit's `over`), `ui_drag_hint` and `ui_drag_dropped` for C surfaces. `kit_drag_source`, `kit_drop_target`, `kit_drop_hover` and `kit_drag_hint` wrap it; the Hierarchy's keyboard sensor over the sortable tree's slots (`ui_design_slots`) | Done; a keyboard sensor for other lists and auto-scroll open |
 | [Shiki](https://github.com/shikijs/shiki) | Syntax highlighting as styled token runs | `highlight_runs` / `highlight_markup` (`editor/ui/highlight.c`), `kit_markup` | Done: log, KDL assets, expressions |
-| [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | `kit_chart` (`kit_chart.c`, element `kit-chart`) | Done |
-| [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `kit_chart` ticks, scrub value, Performance legend | Partial; bars open |
+| [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | The native `<line-chart>` (`src/ui/controls/line_chart.c`) over series C publishes by name (`line_chart_publish`) | Done |
+| [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `<line-chart>` ticks, badge and scrub value; Performance's legend (`Performance.rml`) | Partial; bars open |
 | [zustand](https://github.com/pmndrs/zustand) | One store, selective updates, persistence | `studio_prefs`, whose preferences are rows of `studio_settings[]` | Done |
 | [Blender Workspaces](https://docs.blender.org/manual/en/latest/interface/window_system/workspaces.html), [Godot main screens](https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html) | Named arrangements of areas for a task, switched without touching documents | `studio_prefs.layouts` per `studio_workspace`; explicit Horizontal Split and Vertical Split commands in the top bar | Done; two fixed split modes |
 | [next-themes](https://github.com/pacocoursey/next-themes) | Theme preference: system, no flash, no mixed transitions | Theme in `studio_prefs` | Done |
 | [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
 | [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
 | [Chrome DevTools](https://developer.chrome.com/docs/devtools/css), [Unity UI Toolkit Debugger](https://docs.unity3d.com/Manual/UIE-ui-debugger.html) | Pick any element; see its box, the rules that style it and where they were written | `kit_inspect_begin`, `kit_highlight`, `kit_element_path` (`kit_inspect.c`); the authored Inspector panel (`studio_inspect.c`) | Done; overridden declarations and tree keys open |
-| [Unity IMGUIContainer](https://docs.unity3d.com/ScriptReference/UIElements.IMGUIContainer.html) | Native, immediate-mode content inside an authored layout | `kit_slot_begin`, `kit_slot_end` (`kit_slot.c`): the status bar's UI Scale; the top bar's menubar, play target and debugger steps; each area header's editor type menu and editor controls | Done |
-| [Unity UI Builder](https://docs.unity3d.com/Manual/UIB-getting-started.html), [UMG Designer](https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-ui-designer-quick-start-guide-in-unreal-engine) | Visual editing of a UI document: hierarchy, canvas, details and a library of elements | The designer (`studio_designer*.c`) over `ui_design.h`'s text edits; `kit_drag_source`/`kit_drop_target` for the tree, `kit_highlight` for the Canvas outlines | Done; resize handles in the Canvas open |
+| [Unity IMGUIContainer](https://docs.unity3d.com/ScriptReference/UIElements.IMGUIContainer.html) | Native, immediate-mode content inside an authored layout | `kit_slot_begin`, `kit_slot_end` (`kit_slot.c`): each area's content in its place in the Workspace; each area header's editor controls | Done |
+| [Unity UI Builder](https://docs.unity3d.com/Manual/UIB-getting-started.html), [UMG Designer](https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-ui-designer-quick-start-guide-in-unreal-engine) | Visual editing of a UI document: hierarchy, canvas, details and a library of elements | The designer (`studio_designer*.c`) over `ui_design.h`'s text edits; its Hierarchy, Details and Library are authored (D1), the tree a List of TreeRows whose `data-drop-zones` give before, inside and after, the Library's tiles `data-drag="ui"` sources; `kit_highlight` for the Canvas outlines, `kit_item_pressed` for its resize handles | Done |
 | [Zep](https://github.com/Rezonality/zep) (linked, C++) | Code editing: Vim and standard keys, undo, diagnostics, completion, hover | `kit_code` (`kit_code.c`) over `editor/text/zep_bridge.h`; the Text Editor's language glue in `editor/documents/ui_code.h` and `asset_code.h`; shared KDL intelligence in `assets/asset_source.h` | Done; highlighting, diagnostics, completion items and hover text come from the caller |
 
 ## Contracts
@@ -73,12 +73,19 @@ switch on hover within a menubar and open submenus after 100 ms. Tooltips show
 after 500 ms and stay warm for 400 ms within a group. A tooltip holds a label, a
 shortcut and an optional description that wraps; in a zoomed canvas it keeps
 its size on screen. Number fields repeat held
-steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press.
-A `popover` class on `kit_popup_begin` uses Base UI's nonmodal Popover focus model:
+steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press,
+the top one first: `src/ui/popover.c` keeps one stack per context for authored
+popovers (`<div popover>`, opened by `popovertarget`), the kit's popups and the
+color picker, and an open popover's document stacks above the other areas.
+A popover that is not a menu or a list (an authored `[popover]`, a `popover`
+class on `kit_popup_begin`) uses Base UI's nonmodal Popover focus model:
 opening focuses its first control, Tab and Shift+Tab move through its controls,
 and leaving its boundaries closes it and continues at the trigger's position in
-document order. Escape returns focus to the trigger. Menus keep arrow-key
-navigation and close on Tab. A modal host (`kit_modal_host`) traps the
+document order. Escape returns focus to the trigger. Menus (`role="menu"`) keep
+arrow-key navigation, typeahead within 0.5 s and close on Tab; a `menuitem` or
+`option` click closes the menu chain, and checkbox and radio items stay open
+(Base UI's `closeOnClick`). A disabled item never highlights, under the
+pointer, by arrow keys or by typeahead, and its click reaches nothing. A popover marked `data-template` (Menu, Submenu) is mounted only while open, as Base UI unmounts a Popup that is not `keepMounted`: it builds its content on opening and removes it after its exit transition. A modal host (`kit_modal_host`) traps the
 focus as Base UI's Dialog does: Tab and Shift+Tab cycle through its tabbable
 elements and never reach the editor behind it. `docs/prototypes/studio/kit.html` lists every
 control's contract.
@@ -97,7 +104,8 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 ### cmdk
 
-- Ranking is `text_search_score` (`src/support/text_search.h`), the search the
+- Ranking is `text_rank` (`src/support/text_rank.h`) over `text_search_score`
+  (`src/support/text_search.h`), the search the
   graph's Add menu uses and, in its whole-word form, the MCP's `searchNodes` and
   `searchAssets`. Every query word must match: a word start in the label ranks
   above a match inside a word, then initials, then letters in order, and the
@@ -111,12 +119,12 @@ icons, or descriptions, and `kit_choice` for simple named options.
   - Meta+Up and Meta+Down go to the first and last item; Alt+Up and Alt+Down go to the previous and next group.
   - Ctrl+N/J/P/K also move.
   - Enter selects. Backspace on an empty query, or Escape, pops a page.
-- Hovering selects an item. Beyond about 2,000 items, filter and virtualize externally.
+- Hovering selects an item. Beyond about 2,000 items, filter and virtualize externally: Studio ranks in C and windows the rows (`<choice-list virtualized>`, `ui_list` with each row's top).
 - An item's description shows as a muted second line; tooltips stay hidden while the palette is open.
 
 ### DialKit
 
-- Movement under 3 px is a click.
+- Movement under `FEEL_DRAG_DP` (4 dp) is a click.
 - Sliders:
   - A click jumps to the value with a spring (stiffness 300, damping 25).
   - Dragging past the ends rubber-bands: a 32 px dead zone, then up to 8 px of stretch following `8·sqrt(min(overflow/200, 1))`.
@@ -189,7 +197,8 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 ### Virtuoso
 
-- Items are measured once rendered and kept in an offset tree; `fixedItemHeight` skips measurement. Kit rows use a fixed height.
+- Items are measured once rendered and kept in an offset tree; `fixedItemHeight` skips measurement. Our rows use a fixed height, `--row` for authored Lists.
+- The window keeps its length as the list scrolls (`ui_list_window`), so a `data-for` over it changes values in rows it keeps instead of making rows: a scroll step costs about a third of making the window anew (ui_bench case 9).
 - Overscan is in pixels.
 - Output logs use `followOutput`: they stay pinned only when already within 4 px of the bottom.
 - Prepending keeps the scroll anchored.
@@ -199,10 +208,10 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 - Pointer activation:
   - A drag handle starts immediately.
-  - Otherwise a drag starts after 5 px of movement, or after a 200 ms hold within 10 px.
-  - Touch starts after a 250 ms hold within 5 px.
+  - Otherwise a drag starts after `FEEL_DRAG_DP` (4 dp) of movement, dnd-kit's distance constraint. Holding still never starts one: dnd-kit's delay constraint is for touch, and with a mouse it turned a slow click on a tile into a drag that swallowed the click.
 - Keyboard: Space or Enter picks up, arrows move, Space, Enter or Tab drops, Escape cancels.
-- Collision uses pointer intersection first, then shape intersection.
+- Collision uses pointer intersection first, then shape intersection. Ours is the pointer's: the nearest element under it, in any document of the context, that takes the type.
+- Sources and targets are attributes (`src/ui/drag.h`), so authored and kit lists, and C surfaces through `ui_drag_dropped`, share one session, as Unity's `DragAndDrop` crosses its windows and Unreal's `FDragDropOperation` its Slate panels. A tree row's zones are Unreal's `EItemDropZone`: its top and bottom quarters drop above and below it, its middle onto it (`data-drop-zones="tree"`); a row that holds nothing splits in halves (`"list"`).
 - Motion:
   - Drops animate for 250 ms `ease`.
   - Sortable neighbors shift over 250 ms with `(0.25, 1, 0.5, 1)`.
@@ -283,7 +292,6 @@ icons, or descriptions, and `kit_choice` for simple named options.
 - A slot not begun in a frame loses its content, as any kit item does.
 - Popups, menus and tooltips a slot opens live in the kit's layer, as elsewhere.
 - Focus follows IMGUIContainer's: a click on authored chrome leaves the keyboard to the editor (`kit_release_focus`), while a field in a slot keeps it, as an IMGUI text field does.
-- Menubar triggers in a slot keep Base UI's menubar: hovering another trigger while a menu is open switches to it, and Left and Right step between them.
 
 ### Unity UI Builder and UMG Designer
 
@@ -307,7 +315,7 @@ Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
   - F12 reports `KIT_CODE_DEFINITION`, Shift+F12 `KIT_CODE_REFERENCES` and Control+Space `KIT_CODE_SUGGEST`, as in VS Code; Vim takes Control+[ for Escape.
   - Tab types; keys never reach RmlUi's focus navigation.
   - `:w`, `:wq` and `:x` report `KIT_CODE_SAVED`; `:<line>` moves there; commands that would open files or windows do nothing. The command and status lines take no room until an ex command starts.
-- A press places the cursor and dragging selects; a double click selects the word, names with `-` whole; a press with the primary modifier reports `KIT_CODE_DEFINITION` there. The wheel scrolls by three lines a notch.
+- A press places the cursor and dragging selects; a double click selects the word, names with `-` whole; a press with the primary modifier reports `KIT_CODE_DEFINITION` there. The wheel scrolls as far as it scrolls a list, `FEEL_SCROLL_POINTS` a notch, sideways too.
 - With `desc.no_wrap`, lines run on past the edge: the view scrolls sideways to keep the cursor in view, and with the wheel's sideways turn.
 - Completions show under the cursor while the caller supplies them: Up and Down choose, Enter or Tab accept, Escape dismisses until the list changes. The list scrolls to its choice.
 - Diagnostics mark the gutter and underline the range the caller gives (`kit_code_marker.start`, `end`), else their line.
@@ -322,12 +330,12 @@ Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
 - **Toasts built by hand, or a modal used for a notice.** Use `kit_toast`. The status-bar report is for the last operation; toasts are for results the user might act on, such as Undo after Delete, or must not miss, such as a failed save.
 - **A plain container with hand-written open, close, focus or outside-press logic.** Use kit popups, menus and the command (Base UI): they handle focus return, Escape and outside dismissal, typeahead and stacking.
 - **A number animated by rewriting its text every frame.** Use `kit_number_flow` for discrete changes. Continuous values stay static.
-- **1,000 or more rows emitted directly.** Use `kit_list` (Virtuoso) before capping or paging results.
+- **1,000 or more rows emitted directly.** Use the `List` widget or `kit_list` over `ui_list_window` (Virtuoso) before capping or paging results.
 - **A tangle of parameters or duplicated statics for shared state.** Authoring state stays in the C model. View settings and layout go in `studio_prefs` (zustand). Transient widget state lives in the kit node.
 - **Class strings built with ternaries or `snprintf`.** Use `KIT_CX` (clsx) for conditions and `kit_variant`/`kit_size` (cva) for variants. State goes in `data-*` attributes.
 - **Instant show and hide, or animation interpolated by hand in C.** Use `kit_presence` with RCSS starting and ending styles, and `kit_layout` for moves (Motion).
 - **A label swapped instantly where continuity matters.** Use `kit_morph` (Torph).
-- **A drag state machine written inside a panel.** Use kit drag and drop (dnd-kit) for its activation constraints, keyboard support and announcements.
+- **A drag state machine written inside a panel.** Use `data-drag` and `data-drop` (`src/ui/drag.h`) or the kit's wrappers (dnd-kit) for their activation constraint, marks, zones and Escape.
 - **A theme, density or motion toggle that flashes or animates.** Apply preferences before the first frame and suspend transitions for the switch (next-themes).
 - **A chart built from many elements.** Use the chart element (Liveline, Recharts).
 - **Colors matched with regular expressions at the call site.** Use the shared token-run highlighter (Shiki).

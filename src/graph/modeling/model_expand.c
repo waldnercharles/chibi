@@ -1284,6 +1284,23 @@ static node *geometry_node(expander *e, const scope *s, const node *n, int pin)
         result->reference_id = acount(e->result->parts);
     }
     for (int i = 0; i < n->input_count; i++) {
+        if (n->desc == &NODE_ModelSampledSdf) {
+            node *from;
+            int from_pin;
+            if (n->input_pins[i].binding ||
+                graph_input_source(s->graph, n, i, &from, &from_pin) ||
+                graph_set_pin_default(
+                    e->result->asset->graph,
+                    result,
+                    0,
+                    i,
+                    &n->input_pins[i].default_value
+                )) {
+                model_expand_error(e, s, n, "Sampled SDF metadata must be literal and cannot have runtime bindings");
+                return NULL;
+            }
+            continue;
+        }
         if (n->desc == &NODE_ModelPart && i == 1) {
             continue;
         }

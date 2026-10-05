@@ -1,7 +1,9 @@
+#include "assets/project.h"
 #include "automation/controller.h"
 #include "automation/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
+#include "graph/nodes/conv_nodes.h"
 #include "suite_internal.h"
 #include "support/text_file.h"
 #include "third_party/yyjson/yyjson.h"
@@ -118,6 +120,406 @@ static bool result_has_node_ref(yyjson_mut_doc *doc, const char *name)
         }
     }
     return false;
+}
+
+static node *nth_node_type(graph *graph, const char *type, int nth)
+{
+    for (int i = 0; i < acount(graph->nodes); i++) {
+        if (!strcmp(graph->nodes[i]->desc->name, type) && !nth--) {
+            return graph->nodes[i];
+        }
+    }
+    return NULL;
+}
+
+/* The edge into a node's named input. */
+static const edge *edge_into(const graph *graph, const node *to, const char *pin)
+{
+    int index = find_pin(to, pin, false);
+    for (int i = 0; index >= 0 && i < acount(graph->edges); i++) {
+        if (graph->edges[i].to_id == to->id &&
+            graph->edges[i].to_pin_id == to->input_pins[index].id) {
+            return &graph->edges[i];
+        }
+    }
+    return NULL;
+}
+
+static bool body_has_conversion(const behavior_asset *asset, const node *call, const node_desc *conversion)
+{
+    const graph *body = behavior_asset_find_graph(asset, call->reference_id);
+    for (int i = 0; body && i < acount(body->edges); i++) {
+        if (body->edges[i].conversion == conversion) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int edit_behavior(const char *source, const char *request, char **edited)
+{
+    return edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, request, edited, NULL);
+}
+
+/* Two expressions with one source are two nodes with two bodies. */
+static void duplicate_expressions(const char *source)
+{
+    char *edited = NULL;
+    int status = edit_behavior(
+        source,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"first\",\"type\":\"Behavior "
+        "Expression\",\"source\":\"x + 1\"},"
+        "{\"op\":\"add_node\",\"ref\":\"second\",\"type\":\"Behavior "
+        "Expression\",\"source\":\"x + 1\"},"
+        "{\"op\":\"add_node\",\"ref\":\"two\",\"type\":\"Real\",\"inputs\":{"
+        "\"Value\":2}},"
+        "{\"op\":\"connect\",\"from\":\"two\",\"from_pin\":\"Value\",\"to\":"
+        "\"second\",\"to_pin\":\"x\"}]}",
+        &edited
+    );
+    behavior_asset *loaded = edited ? behavior_asset_load(edited) : NULL;
+    node *first = loaded ? nth_node_type(loaded->graph, "Behavior Expression", 0)
+                         : NULL;
+    node *second = loaded ? nth_node_type(loaded->graph, "Behavior Expression", 1)
+                          : NULL;
+    graph *first_body = first ? behavior_asset_find_graph(loaded, first->reference_id)
+                              : NULL;
+    graph *second_body = second ? behavior_asset_find_graph(loaded, second->reference_id)
+                                : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && first_body && second_body &&
+            first_body != second_body && !strcmp(first_body->math_expression, "x + 1") &&
+            !strcmp(second_body->math_expression, "x + 1") &&
+            edge_into(loaded->graph, second, "x") &&
+            !edge_into(loaded->graph, first, "x"),
+        "MCP graph edits add two Behavior Expressions with the same source"
+    );
+    char request[256];
+    snprintf(
+        request,
+        sizeof request,
+        "{\"operations\":[{\"op\":\"set_expression\",\"node\":%llu,\"source\":"
+        "\"x + 3\"}]}",
+        (unsigned long long)(second ? second->id : 0)
+    );
+    char *changed = NULL;
+    status = edited ? edit_behavior(edited, request, &changed)
+                    : CHIBI_AUTOMATION_INVALID_REQUEST;
+    behavior_asset *again = changed ? behavior_asset_load(changed) : NULL;
+    node *kept = again ? nth_node_type(again->graph, "Behavior Expression", 0) : NULL;
+    node *edited_call = again ? nth_node_type(again->graph, "Behavior Expression", 1)
+                              : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && kept && edited_call &&
+            !strcmp(behavior_asset_find_graph(again, kept->reference_id)->math_expression, "x + 1") &&
+            !strcmp(behavior_asset_find_graph(again, edited_call->reference_id)->math_expression, "x + 3") &&
+            edge_into(again->graph, edited_call, "x"),
+        "editing one of two same-source Behavior Expressions leaves the other "
+        "alone"
+    );
+    behavior_asset_free(again);
+    behavior_asset_free(loaded);
+    free(changed);
+    free(edited);
+}
+
+/* A bool wired into a number joins through a conversion, or fails naming both
+ * pins; it is never dropped. */
+static void bool_wires(const char *source)
+{
+    char *edited = NULL;
+    int status = edit_behavior(
+        source,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"flag\",\"type\":\"Equal\"},"
+        "{\"op\":\"add_node\",\"ref\":\"sine\",\"type\":\"Sine\"},"
+        "{\"op\":\"connect\",\"from\":\"flag\",\"from_pin\":\"Result\",\"to\":"
+        "\"sine\",\"to_pin\":\"Value\"}]}",
+        &edited
+    );
+    behavior_asset *loaded = edited ? behavior_asset_load(edited) : NULL;
+    node *sine = loaded ? find_node_type(loaded->graph, "Sine") : NULL;
+    const edge *wire = sine ? edge_into(loaded->graph, sine, "Value") : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && wire && wire->conversion == &NODE_To_Real,
+        "MCP connects a bool output to a number input through a conversion"
+    );
+    behavior_asset_free(loaded);
+    free(edited);
+
+    edited = NULL;
+    status = edit_behavior(
+        source,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"flag\",\"type\":\"Equal\"},"
+        "{\"op\":\"add_node\",\"ref\":\"scaled\",\"type\":\"Behavior "
+        "Expression\",\"source\":\"x * 2\"},"
+        "{\"op\":\"connect\",\"from\":\"flag\",\"from_pin\":\"Result\",\"to\":"
+        "\"scaled\",\"to_pin\":\"x\"}]}",
+        &edited
+    );
+    loaded = edited ? behavior_asset_load(edited) : NULL;
+    node *scaled = loaded ? find_node_type(loaded->graph, "Behavior Expression") : NULL;
+    node *flag = loaded ? find_node_type(loaded->graph, "Equal") : NULL;
+    wire = scaled ? edge_into(loaded->graph, scaled, "x") : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && wire && flag && wire->from_id == flag->id &&
+            body_has_conversion(loaded, scaled, &NODE_To_Real),
+        "MCP keeps a bool wired into an expression that reads it as a number"
+    );
+    behavior_asset_free(loaded);
+    free(edited);
+
+    edited = NULL;
+    status = edit_behavior(
+        source,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"text\",\"type\":\"String\"},"
+        "{\"op\":\"add_node\",\"ref\":\"sine\",\"type\":\"Sine\"},"
+        "{\"op\":\"connect\",\"from\":\"text\",\"from_pin\":\"Value\",\"to\":"
+        "\"sine\",\"to_pin\":\"Value\"}]}",
+        &edited
+    );
+    test_check(
+        status != CHIBI_AUTOMATION_OK && !edited &&
+            strstr(edit_error, "String.Value (const char *)") &&
+            strstr(edit_error, "Sine.Value (double)"),
+        "MCP names both pins when no conversion joins them"
+    );
+    status = edit_behavior(
+        source,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"text\",\"type\":\"String\"},"
+        "{\"op\":\"add_node\",\"ref\":\"scaled\",\"type\":\"Behavior "
+        "Expression\",\"source\":\"x * 2\"},"
+        "{\"op\":\"connect\",\"from\":\"text\",\"from_pin\":\"Value\",\"to\":"
+        "\"scaled\",\"to_pin\":\"x\"}]}",
+        &edited
+    );
+    test_check(
+        status != CHIBI_AUTOMATION_OK && !edited && strstr(edit_error, "dropped") &&
+            strstr(edit_error, "String.Value (const char *)") &&
+            strstr(edit_error, "Behavior Expression.x"),
+        "MCP reports a wire an expression drops instead of losing it silently"
+    );
+}
+
+static void variable_node_inputs(const char *source)
+{
+    char *edited = NULL;
+    int status = edit_behavior(
+        source,
+        "{\"operations\":["
+        "{\"op\":\"add_variable\",\"name\":\"hp\",\"type\":\"int\"},"
+        "{\"op\":\"add_variable_node\",\"ref\":\"store\",\"kind\":\"set\","
+        "\"variable\":\"hp\","
+        "\"inputs\":{\"Value\":5}}]}",
+        &edited
+    );
+    behavior_asset *loaded = edited ? behavior_asset_load(edited) : NULL;
+    node *store = loaded ? find_node_type(loaded->graph, "Set Variable") : NULL;
+    int value = store ? find_pin(store, "Value", false) : -1;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && value >= 0 &&
+            store->input_pins[value].default_value.i == 5,
+        "MCP add_variable_node applies its inputs as add_node does"
+    );
+    behavior_asset_free(loaded);
+    free(edited);
+}
+
+/* GameTransform aliases CF_V2, so its conversion fits a CF_V2 pair too. */
+static void same_type_wires(const char *source)
+{
+    char *edited = NULL;
+    int status = edit_behavior(
+        source,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"heading\",\"type\":\"Direction From "
+        "Angle\"},"
+        "{\"op\":\"add_node\",\"ref\":\"unit\",\"type\":\"Normalize Vector "
+        "2\"},"
+        "{\"op\":\"connect\",\"from\":\"heading\",\"from_pin\":0,\"to\":"
+        "\"unit\",\"to_pin\":0}]}",
+        &edited
+    );
+    behavior_asset *loaded = edited ? behavior_asset_load(edited) : NULL;
+    node *unit = loaded ? find_node_type(loaded->graph, "Normalize Vector 2") : NULL;
+    const edge *wire = unit ? edge_into(loaded->graph, unit, "Value") : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && wire && !wire->conversion,
+        "MCP connects pins of one type directly, with no conversion"
+    );
+    behavior_asset_free(loaded);
+    free(edited);
+}
+
+/* A bool Index picks Option1 when true and Option0 when false. */
+static void select_by_bool(const char *source)
+{
+    char *edited = NULL;
+    int status = edit_behavior(
+        source,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"ref\":\"flag\",\"type\":\"Equal\"},"
+        "{\"op\":\"add_node\",\"ref\":\"off\",\"type\":\"Real\",\"inputs\":{"
+        "\"Value\":0.5}},"
+        "{\"op\":\"add_node\",\"ref\":\"on\",\"type\":\"Real\",\"inputs\":{"
+        "\"Value\":1.5}},"
+        "{\"op\":\"add_node\",\"ref\":\"pick\",\"type\":\"Select\"},"
+        "{\"op\":\"connect\",\"from\":\"off\",\"from_pin\":\"Value\",\"to\":"
+        "\"pick\",\"to_pin\":\"Option0\"},"
+        "{\"op\":\"connect\",\"from\":\"on\",\"from_pin\":\"Value\",\"to\":"
+        "\"pick\",\"to_pin\":\"Option1\"},"
+        "{\"op\":\"connect\",\"from\":\"flag\",\"from_pin\":\"Result\",\"to\":"
+        "\"pick\",\"to_pin\":\"Index\"}]}",
+        &edited
+    );
+    behavior_asset *loaded = edited ? behavior_asset_load(edited) : NULL;
+    node *pick = loaded ? find_node_type(loaded->graph, "Select") : NULL;
+    const edge *index = pick ? edge_into(loaded->graph, pick, "Index") : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && index && index->conversion == &NODE_To_Integer &&
+            edge_into(loaded->graph, pick, "Option0") &&
+            edge_into(loaded->graph, pick, "Option1"),
+        "MCP builds a Select that a bool picks between two values"
+    );
+    behavior_asset_free(loaded);
+    free(edited);
+}
+
+/* The controller's answer to one edit_graph request on the project's Gates behavior. */
+static yyjson_doc *edit_project(const char *root, const char *fields)
+{
+    char request[4096];
+    snprintf(
+        request,
+        sizeof request,
+        "{\"contract\":1,\"operation\":\"edit_graph\",\"project_root\":\"%s\","
+        "\"kind\":\"behavior\","
+        "\"name\":\"Gates\",%s}",
+        root,
+        fields
+    );
+    int exit_code = 0;
+    char *response = chibi_automation_handle(request, ".", &exit_code);
+    yyjson_doc *document = yyjson_read(response, strlen(response), 0);
+    free(response);
+    return document;
+}
+
+static bool edit_published(yyjson_doc *document)
+{
+    yyjson_val *response = yyjson_doc_get_root(document);
+    return yyjson_get_bool(yyjson_obj_get(response, "ok")) &&
+           yyjson_get_bool(yyjson_obj_get(yyjson_obj_get(response, "result"), "published"));
+}
+
+static size_t occurrences(const char *text, const char *needle)
+{
+    size_t count = 0;
+    for (const char *at = text; text && (at = strstr(at, needle));
+         at += strlen(needle)) {
+        count++;
+    }
+    return count;
+}
+
+/* Editing a published asset to hold a second expression of one source keeps
+ * both, and a failed edit still says why. */
+static void published_duplicate_expressions(void)
+{
+    char root[] = "/tmp/chibi-graph-edit-XXXXXX";
+    assert(mkdtemp(root));
+    char path[256];
+    snprintf(path, sizeof path, "%s/project.kdl", root);
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    fprintf(file, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
+    assert(!fclose(file));
+    snprintf(path, sizeof path, "%s/content", root);
+    assert(!mkdir(path, 0755));
+    snprintf(path, sizeof path, "%s/content/behaviors", root);
+    assert(!mkdir(path, 0755));
+
+    yyjson_doc *first = edit_project(
+        root,
+        "\"create\":true,\"operations\":[{\"op\":\"add_node\",\"ref\":\"a\","
+        "\"type\":"
+        "\"Behavior Expression\",\"source\":\"x + 1\"}]"
+    );
+    char again[512];
+    snprintf(
+        again,
+        sizeof again,
+        "\"expected_hash\":\"%s\",\"operations\":[{\"op\":\"add_node\",\"ref\":"
+        "\"b\",\"type\":"
+        "\"Behavior Expression\",\"source\":\"x + 1\"}]",
+        yyjson_get_str(yyjson_obj_get(yyjson_obj_get(yyjson_doc_get_root(first), "result"), "hash"))
+    );
+    yyjson_doc *second = edit_project(root, again);
+    snprintf(path, sizeof path, "%s/content/behaviors/Gates.kdl", root);
+    char *text = text_file_read_disk(path);
+    test_check(
+        edit_published(first) && edit_published(second) &&
+            occurrences(text, "math_expression=\"x + 1\"") == 2 &&
+            occurrences(text, "reference_id") == 2,
+        "MCP publishes an asset edited to hold two Behavior Expressions with "
+        "one source"
+    );
+    free(text);
+
+    char stale[256];
+    snprintf(stale, sizeof stale, "\"expected_hash\":\"0123456789abcdef\",\"operations\":[]");
+    yyjson_doc *refused = edit_project(root, stale);
+    yyjson_val *error = yyjson_obj_get(yyjson_doc_get_root(refused), "error");
+    const char *message = yyjson_get_str(yyjson_obj_get(error, "message"));
+    test_check(message && message[0], "a refused MCP graph edit carries its reason");
+    yyjson_doc_free(refused);
+    yyjson_doc_free(second);
+    yyjson_doc_free(first);
+    char command[512];
+    snprintf(command, sizeof command, "rm -rf '%s'", root);
+    assert(system(command) == 0);
+}
+
+/* A failed link reports its reason as text the response owns, so the
+ * response still serializes once the check has returned. */
+static void diagnostics_outlive_validation(const char *source)
+{
+    behavior_asset *unrelated = behavior_asset_new("Unrelated");
+    const behavior_asset *libraries[] = { unrelated };
+    char *edited = NULL;
+    yyjson_mut_doc *response = NULL;
+    int status = edit_request(
+        source,
+        "behavior",
+        "GraphEditBehavior",
+        libraries,
+        1,
+        "{\"operations\":["
+        "{\"op\":\"add_node\",\"type\":\"Send "
+        "Event\",\"reference_name\":\"NoSuchEvent\"}]}",
+        &edited,
+        &response
+    );
+    yyjson_mut_val *diagnostics = yyjson_mut_obj_get(yyjson_mut_doc_get_root(response), "diagnostics");
+    yyjson_mut_val *first = diagnostics ? yyjson_mut_arr_get_first(diagnostics) : NULL;
+    const char *message = first
+                            ? yyjson_mut_get_str(yyjson_mut_obj_get(first, "message"))
+                            : NULL;
+    char *json = yyjson_mut_write(response, 0, NULL);
+    test_check(
+        status == CHIBI_AUTOMATION_VALIDATION_ERROR && message &&
+            strstr(message, "missing event definition") &&
+            strstr(edit_error, message) && json,
+        "MCP link diagnostics hold their text after the check returns"
+    );
+    free(json);
+    yyjson_mut_doc_free(response);
+    free(edited);
+    behavior_asset_free(unrelated);
 }
 
 void test_automation_graph_edit(void)
@@ -860,5 +1262,13 @@ void test_automation_graph_edit(void)
                        yyjson_mut_obj_get(yyjson_mut_doc_get_root(response), "failed_operation");
     test_check(rollback_ok, "MCP graph edit batches reject invalid operations atomically");
     yyjson_mut_doc_free(response);
+
+    duplicate_expressions(source);
+    bool_wires(source);
+    variable_node_inputs(source);
+    same_type_wires(source);
+    select_by_bool(source);
+    published_duplicate_expressions();
+    diagnostics_outlive_validation(source);
     free(source);
 }

@@ -1,7 +1,9 @@
 #include "diagnostics/tracy.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/studio/studio_thumbnails.h"
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
+#include "ui/input_feel.h"
 #ifdef CHIBI_ENABLE_WEB_TRACE
 #include "editor/studio/studio_graph_internal.h"
 #endif
@@ -42,6 +44,20 @@ static bool web_wants_text(const studio *s)
     return s->viewport && engine_viewport_ui_typing(s->viewport);
 }
 
+/* SDL leaves a key to the page while a field takes text, keeping only
+   Control chords from the browser: ⌘S would save the page, ⌘= zoom it and ⌘F
+   find in it. Command chords are Studio's, but ⌘V, whose paste event carries
+   the clipboard. */
+// clang-format off
+EM_JS(void, web_keep_chords, (), {
+    if (Module.chibiChords) return;
+    Module.chibiChords = true;
+    window.addEventListener('keydown', (event) => {
+        if (event.metaKey && event.key.toLowerCase() !== 'v') event.preventDefault();
+    }, true);
+})
+// clang-format on
+
 EMSCRIPTEN_KEEPALIVE int studio_web_wants_text()
 {
     if (!web_studio) {
@@ -49,6 +65,24 @@ EMSCRIPTEN_KEEPALIVE int studio_web_wants_text()
     }
     return web_wants_text(web_studio) ||
            (web_studio->guest && web_wants_text(web_studio->guest));
+}
+
+/* Presses and releases Mod+V for SDL, as the browser kept the key. */
+static bool push_paste_key(int meta)
+{
+    SDL_Event event = { .type = SDL_EVENT_KEY_DOWN };
+    event.key.windowID = SDL_GetWindowID(cf_app_get_window());
+    event.key.key = SDLK_V;
+    event.key.scancode = SDL_SCANCODE_V;
+    event.key.mod = meta ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    event.key.down = true;
+    if (!SDL_PushEvent(&event)) {
+        return false;
+    }
+    event.type = SDL_EVENT_KEY_UP;
+    event.key.down = false;
+    SDL_PushEvent(&event);
+    return true;
 }
 
 /* A trusted DOM paste provides text only during its event. Give RmlUi's
@@ -59,20 +93,22 @@ EMSCRIPTEN_KEEPALIVE int studio_web_paste(const char *text, int meta)
         return 0;
     }
     rml_backend_set_pending_paste_text(text);
-    SDL_Event event = { .type = SDL_EVENT_KEY_DOWN };
-    event.key.windowID = SDL_GetWindowID(cf_app_get_window());
-    event.key.key = SDLK_V;
-    event.key.scancode = SDL_SCANCODE_V;
-    event.key.mod = meta ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
-    event.key.down = true;
-    if (!SDL_PushEvent(&event)) {
+    if (!push_paste_key(meta)) {
         rml_backend_clear_pending_paste_text();
         return 0;
     }
-    event.type = SDL_EVENT_KEY_UP;
-    event.key.down = false;
-    SDL_PushEvent(&event);
     return 1;
+}
+
+/* Mod+V with no field focused: the browser's clipboard text, when its paste
+ * event had any, becomes SDL's before the key reaches Studio's Paste and the
+ * graph's, so objects and nodes paste between sessions. */
+EMSCRIPTEN_KEEPALIVE void studio_web_paste_key(const char *text, int meta)
+{
+    if (text && text[0]) {
+        cf_clipboard_set(text);
+    }
+    push_paste_key(meta);
 }
 #endif
 
@@ -190,6 +226,7 @@ static rml_input_key input_key(SDL_Keycode key)
            Editor. */
         case SDLK_COMMA: return RML_INPUT_KEY_OEM_COMMA;
         case SDLK_SEMICOLON: return RML_INPUT_KEY_OEM_1;
+        case SDLK_SLASH: return RML_INPUT_KEY_OEM_2; /* Keyboard Shortcuts */
         case SDLK_LEFTBRACKET: return RML_INPUT_KEY_OEM_4;
         case SDLK_RIGHTBRACKET: return RML_INPUT_KEY_OEM_6;
         case SDLK_KP_MINUS: return RML_INPUT_KEY_SUBTRACT;
@@ -274,7 +311,7 @@ static bool SDLCALL queue_event(void *user, SDL_Event *event)
     return true;
 }
 
-static bool studio_key_pressed(const studio *s, SDL_Keycode key)
+bool studio_key_pressed(const studio *s, SDL_Keycode key)
 {
     for (int i = 0; i < acount(s->keys); i++) {
         if (s->keys[i].key == key) {
@@ -316,7 +353,7 @@ double studio_idle_time(studio *s)
     if (s->graph.backend) {
         changed |= rml_backend_take_changed(s->graph.backend);
     }
-    if (changed || studio_active(s)) {
+    if (changed || studio_active(s) || studio_thumbs_pending(s)) {
         return 0;
     }
     double idle = fmin(kit_idle_time(s->kit), fmax(0, s->ui_schedule.next - s->time));
@@ -444,6 +481,18 @@ static bool graph_pan_owns_motion(const studio *s, float x, float y)
                              );
 }
 
+/* The editor's documents hear a wheel as the distance it scrolls; the graph
+   and the Scene count its notches. */
+static void process_input(studio *s, rml_input input)
+{
+    if (input.type == RML_INPUT_POINTER_WHEEL) {
+        float scale = cf_app_get_pixel_scale();
+        input.wheel_x = feel_scroll_units(input.wheel_x, s->in.dp_ratio, scale);
+        input.wheel_y = feel_scroll_units(input.wheel_y, s->in.dp_ratio, scale);
+    }
+    rml_backend_process_input(s->backend, &input);
+}
+
 static bool forward_input(studio *s)
 {
     kit_frame_input *in = &s->in;
@@ -484,7 +533,7 @@ static bool forward_input(studio *s)
                 studio_shortcut_record(
                     &s->prefs,
                     &s->shortcut_recording,
-                    (studio_key){ e->key.key, e->key.mod, e->key.repeat },
+                    (studio_key){ studio_event_key(&e->key), e->key.mod, e->key.repeat },
                     s->mac
                 );
             }
@@ -535,21 +584,23 @@ static bool forward_input(studio *s)
                 input.button = b;
                 break;
             }
-            case SDL_EVENT_MOUSE_WHEEL:
+            case SDL_EVENT_MOUSE_WHEEL: {
                 /* Zoom anchors where the wheel turned, which a motion event
                    may not have reported yet. */
                 in->mouse_x = input.x = to_dp(s, e->wheel.mouse_x);
                 in->mouse_y = input.y = to_dp(s, e->wheel.mouse_y);
-                in->wheel += e->wheel.y;
+                float notches = feel_zoom_notches(e->wheel.y);
+                in->wheel += notches;
                 /* The modifiers as the wheel turned: a key released later in
                    the same frame must not undo the gesture. */
                 if (studio_primary(s, s->mods) || (s->mods & SDL_KMOD_CTRL)) {
-                    s->zoom_wheel += e->wheel.y;
+                    s->zoom_wheel += notches;
                 }
                 input.type = RML_INPUT_POINTER_WHEEL;
                 input.wheel_x = -e->wheel.x;
                 input.wheel_y = -e->wheel.y;
                 break;
+            }
             case SDL_EVENT_PINCH_UPDATE:
                 /* The Scene view and the graph canvas zoom a pinch at the
                    pointer; scales multiply, so their logs add. */
@@ -566,7 +617,12 @@ static bool forward_input(studio *s)
                 s->mods = e->key.mod;
                 input.modifiers = rml_key_modifiers(s, e->key.mod);
                 if (e->type == SDL_EVENT_KEY_DOWN) {
-                    apush(s->keys, ((studio_key){ e->key.key, e->key.mod, e->key.repeat }));
+                    apush(
+                        s->keys,
+                        ((studio_key){ studio_event_key(&e->key),
+                                       e->key.mod,
+                                       e->key.repeat })
+                    );
                 }
                 if (input.key == RML_INPUT_KEY_UNKNOWN) {
                     continue;
@@ -581,7 +637,7 @@ static bool forward_input(studio *s)
             default: continue;
         }
         if (!graph_motion) {
-            rml_backend_process_input(s->backend, &input);
+            process_input(s, input);
         }
         apush(s->graph.events, input);
         game_input(s, &input, e);
@@ -726,9 +782,10 @@ static void draw_viewport(studio *s)
         .press_position = s->surface.press_position[0],
         .hovered = s->surface.hovered,
         .focused = s->focus_area == area && !kit_wants_keyboard(s->kit),
-        .blocked = kit_command_is_open(s->kit),
+        .blocked = studio_palette_is_open(s),
         .wheel = s->surface.wheel,
         .alt = (s->mods & SDL_KMOD_ALT) != 0,
+        .modifiers = rml_key_modifiers(s, s->mods),
         .escape = studio_key_pressed(s, SDLK_ESCAPE) && !kit_wants_keyboard(s->kit),
     };
     input.keys = s->game_input;
@@ -746,6 +803,19 @@ static void draw_viewport(studio *s)
         return;
     }
     engine_viewport_set_host_input(s->viewport, &input);
+    studio_scene_tools(s);
+    app_scene_authoring_set_view_options(
+        s->scene,
+        (app_scene_view_options){ .generated_world = s->prefs.scene_world,
+                                  .lighting = s->prefs.scene_lighting,
+                                  .fog = s->prefs.scene_fog,
+                                  .cameras = s->prefs.scene_cameras }
+    );
+    /* Escape leaves View Through Camera, as Blender's Numpad 0 again. */
+    if (input.escape && (input.focused || input.hovered)) {
+        app_scene_authoring_view_through_camera(s->scene, false);
+    }
+    engine_viewport_set_time(s->viewport, s->time);
     app_scene_authoring_draw_viewport(s->scene, s->viewport);
     rml_backend_set_texture(s->backend, "viewport", engine_viewport_texture(s->viewport));
     studio_ui_error(s, render_ui_error(engine_viewport_ui(s->viewport)));
@@ -801,6 +871,18 @@ static void apply_prefs(studio *s, bool initial)
         studio_prefs_save(p);
         s->prefs_changed_at = 0;
     }
+}
+
+/* The scenes' editor view state, hidden and locked objects, saves with each
+ * change; a guest's changes are the host's to save. */
+static void save_scene_view(studio *s)
+{
+    game_save *view = app_scene_authoring_view_store(s->scene);
+    if (s->hosted || game_save_revision(view) == s->scene_view_saved) {
+        return;
+    }
+    game_save_commit(view);
+    s->scene_view_saved = game_save_revision(view);
 }
 
 /* With the Studio project open, its scene and previews are the editor's own UI,
@@ -861,7 +943,7 @@ static studio *create(
     s->kit = kit_create(rml_backend_context(s->backend), "studio.rml");
     assert(s->kit);
     s->prefs = host ? host->prefs : studio_prefs_load();
-    s->ui = studio_ui_new(rml_backend_context(s->backend), STUDIO_PROJECT, error, sizeof error);
+    s->ui = studio_ui_new(s, STUDIO_PROJECT, error, sizeof error);
     sync_theme(s);
     if (!s->ui) {
         fprintf(stderr, "Studio UI: %s\n", error);
@@ -872,13 +954,14 @@ static studio *create(
     s->mods = SDL_GetModState();
     s->tab = STUDIO_TAB_OBJECT;
     s->assets_kind = -1;
-    s->assets_hover = -1;
+    s->assets_hover = s->assets_rest = -1;
     s->cursor_shown = -1;
-    s->hover_area = s->focus_area = s->maximized = -1;
+    s->hover_area = s->focus_area = s->key_area = s->maximized = -1;
     s->bound.behavior = -2;
     s->view.zoom = 1;
     s->view.x = s->view.y = 0.5f;
     s->graph.area = -1;
+    s->output.shown = s->calls.selected = -1;
     s->in.mouse_x = s->in.mouse_y = -1e9f;
     return s;
 }
@@ -888,12 +971,16 @@ studio *studio_new(app_scene_authoring *scene, engine_viewport *viewport, const 
     studio *s = create(scene, viewport, project_root, NULL);
 #ifdef __EMSCRIPTEN__
     web_studio = s;
+    web_keep_chords();
 #ifdef CHIBI_ENABLE_WEB_TRACE
     install_editor_counters();
 #endif
 #endif
     /* A guest opens no project: the window's Studio owns the workspace. */
     studio_projects_load(s);
+    game_save *view = app_scene_authoring_view_store(scene);
+    studio_prefs_open_scene_view(view);
+    s->scene_view_saved = game_save_revision(view);
     s->in.mouse_x = cf_mouse_x();
     s->in.mouse_y = cf_mouse_y();
     SDL_AddEventWatch(queue_event, s);
@@ -971,16 +1058,21 @@ void studio_free(studio *s)
     afree(s->project_problems);
     afree(s->references);
     afree(s->calls.rows);
+    afree(s->output.slots);
     afree(s->members.uses.items);
-    afree(s->perf);
-    afree(s->perf_published);
+    rml_element_ref_destroy(s->members.list_element);
+    studio_performance_free(s);
     studio_assets_free(s);
+    studio_thumbs_free(s);
+    afree(s->gallery.bin);
+    afree(s->properties.folds);
     afree(s->keys);
     afree(s->game_input);
     studio_projects_free(s);
     chibi_project_free(&s->project);
     studio_disk_free(s);
     studio_refactor_free(s);
+    studio_palette_free(s);
     studio_canvas_free(s);
     studio_add_menu_close(s);
     engine_viewport_set_host_input(s->viewport, NULL);
@@ -1027,12 +1119,13 @@ static uint64_t ui_state(studio *s)
         scene->property_dirty,
         scene->edit_dirty,
         scene->scene_dirty,
-        kit_command_is_open(s->kit),
+        studio_palette_is_open(s),
         (uint64_t)s->hover_area,
         (uint64_t)s->focus_area,
         (uint64_t)acount(s->records),
         (uint64_t)acount(s->runtime_errors),
         (uint64_t)acount(scene->actors),
+        studio_designer_stamp(s),
         (uint64_t)s->tab,
         (uint64_t)s->maximized,
         s->pause.active,
@@ -1044,6 +1137,8 @@ static uint64_t ui_state(studio *s)
         s->graph.graph_id,
         (uint64_t)s->members.kind,
         s->members.id,
+        (uint64_t)s->members.rename_kind,
+        s->members.rename_id,
         s->graph.comment,
     };
     uint64_t key = 1469598103934665603ull;
@@ -1064,7 +1159,7 @@ static uint64_t ui_state(studio *s)
     const char *texts[] = { s->status,
                             s->ui_error,
                             last ? last->text : "",
-                            kit_command_query(s->kit) };
+                            studio_palette_query(s) };
     for (int i = 0; i < (int)(sizeof texts / sizeof *texts); i++) {
         const unsigned char *p = (const unsigned char *)texts[i];
         do {
@@ -1101,7 +1196,7 @@ static bool host_ui_due(studio *s, bool input, bool authored)
                s->in.width != s->ui_schedule.width ||
                s->in.height != s->ui_schedule.height ||
                s->in.dp_ratio != s->ui_schedule.ratio ||
-               !studio_prefs_equal(&s->prefs, &s->applied);
+               !studio_prefs_equal(&s->prefs, &s->applied) || studio_areas_moved(s);
     s->ui_schedule.state = state;
     if (due) {
         s->ui_schedule.wake = false;
@@ -1133,6 +1228,17 @@ static bool canvas_layout_changed(const studio *s)
            fabsf(size.y / ratio - before.h) > 0.5f;
 }
 
+/* A text field has the keyboard, and no popup, palette or modal dialog that
+   keeps every key: Studio's chords that edit no text still run. */
+static bool field_chords(studio *s)
+{
+    kit *graph = s->graph.kit;
+    bool field = kit_input_focused(s->kit) || (graph && kit_input_focused(graph));
+    return field && !s->shortcut_recording && !kit_has_popup(s->kit) &&
+           !(graph && kit_has_popup(graph)) && !studio_palette_is_open(s) &&
+           !studio_ui_modal_open(s);
+}
+
 /* One frame of a Studio in a window of `width` by `height` points: the
  * window's, or a guest's in its host's Scene area. */
 static void run(studio *s, double delta_seconds, float width, float height)
@@ -1154,6 +1260,12 @@ static void run(studio *s, double delta_seconds, float width, float height)
     share_project_prefs(s);
     studio_debug_frame(s);
     bool update_ui = host_ui_due(s, input, authored);
+    /* The Scene and its tools read the surface every frame, but only an emit
+       refreshes it: a click or a wheel turn reaches them in its own frame. */
+    s->surface.wheel = 0;
+    for (int b = 0; b < 3; b++) {
+        s->surface.pressed[b] = s->surface.released[b] = false;
+    }
     if (update_ui) {
         CHIBI_TRACE_ZONE_BEGIN(sync_zone, "Studio model sync");
         studio_ui_frame(s);
@@ -1169,18 +1281,28 @@ static void run(studio *s, double delta_seconds, float width, float height)
         s->ui_schedule.frames++;
         CHIBI_TRACE_ZONE_END(emit_zone);
     }
+    /* This frame's keys reached whatever had the keyboard as they arrived:
+       a field that Escape or Enter just released still had them. */
+    bool typed = s->typing;
     s->typing = kit_wants_keyboard(s->kit) || studio_graph_wants_keyboard(s);
+    typed |= s->typing;
     bool toolbar_shortcuts = !studio_graph_wants_keyboard(s) &&
                              !s->shortcut_recording && studio_ui_shortcut_focus(s);
-    if (!s->typing || toolbar_shortcuts) {
-        studio_shortcuts(s);
+    if (!typed || toolbar_shortcuts) {
+        studio_shortcuts(s, false);
+    } else if (field_chords(s)) {
+        studio_shortcuts(s, true);
     }
     bool prefs_dirty = s->theme_switching > 0 ||
                        !studio_prefs_equal(&s->prefs, &s->applied);
     apply_prefs(s, false);
+    save_scene_view(s);
     CHIBI_TRACE_ZONE_BEGIN(viewport_zone, "Studio viewport");
     draw_viewport(s);
     CHIBI_TRACE_ZONE_END(viewport_zone);
+    CHIBI_TRACE_ZONE_BEGIN(thumbs_zone, "Studio thumbnails");
+    studio_thumbs_frame(s);
+    CHIBI_TRACE_ZONE_END(thumbs_zone);
     if (s->guest) {
         kit_rect window = guest_window(s);
         run(s->guest, delta_seconds, fmaxf(window.w, 1), fmaxf(window.h, 1));

@@ -27,6 +27,15 @@ typedef struct
 
 #define EDITOR_BIT(editor) (1u << (editor))
 #define EDITOR_ALL ((1u << (STUDIO_EDITOR_COUNT + 1)) - 1)
+/* The areas that show the scene's objects. */
+#define OBJECT_AREAS                                                           \
+    (EDITOR_BIT(STUDIO_EDITOR_SCENE) | EDITOR_BIT(STUDIO_EDITOR_OUTLINER))
+/* The areas whose search Find opens or focuses. */
+#define FIND_AREAS                                                             \
+    (EDITOR_BIT(STUDIO_EDITOR_BEHAVIOR) | EDITOR_BIT(STUDIO_EDITOR_CODE) |     \
+     EDITOR_BIT(STUDIO_EDITOR_OUTLINER) |                                      \
+     EDITOR_BIT(STUDIO_EDITOR_PROPERTIES) | EDITOR_BIT(STUDIO_EDITOR_ASSETS) | \
+     EDITOR_BIT(STUDIO_EDITOR_OUTPUT) | EDITOR_BIT(STUDIO_EDITOR_MEMBERS))
 
 enum
 {
@@ -47,6 +56,22 @@ enum
 _Static_assert(
     STUDIO_COMMAND_NEW_STYLESHEET - STUDIO_COMMAND_NEW_SCENE + 1 == STUDIO_NEW_KIND_COUNT,
     "a New command per kind"
+);
+
+/* A Scene tool: its command checks while the tool is active. */
+#define SCENE_TOOL(name, tool, key, words, glyph)                              \
+    { .id = name,                                                              \
+      .label = tool " Tool",                                                   \
+      .menu = tool,                                                            \
+      .chord = key,                                                            \
+      .context = "Scene",                                                      \
+      .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),                             \
+      .keywords = "tool " words,                                               \
+      .icon = glyph,                                                           \
+      .phase = SHORTCUT_EDITOR }
+_Static_assert(
+    STUDIO_COMMAND_SCALE_TOOL - STUDIO_COMMAND_SELECT_TOOL + 1 == SCENE_TOOL_COUNT,
+    "a command per Scene tool"
 );
 
 static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
@@ -91,21 +116,23 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                               .icon = KIT_ICON_REDO,
                               .repeat = true,
                               .phase = SHORTCUT_EARLY },
+    /* Blender's Shift+D, and Mod+D as Unity, Unreal and Godot duplicate. */
     [STUDIO_COMMAND_DUPLICATE] = { .id = "duplicate",
                                    .label = "Duplicate",
                                    .chord = "Shift+D",
-                                   .context = "Except Behavior and Properties",
-                                   .excluded_contexts = EDITOR_BIT(STUDIO_EDITOR_BEHAVIOR) |
-                                                        EDITOR_BIT(STUDIO_EDITOR_PROPERTIES),
+                                   .aliases = { "Mod+D" },
+                                   .context = "Scene, Outliner",
+                                   .contexts = OBJECT_AREAS,
                                    .keywords = "copy",
                                    .icon = KIT_ICON_COPY,
                                    .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_DELETE] = { .id = "delete",
                                 .label = "Delete",
                                 .chord = "X",
-                                .aliases = { "Delete" },
-                                .context = "Outliner",
-                                .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                /* A Mac's delete key is Backspace. */
+                                .aliases = { "Backspace", "Delete" },
+                                .context = "Scene, Outliner",
+                                .contexts = OBJECT_AREAS,
                                 .keywords = "remove",
                                 .icon = KIT_ICON_TRASH,
                                 .phase = SHORTCUT_EDITOR },
@@ -119,8 +146,7 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                .label = "Frame Selected",
                                .chord = "F",
                                .context = "Scene, Outliner",
-                               .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
-                                           EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                               .contexts = OBJECT_AREAS,
                                .keywords = "focus zoom",
                                .icon = KIT_ICON_FRAME,
                                .phase = SHORTCUT_EDITOR },
@@ -129,6 +155,36 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                       .context = "Global",
                                       .keywords = "view",
                                       .phase = SHORTCUT_EDITOR },
+    /* Hide in Editor, with Blender's keys. */
+    [STUDIO_COMMAND_HIDE_SELECTED] = { .id = "hideSelected",
+                                       .label = "Hide Selected",
+                                       .chord = "H",
+                                       .context = "Scene, Outliner",
+                                       .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                                   EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                       .keywords = "visibility eye hide in "
+                                                   "editor",
+                                       .icon = KIT_ICON_EYE_OFF,
+                                       .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_HIDE_UNSELECTED] = { .id = "hideUnselected",
+                                         .label = "Hide Unselected",
+                                         .chord = "Shift+H",
+                                         .context = "Scene, Outliner",
+                                         .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                                     EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                         .keywords = "visibility isolate solo "
+                                                     "others",
+                                         .icon = KIT_ICON_EYE_OFF,
+                                         .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SHOW_ALL] = { .id = "showAll",
+                                  .label = "Show All",
+                                  .chord = "Alt+H",
+                                  .context = "Scene, Outliner",
+                                  .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                              EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                  .keywords = "visibility unhide reveal eye",
+                                  .icon = KIT_ICON_EYE,
+                                  .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_TOGGLE_ASSETS] = { .id = "toggleAssets",
                                        .label = "Toggle Assets",
                                        .menu = "Assets",
@@ -201,11 +257,13 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                               .keywords = "run start preview pause",
                               .icon = KIT_ICON_PLAY,
                               .phase = SHORTCUT_PLAY },
+    /* VS Code's Stop, beside the debugger's F5, F10 and F11. */
     [STUDIO_COMMAND_STOP] = { .id = "stop",
                               .label = "Stop",
+                              .chord = "Shift+F5",
                               .context = "Global",
                               .icon = KIT_ICON_STOP,
-                              .phase = SHORTCUT_EDITOR },
+                              .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_STEP] = { .id = "step",
                               .label = "Step",
                               .context = "Global",
@@ -273,8 +331,7 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                 .label = "Rename",
                                 .chord = "F2",
                                 .context = "Scene, Outliner",
-                                .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
-                                            EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                .contexts = OBJECT_AREAS,
                                 .keywords = "name object",
                                 .icon = KIT_ICON_EDIT,
                                 .phase = SHORTCUT_EDITOR },
@@ -285,6 +342,18 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                        .keywords = "prototype attach",
                                        .icon = KIT_ICON_ADD,
                                        .phase = SHORTCUT_EDITOR },
+    /* Unreal's Keep Simulation Changes, and its K. */
+    [STUDIO_COMMAND_KEEP_CHANGES] = { .id = "keepChanges",
+                                      .label = "Keep Changes",
+                                      .chord = "K",
+                                      .context = "Scene, Properties",
+                                      .contexts = EDITOR_BIT(STUDIO_EDITOR_PROPERTIES) |
+                                                  EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                      .keywords = "play live runtime "
+                                                  "simulation "
+                                                  "values apply copy",
+                                      .icon = KIT_ICON_PIN,
+                                      .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT] = { .id = "workspaceVerticalSpli"
                                                         "t",
                                                   .label = "Vertical Split",
@@ -307,7 +376,7 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                                     .icon = KIT_ICON_LAYOUT,
                                                     .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_TOGGLE_SIDE_PANE] = { .id = "toggleSidePane",
-                                          .label = "Hide Side Pane",
+                                          .label = "Side Pane",
                                           .context = "Global",
                                           .keywords = "sidebar outliner "
                                                       "properties hierarchy "
@@ -323,13 +392,17 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                        .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_COLLABORATION_TOKEN] = { .id = "collaborationToken",
                                              .label = "Use admin token",
-                                             .context = "Global" },
+                                             .context = "Global",
+                                             .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_COLLABORATION_FOLLOW] = { .id = "collaborationFollow",
                                               .label = "Follow participant",
-                                              .context = "Global" },
+                                              .context = "Global",
+                                              .indexed = true,
+                                              .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_COLLABORATION_UNFOLLOW] = { .id = "collaborationUnfollow",
                                                 .label = "Stop following",
-                                                .context = "Global" },
+                                                .context = "Global",
+                                                .phase = SHORTCUT_EARLY },
     [STUDIO_COMMAND_COLLABORATION_HOST] = { .id = "collaborationHost",
                                             .label = "Host Collaboration Room",
                                             .context = "Collaboration",
@@ -395,6 +468,51 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                      .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
                                      .repeat = true,
                                      .phase = SHORTCUT_EDITOR },
+    /* View › Show (studio_scene.c): toggles of studio_prefs, Unity's
+       Scene view effects and Unreal's Show flags. */
+    [STUDIO_COMMAND_SHOW_WORLD] = { .id = "showGeneratedWorld",
+                                    .label = "Show Generated World",
+                                    .menu = "Generated World",
+                                    .context = "Global",
+                                    .keywords = "scene view procedural terrain "
+                                                "material fluid preview",
+                                    .icon = KIT_ICON_TERRAIN,
+                                    .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SHOW_LIGHTING] = { .id = "showLighting",
+                                       .label = "Show Lighting",
+                                       .menu = "Lighting",
+                                       .context = "Global",
+                                       .keywords = "scene view hrc unlit "
+                                                   "light",
+                                       .icon = KIT_ICON_LIGHT,
+                                       .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SHOW_FOG] = { .id = "showFog",
+                                  .label = "Show Fog of War",
+                                  .menu = "Fog of War",
+                                  .context = "Global",
+                                  .keywords = "scene view visibility vision",
+                                  .icon = KIT_ICON_CLOUD,
+                                  .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SHOW_CAMERAS] = { .id = "showCameraFrames",
+                                      .label = "Show Camera Frames",
+                                      .menu = "Camera Frames",
+                                      .context = "Global",
+                                      .keywords = "scene view camera frustum "
+                                                  "bounds overlay",
+                                      .icon = KIT_ICON_CAMERA,
+                                      .phase = SHORTCUT_EDITOR },
+    /* Blender's Numpad 0; Shift+C where there is no keypad. */
+    [STUDIO_COMMAND_VIEW_THROUGH_CAMERA] = { .id = "viewThroughCamera",
+                                             .label = "View Through Camera",
+                                             .chord = "Shift+C",
+                                             .aliases = { "Keypad 0" },
+                                             .context = "Scene, Outliner",
+                                             .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE) |
+                                                         EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                             .keywords = "game camera view "
+                                                         "frame pilot",
+                                             .icon = KIT_ICON_VIEWPORT,
+                                             .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_RESUME] = { .id = "resume",
                                 .label = "Resume",
                                 .chord = "F5",
@@ -423,6 +541,194 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                   .icon = KIT_ICON_STEP_OUT,
                                   .repeat = true,
                                   .phase = SHORTCUT_DEBUG },
+    /* The Scene's tools, on Unity's and Godot's keys, and Blender's G. */
+    [STUDIO_COMMAND_SELECT_TOOL] = SCENE_TOOL("selectTool", "Select", "Q", "pick cursor", KIT_ICON_SELECT),
+    [STUDIO_COMMAND_MOVE_TOOL] = SCENE_TOOL("moveTool", "Move", "W", "translate position gizmo arrows", KIT_ICON_MOVE),
+    [STUDIO_COMMAND_ROTATE_TOOL] = SCENE_TOOL("rotateTool", "Rotate", "E", "orientation angle turn gizmo ring", KIT_ICON_ROTATE),
+    [STUDIO_COMMAND_SCALE_TOOL] = SCENE_TOOL("scaleTool", "Scale", "R", "resize size width height handles gizmo", KIT_ICON_SCALE),
+    [STUDIO_COMMAND_GRAB] = { .id = "grab",
+                              .label = "Grab",
+                              .chord = "G",
+                              .context = "Scene",
+                              .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                              .keywords = "move modal translate follow pointer",
+                              .icon = KIT_ICON_PAN,
+                              .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_TOGGLE_SNAP] = { .id = "toggleSnap",
+                                     .label = "Snap to Grid",
+                                     .menu = "Snap",
+                                     .chord = "Shift+G",
+                                     .context = "Scene",
+                                     .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                     .keywords = "magnet increment align",
+                                     .icon = KIT_ICON_MAGNET,
+                                     .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_TOGGLE_GRID] = { .id = "toggleGrid",
+                                     .label = "Show Grid",
+                                     .menu = "Grid",
+                                     .context = "Scene",
+                                     .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                     .keywords = "lines axes overlay",
+                                     .icon = KIT_ICON_GRID,
+                                     .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_FINER_GRID] = { .id = "finerGrid",
+                                    .label = "Finer Grid Increment",
+                                    .context = "Scene",
+                                    .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                    .keywords = "snap step smaller spacing",
+                                    .icon = KIT_ICON_GRID,
+                                    .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_COARSER_GRID] = { .id = "coarserGrid",
+                                      .label = "Coarser Grid Increment",
+                                      .context = "Scene",
+                                      .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                      .keywords = "snap step larger spacing",
+                                      .icon = KIT_ICON_GRID,
+                                      .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_SELECT_ALL] = { .id = "selectAll",
+                                    .label = "Select All",
+                                    .chord = "Mod+A",
+                                    .context = "Scene, Outliner",
+                                    .contexts = OBJECT_AREAS,
+                                    .keywords = "objects every",
+                                    .icon = KIT_ICON_SELECT,
+                                    .phase = SHORTCUT_EDITOR },
+    /* Escape deselects, as Unreal's viewport and Godot's editors do. */
+    [STUDIO_COMMAND_DESELECT] = { .id = "deselect",
+                                  .label = "Deselect All",
+                                  .chord = "Escape",
+                                  .context = "Scene, Outliner",
+                                  .contexts = OBJECT_AREAS,
+                                  .keywords = "clear selection none",
+                                  .phase = SHORTCUT_EDITOR },
+    /* Blender's View All. */
+    [STUDIO_COMMAND_FRAME_ALL] = { .id = "frameAll",
+                                   .label = "Frame All",
+                                   .chord = "Home",
+                                   .context = "Scene",
+                                   .contexts = EDITOR_BIT(STUDIO_EDITOR_SCENE),
+                                   .keywords = "view fit everything zoom",
+                                   .icon = KIT_ICON_FRAME,
+                                   .phase = SHORTCUT_EDITOR },
+    /* The area's own search: the graph's and the Text Editor's find
+       widgets, else its filter field. */
+    [STUDIO_COMMAND_FIND] = { .id = "find",
+                              .label = "Find",
+                              .chord = "Mod+F",
+                              .context = "Area under pointer",
+                              .contexts = FIND_AREAS,
+                              .keywords = "search filter",
+                              .icon = KIT_ICON_SEARCH,
+                              .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_KEYBOARD_SHORTCUTS] = { .id = "keyboardShortcuts",
+                                            .label = "Keyboard Shortcuts",
+                                            .chord = "Mod+/",
+                                            .context = "Global",
+                                            .keywords = "keys keymap hotkeys "
+                                                        "bindings cheat sheet "
+                                                        "help",
+                                            .icon = KIT_ICON_KEYBOARD,
+                                            .phase = SHORTCUT_EARLY },
+    /* The object clipboard, as Unity's and Godot's; a focused field keeps
+       these chords for its text. */
+    [STUDIO_COMMAND_COPY] = { .id = "copy",
+                              .label = "Copy",
+                              .chord = "Mod+C",
+                              .context = "Scene, Outliner",
+                              .contexts = OBJECT_AREAS,
+                              .keywords = "clipboard objects",
+                              .icon = KIT_ICON_CLIPBOARD,
+                              .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_CUT] = { .id = "cut",
+                             .label = "Cut",
+                             .chord = "Mod+X",
+                             .context = "Scene, Outliner",
+                             .contexts = OBJECT_AREAS,
+                             .keywords = "clipboard objects remove",
+                             .icon = KIT_ICON_CUT,
+                             .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_PASTE] = { .id = "paste",
+                               .label = "Paste",
+                               .chord = "Mod+V",
+                               .context = "Scene, Outliner",
+                               .contexts = OBJECT_AREAS,
+                               .keywords = "clipboard objects insert",
+                               .icon = KIT_ICON_PASTE,
+                               .phase = SHORTCUT_EDITOR },
+    /* Shift+arrows extend a list's selection, as Finder's and VS Code's. */
+    [STUDIO_COMMAND_EXTEND_PREVIOUS] = { .id = "extendPrevious",
+                                         .label = "Extend Selection Up",
+                                         .chord = "Shift+Up",
+                                         .context = "Outliner",
+                                         .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                         .keywords = "range multiple",
+                                         .repeat = true,
+                                         .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_EXTEND_NEXT] = { .id = "extendNext",
+                                     .label = "Extend Selection Down",
+                                     .chord = "Shift+Down",
+                                     .context = "Outliner",
+                                     .contexts = EDITOR_BIT(STUDIO_EDITOR_OUTLINER),
+                                     .keywords = "range multiple",
+                                     .repeat = true,
+                                     .phase = SHORTCUT_EDITOR },
+    /* Unreal's watches, on every data output at once. */
+    [STUDIO_COMMAND_SHOW_LIVE_VALUES] = { .id = "showLiveValues",
+                                          .label = "Show Live Values",
+                                          .menu = "Live Values",
+                                          .context = "Global",
+                                          .keywords = "graph debug watch "
+                                                      "values chips running "
+                                                      "inspect",
+                                          .icon = KIT_ICON_EYE,
+                                          .phase = SHORTCUT_EDITOR },
+    /* Playback speed on UI Scale's keys with Alt: Mod chords reach Studio
+       while the game has the keyboard. */
+    [STUDIO_COMMAND_SLOWER] = { .id = "slower",
+                                .label = "Slower",
+                                .chord = "Mod+Alt+-",
+                                .context = "Global",
+                                .keywords = "playback speed slow motion time "
+                                            "scale slomo",
+                                .icon = KIT_ICON_SLOWER,
+                                .repeat = true,
+                                .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_FASTER] = { .id = "faster",
+                                .label = "Faster",
+                                .chord = "Mod+Alt+=",
+                                .context = "Global",
+                                .keywords = "playback speed fast forward time "
+                                            "scale",
+                                .icon = KIT_ICON_FASTER,
+                                .repeat = true,
+                                .phase = SHORTCUT_EARLY },
+    [STUDIO_COMMAND_NORMAL_SPEED] = { .id = "normalSpeed",
+                                      .label = "Normal Speed",
+                                      .chord = "Mod+Alt+0",
+                                      .context = "Global",
+                                      .keywords = "playback speed reset time "
+                                                  "scale 1x real time",
+                                      .phase = SHORTCUT_EARLY },
+    /* Unity's Overrides ▸ Apply and Unreal's Apply Instance Changes to
+       Blueprint. */
+    [STUDIO_COMMAND_APPLY_OVERRIDES] = { .id = "applyOverrides",
+                                         .label = "Apply Overrides to "
+                                                  "Prototype\xe2\x80\xa6",
+                                         .menu = "Apply Overrides\xe2\x80\xa6",
+                                         .context = "Global",
+                                         .keywords = "prefab instance push "
+                                                     "defaults",
+                                         .icon = KIT_ICON_PROTOTYPE,
+                                         .phase = SHORTCUT_EDITOR },
+    /* Unity's new prefab from an object, Godot's Save Branch as Scene. */
+    [STUDIO_COMMAND_SAVE_AS_PROTOTYPE] = { .id = "saveAsPrototype",
+                                           .label = "Save as New "
+                                                    "Prototype\xe2\x80\xa6",
+                                           .context = "Global",
+                                           .keywords = "prefab variant "
+                                                       "instance create",
+                                           .icon = KIT_ICON_ADD,
+                                           .phase = SHORTCUT_EDITOR },
 };
 
 const char *studio_command_default_chord(studio_command command)
@@ -494,6 +800,32 @@ static const char *binding_at(const studio_prefs *prefs, studio_command command,
         return index ? NULL : prefs->shortcuts[command];
     }
     return default_binding(&COMMANDS[command], index);
+}
+
+int studio_command_bindings(const studio_prefs *prefs, studio_command command, const char **out, int max)
+{
+    int count = 0;
+    for (int i = 0; i < binding_count(prefs, command) && count < max; i++) {
+        out[count++] = binding_at(prefs, command, i);
+    }
+    return count;
+}
+
+const char *studio_command_label(studio_command command)
+{
+    return COMMANDS[command].label;
+}
+
+const char *studio_command_group(studio_command command)
+{
+    const command_entry *entry = &COMMANDS[command];
+    if (entry->phase == SHORTCUT_DEBUG) {
+        return "Debugger";
+    }
+    /* Find acts in most areas, as the global commands do. */
+    return entry->contexts && __builtin_popcount(entry->contexts) <= 2
+             ? entry->context
+             : "Global";
 }
 
 int studio_command_conflict(const studio_prefs *prefs, studio_command command, const char *chord, bool mac)
@@ -620,11 +952,6 @@ studio_command_info studio_command_describe(studio *s, studio_command command)
                 info.icon = KIT_ICON_STOP;
             }
             break;
-        case STUDIO_COMMAND_TOGGLE_SIDE_PANE:
-            info.label = info.menu = studio_active_layout(s)->side_open
-                                       ? e->label
-                                       : "Show Side Pane";
-            break;
         case STUDIO_COMMAND_DENSITY:
             info.label = info.menu = s->prefs.comfortable ? "Compact Density"
                                                           : e->label;
@@ -664,6 +991,20 @@ int studio_command_checked(studio *s, studio_command command)
             return s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
         case STUDIO_COMMAND_TOGGLE_SIDE_PANE:
             return studio_active_layout(s)->side_open;
+        case STUDIO_COMMAND_SELECT_TOOL:
+        case STUDIO_COMMAND_MOVE_TOOL:
+        case STUDIO_COMMAND_ROTATE_TOOL:
+        case STUDIO_COMMAND_SCALE_TOOL:
+            return s->prefs.tool == (scene_tool)(command - STUDIO_COMMAND_SELECT_TOOL);
+        case STUDIO_COMMAND_TOGGLE_SNAP: return s->prefs.scene_snap;
+        case STUDIO_COMMAND_TOGGLE_GRID: return s->prefs.scene_grid;
+        case STUDIO_COMMAND_SHOW_WORLD: return s->prefs.scene_world;
+        case STUDIO_COMMAND_SHOW_LIGHTING: return s->prefs.scene_lighting;
+        case STUDIO_COMMAND_SHOW_FOG: return s->prefs.scene_fog;
+        case STUDIO_COMMAND_SHOW_CAMERAS: return s->prefs.scene_cameras;
+        case STUDIO_COMMAND_SHOW_LIVE_VALUES: return s->prefs.live_values;
+        case STUDIO_COMMAND_VIEW_THROUGH_CAMERA:
+            return app_scene_authoring_viewing_through_camera(s->scene);
         default: return -1;
     }
 }
@@ -674,8 +1015,45 @@ static int tab_at(const studio *s, int argument)
     return argument >= 0 ? argument : s->scene->active_tab;
 }
 
-/* Up and Down walk the Outliner's visible rows (Blender). */
-static void step_selection(studio *s, int direction)
+int studio_command_area(const studio *s)
+{
+    return s->key_area >= 0 ? s->key_area : s->focus_area;
+}
+
+/* The editor in the area `argument` names, else in the command's area. */
+static studio_editor editor_at(studio *s, int argument)
+{
+    int area = argument >= 0 ? argument : studio_command_area(s);
+    return area >= 0 && area < STUDIO_AREA_COUNT
+             ? studio_active_layout(s)->editors[area]
+             : STUDIO_EDITOR_COUNT;
+}
+
+static bool finds(studio *s, studio_editor editor)
+{
+    if (editor == STUDIO_EDITOR_BEHAVIOR || editor == STUDIO_EDITOR_MEMBERS) {
+        return studio_graph_active(s);
+    }
+    return editor < STUDIO_EDITOR_COUNT && (FIND_AREAS & EDITOR_BIT(editor));
+}
+
+/* The graph's and the Text Editor's find widgets open; elsewhere the area's
+   filter field takes focus when it is next emitted. */
+static void find(studio *s, studio_editor editor)
+{
+    switch (editor) {
+        case STUDIO_EDITOR_BEHAVIOR: studio_graph_find(s); break;
+        case STUDIO_EDITOR_CODE: studio_code_find(s); break;
+        default:
+            s->find_request = editor + 1;
+            s->ui_schedule.wake = true;
+            break;
+    }
+}
+
+/* Up and Down walk the Outliner's visible rows (Blender); Shift extends the
+   selection from its anchor. */
+void studio_step_selection(studio *s, int direction, bool extend)
 {
     int *rows = studio_outliner_rows(s);
     int count = acount(rows), at = -1;
@@ -685,8 +1063,12 @@ static void step_selection(studio *s, int direction)
     int next = at < 0 ? (direction > 0 ? 0 : count - 1) : at + direction;
     if (count && next >= 0 && next < count) {
         finish_transform_edit(s->scene, false);
-        select_instance(s->scene, rows[next]);
-        s->outliner_reveal = true;
+        if (extend) {
+            studio_select_range(s, rows, count, next);
+        } else {
+            select_instance(s->scene, rows[next]);
+        }
+        studio_reveal_selection(s);
     }
     afree(rows);
 }
@@ -712,9 +1094,37 @@ static bool enabled_with(studio *s, studio_command command, int argument)
             return editable && studio_can_replay(s, false);
         case STUDIO_COMMAND_REDO: return editable && studio_can_replay(s, true);
         case STUDIO_COMMAND_DUPLICATE:
-        case STUDIO_COMMAND_DELETE: return editable && selection;
+        /* X and Delete constrain or cancel a running gizmo instead. */
+        case STUDIO_COMMAND_DELETE:
+            return editable && selection && !s->scene->gizmo.active;
+        case STUDIO_COMMAND_CUT:
+            return editable && selection && !s->scene->gizmo.active &&
+                   !studio_designer_active(s);
+        case STUDIO_COMMAND_COPY:
+            return selection && !studio_designer_active(s);
+        case STUDIO_COMMAND_PASTE:
+            return editable && !s->scene->gizmo.active && !studio_designer_active(s);
         case STUDIO_COMMAND_OPEN_PROTOTYPE:
         case STUDIO_COMMAND_FRAME: return selection;
+        case STUDIO_COMMAND_APPLY_OVERRIDES: {
+            scene_actor *actor = studio_prototype_action_actor(s);
+            game_prototype_field *overrides = actor ? game_prototype_instance_overrides(
+                                                          actor->base,
+                                                          s->scene->world,
+                                                          actor->entity
+                                                      )
+                                                    : NULL;
+            bool any = acount(overrides) > 0;
+            afree(overrides);
+            return any;
+        }
+        case STUDIO_COMMAND_SAVE_AS_PROTOTYPE:
+            return studio_prototype_action_actor(s) != NULL;
+        case STUDIO_COMMAND_HIDE_SELECTED:
+            return selection && !studio_designer_active(s);
+        case STUDIO_COMMAND_HIDE_UNSELECTED:
+            return acount(s->scene->actors) && !studio_designer_active(s);
+        case STUDIO_COMMAND_SHOW_ALL: return studio_hidden_count(s) > 0;
         case STUDIO_COMMAND_ZOOM_IN:
             return s->prefs.ui_scale < STUDIO_UI_SCALE_MAX;
         case STUDIO_COMMAND_ZOOM_OUT:
@@ -724,6 +1134,14 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_STOP: return !s->hosted && studio_session(s);
         case STUDIO_COMMAND_STEP:
             return !s->hosted && !s->guest && !s->pause.active;
+        case STUDIO_COMMAND_SLOWER:
+            return !s->hosted &&
+                   app_scene_authoring_time_scale(s->scene) > STUDIO_SPEED_MIN;
+        case STUDIO_COMMAND_FASTER:
+            return !s->hosted &&
+                   app_scene_authoring_time_scale(s->scene) < STUDIO_SPEED_MAX;
+        case STUDIO_COMMAND_NORMAL_SPEED:
+            return !s->hosted && app_scene_authoring_time_scale(s->scene) != 1;
         case STUDIO_COMMAND_COLLABORATION_HOST:
         case STUDIO_COMMAND_COLLABORATION_JOIN:
             return studio_collab_available() && !collab_active() &&
@@ -746,10 +1164,34 @@ static bool enabled_with(studio *s, studio_command command, int argument)
             return editable &&
                    s->scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE &&
                    selected_prototype(s->scene);
+        case STUDIO_COMMAND_KEEP_CHANGES:
+            return studio_live(s) && selection &&
+                   selected_scene_entity(s->scene).slot;
         case STUDIO_COMMAND_RESUME:
         case STUDIO_COMMAND_STEP_OVER:
         case STUDIO_COMMAND_STEP_INTO:
         case STUDIO_COMMAND_STEP_OUT: return s->pause.active;
+        case STUDIO_COMMAND_GRAB:
+            return editable && selection && !studio_previewed_ui(s) &&
+                   !s->scene->gizmo.active;
+        case STUDIO_COMMAND_FINER_GRID:
+            return studio_grid_increment(s, -1) != s->prefs.scene_increment;
+        case STUDIO_COMMAND_COARSER_GRID:
+            return studio_grid_increment(s, 1) != s->prefs.scene_increment;
+        case STUDIO_COMMAND_VIEW_THROUGH_CAMERA: {
+            engine_viewport_view view;
+            return editable && app_scene_authoring_camera_framing(s->scene, &view);
+        }
+        case STUDIO_COMMAND_SELECT_ALL:
+            return acount(s->scene->actors) && !studio_designer_active(s);
+        case STUDIO_COMMAND_DESELECT:
+            /* Not while a press drags, which Escape cancels instead. */
+            /* Escape cancels a gizmo and leaves View Through Camera first. */
+            return (selection || s->scene->runtime_selected.slot) && !s->in.down[0] &&
+                   !studio_designer_active(s) && !s->scene->gizmo.active &&
+                   !app_scene_authoring_viewing_through_camera(s->scene);
+        case STUDIO_COMMAND_FRAME_ALL: return !studio_designer_active(s);
+        case STUDIO_COMMAND_FIND: return finds(s, editor_at(s, argument));
         default: return true;
     }
 }
@@ -771,7 +1213,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
     }
     switch (command) {
         case STUDIO_COMMAND_SEARCH:
-            kit_command_open(s->kit, STUDIO_PALETTE_PLACEHOLDER);
+            studio_palette_open(s, STUDIO_PALETTE_SEARCH, STUDIO_PALETTE_PLACEHOLDER);
             break;
         case STUDIO_COMMAND_SETTINGS: studio_ui_show(s, "Settings"); break;
         case STUDIO_COMMAND_COLLABORATION:
@@ -806,6 +1248,9 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             );
             break;
         case STUDIO_COMMAND_FRAME: studio_frame_selection(s); break;
+        case STUDIO_COMMAND_HIDE_SELECTED: studio_hide(s, true); break;
+        case STUDIO_COMMAND_HIDE_UNSELECTED: studio_hide(s, false); break;
+        case STUDIO_COMMAND_SHOW_ALL: studio_show_all(s); break;
         case STUDIO_COMMAND_RESET_CAMERA:
             engine_viewport_reset_camera(s->viewport);
             break;
@@ -819,7 +1264,7 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             studio_toggle_drawer(s, STUDIO_EDITOR_PERFORMANCE);
             break;
         case STUDIO_COMMAND_MAXIMIZE:
-            studio_toggle_maximized(s, argument >= 0 ? argument : s->focus_area);
+            studio_toggle_maximized(s, argument >= 0 ? argument : studio_command_area(s));
             break;
         case STUDIO_COMMAND_RESET_LAYOUT: studio_reset_layout(s); break;
         case STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT:
@@ -835,9 +1280,22 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_PLAY: studio_runtime(s, APP_RUNTIME_PLAY); break;
         case STUDIO_COMMAND_STOP: studio_runtime(s, APP_RUNTIME_STOP); break;
         case STUDIO_COMMAND_STEP: studio_runtime(s, APP_RUNTIME_STEP); break;
+        case STUDIO_COMMAND_SLOWER: studio_speed_step(s, -1); break;
+        case STUDIO_COMMAND_FASTER: studio_speed_step(s, 1); break;
+        case STUDIO_COMMAND_NORMAL_SPEED: studio_speed_step(s, 0); break;
         case STUDIO_COMMAND_RECORD_GAMEPLAY: studio_record_gameplay(s); break;
-        case STUDIO_COMMAND_SELECT_PREVIOUS: step_selection(s, -1); break;
-        case STUDIO_COMMAND_SELECT_NEXT: step_selection(s, 1); break;
+        case STUDIO_COMMAND_SELECT_PREVIOUS:
+            studio_step_selection(s, -1, false);
+            break;
+        case STUDIO_COMMAND_SELECT_NEXT:
+            studio_step_selection(s, 1, false);
+            break;
+        case STUDIO_COMMAND_EXTEND_PREVIOUS:
+            studio_step_selection(s, -1, true);
+            break;
+        case STUDIO_COMMAND_EXTEND_NEXT:
+            studio_step_selection(s, 1, true);
+            break;
         case STUDIO_COMMAND_RESUME: studio_debug(s, STUDIO_RESUME); break;
         case STUDIO_COMMAND_STEP_OVER: studio_debug(s, STUDIO_STEP_OVER); break;
         case STUDIO_COMMAND_STEP_INTO: studio_debug(s, STUDIO_STEP_INTO); break;
@@ -851,13 +1309,35 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_THEME:
             s->prefs.theme = s->light ? STUDIO_THEME_DARK : STUDIO_THEME_LIGHT;
             break;
+        case STUDIO_COMMAND_SHOW_WORLD:
+            s->prefs.scene_world = !s->prefs.scene_world;
+            break;
+        case STUDIO_COMMAND_SHOW_LIGHTING:
+            s->prefs.scene_lighting = !s->prefs.scene_lighting;
+            break;
+        case STUDIO_COMMAND_SHOW_FOG:
+            s->prefs.scene_fog = !s->prefs.scene_fog;
+            break;
+        case STUDIO_COMMAND_SHOW_CAMERAS:
+            s->prefs.scene_cameras = !s->prefs.scene_cameras;
+            break;
+        case STUDIO_COMMAND_SHOW_LIVE_VALUES:
+            s->prefs.live_values = !s->prefs.live_values;
+            break;
+        case STUDIO_COMMAND_VIEW_THROUGH_CAMERA:
+            app_scene_authoring_view_through_camera(
+                s->scene,
+                !app_scene_authoring_viewing_through_camera(s->scene)
+            );
+            break;
         case STUDIO_COMMAND_INSPECT: studio_inspect_toggle(s); break;
         case STUDIO_COMMAND_PREVIEW_UI:
             studio_pick_open(
                 s,
                 STUDIO_PICK_PREVIEW,
                 studio_previewed_ui(s),
-                &(studio_pick_desc){ .kind = REFERENCE_ASSET_UI }
+                &(studio_pick_desc){ .kind = REFERENCE_ASSET_UI },
+                NULL
             );
             break;
         case STUDIO_COMMAND_NEW_SCENE:
@@ -889,6 +1369,40 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
         /* Rename objects and prototype components */
         case STUDIO_COMMAND_RENAME: studio_rename_object(s); break;
         case STUDIO_COMMAND_ADD_COMPONENT: studio_add_component_open(s); break;
+        case STUDIO_COMMAND_SELECT_TOOL:
+        case STUDIO_COMMAND_MOVE_TOOL:
+        case STUDIO_COMMAND_ROTATE_TOOL:
+        case STUDIO_COMMAND_SCALE_TOOL:
+            s->prefs.tool = (scene_tool)(command - STUDIO_COMMAND_SELECT_TOOL);
+            break;
+        case STUDIO_COMMAND_GRAB: s->scene->gizmo.grab = true; break;
+        case STUDIO_COMMAND_TOGGLE_SNAP:
+            s->prefs.scene_snap = !s->prefs.scene_snap;
+            break;
+        case STUDIO_COMMAND_TOGGLE_GRID:
+            s->prefs.scene_grid = !s->prefs.scene_grid;
+            break;
+        case STUDIO_COMMAND_FINER_GRID:
+            s->prefs.scene_increment = studio_grid_increment(s, -1);
+            break;
+        case STUDIO_COMMAND_COARSER_GRID:
+            s->prefs.scene_increment = studio_grid_increment(s, 1);
+            break;
+        case STUDIO_COMMAND_KEEP_CHANGES: studio_keep_changes(s, NULL); break;
+        case STUDIO_COMMAND_APPLY_OVERRIDES:
+        case STUDIO_COMMAND_SAVE_AS_PROTOTYPE:
+            studio_prototype_action_open(s, command == STUDIO_COMMAND_SAVE_AS_PROTOTYPE);
+            break;
+        case STUDIO_COMMAND_SELECT_ALL: studio_select_all(s); break;
+        case STUDIO_COMMAND_DESELECT: studio_deselect(s); break;
+        case STUDIO_COMMAND_FRAME_ALL: studio_frame_all(s); break;
+        case STUDIO_COMMAND_FIND: find(s, editor_at(s, argument)); break;
+        case STUDIO_COMMAND_KEYBOARD_SHORTCUTS:
+            studio_ui_show(s, "Shortcuts");
+            break;
+        case STUDIO_COMMAND_COPY: studio_copy(s); break;
+        case STUDIO_COMMAND_CUT: studio_cut(s); break;
+        case STUDIO_COMMAND_PASTE: studio_paste(s); break;
         case STUDIO_COMMAND_COUNT: break;
     }
 }
@@ -923,20 +1437,63 @@ bool studio_command_item(studio *s, studio_command command)
     return true;
 }
 
-void studio_shortcuts(studio *s)
+bool studio_text_key(SDL_Keycode key)
 {
-    studio_editor editor = s->hover_area >= 0
-                             ? studio_active_layout(s)->editors[s->hover_area]
-                             : STUDIO_EDITOR_COUNT;
+    switch (key) {
+        case SDLK_A:
+        case SDLK_C:
+        case SDLK_V:
+        case SDLK_X:
+        case SDLK_Y:
+        case SDLK_Z:
+        case SDLK_LEFT:
+        case SDLK_RIGHT:
+        case SDLK_UP:
+        case SDLK_DOWN:
+        case SDLK_HOME:
+        case SDLK_END:
+        case SDLK_BACKSPACE:
+        case SDLK_DELETE: return true;
+        default: return false;
+    }
+}
+
+/* Games bind no function key, so those reach Studio while a game has the
+   keyboard: Stop, and the debugger's steps. */
+static bool function_key(SDL_Keycode key)
+{
+    return key >= SDLK_F1 && key <= SDLK_F12;
+}
+
+void studio_shortcuts(studio *s, bool field)
+{
+    /* A modal move takes its keys (studio_scene_tools), and no others. */
+    if (s->scene->gizmo.modal) {
+        return;
+    }
+    /* Keys act on the area under the pointer, or on the one whose list the
+       keyboard focused (Tab). */
+    int area = studio_ui_keyboard_area(s);
+    area = area >= 0 ? area : s->hover_area;
+    studio_editor editor = area >= 0 ? studio_active_layout(s)->editors[area]
+                                     : STUDIO_EDITOR_COUNT;
     /* A game in the focused viewport owns keys without its primary modifier. */
     bool gameplay = !studio_previewed_ui(s) && engine_viewport_focused(s->viewport);
+    s->key_area = area;
     for (int i = 0; i < acount(s->keys); i++) {
         studio_key key = s->keys[i];
         bool primary = studio_primary(s, key.mod);
+        /* A focused field keeps its keys; chords that edit no text still
+           reach Studio, as VS Code's do. */
+        if (field && (!primary || studio_text_key(key.key))) {
+            continue;
+        }
         int command = studio_command_for_key(&s->prefs, key.key, key.mod, editor, s->mac);
         bool repeatable = command >= 0
                             ? COMMANDS[command].repeat
-                            : !primary && (key.key == SDLK_UP || key.key == SDLK_DOWN);
+                            : !primary &&
+                                  (key.key == SDLK_UP || key.key == SDLK_DOWN ||
+                                   key.key == SDLK_LEFT || key.key == SDLK_RIGHT);
         if (key.repeat && !repeatable) {
             continue;
         }
@@ -945,15 +1502,11 @@ void studio_shortcuts(studio *s)
             studio_command_run(s, (studio_command)command);
             continue;
         }
-        if (gameplay && !primary) {
+        if (gameplay && !primary && !function_key(key.key)) {
             continue;
         }
         if (command >= 0 && COMMANDS[command].phase == SHORTCUT_EARLY) {
-            studio_command_run_with(
-                s,
-                (studio_command)command,
-                command == STUDIO_COMMAND_MAXIMIZE ? s->hover_area : -1
-            );
+            studio_command_run(s, (studio_command)command);
             continue;
         }
         if (studio_designer_key(s, editor, key.key, key.mod)) {
@@ -970,8 +1523,15 @@ void studio_shortcuts(studio *s)
         if (editor == STUDIO_EDITOR_ASSETS && studio_assets_key(s, key.key, key.mod)) {
             continue;
         }
+        if (studio_ui_area_key(s, area, key.key, key.mod)) {
+            continue;
+        }
+        if (editor == STUDIO_EDITOR_OUTPUT && studio_output_key(s, key.key, key.mod)) {
+            continue;
+        }
         if (command >= 0 && COMMANDS[command].phase == SHORTCUT_EDITOR) {
             studio_command_run(s, (studio_command)command);
         }
     }
+    s->key_area = -1;
 }

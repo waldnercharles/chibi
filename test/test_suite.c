@@ -14,11 +14,18 @@
 #include "test/whole_search_fixture.h"
 #include "test/whole_state_fixture.h"
 #include "test/whole_switch_fixture.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #define PICO_UNIT_IMPLEMENTATION
 #include "suite_internal.h"
 
 void test_automation_graph_edit();
+void test_compiled_behaviors();
+void run_editor_command_checks();
 void test_modeling();
+void test_model_sampled();
 void test_shader_detail();
 int test_shader_detail_gpu(const char *program);
 void test_model_surface();
@@ -43,6 +50,7 @@ void test_automation_asset_write();
 void test_automation_refactor();
 void test_automation_preview_registration();
 void test_automation_profile_scenario_inputs();
+void run_prototype_preview_lifetime_check(void);
 
 int arena_play_run(const char *program);
 int compiled_arena_run(const char *program);
@@ -96,9 +104,43 @@ int scene_documents_run(const char *program);
 int studio_documents_run(const char *program);
 int studio_models_run(const char *program);
 int studio_properties_run(const char *program);
+/* Lists and drag (workstream F4). */
+int studio_lists_run(const char *program);
+/* The Outliner (workstream P2). */
+int studio_outliner_run(const char *program);
+int studio_output_run(const char *program);
+void test_ui_lists();
+/* Members (workstream P5). */
+int studio_members_run(const char *program);
+int studio_inspector_run(const char *program);
+int studio_shell_run(const char *program);
+/* The Scene area (workstream C1). */
+int studio_scene_run(const char *program);
+/* The editor chrome (workstream C2). */
+int studio_chrome_run(const char *program);
+int studio_palette_run(const char *program);
+int studio_graph_chrome_run(const char *program);
+int studio_panels_run(const char *program);
+/* The visual designer (workstream D1). */
+int studio_designer_run(const char *program);
 int studio_graph_inputs_run(const char *program);
+/* Asset thumbnails. */
+void test_studio_minimap();
+int studio_thumbnails_run(const char *program);
 bool test_rmlui_kit();
 bool test_rmlui_binding();
+/* Activations' arguments, event context and anchor, and contextmenu
+   (test/editor/ui_activations.c, workstream F1). */
+void test_ui_activations();
+/* Game documents' events reach behaviors in the update that follows, typed
+   (test/editor/game_ui_events.c). */
+void test_game_ui_events();
+/* Studio's editor nodes only in Studio's project
+   (test/editor/studio_nodes_gate.c). */
+void test_studio_nodes_gate();
+/* The S0 UI bench (test/editor/ui_bench.h). */
+int ui_bench_headless();
+int ui_bench_studio(const char *program, bool members_only);
 int rmlui_render_run(const char *program, bool gles);
 /* Trackpad pinch (G). */
 void test_studio_pinch();
@@ -121,6 +163,12 @@ void test_code_intelligence();
 
 /* ---------- Settings (workstream F) ---------- */
 void test_studio_settings();
+/* The Scene view's game preview while editing. */
+void test_scene_view();
+/* One selection model, commands on the selection and the object clipboard. */
+void test_scene_selection();
+/* The graph debug target while the game runs. */
+void test_debug_target();
 /* Visual designer (workstream H). */
 void test_ui_designer();
 
@@ -129,6 +177,8 @@ void test_kit_slot();
 
 /* ---------- Wave 2 follow-ups (workstream P) ---------- */
 void test_studio_zoom();
+/* The Scene's transform tools. */
+void test_scene_gizmo(const char *program);
 
 /* ---------- Native elements for authored UI (workstream N) ---------- */
 void test_ui_motion();
@@ -136,7 +186,58 @@ void test_ui_motion();
 /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
 void test_arena_hud();
 
+/* ---------- One document per area (workstream F5) ---------- */
+void test_kit_documents();
+/* ---------- Native controls (workstream F2) ---------- */
+void test_ui_controls();
+/* ---------- Popovers (workstream F3) ---------- */
+void test_ui_popovers();
+
 static int fails;
+
+static bool test_timing_enabled;
+
+static double test_clock_seconds()
+{
+    struct timespec now;
+    timespec_get(&now, TIME_UTC);
+    return (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
+}
+
+#define TEST_TIMED_CALL(function)                                                         \
+    do {                                                                                  \
+        if (test_timing_enabled) {                                                        \
+            double started = test_clock_seconds();                                        \
+            function();                                                                   \
+            printf("TEST_TIMING: %s %.3fs\n", #function, test_clock_seconds() - started); \
+        } else {                                                                          \
+            function();                                                                   \
+        }                                                                                 \
+    } while (0)
+
+#define TEST_TIMED_EXPR(expression)                                                         \
+    do {                                                                                    \
+        if (test_timing_enabled) {                                                          \
+            double started = test_clock_seconds();                                          \
+            expression;                                                                     \
+            printf("TEST_TIMING: %s %.3fs\n", #expression, test_clock_seconds() - started); \
+        } else {                                                                            \
+            expression;                                                                     \
+        }                                                                                   \
+    } while (0)
+
+#define TEST_TIMED_CHECK(function, description)                                           \
+    do {                                                                                  \
+        bool passed;                                                                      \
+        if (test_timing_enabled) {                                                        \
+            double started = test_clock_seconds();                                        \
+            passed = function();                                                          \
+            printf("TEST_TIMING: %s %.3fs\n", #function, test_clock_seconds() - started); \
+        } else {                                                                          \
+            passed = function();                                                          \
+        }                                                                                 \
+        test_check(passed, description);                                                  \
+    } while (0)
 
 void test_check(int ok, const char *msg)
 {
@@ -151,190 +252,212 @@ static char *program_name;
 TEST_CASE(all_checks)
 {
     stacktrace_init(program_name);
-    registry_validate();
-    test_automation_graph_edit();
-    test_automation_search();
-    test_automation_navigation();
-    test_automation_graph_optimize();
-    test_automation_prototype_edit();
-    test_automation_scene_edit();
-    test_automation_asset_write();
-    test_automation_refactor();
-    test_automation_preview_registration();
-    test_automation_profile_scenario_inputs();
-    run_content_catalog_checks();
-    test_reference_index();
-    test_refactor();
-    run_graph_model_checks();
-    run_graph_document_checks();
-    run_graph_comment_checks();
-    run_graph_find_checks();
-    run_graph_describe_checks();
-    run_graph_problems_checks();
-    run_graph_arrange_checks();
-    run_graph_inline_checks();
-    run_graph_editing_checks();
-    run_graph_collapse_checks();
-    run_runtime_execution_checks();
-    test_compiled_behaviors();
-    test_encounter_backend_parity();
-    run_runtime_instance_checks();
-    run_graph_compile_checks();
-    run_graph_conversion_checks();
-    run_graph_functions_checks();
-    run_graph_signature_checks();
-    test_debugging();
-    run_runtime_arrays_checks();
-    run_runtime_catalog_checks();
-    run_support_format_checks();
-    run_ecs_checks();
-    run_ecs_growth_checks();
-    run_component_read_checks();
-    run_prototype_checks();
-    run_scene_document_checks();
-    run_behavior_checks();
-    run_behavior_loader_checks();
-    run_entity_presence_checks();
-    run_live_checks();
-    run_live_preview_checks();
-    run_prototype_live_checks();
-    test_host_wait();
-    test_entities();
-    test_projectile();
-    test_combat();
-    test_physics();
-    test_materials();
-    test_material_reactions();
-    test_material_thermal();
-    test_material_detail();
-    test_material_mpm();
-    test_material_obstacles();
-    test_material_particle_index();
-    test_material_gravity();
-    test_material_simulation();
-    test_material_constitutive();
-    test_material_mixed();
-    test_material_blast();
-    test_fields();
-    test_system_schedule();
-    test_game_capabilities();
-    test_dash();
-    test_encounter();
-    test_targeting();
-    test_pursuit();
-    test_vector();
-    test_arena();
-    test_asset_value();
-    test_asset_source();
-    test_asset_code_checkpoint();
-    run_kdl_text_checks();
-    test_number_serialization();
-    test_auto_weapon();
-    test_graph_navigation();
-    test_extract();
-    test_input_bindings();
-    test_graph_optimizer();
-    test_shader_graph();
-    test_modeling();
-    test_shader_detail();
-    test_model_surface();
-    test_model_reuse();
-    test_model_parameters();
-    test_model_profiles();
-    test_model_materials();
-    test_model_validation();
-    test_model_inspection();
-    test_model_material_scope();
-    test_model_export();
-    test_model_bake();
-    test_model_constructive();
-    test_surface_cpu();
-    test_shader_effects_cpu();
-    test_shader_image_cpu();
-    test_png_encoding();
-    test_typed_events();
-    test_component_conversion();
-    test_field_outputs();
-    test_function_wait();
-    test_function_fields();
-    test_particles();
-    test_labels();
-    test_math_expression();
-    test_behavior_math();
-    test_appearance();
-    test_retained_components();
-    test_editor_flow();
-    test_component_fields();
-    test_component_nodes();
-    test_editor_documents();
-    test_tree_watch();
-    test_rcss();
-    test_scene_debug();
-    test_appearance_geometry();
-    test_mesh_surface();
-    test_mesh_asset();
-    test_orientation();
-    test_movement_input();
-    test_movement_trail();
-    test_sdf_motion();
-    test_material();
-    test_wave();
-    test_scene_history();
-    test_enemy_attack();
-    test_system_host_wait();
-    test_system_arithmetic();
-    test_system_nodes();
-    run_engine_checks();
-    run_parallel_checks();
-    run_editor_command_checks();
-    test_component_presentation();
-    test_file_watch();
-    test_collab_protocol();
-    test_collab_replay();
-    test_text_overlay();
-    test_studio_commands();
-    test_ui_document();
-    test_game_ui();
-    test_game_ui_presenter();
-    test_kit_host();
-    test_editor_checkpoint_with_app(program_name);
+    TEST_TIMED_CALL(registry_validate);
+    TEST_TIMED_CALL(test_automation_graph_edit);
+    TEST_TIMED_CALL(test_automation_search);
+    TEST_TIMED_CALL(test_automation_navigation);
+    TEST_TIMED_CALL(test_automation_graph_optimize);
+    TEST_TIMED_CALL(test_automation_prototype_edit);
+    TEST_TIMED_CALL(test_automation_scene_edit);
+    TEST_TIMED_CALL(test_automation_asset_write);
+    TEST_TIMED_CALL(test_automation_refactor);
+    TEST_TIMED_CALL(test_automation_preview_registration);
+    TEST_TIMED_CALL(test_automation_profile_scenario_inputs);
+    TEST_TIMED_CALL(run_content_catalog_checks);
+    TEST_TIMED_CALL(test_reference_index);
+    TEST_TIMED_CALL(test_refactor);
+    TEST_TIMED_CALL(run_graph_model_checks);
+    TEST_TIMED_CALL(run_graph_document_checks);
+    TEST_TIMED_CALL(run_graph_comment_checks);
+    TEST_TIMED_CALL(run_graph_find_checks);
+    TEST_TIMED_CALL(run_graph_describe_checks);
+    TEST_TIMED_CALL(run_graph_problems_checks);
+    TEST_TIMED_CALL(run_graph_arrange_checks);
+    TEST_TIMED_CALL(run_graph_inline_checks);
+    TEST_TIMED_CALL(run_graph_editing_checks);
+    TEST_TIMED_CALL(run_graph_collapse_checks);
+    TEST_TIMED_CALL(run_runtime_execution_checks);
+    TEST_TIMED_CALL(test_compiled_behaviors);
+    TEST_TIMED_CALL(test_encounter_backend_parity);
+    TEST_TIMED_CALL(run_runtime_instance_checks);
+    TEST_TIMED_CALL(run_graph_compile_checks);
+    TEST_TIMED_CALL(run_graph_conversion_checks);
+    TEST_TIMED_CALL(run_graph_functions_checks);
+    TEST_TIMED_CALL(run_graph_signature_checks);
+    TEST_TIMED_CALL(test_debugging);
+    TEST_TIMED_CALL(run_runtime_arrays_checks);
+    TEST_TIMED_CALL(run_runtime_catalog_checks);
+    TEST_TIMED_CALL(run_support_format_checks);
+    TEST_TIMED_CALL(run_ecs_checks);
+    TEST_TIMED_CALL(run_ecs_growth_checks);
+    TEST_TIMED_CALL(run_component_read_checks);
+    TEST_TIMED_CALL(run_prototype_checks);
+    TEST_TIMED_CALL(run_scene_document_checks);
+    TEST_TIMED_CALL(run_behavior_checks);
+    TEST_TIMED_CALL(run_behavior_loader_checks);
+    TEST_TIMED_CALL(run_entity_presence_checks);
+    TEST_TIMED_CALL(run_live_checks);
+    TEST_TIMED_CALL(run_live_preview_checks);
+    TEST_TIMED_CALL(run_prototype_live_checks);
+    TEST_TIMED_CALL(test_host_wait);
+    TEST_TIMED_CALL(test_entities);
+    TEST_TIMED_CALL(test_projectile);
+    TEST_TIMED_CALL(test_combat);
+    TEST_TIMED_CALL(test_physics);
+    TEST_TIMED_CALL(test_materials);
+    TEST_TIMED_CALL(test_material_reactions);
+    TEST_TIMED_CALL(test_material_thermal);
+    TEST_TIMED_CALL(test_material_detail);
+    TEST_TIMED_CALL(test_material_mpm);
+    TEST_TIMED_CALL(test_material_obstacles);
+    TEST_TIMED_CALL(test_material_particle_index);
+    TEST_TIMED_CALL(test_material_gravity);
+    TEST_TIMED_CALL(test_material_simulation);
+    TEST_TIMED_CALL(test_material_constitutive);
+    TEST_TIMED_CALL(test_material_mixed);
+    TEST_TIMED_CALL(test_material_blast);
+    TEST_TIMED_CALL(test_fields);
+    TEST_TIMED_CALL(test_system_schedule);
+    TEST_TIMED_CALL(test_game_capabilities);
+    TEST_TIMED_CALL(test_dash);
+    TEST_TIMED_CALL(test_encounter);
+    TEST_TIMED_CALL(test_targeting);
+    TEST_TIMED_CALL(test_pursuit);
+    TEST_TIMED_CALL(test_vector);
+    TEST_TIMED_CALL(test_arena);
+    TEST_TIMED_CALL(test_asset_value);
+    TEST_TIMED_CALL(test_asset_source);
+    TEST_TIMED_CALL(test_asset_code_checkpoint);
+    TEST_TIMED_CALL(run_kdl_text_checks);
+    TEST_TIMED_CALL(test_number_serialization);
+    TEST_TIMED_CALL(test_auto_weapon);
+    TEST_TIMED_CALL(test_graph_navigation);
+    TEST_TIMED_CALL(test_extract);
+    TEST_TIMED_CALL(test_input_bindings);
+    TEST_TIMED_CALL(test_graph_optimizer);
+    TEST_TIMED_CALL(test_shader_graph);
+    TEST_TIMED_CALL(test_model_sampled);
+    TEST_TIMED_CALL(test_modeling);
+    TEST_TIMED_CALL(test_shader_detail);
+    TEST_TIMED_CALL(test_model_surface);
+    TEST_TIMED_CALL(test_model_reuse);
+    TEST_TIMED_CALL(test_model_parameters);
+    TEST_TIMED_CALL(test_model_profiles);
+    TEST_TIMED_CALL(test_model_materials);
+    TEST_TIMED_CALL(test_model_validation);
+    TEST_TIMED_CALL(test_model_inspection);
+    TEST_TIMED_CALL(test_model_material_scope);
+    TEST_TIMED_CALL(test_model_export);
+    TEST_TIMED_CALL(test_model_bake);
+    TEST_TIMED_CALL(test_model_constructive);
+    TEST_TIMED_CALL(test_surface_cpu);
+    TEST_TIMED_CALL(test_shader_effects_cpu);
+    TEST_TIMED_CALL(test_shader_image_cpu);
+    TEST_TIMED_CALL(test_png_encoding);
+    TEST_TIMED_CALL(test_typed_events);
+    TEST_TIMED_CALL(test_component_conversion);
+    TEST_TIMED_CALL(test_field_outputs);
+    TEST_TIMED_CALL(test_function_wait);
+    TEST_TIMED_CALL(test_function_fields);
+    TEST_TIMED_CALL(test_particles);
+    TEST_TIMED_CALL(test_labels);
+    TEST_TIMED_CALL(test_math_expression);
+    TEST_TIMED_CALL(test_behavior_math);
+    TEST_TIMED_CALL(test_appearance);
+    TEST_TIMED_CALL(test_retained_components);
+    TEST_TIMED_CALL(test_editor_flow);
+    TEST_TIMED_CALL(test_component_fields);
+    TEST_TIMED_CALL(test_component_nodes);
+    TEST_TIMED_CALL(test_editor_documents);
+    TEST_TIMED_CALL(test_tree_watch);
+    TEST_TIMED_CALL(test_rcss);
+    TEST_TIMED_CALL(test_scene_debug);
+    TEST_TIMED_CALL(test_scene_view);
+    TEST_TIMED_CALL(test_scene_selection);
+    TEST_TIMED_CALL(test_debug_target);
+    TEST_TIMED_CALL(test_appearance_geometry);
+    TEST_TIMED_CALL(test_mesh_surface);
+    TEST_TIMED_CALL(test_mesh_asset);
+    TEST_TIMED_CALL(test_orientation);
+    TEST_TIMED_CALL(test_movement_input);
+    TEST_TIMED_CALL(test_movement_trail);
+    TEST_TIMED_CALL(test_sdf_motion);
+    TEST_TIMED_CALL(test_material);
+    TEST_TIMED_CALL(test_material_lod);
+    TEST_TIMED_CALL(test_wave);
+    TEST_TIMED_CALL(test_scene_history);
+    TEST_TIMED_CALL(test_enemy_attack);
+    TEST_TIMED_CALL(test_system_host_wait);
+    TEST_TIMED_CALL(test_system_arithmetic);
+    TEST_TIMED_CALL(test_system_nodes);
+    TEST_TIMED_CALL(run_engine_checks);
+    TEST_TIMED_CALL(run_parallel_checks);
+    TEST_TIMED_CALL(run_editor_command_checks);
+    TEST_TIMED_CALL(test_component_presentation);
+    TEST_TIMED_CALL(test_file_watch);
+    TEST_TIMED_CALL(test_collab_protocol);
+    TEST_TIMED_CALL(test_collab_replay);
+    TEST_TIMED_CALL(test_text_overlay);
+    TEST_TIMED_CALL(test_studio_commands);
+    TEST_TIMED_CALL(test_studio_minimap);
+    TEST_TIMED_CALL(test_ui_document);
+    TEST_TIMED_CALL(test_game_ui);
+    TEST_TIMED_CALL(test_game_ui_presenter);
+    TEST_TIMED_CALL(test_kit_host);
+    TEST_TIMED_EXPR(test_editor_checkpoint_with_app(program_name));
     /* Trackpad pinch (G). */
-    test_studio_pinch();
-    test_check(test_rmlui_kit(), "Studio kit reconciliation, number fields, menus, and command");
-    test_check(test_rmlui_binding(), "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data and lay out text in flex rows");
+    TEST_TIMED_CALL(test_studio_pinch);
+    TEST_TIMED_CHECK(test_rmlui_kit, "Studio kit reconciliation, number fields, menus, and command");
+    TEST_TIMED_CHECK(test_rmlui_binding, "RmlUi documents load from text, replace their style sheets, mix colors, bind JSON data, follow array edits with constant-time item lookups, lay out text in flex rows, build data-when copies and send input and change from text fields");
+    TEST_TIMED_CALL(test_ui_activations);
+    TEST_TIMED_CALL(test_game_ui_events);
+    TEST_TIMED_CALL(test_studio_nodes_gate);
     /* UI source maps (workstream A) */
-    test_ui_sources();
+    TEST_TIMED_CALL(test_ui_sources);
     /* UI documents (workstream D). */
-    test_ui_documents();
+    TEST_TIMED_CALL(test_ui_documents);
     /* UI Inspector */
-    test_ui_inspector();
+    TEST_TIMED_CALL(test_ui_inspector);
     /* UI language service (workstream B) */
-    test_ui_source();
-    test_ui_check();
-    test_ui_pages();
+    TEST_TIMED_CALL(test_ui_source);
+    TEST_TIMED_CALL(test_ui_check);
+    TEST_TIMED_CALL(test_ui_pages);
     /* UI wiring (workstream K) */
-    test_ui_wiring();
+    TEST_TIMED_CALL(test_ui_wiring);
     /* Workstream C: the code editor. */
-    test_check(test_kit_code(), "Code editor: standard and Vim keys, text_edits with undo, :w, host chords, completions and cached rendering");
+    TEST_TIMED_CHECK(test_kit_code, "Code editor: standard and Vim keys, text_edits with undo, :w, host chords, completions and cached rendering");
     /* Workstream I: code intelligence in the Text Editor. */
-    test_code_intelligence();
+    TEST_TIMED_CALL(test_code_intelligence);
     /* ---------- Settings (workstream F) ---------- */
-    test_studio_settings();
+    TEST_TIMED_CALL(test_studio_settings);
     /* ---------- Authored status bar (workstream J) ---------- */
-    test_kit_slot();
+    TEST_TIMED_CALL(test_kit_slot);
     /* Visual designer (workstream H). */
-    test_ui_designer();
+    TEST_TIMED_CALL(test_ui_designer);
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */
-    test_studio_zoom();
+    TEST_TIMED_CALL(test_studio_zoom);
+    TEST_TIMED_EXPR(test_scene_gizmo(program_name));
     /* ---------- Native elements for authored UI (workstream N) ---------- */
-    test_ui_motion();
+    TEST_TIMED_CALL(test_ui_motion);
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
-    test_arena_hud();
+    TEST_TIMED_CALL(test_arena_hud);
+    /* ---------- One document per area (workstream F5) ---------- */
+    TEST_TIMED_CALL(test_kit_documents);
+    /* ---------- Native controls (workstream F2) ---------- */
+    TEST_TIMED_CALL(test_ui_controls);
+    /* ---------- Popovers (workstream F3) ---------- */
+    TEST_TIMED_CALL(test_ui_popovers);
+    /* ---------- Lists and drag (workstream F4) ---------- */
+    TEST_TIMED_CALL(test_ui_lists);
 
     printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
     return fails == 0;
 }
+
+#undef TEST_TIMED_CALL
+#undef TEST_TIMED_EXPR
+#undef TEST_TIMED_CHECK
 
 static char test_preferences[1024];
 
@@ -365,33 +488,68 @@ static void isolate_test_preferences()
     assert(atexit(remove_test_preferences) == 0);
 }
 
+static void print_test_selectors()
+{
+    puts("Common focused native selectors (pass one to make test-fast):");
+    puts("  authoring/graphs: --automation-authoring --graph-arrange --graph-editing --graph-inline --graph-optimize --graph-signature --graph-overhaul");
+    puts("  assets/support: --asset-documents --rcss --tree-watch");
+    puts("  runtime/compiler: --runtime-execution --behavior-parity --compiled-behaviors --simulation --system-arithmetic");
+    puts("  Studio/UI: --editor-graph --editor-flow --scene-documents --studio-documents --studio-models --studio-lists --studio-outliner --studio-output --studio-properties --ui-documents --ui-designer --ui-controls --ui-popovers --ui-lists --rmlui-kit --code-intelligence --ui-motion");
+    puts("  modeling/materials: --model-constructive --model-bake --model-export --model-inspection --modeling --materials --material-thermal --material-mpm");
+    puts("  gameplay: --game-capabilities --arena-combat --arena-encounter --arena-hud");
+    puts("  collaboration: --collab");
+    puts("  Narrower costly checks: --automation-search --automation-refactor --automation-profile-scenario-inputs --editor-commands");
+    puts("  Focused CPU checks: --shader-graph-codegen --prototype-preview-lifetime");
+    puts("  GPU/render coverage: make test-render");
+    puts("The no-selector invocation is the full all_checks suite; --whole-function-audit is a separate full-coverage check.");
+}
+
 int main(int argc, char **argv)
 {
+    if (argc == 2 && (!strcmp(argv[1], "--list-tests") || !strcmp(argv[1], "--help"))) {
+        setvbuf(stdout, NULL, _IOLBF, 0);
+        print_test_selectors();
+        return 0;
+    }
+    for (int i = 2; i < argc; i++) {
+        if (argv[i][0] == '-' && argv[i][1] == '-') {
+            fprintf(stderr, "multiple test_suite selectors or flags are not supported: %s\n", argv[i]);
+            return 2;
+        }
+    }
     isolate_test_preferences();
     if (argc == 2 && !strcmp(argv[1], "--collab")) {
         test_collab_protocol();
         test_collab_replay();
         return 0;
     }
+    if (argc == 2 && !strcmp(argv[1], "--prototype-preview-lifetime")) {
+        run_prototype_preview_lifetime_check();
+        return 0;
+    }
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    test_timing_enabled = getenv("CHIBI_TEST_TIMINGS") &&
+                          !strcmp(getenv("CHIBI_TEST_TIMINGS"), "1");
     if (argc == 2 && !strcmp(argv[1], "--shader-graph-gpu")) {
         extern int shader_graph_gpu_run(const char *program);
         return shader_graph_gpu_run(program_name);
     }
-    if (argc == 2 && !strcmp(argv[1], "--sdf-quality")) {
-        extern int sdf_quality_run(const char *program);
-        return sdf_quality_run(program_name);
+    if (argc == 2 && (!strcmp(argv[1], "--sdf-quality") ||
+                      !strcmp(argv[1], "--sdf-quality-gles"))) {
+        extern int sdf_quality_run(const char *program, bool gles);
+        return sdf_quality_run(program_name, !strcmp(argv[1], "--sdf-quality-gles"));
     }
     if (argc == 2 && !strcmp(argv[1], "--sdf-spatial")) {
         extern int sdf_spatial_run(const char *program);
         registry_validate();
         return sdf_spatial_run(program_name);
     }
-    if (argc == 2 && !strcmp(argv[1], "--sdf-visibility")) {
-        extern int sdf_visibility_run(const char *program);
+    if (argc == 2 && (!strcmp(argv[1], "--sdf-visibility") ||
+                      !strcmp(argv[1], "--sdf-visibility-gles"))) {
+        extern int sdf_visibility_run(const char *program, bool gles);
         registry_validate();
-        return sdf_visibility_run(program_name);
+        return sdf_visibility_run(program_name, !strcmp(argv[1], "--sdf-visibility-gles"));
     }
     if (argc == 2 && (!strcmp(argv[1], "--camera-orbit") ||
                       !strcmp(argv[1], "--camera-orbit-gles"))) {
@@ -411,6 +569,17 @@ int main(int argc, char **argv)
         registry_validate();
         return surface_gather_run(program_name, !strcmp(argv[1], "--surface-gather-gles"));
     }
+    if (argc >= 2 && !strcmp(argv[1], "--model-sampled")) {
+        extern void test_model_sampled();
+        registry_validate();
+        test_model_sampled();
+        return 0;
+    }
+    if (argc >= 2 && !strcmp(argv[1], "--model-sampled-gpu")) {
+        extern int test_model_sampled_gpu(const char *, const char *);
+        registry_validate();
+        return test_model_sampled_gpu(program_name, argc > 2 ? argv[2] : NULL);
+    }
     if (argc == 2 && !strcmp(argv[1], "--shader-detail-gpu")) {
         registry_validate();
         return test_shader_detail_gpu(program_name);
@@ -419,6 +588,49 @@ int main(int argc, char **argv)
         extern int sdf_material_run(const char *program);
         registry_validate();
         return sdf_material_run(program_name);
+    }
+    /* Thumbnails persist nowhere but where a test puts them. */
+    setenv("CHIBI_THUMBNAIL_CACHE", "", 1);
+    /* Checks start from default preferences and never touch the user's:
+       every build shares their file, and other sessions change it. */
+    char prefs[] = "/tmp/chibi-test-prefs-XXXXXX";
+    if (!getenv("CHIBI_PREFS_DIR")) {
+        char *made = mkdtemp(prefs);
+        assert(made);
+        setenv("CHIBI_PREFS_DIR", made, 1);
+    }
+    if (argc > 1 && !strcmp(argv[1], "--compiled-behaviors")) {
+        registry_validate();
+        test_compiled_behaviors();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--editor-commands")) {
+        registry_validate();
+        run_editor_command_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--automation-search")) {
+        registry_validate();
+        test_automation_search();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--automation-refactor")) {
+        registry_validate();
+        test_automation_refactor();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--automation-profile-scenario-inputs")) {
+        registry_validate();
+        test_automation_profile_scenario_inputs();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--material-thermal")) {
+        test_material_thermal();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--material-mpm")) {
+        test_material_mpm();
+        return fails ? 1 : 0;
     }
     if (argc == 2 && !strcmp(argv[1], "--mesh-material")) {
         extern int mesh_material_run(const char *program);
@@ -479,6 +691,14 @@ int main(int argc, char **argv)
         test_asset_source();
         test_asset_code_checkpoint();
         run_graph_document_checks();
+        return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--rcss")) {
+        test_rcss();
+        return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--tree-watch")) {
+        test_tree_watch();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--arrange-bench")) {
@@ -971,6 +1191,7 @@ int main(int argc, char **argv)
         registry_validate();
         test_compiled_loops();
         test_compiled_conversions();
+        test_compiled_selects();
         return 0;
     }
     if (argc > 1 && strcmp(argv[1], "--whole-alias") == 0) {
@@ -1061,6 +1282,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--editor-flow") == 0) {
         registry_validate();
         test_editor_flow();
+        test_debug_target();
         run_runtime_instance_checks();
         return fails ? 1 : 0;
     }
@@ -1073,7 +1295,12 @@ int main(int argc, char **argv)
         registry_validate();
         int documents = studio_documents_run(program_name);
         int graph_inputs = studio_graph_inputs_run(program_name);
-        return documents || graph_inputs || fails ? 1 : 0;
+        int thumbnails = studio_thumbnails_run(program_name);
+        return documents || graph_inputs || thumbnails || fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--studio-thumbnails") == 0) {
+        registry_validate();
+        return studio_thumbnails_run(program_name) || fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--studio-models") == 0) {
         registry_validate();
@@ -1083,9 +1310,82 @@ int main(int argc, char **argv)
         registry_validate();
         return studio_graph_inputs_run(program_name) || fails ? 1 : 0;
     }
+    /* Lists and drag (workstream F4): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-lists") == 0) {
+        registry_validate();
+        return studio_lists_run(program_name) || fails ? 1 : 0;
+    }
+    /* The Outliner (workstream P2): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-outliner") == 0) {
+        registry_validate();
+        return studio_outliner_run(program_name) || fails ? 1 : 0;
+    }
+    /* Output (workstream P4): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-output") == 0) {
+        registry_validate();
+        return studio_output_run(program_name) || fails ? 1 : 0;
+    }
+    /* Members (workstream P5): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-members") == 0) {
+        registry_validate();
+        return studio_members_run(program_name) || fails ? 1 : 0;
+    }
+    /* The UI Inspector (workstream I1): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-inspector") == 0) {
+        registry_validate();
+        return studio_inspector_run(program_name) || fails ? 1 : 0;
+    }
+    /* The visual designer (workstream D1): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-designer") == 0) {
+        registry_validate();
+        return studio_designer_run(program_name) || fails ? 1 : 0;
+    }
+    if (argc > 1 && strcmp(argv[1], "--studio-shell") == 0) {
+        registry_validate();
+        return studio_shell_run(program_name) || fails ? 1 : 0;
+    }
+    /* The Scene area (workstream C1): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-scene") == 0) {
+        registry_validate();
+        return studio_scene_run(program_name) || fails ? 1 : 0;
+    }
+    /* The editor chrome (workstream C2): Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-chrome") == 0) {
+        registry_validate();
+        return studio_chrome_run(program_name) || fails ? 1 : 0;
+    }
+    /* The palette, pickers and refactor popover (workstream C4): Studio's,
+       in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-palette") == 0) {
+        registry_validate();
+        return studio_palette_run(program_name) || fails ? 1 : 0;
+    }
+    /* Graph chrome (workstream G1): the graph's menus and Properties' Node
+       and Member tabs, Studio's, in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-graph-chrome") == 0) {
+        registry_validate();
+        return studio_graph_chrome_run(program_name) || fails ? 1 : 0;
+    }
+    /* Authored panels, game UI and the areas they take turns in: Studio's,
+       in a hidden window. */
+    if (argc > 1 && strcmp(argv[1], "--studio-panels") == 0) {
+        registry_validate();
+        return studio_panels_run(program_name) || fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--studio-properties") == 0) {
         registry_validate();
         return studio_properties_run(program_name) || fails ? 1 : 0;
+    }
+    /* The S0 UI bench; `headless`, `studio` or `members` runs only those
+       cases. */
+    if (argc > 1 && strcmp(argv[1], "--ui-bench") == 0) {
+        registry_validate();
+        const char *only = argc > 2 ? argv[2] : "";
+        bool members = strcmp(only, "members") == 0,
+             headless = strcmp(only, "studio") != 0 && !members,
+             studio = strcmp(only, "headless") != 0;
+        int failed = headless ? ui_bench_headless() : 0;
+        return failed || (studio && ui_bench_studio(program_name, members)) ? 1 : 0;
     }
     /* UI documents (workstream D). */
     if (argc > 1 && strcmp(argv[1], "--ui-documents") == 0) {
@@ -1094,6 +1394,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-kit") == 0) {
         return test_rmlui_kit() ? 0 : 1;
+    }
+    if (argc > 1 && strcmp(argv[1], "--rmlui-binding") == 0) {
+        return test_rmlui_binding() ? 0 : 1;
     }
     /* Visual designer (workstream H) alone. */
     if (argc > 1 && strcmp(argv[1], "--ui-designer") == 0) {
@@ -1205,6 +1508,11 @@ int main(int argc, char **argv)
         test_auto_weapon();
         return fails ? 1 : 0;
     }
+    if (argc > 1 && !strcmp(argv[1], "--shader-graph-codegen")) {
+        registry_validate();
+        test_shader_graph();
+        return fails ? 1 : 0;
+    }
     if (argc > 1 && strcmp(argv[1], "--shader-detail") == 0) {
         registry_validate();
         test_shader_detail();
@@ -1258,6 +1566,11 @@ int main(int argc, char **argv)
         test_kit_slot();
         return fails ? 1 : 0;
     }
+    /* ---------- One document per area (workstream F5) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--kit-documents")) {
+        test_kit_documents();
+        return fails ? 1 : 0;
+    }
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-followups")) {
         test_game_ui_presenter();
@@ -1274,10 +1587,39 @@ int main(int argc, char **argv)
         test_kit_slot();
         return fails ? 1 : 0;
     }
+    /* ---------- Native controls (workstream F2) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-controls")) {
+        test_ui_controls();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Popovers (workstream F3) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-popovers")) {
+        test_ui_popovers();
+        return fails ? 1 : 0;
+    }
+    /* ---------- Lists and drag (workstream F4) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-lists")) {
+        test_ui_lists();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--game-ui-events")) {
+        test_game_ui_events();
+        test_game_ui_presenter();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--studio-nodes-gate")) {
+        test_studio_nodes_gate();
+        return fails ? 1 : 0;
+    }
     /* ---------- arena2d end to end (wave 3, workstream X) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--arena-hud")) {
         test_arena_hud();
         return fails ? 1 : 0;
+    }
+    if (argc > 1) {
+        fprintf(stderr, "unknown test_suite selector: %s\n", argv[1]);
+        fprintf(stderr, "use %s --list-tests to see common focused selectors\n", program_name);
+        return 2;
     }
     pu_run_test("all_checks", all_checks);
     return pu_test_failed() ? 1 : 0;

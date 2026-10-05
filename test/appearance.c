@@ -249,6 +249,7 @@ static void instance_overrides(
     game_prototype *prototype,
     const game_prototype_registry *registry,
     ecs_world *world,
+    char ***owned_strings,
     float width,
     float height,
     unsigned color
@@ -266,7 +267,8 @@ static void instance_overrides(
     ecs_entity copied = spawn(prototype, world);
     char error[256];
     assert(
-        game_prototype_apply_components_value(world, copied, overrides, registry, error, sizeof error) == 0
+        game_prototype_apply_components_value(world, copied, overrides, registry, owned_strings, error, sizeof error) ==
+        0
     );
     av_value_free(overrides);
     const GameAppearance *copy = GAME_GameAppearance_get_const(world, copied);
@@ -333,6 +335,7 @@ void test_appearance()
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
     ecs_world *world = ecs_world_new();
+    char **owned_strings = NULL;
     for (int i = 0; i < registry.component_count; i++) {
         assert(ecs_world_register_component(world, registry.components[i], NULL) == ECS_OK);
     }
@@ -351,7 +354,7 @@ void test_appearance()
     for (int i = 0; i < 3; i++) {
         game_prototype *prototype = read_prototype(names[i], &registry);
         authored_roundtrip(prototype, &registry, widths[i], heights[i], colors[i]);
-        instance_overrides(prototype, &registry, world, widths[i], heights[i], colors[i]);
+        instance_overrides(prototype, &registry, world, &owned_strings, widths[i], heights[i], colors[i]);
         assert(engine_frame(runtime, 0) >= 0);
         preview_reset(prototype, &registry, widths[i], heights[i], colors[i]);
         game_prototype_free(prototype);
@@ -359,5 +362,6 @@ void test_appearance()
     engine_free(runtime);
     game_live_world_free(live);
     ecs_world_free(world);
+    game_prototype_owned_strings_free(owned_strings);
     puts("appearance PASS: distinct authored styles, sparse instance overrides, persistence and preview reset");
 }

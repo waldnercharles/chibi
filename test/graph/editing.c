@@ -124,17 +124,22 @@ static void wildcard_runs()
     node *select = graph_add_node(&g, &NODE_Select);
     node *value = add(&g, "Integer");
     test_check(graph_connect(&g, value, 0, select, 1) == 0, "an option takes an integer");
+    test_check(
+        select->input_count == 3 && !strcmp(select->input_pins[2].name, "Option1") &&
+            select->input_pins[2].type == PIN_I32,
+        "a Select starts with the two options a bool picks between"
+    );
     int added = graph_add_run_pin(&g, select);
     const pin_spec *option = added >= 0 ? &select->input_pins[added] : NULL;
     test_check(
-        added == 2 && !strcmp(option->name, "Option1") && option->type == PIN_I32 &&
+        added == 3 && !strcmp(option->name, "Option2") && option->type == PIN_I32 &&
             option->group == select->input_pins[1].group &&
             (option->flags & PIN_FLAG_WILDCARD),
         "a new Select option joins its group with the resolved type"
     );
     test_check(
         graph_remove_run_pin(&g, select, 0, 1) == 0 && acount(g.edges) == 0 &&
-            names(select, 0, (const char *[]){ "Index", "Option0" }, 2),
+            names(select, 0, (const char *[]){ "Index", "Option0", "Option1" }, 3),
         "removing a wired option takes its wire and renumbers the rest"
     );
     node *array = add(&g, "Make Array");
@@ -235,6 +240,18 @@ static void key_spawn_catalog()
         listed &= found;
     }
     test_check(listed, "every key-placed node is in the add-node catalog");
+    static const char *const SELECT_WORDS[] = { "select", "ternary", "choose", "if else" };
+    bool found_select = true;
+    for (int i = 0; i < (int)(sizeof SELECT_WORDS / sizeof *SELECT_WORDS); i++) {
+        ed_search_match *matches = ed_search_matches(e, SELECT_WORDS[i]);
+        bool found = false;
+        for (int m = 0; m < acount(matches); m++) {
+            found |= matches[m].desc == &NODE_Select;
+        }
+        afree(matches);
+        found_select &= found;
+    }
+    test_check(found_select, "the add-node catalog finds Select by what a bool choice is called");
     editor_free(e);
 }
 

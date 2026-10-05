@@ -5,6 +5,7 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
+#include "runtime/save.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/asset_text.h"
@@ -366,7 +367,8 @@ static void rename_instance(app_scene_authoring *scene, const char *folder)
     snprintf(path, sizeof path, "%s/Renamed.kdl", folder);
     assert(app_scene_authoring_save(scene, path) == 0);
     char *text = saved_canonically(path, canonical_scene);
-    assert(strstr(text, "name \"Hero\"\n"));
+    /* An entity without overrides saves on one line, name="Hero". */
+    assert(strstr(text, "name \"Hero\"\n") || strstr(text, "name=\"Hero\""));
     free(text);
     free(before);
     puts("rename instance PASS: a rename is one Undo step, refuses names in use, survives checkpoints and saves");
@@ -456,6 +458,362 @@ static void prototype_component_removal(app_scene_authoring *scene, ecs_world *w
     puts("prototype component removal PASS: add and remove are one Undo step each, instances keep their overrides, and the prototype saves canonically");
 }
 
+static float position_x(ecs_world *world, const scene_actor *actor)
+{
+    return GAME_GameTransform_get_const(world, actor->entity)->x;
+}
+
+static int health(ecs_world *world, const scene_actor *actor)
+{
+    return GAME_GameHealth_get_const(world, actor->entity)->current;
+}
+
+static void write_health(app_scene_authoring *scene, const scene_actor *actor, int current)
+{
+    pin_value value = { .type = PIN_I32, .i = current };
+    assert(
+        ecs_component_write_field(
+            scene->world,
+            actor->entity,
+            GAME_COMPONENT_GameHealth.id,
+            0,
+            value
+        ) == ECS_OK
+    );
+}
+
+/* While the scene runs, moves and writes change only its world: no Undo step
+   and no unsaved mark. Keep Changes waits for Stop, which applies the values
+   each object's latest record decides as one Undo step. */
+static void live_edits_keep_changes(app_scene_authoring *scene, ecs_world *world)
+{
+    assert(app_scene_authoring_add_instance(scene, "First") == 0);
+    int index = acount(scene->actors) - 1;
+    select_instance(scene, index);
+    float authored_x = position_x(world, &scene->actors[index]);
+    int authored_health = health(world, &scene->actors[index]);
+    scene_history_clear(scene->history);
+    assert(
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_PLAY) == 0 &&
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_PAUSE) == 0
+    );
+    scene_actor *actor = &scene->actors[index];
+    scene->scene_dirty = false;
+    GameTransform moved = *GAME_GameTransform_get_const(world, actor->entity);
+    moved.x = authored_x + 9;
+    begin_transform_edit(scene, actor->entity);
+    write_transform_edit(scene, actor->entity, moved);
+    finish_transform_edit(scene, false);
+    write_health(scene, actor, 50);
+    assert(position_x(world, actor) == moved.x && health(world, actor) == 50);
+    assert(!scene->scene_dirty && !scene_history_can_undo(scene->history));
+    assert(scene_keep_changes(scene, NULL) == 2);
+    /* Undo in its toast forgets the latest record only. */
+    write_health(scene, actor, 40);
+    assert(scene_keep_changes(scene, &GAME_COMPONENT_GameHealth) == 1);
+    scene_kept_drop(scene);
+    /* A later record of one component decides that component's values. */
+    write_health(scene, actor, 30);
+    assert(scene_keep_changes(scene, &GAME_COMPONENT_GameHealth) == 1);
+    int objects;
+    const char *name;
+    assert(scene_kept_values(scene, &objects, &name) == 2);
+    assert(objects == 1 && !strcmp(name, actor->name));
+    assert(!scene->scene_dirty);
+    assert(app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_STOP) == 0);
+    actor = &scene->actors[index];
+    assert(position_x(world, actor) == moved.x && health(world, actor) == 30);
+    assert(scene->scene_dirty && !acount(scene->kept));
+    assert(history(scene, false) == 0);
+    assert(position_x(world, actor) == authored_x && health(world, actor) == authored_health);
+    assert(!scene_history_can_undo(scene->history));
+    assert(history(scene, true) == 0);
+    assert(position_x(world, actor) == moved.x && health(world, actor) == 30);
+    puts("live edits PASS: running edits leave the scene clean, and Keep Changes applies at Stop as one Undo step");
+}
+
+static int actor_named(app_scene_authoring *scene, const char *name)
+{
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (!strcmp(scene->actors[i].name, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool same_entity(ecs_entity a, ecs_entity b)
+{
+    return ecs_entity_to_u64(a) == ecs_entity_to_u64(b);
+}
+
+/* Hide and lock are the editor's view of a scene: picks leave hidden and
+   locked objects out and draws hidden ones; the flags follow a rename, its
+   Undo, a Save As and a reload by name, a delete forgets them, and neither
+   the scene, its Undo nor its file holds them. */
+static void view_state(app_scene_authoring *scene, const char *folder)
+{
+    const char *pickable = "version 1\n"
+                           "name \"Pickable\"\n"
+                           "components {\n"
+                           "    GameAppearance {\n"
+                           "        height 20\n"
+                           "        width 20\n"
+                           "    }\n"
+                           "    GameTransform {\n"
+                           "        x 0\n"
+                           "        y 0\n"
+                           "    }\n"
+                           "}\n"
+                           "(array)behaviors\n";
+    assert(app_scene_authoring_register_prototype(scene, pickable, NULL) == 0);
+    assert(app_scene_authoring_add_instance(scene, "Pickable") == 0);
+    int below = scene->selected;
+    assert(app_scene_authoring_add_instance(scene, "Pickable") == 0);
+    int above = scene->selected;
+    ecs_entity under = scene->actors[below].entity, top = scene->actors[above].entity;
+    char shown[1024], path[1024];
+    snprintf(shown, sizeof shown, "%s/Shown.kdl", folder);
+    snprintf(path, sizeof path, "%s/View.kdl", folder);
+    /* A file names the scene after the file it last saved to, so the second
+       save names it Shown, as the copy saved as View will be. */
+    assert(app_scene_authoring_save(scene, shown) == 0);
+    assert(app_scene_authoring_save(scene, shown) == 0);
+    assert(same_entity(pick_scene_entity(scene, 0, 0, (render_skip){ 0 }), top));
+    char *before = scene_history_checkpoint(scene->history);
+    app_scene_authoring_set_actor_view(scene, above, APP_SCENE_VIEW_HIDDEN);
+    app_scene_authoring_set_actor_view(scene, below, APP_SCENE_VIEW_LOCKED);
+    render_skip hidden = scene_view_skip(scene, APP_SCENE_VIEW_HIDDEN, &scene->view_hidden);
+    assert(hidden.count == 1 && render_skip_has(hidden, top));
+    unsigned unpickable = APP_SCENE_VIEW_HIDDEN | APP_SCENE_VIEW_LOCKED;
+    render_skip skip = scene_view_skip(scene, unpickable, &scene->view_unpickable);
+    assert(!pick_scene_entity(scene, 0, 0, skip).slot);
+    app_scene_authoring_set_actor_view(scene, below, 0);
+    skip = scene_view_skip(scene, unpickable, &scene->view_unpickable);
+    assert(same_entity(pick_scene_entity(scene, 0, 0, skip), under));
+    char *after = scene_history_checkpoint(scene->history);
+    assert(!scene->scene_dirty && !strcmp(before, after));
+    free(before);
+    free(after);
+    assert(app_scene_authoring_rename_instance(scene, top, "Ghost") == 0);
+    assert(app_scene_authoring_actor_view(scene, above) == APP_SCENE_VIEW_HIDDEN);
+    assert(history(scene, false) == 0);
+    assert(app_scene_authoring_actor_view(scene, above) == APP_SCENE_VIEW_HIDDEN);
+    char *name = strdup(scene->actors[above].name);
+    assert(app_scene_authoring_save(scene, path) == 0);
+    char *saved = text_file_read(path), *plain = text_file_read(shown);
+    assert(saved && plain && !strcmp(saved, plain));
+    free(saved);
+    free(plain);
+    game_save *store = app_scene_authoring_view_store(scene);
+    assert(game_save_get(store, path) && game_save_get(store, shown));
+    assert(app_scene_authoring_load(scene, path) == 0);
+    int reloaded = actor_named(scene, name);
+    assert(reloaded >= 0);
+    assert(app_scene_authoring_actor_view(scene, reloaded) == APP_SCENE_VIEW_HIDDEN);
+    select_instance(scene, reloaded);
+    assert(app_scene_authoring_delete_instance(scene) == 0);
+    assert(!game_save_get(store, path));
+    free(name);
+    puts("view state PASS: hidden and locked objects leave picks, follow renames, Undo, Save As and reloads by name, and never reach the scene or its Undo");
+}
+
+static int maximum(ecs_world *world, const scene_actor *actor)
+{
+    return GAME_GameHealth_get_const(world, actor->entity)->maximum;
+}
+
+static int prototype_current(app_scene_authoring *scene, const char *prototype)
+{
+    pin_value value = { 0 };
+    assert(
+        app_scene_authoring_read_prototype_field(scene, prototype, "GameHealth", "current", &value) == 0
+    );
+    return value.i;
+}
+
+static const char *const APPLIED = "version 1\n"
+                                   "name \"Applied\"\n"
+                                   "components {\n"
+                                   "    GameTransform {\n"
+                                   "        x 0\n"
+                                   "        y 0\n"
+                                   "    }\n"
+                                   "    GameHealth {\n"
+                                   "        current 10\n"
+                                   "        maximum 100\n"
+                                   "    }\n"
+                                   "}\n"
+                                   "(array)behaviors\n";
+
+/* Apply Overrides to Prototype: a chosen field becomes the prototype's, the
+   instances that inherit it follow, one that overrides it keeps its own, and
+   one Undo puts the prototype and them back. */
+static void apply_overrides(app_scene_authoring *scene, ecs_world *world)
+{
+    assert(app_scene_authoring_register_prototype(scene, APPLIED, NULL) == 0);
+    int at[3];
+    for (int i = 0; i < 3; i++) {
+        assert(app_scene_authoring_add_instance(scene, "Applied") == 0);
+        at[i] = scene->selected;
+    }
+    scene_actor *source = &scene->actors[at[0]];
+    write_health(scene, source, 40);
+    pin_value top = { .type = PIN_I32, .i = 120 };
+    assert(
+        ecs_component_write_field(
+            world,
+            source->entity,
+            GAME_COMPONENT_GameHealth.id,
+            1,
+            top
+        ) == ECS_OK
+    );
+    write_health(scene, &scene->actors[at[2]], 25);
+    scene_history_clear(scene->history);
+    game_prototype_field *fields = game_prototype_instance_overrides(
+        source->base,
+        scene->world,
+        source->entity
+    );
+    assert(
+        acount(fields) == 2 &&
+        fields[0].component->id == GAME_COMPONENT_GameHealth.id
+    );
+    assert(scene_override_reach(scene, source, fields, 1) == 1);
+    assert(scene_override_reach(scene, source, fields, 2) == 2);
+    assert(scene_apply_overrides(scene, source, fields, 1) == 0);
+    afree(fields);
+    source = &scene->actors[at[0]];
+    assert(prototype_current(scene, "Applied") == 40);
+    assert(health(world, source) == 40 && health(world, &scene->actors[at[1]]) == 40);
+    assert(health(world, &scene->actors[at[2]]) == 25 && maximum(world, source) == 120);
+    fields = game_prototype_instance_overrides(
+        source->base,
+        scene->world,
+        source->entity
+    );
+    assert(acount(fields) == 1 && fields[0].field == 1);
+    afree(fields);
+    assert(find_prototype(scene, "Applied")->dirty);
+    assert(history(scene, false) == 0 && !scene_history_can_undo(scene->history));
+    assert(prototype_current(scene, "Applied") == 10);
+    assert(
+        health(world, &scene->actors[at[0]]) == 40 &&
+        health(world, &scene->actors[at[1]]) == 10
+    );
+    assert(health(world, &scene->actors[at[2]]) == 25);
+    fields = game_prototype_instance_overrides(
+        scene->actors[at[0]].base,
+        scene->world,
+        scene->actors[at[0]].entity
+    );
+    assert(acount(fields) == 2);
+    afree(fields);
+    assert(history(scene, true) == 0);
+    assert(
+        prototype_current(scene, "Applied") == 40 &&
+        health(world, &scene->actors[at[1]]) == 40
+    );
+    /* Its own document's Undo takes it back too. */
+    assert(app_scene_authoring_open_prototype(scene, "Applied") == 0);
+    assert(history(scene, false) == 0 && prototype_current(scene, "Applied") == 10);
+    scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_SCENE, APP_SCENE_DOCUMENT_ID);
+    puts("apply overrides PASS: a chosen field becomes the prototype's, inheritors follow, overriders keep theirs, one Undo step");
+}
+
+/* Save as New Prototype: a free name saves the tuned instance as an asset
+   and makes the instance one of it, with no overrides left; a taken or
+   invalid name changes nothing; Undo makes it its old prototype's again and
+   keeps the asset. */
+static void save_as_prototype(app_scene_authoring *scene, ecs_world *world, const char *folder)
+{
+    assert(app_scene_authoring_set_content_root(scene, folder) == 0);
+    assert(app_scene_authoring_add_instance(scene, "Applied") == 0);
+    int index = scene->selected;
+    write_health(scene, &scene->actors[index], 55);
+    char *name = strdup(scene->actors[index].name);
+    char error[192];
+    int count = acount(scene->actors);
+    assert(
+        scene_save_as_prototype(scene, &scene->actors[index], "Applied", error, sizeof error) != 0
+    );
+    assert(strstr(error, "already exists"));
+    assert(
+        scene_save_as_prototype(scene, &scene->actors[index], "no good", error, sizeof error) != 0
+    );
+    assert(
+        acount(scene->actors) == count &&
+        !strcmp(scene->actors[index].prototype_name, "Applied")
+    );
+    scene_history_clear(scene->history);
+    assert(scene_save_as_prototype(scene, &scene->actors[index], "Tuned", error, sizeof error) == 0);
+    index = actor_named(scene, name);
+    scene_actor *actor = &scene->actors[index];
+    assert(!strcmp(actor->prototype_name, "Tuned") && health(world, actor) == 55);
+    game_prototype_field *fields = game_prototype_instance_overrides(
+        actor->base,
+        scene->world,
+        actor->entity
+    );
+    assert(!acount(fields));
+    afree(fields);
+    const ecs_component_desc *tag = game_prototype_tag_desc(
+        find_prototype(scene, "Tuned")->prototype
+    );
+    assert(ecs_component_has(world, actor->entity, tag->id));
+    assert(prototype_current(scene, "Tuned") == 55);
+    char path[1024];
+    snprintf(path, sizeof path, "%s/prototypes/Tuned.kdl", folder);
+    assert(access(path, F_OK) == 0);
+    assert(history(scene, false) == 0 && !scene_history_can_undo(scene->history));
+    actor = &scene->actors[actor_named(scene, name)];
+    assert(!strcmp(actor->prototype_name, "Applied") && health(world, actor) == 55);
+    assert(!ecs_component_has(world, actor->entity, tag->id));
+    assert(find_prototype(scene, "Tuned") && access(path, F_OK) == 0);
+    assert(history(scene, true) == 0);
+    assert(!strcmp(scene->actors[actor_named(scene, name)].prototype_name, "Tuned"));
+    unlink(path);
+    snprintf(path, sizeof path, "%s/prototypes", folder);
+    rmdir(path);
+    free(name);
+    puts("save as prototype PASS: the tuned instance becomes an asset it is an instance of, names are checked, Undo relinks");
+}
+
+/* An asset dragged over an object shows in the field that names its kind
+   for one draw; clearing puts the authored value back without an Undo step
+   or an unsaved mark. */
+static void field_preview(app_scene_authoring *scene, ecs_world *world)
+{
+    const char *shaded = "version 1\n"
+                         "name \"Shaded\"\n"
+                         "components {\n"
+                         "    GameShader {\n"
+                         "        material \"Base\"\n"
+                         "    }\n"
+                         "}\n"
+                         "(array)behaviors\n";
+    assert(app_scene_authoring_register_prototype(scene, shaded, NULL) == 0);
+    assert(app_scene_authoring_add_instance(scene, "Shaded") == 0);
+    ecs_entity entity = scene->actors[scene->selected].entity;
+    ecs_component_id component;
+    int field = scene_asset_field(scene, entity, REFERENCE_ASSET_MATERIAL, &component);
+    assert(field >= 0 && component == GAME_COMPONENT_GameShader.id);
+    assert(scene_asset_field(scene, entity, REFERENCE_ASSET_UI, &component) < 0);
+    scene->scene_dirty = false;
+    scene_history_clear(scene->history);
+    scene_preview_field(scene, entity, GAME_COMPONENT_GameShader.id, field, "Glow");
+    scene_preview_field(scene, entity, GAME_COMPONENT_GameShader.id, field, "Glass");
+    scene_field_previews_apply(scene);
+    assert(!strcmp(GAME_GameShader_get_const(world, entity)->material, "Glass"));
+    scene_field_previews_clear(scene);
+    assert(!strcmp(GAME_GameShader_get_const(world, entity)->material, "Base"));
+    assert(
+        !scene->scene_dirty && !scene_history_can_undo(scene->history) && !scene->field_previews
+    );
+    puts("field preview PASS: a dragged asset shows for one draw and leaves the authored value, history and save alone");
+}
+
 void test_scene_instances()
 {
     ecs_world *world = ecs_world_new();
@@ -492,15 +850,21 @@ void test_scene_instances()
     prototype_spawn_refresh(scene, live, world);
     duplicate_instance_preserves_edits(scene, world);
     prototype_vectors_and_text(scene, world);
+    live_edits_keep_changes(scene, world);
     char folder[] = "/tmp/chibi-scene-instances-XXXXXX";
     assert(mkdtemp(folder));
     rename_instance(scene, folder);
+    view_state(scene, folder);
     prototype_component_removal(scene, world, folder);
-    char path[1024];
-    snprintf(path, sizeof path, "%s/Renamed.kdl", folder);
-    unlink(path);
-    snprintf(path, sizeof path, "%s/Removable.kdl", folder);
-    unlink(path);
+    apply_overrides(scene, world);
+    field_preview(scene, world);
+    save_as_prototype(scene, world, folder);
+    const char *const saved[] = { "Renamed.kdl", "Removable.kdl", "Shown.kdl", "View.kdl" };
+    for (size_t i = 0; i < sizeof saved / sizeof *saved; i++) {
+        char path[1024];
+        snprintf(path, sizeof path, "%s/%s", folder, saved[i]);
+        unlink(path);
+    }
     rmdir(folder);
     app_scene_authoring_free(scene);
     engine_free(runtime);

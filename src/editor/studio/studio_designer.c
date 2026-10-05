@@ -1,15 +1,14 @@
 /* The visual designer (workstream H). While a ui asset's UI document is
  * active, the Outliner is its Hierarchy, as Unity's UI Builder and Unreal's
- * UMG Designer list a widget's tree: rows select and fold, drag to reorder
- * and reparent, or move with the keyboard as dnd-kit's keyboard sensor
- * moves them (workstream Q), and a menu adds, duplicates, wraps and
- * deletes. The Canvas in the Scene area outlines the selection and the
- * element under the pointer, selects with a click and takes Library drops,
- * marking where between siblings they land. Selecting in the
- * Hierarchy, in the Canvas or with the Text Editor's cursor selects in all
- * of them. Every change is a text edit of the document
+ * UMG Designer list a widget's tree. The Canvas in the Scene area outlines
+ * the selection and the element under the pointer, selects with a click and
+ * takes Library drops, marking where between siblings they land. Selecting
+ * in the Hierarchy, in the Canvas or with the Text Editor's cursor selects
+ * in all of them. This file keeps the document, the selection, its changes
+ * and the Canvas; every change is a text edit of the document
  * (editor/documents/ui_design.h): one undo step that keeps the author's
- * formatting. Details and the Library are studio_designer_details.c and
+ * formatting. The Hierarchy, Details and the Library are
+ * studio_designer_hierarchy.c, studio_designer_details.c and
  * studio_designer_library.c. */
 #include "editor/studio/studio_designer_internal.h"
 #include "support/array.h"
@@ -17,6 +16,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,10 +26,6 @@
  * goes before or after the element rather than inside it, as dnd-kit's
  * sortable trees split a row. */
 #define DROP_EDGE 0.25f
-/* Characters of an element's text its row shows. */
-#define EXCERPT 32
-
-static const char *const PLACE_NAMES[] = { "inside", "before", "after" };
 
 /* ---------- The document ---------- */
 
@@ -37,10 +33,8 @@ static void forget(studio_designer *d)
 {
     ui_source_free(d->rml);
     ui_source_free(d->rcss);
-    for (int i = 0; i < acount(d->folded); i++) {
-        free(d->folded[i]);
-    }
-    afree(d->folded);
+    designer_hierarchy_forget(d);
+    designer_details_forget(d);
 }
 
 void studio_designer_free(studio *s)
@@ -64,7 +58,10 @@ bool studio_designer_active(studio *s)
 static void open_document(studio_designer *d, const char *path)
 {
     forget(d);
-    *d = (studio_designer){ .selected = -1, .hovered = -1, .reveal_cursor = -1 };
+    *d = (studio_designer){ .selected = -1, .hovered = -1, .menu = -1, .reveal_cursor = -1 };
+    for (int area = 0; area < STUDIO_AREA_COUNT; area++) {
+        d->lists[area] = (ui_list_state)UI_LIST_STATE_INIT;
+    }
     snprintf(d->path, sizeof d->path, "%s", path);
     const char *base = content_basename(path), *dot = strrchr(base, '.');
     snprintf(d->asset, sizeof d->asset, "%.*s", dot ? (int)(dot - base) : (int)strlen(base), base);
@@ -97,15 +94,14 @@ studio_designer *designer_state(studio *s, ui_buffer **out)
     return d;
 }
 
-static void reveal_selection(studio_designer *d);
-
 void designer_select(studio *s, int element)
 {
     ui_buffer *b;
     studio_designer *d = designer_state(s, &b);
     assert(d && element < acount(d->rml->elements));
     d->selected = element;
-    reveal_selection(d);
+    designer_reveal(d);
+    s->ui_schedule.wake = true;
     if (element >= 0) {
         d->reveal_cursor = d->rml->elements[element].start;
         b->part = UI_PART_RML;
@@ -180,89 +176,6 @@ uint32_t designer_element_icon(const ui_source *rml, int element)
     return KIT_ICON_ELEMENT;
 }
 
-static bool has_children(const ui_source *rml, int element)
-{
-    return element + 1 < acount(rml->elements) &&
-           rml->elements[element + 1].parent == element;
-}
-
-static int depth_of(const ui_source *rml, int element)
-{
-    int depth = 0;
-    for (int i = rml->elements[element].parent; i >= 0; i = rml->elements[i].parent) {
-        depth++;
-    }
-    return depth;
-}
-
-static bool has_bindings(const ui_source *rml, int element)
-{
-    const ui_source_element *el = &rml->elements[element];
-    for (int i = 0; i < acount(el->attributes); i++) {
-        const ui_source_attribute *a = &el->attributes[i];
-        if (ui_source_is_binding(rml->text + a->name_start, a->name_end - a->name_start)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static void append(char *out, size_t size, const char *text, int length)
-{
-    size_t used = strlen(out);
-    if (used + 1 < size) {
-        snprintf(out + used, size - used, "%.*s", length, text);
-    }
-}
-
-/* The start of an element's text, its spaces collapsed, in quotes. */
-static void append_excerpt(char *out, size_t size, const ui_source *rml, int element)
-{
-    const ui_source_element *el = &rml->elements[element];
-    char excerpt[EXCERPT + 8] = "";
-    int length = 0;
-    bool space = false;
-    for (int i = el->open_end; i < el->close_start && length < EXCERPT; i++) {
-        char c = rml->text[i];
-        bool blank = c == ' ' || c == '\n' || c == '\t' || c == '\r';
-        if (!blank && space && length) {
-            excerpt[length++] = ' ';
-        }
-        space = blank;
-        if (!blank) {
-            excerpt[length++] = c;
-        }
-    }
-    excerpt[length] = '\0';
-    if (length) {
-        append(out, size, " \"", 2);
-        append(out, size, excerpt, length);
-        append(out, size, length == EXCERPT ? "\xe2\x80\xa6\"" : "\"", length == EXCERPT ? 4 : 1);
-    }
-}
-
-/* "#id.a.b", then the text of an element holding text alone. */
-static void element_meta(const ui_source *rml, int element, char *out, size_t size)
-{
-    const ui_source_element *el = &rml->elements[element];
-    out[0] = '\0';
-    if (el->id) {
-        append(out, size, "#", 1);
-        append(out, size, el->id, (int)strlen(el->id));
-    }
-    for (const char *c = el->classes ? el->classes : ""; *c;) {
-        size_t n = strcspn(c, " \t\n");
-        if (n) {
-            append(out, size, ".", 1);
-            append(out, size, c, (int)n);
-        }
-        c += n + (c[n] != '\0');
-    }
-    if (ui_design_text_only(rml, element)) {
-        append_excerpt(out, size, rml, element);
-    }
-}
-
 /* ---------- Changes ---------- */
 
 /* After a structural change: selects `selected` and reports it with
@@ -296,28 +209,34 @@ void designer_add(studio *s, int target, const char *markup, const char *label)
     changed(s, ui_design_insert(b, target, place, markup, error, sizeof error), error, failed, "Added");
 }
 
-static void duplicate(studio *s, studio_designer *d, ui_buffer *b)
+void designer_duplicate(studio *s)
 {
+    ui_buffer *b;
+    studio_designer *d = designer_state(s, &b);
     char error[192] = "";
-    if (d->selected >= 0) {
+    if (d && d->selected >= 0) {
         int copy = ui_design_duplicate(b, d->selected, error, sizeof error);
         changed(s, copy, error, "Could not duplicate", "Duplicated");
     }
 }
 
-static void wrap(studio *s, studio_designer *d, ui_buffer *b)
+void designer_wrap(studio *s)
 {
+    ui_buffer *b;
+    studio_designer *d = designer_state(s, &b);
     char error[192] = "";
-    if (d->selected >= 0) {
+    if (d && d->selected >= 0) {
         int wrapper = ui_design_wrap(b, d->selected, "div", error, sizeof error);
         changed(s, wrapper, error, "Could not wrap", "Wrapped in");
     }
 }
 
 /* Deletes the selection, offering Undo while the delete is the latest edit. */
-static void delete_selected(studio *s, studio_designer *d, ui_buffer *b)
+void designer_delete(studio *s)
 {
-    if (d->selected < 0) {
+    ui_buffer *b;
+    studio_designer *d = designer_state(s, &b);
+    if (!d || d->selected < 0) {
         return;
     }
     char name[96], error[192] = "", title[160];
@@ -351,6 +270,13 @@ static void undo_delete(studio *s, studio_designer *d, ui_buffer *b)
     }
 }
 
+void designer_move(studio *s, ui_buffer *b, int element, int target, ui_source_place place)
+{
+    char error[192] = "";
+    int moved = ui_design_move(b, element, target, place, error, sizeof error);
+    changed(s, moved, error, "Could not move", "Moved");
+}
+
 /* A Hierarchy row's drop ("#<element>") moves the element, a Library item's
  * adds its markup. A row dropped on itself stays. */
 static void drop(studio *s, studio_designer *d, ui_buffer *b, const char *payload, int target, ui_source_place place)
@@ -367,14 +293,24 @@ static void drop(studio *s, studio_designer *d, ui_buffer *b, const char *payloa
                    target < element + ui_design_extent(d->rml, element))) {
         return;
     }
-    int moved = ui_design_move(b, element, target, place, error, sizeof error);
-    changed(s, moved, error, "Could not move", "Moved");
+    designer_move(s, b, element, target, place);
+}
+
+void designer_drop(studio *s, const char *payload, int target, ui_source_place place)
+{
+    ui_buffer *b;
+    studio_designer *d = designer_state(s, &b);
+    if (d) {
+        drop(s, d, b, payload, target, place);
+    }
 }
 
 /* Opens the widget a <use> element shows, beside the document. */
-static void open_widget(studio *s, studio_designer *d, int element)
+void designer_open_widget(studio *s, int element)
 {
-    char *widget = ui_source_attribute_value(d->rml, element, "ui");
+    ui_buffer *b;
+    studio_designer *d = designer_state(s, &b);
+    char *widget = d ? ui_source_attribute_value(d->rml, element, "ui") : NULL;
     if (!widget) {
         return;
     }
@@ -383,559 +319,6 @@ static void open_widget(studio *s, studio_designer *d, int element)
     snprintf(path, sizeof path, "%.*s%s" UI_MARKUP_EXTENSION, (int)(base - d->path), d->path, widget);
     free(widget);
     studio_open_ui_source(s, path, 1);
-}
-
-/* ---------- Hierarchy ---------- */
-
-typedef struct
-{
-    int element; /* -1 for the document */
-    int depth;
-} tree_row;
-
-/* What a Hierarchy row or its menu asked for, done after the rows are
- * emitted, since a change leaves their indexes behind. */
-typedef enum
-{
-    DO_NOTHING,
-    DO_DROP,
-    DO_ADD,
-    DO_DUPLICATE,
-    DO_WRAP,
-    DO_SOURCE,
-    DO_WIDGET,
-    DO_DELETE,
-} tree_action;
-
-typedef struct
-{
-    tree_action action;
-    int element;
-    ui_source_place place;
-    char payload[512];
-    char label[96];
-} tree_request;
-
-/* An element's place among its siblings down from the top, "0.2.1": folds
- * keep to places, so they outlast edits elsewhere. */
-static void place_of(const ui_source *rml, int element, char *out, size_t size)
-{
-    if (element < 0) {
-        out[0] = '\0';
-        return;
-    }
-    int parent = rml->elements[element].parent, nth = 0;
-    for (int i = parent + 1; i < element; i++) {
-        nth += rml->elements[i].parent == parent;
-    }
-    char above[160];
-    place_of(rml, parent, above, sizeof above);
-    snprintf(out, size, "%s%s%d", above, above[0] ? "." : "", nth);
-}
-
-static int fold_index(const studio_designer *d, int element)
-{
-    char place[160];
-    place_of(d->rml, element, place, sizeof place);
-    for (int i = 0; i < acount(d->folded); i++) {
-        if (!strcmp(d->folded[i], place)) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-static void set_folded(studio_designer *d, int element, bool fold)
-{
-    int at = fold_index(d, element);
-    if (fold && at < 0 && has_children(d->rml, element)) {
-        char place[160];
-        place_of(d->rml, element, place, sizeof place);
-        apush(d->folded, xstrdup(place));
-    } else if (!fold && at >= 0) {
-        free(d->folded[at]);
-        d->folded[at] = d->folded[acount(d->folded) - 1];
-        asetlen(d->folded, acount(d->folded) - 1);
-    }
-}
-
-static bool row_matches(const studio_designer *d, int element)
-{
-    char name[96], meta[256];
-    designer_element_name(d->rml, element, name, sizeof name);
-    element_meta(d->rml, element, meta, sizeof meta);
-    return studio_matches(d->filter, name) || studio_matches(d->filter, meta);
-}
-
-static bool subtree_matches(const studio_designer *d, int element)
-{
-    int end = element + ui_design_extent(d->rml, element);
-    for (int i = element; i < end; i++) {
-        if (row_matches(d, i)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-/* Canvas and source selections must be visible even when the Hierarchy
-   was folded or filtered before selecting them. */
-static void reveal_selection(studio_designer *d)
-{
-    d->reveal_row = true;
-    if (d->selected < 0) {
-        return;
-    }
-    d->closed = false;
-    if (d->filter[0] && !subtree_matches(d, d->selected)) {
-        d->filter[0] = '\0';
-    }
-    for (int parent = d->rml->elements[d->selected].parent; parent >= 0;
-         parent = d->rml->elements[parent].parent) {
-        set_folded(d, parent, false);
-    }
-}
-
-/* The document, then the elements shown: unfolded, or while filtering
- * those that match or hold a match. */
-static tree_row *tree_rows(const studio_designer *d)
-{
-    tree_row *rows = NULL;
-    apush(rows, ((tree_row){ -1, 0 }));
-    bool filtering = d->filter[0] != '\0';
-    for (int i = 0; i < acount(d->rml->elements) && (filtering || !d->closed);) {
-        bool shown = !filtering || subtree_matches(d, i);
-        if (shown) {
-            apush(rows, ((tree_row){ i, depth_of(d->rml, i) + 1 }));
-        }
-        bool skip = !shown || (!filtering && fold_index(d, i) >= 0);
-        i += skip ? ui_design_extent(d->rml, i) : 1;
-    }
-    return rows;
-}
-
-/* The pointer's place on a row: its edges go before or after, its middle
- * inside a container. */
-static ui_source_place drop_place(const studio *s, kit_rect row, bool container)
-{
-    float t = (s->in.mouse_y - row.y) / fmaxf(row.h, 1);
-    if (t < DROP_EDGE || (!container && t < 0.5f)) {
-        return UI_SOURCE_BEFORE;
-    }
-    return t > 1 - DROP_EDGE || !container ? UI_SOURCE_AFTER : UI_SOURCE_INSIDE;
-}
-
-/* The row emitted last takes drops, marked with where they would go. */
-static void row_drop(studio *s, const studio_designer *d, int element, tree_request *request)
-{
-    kit *k = s->kit;
-    ui_source_place place = element < 0
-                              ? UI_SOURCE_INSIDE
-                              : drop_place(s, kit_item_rect(k), ui_design_container(d->rml, element));
-    bool over = kit_dragging(k, DESIGNER_DRAG) && kit_item_hovered(k);
-    kit_attr(k, "data-drop", over ? PLACE_NAMES[place] : "none");
-    char payload[sizeof request->payload];
-    if (kit_drop_target(k, DESIGNER_DRAG, payload, sizeof payload)) {
-        *request = (tree_request){ .action = DO_DROP, .element = element, .place = place };
-        snprintf(request->payload, sizeof request->payload, "%s", payload);
-    }
-}
-
-/* The slots a carried row steps through, as the Hierarchy shows its rows:
-   what folded rows hold is left out. */
-static ui_design_slot *carry_slots(const studio_designer *d, int *home)
-{
-    int count = acount(d->rml->elements);
-    bool *folded = xcalloc((size_t)count + 1, sizeof *folded);
-    for (int i = 0; i < count; i++) {
-        folded[i] = fold_index(d, i) >= 0;
-    }
-    ui_design_slot *slots = NULL;
-    *home = ui_design_slots(d->rml, d->carry.element, folded, &slots);
-    free(folded);
-    return slots;
-}
-
-/* While a row is carried, the row its slot names shows where the drop
-   goes, as a pointer drag marks it, and the carried row is dimmed. */
-static void carry_marks(kit *k, const studio_designer *d, int element)
-{
-    if (!d->carry.active) {
-        return;
-    }
-    const ui_design_slot *slot = &d->carry.at;
-    kit_attr(k, "data-drop", slot->target == element ? PLACE_NAMES[slot->place] : "none");
-    kit_flag(k, "data-dragging", element >= 0 && element == d->carry.element);
-}
-
-static void open_menu(studio *s, studio_designer *d, int element, const char *menu)
-{
-    d->menu = element;
-    kit_popup_open_at(s->kit, menu, s->in.mouse_x, s->in.mouse_y);
-}
-
-static void document_row(studio *s, studio_designer *d, const char *menu, tree_request *request)
-{
-    kit *k = s->kit;
-    char count[16];
-    snprintf(count, sizeof count, "%d", acount(d->rml->elements));
-    kit_row_desc row = { .label = d->asset,
-                         .icon = KIT_ICON_LAYOUT,
-                         .twisty = !d->closed,
-                         .meta = count,
-                         .flags = d->selected < 0 ? KIT_ON | KIT_ACTIVE : 0 };
-    unsigned events = kit_row_begin(k, "document", &row);
-    kit_row_end(k);
-    row_drop(s, d, -1, request);
-    carry_marks(k, d, -1);
-    if (events & KIT_ROW_TWISTY) {
-        d->closed = !d->closed;
-    } else if (events & (KIT_ROW_CLICK | KIT_ROW_CONTEXT)) {
-        designer_select(s, -1);
-    }
-    if (events & KIT_ROW_CONTEXT) {
-        open_menu(s, d, -1, menu);
-    }
-}
-
-static void element_row(studio *s, studio_designer *d, const tree_row *row, const char *menu, tree_request *request)
-{
-    kit *k = s->kit;
-    int e = row->element;
-    char key[16], name[96], meta[256], payload[16];
-    snprintf(key, sizeof key, "e%d", e);
-    designer_element_name(d->rml, e, name, sizeof name);
-    element_meta(d->rml, e, meta, sizeof meta);
-    kit_row_desc desc = { .label = name,
-                          .icon = designer_element_icon(d->rml, e),
-                          .depth = row->depth,
-                          .twisty = has_children(d->rml, e) ? fold_index(d, e) < 0 : -1,
-                          .meta = meta,
-                          .flags = d->selected == e ? KIT_ON | KIT_ACTIVE : 0 };
-    unsigned events = kit_row_begin(k, key, &desc);
-    if (has_bindings(d->rml, e)) {
-        kit_icon(k, "bound", "bound", KIT_ICON_BINDING);
-        kit_tip(k, "Bound to data", NULL, NULL);
-    }
-    kit_row_end(k);
-    snprintf(payload, sizeof payload, "#%d", e);
-    kit_drag_source(
-        k,
-        &(
-            kit_drag_desc
-        ){ .type = DESIGNER_DRAG, .payload = payload, .label = name, .icon = desc.icon }
-    );
-    row_drop(s, d, e, request);
-    carry_marks(k, d, e);
-    d->hovered = kit_item_hovered(k) ? e : d->hovered;
-    if (events & KIT_ROW_TWISTY) {
-        set_folded(d, e, desc.twisty == 1);
-        return;
-    }
-    if (events & (KIT_ROW_CLICK | KIT_ROW_CONTEXT)) {
-        designer_select(s, e);
-    }
-    if (events & KIT_ROW_DOUBLE_CLICK) {
-        *request = (tree_request){ .action = strcmp(d->rml->elements[e].tag, "use")
-                                               ? DO_SOURCE
-                                               : DO_WIDGET,
-                                   .element = e };
-    }
-    if (events & KIT_ROW_CONTEXT) {
-        open_menu(s, d, e, menu);
-    }
-}
-
-static bool menu_item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut)
-{
-    kit_menu_item_desc d = { .label = label,
-                             .icon = icon,
-                             .shortcut = shortcut,
-                             .checked = -1 };
-    return kit_menu_item(k, key, &d);
-}
-
-static void ask(tree_request *request, tree_action action, int element)
-{
-    *request = (tree_request){ .action = action, .element = element };
-}
-
-static void element_menu(studio *s, const studio_designer *d, int e, tree_request *request)
-{
-    kit *k = s->kit;
-    if (menu_item(k, "duplicate", "Duplicate", KIT_ICON_COPY, studio_chord(s, "Shift+D"))) {
-        ask(request, DO_DUPLICATE, e);
-    }
-    if (menu_item(k, "wrap", "Wrap in Div", KIT_ICON_WRAP, NULL)) {
-        ask(request, DO_WRAP, e);
-    }
-    kit_menu_separator(k, "s1");
-    if (menu_item(k, "source", "Edit Source", KIT_ICON_EDIT, NULL)) {
-        ask(request, DO_SOURCE, e);
-    }
-    if (!strcmp(d->rml->elements[e].tag, "use") &&
-        menu_item(k, "widget", "Open Widget", KIT_ICON_EXTERNAL, NULL)) {
-        ask(request, DO_WIDGET, e);
-    }
-    kit_menu_separator(k, "s2");
-    if (menu_item(k, "delete", "Delete", KIT_ICON_TRASH, "X")) {
-        ask(request, DO_DELETE, e);
-    }
-}
-
-static void tree_menu(studio *s, const studio_designer *d, const char *key, tree_request *request)
-{
-    kit *k = s->kit;
-    if (!kit_popup_begin(k, key, "menu")) {
-        return;
-    }
-    int e = d->menu < acount(d->rml->elements) ? d->menu : -1;
-    char name[96];
-    if (e >= 0) {
-        designer_element_name(d->rml, e, name, sizeof name);
-    } else {
-        snprintf(name, sizeof name, "%s", d->asset);
-    }
-    kit_menu_group(k, "group", name);
-    tree_request add = { .action = DO_ADD, .element = e };
-    if (kit_submenu_begin(k, "add", "Add", KIT_ICON_ADD)) {
-        if (designer_add_items(
-                s,
-                add.payload,
-                sizeof add.payload,
-                add.label,
-                sizeof add.label
-            )) {
-            *request = add;
-        }
-        kit_submenu_end(k);
-    }
-    if (e >= 0) {
-        element_menu(s, d, e, request);
-    }
-    kit_popup_end(k);
-}
-
-static void run(studio *s, const tree_request *request)
-{
-    ui_buffer *b;
-    studio_designer *d = designer_state(s, &b);
-    if (request->action != DO_NOTHING && request->action != DO_DROP &&
-        request->action != DO_ADD) {
-        d->selected = request->element;
-    }
-    switch (request->action) {
-        case DO_NOTHING: break;
-        case DO_DROP:
-            drop(s, d, b, request->payload, request->element, request->place);
-            break;
-        case DO_ADD:
-            designer_add(s, request->element, request->payload, request->label);
-            break;
-        case DO_DUPLICATE: duplicate(s, d, b); break;
-        case DO_WRAP: wrap(s, d, b); break;
-        case DO_SOURCE:
-            studio_open_ui_source(s, d->path, d->rml->elements[request->element].line);
-            break;
-        case DO_WIDGET: open_widget(s, d, request->element); break;
-        case DO_DELETE: delete_selected(s, d, b); break;
-    }
-}
-
-void studio_designer_hierarchy_header(studio *s, int area)
-{
-    kit *k = s->kit;
-    ui_buffer *b;
-    studio_designer *d = designer_state(s, &b);
-    assert(d);
-    kit_label(k, "mode", "designer-mode", "Hierarchy");
-    kit_search(k, "filter", d->filter, sizeof d->filter, "Filter");
-    char key[32], markup[512], label[96];
-    snprintf(key, sizeof key, "designer-add:%d", area);
-    kit_button_desc add = { .icon = KIT_ICON_ADD };
-    if (kit_button(k, "add", &add)) {
-        kit_popup_open(k, key);
-    }
-    kit_tip(k, "Add", NULL, d->selected >= 0 ? "Into the selection, or after it" : "Into the document");
-    if (!kit_popup_begin(k, key, "menu")) {
-        return;
-    }
-    kit_menu_group(k, "group", "Add");
-    bool chosen = designer_add_items(s, markup, sizeof markup, label, sizeof label);
-    kit_popup_end(k);
-    if (chosen) {
-        designer_add(s, d->selected, markup, label);
-    }
-}
-
-/* The row to scroll to: the selection, or while a row is carried the row
-   its slot names. */
-static int revealed_element(const studio_designer *d)
-{
-    return d->carry.active ? d->carry.at.target : d->selected;
-}
-
-void studio_designer_hierarchy(studio *s, int area)
-{
-    kit *k = s->kit;
-    ui_buffer *b;
-    studio_designer *d = designer_state(s, &b);
-    assert(d);
-    tree_row *rows = tree_rows(d);
-    int shown = revealed_element(d);
-    int reveal = shown < 0 ? 0 : -1;
-    for (int r = 1; r < acount(rows); r++) {
-        reveal = rows[r].element == shown ? r : reveal;
-    }
-    kit_list_desc list = { .count = acount(rows),
-                           .row_height = kit_metric(s->kit, "--row"),
-                           .reveal = d->reveal_row ? reveal : -1 };
-    d->reveal_row = false;
-    int first, last;
-    kit_list_begin(k, "hierarchy", "outliner designer-tree", &list, &first, &last);
-    tree_request request = { .action = DO_NOTHING };
-    char payload[sizeof request.payload];
-    if (kit_drop_target(k, DESIGNER_DRAG, payload, sizeof payload)) {
-        request = (tree_request){ .action = DO_DROP, .element = -1, .place = UI_SOURCE_INSIDE };
-        snprintf(request.payload, sizeof request.payload, "%s", payload);
-    }
-    char menu[32];
-    snprintf(menu, sizeof menu, "designer:%d", area);
-    for (int r = first; r <= last && r < acount(rows); r++) {
-        if (rows[r].element < 0) {
-            document_row(s, d, menu, &request);
-        } else {
-            element_row(s, d, &rows[r], menu, &request);
-        }
-    }
-    kit_list_end(k);
-    if (d->filter[0] && acount(rows) == 1) {
-        kit_label(k, "empty", "outliner-empty", "No matches");
-    }
-    afree(rows);
-    tree_menu(s, d, menu, &request);
-    run(s, &request);
-}
-
-/* Up and Down walk the rows shown, Left and Right fold. */
-static void step(studio *s, studio_designer *d, int direction)
-{
-    tree_row *rows = tree_rows(d);
-    int at = 0;
-    for (int r = 0; r < acount(rows); r++) {
-        at = rows[r].element == d->selected ? r : at;
-    }
-    int next = at + direction;
-    if (next >= 0 && next < acount(rows)) {
-        designer_select(s, rows[next].element);
-    }
-    afree(rows);
-}
-
-/* ---------- Keyboard reordering (workstream Q) ---------- */
-
-/* dnd-kit's keyboard sensor over the Hierarchy: Space or Enter picks the
-   selected row up, Up and Down move it through the gaps between rows at
-   each depth, Space, Enter or Tab drops it and Escape cancels. Each step is
-   announced in the status bar, as dnd-kit announces pickup, over, drop and
-   cancel. */
-
-static void announce_slot(studio *s, const studio_designer *d, const ui_design_slot *slot, int index, int count)
-{
-    static const char *const VERBS[] = { "Into", "Before", "After" };
-    char name[96], message[192];
-    if (slot->target >= 0) {
-        designer_element_name(d->rml, slot->target, name, sizeof name);
-    } else {
-        snprintf(name, sizeof name, "%s", d->asset);
-    }
-    snprintf(message, sizeof message, "%s %s \xc2\xb7 %d of %d", VERBS[slot->place], name, index + 1, count);
-    studio_report(s, message);
-}
-
-static void pick_up(studio *s, studio_designer *d, const ui_buffer *b)
-{
-    if (d->selected < 0 || d->filter[0]) {
-        studio_report(s, d->filter[0] ? "Clear the filter to move a row with the keyboard" : "Select a row to move");
-        return;
-    }
-    d->closed = false;
-    for (int a = d->rml->elements[d->selected].parent; a >= 0;
-         a = d->rml->elements[a].parent) {
-        set_folded(d, a, false);
-    }
-    d->carry.active = true;
-    d->carry.element = d->selected;
-    d->carry.revision = b->revision;
-    ui_design_slot *slots = carry_slots(d, &d->carry.slot);
-    d->carry.at = slots[d->carry.slot];
-    afree(slots);
-    char name[96], message[192];
-    designer_element_name(d->rml, d->selected, name, sizeof name);
-    snprintf(message, sizeof message, "Picked up %s \xc2\xb7 arrows move it, Space drops, Escape cancels", name);
-    studio_report(s, message);
-}
-
-static void move_carried(studio *s, studio_designer *d, int direction)
-{
-    int home;
-    ui_design_slot *slots = carry_slots(d, &home);
-    int next = d->carry.slot + direction;
-    d->carry.slot = next >= 0 && next < acount(slots) ? next : d->carry.slot;
-    d->carry.at = slots[d->carry.slot];
-    announce_slot(s, d, &d->carry.at, d->carry.slot, acount(slots));
-    d->reveal_row = true;
-    afree(slots);
-}
-
-static void drop_carried(studio *s, studio_designer *d, ui_buffer *b)
-{
-    int home;
-    ui_design_slot *slots = carry_slots(d, &home);
-    ui_design_slot slot = slots[d->carry.slot];
-    bool stays = d->carry.slot == home;
-    int element = d->carry.element;
-    afree(slots);
-    d->carry.active = false;
-    if (stays) {
-        studio_report(s, "Dropped where it was");
-        return;
-    }
-    char error[192] = "";
-    int moved = ui_design_move(b, element, slot.target, slot.place, error, sizeof error);
-    changed(s, moved, error, "Could not move", "Moved");
-}
-
-static void cancel_carry(studio *s, studio_designer *d, const char *why)
-{
-    d->carry.active = false;
-    d->reveal_row = true;
-    studio_report(s, why);
-}
-
-/* The carried row's keys; any other is swallowed while it is carried. */
-static void carry_key(studio *s, studio_designer *d, ui_buffer *b, SDL_Keycode key)
-{
-    switch (key) {
-        case SDLK_UP:
-        case SDLK_DOWN: move_carried(s, d, key == SDLK_DOWN ? 1 : -1); break;
-        case SDLK_SPACE:
-        case SDLK_RETURN:
-        case SDLK_KP_ENTER:
-        case SDLK_TAB: drop_carried(s, d, b); break;
-        case SDLK_ESCAPE: cancel_carry(s, d, "Cancelled the move"); break;
-        default: break;
-    }
-}
-
-/* A change to the text, or a selection elsewhere, puts a carried row down
-   where it was. */
-static void keep_carry(studio *s, studio_designer *d, const ui_buffer *b)
-{
-    if (d->carry.active &&
-        (b->revision != d->carry.revision || d->selected != d->carry.element)) {
-        cancel_carry(s, d, "Cancelled the move");
-    }
 }
 
 /* ---------- Text Editor ---------- */
@@ -959,7 +342,7 @@ static void follow_cursor(studio *s, studio_designer *d, ui_buffer *b)
         int element = ui_design_element_at(d->rml, kit_code_cursor(e));
         if (element >= 0 && element != d->selected) {
             d->selected = element;
-            reveal_selection(d);
+            designer_reveal(d);
         }
     }
     d->cursor = kit_code_cursor(e);
@@ -1339,6 +722,258 @@ static void drop_line(kit *k, const canvas_target *t, kit_rect clip)
     place(k, (kit_rect){ x, y, fmaxf(right - x, 0), fmaxf(bottom - y, 0) });
 }
 
+/* ---------- Resize handles ---------- */
+
+/* A handle's side, in kit dp; an edge's handle shows once the edge is three
+   handles long. */
+#define HANDLE 8.0f
+
+static const struct
+{
+    const char *key, *cls;
+    unsigned axes;
+    float u, v; /* where on the box, as fractions of its width and height */
+} HANDLES[] = {
+    { "resize-e", "designer-handle e", DESIGNER_RESIZE_WIDTH, 1, 0.5f },
+    { "resize-s", "designer-handle s", DESIGNER_RESIZE_HEIGHT, 0.5f, 1 },
+    { "resize-se", "designer-handle se", DESIGNER_RESIZE_WIDTH | DESIGNER_RESIZE_HEIGHT, 1, 1 },
+};
+
+static const char *const DIMENSIONS[] = { "width", "height" };
+
+void designer_resize_css(
+    const designer_box *box,
+    unsigned axes,
+    float dx,
+    float dy,
+    bool aspect,
+    float css[2]
+)
+{
+    float size[2] = { box->size[0] + dx, box->size[1] + dy };
+    bool both = axes == (DESIGNER_RESIZE_WIDTH | DESIGNER_RESIZE_HEIGHT);
+    if (aspect && both && box->size[0] > 0 && box->size[1] > 0) {
+        float ratio = box->size[0] / box->size[1];
+        if (fabsf(dx) / box->size[0] >= fabsf(dy) / box->size[1]) {
+            size[1] = size[0] / ratio;
+        } else {
+            size[0] = size[1] * ratio;
+        }
+    }
+    for (int i = 0; i < 2; i++) {
+        float border = axes & (1u << i) ? size[i] : box->size[i];
+        float content = box->border_box ? fmaxf(border, box->extra[i])
+                                        : fmaxf(border - box->extra[i], 0);
+        css[i] = roundf(content);
+    }
+}
+
+/* The element's inline `property`, as written, in `out`; "" for none. */
+static void inline_style(const ui_source *rml, int element, const char *property, char *out, size_t size)
+{
+    out[0] = '\0';
+    char *style = ui_source_attribute_value(rml, element, "style");
+    size_t length = strlen(property);
+    for (const char *at = style; at && *at;) {
+        at += strspn(at, " \t\n;");
+        const char *colon = strchr(at, ':'), *end = at + strcspn(at, ";");
+        if (colon && colon < end && (size_t)(colon - at) >= length &&
+            !strncmp(at, property, length) &&
+            strspn(at + length, " \t") == (size_t)(colon - at - length)) {
+            const char *value = colon + 1 + strspn(colon + 1, " \t");
+            int written = (int)(end - value);
+            while (written > 0 && isspace((unsigned char)value[written - 1])) {
+                written--;
+            }
+            snprintf(out, size, "%.*s", written, value);
+        }
+        at = end;
+    }
+    free(style);
+}
+
+/* The drag runs from the handle's center, wherever on it the press was and
+   however far the pointer went in the frame that took it. */
+static void resize_begin(
+    studio *s,
+    studio_designer *d,
+    ui_buffer *b,
+    rml_element *el,
+    rml_context *context,
+    kit_rect handle
+)
+{
+    float ratio = rml_context_dp_ratio(context);
+    rml_vec2 border = rml_element_box_size(el, RML_BOX_BORDER);
+    rml_vec2 content = rml_element_box_size(el, RML_BOX_CONTENT);
+    char sizing[32] = "";
+    rml_element_property(el, "box-sizing", sizing, sizeof sizing);
+    d->resize.active = true;
+    d->resize.moved = false;
+    d->resize.element = d->selected;
+    d->resize.x0 = handle.x + handle.w / 2;
+    d->resize.y0 = handle.y + handle.h / 2;
+    d->resize.revision = b->revision;
+    d->resize.box = (designer_box){ { border.x / ratio, border.y / ratio },
+                                    { (border.x - content.x) / ratio,
+                                      (border.y - content.y) / ratio },
+                                    !strcmp(sizing, "border-box") };
+    for (int i = 0; i < 2; i++) {
+        inline_style(
+            d->rml,
+            d->selected,
+            DIMENSIONS[i],
+            d->resize.before[i],
+            sizeof d->resize.before[i]
+        );
+    }
+}
+
+/* Puts back what the drag showed on the element. */
+static void resize_restore(studio_designer *d, rml_element *el)
+{
+    for (int i = 0; el && i < 2; i++) {
+        if (!(d->resize.axes & (1u << i))) {
+            continue;
+        }
+        if (d->resize.before[i][0]) {
+            rml_element_set_property(el, DIMENSIONS[i], d->resize.before[i]);
+        } else {
+            rml_element_remove_property(el, DIMENSIONS[i]);
+        }
+    }
+}
+
+/* Release writes the size into the element's inline style, one undo step;
+   a press that never moved writes nothing. */
+static void resize_commit(studio *s, studio_designer *d, ui_buffer *b, rml_element *el)
+{
+    d->resize.active = false;
+    if (!d->resize.moved) {
+        return;
+    }
+    ui_design_style styles[2];
+    char values[2][32];
+    int count = 0;
+    for (int i = 0; i < 2; i++) {
+        if (d->resize.axes & (1u << i)) {
+            snprintf(values[count], sizeof values[count], "%gdp", d->resize.css[i]);
+            styles[count] = (ui_design_style){ DIMENSIONS[i], values[count] };
+            count++;
+        }
+    }
+    char error[192] = "";
+    if (!ui_design_set_styles(b, d->resize.element, styles, count, error, sizeof error)) {
+        resize_restore(d, el);
+        designer_warn(s, "Could not resize", error);
+    }
+}
+
+/* While the button is held the Canvas shows the new size, and the
+   selection's label reads it; Shift keeps the aspect at the corner. */
+static void resize_frame(studio *s, studio_designer *d, ui_buffer *b, rml_context *context, canvas_map m)
+{
+    if (!d->resize.active) {
+        return;
+    }
+    rml_element *el = studio_designer_shown(context, d->rml, d->asset, d->resize.element);
+    if (!el || b->revision != d->resize.revision) {
+        resize_restore(d, el);
+        d->resize.active = false;
+        return;
+    }
+    float ratio = rml_context_dp_ratio(context);
+    float dx = (s->in.mouse_x - d->resize.x0) / (m.sx * ratio);
+    float dy = (s->in.mouse_y - d->resize.y0) / (m.sy * ratio);
+    /* A press anywhere on the handle that never left it changes nothing. */
+    d->resize.moved |= fabsf(s->in.mouse_x - d->resize.x0) > HANDLE / 2 + 1 ||
+                       fabsf(s->in.mouse_y - d->resize.y0) > HANDLE / 2 + 1;
+    if (d->resize.moved) {
+        bool aspect = (s->mods & SDL_KMOD_SHIFT) != 0;
+        designer_resize_css(
+            &d->resize.box,
+            d->resize.axes,
+            dx,
+            dy,
+            aspect,
+            d->resize.css
+        );
+        for (int i = 0; i < 2; i++) {
+            char value[32];
+            snprintf(value, sizeof value, "%gdp", d->resize.css[i]);
+            if (d->resize.axes & (1u << i)) {
+                rml_element_set_property(el, DIMENSIONS[i], value);
+            }
+        }
+    }
+    if (!s->in.down[0]) {
+        resize_commit(s, d, b, el);
+    }
+}
+
+static bool inside(kit_rect outer, kit_rect r)
+{
+    return r.x >= outer.x && r.y >= outer.y && r.x + r.w <= outer.x + outer.w &&
+           r.y + r.h <= outer.y + outer.h;
+}
+
+/* The selection's handles on its right and bottom edges and corner: only
+   its size changes, so wherever its layout puts it, it stays. A widget's use
+   has none, its widget deciding its size. */
+static void resize_handles(studio *s, studio_designer *d, ui_buffer *b, rml_context *context, canvas_map m)
+{
+    kit *k = s->kit;
+    rml_element *el = studio_designer_shown(context, d->rml, d->asset, d->selected);
+    if (!el || !rml_element_is_visible(el, true) ||
+        rml_element_has_attribute(el, "data-ui")) {
+        return;
+    }
+    kit_rect bounds = studio_designer_element_box(el);
+    kit_rect box = { m.x + bounds.x * m.sx,
+                     m.y + bounds.y * m.sy,
+                     bounds.w * m.sx,
+                     bounds.h * m.sy };
+    for (size_t i = 0; i < sizeof HANDLES / sizeof *HANDLES; i++) {
+        kit_rect r = { box.x + box.w * HANDLES[i].u - HANDLE / 2,
+                       box.y + box.h * HANDLES[i].v - HANDLE / 2,
+                       HANDLE,
+                       HANDLE };
+        float edge = HANDLES[i].axes == DESIGNER_RESIZE_WIDTH ? box.h : box.w;
+        bool corner = HANDLES[i].u == 1 && HANDLES[i].v == 1;
+        if (!inside(m.clip, r) || (!corner && edge < 3 * HANDLE)) {
+            continue;
+        }
+        kit_leaf(k, HANDLES[i].key, NULL, HANDLES[i].cls);
+        place(k, r);
+        kit_flag(
+            k,
+            "data-active",
+            d->resize.active && d->resize.axes == HANDLES[i].axes
+        );
+        if (kit_item_pressed(k) && !d->resize.active) {
+            d->resize.axes = HANDLES[i].axes;
+            resize_begin(s, d, b, el, context, r);
+        }
+    }
+}
+
+static void resize_cancel(studio *s, studio_designer *d, ui_buffer *b)
+{
+    canvas_map m;
+    rml_context *context = canvas(s, d, b, &m);
+    resize_restore(
+        d,
+        context ? studio_designer_shown(context, d->rml, d->asset, d->resize.element) : NULL
+    );
+    d->resize.active = false;
+    studio_report(s, "Resize canceled");
+}
+
+bool studio_designer_resizing(const studio *s)
+{
+    return s->designer && s->designer->resize.active;
+}
+
 /* Outlines the selection and the element under the pointer or its row,
  * selects with a click, and takes drops through a zone over the frame that
  * only takes the pointer while a Hierarchy row or a Library item drags.
@@ -1349,9 +984,11 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
     canvas_map m;
     rml_context *context = canvas(s, d, b, &m);
     if (!context) {
+        d->resize.active = false;
         return;
     }
     kit *k = s->kit;
+    resize_frame(s, d, b, context, m);
     bool dragging = kit_dragging(k, DESIGNER_DRAG);
     bool over = dragging && pointer_in(s, m.clip) && d->hovered < 0;
     bool pointed = s->surface.hovered || over;
@@ -1360,9 +997,6 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
                         : (canvas_target){
                               .target = pointed ? source_under(s, d, context, m) : -1
                           };
-    if (s->surface.hovered && s->surface.pressed[0]) {
-        designer_select(s, t.target);
-    }
     kit_guides_begin(k, "designer");
     kit_leaf(k, "drop", NULL, "designer-drop");
     place(k, m.clip);
@@ -1379,8 +1013,13 @@ static void canvas_frame(studio *s, studio_designer *d, ui_buffer *b)
     }
     if (d->selected >= 0) {
         outline(s, d, context, m, d->selected, "selected");
+        resize_handles(s, d, b, context, m);
     }
     kit_guides_end(k);
+    /* A press selects, unless it took a resize handle. */
+    if (s->surface.hovered && s->surface.pressed[0] && !d->resize.active) {
+        designer_select(s, t.target);
+    }
     if (dropped) {
         t = canvas_target_at(s, d, context, m);
         drop(s, d, b, payload, t.target, t.place);
@@ -1394,53 +1033,82 @@ void studio_designer_frame(studio *s)
     ui_buffer *b;
     studio_designer *d = designer_state(s, &b);
     if (!d) {
+        if (s->designer) {
+            s->designer->resize.active = false;
+        }
         return;
     }
     undo_delete(s, d, b);
-    keep_carry(s, d, b);
+    designer_keep_carry(s, d, b);
     follow_cursor(s, d, b);
+    d->hovered = designer_hovered_row(s);
     canvas_frame(s, d, b);
-    d->hovered = -1;
+}
+
+uint64_t studio_designer_stamp(studio *s)
+{
+    ui_buffer *b = studio_ui_buffer(s);
+    if (!s->designer || !b || !ui_buffer_text(b, UI_PART_RML)) {
+        return 0;
+    }
+    const studio_designer *d = s->designer;
+    return ((uint64_t)b->revision << 32) ^ (uint64_t)(d->selected + 1) ^
+           ((uint64_t)d->folds << 16);
 }
 
 bool studio_designer_key(studio *s, studio_editor editor, SDL_Keycode key, SDL_Keymod mod)
 {
     ui_buffer *b;
     studio_designer *d = designer_state(s, &b);
+    /* A resize owns the keys while it runs: Escape cancels it. */
+    if (d && d->resize.active) {
+        if (key == SDLK_ESCAPE) {
+            resize_cancel(s, d, b);
+        }
+        return true;
+    }
     bool hierarchy = editor == STUDIO_EDITOR_OUTLINER;
     if (!d ||
         (!hierarchy && !(editor == STUDIO_EDITOR_SCENE && shows_document(s, d))) ||
-        studio_primary(s, mod) || (mod & SDL_KMOD_ALT)) {
+        (mod & SDL_KMOD_ALT)) {
         return false;
     }
+    /* Mod+D duplicates, as for objects. */
+    if (studio_primary(s, mod)) {
+        if (key == SDLK_D && !d->carry.active) {
+            designer_duplicate(s);
+        }
+        return key == SDLK_D;
+    }
     if (hierarchy && d->carry.active) {
-        carry_key(s, d, b, key);
+        designer_carry_key(s, d, b, key);
         return true;
     }
     if (hierarchy && !(mod & SDL_KMOD_SHIFT) &&
         (key == SDLK_SPACE || key == SDLK_RETURN)) {
-        pick_up(s, d, b);
+        designer_pick_up(s, d, b);
         return true;
     }
     if (mod & SDL_KMOD_SHIFT) {
         if (key == SDLK_D) {
-            duplicate(s, d, b);
+            designer_duplicate(s);
         }
         return key == SDLK_D;
     }
     switch (key) {
         case SDLK_X:
-        case SDLK_DELETE: delete_selected(s, d, b); return true;
+        case SDLK_DELETE:
+        case SDLK_BACKSPACE: designer_delete(s); return true;
         case SDLK_UP:
         case SDLK_DOWN:
             if (hierarchy) {
-                step(s, d, key == SDLK_DOWN ? 1 : -1);
+                designer_step(s, d, key == SDLK_DOWN ? 1 : -1);
             }
             return hierarchy;
         case SDLK_LEFT:
         case SDLK_RIGHT:
-            if (hierarchy && d->selected >= 0) {
-                set_folded(d, d->selected, key == SDLK_LEFT);
+            if (hierarchy) {
+                designer_fold_selected(d, key == SDLK_LEFT);
             }
             return hierarchy;
         default: return false;

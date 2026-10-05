@@ -126,7 +126,9 @@ from command-buffer timestamps on Metal and by waiting for the GPU elsewhere;
 `pass_timing_detail` also splits each HRC cascade level. `capture_frames`
 writes every measured frame to a raw RGBA8 file for judging motion and temporal
 effects. Both serialize or read back each frame, so their frame totals are not
-benchmarks. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
+benchmarks. `material_pieces` counts the shapes and mask pieces the last frame
+rasterized, a measure of the material raster's work that machine load does not
+change. See [the GPU benchmark workflow](neon-gpu-benchmarks.md).
 
 Use the MCP for authored content whenever it is available. Route requests by
 domain:
@@ -160,7 +162,7 @@ saving them. Tool results include complete `structuredContent` and
 
 - `buildGraph`: create or edit any graph asset; `query` replaces a System's ECS query.
 - `previewField`: bake a bounded scalar field and return its PNG, range and hash.
-- `buildPrototype`: create or edit reflected components, fields, and behavior attachments.
+- `buildPrototype`: create or edit reflected components, fields, and behavior attachments; apply a scene entity's overrides to its prototype or save it as a new one (`source_instance`).
 - `buildScene`: create or edit named entities, prototype instances, overrides, and attachments; `rename_entity` renames an entity within the scene.
 - `optimizeGraph`: analyze or publish proven graph folds and graph-local aliases.
 - `renameSymbol`: rename an asset, event, function, parameter, variable or local and every reference to it across assets, dry run first.
@@ -422,6 +424,16 @@ and behavior attachments are resolved and loaded before publication. The
 complete edit batch is serialized, loaded again for round-trip validation, and
 published with the same expected-hash check as graph edits.
 
+`source_instance: {scene, entity, fields?}` starts the edit from a scene
+entity, as Studio's prototype actions do (`assets/prototype_instance.h`). On
+the prototype the entity is an instance of, it applies the fields the entity
+overrides, outside its position, or the `fields` named, and lists them in
+`applied_fields`; a field the entity does not override is refused. With
+`create`, the new prototype is the tuned entity: its components, values and
+behaviors, with its prototype's position. The scene is left alone; use
+`buildScene`'s `set_entity_prototype` to make the entity an instance of the
+new prototype. `operations` apply after it and may be empty.
+
 `buildScene` applies the same boundary to multi-entity fixtures. Entities are
 addressed by name and reference a prototype; component overrides, retained
 editor values, and behavior attachments are semantic JSON objects. The scene
@@ -488,6 +500,11 @@ Every result carries a one-sentence `description` of what the node or event
 does, from the node's `description`, the host event table, the event asset or
 the ui document.
 
+Studio's own editor nodes (category `Studio`, such as Scene Objects) run only
+in the Studio project, so searchNodes lists them there and in no other, and
+validateAsset fails a behavior that holds one elsewhere with "Editor nodes
+require Studio". Studio's node search follows the same rule.
+
 Pins read `name: type`. Behavior search offers component nodes instead of the
 generated `Get_<Component>` and `Make_<Type>` nodes they lower to. Pass
 `domain: "system"` for System graphs, which use the generated nodes directly.
@@ -546,6 +563,25 @@ Studio's code actions are operations too, and `ref` names what they create:
 - `promote_to_variable` gives an input a Get of a new variable, or an output a
   Set; `name` defaults to the pin's name.
 
+`connect` joins pins of one type directly. Where the types differ and a
+conversion exists, it stores the conversion on the wire, as Studio does when
+you drop one pin on the other: a bool feeds any number (true is 1, false is 0),
+an integer widens, and a real truncates and saturates into an integer. A wire
+no conversion carries fails the batch with `data connection was rejected`, and
+one a Behavior Expression drops when it regenerates its input fails it with
+`data connection was dropped when its expression regenerated`. Both name the two
+pins by node, name and type, for example `String.Value (const char *) to
+Sine.Value (double)`; a wire is never lost silently.
+
+`add_variable_node` takes `inputs` as `add_node` does, so
+`{"op":"add_variable_node","kind":"set","variable":"hp","inputs":{"Value":5}}`
+sets the default of the node's `Value` pin.
+
+Choose a value by a bool with `Select`: wire the bool to `Index` and two
+values of one type to `Option0` (false) and `Option1` (true). The bool reaches
+the integer `Index` through the conversion above; an integer `Index` counts
+from 0 and fails evaluation when out of range. Both options are evaluated.
+
 `add_pin`, `remove_pin` and `set_pin` on a function's or macro's Entry outputs
 or Return inputs edit its signature, so every call to it follows: a renamed
 input keeps its wires on each call, and a new input shows its `default`.
@@ -562,6 +598,9 @@ resolve `reference_name` without a numeric graph ID.
 
 Add a Behavior Expression with `add_node` and its `source` text, for example
 `{"op":"add_node","type":"Behavior Expression","source":"vec2(x, y)","ref":"motion"}`.
+Two expressions may share a source; each is its own node with its own generated
+graph, and a saved asset keeps each call's graph by `reference_id` when the
+names are shared.
 Use `set_expression` with the node selector and new `source` to regenerate it;
 valid edits reconcile pins and disconnect incompatible wires, while invalid edits
 leave the previous generated graph in place. Inputs match by name, as in
@@ -627,9 +666,10 @@ field ordering:
 ```
 
 Pass `dry_run: true` to validate and obtain predicted hashes without saving.
-A failed operation or validation leaves the authored file unchanged. Successful
-batches publish one complete file, and concurrent MCP writes to the same asset
-are serialized. The hash is checked again just before publication; this is
+A failed operation or validation leaves the authored file unchanged and returns
+its reason in `error.message`, with `failed_operation` naming the operation.
+Successful batches publish one complete file, and concurrent MCP writes to the
+same asset are serialized. The hash is checked again just before publication; this is
 not a locking protocol shared with unrelated filesystem writers.
 
 These are asset edits on disk, without an editor undo entry. An open editor
@@ -887,9 +927,14 @@ extraction policy.
 | Sensor contacts | `GameSensorContact` stores an observed position, lifetime and color, independently of explored terrain. |
 
 RCSS `dp` units scale with the view height, 720 pixels being one pixel per
-`dp`; `GameUi.order` stacks documents. UI events carry no payload, like action
-events: each button emits its event with `data-event-click="emit('Name')"`,
-and a behavior reads an input's value with `Get UI Value`, or the number
+`dp`; `GameUi.order` stacks documents. Each button emits its event with
+`data-event-click="emit('Name')"`, and the event reaches the entity's behaviors
+in the update that follows the click, so what they set shows in that frame. It
+carries no payload, like action events, unless an `event` asset of its name
+declares one: Shift, Alt and Mod (Command on a Mac, Control elsewhere) and
+Pointer (`CF_V2`, in the document's pixels) come from the click, and each
+other value is the next argument of `emit('Name', a, b)`, read as its type. A
+behavior reads an input's value with `Get UI Value`, or the number
 `emit('Name', value)` passes from an element with an id, as in a list's
 `emit('Buy', i)`. Behavior graphs own rules, text and history. While the pointer
 is over an interactive element, it does not reach gameplay.
@@ -931,7 +976,12 @@ preview, which shows on the open scene's page. Prototype previews show a
 
 Each asset's RCSS applies only inside it: rules are scoped to the element
 showing the asset (`data-ui="<name>"`), and `body` in a selector names that
-element, so `body.paused #title` styles a state class set on it. Game UI lets
+element, so `body.paused #title` styles a state class set on it. The classes
+after `body` name the page's body too, as a web page's stylesheet sees them:
+`body.dark .card` matches when the element or the page's body has `dark`
+(a class bound with `data-class-dark` follows its data), and
+`body:not(.dark) .card` when the page's body lacks it; a `>`, `+`, `~` or
+another qualifier after the classes asks only the element. Game UI lets
 the pointer through to the game except over `data-event-click` elements and inputs;
 set `pointer-events: auto` where a document should block it, such as a menu's
 backdrop.
@@ -949,11 +999,15 @@ text, and with it the letters gameplay and single-key shortcuts would take;
 Escape and chords with the primary modifier stay the host's.
 
 Documents bind data with RmlUi's data bindings, which follow Vue: `{{ save.name }}`
-in text, `data-for="item : list"`, `data-if`, `data-class-active="expr"`,
-`data-attr-src="expr"`, `data-value="save.volume"` on an input (`data-value-lazy`
-sets it on Enter or blur, as Vue's `v-model.lazy`),
+in text, `data-for="item : list"`, `data-if` (hides, as `v-show`),
+`data-when` (builds or removes the element, as `v-if`), `data-class-active="expr"`,
+`data-attr-src="expr"`, `data-value="save.volume"` on an input, which follows
+each edit (`data-value-lazy` sets it once the edit commits with Enter or blur,
+as Vue's `v-model.lazy`),
 `data-checked="save.theme"` on a radio with a `value` or on a checkbox, and
 `data-event-click="expr"`, where `emit('Name')` sends an event to the entity.
+As in HTML, a text input sends `input` on each edit and `change` once on
+commit, and a right press sends `contextmenu`.
 `save` holds the world's saved keys (the store of `Read Saved Text`) as text,
 `true` and `false` as booleans; a key nothing saved reads empty until a
 binding sets it, and changes stay pending until a behavior commits the save.

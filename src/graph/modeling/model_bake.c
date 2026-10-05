@@ -58,6 +58,8 @@ static bool distance(baker *b, CF_V3 point, float *result)
         return false;
     }
     shader_sample_context sample = {
+        .resolve_image = b->program->resolve_image,
+        .image_userdata = b->program->image_userdata,
         .object_position = { point.x, point.y, point.z }
     };
     if (!shader_graph_eval_values_validated(

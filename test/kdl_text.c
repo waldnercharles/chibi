@@ -16,6 +16,15 @@ static bool source_equals(const char *text, av_value *value, const char *literal
 
 void run_kdl_text_checks()
 {
+    char error[256];
+    av_doc *properties = av_doc_read("node first=1 second=2 third=3\n", error, sizeof error);
+    test_check(
+        properties && av_obj_size(av_obj_get(av_doc_root(properties), "node")) == 3 &&
+            av_get_uint(av_obj_get(av_obj_get(av_doc_root(properties), "node"), "third")) == 3,
+        "KDL parser owns each property name until the next event"
+    );
+    av_doc_free(properties);
+
     const char
         *source = "// Authored comments are accepted without becoming values.\n"
                   "maximum 18_446_744_073_709_551_615\n"
@@ -34,7 +43,6 @@ void run_kdl_text_checks()
                   "        - id=2 name=\"second\"\n"
                   "    }\n"
                   "}\n";
-    char error[256];
     av_doc *doc = av_doc_read(source, error, sizeof error);
     test_check(doc != NULL, "KDL2 parses typed assets, raw strings, comments and child lists");
     if (doc) {
@@ -196,6 +204,21 @@ void run_kdl_text_checks()
         );
         av_doc_free(doc);
     }
+    bool owned_properties = true;
+    for (int i = 0; i < 16; i++) {
+        doc = av_doc_read("n a=1 b=2\n", error, sizeof error);
+        if (!doc) {
+            owned_properties = false;
+            break;
+        }
+        av_value *copy = av_value_copy(av_doc_root(doc));
+        av_doc_free(doc);
+        av_value *node = av_obj_get(copy, "n");
+        owned_properties &= av_get_int(av_obj_get(node, "a")) == 1 &&
+                            av_get_int(av_obj_get(node, "b")) == 2;
+        av_value_free(copy);
+    }
+    test_check(owned_properties, "Owned KDL parses release transferred property names and preserve copied values");
     doc = av_value_read("\"hello\\nworld\"", error, sizeof error);
     test_check(
         doc && av_is_str(av_doc_root(doc)) &&

@@ -257,10 +257,11 @@ static void paint_text(painter *p, int start, int end)
 
 bool ui_source_is_binding(const char *name, int length)
 {
-    static const char *const EXACT[] = { "data-if",      "data-for",
-                                         "data-value",   "data-value-lazy",
-                                         "data-checked", "data-visible",
-                                         "data-rml",     NULL };
+    static const char *const EXACT[] = {
+        "data-if",      "data-when",       "data-for",
+        "data-value",   "data-value-lazy", "data-checked",
+        "data-visible", "data-rml",        NULL
+    };
     static const char *const PREFIXES[] = {
         "data-event-",  "data-class-", "data-style-", "data-attr-",
         "data-attrif-", "data-alias-", NULL
@@ -819,7 +820,9 @@ ui_source *ui_source_parse(const char *text, ui_source_language language)
         outline_rcss(source, root, -1);
     }
     paint_source(source);
-    qsort(source->spans, (size_t)acount(source->spans), sizeof *source->spans, span_order);
+    if (acount(source->spans) > 1) {
+        qsort(source->spans, (size_t)acount(source->spans), sizeof *source->spans, span_order);
+    }
     diagnose(source, root);
     return source;
 }

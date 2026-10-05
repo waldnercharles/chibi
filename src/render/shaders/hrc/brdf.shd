@@ -1,0 +1,18 @@
+// GGX distribution, height-correlated Smith visibility and Schlick Fresnel for
+// a dielectric, viewed straight down the camera axis.
+float highlight(vec3 n, vec3 l, float roughness)
+{
+    float nl = dot(n, l);
+    if (nl <= 0.0) return 0.0;
+    vec3 h = normalize(l + vec3(0, 0, 1));
+    float nv = max(n.z, 0.0001);
+    float nh = max(dot(n, h), 0.0);
+    float alpha = max(roughness * roughness, 0.0025);
+    float a2 = alpha * alpha;
+    float d = nh * nh * (a2 - 1.0) + 1.0;
+    float distribution = a2 / max(3.14159265 * d * d, 0.00000001);
+    float visibility = 0.5 / max(nl * sqrt(nv * nv * (1.0 - a2) + a2) +
+                                 nv * sqrt(nl * nl * (1.0 - a2) + a2), 0.0001);
+    float fresnel = 0.04 + 0.96 * pow(1.0 - max(h.z, 0.0), 5.0);
+    return fresnel * distribution * visibility * nl;
+}

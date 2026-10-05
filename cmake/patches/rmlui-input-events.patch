@@ -1,0 +1,168 @@
+diff --git a/Include/RmlUi/Core/ID.h b/Include/RmlUi/Core/ID.h
+--- a/Include/RmlUi/Core/ID.h
++++ b/Include/RmlUi/Core/ID.h
+@@ -239,6 +239,8 @@
+ 	Change,
+ 	Submit,
+ 	Tabchange,
++	// A text field's edit, as HTML's 'input'; 'change' follows once the value is committed.
++	Input,
+ 
+ 	NumDefinedIds,
+ 
+diff --git a/Source/Core/DataControllerDefault.cpp b/Source/Core/DataControllerDefault.cpp
+--- a/Source/Core/DataControllerDefault.cpp
++++ b/Source/Core/DataControllerDefault.cpp
+@@ -12,10 +12,13 @@
+ DataControllerValue::~DataControllerValue()
+ {
+ 	if (Element* element = GetElement())
++	{
+ 		element->RemoveEventListener(EventId::Change, this);
++		element->RemoveEventListener(EventId::Input, this);
++	}
+ }
+ 
+-bool DataControllerValue::Initialize(DataModel& model, Element* element, const String& variable_name, const String& /*modifier*/)
++bool DataControllerValue::Initialize(DataModel& model, Element* element, const String& variable_name, const String& modifier)
+ {
+ 	RMLUI_ASSERT(element);
+ 
+@@ -26,7 +29,11 @@
+ 	if (model.AllowMissingVariables() || model.GetVariable(variable_address))
+ 		address = std::move(variable_address);
+ 
++	// As Vue's v-model, follow each edit ('input'), or with the 'lazy' modifier (data-value-lazy), as v-model.lazy,
++	// only the committed value ('change').
+ 	element->AddEventListener(EventId::Change, this);
++	if (modifier != "lazy")
++		element->AddEventListener(EventId::Input, this);
+ 
+ 	return true;
+ }
+diff --git a/Source/Core/DataControllerDefault.h b/Source/Core/DataControllerDefault.h
+--- a/Source/Core/DataControllerDefault.h
++++ b/Source/Core/DataControllerDefault.h
+@@ -21,7 +21,7 @@
+ 	bool Initialize(DataModel& model, Element* element, const String& expression, const String& modifier) override;
+ 
+ private:
+-	// Responds to 'Change' events.
++	// Responds to 'Change' events, and to 'Input' events unless lazy.
+ 	void ProcessEvent(Event& event) override;
+ 
+ 	// Delete this.
+diff --git a/Source/Core/Elements/WidgetTextInput.cpp b/Source/Core/Elements/WidgetTextInput.cpp
+--- a/Source/Core/Elements/WidgetTextInput.cpp
++++ b/Source/Core/Elements/WidgetTextInput.cpp
+@@ -255,7 +255,7 @@
+ 	{
+ 		// Sanitizer changed the value. Set the attribute with the new value, the current function will be re-entered.
+ 		parent->SetAttribute("value", value);
+-		DispatchChangeEvent();
++		DispatchInputEvent();
+ 		return;
+ 	}
+ 
+@@ -506,10 +506,23 @@
+ 	return cursor_timer > 0;
+ }
+ 
+-void WidgetTextInput::DispatchChangeEvent(bool linebreak)
++void WidgetTextInput::DispatchInputEvent()
+ {
++	edited = true;
+ 	Dictionary parameters;
+ 	parameters["value"] = GetAttributeValue();
++	GetElement()->DispatchEvent(EventId::Input, parameters);
++}
++
++void WidgetTextInput::DispatchChangeEvent(bool linebreak)
++{
++	const String value = GetAttributeValue();
++	if (!edited || value == committed_value)
++		return;
++	edited = false;
++	committed_value = value;
++	Dictionary parameters;
++	parameters["value"] = value;
+ 	parameters["linebreak"] = Variant(linebreak);
+ 	GetElement()->DispatchEvent(EventId::Change, parameters);
+ }
+@@ -607,7 +620,7 @@
+ 			{
+ 				CopySelection();
+ 				DeleteSelection();
+-				DispatchChangeEvent();
++				DispatchInputEvent();
+ 				OnLayout();
+ 				MoveToCursor();
+ 				ShowCursor(true);
+@@ -662,6 +675,8 @@
+ 	{
+ 		if (event.GetTargetElement() == parent)
+ 		{
++			committed_value = GetAttributeValue();
++			edited = false;
+ 			parent->SetPseudoClass("focus-visible", true);
+ 			if (UpdateSelection(false))
+ 				FormatText();
+@@ -687,6 +702,7 @@
+ 			if (ClearSelection())
+ 				FormatText();
+ 			ShowCursor(false);
++			DispatchChangeEvent();
+ 		}
+ 	}
+ 	break;
+@@ -761,7 +777,7 @@
+ 	if (UpdateSelection(false))
+ 		FormatText();
+ 
+-	DispatchChangeEvent();
++	DispatchInputEvent();
+ 	return true;
+ }
+ 
+@@ -776,7 +792,7 @@
+ 	if (selection_length > 0)
+ 	{
+ 		DeleteSelection();
+-		DispatchChangeEvent();
++		DispatchInputEvent();
+ 
+ 		return true;
+ 	}
+diff --git a/Source/Core/Elements/WidgetTextInput.h b/Source/Core/Elements/WidgetTextInput.h
+--- a/Source/Core/Elements/WidgetTextInput.h
++++ b/Source/Core/Elements/WidgetTextInput.h
+@@ -129,10 +129,17 @@
+ 	/// Returns true if the text input element is currently focused.
+ 	bool IsFocused() const;
+ 
+-	/// Dispatches a change event to the widget's element.
++	/// Dispatches an input event to the widget's element, as an edit does in browsers.
++	void DispatchInputEvent();
++	/// Dispatches a change event to the widget's element when an edit left a value other than the one last committed,
++	/// as committing with Enter or by leaving the field does in browsers.
+ 	void DispatchChangeEvent(bool linebreak = false);
+ 
+ private:
++	// The value when the field took focus or last dispatched a change event, and whether an edit happened since.
++	String committed_value;
++	bool edited = false;
++
+ 	struct Line {
+ 		// Offset into the text field's value.
+ 		int value_offset;
+diff --git a/Source/Core/EventSpecification.cpp b/Source/Core/EventSpecification.cpp
+--- a/Source/Core/EventSpecification.cpp
++++ b/Source/Core/EventSpecification.cpp
+@@ -42,6 +42,7 @@
+ 		{EventId::Change        , "change"        , false , true  , DefaultActionPhase::None},
+ 		{EventId::Submit        , "submit"        , true  , true  , DefaultActionPhase::None},
+ 		{EventId::Tabchange     , "tabchange"     , false , true  , DefaultActionPhase::None},
++		{EventId::Input         , "input"         , false , true  , DefaultActionPhase::None},
+ 		// clang-format on
+ 	};
+ 

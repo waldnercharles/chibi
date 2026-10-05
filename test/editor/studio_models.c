@@ -175,7 +175,23 @@ static void press(SDL_Scancode key)
     }
 }
 
-#define PROPS "app/workspace/main/properties/body/properties/scroll/"
+#define PROPS "app/workspace/properties/area/body/panel/graph-native/"
+
+static int query_documents(rml_context *context, const char *selector, rml_element **elements, int capacity)
+{
+    int count = 0;
+    for (int document = 0;
+         document < rml_context_document_count(context) && count < capacity;
+         document++) {
+        count += rml_element_query_selector_all(
+            rml_context_document(context, document),
+            selector,
+            elements + count,
+            capacity - count
+        );
+    }
+    return count;
+}
 
 static bool click(model_fixture *f, const char *path)
 {
@@ -197,9 +213,8 @@ static bool click(model_fixture *f, const char *path)
             app_scene_authoring_document(f->scene).kind,
             (unsigned long long)studio_graph_node(f->studio)
         );
-        rml_element *doc = rml_context_document(rml_backend_context(f->studio->backend), 0);
         rml_element *elements[64];
-        int count = rml_element_query_selector_all(doc, ".panel,.prop", elements, 64);
+        int count = query_documents(rml_backend_context(f->studio->backend), ".panel,.prop", elements, 64);
         for (int i = 0; i < count && i < 64; i++) {
             char actual[256];
             if (kit_element_path(f->studio->kit, elements[i], actual, sizeof actual)) {
@@ -242,6 +257,99 @@ static bool text(model_fixture *f, const char *path, const char *value)
     } else {
         rml_element_blur(field);
     }
+    frames(f, 3);
+    return true;
+}
+
+static rml_element *graph_input_field(model_fixture *f, int pin)
+{
+    char id[64];
+    snprintf(id, sizeof id, "n%llu.i%d", (unsigned long long)studio_graph_node(f->studio), pin);
+    rml_context *context = rml_backend_context(f->studio->backend);
+    for (int document = 0; document < rml_context_document_count(context); document++) {
+        rml_element *field = rml_element_by_id(rml_context_document(context, document), id);
+        if (field) {
+            return field;
+        }
+    }
+    printf("  missing authored graph input: %s\n", id);
+    return NULL;
+}
+
+static rml_element *graph_input_row(model_fixture *f, int pin)
+{
+    char id[64], selector[96];
+    snprintf(id, sizeof id, "n%llu.i%d", (unsigned long long)studio_graph_node(f->studio), pin);
+    snprintf(selector, sizeof selector, "label[for=\"%s\"]", id);
+    rml_context *context = rml_backend_context(f->studio->backend);
+    for (int document = 0; document < rml_context_document_count(context); document++) {
+        rml_element *rows[128];
+        int count = rml_element_query_selector_all(
+            rml_context_document(context, document),
+            ".graph-row",
+            rows,
+            128
+        );
+        for (int i = 0; i < count && i < 128; i++) {
+            if (rml_element_query_selector(rows[i], selector)) {
+                return rows[i];
+            }
+        }
+    }
+    printf("  missing authored graph input row: %s\n", id);
+    return NULL;
+}
+
+static bool graph_input_choose_asset(model_fixture *f, int pin, const char *label)
+{
+    rml_context *context = rml_backend_context(f->studio->backend);
+    rml_element *row = graph_input_row(f, pin);
+    rml_element *field = row ? rml_element_query_selector(row, ".asset-field button")
+                             : NULL;
+    if (!field) {
+        printf("  missing typed asset picker for graph input %d\n", pin);
+        return false;
+    }
+    rml_element_scroll_into_view(field, RML_SCROLL_CENTER, RML_SCROLL_NEAREST);
+    frames(f, 2);
+    rml_element_click(field);
+    frames(f, 2);
+    rml_element *items[128];
+    int count = query_documents(context, ".menu-item", items, 128);
+    for (int i = 0; i < count && i < 128; i++) {
+        rml_element *name = rml_element_query_selector(items[i], ".label");
+        char text[128];
+        if (!name || !rml_element_is_visible(items[i], true)) {
+            continue;
+        }
+        rml_element_inner_rml(name, text, sizeof text);
+        if (!strcmp(text, label)) {
+            rml_element_click(items[i]);
+            frames(f, 3);
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool graph_input_choose(model_fixture *f, int pin, const char *query)
+{
+    rml_element *field = graph_input_field(f, pin);
+    if (!field) {
+        return false;
+    }
+    rml_element_scroll_into_view(field, RML_SCROLL_CENTER, RML_SCROLL_NEAREST);
+    frames(f, 2);
+    if (!rml_element_focus(field, true)) {
+        return false;
+    }
+    rml_element_select(field);
+    rml_backend_process_input(
+        f->studio->backend,
+        &(rml_input){ .type = RML_INPUT_TEXT_INPUT, .text = query, .text_size = strlen(query) }
+    );
+    frames(f, 2);
+    press(SDL_SCANCODE_TAB);
     frames(f, 3);
     return true;
 }
@@ -350,8 +458,7 @@ void test_studio_models()
     instance = graph_node_by_id(f.graph->active_graph, instance_id);
     bool declared = instance->input_count == 1 &&
                     instance->input_pins[0].declaration_id == radius_id;
-    bool edited = declared &&
-                  text(&f, PROPS "inputs/@body/i0/@control/source-edit", "2");
+    bool edited = declared && graph_input_choose(&f, 0, "2");
     instance = graph_node_by_id(f.graph->active_graph, instance_id);
     bool doubled = declared && instance->input_pins[0].default_value.f == 2;
     studio_history(f.studio, false);
@@ -370,24 +477,7 @@ void test_studio_models()
         (unsigned long long)slot_id
     );
     bool material_override = click(&f, path);
-    bool picker = click(&f, PROPS "inputs/@body/i1/@control/material");
-    rml_element *doc = rml_context_document(rml_backend_context(f.studio->backend), 0);
-    rml_element *items[32];
-    int count = rml_element_query_selector_all(doc, ".dropdown-results .menu-item", items, 32);
-    bool picked = false;
-    for (int i = 0; picker && i < count && i < 32; i++) {
-        char label[128];
-        rml_element *label_element = rml_element_query_selector(items[i], ".label");
-        if (!label_element) {
-            continue;
-        }
-        rml_element_inner_rml(label_element, label, sizeof label);
-        if (rml_element_is_visible(items[i], true) && !strcmp(label, alternate)) {
-            rml_element_click(items[i]);
-            picked = true;
-            break;
-        }
-    }
+    bool picked = material_override && graph_input_choose_asset(&f, 1, alternate);
     frames(&f, 3);
     instance = graph_node_by_id(f.graph->active_graph, instance_id);
     bool assigned = instance && instance->input_count == 2 &&
@@ -396,11 +486,9 @@ void test_studio_models()
                     !strcmp(instance->input_pins[1].default_value.str, alternate);
     if (!(material_override && picked && assigned)) {
         printf(
-            "  material workflow: override=%d picker=%d rows=%d picked=%d "
-            "assigned=%d, expected=%s actual=%s\n",
+            "  material workflow: override=%d picked=%d assigned=%d, "
+            "expected=%s actual=%s\n",
             material_override,
-            picker,
-            count,
             picked,
             assigned,
             alternate,
@@ -539,19 +627,8 @@ void test_studio_models()
 
 static rml_element *control_element(model_fixture *f, const char *path)
 {
-    char pane_path[512];
-    if (f->studio->maximized < 0 && !strncmp(path, PROPS, strlen(PROPS))) {
-        snprintf(
-            pane_path,
-            sizeof pane_path,
-            "app/workspace/side/properties/body/properties/scroll/%s",
-            path + strlen(PROPS)
-        );
-        path = pane_path;
-    }
-    rml_element *doc = rml_context_document(rml_backend_context(f->studio->backend), 0);
     rml_element *elements[16384];
-    int count = rml_element_query_selector_all(doc, "*", elements, 16384);
+    int count = query_documents(rml_backend_context(f->studio->backend), "*", elements, 16384);
     for (int i = 0; i < count && i < 16384; i++) {
         char actual[512];
         if (kit_element_path(f->studio->kit, elements[i], actual, sizeof actual) &&
@@ -595,9 +672,8 @@ static bool choose(model_fixture *f, const char *path, const char *label)
     if (!click(f, path)) {
         return false;
     }
-    rml_element *doc = rml_context_document(rml_backend_context(f->studio->backend), 0);
     rml_element *items[64];
-    count = rml_element_query_selector_all(doc, ".dropdown-results .menu-item", items, 64);
+    count = query_documents(rml_backend_context(f->studio->backend), ".dropdown-results .menu-item", items, 64);
     for (int i = 0; i < count && i < 64; i++) {
         rml_element *name = rml_element_query_selector(items[i], ".label");
         char text[128];

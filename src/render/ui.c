@@ -9,6 +9,8 @@
 #include "support/ui_style.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
+#include "ui/list.h"
+#include "ui/popover.h"
 
 #include <SDL3/SDL_video.h>
 #include <assert.h>
@@ -19,6 +21,15 @@
 #include <string.h>
 
 /* ---------- Mounts ---------- */
+
+/* A list a mount windows (ui/list.h): an element marked data-list-rows,
+   such as the List widget's scroller, and the window it last sent. */
+typedef struct mount_list
+{
+    rml_element_ref *element;
+    ui_list_state state;
+    int first, length;
+} mount_list;
 
 struct ui_mount
 {
@@ -32,9 +43,19 @@ struct ui_mount
     rml_element *root;
     bool installed; /* root holds the current markup */
     ui_activation *pending;
-    uint64_t applied; /* the model revision already applied */
-    bool autofocus;   /* installed, and its autofocus element not yet focused */
+    rml_element_ref *taken; /* the anchor of the activation last taken */
+    uint64_t applied;       /* the model revision already applied */
+    bool autofocus; /* installed, and its autofocus element not yet focused */
+    mount_list *lists;
 };
+
+static void forget_lists(ui_mount *m)
+{
+    for (int i = 0; i < acount(m->lists); i++) {
+        rml_element_ref_destroy(m->lists[i].element);
+    }
+    asetlen(m->lists, 0);
+}
 
 /* The names data-keys binds, for keys that are not letters or digits. */
 static const struct
@@ -66,7 +87,13 @@ void ui_mount_free(ui_mount *m)
         return;
     }
     afree(m->uses);
+    for (int i = 0; i < acount(m->pending); i++) {
+        rml_element_ref_destroy(m->pending[i].anchor);
+    }
     afree(m->pending);
+    rml_element_ref_destroy(m->taken);
+    forget_lists(m);
+    afree(m->lists);
     free(m->content_root);
     free(m->name);
     free(m->markup);
@@ -193,6 +220,10 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
     if (root != m->root || !same_mount) {
         m->root = root;
         m->installed = false;
+        /* Binding moves the root, which binds its children's views again;
+           another panel's evaluated markup would leave views RmlUi adds but
+           never removes, so it goes first. */
+        rml_element_set_inner_rml(root, "");
         rml_element_set_attribute(root, "data-ui", m->name);
         rml_element_set_data_model(root, UI_DATA_MODEL);
         /* Authored key bindings precede text fields, whose default handler
@@ -209,6 +240,7 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         m->installed = true;
         m->applied = 0;
         m->autofocus = true;
+        forget_lists(m);
     }
     /* A host may keep the root hidden for a frame, and hidden elements refuse
        focus, so this repeats until the focus takes. */
@@ -228,6 +260,11 @@ void ui_mount_detach(ui_mount *m)
     }
     m->root = NULL;
     m->installed = false;
+}
+
+rml_element *ui_mount_root(const ui_mount *m)
+{
+    return m->root;
 }
 
 bool ui_mount_holds(const ui_mount *m, rml_element *element)
@@ -298,6 +335,18 @@ static bool owns_field_keys(rml_element *element)
            strcmp(type, "submit") && strcmp(type, "reset");
 }
 
+/* An activation `element` sent through `event`. */
+static ui_activation activation(rml_element *element, const rml_event *event)
+{
+    ui_activation a = { .modifiers = event->modifiers,
+                        .button = event->button,
+                        .x = event->mouse_x,
+                        .y = event->mouse_y,
+                        .anchor = rml_element_ref_create(element) };
+    snprintf(a.id, sizeof a.id, "%s", rml_element_id(element));
+    return a;
+}
+
 /* A key pressed inside a data-keys element sends the event bound to it from
  * the nearest such element, and goes no further. */
 static void listen_key(ui_mount *m, const rml_event *event)
@@ -307,11 +356,11 @@ static void listen_key(ui_mount *m, const rml_event *event)
     for (rml_element *el = event->target;
          key && el && el != rml_element_parent(m->root);
          el = rml_element_parent(el)) {
-        char bindings[256];
-        ui_activation a = { 0 };
+        char bindings[256], name[128];
         if (rml_element_attribute(el, "data-keys", bindings, sizeof bindings) > 0 &&
-            bound_event(bindings, key, a.event, sizeof a.event)) {
-            snprintf(a.id, sizeof a.id, "%s", rml_element_id(el));
+            bound_event(bindings, key, name, sizeof name)) {
+            ui_activation a = activation(el, event);
+            snprintf(a.event, sizeof a.event, "%s", name);
             apush(m->pending, a);
             rml_event_stop_propagation(event);
             return;
@@ -330,13 +379,36 @@ void ui_mount_listen(ui_mount *m, const rml_event *event)
     }
 }
 
-void ui_mount_emit(ui_mount *m, rml_element *element, const char *event, const char *value)
+bool ui_mount_area_key(ui_mount *m, const char *key)
 {
+    rml_element *el = m->installed
+                        ? rml_element_query_selector(m->root, "[data-area-keys]")
+                        : NULL;
+    char bindings[256], name[128];
+    if (!el ||
+        rml_element_attribute(el, "data-area-keys", bindings, sizeof bindings) <= 0 ||
+        !bound_event(bindings, key, name, sizeof name)) {
+        return false;
+    }
+    ui_activation a = { .anchor = rml_element_ref_create(el) };
+    snprintf(a.event, sizeof a.event, "%s", name);
+    snprintf(a.id, sizeof a.id, "%s", rml_element_id(el));
+    apush(m->pending, a);
+    return true;
+}
+
+void ui_mount_emit(ui_mount *m, const rml_event *event, const char *name, int argc, const char *const *args)
+{
+    rml_element *element = event->current;
     assert(ui_mount_holds(m, element));
-    ui_activation a = { 0 };
-    snprintf(a.event, sizeof a.event, "%s", event);
-    snprintf(a.id, sizeof a.id, "%s", rml_element_id(element));
+    ui_activation a = activation(element, event);
+    snprintf(a.event, sizeof a.event, "%s", name);
+    a.argc = argc < UI_ACTIVATION_ARGS ? argc : UI_ACTIVATION_ARGS;
+    for (int i = 0; i < a.argc; i++) {
+        snprintf(a.args[i], sizeof a.args[i], "%s", args[i]);
+    }
     char input[64];
+    const char *value = argc ? args[0] : NULL;
     if (!value && !strcmp(rml_element_tag_name(element), "input") &&
         rml_element_value(element, input, sizeof input) > 0) {
         value = input;
@@ -349,15 +421,140 @@ void ui_mount_emit(ui_mount *m, rml_element *element, const char *event, const c
     apush(m->pending, a);
 }
 
+bool ui_mount_pending(const ui_mount *m)
+{
+    return acount(m->pending) > 0;
+}
+
 bool ui_mount_take(ui_mount *m, ui_activation *out)
 {
     int count = acount(m->pending);
     if (!count) {
         return false;
     }
+    rml_element_ref_destroy(m->taken);
     *out = m->pending[0];
+    m->taken = out->anchor;
     memmove(m->pending, m->pending + 1, (size_t)(count - 1) * sizeof *m->pending);
     asetlen(m->pending, count - 1);
+    return true;
+}
+
+/* An emit argument read as a payload value of `type`, or false for a type
+   a UI event cannot carry. */
+static bool argument_value(const char *text, pin_value *value)
+{
+    switch (value->type) {
+        case PIN_STR:
+        case PIN_NAME: value->str = text; return true;
+        case PIN_BOOL:
+            value->b = !strcmp(text, "true") || strtod(text, NULL) != 0;
+            return true;
+        case PIN_I32: value->i = (int)strtod(text, NULL); return true;
+        case PIN_F32: value->f = strtof(text, NULL); return true;
+        case PIN_F64: value->d = strtod(text, NULL); return true;
+        default: return false;
+    }
+}
+
+/* A payload value the DOM event gives, by its declared name; false for
+   one emit's arguments give. */
+static bool event_value(
+    const ui_activation *a,
+    const behavior_variable *v,
+    unsigned primary,
+    float pointer[2],
+    pin_value *value
+)
+{
+    static const struct
+    {
+        const char *name;
+        unsigned bits;
+    } MODIFIERS[] = { { "Shift", RML_KM_SHIFT }, { "Alt", RML_KM_ALT }, { "Mod", 0 } };
+    for (size_t i = 0; v->type == PIN_BOOL && i < sizeof MODIFIERS / sizeof *MODIFIERS;
+         i++) {
+        if (!strcmp(v->name, MODIFIERS[i].name)) {
+            value->b = (a->modifiers &
+                        (MODIFIERS[i].bits ? MODIFIERS[i].bits : primary)) != 0;
+            return true;
+        }
+    }
+    if (v->type == PIN_STRUCT && v->type_name &&
+        !strcmp(v->type_name, "CF_V2") && !strcmp(v->name, "Pointer")) {
+        pointer[0] = a->x;
+        pointer[1] = a->y;
+        value->ptr = pointer;
+        return true;
+    }
+    return false;
+}
+
+/* The payload `a` takes under `event`, the event asset declaring it (NULL
+ * declares none), in its order: bool Shift, Alt and Mod (`primary` holds
+ * Mod's modifier bits) and CF_V2 Pointer come from the DOM event, as a web
+ * handler reads event.shiftKey and event.clientX; each other value is emit's
+ * next argument read as its type (strings borrow `a`). Returns how many
+ * values it wrote to `out`, or -1 for a payload a UI event cannot carry or
+ * more than `capacity`. */
+static int ui_activation_payload(
+    const ui_activation *a,
+    const behavior_asset *event,
+    unsigned primary,
+    float pointer[2],
+    pin_value *out,
+    int capacity
+)
+{
+    int count = event ? acount(event->variables) : 0, argument = 0;
+    if (count > capacity) {
+        return -1;
+    }
+    for (int i = 0; i < count; i++) {
+        const behavior_variable *v = &event->variables[i];
+        out[i] = (pin_value){ .type = v->type, .type_name = v->type_name };
+        if (v->container != PIN_CONTAINER_SINGLE) {
+            return -1;
+        }
+        if (event_value(a, v, primary, pointer, &out[i])) {
+            continue;
+        }
+        const char *text = argument < a->argc ? a->args[argument] : "";
+        argument++;
+        if (!argument_value(text, &out[i])) {
+            return -1;
+        }
+    }
+    return count;
+}
+
+/* The event asset `live` holds under `name`, or NULL when it declares none:
+ * a local event without a payload. */
+static const behavior_asset *declared_event(game_live_world *live, const char *name)
+{
+    game_live_definition *event = game_live_find_definition(live, name);
+    return event && event->working->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION
+             ? event->working
+             : NULL;
+}
+
+/* Values an event's payload may hold; a UI event declares a few. */
+#define PAYLOAD_MAX 16
+
+bool ui_activation_send(game_live_world *live, ecs_entity entity, const ui_activation *a, unsigned primary)
+{
+    pin_value values[PAYLOAD_MAX];
+    float pointer[2];
+    int count = ui_activation_payload(a, declared_event(live, a->event), primary, pointer, values, PAYLOAD_MAX);
+    if (count < 0) {
+        return false;
+    }
+    flow_inputs inputs = { .values = values, .count = count };
+    if (entity.slot) {
+        game_behavior_dispatch(live->behaviors, entity, a->event, inputs, NULL);
+    } else {
+        game_behavior_dispatch_all(live->behaviors, a->event, inputs, NULL);
+    }
     return true;
 }
 
@@ -444,8 +641,21 @@ static void apply_element(rml_element *root, game_ui_element *e)
     if (e->move_focus && count) {
         move_focus(root, matches, count, e->move_focus);
     }
-    e->focus = e->click = false;
+    if (e->popover && count) {
+        popover_show(
+            matches[0],
+            &(popover_anchor){ .side = POPOVER_POINT,
+                               .box = { e->popover_x, e->popover_y, 0, 0 } }
+        );
+    }
+    for (int i = 0; e->reveal >= 0 && i < count; i++) {
+        char row[16];
+        snprintf(row, sizeof row, "%d", e->reveal);
+        rml_element_set_attribute(matches[i], "data-list-reveal", row);
+    }
+    e->focus = e->click = e->popover = false;
     e->move_focus = 0;
+    e->reveal = -1;
     free(matches);
 }
 
@@ -463,11 +673,68 @@ void ui_mount_apply(ui_mount *m, game_ui *model, uint64_t entity)
     m->applied = game_ui_revision(model);
 }
 
+/* What the mount keeps for list `element`, kept from its first window. */
+static mount_list *list_of(ui_mount *m, rml_element *element)
+{
+    for (int i = 0; i < acount(m->lists); i++) {
+        if (rml_element_ref_get(m->lists[i].element) == element) {
+            return &m->lists[i];
+        }
+    }
+    apush(
+        m->lists,
+        ((mount_list){ .element = rml_element_ref_create(element),
+                       .state = UI_LIST_STATE_INIT,
+                       .first = -1,
+                       .length = -1 })
+    );
+    return &alast(m->lists);
+}
+
+/* Windows each list marked data-list-rows (ui_list_window): sizes its spacer
+   for that many rows, scrolls the row a data-list-reveal names into view
+   once, as Reveal UI List Row asks, and sends `window` (ev.first, ev.count)
+   when the rows to show change, as Virtuoso's rangeChanged does, so its
+   document's behaviors fill the window in the same frame. */
+static void window_lists(ui_mount *m)
+{
+    rml_element *found[8];
+    int count = rml_element_query_selector_all(m->root, "[data-list-rows]", found, 8);
+    for (int i = 0; i < count && i < 8; i++) {
+        char text[32] = "";
+        rml_element_attribute(found[i], "data-list-rows", text, sizeof text);
+        ui_list list = { .count = atoi(text), .reveal = -1 };
+        if (rml_element_attribute(found[i], "data-list-reveal", text, sizeof text) > 0) {
+            list.reveal = atoi(text);
+            rml_element_remove_attribute(found[i], "data-list-reveal");
+        }
+        list.count = list.count > 0 ? list.count : 0;
+        mount_list *at = list_of(m, found[i]);
+        int first, length = ui_list_window(found[i], &list, &at->state, &first);
+        if (first == at->first && length == at->length) {
+            continue;
+        }
+        at->first = first;
+        at->length = length;
+        char start[16], rows[16];
+        snprintf(start, sizeof start, "%d", first);
+        snprintf(rows, sizeof rows, "%d", length);
+        rml_element_dispatch_texts(
+            found[i],
+            "window",
+            2,
+            (const char *const[]){ "first", "count" },
+            (const char *const[]){ start, rows }
+        );
+    }
+}
+
 void ui_mount_measure(ui_mount *m, game_ui *model, uint64_t entity)
 {
     if (!m->installed) {
         return;
     }
+    window_lists(m);
     rml_element *found[16];
     int count = rml_element_query_selector_all(m->root, "[id][data-event-scroll]", found, 16);
     float dp = rml_context_dp_ratio(rml_element_context(m->root));
@@ -498,7 +765,6 @@ void ui_data_init(ui_data *d, rml_context *context, yyjson_mut_doc *doc, rml_emi
     }
     yyjson_mut_obj_add_val(d->doc, root, "save", yyjson_mut_obj(d->doc));
     yyjson_mut_obj_add_bool(d->doc, yyjson_mut_obj_add_obj(d->doc, root, "system"), "dark", false);
-    yyjson_mut_obj_add_obj(d->doc, root, "entities");
     d->model = rml_data_model_create(context, UI_DATA_MODEL, d->doc, emit, user);
 }
 
@@ -522,6 +788,46 @@ void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *te
     }
     yyjson_mut_val *copy = yyjson_mut_strcpy(doc, text);
     yyjson_mut_set_strn(value, yyjson_mut_get_str(copy), yyjson_mut_get_len(copy));
+}
+
+bool ui_data_put_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *name, const char *text)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_str(value) && !strcmp(yyjson_mut_get_str(value), text)) {
+        return false;
+    }
+    ui_data_set_text(doc, value, text);
+    return true;
+}
+
+bool ui_data_put_bool(yyjson_mut_val *object, const char *name, bool on)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_bool(value) && yyjson_mut_get_bool(value) == on) {
+        return false;
+    }
+    yyjson_mut_set_bool(value, on);
+    return true;
+}
+
+bool ui_data_put_int(yyjson_mut_val *object, const char *name, int number)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_int(value) && yyjson_mut_get_int(value) == number) {
+        return false;
+    }
+    yyjson_mut_set_int(value, number);
+    return true;
+}
+
+bool ui_data_put_number(yyjson_mut_val *object, const char *name, double number)
+{
+    yyjson_mut_val *value = yyjson_mut_obj_get(object, name);
+    if (yyjson_mut_is_num(value) && yyjson_mut_get_num(value) == number) {
+        return false;
+    }
+    yyjson_mut_set_real(value, number);
+    return true;
 }
 
 static bool saved_number(const char *text, double *number)
@@ -627,24 +933,33 @@ void ui_data_sync(ui_data *d, game_save *save)
     rml_data_model_dirty(d->model, "save");
 }
 
-/* The object holding `entity`'s data under `entities`, made as needed. */
+/* `entity`'s variable: "e<entity>". */
+static void entity_key(char out[32], uint64_t entity)
+{
+    snprintf(out, 32, "e%llu", (unsigned long long)entity);
+}
+
+/* The object holding `entity`'s data, a variable of its own, so what one
+   entity's behaviors set dirties only the views bound to it (RmlUi dirties
+   by variable); made and bound as needed. */
 static yyjson_mut_val *entity_data(ui_data *d, uint64_t entity)
 {
-    yyjson_mut_val *entities = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "entities");
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(d->doc);
     char key[32];
-    snprintf(key, sizeof key, "e%llu", (unsigned long long)entity);
-    yyjson_mut_val *data = yyjson_mut_obj_get(entities, key);
+    entity_key(key, entity);
+    yyjson_mut_val *data = yyjson_mut_obj_get(root, key);
     if (!data) {
         data = yyjson_mut_obj(d->doc);
-        yyjson_mut_obj_add(entities, yyjson_mut_strcpy(d->doc, key), data);
+        yyjson_mut_obj_add(root, yyjson_mut_strcpy(d->doc, key), data);
+        rml_data_model_bind(d->model, key, data);
     }
     return data;
 }
 
 void ui_data_bind_self(ui_data *d, rml_element *root, uint64_t entity)
 {
-    char alias[48], bound[48] = "";
-    snprintf(alias, sizeof alias, "entities.e%llu", (unsigned long long)entity);
+    char alias[32], bound[32] = "";
+    entity_key(alias, entity);
     rml_element_attribute(root, "data-alias-self", bound, sizeof bound);
     if (strcmp(bound, alias)) {
         entity_data(d, entity);
@@ -770,23 +1085,40 @@ void ui_data_show_entities(ui_data *d, const game_ui *model)
         return;
     }
     qsort(changed, (size_t)acount(changed), sizeof *changed, by_revision);
+    uint64_t *dirty = NULL;
     for (int i = 0; i < acount(changed); i++) {
         const game_ui_datum *datum = changed[i];
         yyjson_mut_val
             *shown = data_at(d->doc, entity_data(d, datum->entity), datum->name);
         assign(d->doc, shown, datum->value);
         d->data_seen = datum->revision;
+        bool listed = false;
+        for (int j = 0; j < acount(dirty); j++) {
+            listed |= dirty[j] == datum->entity;
+        }
+        if (!listed) {
+            apush(dirty, datum->entity);
+        }
     }
     afree(changed);
-    rml_data_model_dirty(d->model, "entities");
+    for (int i = 0; i < acount(dirty); i++) {
+        char key[32];
+        entity_key(key, dirty[i]);
+        rml_data_model_dirty(d->model, key);
+    }
+    afree(dirty);
 }
 
+/* The entity's variable stays bound, emptied, as RmlUi cannot unbind one. */
 void ui_data_forget_entity(ui_data *d, uint64_t entity)
 {
-    yyjson_mut_val *entities = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "entities");
     char key[32];
-    snprintf(key, sizeof key, "e%llu", (unsigned long long)entity);
-    yyjson_mut_obj_remove_key(entities, key);
+    entity_key(key, entity);
+    yyjson_mut_val *data = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), key);
+    if (data) {
+        yyjson_mut_obj_clear(data);
+        rml_data_model_dirty(d->model, key);
+    }
 }
 
 void ui_data_free(ui_data *d)
@@ -879,8 +1211,12 @@ static const char BASE_RCSS[] =
     "scrollbarhorizontal sliderbar:hover { "
     "background-color: var(--scrollbar-hover, #aaa); }\n"
     "scrollbarcorner { background-color: transparent; }\n"
-    "[data-event-click], input, select, textarea { "
-    "pointer-events: auto; }\n";
+    "[data-event-click], input, select, textarea, [popovertarget], [popover] { "
+    "pointer-events: auto; }\n"
+    /* ui/popover.c: a closed popover lays out and draws nothing, and a shown
+       one waits unseen until it is placed. */
+    "[popover]:not([data-open]) { display: none; }\n"
+    "[popover][data-unplaced] { visibility: hidden; }\n";
 
 /* One GameUi entity's mount, or the host's overlay. */
 typedef struct ui_view
@@ -912,11 +1248,13 @@ struct render_ui
     double time;
     int width, height;
     float scale;
+    float reference; /* the dp the canvas's height spans */
     char error[256];
+    char failure[256]; /* an activation the last update could not send */
 };
 
 static void on_event(void *user, const rml_event *event);
-static void on_emit(void *user, const rml_event *event, const char *name, const char *value);
+static void on_emit(void *user, const rml_event *event, const char *name, int argc, const char *const *args);
 
 /* Removes the view's root, which detaches the listener, then its mount. */
 static void close_view(render_ui *ui, ui_view *view)
@@ -1000,6 +1338,7 @@ render_ui *render_ui_new(const char *content_root, yyjson_mut_doc *data)
     ui->backend = rml_backend_create(1, 1, 1);
     ui->listener = rml_listener_create(on_event, ui);
     ui->scale = 1;
+    ui->reference = UI_REFERENCE_HEIGHT;
     ui_data_init(&ui->data, rml_backend_context(ui->backend), data, on_emit, ui);
     load_page(ui);
     return ui;
@@ -1077,11 +1416,11 @@ static void on_event(void *user, const rml_event *event)
     }
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
+static void on_emit(void *user, const rml_event *event, const char *name, int argc, const char *const *args)
 {
     ui_mount *m = mount_holding(user, event->current);
     if (m) {
-        ui_mount_emit(m, event->current, name, value);
+        ui_mount_emit(m, event, name, argc, args);
     }
 }
 
@@ -1154,29 +1493,38 @@ bool render_ui_wants_text(const render_ui *ui)
     return !strcmp(tag, "textarea") || (!strcmp(tag, "input") && field);
 }
 
-/* Sends each view's activations to its entity, an input's value first. */
+/* Mod's modifier bits in a game, whose hosts trade Command and Control on a
+ * Mac as they do for keys (viewport.c). */
+#define GAME_PRIMARY RML_KM_CTRL
+
+/* Sends each view's activations to its entity's behaviors now, an input's
+ * value first, so what they set shows in this update. They wait while a
+ * spawn initializes, as the engine holds the events it queues. */
 static void send_activations(render_ui *ui, const ui_world *world)
 {
     game_ui *model = world->model;
-    game_entities *entities = world->entities;
+    game_live_world *live = world->live;
+    ui->failure[0] = '\0';
     for (int i = 0; i < acount(ui->views); i++) {
         ui_view *view = &ui->views[i];
         ui_activation a;
         if (view->mount && model) {
             ui_mount_measure(view->mount, model, view->entity);
         }
-        while (view->mount && ui_mount_take(view->mount, &a)) {
+        while (view->mount && !(live && game_entities_initializing(live->entities)) &&
+               ui_mount_take(view->mount, &a)) {
             if (model && a.has_value && a.id[0]) {
                 char selector[160];
                 snprintf(selector, sizeof selector, "#%s", a.id);
                 game_ui_set_value(model, view->entity, selector, a.value);
             }
-            if (entities) {
-                game_entities_request_event(
-                    entities,
-                    ecs_entity_from_u64(view->entity),
-                    a.event,
-                    (flow_inputs){ 0 }
+            if (live &&
+                !ui_activation_send(live, ecs_entity_from_u64(view->entity), &a, GAME_PRIMARY)) {
+                snprintf(
+                    ui->failure,
+                    sizeof ui->failure,
+                    "%s declares a payload a UI event cannot carry",
+                    a.event
                 );
             }
         }
@@ -1193,7 +1541,7 @@ static ui_view *find_view(render_ui *ui, uint64_t entity)
     return NULL;
 }
 
-static void show_view(render_ui *ui, uint64_t entity, const GameUi *component, bool revealed)
+static void show_view(render_ui *ui, uint64_t entity, const GameUi *component, bool shown)
 {
     ui_view *view = find_view(ui, entity);
     if (!view) {
@@ -1216,7 +1564,7 @@ static void show_view(render_ui *ui, uint64_t entity, const GameUi *component, b
     }
     ui->restyle |= ui_mount_sync(view->mount, view->root, ui->listener, ui->time);
     rml_element_set_property(view->root, "z-index", order);
-    rml_element_set_property(view->root, "display", component->hidden && !revealed ? "none" : "block");
+    rml_element_set_property(view->root, "display", shown ? "block" : "none");
 }
 
 /* Drops the views whose entity no longer shows a GameUi. */
@@ -1275,7 +1623,8 @@ static void install_styles(render_ui *ui)
     afree(names);
 }
 
-/* Reports the page's error, else the first mount's. */
+/* Reports the page's error, else the first mount's, else an activation that
+ * could not be sent. */
 static void collect_error(render_ui *ui)
 {
     snprintf(ui->error, sizeof ui->error, "%s", ui->page.error);
@@ -1284,6 +1633,9 @@ static void collect_error(render_ui *ui)
         if (m) {
             snprintf(ui->error, sizeof ui->error, "%s", ui_mount_error(m));
         }
+    }
+    if (!ui->error[0]) {
+        snprintf(ui->error, sizeof ui->error, "%s", ui->failure);
     }
 }
 
@@ -1296,10 +1648,11 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
     if (ui_page_sync(&ui->page, ui->content_root, w->page ? w->page : "", ui->time)) {
         load_page(ui);
     }
-    if (width != ui->width || height != ui->height) {
+    if (width != ui->width || height != ui->height ||
+        ui->scale != (float)height / ui->reference) {
         ui->width = width;
         ui->height = height;
-        ui->scale = (float)height / UI_REFERENCE_HEIGHT;
+        ui->scale = (float)height / ui->reference;
         rml_backend_resize_pixels(ui->backend, width, height, ui->scale);
     }
     show_overlay(ui);
@@ -1314,7 +1667,10 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         while (ecs_query_next(&query, &entity)) {
             uint64_t id = ecs_entity_to_u64(entity);
             if (!ecs_entity_is_retiring(world, entity)) {
-                show_view(ui, id, GAME_GameUi_get_const(world, entity), w->preview || id == w->revealed);
+                const GameUi *component = GAME_GameUi_get_const(world, entity);
+                bool shown = (!component->hidden || w->preview || id == w->revealed) &&
+                             !render_skip_has(w->hidden, entity);
+                show_view(ui, id, component, shown);
             }
         }
         ecs_query_end(&query);
@@ -1338,15 +1694,66 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
 
 void render_ui_composite(render_ui *ui, CF_Canvas target)
 {
+    render_ui_composite_region(ui, target, (const float[4]){ 0, 0, 1, 1 });
+}
+
+void render_ui_composite_region(render_ui *ui, CF_Canvas target, const float region[4])
+{
     if ((!acount(ui->views) && !ui->overlay.mount && !ui->page.name[0]) ||
         ui->width <= 0 || ui->height <= 0) {
         return;
     }
     rml_backend_render(ui->backend);
     cf_draw_push();
-    rml_backend_present(ui->backend);
+    rml_backend_present_region(ui->backend, region);
     cf_render_to(target, false);
     cf_draw_pop();
+}
+
+/* Grows `bounds` by the boxes of what `element` shows; a box as wide as the
+   canvas is a wrapper, so its children's count instead. */
+static void content_bounds(const render_ui *ui, rml_element *element, float bounds[4])
+{
+    rml_vec2 at = rml_element_absolute_offset(element, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(element, RML_BOX_BORDER);
+    if (size.x <= 0 || size.y <= 0 || !rml_element_is_visible(element, false)) {
+        return;
+    }
+    if (size.x < ui->width - 1 || !rml_element_child_count(element)) {
+        bounds[0] = fminf(bounds[0], at.x);
+        bounds[1] = fminf(bounds[1], at.y);
+        bounds[2] = fmaxf(bounds[2], at.x + size.x);
+        bounds[3] = fmaxf(bounds[3], at.y + size.y);
+        return;
+    }
+    for (int i = 0; i < rml_element_child_count(element); i++) {
+        content_bounds(ui, rml_element_child(element, i), bounds);
+    }
+}
+
+void render_ui_set_reference_height(render_ui *ui, float dp)
+{
+    ui->reference = dp > 0 ? dp : UI_REFERENCE_HEIGHT;
+}
+
+bool render_ui_overlay_bounds(const render_ui *ui, float bounds[4])
+{
+    float found[4] = { INFINITY, INFINITY, -INFINITY, -INFINITY };
+    for (int i = 0; ui->overlay.root && i < rml_element_child_count(ui->overlay.root);
+         i++) {
+        content_bounds(ui, rml_element_child(ui->overlay.root, i), found);
+    }
+    if (found[0] >= found[2] || found[1] >= found[3]) {
+        return false;
+    }
+    float size[4] = { (float)ui->width,
+                      (float)ui->height,
+                      (float)ui->width,
+                      (float)ui->height };
+    for (int i = 0; i < 4; i++) {
+        bounds[i] = found[i] / size[i];
+    }
+    return true;
 }
 
 /* ---------- UI wiring (workstream K) ---------- */

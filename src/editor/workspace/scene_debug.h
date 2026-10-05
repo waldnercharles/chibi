@@ -10,6 +10,7 @@ typedef struct
     uint64_t sequence;
     uint64_t session;
     char *asset_name;
+    char *prototype; /* its entity's, so a destroyed target keeps its name; or NULL */
     struct
     {
         const behavior_asset *working;
@@ -25,6 +26,14 @@ void scene_debug_select(scene_debug *debug, const game_behavior_attachment_info 
 bool scene_debug_resolve(
     const scene_debug *debug,
     ecs_world *world,
+    game_behavior_world *behaviors,
+    uint64_t session,
+    game_behavior_attachment_info *out
+);
+/* The target's instance after its entity was destroyed, which the behavior
+   world keeps while it is inspected (game_behavior_retired_target). */
+bool scene_debug_retired(
+    const scene_debug *debug,
     game_behavior_world *behaviors,
     uint64_t session,
     game_behavior_attachment_info *out

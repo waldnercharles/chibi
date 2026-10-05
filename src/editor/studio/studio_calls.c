@@ -2,7 +2,9 @@
  * callers or callees as a tree, from the shared call hierarchy. A handler's
  * row stands for its event among callers. A row opens the call, send or
  * Event node that joins it to its parent; a row whose children the trace
- * left out ends with More, which traces again from it. */
+ * left out ends with More, which traces again from it. Output shows the
+ * rows (studio_output.c): a click selects a row, a double click or Enter
+ * opens it, and the arrows walk and fold the tree. */
 #include "assets/call_hierarchy.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "graph/document/events.h"
@@ -133,6 +135,7 @@ static void trace(studio *s)
     asetlen(s->calls.rows, 0);
     add_rows(s, index, items, 0, 0);
     call_hierarchy_free(items);
+    s->calls.selected = -1;
     studio_output_calls(s);
 }
 
@@ -177,6 +180,7 @@ void studio_calls_clear(studio *s)
 {
     asetlen(s->calls.rows, 0);
     s->calls.root.title[0] = '\0';
+    s->calls.selected = -1;
 }
 
 /* Ends the subtrees of rows at depth or deeper with their More rows,
@@ -188,9 +192,7 @@ static void end_subtrees(const studio_call *rows, int **more, int depth, int **s
     }
 }
 
-/* The rows under open rows as positions, and a More after an open row's
-   subtree when the trace left some of its children out. */
-static int *shown_rows(const studio *s)
+int *studio_calls_rows(const studio *s)
 {
     const studio_call *rows = s->calls.rows;
     int *shown = NULL, *more = NULL;
@@ -215,81 +217,131 @@ static int *shown_rows(const studio *s)
     return shown;
 }
 
-/* A More row: tracing from its row lists the children left out. True when
-   it traced, which replaces the rows. */
-static bool more_row(studio *s, int row)
+/* A More row traces again from the row it ends, listing the children the
+   trace left out; that replaces the rows. */
+static void more(studio *s, int row)
 {
-    char key[16];
-    snprintf(key, sizeof key, "m%d", row);
-    kit_row_desc d = { .label = "More",
-                       .icon = KIT_ICON_MORE,
-                       .depth = s->calls.rows[row].depth + 1,
-                       .twisty = -1 };
-    unsigned events = kit_row_begin(s->kit, key, &d);
-    kit_row_end(s->kit);
-    if (!(events & KIT_ROW_CLICK)) {
-        return false;
-    }
     s->calls.root = s->calls.rows[row].from;
     trace(s);
-    return true;
 }
 
-static void head(studio *s)
+/* Rows may have changed since they were shown: keys past them do nothing. */
+void studio_calls_click(studio *s, int key)
 {
-    kit *k = s->kit;
-    static const char *const DIRECTIONS[] = { "Callers", "Callees" };
-    kit_push(k, "head", NULL, "find-head");
-    kit_icon(k, "icon", NULL, s->calls.callees ? KIT_ICON_CALLEES : KIT_ICON_CALLERS);
-    kit_label(k, "title", "find-title", s->calls.root.title);
-    kit_leaf(k, "gap", NULL, "spacer");
-    kit_push(k, "direction", NULL, "output-scope");
-    if (kit_toggle_group(k, "direction", &s->calls.callees, DIRECTIONS, 2, 0)) {
+    if (key < 0 && -1 - key < acount(s->calls.rows)) {
+        more(s, -1 - key);
+        return;
+    }
+    if (key < acount(s->calls.rows)) {
+        s->calls.selected = key;
+    }
+}
+
+void studio_calls_open(studio *s, int key)
+{
+    if (key < 0 || key >= acount(s->calls.rows)) {
+        studio_calls_click(s, key);
+        return;
+    }
+    s->calls.selected = key;
+    studio_open_reference(s, &s->calls.rows[key].at);
+}
+
+void studio_calls_direction(studio *s, bool callees)
+{
+    if (s->calls.callees != callees && s->calls.root.title[0]) {
+        s->calls.callees = callees;
         trace(s);
     }
-    kit_pop(k);
-    kit_pop(k);
 }
 
-void studio_calls_view(studio *s, float row_height)
+/* ---------- Keys ---------- */
+
+/* The shown calls, without their More rows, and where the selection is
+   among them, or -1. */
+static int *shown_calls(const studio *s, int *at)
 {
-    kit *k = s->kit;
-    if (s->calls.root.title[0]) {
-        head(s);
+    int *rows = studio_calls_rows(s), *calls = NULL;
+    *at = -1;
+    for (int i = 0; i < acount(rows); i++) {
+        if (rows[i] >= 0) {
+            *at = rows[i] == s->calls.selected ? acount(calls) : *at;
+            apush(calls, rows[i]);
+        }
     }
-    int *shown = shown_rows(s);
-    kit_list_desc list = { .count = acount(shown),
-                           .row_height = row_height,
-                           .reveal = -1 };
-    int first, last;
-    kit_list_begin(k, "calls", "output-list find-list", &list, &first, &last);
-    for (int r = first; r <= last && r < acount(shown); r++) {
-        if (shown[r] < 0 && more_row(s, -1 - shown[r])) {
+    afree(rows);
+    return calls;
+}
+
+/* The row's parent: the nearest row above it one level up, or -1. */
+static int parent_of(const studio *s, int row)
+{
+    for (int i = row - 1; i >= 0; i--) {
+        if (s->calls.rows[i].depth < s->calls.rows[row].depth) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Right opens a closed row, then steps to its first child; Left closes an
+   open row, then steps to its parent. */
+static int sideways(studio *s, const int *calls, int at, bool right)
+{
+    studio_call *row = &s->calls.rows[calls[at]];
+    if (right && row->parent && !row->open) {
+        row->open = true;
+        return calls[at];
+    }
+    if (right) {
+        bool child = at + 1 < acount(calls) &&
+                     s->calls.rows[calls[at + 1]].depth > row->depth;
+        return child ? calls[at + 1] : calls[at];
+    }
+    if (row->parent && row->open) {
+        row->open = false;
+        return calls[at];
+    }
+    int parent = parent_of(s, calls[at]);
+    return parent >= 0 ? parent : calls[at];
+}
+
+/* A tree's keys (VS Code, WAI-ARIA's tree view): Up and Down step through
+   the shown calls, Home and End go to the ends, Left and Right fold or step
+   out and in, and Enter opens the selected call. */
+bool studio_calls_key(studio *s, SDL_Keycode key)
+{
+    int at, *calls = shown_calls(s, &at);
+    int count = acount(calls), selected = s->calls.selected;
+    bool taken = true;
+    switch (key) {
+        case SDLK_DOWN:
+            selected = count ? calls
+                                   [at < 0           ? 0
+                                    : at + 1 < count ? at + 1
+                                                     : at]
+                             : -1;
             break;
-        }
-        if (shown[r] < 0) {
-            continue;
-        }
-        studio_call *row = &s->calls.rows[shown[r]];
-        char key[16], meta[160];
-        snprintf(key, sizeof key, "c%d", shown[r]);
-        snprintf(meta, sizeof meta, "%s%s", row->meta, row->cycle ? " \xe2\x86\xbb" : "");
-        kit_row_desc d = { .label = row->label,
-                           .icon = row->icon,
-                           .depth = row->depth,
-                           .twisty = row->parent ? row->open : -1,
-                           .meta = meta };
-        unsigned events = kit_row_begin(k, key, &d);
-        kit_row_end(k);
-        if (events & KIT_ROW_TWISTY) {
-            row->open = !row->open;
-        } else if (events & KIT_ROW_CLICK) {
-            studio_open_reference(s, &row->at);
-        }
+        case SDLK_UP:
+            selected = count ? calls[at <= 0 ? 0 : at - 1] : -1;
+            break;
+        case SDLK_HOME: selected = count ? calls[0] : -1; break;
+        case SDLK_END: selected = count ? calls[count - 1] : -1; break;
+        case SDLK_LEFT:
+        case SDLK_RIGHT:
+            selected = at >= 0 ? sideways(s, calls, at, key == SDLK_RIGHT) : selected;
+            break;
+        case SDLK_RETURN:
+        case SDLK_KP_ENTER:
+            if (at >= 0) {
+                studio_open_reference(s, &s->calls.rows[calls[at]].at);
+            }
+            break;
+        default: taken = false; break;
     }
-    kit_list_end(k);
-    if (!acount(shown)) {
-        kit_label(k, "empty", "output-empty", acount(s->calls.rows) ? "No matches" : "No calls");
-    }
-    afree(shown);
+    afree(calls);
+    s->calls.selected = selected;
+    s->calls.reveal |= taken;
+    s->ui_schedule.wake |= taken;
+    return taken;
 }

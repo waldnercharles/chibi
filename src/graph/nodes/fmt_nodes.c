@@ -308,3 +308,40 @@ node_desc NODE_Format_Text = {
     .description = "Replaces {} or {0} placeholders in Format with the "
                    "arguments, fmt style; {0:.2f} adds a spec.",
 };
+
+static pin_value text_equal(const pin_value *inputs, int, arena *)
+{
+    return (pin_value){ .type = PIN_BOOL,
+                        .type_name = "bool",
+                        .b = !strcmp(fmt_text_of(&inputs[0]), fmt_text_of(&inputs[1])) };
+}
+
+static const char *text_equal_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    *result = text_equal(arguments, count, storage);
+    return NULL;
+}
+
+static pin_spec text_equal_inputs[] = {
+    { .name = "A", .type = PIN_STR, .type_name = "const char *", .kind = PIN_DATA },
+    { .name = "B", .type = PIN_STR, .type_name = "const char *", .kind = PIN_DATA },
+};
+static pin_spec text_equal_outputs[] = {
+    { "Result", PIN_BOOL, "bool", PIN_DATA },
+};
+node_desc NODE_Text_Equal = {
+    .name = "Text Equal",
+    .input_count = 2,
+    .output_count = 1,
+    .inputs = text_equal_inputs,
+    .outputs = text_equal_outputs,
+    .pure_kind = NODE_PURE_CALL,
+    .fn = text_equal,
+    .host_call = &(const node_host_call){ .value = text_equal_call },
+    .access = &format_access,
+    .display_class = NODE_DISPLAY_PURE,
+    .category = "Text",
+    .keywords = "equal same compare string text empty match",
+    .description = "Whether A and B are the same text, compared byte by byte; "
+                   "compare with \"\" to test for empty text.",
+};

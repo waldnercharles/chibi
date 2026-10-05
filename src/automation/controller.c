@@ -18,10 +18,12 @@
 #include "automation/graph_optimize.h"
 #include "automation/navigation.h"
 #include "automation/prototype_edit.h"
+#include "automation/prototype_instance.h"
 #include "automation/scene_edit.h"
 #include "automation/ui_edit.h"
 #include "ecs/ecs.h"
 #include "editor/documents/component_presentation.h"
+#include "editor/studio/studio_nodes.h"
 #include "graph/authoring/describe.h"
 #include "graph/authoring/layout.h"
 #include "graph/compiler/behavior_program.h"
@@ -386,6 +388,7 @@ static const contract_field CONTRACT_EDIT_PROTOTYPE[] = {
     { "create", "boolean", false, "Create a new asset without replacing existing content." },
     { "expected_hash", "string", false, "Required current asset hash when editing." },
     { "dry_run", "boolean", false, "Validate and return results without writing." },
+    { "source_instance", "object", false, "A scene entity {scene, entity, fields?}: with create, the new prototype starts as a copy of it; otherwise the fields it overrides, or the fields named, are applied to this prototype, the one it is an instance of." },
     { "operations", "array", true, "Atomic semantic component, field, and behavior edit batch, at most 128 operations." },
 };
 static const contract_field CONTRACT_EDIT_SCENE[] = {
@@ -1074,7 +1077,12 @@ static char *response_finish(response *result)
     yyjson_mut_obj_add_bool(result->doc, result->root, "ok", result->ok);
     char *json = yyjson_mut_write(result->doc, 0, NULL);
     yyjson_mut_doc_free(result->doc);
-    return json ? json : xstrdup("{\"contract\":1,\"ok\":false}");
+    return json ? json
+                : xstrdup(
+                      "{\"contract\":1,\"ok\":false,\"error\":{\"code\":"
+                      "\"execution_failed\","
+                      "\"message\":\"the response could not be serialized\"}}"
+                  );
 }
 
 static const operation_descriptor *operation_by_name(const char *name)
@@ -1405,7 +1413,9 @@ static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
             catalog_member_add(asset, "entity", request_string(entity, "name"));
         }
     }
-    qsort(asset->members, (size_t)acount(asset->members), sizeof *asset->members, catalog_member_compare);
+    if (acount(asset->members) > 1) {
+        qsort(asset->members, (size_t)acount(asset->members), sizeof *asset->members, catalog_member_compare);
+    }
 }
 
 static void catalog_add_diagnostic(
@@ -1512,6 +1522,7 @@ typedef struct
 {
     behavior_asset **assets;
     char error[256];
+    bool studio; /* the project is Studio's, whose world runs its editor nodes */
 } catalog_links;
 
 static bool links_family(const asset_family *family)
@@ -1582,6 +1593,9 @@ static void catalog_validate_asset(const catalog_links *links, catalog_asset *as
                 acount(links->assets),
                 &report
             ));
+            if (!links->studio) {
+                studio_nodes_check(behavior, &report);
+            }
             catalog_add_report(asset, &report);
             compile_report_free(&report);
         }
@@ -1835,8 +1849,12 @@ static void catalog_link_references(catalog_asset *assets, const reference_index
     for (int i = 0; i < acount(assets); i++) {
         catalog_reference *dependencies = assets[i].dependencies;
         catalog_reference *dependents = assets[i].dependents;
-        qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
-        qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+        if (acount(dependencies) > 1) {
+            qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
+        }
+        if (acount(dependents) > 1) {
+            qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+        }
     }
 }
 
@@ -2044,7 +2062,7 @@ static int build_catalog_from_entries(
     }
     catalog_asset *assets = NULL;
     bool graphs_cached = previous && catalog_links_unchanged(previous, entries);
-    catalog_links links = { 0 };
+    catalog_links links = { .studio = studio_project_is(root) };
     bool linked = false;
     int status = 0;
     for (int i = 0; i < acount(entries) && !status; i++) {
@@ -2161,7 +2179,9 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
         closedir(directory);
         free(directory_path);
     }
-    qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    if (acount(entries) > 1) {
+        qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+    }
     *out = entries;
     return 0;
 }
@@ -3052,7 +3072,9 @@ static void inspect_add_sorted_array(
     }
     /* Documents already order edges canonically. */
     if (!edges) {
-        qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+        if (item_count > 1) {
+            qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+        }
     }
     for (int i = 0; i < item_count; i++) {
         yyjson_mut_val *copy = yyjson_val_mut_copy(doc, items[i].value);
@@ -3113,7 +3135,9 @@ static void inspect_add_calls(
     for (int i = 0; i < count; i++) {
         nodes[i] = source->nodes[i];
     }
-    qsort(nodes, (size_t)count, sizeof *nodes, inspect_node_compare);
+    if (count > 1) {
+        qsort(nodes, (size_t)count, sizeof *nodes, inspect_node_compare);
+    }
     for (int i = 0; i < count; i++) {
         const node *call = nodes[i];
         if (!strcmp(call->desc->name, "Model Parameter") ||
@@ -3166,7 +3190,9 @@ static void inspect_add_effects(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     for (int i = 0; i < read_count; i++) {
         ordered_reads[i] = effects->reads[i];
     }
-    qsort(ordered_reads, (size_t)read_count, sizeof *ordered_reads, compare_uint64);
+    if (read_count > 1) {
+        qsort(ordered_reads, (size_t)read_count, sizeof *ordered_reads, compare_uint64);
+    }
     for (int i = 0; i < read_count; i++) {
         yyjson_mut_arr_add_uint(doc, reads, ordered_reads[i]);
     }
@@ -3179,7 +3205,9 @@ static void inspect_add_effects(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     for (int i = 0; i < write_count; i++) {
         ordered_writes[i] = effects->writes[i];
     }
-    qsort(ordered_writes, (size_t)write_count, sizeof *ordered_writes, compare_uint64);
+    if (write_count > 1) {
+        qsort(ordered_writes, (size_t)write_count, sizeof *ordered_writes, compare_uint64);
+    }
     for (int i = 0; i < write_count; i++) {
         yyjson_mut_arr_add_uint(doc, writes, ordered_writes[i]);
     }
@@ -3303,7 +3331,9 @@ static void inspect_add_variables(yyjson_mut_doc *doc, yyjson_mut_val *object, y
             .id = inspect_json_uint(yyjson_obj_get(item, "id")),
         };
     }
-    qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+    if (item_count > 1) {
+        qsort(items, (size_t)item_count, sizeof *items, inspect_item_compare);
+    }
     for (int i = 0; i < item_count; i++) {
         yyjson_mut_arr_add_val(variables, yyjson_val_mut_copy(doc, items[i].value));
     }
@@ -3418,6 +3448,10 @@ static void inspect_model_parameters(
     model_inspection inspection = { 0 };
     if (valid) {
         model_program_inspect(&program, &inspection);
+        yyjson_mut_val *images = yyjson_mut_obj_add_arr(doc, compilation, "image_dependencies");
+        for (int i = 0; i < acount(program.shader.images); i++) {
+            yyjson_mut_arr_add_strcpy(doc, images, program.shader.images[i].key);
+        }
         int public_slots = inspection.public_slots;
         int private_slots = inspection.private_slots;
         yyjson_mut_obj_add_int(
@@ -4934,6 +4968,9 @@ static int compile_project_graph(const char *root, const behavior_asset *asset, 
                      &program,
                      &error
                  );
+    if (valid) {
+        valid = render_image_validate_volumes(&program.shader, &error);
+    }
     model_program_free(&program);
     free_behavior_assets(models);
     if (!valid) {
@@ -4985,6 +5022,9 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
             if (linked) {
                 errors = compile_project_graph(root, linked, &report);
+                errors += studio_project_is(root)
+                            ? 0
+                            : studio_nodes_check(asset, &report);
             } else {
                 errors = 1;
                 add_load_diagnostic(result->doc, diagnostics, error);
@@ -6634,7 +6674,9 @@ static double costliest_percentile(const scenario_profile_frame *sorted, int cou
 static void add_profile_frames(yyjson_mut_doc *doc, yyjson_mut_val *timing, scenario_profile_frame *frames)
 {
     int count = acount(frames);
-    qsort(frames, (size_t)count, sizeof *frames, compare_frame_cost);
+    if (count > 1) {
+        qsort(frames, (size_t)count, sizeof *frames, compare_frame_cost);
+    }
     yyjson_mut_val *distribution = yyjson_mut_obj_add_obj(doc, timing, "frame_ms");
     if (count) {
         yyjson_mut_obj_add_real(doc, distribution, "p50", costliest_percentile(frames, count, 50));
@@ -9245,9 +9287,14 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
 
 /* Behavior graphs author component nodes, which lower to the generated nodes
  * System graphs use directly; Systems offer the nodes their compiler turns
- * into bytecode. No domain offers every domain's authoring nodes. */
-static bool domain_offers(const char *domain, const node_desc *node)
+ * into bytecode. No domain offers every domain's authoring nodes, and only
+ * the Studio project, whose world runs them, offers Studio's editor nodes
+ * (category Studio). */
+static bool domain_offers(const char *domain, const node_desc *node, bool studio)
 {
+    if (!studio && studio_node_is(node)) {
+        return false;
+    }
     if (domain && !strcmp(domain, "system")) {
         return game_system_node_supported(node);
     }
@@ -9275,6 +9322,7 @@ typedef struct
     behavior_asset **definitions;
     ui_event *ui;
     ui_data_binding *bindings;
+    bool studio; /* the Studio project, which runs Studio's editor nodes */
 } project_events;
 
 static bool defined_event(const project_events *events, const char *name)
@@ -9880,7 +9928,8 @@ static void add_node_outline(
     yyjson_mut_val *categories = yyjson_mut_obj_add_obj(doc, value, "categories");
     for (int i = 0; i < registry_node_count(); i++) {
         const node_desc *node = registry_node(i);
-        if (!domain_offers(domain, node) || component_generated_kind(node)) {
+        if (!domain_offers(domain, node, project->studio) ||
+            component_generated_kind(node)) {
             continue;
         }
         const char *category = node->category && node->category[0] ? node->category
@@ -9936,7 +9985,7 @@ static node_match *node_candidates(
 {
     node_match *matches = NULL;
     for (int i = 0; i < registry_node_count(); i++) {
-        if (domain_offers(domain, registry_node(i))) {
+        if (domain_offers(domain, registry_node(i), project->studio)) {
             apush(matches, ((node_match){ .desc = registry_node(i) }));
         }
     }
@@ -10095,7 +10144,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page, include_pins or behavior");
         return -1;
     }
-    project_events events = { 0 };
+    project_events events = { .studio = studio_project_is(root) };
     char error[256] = "";
     int status = behavior_vocabulary(domain)
                    ? load_project_events(root, behavior, &events, error, sizeof error)
@@ -10162,7 +10211,9 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         }
         apush(matches, match);
     }
-    qsort(matches, (size_t)acount(matches), sizeof *matches, node_match_compare);
+    if (acount(matches) > 1) {
+        qsort(matches, (size_t)acount(matches), sizeof *matches, node_match_compare);
+    }
     yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
     int total = acount(matches);
     for (int i = offset; i < total && i < offset + limit; i++) {
@@ -10648,9 +10699,17 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
                     ECS_OK) {
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
+            char **component_strings = NULL;
             if (status == CHIBI_AUTOMATION_OK && entity->components &&
-                game_prototype_apply_components_value(world, actor, entity->components, &registry, error, error_size) !=
-                    0) {
+                game_prototype_apply_components_value(
+                    world,
+                    actor,
+                    entity->components,
+                    &registry,
+                    &component_strings,
+                    error,
+                    error_size
+                ) != 0) {
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
             if (status == CHIBI_AUTOMATION_OK) {
@@ -10662,6 +10721,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
                 );
             }
             ecs_world_free(world);
+            game_prototype_owned_strings_free(component_strings);
         }
         game_prototype_free(prototype);
         for (int behavior = 0;
@@ -10671,6 +10731,79 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         }
     }
     game_scene_document_free(scene);
+    return status;
+}
+
+/* buildPrototype's source_instance (automation/prototype_instance.h): the
+ * prototype text the edit starts from in `start`. */
+static int start_from_instance(
+    const char *root,
+    yyjson_val *instance,
+    const asset_ref *ref,
+    const char *source,
+    response *result,
+    yyjson_mut_val *value,
+    char **start,
+    char *error,
+    size_t size
+)
+{
+    const char *scene = request_string(instance, "scene");
+    const char *entity = request_string(instance, "entity");
+    yyjson_val *fields = yyjson_obj_get(instance, "fields");
+    bool create = !source;
+    if (!scene || !entity || (fields && (!yyjson_is_arr(fields) || create))) {
+        return set_error(error, size, "source_instance needs scene and entity names; fields apply to the prototype it is an instance of"),
+               CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    asset_ref scene_ref, prototype_ref;
+    char *scene_text = NULL, *prototype_text = NULL, prototype[256];
+    int status = load_named_asset(
+        root,
+        family_by_kind("scene"),
+        scene,
+        &scene_ref,
+        &scene_text,
+        NULL,
+        NULL,
+        error,
+        size
+    );
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = automation_instance_prototype(scene_text, entity, prototype, sizeof prototype, error, size);
+    }
+    char *name = asset_name_from_filename(ref->filename);
+    if (status == CHIBI_AUTOMATION_OK && create) {
+        status = load_named_asset(
+            root,
+            family_by_kind("prototype"),
+            prototype,
+            &prototype_ref,
+            &prototype_text,
+            NULL,
+            NULL,
+            error,
+            size
+        );
+    } else if (status == CHIBI_AUTOMATION_OK && strcmp(prototype, name)) {
+        snprintf(error, size, "%s is an instance of %s", entity, prototype);
+        status = CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if (status == CHIBI_AUTOMATION_OK) {
+        game_prototype_registry registry = {
+            .components = GAME_REGISTRY_COMPONENTS,
+            .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+        };
+        automation_instance from = { scene_text,
+                                     entity,
+                                     create ? prototype_text : source,
+                                     create ? name : NULL,
+                                     fields };
+        status = automation_prototype_from_instance(&from, &registry, result->doc, value, start, error, size);
+    }
+    free(name);
+    free(prototype_text);
+    free(scene_text);
     return status;
 }
 
@@ -10735,6 +10868,16 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         free(source);
         return -1;
     }
+    char *start = NULL;
+    yyjson_val *instance = yyjson_obj_get(request, "source_instance");
+    if (instance) {
+        status = start_from_instance(root, instance, &ref, source, result, value, &start, error, sizeof error);
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, error);
+            free(source);
+            return -1;
+        }
+    }
     if (create) {
         char *name = asset_name_from_filename(ref.filename);
         source = new_asset_text(NEW_ASSET_PROTOTYPE, name);
@@ -10745,7 +10888,17 @@ static int handle_edit_prototype(const char *root, yyjson_val *request, response
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
     char *edited = NULL;
-    status = automation_prototype_edit(source, &registry, request, result->doc, value, &edited, error, sizeof error);
+    status = automation_prototype_edit(
+        start ? start : source,
+        &registry,
+        request,
+        result->doc,
+        value,
+        &edited,
+        error,
+        sizeof error
+    );
+    free(start);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         free(source);
@@ -11666,6 +11819,27 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
             return response_finish(&result);
         }
     }
+    scenario_context image_context = { 0 };
+    bool needs_images = root && (!strcmp(operation, "edit_graph") ||
+                                 !strcmp(operation, "optimize_graph") ||
+                                 !strcmp(operation, "rename_symbol") ||
+                                 !strcmp(operation, "delete_symbol") ||
+                                 !strcmp(operation, "edit_prototype") ||
+                                 !strcmp(operation, "edit_scene") ||
+                                 !strcmp(operation, "validate_asset") ||
+                                 !strcmp(operation, "inspect_graph") ||
+                                 !strcmp(operation, "bake_model"));
+    if (needs_images) {
+        char error[256] = { 0 };
+        int status = scenario_mount_content(root, &image_context, error, sizeof error);
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(&result, exit_code, status, error);
+            scenario_context_free(&image_context);
+            free(root);
+            yyjson_doc_free(document);
+            return response_finish(&result);
+        }
+    }
     if (!strcmp(operation, "edit_graph")) {
         handle_edit_graph(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "edit_prototype")) {
@@ -11727,6 +11901,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     } else {
         handle_describe_registry(root_value, &result, exit_code);
     }
+    scenario_context_free(&image_context);
     free(root);
     yyjson_doc_free(document);
     return response_finish(&result);

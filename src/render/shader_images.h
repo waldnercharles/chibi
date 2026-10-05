@@ -16,6 +16,8 @@ bool render_image_reload(const char *key, char *message, size_t size);
 bool render_image_info(const char *key, int *width, int *height);
 const char *render_image_error(const char *key);
 
+bool render_image_validate_volumes(const shader_graph *, shader_error *);
+
 /* Variant IDs are catalog-owned. Resolving and binding resident data does no file IO. */
 int render_image_variant(const shader_image_source *source, shader_error *error);
 CF_Texture render_image_texture(int variant, shader_error *error);

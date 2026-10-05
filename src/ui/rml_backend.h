@@ -86,6 +86,7 @@ extern "C"
         RML_INPUT_KEY_OEM_COMMA = 40,
         RML_INPUT_KEY_OEM_MINUS = 41,
         RML_INPUT_KEY_OEM_PERIOD = 42,
+        RML_INPUT_KEY_OEM_2 = 43, /* / */
         RML_INPUT_KEY_OEM_4 = 45, /* [ */
         RML_INPUT_KEY_OEM_6 = 47, /* ] */
         RML_INPUT_KEY_NUMPAD_ENTER = 61,
@@ -197,6 +198,11 @@ extern "C"
     void *rml_backend_context(rml_backend *backend);
     /* Bind a host texture to "kit:<name>" sources, e.g. the Scene render target. */
     void rml_backend_set_texture(rml_backend *backend, const char *name, uint64_t texture);
+    /* Binds a host texture to "kit:<name>" sources as a still image, whose
+     * pixels change only when it is bound again, as a thumbnail's do: it
+     * draws in the retained paint as RmlUi's own images do, so many of them
+     * cost no live runs, and each call paints again. 0 draws nothing. */
+    void rml_backend_set_image(rml_backend *backend, const char *name, uint64_t texture);
     /* A retained producer supplies its content revision even when the GPU handle
      * stays the same. The ordinary setter treats each call as new content. */
     void rml_backend_set_texture_revision(
@@ -209,9 +215,15 @@ extern "C"
     const char *rml_backend_cursor(const rml_backend *backend);
     /* Queue the rendered UI over the app canvas; drawn by cf_app_draw_onto_screen. */
     void rml_backend_present(rml_backend *backend);
+    /* The same for one region of it, x0 y0 x1 y1 as fractions of its width
+     * and height from the top left, stretched over the canvas. */
+    void rml_backend_present_region(rml_backend *backend, const float region[4]);
     /* The first warning or error RmlUi logged since the last call, or "" when
      * it logged none; a caller brackets an operation with two calls. */
     const char *rml_backend_take_warning();
+    /* How many warnings and errors RmlUi logged since the process began,
+     * which no take resets: tests and benches watch it for any or a flood. */
+    int rml_backend_warning_count();
 
     /* ---------- UI language service (workstream B) ---------- */
 

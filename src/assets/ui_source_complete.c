@@ -42,8 +42,10 @@ static const char *const ATTRIBUTES[] = {
     "data-event-blur",
     "data-event-change",
     "data-event-click",
+    "data-event-contextmenu",
     "data-event-dblclick",
     "data-event-focus",
+    "data-event-input",
     "data-event-keydown",
     "data-event-keyup",
     "data-event-mousedown",
@@ -59,6 +61,7 @@ static const char *const ATTRIBUTES[] = {
     "data-value",
     "data-value-lazy",
     "data-visible",
+    "data-when",
     "disabled",
     "for",
     "grouping",
@@ -161,7 +164,9 @@ static void list_files(const char *folder, const char *suffix, bool deep, char *
         }
     }
     closedir(dir);
-    qsort(found, (size_t)acount(found), sizeof *found, name_order);
+    if (acount(found) > 1) {
+        qsort(found, (size_t)acount(found), sizeof *found, name_order);
+    }
     for (int i = 0; i < acount(found); i++) {
         apush(*paths, found[i]);
     }
@@ -577,7 +582,9 @@ void ui_source_complete(
     } else {
         complete_css(&r, project, 0, 0);
     }
-    qsort(out->items, (size_t)acount(out->items), sizeof *out->items, completion_order);
+    if (acount(out->items) > 1) {
+        qsort(out->items, (size_t)acount(out->items), sizeof *out->items, completion_order);
+    }
 }
 
 void ui_source_completions_free(ui_source_completions *completions)

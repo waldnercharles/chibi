@@ -62,7 +62,7 @@ static void executable_resources()
     }
 #else
     ssize_t length = readlink("/proc/self/exe", executable, sizeof executable - 1);
-    if (length < 0 || length >= sizeof executable - 1) {
+    if (length < 0 || (size_t)length >= sizeof executable - 1) {
         fprintf(stderr, "Cannot locate engine executable\n");
         abort();
     }

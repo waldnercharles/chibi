@@ -123,13 +123,7 @@ static void bake_controls(studio *s, const editor *e)
 
 static bool asset_choice(kit *k, const char *key, int *selected, const char *const *labels, int count, unsigned flags)
 {
-    kit_command_item *items = NULL;
-    for (int i = 0; i < count; i++) {
-        apush(items, ((kit_command_item){ .label = labels[i] }));
-    }
-    bool changed = kit_choice_items(k, key, selected, items, count, flags);
-    afree(items);
-    return changed;
+    return kit_choice(k, key, selected, labels, count, flags);
 }
 
 static void reference_controls(studio *s, editor *e, bool shown)

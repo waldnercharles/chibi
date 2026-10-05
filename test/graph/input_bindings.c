@@ -203,6 +203,21 @@ static void variable_binding_and_precedence()
     behavior_instance_destroy(instance);
     assert(behavior_asset_retype_variable(asset, variable->id, PIN_BOOL, "bool") == 0);
     instance = instance_for(asset, NULL, (ecs_entity){ 0 });
+    assert(
+        behavior_instance_set_variable(
+            instance,
+            variable->id,
+            &(pin_value){ .type = PIN_BOOL, .type_name = "bool", .b = true }
+        ) == 0
+    );
+    test_check(
+        eval_f32(asset, target, instance, NULL, 0, &result, message, sizeof message) == 0 &&
+            fabsf(result - 1) < .0001f,
+        "a bool binding reads as 1 or 0 through the registered real conversion"
+    );
+    behavior_instance_destroy(instance);
+    assert(behavior_asset_retype_variable(asset, variable->id, PIN_STR, "const char *") == 0);
+    instance = instance_for(asset, NULL, (ecs_entity){ 0 });
     test_check(
         eval_f32(asset, target, instance, NULL, 0, &result, message, sizeof message) != 0 &&
             strstr(message, "incompatible"),

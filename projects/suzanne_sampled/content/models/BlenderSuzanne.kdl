@@ -1,0 +1,19 @@
+version 3
+name "BlenderSuzanne"
+domain "model"
+id_counter 12
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - id=6 type="Model Instance" reference_asset="BlenderSuzanne144"
+            - id=8 type="Model Scale"
+        }
+        (array)edges {
+            - from="6.Geometry" to="8.Geometry"
+            - from="8.Geometry" to="1.Geometry"
+        }
+    }
+}

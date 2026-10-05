@@ -571,6 +571,32 @@ static void accumulator_checks()
     clock_free(&f);
 }
 
+/* Slow motion (Unity's Time.timeScale, Unreal's slomo) scales the time each
+   frame adds; fixed steps keep their length. */
+static void time_scale_checks()
+{
+    clock_fixture f = clock_new(false, false);
+    const engine_frame_timing *timing = engine_last_timing(f.runtime);
+    test_check(engine_time_scale(f.runtime) == 1, "the engine starts at normal speed");
+    engine_set_time_scale(f.runtime, 0.25);
+    assert(engine_frame(f.runtime, 10) == FLOW_OK);
+    assert(engine_frame(f.runtime, 10 + 8 * ENGINE_FIXED_SECONDS) == FLOW_OK);
+    test_check(
+        timing->simulation_steps == 2 &&
+            fabs(timing->simulation_time - 2 * ENGINE_FIXED_SECONDS) < 1e-10,
+        "a quarter speed advances one fixed step per four steps of wall time"
+    );
+    engine_set_time_scale(f.runtime, 2);
+    assert(engine_frame(f.runtime, 10 + 9 * ENGINE_FIXED_SECONDS) == FLOW_OK);
+    test_check(timing->steps == 2 && timing->simulation_steps == 4, "double speed runs two fixed steps per display step");
+    engine_set_time_scale(f.runtime, 0.1);
+    assert(engine_set_playing(f.runtime, false) == 0);
+    assert(engine_step(f.runtime) == FLOW_OK);
+    assert(engine_frame(f.runtime, 20) == FLOW_OK);
+    test_check(timing->simulation_steps == 5, "Step advances exactly one fixed tick at any speed");
+    clock_free(&f);
+}
+
 static void held_binding_checks()
 {
     clock_fixture f = clock_new(false, false);
@@ -947,6 +973,7 @@ void run_engine_checks(void)
     presentation_checks();
     attachment_clock_checks();
     accumulator_checks();
+    time_scale_checks();
     action_checks();
     held_binding_checks();
     reaction_checks(false);

@@ -162,6 +162,7 @@ typedef struct
     ecs_entity hud;
     render_ui *ui;
     ui_world w;
+    ui_probe repairs; /* the Repair events the HUD's entity heard */
 } hud_view;
 
 /* The HUD document alone, rendered at 720p as the Sandbox shows it. */
@@ -179,8 +180,16 @@ static hud_view hud_open()
     v.ui = render_ui_new(ROOT "/content", NULL);
     v.w = (ui_world){ .ecs = v.world,
                       .model = game_behavior_ui(v.live->behaviors),
-                      .entities = v.live->entities };
+                      .live = v.live };
     return v;
+}
+
+/* Counts the Repair events the HUD's entity hears in `v->repairs`; call once
+   `v` is where it stays. */
+static void hud_listen(hud_view *v)
+{
+    const char *const events[] = { "Repair" };
+    test_ui_probe_events(v->live, v->hud, events, 1, &v->repairs);
 }
 
 static void hud_frame(hud_view *v)
@@ -197,6 +206,7 @@ static void hud_close(hud_view *v)
 {
     render_ui_free(v->ui);
     game_live_world_free(v->live);
+    test_ui_probes_free();
     ecs_world_free(v->world);
 }
 
@@ -269,14 +279,20 @@ void test_arena_hud()
             rml_element_is_class_set(rml_element_query_selector(doc, "#hull"), "critical"),
         "arena2d: the HUD document shows the hull the behavior set"
     );
-    int before = game_entities_pending_events(v.live->entities);
+    hud_listen(&v);
     click(v.ui, rml_element_query_selector(doc, "#repair"));
     hud_frame(&v);
-    bool clicked = game_entities_pending_events(v.live->entities) == before + 1;
+    bool clicked = v.repairs.count == 1 &&
+                   !game_entities_pending_events(v.live->entities);
     render_ui_input(v.ui, &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = RML_INPUT_KEY_H });
     hud_frame(&v);
-    bool keyed = game_entities_pending_events(v.live->entities) == before + 2;
-    test_check(clicked && keyed, "arena2d: the HUD's Repair button and H key send its event");
+    bool keyed = v.repairs.count == 2 &&
+                 !game_entities_pending_events(v.live->entities);
+    test_check(
+        clicked && keyed,
+        "arena2d: the HUD's Repair button and H key reach its entity's "
+        "behaviors in the frame that sends the event"
+    );
     hud_close(&v);
     yyjson_doc_free(hit);
 

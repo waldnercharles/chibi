@@ -334,7 +334,9 @@ static void flow_order(number_flow *f, rml_element *el)
         rml_element_remove_child(el, f->symbols[i]);
     }
     aclear(f->symbols);
-    qsort(f->digits, (size_t)acount(f->digits), sizeof *f->digits, by_place_descending);
+    if (acount(f->digits) > 1) {
+        qsort(f->digits, (size_t)acount(f->digits), sizeof *f->digits, by_place_descending);
+    }
     if (f->prefix[0]) {
         flow_symbol(f, el, f->prefix);
     }

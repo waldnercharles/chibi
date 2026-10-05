@@ -506,7 +506,9 @@ void ui_code_markers(
         on_line(source->text, name, &marker);
         apush(*markers, marker);
     }
-    qsort(*markers, (size_t)acount(*markers), sizeof **markers, by_line);
+    if (acount(*markers) > 1) {
+        qsort(*markers, (size_t)acount(*markers), sizeof **markers, by_line);
+    }
 }
 void ui_code_markers_free(kit_code_marker *markers)
 {

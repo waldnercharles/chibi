@@ -695,6 +695,10 @@ static kdl_event_data* _next_event_in_node(kdl_parser* self, kdl_token* token)
                 self->waiting_type_annotation = (kdl_str){NULL, 0};
             }
             if (self->state & PARSER_FLAG_IN_PROPERTY) {
+                // The key slot still owns the previous node name or property
+                // key. Release it before taking ownership of this property
+                // name.
+                kdl_free_string(&self->tmp_string_key);
                 self->tmp_string_key = self->waiting_prop_name;
                 self->waiting_prop_name = (kdl_owned_string){NULL, 0};
                 self->event.name = kdl_borrow_str(&self->tmp_string_key);

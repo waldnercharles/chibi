@@ -37,6 +37,7 @@ static pin_value conv_to_real(const pin_value *inputs, int input_count, arena *a
     (void)a;
     pin_value r = { .type = PIN_F64, .type_name = "double", .d = 0.0 };
     switch (inputs[0].type) {
+        case PIN_BOOL: r.d = inputs[0].b ? 1.0 : 0.0; break;
         case PIN_U8: r.d = (double)inputs[0].u8; break;
         case PIN_I32: r.d = (double)inputs[0].i; break;
         case PIN_I64: r.d = (double)inputs[0].i64; break;
@@ -55,10 +56,13 @@ static pin_value conv_to_name(const pin_value *inputs, int count, arena *storage
     return (pin_value){ .type = PIN_NAME, .type_name = "name", .str = copy };
 }
 
+/* A bool reads as 1 or 0. */
 static double real_value(const pin_value *value)
 {
-    assert(value->type == PIN_F32 || value->type == PIN_F64);
-    return value->type == PIN_F32 ? value->f : value->d;
+    assert(value->type == PIN_BOOL || value->type == PIN_F32 || value->type == PIN_F64);
+    return value->type == PIN_BOOL ? value->b
+         : value->type == PIN_F32  ? value->f
+                                   : value->d;
 }
 
 /* Test bounds before casting: converting an out-of-range real is undefined.
@@ -118,9 +122,9 @@ node_desc NODE_To_Byte = {
     .fn = conv_to_byte,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
-    .keywords = "convert cast truncate saturate byte uint8",
+    .keywords = "convert cast truncate saturate byte uint8 bool",
     .description = "Truncates Value toward zero and clamps it to 0 to 255; NaN "
-                   "gives 0.",
+                   "gives 0. A bool gives 1 or 0.",
 };
 node_desc NODE_To_Integer = {
     .name = "To Integer",
@@ -132,9 +136,9 @@ node_desc NODE_To_Integer = {
     .fn = conv_to_integer,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
-    .keywords = "convert cast truncate saturate integer int32",
+    .keywords = "convert cast truncate saturate integer int32 bool",
     .description = "Truncates Value toward zero and clamps it to the 32-bit "
-                   "range; NaN gives 0.",
+                   "range; NaN gives 0. A bool gives 1 or 0.",
 };
 
 static pin_spec to_string_inputs[] = {
@@ -190,9 +194,10 @@ node_desc NODE_To_Real = {
     .fn = conv_to_real,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
-    .keywords = "convert cast real float double",
-    .description = "Converts a byte or integer Value to a real; very large "
-                   "64-bit values lose precision.",
+    .keywords = "convert cast real float double bool",
+    .description = "Converts a byte, integer or bool Value to a real, where a "
+                   "bool gives 1 or 0; very large 64-bit values lose "
+                   "precision.",
 };
 
 static pin_spec to_i64_inputs[] = {
@@ -211,9 +216,9 @@ node_desc NODE_To_Integer64 = {
     .fn = conv_to_i64,
     .display_class = NODE_DISPLAY_PURE,
     .category = "Conversion",
-    .keywords = "convert cast integer int64 widen",
+    .keywords = "convert cast integer int64 widen bool",
     .description = "Widens a 32-bit integer, or truncates a real toward zero "
-                   "and clamps it to the 64-bit range.",
+                   "and clamps it to the 64-bit range. A bool gives 1 or 0.",
 };
 
 static pin_value vector_splat(const pin_value *input, arena *storage, const char *type, int width)
@@ -301,7 +306,8 @@ static int to_string_source(pin_type t)
 }
 
 /* TYPE-7: explicit numeric conversions include saturating real-to-integer
- * truncation, integer-to-real, integer widening, and scalar-to-string.
+ * truncation, integer-to-real, bool-to-number, integer widening, and
+ * scalar-to-string.
  * TYPE-10 makes F32 and F64 one Real category, so an integer feeds either
  * width through To Real; the output is F64 and the boundary coerces it. */
 const node_desc *conversion_for(pin_type from, pin_type to)
@@ -309,7 +315,8 @@ const node_desc *conversion_for(pin_type from, pin_type to)
     if (from == PIN_STR && to == PIN_NAME) {
         return &NODE_To_Name;
     }
-    if (from == PIN_F32 || from == PIN_F64) {
+    /* A bool is 1 or 0 to any number. */
+    if (from == PIN_BOOL || from == PIN_F32 || from == PIN_F64) {
         switch (to) {
             case PIN_U8: return &NODE_To_Byte;
             case PIN_I32: return &NODE_To_Integer;
@@ -318,7 +325,8 @@ const node_desc *conversion_for(pin_type from, pin_type to)
         }
     }
     int real_target = to == PIN_F32 || to == PIN_F64;
-    if ((from == PIN_U8 || from == PIN_I32 || from == PIN_I64) && real_target) {
+    if ((from == PIN_BOOL || from == PIN_U8 || from == PIN_I32 || from == PIN_I64) &&
+        real_target) {
         return &NODE_To_Real;
     }
     if (from == PIN_I32 && to == PIN_I64) {
@@ -367,7 +375,9 @@ int conversion_matches_pins(const pin_spec *from, const pin_spec *to, const node
 
 const node_desc *conversion_for_pins(const pin_spec *from, const pin_spec *to)
 {
-    if (!conversion_scalar_pins(from, to)) {
+    /* Pins that connect as they are need none: GameTransform is an alias of
+     * CF_V2, so its conversion would otherwise match a CF_V2 pair. */
+    if (!conversion_scalar_pins(from, to) || pin_compatible(from, to)) {
         return NULL;
     }
     const node_desc *builtin = conversion_for(from->type, to->type);

@@ -1,6 +1,7 @@
 #include "graph/modeling/model_compile.h"
 
 #include "graph/modeling/model_internal.h"
+#include "graph/shader/shader_volume.h"
 #include "support/xalloc.h"
 
 #include <float.h>
@@ -50,7 +51,7 @@ int model_emit(compiler *c, const node *source, shader_op op, int width, int a, 
     if (c->failed) {
         return 0;
     }
-    if (op != SHADER_CONSTANT && op != SHADER_PARAMETER) {
+    if (op != SHADER_CONSTANT && op != SHADER_PARAMETER && op != SHADER_SAMPLED_SDF) {
         for (int i = 0; i < acount(c->shader->nodes); i++) {
             const shader_node *n = &c->shader->nodes[i];
             if (n->op == op && n->width == width && n->input[0] == a &&
@@ -206,7 +207,31 @@ int model_lower(compiler *c, const node *n, int p)
         return 0;
     }
     int op = model_operation(n), result = 0;
-    if (op == MODEL_OFFSET || op == MODEL_SHELL || op == MODEL_TUBE_SWEEP) {
+    if (op == MODEL_SAMPLED_SDF) {
+        const char *key = n->input_pins[0].default_value.str;
+        int image = 0;
+        for (; image < acount(c->shader->images); image++) {
+            if (!strcmp(c->shader->images[image].key, key)) {
+                break;
+            }
+        }
+        if (image == acount(c->shader->images)) {
+            shader_image_source source = { .key = xstrdup(key),
+                                           .color_space = SHADER_IMAGE_LINEAR,
+                                           .filter = SHADER_IMAGE_NEAREST,
+                                           .wrap = SHADER_IMAGE_CLAMP };
+            apush(c->shader->images, source);
+        }
+        result = model_unary(c, n, SHADER_SAMPLED_SDF, 1, p);
+        if (!c->failed) {
+            shader_node *volume = &c->shader->nodes[result];
+            volume->image = image;
+            volume->parameter = n->input_pins[2].default_value.i;
+            model_vector(n, 1, volume->value);
+            volume->volume_range = model_number(n, 3);
+            volume->volume_lipschitz = model_number(n, 4);
+        }
+    } else if (op == MODEL_OFFSET || op == MODEL_SHELL || op == MODEL_TUBE_SWEEP) {
         result = model_lower_constructive(c, n, p);
     } else if (op == MODEL_EXTRUDE || op == MODEL_REVOLVE || op == MODEL_ROUNDED_EXTRUDE || op == MODEL_BEVELED_EXTRUDE) {
         result = model_lower_extrusion(c, n, p);
@@ -544,12 +569,14 @@ bool model_compile_with_catalog(
     }
     if (valid) {
         shader_graph_init(&bp->proof);
+        shader_graph_copy_images(&bp->proof, &fresh.shader);
         for (int i = 0; i < acount(fresh.shader.nodes); i++) {
             apush(bp->proof.nodes, fresh.shader.nodes[i]);
         }
         bp->proof.output_count = fresh.shader.output_count;
         memcpy(bp->proof.output, fresh.shader.output, sizeof bp->proof.output);
         shader_graph_init(&bp->hit_proof);
+        shader_graph_copy_images(&bp->hit_proof, &fresh.hit_shader);
         for (int i = 0; i < acount(fresh.hit_shader.nodes); i++) {
             apush(bp->hit_proof.nodes, fresh.hit_shader.nodes[i]);
         }

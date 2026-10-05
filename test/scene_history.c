@@ -386,6 +386,7 @@ static void component_override_roundtrip()
     game_prototype_registry registry = { .components = descriptors,
                                          .component_count = 2 };
     ecs_world *world = ecs_world_new();
+    char **owned_strings = NULL;
     for (int i = 0; i < 2; i++) {
         assert(ecs_world_register_component(world, descriptors[i], NULL) == ECS_OK);
     }
@@ -407,7 +408,8 @@ static void component_override_roundtrip()
     assert(game_prototype_spawn_components(base, world, &entity, error, sizeof error) == 0);
     av_value *changes = test_read_asset_value("GameTransform #null\nGameHealth {\n    current 73\n    maximum 100\n}\n");
     assert(
-        game_prototype_apply_components_value(world, entity, changes, &registry, error, sizeof error) == 0
+        game_prototype_apply_components_value(world, entity, changes, &registry, &owned_strings, error, sizeof error) ==
+        0
     );
     av_value *overrides = game_prototype_capture_overrides_value(base, world, entity);
     assert(
@@ -417,13 +419,15 @@ static void component_override_roundtrip()
     ecs_entity restored;
     assert(game_prototype_spawn_components(base, world, &restored, error, sizeof error) == 0);
     assert(
-        game_prototype_apply_components_value(world, restored, overrides, &registry, error, sizeof error) == 0
+        game_prototype_apply_components_value(world, restored, overrides, &registry, &owned_strings, error, sizeof error) ==
+        0
     );
     assert(!GAME_GameTransform_has(world, restored));
     assert(GAME_GameHealth_get_const(world, restored)->current == 73);
     /* Repeated null removal must stay absent, not accidentally add a default. */
     assert(
-        game_prototype_apply_components_value(world, restored, overrides, &registry, error, sizeof error) == 0
+        game_prototype_apply_components_value(world, restored, overrides, &registry, &owned_strings, error, sizeof error) ==
+        0
     );
     assert(!GAME_GameTransform_has(world, restored));
     game_prototype *current = game_prototype_capture_entity("Current", world, entity, &registry);
@@ -436,6 +440,7 @@ static void component_override_roundtrip()
     game_prototype_free(current);
     game_prototype_free(base);
     ecs_world_free(world);
+    game_prototype_owned_strings_free(owned_strings);
     puts("component overrides PASS: added/removed override roundtrip");
 }
 

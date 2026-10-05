@@ -50,11 +50,11 @@
 #define RUN_GAP_CELLS 16
 #define NO_KEY UINT32_MAX
 /* Seconds the pointer rests before the hover card, as the kit's tooltips. */
-#define HOVER_DELAY TOOLTIP_DELAY
+#define HOVER_DELAY FEEL_TOOLTIP_DELAY
 /* Cells kept between the cursor and a side edge while lines scroll sideways. */
 #define SCROLL_MARGIN_CELLS 4
-/* Cells a notch of the wheel scrolls sideways. */
-#define WHEEL_CELLS 6
+/* Lines zep-wheel-scroll.patch scrolls for each unit it is handed. */
+#define ZEP_WHEEL_LINES 3.0f
 
 typedef struct text_run
 {
@@ -232,8 +232,16 @@ static const rml_event_id VIEW_EVENTS[] = {
 EM_JS(void, web_listen_paste, (), {
     if (Module.chibiPasteListener) return;
     Module.chibiPasteListener = true;
+    /* Without a field, SDL would take Mod+V and the browser would never
+       paste: the key waits for the paste event's text, or a moment. */
+    const pasteKey = (text, meta) => {
+        Module.chibiKeyPaste = false;
+        const pointer = text ? stringToNewUTF8(text) : 0;
+        Module._studio_web_paste_key(pointer, meta ? 1 : 0);
+        if (pointer) Module._free(pointer);
+    };
     document.addEventListener('keydown', (event) => {
-        if (document.activeElement !== Module.canvas || !Module._studio_web_wants_text()) return;
+        if (document.activeElement !== Module.canvas) return;
         const primary = event.metaKey || event.ctrlKey;
         if (!primary || event.key.toLowerCase() !== 'v') {
             Module.chibiPasteMeta = false;
@@ -241,10 +249,18 @@ EM_JS(void, web_listen_paste, (), {
         }
         Module.chibiPasteMeta = event.metaKey;
         event.stopPropagation();
+        if (Module._studio_web_wants_text()) return;
+        Module.chibiKeyPaste = true;
+        setTimeout(() => { if (Module.chibiKeyPaste) pasteKey(null, event.metaKey); }, 0);
     }, true);
     document.addEventListener('paste', (event) => {
         if (document.activeElement !== Module.canvas) return;
         const text = event.clipboardData?.getData('text/plain');
+        if (Module.chibiKeyPaste) {
+            event.preventDefault();
+            pasteKey(typeof text === 'string' ? text : null, Module.chibiPasteMeta);
+            return;
+        }
         if (typeof text !== 'string' || !text.length) return;
         const pointer = stringToNewUTF8(text);
         try {
@@ -547,12 +563,17 @@ static bool on_command(void *user, const char *command)
     return true;
 }
 
-static void on_set_clipboard(void *, const char *text)
+void kit_clipboard_set(const char *text)
 {
     cf_clipboard_set(text);
 #ifdef __EMSCRIPTEN__
     web_copy(text);
 #endif
+}
+
+static void on_set_clipboard(void *, const char *text)
+{
+    kit_clipboard_set(text);
 }
 
 static char *on_get_clipboard(void *)
@@ -879,6 +900,7 @@ static uint32_t chord_char(rml_key key)
         case RML_KEY_OEM_PLUS: return '=';
         case RML_KEY_OEM_PERIOD: return '.';
         case RML_KEY_OEM_COMMA: return ',';
+        case RML_KEY_OEM_2: return '/';
         case RML_KEY_OEM_1: return ';';
         case RML_KEY_OEM_4: return '[';
         case RML_KEY_OEM_6: return ']';
@@ -1355,14 +1377,18 @@ static void scroll_sideways(code_view *v, float cells)
     zep_set_text_offset_x(e->zep, e->scroll_x);
 }
 
+/* The wheel scrolls the distance it scrolls a list, in lines and cells. */
 static void wheel(code_view *v, const rml_event *event, rml_vec2 at)
 {
+    kit_code_editor *e = v->editor;
     rml_vec2 delta = rml_event_wheel(event);
+    float pixels = FEEL_RMLUI_SCROLL_DP *
+                   rml_context_dp_ratio(rml_element_context(v->el));
     if (delta.y) {
-        zep_mouse_wheel(v->editor->zep, at.x, at.y, -delta.y);
+        zep_mouse_wheel(e->zep, at.x, at.y, -delta.y * pixels / (e->line * ZEP_WHEEL_LINES));
     }
     if (delta.x) {
-        scroll_sideways(v, delta.x * WHEEL_CELLS);
+        scroll_sideways(v, delta.x * pixels / e->advance);
     }
 }
 

@@ -80,6 +80,11 @@ material_mask material_mask_new(int width, int height, float cell_size, bool ell
 /* Copies a row-major occupancy grid. */
 material_mask material_mask_from_cells(int width, int height, float cell_size, const unsigned char *cells);
 material_mask material_mask_from_field(int width, int height, float cell_size, const float *distance);
+/* The mask at half resolution over the same extent, with ready geometry, as a
+ * texture's next mipmap. Each cell merges a 2x2 block and is solid where the
+ * field at the block's center, the mean of its four distances, is inside, so
+ * blocks wholly of one kind keep it. Requires even dimensions. */
+material_mask material_mask_reduce(const material_mask *mask);
 void material_mask_free(material_mask *mask);
 /* Carving and splitting retain the original local origin. */
 int material_mask_carve(material_mask *mask, float x, float y, float radius);

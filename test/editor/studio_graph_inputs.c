@@ -1,5 +1,5 @@
 /* Studio graph values are edited through the controls in their node rows. */
-#include "editor/studio/studio_internal.h"
+#include "editor/studio/studio_graph_internal.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
 #include "graph/model/registry.h"
@@ -11,6 +11,7 @@
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "test/suite_internal.h"
+#include "ui/popover.h"
 #include "ui/rml.h"
 
 #include <SDL3/SDL_events.h>
@@ -288,7 +289,7 @@ static void connected_input_drags_commit_on_release()
         socket_press(&f, false);
     }
     disconnected &= !graph_input_source(gr, graph_node_by_id(gr, old_id), 0, &from, &pin) &&
-                    !kit_command_is_open(f.studio->kit) &&
+                    !studio_palette_is_open(f.studio) &&
                     acount(f.graph->undo) == history + 1;
     if (disconnected) {
         editor_undo(f.graph);
@@ -361,8 +362,7 @@ static bool click_path(graph_input_fixture *f, const char *path)
 static rml_element *graph_query(graph_input_fixture *f, const char *selector)
 {
     rml_context *context = rml_backend_context(f->studio->graph.backend);
-    rml_element *document = rml_context_document(context, 0);
-    return rml_element_query_selector(document, selector);
+    return test_query(context, selector);
 }
 
 static int autocomplete_labels(graph_input_fixture *f, char labels[][128], int capacity)
@@ -1114,7 +1114,7 @@ static void shader_values_and_collections_are_editable()
     bool numeric = current_scalar &&
                    fabsf(current_scalar->output_pins[0].default_value.f - 0.25f) < 0.001f;
 
-    char color_control[128], color_popup[192];
+    char color_control[128];
     snprintf(
         color_control,
         sizeof color_control,
@@ -1122,12 +1122,10 @@ static void shader_values_and_collections_are_editable()
         (unsigned long long)surface_id,
         (unsigned long long)color_pin_id
     );
-    snprintf(color_popup, sizeof color_popup, "color:%s", color_control);
     kit_rect color_rect;
     bool color_visible = kit_find(f.studio->graph.kit, color_control, &color_rect);
     bool color_clicked = color_visible && click_path(&f, color_control);
-    bool color_open = color_clicked &&
-                      kit_popup_is_open(f.studio->graph.kit, color_popup);
+    bool color_open = color_clicked && graph_query(&f, "color-field[data-open]");
     if (color_open) {
         capture_stage(&f, "shader-color");
     }
@@ -1206,10 +1204,8 @@ static void shader_values_and_collections_are_editable()
                             first_stop ? first_stop->color[1] : 0,
                             first_stop ? first_stop->color[2] : 0 };
     rml_element *number_fields[16];
-    rml_element *
-        document = rml_context_document(rml_backend_context(f.studio->graph.backend), 0);
-    int number_field_count = rml_element_query_selector_all(
-        document,
+    int number_field_count = test_query_all(
+        rml_backend_context(f.studio->graph.backend),
         ".popup.menu .field.number",
         number_fields,
         16
@@ -1314,32 +1310,34 @@ static void shader_values_and_collections_are_editable()
     key_event(SDL_SCANCODE_ESCAPE, true);
     key_event(SDL_SCANCODE_ESCAPE, false);
     frames(&f, 1);
-    char interpolation[128], interpolation_popup[192];
+    char interpolation[128];
     snprintf(interpolation, sizeof interpolation, "world/stage/n%llu/b/i2/v", (unsigned long long)ramp_id);
-    snprintf(interpolation_popup, sizeof interpolation_popup, "select:%s", interpolation);
-    kit_rect interpolation_anchor, interpolation_menu;
+    kit_rect interpolation_anchor;
     bool interpolation_visible = kit_find(f.studio->graph.kit, interpolation, &interpolation_anchor);
-    bool interpolation_open = interpolation_visible &&
-                              click_path(&f, interpolation) &&
-                              kit_dropdown_is_open(f.studio->graph.kit, interpolation_popup);
-    char interpolation_menu_path[224];
-    snprintf(interpolation_menu_path, sizeof interpolation_menu_path, "layer/@%s", interpolation_popup);
-    bool interpolation_anchored = interpolation_open &&
-                                  kit_find(f.studio->graph.kit, interpolation_menu_path, &interpolation_menu) &&
-                                  fabsf(
-                                      interpolation_anchor.x -
-                                      interpolation_menu.x
-                                  ) < 2 &&
-                                  interpolation_menu.y >= interpolation_anchor.y;
+    /* The canvas's choice opens Studio's picker under it, in Studio's
+       context, where the canvas surface shows the graph's. */
+    bool interpolation_open = interpolation_visible && click_path(&f, interpolation);
+    frames(&f, 2);
+    rml_element *picker = test_query(rml_backend_context(f.studio->backend), "#picker");
+    interpolation_open &= f.studio->palette.client == STUDIO_PALETTE_CHOICES &&
+                          picker && popover_open(picker);
+    bool interpolation_anchored = false;
+    if (interpolation_open) {
+        float scale = studio_pixel_ratio(f.studio),
+              ratio = studio_graph_pixel_ratio(f.studio);
+        kit_rect surface = f.studio->graph.surface.rect;
+        float x = surface.x * scale + interpolation_anchor.x * ratio;
+        float y = surface.y * scale + interpolation_anchor.y * ratio;
+        rml_vec2 at = rml_element_absolute_offset(picker, RML_BOX_BORDER);
+        interpolation_anchored = fabsf(at.x - x) < 2 && at.y >= y;
+    }
     bool interpolation_filtered = false;
     if (interpolation_open) {
         text_event("Smoothstep");
         frame(&f);
-        interpolation_filtered = !strcmp(
-            kit_dropdown_query(f.studio->graph.kit, interpolation_popup),
-            "Smoothstep"
-        );
+        interpolation_filtered = !strcmp(studio_palette_query(f.studio), "Smoothstep");
         enter(&f);
+        frames(&f, 2);
     }
     current_ramp = graph_node_by_id(editor_active_graph(f.graph), ramp_id);
     bool smoothstep = current_ramp && current_ramp->input_pins[2].default_value.i == 2;

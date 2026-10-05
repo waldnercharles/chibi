@@ -295,6 +295,37 @@ bool ui_design_set_style(
     return finish(b, UI_PART_RML, source, edits, ok, join);
 }
 
+bool ui_design_set_styles(
+    ui_buffer *b,
+    int element,
+    const ui_design_style *styles,
+    int count,
+    char *error,
+    size_t size
+)
+{
+    ui_source *source = ui_design_parse(b, UI_PART_RML);
+    bool ok = valid(source, element, error, size);
+    char *text = xstrdup(source->text);
+    ui_source_free(source);
+    for (int i = 0; ok && i < count; i++) {
+        ui_source *now = ui_source_parse(text, UI_SOURCE_RML);
+        text_edit *edits = NULL;
+        ok = ui_source_set_style(now, element, styles[i].property, styles[i].value, &edits, error, size);
+        if (ok) {
+            free(text);
+            text = text_edits_apply(now->text, edits, acount(edits));
+        }
+        ui_source_edits_free(edits);
+        ui_source_free(now);
+    }
+    if (ok) {
+        replace_part(b, UI_PART_RML, text, false);
+    }
+    free(text);
+    return ok;
+}
+
 bool ui_design_text_only(const ui_source *source, int element)
 {
     if (element < 0 || element >= acount(source->elements)) {

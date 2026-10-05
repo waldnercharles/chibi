@@ -4,6 +4,5 @@
 </head>
 <body class="studio">
     <div id="app"></div>
-    <div id="layer"></div>
 </body>
 </rml>

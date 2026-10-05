@@ -183,6 +183,11 @@ void editor_set_ui_context(editor *e, editor_ui_context context)
     }
 }
 
+void editor_set_studio_nodes(editor *e, bool offered)
+{
+    e->studio_nodes = offered;
+}
+
 static bool retained_keyboard;
 
 void editor_set_retained_keyboard(bool captured)
@@ -270,14 +275,15 @@ void editor_set_asset_catalog(editor *e, const behavior_asset *const *assets, in
     }
 }
 
-/* The values pins show: the inspected run's watches, or a preview
-   evaluation while no run owns pin storage. */
+/* The values pins show: the inspected run's watches, or the instance's
+   latest runs', or a preview evaluation while no run recorded any. */
 void ed_refresh_values(editor *e)
 {
     eval_view_set_instance(e->ev, ed_display_instance(e));
     eval_view_set_catalog(e->ev, e->asset_catalog, acount(e->asset_catalog));
-    if (ed_inspection_blocked(e) || !e->inspection_run) {
+    /* A run owns its pin storage, so no preview evaluates beside one. */
+    eval_view_set_run(e->ev, ed_display_run(e));
+    if (!eval_view_live(e->ev)) {
         eval_view_refresh(e->ev, e->active_graph);
     }
-    eval_view_set_run(e->ev, ed_display_run(e));
 }

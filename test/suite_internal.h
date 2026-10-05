@@ -52,6 +52,7 @@ int bench_batch(const char *path, int count, int frames, int rotation);
 void test_compiled_components();
 void test_compiled_loops();
 void test_compiled_conversions();
+void test_compiled_selects();
 void test_compiled_aliases();
 void test_compiled_stores();
 void test_managed_reuse();
@@ -143,6 +144,14 @@ extern void test_rcss();
 /* A kit styled with the Studio scene's root document (test/editor/kit_host.c). */
 typedef struct kit kit;
 kit *test_kit_create(void *context, const char *document);
+/* The first element matching `selector` in any of a context's documents,
+ * in their order, or NULL: a kit's content spans its own document, its
+ * layer's and those kit_document_begin opens (test/editor/kit_host.c). */
+typedef struct rml_context rml_context;
+typedef struct rml_element rml_element;
+rml_element *test_query(rml_context *context, const char *selector);
+/* Writes up to `max` matches across the documents; returns how many match. */
+int test_query_all(rml_context *context, const char *selector, rml_element **matches, int max);
 extern void test_scene_debug();
 extern void test_appearance_geometry();
 extern void test_mesh_surface();
@@ -152,6 +161,7 @@ extern void test_movement_input();
 extern void test_movement_trail();
 extern void test_sdf_motion();
 extern void test_material();
+extern void test_material_lod();
 extern void test_wave();
 extern void test_scene_history();
 extern void test_enemy_attack();
@@ -239,6 +249,35 @@ void run_content_catalog_checks();
  * its .rcss, removing an old one otherwise (test/support/ui_files.c). */
 void test_write_ui(const char *folder, const char *name, const char *rml, const char *rcss);
 void test_remove_ui(const char *folder, const char *name);
+
+/* What a probe behavior (test/support/ui_probe.c) heard last: how many UI
+ * events reached its entity, the last one's name and payload. */
+#define UI_PROBE_VALUES 8
+typedef struct ui_probe
+{
+    int count;
+    char event[64];
+    int values;
+    pin_value payload[UI_PROBE_VALUES];
+    char text[UI_PROBE_VALUES][64];
+    float pointer[2];
+} ui_probe;
+
+/* Attaches to `entity` a behavior handling each of `events`, with the payload
+ * a definition in `live` declares, which only records them in `probe`. */
+void test_ui_probe_events(
+    game_live_world *live,
+    ecs_entity entity,
+    const char *const *events,
+    int count,
+    ui_probe *probe
+);
+/* A node that records the event named `event` in the probe bound to its
+ * instance; for a handler a test builds itself and attaches here. */
+const node_desc *test_ui_probe_node(const char *event);
+void test_ui_probe_attach(game_live_world *live, ecs_entity entity, behavior_asset *asset, ui_probe *probe);
+/* Frees what the probes made, once the worlds they attached to are freed. */
+void test_ui_probes_free();
 
 #endif
 

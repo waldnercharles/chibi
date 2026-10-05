@@ -72,6 +72,51 @@ static bool pin_string(pin_type type)
     return type == PIN_STR || type == PIN_NAME;
 }
 
+/* ---------- The canvas's pickers ---------- */
+
+/* The last control's box in Studio's pixels, where its picker hangs: the
+   graph's own context draws into the canvas surface. */
+static void canvas_box(const studio *s, kit *k, float box[4])
+{
+    kit_rect r = kit_item_rect(k);
+    kit_rect surface = s->graph.surface.rect;
+    float scale = studio_pixel_ratio(s), ratio = studio_graph_pixel_ratio(s);
+    box[0] = surface.x * scale + r.x * ratio;
+    box[1] = surface.y * scale + r.y * ratio;
+    box[2] = r.w * ratio;
+    box[3] = r.h * ratio;
+}
+
+/* Whether a click on canvas control `key` opens its picker: a click while
+   it is open, or on the press that just closed it from outside the picker,
+   shuts it, as a select does. */
+static bool picker_opens(studio *s, const char *key, bool clicked)
+{
+    studio_graph *g = &s->graph;
+    bool mine = !strcmp(g->picker, key);
+    bool open = mine && s->palette.client && s->palette.boxed;
+    if (!clicked) {
+        if (mine && !open) {
+            g->picker[0] = '\0';
+        }
+        return false;
+    }
+    if (mine) {
+        if (open) {
+            studio_palette_close(s);
+        }
+        g->picker[0] = '\0';
+        return false;
+    }
+    snprintf(g->picker, sizeof g->picker, "%s", key);
+    return true;
+}
+
+static bool picker_open(const studio *s, const char *key)
+{
+    return !strcmp(s->graph.picker, key) && s->palette.client && s->palette.boxed;
+}
+
 static const char *graph_asset_field(
     studio *s,
     kit *k,
@@ -90,7 +135,7 @@ static const char *graph_asset_field(
                                        )
                                      : NULL;
     bool unresolved = named && (!found || found->unresolved);
-    char tip[192] = "", popup[224], placeholder[96];
+    char tip[192] = "", pick[192];
     if (unresolved) {
         snprintf(tip, sizeof tip, "No %s asset is named %s", studio_asset_kind_name(kind), value);
     }
@@ -99,57 +144,86 @@ static const char *graph_asset_field(
                                .icon = studio_asset_kind_icon(kind),
                                .tip = tip[0] ? tip : NULL,
                                .flags = flags | (unresolved ? KIT_INVALID : 0) };
-    if (kit_picker(k, "asset", &picker) && !(flags & KIT_READONLY)) {
-        snprintf(popup, sizeof popup, "%s-assets", key);
-        snprintf(placeholder, sizeof placeholder, "Search %s", studio_asset_kind_label(kind));
-        kit_dropdown_open(k, popup, placeholder);
-    } else {
-        snprintf(popup, sizeof popup, "%s-assets", key);
+    snprintf(pick, sizeof pick, "graph:%s-assets", key);
+    bool clicked = kit_picker(k, "asset", &picker) && !(flags & KIT_READONLY);
+    kit_flag(k, "data-open", picker_open(s, pick));
+    if (picker_opens(s, pick, clicked)) {
+        float box[4];
+        canvas_box(s, k, box);
+        studio_pick_open_box(
+            s,
+            pick,
+            value,
+            &(studio_pick_desc){ .kind = kind, .none = "None", .text = true },
+            box
+        );
     }
-    if (!kit_dropdown_is_open(k, popup)) {
+    if (!s->pick.chosen || strcmp(s->pick.key, pick)) {
         return NULL;
     }
-    const char **names = studio_asset_names(index, kind);
-    kit_command_item *items = NULL;
-    int none = 1;
-    apush(items, ((kit_command_item){ .label = "None", .icon = KIT_ICON_CLOSE }));
-    for (int i = 0; i < acount(names); i++) {
-        apush(
-            items,
-            ((kit_command_item){ .label = names[i],
-                                 .group = studio_asset_kind_label(kind),
-                                 .icon = studio_asset_kind_icon(kind),
-                                 .current = value && !strcmp(names[i], value) })
-        );
-    }
-    const char *query = kit_dropdown_query(k, popup);
-    bool exact = false;
-    for (int i = 0; i < acount(names); i++) {
-        exact |= strcasecmp(query, names[i]) == 0;
-    }
-    bool typed = query[0] && !exact;
-    if (typed) {
-        apush(
-            items,
-            ((kit_command_item){ .label = query,
-                                 .group = "Name",
-                                 .icon = KIT_ICON_EDIT,
-                                 .description = "Use this asset name" })
-        );
-    }
-    int selected = kit_dropdown(k, popup, items, acount(items));
-    const char *chosen = NULL;
-    if (selected >= 0) {
-        chosen = selected < none                 ? ""
-               : selected < none + acount(names) ? names[selected - none]
-                                                 : query;
-    }
-    afree(items);
-    afree(names);
-    return chosen;
+    s->pick.chosen = false;
+    return s->pick.value;
 }
 
-static double literal_number(const pin_value *value)
+/* A choice's picker lists every option, its value's current. */
+void studio_graph_choice_entries(studio *s, studio_palette_entry **entries)
+{
+    const editor_choices *choices = s->graph.choice.choices;
+    for (int i = 0; choices && i < editor_choices_count(choices); i++) {
+        editor_choice choice = editor_choice_at(choices, i);
+        studio_palette_entry *entry = studio_palette_add(
+            entries,
+            choice.group ? choice.group : "",
+            choice.label ? choice.label : choice.name
+        );
+        snprintf(
+            entry->keywords,
+            sizeof entry->keywords,
+            "%s",
+            choice.name ? choice.name : ""
+        );
+        entry->icon = choice.icon;
+        entry->current = i == s->graph.choice.current;
+        entry->kind = i;
+    }
+}
+
+void studio_graph_choice_choose(studio *s, const studio_palette_entry *entry)
+{
+    s->graph.choice.chosen = entry->kind;
+    s->graph.choice.taken = true;
+}
+
+/* The place of the option chosen for canvas control `key` this frame, or
+   -1; a click on the control opens its picker under it. */
+static int choice_pick(
+    studio *s,
+    kit *k,
+    const char *key,
+    bool clicked,
+    const editor_choices *choices,
+    int current,
+    const char *placeholder
+)
+{
+    studio_graph *g = &s->graph;
+    if (picker_opens(s, key, clicked)) {
+        snprintf(g->choice.key, sizeof g->choice.key, "%s", key);
+        g->choice.choices = choices;
+        g->choice.current = current;
+        g->choice.taken = false;
+        float box[4];
+        canvas_box(s, k, box);
+        studio_palette_open_box(s, STUDIO_PALETTE_CHOICES, placeholder, box);
+    }
+    if (!g->choice.taken || strcmp(g->choice.key, key)) {
+        return -1;
+    }
+    g->choice.taken = false;
+    return g->choice.chosen;
+}
+
+double sg_literal_number(const pin_value *value)
 {
     switch (value->type) {
         case PIN_I8: return value->i8;
@@ -166,7 +240,7 @@ static double literal_number(const pin_value *value)
     }
 }
 
-static void set_literal_number(pin_value *value, double number)
+void sg_set_literal_number(pin_value *value, double number)
 {
     switch (value->type) {
         case PIN_I8: value->i8 = (int8_t)number; break;
@@ -219,7 +293,7 @@ static bool literal_integer_bounds(pin_type type, double *min, double *max)
     }
 }
 
-static void literal_number_bounds(pin_type type, double *min, double *max)
+void sg_literal_bounds(pin_type type, double *min, double *max)
 {
     if (literal_integer_bounds(type, min, max)) {
         return;
@@ -310,14 +384,14 @@ static bool edit_integer64(
 
 static uint32_t color_channel(const pin_value *value)
 {
-    double channel = literal_number(value);
+    double channel = sg_literal_number(value);
     if (value->type == PIN_F32 || value->type == PIN_F64) {
         channel *= 255;
     }
     return (uint32_t)lround(fmin(fmax(channel, 0), 255));
 }
 
-static uint32_t literal_color(const pin_spec *spec, const pin_value *value)
+uint32_t sg_literal_color(const pin_spec *spec, const pin_value *value)
 {
     if (value->type == PIN_U32) {
         return value->u;
@@ -339,7 +413,7 @@ static uint32_t literal_color(const pin_spec *spec, const pin_value *value)
            channels[3];
 }
 
-static bool write_literal_color(const pin_spec *spec, pin_value *value, arena *scratch, uint32_t rgba)
+bool sg_write_literal_color(const pin_spec *spec, pin_value *value, arena *scratch, uint32_t rgba)
 {
     if (value->type == PIN_U32) {
         value->u = rgba;
@@ -360,7 +434,7 @@ static bool write_literal_color(const pin_spec *spec, pin_value *value, arena *s
         if (type->field_count == 4) {
             pin_value alpha;
             pin_read_field(value->ptr, &type->fields[3], &alpha);
-            set_literal_number(&alpha, alpha.type == PIN_F32 || alpha.type == PIN_F64 ? 1 : 255);
+            sg_set_literal_number(&alpha, alpha.type == PIN_F32 || alpha.type == PIN_F64 ? 1 : 255);
             pin_write_field(value->ptr, &type->fields[3], alpha);
         }
     }
@@ -374,13 +448,13 @@ static bool write_literal_color(const pin_spec *spec, pin_value *value, arena *s
             channel /= 255;
         }
         component = previous;
-        set_literal_number(&component, channel);
+        sg_set_literal_number(&component, channel);
         pin_write_field(value->ptr, field, component);
     }
     return true;
 }
 
-static double literal_alpha(const pin_spec *spec, const pin_value *value)
+double sg_literal_alpha(const pin_spec *spec, const pin_value *value)
 {
     const type_desc *type = registry_type_by_name(spec->type_name);
     if (!type || type->field_count != 4 || !value->ptr) {
@@ -388,14 +462,14 @@ static double literal_alpha(const pin_spec *spec, const pin_value *value)
     }
     pin_value alpha;
     pin_read_field(value->ptr, &type->fields[3], &alpha);
-    double number = literal_number(&alpha);
+    double number = sg_literal_number(&alpha);
     if (alpha.type != PIN_F32 && alpha.type != PIN_F64) {
         number /= 255;
     }
     return fmin(fmax(number, 0), 1);
 }
 
-static void write_literal_alpha(const pin_spec *spec, pin_value *value, arena *scratch, double alpha)
+void sg_write_literal_alpha(const pin_spec *spec, pin_value *value, arena *scratch, double alpha)
 {
     const type_desc *type = registry_type_by_name(spec->type_name);
     assert(type && type->field_count == 4);
@@ -411,11 +485,11 @@ static void write_literal_alpha(const pin_spec *spec, pin_value *value, arena *s
         alpha *= 255;
     }
     component = previous;
-    set_literal_number(&component, alpha);
+    sg_set_literal_number(&component, alpha);
     pin_write_field(value->ptr, field, component);
 }
 
-static bool enum_control(kit *k, const char *key, const pin_spec *shape, pin_value *value, unsigned flags)
+static bool enum_control(studio *s, kit *k, const char *key, const pin_spec *shape, pin_value *value, unsigned flags)
 {
     const editor_choices *choices = editor_choices_for_enum(shape->type_name);
     int count = choices ? editor_choices_count(choices) : 0;
@@ -423,31 +497,20 @@ static bool enum_control(kit *k, const char *key, const pin_spec *shape, pin_val
         kit_label(k, key, "muted", "Missing enum values");
         return false;
     }
-    char dropdown[192], current[128];
-    snprintf(dropdown, sizeof dropdown, "%s-options", key);
+    char pick[192], current[128];
+    snprintf(pick, sizeof pick, "graph:%s-options", key);
     const char *label = registry_enum_label(shape->type_name, value->e);
     snprintf(current, sizeof current, "%s", label ? label : "Choose value");
     kit_button_desc button = { .label = current,
                                .variant = KIT_GHOST,
                                .size = KIT_SM,
                                .flags = flags };
-    if (kit_button(k, "enum", &button) && !(flags & KIT_READONLY)) {
-        kit_dropdown_open(k, dropdown, "Choose value");
-    }
-    kit_command_item *items = NULL;
+    bool clicked = kit_button(k, "enum", &button) && !(flags & KIT_READONLY);
+    int at = -1;
     for (int i = 0; i < count; i++) {
-        editor_choice choice = editor_choice_at(choices, i);
-        apush(
-            items,
-            ((kit_command_item){ .label = choice.label ? choice.label : choice.name,
-                                 .group = choice.group,
-                                 .keywords = choice.name,
-                                 .icon = choice.icon,
-                                 .current = choice.value == value->e })
-        );
+        at = editor_choice_at(choices, i).value == value->e ? i : at;
     }
-    int selected = kit_dropdown(k, dropdown, items, acount(items));
-    afree(items);
+    int selected = choice_pick(s, k, pick, clicked, choices, at, "Choose value");
     if (selected < 0) {
         return false;
     }
@@ -587,7 +650,7 @@ static bool edit_struct_control(
     return fields.changed;
 }
 
-static bool is_ramp_stops(const pin_spec *shape)
+bool sg_ramp_stops(const pin_spec *shape)
 {
     return shape->type == PIN_STRUCT && shape->container == PIN_CONTAINER_ARRAY &&
            shape->type_name && !strcmp(shape->type_name, "ShaderRampStop");
@@ -610,6 +673,7 @@ static bool ramp_values(const pin_array *array, shader_ramp_stop stops[SHADER_RA
     return shader_ramp_valid(stops, array->count);
 }
 
+/* A ramp stop's Position keeps it between its neighbours. */
 static void ramp_position_range(const pin_array *array, int index, literal_range *range)
 {
     *range = (literal_range){ .min = 0, .max = 1, .valid = true };
@@ -663,6 +727,15 @@ static bool ramp_insert_value(const pin_array *array, int *at, shader_ramp_stop 
     return true;
 }
 
+bool sg_ramp_range(const pin_array *array, int index, double *min, double *max)
+{
+    literal_range range;
+    ramp_position_range(array, index, &range);
+    *min = range.min;
+    *max = range.max;
+    return range.valid;
+}
+
 static pin_array *array_with_count(
     arena *scratch,
     const pin_array *source,
@@ -699,6 +772,48 @@ static pin_array *array_with_count(
     return copy;
 }
 
+/* Whether an item may be added: a ramp holds SHADER_RAMP_MAX stops at
+   most, each between two others. */
+bool sg_array_can_add(const pin_value *value, const pin_spec *shape)
+{
+    const pin_array *array = value->ptr;
+    if (!sg_ramp_stops(shape)) {
+        return true;
+    }
+    shader_ramp_stop stop;
+    int at;
+    return array && array->count < SHADER_RAMP_MAX &&
+           ramp_insert_value(array, &at, &stop);
+}
+
+pin_array *sg_array_edit(arena *scratch, const pin_value *value, const pin_spec *shape, int remove, bool append)
+{
+    pin_array *array = value->ptr
+                         ? value->ptr
+                         : pin_array_allocate(scratch, shape->type, shape->type_name, 0);
+    bool ramp = sg_ramp_stops(shape);
+    shader_ramp_stop stop = { 0 };
+    int at = array->count;
+    if (append && ramp && !ramp_insert_value(array, &at, &stop)) {
+        return NULL;
+    }
+    pin_value added = { .type = array->element_type,
+                        .type_name = array->type_name,
+                        .container = PIN_CONTAINER_SINGLE };
+    if (append && ramp) {
+        added.ptr = &stop;
+    } else if (append && added.type == PIN_STRUCT) {
+        const type_desc *type = registry_type_by_name(added.type_name);
+        if (type) {
+            added.ptr = arena_alloc(scratch, type->size);
+            memset(added.ptr, 0, type->size);
+        }
+    } else if (append && pin_string(added.type)) {
+        added.str = "";
+    }
+    return array_with_count(scratch, array, remove, append, added.type, added.type_name, at, &added);
+}
+
 static bool edit_array_control(
     studio *s,
     kit *k,
@@ -730,10 +845,8 @@ static bool edit_array_control(
     if (!array) {
         array = pin_array_allocate(scratch, shape->type, shape->type_name, 0);
     }
-    bool ramp = is_ramp_stops(shape);
-    shader_ramp_stop ramp_stop = { 0 };
-    int ramp_insert = count;
-    bool ramp_can_add = !ramp || ramp_insert_value(array, &ramp_insert, &ramp_stop);
+    bool ramp = sg_ramp_stops(shape);
+    bool can_add = sg_array_can_add(&(pin_value){ .ptr = array }, shape);
     int remove = -1;
     pin_spec item_shape = { .type = array->element_type,
                             .type_name = array->type_name,
@@ -785,41 +898,13 @@ static bool edit_array_control(
                             .icon = KIT_ICON_ADD,
                             .variant = KIT_SUBTLE,
                             .size = KIT_SM,
-                            .flags = flags |
-                                     (ramp && !ramp_can_add ? KIT_DISABLED : 0) };
-    append = kit_button(k, "add", &add) && !(flags & KIT_READONLY);
-    if (ramp && count >= SHADER_RAMP_MAX) {
-        append = false;
-    }
+                            .flags = flags | (can_add ? 0 : KIT_DISABLED) };
+    append = kit_button(k, "add", &add) && !(flags & KIT_READONLY) && can_add;
     if (remove >= 0 && append) {
         append = false;
     }
     if (remove >= 0 || append) {
-        int insert_at = append && ramp ? ramp_insert : count;
-        pin_value added = { .type = item_shape.type,
-                            .type_name = item_shape.type_name,
-                            .container = PIN_CONTAINER_SINGLE };
-        if (append && ramp) {
-            added.ptr = &ramp_stop;
-        } else if (append && item_shape.type == PIN_STRUCT) {
-            const type_desc *type = registry_type_by_name(item_shape.type_name);
-            if (type) {
-                added.ptr = arena_alloc(scratch, type->size);
-                memset(added.ptr, 0, type->size);
-            }
-        } else if (append && pin_string(item_shape.type)) {
-            added.str = "";
-        }
-        pin_array *updated = array_with_count(
-            scratch,
-            array,
-            remove,
-            append,
-            item_shape.type,
-            item_shape.type_name,
-            insert_at,
-            &added
-        );
+        pin_array *updated = sg_array_edit(scratch, &(pin_value){ .ptr = array }, shape, remove, append);
         if (updated) {
             array = updated;
             state->changed = true;
@@ -863,7 +948,7 @@ static bool edit_literal_value(
         if (has_alpha) {
             kit_push(k, "rgba", NULL, "color-alpha-row");
         }
-        uint32_t color = literal_color(shape, value);
+        uint32_t color = sg_literal_color(shape, value);
         bool color_changed = kit_color(k, has_alpha ? "swatch" : key, &color, flags);
         bool changed = color_changed;
         bool committed = kit_item_committed(k);
@@ -876,7 +961,7 @@ static bool edit_literal_value(
                             .active = active }
         );
         if (has_alpha) {
-            double alpha = literal_alpha(shape, value);
+            double alpha = sg_literal_alpha(shape, value);
             kit_number_desc desc = { .min = 0,
                                      .max = 1,
                                      .step = 0.01,
@@ -895,12 +980,12 @@ static bool edit_literal_value(
             );
             if (alpha_changed) {
                 changed = true;
-                write_literal_alpha(shape, value, scratch, alpha);
+                sg_write_literal_alpha(shape, value, scratch, alpha);
             }
             kit_pop(k);
         }
         if (color_changed) {
-            write_literal_color(shape, value, scratch, color);
+            sg_write_literal_color(shape, value, scratch, color);
         }
         return changed;
     }
@@ -923,9 +1008,9 @@ static bool edit_literal_value(
             for (int i = 0; i < width; i++) {
                 pin_value component;
                 pin_read_field(value->ptr, &type->fields[i], &component);
-                double number = literal_number(&component);
+                double number = sg_literal_number(&component);
                 double min = 0, max = 0;
-                literal_number_bounds(component.type, &min, &max);
+                sg_literal_bounds(component.type, &min, &max);
                 kit_number_desc desc = { .precision = 2,
                                          .single_precision = component.type == PIN_F32,
                                          .min = min,
@@ -943,7 +1028,7 @@ static bool edit_literal_value(
                 state->active |= active;
                 state->committed |= committed;
                 if (edited) {
-                    set_literal_number(&component, number);
+                    sg_set_literal_number(&component, number);
                     pin_write_field(value->ptr, &type->fields[i], component);
                     changed = true;
                 }
@@ -955,7 +1040,7 @@ static bool edit_literal_value(
         return edit_struct_control(s, k, key, value, shape, scratch, flags, state, depth, range);
     }
     if (shape->type == PIN_ENUM) {
-        bool changed = enum_control(k, key, shape, value, flags);
+        bool changed = enum_control(s, k, key, shape, value, flags);
         state->changed |= changed;
         return changed;
     }
@@ -1012,10 +1097,10 @@ static bool edit_literal_value(
             state->committed |= committed;
             return changed;
         }
-        double number = literal_number(value);
+        double number = sg_literal_number(value);
         bool integer = literal_integer(shape->type);
         double min = 0, max = 0;
-        literal_number_bounds(shape->type, &min, &max);
+        sg_literal_bounds(shape->type, &min, &max);
         if (range) {
             min = fmax(min, range->min);
             max = fmin(max, range->max);
@@ -1034,7 +1119,7 @@ static bool edit_literal_value(
         state->active |= active;
         state->committed |= committed;
         if (changed) {
-            set_literal_number(value, number);
+            sg_set_literal_number(value, number);
         }
         state->changed |= changed;
         return changed;
@@ -1052,6 +1137,44 @@ static bool edit_literal_value(
     }
     kit_label(k, key, "muted", ed_pin_type_name(shape));
     return false;
+}
+
+/* Writes the pin's default, through collaboration while it runs: a new Undo
+   step, or with `coalesce` the gesture's open one. 0 on success. */
+static int write_literal(studio *s, node *n, int output, int p, const pin_value *value, bool coalesce)
+{
+    editor *e = sg_graph_editor(s);
+    if (collab_active() && !collab_replaying()) {
+        return editor_command_apply(
+            e,
+            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
+                              .data.set_pin_default = {
+                                  .node_id = n->id,
+                                  .output = output,
+                                  .pin_index = p,
+                                  .value = (pin_value *)value,
+                                  .coalesce_history = collab_is_host() && coalesce } }
+        );
+    }
+    /* A scrub is one undo step; discrete edits, and a step or typed value
+       that commits as it changes, are one each. */
+    if (!coalesce) {
+        ed_snapshot_before(e);
+    }
+    return graph_set_pin_default(sg_active_graph(s), n, output, p, value);
+}
+
+bool sg_set_literal(studio *s, node *n, int output, int p, const pin_value *value, sg_step step)
+{
+    studio_graph *g = &s->graph;
+    const pin_spec *spec = output ? &n->output_pins[p] : &n->input_pins[p];
+    bool same = value_edit_matches(g, n, output, spec->id, NULL);
+    int edited = write_literal(s, n, output, p, value, step != SG_STEP_ONCE && same);
+    value_edit_set(g, n, output, spec->id, NULL, edited == 0 && step == SG_STEP_LIVE);
+    if (edited == 0) {
+        touched(sg_graph_editor(s));
+    }
+    return edited == 0;
 }
 
 static void apply_literal_edit(
@@ -1076,25 +1199,7 @@ static void apply_literal_edit(
         }
         return;
     }
-    int edited;
-    bool coalesce = state.streaming && same_edit;
-    if (collab_active() && !collab_replaying()) {
-        edited = editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
-                              .data.set_pin_default = {
-                                  .node_id = n->id,
-                                  .output = output,
-                                  .pin_index = p,
-                                  .value = value,
-                                  .coalesce_history = collab_is_host() && coalesce } }
-        );
-    } else {
-        if (!coalesce) {
-            ed_snapshot_before(e);
-        }
-        edited = graph_set_pin_default(sg_active_graph(s), n, output, p, value);
-    }
+    int edited = write_literal(s, n, output, p, value, state.streaming && same_edit);
     value_edit_set(
         g,
         n,
@@ -1129,8 +1234,11 @@ static bool edit_compound(studio *s, kit *k, node *n, int output, int p, const p
     return state.changed;
 }
 
+/* A pin's choice as a select whose picker lists the choices. */
 static bool choice_control(
+    studio *s,
     kit *k,
+    int output,
     const pin_spec *spec,
     pin_value *value,
     const editor_choices *choices,
@@ -1144,28 +1252,22 @@ static bool choice_control(
                                                      !strcmp(value->str, choice.name)
                       : spec->type == PIN_ENUM
                           ? choice.value == value->e
-                          : choice.value == literal_number(value);
+                          : choice.value == sg_literal_number(value);
         if (selected) {
             current = i;
             break;
         }
     }
-    kit_command_item *items = NULL;
-    for (int i = 0; i < count; i++) {
-        editor_choice choice = editor_choice_at(choices, i);
-        apush(
-            items,
-            ((kit_command_item){ .label = choice.label,
-                                 .group = choice.group,
-                                 .keywords = choice.name,
-                                 .icon = choice.icon,
-                                 .current = i == current })
-        );
-    }
-    int index = current;
-    bool changed = kit_choice_items(k, "v", &index, items, count, flags);
-    afree(items);
-    if (!changed || index < 0 || index >= count || index == current) {
+    char pick[64];
+    snprintf(pick, sizeof pick, "graph:pin-%" PRIu64 "-%d", spec->id, output);
+    kit_picker_desc picker = { .value = current >= 0
+                                          ? editor_choice_at(choices, current).label
+                                          : "-",
+                               .flags = flags };
+    bool clicked = kit_picker(k, "v", &picker) && !(flags & KIT_READONLY);
+    kit_flag(k, "data-open", picker_open(s, pick));
+    int index = choice_pick(s, k, pick, clicked, choices, current, "Search options");
+    if (index < 0 || index >= count || index == current) {
         return false;
     }
     editor_choice selected = editor_choice_at(choices, index);
@@ -1174,7 +1276,7 @@ static bool choice_control(
     } else if (spec->type == PIN_ENUM) {
         value->e = selected.value;
     } else {
-        set_literal_number(value, selected.value);
+        sg_set_literal_number(value, selected.value);
     }
     return true;
 }
@@ -1183,17 +1285,6 @@ static bool choice_control(
 const char *sg_material_picker(studio *s, kit *k, const char *value, unsigned flags)
 {
     editor *e = sg_graph_editor(s);
-    if (kit_picker(
-            k,
-            "material",
-            &(kit_picker_desc){ .value = value,
-                                .placeholder = "Choose material",
-                                .icon = KIT_ICON_HEXAGON,
-                                .flags = flags }
-        ) &&
-        !(flags & (KIT_READONLY | KIT_DISABLED))) {
-        kit_dropdown_open(k, "materials", "Search materials");
-    }
     kit_command_item *items = NULL;
     const behavior_asset **materials = NULL;
     for (int i = 0; e && i < acount(e->asset_catalog); i++) {
@@ -1208,7 +1299,9 @@ const char *sg_material_picker(studio *s, kit *k, const char *value, unsigned fl
                                  .current = value && !strcmp(value, asset->name) })
         );
     }
-    int picked = kit_dropdown(k, "materials", items, acount(items));
+    kit_autocomplete_result
+        choice = kit_autocomplete(k, "material", value, items, acount(items), "Choose material", flags);
+    int picked = choice.selected;
     const char *result = picked >= 0 && picked < acount(materials)
                            ? materials[picked]->name
                            : NULL;
@@ -1242,7 +1335,7 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
     char text[256];
     int count = choices ? editor_choices_count(choices) : 0;
     if (count > 0) {
-        changed = choice_control(k, spec, &value, choices, flags);
+        changed = choice_control(s, k, output, spec, &value, choices, flags);
     } else if (spec->type == PIN_BOOL) {
         bool b = value.b;
         if (kit_checkbox(k, "v", &b, NULL, flags)) {
@@ -1317,7 +1410,7 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
             default: number = value.d; break;
         }
         double min = 0, max = 0;
-        literal_number_bounds(spec->type, &min, &max);
+        sg_literal_bounds(spec->type, &min, &max);
         kit_number_desc desc = { .single_precision = spec->type == PIN_F32,
                                  .min = min,
                                  .max = max,
@@ -1351,27 +1444,7 @@ void sg_emit_value_in(studio *s, kit *k, node *n, int output, int p)
         }
         return;
     }
-    int edited;
-    bool coalesce = streaming && same_edit;
-    if (collab_active() && !collab_replaying()) {
-        edited = editor_command_apply(
-            e,
-            (editor_command){ .kind = EDITOR_COMMAND_SET_PIN_DEFAULT,
-                              .data.set_pin_default = {
-                                  .node_id = n->id,
-                                  .output = output,
-                                  .pin_index = p,
-                                  .value = &value,
-                                  .coalesce_history = collab_is_host() && coalesce } }
-        );
-    } else {
-        /* A scrub is one undo step; discrete edits, and a step or typed value
-           that commits as it changes, are one each. */
-        if (!coalesce) {
-            ed_snapshot_before(e);
-        }
-        edited = graph_set_pin_default(gr, n, output, p, &value);
-    }
+    int edited = write_literal(s, n, output, p, &value, streaming && same_edit);
     value_edit_set(g, n, output, spec->id, k, edited == 0 && streaming && active && !committed);
     if (edited == 0) {
         touched(e);

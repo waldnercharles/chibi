@@ -41,9 +41,27 @@ game_materials *game_materials_new(
 );
 void game_materials_free(game_materials *materials);
 void game_materials_reset(game_materials *materials);
+/* Resets all but terrain, which regenerates itself when its own inputs change:
+ * the next prepare makes masks, fluid and debris again from their sources. */
+void game_materials_reset_except_terrain(game_materials *materials);
 /* Outside ECS queries: synchronize authored sources and apply queued damage.
  * Errors describe invalid authored data. Fluid simulation is optional. */
 const char *game_materials_prepare(game_materials *materials);
+/* Views streamed terrain prepares beside its cameras', such as an editor's:
+ * game coordinates, prepared under each terrain's stream budget. Copied;
+ * they stay until replaced or reset. */
+void game_materials_set_stream_views(
+    game_materials *materials,
+    const material_stream_view *views,
+    int count
+);
+/* Whether streamed terrain still waits on tiles its views want. */
+bool game_materials_streaming(const game_materials *materials);
+/* A host that can wait for terrain, as an editor's thumbnail can, streams even
+ * the tiles its cameras and moving bodies see under the stream budget, rather
+ * than preparing them at once, and polls game_materials_streaming. Kept until
+ * reset. */
+void game_materials_set_stream_deferred(game_materials *materials, bool deferred);
 /* Borrowed mask; NULL for ordinary colliders and uninitialized materials. */
 const material_mask *game_materials_mask(const game_materials *materials, ecs_entity entity);
 /* Mask incarnation survives revision reuse after reset/reinitialization. */

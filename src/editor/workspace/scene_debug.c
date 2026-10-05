@@ -12,6 +12,7 @@
 void scene_debug_clear(scene_debug *debug)
 {
     free(debug->asset_name);
+    free(debug->prototype);
     *debug = (scene_debug){ 0 };
 }
 
@@ -48,6 +49,19 @@ bool scene_debug_resolve(
         }
     }
     return false;
+}
+
+bool scene_debug_retired(
+    const scene_debug *debug,
+    game_behavior_world *behaviors,
+    uint64_t session,
+    game_behavior_attachment_info *out
+)
+{
+    return debug->asset_name && debug->session == session &&
+           game_behavior_retired_target(behaviors, out) &&
+           out->sequence == debug->sequence &&
+           !strcmp(out->asset_name, debug->asset_name);
 }
 
 static const char *resolved_alias(const char *name)

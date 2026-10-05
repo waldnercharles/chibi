@@ -257,7 +257,8 @@ static float model_ray_hit(ecs_world *world, ecs_entity entity, int id, CF_Ray3 
         leave = fminf(leave, fmaxf(a, b));
     }
     float epsilon = fmaxf(.00001f, extent * .0002f);
-    for (int step = 0; step < 128 && enter <= leave; step++) {
+    float lipschitz = render_shader_distance_lipschitz(id);
+    for (int step = 0; step < (lipschitz > 1 ? 512 : 128) && enter <= leave; step++) {
         CF_V3 point = cf_add_v3(local.p, cf_mul_v3_f(local.d, enter));
         shader_sample_context sample = {
             .object_position = { point.x, point.y, point.z }
@@ -271,12 +272,13 @@ static float model_ray_hit(ecs_world *world, ecs_entity entity, int id, CF_Ray3 
         if (distance <= epsilon) {
             return enter * ray.t / local.t;
         }
-        enter += fmaxf(distance * .8f, epsilon * .25f);
+        enter += lipschitz > 1 ? distance * .8f / lipschitz
+                               : fmaxf(distance * .8f, epsilon * .25f);
     }
     return FLT_MAX;
 }
 
-ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc)
+ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc, render_skip skip)
 {
     CF_Ray3 ray = render_arena_ray(camera, ndc);
     CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
@@ -290,6 +292,9 @@ ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
+        if (render_skip_has(skip, entity)) {
+            continue;
+        }
         int model = entity_model(world, entity);
         if (model) {
             float t = model_ray_hit(world, entity, model, ray);

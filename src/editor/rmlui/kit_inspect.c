@@ -158,5 +158,5 @@ bool kit_element_path(const kit *k, rml_element *el, char *out, size_t size)
     snprintf(out, size, "%s", path);
     free(path);
     bool hosted = n && n->hosted && el != n->el;
-    return document == k->doc && !hosted;
+    return owns_document(k, document) && !hosted;
 }

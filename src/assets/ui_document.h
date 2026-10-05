@@ -84,8 +84,12 @@ bool ui_document_expand(
 char *ui_document_sources(const char *rml, const char *asset, int first);
 /* Owned RCSS whose rules only match inside elements with data-ui="name":
  * `body` in a selector names that element, and other selectors match within
- * it. @media blocks are scoped too; other at-rules are kept as written. Each
- * line of expanded RCSS (rcss_expand) keeps its line, so its map holds. */
+ * it. The classes right after `body` name the document's body as well:
+ * `body.dark .x` matches inside the element when it or the body has `dark`,
+ * and `body:not(.dark) .x` when the body lacks it, so a panel's RCSS follows
+ * the theme and density classes its host sets on the document. @media blocks
+ * are scoped too; other at-rules are kept as written. Each line of expanded
+ * RCSS (rcss_expand) keeps its line, so its map holds. */
 char *ui_document_scope(const char *rcss, const char *name);
 /* Appends the name of each widget the markup uses directly to `names`. */
 void ui_document_use_names(const char *rml, char ***names);
@@ -95,15 +99,15 @@ void ui_document_use_names(const char *rml, char ***names);
 #define UI_DOCUMENT_PAUSE_MENU "PauseMenu"
 
 /* An event markup sends the entity showing it: an emit('Name') in a
- * data-event-* handler when that event happens (data-event-change when the
- * player changes an input), and a data-keys binding's when the player
- * presses its key with focus inside. */
+ * data-event-* handler when that event happens (data-event-change or
+ * data-event-input when the player changes an input), and a data-keys
+ * binding's when the player presses its key with focus inside. */
 typedef struct ui_document_event
 {
     char *name;
     char *element; /* "#id", "tag.class", "tag", or a <use>'s widget name */
     char *key;     /* the data-keys key; NULL for a handler's emit */
-    bool input;    /* emitted by data-event-change, when an input changes */
+    bool input;    /* emitted as an input changes */
 } ui_document_event;
 
 /* Appends each event the markup names, in document order, to `events`. */

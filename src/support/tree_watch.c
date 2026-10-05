@@ -116,7 +116,9 @@ char **tree_watch_poll(tree_watch *w, const char *root, const char *extension, d
     w->due = now + 1;
     tree_watch_file *files = NULL;
     scan(&files, root, extension);
-    qsort(files, (size_t)acount(files), sizeof *files, compare_paths);
+    if (acount(files) > 1) {
+        qsort(files, (size_t)acount(files), sizeof *files, compare_paths);
+    }
     char **changes = same ? differences(w->files, files) : NULL;
     if (!same) {
         free(w->root);

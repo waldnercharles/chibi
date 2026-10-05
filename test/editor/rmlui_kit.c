@@ -2,8 +2,11 @@
  * command. */
 #include "editor/ui/highlight.h"
 #include "editor/ui/kit.h"
+#include "support/number_expr.h"
 #include "support/xalloc.h"
 #include "test/suite_internal.h"
+#include "ui/controls/controls.h"
+#include "ui/input_feel.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
@@ -37,15 +40,15 @@ typedef struct
     int menu_b;
     int menu_count, menu_action;
     bool menu_submenu;
-    int chosen;
     const char *order[3];
     int order_count;
-    bool open_command;
-    int context;
     double flow;
     const char *morph;
     int reveal, rows_emitted, hovered_row;
     char dropped[32];
+    bool drop_hovered;     /* a "thing" drag is over the target */
+    int row_double_clicks; /* on the draggable row "pear" */
+    char hovered[32];      /* and its payload */
     char note[64];
     int note_commits;
     bool focus_note;
@@ -59,23 +62,9 @@ typedef struct
     bool rename_empty;
     char rename[32];
     int rename_commits, rename_applied;
-    int panel_menus; /* the panel's menu asked for */
 } kit_fixture;
 
-static const kit_command_item COMMANDS[] = {
-    { "Alpha", "Commands", NULL, NULL, NULL, 0 },
-    { "Beta", "Commands", NULL, NULL, "second", 0 },
-    { "Frame Selected", "Commands", NULL, "F", "focus", 0, "Centers the view on the selection." },
-};
-
 static const char *const CHOICES[] = { "Alpha", "Beta", "Frame Selected", "Gamma" };
-
-static const kit_command_item BUTTON_DROPDOWN_OPTIONS[] = {
-    { .label = "Alpha" },
-    { .label = "Beta", .current = true },
-    { .label = "Frame Selected" },
-    { .label = "Gamma" },
-};
 
 static const kit_command_item AUTOCOMPLETE_OPTIONS[] = {
     { .label = "Path 00", .group = "Paths", .keywords = "common", .meta = "float" },
@@ -114,7 +103,10 @@ static void emit(kit_fixture *f)
     kit *k = f->k;
     kit_root(k, "app");
     kit_push(k, "bar", NULL, "topbar");
-    if (kit_menubar_trigger(k, "file", "File")) {
+    if (kit_button(k, "file", &(kit_button_desc){ .label = "File" })) {
+        kit_popup_open(k, "menu:app/bar/file");
+    }
+    if (kit_popup_begin(k, "menu:app/bar/file", "menu")) {
         kit_attr(k, "id", "test-file-menu");
         if (f->menu_count && f->menu_submenu) {
             if (kit_submenu_begin(k, "actions", "Actions", 0)) {
@@ -140,30 +132,6 @@ static void emit(kit_fixture *f)
         f->clicks++;
     }
     kit_attr(k, "id", "test-press-button");
-    kit_button_desc dropdown_button = { .label = "Choose" };
-    if (kit_button(k, "dropdown-trigger", &dropdown_button)) {
-        kit_dropdown_open(k, "button-dropdown", "Search choices");
-    }
-    if (kit_dropdown_is_open(k, "button-dropdown")) {
-        kit_dropdown(
-            k,
-            "button-dropdown",
-            BUTTON_DROPDOWN_OPTIONS,
-            (int)(sizeof BUTTON_DROPDOWN_OPTIONS / sizeof *BUTTON_DROPDOWN_OPTIONS)
-        );
-    }
-    kit_picker_desc picker = { .value = "Alpha", .placeholder = "Choose asset" };
-    if (kit_picker(k, "asset-trigger", &picker)) {
-        kit_dropdown_open(k, "asset-dropdown", "Search assets");
-    }
-    if (kit_dropdown_is_open(k, "asset-dropdown")) {
-        kit_dropdown(
-            k,
-            "asset-dropdown",
-            BUTTON_DROPDOWN_OPTIONS,
-            (int)(sizeof BUTTON_DROPDOWN_OPTIONS / sizeof *BUTTON_DROPDOWN_OPTIONS)
-        );
-    }
     kit_button_desc rename = { .label = "Rename" };
     if (kit_button(k, "rename-trigger", &rename)) {
         if (kit_popup_is_open(k, "rename")) {
@@ -190,7 +158,6 @@ static void emit(kit_fixture *f)
     }
     f->commits += kit_item_committed(k);
     f->editing = kit_item_active(k);
-    f->context += kit_item_context_clicked(k);
     kit_prop_end(k);
     kit_prop_begin(k, "second", "Second");
     kit_number(k, "value", &f->second, &d);
@@ -271,7 +238,6 @@ static void emit(kit_fixture *f)
     kit_prop_end(k);
     kit_panel_begin(k, "panel", "Panel", NULL, true);
     kit_panel_end(k);
-    f->panel_menus += kit_panel_menu(k);
     kit_pop(k);
     kit_push(k, "list", NULL, NULL);
     for (int i = 0; i < f->order_count; i++) {
@@ -316,6 +282,18 @@ static void emit(kit_fixture *f)
     kit_style(k, "height", "20dp");
     kit_style(k, "margin-left", "40dp");
     kit_drop_target(k, "thing", f->dropped, sizeof f->dropped);
+    kit_drop_target(k, "other", f->dropped, sizeof f->dropped);
+    char type[16];
+    f->drop_hovered = kit_drop_hover(k, type, sizeof type, f->hovered, sizeof f->hovered) &&
+                      !strcmp(type, "thing");
+    if (f->drop_hovered) {
+        kit_drag_hint(k, "Put here");
+    }
+    unsigned pear = kit_row_begin(k, "pear", &(kit_row_desc){ .label = "Pear", .twisty = -1 });
+    kit_row_end(k);
+    kit_style(k, "width", "60dp");
+    kit_drag_source(k, &(kit_drag_desc){ .type = "thing", .payload = "pear" });
+    f->row_double_clicks += (pear & KIT_ROW_DOUBLE_CLICK) != 0;
     kit_pop(k);
     if (f->open_rename) {
         f->open_rename = false;
@@ -344,14 +322,6 @@ static void emit(kit_fixture *f)
             );
         }
         kit_popup_end(k);
-    }
-    if (f->open_command) {
-        f->open_command = false;
-        kit_command_open(k, "Search");
-    }
-    int chosen = kit_command(k, COMMANDS, (int)(sizeof COMMANDS / sizeof *COMMANDS));
-    if (chosen >= 0) {
-        f->chosen = chosen;
     }
 }
 
@@ -434,28 +404,6 @@ static void type(kit_fixture *f, const char *text)
     rml_backend_process_input(f->backend, &input);
 }
 
-/* The first palette row's label as RML with its tags removed. */
-static void first_row_text(kit_fixture *f, char *text, size_t size)
-{
-    rml_element *input = rml_context_focus_element(rml_backend_context(f->backend));
-    rml_element *label = input
-                           ? rml_element_query_selector(rml_element_owner_document(input), ".cmd-item .label")
-                           : NULL;
-    char rml[256] = "";
-    if (label) {
-        rml_element_inner_rml(label, rml, sizeof rml);
-    }
-    size_t n = 0;
-    bool tag = false;
-    for (const char *c = rml; *c && n + 1 < size; c++) {
-        tag = *c == '<' || (tag && *c != '>');
-        if (!tag && *c != '>') {
-            text[n++] = *c;
-        }
-    }
-    text[n] = '\0';
-}
-
 /* The shown tooltip's size, with its description's text. */
 static rml_vec2 tip_shown(kit_fixture *f, const char *path, char *about, size_t size)
 {
@@ -471,12 +419,12 @@ static rml_vec2 tip_shown(kit_fixture *f, const char *path, char *about, size_t 
     }
     rml_element *hovered = rml_context_hover_element(rml_backend_context(f->backend));
     rml_element *document = rml_element_owner_document(hovered);
-    rml_element *text = rml_element_query_selector(document, ".tooltip .tip-about");
+    rml_element *text = test_query(rml_backend_context(f->backend), ".tooltip .tip-about");
     about[0] = '\0';
     if (text) {
         rml_element_inner_rml(text, about, size);
     }
-    return rml_element_box_size(rml_element_query_selector(document, ".tooltip"), RML_BOX_BORDER);
+    return rml_element_box_size(test_query(rml_backend_context(f->backend), ".tooltip"), RML_BOX_BORDER);
 }
 
 static bool check(bool ok, const char *what)
@@ -705,6 +653,22 @@ static void wire_geometry_frame(
     rml_context_render(context);
 }
 
+/* A <line-chart> of one series from 0 to `max`, published as test:plot, as
+   Performance shows its own. */
+static void test_line_chart(kit *k, const line_chart_series *series, double max, const char *unit, int precision)
+{
+    line_chart_publish("test:plot", series);
+    kit_leaf(k, "plot", "line-chart", "chart");
+    char text[32];
+    kit_attr(k, "series", "test:plot");
+    kit_attr(k, "min", "0");
+    snprintf(text, sizeof text, "%g", max);
+    kit_attr(k, "max", text);
+    kit_attr(k, "unit", unit ? unit : "");
+    snprintf(text, sizeof text, "%d", precision);
+    kit_attr(k, "precision", text);
+}
+
 static void geometry_frame(kit *k, rml_context *context, geometry_capture *capture, bool chart, float value)
 {
     kit_frame_input in = { .width = 640, .height = 400, .dp_ratio = 1 };
@@ -712,19 +676,8 @@ static void geometry_frame(kit *k, rml_context *context, geometry_capture *captu
     kit_root(k, "app");
     if (chart) {
         float times[] = { 0, 30 }, values[] = { value, value };
-        kit_chart_series series = { times, values, 2, 0xf111cbff };
-        kit_chart(
-            k,
-            "plot",
-            NULL,
-            &(kit_chart_desc){
-                .series = &series,
-                .series_count = 1,
-                .now = 30,
-                .min = 0,
-                .max = 1,
-            }
-        );
+        line_chart_series series = { times, values, 2, 0xf111cbff, 30 };
+        test_line_chart(k, &series, 1, NULL, 0);
     } else {
         kit_wire wire = { .from_x = 20,
                           .from_y = 30,
@@ -821,6 +774,7 @@ static bool retained_geometry()
     );
     wire.flags = KIT_WIRE_FLOW;
     wire.flow = 0.1f;
+    wire.pulse = 1;
     wire.flow_color = 0x5395fbff;
     wire.flow_width = 8;
     wire_geometry_frame(k, context, &capture, &wires, 1);
@@ -836,23 +790,24 @@ static bool retained_geometry()
             capture.compiles[2] == flow_uploads + 1 && capture.drawn[2].seen &&
             count == 4 &&
             !memcmp(previous_path, path, (size_t)count * 2 * sizeof *path),
-        "flow animation uploads only its marker layer and retains static wire "
-        "paths and grid"
+        "flow animation uploads only its bubble layer and retains static wire "
+        "paths, glow and grid"
     );
     wire_geometry_frame(k, context, &capture, &wires, 1);
     ok &= check(
         capture.compiles[0] == wire_uploads && capture.compiles[2] == flow_uploads + 1,
-        "an unchanged flow phase reuses the animated marker mesh too"
+        "an unchanged flow phase reuses the bubble mesh too"
     );
     chart_bounds hot_bounds = capture.drawn[2];
     wire.flow_width = 2;
     wire.flow_color = 0x5395fb80;
+    wire.pulse = 0; /* stopped firing: the bubbles are gone, the glow fades */
     wire_geometry_frame(k, context, &capture, &wires, 1);
     ok &= check(
         capture.compiles[0] == wire_uploads && capture.compiles[1] == grid_uploads &&
             capture.compiles[2] == flow_uploads + 2 && capture.drawn[2].seen &&
             capture.drawn[2].top > hot_bounds.top,
-        "decaying hot stroke width and color update only the overlay mesh"
+        "a decaying glow updates only the overlay mesh once bubbles are gone"
     );
     wire_uploads = capture.compiles[0];
     wire_geometry_frame(k, context, &capture, &wires, 1.5f);
@@ -902,6 +857,7 @@ static bool retained_geometry()
         "changed chart samples upload and render their new height"
     );
     kit_destroy(k);
+    line_chart_publish("test:plot", NULL);
     rml_remove_context("retained-geometry");
     rml_release_render_managers();
     ok &= check(
@@ -949,13 +905,13 @@ static void chart_styles(kit *k, const char *typography)
 
 static rml_element *chart_plot(chart_fixture *f)
 {
-    return rml_element_query_selector(rml_context_document(f->context, 0), ".chart");
+    return test_query(f->context, ".chart");
 }
 
 static void chart_frame_test(chart_fixture *f)
 {
     float times[] = { 0, 30 }, values[] = { f->value, f->value };
-    kit_chart_series series = { .times = times, .values = values, .count = 2 };
+    line_chart_series series = { .times = times, .values = values, .count = 2, .now = 30 };
     kit_begin(f->k, &f->in);
     kit_root(f->k, "app");
     chart_styles(f->k, f->typography);
@@ -963,20 +919,7 @@ static void chart_frame_test(chart_fixture *f)
     kit_style(f->k, "color", "#ffff00");
     kit_style(f->k, "position", "absolute");
     kit_style(f->k, "top", "160dp");
-    kit_chart(
-        f->k,
-        "plot",
-        NULL,
-        &(kit_chart_desc){
-            .series = &series,
-            .series_count = 1,
-            .now = 30,
-            .min = 0,
-            .max = f->max,
-            .unit = f->unit,
-            .precision = 1,
-        }
-    );
+    test_line_chart(f->k, &series, f->max, f->unit, 1);
     kit_style(f->k, "width", "320dp");
     kit_style(f->k, "height", "120dp");
     kit_end(f->k);
@@ -1041,7 +984,7 @@ static bool chart_fresh_labels(chart_fixture *f, rml_renderer *renderer)
     chart_clear_capture(f);
     rml_context_render(f->context);
     rml_element *badge = rml_element_query_selector(plot, ".chart-badge");
-    rml_element *ref_badge = rml_element_query_selector(rml_context_document(context, 0), ".chart-badge");
+    rml_element *ref_badge = test_query(context, ".chart-badge");
     rml_vec2 size = rml_element_box_size(badge, RML_BOX_BORDER);
     rml_vec2 ref_size = rml_element_box_size(ref_badge, RML_BOX_BORDER);
     rml_vec2 at = rml_element_absolute_offset(badge, RML_BOX_BORDER);
@@ -1180,6 +1123,7 @@ static bool chart_label_updates()
     chart_frame_test(&f);
     ok &= check(chart_fresh_labels(&f, renderer), "chart labels match fresh layout after a dp-ratio change");
     kit_destroy(f.k);
+    line_chart_publish("test:plot", NULL);
     rml_remove_context("chart-label-updates");
     rml_release_render_managers();
     rml_renderer_destroy(renderer);
@@ -1251,7 +1195,7 @@ static void number_label_frame(number_label_fixture *f)
 static bool number_label_reference(number_label_fixture *f, rml_renderer *renderer)
 {
     char text[128];
-    rml_element *value = rml_element_query_selector(rml_context_document(f->context, 0), ".number .value");
+    rml_element *value = test_query(f->context, ".number .value");
     rml_element_text(rml_element_first_child(value), text, sizeof text);
     chart_mesh actual = f->drawn;
     rml_context *context = rml_create_context("number-label-reference", 640, 400, renderer);
@@ -1562,7 +1506,6 @@ bool test_rmlui_kit()
                       .color = 0x33669900,
                       .autocomplete_value = "Path 04",
                       .autocomplete_selected = -1,
-                      .chosen = -1,
                       .order = { "a", "b", "c" },
                       .order_count = 3,
                       .flow = 9,
@@ -1581,14 +1524,12 @@ bool test_rmlui_kit()
        to its RGBA editor. Six-digit edits retain alpha; invalid tails do not. */
     f.focus_color = true;
     frame(&f);
-    rml_element *doc = rml_context_document(rml_backend_context(f.backend), 0);
-    rml_element *color_trigger = rml_element_query_selector(doc, ".field.color");
+    rml_element *color_trigger = test_query(rml_backend_context(f.backend), ".field.color");
     bool color_focus = rml_context_focus_element(rml_backend_context(f.backend)) ==
                        color_trigger;
     key(&f, RML_INPUT_KEY_ENTER, 0);
     settle(&f);
-    doc = rml_context_document(rml_backend_context(f.backend), 0);
-    rml_element *hex = rml_element_query_selector(doc, ".popup.picker .hex");
+    rml_element *hex = test_query(rml_backend_context(f.backend), ".popup.picker .hex");
     bool picker_focus = hex &&
                         rml_context_focus_element(rml_backend_context(f.backend)) == hex;
     char shown_hex[16] = "";
@@ -1617,15 +1558,15 @@ bool test_rmlui_kit()
         type(&f, "12345x");
         key(&f, RML_INPUT_KEY_ENTER, 0);
         frame(&f);
-        rml_element *hexrow = rml_element_query_selector(doc, ".popup.picker .hexrow");
+        rml_element *hexrow = test_query(rml_backend_context(f.backend), ".popup.picker .hexrow");
         ok &= check(
             f.color == 0xaabbcc44 && rml_element_has_attribute(hexrow, "data-invalid"),
             "partial hexadecimal input is rejected and marked invalid"
         );
     }
 
-    rml_element *opacity = rml_element_query_selector(doc, ".popup.picker .prop .field.number");
-    rml_element *percent = rml_element_query_selector(doc, ".popup.picker .prop .field.number .unit");
+    rml_element *opacity = test_query(rml_backend_context(f.backend), ".popup.picker .prop .field.number");
+    rml_element *percent = test_query(rml_backend_context(f.backend), ".popup.picker .prop .field.number .unit");
     char percent_text[8] = "";
     if (percent) {
         rml_element_inner_rml(percent, percent_text, sizeof percent_text);
@@ -1660,7 +1601,7 @@ bool test_rmlui_kit()
         "color picker Escape restores trigger focus"
     );
 
-    rml_element *number_label = rml_element_query_selector(doc, ".prop-scroll label");
+    rml_element *number_label = test_query(rml_backend_context(f.backend), ".prop-scroll label");
     double label_before = f.value;
     if (number_label) {
         click_element(&f, number_label);
@@ -1685,10 +1626,10 @@ bool test_rmlui_kit()
     f.controls = true;
     snprintf(f.control_text, sizeof f.control_text, "Original");
     settle(&f);
-    rml_element *select = rml_element_query_selector(doc, "#test-select");
-    rml_element *toggle = rml_element_query_selector(doc, "#test-toggle");
-    rml_element *control_text = rml_element_query_selector(doc, "#test-control-text input");
-    rml_element *control_check = rml_element_query_selector(doc, "#test-check");
+    rml_element *select = test_query(rml_backend_context(f.backend), "#test-select");
+    rml_element *toggle = test_query(rml_backend_context(f.backend), "#test-toggle");
+    rml_element *control_text = test_query(rml_backend_context(f.backend), "#test-control-text input");
+    rml_element *control_check = test_query(rml_backend_context(f.backend), "#test-check");
     if (select) {
         rml_element_focus(select, true);
         key(&f, RML_INPUT_KEY_ENTER, 0);
@@ -1860,12 +1801,17 @@ bool test_rmlui_kit()
     ok &= check(strcmp(markup, partial) == 0, "markup keeps the characters of a run that fit");
     highlight_markup(HIGHLIGHT_LOG, "<<", markup, 36);
     ok &= check(strcmp(markup, "<span class=\"tok-punct\">&lt;</span>") == 0, "markup never cuts an entity");
+    /* Braces would open a data expression where the markup is shown. */
+    highlight_escape("a {{ b }} <c>", markup, sizeof markup);
+    ok &= check(!strcmp(markup, "a &#123;&#123; b &#125;&#125; &lt;c&gt;"), "escaped markup shows braces and tags as text");
+    highlight_escape("<<", markup, 8);
+    ok &= check(!strcmp(markup, "&lt;"), "escaped markup is cut between whole characters");
     double parsed;
     ok &= check(
-        kit_number_parse("=2*pi", 0, &parsed) &&
+        number_expr_eval("=2*pi", 0, &parsed) &&
             fabs(parsed - 6.283185307179586) < 1e-9 &&
-            kit_number_parse("*2", 3, &parsed) && parsed == 6 &&
-            !kit_number_parse("2 *", 3, &parsed),
+            number_expr_eval("*2", 3, &parsed) && parsed == 6 &&
+            !number_expr_eval("2 *", 3, &parsed),
         "shared number parsing keeps expressions, relative operators, and "
         "rejects incomplete input"
     );
@@ -1873,7 +1819,7 @@ bool test_rmlui_kit()
     ok &= check(click(&f, "app/bar/button") && f.clicks == 1, "button click reports once");
     frame(&f);
     ok &= check(f.clicks == 1, "button click does not repeat");
-    rml_element *button = rml_element_query_selector(doc, "#test-press-button");
+    rml_element *button = test_query(rml_backend_context(f.backend), "#test-press-button");
     ok &= check(button != NULL, "the keyboard button is present");
     if (button) {
         rml_element_focus(button, true);
@@ -2012,7 +1958,7 @@ bool test_rmlui_kit()
     type(&f, "7.5");
     key(&f, RML_INPUT_KEY_TAB, 0);
     frame(&f);
-    rml_element *second_field = rml_element_query_selector(doc, ".prop:nth-child(2) .field.number");
+    rml_element *second_field = test_query(rml_backend_context(f.backend), ".prop:nth-child(2) .field.number");
     ok &= check(
         f.value == 7.5 && f.commits == 1 &&
             rml_context_focus_element(rml_backend_context(f.backend)) == second_field,
@@ -2021,7 +1967,7 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_ENTER, 0);
     key(&f, RML_INPUT_KEY_TAB, 0);
     frame(&f);
-    rml_element *color_field = rml_element_query_selector(doc, ".field.color");
+    rml_element *color_field = test_query(rml_backend_context(f.backend), ".field.color");
     ok &= check(
         rml_context_focus_element(rml_backend_context(f.backend)) == color_field,
         "Tab from a number reaches the color control in document order"
@@ -2051,43 +1997,6 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_PAGE_DOWN, RML_INPUT_MOD_SHIFT);
     frame(&f);
     ok &= check(f.value == before, "PageDown retreats ten steps even with Shift held");
-
-    /* Right press reports a context click without editing. */
-    ok &= check(center(&f, "app/fields/first/@control/value", &x, &y), "field for context");
-    pointer(&f, RML_INPUT_POINTER_MOVE, x, y);
-    rml_input right = { .type = RML_INPUT_POINTER_DOWN, .x = x, .y = y, .button = 1 };
-    rml_backend_process_input(f.backend, &right);
-    right.type = RML_INPUT_POINTER_UP;
-    rml_backend_process_input(f.backend, &right);
-    frame(&f);
-    ok &= check(f.context == 1 && !kit_wants_text(f.k, NULL), "right press is a context click");
-
-    /* A panel's menu button asks for its menu without folding the panel, as a
-       right press on its header does. */
-    doc = rml_context_document(rml_backend_context(f.backend), 0);
-    rml_element *more = rml_element_query_selector(doc, ".panel[data-menu] .panel-head .menu");
-    ok &= check(more != NULL, "the panel's header holds its menu button");
-    if (more) {
-        rml_vec2 at = rml_element_absolute_offset(more, RML_BOX_BORDER);
-        rml_vec2 size = rml_element_box_size(more, RML_BOX_BORDER);
-        x = at.x + size.x * 0.5f;
-        y = at.y + size.y * 0.5f;
-        pointer(&f, RML_INPUT_POINTER_MOVE, x, y);
-        pointer(&f, RML_INPUT_POINTER_DOWN, x, y);
-        pointer(&f, RML_INPUT_POINTER_UP, x, y);
-        frame(&f);
-        rml_element *panel = rml_element_query_selector(doc, ".panel[data-menu]");
-        ok &= check(
-            f.panel_menus == 1 && rml_element_has_attribute(panel, "data-open"),
-            "the menu button asks for the menu and leaves the panel open"
-        );
-        right = (rml_input){ .type = RML_INPUT_POINTER_DOWN, .x = x - 60, .y = y, .button = 1 };
-        rml_backend_process_input(f.backend, &right);
-        right.type = RML_INPUT_POINTER_UP;
-        rml_backend_process_input(f.backend, &right);
-        frame(&f);
-        ok &= check(f.panel_menus == 2, "a right press on the header asks for it too");
-    }
 
     /* A text area: Shift+Enter starts a line, Enter commits both once. */
     f.focus_note = true;
@@ -2123,7 +2032,7 @@ bool test_rmlui_kit()
     ok &= check(kit_find(f.k, "app/fields/choice/@control/value", &trigger), "searchable choice trigger is laid out");
     ok &= check(click(&f, "app/fields/choice/@control/value"), "searchable choice opens");
     settle(&f);
-    rml_element *dropdown = rml_element_query_selector(doc, ".popup.dropdown");
+    rml_element *dropdown = test_query(rml_backend_context(f.backend), ".popup.dropdown");
     rml_vec2 dropdown_at = dropdown
                              ? rml_element_absolute_offset(dropdown, RML_BOX_BORDER)
                              : (rml_vec2){ 0 };
@@ -2152,7 +2061,7 @@ bool test_rmlui_kit()
     );
     key(&f, RML_INPUT_KEY_SPACE, 0);
     frame(&f);
-    dropdown = rml_element_query_selector(doc, ".popup.dropdown");
+    dropdown = test_query(rml_backend_context(f.backend), ".popup.dropdown");
     rml_element *current = dropdown
                              ? rml_element_query_selector(dropdown, ".menu-item[data-highlighted] .label")
                              : NULL;
@@ -2170,7 +2079,7 @@ bool test_rmlui_kit()
     ok &= check(
         !kit_dropdown_is_open(f.k, "select:app/fields/choice/@control/value") &&
             rml_context_focus_element(rml_backend_context(f.backend)) ==
-                rml_element_query_selector(doc, ".prop-scroll .field.select"),
+                test_query(rml_backend_context(f.backend), ".prop-scroll .field.select"),
         "Escape closes the dropdown and restores focus to its field"
     );
 
@@ -2179,7 +2088,7 @@ bool test_rmlui_kit()
     const char *source_path = "app/fields/source/@control/value";
     ok &= check(click(&f, source_path), "autocomplete opens from its input");
     settle(&f);
-    rml_element *autocomplete = rml_element_query_selector(doc, ".field.autocomplete input.value");
+    rml_element *autocomplete = test_query(rml_backend_context(f.backend), ".field.autocomplete input.value");
     char shown_value[64] = "";
     if (autocomplete) {
         rml_element_value(autocomplete, shown_value, sizeof shown_value);
@@ -2193,7 +2102,7 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_A, RML_INPUT_MOD_CONTROL);
     type(&f, "Path");
     frame(&f);
-    rml_element *autocomplete_popup = rml_element_query_selector(doc, ".popup.autocomplete");
+    rml_element *autocomplete_popup = test_query(rml_backend_context(f.backend), ".popup.autocomplete");
     rml_element *matches[16];
     int match_count = autocomplete_popup
                         ? rml_element_query_selector_all(
@@ -2303,7 +2212,7 @@ bool test_rmlui_kit()
     type(&f, "unfinished.path.");
     key(&f, RML_INPUT_KEY_ESCAPE, 0);
     frame(&f);
-    autocomplete = rml_element_query_selector(doc, ".field.autocomplete input.value");
+    autocomplete = test_query(rml_backend_context(f.backend), ".field.autocomplete input.value");
     shown_value[0] = 0;
     if (autocomplete) {
         rml_element_value(autocomplete, shown_value, sizeof shown_value);
@@ -2374,7 +2283,7 @@ bool test_rmlui_kit()
     type(&f, "draft text");
     frame(&f);
     ok &= check(click(&f, "app/bar/button"), "outside click dismisses autocomplete");
-    autocomplete = rml_element_query_selector(doc, ".field.autocomplete input.value");
+    autocomplete = test_query(rml_backend_context(f.backend), ".field.autocomplete input.value");
     shown_value[0] = 0;
     if (autocomplete) {
         rml_element_value(autocomplete, shown_value, sizeof shown_value);
@@ -2399,42 +2308,6 @@ bool test_rmlui_kit()
     rml_element_value(autocomplete, shown_value, sizeof shown_value);
     ok &= check(strcmp(shown_value, "External.path") == 0, "an unfocused autocomplete refreshes its display after an external value change");
 
-    ok &= check(click(&f, "app/bar/dropdown-trigger"), "button opens its dropdown");
-    settle(&f);
-    ok &= check(
-        kit_dropdown_is_open(f.k, "button-dropdown") && kit_wants_text(f.k, NULL),
-        "button dropdown focuses its search field"
-    );
-    type(&f, "Bet");
-    frame(&f);
-    ok &= check(
-        strcmp(kit_dropdown_query(f.k, "button-dropdown"), "Bet") == 0,
-        "button dropdown retains its search query while open"
-    );
-    ok &= check(click(&f, "app/bar/dropdown-trigger"), "button closes its open dropdown");
-    settle(&f);
-    ok &= check(
-        !kit_dropdown_is_open(f.k, "button-dropdown") &&
-            strcmp(kit_dropdown_query(f.k, "button-dropdown"), "Bet") == 0,
-        "re-clicking the same dropdown trigger closes it instead of reopening"
-    );
-    ok &= check(click(&f, "app/bar/dropdown-trigger"), "button reopens its dropdown");
-    settle(&f);
-    ok &= check(
-        kit_dropdown_is_open(f.k, "button-dropdown") &&
-            kit_dropdown_query(f.k, "button-dropdown")[0] == 0,
-        "reopening a closed dropdown starts with a clean search"
-    );
-    kit_popup_close(f.k, "button-dropdown");
-    frame(&f);
-
-    ok &= check(click(&f, "app/bar/asset-trigger"), "asset picker opens its dropdown");
-    settle(&f);
-    ok &= check(kit_dropdown_is_open(f.k, "asset-dropdown"), "asset picker search is open");
-    ok &= check(click(&f, "app/bar/asset-trigger"), "asset picker closes its dropdown");
-    settle(&f);
-    ok &= check(!kit_dropdown_is_open(f.k, "asset-dropdown"), "re-clicking an asset picker closes without reopening its search");
-
     /* Menubar: press opens, item activation reports once and closes. */
     ok &= check(click(&f, "app/bar/file"), "menu trigger");
     settle(&f);
@@ -2458,7 +2331,7 @@ bool test_rmlui_kit()
     f.menu_count = 12;
     click(&f, "app/bar/file");
     settle(&f);
-    rml_element *action_popup = rml_element_query_selector(doc, "#test-file-menu:not([data-ending-style])");
+    rml_element *action_popup = test_query(rml_backend_context(f.backend), "#test-file-menu:not([data-ending-style])");
     rml_element *actions[12];
     int action_count = rml_element_query_selector_all(action_popup, ".menu-item", actions, 12);
     rml_vec2 action_at = rml_element_absolute_offset(action_popup, RML_BOX_CONTENT);
@@ -2487,7 +2360,7 @@ bool test_rmlui_kit()
     rml_backend_resize(f.backend, f.in.width, f.in.height, 1);
     click(&f, "app/bar/file");
     settle(&f);
-    action_popup = rml_element_query_selector(doc, "#test-file-menu:not([data-ending-style])");
+    action_popup = test_query(rml_backend_context(f.backend), "#test-file-menu:not([data-ending-style])");
     rml_vec2 action_border_at = rml_element_absolute_offset(action_popup, RML_BOX_BORDER);
     float action_border_height = rml_element_box_size(action_popup, RML_BOX_BORDER)
                                      .y;
@@ -2502,7 +2375,7 @@ bool test_rmlui_kit()
     );
     key(&f, RML_INPUT_KEY_END, 0);
     settle(&f);
-    action_popup = rml_element_query_selector(doc, "#test-file-menu:not([data-ending-style])");
+    action_popup = test_query(rml_backend_context(f.backend), "#test-file-menu:not([data-ending-style])");
     action_count = rml_element_query_selector_all(action_popup, ".menu-item", actions, 12);
     action_at = rml_element_absolute_offset(action_popup, RML_BOX_PADDING);
     action_height = rml_element_box_size(action_popup, RML_BOX_PADDING).y;
@@ -2531,14 +2404,14 @@ bool test_rmlui_kit()
     key(&f, RML_INPUT_KEY_END, 0);
     key(&f, RML_INPUT_KEY_RIGHT, 0);
     settle(&f);
-    rml_element *action_submenu = rml_element_query_selector(doc, "#test-action-submenu:not([data-ending-style])");
+    rml_element *action_submenu = test_query(rml_backend_context(f.backend), "#test-action-submenu:not([data-ending-style])");
     ok &= check(
         action_submenu && kit_popup_is_open(f.k, "sub:layer/@menu:app/bar/file/actions"),
         "Right opens the action submenu from its keyboard-selected parent row"
     );
     key(&f, RML_INPUT_KEY_END, 0);
     settle(&f);
-    action_submenu = rml_element_query_selector(doc, "#test-action-submenu:not([data-ending-style])");
+    action_submenu = test_query(rml_backend_context(f.backend), "#test-action-submenu:not([data-ending-style])");
     bool submenu_final_visible = false;
     if (action_submenu) {
         action_count = rml_element_query_selector_all(action_submenu, ".menu-item", actions, 12);
@@ -2591,7 +2464,7 @@ bool test_rmlui_kit()
             kit_popup_is_open(f.k, "rename") &&
             !kit_dropdown_is_open(f.k, "select:layer/@rename/mode") &&
             rml_context_focus_element(rml_backend_context(f.backend)) ==
-                rml_element_query_selector(doc, ".popup .field.select"),
+                test_query(rml_backend_context(f.backend), ".popup .field.select"),
         "choosing a nested option updates its value and returns focus to the "
         "parent field"
     );
@@ -2602,7 +2475,7 @@ bool test_rmlui_kit()
         kit_popup_is_open(f.k, "rename") &&
             !kit_dropdown_is_open(f.k, "select:layer/@rename/mode") &&
             rml_context_focus_element(rml_backend_context(f.backend)) ==
-                rml_element_query_selector(doc, ".popup .field.select"),
+                test_query(rml_backend_context(f.backend), ".popup .field.select"),
         "Escape closes only the nested dropdown and restores focus within its "
         "parent"
     );
@@ -2665,8 +2538,7 @@ bool test_rmlui_kit()
     ok &= check(!kit_popup_is_open(f.k, "rename"), "Tab from the last popover control exits to the document and closes");
     click(&f, "app/bar/rename-trigger");
     settle(&f);
-    rml_element *document = rml_context_document(rml_backend_context(f.backend), 0);
-    rml_element *outside = rml_element_query_selector(document, ".topbar > button");
+    rml_element *outside = test_query(rml_backend_context(f.backend), ".topbar > button");
     ok &= check(outside && rml_element_focus(outside, true), "outside document controls remain focusable while a popover is open");
     frame(&f);
     ok &= check(!kit_popup_is_open(f.k, "rename"), "moving focus to an outside control dismisses a nonmodal popover");
@@ -2699,69 +2571,6 @@ bool test_rmlui_kit()
     kit_popup_close(f.k, "rename");
     frame(&f);
     ok &= check(!kit_popup_is_open(f.k, "rename"), "close closes a popup at once");
-
-    /* Command palette: ranking and keyboard selection. */
-    f.open_command = true;
-    settle(&f);
-    ok &= check(kit_command_is_open(f.k), "command opens");
-    type(&f, "fs");
-    frame(&f);
-    key(&f, RML_INPUT_KEY_ENTER, 0);
-    frame(&f);
-    ok &= check(f.chosen == 2, "the palette ranks Frame Selected by its initials, \"fs\"");
-    ok &= check(!kit_command_is_open(f.k), "choosing closes the command");
-
-    /* Rows a new query brings under a still pointer leave the selection on
-       the best match (cmdk): only a pointer that moves chooses a row. */
-    f.open_command = true;
-    settle(&f);
-    rml_element *rows[4];
-    rml_element *input = rml_context_focus_element(rml_backend_context(f.backend));
-    int row_count = rml_element_query_selector_all(rml_element_owner_document(input), ".cmd-item", rows, 4);
-    rml_vec2 at = row_count > 1 ? rml_element_absolute_offset(rows[1], RML_BOX_BORDER)
-                                : (rml_vec2){ 0 };
-    pointer(&f, RML_INPUT_POINTER_MOVE, at.x + 4, at.y + 4);
-    frame(&f);
-    /* "l" drops Beta, so Frame Selected's row comes under the pointer. */
-    f.chosen = -1;
-    type(&f, "l");
-    settle(&f);
-    key(&f, RML_INPUT_KEY_ENTER, 0);
-    frame(&f);
-    ok &= check(row_count > 1 && f.chosen == 0, "a still pointer leaves Enter on the best match");
-
-    /* Match highlighting keeps the spaces RmlUi would drop as blank text:
-       one inside a bold run and one alone between two. */
-    char matched_space[64], gap_space[64];
-    f.open_command = true;
-    settle(&f);
-    type(&f, "frame sel");
-    frame(&f);
-    first_row_text(&f, matched_space, sizeof matched_space);
-    key(&f, RML_INPUT_KEY_ESCAPE, 0);
-    frame(&f);
-    f.open_command = true;
-    settle(&f);
-    type(&f, "es");
-    frame(&f);
-    first_row_text(&f, gap_space, sizeof gap_space);
-    key(&f, RML_INPUT_KEY_ESCAPE, 0);
-    frame(&f);
-    ok &= check(strcmp(matched_space, "Frame Selected") == 0, "highlighting keeps a matched space");
-    ok &= check(strcmp(gap_space, "Frame Selected") == 0, "highlighting keeps a space between matches");
-
-    /* A described command takes a second line; others keep one. */
-    kit_rect plain, described;
-    f.open_command = true;
-    settle(&f);
-    ok &= check(
-        kit_find(f.k, "layer/@command/i0", &plain) &&
-            kit_find(f.k, "layer/@command/i2", &described) &&
-            described.h > plain.h,
-        "a command's description is a second line"
-    );
-    key(&f, RML_INPUT_KEY_ESCAPE, 0);
-    settle(&f);
 
     /* Tooltips: the description wraps under the label, and a zoomed canvas
        keeps the tooltip's size on screen. */
@@ -2808,8 +2617,8 @@ bool test_rmlui_kit()
     settle(&f);
     ok &= check(f.hovered_row < 0, "an overscan row outside the list is not hovered");
 
-    /* Drag and drop: picked up after 5 dp, dropped on the target under the
-     * pointer. */
+    /* Drag and drop: picked up after FEEL_DRAG_DP of movement, never by a
+     * still hold, and dropped on the target under the pointer. */
     float sx = 0, sy = 0, tx = 0, ty = 0;
     ok &= check(
         center(&f, "app/dnd/source", &sx, &sy) &&
@@ -2819,17 +2628,74 @@ bool test_rmlui_kit()
     pointer(&f, RML_INPUT_POINTER_MOVE, sx, sy);
     pointer(&f, RML_INPUT_POINTER_DOWN, sx, sy);
     f.in.down[0] = true;
+    for (int i = 0; i < 30; i++) {
+        frame(&f);
+    }
+    ok &= check(!kit_dragging(f.k, "thing"), "a press held still for half a second is no drag");
+    pointer(&f, RML_INPUT_POINTER_MOVE, sx + FEEL_DRAG_DP - 1, sy);
     frame(&f);
-    pointer(&f, RML_INPUT_POINTER_MOVE, sx + 3, sy);
-    frame(&f);
-    ok &= check(!kit_dragging(f.k, "thing"), "no drag under 5 dp");
+    ok &= check(!kit_dragging(f.k, "thing"), "no drag under the drag threshold");
     pointer(&f, RML_INPUT_POINTER_MOVE, tx, ty);
     frame(&f);
-    ok &= check(kit_dragging(f.k, "thing"), "drag starts past 5 dp");
+    ok &= check(kit_dragging(f.k, "thing"), "drag starts past the drag threshold");
+    frame(&f);
+    frame(&f);
+    rml_element *over = test_query(rml_backend_context(f.backend), "[data-drop-over]");
+    rml_element *hint = test_query(rml_backend_context(f.backend), ".drag-overlay[data-hint] .hint");
+    char hint_text[32] = "";
+    if (hint) {
+        rml_element_inner_rml(hint, hint_text, sizeof hint_text);
+    }
+    ok &= check(
+        f.drop_hovered && !strcmp(f.hovered, "apple") && over &&
+            rml_element_has_attribute(over, "data-drop-accept") &&
+            !strcmp(hint_text, "Put here"),
+        "a target of several types hears the drag over it and names what a "
+        "drop does"
+    );
     pointer(&f, RML_INPUT_POINTER_UP, tx, ty);
     f.in.down[0] = false;
     frame(&f);
     ok &= check(strcmp(f.dropped, "apple") == 0 && !kit_dragging(f.k, NULL), "drop lands on the target");
+    /* Escape puts a drag back: nothing lands, even released over a target. */
+    f.dropped[0] = '\0';
+    pointer(&f, RML_INPUT_POINTER_MOVE, sx, sy);
+    pointer(&f, RML_INPUT_POINTER_DOWN, sx, sy);
+    f.in.down[0] = true;
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_MOVE, tx, ty);
+    frame(&f);
+    key(&f, RML_INPUT_KEY_ESCAPE, 0);
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_UP, tx, ty);
+    f.in.down[0] = false;
+    frame(&f);
+    ok &= check(!f.dropped[0] && !kit_dragging(f.k, NULL), "Escape cancels a drag");
+    /* As in browsers, only a press after a click double-clicks: RmlUi
+     * counts a press after any press on the same element, so a quick press
+     * on a row just dragged from would open it. */
+    float px = 0, py = 0;
+    ok &= check(center(&f, "app/dnd/pear", &px, &py), "the draggable row is laid out");
+    pointer(&f, RML_INPUT_POINTER_MOVE, px, py);
+    pointer(&f, RML_INPUT_POINTER_DOWN, px, py);
+    f.in.down[0] = true;
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_MOVE, tx, ty);
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_UP, tx, ty);
+    f.in.down[0] = false;
+    frame(&f);
+    pointer(&f, RML_INPUT_POINTER_MOVE, px, py);
+    pointer(&f, RML_INPUT_POINTER_DOWN, px, py);
+    pointer(&f, RML_INPUT_POINTER_UP, px, py);
+    frame(&f);
+    ok &= check(f.row_double_clicks == 0, "a quick press on a row just dragged from is a click, not a double click");
+    for (int i = 0; i < 2; i++) {
+        pointer(&f, RML_INPUT_POINTER_DOWN, px, py);
+        pointer(&f, RML_INPUT_POINTER_UP, px, py);
+    }
+    frame(&f);
+    ok &= check(f.row_double_clicks == 1, "a double click on the row after it still double-clicks");
 
     /* NumberFlow and Torph settle to exactly what a fresh render of the new
      * value lays out. */
@@ -2891,7 +2757,7 @@ bool test_rmlui_kit()
     frame(&f);
     char toast_transform[96] = "";
     float swipe_x = 0;
-    rml_element *swipe_toast = rml_element_query_selector(doc, ".toast");
+    rml_element *swipe_toast = test_query(rml_backend_context(f.backend), ".toast");
     bool has_swipe_velocity = swipe_toast &&
                               rml_element_property(swipe_toast, "transform", toast_transform, sizeof toast_transform) <
                                   sizeof toast_transform &&

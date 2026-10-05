@@ -67,6 +67,14 @@ typedef struct
     int error_code;
 } behavior_instance_trace_entry;
 
+/* A traced instance's record of one wire: when it last carried execution or
+ * a value, on the instance clock, and how often since tracing began. */
+typedef struct
+{
+    flow_traversal last;
+    uint64_t count; /* zero marks an empty slot */
+} behavior_instance_activity;
+
 struct behavior_instance
 {
     /* Borrowed; must outlive the instance. */
@@ -109,6 +117,14 @@ struct behavior_instance
     int trace_head;
     bool trace_view_dirty;
     uint64_t trace_revision;
+    /* Traced only: activity per wire, open-addressed, and the newest
+     * completed run of each event, newest last, whose watches keep the
+     * values pins last carried. Both clear with the trace. */
+    behavior_instance_activity *activity;
+    int activity_capacity, activity_used;
+    uint64_t activity_generation; /* changes whenever the table clears */
+    bool debug_target;
+    flow_run **retained;
     bool variable_spares;
     int pool_enabled;
     int breakpoints_override;
@@ -207,6 +223,23 @@ void behavior_instance_set_trace_enabled(behavior_instance *bi, int enabled);
 const behavior_instance_trace_entry *behavior_instance_trace(const behavior_instance *bi, int *count);
 /* Changes on append, bounded overwrite and clear, not on inspection reads. */
 uint64_t behavior_instance_trace_revision(const behavior_instance *bi);
+/* Records a traversal in a traced instance's activity table. */
+void behavior_instance_record_activity(behavior_instance *bi, const flow_traversal *traversal);
+/* The activity table: `capacity` slots, empty ones with a zero count, and a
+ * generation that changes whenever it clears. NULL until something ran. */
+const behavior_instance_activity *behavior_instance_activity_table(
+    const behavior_instance *bi,
+    int *capacity,
+    uint64_t *generation
+);
+/* The debugger's target: traced, it records every wire and value (running
+ * interpreted where compiled code has no observers) and keeps the newest
+ * completed run of each event, rather than pooling it, for the values pins
+ * show. Off releases those runs. */
+void behavior_instance_set_debug_target(behavior_instance *bi, bool target);
+/* Those runs, newest last; borrowed until the next release, trace clear or
+ * destruction. */
+flow_run *const *behavior_instance_retained_runs(const behavior_instance *bi, int *count);
 
 /* Dispatch a named event (EVT-9). Creates a distinct activation carrying
  * copied parameter values and runs the scheduler. NULL with a structured

@@ -1,5 +1,8 @@
+#include "editor/collab/actions_scene.h"
 #include "editor/workspace/model_preview.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/model/type.h"
+#include "graph/runtime/value_array.h"
 #include "render/shader_catalog.h"
 #include "runtime/generated.h"
 
@@ -13,6 +16,7 @@
 
 void invalidate_runtime_snapshot(app_scene_authoring *scene)
 {
+    scene_kept_clear(scene);
     scene->runtime_selected = (ecs_entity){ 0 };
     for (int i = 0; i < acount(scene->actors); i++) {
         game_prototype_free(scene->actors[i].runtime_snapshot);
@@ -127,6 +131,167 @@ bool runtime_session(const app_scene_authoring *scene)
            scene->model_preview;
 }
 
+/* ---------- Keep Changes ---------- */
+
+static void kept_free(scene_kept *kept)
+{
+    for (int i = 0; i < acount(kept->fields); i++) {
+        scene_property_value_free(&kept->fields[i].after);
+    }
+    afree(kept->fields);
+}
+
+void scene_kept_clear(app_scene_authoring *scene)
+{
+    for (int i = 0; i < acount(scene->kept); i++) {
+        kept_free(&scene->kept[i]);
+    }
+    afree(scene->kept);
+}
+
+void scene_kept_drop(app_scene_authoring *scene)
+{
+    assert(acount(scene->kept));
+    kept_free(&alast(scene->kept));
+    (void)apop(scene->kept);
+}
+
+/* Appends the entity's fields whose running value differs from `authored`. */
+static void keep_component(
+    app_scene_authoring *scene,
+    ecs_entity entity,
+    const game_prototype_component *authored,
+    scene_kept *kept
+)
+{
+    const ecs_component_desc *desc = authored->desc;
+    for (int f = 0; f < desc->type->field_count; f++) {
+        pin_value running = { 0 };
+        if (ecs_component_read_field(scene->world, entity, desc->id, f, &running) != ECS_OK ||
+            !editable_scalar(&running)) {
+            continue;
+        }
+        pin_value before = running;
+        pin_read_field(authored->data, &desc->type->fields[f], &before);
+        if (pin_value_equal(&running, &before)) {
+            continue;
+        }
+        scene_field_edit edit = { .component = desc->id, .field = f };
+        if (!scene_property_value_copy(&edit.after, running)) {
+            abort();
+        }
+        apush(kept->fields, edit);
+    }
+}
+
+int scene_keep_changes(app_scene_authoring *scene, const ecs_component_desc *only)
+{
+    scene_actor *actor = selected_actor(scene);
+    if (!scene->runtime_snapshot_valid || !actor ||
+        !ecs_entity_is_alive(scene->world, actor->entity)) {
+        return -1;
+    }
+    scene_kept kept = { .actor = actor->identity, .only = only };
+    const game_prototype *authored = actor->runtime_snapshot;
+    for (int i = 0; i < acount(authored->components); i++) {
+        const game_prototype_component *component = &authored->components[i];
+        if (component->data && (!only || component->desc->id == only->id) &&
+            ecs_component_has(scene->world, actor->entity, component->desc->id)) {
+            keep_component(scene, actor->entity, component, &kept);
+        }
+    }
+    apush(scene->kept, kept);
+    return acount(kept.fields);
+}
+
+/* Whether a later record of the same instance covers field `f` of record
+   `index`, so the later one decides its value. */
+static bool kept_superseded(const app_scene_authoring *scene, int index, int f)
+{
+    const scene_kept *kept = &scene->kept[index];
+    for (int i = index + 1; i < acount(scene->kept); i++) {
+        const scene_kept *later = &scene->kept[i];
+        if (later->actor == kept->actor &&
+            (!later->only || later->only->id == kept->fields[f].component)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int scene_kept_values(app_scene_authoring *scene, int *objects, const char **name)
+{
+    int values = 0;
+    *objects = 0;
+    *name = NULL;
+    uint64_t *counted = NULL;
+    for (int i = 0; i < acount(scene->kept); i++) {
+        scene_actor *actor = scene_actor_by_identity(scene, scene->kept[i].actor);
+        int count = 0;
+        for (int f = 0; actor && f < acount(scene->kept[i].fields); f++) {
+            count += !kept_superseded(scene, i, f);
+        }
+        bool seen = false;
+        for (int j = 0; j < acount(counted); j++) {
+            seen |= counted[j] == scene->kept[i].actor;
+        }
+        if (count && !seen) {
+            apush(counted, scene->kept[i].actor);
+            *name = acount(counted) == 1 ? actor->name : NULL;
+        }
+        values += count;
+    }
+    *objects = acount(counted);
+    afree(counted);
+    return values;
+}
+
+/* One kept value as an authored property edit, recorded and shared as
+   Properties records one. */
+static void apply_kept_field(app_scene_authoring *scene, ecs_entity entity, const scene_field_edit *kept)
+{
+    pin_value before = { 0 };
+    if (ecs_component_read_field(scene->world, entity, kept->component, kept->field, &before) !=
+        ECS_OK) {
+        return;
+    }
+    scene->property_actor = entity;
+    scene->property_edit = (scene_field_edit){ .component = kept->component,
+                                               .field = kept->field };
+    if (!scene_property_value_copy(&scene->property_edit.before, before) ||
+        !scene_property_value_copy(&scene->property_edit.after, kept->after)) {
+        abort();
+    }
+    scene->property_dirty = scene->scene_dirty;
+    if (scene_collab_can_write_locally() &&
+        ecs_component_write_field(scene->world, entity, kept->component, kept->field, kept->after) ==
+            ECS_OK) {
+        scene->scene_dirty = true;
+    }
+    finish_property_edit(scene);
+}
+
+/* After Stop restored the authored scene: each value its latest record
+   decides, together one Undo step. */
+static void apply_kept(app_scene_authoring *scene)
+{
+    if (!acount(scene->kept)) {
+        return;
+    }
+    scene_history_begin_group(scene->history);
+    for (int i = 0; i < acount(scene->kept); i++) {
+        scene_actor *actor = scene_actor_by_identity(scene, scene->kept[i].actor);
+        for (int f = 0; actor && f < acount(scene->kept[i].fields); f++) {
+            if (!kept_superseded(scene, i, f)) {
+                apply_kept_field(scene, actor->entity, &scene->kept[i].fields[f]);
+            }
+        }
+    }
+    scene_history_end_group(scene->history);
+    asset_index_invalidate(scene);
+    scene_kept_clear(scene);
+}
+
 int app_scene_authoring_set_runtime_target(app_scene_authoring *scene, app_runtime_target target)
 {
     if (!scene || target < APP_RUNTIME_PREVIEW || target > APP_RUNTIME_SCENE) {
@@ -225,7 +390,6 @@ void app_scene_authoring_stop_prototype_preview(app_scene_authoring *scene)
     if (scene) {
         if (scene->preview_prototype_id) {
             scene->debug_sessions[APP_RUNTIME_PREVIEW]++;
-            editor_set_inspection_trace(scene->graph_editor, NULL, 0);
             editor_set_inspection_run(scene->graph_editor, NULL);
             editor_set_inspection_instance(scene->graph_editor, NULL);
         }
@@ -271,6 +435,9 @@ int app_scene_authoring_runtime_command(
     if (command == APP_RUNTIME_RESTART || command == APP_RUNTIME_STOP) {
         app_scene_renderer_reset(scene->renderer);
     }
+    if (command == APP_RUNTIME_STOP) {
+        app_scene_authoring_set_time_scale(scene, 1);
+    }
     bool *playing = target == APP_RUNTIME_PREVIEW ? &scene->preview_playing
                                                   : &scene->runtime_playing;
     finish_transform_edit(scene, false);
@@ -279,6 +446,10 @@ int app_scene_authoring_runtime_command(
     if (target == APP_RUNTIME_SCENE) {
         scene->active_runtime_target = APP_RUNTIME_SCENE;
         if (command == APP_RUNTIME_PLAY || command == APP_RUNTIME_STEP) {
+            /* The game generates its own world on its first step. */
+            if (!scene->runtime_snapshot_valid) {
+                scene_world_preview_discard(scene);
+            }
             if (capture_runtime_snapshot(scene) != 0) {
                 return -1;
             }
@@ -313,6 +484,7 @@ int app_scene_authoring_runtime_command(
             return result;
         }
         if (command == APP_RUNTIME_STOP) {
+            apply_kept(scene);
             invalidate_runtime_snapshot(scene);
             return 0;
         }
@@ -349,6 +521,17 @@ int app_scene_authoring_runtime_command(
     scene_prototype_asset *asset = previewed_prototype(scene);
     return asset ? app_scene_authoring_preview_prototype(scene, asset->prototype->name)
                  : -1;
+}
+
+void app_scene_authoring_set_time_scale(app_scene_authoring *scene, double scale)
+{
+    engine_set_time_scale(scene->runtime, scale);
+    engine_set_time_scale(game_prototype_preview_runtime(scene->prototype_preview), scale);
+}
+
+double app_scene_authoring_time_scale(const app_scene_authoring *scene)
+{
+    return engine_time_scale(scene->runtime);
 }
 
 const engine_frame_timing *app_scene_authoring_runtime_timing(const app_scene_authoring *scene)
@@ -398,6 +581,97 @@ app_runtime_state app_scene_authoring_runtime_state(const app_scene_authoring *s
     return state;
 }
 
+/* ---------- Break When Spawned ---------- */
+
+static int compare_ids(const void *a, const void *b)
+{
+    uint64_t left = *(const uint64_t *)a, right = *(const uint64_t *)b;
+    return (left > right) - (left < right);
+}
+
+static bool seen(const app_scene_authoring *scene, uint64_t id)
+{
+    return acount(scene->spawn_seen) &&
+           bsearch(&id, scene->spawn_seen, (size_t)acount(scene->spawn_seen), sizeof id, compare_ids);
+}
+
+/* Notes the spawned objects now running and returns the last one new since
+   the previous call whose prototype has a break, else a null entity. */
+static ecs_entity watch_spawns(app_scene_authoring *scene)
+{
+    ecs_entity *running = NULL, spawned = { 0 };
+    uint64_t *ids = NULL;
+    game_entities_copy_live(scene->live->entities, &running);
+    for (int i = 0; i < acount(running); i++) {
+        uint64_t id = ecs_entity_to_u64(running[i]);
+        const char *prototype = seen(scene, id)
+                                  ? NULL
+                                  : scene_entity_prototype(scene, running[i]);
+        if (prototype && app_scene_authoring_spawn_break(scene, prototype)) {
+            spawned = running[i];
+        }
+        apush(ids, id);
+    }
+    if (acount(ids)) {
+        qsort(ids, (size_t)acount(ids), sizeof *ids, compare_ids);
+    }
+    afree(scene->spawn_seen);
+    scene->spawn_seen = ids;
+    afree(running);
+    return spawned;
+}
+
+bool app_scene_authoring_spawn_break(const app_scene_authoring *scene, const char *prototype)
+{
+    for (int i = 0; i < acount(scene->spawn_breaks); i++) {
+        if (!strcmp(scene->spawn_breaks[i], prototype)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void app_scene_authoring_set_spawn_break(app_scene_authoring *scene, const char *prototype, bool on)
+{
+    for (int i = 0; i < acount(scene->spawn_breaks); i++) {
+        if (!strcmp(scene->spawn_breaks[i], prototype)) {
+            free(scene->spawn_breaks[i]);
+            adel(scene->spawn_breaks, i);
+            break;
+        }
+    }
+    if (on) {
+        apush(scene->spawn_breaks, xstrdup(prototype));
+        /* Only what spawns from now on breaks. */
+        watch_spawns(scene);
+    }
+}
+
+/* Pauses after the frame that spawned an object with a break, selecting it,
+   which makes its instance of the open behavior the debug target. What a
+   Step spawns is noted without pausing again. */
+static void break_on_spawn(app_scene_authoring *scene)
+{
+    if (!acount(scene->spawn_breaks) || !scene->runtime_snapshot_valid ||
+        scene->active_runtime_target != APP_RUNTIME_SCENE) {
+        return;
+    }
+    ecs_entity spawned = watch_spawns(scene);
+    if (!spawned.slot || !scene->runtime_playing ||
+        app_scene_authoring_runtime_command(scene, APP_RUNTIME_SCENE, APP_RUNTIME_PAUSE) !=
+            0) {
+        return;
+    }
+    app_scene_authoring_select_entity(scene, spawned);
+    snprintf(
+        scene->message,
+        sizeof scene->message,
+        "Paused: %s %u spawned",
+        runtime_entity_label(scene, spawned),
+        (unsigned)spawned.slot
+    );
+}
+
 int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
 {
     if (!scene) {
@@ -429,6 +703,7 @@ int app_scene_authoring_frame(app_scene_authoring *scene, double monotonic_time)
     if (frame_result < 0) {
         snprintf(scene->message, sizeof scene->message, "%s", engine_error(scene->runtime));
     }
+    break_on_spawn(scene);
     app_scene_renderer_set_time(
         scene->renderer,
         (float)engine_last_timing(

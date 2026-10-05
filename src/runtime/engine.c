@@ -54,6 +54,7 @@ struct engine
     engine_frame_timing timing;
     double last_time;
     double accumulator;
+    double time_scale;
     bool has_time;
     bool debug_paused;
     bool recording_input;
@@ -118,6 +119,7 @@ engine *engine_new(ecs_world *world, game_live_world *live)
         game_particle_emitters_bind_materials(result->emitters, live->materials);
     }
     result->playing = true;
+    result->time_scale = 1;
     result->input = engine_input_new(world, live ? live->behaviors : NULL);
     if (live) {
         game_behavior_set_delta_seconds(live->behaviors, ENGINE_FIXED_SECONDS);
@@ -478,6 +480,17 @@ int engine_step(engine *engine)
     }
     engine->step_requested = true;
     return 0;
+}
+
+void engine_set_time_scale(engine *engine, double scale)
+{
+    assert(isfinite(scale) && scale > 0);
+    engine->time_scale = scale;
+}
+
+double engine_time_scale(const engine *engine)
+{
+    return engine->time_scale;
 }
 
 int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error)
@@ -848,7 +861,8 @@ static int advance_frame(engine *engine, double monotonic_time)
     if (!paused && (engine->playing || engine->step_requested)) {
         if (engine->playing) {
             engine->timing.dropped_seconds += fmax(0, elapsed - ENGINE_FRAME_SECONDS_MAX);
-            engine->accumulator += fmin(elapsed, ENGINE_FRAME_SECONDS_MAX);
+            engine->accumulator += fmin(elapsed, ENGINE_FRAME_SECONDS_MAX) *
+                                   engine->time_scale;
         }
         int count = engine->step_requested
                       ? 1

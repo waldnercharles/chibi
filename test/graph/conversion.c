@@ -172,6 +172,20 @@ void run_graph_conversion_checks()
         test_check(conversion_for(PIN_STR, PIN_F64) == NULL, "String to Real is not a permitted conversion");
         test_check(conversion_for(PIN_F64, PIN_I32) == &NODE_To_Integer, "Real to Integer uses explicit saturating truncation");
         test_check(conversion_for(PIN_I64, PIN_I32) == NULL, "Integer64 to Integer narrowing is not offered");
+        test_check(
+            conversion_for(PIN_BOOL, PIN_U8) == &NODE_To_Byte &&
+                conversion_for(PIN_BOOL, PIN_I32) == &NODE_To_Integer &&
+                conversion_for(PIN_BOOL, PIN_I64) == &NODE_To_Integer64 &&
+                conversion_for(PIN_BOOL, PIN_F32) == &NODE_To_Real &&
+                conversion_for(PIN_BOOL, PIN_F64) == &NODE_To_Real &&
+                !conversion_for(PIN_BOOL, PIN_BOOL),
+            "Bool has an explicit conversion to every number"
+        );
+        pin_spec vector = { .type = PIN_STRUCT, .type_name = "CF_V2", .kind = PIN_DATA };
+        pin_spec transform = { .type = PIN_STRUCT,
+                               .type_name = "GameTransform",
+                               .kind = PIN_DATA };
+        test_check(!conversion_for_pins(&vector, &vector) && !conversion_for_pins(&vector, &transform), "pins that already connect take no conversion, even where an alias has one");
     }
 
     {

@@ -1,8 +1,9 @@
-/* The command palette (⌘K, cmdk; VS Code's Quick Open): commands, settings,
- * the scene's objects, assets, projects and the active document's symbols,
- * ranked by support/text_search.h as the MCP ranks, with items chosen
- * recently first. A prefix narrows it: '>' to commands and settings, '@' to
- * the active document's symbols, and '?' lists the prefixes. */
+/* The ⌘K search (cmdk; VS Code's Quick Open), a client of the palette
+ * (studio_palette_view.c): commands, settings, the scene's objects, assets,
+ * projects and the active document's symbols, ranked by
+ * support/text_rank.h as the MCP ranks, with items chosen recently first. A
+ * prefix narrows it: '>' to commands and settings, '@' to the active
+ * document's symbols, and '?' lists the prefixes. */
 #include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/workspace/asset_index.h"
@@ -12,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* What choosing a result does: an entry's kind. */
 typedef enum
 {
     PICK_COMMAND,
@@ -27,23 +29,6 @@ typedef enum
     PICK_RULE,
     PICK_PREFIX,
 } pick_kind;
-
-/* A palette item and what choosing it does; its texts live here, since the
-   kit reads them while it draws the list. */
-typedef struct
-{
-    pick_kind kind;
-    int index; /* the command, setting, actor, asset, project, element, rule or prefix */
-    uint64_t graph_id, node_id;
-    uint32_t icon;
-    const char *group;
-    char label[128];
-    char meta[96];
-    char keywords[256];
-    const char *shortcut;
-    const char *description;
-    char key[96]; /* how recent use knows it, or "" */
-} pick;
 
 typedef enum
 {
@@ -66,17 +51,23 @@ static const struct
 
 #define PREFIX_COUNT (int)(sizeof PREFIXES / sizeof *PREFIXES)
 
-static pick *add(pick **picks, pick_kind kind, int index, const char *group, const char *label)
+static studio_palette_entry *add(
+    studio_palette_entry **picks,
+    pick_kind kind,
+    int index,
+    const char *group,
+    const char *label
+)
 {
-    apush(*picks, ((pick){ .kind = kind, .index = index, .group = group }));
-    pick *p = &alast(*picks);
-    snprintf(p->label, sizeof p->label, "%s", label);
+    studio_palette_entry *p = studio_palette_add(picks, group, label);
+    p->kind = kind;
+    p->index = index;
     return p;
 }
 
 /* ---------- Commands and settings ---------- */
 
-static void add_commands(studio *s, pick **picks)
+static void add_commands(studio *s, studio_palette_entry **picks)
 {
     for (int c = STUDIO_COMMAND_SEARCH + 1; c < STUDIO_COMMAND_COUNT; c++) {
         studio_command_info info = studio_command_describe(s, (studio_command)c);
@@ -84,10 +75,10 @@ static void add_commands(studio *s, pick **picks)
         if (info.indexed) {
             continue;
         }
-        pick *p = add(picks, PICK_COMMAND, c, "Commands", info.label);
+        studio_palette_entry *p = add(picks, PICK_COMMAND, c, "Commands", info.label);
         snprintf(p->keywords, sizeof p->keywords, "%s", info.keywords ? info.keywords : "");
         snprintf(p->key, sizeof p->key, "command:%s", info.id);
-        p->shortcut = info.shortcut;
+        snprintf(p->shortcut, sizeof p->shortcut, "%s", info.shortcut ? info.shortcut : "");
         p->icon = info.icon;
     }
 }
@@ -113,7 +104,7 @@ static void setting_value(const studio *s, const studio_setting *setting, char *
 }
 
 /* A command of the same name already runs it, as Reduce Motion. */
-static bool commanded(const pick *picks, const char *label)
+static bool commanded(const studio_palette_entry *picks, const char *label)
 {
     for (int i = 0; i < acount(picks); i++) {
         if (picks[i].kind == PICK_COMMAND && !strcmp(picks[i].label, label)) {
@@ -123,7 +114,7 @@ static bool commanded(const pick *picks, const char *label)
     return false;
 }
 
-static void add_settings(studio *s, pick **picks)
+static void add_settings(studio *s, studio_palette_entry **picks)
 {
     for (int i = 0; i < studio_setting_count; i++) {
         const studio_setting *setting = &studio_settings[i];
@@ -132,7 +123,8 @@ static void add_settings(studio *s, pick **picks)
         }
         const studio_settings_category_info
             *category = &studio_settings_categories[setting->category];
-        pick *p = add(picks, PICK_SETTING, i, "Settings", setting->label);
+        studio_palette_entry
+            *p = add(picks, PICK_SETTING, i, "Settings", setting->label);
         setting_value(s, setting, p->meta, sizeof p->meta);
         snprintf(
             p->keywords,
@@ -142,8 +134,8 @@ static void add_settings(studio *s, pick **picks)
             category->label
         );
         snprintf(p->key, sizeof p->key, "setting:%s", setting->key);
+        snprintf(p->about, sizeof p->about, "%s", setting->description ? setting->description : "");
         p->icon = category->icon;
-        p->description = setting->description;
     }
 }
 
@@ -164,12 +156,12 @@ static void run_setting(studio *s, const studio_setting *setting)
 
 /* ---------- Objects, assets and projects ---------- */
 
-static void add_objects(studio *s, pick **picks)
+static void add_objects(studio *s, studio_palette_entry **picks)
 {
     const app_scene_authoring *scene = s->scene;
     for (int i = 0; i < acount(scene->actors); i++) {
         const scene_actor *actor = &scene->actors[i];
-        pick *p = add(picks, PICK_OBJECT, i, "Objects", actor->name);
+        studio_palette_entry *p = add(picks, PICK_OBJECT, i, "Objects", actor->name);
         snprintf(p->meta, sizeof p->meta, "%s", actor->prototype_name);
         snprintf(p->keywords, sizeof p->keywords, "%s", actor->prototype_name);
         snprintf(p->key, sizeof p->key, "object:%s", actor->name);
@@ -177,7 +169,8 @@ static void add_objects(studio *s, pick **picks)
     }
 }
 
-static void add_assets(studio *s, pick **picks)
+/* An asset shows the thumbnail Assets made of it, once one is cached. */
+static void add_assets(studio *s, studio_palette_entry **picks)
 {
     const reference_index *index = app_scene_authoring_asset_index(s->scene);
     int count = index ? reference_index_asset_count(index) : 0;
@@ -194,20 +187,21 @@ static void add_assets(studio *s, pick **picks)
                 kind = "model";
             }
         }
-        pick *p = add(picks, PICK_ASSET, i, "Assets", asset->name);
+        studio_palette_entry *p = add(picks, PICK_ASSET, i, "Assets", asset->name);
         snprintf(p->meta, sizeof p->meta, "%s", kind);
         snprintf(p->keywords, sizeof p->keywords, "%s", kind);
         snprintf(p->key, sizeof p->key, "asset:%s:%s", kind, asset->name);
         p->icon = studio_asset_kind_icon(asset->kind);
+        p->asset = i;
     }
 }
 
 /* Each scenario replays on a loop, until Stop. */
-static void add_scenarios(studio *s, pick **picks)
+static void add_scenarios(studio *s, studio_palette_entry **picks)
 {
     char **names = app_scenario_names(s->scene);
     for (int i = 0; i < acount(names); i++) {
-        pick *p = add(picks, PICK_SCENARIO, i, "Scenarios", names[i]);
+        studio_palette_entry *p = add(picks, PICK_SCENARIO, i, "Scenarios", names[i]);
         snprintf(p->meta, sizeof p->meta, "Replay");
         snprintf(p->keywords, sizeof p->keywords, "replay scenario gameplay profile");
         snprintf(p->key, sizeof p->key, "scenario:%s", names[i]);
@@ -217,13 +211,14 @@ static void add_scenarios(studio *s, pick **picks)
     afree(names);
 }
 
-static void add_projects(studio *s, pick **picks)
+static void add_projects(studio *s, studio_palette_entry **picks)
 {
     for (int i = 0; i < acount(s->projects); i++) {
         if (studio_project_current(s, i)) {
             continue;
         }
-        pick *p = add(picks, PICK_PROJECT, i, "Projects", s->projects[i].name);
+        studio_palette_entry
+            *p = add(picks, PICK_PROJECT, i, "Projects", s->projects[i].name);
         snprintf(p->keywords, sizeof p->keywords, "open switch");
         snprintf(p->key, sizeof p->key, "project:%s", s->projects[i].name);
         p->icon = KIT_ICON_FOLDER;
@@ -239,7 +234,7 @@ static const char *graph_name(const graph *gr)
 
 /* The open behavior's graphs and their nodes, each once: a node drawn inside
    another is found through it. */
-static void add_graph_symbols(studio *s, pick **picks, const char *group)
+static void add_graph_symbols(studio *s, studio_palette_entry **picks, const char *group)
 {
     editor *e = sg_graph_editor(s);
     for (int g = 0; g < acount(e->asset->graphs); g++) {
@@ -247,9 +242,9 @@ static void add_graph_symbols(studio *s, pick **picks, const char *group)
         if (gr->math_expression) {
             continue;
         }
-        pick *p = add(picks, PICK_GRAPH, g, group, graph_name(gr));
+        studio_palette_entry *p = add(picks, PICK_GRAPH, g, group, graph_name(gr));
         snprintf(p->meta, sizeof p->meta, "graph");
-        p->graph_id = gr->graph_id;
+        p->graph = gr->graph_id;
         p->icon = KIT_ICON_GRAPH;
         for (int i = 0; i < acount(gr->nodes); i++) {
             node *n = gr->nodes[i];
@@ -260,8 +255,8 @@ static void add_graph_symbols(studio *s, pick **picks, const char *group)
             p = add(picks, PICK_NODE, i, group, ed_node_title(e, n, title, sizeof title));
             snprintf(p->meta, sizeof p->meta, "%s", graph_name(gr));
             snprintf(p->keywords, sizeof p->keywords, "%s", n->desc->name);
-            p->graph_id = gr->graph_id;
-            p->node_id = n->id;
+            p->graph = gr->graph_id;
+            p->node = n->id;
             uint32_t icon = sg_node_icon(s, n);
             p->icon = icon ? icon : KIT_ICON_HEXAGON;
         }
@@ -269,7 +264,7 @@ static void add_graph_symbols(studio *s, pick **picks, const char *group)
 }
 
 /* The UI document's elements, as the Hierarchy names them, and its rules. */
-static void add_ui_symbols(studio *s, pick **picks, const char *group)
+static void add_ui_symbols(studio *s, studio_palette_entry **picks, const char *group)
 {
     ui_buffer *b = NULL;
     studio_designer *d = designer_state(s, &b);
@@ -280,7 +275,7 @@ static void add_ui_symbols(studio *s, pick **picks, const char *group)
         const ui_source_element *el = &d->rml->elements[i];
         char name[96];
         designer_element_name(d->rml, i, name, sizeof name);
-        pick *p = add(picks, PICK_ELEMENT, i, group, name);
+        studio_palette_entry *p = add(picks, PICK_ELEMENT, i, group, name);
         snprintf(
             p->meta,
             sizeof p->meta,
@@ -294,14 +289,15 @@ static void add_ui_symbols(studio *s, pick **picks, const char *group)
         p->icon = designer_element_icon(d->rml, i);
     }
     for (int i = 0; d->rcss && i < acount(d->rcss->rules); i++) {
-        pick *p = add(picks, PICK_RULE, i, group, d->rcss->rules[i].selector);
+        studio_palette_entry
+            *p = add(picks, PICK_RULE, i, group, d->rcss->rules[i].selector);
         snprintf(p->meta, sizeof p->meta, "line %d", d->rcss->rules[i].line);
         p->icon = KIT_ICON_MATERIAL;
     }
 }
 
 /* Each object's components, found by the component's name. */
-static void add_components(studio *s, pick **picks, const char *group)
+static void add_components(studio *s, studio_palette_entry **picks, const char *group)
 {
     app_scene_authoring *scene = s->scene;
     for (int i = 0; i < acount(scene->actors); i++) {
@@ -310,7 +306,7 @@ static void add_components(studio *s, pick **picks, const char *group)
         const game_prototype *prototype = asset ? asset->prototype : NULL;
         for (int c = 0; prototype && c < acount(prototype->components); c++) {
             const char *component = prototype->components[c].desc->name;
-            pick *p = add(picks, PICK_COMPONENT, i, group, component);
+            studio_palette_entry *p = add(picks, PICK_COMPONENT, i, group, component);
             snprintf(p->meta, sizeof p->meta, "%s", actor->name);
             snprintf(p->keywords, sizeof p->keywords, "component %s", actor->name);
             p->icon = KIT_ICON_PROTOTYPE;
@@ -318,7 +314,7 @@ static void add_components(studio *s, pick **picks, const char *group)
     }
 }
 
-static void add_symbols(studio *s, pick **picks)
+static void add_symbols(studio *s, studio_palette_entry **picks)
 {
     ui_buffer *b = studio_ui_buffer(s);
     if (b) {
@@ -333,10 +329,11 @@ static void add_symbols(studio *s, pick **picks)
     }
 }
 
-static void add_prefixes(pick **picks)
+static void add_prefixes(studio_palette_entry **picks)
 {
     for (int i = 0; i < PREFIX_COUNT; i++) {
-        pick *p = add(picks, PICK_PREFIX, i, "Prefixes", PREFIXES[i].label);
+        studio_palette_entry
+            *p = add(picks, PICK_PREFIX, i, "Prefixes", PREFIXES[i].label);
         snprintf(p->meta, sizeof p->meta, "%c", PREFIXES[i].prefix);
     }
 }
@@ -381,13 +378,42 @@ static void remember(studio_prefs *prefs, const char *key)
     prefs->recent[0] = used;
 }
 
+/* With nothing typed, the items chosen recently lead, most recent first,
+   under Recent. */
+static void recent_first(const studio *s, studio_palette_entry **picks)
+{
+    studio_palette_entry *ordered = NULL;
+    bool *taken = xcalloc((size_t)acount(*picks) + 1, sizeof *taken);
+    for (int r = 0; r < STUDIO_RECENT_COUNT && s->prefs.recent[r].key[0]; r++) {
+        for (int i = 0; i < acount(*picks); i++) {
+            if (!taken[i] && !strcmp((*picks)[i].key, s->prefs.recent[r].key)) {
+                apush(ordered, (*picks)[i]);
+                snprintf(alast(ordered).group, sizeof alast(ordered).group, "Recent");
+                taken[i] = true;
+                break;
+            }
+        }
+    }
+    for (int i = 0; i < acount(*picks); i++) {
+        if (!taken[i]) {
+            apush(ordered, (*picks)[i]);
+        }
+    }
+    free(taken);
+    aclear(*picks);
+    for (int i = 0; i < acount(ordered); i++) {
+        apush(*picks, ordered[i]);
+    }
+    afree(ordered);
+}
+
 /* ---------- Choosing ---------- */
 
-static void choose(studio *s, const pick *p)
+void studio_search_choose(studio *s, const studio_palette_entry *p)
 {
     app_scene_authoring *scene = s->scene;
     remember(&s->prefs, p->key);
-    switch (p->kind) {
+    switch ((pick_kind)p->kind) {
         case PICK_COMMAND:
             studio_command_run(s, (studio_command)p->index);
             break;
@@ -403,11 +429,11 @@ static void choose(studio *s, const pick *p)
         case PICK_SCENARIO: studio_replay_scenario(s, p->label); break;
         case PICK_GRAPH:
             studio_show_editor(s, STUDIO_EDITOR_BEHAVIOR);
-            editor_open_graph(sg_graph_editor(s), p->graph_id);
+            editor_open_graph(sg_graph_editor(s), p->graph);
             break;
         case PICK_NODE:
             studio_show_editor(s, STUDIO_EDITOR_BEHAVIOR);
-            studio_reveal_node(s, p->graph_id, p->node_id);
+            studio_reveal_node(s, p->graph, p->node);
             break;
         case PICK_ELEMENT: designer_select(s, p->index); break;
         case PICK_RULE: {
@@ -423,14 +449,14 @@ static void choose(studio *s, const pick *p)
         }
         case PICK_PREFIX: {
             char prefix[2] = { PREFIXES[p->index].prefix, 0 };
-            kit_command_open(s->kit, STUDIO_PALETTE_PLACEHOLDER);
-            kit_command_set_query(s->kit, prefix);
+            studio_palette_open(s, STUDIO_PALETTE_SEARCH, STUDIO_PALETTE_PLACEHOLDER);
+            studio_palette_set_query(s, prefix);
             break;
         }
     }
 }
 
-/* ---------- The palette ---------- */
+/* ---------- The search's results ---------- */
 
 static scope scope_of(const char *query, const char **rest)
 {
@@ -444,89 +470,48 @@ static scope scope_of(const char *query, const char **rest)
     return SCOPE_ALL;
 }
 
+const char *studio_search_query(const char *query)
+{
+    const char *rest;
+    scope_of(query, &rest);
+    return rest;
+}
+
+bool studio_search_lists_anew(const char *was, const char *query)
+{
+    const char *before, *now;
+    scope a = scope_of(was, &before), b = scope_of(query, &now);
+    return a != b || !before[0] != !now[0];
+}
+
 /* Symbols wait for a query or '@', so the list opens short. */
-static pick *collect(studio *s, scope scope, bool typed)
+void studio_search_entries(studio *s, const char *query, studio_palette_entry **picks)
 {
-    pick *picks = NULL;
+    const char *rest;
+    scope scope = scope_of(query, &rest);
     if (scope == SCOPE_HELP) {
-        add_prefixes(&picks);
-        return picks;
-    }
-    if (scope != SCOPE_SYMBOLS) {
-        add_commands(s, &picks);
-    }
-    if (scope == SCOPE_ALL) {
-        add_objects(s, &picks);
-        add_assets(s, &picks);
-        add_projects(s, &picks);
-        add_scenarios(s, &picks);
-    }
-    if (scope != SCOPE_SYMBOLS) {
-        add_settings(s, &picks);
-    }
-    if (scope == SCOPE_SYMBOLS || (scope == SCOPE_ALL && typed)) {
-        add_symbols(s, &picks);
-    }
-    return picks;
-}
-
-/* With nothing typed, the items chosen recently lead, most recent first. */
-static void recent_first(const studio *s, pick *picks, int **order)
-{
-    for (int r = 0; r < STUDIO_RECENT_COUNT && s->prefs.recent[r].key[0]; r++) {
-        for (int i = 0; i < acount(picks); i++) {
-            if (!strcmp(picks[i].key, s->prefs.recent[r].key)) {
-                picks[i].group = "Recent";
-                apush(*order, i);
-                break;
-            }
-        }
-    }
-    for (int i = 0; i < acount(picks); i++) {
-        if (strcmp(picks[i].group, "Recent")) {
-            apush(*order, i);
-        }
-    }
-}
-
-void studio_palette(studio *s)
-{
-    if (studio_graph_palette(s) || studio_member_palette(s) ||
-        studio_pick_palette(s) || studio_component_palette(s) ||
-        !kit_command_is_open(s->kit)) {
+        add_prefixes(picks);
         return;
     }
-    const char *query;
-    scope scope = scope_of(kit_command_query(s->kit), &query);
-    pick *picks = collect(s, scope, query[0]);
-    int *order = NULL;
-    if (query[0] || scope != SCOPE_ALL) {
-        for (int i = 0; i < acount(picks); i++) {
-            apush(order, i);
-        }
-    } else {
-        recent_first(s, picks, &order);
+    if (scope != SCOPE_SYMBOLS) {
+        add_commands(s, picks);
     }
-    kit_command_item *items = NULL;
-    for (int i = 0; i < acount(order); i++) {
-        const pick *p = &picks[order[i]];
-        apush(
-            items,
-            ((kit_command_item){ .label = p->label,
-                                 .group = p->group,
-                                 .meta = p->meta,
-                                 .shortcut = p->shortcut,
-                                 .keywords = p->keywords,
-                                 .icon = p->icon,
-                                 .description = p->description,
-                                 .boost = boost(&s->prefs, p->key) })
-        );
+    if (scope == SCOPE_ALL) {
+        add_objects(s, picks);
+        add_assets(s, picks);
+        add_projects(s, picks);
+        add_scenarios(s, picks);
     }
-    int chosen = kit_command_filtered(s->kit, items, acount(items), query);
-    if (chosen >= 0) {
-        choose(s, &picks[order[chosen]]);
+    if (scope != SCOPE_SYMBOLS) {
+        add_settings(s, picks);
     }
-    afree(items);
-    afree(order);
-    afree(picks);
+    if (scope == SCOPE_SYMBOLS || (scope == SCOPE_ALL && rest[0])) {
+        add_symbols(s, picks);
+    }
+    for (int i = 0; i < acount(*picks); i++) {
+        (*picks)[i].boost = boost(&s->prefs, (*picks)[i].key);
+    }
+    if (scope == SCOPE_ALL && !rest[0]) {
+        recent_first(s, picks);
+    }
 }

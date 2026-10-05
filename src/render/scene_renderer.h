@@ -39,18 +39,29 @@ const char *app_scene_renderer_error(const app_scene_renderer *renderer);
 /* Settings the renderer adjusted to run, described for authors; empty if none. */
 const char *app_scene_renderer_warning(const app_scene_renderer *renderer);
 int app_scene_renderer_particle_count(const app_scene_renderer *renderer);
+/* The shapes and mask pieces the last 2D draw rasterized. */
+int app_scene_renderer_material_pieces(const app_scene_renderer *renderer);
 /* Lighting in use: its grids, adaptive's step and its GPU time. False when the
  * backend has no HRC. */
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status);
+/* What an editor's view leaves out of the game's presentation. Unlit draws
+ * material colors without HRC lighting (2D only); without fog, the fog of war
+ * neither draws nor hides objects. A new renderer shows both, as games do. */
+void app_scene_renderer_set_view(app_scene_renderer *renderer, bool unlit, bool fogless);
 float app_scene_renderer_time(const app_scene_renderer *renderer);
 void app_scene_renderer_set_time(app_scene_renderer *renderer, float time);
-/* Draws the material composite into the current viewport camera. */
+/* A positive `increment` draws an editor's grid (render/grid_2d.h) under the
+ * scene from the next draw on, at that finest spacing; zero hides it. */
+void app_scene_renderer_set_grid(app_scene_renderer *renderer, float increment);
+/* Draws the material composite into the current viewport camera, without
+ * the entities `skip` holds. */
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
     const game_particles *particles,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 );
 bool app_scene_renderer_draw3d(
     app_scene_renderer *renderer,
@@ -58,6 +69,7 @@ bool app_scene_renderer_draw3d(
     const game_particles *particles,
     const render_arena_camera *camera,
     engine_viewport *viewport,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 );
 #endif

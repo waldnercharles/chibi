@@ -251,6 +251,21 @@ class StudioCheckoutAssets(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 server.save_asset(self.workspace, {'path': path, 'text': 'bad'}, self.studio)
 
+    def test_saves_and_deletes_stay_within_selected_mount(self):
+        game = self.workspace / 'projects/bloom'
+        game_file = game / 'content/Game.rml'
+        game_file.write_text('game')
+        (self.studio / 'content/game').symlink_to(game / 'content', target_is_directory=True)
+        (game / 'content/studio').symlink_to(self.studio / 'content', target_is_directory=True)
+        for path in ('projects/studio/content/game/Game.rml',
+                     'projects/bloom/content/studio/ui/Panel.rml'):
+            self.assertNotIn(path, server.workspace_assets(self.workspace, self.studio))
+            for text in ('overwrite', None):
+                with self.subTest(path=path, text=text), self.assertRaises(ValueError):
+                    server.save_asset(self.workspace, {'path': path, 'text': text}, self.studio)
+        self.assertEqual(game_file.read_text(), 'game')
+        self.assertEqual((self.studio / 'content/ui/Panel.rml').read_text(), 'active')
+
     def test_new_project_does_not_shadow_studio_when_workspace_copy_is_missing(self):
         shutil.rmtree(self.stale)
         created = server.create_project(self.workspace, {'name': 'Studio', 'version': 1}, self.studio)

@@ -87,7 +87,11 @@ reorder/reparent (needs scene hierarchy first).
 - [x] The development server mounts `projects/studio` from the checkout
   containing `tools/web_serve.py`, even with a separate `--workspace`.
   Initial reads, watcher updates and Studio saves use that same mount;
-  game projects still use their workspace paths. No workspace copy or
+  game projects still use their workspace paths. On page load the bridge removes
+  mirrored Studio assets absent from the checkout snapshot, including stale
+  files preloaded in `chibi.data`; unrelated game files and non-mirrored
+  resources stay intact. Writes cannot cross into another project's content
+  via a symlink. No workspace copy or
   symlink is rewritten. Restart the server from the desired checkout when
   switching builds. Packaged builds keep their bundled Studio assets.
 
@@ -115,9 +119,9 @@ changes CUT-50's native test selectors or production performance paths.
 | Graph bodies/literals, Zep surface, geometry, toasts, tooltip controller, Outliner reorder/reparent | Explicitly postponed; retain the Postponed table's reasons and dependencies. |
 | Open questions 1, 2, 4, 6, 7; graph zoom/pan; terrain LOD | User decisions remain unresolved. No parity tolerance, native-surface permanence, widget ownership, layout policy or terrain threshold chosen here. |
 | Physical macOS trackpad | Owned separately by CUT-57; not completed by this work. |
-| Active-checkout web Studio assets | Implemented in `tools/web_serve.py`. Regression fixture reproduces the old stale read, then checks checkout override with/without a workspace Studio copy, repeated save/reload, external edits/additions/removals, manifest writes, ignored stale edits, path containment and the reserved Studio project name. `test/web_serve_test.py` also checks the actual launch mount; `test/web_workspace_test.mjs` covers browser mirroring and launch arguments. |
+| Active-checkout web Studio assets | Implemented in `tools/web_serve.py`. Regression fixture reproduces the old stale read, then checks checkout override with/without a workspace Studio copy, repeated save/reload, external edits/additions/removals, manifest writes, ignored stale edits, path containment and the reserved Studio project name. `test/web_serve_test.py` also checks the actual launch mount; `test/web_workspace_test.mjs` covers browser mirroring, launch arguments and preloaded Studio read/save/delete/rename/reload reconciliation. |
 
-Validation for the process slice: `python3 test/web_serve_test.py` (44 tests)
+Validation for the process slice: `python3 test/web_serve_test.py` (45 tests)
 and `node test/web_workspace_test.mjs` pass on Linux, CPU/headless (also via
 `make test-tool-web-serve test-tool-web-workspace`). A bounded real HTTP smoke
 check passed checkout Studio/workspace game reads, Studio save, watcher update

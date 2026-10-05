@@ -221,14 +221,15 @@ def save_asset(workspace, request, studio=None):
                    if name.is_relative_to(root)), None)
     if prefix is None:
         raise ValueError('Saves must stay inside a project content directory')
-    path = (mounts[prefix] / name.relative_to(prefix)).resolve()
+    project = mounts[prefix].resolve()
+    path = (project / name.relative_to(prefix)).resolve()
     text = request['text']
-    contents = [content_directory(project).resolve() for project in mounts.values()]
-    # Settings rewrites a project's manifest, which is never removed.
-    manifest = text is not None and path in [(project / 'project.kdl').resolve() for project in mounts.values()]
+    content = content_directory(project).resolve()
+    # Settings rewrites the selected project's manifest, which is never removed.
+    manifest = text is not None and path == project / 'project.kdl'
     image_delete = text is None and path.suffix.lower() in IMAGE_EXTENSIONS
     if not manifest and ((path.suffix.lower() not in TEXT_EXTENSIONS and not image_delete) or
-                         not any(path.is_relative_to(content) for content in contents)):
+                         not path.is_relative_to(content)):
         raise ValueError('Saves must be project manifests, or KDL assets, RML or RCSS inside a project content directory')
     if text is None:
         path.unlink(missing_ok=True)

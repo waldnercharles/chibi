@@ -128,6 +128,11 @@ typedef enum
     BF_RETURN,
     BF_END
 } behavior_function_op;
+
+enum
+{
+    BF_STORE_VALUE_SET_ADD = 1
+};
 static inline bool behavior_function_math(behavior_function_op op)
 {
     return op >= BF_SIN && op <= BF_FMA;
@@ -376,4 +381,9 @@ static inline bool behavior_function_fast_allowed(
            ctx->budget >= f->fast->child_budget &&
            (!f->fast->depth_limit || ctx->call_depth < f->fast->depth_limit);
 }
+bool behavior_function_owned_set_add_candidate(
+    const behavior_asset *asset,
+    const graph *g,
+    const node *add
+);
 #endif

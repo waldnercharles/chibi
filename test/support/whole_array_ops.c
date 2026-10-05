@@ -1,4 +1,6 @@
+#include "graph/compiler/behavior_function_internal.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/set_map_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/update.h"
@@ -7,6 +9,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 static pin_type element_type(int kind)
 {
@@ -414,6 +417,52 @@ static void set_semantics()
     }
 }
 
+static void owned_set_semantics()
+{
+    enum
+    {
+        ITEMS = 256
+    };
+    arena storage = { 0 }, snapshots = { 0 };
+    pin_array *set = pin_array_snapshot_allocate(&storage, PIN_I32, "int", 0);
+    for (int i = 0; i < ITEMS; i++) {
+        pin_value item = { .type = PIN_I32, .type_name = "int", .i = i };
+        assert(pin_set_add_owned(&storage, &set, &item) == 1);
+    }
+    assert(set->count == ITEMS && set->capacity >= ITEMS && set->buckets);
+    pin_array *snapshot = pin_array_snapshot_to_arena(&snapshots, set);
+    pin_array_index(&snapshots, snapshot);
+    for (int i = 0; i < ITEMS; i++) {
+        pin_value item = { .type = PIN_I32, .type_name = "int", .i = i };
+        assert(pin_set_add_owned(&storage, &set, &item) == 0);
+        assert(pin_array_find(set, &item) == i);
+    }
+    pin_value next = { .type = PIN_I32, .type_name = "int", .i = ITEMS };
+    assert(pin_set_add_owned(&storage, &set, &next) == 1);
+    assert(set->count == ITEMS + 1 && set->items[ITEMS].i == ITEMS);
+    assert(snapshot->count == ITEMS && snapshot->items[ITEMS - 1].i == ITEMS - 1);
+
+    char text[16] = "owned";
+    pin_array *strings = pin_array_snapshot_allocate(&storage, PIN_STR, "string", 0);
+    pin_value string = { .type = PIN_STR, .type_name = "string", .str = text };
+    assert(pin_set_add_owned(&storage, &strings, &string) == 1);
+    strcpy(text, "mutated");
+    assert(!strcmp(strings->items[0].str, "owned"));
+    pin_array *string_snapshot = pin_array_snapshot_to_arena(&snapshots, strings);
+    pin_value same = { .type = PIN_STR, .type_name = "string", .str = "owned" };
+    assert(pin_set_add_owned(&storage, &strings, &same) == 0);
+    assert(strings->count == 1 && string_snapshot->count == 1);
+
+    pin_array *entities = pin_array_snapshot_allocate(&storage, PIN_HANDLE, "ecs.entity", 0);
+    pin_value wrong_entity = { .type = PIN_HANDLE, .type_name = "other", .u64 = 17 };
+    pin_value entity = { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 17 };
+    assert(pin_set_add_owned(&storage, &entities, &wrong_entity) < 0);
+    assert(!entities->count && pin_set_add_owned(&storage, &entities, &entity) == 1);
+    assert(pin_array_find(entities, &entity) == 0);
+    arena_free(&snapshots);
+    arena_free(&storage);
+}
+
 static void entity_set_semantics()
 {
     arena output = { 0 };
@@ -504,13 +553,187 @@ static void set_remove_flow()
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
 }
+
+static void owned_set_mutation()
+{
+    enum
+    {
+        INITIAL = 63
+    };
+    pin_value initial_items[INITIAL];
+    for (int i = 0; i < INITIAL; i++) {
+        initial_items[i] = (pin_value){ .type = PIN_I32, .type_name = "int", .i = i };
+    }
+    pin_array initial = { .element_type = PIN_I32,
+                          .type_name = "int",
+                          .count = INITIAL,
+                          .capacity = INITIAL,
+                          .items = initial_items };
+    pin_value default_value = { .type = PIN_I32,
+                                .type_name = "int",
+                                .container = PIN_CONTAINER_SET,
+                                .ptr = &initial };
+    behavior_asset *asset = behavior_asset_new("Owned set append");
+    assert(
+        behavior_asset_add_variable(asset, "Seen", PIN_I32, "int", PIN_CONTAINER_SET, &default_value, "")
+    );
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(!graph_set_event_name(g, event, "Tick"));
+    node *get = variable(asset, g, 0, false);
+    node *add = graph_add_node(g, registry_node_by_name("Set Add"));
+    assert(add);
+    assert(!graph_set_pin_type(g, add, false, 0, PIN_I32, "int"));
+    assert(!graph_set_pin_container(g, add, false, 0, PIN_CONTAINER_SET));
+    assert(!graph_set_pin_type(g, add, false, 1, PIN_I32, "int"));
+    assert(
+        !graph_set_pin_default(g, add, false, 1, &(pin_value){ .type = PIN_I32, .i = INITIAL })
+    );
+    assert(!graph_set_pin_type(g, add, true, 0, PIN_I32, "int"));
+    assert(!graph_set_pin_container(g, add, true, 0, PIN_CONTAINER_SET));
+    node *set = variable(asset, g, 0, true);
+    assert(!graph_connect_data(g, get, 0, add, 0));
+    assert(!graph_connect_data(g, add, 0, set, 1));
+    assert(!graph_connect_exec(g, event, 0, set, 0, 0));
+
+    compile_report report;
+    compile_report_init(&report);
+    behavior_asset_query_diagnostics(asset, &report);
+    bool owned_append_note = false;
+    for (int i = 0; i < acount(report.items); i++) {
+        const compile_diagnostic *diagnostic = &report.items[i];
+        if (diagnostic->node_id == add->id && diagnostic->rule == CMPL_RULE_CONTAINER) {
+            owned_append_note = diagnostic->severity == CMPL_NOTE &&
+                                strstr(diagnostic->message, "geometric capacity");
+        }
+    }
+    assert(owned_append_note && report.warning_count == 0);
+    compile_report_free(&report);
+
+    behavior_program *program = behavior_program_publish(asset);
+    const behavior_function
+        *function = behavior_program_function(behavior_program_graph(program, g), event);
+    assert(function);
+    bool optimized = false;
+    for (int i = 0; i < acount(function->instructions); i++) {
+        const behavior_function_instruction *instruction = &function->instructions[i];
+        optimized |= instruction->op == BF_STORE_VALUE &&
+                     instruction->offset == BF_STORE_VALUE_SET_ADD;
+    }
+    assert(optimized);
+
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    behavior_instance_set_trace_enabled(instance, false);
+    arena snapshot_storage = { 0 };
+    pin_value snapshot;
+    assert(
+        !behavior_instance_copy_variable(instance, asset->variables[0].id, &snapshot_storage, &snapshot)
+    );
+    flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
+    assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
+    const pin_array *current = instance->variables[0].ptr;
+    const pin_array *old = snapshot.ptr;
+    assert(current && current->count == INITIAL + 1 && old && old->count == INITIAL);
+    for (int i = 0; i < INITIAL; i++) {
+        assert(current->items[i].i == i && old->items[i].i == i);
+    }
+    assert(current->items[INITIAL].i == INITIAL);
+    run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
+    assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
+    assert(((const pin_array *)instance->variables[0].ptr)->count == INITIAL + 1);
+    arena_free(&snapshot_storage);
+    behavior_instance_destroy(instance);
+    behavior_asset_free(asset);
+}
+
+static void owned_entity_set_mutation()
+{
+    pin_array empty = { .element_type = PIN_HANDLE, .type_name = "ecs.entity" };
+    pin_value default_value = { .type = PIN_HANDLE,
+                                .type_name = "ecs.entity",
+                                .container = PIN_CONTAINER_SET,
+                                .ptr = &empty };
+    behavior_asset *asset = behavior_asset_new("Owned entity set append");
+    assert(
+        behavior_asset_add_variable(asset, "Contacts", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SET, &default_value, "")
+    );
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(!graph_set_event_name(g, event, "Tick"));
+    node *get = variable(asset, g, 0, false);
+    node *add = graph_add_node(g, &NODE_SetAdd);
+    assert(add);
+    assert(!graph_set_pin_type(g, add, false, 0, PIN_HANDLE, "ecs.entity"));
+    assert(!graph_set_pin_container(g, add, false, 0, PIN_CONTAINER_SET));
+    assert(!graph_set_pin_type(g, add, false, 1, PIN_HANDLE, "ecs.entity"));
+    assert(!graph_set_pin_default(
+        g,
+        add,
+        false,
+        1,
+        &(pin_value){ .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 41 }
+    ));
+    assert(!graph_set_pin_type(g, add, true, 0, PIN_HANDLE, "ecs.entity"));
+    assert(!graph_set_pin_container(g, add, true, 0, PIN_CONTAINER_SET));
+    node *set = variable(asset, g, 0, true);
+    assert(!graph_connect_data(g, get, 0, add, 0));
+    assert(!graph_connect_data(g, add, 0, set, 1));
+    assert(!graph_connect_exec(g, event, 0, set, 0, 0));
+
+    behavior_program *program = behavior_program_publish(asset);
+    const behavior_function
+        *function = behavior_program_function(behavior_program_graph(program, g), event);
+    assert(function);
+    bool optimized = false;
+    for (int i = 0; i < acount(function->instructions); i++) {
+        const behavior_function_instruction *instruction = &function->instructions[i];
+        optimized |= instruction->op == BF_STORE_VALUE &&
+                     instruction->offset == BF_STORE_VALUE_SET_ADD;
+    }
+    assert(optimized);
+
+    const behavior_backend backends[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
+    for (int backend = 0; backend < 2; backend++) {
+        behavior_backend previous = behavior_debug_backend(backends[backend]);
+        behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+        behavior_instance_set_trace_enabled(instance, false);
+        arena snapshot_storage = { 0 };
+        pin_value snapshot;
+        assert(
+            !behavior_instance_copy_variable(instance, asset->variables[0].id, &snapshot_storage, &snapshot)
+        );
+        for (int i = 0; i < 2; i++) {
+            flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
+            assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
+        }
+        const pin_array *contacts = instance->variables[0].ptr;
+        assert(contacts && contacts->count == 1 && contacts->items[0].u64 == 41);
+        assert(!strcmp(contacts->items[0].type_name, "ecs.entity"));
+        const pin_array *old = snapshot.ptr;
+        assert(old && old->count == 0);
+        pin_value wrong_type = { .type = PIN_HANDLE, .type_name = "ecs.other", .u64 = 41 };
+        assert(
+            behavior_instance_add_set_variable(instance, asset->variables[0].id, &wrong_type) < 0
+        );
+        assert(((const pin_array *)instance->variables[0].ptr)->count == 1);
+
+        arena_free(&snapshot_storage);
+        behavior_instance_destroy(instance);
+        behavior_debug_backend(previous);
+    }
+    behavior_asset_free(asset);
+}
+
 void whole_array_op_smoke()
 {
     extern void test_value_index();
     test_value_index();
     set_semantics();
+    owned_set_semantics();
     entity_set_semantics();
     set_remove_flow();
+    owned_set_mutation();
+    owned_entity_set_mutation();
     owned_tick();
     owned_tick_arrays();
     for (int operation = 0; operation < ARRAY_OP_COUNT; operation++) {

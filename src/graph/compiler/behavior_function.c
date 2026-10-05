@@ -1,6 +1,7 @@
 #include "graph/compiler/behavior_jit.h"
 #include "graph/compiler/behavior_lower_internal.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/set_map_nodes.h"
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow.h"
 #include "support/arena.h"
@@ -10,6 +11,123 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
+static bool owned_set_add_setter(
+    const behavior_asset *asset,
+    const graph *g,
+    const node *setter,
+    node **add_out
+)
+{
+    const behavior_variable
+        *variable = behavior_asset_find_variable_by_id(asset, setter->reference_id);
+    if (!variable || variable->container != PIN_CONTAINER_SET) {
+        return false;
+    }
+    node *add;
+    int add_pin;
+    if (!graph_input_source(g, setter, 1, &add, &add_pin) || add_pin != 0 ||
+        add->desc != &NODE_SetAdd || add->input_pins[0].container != PIN_CONTAINER_SET ||
+        add->input_pins[0].type != variable->type ||
+        add->input_pins[1].container != PIN_CONTAINER_SINGLE ||
+        add->input_pins[1].type != variable->type ||
+        add->output_pins[0].container != PIN_CONTAINER_SET ||
+        add->output_pins[0].type != variable->type ||
+        setter->input_pins[1].container != PIN_CONTAINER_SET ||
+        setter->input_pins[1].type != variable->type) {
+        return false;
+    }
+    int consumers = 0;
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *connection = &g->edges[i];
+        if (connection->kind != GRAPH_EDGE_DATA || connection->from_id != add->id ||
+            connection->from_pin_id != add->output_pins[0].id) {
+            continue;
+        }
+        if (connection->to_id != setter->id ||
+            connection->to_pin_id != setter->input_pins[1].id) {
+            return false;
+        }
+        consumers++;
+    }
+    if (consumers != 1) {
+        return false;
+    }
+    node *source;
+    int source_pin;
+    if (!graph_input_source(g, add, 0, &source, &source_pin) ||
+        source_pin != 0 || source->desc != &NODE_GetVariable ||
+        source->reference_id != setter->reference_id) {
+        return false;
+    }
+    if (add->breakpoint || source->breakpoint ||
+        (add->input_pins[0].flags & PIN_FLAG_WATCH) ||
+        (add->output_pins[0].flags & PIN_FLAG_WATCH) ||
+        (source->output_pins[0].flags & PIN_FLAG_WATCH)) {
+        return false;
+    }
+    int source_consumers = 0;
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *connection = &g->edges[i];
+        if (connection->kind != GRAPH_EDGE_DATA || connection->from_id != source->id ||
+            connection->from_pin_id != source->output_pins[0].id) {
+            continue;
+        }
+        if (connection->to_id != add->id ||
+            connection->to_pin_id != add->input_pins[0].id) {
+            return false;
+        }
+        source_consumers++;
+    }
+    if (source_consumers != 1) {
+        return false;
+    }
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *connection = &g->edges[i];
+        if (connection->kind == GRAPH_EDGE_DATA && connection->from_id == setter->id &&
+            connection->from_pin_id == setter->output_pins[1].id) {
+            return false;
+        }
+    }
+    *add_out = add;
+    return true;
+}
+bool behavior_function_owned_set_add_candidate(
+    const behavior_asset *asset,
+    const graph *g,
+    const node *add
+)
+{
+    if (add->desc != &NODE_SetAdd) {
+        return false;
+    }
+    node *setter = NULL;
+    int consumers = 0;
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *connection = &g->edges[i];
+        if (connection->kind != GRAPH_EDGE_DATA || connection->from_id != add->id ||
+            connection->from_pin_id != add->output_pins[0].id) {
+            continue;
+        }
+        setter = graph_node_by_id(g, connection->to_id);
+        if (consumers || !setter || setter->desc != &NODE_SetVariable ||
+            connection->to_pin_id != setter->input_pins[1].id) {
+            return false;
+        }
+        consumers++;
+    }
+    node *matched_add;
+    return consumers == 1 && owned_set_add_setter(asset, g, setter, &matched_add) &&
+           matched_add == add;
+}
+static int owned_set_add_item(builder *b, const node *setter)
+{
+    node *add;
+    if (!owned_set_add_setter(b->asset, b->graph, setter, &add)) {
+        return -1;
+    }
+    return behavior_lower_input(b, add, 1);
+}
 
 int behavior_lower_schedule(builder *b, task t)
 {
@@ -298,32 +416,74 @@ static bool block(builder *b, int index)
     } else if (n->desc == &NODE_Delay || n->desc == &NODE_RetriggerableDelay) {
         next = behavior_lower_delay(b, t);
     } else if (n->desc == &NODE_SetVariable) {
-        int source = behavior_lower_input(b, n, 1), target = behavior_lower_variable(
-                                                        b,
-                                                        n->reference_id,
-                                                        n->input_pins[1].type,
-                                                        n->input_pins[1].container
-                                                    );
-        if (source < 0 || target < 0) {
+        int target = behavior_lower_variable(
+            b,
+            n->reference_id,
+            n->input_pins[1].type,
+            n->input_pins[1].container
+        );
+        int item = owned_set_add_item(b, n);
+        if (target < 0) {
             return false;
         }
-        int stored = behavior_lower_local(b, b->frame, n, 1);
-        if (!behavior_lower_store(b, BF_SAVE, source, stored)) {
-            return false;
-        }
-        aggregate *a = behavior_lower_aggregate(b, source);
-        if (behavior_lower_array(b, source) || (a && !type_is_plain(a->type)) ||
-            behavior_scalar_string(b->function->slots[source])) {
-            /* Retain a self-assignment before the variable store releases its
-             * previous payload. Watches read the same retained input. */
-            source = behavior_lower_source(b, BF_LOCAL, stored, &n->output_pins[1], n, 1);
-            if (b->recording) {
-                apush(b->inputs, ((output){ n, 1, source }));
+        if (item >= 0) {
+            const behavior_variable
+                *variable = behavior_asset_find_variable_by_id(b->asset, n->reference_id);
+            int data = acount(b->function->data_values);
+            apush(
+                b->function->data_values,
+                ((behavior_function_data_value){
+                    .initial = { .type = variable->type,
+                                 .type_name = variable->type_name,
+                                 .container = PIN_CONTAINER_SINGLE } })
+            );
+            if (!behavior_lower_pack_value(b, item, data)) {
+                return false;
             }
-        }
-        if (!behavior_lower_store(b, BF_STORE, source, target)) {
-            behavior_lower_unsupported(b, n, 1, false, "persistent aggregate write");
-            return false;
+            behavior_lower_emit(
+                b,
+                (behavior_function_instruction){ .op = BF_STORE_VALUE,
+                                                 .left = data,
+                                                 .target = target,
+                                                 .offset = BF_STORE_VALUE_SET_ADD }
+            );
+            int current = behavior_lower_source(b, BF_VARIABLE, target, &n->output_pins[1], n, 1);
+            int stored = behavior_lower_local(b, b->frame, n, 1);
+            array_value *current_array = behavior_lower_array(b, current);
+            if (current < 0 || stored < 0 || !current_array ||
+                current_array->container != PIN_CONTAINER_SET) {
+                return false;
+            }
+            current_array->stable = true;
+            if (!behavior_lower_store(b, BF_SAVE, current, stored)) {
+                return false;
+            }
+            if (b->recording) {
+                apush(b->inputs, ((output){ n, 1, current }));
+            }
+        } else {
+            int source = behavior_lower_input(b, n, 1);
+            if (source < 0) {
+                return false;
+            }
+            int stored = behavior_lower_local(b, b->frame, n, 1);
+            if (!behavior_lower_store(b, BF_SAVE, source, stored)) {
+                return false;
+            }
+            aggregate *a = behavior_lower_aggregate(b, source);
+            if (behavior_lower_array(b, source) || (a && !type_is_plain(a->type)) ||
+                behavior_scalar_string(b->function->slots[source])) {
+                /* Retain a self-assignment before the variable store releases its
+                 * previous payload. Watches read the same retained input. */
+                source = behavior_lower_source(b, BF_LOCAL, stored, &n->output_pins[1], n, 1);
+                if (b->recording) {
+                    apush(b->inputs, ((output){ n, 1, source }));
+                }
+            }
+            if (!behavior_lower_store(b, BF_STORE, source, target)) {
+                behavior_lower_unsupported(b, n, 1, false, "persistent aggregate write");
+                return false;
+            }
         }
         next = behavior_lower_successor(b, n, 0, t.after);
     } else if (n->desc->lower) {

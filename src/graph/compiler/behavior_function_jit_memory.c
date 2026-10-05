@@ -455,7 +455,9 @@ bool behavior_jit_memory(
             SLJIT_CALL,
             SLJIT_ARGS3V(P, 32, P),
             SLJIT_MEM1(m->context),
-            offsetof(behavior_function_context, store_value)
+            i->offset == BF_STORE_VALUE_SET_ADD
+                ? offsetof(behavior_function_context, add_set_value)
+                : offsetof(behavior_function_context, store_value)
         );
         return true;
     }

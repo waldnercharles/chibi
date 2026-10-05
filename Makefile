@@ -1,3 +1,29 @@
+# Bootstrap before workspace enrollment/locking; the child retains Make flags and
+# command-line overrides. Query/dry-run/touch and non-tool goals need no preflight.
+export CHIBI_CLOUD CHIBI_CLOUD_TOOLS
+CHIBI_CLOUD_GOALS := $(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
+CHIBI_CLOUD_BOOTSTRAP :=
+CHIBI_CLOUD_MAKE_FLAGS := $(filter-out --%,$(firstword $(MAKEFLAGS)))
+ifeq ($(filter help clean,$(CHIBI_CLOUD_GOALS)),$(CHIBI_CLOUD_GOALS))
+else
+ifeq ($(findstring n,$(CHIBI_CLOUD_MAKE_FLAGS))$(findstring q,$(CHIBI_CLOUD_MAKE_FLAGS))$(findstring t,$(CHIBI_CLOUD_MAKE_FLAGS)),)
+ifneq ($(wildcard tools/cloud/entry.sh),)
+CHIBI_CLOUD_BOOTSTRAP := $(shell bash tools/cloud/entry.sh --probe)
+endif
+endif
+endif
+ifeq ($(CHIBI_CLOUD_BOOTSTRAP),1)
+.DEFAULT_GOAL := all
+.PHONY: $(CHIBI_CLOUD_GOALS) .chibi-cloud-invocation
+$(CHIBI_CLOUD_GOALS): .chibi-cloud-invocation
+# A command-line PATH must stay exact in the child Make as well as preflight.
+ifeq ($(origin PATH),command line)
+export CHIBI_CLOUD_KEEP_PATH := 1
+endif
+.chibi-cloud-invocation:
+	+@bash tools/cloud/entry.sh $(MAKE) $(CHIBI_CLOUD_GOALS)
+else
+
 # Native desktop setup commands can run before a SessionStart hook.
 # Enrollment is silent and creates no state for repositories without installation.
 ifeq ($(wildcard .chibi-workspace.json),)
@@ -76,6 +102,8 @@ TEST_TOOL_TARGETS = \
 	test-tool-workspaces \
 	test-tool-workspace-retirement \
 	test-tool-workspace-make \
+	test-tool-cloud-entry \
+	test-tool-cloud-emscripten-setup \
 	test-tool-workspace-install \
 	test-tool-mcp-package \
 	test-tool-web-serve \
@@ -111,6 +139,13 @@ NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 .PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web publish-web web-serial web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render clean
 
 all: build
+
+.PHONY: cloud-preflight cloud-smoke
+cloud-preflight:
+	@bash tools/cloud/entry.sh --report
+
+cloud-smoke:
+	@bash tools/cloud/entry.sh bash tools/cloud/smoke.sh
 
 .PHONY: package-native test-package update-game-runtime
 
@@ -355,6 +390,11 @@ test-tool-workspace-retirement:
 	@$(QUIET) workspace_retirement_test.py -- python3 test/workspace_retirement_test.py
 test-tool-workspace-make:
 	@$(QUIET) workspace_make_test.py -- python3 test/workspace_make_test.py
+
+test-tool-cloud-entry:
+	@$(QUIET) cloud_entry_test.py -- python3 test/cloud_entry_test.py
+test-tool-cloud-emscripten-setup:
+	@$(QUIET) cloud_emscripten_setup_test.py -- python3 test/cloud_emscripten_setup_test.py
 test-tool-workspace-install:
 	@$(QUIET) workspace_install_test.py -- python3 test/workspace_install_test.py
 test-tool-mcp-package:
@@ -433,3 +473,5 @@ dev:
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 endif # CHIBI_WORKSPACE_INNER
+
+endif # CHIBI_CLOUD_BOOTSTRAP

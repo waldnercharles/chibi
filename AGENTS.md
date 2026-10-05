@@ -1,11 +1,13 @@
 ## Cloud session startup
 
-In the Debian workspace cloud environment (`/workspace/.cloud-tools`), run
-`tools/cloud/bin/start_skill` before project work. Run each subsequent toolchain
-command through `tools/cloud/bin/start_skill -- <command> [args...]`; shell state
-is not preserved between tool calls. Use `--modeling` before Blender work. Missing
-setup stops with a recovery command. See [cloud setup](docs/cloud-setup.md) for
-provisioning, supported shell modes, and the platform startup limitation.
+In the Debian workspace cloud environment (`/workspace/.cloud-tools`), normal
+Make commands and direct MCP launch automatically run repository preflight before
+project work. Use `make cloud-preflight` to report readiness and `make cloud-smoke`
+for bounded compiler checks. For other tool calls use
+`tools/cloud/bin/start_skill -- <command> [args...]`, adding `--modeling` before
+Blender work. `CHIBI_CLOUD=0` opts Make/MCP out. Missing setup stops with recovery
+instructions. This does not activate arbitrary platform shells; see
+[cloud setup](docs/cloud-setup.md) for supported entry points and publication limits.
 
 - When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. When the change stops projects saved by earlier builds from loading, bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and the `version` in every `project.kdl`.
 - Follow YAGNI principles, and boring solutions.

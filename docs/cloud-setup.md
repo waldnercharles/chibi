@@ -8,20 +8,51 @@ select by publication date/ID in the product, not by name alone.
 
 ## Task entry
 
-From the checkout, run `tools/cloud/bin/start_skill` before project work. For each
-new shell/tool call, run commands through the explicit entry point:
+Normal Make commands and direct `tools/mcp/launch.sh` entry automatically apply
+cloud preflight when the saved prefix directory is present on x86_64 Debian 13:
 
 ```sh
-tools/cloud/bin/start_skill -- make build JOBS=2
+make cloud-preflight              # versions and selected compilers
+make build JOBS=2                 # no manual source/wrapper needed
+make cloud-smoke                  # bounded real compiler checks
+```
+
+`tools/cloud/entry.sh` is the common detector and bootstrap. Make invokes it once
+before enrollment/locking, then delegates with goals, overrides and jobserver
+intact. Recursive Make inherits the verified environment; workspace locking still
+uses the existing workflow. Pure `help`/`clean` goals and query/dry-run/touch modes
+skip cloud preflight. `test-list` requires it because that target builds
+`test_suite`. Missing prerequisites in an existing prefix fail before project work;
+an absent prefix, non-Debian host, or `CHIBI_CLOUD=0` leaves the existing entry path
+unchanged. Detection does not install anything or attach an MCP server.
+
+Explicit environment/Make compiler, toolchain and flag values are retained,
+including empty overrides. CMake retains its usual cached-compiler and explicit
+`-D` option precedence. With a `CMAKE_TOOLCHAIN_FILE` environment value,
+activation leaves compiler selection to CMake rather than defaulting CC/CXX.
+Otherwise only unset CC/CXX default to the provisioned Clang pair. Existing PATH
+tools keep precedence; cloud directories supply fallbacks. An incompatible selected
+CMake, Ninja, Emscripten, Node or formatter fails with an actionable error instead
+of being silently shadowed. `CLANG_FORMAT` selects the formatter when set. A
+command-line Make PATH remains exact and must already expose the needed tools.
+Use `CHIBI_CLOUD=0` when supplying a separate toolchain that does not meet this
+profile's checks.
+
+Arbitrary commands outside Make/MCP still need the explicit agent entry point:
+
+```sh
+tools/cloud/bin/start_skill -- <command> [args...]
 tools/cloud/bin/start_skill --modeling -- blender --background --factory-startup --version
 ```
 
-The wrapper activates the configured compiler, build tools, Emscripten and local
-libraries, checks prerequisites, and executes the command with that environment.
+The wrapper checks prerequisites and executes the command with that environment.
 With no command it prints readiness and versions. It preserves the working
 directory and command exit code. `--modeling` additionally checks the pinned
 Blender installation and runs the small CPU-only OBJ fixture before execution.
-Neither profile attaches an MCP server or changes credentials.
+If PATH selects a different Blender, that executable/data must pass the same
+fixture too; the selected binary is not silently replaced.
+The explicit wrapper requires cloud setup; Make/MCP's automatic detector is what
+provides the no-prefix/opt-out behavior.
 
 Manual recovery for a long-lived **Bash** shell:
 
@@ -30,21 +61,21 @@ source tools/cloud/activate.sh
 start_skill
 ```
 
-Activation is idempotent and does not write shell profiles. The executable entry
-point works from Bash login and non-login shells, including `--noprofile --norc`,
-and from other shells that can execute its Bash shebang. Sourcing is supported
-only in Bash. Start from a clean shell when switching prefixes or moving from the
-legacy saved activation script: inherited `C_INCLUDE_PATH`, `CPLUS_INCLUDE_PATH`,
-`LIBRARY_PATH`, or `NATIVE_TOOLCHAIN_FLAGS` may still point at the previous profile.
-This activation preserves user overrides; it does not erase those variables. A child process cannot activate its parent shell: simply running
-`start_skill` does not affect a later independent tool call.
+Activation is idempotent and does not write shell profiles. Executable entry
+points work from Bash login and non-login shells, including `--noprofile --norc`;
+sourcing is supported only in Bash. Start from a clean shell when switching prefixes
+or moving from the legacy saved activation script: inherited `C_INCLUDE_PATH`,
+`CPLUS_INCLUDE_PATH`, `LIBRARY_PATH`, or `NATIVE_TOOLCHAIN_FLAGS` may still point at
+the previous profile. User overrides are not erased. A child process cannot
+activate its parent shell; running `start_skill` does not affect another tool call.
 
-**Platform limit:** `AGENTS.md` instructs agents to invoke this preflight; it is
-not an automatically executed platform hook. Repository scripts cannot guarantee
-that every fresh task runs it. No saved environment account settings or startup
-hooks were changed by this work. CUT-49's automatic invocation acceptance criterion
-remains pending a supported product startup hook and a fresh task test after that
-hook is configured. Do not mark all fresh environments ready based on these tests.
+**Platform limit:** this is automatic repository-entry preflight, not an
+arbitrary-shell or platform startup hook. No saved environment settings were
+changed. Publication must snapshot the tested prerequisites; refreshing repository
+files does not rerun installation. A genuinely new task from the intended updated
+publication must still pass plain Make/MCP entry checks before claiming CUT-49's
+fresh published-task acceptance. Publication/configuration identity and adoption
+remain unverified by this repository work.
 
 ## Provisioning
 
@@ -185,3 +216,33 @@ setup bounds its complete compiler smoke to 180 seconds. Binaryen reported
 The integration test explicitly observed apt saying LLVM/LLD/Binaryen were already
 installed, then verified the newly downloaded local tools by compiling and running.
 Both stale revisions remained unextracted across repeat setup.
+
+## Automatic repository entry verification
+
+After adding the Make/MCP bootstrap, plain `make --no-print-directory
+cloud-preflight` passed in independent `env -i` Bash login and non-login shells
+with only HOME and the original platform PATH retained. No activation command was
+sourced or wrapped around Make. Plain `make cloud-smoke` passed the real native
+C/C++, ASan/UBSan and optimized Wasm/Node checks. Reported versions were unchanged.
+
+`test/cloud_entry_test.py` exercises automatic entry with isolated tool fixtures:
+explicit/empty compiler and flag overrides, formatter selection, command-line PATH,
+incomplete/no-prefix cases, Fedora detection, silent direct MCP launch, recursive
+Make, workspace locking and jobserver handling, help/query/dry-run/touch behavior.
+The existing `test/workspace_make_test.py` regression also passed unchanged.
+Fedora detection was fixture-tested; no real Fedora host was provisioned here.
+
+Fresh published-task acceptance still requires recording its configuration ID,
+publication revision and checkout commit, then running plain `make cloud-preflight`
+and `timeout 180 make cloud-smoke` in separate fresh tool shells. Verify the
+modeling wrapper too if that profile was published. Record the selected tool paths
+and versions, and confirm `make help`/`make -n build` do not require provisioning.
+These entry-point checks do not establish automatic activation of unrelated shell
+commands.
+
+The final entry suite passed 23 checks; the unchanged workspace Make suite passed
+12. Real Make checks also preserved `CC=/usr/bin/cc CXX=` from the environment and
+`CC= CXX=/usr/bin/c++` from command-line assignments. An empty temporary prefix
+failed before configure with the setup recovery command; after removing that
+prefix, `make cloud-preflight` reported activation skipped. Modeling verified both
+the provisioned wrapper and the selected `/usr/bin/blender` (both 4.3.2).

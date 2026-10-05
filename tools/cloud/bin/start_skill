@@ -10,7 +10,7 @@ missing() { echo "Missing $1; run bash $repo/tools/cloud/setup.sh" >&2; exit 1; 
 for tool in "$prefix/root/usr/lib/llvm-19/bin/llvm-ar" \
     "$prefix/root/usr/lib/llvm-19/bin/llvm-nm" \
     "$prefix/root/usr/lib/llvm-19/bin/wasm-ld" "$prefix/root/usr/bin/wasm-opt" \
-    "$CC" "$CXX" cmake ninja ccache emcc node python3 clang-format; do
+    cmake ninja ccache emcc node python3 start_skill; do
     command -v "$tool" >/dev/null || missing "$tool"
 done
 for file in "$prefix/emscripten-config" \
@@ -19,12 +19,71 @@ for file in "$prefix/emscripten-config" \
     "$prefix/root/usr/share/emscripten/node_modules/acorn/package.json"; do
     [[ -f $file ]] || missing "$file"
 done
-if [[ $profile == modeling ]]; then bash "$repo/tools/cloud/modeling_setup.sh" --check; fi
+# Resolve explicit compiler strings before use, without replacing empty values
+# (CMake then owns compiler selection) or launcher forms such as "ccache clang".
+python3 - "$repo" <<'PYTOOLS'
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+
+def fail(message):
+    sys.exit(f"Cloud preflight: {message}. Adjust the explicit choice/PATH, run bash {sys.argv[1]}/tools/cloud/setup.sh, or use CHIBI_CLOUD=0 for your own toolchain.")
+
+for name in ('CC', 'CXX'):
+    value = os.environ.get(name, '')
+    if not value:
+        continue
+    try:
+        command = value if Path(value).is_file() else shlex.split(value)[0]
+    except (ValueError, IndexError):
+        fail(f'invalid {name}={value!r}')
+    if not shutil.which(command):
+        fail(f'{name} command {command!r} is unavailable')
+for tool, minimum, exact in (
+    ('cmake', (4, 2), False), ('ninja', (1, 12), False),
+    ('clang-format', (22,), True), ('emcc', (3, 1, 69), True),
+    ('node', (22,), False),
+):
+    command = (os.environ.get('CLANG_FORMAT') or tool) if tool == 'clang-format' else tool
+    if not shutil.which(command):
+        fail(f'{tool} command {command!r} is unavailable')
+    try:
+        result = subprocess.run([command, '--version'], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        fail(f'{command} version check failed: {error}')
+    match = re.search(r'(\d+)\.(\d+)(?:\.(\d+))?', result.stdout)
+    version = tuple(int(part) for part in match.groups() if part is not None) if match else ()
+    supported = version[:len(minimum)] == minimum if exact else version >= minimum
+    if result.returncode or not supported:
+        requirement = ('major/version ' if exact else '>= ') + '.'.join(map(str, minimum))
+        fail(f'{shutil.which(command)} does not satisfy {tool} {requirement}; {result.stderr.strip()}')
+PYTOOLS
+if [[ $profile == modeling ]]; then
+    bash "$repo/tools/cloud/modeling_setup.sh" --check
+    selected_blender=$(command -v blender) || missing blender
+    # PATH choices stay intact, so validate the actual selected binary/data too.
+    if [[ $selected_blender != "$prefix/bin/blender" ]]; then
+        timeout 30 "$selected_blender" --background --factory-startup --threads 1 \
+            --python-exit-code 1 --python "$repo/tools/cloud/blender_smoke.py" || {
+            echo "Selected Blender $selected_blender failed the 4.3.2 OBJ check; adjust PATH or use $prefix/bin/blender." >&2
+            exit 1
+        }
+    fi
+fi
+export CHIBI_CLOUD_ACTIVE="$prefix"
 if [[ ${1-} == -- ]]; then shift; fi
 if (( $# )); then exec "$@"; fi
-"$CC" --version | head -1
+"$prefix/root/usr/bin/clang-19" --version | head -1
+printf 'Selected CC=%s CXX=%s\n' "${CC-<CMake/toolchain default>}" "${CXX-<CMake/toolchain default>}"
 cmake --version | head -1
 printf 'Ninja '; ninja --version
 printf 'Node '; node --version
 python3 --version
+for tool in cmake ninja emcc node start_skill; do
+    printf '%s=%s\n' "$tool" "$(command -v "$tool")"
+done
 printf 'Ready: %s (%s profile)\n' "$repo" "$profile"

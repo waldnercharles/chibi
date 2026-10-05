@@ -283,7 +283,7 @@ The corrected entry suite passed 30 checks; the unchanged workspace Make suite
 passed 12. Shell syntax checks and `git diff --check` passed.
 
 
-## SDL3 web toolchain correction (acceptance blocked)
+## SDL3 web toolchain correction and acceptance history
 
 The earlier Emscripten 3.1.69 tiny C/Wasm smoke did **not** establish application
 web readiness: that Debian release lacks the SDL3 port required by Cute's
@@ -298,13 +298,14 @@ an installed SDK. Preflight rejects 3.1.69 and a missing SDL3 port.
 On October 5, the official compiler archive at
 `https://storage.googleapis.com/webassembly/emscripten-releases-builds/linux/666337b525e673e769121856d175f6f52b8ead64/wasm-binaries.tar.xz`
 was blocked by the execution network proxy (`403 Forbidden`), including the
-network escalation attempt. Therefore 6.0.10 installation, repeated-install
-idempotence, its real tiny Wasm smoke, and actual `make web` acceptance remain
-**unverified**. The old installed 3.1.69 files are preserved; this corrected
-repository profile deliberately fails preflight until the new SDK is installed.
+network escalation attempt. At that point, 6.0.10 installation, repeated-install
+idempotence, tiny Wasm smoke, and actual `make web` were **unverified**. The old
+3.1.69 files were preserved, and corrected preflight failed until SDK installation.
+This is historical evidence; the authorized network update and subsequent session
+verification below supersede the download blocker.
 
-After authorized access to the official archive is available, update an existing
-native prefix without repeating its apt provisioning:
+To update an existing native prefix without repeating its apt provisioning
+(official archive access is required):
 
 ```sh
 bash tools/cloud/emscripten_setup.sh
@@ -342,5 +343,89 @@ config paths and quoting, failed installation retry, preservation of an existing
 config on reinstall failure, unexpected revision rejection, failed version-probe
 recovery, and invalid-prefix rejection. The stub models successful SDK reuse; it
 does not prove the official installer is idempotent or that the real SDK compiles.
-Real installation, tiny Wasm, both application web bundles, full final gate, and
-fresh published-task acceptance remain blocked or outstanding as stated above.
+These offline results alone do not establish real installation, Wasm compilation,
+application web readiness, or fresh published-task acceptance.
+
+
+## Current integration and startup adoption plan
+
+Startup adoption is tracked here under CUT-49/CUT-52 and PR #170. Preparation has
+started; saved setup adoption and the fresh-publication gate are not complete.
+The parent reports that the authorized `storage.googleapis.com` addition was
+published and verified. In fresh verifier task `01a10cc3`, official Emscripten
+6.0.10 installed successfully, warm reuse passed, and serial/threaded SDL3 tiny
+Wasm checks passed. The required workspace clang-format 22.1.8 was installed, and
+fresh-shell `cloud-preflight` and `cloud-smoke` passed. The parent also reports
+that PR #174's complete web build passed after a separate reviewed fixture fix.
+These are attributed session results, not tests repeated in this checkout and
+not evidence that a saved startup recipe provisions PR #170 automatically.
+
+Integration preparation merged main `7b35b66da8fbaf94012e18ed78cfd26e5ee09f2a`
+into PR #170's `c6ab2651bc2fc6a734633de534f32f91cbb45371` normally, without
+conflicts. Current main's AGENTS full verification requirements are retained:
+after review, on suitable hardware or CI with full execution authorized, run
+`CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 make test test-render`.
+Record the exact candidate SHA and actual coverage; neither source review nor
+prior session/compiler checks substitute for these final gates. This preparation
+does not run them, publish settings, push the candidate, or merge the PR.
+
+Candidate-pinned preview sequence for the root coordinator (not executed):
+
+1. Review the integrated candidate and documentation, then record its immutable
+   40-character commit SHA as `CANDIDATE`. Once authorized, push that reviewed
+   commit to the existing PR branch; verify the remote head matches. Do not pin a
+   mutable branch name in the setup recipe. Run the required full gates against
+   that same candidate on the authorized executor/CI before merge.
+2. Inspect the existing configuration's supported preview/draft-publication flow
+   and record its configuration ID, current publication revision, setup command,
+   selected profile and rollback revision. Root obtains publication approval and
+   performs the browser action. Use that existing configuration; do not create a
+   duplicate environment. If the product cannot publish/test a non-production
+   candidate revision while retaining rollback, stop and resolve that product
+   limitation instead of silently relaxing the premerge gate.
+3. In the approved preview setup recipe, fetch the exact reviewed commit into a
+   separate detached worktree before invoking its setup. This avoids changing
+   the production task checkout or pointing current main at scripts it does not
+   contain. For the known workspace layout, the concrete recipe is below; root
+   must replace the placeholder with the reviewed SHA before publication.
+
+   ```sh
+   set -eu
+   repo=/workspace/c-blueprints
+   candidate=REPLACE_WITH_REVIEWED_40_CHARACTER_SHA
+   preview=/workspace/c-blueprints-cloud-setup-preview
+   git -C "$repo" fetch origin "$candidate"
+   test "$(git -C "$repo" rev-parse FETCH_HEAD)" = "$candidate"
+   if test -e "$preview/.git"; then
+     test "$(git -C "$preview" rev-parse HEAD)" = "$candidate"
+     test -z "$(git -C "$preview" status --porcelain)"
+   else
+     git -C "$repo" worktree add --detach "$preview" "$candidate"
+   fi
+   CHIBI_CLOUD_TOOLS=/workspace/.cloud-tools bash "$preview/tools/cloud/setup.sh" modeling
+   ```
+
+   The modeling profile covers CUT-52 as well as CUT-49. The recipe fails on an
+   existing mismatched/dirty preview checkout instead of resetting it. An older
+   preview must be deliberately retired or a reviewed new preview path chosen.
+4. Record the resulting preview publication revision and setup logs. Start a
+   genuinely new task from that revision with the reviewed PR checkout, and
+   verify `git rev-parse HEAD` equals `CANDIDATE`. If task checkout selection
+   cannot preserve that SHA, stop; running against old main cannot test the new
+   Make/MCP entry points. Do not manually install packages or source activation
+   in this acceptance task. In separate fresh tool shells, run plain
+   `make cloud-preflight`, `timeout 180 make cloud-smoke`, and the modeling entry
+   `tools/cloud/bin/start_skill --modeling -- blender --background --factory-startup --version`.
+   Record exit status, selected paths and versions, configuration ID, publication
+   revision, checkout SHA and task ID. Check `make help`, `make -n build`, and a
+   bounded direct MCP initialization for quiet protocol output. This acceptance
+   tests the published setup and normal repository entry, not arbitrary-shell
+   automatic activation. Capture failures without repairing the task in place;
+   fix the candidate/recipe and repeat a new publication/task when needed.
+5. Root reviews all required checks and the recorded fresh-publication acceptance
+   before merging PR #170. Any candidate source change after validation needs its
+   affected checks and publication acceptance repeated. Only after successful
+   merge and separate approved production adoption should the saved production
+   recipe point at the merged scripts/revision. Keep rollback information and
+   verify a new production task; do not infer production adoption from preview
+   success. CI protections and required reviews remain in force.

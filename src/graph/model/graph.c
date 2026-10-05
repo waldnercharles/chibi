@@ -194,6 +194,9 @@ static void init_pin(pin_spec *dst, const pin_spec *src, graph *g)
     *dst = *src;
     dst->id = graph_alloc_id(g);
     dst->name = src->name ? graph_own_str(g, src->name, strlen(src->name)) : NULL;
+    dst->display_name = src->display_name
+                          ? graph_own_str(g, src->display_name, strlen(src->display_name))
+                          : NULL;
     dst->field_name = src->field_name
                         ? graph_own_str(g, src->field_name, strlen(src->field_name))
                         : NULL;
@@ -1272,6 +1275,32 @@ int graph_set_pin_name(graph *g, node *n, int output, int index, const char *nam
         return -1;
     }
     p[index].name = copy;
+    graph_changed(g);
+    return 0;
+}
+
+int graph_set_pin_display_name(graph *g, node *n, int output, int index, const char *name)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
+        return -1;
+    }
+    pin_spec *p = output ? n->output_pins : n->input_pins;
+    int count = output ? n->output_count : n->input_count;
+    if (index < 0 || index >= count) {
+        return -1;
+    }
+    if (name && !name[0]) {
+        name = NULL;
+    }
+    if ((!p[index].display_name && !name) ||
+        (p[index].display_name && name && !strcmp(p[index].display_name, name))) {
+        return 0;
+    }
+    char *copy = name ? graph_own_str(g, name, strlen(name)) : NULL;
+    if (name && !copy) {
+        return -1;
+    }
+    p[index].display_name = copy;
     graph_changed(g);
     return 0;
 }

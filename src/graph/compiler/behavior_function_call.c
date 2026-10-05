@@ -161,6 +161,7 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     context->variable_storage = root->variable_storage;
     context->value_owner = root->value_owner;
     context->store_value = root->store_value;
+    context->add_set_value = root->add_set_value;
     context->own_type_name = root->own_type_name;
     context->inspect = root->inspect;
     context->watch = root->watch;

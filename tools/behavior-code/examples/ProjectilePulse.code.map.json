@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "asset": "ProjectilePulse",
+  "graph_id": 0,
+  "signature": "{\"name\":\"ProjectilePulse\",\"stateVariables\":[{\"name\":\"marks\",\"type\":\"int\",\"container\":\"array\",\"default\":[1,2,1]},{\"name\":\"seen\",\"type\":\"int\",\"container\":\"set\",\"default\":[]}],\"handlers\":[{\"event\":\"Tick\",\"body\":[{\"id\":\"source-1\",\"kind\":\"foreach\",\"array\":\"marks\",\"variable\":\"mark\",\"body\":[{\"id\":\"source-2\",\"kind\":\"if_set\",\"yes\":[{\"id\":\"source-3\",\"kind\":\"expression\"}],\"no\":[{\"id\":\"source-4\",\"kind\":\"set_mutation\",\"set\":\"seen\",\"method\":\"add\",\"argument\":\"mark\"}]}]}]}]}",
+  "refs": {
+    "state-get-marks": 2,
+    "state-get-seen": 5,
+    "event-Tick": 7,
+    "source-1": 10,
+    "source-2-set-test": 17,
+    "source-2": 21,
+    "source-3": 38,
+    "source-4-set-op": 77,
+    "source-4-set-source": 130,
+    "source-4": 81
+  },
+  "types": {
+    "state-get-marks": "Get Variable",
+    "state-get-seen": "Get Variable",
+    "event-Tick": "Event",
+    "source-1": "ForEach",
+    "source-2-set-test": "Set Contains",
+    "source-2": "Branch",
+    "source-3": "Behavior Expression",
+    "source-4-set-op": "Set Add",
+    "source-4-set-source": "Get Variable",
+    "source-4": "Set Variable"
+  },
+  "edges": [
+    {
+      "from": 7,
+      "from_pin": "Then",
+      "to": 10,
+      "to_pin": "Exec",
+      "kind": "exec"
+    },
+    {
+      "from": 2,
+      "from_pin": "Value",
+      "to": 10,
+      "to_pin": "Array",
+      "kind": "data"
+    },
+    {
+      "from": 10,
+      "from_pin": "Body",
+      "to": 21,
+      "to_pin": "Exec",
+      "kind": "exec"
+    },
+    {
+      "from": 5,
+      "from_pin": "Value",
+      "to": 17,
+      "to_pin": "Set",
+      "kind": "data"
+    },
+    {
+      "from": 10,
+      "from_pin": "Array Element",
+      "to": 17,
+      "to_pin": "Item",
+      "kind": "data"
+    },
+    {
+      "from": 17,
+      "from_pin": "Return Value",
+      "to": 21,
+      "to_pin": "Condition",
+      "kind": "data"
+    },
+    {
+      "from": 21,
+      "from_pin": "True",
+      "to": 38,
+      "to_pin": "Exec",
+      "kind": "exec"
+    },
+    {
+      "from": 21,
+      "from_pin": "False",
+      "to": 81,
+      "to_pin": "Exec",
+      "kind": "exec"
+    },
+    {
+      "from": 130,
+      "from_pin": "Value",
+      "to": 77,
+      "to_pin": "Set",
+      "kind": "data"
+    },
+    {
+      "from": 10,
+      "from_pin": "Array Element",
+      "to": 77,
+      "to_pin": "Item",
+      "kind": "data"
+    },
+    {
+      "from": 77,
+      "from_pin": "Set",
+      "to": 81,
+      "to_pin": "Value",
+      "kind": "data"
+    },
+    {
+      "from": 7,
+      "from_pin": "DeltaSeconds",
+      "to": 38,
+      "to_pin": "_bc_event_DeltaSeconds",
+      "kind": "data"
+    }
+  ],
+  "bindings": {
+    "Tick:projectile": {
+      "kind": "component",
+      "component": "GAME.GameProjectile"
+    }
+  },
+  "state_signature": "[{\"name\":\"marks\",\"type\":\"int\",\"container\":\"array\",\"default\":[1,2,1]},{\"name\":\"seen\",\"type\":\"int\",\"container\":\"set\",\"default\":[]}]",
+  "next_node_id": 5,
+  "source_tree": {
+    "handlers": [
+      {
+        "event": "Tick",
+        "body": [
+          {
+            "ref": "source-1",
+            "marker": null,
+            "kind": "foreach",
+            "key": "foreach:mark in marks",
+            "body": [
+              {
+                "ref": "source-2",
+                "marker": null,
+                "kind": "if",
+                "key": "if:seen.contains(mark)",
+                "yes": [
+                  {
+                    "ref": "source-3",
+                    "marker": null,
+                    "kind": "expression",
+                    "key": "expression:projectile.age += event.dt"
+                  }
+                ],
+                "no": [
+                  {
+                    "ref": "source-4",
+                    "marker": null,
+                    "kind": "set_mutation",
+                    "key": "set:seen.add(mark)",
+                    "set": "seen"
+                  }
+                ],
+                "condition": "seen.contains(mark)"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

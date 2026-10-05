@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "asset": "ContactRegistry",
+  "graph_id": 0,
+  "signature": "{\"name\":\"ContactRegistry\",\"stateVariables\":[{\"name\":\"contacted\",\"type\":\"entity\",\"container\":\"set\",\"default\":[]}],\"handlers\":[{\"event\":\"ContactBegin\",\"body\":[{\"id\":\"source-1\",\"kind\":\"if_set\",\"yes\":[],\"no\":[{\"id\":\"source-2\",\"kind\":\"set_mutation\",\"set\":\"contacted\",\"method\":\"add\",\"argument\":\"event.other\"}]}]}]}",
+  "refs": {
+    "state-get-contacted": 2,
+    "event-ContactBegin": 4,
+    "source-1-set-test": 8,
+    "source-1": 12,
+    "source-2-set-op": 17,
+    "source-2": 21
+  },
+  "types": {
+    "state-get-contacted": "Get Variable",
+    "event-ContactBegin": "Event",
+    "source-1-set-test": "Set Contains",
+    "source-1": "Branch",
+    "source-2-set-op": "Set Add",
+    "source-2": "Set Variable"
+  },
+  "edges": [
+    {
+      "from": 4,
+      "from_pin": "Then",
+      "to": 12,
+      "to_pin": "Exec",
+      "kind": "exec"
+    },
+    {
+      "from": 2,
+      "from_pin": "Value",
+      "to": 8,
+      "to_pin": "Set",
+      "kind": "data"
+    },
+    {
+      "from": 8,
+      "from_pin": "Return Value",
+      "to": 12,
+      "to_pin": "Condition",
+      "kind": "data"
+    },
+    {
+      "from": 12,
+      "from_pin": "False",
+      "to": 21,
+      "to_pin": "Exec",
+      "kind": "exec"
+    },
+    {
+      "from": 2,
+      "from_pin": "Value",
+      "to": 17,
+      "to_pin": "Set",
+      "kind": "data"
+    },
+    {
+      "from": 17,
+      "from_pin": "Set",
+      "to": 21,
+      "to_pin": "Value",
+      "kind": "data"
+    },
+    {
+      "from": 4,
+      "from_pin": "Other",
+      "to": 8,
+      "to_pin": "Item",
+      "kind": "data"
+    },
+    {
+      "from": 4,
+      "from_pin": "Other",
+      "to": 17,
+      "to_pin": "Item",
+      "kind": "data"
+    }
+  ],
+  "bindings": {},
+  "state_signature": "[{\"name\":\"contacted\",\"type\":\"entity\",\"container\":\"set\",\"default\":[]}]",
+  "next_node_id": 3,
+  "source_tree": {
+    "handlers": [
+      {
+        "event": "ContactBegin",
+        "body": [
+          {
+            "ref": "source-1",
+            "marker": null,
+            "kind": "if",
+            "key": "if:contacted.contains(event.other)",
+            "yes": [],
+            "no": [
+              {
+                "ref": "source-2",
+                "marker": null,
+                "kind": "set_mutation",
+                "key": "set:contacted.add(event.other)",
+                "set": "contacted"
+              }
+            ],
+            "condition": "contacted.contains(event.other)"
+          }
+        ]
+      }
+    ]
+  }
+}

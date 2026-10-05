@@ -89,6 +89,7 @@ TEST_JOBS ?= 4
 TEST_TIMINGS ?= 0
 TEST_TOOL_TARGETS = \
 	test-tool-validation-plan \
+	test-tool-behavior-code \
 	test-tool-execution-policy \
 	test-tool-kdl-assets \
 	test-tool-fetchcontent-cache \
@@ -366,6 +367,9 @@ test-tools:
 
 test-tool-validation-plan:
 	@$(QUIET) validation_plan_test.py -- python3 test/validation_plan_test.py
+
+test-tool-behavior-code:
+	@$(QUIET) behavior-code-test -- node --test tools/behavior-code/behavior-code.test.mjs
 
 test-tool-kdl-assets:
 	@$(QUIET) kdl_asset_test.py -- python3 test/kdl_asset_test.py

@@ -20,6 +20,16 @@ static void write_asset(const char *directory, const char *name, const char *jso
     assert(fclose(file) == 0);
 }
 
+static void write_file(const char *directory, const char *name, const char *text)
+{
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s", directory, name);
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    assert(fputs(text, file) >= 0);
+    assert(fclose(file) == 0);
+}
+
 void run_behavior_loader_checks()
 {
     char root[] = "/tmp/chibi-loader-XXXXXX";
@@ -27,6 +37,8 @@ void run_behavior_loader_checks()
     char directory[256];
     snprintf(directory, sizeof directory, "%s/behaviors", root);
     assert(mkdir(directory, 0700) == 0);
+    write_file(directory, "AuthoringOnly.code", "not a KDL behavior graph\n");
+    write_file(directory, "AuthoringOnly.code.map.json", "{}\n");
     behavior_asset *asset = behavior_asset_new("Good");
     char *json = behavior_asset_save(asset);
     write_asset(directory, "Good", json);
@@ -91,6 +103,7 @@ void run_behavior_loader_checks()
         strstr(messages, "Could not register preview behavior PreviewFailed: A definition with this name")
     );
     assert(strstr(messages, "PreviewFailed.kdl (preview):"));
+    assert(!strstr(messages, "AuthoringOnly.code"));
     game_prototype_preview_free(preview);
     game_live_world_free(world);
     ecs_world_free(ecs);
@@ -102,6 +115,11 @@ void run_behavior_loader_checks()
         snprintf(path, sizeof path, "%s/%s.kdl", directory, names[i]);
         assert(unlink(path) == 0);
     }
+    char path[512];
+    snprintf(path, sizeof path, "%s/AuthoringOnly.code", directory);
+    assert(unlink(path) == 0);
+    snprintf(path, sizeof path, "%s/AuthoringOnly.code.map.json", directory);
+    assert(unlink(path) == 0);
     assert(rmdir(directory) == 0 && rmdir(root) == 0);
     puts("PASS: rejected graph assets preserve file and failure details while valid assets load");
 }

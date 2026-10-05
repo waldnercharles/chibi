@@ -1284,7 +1284,7 @@ export function graphToSource(source, behavior, graph, map, registry) {
           if (input && Object.hasOwn(input, 'default')) {
             const literal = graphInputDefaultSource(input);
             if (literal === null) throw new Error('input ' + symbol + ' has a default outside the supported scalar literal subset');
-            graphSource = graphSource.replace(new RegExp('(^|[^A-Za-z0-9_])' + symbol + '(?![A-Za-z0-9_])', 'g'), '$1' + literal);
+            graphSource = graphSource.replace(new RegExp('(^|[^A-Za-z0-9_])' + symbol + '(?![A-Za-z0-9_])', 'g'), '$1(' + literal + ')');
             continue;
           }
           throw new Error('input ' + symbol + ' has no verified source binding or supported default');

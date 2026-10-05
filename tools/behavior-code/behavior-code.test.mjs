@@ -560,12 +560,33 @@ test('graph export preserves a colliding component field name used as a constant
   };
 
   const exported = graphToSource(source, behavior, graph, map, registry);
-  assert.match(exported, /projectile\.age \+= 2 \+ event\.dt/);
+  assert.match(exported, /projectile\.age \+= \(2\) \+ event\.dt/);
   assert.doesNotMatch(exported, /projectile\.speed/);
   assertPlannedConnections(compileModel(exported, map).behavior);
 
   delete node.inputs.speed.default;
   assert.throws(() => graphToSource(source, behavior, graph, map, registry), /speed has no verified source binding or supported default/);
+});
+
+test('graph export parenthesizes negative defaults before exponentiation', () => {
+  const source = `behavior GraphPower {
+  on Tick(GameProjectile projectile) {
+    projectile.age += event.dt;
+  }
+}`;
+  const { behavior, map } = compileModel(source);
+  const expression = behavior.handlers[0].body[0];
+  const graph = mappedGraph(behavior, map);
+  const node = graph.nodes.find((candidate) => candidate.id === map.refs[expression.id]);
+  node.reference_name = '_bc_component_0_age += speed ** 2 + _bc_event_DeltaSeconds';
+  node.inputs = {
+    _bc_component_0_age: { binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'age' } },
+    speed: { default: -2 },
+  };
+
+  const exported = graphToSource(source, behavior, graph, map, registry);
+  assert.match(exported, /projectile\.age \+= \(-2\) \*\* 2 \+ event\.dt/);
+  assertPlannedConnections(compileModel(exported, map).behavior);
 });
 
 test('graph export keeps a wired loop binding when its pin also has a default', () => {
@@ -615,7 +636,7 @@ test('graph export uses the default when a loop-name input has no Array Element 
   assert(!graph.edges.some((edge) => edge.to === `${node.id}.increment`));
 
   const exported = graphToSource(source, behavior, graph, map, registry);
-  assert.match(exported, /projectile\.age \+= 2 \+ event\.dt/);
+  assert.match(exported, /projectile\.age \+= \(2\) \+ event\.dt/);
   assertPlannedConnections(compileModel(exported, map).behavior);
 
   delete node.inputs.increment.default;

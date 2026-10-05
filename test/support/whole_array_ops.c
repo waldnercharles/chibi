@@ -1,4 +1,5 @@
 #include "graph/compiler/behavior_function_internal.h"
+#include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/set_map_nodes.h"
 #include "graph/runtime/flow_internal.h"
@@ -699,6 +700,9 @@ static void owned_struct_set_mutation()
 
     const behavior_backend backends[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
     for (int backend = 0; backend < 2; backend++) {
+        if (backends[backend] == BEHAVIOR_SLJIT && !graph_sljit_available()) {
+            continue;
+        }
         behavior_backend previous = behavior_debug_backend(backends[backend]);
         behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
         behavior_instance_set_trace_enabled(instance, false);
@@ -764,6 +768,9 @@ static void disabled_owned_set_nodes_use_general_lowering(bool disable_source)
     }
     const behavior_backend backends[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
     for (int backend = 0; backend < 2; backend++) {
+        if (backends[backend] == BEHAVIOR_SLJIT && !graph_sljit_available()) {
+            continue;
+        }
         behavior_backend previous = behavior_debug_backend(backends[backend]);
         behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
         behavior_instance_set_trace_enabled(instance, false);
@@ -828,6 +835,9 @@ static void owned_entity_set_mutation()
 
     const behavior_backend backends[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
     for (int backend = 0; backend < 2; backend++) {
+        if (backends[backend] == BEHAVIOR_SLJIT && !graph_sljit_available()) {
+            continue;
+        }
         behavior_backend previous = behavior_debug_backend(backends[backend]);
         behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
         behavior_instance_set_trace_enabled(instance, false);

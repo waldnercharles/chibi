@@ -9,6 +9,9 @@ import {
   reconcileSourceIdentities,
   resolveBehavior,
   sourceGraphShape,
+  sourceGraphReferences,
+  setMutationRef,
+  updateGraphOperations,
   verifyTopology,
 } from './behavior-code.mjs';
 
@@ -47,9 +50,35 @@ function compileModel(source, previousMap = null) {
   const behavior = resolveBehavior(parseBehavior(source), registry);
   const state = reconcileSourceIdentities(behavior, previousMap);
   let node = 1;
-  const refs = Object.fromEntries(sourceGraphShape(behavior).map(({ ref }) => [ref, node++]));
-  const types = Object.fromEntries(sourceGraphShape(behavior).map(({ ref, type }) => [ref, type]));
-  return { behavior, map: { refs, types, ...state } };
+  const descriptors = sourceGraphShape(behavior);
+  const refs = Object.fromEntries(descriptors.map(({ ref }) => [ref, node++]));
+  const types = Object.fromEntries(descriptors.map(({ ref, type }) => [ref, type]));
+  return { behavior, map: { refs, types, node_references: sourceGraphReferences(behavior),
+    edges: expectedConnections(behavior, refs), state_signature: JSON.stringify(behavior.stateVariables), ...state } };
+}
+
+function mappedGraph(behavior, map) {
+  const expressions = new Map();
+  for (const handler of behavior.handlers) {
+    for (const statement of handler.body) {
+      if (statement.kind === 'expression') expressions.set(statement.id, statement.resolvedSource);
+      if (statement.kind === 'if' && !statement.conditionSet) expressions.set(statement.id, statement.resolvedCondition);
+    }
+  }
+  return {
+    nodes: sourceGraphShape(behavior).map((descriptor) => ({
+      id: map.refs[descriptor.ref],
+      type: descriptor.type,
+      ...(descriptor.event ? { reference_name: descriptor.event } : {}),
+      ...(descriptor.variable !== undefined ? { reference_name: descriptor.variable } : {}),
+      ...(expressions.has(descriptor.ref) ? { reference_name: expressions.get(descriptor.ref) } : {}),
+    })),
+    edges: expectedConnections(behavior, map.refs).map((edge) => ({
+      from: `${edge.from}.${edge.from_pin}`,
+      to: `${edge.to}.${edge.to_pin}`,
+      kind: edge.kind,
+    })),
+  };
 }
 
 function statementBySource(behavior, source) {
@@ -184,7 +213,7 @@ test('graph expression edits export qualified source and retain event aliases', 
     ],
   };
   verifyTopology(graph, behavior, refs);
-  const result = graphToSource(sample, behavior, graph, map);
+  const result = graphToSource(sample, behavior, graph, map, registry);
   assert.match(result, /if \(projectile\.lifetime > projectile\.lifetime\)/);
   assert.match(result, /event\.dt/);
   assert.match(result, /Keep expiry behavior readable/);
@@ -216,6 +245,35 @@ test('name resolution reports ambiguity, missing members, read-only writes and s
   assert.match(bareField.behavior.handlers[0].body[0].resolvedSource, /^_bc_component_0_age \+= _bc_event_DeltaSeconds$/);
   assert(buildOperations(bareField.behavior).some((operation) => operation.op === 'bind_input'
     && operation.pin === '_bc_component_0_age' && operation.field === 'age'));
+});
+
+test('diagnostics span the original RHS tokens with compact and multiline operators', () => {
+  for (const [source, line] of [
+    [`behavior Bad { on Tick(GameProjectile projectile) { projectile.age+=event.missing; } }`, 1],
+    [`behavior Bad {
+  on Tick(GameProjectile projectile) {
+    projectile.age +=
+      event.missing;
+  }
+}`, 4],
+  ]) {
+    assert.throws(() => resolveBehavior(parseBehavior(source), registry), (error) => {
+      assert.equal(source.slice(error.span.start, error.span.end), 'event.missing');
+      assert.equal(error.span.line, line);
+      return true;
+    });
+  }
+});
+
+test('string collection defaults decode escapes and reject unsupported escapes', () => {
+  const source = String.raw`behavior Strings { state string[] values = ["a\nb", "a\"b", "c\\d", "\u{1f642}"]; on Tick() {} }`;
+  assert.deepEqual(parseBehavior(source).stateVariables[0].default, ['a\nb', 'a"b', 'c\\d', '🙂']);
+  const invalid = String.raw`behavior Strings { state string[] values = ["bad\q"]; on Tick() {} }`;
+  assert.throws(() => parseBehavior(invalid), (error) => {
+    assert.equal(error.code, 'E_STRING_ESCAPE');
+    assert.equal(invalid.slice(error.span.start, error.span.end), '"bad\\q"');
+    return true;
+  });
 });
 
 test('event names and payload members resolve explicitly; old field selectors are rejected', () => {
@@ -373,10 +431,11 @@ test('array and set source plans verify as complete graph topology and reject fo
   const descriptors = sourceGraphShape(behavior);
   const refs = Object.fromEntries(descriptors.map(({ ref }, index) => [ref, index + 1]));
   const graph = {
-    nodes: descriptors.map(({ ref, type, event }) => ({
+    nodes: descriptors.map(({ ref, type, event, variable }) => ({
       id: refs[ref],
       type,
       ...(type === 'Event' ? { reference_name: event } : {}),
+      ...(variable !== undefined ? { reference_name: variable } : {}),
     })),
     edges: expectedConnections(behavior, refs).map((edge) => ({
       from: `${edge.from}.${edge.from_pin}`,
@@ -405,10 +464,11 @@ test('graph expression edits roundtrip through scoped array and event aliases', 
   const refs = map.refs;
   const expressionRef = behavior.handlers[0].body[0].body[0].id;
   const graph = {
-    nodes: sourceGraphShape(behavior).map(({ ref, type, event }) => ({
+    nodes: sourceGraphShape(behavior).map(({ ref, type, event, variable }) => ({
       id: refs[ref],
       type,
       ...(type === 'Event' ? { reference_name: event } : {}),
+      ...(variable !== undefined ? { reference_name: variable } : {}),
       ...(ref === expressionRef ? {
         reference_name: '_bc_component_0_age += _bc_event_DeltaSeconds * 2',
         inputs: { _bc_component_0_age: { binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'age' } } },
@@ -420,7 +480,7 @@ test('graph expression edits roundtrip through scoped array and event aliases', 
       kind: edge.kind,
     })),
   };
-  const result = graphToSource(source, behavior, graph, map);
+  const result = graphToSource(source, behavior, graph, map, registry);
   assert.match(result, /for \(increment in increments\)/);
   assert.match(result, /projectile\.age \+= event\.dt \* 2/);
   const roundtrip = compileModel(result, map);
@@ -430,6 +490,77 @@ test('graph expression edits roundtrip through scoped array and event aliases', 
     sourceGraphShape(behavior).map(({ ref, type }) => [ref, type]),
   );
   assertPlannedConnections(roundtrip.behavior);
+});
+
+test('graph exports newly bound component inputs as source aliases and validates the result', () => {
+  const source = `behavior NewBindings {
+  on Tick(GameProjectile projectile) {
+    projectile.age += event.dt;
+  }
+}`;
+  const { behavior, map } = compileModel(source);
+  const expression = behavior.handlers[0].body[0];
+  const graph = mappedGraph(behavior, map);
+  const node = graph.nodes.find((candidate) => candidate.id === map.refs[expression.id]);
+  node.reference_name = '_bc_component_0_age += _bc_component_0_speed + _bc_event_DeltaSeconds';
+  node.inputs = {
+    _bc_component_0_age: { binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'age' } },
+    _bc_component_0_speed: { binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'speed' } },
+  };
+  const exported = graphToSource(source, behavior, graph, map, registry);
+  assert.match(exported, /projectile\.age \+= projectile\.speed \+ event\.dt/);
+  assert.doesNotMatch(exported, /_bc_component_/);
+  assert.doesNotThrow(() => resolveBehavior(parseBehavior(exported), registry));
+
+  node.reference_name = '_bc_component_0_age += _bc_component_0_speed';
+  delete node.inputs._bc_component_0_speed;
+  assert.throws(() => graphToSource(source, behavior, graph, map, registry), { code: 'E_NAME_UNRESOLVED' });
+});
+
+test('source edits that retarget a set rebuild both semantic variable nodes', () => {
+  const source = `behavior Retarget {
+  state int[] ids = [1];
+  state set<int> a = [];
+  state set<int> b = [];
+  on Tick() { for (id in ids) { if (a.contains(id)) { a.remove(id); } else { a.add(id); } } }
+}`;
+  const old = compileModel(source);
+  const changed = compileModel(source.replace('a.remove(id)', 'b.remove(id)').replace('a.add(id)', 'b.add(id)'), old.map);
+  const oldBranch = old.behavior.handlers[0].body[0].body[0];
+  const branch = changed.behavior.handlers[0].body[0].body[0];
+  const oldRemove = oldBranch.yes[0];
+  const oldAdd = oldBranch.no[0];
+  const remove = branch.yes[0];
+  const add = branch.no[0];
+  const sourceRef = add.id + '-set-source';
+  const setterId = old.map.refs[add.id];
+  const sourceId = old.map.refs[sourceRef];
+  const plan = updateGraphOperations(changed.behavior, old.map, mappedGraph(old.behavior, old.map));
+  assert(plan.added.has(remove.id));
+  assert(plan.added.has(add.id));
+  assert(plan.added.has(sourceRef));
+  assert.notEqual(plan.selectors[remove.id], old.map.refs[oldRemove.id]);
+  assert.notEqual(plan.selectors[add.id], setterId);
+  assert.notEqual(plan.selectors[sourceRef], sourceId);
+  assert(plan.operations.some((operation) => operation.op === 'remove_node' && operation.node === old.map.refs[oldRemove.id]));
+  assert(plan.operations.some((operation) => operation.op === 'remove_node' && operation.node === setterId));
+  assert(plan.operations.some((operation) => operation.op === 'remove_node' && operation.node === sourceId));
+  assert(plan.operations.some((operation) => operation.op === 'add_variable_node' && operation.ref === remove.id && operation.variable === 'b'));
+  assert(plan.operations.some((operation) => operation.op === 'add_variable_node' && operation.ref === add.id && operation.variable === 'b'));
+  assert(plan.operations.some((operation) => operation.op === 'add_variable_node' && operation.ref === sourceRef && operation.variable === 'b'));
+  assert(plan.operations.some((operation) => operation.op === 'connect'
+    && operation.from === old.map.refs['state-get-b'] && operation.to === old.map.refs[remove.id + '-set-op']
+    && operation.to_pin === 'Set'));
+
+  const olderMap = { ...old.map };
+  delete olderMap.node_references;
+  assert.doesNotThrow(() => updateGraphOperations(
+    changed.behavior, olderMap, mappedGraph(old.behavior, old.map)
+  ));
+
+  const changedGraph = mappedGraph(old.behavior, old.map);
+  changedGraph.nodes.find((candidate) => candidate.id === setterId).reference_name = 'b';
+  assert.throws(() => updateGraphOperations(changed.behavior, old.map, changedGraph), /no longer matches its source binding/);
 });
 
 test('the published array and set example resolves through the same source path', () => {

@@ -21,7 +21,8 @@ static bool owned_set_add_setter(
 {
     const behavior_variable
         *variable = behavior_asset_find_variable_by_id(asset, setter->reference_id);
-    if (!variable || variable->container != PIN_CONTAINER_SET) {
+    if (!variable || variable->container != PIN_CONTAINER_SET ||
+        variable->type == PIN_STRUCT || setter->disabled) {
         return false;
     }
     node *add;
@@ -32,7 +33,7 @@ static bool owned_set_add_setter(
         add->input_pins[1].container != PIN_CONTAINER_SINGLE ||
         add->input_pins[1].type != variable->type ||
         add->output_pins[0].container != PIN_CONTAINER_SET ||
-        add->output_pins[0].type != variable->type ||
+        add->output_pins[0].type != variable->type || add->disabled ||
         setter->input_pins[1].container != PIN_CONTAINER_SET ||
         setter->input_pins[1].type != variable->type) {
         return false;
@@ -60,7 +61,7 @@ static bool owned_set_add_setter(
         source->reference_id != setter->reference_id) {
         return false;
     }
-    if (add->breakpoint || source->breakpoint ||
+    if (add->breakpoint || source->breakpoint || source->disabled ||
         (add->input_pins[0].flags & PIN_FLAG_WATCH) ||
         (add->output_pins[0].flags & PIN_FLAG_WATCH) ||
         (source->output_pins[0].flags & PIN_FLAG_WATCH)) {

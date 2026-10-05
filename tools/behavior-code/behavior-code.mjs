@@ -102,17 +102,23 @@ export function parseBehavior(source) {
         continue;
       }
       const targetParts = [name.value];
+      let targetEnd = name.end;
       while (peek('.')) {
         next();
-        targetParts.push('.', expectName().value);
+        const member = expectName();
+        targetParts.push('.', member.value);
+        targetEnd = member.end;
       }
       if (peek('+=') || peek('-=') || peek('*=') || peek('/=') || peek('=')) {
-        const operator = next().value;
+        const operator = next();
         const expression = parseExpression(';');
         expect(';');
-        statements.push({ id: marker, marker, kind: 'expression', source: targetParts.join('') + ' ' + operator + ' ' + expression.text, target: targetParts.join(''), span: {
-          start: name.start, end: expression.end, line: lineAt(source, name.start), column: columnAt(source, name.start),
-        } });
+        const targetSpan = { start: name.start, end: targetEnd, line: lineAt(source, name.start), column: columnAt(source, name.start) };
+        statements.push({ id: marker, marker, kind: 'expression',
+          source: targetParts.join('') + ' ' + operator.value + ' ' + expression.text,
+          target: targetParts.join(''), targetSource: source.slice(name.start, targetEnd), targetSpan,
+          operatorSource: source.slice(targetEnd, expression.start), rhs: expression.text, rhsSpan: expression,
+          span: { start: name.start, end: expression.end, line: lineAt(source, name.start), column: columnAt(source, name.start) } });
         continue;
       }
       if (name.value === 'destroy') {
@@ -172,7 +178,7 @@ export function parseBehavior(source) {
         let value;
         if (/^(?:\d+\.\d*|\.\d+|\d+)(?:[eE][+-]?\d+)?$/.test(valueToken.value)) value = sign * Number(valueToken.value);
         else if (sign === 1 && (valueToken.value === 'true' || valueToken.value === 'false')) value = valueToken.value === 'true';
-        else if (sign === 1 && (/^"/.test(valueToken.value) || /^'/.test(valueToken.value))) value = valueToken.value.slice(1, -1);
+        else if (sign === 1 && (/^"/.test(valueToken.value) || /^'/.test(valueToken.value))) value = decodeStringLiteral(valueToken, fail);
         else fail(valueToken, 'state array defaults must be scalar literals');
         if (elementType.value === 'int' && (!Number.isInteger(value) || typeof value !== 'number')) fail(valueToken, 'int collections require integer literals');
         if (elementType.value === 'float' && typeof value !== 'number') fail(valueToken, 'float collections require numeric literals');
@@ -251,6 +257,42 @@ function tokenize(source) {
     }
     result.push({ kind: /^[A-Za-z_]/.test(value) ? 'name' : 'symbol', value, start: match.index, end: offset });
   }
+  return result;
+}
+
+function decodeStringLiteral(token, fail) {
+  const quote = token.value[0];
+  const body = token.value.slice(1, -1);
+  let result = '';
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] !== '\\') {
+      result += body[i];
+      continue;
+    }
+    const escape = body[++i];
+    const simple = { '"': '"', "'": "'", '\\': '\\', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v', '0': '\0' };
+    if (Object.hasOwn(simple, escape)) {
+      result += simple[escape];
+      continue;
+    }
+    if (escape === 'u') {
+      const rest = body.slice(i + 1);
+      const braced = /^\{([0-9A-Fa-f]{1,6})\}/.exec(rest);
+      const fixed = /^([0-9A-Fa-f]{4})/.exec(rest);
+      const digits = braced?.[1] ?? fixed?.[1];
+      const width = braced ? braced[0].length : fixed?.[0].length;
+      if (digits) {
+        const codepoint = Number.parseInt(digits, 16);
+        if (codepoint <= 0x10ffff) {
+          result += String.fromCodePoint(codepoint);
+          i += width;
+          continue;
+        }
+      }
+    }
+    fail(token, `unsupported string escape \\${escape}`, 'E_STRING_ESCAPE');
+  }
+  if (quote !== '"' && quote !== "'") fail(token, 'invalid string literal');
   return result;
 }
 
@@ -379,6 +421,7 @@ export function resolveBehavior(behavior, registry) {
     };
     const resolveExpression = (source, span, assignmentTarget = null, locals = []) => {
       const parts = tokenize(source);
+      const tokenSpan = (token, end = token.end) => shiftedSpan(span, source, token.start, end);
       const edits = [];
       const eventInputs = new Set();
       const componentInputs = new Map();
@@ -390,11 +433,11 @@ export function resolveBehavior(behavior, registry) {
           const member = parts[i + 2];
           if (member?.kind !== 'name') continue;
           if (token.value === 'event') {
-            if (parts[i + 3]?.value === '.') failResolution('E_EVENT_NESTED_MEMBER_UNSUPPORTED', 'event payload members must be used as one direct value in this slice', { ...span, start: span.start + token.start, end: span.start + (parts[i + 4]?.end ?? parts[i + 3].end) });
+            if (parts[i + 3]?.value === '.') failResolution('E_EVENT_NESTED_MEMBER_UNSUPPORTED', 'event payload members must be used as one direct value in this slice', tokenSpan(token, parts[i + 4]?.end ?? parts[i + 3].end));
             const payload = (event.payload ?? []).find((entry) => payloadAlias(entry) === member.value);
-            if (!payload) failResolution('E_EVENT_FIELD_NOT_FOUND', `event '${handler.event}' has no payload field '${member.value}'`, { ...span, start: span.start + token.start, end: span.start + member.end });
+            if (!payload) failResolution('E_EVENT_FIELD_NOT_FOUND', `event '${handler.event}' has no payload field '${member.value}'`, tokenSpan(token, member.end));
             if (assignmentTarget === token.value + '.' + member.value) {
-              failResolution('E_ASSIGNMENT_READ_ONLY', `event field '${member.value}' is read-only`, { ...span, start: span.start + token.start, end: span.start + member.end });
+              failResolution('E_ASSIGNMENT_READ_ONLY', `event field '${member.value}' is read-only`, tokenSpan(token, member.end));
             }
             const internal = `_bc_event_${payload.pin.replace(/[^A-Za-z0-9_]/g, '_')}`;
             edits.push({ start: token.start, end: member.end, text: internal });
@@ -405,11 +448,11 @@ export function resolveBehavior(behavior, registry) {
           }
           const alias = aliases.get(token.value);
           if (alias) {
-            if (parts[i + 3]?.value === '.') failResolution('E_COMPONENT_NESTED_MEMBER_UNSUPPORTED', 'nested component member access is not supported by this slice', { ...span, start: span.start + token.start, end: span.start + (parts[i + 4]?.end ?? parts[i + 3].end) });
+            if (parts[i + 3]?.value === '.') failResolution('E_COMPONENT_NESTED_MEMBER_UNSUPPORTED', 'nested component member access is not supported by this slice', tokenSpan(token, parts[i + 4]?.end ?? parts[i + 3].end));
             const reflected = (alias.component.fields ?? []).find((field) => field.name === member.value);
-            if (!reflected) failResolution('E_COMPONENT_FIELD_NOT_FOUND', `component '${alias.component.name}' has no field '${member.value}'`, { ...span, start: span.start + token.start, end: span.start + member.end });
+            if (!reflected) failResolution('E_COMPONENT_FIELD_NOT_FOUND', `component '${alias.component.name}' has no field '${member.value}'`, tokenSpan(token, member.end));
             if (assignmentTarget === token.value + '.' + member.value && reflected.writable === false) {
-              failResolution('E_ASSIGNMENT_READ_ONLY', `component field '${member.value}' is read-only`, { ...span, start: span.start + token.start, end: span.start + member.end });
+              failResolution('E_ASSIGNMENT_READ_ONLY', `component field '${member.value}' is read-only`, tokenSpan(token, member.end));
             }
             const internal = componentInput(alias, reflected);
             componentInputs.set(internal, componentFields.get(internal));
@@ -418,36 +461,36 @@ export function resolveBehavior(behavior, registry) {
             continue;
           }
           const state = stateVariables.get(token.value);
-          if (state) failResolution('E_SET_METHOD_UNSUPPORTED', `collection '${token.value}' only supports add, remove and contains in this slice`, { ...span, start: span.start + token.start, end: span.start + member.end });
+          if (state) failResolution('E_SET_METHOD_UNSUPPORTED', `collection '${token.value}' only supports add, remove and contains in this slice`, tokenSpan(token, member.end));
           const local = locals.find((entry) => entry.name === token.value);
-          if (local) failResolution('E_LOOP_MEMBER_UNSUPPORTED', `member access on loop value '${token.value}' is not supported by this slice`, { ...span, start: span.start + token.start, end: span.start + member.end });
+          if (local) failResolution('E_LOOP_MEMBER_UNSUPPORTED', `member access on loop value '${token.value}' is not supported by this slice`, tokenSpan(token, member.end));
           // Preserve member reads rooted in a registered pure function result;
           // calls are skipped above; other unqualified roots are unresolved.
-          if (token.value === 'self') failResolution('E_SELF_REQUIRES_ENGINE_CALL', 'self is only available to registered engine calls in this slice', { ...span, start: span.start + token.start, end: span.start + member.end });
-          failResolution('E_NAME_UNRESOLVED', `unresolved member root '${token.value}'`, { ...span, start: span.start + token.start, end: span.start + member.end });
+          if (token.value === 'self') failResolution('E_SELF_REQUIRES_ENGINE_CALL', 'self is only available to registered engine calls in this slice', tokenSpan(token, member.end));
+          failResolution('E_NAME_UNRESOLVED', `unresolved member root '${token.value}'`, tokenSpan(token, member.end));
         }
-        if (token.value === 'event') failResolution('E_EVENT_REQUIRES_MEMBER', 'event must be followed by a registered payload field', { ...span, start: span.start + token.start, end: span.start + token.end });
+        if (token.value === 'event') failResolution('E_EVENT_REQUIRES_MEMBER', 'event must be followed by a registered payload field', tokenSpan(token));
         const local = locals.find((entry) => entry.name === token.value);
         if (local) {
-          if (assignmentTarget === token.value) failResolution('E_LOOP_BINDING_READ_ONLY', `loop binding '${token.value}' is read-only`, { ...span, start: span.start + token.start, end: span.start + token.end });
+          if (assignmentTarget === token.value) failResolution('E_LOOP_BINDING_READ_ONLY', `loop binding '${token.value}' is read-only`, tokenSpan(token));
           continue;
         }
         if (RESERVED.has(token.value) || token.value === 'pi' || token.value === 'e') continue;
         const alias = aliases.get(token.value);
         const fieldMatches = fieldsFor(token.value);
-        if (alias && fieldMatches.length) failResolution('E_NAME_COLLISION_ALIAS_FIELD', `'${token.value}' is both a component alias and a field; qualify the field`, { ...span, start: span.start + token.start, end: span.start + token.end });
-        if (alias) failResolution('E_COMPONENT_ALIAS_REQUIRES_MEMBER', `component alias '${token.value}' requires a field name`, { ...span, start: span.start + token.start, end: span.start + token.end });
-        if (fieldMatches.length > 1) failResolution('E_NAME_AMBIGUOUS_COMPONENT_FIELD', `field '${token.value}' exists on multiple declared components; qualify it`, { ...span, start: span.start + token.start, end: span.start + token.end });
+        if (alias && fieldMatches.length) failResolution('E_NAME_COLLISION_ALIAS_FIELD', `'${token.value}' is both a component alias and a field; qualify the field`, tokenSpan(token));
+        if (alias) failResolution('E_COMPONENT_ALIAS_REQUIRES_MEMBER', `component alias '${token.value}' requires a field name`, tokenSpan(token));
+        if (fieldMatches.length > 1) failResolution('E_NAME_AMBIGUOUS_COMPONENT_FIELD', `field '${token.value}' exists on multiple declared components; qualify it`, tokenSpan(token));
         if (fieldMatches.length === 1) {
           const candidate = fieldMatches[0];
-          if (assignmentTarget === token.value && candidate.field.writable === false) failResolution('E_ASSIGNMENT_READ_ONLY', `component field '${token.value}' is read-only`, { ...span, start: span.start + token.start, end: span.start + token.end });
+          if (assignmentTarget === token.value && candidate.field.writable === false) failResolution('E_ASSIGNMENT_READ_ONLY', `component field '${token.value}' is read-only`, tokenSpan(token));
           const internal = componentInput(candidate, candidate.field);
           componentInputs.set(internal, componentFields.get(internal));
           edits.push({ start: token.start, end: token.end, text: internal });
           continue;
         }
-        if (assignmentTarget === token.value && token.value === 'self') failResolution('E_ASSIGNMENT_READ_ONLY', 'self is read-only', { ...span, start: span.start + token.start, end: span.start + token.end });
-        failResolution('E_NAME_UNRESOLVED', `unresolved name '${token.value}'; component fields and event data must be qualified`, { ...span, start: span.start + token.start, end: span.start + token.end });
+        if (assignmentTarget === token.value && token.value === 'self') failResolution('E_ASSIGNMENT_READ_ONLY', 'self is read-only', tokenSpan(token));
+        failResolution('E_NAME_UNRESOLVED', `unresolved name '${token.value}'; component fields and event data must be qualified`, tokenSpan(token));
       }
       return { source: replaceRanges(source, edits), eventInputs: [...eventInputs], componentInputs: [...componentInputs.values()] };
     };
@@ -475,14 +518,10 @@ export function resolveBehavior(behavior, registry) {
       for (const statement of statements) {
         statement.loopBindings = locals;
         if (statement.kind === 'expression') {
-          const offset = statement.span.start;
           const target = statement.target;
-          const operator = statement.source.match(/\s(?:\+=|-=|\*=|\/=|=)\s/);
-          const rightStart = operator ? operator.index + operator[0].length : 0;
-          const rhs = statement.source.slice(rightStart);
-          const leftResolved = resolveExpression(target, { ...statement.span, start: offset, end: offset + target.length }, target, locals);
-          const rightResolved = resolveExpression(rhs, { ...statement.span, start: offset + rightStart, end: statement.span.end }, null, locals);
-          statement.resolvedSource = leftResolved.source + statement.source.slice(target.length, rightStart) + rightResolved.source;
+          const leftResolved = resolveExpression(statement.targetSource, statement.targetSpan, target, locals);
+          const rightResolved = resolveExpression(statement.rhs, statement.rhsSpan, null, locals);
+          statement.resolvedSource = leftResolved.source + statement.operatorSource + rightResolved.source;
           statement.eventInputs = [...new Set([...leftResolved.eventInputs, ...rightResolved.eventInputs])];
           statement.componentInputs = [...new Map([...leftResolved.componentInputs, ...rightResolved.componentInputs].map((input) => [input.name, input])).values()];
         } else if (statement.kind === 'if') {
@@ -755,7 +794,7 @@ export function reconcileSourceIdentities(behavior, previousMap = null) {
 
 export function sourceGraphShape(behavior) {
   const nodes = [];
-  for (const state of behavior.stateVariables ?? []) nodes.push({ ref: stateGetRef(state.name), type: 'Get Variable' });
+  for (const state of behavior.stateVariables ?? []) nodes.push({ ref: stateGetRef(state.name), type: 'Get Variable', variable: state.name });
   for (const handler of behavior.handlers) {
     nodes.push({ ref: eventRef(handler.event), type: 'Event', event: handler.eventSourceName ?? handler.event });
     for (const statement of flatten(handler.body)) {
@@ -764,14 +803,14 @@ export function sourceGraphShape(behavior) {
       }
       if (statement.kind === 'set_mutation') {
         nodes.push({ ref: setMutationRef(statement.id), type: statement.method === 'add' ? 'Set Add' : 'Set Remove' });
-        if (statement.method === 'add') nodes.push({ ref: setMutationSourceRef(statement.id), type: 'Get Variable' });
+        if (statement.method === 'add') nodes.push({ ref: setMutationSourceRef(statement.id), type: 'Get Variable', variable: statement.set });
       }
       const type = statement.kind === 'destroy' ? 'Destroy Entity'
         : statement.kind === 'foreach' ? 'ForEach'
         : statement.kind === 'set_mutation' ? 'Set Variable'
         : statement.kind === 'if' && statement.conditionSet ? 'Branch'
         : 'Behavior Expression';
-      nodes.push({ ref: statement.id, type });
+      nodes.push({ ref: statement.id, type, ...(statement.kind === 'set_mutation' ? { variable: statement.set } : {}) });
     }
   }
   if (nodes.some((node) => node.type === 'Destroy Entity')) nodes.push({ ref: 'self', type: 'Self' });
@@ -781,6 +820,36 @@ export function sourceGraphShape(behavior) {
     unique.add(node.ref);
   }
   return nodes;
+}
+
+export function sourceGraphReferences(behavior) {
+  return Object.fromEntries(sourceGraphShape(behavior)
+    .filter((node) => node.variable !== undefined)
+    .map((node) => [node.ref, node.variable]));
+}
+
+function mappedGraphReferences(map, fallbackBehavior = null) {
+  if (map.node_references) return map.node_references;
+  if (fallbackBehavior) return sourceGraphReferences(fallbackBehavior);
+  const references = {};
+  let states = [];
+  try { states = JSON.parse(map.state_signature ?? '[]'); } catch {}
+  for (const state of states) references[stateGetRef(state.name)] = state.name;
+  const visit = (statements = []) => {
+    for (const statement of statements) {
+      if (statement.kind === 'set_mutation' && statement.ref && statement.set) {
+        references[statement.ref] = statement.set;
+        if (statement.key?.startsWith('set:') && statement.key.includes('.add(')) {
+          references[setMutationSourceRef(statement.ref)] = statement.set;
+        }
+      }
+      visit(statement.yes);
+      visit(statement.no);
+      visit(statement.body);
+    }
+  };
+  for (const handler of map.source_tree?.handlers ?? []) visit(handler.body);
+  return references;
 }
 
 export function buildOperations(behavior, selectors = null) {
@@ -1031,7 +1100,10 @@ export function verifyTopology(graph, behavior, refs) {
     const id = Number(refs[descriptor.ref]);
     const node = nodes.get(id);
     if (!node || node.type !== descriptor.type) throw new Error('source node ' + descriptor.ref + ' is missing or changed type');
-      if (descriptor.type === 'Event' && node.reference_name !== descriptor.event) throw new Error('event node ' + descriptor.ref + ' no longer matches its source handler');
+    if (descriptor.type === 'Event' && node.reference_name !== descriptor.event) throw new Error('event node ' + descriptor.ref + ' no longer matches its source handler');
+    if (descriptor.variable !== undefined && node.reference_name !== descriptor.variable) {
+      throw new Error('variable node ' + descriptor.ref + ' no longer matches its source binding');
+    }
   }
 }
 
@@ -1074,10 +1146,16 @@ export function verifyMappedTopology(graph, map, behavior = null) {
     const node = nodes.get(Number(id));
     if (!node || node.type !== map.types[ref]) throw new Error('source node ' + ref + ' is missing or changed type');
   }
+  const references = mappedGraphReferences(map, behavior);
+  for (const [ref, variable] of Object.entries(references)) {
+    const node = nodes.get(Number(map.refs[ref]));
+    if (!node || node.reference_name !== variable) throw new Error('variable node ' + ref + ' no longer matches its source binding');
+  }
 }
 
 export function updateGraphOperations(behavior, map, graph, fallbackBehavior = null) {
   verifyMappedTopology(graph, map, fallbackBehavior);
+  const oldReferences = mappedGraphReferences(map, fallbackBehavior);
   const current = new Map((graph.nodes ?? []).map((node) => [node.id, node]));
   const descriptors = sourceGraphShape(behavior);
   const selectors = {};
@@ -1085,7 +1163,12 @@ export function updateGraphOperations(behavior, map, graph, fallbackBehavior = n
   const added = new Set();
   for (const descriptor of descriptors) {
     const id = Number(map.refs[descriptor.ref]);
-    if (Number.isSafeInteger(id) && map.types[descriptor.ref] === descriptor.type) {
+    const expectedReference = oldReferences[descriptor.ref];
+    if (descriptor.variable !== undefined && Number.isSafeInteger(id) && expectedReference === undefined) {
+      throw new Error('source map is missing variable reference metadata for ' + descriptor.ref);
+    }
+    const referenceMatches = descriptor.variable === undefined || expectedReference === descriptor.variable;
+    if (Number.isSafeInteger(id) && map.types[descriptor.ref] === descriptor.type && referenceMatches) {
       selectors[descriptor.ref] = id;
       retained.add(descriptor.ref);
       continue;
@@ -1147,7 +1230,8 @@ export function updateOperations(behavior, refs) {
   return operations;
 }
 
-export function graphToSource(source, behavior, graph, map) {
+export function graphToSource(source, behavior, graph, map, registry) {
+  if (!registry) throw new Error('graph-to-source export requires the reflected registry for full source validation');
   verifyTopology(graph, behavior, map.refs);
   const nodes = new Map((graph.nodes ?? []).map((node) => [node.id, node]));
   const edits = [];
@@ -1166,6 +1250,20 @@ export function graphToSource(source, behavior, graph, map) {
           throw new Error('component field input ' + internal + ' no longer matches its reflected binding');
         }
         graphSource = graphSource.replace(new RegExp('(^|[^A-Za-z0-9_])' + internal + '(?![A-Za-z0-9_])', 'g'), '$1' + field.alias + '.' + binding.field);
+      }
+      for (const symbol of expressionSymbols(graphSource ?? '')) {
+        const input = node.inputs?.[symbol];
+        const binding = input?.binding;
+        if (!binding) continue;
+        if (binding.kind !== 'component_field' || !binding.field) {
+          throw new Error('input ' + symbol + ' has a graph binding that the source subset cannot represent');
+        }
+        const parameter = handler.params.find((candidate) => candidate.componentKey === binding.component);
+        if (!parameter) throw new Error('input ' + symbol + ' binds a component field with no declared source alias');
+        const field = (registry.components ?? []).find((component) => component.key === binding.component)
+          ?.fields?.find((candidate) => candidate.name === binding.field);
+        if (!field) throw new Error('input ' + symbol + ' binds an unknown reflected component field');
+        graphSource = graphSource.replace(new RegExp('(^|[^A-Za-z0-9_])' + symbol + '(?![A-Za-z0-9_])', 'g'), '$1' + parameter.name + '.' + binding.field);
       }
       return { statement, node, source: graphSource };
     }).filter((entry) => entry.source);
@@ -1217,7 +1315,7 @@ export function graphToSource(source, behavior, graph, map) {
   edits.sort((a, b) => b.start - a.start);
   let output = source;
   for (const edit of edits) output = output.slice(0, edit.start) + edit.text + output.slice(edit.end);
-  parseBehavior(output);
+  resolveBehavior(parseBehavior(output), registry);
   return output;
 }
 

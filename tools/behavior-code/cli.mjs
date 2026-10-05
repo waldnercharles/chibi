@@ -12,6 +12,7 @@ import {
   resolveBehavior,
   reconcileSourceIdentities,
   sourceGraphShape,
+  sourceGraphReferences,
   setConditionRef,
   setMutationRef,
   updateGraphOperations,
@@ -279,6 +280,7 @@ function compile(options) {
       refs,
       types,
       edges: expectedConnections(behavior, refs),
+      node_references: sourceGraphReferences(behavior),
       bindings: Object.fromEntries(componentBindings(behavior)),
       state_signature: stateSignature,
       ...sourceState,
@@ -324,6 +326,7 @@ function compile(options) {
     version: MARKER_VERSION, asset: behavior.name, graph_id: after.graph.id,
     signature: behavior.signature, refs, types,
     edges: expectedConnections(behavior, refs),
+    node_references: sourceGraphReferences(behavior),
     bindings: Object.fromEntries(componentBindings(behavior)),
     state_signature: stateSignature,
     ...sourceState,
@@ -334,7 +337,9 @@ function compile(options) {
 }
 
 function decompile(options) {
-  const behavior = resolveSource(options, readFileSync(options.sourceFile, 'utf8'));
+  const source = readFileSync(options.sourceFile, 'utf8');
+  const registry = engineRegistry(options);
+  const behavior = resolveBehavior(parseBehavior(source), registry);
   const mapPath = options.sourceFile + '.map.json';
   if (!existsSync(mapPath)) throw new Error('no source map; this graph was not created by the behavior-code prototype');
   const map = JSON.parse(readFileSync(mapPath, 'utf8'));
@@ -343,7 +348,7 @@ function decompile(options) {
   if (map.signature !== behavior.signature) throw new Error('source has structural edits not compiled yet; run compile before graph-to-source export');
   const inspected = inspect(options, behavior.name);
   if (inspected.graph.id !== map.graph_id) throw new Error('mapped graph ID no longer exists');
-  const result = graphToSource(readFileSync(options.sourceFile, 'utf8'), behavior, inspected.graph, map);
+  const result = graphToSource(source, behavior, inspected.graph, map, registry);
   process.stdout.write(result);
 }
 

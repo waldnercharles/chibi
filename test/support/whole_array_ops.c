@@ -646,6 +646,140 @@ static void owned_set_mutation()
     behavior_asset_free(asset);
 }
 
+static void owned_struct_set_mutation()
+{
+    whole_managed record = { "item", { "nested", 3.25f }, 7 };
+    pin_array empty = { .element_type = PIN_STRUCT, .type_name = "ManagedRecord" };
+    pin_value default_value = { .type = PIN_STRUCT,
+                                .type_name = "ManagedRecord",
+                                .container = PIN_CONTAINER_SET,
+                                .ptr = &empty };
+    behavior_asset *asset = behavior_asset_new("Owned struct set append");
+    assert(
+        behavior_asset_add_variable(asset, "Records", PIN_STRUCT, "ManagedRecord", PIN_CONTAINER_SET, &default_value, "")
+    );
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(!graph_set_event_name(g, event, "Tick"));
+    node *get = variable(asset, g, 0, false);
+    node *add = graph_add_node(g, &NODE_SetAdd);
+    assert(add);
+    assert(!graph_set_pin_type(g, add, false, 0, PIN_STRUCT, "ManagedRecord"));
+    assert(!graph_set_pin_container(g, add, false, 0, PIN_CONTAINER_SET));
+    assert(!graph_set_pin_type(g, add, false, 1, PIN_STRUCT, "ManagedRecord"));
+    assert(!graph_set_pin_default(
+        g,
+        add,
+        false,
+        1,
+        &(pin_value){
+            .type = PIN_STRUCT,
+            .type_name = "ManagedRecord",
+            .ptr = &record,
+        }
+    ));
+    assert(!graph_set_pin_type(g, add, true, 0, PIN_STRUCT, "ManagedRecord"));
+    assert(!graph_set_pin_container(g, add, true, 0, PIN_CONTAINER_SET));
+    node *set = variable(asset, g, 0, true);
+    assert(!graph_connect_data(g, get, 0, add, 0));
+    assert(!graph_connect_data(g, add, 0, set, 1));
+    assert(!graph_connect_exec(g, event, 0, set, 0, 0));
+
+    behavior_program *program = behavior_program_publish(asset);
+    const behavior_function
+        *function = behavior_program_function(behavior_program_graph(program, g), event);
+    assert(function);
+    bool optimized = false;
+    for (int i = 0; i < acount(function->instructions); i++) {
+        const behavior_function_instruction *instruction = &function->instructions[i];
+        optimized |= instruction->op == BF_STORE_VALUE &&
+                     instruction->offset == BF_STORE_VALUE_SET_ADD;
+    }
+    assert(!optimized);
+
+    const behavior_backend backends[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
+    for (int backend = 0; backend < 2; backend++) {
+        behavior_backend previous = behavior_debug_backend(backends[backend]);
+        behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+        behavior_instance_set_trace_enabled(instance, false);
+        flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
+        assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
+        const pin_array *records = instance->variables[0].ptr;
+        assert(records && records->count == 1 && records->items[0].type == PIN_STRUCT);
+        const whole_managed *actual = records->items[0].ptr;
+        assert(
+            actual && !strcmp(actual->label, "item") &&
+            !strcmp(actual->nested.text, "nested")
+        );
+        assert(actual->nested.weight == 3.25f && actual->count == 7);
+        behavior_instance_destroy(instance);
+        behavior_debug_backend(previous);
+    }
+    behavior_asset_free(asset);
+}
+
+static void disabled_owned_set_nodes_use_general_lowering(bool disable_source)
+{
+    pin_value items[] = { { .type = PIN_I32, .type_name = "int", .i = 101 } };
+    pin_array initial = { .element_type = PIN_I32,
+                          .type_name = "int",
+                          .count = 1,
+                          .capacity = 1,
+                          .items = items };
+    pin_value default_value = { .type = PIN_I32,
+                                .type_name = "int",
+                                .container = PIN_CONTAINER_SET,
+                                .ptr = &initial };
+    behavior_asset *asset = behavior_asset_new("Disabled owned set append");
+    assert(
+        behavior_asset_add_variable(asset, "Seen", PIN_I32, "int", PIN_CONTAINER_SET, &default_value, "")
+    );
+    graph *g = asset->graph;
+    node *event = graph_add_node(g, &NODE_Event);
+    assert(!graph_set_event_name(g, event, "Tick"));
+    node *get = variable(asset, g, 0, false);
+    node *add = graph_add_node(g, &NODE_SetAdd);
+    assert(add);
+    assert(!graph_set_pin_type(g, add, false, 0, PIN_I32, "int"));
+    assert(!graph_set_pin_container(g, add, false, 0, PIN_CONTAINER_SET));
+    assert(!graph_set_pin_type(g, add, false, 1, PIN_I32, "int"));
+    assert(!graph_set_pin_default(g, add, false, 1, &(pin_value){ .type = PIN_I32, .i = 5 }));
+    assert(!graph_set_pin_type(g, add, true, 0, PIN_I32, "int"));
+    assert(!graph_set_pin_container(g, add, true, 0, PIN_CONTAINER_SET));
+    node *set = variable(asset, g, 0, true);
+    assert(!graph_connect_data(g, get, 0, add, 0));
+    assert(!graph_connect_data(g, add, 0, set, 1));
+    assert(!graph_connect_exec(g, event, 0, set, 0, 0));
+    assert(!graph_set_node_disabled(g, disable_source ? get : add, true));
+    assert(!behavior_function_owned_set_add_candidate(asset, g, add));
+
+    behavior_program *program = behavior_program_publish(asset);
+    const behavior_function
+        *function = behavior_program_function(behavior_program_graph(program, g), event);
+    if (function) {
+        for (int i = 0; i < acount(function->instructions); i++) {
+            const behavior_function_instruction *instruction = &function->instructions[i];
+            assert(instruction->op != BF_STORE_VALUE || instruction->offset != BF_STORE_VALUE_SET_ADD);
+        }
+    }
+    const behavior_backend backends[] = { BEHAVIOR_SLJIT, BEHAVIOR_BYTECODE };
+    for (int backend = 0; backend < 2; backend++) {
+        behavior_backend previous = behavior_debug_backend(backends[backend]);
+        behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+        behavior_instance_set_trace_enabled(instance, false);
+        flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
+        assert(run && flow_run_status(run) == FLOW_COMPLETED);
+        const pin_array *after = instance->variables[0].ptr;
+        assert(
+            after && after->count == 2 && after->items[0].i == 101 &&
+            after->items[1].i == 5
+        );
+        behavior_instance_destroy(instance);
+        behavior_debug_backend(previous);
+    }
+    behavior_asset_free(asset);
+}
+
 static void owned_entity_set_mutation()
 {
     pin_array empty = { .element_type = PIN_HANDLE, .type_name = "ecs.entity" };
@@ -733,6 +867,9 @@ void whole_array_op_smoke()
     entity_set_semantics();
     set_remove_flow();
     owned_set_mutation();
+    owned_struct_set_mutation();
+    disabled_owned_set_nodes_use_general_lowering(false);
+    disabled_owned_set_nodes_use_general_lowering(true);
     owned_entity_set_mutation();
     owned_tick();
     owned_tick_arrays();

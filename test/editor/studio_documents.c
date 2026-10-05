@@ -510,20 +510,38 @@ int studio_graph_chrome_run(const char *program)
     return studio_documents_app(program, "graph-chrome", NULL);
 }
 
-int studio_documents_select(const char *program, const char *only)
+int studio_documents_validate(const char *only)
 {
     if (!document_cases(only, false)) {
         fprintf(stderr, "unknown Studio documents group: %s (use --studio-documents list)\n", only);
         return 2;
     }
-    return !strcmp(only, "list") ? 0 : studio_documents_app(program, only, NULL);
+    return 0;
 }
 
-int studio_shell_select(const char *program, const char *only)
+int studio_shell_validate(const char *only)
 {
     if (!studio_shell_cases(only, false)) {
         fprintf(stderr, "unknown Studio shell case: %s (use --studio-shell list)\n", only);
         return 2;
     }
-    return !strcmp(only, "list") ? 0 : studio_documents_app(program, "shell", only);
+    return 0;
+}
+
+int studio_documents_select(const char *program, const char *only)
+{
+    int result = studio_documents_validate(only);
+    if (result || !strcmp(only, "list")) {
+        return result;
+    }
+    return studio_documents_app(program, only, NULL);
+}
+
+int studio_shell_select(const char *program, const char *only)
+{
+    int result = studio_shell_validate(only);
+    if (result || !strcmp(only, "list")) {
+        return result;
+    }
+    return studio_documents_app(program, "shell", only);
 }

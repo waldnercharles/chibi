@@ -42,6 +42,9 @@ studio_test_sample studio_test_begin(const char *name);
 void studio_test_end(const char *name, studio_test_sample before);
 bool studio_shell_cases(const char *only, bool run);
 int studio_documents_select(const char *program, const char *only);
+/* CPU-only name validation; list prints the available names. */
+int studio_documents_validate(const char *only);
+int studio_shell_validate(const char *only);
 int studio_shell_select(const char *program, const char *only);
 
 /* The same ordered calls serve listing, validation, focused and full runs.

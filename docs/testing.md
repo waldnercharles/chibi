@@ -1,13 +1,15 @@
 # Test iteration
 
-Use a focused native selector while iterating on one feature, then run the full
-gate before a merge-ready handoff.
+Use `make agent-list` and the capability-aware commands in [agent execution](agent-execution.md)
+while iterating. Full/mixed GPU suites now require explicit hardware opt-in;
+CI sets it explicitly and retains complete coverage. A focused selector may contain
+GPU work: the old `test-fast` name alone does not establish CPU-only coverage.
 
 ## Commands and coverage
 
 | Command | Coverage |
 | --- | --- |
-| `make test-fast TEST_ARGS=--graph-optimize` | Builds or reuses the native `test_suite` in `BUILD_DIR`, then runs only that selector. It does not run tooling scripts, the full `all_checks` suite, the whole-function audit, or GPU tests. |
+| `make test-fast TEST_ARGS=--graph-optimize` | Builds or reuses the native `test_suite` in `BUILD_DIR`, then runs only that selector. It does not run tooling scripts or the full suite. Coverage depends on the selector; GPU/mixed and unclassified selectors require the hardware profile. |
 | `make test-list` | Builds or reuses `test_suite` and prints common focused selectors. |
 | `make test-tools` | Runs the isolated Python and Node tooling tests, with `TEST_JOBS` workers (default 4). |
 | `make test-slow` | Runs the full native `all_checks` suite and the separate whole-function audit. |
@@ -123,9 +125,18 @@ Select one complete group or shell case. Quote Make's `TEST_ARGS` when passing a
 positional name:
 
 ```sh
-make test-fast TEST_ARGS='--studio-documents tabs' TEST_TIMINGS=1
-make test-fast TEST_ARGS='--studio-shell readout_follows_camera' TEST_TIMINGS=1
+CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 \
+  make test-fast TEST_ARGS='--studio-documents tabs' TEST_TIMINGS=1
+CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 \
+  make test-fast TEST_ARGS='--studio-shell readout_follows_camera' TEST_TIMINGS=1
 ```
+
+Listing and invalid arguments are handled on CPU before execution-policy checks
+or graphics initialization. Running a valid Studio group/case requires the explicit
+full-execution opt-in above; these mixed selectors are not added to the bounded
+CPU/GPU allowlists. `make test` and `make test-slow` also run the CPU-only
+`test/studio_selectors_test.py` subprocess regression checks against their built
+binary, covering discovery, strict errors and profile enforcement.
 
 These selectors keep each case's complete fixture, input sequence, settling frames,
 and assertions. An unknown group/case or extra positional argument exits 2 before
@@ -159,6 +170,7 @@ bound (software Vulkan requires a display such as Xvfb):
 
 ```sh
 timeout --kill-after=10s 90s env CHIBI_TEST_TIMINGS=1 \
+  CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 \
   ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 \
   xvfb-run -a build/test_suite --studio-shell readout_follows_camera
 ```

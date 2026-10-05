@@ -483,7 +483,7 @@ target_include_directories(chibi_sources PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc
 target_link_libraries(chibi_sources PRIVATE chibi_render editor engine runtime_support cute)
 chibi_enable_tracy(chibi_sources)
 if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    foreach(project_target core ecs runtime_support engine editor chibi_render)
+    foreach(project_target core ecs runtime_support authoring_graph engine editor chibi_render)
         set_target_properties(${project_target} PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
     endforeach()
     if(TARGET chibi_sljit)
@@ -517,7 +517,7 @@ target_include_directories(chibi_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_ctl PRIVATE automation chibi_render editor engine)
 set_target_properties(chibi_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
-target_sources(chibi_ctl PRIVATE src/automation/render_preview.c
+target_sources(chibi_ctl PRIVATE src/automation/execution_policy.c src/automation/render_preview.c
     src/automation/scene_preview.c src/render/scene_renderer.c
     src/render/shader_preview.c src/render/shader_fragment.c)
 if(APPLE)
@@ -990,6 +990,9 @@ add_library(ui_source STATIC
     src/assets/ui_source_format.c)
 target_include_directories(ui_source PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ui_source PUBLIC runtime_support core chibi_tree_sitter)
+if(CHIBI_DEVELOPMENT_RELOAD)
+    set_target_properties(ui_source PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
+endif()
 target_link_libraries(editor PRIVATE ui_source chibi_render)
 # ui_edit validates through ui_check, which lives with the RmlUi host.
 target_link_libraries(automation PUBLIC ui_source chibi_render)

@@ -1111,3 +1111,10 @@ Material inspection reports per-slot IR, uniform, image, ramp and conservative
 static texture-call bounds. Texture-call counts include the shader detail
 helpers and describe one shading evaluation, not actual GPU reads or total
 raymarch work. Studio shows the maximum per material separately from geometry.
+
+## Execution budgets
+
+Preview tools use the explicit iteration profile by default: one output image,
+bounded resolution, explicit scene warmup and a deadline. Budget refusals are
+errors, not successful verification. See [agent execution](agent-execution.md)
+for MP4 capture, targeted GPU checks, memory limits and the full hardware gate.

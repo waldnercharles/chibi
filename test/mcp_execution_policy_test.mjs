@@ -8,7 +8,7 @@ import { renderRequest } from "../tools/mcp/authoring.mjs";
 test("render process errors and timeouts cannot be reported as passes", async () => {
   const directory = mkdtempSync(join(tmpdir(), "chibi-policy-"));
   const executable = join(directory, "controller");
-  const keys = ["CHIBI_CTL", "CHIBI_EXECUTION_PROFILE", "CHIBI_RENDER_CTL_TIMEOUT_MS", "SDL_VIDEO_DRIVER"];
+  const keys = ["CHIBI_CTL", "CHIBI_EXECUTION_PROFILE", "CHIBI_RENDER_CTL_TIMEOUT_MS", "SDL_VIDEO_DRIVER", "CHIBI_ALLOW_FULL_GPU"];
   const saved = Object.fromEntries(keys.map(key => [key, process.env[key]]));
   process.env.CHIBI_CTL = executable;
   process.env.CHIBI_EXECUTION_PROFILE = "iteration";
@@ -29,7 +29,7 @@ test("render process errors and timeouts cannot be reported as passes", async ()
     assert.equal(success.execution.time_budget_seconds, 1);
     assert.ok(success.execution.elapsed_seconds >= 0);
     process.env.SDL_VIDEO_DRIVER = "x11";
-    fixture('console.log(JSON.stringify({ok:true,result:{video_driver:process.env.SDL_VIDEO_DRIVER}}));');
+    fixture('console.log(JSON.stringify({ok:true,window_hidden:true,result:{video_driver:process.env.SDL_VIDEO_DRIVER}}));');
     const explicit = await renderRequest(directory, { operation: "preview_scene" });
     assert.equal(explicit.execution.video_driver, "x11");
     assert.equal(explicit.execution.render_mode, "hidden-window");
@@ -37,11 +37,23 @@ test("render process errors and timeouts cannot be reported as passes", async ()
     const unavailable = await renderRequest(directory, { operation: "preview_scene" });
     assert.equal(unavailable.ok, false);
     assert.equal(unavailable.error.code, "video_driver_unavailable");
+    // A native backend check can reject before reading any request bytes.
+    const early = await renderRequest(directory, { operation: "preview_scene", payload: "x".repeat(8 * 1024 * 1024) });
+    assert.equal(early.ok, false);
+    assert.equal(early.error.code, "video_driver_unavailable");
+    process.env.CHIBI_EXECUTION_PROFILE = "hardware";
+    process.env.CHIBI_ALLOW_FULL_GPU = "1";
+    fixture('console.log(JSON.stringify({ok:true,window_hidden:false,result:{video_driver:"x11"}}));');
+    const visible = await renderRequest(directory, { operation: "preview_scene" });
+    assert.equal(visible.execution.render_mode, "visible-window");
+    assert.equal(visible.execution.window_hidden, false);
+    process.env.CHIBI_EXECUTION_PROFILE = "iteration";
     fixture('console.log(JSON.stringify({ok:true})); process.exit(7);');
     const failed = await renderRequest(directory, { operation: "preview_scene" });
     assert.equal(failed.ok, false);
     assert.equal(failed.full_verification, false);
     assert.equal(failed.error.code, "process_error");
+    assert.equal(failed.execution.render_mode, "not_reported");
     fixture('console.log(JSON.stringify({ok:false,status:"blocked"})); process.exit(2);');
     assert.equal((await renderRequest(directory, { operation: "preview_scene" })).status, "blocked");
     fixture('setInterval(() => {}, 1000);');

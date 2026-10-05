@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
+import signal
 import unittest
 from unittest.mock import patch
 
@@ -97,7 +99,20 @@ int main(int argc, char **argv) {
         self.assertEqual(health['status'], 'unavailable')
         self.assertEqual(health['discovery_timeout_seconds'], 5)
         self.assertFalse(agent.test_plan('logic', health)['gpu_startup'])
-        self.assertEqual(agent.test_plan('render', health)['status'], 'blocked')
+        self.assertTrue(agent.test_plan('render', health)['gpu_startup'])
+        self.assertIn('inconclusive', agent.test_plan('render', health)['discovery_note'])
+
+    def test_non_vulkan_discovery_does_not_block_rendering(self):
+        for backend in ['Metal', 'GLES']:
+            health = dict(status='unavailable', backend='Vulkan', devices=[], acceleration='unknown')
+            with self.subTest(actual_possible_backend=backend):
+                plan = agent.test_plan('render', health)
+                self.assertTrue(plan['commands'])
+                self.assertIn(backend, plan['discovery_note'])
+                self.assertFalse(plan['full_verification'])
+                temporal = agent.test_plan('temporal', health)
+                self.assertTrue(temporal['requires_explicit_mp4_request'])
+                self.assertEqual(temporal['render_seconds'], 120)
 
     def test_capability_type_not_device_name_drives_classification(self):
         self.assertEqual(classify_devices([dict(type=4, name='RTX-looking CPU label')]), 'software')
@@ -109,7 +124,8 @@ int main(int argc, char **argv) {
     def test_purpose_and_capabilities_choose_bounded_work(self):
         unavailable = dict(status='unavailable', devices=[], acceleration='unknown')
         self.assertFalse(agent.test_plan('logic', unavailable)['gpu_startup'])
-        self.assertEqual(agent.test_plan('render', unavailable)['status'], 'blocked')
+        self.assertTrue(agent.test_plan('render', unavailable)['gpu_startup'])
+        self.assertFalse(agent.test_plan('render', unavailable)['full_verification'])
         for acceleration, size in [('hardware', [320, 180]), ('software', [96, 64])]:
             health = dict(status='enumerated', devices=[dict(type=2 if acceleration == 'hardware' else 4)],
                           acceleration=acceleration)
@@ -164,6 +180,56 @@ int main(int argc, char **argv) {
             agent.run(['python3', '-c', 'raise SystemExit(7)'], 1)
         with self.assertRaisesRegex(RuntimeError, 'time_budget_exceeded'):
             agent.run(['python3', '-c', 'import time; time.sleep(30)'], .05)
+
+    @unittest.skipUnless(Path('/proc/self/status').exists(), 'process liveness uses Linux proc')
+    def test_runner_cleans_children_on_interrupt_monitor_error_and_parent_exit(self):
+        real_sleep = time.sleep
+        for failure in [KeyboardInterrupt(), OSError('monitor failed'), None]:
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as directory:
+                pids_file = Path(directory) / 'pids.json'
+                program = (
+                    'import os,sys,json,subprocess,time; '
+                    'child=subprocess.Popen([sys.executable,"-c","import time;time.sleep(30)"]); '
+                    f'open({str(pids_file)!r},"w").write(json.dumps([os.getpid(),child.pid])); '
+                    + ('time.sleep(30)' if failure else 'pass'))
+                def interrupt(_):
+                    deadline = time.monotonic() + 3
+                    while not pids_file.exists() and time.monotonic() < deadline:
+                        real_sleep(.01)
+                    if isinstance(failure, KeyboardInterrupt):
+                        os.kill(os.getpid(), signal.SIGINT)
+                    if failure:
+                        raise failure
+                    real_sleep(.01)
+                try:
+                    with patch.object(agent.time, 'sleep', side_effect=interrupt):
+                        if failure:
+                            with self.assertRaises(type(failure)):
+                                agent.run([sys.executable, '-c', program], 5)
+                        else:
+                            agent.run([sys.executable, '-c', program], 5)
+                    pids = json.loads(pids_file.read_text())
+                    deadline = time.monotonic() + 3
+                    for pid in pids:
+                        while time.monotonic() < deadline:
+                            try:
+                                state = Path(f'/proc/{pid}/stat').read_text().split(') ')[1][0]
+                            except FileNotFoundError:
+                                break
+                            if state == 'Z':  # Cannot execute; waiting for the system reaper.
+                                break
+                            real_sleep(.01)
+                        else:
+                            self.fail(f'child {pid} remained alive after cleanup')
+                    with self.assertRaises(ChildProcessError):
+                        os.waitpid(pids[0], os.WNOHANG)
+                finally:
+                    if pids_file.exists():
+                        for pid in json.loads(pids_file.read_text()):
+                            try:
+                                os.kill(pid, signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
 
     @unittest.skipUnless(Path('/proc/self/status').exists(), 'RSS monitoring uses Linux proc')
     def test_resident_memory_budget(self):

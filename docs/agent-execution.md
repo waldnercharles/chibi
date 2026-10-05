@@ -22,7 +22,10 @@ make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu
 
 The agent wrapper runs lightweight discovery in an isolated process with a
 five-second deadline before test/preview/capture actions. A failed loader is
-reported and does not prevent CPU-only work.
+reported as inconclusive and does not prevent bounded work. This probe examines
+Vulkan only; unavailable Vulkan discovery is not evidence that Metal, GLES or
+another rendering path is unavailable. Plans retain bounded rendering commands
+and require the actual runtime result to establish the backend/device.
 `plan logic|render|temporal` chooses focused commands using the explicit purpose
 and discovered capabilities. Logic plans avoid render initialization even when
 no graphics device exists. Render plans keep native reference assertions intact;
@@ -249,3 +252,21 @@ with native SDL context rather than silently switching routes.
 The parent has separately verified SDL offscreen on Fedora RTX 4080 SUPER/NVK
 through `make play`; a bounded validation of this controller route on that
 hardware remains pending. No driver or desktop configuration is changed here.
+
+
+## Review corrections for PR171
+
+The runner owns its detached process group until completion. A finally block
+terminates any remaining group members and reaps the direct child after Ctrl-C,
+monitoring exceptions, time/RSS limits, failure, or normal completion. Ctrl-C
+returns a structured interrupted result and exit 130. Descendant-liveness tests
+exercise a real SIGINT, a monitoring exception, and a parent that exits before
+its child; no GPU is used for these regressions.
+
+The MCP adapter handles stdin errors when the controller rejects before reading
+a request. It waits for the bounded child close to preserve the native refusal,
+settles once, and never accepts a success object after an input error. An 8 MiB
+request regression verifies this early-exit path. Execution metadata distinguishes
+offscreen, hidden-window, visible-window, and unreported window state rather than
+assuming all non-offscreen results are hidden. Hardware validation and required
+full/CI gates remain pending; these corrections required no hardware slot.

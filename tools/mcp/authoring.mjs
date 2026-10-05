@@ -877,6 +877,7 @@ export function renderRequest(root, request, requestId) {
     let buffer = "";
     let stderr = "";
     let activeDevice = null;
+    let inputError = null;
     let timer = null;
     let memoryTimer = null;
     const child = spawn(executable, ["--render", "--project-root", root], {
@@ -909,7 +910,9 @@ export function renderRequest(root, request, requestId) {
         active_device: activeDevice,
         device_scope: activeDevice ? "renderer_log" : "not_reported",
         video_driver: value.result?.video_driver ?? null,
-        render_mode: value.result?.video_driver === "offscreen" ? "offscreen" : "hidden-window",
+        render_mode: value.result?.video_driver === "offscreen" ? "offscreen" :
+          value.window_hidden === true ? "hidden-window" :
+          value.window_hidden === false ? "visible-window" : "not_reported",
         display_context: value.result?.video_driver === "offscreen" ? "offscreen" :
           (process.env.CHIBI_PREVIEW_DISPLAY_CONTEXT || value.result?.video_driver || "not_reported"),
       };
@@ -968,8 +971,8 @@ export function renderRequest(root, request, requestId) {
       if (line) {
         try {
           const response = parseControllerJson(line);
-          if ((code !== 0 || signal) && response.ok) {
-            finish(failedRender(request.operation, "process_error", `render returned success but process exited ${code || signal}`));
+          if ((code !== 0 || signal || inputError) && response.ok) {
+            finish(failedRender(request.operation, "process_error", `render returned success but process/input failed: ${inputError?.message || code || signal}`));
           } else {
             finish(response);
           }
@@ -986,6 +989,10 @@ export function renderRequest(root, request, requestId) {
         `chibi_ctl --render ${detail}${stderr ? `: ${stderr.trim()}` : ""}`,
       ));
     });
+    // Early native refusals may close input before a large request is sent.
+    // Preserve the native diagnostic on close; the existing timer bounds a
+    // process that closes input but stays alive. Never pass after an input error.
+    child.stdin.on("error", (error) => { inputError = error; });
     child.stdin.end(`${JSON.stringify(request)}\n`);
   });
 }

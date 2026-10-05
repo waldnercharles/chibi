@@ -53,8 +53,7 @@ def test_plan(purpose, health):
         return dict(plan, commands=['make agent-test AGENT_SELECTOR=--graph-optimize'],
                     gpu_startup=False, reason='logic_change_selects_CPU_assertions')
     if health.get('status') != 'enumerated' or not health.get('devices'):
-        return dict(plan, commands=[], gpu_startup=False, status='blocked',
-                    reason='graphics_discovery_unavailable_check_doctor_and_display_context')
+        plan['discovery_note'] = 'Vulkan discovery is inconclusive; Metal/GLES/other rendering may work. Verify the actual bounded runtime result.'
     if purpose == 'temporal':
         return dict(plan, commands=['python3 tools/agent.py mp4 REQUEST.json --frames 60 --output OUTPUT.mp4'],
                     requires_explicit_mp4_request=True, warmup='set gpu_warmup_frames for the scene',
@@ -72,24 +71,32 @@ def run(command, timeout, env=None, request=None, rss_mib=None):
             source.write(json.dumps(request)); source.seek(0)
         child = subprocess.Popen(command, cwd=ROOT, env=env, stdin=source,
                                  stdout=log, stderr=log, start_new_session=True)
-        start = time.monotonic()
         reason = None
-        while child.poll() is None:
-            if time.monotonic() - start > timeout:
-                reason = 'time_budget_exceeded'
-            if rss_mib is not None:
-                try:
-                    status = Path(f'/proc/{child.pid}/status').read_text()
-                    rss = re.search(r'^VmRSS:\s+(\d+)', status, re.M)
-                    if rss and int(rss[1]) > rss_mib * 1024:
-                        reason = 'resident_memory_budget_exceeded'
-                except FileNotFoundError:
-                    pass
-            if reason:
+        try:
+            start = time.monotonic()
+            while child.poll() is None:
+                if time.monotonic() - start > timeout:
+                    reason = 'time_budget_exceeded'
+                if rss_mib is not None:
+                    try:
+                        status = Path(f'/proc/{child.pid}/status').read_text()
+                        rss = re.search(r'^VmRSS:\s+(\d+)', status, re.M)
+                        if rss and int(rss[1]) > rss_mib * 1024:
+                            reason = 'resident_memory_budget_exceeded'
+                    except FileNotFoundError:
+                        pass
+                if reason:
+                    break
+                time.sleep(.05)
+        finally:
+            # Own the detached group, including descendants of a normally
+            # exiting child. Also runs for Ctrl-C and monitoring exceptions.
+            try:
                 os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            finally:
                 child.wait()
-                break
-            time.sleep(.05)
         log.seek(0)
         output = log.read()
         if reason:
@@ -212,7 +219,10 @@ def main():
                   active_device=(re.search(r'Vulkan Device: ([^\r\n]+)', output).group(1)
                                  if re.search(r'Vulkan Device: ([^\r\n]+)', output) else 'not_reported'),
                   video_driver=response['result'].get('video_driver', 'not_reported'),
-                  render_mode='offscreen' if response['result'].get('video_driver') == 'offscreen' else 'hidden-window',
+                  render_mode=('offscreen' if response['result'].get('video_driver') == 'offscreen'
+                               else 'hidden-window' if response.get('window_hidden') is True
+                               else 'visible-window' if response.get('window_hidden') is False
+                               else 'not_reported'),
                   display_context=('offscreen' if response['result'].get('video_driver') == 'offscreen'
                                    else os.environ.get('CHIBI_PREVIEW_DISPLAY_CONTEXT', response['result'].get('video_driver', 'not_reported'))),
                   output_frames=args.frames if args.action == 'mp4' else 1,
@@ -222,5 +232,8 @@ def main():
 if __name__ == '__main__':
     try:
         sys.exit(main())
+    except KeyboardInterrupt:
+        report('blocked', 'interrupted')
+        sys.exit(130)
     except (OSError, ValueError, RuntimeError) as error:
         sys.exit(report('failed' if str(error).startswith('child_exit_') else 'blocked', str(error)))

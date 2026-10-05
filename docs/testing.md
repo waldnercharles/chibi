@@ -168,3 +168,74 @@ bound hit as a pass. Do not repeatedly run the full documents aggregate on
 software Vulkan or launch concurrent heavy tests on the hardware machine.
 The 60-frame cadence/recording loops and long motion/iframe settles are retained:
 static inspection does not establish that those frames are redundant.
+
+### CUT-50 measurement checkpoint (2026-10-05)
+
+Implementation source: `196f09c74a2d68e6e3338b6a33cd56c8237aaeed`, rebased onto
+merged main `de73cb85652f43694957377dfc3607d2e15da386`. The rebase changed no
+files relative to the measured pre-rebase commit `decc5fbc`; main's tree also
+matches the original PR151 baseline `be4d5c0d6d6a38f0747ec5d1c7f66b618c0c9b8a`.
+
+Machine: Linux 6.18.44 x86_64, Intel Xeon Platinum 8573C, five exposed CPUs with
+a four-CPU quota and 16 GiB memory limit. Build: Clang 19, Debug,
+`CHIBI_ENABLE_SANITIZERS=ON`, `CHIBI_SANITIZERS=address,undefined`;
+`make build BUILD_TARGET=test_suite JOBS=4`. Graphics: Xvfb and software Vulkan,
+Mesa lavapipe package `25.0.7-2+deb13u1`, explicitly selected using
+`VK_DRIVER_FILES=/workspace/.cloud-tools/root/usr/share/vulkan/icd.d/lvp_icd.json`.
+These are not hardware-GPU timings.
+
+All measurements ran sequentially after compilation, from the repository root,
+with `ASAN_OPTIONS=detect_leaks=0`, `UBSAN_OPTIONS=halt_on_error=1`, and a 90-second
+bound plus 10-second termination grace. The shell command shape was the bounded
+example above; elapsed times include `timeout`/Xvfb/process startup and shutdown,
+measured with Python's monotonic clock, but exclude configure/build. Candidate
+runs:
+
+| Selector | Wall seconds | Result |
+| --- | --- | --- |
+| `--studio-shell readout_follows_camera`, timing on, first run | 3.883 | Exit 0; camera/readout assertion passed |
+| Same, second run | 2.534 | Exit 0; same assertion passed |
+| Same, timing off, capture environment set | 2.544 | Exit 0; assertion still ran, no timing output or capture |
+| `--studio-documents tabs`, timing on | 14.908 | Exit 0; 35 assertions passed |
+| `--studio-shell transport_menus`, timing on | 12.864 | Exit 0; transport assertion passed |
+
+Readout's repeat range was 2.534–3.883 seconds; do not treat the first-run versus
+repeat difference as an optimization. Its timed case body took 2.960 then 2.141
+seconds: setup 0.280/0.229, teardown 0.070/0.070, six frames 2.605/1.838, with
+Studio work 2.499/1.752 and presentation 0.103/0.084 seconds. Transport's 24 frames
+took 11.449 seconds, including 7.689 in Studio and 3.721 in presentation; setup
+was 0.224 and teardown 0.569 seconds. This localizes most readout cost to Studio
+frame work, rather than fixture loading or presentation. It does not separately
+profile RmlUi layout versus other Studio work. The issue's earlier hardware CPU
+stack samples identify style/layout and iframe settling; this change makes those
+cases independently repeatable without removing their settling coverage.
+
+Additional checks passed: clang-format 22.1.0 on changed C/headers, `git diff
+--check`, both 19-entry subgroup lists without a display, and unknown/empty names,
+extra positional arguments and extra flags returning 2 without app creation.
+A static comparison against `be4d5c0d` verified all 19 documents and 19 shell calls
+in their original order and every shell case body byte-for-byte unchanged.
+An independent read-only review found no missing coverage or selector dispatch
+problem.
+
+For the before comparison, the original four modified test sources were restored
+from `be4d5c0d`, rebuilt with the same configuration, and the baseline binary was
+saved separately; candidate sources/binary were then restored. The old smallest
+selector containing camera readout, `--studio-shell`, hit the unchanged 90-second
+experimental bound at **90.004 seconds, exit 124**. It logged 29 passing assertions,
+through camera readout, but did not complete the shell suite. Its terminal XIO
+message followed timeout termination. This is an incomplete baseline, not a pass
+or an observed full-suite duration. Against that lower bound, a complete focused
+readout run now takes 2.534–3.883 seconds. The improvement is less unrelated work
+per iteration, not faster execution of equivalent full coverage. No assertion,
+settle, hard case, or gate was removed to obtain it.
+
+Remaining validation: no complete candidate `--studio-shell` or
+`--studio-documents` aggregate was run in cloud, and no full `make test`,
+`make test-render`, whole-function audit, web build, or hardware GPU validation was
+repeated for this test-only change. Other new subgroups were listed and reviewed,
+not individually executed. The existing hardware pass at `262d96db` (16m47.33,
+RTX 4080 SUPER/Mesa NVK, Debug ASan+UBSan) is historical evidence, not a candidate
+pass. CUT-50 must remain open until a complete relevant aggregate passes on the
+final candidate and comparable full-suite timing is recorded. The parent can
+arrange that hardware run; do not run concurrent heavy jobs on that machine.

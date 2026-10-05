@@ -463,7 +463,44 @@ static bool depth_snapshot_backend()
         cf_draw_elements();
         value[0] = .5f;
         cf_material_set_uniform_fs(seed_material, "seed", value, CF_UNIFORM_TYPE_FLOAT4, 1);
+        cf_apply_canvas(source, false);
+        cf_apply_mesh(mesh);
         cf_apply_shader(seed, seed_material);
+        cf_apply_viewport(0, 0, SIDE, SIDE);
+        cf_apply_scissor(3, 3, 2, 2);
+        cf_draw_elements();
+
+        /* Confirm the source contains the crop before testing the depth blit.
+         * Decode into a distinct canvas to avoid sampling an attached texture. */
+        cf_material_set_texture_fs(decode_material, "depth_image", cf_canvas_get_depth_stencil_target(source));
+        cf_apply_canvas(output, true);
+        cf_apply_mesh(mesh);
+        cf_apply_shader(decode, decode_material);
+        cf_apply_viewport(0, 0, SIDE, SIDE);
+        cf_apply_scissor(0, 0, SIDE, SIDE);
+        cf_draw_elements();
+        cf_app_draw_onto_screen(false);
+        float *source_pixels = NULL;
+        ok &= read(cf_canvas_get_target(output), SIDE, SIDE, SIDE, SIDE, &source_pixels);
+        for (int y = 0; y < SIDE && ok; y++) {
+            for (int x = 0; x < SIDE; x++) {
+                bool cropped = x >= 3 && x < 5 && y >= 3 && y < 5;
+                float expected = cropped ? .5f : .25f;
+                float actual = source_pixels[(y * SIDE + x) * 4];
+                if (fabsf(actual - expected) > .001f) {
+                    fprintf(stderr, "Depth snapshot source before copy pixel %d,%d: %g != %g\n", x, y, actual, expected);
+                    ok = false;
+                }
+            }
+        }
+        free(source_pixels);
+
+        /* Leave a real cropped draw as the last backend state before blitting. */
+        cf_apply_canvas(source, false);
+        cf_apply_mesh(mesh);
+        cf_material_set_uniform_fs(seed_material, "seed", value, CF_UNIFORM_TYPE_FLOAT4, 1);
+        cf_apply_shader(seed, seed_material);
+        cf_apply_viewport(0, 0, SIDE, SIDE);
         cf_apply_scissor(3, 3, 2, 2);
         cf_draw_elements();
         cf_canvas_copy_depth(source, destination, 0, 0, SIDE, SIDE);

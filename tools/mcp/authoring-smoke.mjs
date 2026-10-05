@@ -16,6 +16,11 @@ const root = resolve(process.argv[2] || process.cwd());
 const server = resolve(root, "tools/mcp/server.mjs");
 const controller = process.env.CHIBI_CTL || resolve(root, "build", "chibi_ctl");
 const skipGpu = process.env.CHIBI_MCP_SKIP_GPU === "1";
+if (!skipGpu && !(process.env.CHIBI_EXECUTION_PROFILE === "hardware" && process.env.CHIBI_ALLOW_FULL_GPU === "1")) {
+  console.error(JSON.stringify({ ok: false, status: "blocked", reason: "GPU smoke suite requires hardware opt-in; do not split it into preview calls", full_verification: false }));
+  process.exit(2);
+}
+
 
 if (!existsSync(controller)) {
   throw new Error(`missing controller: ${controller}`);

@@ -1,7 +1,9 @@
 #include "automation/controller.h"
+#include "automation/execution_policy.h"
 #include "automation/render_preview.h"
 #include "support/resources.h"
 
+#include <SDL3/SDL_video.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +21,11 @@ static void usage(const char *program)
         "Read newline-delimited JSON automation requests from stdin.\n"
         "Each non-empty line produces exactly one JSON response on stdout.\n"
         "With --render, read one preview request and produce one response.\n"
+        "Default iteration profile: bounded preview; see tools/agent.py list.\n"
+        "Linux bounded rendering prefers SDL offscreen unless a video driver "
+        "is explicit.\n"
+        "Full rendering requires CHIBI_EXECUTION_PROFILE=hardware and "
+        "CHIBI_ALLOW_FULL_GPU=1.\n"
         "With --format, rewrite authored assets in canonical form; --check\n"
         "only lists assets that differ and fails when any do.\n",
         program,
@@ -26,6 +33,34 @@ static void usage(const char *program)
         program,
         program
     );
+}
+
+static bool configure_render_video()
+{
+#ifdef __linux__
+    const char *driver = chibi_preview_video_driver(true);
+#else
+    const char *driver = chibi_preview_video_driver(false);
+#endif
+    if (!driver) {
+        return true;
+    }
+    for (int i = 0; i < SDL_GetNumVideoDrivers(); i++) {
+        if (!strcmp(SDL_GetVideoDriver(i), driver)) {
+            setenv("SDL_VIDEO_DRIVER", driver, 1);
+            fprintf(stderr, "Chibi preview video driver request: %s\n", driver);
+            return true;
+        }
+    }
+    printf(
+        "{\"ok\":false,\"status\":\"blocked\",\"full_verification\":false,"
+        "\"error\":{\"code\":\"video_driver_unavailable\","
+        "\"message\":\"SDL build does not include requested %s video backend; "
+        "select a supported SDL_VIDEO_DRIVER or use the documented bounded "
+        "Xvfb path. No fallback was attempted.\"}}\n",
+        driver
+    );
+    return false;
 }
 
 static int render_request(const char *project_root, const char *path)
@@ -112,6 +147,10 @@ int main(int argc, char **argv)
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     if (render) {
+        chibi_render_deadline();
+        if (!configure_render_video()) {
+            return CHIBI_AUTOMATION_INVALID_REQUEST;
+        }
         return render_request(project_root, request_path);
     }
     if (format) {

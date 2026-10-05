@@ -1,0 +1,89 @@
+{
+  "assumptions": [
+    "non-self-intersecting input shells",
+    "OBJ positions already have object transforms baked"
+  ],
+  "blender": "4.3.2",
+  "blender_binary_sha256": "0dfe9af0f3e67643ecf15327fa5e14e7315f61d1a81afdcafe76a71b1918e2b4",
+  "blender_build_hash": "Unknown",
+  "boundary_edges": 0,
+  "bounds": [
+    [
+      -2.0,
+      -6.0,
+      -4.0
+    ],
+    [
+      2.0,
+      6.0,
+      4.0
+    ]
+  ],
+  "components": [
+    {
+      "orientation": "outward",
+      "triangles": 12,
+      "volume": 384.0
+    }
+  ],
+  "geometry_sha256": "7a0bc1ea8deec56ee7f81524b9d5aceacedef16664e1aced4dfa0b560655b238",
+  "grids": [
+    {
+      "atlas_size": [
+        85,
+        68
+      ],
+      "border_min": 0.9999977946281433,
+      "image": "content/sdf/a745f5a57f501fe4.sdf.png",
+      "lipschitz": 1.7323588736863087,
+      "pixels_fnv1a64": "a745f5a57f501fe4",
+      "png_sha256": "c093463f4193bd10001cf80e45bb58bedd4890a0f64b2b5194fc0008766a1da3",
+      "quantization_error_max": 3.039836883544922e-05,
+      "range": 2.02,
+      "resolution": 17,
+      "sample_bytes_sha256": "808a44d510102bb1dc61ed5dd6e89f3c204e8932c4b54593207d118d5e3ce8e7",
+      "spacing": [
+        0.375,
+        0.875,
+        0.625
+      ]
+    }
+  ],
+  "half_size": [
+    3.0,
+    7.0,
+    5.0
+  ],
+  "nonmanifold_edges": 0,
+  "numpy": "2.2.4",
+  "python": "3.13.5",
+  "repairs": [],
+  "schema": 1,
+  "settings": {
+    "axes": "blender",
+    "converter_sha256": "0228f8274f195b0cabe204836ff9e679a20a497800bcf5aa62b9d60af7bd5b9a",
+    "max_memory_mib": 4096,
+    "max_seconds": 60,
+    "max_work": 20000000,
+    "padding": 1.0,
+    "resolution": 17,
+    "scale": 2.0,
+    "source_sha256": "3f1777c4855a62044b416bb8a3e6952eed35a7fc92a0981325017190452e248e",
+    "translate": [
+      0,
+      0,
+      0
+    ]
+  },
+  "sign": "negative inside union of closed outward shells; solid angle winding; no cavities",
+  "transform": "engine = scale * (x,z,-y) + translate",
+  "triangles": 12,
+  "vertex_rounding_max": 0.0,
+  "vertex_storage": "float32 (Blender BVH)",
+  "vertices": 8,
+  "work": {
+    "samples": 4913,
+    "sign_triangle_evaluations": 58956
+  },
+  "zlib": "1.3.1"
+}

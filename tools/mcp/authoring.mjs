@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { parseControllerJson } from "./controller.mjs";
@@ -612,14 +612,16 @@ const shaderAssetSelectorProperties = {
 
 const previewSceneDefinition = {
   name: "previewScene", operation: "preview_scene",
-  description: "Render a running scene or prototype using the game renderer, authored camera, fog and player UI. Returns a PNG. Inputs and saved state use the scenario contract; storage stays isolated.",
+  description: "Render a running scene or prototype without Studio. Bounded Linux renders prefer supported SDL offscreen; explicit video drivers are preserved. Other backends may need a display context. Iteration defaults: one output frame, one GPU warmup frame, at most 640x360 pixels and 30 seconds; blocked budgets are errors, not passes. This is focused evidence, not full verification. Returns a PNG. Inputs and saved state use the scenario contract; storage stays isolated.",
   inputSchema: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: {
     kind: { type: "string", enum: ["scene", "prototype"] }, name: { type: "string" },
     width: { type: "integer", minimum: 64, maximum: 2048, default: 640 },
     height: { type: "integer", minimum: 64, maximum: 2048, default: 360 },
     frames: { type: "integer", minimum: 0, maximum: 1800, default: 1 },
-    render_frames: { type: "integer", minimum: 2, maximum: 3600, default: 2,
-      description: "Rendered frames; values above two measure complete frames after 240 warmup frames, including GPU completion." },
+    gpu_warmup_frames: { type: "integer", minimum: 0, maximum: 32, default: 1,
+      description: "Cloud preview/capture GPU warmup frames; explicitly budget history convergence. Hardware retains its reference warmup." },
+    render_frames: { type: "integer", minimum: 1, maximum: 3600,
+      description: "Iteration: exactly one output frame. Explicit mp4 profile: 3..180 outputs at 60fps; use tools/agent.py mp4 to encode. Hardware: values above two retain 240 warmup plus 16 excluded measurement frames." },
     freeze_simulation: { type: "boolean", default: false,
       description: "Hold simulation and camera at the requested initial frame throughout rendering; lighting history still warms up." },
     sdf_batch_limit: { type: "integer", minimum: 0, maximum: 256, default: 0,
@@ -650,7 +652,7 @@ const previewSceneDefinition = {
     sdf_trace_debug: { type: "boolean", default: false,
       description: "Instrumented field-evaluation heatmap. Red is evaluations divided by 128; green marks hits. Excludes normal samples." },
     capture_frames: { type: "string", minLength: 2, maxLength: 4095,
-      description: "Performance runs only: absolute path of a raw RGBA8 file receiving every measured frame in order (width x height each), for judging motion and temporal effects. Instrumented, not a benchmark." },
+      description: "Absolute raw RGBA8 output path. Requires explicit mp4 profile (3..180 output frames) or hardware opt-in; tools/agent.py mp4 validates and encodes it. Instrumented, not a benchmark." },
     pass_timing: { type: "boolean", default: false,
       description: "Performance runs only: report average GPU milliseconds per render pass. Metal uses command-buffer timestamps (pass_timing_source); other backends wait for the GPU after each pass. Frame totals are instrumented, not benchmark results." },
     pass_timing_detail: { type: "boolean", default: false,
@@ -846,6 +848,9 @@ function failedRender(operation, code, message) {
     contract: 1,
     operation,
     ok: false,
+    status: "blocked",
+    full_verification: false,
+    required_checks_outstanding: ["full-native", "render"],
     error: { code, message },
   };
 }
@@ -862,16 +867,22 @@ function controllerPath(root) {
 }
 
 export function renderRequest(root, request, requestId) {
+  const started = performance.now();
   const executable = controllerPath(root);
-  const timeout = renderTimeout();
+  const hardware = process.env.CHIBI_EXECUTION_PROFILE === "hardware" && process.env.CHIBI_ALLOW_FULL_GPU === "1";
+  const timeout = hardware ? renderTimeout() : Math.min(renderTimeout(), process.env.CHIBI_EXECUTION_PROFILE === "mp4" ? 120000 : 30000);
   const maxBytes = renderResponseLimit();
   return new Promise((resolveRequest) => {
     let settled = false;
     let buffer = "";
     let stderr = "";
+    let activeDevice = null;
+    let inputError = null;
     let timer = null;
+    let memoryTimer = null;
     const child = spawn(executable, ["--render", "--project-root", root], {
       cwd: root,
+      env: { ...process.env, SDL_LOGGING: process.env.SDL_LOGGING || "gpu=info" },
       stdio: ["pipe", "pipe", "pipe"],
     });
     const finish = (value) => {
@@ -879,14 +890,51 @@ export function renderRequest(root, request, requestId) {
         return;
       }
       settled = true;
+      if (memoryTimer) clearInterval(memoryTimer);
       if (timer) {
         clearTimeout(timer);
       }
       if (requestId !== undefined) {
         activeRenders.delete(String(requestId));
       }
+      value.execution = {
+        profile: process.env.CHIBI_EXECUTION_PROFILE || "iteration",
+        elapsed_seconds: (performance.now() - started) / 1000,
+        time_budget_seconds: timeout / 1000,
+        rss_budget_mib: !hardware && process.platform === "linux" ? 2048 : null,
+        width: value.result?.preview?.width ?? null,
+        height: value.result?.preview?.height ?? null,
+        planned_gpu_frames: value.planned_gpu_frames ?? null,
+        window_hidden: value.window_hidden ?? null,
+        active_backend: value.result?.backend ?? null,
+        active_device: activeDevice,
+        device_scope: activeDevice ? "renderer_log" : "not_reported",
+        video_driver: value.result?.video_driver ?? null,
+        render_mode: value.result?.video_driver === "offscreen" ? "offscreen" :
+          value.window_hidden === true ? "hidden-window" :
+          value.window_hidden === false ? "visible-window" : "not_reported",
+        display_context: value.result?.video_driver === "offscreen" ? "offscreen" :
+          (process.env.CHIBI_PREVIEW_DISPLAY_CONTEXT || value.result?.video_driver || "not_reported"),
+      };
       resolveRequest(value);
     };
+    if (!hardware && process.platform === "linux") {
+      memoryTimer = setInterval(() => {
+        try {
+          const status = readFileSync(`/proc/${child.pid}/status`, "utf8");
+          const rss = /^VmRSS:\s+(\d+)/m.exec(status);
+          if (rss && Number(rss[1]) > 2048 * 1024) {
+            finish(failedRender(request.operation, "memory_budget", "render exceeded 2048 MiB resident memory budget"));
+            child.kill("SIGKILL");
+          }
+        } catch (error) {
+          if (error.code !== "ENOENT") {
+            finish(failedRender(request.operation, "memory_budget_unavailable", error.message));
+            child.kill("SIGKILL");
+          }
+        }
+      }, 100);
+    }
     timer = setTimeout(() => {
       finish(failedRender(request.operation || "preview_shader", "timeout", "shader preview timed out"));
       child.kill("SIGKILL");
@@ -907,7 +955,10 @@ export function renderRequest(root, request, requestId) {
       }
     });
     child.stderr.on("data", (chunk) => {
-      stderr = `${stderr}${chunk}`.slice(-4096);
+      const combined = `${stderr}${chunk}`;
+      const device = /Vulkan Device: ([^\r\n]+)/.exec(combined);
+      if (device) activeDevice = device[1];
+      stderr = combined.slice(-4096);
     });
     child.on("error", (error) => {
       finish(failedRender(request.operation || "preview_shader", "process_error", `chibi_ctl --render failed: ${error.message}`));
@@ -919,7 +970,12 @@ export function renderRequest(root, request, requestId) {
       const line = buffer.trim().split("\n").filter(Boolean).at(-1);
       if (line) {
         try {
-          finish(parseControllerJson(line));
+          const response = parseControllerJson(line);
+          if ((code !== 0 || signal || inputError) && response.ok) {
+            finish(failedRender(request.operation, "process_error", `render returned success but process/input failed: ${inputError?.message || code || signal}`));
+          } else {
+            finish(response);
+          }
           return;
         } catch (error) {
           finish(failedRender(request.operation || "preview_shader", "invalid_response", `chibi_ctl --render returned invalid JSON: ${error.message}`));
@@ -933,6 +989,10 @@ export function renderRequest(root, request, requestId) {
         `chibi_ctl --render ${detail}${stderr ? `: ${stderr.trim()}` : ""}`,
       ));
     });
+    // Early native refusals may close input before a large request is sent.
+    // Preserve the native diagnostic on close; the existing timer bounds a
+    // process that closes input but stays alive. Never pass after an input error.
+    child.stdin.on("error", (error) => { inputError = error; });
     child.stdin.end(`${JSON.stringify(request)}\n`);
   });
 }

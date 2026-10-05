@@ -1,3 +1,29 @@
+# Bootstrap before workspace enrollment/locking; the child retains Make flags and
+# command-line overrides. Query/dry-run/touch and non-tool goals need no preflight.
+export CHIBI_CLOUD CHIBI_CLOUD_TOOLS
+CHIBI_CLOUD_GOALS := $(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
+CHIBI_CLOUD_BOOTSTRAP :=
+CHIBI_CLOUD_MAKE_FLAGS := $(filter-out --%,$(firstword $(MAKEFLAGS)))
+ifeq ($(filter help clean,$(CHIBI_CLOUD_GOALS)),$(CHIBI_CLOUD_GOALS))
+else
+ifeq ($(findstring n,$(CHIBI_CLOUD_MAKE_FLAGS))$(findstring q,$(CHIBI_CLOUD_MAKE_FLAGS))$(findstring t,$(CHIBI_CLOUD_MAKE_FLAGS)),)
+ifneq ($(wildcard tools/cloud/entry.sh),)
+CHIBI_CLOUD_BOOTSTRAP := $(shell bash tools/cloud/entry.sh --probe)
+endif
+endif
+endif
+ifeq ($(CHIBI_CLOUD_BOOTSTRAP),1)
+.DEFAULT_GOAL := all
+.PHONY: $(CHIBI_CLOUD_GOALS) .chibi-cloud-invocation
+$(CHIBI_CLOUD_GOALS): .chibi-cloud-invocation
+# A command-line PATH must stay exact in the child Make as well as preflight.
+ifeq ($(origin PATH),command line)
+export CHIBI_CLOUD_KEEP_PATH := 1
+endif
+.chibi-cloud-invocation:
+	+@bash tools/cloud/entry.sh $(MAKE) $(CHIBI_CLOUD_GOALS)
+else
+
 # Native desktop setup commands can run before a SessionStart hook.
 # Enrollment is silent and creates no state for repositories without installation.
 ifeq ($(wildcard .chibi-workspace.json),)
@@ -57,10 +83,12 @@ VERBOSE ?= 0
 export VERBOSE
 MAKEFLAGS += --no-print-directory
 QUIET = python3 tools/quiet.py
+AGENT_SELECTOR ?= --graph-optimize
 TEST_ARGS ?=
 TEST_JOBS ?= 4
 TEST_TIMINGS ?= 0
 TEST_TOOL_TARGETS = \
+	test-tool-execution-policy \
 	test-tool-kdl-assets \
 	test-tool-fetchcontent-cache \
 	test-tool-configure-cache \
@@ -74,6 +102,8 @@ TEST_TOOL_TARGETS = \
 	test-tool-workspaces \
 	test-tool-workspace-retirement \
 	test-tool-workspace-make \
+	test-tool-cloud-entry \
+	test-tool-cloud-emscripten-setup \
 	test-tool-workspace-install \
 	test-tool-mcp-package \
 	test-tool-web-serve \
@@ -110,6 +140,13 @@ NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
 all: build
 
+.PHONY: cloud-preflight cloud-smoke
+cloud-preflight:
+	@bash tools/cloud/entry.sh --report
+
+cloud-smoke:
+	@bash tools/cloud/entry.sh bash tools/cloud/smoke.sh
+
 .PHONY: package-native test-package update-game-runtime
 
 help:
@@ -129,6 +166,9 @@ help:
 		'make build-tracy    Build native RelWithDebInfo with Tracy enabled' \
 		'make run-tracy      Run the native Tracy profile' \
 		'make tracy-mcp      Build and run the official Tracy MCP server' \
+		'make agent-list     List CPU selectors and bounded GPU capabilities' \
+		'make agent-test AGENT_SELECTOR=--graph-optimize  CPU iteration' \
+		'make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu  Explicit bounded GPU check' \
 		'make test           Run the complete tooling and native regression gate' \
 		'make test-fast TEST_ARGS=--graph-optimize  Run one focused native selector' \
 		'make test-list      List focused native selectors (builds test_suite)' \
@@ -292,9 +332,28 @@ format:
 check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
+# Agent iteration is explicitly narrower than the full merge gate.
+.PHONY: agent-list agent-test agent-gpu-test test-tool-execution-policy
+agent-list:
+	@python3 tools/agent.py list
+
+agent-test:
+	@$(MAKE) build BUILD_TARGET=test_suite
+	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" test -- $(AGENT_SELECTOR)
+
+agent-gpu-test:
+	@$(MAKE) build BUILD_TARGET=test_suite
+	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" gpu-test -- $(AGENT_SELECTOR)
+
+test-tool-execution-policy:
+	@python3 test/execution_policy_test.py
+	@node --test test/mcp_execution_policy_test.mjs
+
 test: test-full
 
-test-full: test-tools
+test-full:
+	@python3 tools/agent.py hardware-check
+	+@$(MAKE) test-tools
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
@@ -330,6 +389,11 @@ test-tool-workspace-retirement:
 	@$(QUIET) workspace_retirement_test.py -- python3 test/workspace_retirement_test.py
 test-tool-workspace-make:
 	@$(QUIET) workspace_make_test.py -- python3 test/workspace_make_test.py
+
+test-tool-cloud-entry:
+	@$(QUIET) cloud_entry_test.py -- python3 test/cloud_entry_test.py
+test-tool-cloud-emscripten-setup:
+	@$(QUIET) cloud_emscripten_setup_test.py -- python3 test/cloud_emscripten_setup_test.py
 test-tool-workspace-install:
 	@$(QUIET) workspace_install_test.py -- python3 test/workspace_install_test.py
 test-tool-mcp-package:
@@ -348,6 +412,7 @@ test-tool-collab-client:
 	@$(QUIET) collab_client_test.mjs -- node test/collab_client_test.mjs
 
 test-slow:
+	@python3 tools/agent.py hardware-check
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target test_suite --parallel $(JOBS)
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
@@ -370,6 +435,7 @@ test-compiler-parity:
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/test_suite" --behavior-parity
 
 test-render:
+	@python3 tools/agent.py hardware-check
 	@if [ "$(shell uname -s)" = Darwin ] && [ "$(CHIBI_ALLOW_DESKTOP_RENDER_TESTS)" != 1 ]; then \
 		printf '%s\n' 'Render tests can briefly show a window on macOS. Run them under Xvfb on Linux, or set CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 for a local run.'; \
 		exit 1; \
@@ -405,3 +471,5 @@ dev:
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 endif # CHIBI_WORKSPACE_INNER
+
+endif # CHIBI_CLOUD_BOOTSTRAP

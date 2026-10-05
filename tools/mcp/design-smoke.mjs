@@ -8,6 +8,12 @@ import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
 
+if (process.env.CHIBI_MCP_GPU === "1" &&
+    !(process.env.CHIBI_EXECUTION_PROFILE === "hardware" && process.env.CHIBI_ALLOW_FULL_GPU === "1")) {
+  console.error(JSON.stringify({ ok: false, status: "blocked", reason: "GPU smoke suite requires hardware opt-in", full_verification: false }));
+  process.exit(2);
+}
+
 const root = resolve(process.argv[2] || ".");
 const project = mkdtempSync(join(tmpdir(), "chibi-design-mcp-"));
 const controller = process.env.CHIBI_CTL || join(root, "build/chibi_ctl");

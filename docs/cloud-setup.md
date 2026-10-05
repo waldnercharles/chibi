@@ -30,13 +30,27 @@ Explicit environment/Make compiler, toolchain and flag values are retained,
 including empty overrides. CMake retains its usual cached-compiler and explicit
 `-D` option precedence. With a `CMAKE_TOOLCHAIN_FILE` environment value,
 activation leaves compiler selection to CMake rather than defaulting CC/CXX.
-Otherwise only unset CC/CXX default to the provisioned Clang pair. Existing PATH
-tools keep precedence; cloud directories supply fallbacks. An incompatible selected
-CMake, Ninja, Emscripten, Node or formatter fails with an actionable error instead
-of being silently shadowed. `CLANG_FORMAT` selects the formatter when set. A
-command-line Make PATH remains exact and must already expose the needed tools.
-Use `CHIBI_CLOUD=0` when supplying a separate toolchain that does not meet this
-profile's checks.
+Otherwise only unset CC/CXX default to the provisioned Clang pair. The cloud
+profile owns the default CMake, Ninja, ccache and Emscripten frontends: repository
+wrappers dispatch to the provisioned executables even when ambient PATH contains
+older distro tools. Compiler-name lookup stays on the ambient PATH, so an explicit
+`CC=clang` is not changed to another compiler. No intent is inferred from arbitrary
+inherited PATH ordering.
+
+Set `CMAKE` to an executable path or name to choose another CMake; names resolve
+on the original, pre-activation PATH. The variable is preserved, and an explicit
+empty/unavailable/incompatible choice fails rather than selecting another binary.
+`CLANG_FORMAT` is handled by `tools/clang-format.sh --resolve`, the same resolver
+used by formatting/commits: explicit choice, `clang-format-22`, known versioned
+paths, then bare `clang-format`. Explicit incompatible formatters fail clearly;
+without an override, bare clang-format 14 alongside clang-format-22 is supported.
+
+A command-line Make PATH remains exact: it bypasses PATH insertion and its tools
+are validated as selected. If CMAKE differs from that PATH's cmake executable,
+include the repository cmake wrapper on the exact PATH to apply the override.
+Use `CHIBI_CLOUD=0` to retain ordinary host behavior with an entirely separate
+profile. Node and Python remain host prerequisites; their ambient selections are
+not inferred to be user overrides or silently replaced.
 
 Arbitrary commands outside Make/MCP still need the explicit agent entry point:
 
@@ -246,3 +260,22 @@ The final entry suite passed 23 checks; the unchanged workspace Make suite passe
 failed before configure with the setup recovery command; after removing that
 prefix, `make cloud-preflight` reported activation skipped. Modeling verified both
 the provisioned wrapper and the selected `/usr/bin/blender` (both 4.3.2).
+
+## Default-tool and formatter correction
+
+The initial entry bootstrap retained all ambient tools and could reject a distro
+CMake 3.x despite a ready cloud CMake 4.2.3. Repository tool wrappers now provide
+the explicit cloud-profile defaults described above. The formatter preflight uses
+the repository resolver rather than checking only bare `clang-format`.
+
+Focused regression coverage includes old ambient CMake selecting the provisioned
+compatible executable for actual Make recipes; explicit CMAKE path/name/empty
+choices; mixed bare clang-format 14 and clang-format-22; incompatible explicit
+formatters (including failing version probes); and all previous recursion, jobserver, locking, exact PATH, opt-out,
+query/dry-run and quiet MCP checks. Real plain-Make compiler/Wasm smoke also passed
+with CMake 3.25.1 at the front of the ambient PATH. Explicit `CMAKE=cmake` against
+that same PATH failed with the >=4.2 requirement. This does not change saved
+configuration adoption or published fresh-task verification status.
+
+The corrected entry suite passed 30 checks; the unchanged workspace Make suite
+passed 12. Shell syntax checks and `git diff --check` passed.

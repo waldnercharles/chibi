@@ -43,12 +43,20 @@ for name in ('CC', 'CXX'):
         fail(f'invalid {name}={value!r}')
     if not shutil.which(command):
         fail(f'{name} command {command!r} is unavailable')
+if 'CMAKE' in os.environ and os.environ.get('CHIBI_CLOUD_KEEP_PATH') == '1':
+    actual = shutil.which('cmake')
+    chosen = shutil.which(os.environ['CMAKE']) if os.environ['CMAKE'] else None
+    wrapper = (Path(sys.argv[1]) / 'tools/cloud/bin/cmake').resolve()
+    is_wrapper = actual and Path(actual).resolve() == wrapper
+    same_tool = actual and chosen and Path(actual).resolve() == Path(chosen).resolve()
+    if not is_wrapper and not same_tool:
+        fail('explicit CMAKE requires the cloud cmake wrapper on your exact PATH, or must match its cmake executable')
 for tool, minimum, exact in (
     ('cmake', (4, 2), False), ('ninja', (1, 12), False),
-    ('clang-format', (22,), True), ('emcc', (3, 1, 69), True),
+    ('emcc', (3, 1, 69), True),
     ('node', (22,), False),
 ):
-    command = (os.environ.get('CLANG_FORMAT') or tool) if tool == 'clang-format' else tool
+    command = tool
     if not shutil.which(command):
         fail(f'{tool} command {command!r} is unavailable')
     try:
@@ -60,8 +68,12 @@ for tool, minimum, exact in (
     supported = version[:len(minimum)] == minimum if exact else version >= minimum
     if result.returncode or not supported:
         requirement = ('major/version ' if exact else '>= ') + '.'.join(map(str, minimum))
-        fail(f'{shutil.which(command)} does not satisfy {tool} {requirement}; {result.stderr.strip()}')
+        choice = f" (CMAKE={os.environ['CMAKE']!r})" if tool == 'cmake' and 'CMAKE' in os.environ else ''
+        found = '.'.join(map(str, version)) or 'unknown'
+        fail(f'{shutil.which(command)}{choice} does not satisfy {tool} {requirement} (found {found}); {result.stderr.strip()}')
 PYTOOLS
+# Share the actual versioned/path-aware formatter selection used by commits.
+timeout 10 sh "$repo/tools/clang-format.sh" --resolve >/dev/null
 if [[ $profile == modeling ]]; then
     bash "$repo/tools/cloud/modeling_setup.sh" --check
     selected_blender=$(command -v blender) || missing blender
@@ -78,6 +90,7 @@ export CHIBI_CLOUD_ACTIVE="$prefix"
 if [[ ${1-} == -- ]]; then shift; fi
 if (( $# )); then exec "$@"; fi
 "$prefix/root/usr/bin/clang-19" --version | head -1
+printf 'Selected CMAKE=%s\n' "${CMAKE-<cloud default: $prefix/python/bin/cmake>}"
 printf 'Selected CC=%s CXX=%s\n' "${CC-<CMake/toolchain default>}" "${CXX-<CMake/toolchain default>}"
 cmake --version | head -1
 printf 'Ninja '; ninja --version

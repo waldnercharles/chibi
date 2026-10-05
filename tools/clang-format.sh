@@ -4,6 +4,7 @@
 #   tools/clang-format.sh --check   fail when any checked source differs
 #   tools/clang-format.sh --staged  format staged sources whole and re-stage
 #                                   them (the pre-commit hook)
+#   tools/clang-format.sh --resolve  print the selected formatter without formatting
 # Other major versions format differently, so they are never substituted.
 set -eu
 
@@ -17,11 +18,18 @@ formatter()
 		"/opt/homebrew/opt/llvm@$CLANG_FORMAT_VERSION/bin/clang-format" \
 		"/usr/local/opt/llvm@$CLANG_FORMAT_VERSION/bin/clang-format" \
 		"/usr/lib/llvm-$CLANG_FORMAT_VERSION/bin/clang-format" clang-format; do
-		[ -n "$candidate" ] && command -v "$candidate" >/dev/null 2>&1 || continue
-		major=$("$candidate" --version | sed -n 's/.*version \([0-9]*\)\..*/\1/p')
-		if [ "$major" = "$CLANG_FORMAT_VERSION" ]; then
-			command -v "$candidate"
-			return 0
+		[ -n "$candidate" ] || continue
+		if command -v "$candidate" >/dev/null 2>&1 &&
+			version_output=$("$candidate" --version); then
+			major=$(printf '%s\n' "$version_output" | sed -n 's/.*version \([0-9]*\)\..*/\1/p')
+			if [ "$major" = "$CLANG_FORMAT_VERSION" ]; then
+				command -v "$candidate"
+				return 0
+			fi
+		fi
+		if [ "$candidate" = "${CLANG_FORMAT:-}" ]; then
+			echo "Explicit CLANG_FORMAT=$CLANG_FORMAT must be an executable clang-format $CLANG_FORMAT_VERSION; unset it to use automatic selection." >&2
+			return 1
 		fi
 	done
 	echo "clang-format $CLANG_FORMAT_VERSION is required (CI uses it)." >&2
@@ -39,6 +47,9 @@ sources()
 clang_format=$(formatter)
 
 case "${1:-}" in
+--resolve)
+	printf '%s\n' "$clang_format"
+	;;
 "")
 	sources | xargs "$clang_format" --style=file -i
 	;;
@@ -71,7 +82,7 @@ case "${1:-}" in
 	exit "$failed"
 	;;
 *)
-	echo "usage: tools/clang-format.sh [--check | --staged]" >&2
+	echo "usage: tools/clang-format.sh [--check | --staged | --resolve]" >&2
 	exit 2
 	;;
 esac

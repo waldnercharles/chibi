@@ -1,6 +1,6 @@
 # Bash activation; source this file or use tools/cloud/bin/start_skill.
 _chibi_cloud_activate() {
-    local repo prefix item
+    local repo prefix item path_rest
     repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
     prefix=${CHIBI_CLOUD_TOOLS:-/workspace/.cloud-tools}
     [[ $prefix == /* ]] || { echo 'CHIBI_CLOUD_TOOLS must be an absolute path.' >&2; return 1; }
@@ -9,10 +9,17 @@ _chibi_cloud_activate() {
         printf 'Cloud toolchain missing at %s. Run: bash %s/tools/cloud/setup.sh\n' "$prefix" "$repo" >&2
         return 1
     fi
-    # Keep existing tool choices. Missing tools fall back to the verified prefix;
-    # preflight rejects incompatible existing tools instead of shadowing them.
+    # This profile owns its build-tool defaults, not compiler names on PATH.
+    # Explicit CMAKE resolves on the original PATH; exact Make PATH opts out of
+    # all PATH changes. No attempt is made to infer intent from inherited order.
+    export CHIBI_CLOUD_ORIGINAL_PATH="${CHIBI_CLOUD_ORIGINAL_PATH-$PATH}"
     if [[ ${CHIBI_CLOUD_KEEP_PATH-} != 1 ]]; then
-        for item in "$repo/tools/cloud/bin" "$prefix/bin" "$prefix/python/bin" "$prefix/root/usr/share/emscripten" "$prefix/root/usr/bin" "$prefix/root/usr/lib/llvm-19/bin"; do
+        path_rest=":$PATH:"
+        while [[ $path_rest == *":$repo/tools/cloud/bin:"* ]]; do
+            path_rest=${path_rest/":$repo/tools/cloud/bin:"/:}
+        done
+        PATH="$repo/tools/cloud/bin${path_rest%:}"
+        for item in "$prefix/bin" "$prefix/python/bin" "$prefix/root/usr/share/emscripten" "$prefix/root/usr/bin" "$prefix/root/usr/lib/llvm-19/bin"; do
             case :$PATH: in *:"$item":*) ;; *) PATH+=":$item" ;; esac
         done
         export PATH

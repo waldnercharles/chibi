@@ -18,6 +18,7 @@ class CloudEntry(workspace.WorkspaceMake):
     def setUp(self):
         super().setUp()
         shutil.copytree(ROOT / 'tools/cloud', self.root / 'tools/cloud')
+        shutil.copyfile(ROOT / 'tools/clang-format.sh', self.root / 'tools/clang-format.sh')
         self.prefix = self.root / 'cloud'
         versions = {'cmake': 'cmake version 4.2.3', 'ninja': '1.12.1',
                     'emcc': 'emcc 3.1.69', 'ccache': 'ccache 4.11.2',
@@ -25,7 +26,8 @@ class CloudEntry(workspace.WorkspaceMake):
                     'clang-19': 'Debian clang version 19.1.7',
                     'clang++-19': 'Debian clang version 19.1.7'}
         for name, version in versions.items():
-            directory = 'python/bin' if name in ('cmake', 'clang-format') else 'root/usr/bin'
+            directory = ('python/bin' if name in ('cmake', 'clang-format') else
+                         'root/usr/share/emscripten' if name == 'emcc' else 'root/usr/bin')
             self.executable(self.prefix / directory / name, f'echo "{version}"\n')
         for name in ('llvm-ar', 'llvm-nm', 'wasm-ld'):
             self.executable(self.prefix / 'root/usr/lib/llvm-19/bin' / name, ':\n')
@@ -43,12 +45,15 @@ class CloudEntry(workspace.WorkspaceMake):
         entry = self.root / 'tools/cloud/entry.sh'
         entry.write_text(entry.read_text().replace('/etc/os-release', str(release)))
         self.executable(self.bin / 'uname', 'echo x86_64\n')
-        # Existing PATH selections stay first and must pass the version check.
+        # Both the cloud default and explicit ambient CMake can exercise recipes.
         cmake = self.bin / 'cmake'
         original = cmake.read_text()
         cmake.write_text(original.replace('args = sys.argv[1:]',
                         'args = sys.argv[1:]\nif args == ["--version"]:\n'
                         '    print("cmake version 4.2.3")\n    sys.exit(0)'))
+        cmake.write_text(cmake.read_text().replace("'command': Path(sys.argv[0]).name",
+                         "'command': Path(sys.argv[0]).name, 'executable': str(Path(sys.argv[0]).resolve())"))
+        shutil.copyfile(cmake, self.prefix / 'python/bin/cmake')
         tool = self.bin / 'fixture-tool'
         tool.write_text(tool.read_text().replace("'makeflags': os.environ.get('MAKEFLAGS')",
                         "'makeflags': os.environ.get('MAKEFLAGS'), 'cc': os.environ.get('CC'), "
@@ -65,7 +70,7 @@ class CloudEntry(workspace.WorkspaceMake):
 
     def make(self, *args, **kwargs):
         env = os.environ.copy()
-        for name in ('CC', 'CXX', 'CFLAGS', 'NATIVE_TOOLCHAIN_FLAGS', 'CMAKE_TOOLCHAIN_FILE',
+        for name in ('CMAKE', 'CHIBI_CLOUD_ORIGINAL_PATH', 'CC', 'CXX', 'CFLAGS', 'NATIVE_TOOLCHAIN_FLAGS', 'CMAKE_TOOLCHAIN_FILE',
                      'CHIBI_CLOUD_ACTIVE', 'CHIBI_CLOUD_KEEP_PATH', 'CHIBI_CLOUD',
                      'C_INCLUDE_PATH', 'CPLUS_INCLUDE_PATH', 'LIBRARY_PATH'):
             env.pop(name, None)
@@ -127,12 +132,44 @@ class CloudEntry(workspace.WorkspaceMake):
         self.assertFalse((self.root / 'outer-runs').exists())
         self.assertFalse((self.root / 'calls.jsonl').exists())
 
-    def test_incompatible_path_tool_is_not_silently_replaced(self):
+    def test_old_ambient_cmake_uses_provisioned_default(self):
         self.executable(self.bin / 'cmake', 'echo "cmake version 3.25.1"\n')
+        result = self.make(['build'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any(call.get('executable') == str(self.prefix / 'python/bin/cmake')
+                            and call['args'][0] == '--build' for call in self.calls()))
+
+    def test_old_ambient_cmake_before_existing_wrapper_path(self):
+        self.executable(self.bin / 'cmake', 'echo "cmake version 3.25.1"\n')
+        self.extra_env = {'PATH': str(self.bin) + ':' + str(self.root / 'tools/cloud/bin')
+                          + ':' + os.environ['PATH']}
+        result = self.make(['build'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any(call.get('executable') == str(self.prefix / 'python/bin/cmake')
+                            and call['args'][0] == '--build' for call in self.calls()))
+
+    def test_explicit_incompatible_cmake_fails(self):
+        self.executable(self.bin / 'cmake', 'echo "cmake version 3.25.1"\n')
+        self.extra_env = {'CMAKE': 'cmake'}
         result = self.make(['build'])
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('does not satisfy cmake >= 4.2', result.stderr)
         self.assertIn('CHIBI_CLOUD=0', result.stderr)
+        self.assertFalse((self.root / 'outer-runs').exists())
+
+    def test_explicit_make_cmake_is_used(self):
+        selected = self.root / 'chosen-cmake'
+        selected.write_text((self.bin / 'cmake').read_text().replace("Path(sys.argv[0]).name", "'cmake'"))
+        selected.chmod(0o755)
+        result = self.make(['build'], variables=(f'CMAKE={selected}',))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(any(call.get('executable') == str(selected)
+                            and call['args'][0] == '--build' for call in self.calls()))
+
+    def test_empty_explicit_cmake_fails_without_substitution(self):
+        result = self.make(['build'], variables=('CMAKE=',))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Explicit CMAKE is empty', result.stderr)
         self.assertFalse((self.root / 'outer-runs').exists())
 
     def test_help_dry_run_and_query_skip_partial_prefix(self):
@@ -151,6 +188,39 @@ class CloudEntry(workspace.WorkspaceMake):
         self.extra_env = {'CLANG_FORMAT': str(chosen)}
         result = self.make(['build'])
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_versioned_formatter_wins_over_old_bare_formatter(self):
+        self.executable(self.bin / 'clang-format', 'echo "clang-format version 14.0.0"\n')
+        self.executable(self.bin / 'clang-format-22', 'echo "clang-format version 22.1.8"\n')
+        chosen = ':'.join(map(str, (self.bin, self.root / 'tools/cloud/bin',
+                         self.prefix / 'python/bin', self.prefix / 'root/usr/bin')))
+        chosen += ':' + os.environ['PATH']
+        result = self.make(['build'], variables=(f'PATH={chosen}',))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        env = dict(os.environ, PATH=chosen)
+        env.pop('CLANG_FORMAT', None)
+        result = subprocess.run(['sh', 'tools/clang-format.sh', '--resolve'], cwd=self.root,
+                                env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), str(self.bin / 'clang-format-22'))
+
+    def test_incompatible_explicit_formatter_does_not_fall_back(self):
+        bad = self.bin / 'clang-format'
+        self.executable(bad, 'echo "clang-format version 14.0.0"\n')
+        self.extra_env = {'CLANG_FORMAT': str(bad)}
+        result = self.make(['build'])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Explicit CLANG_FORMAT=', result.stderr)
+        self.assertFalse((self.root / 'outer-runs').exists())
+
+    def test_failed_explicit_formatter_version_does_not_fall_back(self):
+        bad = self.bin / 'broken-clang-format'
+        self.executable(bad, 'echo "clang-format version 22.1.8"\nexit 1\n')
+        self.extra_env = {'CLANG_FORMAT': str(bad)}
+        result = self.make(['build'])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Explicit CLANG_FORMAT=', result.stderr)
+        self.assertFalse((self.root / 'outer-runs').exists())
 
     def test_long_make_options_still_bootstrap(self):
         result = self.make(['build'], options=('--no-print-directory',))

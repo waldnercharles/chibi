@@ -10,14 +10,18 @@ one (S0 results).
 
 ## Remaining work
 
-One list of what is left, as of 2026-10-04; details live in the sections
-named.
+Reconciled against merged `main` at `de73cb85652f43694957377dfc3607d2e15da386`
+on 2026-10-05 under [CUT-58](https://linear.app/cute-engine/issue/CUT-58).
+Details and historical measurements live in the sections named. The audit below
+separates source evidence from fixes that still need reproduction.
 
-**Land the branch**
-- [ ] Merge `main` (SDF rendering, model authoring) and resolve conflicts in
-  CMakeLists.txt, cmake/sources.cmake, the Studio shell, properties and
-  scene, viewport and tests; re-run `make test`, `make check-format` and the
-  hidden suites.
+**Landing completed**
+- [x] PRs [147](https://github.com/waldnercharles/c-blueprints/pull/147) and
+  [151](https://github.com/waldnercharles/c-blueprints/pull/151) are merged;
+  `de73cb85` is the integration baseline. Integration validation belongs to
+  [CUT-44](https://linear.app/cute-engine/issue/CUT-44). Measurements and
+  checks recorded below are historical branch evidence, not fresh exact-head
+  full-suite reruns. This audit does not claim a new native/render suite pass.
 
 **Behavior-driven panels** (on hold until the user says go; Behavior-driven
 panels ▸ Recommendation)
@@ -38,12 +42,14 @@ panels ▸ Recommendation)
 
 **Wave 5: removal** (Waves ▸ Wave 5)
 - [ ] Delete the kit controls, list, command and menu code nothing uses
-  (`kit_dropdown` still serves the Designer's `kit_select`;
-  `kit_autocomplete` serves graph node bodies); shrink `kit.h`; update
+  (the private `choice_select` / `dropdown_items` path behind `kit_choice`
+  still serves Model and graph properties; `kit_autocomplete` serves graph
+  node bodies). Designer Details now uses authored EnumField; shrink `kit.h`; update
   DESIGN decision 5, `studio-ui-authoring.md`, `editor-ui-references.md`.
 
-**Performance** (Shared follow-ups after Wave 2; re-measure with `uptime`
-below 4 first)
+**Performance** (coordinate with [CUT-50](https://linear.app/cute-engine/issue/CUT-50),
+which owns test selectors/timing and iteration cost; Shared follow-ups after
+Wave 2; re-measure with `uptime` below 4 first)
 - [ ] Keyed `data-for` (rows match by index today).
 - [ ] Change-driven sync for the C sources still syncing every frame
   (`commands`, `properties`, `editor`, `assets`, `inspector`).
@@ -70,15 +76,60 @@ reorder/reparent (needs scene hierarchy first).
 **Open questions** (Open questions): 1, 2, 4, 6 and 7.
 
 **Needs the user**
-- [ ] Native macOS trackpad check: SDL counts 10 pt as a wheel notch, so
-  scrolling may be about 10× too fast outside the browser.
+- [ ] Native macOS trackpad check: [CUT-57](https://linear.app/cute-engine/issue/CUT-57)
+  owns physical-device validation. SDL counts 10 pt as a wheel notch, so
+  scrolling may be about 10× too fast outside the browser. Synthetic input
+  and Linux/browser checks cannot complete this item.
 - [ ] The graph's two-finger scroll: zoom or pan.
 - [ ] Terrain material LOD threshold (recommendation: keep 1 px).
 
 **Process**
-- [ ] The web editor loads Studio's own UI from the served workspace copy,
-  so a stale copy silently breaks new panels (the palette now fails loud);
-  serve `projects/studio` from the checkout instead.
+- [x] The development server mounts `projects/studio` from the checkout
+  containing `tools/web_serve.py`, even with a separate `--workspace`.
+  Initial reads, watcher updates and Studio saves use that same mount;
+  game projects still use their workspace paths. On page load the bridge removes
+  mirrored Studio assets absent from the checkout snapshot, including stale
+  files preloaded in `chibi.data`; unrelated game files and non-mirrored
+  resources stay intact. Writes cannot cross into another project's content
+  via a symlink. No workspace copy or
+  symlink is rewritten. Restart the server from the desired checkout when
+  switching builds. Packaged builds keep their bundled Studio assets.
+
+### Audit and implementation slices (CUT-58)
+
+The unchecked items above remain open; listing a held item does not release it.
+These are bounded follow-ups, not permission for a UI redesign. No work here
+changes CUT-50's native test selectors or production performance paths.
+
+| Checklist item | Status, evidence and next slice |
+|---|---|
+| Integration merge | Completed at `de73cb85`; remove the stale merge task, retain historical validation limits above. |
+| Behavior-driven Members, Output, Assets header/New, header-only panels; then Properties, palette/pickers and Assets grid | Explicitly held. `studio_sources.c` still registers their C sources. Requires the user's release before conversion. |
+| Studio-node completion/buildGraph/Problems gating, game UI-event timing; Select option count and wildcard defaults | Held with the behavior-panel follow-ups. No new reproduction or completion claim in this audit. Keep separate from the completed Outliner spike. |
+| Behavior panel entity/list sharing and empty Studio Outliner preview | Held; also related to open question 7. Do not infer a multiple-area policy. |
+| Wave 5 controls/list/command/menu removal and the four documentation/header contracts | Open, usage audit required per symbol. `kit_controls.c`'s `choice_select` remains reachable through `kit_choice` in `studio_model.c` and `studio_graph_properties.c`; `studio_graph_values.c`, `studio_graph_properties.c` and `studio_graph_literals.c` still call `kit_autocomplete`. The earlier Designer `kit_select` justification is stale. Do not remove those live paths. |
+| Keyed data-for; revision-driven commands/properties/editor/assets/inspector sync; sibling restyles; data-attr/data-when cost | Open, coordinate implementation and representative measurements with CUT-50. The Shared follow-ups and D1 measurements are historical, not new profiles. Split binding identity from source invalidation; do not duplicate CUT-50's selectors/timing work. |
+| Per-frame list-window lookup, reveal/top-padding, Inspector DOM walk | Open shared-list/Inspector slice, coordinated with CUT-50. `src/ui/list.c` and `studio_inspect.c` still own reveal/windowing and recursive DOM traversal. Reproduce padded reveal before changing geometry. |
+| Right-click focus | Open shared-popover slice. `popover.c` preserves menu focus and `takes_keys` excludes editing fields; `studio_graph_menu.c` still blurs explicitly on canvas-menu open. Reproduce focus/input/dismiss flows before centralizing this behavior. |
+| EnumField width, hidden data-for template/last-child, use-wrapper margins | Open layout slices. EnumField still sizes its dropdown with `--anchor-width`; the D1 reports have not been freshly rendered/reproduced here. Separate anchor geometry from structural-selector and margin semantics. |
+| Two-area Members/Assets/Output/Inspector window state | Open, decision-dependent on question 7. `studio_members.c`, `studio_output.c`, `studio_assets.c` and `studio_inspect.c` still pass panel/cache-owned list state to `ui_list_window`. Resolve supported area semantics before expanding state ownership. |
+| Output stationary-pointer hover | Open Output slice; historical P4 observation, not freshly reproduced here. Keep follow-scroll and pointer-hit behavior covered together. |
+| Closed debug-target-list updates | Open header-source slice. `studio_sources.c` registers `graph_targets` against BehaviorHeader; `studio_graph_targets_sync` builds choices when the graph/target shows, without checking menu-open state. Coordinate any profiling with CUT-50. |
+| Stencil edge antialiasing | Open renderer slice in `rml_backend.c`; needs bounded render evidence, not a CPU-only pass or a new clipping design. |
+| Graph bodies/literals, Zep surface, geometry, toasts, tooltip controller, Outliner reorder/reparent | Explicitly postponed; retain the Postponed table's reasons and dependencies. |
+| Open questions 1, 2, 4, 6, 7; graph zoom/pan; terrain LOD | User decisions remain unresolved. No parity tolerance, native-surface permanence, widget ownership, layout policy or terrain threshold chosen here. |
+| Physical macOS trackpad | Owned separately by CUT-57; not completed by this work. |
+| Active-checkout web Studio assets | Implemented in `tools/web_serve.py`. Regression fixture reproduces the old stale read, then checks checkout override with/without a workspace Studio copy, repeated save/reload, external edits/additions/removals, manifest writes, ignored stale edits, path containment and the reserved Studio project name. `test/web_serve_test.py` also checks the actual launch mount; `test/web_workspace_test.mjs` covers browser mirroring, launch arguments and preloaded Studio read/save/delete/rename/reload reconciliation. |
+
+Validation for the process slice: `python3 test/web_serve_test.py` (45 tests)
+and `node test/web_workspace_test.mjs` pass on Linux, CPU/headless (also via
+`make test-tool-web-serve test-tool-web-workspace`). A bounded real HTTP smoke
+check passed checkout Studio/workspace game reads, Studio save, watcher update
+and reload with the stale copy untouched. `git diff --check` and
+`make check-format` pass (clang-format 22.1.8 installed under `/tmp` for the check).
+No native
+Studio session, rendered visual comparison, `make web`, full native suite,
+or physical Mac trackpad check was run for this server-only change.
 
 ## Target
 
@@ -102,7 +153,8 @@ What already works this way:
   Prototype, Scene and Behaviors tabs over the `properties` source (P1),
   and its Node and Member tabs over `graph_details` (G1).
 
-About 1,600 kit call sites remain across 40 files. The largest:
+Historical pre-removal inventory (not a current usage count): about 1,600
+kit call sites across 40 files. The largest at that point:
 `studio_properties.c` (171), `studio_scene.c` (162), `studio_shell.c` (98),
 `studio_code.c` (90), `studio_member_properties.c` (88),
 `studio_designer_details.c` (85), `studio_graph_draw.c` (76),
@@ -129,7 +181,7 @@ About 1,600 kit call sites remain across 40 files. The largest:
 | Performance | `Performance.rml`, `PerformanceHeader.rml` over `<line-chart>` (C2) | Sample ring | Done (C2) |
 | Shell | Authored: `Workspace.rml` over the `workspace` source (`studio_shell.c`); each area a document in its place | Ratios, open states, maximize, the columns' laid-out sizes | Done (W3 C3) |
 | Palette, asset pickers, Add Component, refactor popover | Authored (C4): `Palette.rml` and `Picker.rml` over the `palette` source (`studio_palette_view.c`), `Refactor.rml` over `refactor` (`studio_refactor.c`); clients `studio_palette.c`, `studio_pick.c`, Add Component, the add-node search | Ranking (`support/text_rank.h`), recents, prefixes, thumbnails, the window | Done (C4) |
-| Kit dropdowns and autocomplete | `kit_command.c` over `support/text_rank.h` | Graph literals, member types, `kit_select` | Done (G1): graph literals, pins' assets, member types and Properties' source fields use Studio's picker; `kit_select` (the Designer's keywords) and the source field on a node body (postponed with node bodies) keep the kit's |
+| Kit dropdowns and autocomplete | `kit_command.c` over `support/text_rank.h` | Graph source fields, Model and native graph choices | G1/D1 moved authored fields to Studio's picker and EnumField. Native `kit_choice` still uses `choice_select` / `dropdown_items`; node-body source fields still use `kit_autocomplete`. See the CUT-58 usage audit |
 | Popups, menus, tooltips | `src/ui/popover.c` (F3) stacks, places and dismisses authored popovers and the kit's popups and runs menus; `kit_popup.c` emits the kit's | Placement, stacking, dismissal, typeahead | Done for the controller (F3); kit menus move to Menu with their panels; tooltips stay attribute-driven |
 | Toasts | `kit_toast.c` | Springs, swipe | Postponed |
 | Designer: Hierarchy, Details, Library | Authored (D1): `Hierarchy.rml`, `Details.rml`, `Library.rml` and their headers over the `hierarchy*`, `details*` and `library` sources (`studio_designer_hierarchy.c`, `_details.c`, `_library.c`) | `ui_design` edits, drop zones, CSS value types | Done (W4 D1); the Canvas, its guides and resize handles stay native |

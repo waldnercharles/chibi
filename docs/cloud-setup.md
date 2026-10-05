@@ -311,14 +311,18 @@ bash tools/cloud/emscripten_setup.sh
 bash tools/cloud/emscripten_setup.sh  # verify the installed SDK is reused
 make cloud-preflight
 timeout 180 make cloud-smoke
-EMCC_CORES=2 make web JOBS=2
+EMCC_CORES=2 make web JOBS=2 \
+  WEB_BUILD_DIR=build-web-emsdk-6.0.10 \
+  WEB_THREADS_BUILD_DIR=build-web-threads-emsdk-6.0.10
 ```
 
 For application acceptance, use the language owner's native-path isolation fix
 `01ebe9ac` (PR #174) together with this cloud change; it is intentionally not
-copied into this branch. Start with a new web build directory when switching SDKs,
-e.g. `WEB_BUILD_DIR=build-web-emsdk-6.0.10`. Record both the tiny smoke and actual
-web result separately. Passing fixture tests or inspecting `sdl3.py` cannot replace
+copied into this branch. Both named build directories above must be new when
+switching SDKs. `make web` builds serial and threaded bundles; changing only
+`WEB_BUILD_DIR` still reuses the default `build-web-threads` cache. If either named
+directory already exists from an earlier SDK, choose another unused name. Record
+both the tiny smoke and actual web result separately. Passing fixture tests or inspecting `sdl3.py` cannot replace
 those two real checks. Full `make test`, saved-config adoption, and genuinely fresh
 published-task acceptance remain outstanding final gates.
 

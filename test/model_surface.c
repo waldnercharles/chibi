@@ -197,6 +197,21 @@ static void instance_override()
     behavior_asset_free(inherited);
     behavior_asset_free(asset);
 }
+static void model_rename_standalone()
+{
+    node *primitive;
+    behavior_asset *asset = sphere_asset("ModelRenameStandalone", 2, &primitive);
+    shader_error error = { 0 };
+    assert(render_shader_upsert(asset, &error));
+    int id = render_shader_find(asset->name);
+    assert(render_shader_model_rename(asset->name, "ModelRenamedStandalone", &error));
+    assert(!render_shader_find(asset->name));
+    assert(render_shader_find("ModelRenamedStandalone") == id);
+    assert(!strcmp(asset->name, "ModelRenameStandalone"));
+    near(distance(id, 0, 0, 0), -2);
+    assert(render_shader_model_remove("ModelRenamedStandalone", &error));
+    behavior_asset_free(asset);
+}
 static void model_dependencies()
 {
     node *primitive, *instance_b, *instance_c;
@@ -250,6 +265,15 @@ static void model_dependencies()
     assert(!render_shader_find("ModelDependencyA"));
     assert(render_shader_find("ModelDependencyRenamed") == ids[0]);
     near(distance(ids[2], 0, 0, 0), -3);
+    assert(!strcmp(a->name, "ModelDependencyA"));
+    assert(!strcmp(instance_b->reference_asset, "ModelDependencyA"));
+    assert(!strcmp(instance_c->reference_asset, "ModelDependencyB"));
+    assert(render_shader_model_rename("ModelDependencyRenamed", "ModelDependencyA", &error));
+    assert(!render_shader_find("ModelDependencyRenamed"));
+    assert(render_shader_find("ModelDependencyA") == ids[0]);
+    near(distance(ids[2], 0, 0, 0), -3);
+    assert(render_shader_model_rename("ModelDependencyA", "ModelDependencyRenamed", &error));
+    assert(render_shader_find("ModelDependencyRenamed") == ids[0]);
     assert(!render_shader_model_remove("ModelDependencyRenamed", &error));
     assert(render_shader_model_remove(c->name, &error));
     assert(!render_shader_find(c->name));
@@ -354,6 +378,7 @@ void test_model_surface()
 {
     perspective_model_selection();
     catalog_generation();
+    model_rename_standalone();
     model_dependencies();
     instance_override();
     node *primitive;

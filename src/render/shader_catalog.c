@@ -1057,7 +1057,9 @@ bool render_shader_model_rename(const char *from, const char *to, shader_error *
         behavior_asset *copy = behavior_asset_clone(assets[i].model_source);
         assert(copy);
         if (i + 1 == id) {
-            assert(behavior_asset_set_name(copy, to) == 0);
+            int renamed = behavior_asset_set_name(copy, to);
+            assert(renamed == 0);
+            (void)renamed;
         }
         for (int j = 0; j < acount(copy->graphs); j++) {
             graph *g = copy->graphs[j];
@@ -1149,7 +1151,9 @@ static void model_source_material_rename(behavior_asset *source, const char *fro
                     pin_value value = { .type = PIN_STR,
                                         .str = to,
                                         .type_name = "MaterialAsset" };
-                    assert(!graph_set_pin_default(g, n, false, k, &value));
+                    int updated = graph_set_pin_default(g, n, false, k, &value);
+                    assert(updated == 0);
+                    (void)updated;
                 }
             }
         }
@@ -1167,7 +1171,10 @@ bool render_shader_material_rename(const char *from, const char *to, shader_erro
     /* Identity and shader code stay fixed. Prepare all owned replacement source
        strings before publishing the renamed material and its model bindings. */
     behavior_asset *material = behavior_asset_from_value(assets[id - 1].source_value);
-    assert(material && !behavior_asset_set_name(material, to));
+    assert(material);
+    int renamed = behavior_asset_set_name(material, to);
+    assert(renamed == 0);
+    (void)renamed;
     av_doc *doc = av_doc_new();
     av_value *material_value = behavior_asset_to_value(doc, material);
     av_doc_set_root(doc, material_value);

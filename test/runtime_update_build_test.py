@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -57,7 +58,7 @@ if command == 'python3' and args[0] == 'tools/package_native.py' and os.environ.
             (self.root / '.chibi/game-runtime.json').write_text('{}\n')
         env = os.environ.copy()
         for key in ('MAKEFLAGS', 'MFLAGS', 'MAKEOVERRIDES', 'UPDATE_GAME_RUNTIME',
-                    'FAIL_EDITOR', 'FAIL_PACKAGE', 'CHIBI_WORKSPACE_LOCK_FD'):
+                    'FAIL_EDITOR', 'FAIL_PACKAGE', 'CHIBI_WORKSPACE_LOCK_FD', 'BUILD_DIR'):
             env.pop(key, None)
         env.update(flags)
         env['PATH'] = str(self.bin) + os.pathsep + env['PATH']
@@ -105,6 +106,16 @@ if command == 'python3' and args[0] == 'tools/package_native.py' and os.environ.
         build = next(call for call in calls if call['command'] == 'cmake')
         self.assertEqual(build['args'], ['--build', 'build', '--target',
                                          'chibi', 'chibi_ctl', '--parallel', '2'])
+
+    def test_build_directory_ignores_parent_but_keeps_explicit_fixture_override(self):
+        with patch.dict(os.environ, {'BUILD_DIR': 'parent-build'}):
+            for flags, expected in (({}, 'build'), ({'BUILD_DIR': 'fixture-build'}, 'fixture-build')):
+                with self.subTest(flags=flags):
+                    result, calls = self.make(**flags)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    build = next(call for call in calls if call['command'] == 'cmake')
+                    self.assertEqual(build['args'][1], expected)
+                    self.log.unlink()
 
     def test_web_reflection_reuses_native_configuration(self):
         result, calls = self.make(registered=False)

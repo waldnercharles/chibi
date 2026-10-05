@@ -1,0 +1,12 @@
+{
+  "contract": 1,
+  "operation": "preview_scene",
+  "kind": "scene",
+  "name": "HrcCornellModesDepth",
+  "frames": 1,
+  "render_frames": 256,
+  "freeze_simulation": false,
+  "width": 320,
+  "height": 180,
+  "capture_frames": "/tmp/hrc-cornell-3d-modes-ambient006-20261005/current-3d-depth.rgba"
+}

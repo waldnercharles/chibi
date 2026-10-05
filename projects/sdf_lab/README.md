@@ -847,3 +847,71 @@ The video is a labeled split-screen of both scenes. Each half samples warmed
 native Vulkan renders at 640×360, then keeps every fourth frame from the 60 Hz
 sequence for 15 fps playback; no frames are interpolated. The emitter's
 eight-second sweep spans the short loop.
+
+### Matched surface-mode renders
+
+`HrcCornellModesBlur`, `HrcCornellModesGather` and `HrcCornellModesDepth` reuse
+the same open cutaway, camera, materials, raised blocker, area emitter and
+eight-second light sweep. The only scene setting changed among these files is
+`GameHRC2D.surface_mode`. The three-panel clip labels each mode and uses a
+common readability fill (`ambient=0.06`) with `exposure=0.2`, `fog=0`, HRC
+`intensity=3`, `resolution=0.5`, and half-resolution gather. Feedback is off
+and `bounce_intensity=0` in all three. The Depth mode also uses
+`surface_depth_gain=1`, `surface_thickness=12`, low quality, and bounded
+segments. These are comparison settings, not calibrated lighting values.
+
+![Native Vulkan render of the Cornell-inspired scene in Depth thickness mode](evidence/hrc-cornell-modes-depth.png)
+
+This 320×180 still is a native Vulkan capture from `HrcCornellModesDepth` after
+the 240-frame preview run. Launch any mode from the project root with:
+
+```sh
+build-release/chibi --play --project-root projects/sdf_lab \
+  --scene scenes/HrcCornellModesBlur.kdl
+build-release/chibi --play --project-root projects/sdf_lab \
+  --scene scenes/HrcCornellModesGather.kdl
+build-release/chibi --play --project-root projects/sdf_lab \
+  --scene scenes/HrcCornellModesDepth.kdl
+```
+
+[HrcCornell-current-3D-surface-modes-15fps.mp4](evidence/HrcCornell-current-3D-surface-modes-15fps.mp4)
+shows the three current modes side by side. It samples 60 images from 240
+320×180 Vulkan frames and plays them at 15 fps for four seconds; the emitter
+therefore traverses roughly half of its eight-second path. The comparison
+isolates each mode's camera-relative surface treatment. It does not compare
+bounce lighting, and the scene is not a full 3D path-traced Cornell box.
+
+The separate bounce toggle remains
+`HrcCornellCutaway` versus `HrcCornellCutawayNoBounce` above. Its matched
+control keeps the direct Depth settings fixed while turning off HRC feedback.
+The bounce shader multiplies albedo by gathered far-field radiance
+([bounce.frag](../../src/render/shaders/hrc/bounce.frag#L21)); the compositor
+adds the Depth surface term later and explicitly excludes it from temporal
+bounce ([composite.shd](../../src/render/shaders/hrc/composite.shd#L372)). The
+shared direct Depth light can therefore dominate that on/off comparison. In
+frame 45 of the existing bounce comparison clip, the rendered areas differ by
+about 1.09/255 mean absolute pixel value; about 2.6% of pixels differ by more
+than 2/255. This is a small sampled difference, not a reference measurement of
+indirect transport.
+
+### Historical flat-HRC comparison
+
+[HrcCornell-predepth-vs-current-flat-2D-15fps.mp4](evidence/HrcCornell-predepth-vs-current-flat-2D-15fps.mp4)
+compares the existing flat `HRCLabCornell2D` fixture rendered by pre-Depth
+commit `8cb3ba2c72217ce58b4fd8381e99e864d185527a` and by the current Blur
+mode. For the historical load, a temporary copy of the same fixture omitted
+only the newer `surface_mode` and `surface_depth_*` fields unsupported by that
+revision. Both sides used the same remaining scene data and 320×180 native
+Vulkan capture settings. The complete 240-frame raw sequences were
+byte-identical in this fixture. This is a flat 2D compatibility baseline; it
+does not claim the historical renderer had the newer camera-relative Depth
+mode.
+
+The rendered frames are 320×180 per panel, with 240 captured frames sampled
+four-to-one into a 60-frame, 15 fps, four-second loop. These videos come from
+the native renderer; the labels and split-screen layout were added after
+capture. The compositor adds `fluence * fog` and emissive intensity in the
+camera-plane render ([composite.shd](../../src/render/shaders/hrc/composite.shd#L376));
+it does not implement volumetric phase-function scattering. Neither this mode
+study nor the bounce toggle is a physically accurate global-illumination
+reference.

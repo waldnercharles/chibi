@@ -61,7 +61,7 @@
   "schema": 1,
   "settings": {
     "axes": "blender",
-    "converter_sha256": "1dacce1580de6bb8ebfcf3123a6e509d6c5f2b47e56b5edcba09d7229909cf84",
+    "converter_sha256": "0228f8274f195b0cabe204836ff9e679a20a497800bcf5aa62b9d60af7bd5b9a",
     "max_memory_mib": 4096,
     "max_seconds": 60,
     "max_work": 20000000,

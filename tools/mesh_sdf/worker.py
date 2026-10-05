@@ -10,7 +10,7 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
 sys.path.insert(0, str(Path(__file__).parent))
-from atlas import encode
+from atlas import encode, validate_metadata
 
 
 def read_obj(path):
@@ -153,6 +153,7 @@ def main():
     v = effective
     groups, components = topology(v, f)
     half = np.max(np.abs(v), axis=0) + s['padding']
+    validate_metadata(s['resolution'], half, 1, 1)
     field = bake(v, f, groups, half, s['resolution'])
     if not np.isfinite(field).all() or not (field < 0).any():
         raise ValueError('grid resolves no interior; increase resolution or adjust transform/padding')

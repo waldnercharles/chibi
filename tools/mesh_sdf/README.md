@@ -77,14 +77,24 @@ runtime format change, editor integration or mesh-to-SDF MCP endpoint in this sl
   grid spacing can be lost. A grid with no negative samples fails with advice to
   adjust resolution/placement; decoded borders must remain strictly positive.
 
+Before any PNG is written, metadata is checked against the native
+`shader_volume_contract` (including its float32 representation): half-size must
+be in `(1e-5, 1e6]`, range in `(0, 1e6]`, and Lipschitz in `[1, 16]`. The computed
+conservative Lipschitz value has a floor of 1. Oversized padding can violate
+half-size or range even for a tiny valid mesh and is rejected before publication.
+
 ## Budgets, provenance and publication
 
 The launcher is required: invoking `worker.py` directly bypasses resource limits.
-Defaults are 60 seconds including Blender startup, 4096 MiB child virtual address
+Defaults are 60 seconds including input preparation and Blender startup, 4096 MiB child virtual address
 space (Linux `RLIMIT_AS`), and 20 million voxel×triangle sign evaluations. CLI
 flags `--max-seconds`, `--max-memory-mib`, and `--max-work` override those budgets.
 Fixed limits are 3..128 samples per axis, 8 MiB source bytes, and 100,000 vertices
-or triangles. Sampling proceeds one grid row at a time; it does not allocate a
+or triangles. Input is opened nonblocking, checked as a regular file using that
+same descriptor, then read with a hard limit of 8 MiB plus one byte. FIFOs and
+devices are rejected; growth after the descriptor check cannot bypass the byte
+limit. A launcher deadline also interrupts stalled input preparation.
+Sampling proceeds one grid row at a time; it does not allocate a
 voxel×triangle array. Large/complex meshes may exceed the deliberately small
 work budget. Increase a budget explicitly only after considering the work.
 
@@ -110,9 +120,11 @@ make test-fast TEST_ARGS=--model-sampled
 ```
 
 The Python checks cover all samples of a tiny analytic box, anisotropic bounds,
-axis mapping, explicit scale/translation, repeated byte determinism, open and
+axis mapping, explicit scale/translation, repeated byte determinism, concave and
+disconnected/overlapping/nested-shell sign cases, open and
 inconsistently wound/non-manifold/inward meshes, invalid settings and work/time/
-memory exhaustion with no published output. With `CHIBI_CTL`, they also author,
+memory exhaustion with no published output. Metadata-limit, FIFO/device, growing
+file and input-preparation deadline regressions cover publication failure paths. With `CHIBI_CTL`, they also author,
 validate, inspect and bake the result through public MCP. A synthetic 5³ field
 compares the shared encoder byte-for-byte with the pinned PR151 Suzanne encoder,
 without regenerating Suzanne. These CPU checks do not establish GPU performance

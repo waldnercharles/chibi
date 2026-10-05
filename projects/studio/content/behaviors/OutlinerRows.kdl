@@ -1,0 +1,512 @@
+version 3
+name "OutlinerRows"
+id_counter 423
+description "Shows the Outliner's rows: the scene's root row, then the window of objects the object filter shows that the List asks for (ShowRows), refreshed with each UI refresh; folds the root, and scrolls an object Studio reveals into view."
+owner_type "ecs.entity"
+(array)variables {
+    - id=1 name="First" type="int" category="Window"
+    - id=2 name="Count" type="int" category="Window"
+    - id=3 name="Collapsed" type="bool" category="View"
+    - id=4 name="ShownOpen" type="bool" category="View" default=#true
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=5 type="Event" reference_name="Begin"
+            - {
+                id 7
+                type "Set UI Data"
+                inputs {
+                    Name "root.icon"
+                    Value type="const char *"
+                }
+            }
+            - {
+                id 13
+                type "Set UI Data"
+                inputs {
+                    Name "root.parent"
+                    Value type="bool"
+                }
+            }
+            - {
+                id 19
+                type "Set UI Data"
+                inputs {
+                    Name "root.depth"
+                    Value type="int"
+                }
+            }
+            - {
+                id 25
+                type "Event"
+                reference_name "ShowRows"
+                comment "The List's window, in list rows: the scene's root is row 0, so objects start at First - 1."
+                outputs {
+                    First id=27 declaration_id=1 type="int" kind="data"
+                    Count id=28 declaration_id=2 type="int" kind="data"
+                }
+            }
+            - id=29 type="Set Variable" reference_name="First"
+            - id=34 type="Set Variable" reference_name="Count"
+            - id=39 type="Event" reference_name="Refresh" comment="Each UI refresh, after the panel's events: Set UI Data changes nothing when a value is the same."
+            - {
+                id 68
+                type "Behavior Expression"
+                reference_name "max(First - 1, 0)"
+                inputs {
+                    First {
+                        id 69
+                        type "int"
+                        binding kind="variable" source_asset="OutlinerRows" name="First"
+                    }
+                }
+                outputs {
+                    Result id=70 type="double"
+                }
+            }
+            - {
+                id 97
+                type "Behavior Expression"
+                reference_name "Count - 1 + step(1, First)"
+                inputs {
+                    Count {
+                        id 98
+                        type "int"
+                        binding kind="variable" source_asset="OutlinerRows" name="Count"
+                    }
+                    First {
+                        id 99
+                        type "int"
+                        binding kind="variable" source_asset="OutlinerRows" name="First"
+                    }
+                }
+                outputs {
+                    Result id=100 type="double"
+                }
+            }
+            - id=101 type="Scene Objects"
+            - id=108 type="Scene Info"
+            - {
+                id 126
+                type "Behavior Expression"
+                reference_name "First == 0"
+                inputs {
+                    First {
+                        id 127
+                        type "double"
+                        flags 0
+                        binding kind="variable" source_asset="OutlinerRows" name="First"
+                    }
+                }
+                outputs {
+                    Result id=128 type="bool"
+                }
+            }
+            - {
+                id 132
+                type "Set UI Data"
+                inputs {
+                    Name "rootShown"
+                    Value type="bool"
+                }
+            }
+            - {
+                id 138
+                type "Set UI Data"
+                inputs {
+                    Name "count"
+                    Value {
+                        type "int"
+                        binding kind="local" name="Shown"
+                    }
+                }
+            }
+            - {
+                id 144
+                type "Set UI Data"
+                inputs {
+                    Name "root.label"
+                    Value type="const char *"
+                }
+            }
+            - {
+                id 150
+                type "Not"
+                inputs {
+                    Value {
+                        binding kind="variable" source_asset="OutlinerRows" name="Collapsed"
+                    }
+                }
+            }
+            - {
+                id 153
+                type "Set UI Data"
+                inputs {
+                    Name "root.open"
+                    Value type="bool"
+                }
+            }
+            - {
+                id 159
+                type "Set Variable"
+                reference_name "ShownOpen"
+                inputs {
+                    Value type="bool"
+                }
+                outputs {
+                    Value type="bool"
+                }
+            }
+            - {
+                id 164
+                type "Branch"
+                inputs {
+                    Condition {
+                        binding kind="variable" source_asset="OutlinerRows" name="Collapsed"
+                    }
+                }
+            }
+            - {
+                id 169
+                type "Set UI Data"
+                inputs {
+                    Name "rows"
+                    Value type="struct" type_name="SceneObjectRow" container=1
+                }
+            }
+            - {
+                id 189
+                type "Behavior Expression"
+                reference_name "1 + Shown"
+                inputs {
+                    Shown {
+                        id 190
+                        type "int"
+                        binding kind="local" name="Shown"
+                    }
+                }
+                outputs {
+                    Result id=191 type="double"
+                }
+            }
+            - {
+                id 192
+                type "Set UI Data"
+                inputs {
+                    Name "total"
+                    Value type="double"
+                }
+            }
+            - {
+                id 198
+                type "Clear"
+                inputs {
+                    Array type="struct" type_name="SceneObjectRow"
+                }
+                outputs {
+                    Array type="struct" type_name="SceneObjectRow"
+                }
+            }
+            - {
+                id 201
+                type "Set UI Data"
+                inputs {
+                    Name "rows"
+                    Value type="struct" type_name="SceneObjectRow" container=1
+                }
+            }
+            - {
+                id 207
+                type "Set UI Data"
+                inputs {
+                    Name "total"
+                    Value type="int"
+                }
+            }
+            - {
+                id 227
+                type "Behavior Expression"
+                reference_name "Shown > 0"
+                inputs {
+                    Shown {
+                        id 228
+                        type "double"
+                        flags 0
+                        binding kind="local" name="Shown"
+                    }
+                }
+                outputs {
+                    Result id=229 type="bool"
+                }
+            }
+            - id=233 type="Branch"
+            - {
+                id 238
+                type "Set UI Data"
+                inputs {
+                    Name "notice"
+                    Value type="const char *"
+                }
+            }
+            - id=244 type="Text Equal"
+            - id=248 type="Branch"
+            - {
+                id 253
+                type "Set UI Data"
+                inputs {
+                    Name "notice"
+                    Value type="const char *"
+                }
+            }
+            - {
+                id 259
+                type "Set UI Data"
+                inputs {
+                    Name "notice"
+                    Value type="const char *"
+                }
+            }
+            - id=265 type="Event" reference_name="FoldRoot"
+            - {
+                id 267
+                type "Set Variable"
+                reference_name "Collapsed"
+                inputs {
+                    Value type="bool" default=#true
+                }
+                outputs {
+                    Value type="bool"
+                }
+            }
+            - id=272 type="Event" reference_name="UnfoldRoot"
+            - {
+                id 274
+                type "Set Variable"
+                reference_name "Collapsed"
+                inputs {
+                    Value type="bool"
+                }
+                outputs {
+                    Value type="bool"
+                }
+            }
+            - id=279 type="Event" reference_name="ToggleRoot"
+            - {
+                id 283
+                type "Not"
+                inputs {
+                    Value {
+                        binding kind="variable" source_asset="OutlinerRows" name="Collapsed"
+                    }
+                }
+            }
+            - {
+                id 286
+                type "Set Variable"
+                reference_name "Collapsed"
+                inputs {
+                    Value type="bool"
+                }
+                outputs {
+                    Value type="bool"
+                }
+            }
+            - {
+                id 291
+                type "Event"
+                reference_name "RootClicked"
+                outputs {
+                    Open id=293 declaration_id=1 type="bool" kind="data"
+                }
+            }
+            - {
+                id 322
+                type "Behavior Expression"
+                reference_name "(Open && !ShownOpen) || (!Open && ShownOpen)"
+                comment "Only a click on the twisty flips the state the row sends; a click elsewhere on the root sends the one shown."
+                inputs {
+                    Open id=323 type="bool" flags=0
+                    ShownOpen {
+                        id 324
+                        type "bool"
+                        flags 0
+                        binding kind="variable" source_asset="OutlinerRows" name="ShownOpen"
+                    }
+                }
+                outputs {
+                    Result id=325 type="bool"
+                }
+            }
+            - id=329 type="Branch"
+            - id=334 type="Not"
+            - {
+                id 337
+                type "Set Variable"
+                reference_name "Collapsed"
+                inputs {
+                    Value type="bool"
+                }
+                outputs {
+                    Value type="bool"
+                }
+            }
+            - {
+                id 342
+                type "String"
+                inputs Value=""
+            }
+            - {
+                id 345
+                type "Bool"
+                inputs Value=#true
+            }
+            - id=348 type="Integer"
+            - {
+                id 351
+                type "Integer"
+                inputs Value=1
+            }
+            - id=354 type="String"
+            - {
+                id 357
+                type "String"
+                inputs Value="No objects. Add a prototype to start."
+            }
+            - {
+                id 360
+                type "String"
+                inputs Value="No matches"
+            }
+            - {
+                id 363
+                type "Event"
+                reference_name "RevealObject"
+                comment "Studio pings an object after Up, Down, a Find jump or F2: unfold, then scroll its row (list row + 1) into view."
+                outputs {
+                    Object id=365 declaration_id=1 type="const char *" kind="data"
+                }
+            }
+            - {
+                id 366
+                type "Set Variable"
+                reference_name "Collapsed"
+                inputs {
+                    Value type="bool"
+                }
+                outputs {
+                    Value type="bool"
+                }
+            }
+            - id=371 type="Object Row"
+            - {
+                id 388
+                type "Behavior Expression"
+                reference_name "Row >= 0"
+                inputs {
+                    Row id=389 type="double" flags=0
+                }
+                outputs {
+                    Result id=390 type="bool"
+                }
+            }
+            - id=394 type="Branch"
+            - {
+                id 413
+                type "Behavior Expression"
+                reference_name "Row + 1"
+                inputs {
+                    Row id=414 type="int"
+                }
+                outputs {
+                    Result id=415 type="double"
+                }
+            }
+            - {
+                id 416
+                type "Reveal UI List Row"
+                inputs Element="#outliner-list"
+            }
+        }
+        (array)edges {
+            - from="5.Then" to="7.Exec"
+            - from="7.Then" to="13.Exec"
+            - from="13.Then" to="19.Exec"
+            - from="25.Then" to="29.Exec"
+            - from="25.First" to="29.Value"
+            - from="25.Count" to="34.Value"
+            - from="29.Then" to="34.Exec"
+            - from="39.Then" to="101.Exec"
+            - from="68.Result" to="101.First" conversion="To Integer"
+            - from="97.Result" to="101.Count" conversion="To Integer"
+            - from="101.Then" to="132.Exec"
+            - from="101.Rows" to="169.Value"
+            - from="101.Rows" to="198.Array"
+            - from="101.Shown" to="138.Value"
+            - from="101.Shown" to="189.Shown"
+            - from="101.Shown" to="227.Shown" conversion="To Real"
+            - from="108.Title" to="144.Value"
+            - from="108.Filter" to="244.A"
+            - from="126.Result" to="132.Value"
+            - from="132.Then" to="138.Exec"
+            - from="138.Then" to="144.Exec"
+            - from="144.Then" to="153.Exec"
+            - from="150.Result" to="153.Value"
+            - from="150.Result" to="159.Value"
+            - from="153.Then" to="159.Exec"
+            - from="159.Then" to="164.Exec"
+            - from="164.True" to="201.Exec"
+            - from="164.False" to="169.Exec"
+            - from="169.Then" to="192.Exec"
+            - from="189.Result" to="192.Value"
+            - from="192.Then" to="233.Exec"
+            - from="198.Array" to="201.Value"
+            - from="201.Then" to="207.Exec"
+            - from="207.Then" to="233.Exec"
+            - from="227.Result" to="233.Condition"
+            - from="233.True" to="238.Exec"
+            - from="233.False" to="248.Exec"
+            - from="244.Result" to="248.Condition"
+            - from="248.True" to="253.Exec"
+            - from="248.False" to="259.Exec"
+            - from="265.Then" to="267.Exec"
+            - from="272.Then" to="274.Exec"
+            - from="279.Then" to="286.Exec"
+            - from="283.Result" to="286.Value"
+            - from="291.Then" to="329.Exec"
+            - from="291.Open" to="322.Open"
+            - from="291.Open" to="334.Value"
+            - from="322.Result" to="329.Condition"
+            - from="329.True" to="337.Exec"
+            - from="334.Result" to="337.Value"
+            - from="342.Value" to="7.Value"
+            - from="345.Value" to="13.Value"
+            - from="348.Value" to="19.Value"
+            - from="351.Value" to="207.Value"
+            - from="354.Value" to="238.Value"
+            - from="357.Value" to="253.Value"
+            - from="360.Value" to="259.Value"
+            - from="363.Then" to="366.Exec"
+            - from="363.Object" to="371.Object"
+            - from="366.Then" to="394.Exec"
+            - from="371.Row" to="388.Row" conversion="To Real"
+            - from="371.Row" to="413.Row"
+            - from="388.Result" to="394.Condition"
+            - from="394.True" to="416.Exec"
+            - from="413.Result" to="416.Row" conversion="To Integer"
+        }
+        (array)locals {
+            - id=422 name="Shown" from="101.Shown"
+        }
+    }
+    - id=47 kind="function" math_expression="max(First - 1, 0)" entry_id=48
+    - id=71 kind="function" math_expression="Count - 1 + step(1, First)" entry_id=72
+    - id=112 kind="function" math_expression="First == 0" entry_id=113
+    - id=175 kind="function" math_expression="1 + Shown" entry_id=176
+    - id=213 kind="function" math_expression="Shown > 0" entry_id=214
+    - id=296 kind="function" math_expression="(Open && !ShownOpen) || (!Open && ShownOpen)" entry_id=297
+    - id=374 kind="function" math_expression="Row >= 0" entry_id=375
+    - id=399 kind="function" math_expression="Row + 1" entry_id=400
+}

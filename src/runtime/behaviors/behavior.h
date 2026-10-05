@@ -51,6 +51,10 @@ struct game_particles;
 void game_behavior_bind_particles(game_behavior_world *world, struct game_particles *particles);
 struct game_visibility;
 void game_behavior_bind_visibility(game_behavior_world *world, struct game_visibility *visibility);
+/* Binds a host service, as Studio's world binds "studio" for its editor
+ * nodes, into every instance from now on; `type_name` and `value` are
+ * borrowed and must outlive the world. */
+void game_behavior_bind_service(game_behavior_world *world, const char *type_name, void *value);
 
 #define GAME_BEHAVIOR_LOG_MESSAGE_MAX 256
 
@@ -202,7 +206,15 @@ typedef struct
     double wake_time;
 } game_behavior_entity_state;
 
+/* The inspected instance (game_behavior_inspect) outlives its entity, with
+ * the runs and activity it recorded and no longer running, so a debugger can
+ * keep showing what it last did. The world keeps one; it goes when another
+ * is retired, its asset's definition changes, or on release. */
+bool game_behavior_retired_target(const game_behavior_world *world, game_behavior_attachment_info *out);
+void game_behavior_release_retired(game_behavior_world *world);
 int game_behavior_attachment_count_for_entity(const game_behavior_world *world, ecs_entity entity);
+/* The attachment at `index` of game_behavior_attachment_count, in schedule order. */
+game_behavior_attachment_info game_behavior_attachment_info_index(game_behavior_world *world, int index);
 /* The first activation paused at a breakpoint or step, with its attachment in
  * `out`; NULL while none is. Borrowed until the run resumes or the world
  * changes its attachments. */

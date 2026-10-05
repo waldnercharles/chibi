@@ -130,6 +130,22 @@ void test_asset_source()
         free(saved);
         av_doc_free(values);
     }
+    {
+        /* Canonical source has nothing authored to keep: an edit writes the
+         * target's canonical text, with new members in the target's order. */
+        const char *source = "name \"Removable\"\ncomponents {\n"
+                             "    (object)GAME.GameTransform\n}\n";
+        const char *canonical = "name \"Removable\"\ncomponents {\n"
+                                "    (object)GAME.GameAim\n"
+                                "    GAME.GameTransform x=1\n}\n";
+        char error[256];
+        av_doc *target = av_doc_read(canonical, error, sizeof error);
+        assert(target);
+        char *saved = asset_source_reconcile(source, av_doc_root(target), error, sizeof error);
+        assert(saved && !strcmp(saved, canonical));
+        free(saved);
+        av_doc_free(target);
+    }
     /* A visual field edit preserves hand-authored comments and whitespace,
      * including an inline property and a quoted value with escapes. */
     const char

@@ -1,7 +1,7 @@
 /* Studio kit internals shared by the reconciler (kit.c) and its feature
  * modules: controls, number fields, popups and menus, the command palette,
- * motion, text in place, toasts, lists, drag and drop, charts and wires. Not
- * part of the C API.
+ * motion, text in place, toasts, lists, drag and drop and wires. Not part of
+ * the C API.
  *
  * Conventions:
  * - An owned string is a `char *`, NULL until first set. str_set replaces it
@@ -17,7 +17,7 @@
  *   carries, and every lookup compares it (path_node, popup_find). A popup is
  *   heap allocated, so pointers to it stay valid; spring values are inline and
  *   move on insertion. No popup loop depends on key order.
- * - Owned pointers (node children and chart; exiting nodes; roots, popups)
+ * - Owned pointers (node children; exiting nodes; roots, popups)
  *   are freed only by node_free and kit_destroy; update them with any new
  *   owned field.
  * - Strings for one frame (frame_format, kit_string, kit_classes) are freed by
@@ -28,22 +28,16 @@
 #include "editor/ui/kit.h"
 #include "platform/cute.h"
 #include "support/array.h"
+#include "ui/controls/controls.h"
+#include "ui/drag.h"
+#include "ui/input_feel.h"
+#include "ui/list.h"
 #include "ui/motion.h"
 #include "ui/rml.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
-#define TOOLTIP_DELAY 0.5
-#define TOOLTIP_GROUP 0.4
-#define SUBMENU_DELAY 0.1
-#define STEP_REPEAT_DELAY 0.4
-#define STEP_REPEAT_INTERVAL 0.06
-#define SCRUB_THRESHOLD 3.0f
-#define TYPEAHEAD_RESET 0.5
-/* The buffer format_number writes. */
-#define NUMBER_TEXT 64
 
 typedef enum node_kind
 {
@@ -65,11 +59,7 @@ typedef enum node_kind
     KIND_POPUP,
     KIND_MENU_ITEM,
     KIND_SUBMENU,
-    KIND_TRIGGER,
-    KIND_SPLITTER,
     KIND_SURFACE,
-    KIND_COMMAND,
-    KIND_COMMAND_ITEM,
     KIND_LIST,
     KIND_CODE, /* kit_code: takes keys and text while focused */
 } node_kind;
@@ -92,15 +82,6 @@ typedef struct pair
     char *value;
 } pair;
 
-/* A splitter's arguments: the axis it drags along, 0 (x) or 1 (y); whether its
- * value grows against the pointer; and the value's bounds. */
-typedef struct splitter_desc
-{
-    int axis;
-    bool invert;
-    double min, max;
-} splitter_desc;
-
 /* Control state. A new node's widget has pending_index -1 and icon
  * UINT32_MAX; everything else starts zero. */
 typedef struct widget
@@ -108,10 +89,6 @@ typedef struct widget
     bool open;
     bool pending;
     bool committed;
-    bool editing;
-    bool scrubbing;
-    bool pressing;
-    bool suppress_click;
     bool focused;
     bool area; /* a text field over several lines */
     bool autocomplete_query_active;
@@ -119,55 +96,18 @@ typedef struct widget
     bool autocomplete_canceled;
     bool autocomplete_sync;
     bool secret;
-    bool focus_picker; /* color trigger opened with the keyboard */
     double value;
-    double start;
-    double pending_value;
     int pending_index;
-    int step_dir;
-    double step_next;
-    float press_x;
     kit_number_desc desc; /* its strings are borrowed for one call only */
-    splitter_desc split;
-    char *unit, *addon, *addon_cls, *draft, *applied, *label, *meta, *badge,
-        *placeholder;
+    char *addon, *draft, *applied, *label, *meta, *badge, *placeholder;
     char **labels; /* owned strings */
     uint32_t icon;
     uint32_t color;
-    float hsv[3];
-    int drag_part;               /* color picker: 1 plane, 2 hue */
-    bool at_bottom;              /* list: pinned to the bottom */
-    rml_element *body;           /* list content */
-    float body_height, body_top; /* list: the content sizing applied, in dp */
-    rml_element *value_el, *fill_el, *input_el, *addon_el, *unit_el, *label_el,
-        *icon_el, *meta_el, *twisty_el, *kbd_el, *badge_el, *head_el,
-        *swatch_el, *about_el, *menu_el;
+    ui_list_state list; /* list: its window's scroll state (ui/list.h) */
+    rml_element *body;  /* list content */
+    rml_element *value_el, *input_el, *label_el, *icon_el, *meta_el, *twisty_el,
+        *kbd_el, *badge_el, *head_el, *about_el;
 } widget;
-
-/* Charts (kit_chart.c): what the chart element draws this frame. The chart
- * element's user data owns its frame. */
-typedef struct chart_series
-{
-    float *times, *values;
-    uint32_t color;
-} chart_series;
-
-typedef struct chart_frame
-{
-    chart_series *series;
-    double *ticks;
-    double now, lo, hi, hover_value;
-    float window, dp, reference, hover_x;
-    bool fill, live, reduced_motion;
-} chart_frame;
-
-typedef struct chart_state
-{
-    bool ranged;
-    double lo, hi, time;
-    rml_element **labels;
-    rml_element *badge, *hover;
-} chart_state;
 
 struct node
 {
@@ -190,9 +130,12 @@ struct node
     bool layout_known;
     kit_rect layout_rect;
     spring layout_x, layout_y;
-    chart_state *chart; /* owned, NULL until used */
-    char *drop_type; /* accepted drag type, set each frame by kit_drop_target */
-    bool hosted;     /* kit_host: its children are mounted content */
+    char **drop_types; /* accepted drag types, set each frame by kit_drop_target */
+    bool drag_source; /* kit_drag_source named it this frame */
+    bool hosted;      /* kit_host: its children are mounted content */
+    /* kit_document_begin: its container is the body of a document of its
+       own, shown over el; it adds no step to its children's paths. */
+    bool document;
 };
 
 /* A toast (kit_toast.c). Positions are springs around their targets, in dp. */
@@ -208,27 +151,6 @@ typedef struct toast
     spring y, x, scale, opacity;
 } toast;
 
-/* The drag in progress (kit_drag.c). */
-typedef struct drag_state
-{
-    bool pending, active, dropped;
-    char *type, *payload, *label, *source, *over, *target;
-    uint32_t icon;
-    float x0, y0;
-    double t0;
-} drag_state;
-
-/* A value animated by kit_spring, keyed by its path. */
-typedef struct spring_value
-{
-    char *key;
-    double target, time;
-    spring s;
-    spring_params params; /* set from duration before the first step */
-    float duration;
-    uint64_t frame;
-} spring_value;
-
 /* A retired node kept until its exit transitions end. */
 typedef struct exiting
 {
@@ -236,24 +158,24 @@ typedef struct exiting
     double until;
 } exiting;
 
-/* popup_at creates one closed, with highlight -1. */
+/* popup_at creates one closed, with highlight -1. Open, it is stacked with
+ * ui/popover.c from its first emission (shown) until popover.c or the kit
+ * closes it. */
 typedef struct popup
 {
     char *key;
     bool open;
-    bool placed;
+    bool shown;
     bool at_point;
+    bool beside; /* a submenu, beside its row */
     bool keyboard;
-    bool activated;
-    bool menubar;
     bool dropdown;
     bool dropdown_focus;
     bool dropdown_reveal;
     bool autocomplete;
     bool autocomplete_opening;
-    bool popover;
-    bool focus_pending;
-    char *trigger;
+    char *trigger;     /* the path of what focus returns to */
+    char *anchor_path; /* the path it hangs from; NULL hangs from `anchor` */
     float x, y;
     kit_rect anchor;
     char *parent; /* parent popup key for a submenu or nested dropdown */
@@ -261,34 +183,21 @@ typedef struct popup
     char *dropdown_trigger_path;
     char dropdown_query[256];
     rml_element *dropdown_search;
-    int highlight;
-    char *sub_hover;
-    double sub_hover_since;
-    node **items; /* entries may be NULL */
-    node *node;   /* the emitted popup, NULL once unmapped */
-    char *typed;
-    double typed_at;
+    int highlight;       /* a dropdown's, which its search field moves */
+    node **items;        /* entries may be NULL */
+    node *node;          /* the emitted popup, NULL once unmapped */
     float content;       /* widest row this frame, dp; sizes the menu */
     float content_shown; /* the width applied */
 } popup;
-
-typedef struct command_state
-{
-    bool open;
-    bool focus;
-    char *placeholder;
-    char *query;
-    int selected;
-    int chosen;  /* -1 none */
-    bool reveal; /* keyboard moved the selection; scroll it into view */
-    int *shown;  /* original indices in display order */
-    rml_element *input;
-} command_state;
 
 struct kit
 {
     rml_context *context;
     rml_element *doc;
+    /* Every document the kit emits into, each with its listener: doc, the
+       layer's, then those kit_document_begin opened. */
+    rml_element **documents;
+    char **body_classes; /* owned: kit_set_body_class's, on every document */
     rml_listener *listener;
     char *document; /* the markup's file name, which names its sheets */
     char *theme;    /* kit_theme's RCSS, the document's stylesheet */
@@ -306,16 +215,13 @@ struct kit
     uint64_t frame; /* starts at 1 */
     kit_frame_input in;
     CF_MAP(popup *) popups; /* owned; keyed by str_hash(key) */
-    popup **popup_stack;    /* open order, top last */
-    node **triggers;        /* entries may be NULL */
     rml_element *tooltip;
     rml_element *tip_target;
     double tip_since;
     double tip_warm_until;
     bool tip_visible;
     uint64_t tip_shown_frame;
-    command_state command;
-    rml_element *command_backdrop;
+    char *tip_image; /* the picture the shown tooltip holds, owned */
     char *surface_capture;
     int surface_button; /* -1 none */
     popup **emitting;   /* popups being emitted, innermost last */
@@ -326,8 +232,7 @@ struct kit
     node **entering; /* data-starting-style set at creation */
     exiting *exiting;
     node **layout_nodes;
-    CF_MAP(spring_value) springs; /* keyed by str_hash(key) */
-    drag_state drag;
+    bool dragging; /* a drag ran in the context at the last kit_begin */
     toast *toasts;
     CF_MAP(uint64_t) toast_actions; /* toast id -> frame the action was pressed */
     int toast_next;
@@ -350,7 +255,6 @@ void str_catf(char **s, const char *format, ...)
 /* Appends text with &, <, > and " as RML entities. */
 void escape(char **s, const char *text);
 void utf8(char out[static 5], uint32_t cp);
-void format_number(char out[static NUMBER_TEXT], double v, int precision, bool integer);
 /* A formatted string that lives until kit_end. */
 const char *frame_format(kit *k, const char *format, ...)
     __attribute__((format(printf, 2, 3)));
@@ -372,8 +276,6 @@ void set_flag(node *n, const char *name, bool on);
 void flag_element(rml_element *el, const char *name, bool on);
 void set_text(node *n, const char *text);
 void set_element_text(rml_element *el, const char *text);
-void set_line_text(rml_element *el, const char *text);
-void set_right_line_text(rml_element *el, const char *text);
 /* Escapes text into the element's content unconditionally. */
 void set_inner_text(rml_element *el, const char *text);
 
@@ -397,6 +299,8 @@ bool within(rml_element *el, rml_element *ancestor);
 int nodes_index(node *const *list, const node *n);
 /* Removes every n from a node array, keeping order. */
 void nodes_remove(node **list, const node *n);
+/* Whether the kit emits into this document. */
+bool owns_document(const kit *k, const rml_element *document);
 
 /* Popups by key: find returns NULL when absent, at creates one closed. */
 popup *popup_find(const kit *k, const char *key);
@@ -411,6 +315,8 @@ unsigned event_modifiers(const rml_event *e);
 /* Takes the node: removes its element now, or keeps a presence node until its
  * exit transitions end. */
 void retire(kit *k, node *n);
+/* Frees the exiting nodes whose elements are about to go with an ancestor. */
+void release_exiting_within(kit *k, rml_element *ancestor);
 void presence(kit *k, node *n);
 void motion_frame(kit *k);
 void forget_motion(kit *k, node *n);
@@ -419,37 +325,28 @@ void forget_motion(kit *k, node *n);
 
 void toasts_frame(kit *k);
 
-/* ---------- Drag and drop (kit_drag.c) ---------- */
+/* ---------- Drag and drop (kit_drag.c over ui/drag.h) ---------- */
 
-void drag_begin_frame(kit *k);
-void drag_end_frame(kit *k);
-void drag_cancel(kit *k);
+/* At kit_begin: ends a drag whose release the context missed, and closes
+ * the popups as one starts. */
+void drag_frame(kit *k);
+/* At kit_end, for each node emitted: its source and target attributes as
+ * this frame named them. */
+void drag_flush(node *n);
+/* Forgets the drag types a node accepted last frame. */
+void drop_types_clear(node *n);
 
-/* ---------- Custom elements (kit_chart.c, kit_wires.c) ---------- */
+/* ---------- Custom elements (kit_wires.c) ---------- */
 
 /* Registered per kit: RmlUi's factory is rebuilt whenever it reinitializes. */
-void register_chart_element();
 void register_wires_element();
 void register_dot_element();
-
-/* ---------- Number fields (kit_number.c) ---------- */
-
-void repeat_steppers(kit *k);
-void number_press(kit *k, node *n, const rml_event *e);
-void number_release(node *n);
-void number_click(kit *k, node *n);
-/* Dragstart, drag and dragend, told apart by e->id. */
-void number_drag(kit *k, node *n, const rml_event *e);
-void number_key(kit *k, node *n, const rml_event *e);
-void number_blur(kit *k, node *n, rml_element *target);
 
 /* ---------- Other controls (kit_controls.c) ---------- */
 
 /* Handlers ignore kinds they do not own. */
-void control_press(kit *k, node *n, const rml_event *e);
 void control_click(kit *k, node *n, rml_element *target);
 node *emit_input(kit *k, const char *key, node_kind kind, const char *cls, const char *placeholder);
-void control_drag(kit *k, node *n, const rml_event *e);
 void control_key(kit *k, node *n, const rml_event *e);
 void control_change(kit *k, node *n, rml_element *target);
 void control_focus(kit *k, node *n, rml_element *target);
@@ -458,26 +355,28 @@ void control_blur(node *n, rml_element *target);
 /* ---------- Popups, menus and tooltips (kit_popup.c) ---------- */
 
 void close_popup(kit *k, const char *key);
+/* The kit's popups and the context's authored popovers. */
 void close_all_popups(kit *k);
+/* Closes those popover.c closed; kit_end runs it after their last frame. */
+void forget_closed_popups(kit *k);
 /* parent is NULL or "" for a top-level popup. */
-void open_popup(kit *k, const char *key, kit_rect anchor, bool at_point, float x, float y, const char *parent);
-void popup_open_on(kit *k, const char *key, kit_rect anchor, const node *trigger);
-void place_popups(kit *k);
-void open_hovered_submenus(kit *k);
-void close_activated_menus(kit *k);
-/* Sees every press; one outside the popups and their triggers closes them. */
-void popup_press(kit *k, node *n, rml_element *target);
-void trigger_press(kit *k, node *n, const rml_event *e);
+popup *open_popup(kit *k, const char *key, const char *parent);
+/* Opens below `anchor`, closing the kit's popups but the one holding
+   `trigger` and its parents. */
+popup *popup_open_on(kit *k, const char *key, const node *anchor, const node *trigger);
+/* NULL when it toggled the trigger's open dropdown closed. */
+popup *dropdown_open_on(kit *k, const char *key, const char *placeholder, const node *trigger);
+/* Emits open dropdown `key`'s search and its items ranked by the query;
+   the chosen item's original index, or -1. Call it each frame while open. */
+int dropdown_items(kit *k, const char *key, const kit_command_item *items, int count);
+void autocomplete_open_on(kit *k, const char *key, node *trigger);
+void size_popups(kit *k);
+/* Sees every press: one outside an autocomplete ends its field's editing. */
+void popup_press(kit *k, rml_element *target);
 void menu_click(kit *k, node *n);
 void menu_hover(kit *k, node *n);
-/* False when no popup is open or a popover leaves a key to its control. */
-bool popup_key(kit *k, const rml_event *e);
 bool dropdown_key(kit *k, const rml_event *e, node *n);
 bool autocomplete_key(kit *k, const rml_event *e, node *n);
-void dropdown_open_on(kit *k, const char *key, kit_rect anchor, const char *placeholder, const node *trigger);
-void autocomplete_open_on(kit *k, const char *key, kit_rect anchor, node *trigger);
-void popup_focus(kit *k, rml_element *target);
-bool focus_step(rml_element *root, rml_element *from, int step, bool wrap, rml_element *skip);
 void set_tip(node *n, const char *label, const char *shortcut, const char *description);
 void update_tooltip(kit *k);
 
@@ -485,11 +384,6 @@ void update_tooltip(kit *k);
 
 /* Key and change handlers return false for events that are not the
  * palette's. */
-void command_press(kit *k, rml_element *target);
-bool command_key(kit *k, const rml_event *e);
-bool command_change(kit *k, rml_element *target);
-void command_click(kit *k, node *n);
-void command_hover(kit *k, node *n);
 
 /* ---------- Native slots (kit_slot.c) ---------- */
 

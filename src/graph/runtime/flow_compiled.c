@@ -243,6 +243,10 @@ static void trace(void *user, const behavior_function_edge *edge, uintptr_t step
                                  edge->to_id,   edge->to_pin_id,
                                  edge->kind,    run->current_time,
                                  steps };
+    /* A paused run keeps its traced variant after its instance stops tracing. */
+    if (run->instance->trace_enabled) {
+        behavior_instance_record_activity(run->instance, &traversal);
+    }
     flow_trace_record(run, traversal);
     flow_compiled *c = run->compiled;
     for (int frame = invocation->base + edge->frame; frame > 0;

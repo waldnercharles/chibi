@@ -26,7 +26,7 @@ body.theme-dracula {
     --border: #6272a4;
     --input: #6272a4;
     --ring: #dfcafc;
-    --app: #282a36;
+    --app: #21222c;
     --primary-text: #dfcafc;
     --link: #dfcafc;
     --selected: #3a374d;
@@ -112,7 +112,7 @@ body.theme-solarized-dark {
     --border: #586e75;
     --input: #586e75;
     --ring: #67aee0;
-    --app: #002b36;
+    --app: #00212b;
     --primary-text: #67aee0;
     --link: #67aee0;
     --selected: #0b4053;
@@ -155,7 +155,7 @@ body.theme-tokyo-night {
     --border: #15161e;
     --input: #15161e;
     --ring: #87abf8;
-    --app: #16161e;
+    --app: #13141c;
     --primary-text: #87abf8;
     --link: #87abf8;
     --selected: #262b3f;
@@ -456,7 +456,7 @@ body.theme-rose-pine {
     --border: #26233a;
     --input: #26233a;
     --ring: #c4a7e7;
-    --app: #191724;
+    --app: #121019;
     --primary-text: #c4a7e7;
     --link: #c4a7e7;
     --selected: #332e44;
@@ -499,7 +499,7 @@ body.theme-rose-pine-moon {
     --border: #393552;
     --input: #393552;
     --ring: #c9afe9;
-    --app: #232136;
+    --app: #1a1828;
     --primary-text: #c9afe9;
     --link: #c9afe9;
     --selected: #3c3653;
@@ -542,7 +542,7 @@ body.theme-rose-pine-dawn {
     --border: #f2e9e1;
     --input: #f2e9e1;
     --ring: #675878;
-    --app: #faf4ed;
+    --app: #f2e9e1;
     --primary-text: #675878;
     --link: #675878;
     --selected: #f6f0ed;
@@ -585,7 +585,7 @@ body.theme-gruvbox-light {
     --border: #d5c4a1;
     --input: #d5c4a1;
     --ring: #983203;
-    --app: #f9f5d7;
+    --app: #f2e5bc;
     --primary-text: #983203;
     --link: #983203;
     --selected: #f5e2b7;

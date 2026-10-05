@@ -35,7 +35,8 @@ typedef enum
     MODEL_BEVELED_EXTRUDE,
     MODEL_OFFSET,
     MODEL_SHELL,
-    MODEL_TUBE_SWEEP
+    MODEL_TUBE_SWEEP,
+    MODEL_SAMPLED_SDF
 } model_op;
 typedef struct
 {

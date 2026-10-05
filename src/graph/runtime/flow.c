@@ -196,6 +196,9 @@ static void record_traversal(
         from_id, from_pin_id,       to_id,      to_pin_id,
         kind,    run->current_time, run->steps,
     };
+    if (run->instance) {
+        behavior_instance_record_activity(run->instance, &traversal);
+    }
     flow_trace_record(run, traversal);
 }
 
@@ -647,7 +650,13 @@ static int execute(flow_run *run)
         behavior_function_context host = { 0 };
         bool uninspected = !run->instance->trace_enabled && !run->step_mode &&
                            !run->pause_requested && !acount(run->watches);
-        if (function && (uninspected || behavior_function_resumable(function)) &&
+        /* The debugger's target records every wire and value; code compiled
+           without observers records none, so the target interprets it. */
+        bool interpret = function && run->instance->debug_target &&
+                         run->instance->trace_enabled &&
+                         !behavior_function_observed(function);
+        if (function && !interpret &&
+            (uninspected || behavior_function_resumable(function)) &&
             behavior_function_bind(
                 function,
                 &host,
@@ -1997,6 +2006,11 @@ int flow_context_return(struct flow_context *ctx)
     frame_arrays_free(ctx->run);
     aclear(ctx->run->frames);
     return FLOW_OK;
+}
+
+arena *flow_context_scratch(struct flow_context *ctx)
+{
+    return &ctx->run->scratch;
 }
 
 void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size)

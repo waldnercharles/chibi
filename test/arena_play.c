@@ -20,6 +20,7 @@
 #include "support/text_overlay.h"
 #include "support/xalloc.h"
 #include "test/physics_executor.h"
+#include "test/suite_internal.h"
 
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_keyboard.h>
@@ -209,6 +210,7 @@ static void fixture_free(arena_fixture *f)
     engine_viewport_free(f->viewport);
     engine_free(f->runtime);
     game_live_world_free(f->live);
+    test_ui_probes_free();
     editor_free(f->graph);
     ecs_world_free(f->world);
 }
@@ -828,15 +830,16 @@ static void text_event(const char *text)
     assert(SDL_PushEvent(&event));
 }
 
-/* Whether an activation reached the game's entities within a few frames of
-   `before` events pending: a key reaches ImGui a frame after SDL has it, and
-   its activation reaches the entity at the next document update. */
-static bool activated(arena_fixture *f, app_game_presentation *game, int before)
+/* Whether an activation reached `probe`'s entity within a few frames: a key
+   reaches ImGui a frame after SDL has it, and its activation reaches the
+   entity's behaviors at the next document update. */
+static bool activated(arena_fixture *f, app_game_presentation *game, const ui_probe *probe)
 {
+    int before = probe->count;
     bool seen = false;
     for (int i = 0; i < 4; i++) {
         assert(standalone_frame(f, game) == 0);
-        seen |= game_entities_pending_events(f->live->entities) > before;
+        seen |= probe->count > before;
     }
     return seen;
 }
@@ -864,10 +867,13 @@ static void standalone_ui_keys(arena_fixture *f)
     assert(GAME_GameUi_add(f->world, player, 0) == ECS_OK);
     assert(ecs_world_apply_commands(f->world) == ECS_OK);
     *GAME_GameUi_get(f->world, player) = (GameUi){ .document = "KeyProbe" };
-    bool quiet = !activated(f, game, game_entities_pending_events(f->live->entities));
+    ui_probe heard = { 0 };
+    const char *const knock[] = { "Knock" };
+    test_ui_probe_events(f->live, player, knock, 1, &heard);
+    bool quiet = !activated(f, game, &heard);
     key_event(SDL_SCANCODE_K, true);
     key_event(SDL_SCANCODE_K, false);
-    bool knocked = activated(f, game, game_entities_pending_events(f->live->entities));
+    bool knocked = activated(f, game, &heard);
     assert(quiet && knocked);
 
     game_ui_focus(engine_ui(f->runtime), ecs_entity_to_u64(player), "#name");

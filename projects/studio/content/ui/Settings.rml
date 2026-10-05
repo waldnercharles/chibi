@@ -39,16 +39,17 @@
           <span class="page-title" data-if="settings.query != ''">Search Results</span>
           <span class="badge accent" data-if="settings.query != ''">{{ settings.matches }}</span>
           <span class="badge" data-if="settings.scope == 'project'">{{ settings.project }}</span>
+          <span class="badge warning conflicts" data-if="settings.category == 'keyboard' &amp;&amp; settings.query == '' &amp;&amp; settings.conflicts &gt; 0" data-event-click="settings.query = 'conflict'">{{ settings.conflicts }} conflicting</span>
         </div>
         <div class="row-slot" data-for="row : settings.rows" data-if="row.shown">
           <div class="group" data-if="row.head">{{ row.group }}</div>
           <use ui="SettingRow" data-alias-setting="row">
-            <div data-for="row.bool"><use ui="Switch" data-checked="row.value" value="true"/></div>
-            <div data-for="row.choice">
-              <use ui="Segmented" data-if="row.type == 'choice' &amp;&amp; row.choices.size &lt;= 3">
+            <div data-when="row.control == 'bool'"><use ui="Switch" data-checked="row.value" value="true"/></div>
+            <div data-when="row.control == 'choice'">
+              <use ui="Segmented" data-when="row.type == 'choice' &amp;&amp; row.choices.size &lt;= 3">
                 <label data-for="choice : row.choices"><input type="radio" data-checked="row.value" data-attr-value="choice.value"/><span class="face">{{ choice.label }}</span></label>
               </use>
-              <div data-if="row.type != 'choice' || row.choices.size &gt; 3">
+              <div data-when="row.type != 'choice' || row.choices.size &gt; 3">
                 <use ui="Select">
                   <select data-value="row.value">
                     <option data-for="choice : row.choices" data-attr-value="choice.value">{{ choice.label }}</option>
@@ -56,20 +57,21 @@
                 </use>
               </div>
             </div>
-            <div class="range" data-for="row.range">
+            <div class="range" data-when="row.control == 'range'">
               <span class="readout">{{ row.value }}</span>
               <use ui="Slider" data-value="row.position" min="0" max="1" data-attr-step="row.tick"/>
             </div>
-            <div class="text-control" data-for="row.text"><use ui="TextField" data-alias-text="row.value"/></div>
+            <div class="text-control" data-when="row.control == 'text'"><use ui="TextField" data-alias-text="row.value"/></div>
             <div class="shortcut" data-if="row.type == 'shortcut'">
               <div class="keys">
                 <span class="key" data-for="key : row.keys">{{ key }}</span>
                 <span class="none" data-if="row.keys.size == 0">Unassigned</span>
-                <button class="btn outline sm record-shortcut" data-if="!row.indexed &amp;&amp; !row.recording" data-event-click="row.record = true">Record</button>
+                <button class="btn outline sm record-shortcut" data-if="!row.indexed &amp;&amp; !row.recording" data-event-click="emit('settings.record', row.key)">Record</button>
                 <span class="recording" data-if="row.recording">Press a key combination. Esc cancels.</span>
               </div>
+              <span class="shortcut-aliases" data-if="row.aliases != ''">{{ row.aliases }}</span>
               <span class="shortcut-context">{{ row.context }}</span>
-              <span class="shortcut-conflict" data-if="row.conflict != ''">{{ row.conflict }}</span>
+              <span class="shortcut-conflict" data-if="row.conflict != ''"><span class="icon">&#xea6c;</span>{{ row.conflict }}</span>
             </div>
           </use>
         </div>

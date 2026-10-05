@@ -22,6 +22,8 @@ typedef struct
 typedef struct
 {
     render_material_textures material;
+    /* Optional independent source field for uniform material emitters. */
+    render_emitter_textures emitters;
     /* Optional: the backdrop behind open space. */
     CF_Texture background;
 } render_radiance_inputs;
@@ -61,12 +63,19 @@ typedef struct
 render_radiance_status render_radiance_get_status(const render_radiance *radiance);
 /* Deterministic submission bounds, not measured texture fetches or timings.
  * Gather skips closed probes and may end visibility tests early. Blur counts
- * the four-quadrant taps in its two axes, excluding seed/filter work. */
+ * the four-quadrant taps in its two axes, excluding seed/filter work.
+ * Depth candidates count coarse tiles, excluding child and leaf refinement. */
 typedef struct
 {
     GameHRCSurfaceMode mode;
     int cells, block;
+    GameHRCDepthVisibility visibility;
+    int emitter_sources, emitter_pixels;
+    size_t emitter_bytes;
     size_t candidates, visibility_taps, blur_quadrant_fetches;
+    /* Optional Depth history pass cells and allocated RGBA16F target bytes. */
+    int temporal_cells;
+    size_t temporal_bytes;
 } render_surface_work;
 render_surface_work render_radiance_surface_work(const render_radiance *radiance);
 

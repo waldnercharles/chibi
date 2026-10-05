@@ -108,9 +108,13 @@ int game_prototype_apply_components_value(
     ecs_entity entity,
     av_value *components,
     const game_prototype_registry *registry,
+    char ***owned_strings,
     char *error,
     size_t error_size
 );
+/* Free strings retained by game_prototype_apply_components_value after their
+ * ECS component values are no longer used. */
+void game_prototype_owned_strings_free(char **strings);
 /* Allocate authored components without running attached behaviors. */
 int game_prototype_spawn_components(
     const game_prototype *prototype,

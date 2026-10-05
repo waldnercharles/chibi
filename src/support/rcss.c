@@ -14,6 +14,9 @@
 
 static void put(char **out, const char *text, size_t length)
 {
+    if (!length) {
+        return;
+    }
     int start = acount(*out);
     asetlen(*out, start + (int)length);
     memcpy(*out + start, text, length);
@@ -26,9 +29,12 @@ static void put_text(char **out, const char *text)
 
 static char *take(char **out)
 {
-    char *text = xmalloc((size_t)acount(*out) + 1);
-    memcpy(text, *out, (size_t)acount(*out));
-    text[acount(*out)] = '\0';
+    int length = acount(*out);
+    char *text = xmalloc((size_t)length + 1);
+    if (length) {
+        memcpy(text, *out, (size_t)length);
+    }
+    text[length] = '\0';
     afree(*out);
     *out = NULL;
     return text;

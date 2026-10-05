@@ -44,7 +44,8 @@ static void draw_scene(void *user)
             particles,
             &camera,
             scene->viewport,
-            runtime
+            runtime,
+            (render_skip){ 0 }
         );
         return;
     }
@@ -53,7 +54,8 @@ static void draw_scene(void *user)
         world,
         particles,
         scene->viewport,
-        runtime
+        runtime,
+        (render_skip){ 0 }
     );
 }
 
@@ -61,7 +63,7 @@ typedef struct
 {
     double median_ms, p95_ms, p99_ms;
     double simulation_ms, render_ms;
-    int samples, particles, entities;
+    int samples, particles, entities, material_pieces;
     float resolution;
     double scene_gpu_ms;
     const char *backend;
@@ -188,7 +190,7 @@ static bool render_scene(
         ui_world ui = { .ecs = game_prototype_preview_world(scene.preview),
                         .page = chibi_preview_page(run),
                         .model = engine_ui(preview_runtime),
-                        .entities = game_prototype_preview_entities(scene.preview) };
+                        .live = game_prototype_preview_live(scene.preview) };
         engine_viewport_set_ui(scene.viewport, &ui, content_root);
     }
     /* Captures settle ImGui for two frames. Performance runs first warm the
@@ -261,6 +263,8 @@ static bool render_scene(
         ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 0, 0 });
         ImGui_PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
         ImGui_Begin("Scene", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+        /* Its documents step a fixed frame each, as its simulation does. */
+        engine_viewport_set_time(scene.viewport, i * ENGINE_FIXED_SECONDS);
         engine_viewport_image(scene.viewport, width, height);
         ImGui_End();
         ImGui_PopStyleVarEx(2);
@@ -333,6 +337,7 @@ static bool render_scene(
         measurement->model_after = render_shader_model_stats();
         measurement->horizon_work = app_scene_renderer_horizon_work(scene.renderer);
         measurement->surface_work = app_scene_renderer_surface_work(scene.renderer);
+        measurement->material_pieces = app_scene_renderer_material_pieces(scene.renderer);
         ok = chibi_preview_readback(width, height, png, error, size);
     }
     if (scene.viewport) {
@@ -647,6 +652,14 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         );
         yyjson_mut_obj_add_int(response, performance, "particles", measurement.particles);
         yyjson_mut_obj_add_int(response, performance, "entities", measurement.entities);
+        /* The last frame's rasterized shapes and mask pieces: distant masks
+         * draw coarser levels (render/material_lod.h). */
+        yyjson_mut_obj_add_int(
+            response,
+            performance,
+            "material_pieces",
+            measurement.material_pieces
+        );
         yyjson_mut_obj_add_real(
             response,
             performance,

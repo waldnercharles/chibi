@@ -15,7 +15,7 @@
 
 struct render_shader_preview
 {
-    const behavior_asset *asset;
+    char *name; /* the shader in the catalog */
     render_arena *arena;
     render_arena_post *post;
     render_arena_camera camera;
@@ -78,7 +78,7 @@ static bool prepare_material_preview(render_shader_preview *preview, int width, 
 
 static bool prepare_shape_preview(render_shader_preview *preview, shader_error *error)
 {
-    int id = render_shader_find(preview->asset->name);
+    int id = render_shader_find(preview->name);
     if (!id) {
         set_error(error, "The shader asset was not registered.");
         return false;
@@ -116,34 +116,20 @@ static bool prepare_shape_preview(render_shader_preview *preview, shader_error *
     return preview->program != 0;
 }
 
-render_shader_preview *render_shader_preview_new(
-    const behavior_asset *asset,
+static render_shader_preview *preview_new(
+    const char *name,
+    bool material,
     int width,
     int height,
     const render_shader_preview_options *options,
     shader_error *error
 )
 {
-    if (error) {
-        *error = (shader_error){ 0 };
-    }
-    if (asset && asset->domain == BEHAVIOR_DOMAIN_MODEL) {
-        set_error(error, "Model previews require a scene with an SDF surface.");
-        return NULL;
-    }
-    if (!asset || (asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
-                   asset->domain != BEHAVIOR_DOMAIN_SHAPE)) {
-        set_error(error, "Shader previews require a material or shape asset.");
-        return NULL;
-    }
-    if (!render_shader_upsert(asset, error)) {
-        return NULL;
-    }
     render_shader_preview *preview = xcalloc(1, sizeof *preview);
-    preview->asset = asset;
+    preview->name = xstrdup(name);
     preview->width = width;
     preview->height = height;
-    preview->material = asset->domain == BEHAVIOR_DOMAIN_MATERIAL;
+    preview->material = material;
     preview->activity = options->activity;
     bool prepared = preview->material
                       ? prepare_material_preview(preview, width, height, error)
@@ -169,22 +155,58 @@ render_shader_preview *render_shader_preview_new(
     return preview;
 }
 
+render_shader_preview *render_shader_preview_new(
+    const behavior_asset *asset,
+    int width,
+    int height,
+    const render_shader_preview_options *options,
+    shader_error *error
+)
+{
+    if (error) {
+        *error = (shader_error){ 0 };
+    }
+    if (!asset || (asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
+                   asset->domain != BEHAVIOR_DOMAIN_SHAPE)) {
+        set_error(error, "Shader previews require a material or shape asset.");
+        return NULL;
+    }
+    if (!render_shader_upsert(asset, error)) {
+        return NULL;
+    }
+    return preview_new(asset->name, asset->domain == BEHAVIOR_DOMAIN_MATERIAL, width, height, options, error);
+}
+
+render_shader_preview *render_shader_preview_find(const char *name, int width, int height, shader_error *error)
+{
+    if (error) {
+        *error = (shader_error){ 0 };
+    }
+    int id = render_shader_find(name);
+    if (!id) {
+        set_error(error, "The shader asset was not registered.");
+        return NULL;
+    }
+    render_shader_preview_options options = { 0 };
+    return preview_new(name, !render_shader_is_shape(id), width, height, &options, error);
+}
+
 bool render_shader_preview_draw(render_shader_preview *preview, float time, const char *parameters_json)
 {
     if (!preview) {
         return false;
     }
     preview->error[0] = 0;
-    int shader = render_shader_find(preview->asset->name);
+    int shader = render_shader_find(preview->name);
     shader_error parameter_error = { 0 };
     if (!render_shader_parameters_validate(shader, parameters_json, &parameter_error)) {
         set_preview_error(preview, parameter_error.message);
         return false;
     }
     if (preview->material) {
-        if (!render_arena_preview(
+        if (!render_arena_preview_material(
                 preview->arena,
-                preview->asset,
+                shader,
                 &preview->camera,
                 parameters_json,
                 time,
@@ -243,5 +265,6 @@ void render_shader_preview_free(render_shader_preview *preview)
     render_programs_free(preview->programs);
     render_arena_free(preview->arena);
     render_arena_post_free(preview->post);
+    free(preview->name);
     free(preview);
 }

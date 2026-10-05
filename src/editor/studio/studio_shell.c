@@ -1,4 +1,3 @@
-#include "assets/model_validation.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/asset_index.h"
 #include "editor/workspace/model_preview.h"
@@ -6,7 +5,6 @@
 #include "support/text_file.h"
 
 #include <assert.h>
-#include <ctype.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -34,11 +32,6 @@ static const uint32_t EDITOR_ICONS[STUDIO_EDITOR_COUNT] = {
     KIT_ICON_PERFORMANCE, KIT_ICON_VARIABLE, KIT_ICON_EXPRESSION,
     KIT_ICON_LAYOUT,
 };
-
-static void dp(char *out, size_t size, float value)
-{
-    snprintf(out, size, "%.0fdp", value);
-}
 
 void studio_report(studio *s, const char *message)
 {
@@ -98,11 +91,12 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype)
    members and nodes. */
 static bool graph_focused(const studio *s)
 {
-    if (!studio_graph_active(s) || s->focus_area < 0) {
+    int area = studio_command_area(s);
+    if (!studio_graph_active(s) || area < 0) {
         return false;
     }
-    studio_editor editor = s->prefs.layouts[s->prefs.workspace].editors[s->focus_area];
-    return s->focus_area == s->graph.area || editor == STUDIO_EDITOR_MEMBERS ||
+    studio_editor editor = s->prefs.layouts[s->prefs.workspace].editors[area];
+    return area == s->graph.area || editor == STUDIO_EDITOR_MEMBERS ||
            (editor == STUDIO_EDITOR_PROPERTIES &&
             (s->tab == STUDIO_TAB_NODE || s->tab == STUDIO_TAB_MEMBER));
 }
@@ -324,6 +318,39 @@ void studio_replay_scenario(studio *s, const char *name)
     }
 }
 
+/* An edit the user did not make directly offers Undo in a toast while it is
+   still the latest edit, as Delete does. */
+static void offer_undo(studio *s, const char *title)
+{
+    kit_toast_dismiss(s->kit, s->undo_toast);
+    s->undo_toast = kit_toast(
+        s->kit,
+        0,
+        &(kit_toast_desc){ .title = title, .action = "Undo", .duration = 6 }
+    );
+    studio_record(s, KIT_TOAST_DEFAULT, title);
+    s->undo_toast_group = scene_history_group_id(s->scene->history, false);
+}
+
+/* What Stop applies of Keep Changes, or "" for nothing. */
+static void kept_title(studio *s, char *title, size_t size)
+{
+    int objects;
+    const char *name;
+    int values = scene_kept_values(s->scene, &objects, &name);
+    title[0] = '\0';
+    if (!values) {
+        return;
+    }
+    char who[160];
+    if (name) {
+        snprintf(who, sizeof who, "%s", name);
+    } else {
+        snprintf(who, sizeof who, "%d objects", objects);
+    }
+    snprintf(title, size, "Applied %d kept %s to %s", values, values == 1 ? "value" : "values", who);
+}
+
 void studio_runtime(studio *s, app_runtime_command command)
 {
     /* Play resumes a run paused at a breakpoint (Unreal). */
@@ -350,45 +377,218 @@ void studio_runtime(studio *s, app_runtime_command command)
     if (command == APP_RUNTIME_PLAY && state.playing) {
         command = APP_RUNTIME_PAUSE;
     }
+    char kept[320];
+    kept_title(s, kept, sizeof kept);
     app_scene_authoring_runtime_command(s->scene, state.target, command);
+    /* Stop applied Keep Changes as one Undo step. */
+    if (kept[0] && !studio_live(s)) {
+        offer_undo(s, kept);
+    }
 }
 
+/* Fits every selected object, a spawned one included, in the view. */
 void studio_frame_selection(studio *s)
 {
     if (scene_model_preview_name(s->scene)) {
         scene_model_preview_frame(s->scene);
         return;
     }
-    ecs_entity entity = selected_scene_entity(s->scene);
-    if (!entity.slot || !ecs_entity_is_alive(s->scene->world, entity)) {
+    app_scene_authoring *scene = s->scene;
+    ecs_entity *entities = NULL;
+    if (scene->runtime_selected.slot && selected_scene_entity(scene).slot) {
+        apush(entities, scene->runtime_selected);
+    }
+    for (int i = 0; i < acount(scene->actors); i++) {
+        ecs_entity entity = scene->actors[i].entity;
+        if (scene_instance_selected(scene, i) &&
+            ecs_entity_is_alive(scene->world, entity)) {
+            apush(entities, entity);
+        }
+    }
+    if (acount(entities)) {
+        fit_scene_view(s->viewport, scene->world, entities, acount(entities));
+        engine_viewport_get_view(s->viewport, &scene->camera.view);
+        scene->camera.saved = true;
+    }
+    afree(entities);
+}
+
+/* What an operation on the selection did, for a report or a toast:
+   "Copied Player" or "Copied 3 objects". */
+static void selection_title(studio *s, const char *verb, int count, char *title, size_t size)
+{
+    scene_actor *actor = selected_actor(s->scene);
+    if (count == 1 && actor) {
+        snprintf(title, size, "%s %s", verb, actor->name);
         return;
     }
-    fit_scene_view(s->viewport, s->scene->world, entity);
+    snprintf(title, size, "%s %d objects", verb, count);
+}
+
+/* Duplicates land one grid increment down and right, as Godot's do, so the
+   copies show beside their originals and stay on the grid with them; Unity's
+   in place copies hide behind what they copy. */
+void studio_duplicate(studio *s)
+{
+    app_scene_authoring *scene = s->scene;
+    if (!studio_editable(s) || !selected_actor(scene)) {
+        return;
+    }
+    float step = s->prefs.scene_increment;
+    if (scene_duplicate_selection(scene, (GameTransform){ step, step }) != 0) {
+        studio_report(s, scene->message[0] ? scene->message : "Could not duplicate");
+        return;
+    }
+    char title[160];
+    selection_title(s, "Duplicated", scene_selection_count(scene), title, sizeof title);
+    studio_report(s, title);
+}
+
+void studio_copy(studio *s)
+{
+    char *text = scene_copy_selection(s->scene);
+    if (!text) {
+        return;
+    }
+    kit_clipboard_set(text);
+    free(text);
+    char title[160];
+    selection_title(s, "Copied", scene_selection_count(s->scene), title, sizeof title);
+    studio_report(s, title);
+}
+
+/* The pointer's place in the scene while it is over the Scene and the key
+   came from there, as gameplay coordinates. */
+static bool scene_pointer(studio *s, GameTransform *at)
+{
+    int area = s->key_area;
+    float x, y;
+    if (area < 0 || studio_active_layout(s)->editors[area] != STUDIO_EDITOR_SCENE ||
+        !s->surface.hovered || studio_previewed_ui(s) ||
+        !engine_viewport_mouse_world(s->viewport, &x, &y)) {
+        return false;
+    }
+    *at = (GameTransform){ x, -y };
+    return true;
+}
+
+void studio_paste(studio *s)
+{
+    if (!studio_editable(s)) {
+        return;
+    }
+    float step = s->prefs.scene_increment;
+    GameTransform pointer;
+    scene_paste_place place = { .offset = { step, step },
+                                .snap = s->prefs.scene_snap ? step : 0 };
+    if (scene_pointer(s, &pointer)) {
+        place.center = &pointer;
+    }
+    char *text = cf_clipboard_get();
+    int pasted = scene_paste(s->scene, text, place);
+    if (text) {
+        cf_free(text);
+    }
+    if (pasted < 0) {
+        kit_toast(
+            s->kit,
+            0,
+            &(kit_toast_desc){ .type = KIT_TOAST_WARNING,
+                               .title = "Nothing to paste",
+                               .description = s->scene->message }
+        );
+        /* The toast says why; the status bar need not repeat it. */
+        s->scene->message[0] = '\0';
+        return;
+    }
+    char title[160];
+    selection_title(s, "Pasted", pasted, title, sizeof title);
+    studio_report(s, title);
+}
+
+void studio_frame_all(studio *s)
+{
+    fit_scene_view(s->viewport, s->scene->world, NULL, 0);
     engine_viewport_get_view(s->viewport, &s->scene->camera.view);
     s->scene->camera.saved = true;
 }
 
-void studio_duplicate(studio *s)
+void studio_select_all(studio *s)
 {
-    if (studio_editable(s) && selected_actor(s->scene)) {
-        finish_transform_edit(s->scene, false);
-        app_scene_authoring_duplicate_instance(s->scene);
+    app_scene_authoring *scene = s->scene;
+    finish_transform_edit(scene, false);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = true;
+    }
+    scene->runtime_selected = (ecs_entity){ 0 };
+    scene->selected = acount(scene->actors) - 1;
+}
+
+void studio_deselect(studio *s)
+{
+    app_scene_authoring *scene = s->scene;
+    finish_transform_edit(scene, false);
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = false;
+    }
+    scene->runtime_selected = (ecs_entity){ 0 };
+    scene->selected = -1;
+}
+
+void studio_find_field(studio *s, studio_editor editor)
+{
+    if (s->find_request == (int)editor + 1) {
+        kit_focus(s->kit);
+        s->find_request = 0;
     }
 }
 
-/* Destructive edits offer Undo in a toast while they are still the latest edit. */
-void studio_delete(studio *s)
+static int actor_of(const app_scene_authoring *scene, ecs_entity entity)
 {
-    scene_actor *actor = selected_actor(s->scene);
-    if (!studio_editable(s) || !actor) {
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (ecs_entity_to_u64(scene->actors[i].entity) == ecs_entity_to_u64(entity)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Deletes the actors' entities from last to first; 0 when all went. */
+static int delete_entities(app_scene_authoring *scene, const ecs_entity *entities)
+{
+    int result = 0;
+    for (int i = acount(entities) - 1; i >= 0 && !result; i--) {
+        scene->selected = actor_of(scene, entities[i]);
+        result = app_scene_authoring_delete_instance(scene);
+    }
+    for (int i = 0; i < acount(scene->actors); i++) {
+        scene->actors[i].marked = false;
+    }
+    return result;
+}
+
+/* Deletes the selection as one Undo step, which a toast offers to undo
+   while it is still the latest edit, titled "<verb> Player" or "<verb> 3
+   objects". */
+static void delete_selection(studio *s, const char *verb)
+{
+    app_scene_authoring *scene = s->scene;
+    if (!studio_editable(s) || !selected_actor(scene)) {
         return;
     }
+    ecs_entity *entities = NULL;
+    for (int i = 0; i < acount(scene->actors); i++) {
+        if (scene_instance_selected(scene, i)) {
+            apush(entities, scene->actors[i].entity);
+        }
+    }
     char title[160];
-    snprintf(title, sizeof title, "Deleted %s", actor->name);
-    finish_transform_edit(s->scene, false);
-    scene_history_begin_group(s->scene->history);
-    int result = app_scene_authoring_delete_instance(s->scene);
-    scene_history_end_group(s->scene->history);
+    selection_title(s, verb, acount(entities), title, sizeof title);
+    finish_transform_edit(scene, false);
+    scene_history_begin_group(scene->history);
+    int result = delete_entities(scene, entities);
+    scene_history_end_group(scene->history);
+    afree(entities);
     if (result != 0) {
         toast(
             s,
@@ -398,14 +598,24 @@ void studio_delete(studio *s)
         );
         return;
     }
-    kit_toast_dismiss(s->kit, s->undo_toast);
-    s->undo_toast = kit_toast(
-        s->kit,
-        0,
-        &(kit_toast_desc){ .title = title, .action = "Undo", .duration = 6 }
-    );
-    studio_record(s, KIT_TOAST_DEFAULT, title);
-    s->undo_toast_group = scene_history_group_id(s->scene->history, false);
+    offer_undo(s, title);
+}
+
+void studio_delete(studio *s)
+{
+    delete_selection(s, "Deleted");
+}
+
+/* Cut copies and deletes, the deletion offering Undo as Delete does. */
+void studio_cut(studio *s)
+{
+    char *text = scene_copy_selection(s->scene);
+    if (!text) {
+        return;
+    }
+    kit_clipboard_set(text);
+    free(text);
+    delete_selection(s, "Cut");
 }
 
 static void undo_toast(studio *s)
@@ -413,7 +623,8 @@ static void undo_toast(studio *s)
     if (!s->undo_toast) {
         return;
     }
-    bool current = s->scene->document.kind == APP_EDITOR_DOCUMENT_SCENE &&
+    /* Every document but a prototype replays the scene's history. */
+    bool current = s->scene->document.kind != APP_EDITOR_DOCUMENT_PROTOTYPE &&
                    scene_history_group_id(s->scene->history, false) == s->undo_toast_group;
     if (kit_toast_action(s->kit, s->undo_toast)) {
         s->undo_toast = 0;
@@ -440,33 +651,7 @@ void studio_add_object(studio *s, const char *prototype)
     }
 }
 
-/* ---------- Menus ---------- */
-
-static bool item(kit *k, const char *key, const char *label, uint32_t icon, const char *shortcut, bool disabled)
-{
-    kit_menu_item_desc d = { .label = label,
-                             .icon = icon,
-                             .shortcut = shortcut,
-                             .checked = -1,
-                             .disabled = disabled };
-    return kit_menu_item(k, key, &d);
-}
-
-static void add_menu_items(studio *s)
-{
-    kit *k = s->kit;
-    for (int i = 0; i < acount(s->scene->prototypes); i++) {
-        const game_prototype *prototype = s->scene->prototypes[i].prototype;
-        if (!prototype || !prototype->name) {
-            continue;
-        }
-        char key[32];
-        snprintf(key, sizeof key, "p%d", i);
-        if (item(k, key, prototype->name, studio_prototype_icon(s, prototype->name), NULL, !studio_editable(s))) {
-            studio_add_object(s, prototype->name);
-        }
-    }
-}
+/* ---------- Layout ---------- */
 
 void studio_toggle_drawer(studio *s, studio_editor editor)
 {
@@ -488,7 +673,6 @@ static void forget_areas(studio *s)
     s->maximized = s->focus_area = s->hover_area = -1;
     memset(s->areas, 0, sizeof s->areas);
     s->main_rect = s->side_rect = (kit_rect){ 0 };
-    s->drawer_dragging = s->side_dragging = false;
 }
 
 void studio_reset_layout(studio *s)
@@ -552,150 +736,6 @@ void studio_zoom(studio *s, int step)
     s->prefs.ui_scale = next;
 }
 
-static void zoom_items(studio *s)
-{
-    kit_menu_group(s->kit, "scale", "UI Scale");
-    studio_command_item(s, STUDIO_COMMAND_ZOOM_IN);
-    studio_command_item(s, STUDIO_COMMAND_ZOOM_OUT);
-    studio_command_item(s, STUDIO_COMMAND_ZOOM_RESET);
-}
-
-/* Export archives saved files and import reloads the page, so both need
-   saved work; only the browser without a local server offers them. */
-static void web_project_items(studio *s)
-{
-#ifdef __EMSCRIPTEN__
-    kit *k = s->kit;
-    if (!web_projects_available()) {
-        return;
-    }
-    bool importing = item(k, "import", "Import Project", 0, NULL, false);
-    bool exporting = item(k, "export", "Export Project", 0, NULL, false);
-    if ((importing || exporting) && studio_unsaved(s)) {
-        toast(s, KIT_TOAST_WARNING, "Save changes first", NULL);
-        return;
-    }
-    if (importing) {
-        web_import_project();
-    }
-    if (exporting) {
-        char error[1024];
-        if (!model_content_validate(s->scene->content_root, error, sizeof error)) {
-            toast(s, KIT_TOAST_ERROR, "Cannot export invalid model source", error);
-            studio_record(s, KIT_TOAST_ERROR, error);
-            return;
-        }
-        web_export_project();
-    }
-#else
-    (void)s;
-#endif
-}
-
-/* ---------- Menubar ---------- */
-
-/* An entry the menu names but Studio lacks, shown so its author sees it. */
-static void unknown_entry(kit *k, const char *key, const char *what, const char *name)
-{
-    char label[160];
-    snprintf(label, sizeof label, "No %s \"%s\"", what, name);
-    item(k, key, label, KIT_ICON_WARNING, NULL, true);
-}
-
-static void add_submenu(studio *s)
-{
-    if (kit_submenu_begin(s->kit, "add", "Add", KIT_ICON_ADD)) {
-        add_menu_items(s);
-        kit_submenu_end(s->kit);
-    }
-}
-
-/* The lists Studio fills where a menu names them with <li list="...">. */
-static void menu_list(studio *s, const char *key, const char *name)
-{
-    kit *k = s->kit;
-    if (!strcmp(name, "projects")) {
-        studio_projects_menu(s);
-    } else if (!strcmp(name, "newProject")) {
-        studio_new_project_menu(s);
-    } else if (!strcmp(name, "webProjects")) {
-        web_project_items(s);
-    } else if (!strcmp(name, "add")) {
-        add_submenu(s);
-    } else if (!strcmp(name, "uiScale")) {
-        zoom_items(s);
-    } else if (!strcmp(name, "debugger")) {
-        studio_debug_menu(s);
-    } else {
-        unknown_entry(k, key, "list", name);
-    }
-}
-
-static bool entry_attribute(rml_element *entry, const char *name, char *value, size_t size)
-{
-    return rml_element_attribute(entry, name, value, size) > 0;
-}
-
-/* A menu's entries in order: <li command="id"> runs a command by its id,
-   <li list="name"> is a list Studio fills, <li label="..."> heads a group,
-   <hr/> separates and a <menu label> inside opens a submenu. */
-static void menu_entries(studio *s, rml_element *menu)
-{
-    kit *k = s->kit;
-    for (int i = 0; i < rml_element_child_count(menu); i++) {
-        rml_element *entry = rml_element_child(menu, i);
-        const char *tag = rml_element_tag_name(entry);
-        char key[16], value[128];
-        snprintf(key, sizeof key, "e%d", i);
-        if (!strcmp(tag, "hr")) {
-            kit_menu_separator(k, key);
-        } else if (!strcmp(tag, "menu") && entry_attribute(entry, "label", value, sizeof value)) {
-            if (kit_submenu_begin(k, key, value, 0)) {
-                menu_entries(s, entry);
-                kit_submenu_end(k);
-            }
-        } else if (entry_attribute(entry, "command", value, sizeof value)) {
-            int command = studio_command_named(value);
-            if (command < 0) {
-                unknown_entry(k, key, "command", value);
-            } else {
-                studio_command_item(s, (studio_command)command);
-            }
-        } else if (entry_attribute(entry, "list", value, sizeof value)) {
-            menu_list(s, key, value);
-        } else if (entry_attribute(entry, "label", value, sizeof value)) {
-            kit_menu_group(k, key, value);
-        }
-    }
-}
-
-/* The menubar is authored: the top bar's #menus holds a <menu label> per
-   menu, whose entries name commands by id, as VS Code's menus contribute
-   them; the menus themselves are native, in the #menubar slot. */
-static void menus(studio *s, rml_element *host)
-{
-    rml_element *bar = rml_element_query_selector(host, "#menus");
-    for (int i = 0; bar && i < rml_element_child_count(bar); i++) {
-        rml_element *menu = rml_element_child(bar, i);
-        char key[64], label[64];
-        if (strcmp(rml_element_tag_name(menu), "menu") ||
-            !entry_attribute(menu, "label", label, sizeof label)) {
-            continue;
-        }
-        /* Keyed by label, "file" for File, so paths name the menu. */
-        for (size_t c = 0; c < sizeof key; c++) {
-            key[c] = (char)tolower((unsigned char)label[c]);
-            if (!label[c]) {
-                break;
-            }
-        }
-        if (kit_menubar_trigger(s->kit, key, label)) {
-            menu_entries(s, menu);
-            kit_popup_end(s->kit);
-        }
-    }
-}
-
 /* ---------- Document tabs ---------- */
 
 static uint32_t tab_icon(const scene_document_tab *tab)
@@ -742,141 +782,358 @@ studio_tab_view *studio_document_tabs(studio *s)
 
 /* ---------- Top bar ---------- */
 
-/* What Play runs: the scene, or a preview of the selected prototype. Fixed
-   while a session runs; the label morphs when the target changes. Native in
-   the top bar's #play-target slot. */
-static void runtime_target(studio *s)
+/* The top bar is authored: projects/studio's TopBar binds `editor` and
+   `commands` (studio_sources.c) for its document tabs, transport, gear and
+   search, `menubar` for its menus' lists and `shell` for the play target
+   and the playback speed; its buttons and menus run commands and those
+   sources' actions. It is a document of its own whose place takes its
+   height. Chrome controls retain focus while the host routes global
+   shortcuts. */
+static void topbar(studio *s)
 {
     kit *k = s->kit;
+    /* The gear's Settings page is an authored dialog. */
+    studio_ui_modal(s, "Settings");
+    kit_document_begin(k, "topbar", "bar-place", true);
+    studio_ui_panel(s, "topbar", "TopBar");
+    kit_document_end(k);
+}
+
+/* ---------- Menu items (workstream C3) ---------- */
+
+/* An item MenuItem or Submenu shows: label, icon, shortcut, checked and
+   disabled. */
+static void item_add(yyjson_mut_doc *doc, yyjson_mut_val *item)
+{
+    yyjson_mut_obj_add_strcpy(doc, item, "label", "");
+    yyjson_mut_obj_add_strcpy(doc, item, "icon", "");
+    yyjson_mut_obj_add_strcpy(doc, item, "shortcut", "");
+    yyjson_mut_obj_add_bool(doc, item, "checked", false);
+    yyjson_mut_obj_add_bool(doc, item, "disabled", false);
+}
+
+/* Writes the item in place; true when it changed. */
+static bool item_put(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *item,
+    const char *label,
+    uint32_t icon,
+    bool checked,
+    bool disabled
+)
+{
+    char glyph[5] = "";
+    if (icon) {
+        studio_glyph(glyph, icon);
+    }
+    bool changed = ui_data_put_text(doc, item, "label", label);
+    changed |= ui_data_put_text(doc, item, "icon", glyph);
+    changed |= ui_data_put_bool(item, "checked", checked);
+    return ui_data_put_bool(item, "disabled", disabled) || changed;
+}
+
+/* Gives `items` `length` items, adding and removing at its end, so items
+   already shown keep their elements; true when its length changed. */
+static bool items_fit(yyjson_mut_doc *doc, yyjson_mut_val *items, int length)
+{
+    int had = (int)yyjson_mut_arr_size(items);
+    for (int i = had; i < length; i++) {
+        item_add(doc, yyjson_mut_arr_add_obj(doc, items));
+    }
+    for (int i = had; i > length; i--) {
+        yyjson_mut_arr_remove_last(items);
+    }
+    return had != length;
+}
+
+/* ---------- The menubar's lists (`menubar`) ---------- */
+
+/* The rows and submenus the menus name without a command. */
+static const struct
+{
+    const char *key, *label;
+    uint32_t icon;
+} MENU_ITEMS[] = {
+    { "newMenu", "New", 0 },
+    { "project", "Project", KIT_ICON_FOLDER },
+    { "openProject", "Open Project", KIT_ICON_FOLDER },
+    { "importProject", "Import Project", 0 },
+    { "exportProject", "Export Project", 0 },
+    { "add", "Add", KIT_ICON_ADD },
+    { "transform", "Transform", 0 },
+};
+
+void studio_menubar_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *menubar = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "menubar");
+    yyjson_mut_val *items = yyjson_mut_obj_add_obj(doc, menubar, "items");
+    for (size_t i = 0; i < sizeof MENU_ITEMS / sizeof *MENU_ITEMS; i++) {
+        yyjson_mut_val *item = yyjson_mut_obj_add_obj(doc, items, MENU_ITEMS[i].key);
+        item_add(doc, item);
+        item_put(doc, item, MENU_ITEMS[i].label, MENU_ITEMS[i].icon, false, false);
+    }
+    yyjson_mut_obj_add_arr(doc, menubar, "projects");
+    yyjson_mut_obj_add_arr(doc, menubar, "prototypes");
+    yyjson_mut_obj_add_bool(doc, menubar, "web", false);
+}
+
+/* Export archives saved files and import reloads the page, so both need
+   saved work; only the browser without a local server offers them. */
+static bool web_projects()
+{
+#ifdef __EMSCRIPTEN__
+    return web_projects_available();
+#else
+    return false;
+#endif
+}
+
+static void web_project(studio *s, bool import)
+{
+#ifdef __EMSCRIPTEN__
+    if (!web_projects_available()) {
+        return;
+    }
+    if (studio_unsaved(s)) {
+        toast(s, KIT_TOAST_WARNING, "Save changes first", NULL);
+        return;
+    }
+    if (import) {
+        web_import_project();
+    } else {
+        web_export_project();
+    }
+#else
+    (void)s;
+    (void)import;
+#endif
+}
+
+/* The workspace's projects, the open one checked and disabled. */
+static bool show_projects(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *projects)
+{
+    bool changed = items_fit(doc, projects, acount(s->projects));
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(projects);
+    for (int i = 0; i < acount(s->projects); i++) {
+        bool current = studio_project_current(s, i);
+        changed |= item_put(doc, yyjson_mut_arr_iter_next(&it), s->projects[i].name, 0, current, current);
+    }
+    return changed;
+}
+
+/* The scene's named prototypes with their icons, disabled while the scene
+   takes no edits. */
+static bool show_prototypes(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *prototypes)
+{
+    const scene_prototype_asset *assets = s->scene->prototypes;
+    int count = 0;
+    for (int i = 0; i < acount(assets); i++) {
+        count += assets[i].prototype && assets[i].prototype->name;
+    }
+    bool changed = items_fit(doc, prototypes, count);
+    bool readonly = !studio_editable(s);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(prototypes);
+    for (int i = 0; i < acount(assets); i++) {
+        const char *name = assets[i].prototype ? assets[i].prototype->name : NULL;
+        if (name) {
+            changed |= item_put(
+                doc,
+                yyjson_mut_arr_iter_next(&it),
+                name,
+                studio_prototype_icon(s, name),
+                false,
+                readonly
+            );
+        }
+    }
+    return changed;
+}
+
+bool studio_menubar_sync(studio *s, const studio_panel_sync *at)
+{
+    yyjson_mut_val *menubar = at->variable;
+    bool changed = show_projects(s, at->doc, yyjson_mut_obj_get(menubar, "projects"));
+    changed |= show_prototypes(s, at->doc, yyjson_mut_obj_get(menubar, "prototypes"));
+    return ui_data_put_bool(menubar, "web", web_projects()) || changed;
+}
+
+void studio_menubar_action(studio *s, const char *action, const ui_activation *a)
+{
+    int index = a->argc ? atoi(a->args[0]) : -1;
+    if (!strcmp(action, "newProject")) {
+        studio_new_project_open(s);
+    } else if (!strcmp(action, "openProject") && index >= 0 && index < acount(s->projects) && !studio_project_current(s, index)) {
+        studio_open_project(s, index);
+    } else if (!strcmp(action, "add") && a->argc) {
+        studio_add_object(s, a->args[0]);
+    } else if (!strcmp(action, "importProject") || !strcmp(action, "exportProject")) {
+        web_project(s, action[0] == 'i');
+    }
+}
+
+/* ---------- Play target, playback speed and UI Scale (`shell`) ---------- */
+
+void studio_shell_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *shell = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "shell");
+    yyjson_mut_val *target = yyjson_mut_obj_add_obj(doc, shell, "target");
+    yyjson_mut_obj_add_strcpy(doc, target, "label", "");
+    yyjson_mut_obj_add_strcpy(doc, target, "icon", "");
+    item_add(doc, yyjson_mut_obj_add_obj(doc, target, "scene"));
+    item_add(doc, yyjson_mut_obj_add_obj(doc, target, "preview"));
+    yyjson_mut_val *speed = yyjson_mut_obj_add_obj(doc, shell, "speed");
+    yyjson_mut_obj_add_strcpy(doc, speed, "label", "");
+    yyjson_mut_obj_add_bool(doc, speed, "on", false);
+    items_fit(doc, yyjson_mut_obj_add_arr(doc, speed, "presets"), studio_speed_count);
+    yyjson_mut_val *scale = yyjson_mut_obj_add_obj(doc, shell, "scale");
+    yyjson_mut_obj_add_strcpy(doc, scale, "label", "");
+    items_fit(doc, yyjson_mut_obj_add_arr(doc, scale, "presets"), UI_SCALE_COUNT);
+}
+
+/* What Play could preview: the open prototype document, else the selected
+   object's prototype. */
+static scene_prototype_asset *preview_candidate(studio *s)
+{
     app_scene_authoring *scene = s->scene;
-    app_runtime_state runtime = app_scene_authoring_runtime_state(scene);
-    bool session = studio_session(s);
-    scene_prototype_asset *previewed = prototype_at(scene, scene->runtime_preview_prototype);
-    /* The open prototype document, else the selected object's prototype. */
     scene_actor *actor = selected_actor(scene);
-    scene_prototype_asset *candidate = scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE
-                                         ? selected_prototype(scene)
-                                     : actor ? find_prototype(scene, actor->prototype_name)
-                                             : NULL;
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
+        return selected_prototype(scene);
+    }
+    return actor ? find_prototype(scene, actor->prototype_name) : NULL;
+}
+
+/* What Play runs: the scene, or a preview of a prototype; fixed while a
+   session runs. The label morphs as the target changes. */
+static bool show_target(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *target)
+{
+    app_scene_authoring *scene = s->scene;
+    scene_prototype_asset *previewed = prototype_at(scene, scene->runtime_preview_prototype);
+    scene_prototype_asset *candidate = preview_candidate(s);
     const char *model = scene_model_preview_name(scene);
-    bool preview = runtime.target == APP_RUNTIME_PREVIEW && (previewed || model);
-    char title[128], scene_label[160], preview_label[160];
+    bool model_preview = app_scene_authoring_runtime_state(scene).target ==
+                             APP_RUNTIME_PREVIEW &&
+                         model;
+    bool prototype_preview = app_scene_authoring_runtime_state(scene).target ==
+                                 APP_RUNTIME_PREVIEW &&
+                             previewed;
+    bool preview = model_preview || prototype_preview;
+    bool session = studio_session(s);
+    const scene_prototype_asset *shown = candidate ? candidate : previewed;
+    char title[128], scene_label[160], preview_label[160], current[160], icon[5];
     snprintf(
         scene_label,
         sizeof scene_label,
         "Scene \xc2\xb7 %s",
         studio_scene_title(scene, title, sizeof title)
     );
-    const scene_prototype_asset *shown = candidate ? candidate : previewed;
     snprintf(
         preview_label,
         sizeof preview_label,
         "Preview \xc2\xb7 %s",
-        shown ? shown->prototype->name : "Prototype"
+        shown   ? shown->prototype->name
+        : model ? model
+                : "Prototype"
     );
-    char current[160];
     snprintf(
         current,
         sizeof current,
         "Preview \xc2\xb7 %s",
-        preview ? model ? model : previewed->prototype->name : ""
+        model_preview       ? model
+        : prototype_preview ? previewed->prototype->name
+                            : ""
     );
-    kit_button_desc d = {
-        .label = preview ? current : scene_label,
-        .icon = preview ? KIT_ICON_PROTOTYPE : KIT_ICON_SCENE,
-        .variant = KIT_SUBTLE,
-        .cls = "target",
-        .morph = true,
-        .tip = "Play target",
-    };
-    if (kit_button(k, "target", &d)) {
-        kit_popup_open(k, "target");
+    studio_glyph(icon, preview ? KIT_ICON_PROTOTYPE : KIT_ICON_SCENE);
+    bool changed = ui_data_put_text(doc, target, "label", preview ? current : scene_label);
+    changed |= ui_data_put_text(doc, target, "icon", icon);
+    changed |= item_put(doc, yyjson_mut_obj_get(target, "scene"), scene_label, 0, !preview, session);
+    return item_put(
+               doc,
+               yyjson_mut_obj_get(target, "preview"),
+               preview_label,
+               0,
+               preview && (model_preview || shown == previewed),
+               session || (!candidate && !model_preview)
+           ) ||
+           changed;
+}
+
+static void choose_target(studio *s, const char *target)
+{
+    app_scene_authoring *scene = s->scene;
+    scene_prototype_asset *candidate = preview_candidate(s);
+    bool model_preview = scene_model_preview_name(scene) != NULL;
+    if (studio_session(s)) {
+        return;
     }
-    if (kit_popup_begin(k, "target", "menu")) {
-        kit_menu_group(k, "group", "Play");
-        kit_menu_item_desc run_scene = { .label = scene_label,
-                                         .checked = !preview,
-                                         .disabled = session };
-        if (kit_menu_item(k, "scene", &run_scene) && preview) {
+    if (!strcmp(target, "scene")) {
+        if (app_scene_authoring_runtime_state(scene).target == APP_RUNTIME_PREVIEW) {
             app_scene_authoring_set_runtime_target(scene, APP_RUNTIME_SCENE);
         }
-        kit_menu_item_desc run_preview = { .label = preview_label,
-                                           .checked = preview && shown == previewed,
-                                           .disabled = session || !candidate };
-        if (kit_menu_item(k, "preview", &run_preview) && candidate) {
-            scene->selected_prototype = (int)(candidate - scene->prototypes);
-            app_scene_authoring_set_runtime_target(scene, APP_RUNTIME_PREVIEW);
-        }
-        kit_popup_end(k);
+    } else if (candidate) {
+        scene->selected_prototype = (int)(candidate - scene->prototypes);
+        app_scene_authoring_set_runtime_target(scene, APP_RUNTIME_PREVIEW);
+    } else if (model_preview) {
+        app_scene_authoring_set_runtime_target(scene, APP_RUNTIME_PREVIEW);
     }
 }
 
-static void layout_control(studio *s)
+/* The speed beside the transport, as UI Scale keeps its percentage in the
+   status bar: marked while it is not 1x, with a menu of its steps. */
+static bool show_speed(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *speed)
 {
-    kit *k = s->kit;
-    kit_button_desc button = {
-        .icon = KIT_ICON_LAYOUT,
-        .tip = "Layout",
-    };
-    if (kit_button(k, "trigger", &button)) {
-        if (kit_popup_is_open(k, "layouts")) {
-            kit_popup_close(k, "layouts");
-        } else {
-            kit_popup_open(k, "layouts");
-        }
+    double now = app_scene_authoring_time_scale(s->scene);
+    char label[16];
+    studio_speed_label(now, label, sizeof label);
+    bool changed = ui_data_put_text(doc, speed, "label", label);
+    changed |= ui_data_put_bool(speed, "on", now != 1);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(yyjson_mut_obj_get(speed, "presets"));
+    for (int i = 0; i < studio_speed_count; i++) {
+        studio_speed_label(studio_speeds[i], label, sizeof label);
+        changed |= item_put(doc, yyjson_mut_arr_iter_next(&it), label, 0, now == studio_speeds[i], false);
     }
-    if (!kit_popup_begin(k, "layouts", "menu")) {
-        return;
-    }
-    kit_menu_group(k, "title", "Layout");
-    const studio_command commands[] = {
-        STUDIO_COMMAND_WORKSPACE_HORIZONTAL_SPLIT,
-        STUDIO_COMMAND_WORKSPACE_VERTICAL_SPLIT,
-    };
-    for (int i = 0; i < 2; i++) {
-        studio_command_info command = studio_command_describe(s, commands[i]);
-        kit_menu_item_desc choice = {
-            .label = command.menu,
-            .icon = command.icon,
-            .checked = studio_command_checked(s, commands[i]),
-        };
-        if (kit_menu_item(k, command.id, &choice)) {
-            studio_command_run(s, commands[i]);
-        }
-    }
-    kit_popup_end(k);
+    return changed;
 }
 
-/* The top bar is authored: projects/studio's TopBar binds `editor` and
-   `commands` (studio_sources.c) for its document tabs, transport, gear and
-   search, which run commands. The menubar, the play target's menu and a
-   paused run's steps stay native in its slots; a run paused at a breakpoint
-   trades the frame step for the debugger's steps (Unreal). Chrome controls
-   retain focus while the host routes global shortcuts. */
-static void topbar(studio *s)
+static void percent(float scale, char *out, size_t size)
 {
-    kit *k = s->kit;
-    /* The gear's Settings page is an authored dialog. */
-    studio_ui_modal(s, "Settings");
-    rml_element *host = studio_ui_panel(s, "topbar", "TopBar");
-    if (!host) {
+    snprintf(out, size, "%d%%", (int)lroundf(scale * 100));
+}
+
+/* UI Scale stays in reach, as Office keeps its zoom in the status bar. */
+static bool show_scale(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *scale)
+{
+    char label[16];
+    percent(s->prefs.ui_scale, label, sizeof label);
+    bool changed = ui_data_put_text(doc, scale, "label", label);
+    yyjson_mut_arr_iter it = yyjson_mut_arr_iter_with(yyjson_mut_obj_get(scale, "presets"));
+    for (int i = 0; i < UI_SCALE_COUNT; i++) {
+        percent(UI_SCALES[i], label, sizeof label);
+        bool checked = fabsf(s->prefs.ui_scale - UI_SCALES[i]) < 0.001f;
+        changed |= item_put(doc, yyjson_mut_arr_iter_next(&it), label, 0, checked, false);
+    }
+    return changed;
+}
+
+bool studio_shell_sync(studio *s, const studio_panel_sync *at)
+{
+    yyjson_mut_val *shell = at->variable;
+    bool changed = show_target(s, at->doc, yyjson_mut_obj_get(shell, "target"));
+    changed |= show_speed(s, at->doc, yyjson_mut_obj_get(shell, "speed"));
+    return show_scale(s, at->doc, yyjson_mut_obj_get(shell, "scale")) || changed;
+}
+
+void studio_shell_action(studio *s, const char *action, const ui_activation *a)
+{
+    if (!a->argc) {
         return;
     }
-    if (kit_slot_begin(k, "menus", host, "#menubar")) {
-        menus(s, host);
-        kit_slot_end(k);
-    }
-    if (kit_slot_begin(k, "layout", host, "#layout")) {
-        layout_control(s);
-        kit_slot_end(k);
-    }
-    if (kit_slot_begin(k, "target", host, "#play-target")) {
-        runtime_target(s);
-        kit_slot_end(k);
-    }
-    if (s->pause.active && kit_slot_begin(k, "steps", host, "#debug-steps")) {
-        studio_debug_steps(s);
-        kit_slot_end(k);
+    int index = atoi(a->args[0]);
+    if (!strcmp(action, "target")) {
+        choose_target(s, a->args[0]);
+    } else if (!strcmp(action, "speed") && index >= 0 && index < studio_speed_count) {
+        app_scene_authoring_set_time_scale(s->scene, studio_speeds[index]);
+    } else if (!strcmp(action, "scale") && index >= 0 && index < UI_SCALE_COUNT) {
+        s->prefs.ui_scale = UI_SCALES[index];
     }
 }
 
@@ -888,34 +1145,6 @@ static bool drawer_editor(studio_editor editor)
     return editor == STUDIO_EDITOR_OUTPUT || editor == STUDIO_EDITOR_ASSETS ||
            editor == STUDIO_EDITOR_PERFORMANCE ||
            editor == STUDIO_EDITOR_PANEL || editor == STUDIO_EDITOR_CODE;
-}
-
-/* The Studio project's panels, after the built-in editors. */
-static void panel_types(studio *s, int area)
-{
-    kit *k = s->kit;
-    studio_layout *layout = studio_active_layout(s);
-    int count = studio_ui_panel_count(s);
-    if (count) {
-        kit_menu_separator(k, "panels-sep");
-        kit_menu_group(k, "panels", "Studio");
-    }
-    for (int i = 0; i < count; i++) {
-        const char *name = studio_ui_panel_name(s, i);
-        char item_key[16];
-        snprintf(item_key, sizeof item_key, "p%d", i);
-        kit_menu_item_desc item = {
-            .label = name,
-            .icon = EDITOR_ICONS[STUDIO_EDITOR_PANEL],
-            .checked = -1,
-            .current = layout->editors[area] == STUDIO_EDITOR_PANEL &&
-                       !strcmp(layout->panels[area], name),
-        };
-        if (kit_menu_item(k, item_key, &item)) {
-            layout->editors[area] = STUDIO_EDITOR_PANEL;
-            snprintf(layout->panels[area], sizeof layout->panels[area], "%s", name);
-        }
-    }
 }
 
 void studio_maximize_graph(studio *s)
@@ -930,39 +1159,126 @@ void studio_maximize_graph(studio *s)
     s->maximized = area;
 }
 
-static void editor_type_menu(studio *s, int area)
+/* ---------- Editor types (workstream F3) ---------- */
+
+/* The Studio project's panels that are tools in any project; the rest are
+   pieces of Studio's own chrome, kept in a submenu. */
+static const struct
 {
-    kit *k = s->kit;
-    studio_layout *layout = studio_active_layout(s);
-    studio_editor *editor = &layout->editors[area];
-    kit_button_desc d = { .icon = EDITOR_ICONS[*editor],
-                          .cls = "editor-type",
-                          .tip = *editor == STUDIO_EDITOR_PANEL
-                                   ? layout->panels[area]
-                                   : EDITOR_LABELS[*editor] };
-    char key[24];
-    snprintf(key, sizeof key, "type:%d", area);
-    if (kit_button(k, "type", &d)) {
-        kit_popup_open(k, key);
-    }
-    if (kit_popup_begin(k, key, "menu")) {
-        kit_menu_group(k, "group", "Editor");
-        for (int e = 0; e < STUDIO_EDITOR_PANEL; e++) {
-            if (area == STUDIO_AREA_DRAWER && !drawer_editor((studio_editor)e)) {
-                continue;
-            }
-            char item_key[16];
-            snprintf(item_key, sizeof item_key, "e%d", e);
-            kit_menu_item_desc item = { .label = EDITOR_LABELS[e],
-                                        .icon = EDITOR_ICONS[e],
-                                        .checked = -1,
-                                        .current = *editor == (studio_editor)e };
-            if (kit_menu_item(k, item_key, &item)) {
-                *editor = (studio_editor)e;
-            }
+    const char *name;
+    uint32_t icon;
+} TOOL_PANELS[] = {
+    { "Inspector", KIT_ICON_TARGET },
+    { "Data", KIT_ICON_LIBRARY },
+    { "Theme", KIT_ICON_MATERIAL },
+};
+
+static int tool_panel(const char *name)
+{
+    for (size_t i = 0; i < sizeof TOOL_PANELS / sizeof *TOOL_PANELS; i++) {
+        if (!strcmp(TOOL_PANELS[i].name, name)) {
+            return (int)i;
         }
-        panel_types(s, area);
-        kit_popup_end(k);
+    }
+    return -1;
+}
+
+/* A panel's icon: a tool's own, else the panel glyph. */
+static uint32_t panel_icon(const char *name)
+{
+    int tool = tool_panel(name);
+    return tool >= 0 ? TOOL_PANELS[tool].icon : EDITOR_ICONS[STUDIO_EDITOR_PANEL];
+}
+
+/* Editor types by task, as Blender's editor type menu groups them. */
+typedef struct
+{
+    const char *label;
+    studio_editor editors[4];
+    int count;
+    bool tools; /* followed by the Studio panels that are tools */
+} editor_group;
+
+static const editor_group EDITOR_GROUPS[] = {
+    { "General",
+      { STUDIO_EDITOR_SCENE, STUDIO_EDITOR_OUTLINER, STUDIO_EDITOR_PROPERTIES, STUDIO_EDITOR_ASSETS },
+      4,
+      false },
+    { "Scripting",
+      { STUDIO_EDITOR_BEHAVIOR, STUDIO_EDITOR_MEMBERS, STUDIO_EDITOR_CODE },
+      3,
+      false },
+    { "Diagnostics", { STUDIO_EDITOR_OUTPUT, STUDIO_EDITOR_PERFORMANCE }, 2, true },
+};
+
+studio_area_view studio_area_view_of(studio *s, int area)
+{
+    studio_layout *layout = studio_active_layout(s);
+    studio_editor editor = layout->editors[area];
+    bool panel = editor == STUDIO_EDITOR_PANEL;
+    return (studio_area_view){
+        .editor = editor,
+        .panel = panel ? layout->panels[area] : "",
+        .icon = panel ? panel_icon(layout->panels[area]) : EDITOR_ICONS[editor],
+        .title = panel ? layout->panels[area] : EDITOR_LABELS[editor],
+    };
+}
+
+static void add_glyph(yyjson_mut_doc *doc, yyjson_mut_val *obj, uint32_t icon)
+{
+    char glyph[5];
+    studio_glyph(glyph, icon);
+    yyjson_mut_obj_add_strcpy(doc, obj, "icon", glyph);
+}
+
+static void add_panel(yyjson_mut_doc *doc, yyjson_mut_val *list, const char *name)
+{
+    yyjson_mut_val *option = yyjson_mut_arr_add_obj(doc, list);
+    yyjson_mut_obj_add_strcpy(doc, option, "value", name);
+    yyjson_mut_obj_add_strcpy(doc, option, "label", name);
+    add_glyph(doc, option, panel_icon(name));
+}
+
+void studio_editor_choices(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *editors, yyjson_mut_val *panels)
+{
+    yyjson_mut_val *groups = yyjson_mut_obj_get(editors, "groups");
+    yyjson_mut_arr_clear(groups);
+    for (size_t g = 0; g < sizeof EDITOR_GROUPS / sizeof *EDITOR_GROUPS; g++) {
+        const editor_group *group = &EDITOR_GROUPS[g];
+        yyjson_mut_val *shown = yyjson_mut_arr_add_obj(doc, groups);
+        yyjson_mut_obj_add_str(doc, shown, "label", group->label);
+        yyjson_mut_obj_add_bool(doc, shown, "tools", group->tools);
+        yyjson_mut_val *options = yyjson_mut_obj_add_arr(doc, shown, "options");
+        for (int i = 0; i < group->count; i++) {
+            studio_editor e = group->editors[i];
+            yyjson_mut_val *option = yyjson_mut_arr_add_obj(doc, options);
+            yyjson_mut_obj_add_int(doc, option, "value", e);
+            yyjson_mut_obj_add_str(doc, option, "label", EDITOR_LABELS[e]);
+            add_glyph(doc, option, EDITOR_ICONS[e]);
+            yyjson_mut_obj_add_bool(doc, option, "drawer", drawer_editor(e));
+        }
+    }
+    yyjson_mut_val *tools = yyjson_mut_obj_get(panels, "tools");
+    yyjson_mut_val *others = yyjson_mut_obj_get(panels, "others");
+    yyjson_mut_arr_clear(tools);
+    yyjson_mut_arr_clear(others);
+    for (int i = 0; i < studio_ui_panel_count(s); i++) {
+        const char *name = studio_ui_panel_name(s, i);
+        add_panel(doc, tool_panel(name) >= 0 ? tools : others, name);
+    }
+}
+
+void studio_area_show(studio *s, int area, int editor, const char *panel)
+{
+    studio_layout *layout = studio_active_layout(s);
+    if (area < 0 || area >= STUDIO_AREA_COUNT || editor < 0 ||
+        editor >= STUDIO_EDITOR_COUNT ||
+        (area == STUDIO_AREA_DRAWER && !drawer_editor((studio_editor)editor))) {
+        return;
+    }
+    layout->editors[area] = (studio_editor)editor;
+    if (editor == STUDIO_EDITOR_PANEL) {
+        snprintf(layout->panels[area], sizeof layout->panels[area], "%s", panel);
     }
 }
 
@@ -991,10 +1307,10 @@ static void editor_header(studio *s, int index)
 }
 
 /* The area header is authored: projects/studio's AreaHeader, one per area,
-   binds its `area` (studio_sources.c) to maximize it and to close the
-   drawer. The editor type menu and the editor's own controls stay native in
-   its slots. Fields keep their keys while chrome controls allow global
-   shortcuts through the host. */
+   binds its `area` (studio_sources.c) to its editor type menu, to maximize
+   it and to close the drawer. The editor's own controls stay native in its
+   slot. Fields keep their keys while chrome controls allow global shortcuts
+   through the host. */
 static void area_header(studio *s, int index)
 {
     kit *k = s->kit;
@@ -1002,30 +1318,22 @@ static void area_header(studio *s, int index)
     if (!host) {
         return;
     }
-    if (kit_slot_begin(k, "type", host, "#editor-type")) {
-        editor_type_menu(s, index);
-        kit_slot_end(k);
-    }
     if (kit_slot_begin(k, "controls", host, "#controls")) {
         editor_header(s, index);
         kit_slot_end(k);
     }
 }
 
-/* An area `size` dp along `axis` (0 across, 1 down), or filling what its
-   row or column leaves. */
-static void area(studio *s, int index, const char *key, int axis, float size, bool fill)
+/* An area: its header and its editor's body, in a document of its own over
+   its place in the Workspace, so what changes inside it lays out only that
+   area. */
+static void area(studio *s, int index)
 {
     kit *k = s->kit;
     studio_layout *layout = studio_active_layout(s);
     studio_editor editor = layout->editors[index];
-    kit_push(k, key, NULL, KIT_CX(k, "area", { "fill", fill }, { "drawer", index == STUDIO_AREA_DRAWER }));
-    /* Styles persist across frames, so the other axis and a filling area
-       reset theirs as a workspace changes. */
-    char extent[32];
-    dp(extent, sizeof extent, size);
-    kit_style(k, "width", !fill && !axis ? extent : "auto");
-    kit_style(k, "height", !fill && axis ? extent : "auto");
+    kit_document_begin(k, "doc", "area-doc", false);
+    kit_push(k, "area", NULL, "area");
     area_header(s, index);
     kit_push(k, "body", NULL, "area-body");
     switch (editor) {
@@ -1048,153 +1356,230 @@ static void area(studio *s, int index, const char *key, int axis, float size, bo
     kit_pop(k);
     kit_pop(k);
     s->areas[index].rect = kit_item_rect(k);
+    kit_document_end(k);
 }
 
-/* The top and bottom areas: stacked vertically or arranged side by side. */
-static void main_areas(studio *s, float size)
+/* ---------- Workspace (workstream C3) ---------- */
+
+/* Each area's place in projects/studio's Workspace (#area-<key>), by
+   studio_area_slot. */
+static const char *const AREA_KEYS[STUDIO_AREA_COUNT] = {
+    "top", "bottom", "outliner", "properties", "drawer",
+};
+
+/* What the Workspace lays out, in dp: each splitter's value and bounds, from
+   the arrangement and the sizes its columns took in the last layout. The
+   top and bottom areas split `size`, stacked or side by side; the Outliner
+   and Properties split the side column's `height`. The drawer keeps its
+   open height while it eases shut, so its place shrinks from there. */
+typedef struct
 {
-    kit *k = s->kit;
-    studio_layout *layout = studio_active_layout(s);
-    int axis = s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT ? 0 : 1;
-    float minimum = axis ? 80 : 160;
-    kit_push(k, "editors", NULL, KIT_CX(k, "main-editors", { "across", !axis }));
-    float first = floorf((size - 4) * layout->main_split);
-    area(s, STUDIO_AREA_TOP, "top", axis, first, false);
-    if (kit_splitter(k, "split", axis, &first, minimum, fmaxf(minimum, size - minimum - 4), false)) {
-        layout->main_split = first / fmaxf(1, size - 4);
+    float size, top, top_min, top_max;
+    float height, outliner, outliner_max;
+    float drawer, drawer_max, side_max;
+} workspace_extents;
+
+static workspace_extents extents(studio *s)
+{
+    const studio_layout *layout = studio_active_layout(s);
+    bool across = s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT;
+    float column = s->main_rect.h > 0 ? s->main_rect.h : s->in.height - 60;
+    float drawer_max = fmaxf(80, column - 200);
+    float drawer = fminf(layout->drawer_height, drawer_max);
+    float size = across ? (s->main_rect.w > 0 ? s->main_rect.w : s->in.width)
+                        : column - (layout->drawer_open ? drawer + 4 : 0);
+    float minimum = across ? 160 : 80;
+    float height = s->side_rect.h > 0 ? s->side_rect.h : s->in.height - 60;
+    return (workspace_extents){
+        .size = size,
+        .top = floorf((size - 4) * layout->main_split),
+        .top_min = minimum,
+        .top_max = fmaxf(minimum, size - minimum - 4),
+        .height = height,
+        .outliner = floorf((height - 4) * layout->side_split),
+        .outliner_max = fmaxf(80, height - 120),
+        .drawer = drawer,
+        .drawer_max = drawer_max,
+        .side_max = fmaxf(260, s->in.width - 320),
+    };
+}
+
+/* The workspace's values Workspace.rml reads, after `max` (the maximized
+   area's key, or ""), `across`, `drawerOpen` and `sideOpen`. */
+static const char *const WORKSPACE_NUMBERS[] = {
+    "top",    "topMin",       "topMax",    "outliner", "outlinerMax",
+    "drawer", "drawerHeight", "drawerMax", "side",     "sideMax",
+};
+enum
+{
+    WORKSPACE_NUMBER_COUNT = sizeof WORKSPACE_NUMBERS / sizeof *WORKSPACE_NUMBERS,
+};
+
+void studio_workspace_add(yyjson_mut_doc *doc)
+{
+    yyjson_mut_val *w = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "workspace");
+    yyjson_mut_obj_add_strcpy(doc, w, "max", "");
+    yyjson_mut_obj_add_bool(doc, w, "across", false);
+    yyjson_mut_obj_add_bool(doc, w, "drawerOpen", false);
+    yyjson_mut_obj_add_bool(doc, w, "sideOpen", false);
+    for (int i = 0; i < WORKSPACE_NUMBER_COUNT; i++) {
+        yyjson_mut_obj_add_real(doc, w, WORKSPACE_NUMBERS[i], 0);
     }
-    area(s, STUDIO_AREA_BOTTOM, "bottom", axis, 0, true);
-    kit_pop(k);
 }
 
-/* The right column eases closed and open, at its last width, and follows
-   its splitter directly while dragged. */
-static void side_areas(studio *s)
+bool studio_workspace_sync(studio *s, const studio_panel_sync *at)
 {
-    kit *k = s->kit;
-    studio_layout *layout = studio_active_layout(s);
-    float target = layout->side_open ? layout->side_width : 0;
-    float width = kit_spring(k, "side-width", target, s->side_dragging ? 0 : 0.2f);
-    if (width <= 0.5f) {
-        studio_ui_area_detach(s, STUDIO_AREA_OUTLINER);
-        studio_ui_area_detach(s, STUDIO_AREA_PROPERTIES);
-        s->side_rect = s->areas[STUDIO_AREA_OUTLINER]
-                           .rect = s->areas[STUDIO_AREA_PROPERTIES].rect = (kit_rect){ 0 };
-        s->side_dragging = false;
+    const studio_layout *layout = studio_active_layout(s);
+    workspace_extents e = extents(s);
+    yyjson_mut_val *w = at->variable;
+    const char *max = s->maximized >= 0 ? AREA_KEYS[s->maximized] : "";
+    bool changed = ui_data_put_text(at->doc, w, "max", max);
+    changed |= ui_data_put_bool(w, "across", s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT);
+    changed |= ui_data_put_bool(w, "drawerOpen", layout->drawer_open);
+    changed |= ui_data_put_bool(w, "sideOpen", layout->side_open);
+    /* Whole dp, as the kit sized the places. */
+    const double numbers[WORKSPACE_NUMBER_COUNT] = {
+        e.top,
+        e.top_min,
+        e.top_max,
+        e.outliner,
+        e.outliner_max,
+        rintf(e.drawer),
+        layout->drawer_height,
+        e.drawer_max,
+        rintf(layout->side_width),
+        e.side_max,
+    };
+    for (int i = 0; i < WORKSPACE_NUMBER_COUNT; i++) {
+        changed |= ui_data_put_number(w, WORKSPACE_NUMBERS[i], numbers[i]);
+    }
+    return changed;
+}
+
+/* A splitter moved: emit('workspace.resize', which, value) with which
+   `main`, `outliner`, `drawer` or `side`. The arrangement is a preference,
+   saved as preferences are, with no Undo step. The places follow in the
+   same frame. */
+void studio_workspace_action(studio *s, const char *action, const ui_activation *a)
+{
+    if (strcmp(action, "resize") || a->argc < 2) {
         return;
     }
-    kit_splitter(k, "split", 0, &layout->side_width, 260, fmaxf(260, s->in.width - 320), true);
-    s->side_dragging = kit_item_active(k);
-    kit_push(k, "side", NULL, "column side");
-    char extent[32];
-    dp(extent, sizeof extent, width);
-    kit_style(k, "width", extent);
-    float height = s->side_rect.h > 0 ? s->side_rect.h : s->in.height - 60;
-    float outliner = floorf((height - 4) * layout->side_split);
-    area(s, STUDIO_AREA_OUTLINER, "outliner", 1, outliner, false);
-    if (kit_splitter(k, "split", 1, &outliner, 80, fmaxf(80, height - 120), false)) {
-        layout->side_split = outliner / fmaxf(1, height - 4);
+    studio_layout *layout = studio_active_layout(s);
+    workspace_extents e = extents(s);
+    const char *which = a->args[0];
+    float value = strtof(a->args[1], NULL);
+    if (!strcmp(which, "main")) {
+        layout->main_split = value / fmaxf(1, e.size - 4);
+    } else if (!strcmp(which, "outliner")) {
+        layout->side_split = value / fmaxf(1, e.height - 4);
+    } else if (!strcmp(which, "drawer")) {
+        layout->drawer_height = value;
+    } else if (!strcmp(which, "side")) {
+        layout->side_width = value;
     }
-    area(s, STUDIO_AREA_PROPERTIES, "properties", 1, 0, true);
-    kit_pop(k);
-    s->side_rect = kit_item_rect(k);
+    studio_ui_resync(s, "workspace");
 }
 
+/* The border box `selector` took in the Workspace's last layout, in dp;
+   empty while it is hidden. */
+static kit_rect laid_out(studio *s, rml_element *host, const char *selector)
+{
+    rml_element *el = rml_element_query_selector(host, selector);
+    if (!el || !rml_element_is_visible(el, false)) {
+        return (kit_rect){ 0 };
+    }
+    float ratio = studio_pixel_ratio(s);
+    rml_vec2 at = rml_element_absolute_offset(el, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(el, RML_BOX_BORDER);
+    return (kit_rect){ at.x / ratio, at.y / ratio, size.x / ratio, size.y / ratio };
+}
+
+/* The columns' sizes split their areas; a hidden column keeps its last. */
+static void measure(studio *s, rml_element *host)
+{
+    kit_rect main = laid_out(s, host, ".column.main");
+    kit_rect side = laid_out(s, host, ".side .column");
+    s->main_rect = main.w > 0 && main.h > 0 ? main : s->main_rect;
+    s->side_rect = side.w > 0 && side.h > 0 ? side : s->side_rect;
+}
+
+/* Whether area `i` shows: the maximized one alone, else the drawer and the
+   side column while open and while their places ease shut. */
+static bool area_shown(studio *s, int i, kit_rect place)
+{
+    const studio_layout *layout = studio_active_layout(s);
+    if (s->maximized >= 0) {
+        return i == s->maximized;
+    }
+    if (i == STUDIO_AREA_DRAWER) {
+        return layout->drawer_open || place.h > 0.5f;
+    }
+    if (i == STUDIO_AREA_OUTLINER || i == STUDIO_AREA_PROPERTIES) {
+        return layout->side_open || place.w > 0.5f;
+    }
+    return true;
+}
+
+/* Area `i` in its place, a native slot of the Workspace. */
+static void place(studio *s, rml_element *host, int i)
+{
+    char selector[32];
+    snprintf(selector, sizeof selector, "#area-%s", AREA_KEYS[i]);
+    kit_rect box = laid_out(s, host, selector);
+    bool slot = kit_slot_begin(s->kit, AREA_KEYS[i], host, selector);
+    bool shown = slot && area_shown(s, i, box);
+    if (shown) {
+        area(s, i);
+    }
+    if (slot) {
+        kit_slot_end(s->kit);
+    }
+    if (!shown) {
+        studio_ui_area_detach(s, i);
+        s->areas[i].rect = (kit_rect){ 0 };
+    }
+}
+
+bool studio_areas_moved(studio *s)
+{
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        char path[48];
+        snprintf(path, sizeof path, "app/workspace/%s/area", AREA_KEYS[i]);
+        kit_rect now, was = s->areas[i].rect;
+        if (kit_find(s->kit, path, &now) &&
+            (fabsf(now.x - was.x) > 0.5f || fabsf(now.y - was.y) > 0.5f ||
+             fabsf(now.w - was.w) > 0.5f || fabsf(now.h - was.h) > 0.5f)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The workspace is authored: projects/studio's Workspace lays out the
+   areas' places, the splitters between them, the drawer and side column
+   easing open and shut, and a maximized area filling it all, from the
+   `workspace` source. It is a document of its own over the areas, so a
+   splitter's hit area reaches past its gutter onto theirs; everything else
+   in it passes the pointer through. */
 static void workspace(studio *s)
 {
-    static const char *const AREA_KEYS[STUDIO_AREA_COUNT] = { "top",
-                                                              "bottom",
-                                                              "outliner",
-                                                              "properties",
-                                                              "drawer" };
     kit *k = s->kit;
-    studio_layout *layout = studio_active_layout(s);
-    kit_push(k, "workspace", "main", "workspace");
-    kit_push(k, "main", NULL, "column main");
-    if (s->maximized >= 0) {
-        memset(s->areas, 0, sizeof s->areas);
+    kit_document_begin(k, "workspace", "workspace-place", false);
+    rml_element *host = studio_ui_panel(s, "workspace", "Workspace");
+    if (host) {
+        rml_element *document = rml_element_owner_document(host);
+        rml_element_set_property(document, "z-index", "1");
+        rml_element_set_property(document, "pointer-events", "none");
+        measure(s, host);
         for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
-            if (i != s->maximized) {
-                studio_ui_area_detach(s, i);
-            }
+            place(s, host, i);
         }
-        area(s, s->maximized, AREA_KEYS[s->maximized], 1, 0, true);
-        kit_pop(k);
-        s->main_rect = kit_item_rect(k);
-        kit_pop(k);
-        return;
     }
-    float column_height = s->main_rect.h > 0 ? s->main_rect.h : s->in.height - 60;
-    /* The drawer eases open in 200 ms and closed in 100 ms, and follows its
-       splitter directly while dragged. */
-    float drawer_target = layout->drawer_open
-                            ? fminf(layout->drawer_height, fmaxf(80, column_height - 200))
-                            : 0;
-    float drawer = kit_spring(
-        k,
-        "drawer",
-        drawer_target,
-        s->drawer_dragging    ? 0
-        : layout->drawer_open ? 0.2f
-                              : 0.1f
-    );
-    bool drawer_shown = drawer > 0.5f;
-    float main_width = s->main_rect.w > 0 ? s->main_rect.w : s->in.width;
-    main_areas(
-        s,
-        s->prefs.workspace == STUDIO_WORKSPACE_HORIZONTAL_SPLIT
-            ? main_width
-            : column_height - (drawer_shown ? drawer + 4 : 0)
-    );
-    if (drawer_shown) {
-        float height = layout->drawer_height;
-        if (kit_splitter(k, "drawer-split", 1, &height, 80, fmaxf(80, column_height - 200), true)) {
-            layout->drawer_height = height;
-        }
-        s->drawer_dragging = kit_item_active(k);
-        area(s, STUDIO_AREA_DRAWER, "drawer", 1, drawer, false);
-    } else {
-        studio_ui_area_detach(s, STUDIO_AREA_DRAWER);
-        s->areas[STUDIO_AREA_DRAWER].rect = (kit_rect){ 0 };
-        s->drawer_dragging = false;
-    }
-    kit_pop(k);
-    s->main_rect = kit_item_rect(k);
-    side_areas(s);
-    kit_pop(k);
+    kit_document_end(k);
 }
 
 /* ---------- Status bar ---------- */
-
-/* UI Scale stays in reach, as Office keeps its zoom in the status bar. */
-static void scale_control(studio *s)
-{
-    kit *k = s->kit;
-    char label[16];
-    snprintf(label, sizeof label, "%d%%", (int)lroundf(s->prefs.ui_scale * 100));
-    kit_button_desc d = { .label = label, .size = KIT_SM, .cls = "ui-scale", .tip = "UI Scale" };
-    if (kit_button(k, "scale", &d)) {
-        kit_popup_open(k, "scale-menu");
-    }
-    if (!kit_popup_begin(k, "scale-menu", "menu")) {
-        return;
-    }
-    zoom_items(s);
-    kit_menu_separator(k, "s1");
-    for (int i = 0; i < UI_SCALE_COUNT; i++) {
-        char key[8], text[8];
-        snprintf(key, sizeof key, "p%d", i);
-        snprintf(text, sizeof text, "%d%%", (int)lroundf(UI_SCALES[i] * 100));
-        kit_menu_item_desc preset = {
-            .label = text,
-            .checked = fabsf(s->prefs.ui_scale - UI_SCALES[i]) < 0.001f
-        };
-        if (kit_menu_item(k, key, &preset)) {
-            s->prefs.ui_scale = UI_SCALES[i];
-        }
-    }
-    kit_popup_end(k);
-}
 
 /* Authoring messages report like any other operation. */
 static void follow_messages(studio *s)
@@ -1208,24 +1593,31 @@ static void follow_messages(studio *s)
     }
 }
 
-/* The status bar is authored: projects/studio's StatusBar binds `editor`
-   (studio_sources.c) and runs commands. UI Scale stays native, with its
-   menu, in the bar's #ui-scale slot. Controls retain focus while the host
-   routes global shortcuts. */
+/* The status bar is authored: projects/studio's StatusBar binds `editor`,
+   `commands` (studio_sources.c) and `shell` and runs commands, in a
+   document of its own whose place takes its height. Controls retain focus
+   while the host routes global shortcuts. */
 static void statusbar(studio *s)
 {
     follow_messages(s);
-    rml_element *host = studio_ui_panel(s, "status", "StatusBar");
-    if (!host) {
-        return;
-    }
-    if (kit_slot_begin(s->kit, "scale", host, "#ui-scale")) {
-        scale_control(s);
-        kit_slot_end(s->kit);
-    }
+    kit_document_begin(s->kit, "status", "bar-place", true);
+    studio_ui_panel(s, "status", "StatusBar");
+    kit_document_end(s->kit);
 }
 
 /* ---------- Frame ---------- */
+
+/* Whether the pointer is over the kit's overlay layer or an open authored
+   popover, such as a menubar menu reaching over an area. */
+static bool over_overlay(studio *s)
+{
+    const char *path = kit_hovered_path(s->kit);
+    rml_element *el = rml_context_hover_element(rml_backend_context(s->backend));
+    while (el && !rml_element_has_attribute(el, "popover")) {
+        el = rml_element_parent(el);
+    }
+    return el || (path && !strncmp(path, "layer/", 6));
+}
 
 static void track_pointer(studio *s)
 {
@@ -1240,9 +1632,7 @@ static void track_pointer(studio *s)
     if (s->in.pressed[0] || s->in.pressed[1] || s->in.pressed[2]) {
         /* Shell controls act on the last editor. A popup can overlap another
            pane geometrically without transferring its command context. */
-        const char *path = kit_hovered_path(s->kit);
-        bool overlay = path && !strncmp(path, "layer/", 6);
-        if (s->hover_area >= 0 && !overlay && !kit_command_is_open(s->kit)) {
+        if (s->hover_area >= 0 && !over_overlay(s) && !studio_palette_is_open(s)) {
             s->focus_area = s->hover_area;
         }
     }
@@ -1321,6 +1711,7 @@ void studio_emit(studio *s)
     reveal_document(s);
     track_pointer(s);
     kit_root(s->kit, "app");
+    studio_drop_frame(s);
     topbar(s);
     workspace(s);
     /* Visual designer (workstream H): the Text Editor's cursor and the Canvas. */
@@ -1328,11 +1719,15 @@ void studio_emit(studio *s)
     statusbar(s);
     studio_palette(s);
     studio_new_asset_frame(s);
+    studio_prototype_actions_frame(s);
     undo_toast(s);
     studio_projects_frame(s);
     studio_rewire_toast(s);
     studio_members_toast(s);
     studio_refactor_frame(s);
+    studio_graph_menu_frame(s);
+    studio_graph_details_frame(s);
     studio_component_toast(s);
+    studio_keep_toast(s);
     studio_new_project_frame(s);
 }

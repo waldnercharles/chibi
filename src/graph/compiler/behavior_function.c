@@ -868,6 +868,11 @@ behavior_function *behavior_function_lower(
     return root;
 }
 
+bool behavior_function_observed(const behavior_function *function)
+{
+    return function->edges || function->watches;
+}
+
 bool behavior_function_has_invocations(const behavior_function *function)
 {
     return function->calls != NULL;

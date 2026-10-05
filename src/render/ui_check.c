@@ -41,7 +41,7 @@ static const char DOCUMENT[] =
 /* What RmlUi calls the markup's document in its messages. */
 #define MARKUP_URL "markup"
 
-static void ignore_emit(void *, const rml_event *, const char *, const char *)
+static void ignore_emit(void *, const rml_event *, const char *, int, const char *const *)
 {
 }
 

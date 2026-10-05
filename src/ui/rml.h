@@ -74,6 +74,31 @@ extern "C"
         RML_CLIP_MASK_INTERSECT,
     } rml_clip_mask_operation;
 
+    /* A gradient's Rml::ColorStop, at a normalized position; the color is
+     * premultiplied. */
+    typedef struct rml_color_stop
+    {
+        float position;
+        rml_color color;
+    } rml_color_stop;
+
+    /* The Rml::Dictionary a filter or shader compiles from. A key RmlUi did
+     * not pass reads as zero. */
+    typedef struct rml_effect_parameters
+    {
+        float value;     /* opacity and the color filters */
+        float sigma;     /* blur, drop-shadow */
+        float angle;     /* conic-gradient, radians */
+        rml_vec2 offset; /* drop-shadow */
+        rml_color color; /* drop-shadow, straight alpha */
+        rml_vec2 p0, p1; /* linear-gradient */
+        rml_vec2 center; /* radial- and conic-gradient */
+        rml_vec2 radius; /* radial-gradient */
+        bool repeating;
+        const rml_color_stop *stops;
+        size_t stop_count;
+    } rml_effect_parameters;
+
     typedef enum rml_blend_mode
     {
         RML_BLEND_MODE_BLEND,
@@ -215,6 +240,9 @@ extern "C"
         RML_EVENT_CHANGE,
         RML_EVENT_SUBMIT,
         RML_EVENT_TABCHANGE,
+        /* A text field's edit, as HTML's; change follows once it commits
+         * (cmake/patches/rmlui-input-events.patch). */
+        RML_EVENT_INPUT,
     } rml_event_id;
 
     typedef enum rml_box_area
@@ -316,20 +344,37 @@ extern "C"
         );
         void (*pop_layer)(void *user);
         uintptr_t (*save_layer_as_texture)(void *user);
-        uintptr_t (*compile_filter)(void *user, const char *name, float sigma);
+        /* Returns a filter handle that masks the next composite. */
+        uintptr_t (*save_layer_as_mask_image)(void *user);
+        uintptr_t (*compile_filter)(void *user, const char *name, const rml_effect_parameters *parameters);
         void (*release_filter)(void *user, uintptr_t filter);
+        uintptr_t (*compile_shader)(void *user, const char *name, const rml_effect_parameters *parameters);
+        void (*render_shader)(
+            void *user,
+            uintptr_t shader,
+            uintptr_t geometry,
+            rml_vec2 translation,
+            uintptr_t texture
+        );
+        void (*release_shader)(void *user, uintptr_t shader);
     } rml_render_interface;
 
     /* A custom element's Element overrides; any may be NULL. release runs
      * when the element is destroyed. update runs at the start of each
      * context update, before the element's style and its children's are
-     * computed, so what it sets shows in that frame (workstream N). */
+     * computed, so what it sets shows in that frame (workstream N). layout
+     * runs each time a layout places the element, whether or not it moved;
+     * a document lays out all of its elements at once. attribute runs after
+     * each of the element's attributes is set or removed, `name` naming it,
+     * with the user data NULL until the element sets one (workstream F2). */
     typedef struct rml_element_hooks
     {
         void (*render)(rml_element *element, void *user);
         void (*resize)(rml_element *element, void *user);
         void (*release)(void *user);
         void (*update)(rml_element *element, void *user);
+        void (*layout)(rml_element *element, void *user);
+        void (*attribute)(rml_element *element, void *user, const char *name);
     } rml_element_hooks;
 
     /* Event and the parameters the editor reads. Valid during the callback. */
@@ -420,7 +465,8 @@ extern "C"
     /* Creates an element with the owner document and inserts it before
      * `before`, or appends it when `before` is NULL. */
     rml_element *rml_element_create_child(rml_element *parent, const char *tag, rml_element *before);
-    /* Removes `child` from its parent and inserts it into `parent`. */
+    /* Removes `child` from its parent and inserts it into `parent`; under
+     * the same data model its views stay bound, as a DOM move's do. */
     void rml_element_move_child(rml_element *parent, rml_element *child, rml_element *before);
     /* Removes and destroys the child. */
     void rml_element_remove_child(rml_element *parent, rml_element *child);
@@ -505,14 +551,25 @@ extern "C"
         bool capture
     );
     void rml_event_stop_propagation(const rml_event *event);
+    /* Dispatches event `type` at `element` with `event`'s pointer, button
+     * and modifiers as its parameters, as RmlUi's own events carry them; an
+     * event RmlUi does not define, such as contextmenu, bubbles. False when a
+     * listener stopped it. */
+    bool rml_element_dispatch_event(rml_element *element, const char *type, const rml_event *event);
 
     /* ---------- Data models ---------- */
 
-    /* An expression's emit('Name') or emit('Name', value), as Vue's $emit
-     * passes an argument: `event` is the one whose data-event-* binding ran
-     * it, and its current element holds that binding; `value` is the second
-     * argument as text, or NULL without one. */
-    typedef void (*rml_emit_fn)(void *user, const rml_event *event, const char *name, const char *value);
+    /* An expression's emit('Name', ...), as Vue's $emit passes arguments:
+     * `event` is the one whose data-event-* binding ran it, and its current
+     * element holds that binding; `args` are the `argc` arguments after the
+     * name, as text. */
+    typedef void (*rml_emit_fn)(
+        void *user,
+        const rml_event *event,
+        const char *name,
+        int argc,
+        const char *const *args
+    );
 
     /* The data model `name` in `context`, for RmlUi's data bindings ({{ }},
      * data-for, data-value, data-checked, data-event-*, ...). Its variables
@@ -521,8 +578,7 @@ extern "C"
      * which bindings may overwrite. As in JavaScript, a name no variable has
      * reads as empty, and a missing member reads as null until set. The
      * doc must outlive the model and keep each variable's value in place,
-     * changing its contents instead. Expressions may call emit('Name') and
-     * emit('Name', value). */
+     * changing its contents instead. Expressions may call emit('Name', ...). */
     rml_data_model *rml_data_model_create(
         rml_context *context,
         const char *name,
@@ -532,10 +588,28 @@ extern "C"
     );
     /* Removes the model from its context, unbinding its elements. */
     void rml_data_model_destroy(rml_data_model *model);
-    /* Updates what binds `variable` after its value changed. */
+    /* Binds `value`, a member the caller added to the root of the model's
+     * document, as variable `name`, before any markup binds it. */
+    void rml_data_model_bind(rml_data_model *model, const char *name, yyjson_mut_val *value);
+    /* Updates what binds `variable` after its value changed. Views look up
+     * array items in constant time (ui/json_items.h); a dirty variable makes
+     * them list arrays again, so an item replaced in place shows. */
     void rml_data_model_dirty(rml_data_model *model, const char *variable);
+    /* Dirties every variable, so the next update evaluates each view once:
+     * the reads it adds count the model's views. */
+    void rml_data_model_dirty_all(rml_data_model *model);
     /* How many values bindings have written, so a caller sees when to read. */
     uint64_t rml_data_model_writes(const rml_data_model *model);
+    /* What views read since the model was created: the values they
+     * evaluated and the members and items they looked up on the way, each
+     * view walking its address from a variable. A dirty variable costs one
+     * evaluation for every view bound to it. */
+    typedef struct rml_data_reads
+    {
+        uint64_t values;
+        uint64_t lookups;
+    } rml_data_reads;
+    rml_data_reads rml_data_model_reads(const rml_data_model *model);
     /* Binds the element and its descendants to the context's model `name`,
      * as data-model="name" in markup does. The element must have a parent. */
     void rml_element_set_data_model(rml_element *element, const char *name);
@@ -688,6 +762,7 @@ extern "C"
     {
         RML_KEY_OEM_1 = 38,     /* ; */
         RML_KEY_OEM_COMMA = 40, /* , */
+        RML_KEY_OEM_2 = 43,     /* / */
         RML_KEY_OEM_4 = 45,     /* [ */
         RML_KEY_OEM_6 = 47,     /* ] */
     };
@@ -738,6 +813,60 @@ extern "C"
      * removes the handler. */
     typedef bool (*rml_data_if_fn)(rml_element *element, bool show, bool first);
     void rml_set_data_if_handler(rml_data_if_fn fn);
+
+    /* ---------- One document per area (workstream F5) ---------- */
+
+    /* Gives `document` a copy of `source`'s style sheets, as though each
+     * had been set on it too; nothing when `source` has none. */
+    void rml_document_copy_style_sheet(rml_element *document, rml_element *source);
+
+    /* ---------- Native controls (workstream F2) ---------- */
+
+    /* Dispatches a `type` event from the element that bubbles, as a form
+     * control's input and change do: data-event-<type> reads ev.value, the
+     * text `value`, ev.canceled, and ev.name, the element's name attribute
+     * (as a web handler reads event.target.name). */
+    void rml_element_dispatch_value(rml_element *element, const char *type, const char *value, bool canceled);
+    /* Listens for events named `type`, such as "input", which rml_event_id
+     * does not name; the listener's events carry another id. */
+    void rml_element_add_named_listener(
+        rml_element *element,
+        const char *type,
+        rml_listener *listener,
+        bool capture
+    );
+
+    /* ---------- Lists and drag (workstream F4) ---------- */
+
+    /* Calls `create` for each context created and `destroy` for each one
+     * destroyed from now until rml_shutdown, as an RmlUi plugin hears them;
+     * either may be NULL. The hooks must outlive rml_shutdown. */
+    typedef struct rml_context_hooks
+    {
+        void (*create)(rml_context *context);
+        void (*destroy)(rml_context *context);
+    } rml_context_hooks;
+    void rml_add_context_hooks(const rml_context_hooks *hooks);
+    /* The element holding the context's documents: every event in the
+     * context passes it, first while capturing and last while bubbling. Its
+     * box is the context's size in pixels. */
+    rml_element *rml_context_root(rml_context *context);
+    /* Dispatches a `type` event from the element that bubbles, with `count`
+     * text parameters, which data-event-<type> reads as ev.<names[i]>. False
+     * when a listener stopped it. */
+    bool rml_element_dispatch_texts(
+        rml_element *element,
+        const char *type,
+        int count,
+        const char *const *names,
+        const char *const *values
+    );
+
+    /* ---------- Members (workstream P5) ---------- */
+
+    /* Calls `created` for each element RmlUi creates from now until
+     * rml_shutdown, its attributes set, before it joins a document. */
+    void rml_add_element_created(void (*created)(rml_element *element));
 
 #ifdef __cplusplus
 }

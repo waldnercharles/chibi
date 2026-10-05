@@ -1337,7 +1337,8 @@ zero. The bounds are checked before casting, including the Integer64 upper bound
 so narrowing does not invoke undefined C behavior. The registered conversion
 nodes are To Byte, To Integer, and To Integer64; integer widening remains
 available through To Integer64. This supersedes the earlier TYPE-7 policy that
-excluded lossy Real-to-Integer conversion.
+excluded lossy Real-to-Integer conversion. A bool feeds a Byte, Integer,
+Integer64 or Real pin through the same nodes, as 1 or 0.
 
 
 ## Workspace navigation and shader node authoring

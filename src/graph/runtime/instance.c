@@ -366,6 +366,15 @@ static void instance_set_owner(behavior_instance *bi, const pin_value *owner)
     }
 }
 
+/* Retained runs read graphs a definition swap or release may free. */
+static void instance_release_retained(behavior_instance *bi)
+{
+    for (int i = 0; i < acount(bi->retained); i++) {
+        flow_run_free(bi->retained[i]);
+    }
+    aclear(bi->retained);
+}
+
 static void instance_trace_clear(behavior_instance *bi)
 {
     for (int i = 0; i < acount(bi->trace_names); i++) {
@@ -377,6 +386,131 @@ static void instance_trace_clear(behavior_instance *bi)
     bi->trace_head = 0;
     bi->trace_view_dirty = false;
     bi->trace_revision++;
+    if (bi->activity_used) {
+        memset(bi->activity, 0, (size_t)bi->activity_capacity * sizeof *bi->activity);
+        bi->activity_used = 0;
+    }
+    bi->activity_generation++;
+    instance_release_retained(bi);
+}
+
+/* ---------- Activity ---------- */
+
+enum
+{
+    INSTANCE_RETAINED_MAX = 8 /* events whose last run keeps its values */
+};
+
+static uint64_t activity_hash(const flow_traversal *t)
+{
+    uint64_t key[] = { t->from_id, t->from_pin_id, t->to_id, t->to_pin_id, t->kind };
+    uint64_t hash = 14695981039346656037ull;
+    for (int i = 0; i < 5; i++) {
+        hash = (hash ^ key[i]) * 1099511628211ull;
+    }
+    return hash;
+}
+
+static bool activity_same(const flow_traversal *a, const flow_traversal *b)
+{
+    return a->kind == b->kind && a->from_id == b->from_id &&
+           a->from_pin_id == b->from_pin_id && a->to_id == b->to_id &&
+           a->to_pin_id == b->to_pin_id;
+}
+
+/* The slot holding `t`'s wire, or the empty slot where it belongs. */
+static behavior_instance_activity *activity_slot(
+    behavior_instance_activity *table,
+    int capacity,
+    const flow_traversal *t
+)
+{
+    int mask = capacity - 1;
+    int slot = (int)(activity_hash(t) & (uint64_t)mask);
+    while (table[slot].count && !activity_same(&table[slot].last, t)) {
+        slot = (slot + 1) & mask;
+    }
+    return &table[slot];
+}
+
+static void activity_grow(behavior_instance *bi)
+{
+    int capacity = bi->activity_capacity ? bi->activity_capacity * 2 : 64;
+    behavior_instance_activity *table = xcalloc((size_t)capacity, sizeof *table);
+    for (int i = 0; i < bi->activity_capacity; i++) {
+        if (bi->activity[i].count) {
+            *activity_slot(table, capacity, &bi->activity[i].last) = bi->activity[i];
+        }
+    }
+    free(bi->activity);
+    bi->activity = table;
+    bi->activity_capacity = capacity;
+}
+
+void behavior_instance_record_activity(behavior_instance *bi, const flow_traversal *traversal)
+{
+    assert(bi->trace_enabled);
+    if ((bi->activity_used + 1) * 2 > bi->activity_capacity) {
+        activity_grow(bi);
+    }
+    behavior_instance_activity *slot = activity_slot(bi->activity, bi->activity_capacity, traversal);
+    bi->activity_used += !slot->count;
+    slot->last = *traversal;
+    slot->count++;
+}
+
+const behavior_instance_activity *behavior_instance_activity_table(
+    const behavior_instance *bi,
+    int *capacity,
+    uint64_t *generation
+)
+{
+    *capacity = bi->activity_capacity;
+    *generation = bi->activity_generation;
+    return bi->activity;
+}
+
+void behavior_instance_set_debug_target(behavior_instance *bi, bool target)
+{
+    bi->debug_target = target;
+    if (!target) {
+        instance_release_retained(bi);
+    }
+}
+
+flow_run *const *behavior_instance_retained_runs(const behavior_instance *bi, int *count)
+{
+    *count = acount(bi->retained);
+    return bi->retained;
+}
+
+static bool same_event(const flow_run *a, const flow_run *b)
+{
+    const char *x = flow_run_event_name(a), *y = flow_run_event_name(b);
+    return !strcmp(x ? x : "", y ? y : "");
+}
+
+/* Keeps a completed run as its event's newest; returns the run it displaced,
+   if any, for the caller to release. */
+static flow_run *instance_retain(behavior_instance *bi, flow_run *act)
+{
+    int count = acount(bi->retained), at = 0;
+    while (at < count && !same_event(bi->retained[at], act)) {
+        at++;
+    }
+    if (at == count && count < INSTANCE_RETAINED_MAX) {
+        apush(bi->retained, act);
+        return NULL;
+    }
+    at = at == count ? 0 : at; /* full: the oldest goes */
+    flow_run *displaced = bi->retained[at];
+    memmove(
+        bi->retained + at,
+        bi->retained + at + 1,
+        (size_t)(count - at - 1) * sizeof *bi->retained
+    );
+    bi->retained[count - 1] = act;
+    return displaced;
 }
 
 static const char *instance_trace_name(behavior_instance *bi, const char *name)
@@ -648,6 +782,12 @@ int behavior_instance_release_activation(behavior_instance *bi, flow_run *act)
         return -1;
     }
     instance_trace_run(bi, act);
+    if (bi->debug_target && bi->trace_enabled && flow_run_status(act) == FLOW_COMPLETED) {
+        act = instance_retain(bi, act);
+        if (!act) {
+            return 0;
+        }
+    }
     if (!bi->pool_enabled) {
         flow_run_free(act);
         return 0;
@@ -943,6 +1083,8 @@ void behavior_instance_destroy(behavior_instance *bi)
     afree(bi->trace);
     afree(bi->trace_view);
     afree(bi->trace_names);
+    afree(bi->retained);
+    free(bi->activity);
     instance_free_variables(bi);
     free(bi->variable_arenas);
     instance_free_storage(bi);

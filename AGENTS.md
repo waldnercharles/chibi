@@ -10,7 +10,9 @@
 - After hand-editing asset KDL, run `build/chibi_ctl --project-root <root> --format`; `make test` fails on non-canonical assets.
 - Navigation and refactoring (find references, rename, go to definition, call hierarchy, hover): build each once outside `src/editor/` and ship it in both Studio and the MCP. `docs/authoring-navigation.md` tracks each feature's status.
 - Validate engine generalizations with another scene or prototype that uses different content and omits the motivating game's mechanics.
-- Prefer `make build` when building, and `make test` to test.
+- For routine agent iteration, run one relevant native selector with `make test-fast TEST_ARGS=--<selector>`; use `make test-list` to list common selectors. This target reuses `BUILD_DIR` and runs only the selected checks.
+- Before merging or after broad contract changes, run `make test`; it remains the complete tooling and native regression gate. `make test-slow` runs the full native suite and whole-function audit, `make test-render` covers GPU/window checks, and `make test-compiler-parity` runs the focused behavior parity gate. See `docs/testing.md` for exact coverage and timing.
+- Prefer `make build` when building.
 - Keep code small: remove dead code/abstractions; use small functions, narrow APIs, few parameters, guards, and no `else` after `return` or `break`.
 - Fail fast: `assert` invalid state; use `xmalloc`/`xrealloc`; fix pointer bugs at the source; avoid defensive `NULL` checks that mask defects.
 - Types: `int` for domain values/indices; `size_t` for sizes; unsigned for bits; `bool` for booleans.

@@ -55,3 +55,5 @@ bool material_stream_update(
 );
 const material_stream_tile *material_stream_tiles(const material_stream *stream, int *count);
 material_stream_state material_stream_inspect(const material_stream *stream);
+/* Whether the last update left a tile its views want unprepared. */
+bool material_stream_waiting(const material_stream *stream);

@@ -1223,6 +1223,66 @@ static void terrain_stream_restore()
     ecs_world_free(world);
 }
 
+/* A host's stream views prepare terrain beside the cameras', streaming waits
+ * until they are filled, and a reset that keeps terrain keeps what streamed. */
+static void terrain_host_views()
+{
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    game_live_world *live = game_live_world_new(world);
+    behavior_asset *field = cave_asset();
+    char error[256];
+    assert(
+        material_field_compile(game_materials_fields(live->materials), field, error, sizeof error)
+    );
+    behavior_asset_free(field);
+    ecs_entity camera = ecs_world_create_entity(world);
+    component(world, camera, &GAME_COMPONENT_GameCamera, &(GameCamera){ .width = 128, .height = 128 });
+    component(world, camera, &GAME_COMPONENT_GameTransform, &(GameTransform){ -1500, 0 });
+    ecs_entity source = ecs_world_create_entity(world);
+    component(world, source, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    component(
+        world,
+        source,
+        &GAME_COMPONENT_MaterialTerrain,
+        &(MaterialTerrain){ .seed = 1729,
+                            .width = 4096,
+                            .height = 512,
+                            .cell_size = 2,
+                            .field = "CaveField",
+                            .parameters = "Radius 72\nRoughness 30\n",
+                            .category = 8,
+                            .mask = 1,
+                            .min_fragment_cells = 4,
+                            .stream_radius = 128,
+                            .stream_budget = 64 }
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(!game_materials_prepare(live->materials));
+    int cameras = game_materials_inspect(live->materials).streaming.resident;
+    material_stream_view view = { 1500, 0, 900, 0 };
+    game_materials_set_stream_views(live->materials, &view, 1);
+    assert(!game_materials_prepare(live->materials));
+    bool waited = game_materials_streaming(live->materials);
+    for (int i = 0; i < 64 && game_materials_streaming(live->materials); i++) {
+        assert(!game_materials_prepare(live->materials));
+    }
+    int resident = game_materials_inspect(live->materials).streaming.resident;
+    uint32_t entities = ecs_world_live_count(world);
+    game_materials_reset_except_terrain(live->materials);
+    assert(!game_materials_prepare(live->materials));
+    bool kept = ecs_world_live_count(world) == entities &&
+                game_materials_inspect(live->materials).streaming.resident == resident;
+    game_materials_reset(live->materials);
+    bool cleared = ecs_world_live_count(world) == 2;
+    assert(waited && !game_materials_streaming(live->materials) && resident > cameras);
+    assert(kept && cleared);
+    game_live_world_free(live);
+    ecs_world_free(world);
+}
+
 /* Two terrain origins share preparation capacity but keep separate streams. */
 static void terrain_preparation_scratch()
 {
@@ -2562,5 +2622,6 @@ void test_materials()
     terrain_boundary_cut();
     terrain_preparation_scratch();
     terrain_stream_restore();
+    terrain_host_views();
     puts("PASS: material destruction, cohesion, sleeping, momentum and parallel parity");
 }

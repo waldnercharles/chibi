@@ -242,6 +242,9 @@ extern "C"
     int flow_context_entry_output(const struct flow_context *ctx);
     /* Allocate from the run-owned arena (DATA-6). */
     void *flow_context_scratch_alloc(struct flow_context *ctx, size_t size);
+    /* The arena flow_context_scratch_alloc takes from: it lives as long as
+     * the run, so a node's data outputs may hold arrays and strings in it. */
+    arena *flow_context_scratch(struct flow_context *ctx);
 
 #ifdef __cplusplus
 }

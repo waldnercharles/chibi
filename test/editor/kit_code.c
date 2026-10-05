@@ -411,8 +411,7 @@ static bool completions(fixture *f)
     clear_events(f);
     kit_rect list;
     ok &= check(kit_find(f->k, "layer/@code:app/code", &list), "completions show under the cursor");
-    rml_element *document = rml_context_document(f->context, 0);
-    rml_element *popup = rml_element_query_selector(document, ".code-completions");
+    rml_element *popup = test_query(f->context, ".code-completions");
     ok &= check(
         popup && rml_element_scroll_height(popup) <= rml_element_client_height(popup),
         "a short completion list fits without scrolling"
@@ -435,7 +434,7 @@ static bool completions(fixture *f)
     f->desc.completions = &items[1];
     f->desc.completion_count = 1;
     settle(f);
-    popup = rml_element_query_selector(document, ".code-completions");
+    popup = test_query(f->context, ".code-completions");
     label = rml_element_query_selector(popup, ".label");
     rml_element_inner_rml(label, markup, sizeof markup);
     ok &= check(strstr(markup, "<b>w</b>") && strstr(markup, "<b>l</b>"), "completion labels highlight fuzzy match positions");
@@ -453,7 +452,7 @@ static bool completions(fixture *f)
     f->desc.completions = many;
     f->desc.completion_count = 24;
     settle(f);
-    popup = rml_element_query_selector(document, ".code-completions");
+    popup = test_query(f->context, ".code-completions");
     ok &= check(
         rml_element_scroll_height(popup) > rml_element_client_height(popup),
         "a long completion list scrolls only when rows overflow"

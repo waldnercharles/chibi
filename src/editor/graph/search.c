@@ -3,6 +3,7 @@
 #include "assets/ui_events.h"
 #include "editor/collab/actions_internal.h"
 #include "editor/collab/collab.h"
+#include "editor/studio/studio_nodes.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/document/events.h"
@@ -513,7 +514,9 @@ ed_search_match *ed_search_matches(const editor *e, const char *filter)
         const node_desc *desc = i < 0 ? &ed_math_desc : registry_node(i);
         bool generated_access = component_generated_kind(desc) &&
                                 e->ui_context != EDITOR_UI_CONTEXT_SYSTEM;
-        if (desc == &NODE_GetVariable || desc == &NODE_SetVariable || generated_access) {
+        bool editor_only = studio_node_is(desc) && !e->studio_nodes;
+        if (desc == &NODE_GetVariable || desc == &NODE_SetVariable ||
+            generated_access || editor_only) {
             continue;
         }
         ed_search_match match = { .desc = desc, .category = ed_desc_category(desc) };

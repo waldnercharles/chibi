@@ -1,9 +1,0 @@
-<div class="tree-row inspect-row" data-class-selected="row.selected" data-class-picked="row.hovered" data-class-hidden="row.hidden" data-style-padding-left="row.indent" data-event-click="inspector.select = i" data-event-mouseover="inspector.hover = i">
-  <span class="twisty icon" data-if="row.parent" data-class-open="row.open" data-event-click="inspector.toggle = i">&#xeab6;</span>
-  <span class="twisty" data-if="!row.parent"/>
-  <span class="tag" data-if="!row.node">{{ row.tag }}</span>
-  <span class="ident" data-if="row.id != ''">{{ row.id }}</span>
-  <span class="cls" data-if="row.classes != ''">{{ row.classes }}</span>
-  <span class="widget" data-if="row.widget != ''">{{ row.widget }}</span>
-  <span class="text" data-if="row.text != ''">"{{ row.text }}"</span>
-</div>

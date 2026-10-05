@@ -271,6 +271,31 @@ material_mask material_mask_from_field(int width, int height, float cell_size, c
     return mask;
 }
 
+material_mask material_mask_reduce(const material_mask *mask)
+{
+    assert(mask->width % 2 == 0 && mask->height % 2 == 0);
+    int width = mask->width / 2, height = mask->height / 2;
+    material_mask half = { .width = width,
+                           .height = height,
+                           .cell_size = mask->cell_size * 2,
+                           .incarnation = incarnation() };
+    half.cells = xmalloc((size_t)width * height);
+    half.distance = xmalloc((size_t)width * height * sizeof *half.distance);
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            const float *block = mask->distance + 2 * y * mask->width + 2 * x;
+            int i = y * width + x;
+            half.distance[i] = (block[0] + block[1] + block[mask->width] +
+                                block[mask->width + 1]) *
+                               .25f;
+            half.cells[i] = half.distance[i] <= 0;
+            half.count += half.cells[i];
+        }
+    }
+    material_mask_rebuild(&half);
+    return half;
+}
+
 bool material_mask_contains(const material_mask *mask, float x, float y)
 {
     float px = floorf(x / mask->cell_size + mask->width * .5f);

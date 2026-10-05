@@ -1109,15 +1109,29 @@ static bool collect_edits(
     return replace_node(text, old, value, name, edits);
 }
 
+/* Whether the KDL writer emits exactly `text` for its values: no comments
+ * or hand formatting to preserve. */
+static bool written_canonically(const av_doc *doc, const char *text)
+{
+    char *written = av_doc_write(doc);
+    bool same = written && !strcmp(written, text);
+    free(written);
+    return same;
+}
+
 char *asset_source_reconcile(const char *text, const av_value *value, char *error, size_t size)
 {
     av_doc *old = av_doc_read(text, error, size);
     if (!old) {
         return NULL;
     }
+    char *canonical = av_value_write(value);
+    if (canonical && written_canonically(old, text)) {
+        av_doc_free(old);
+        return canonical;
+    }
     /* Float32 literals are parsed as doubles until a reflected loader reads
      * them. Compare the desired disk values at that same boundary. */
-    char *canonical = av_value_write(value);
     av_doc *target = canonical ? av_doc_read(canonical, error, size) : NULL;
     free(canonical);
     if (!target) {

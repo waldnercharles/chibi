@@ -53,6 +53,7 @@ enum
     KIT_ICON_SELECT = 0xf01bf,      /* nf-md-cursor_default_outline */
     KIT_ICON_MOVE = 0xf01be,        /* nf-md-cursor_move */
     KIT_ICON_ROTATE = 0xf0467,      /* nf-md-rotate_right */
+    KIT_ICON_SCALE = 0xf0a68,       /* nf-md-resize */
     KIT_ICON_FRAME = 0xf004c,       /* nf-md-arrow_expand_all */
     KIT_ICON_PAN = 0xf0bb4,         /* nf-md-pan */
     KIT_ICON_ZOOM_IN = 0xeb81,      /* nf-cod-zoom_in */
@@ -65,9 +66,15 @@ enum
     KIT_ICON_REDO = 0xf044e,        /* nf-md-redo */
     KIT_ICON_SAVE = 0xeb4b,         /* nf-cod-save */
     KIT_ICON_HISTORY = 0xea82,      /* nf-cod-history */
+    KIT_ICON_PIN = 0xf0931,         /* nf-md-pin_outline */
     KIT_ICON_EXTERNAL = 0xeb14,     /* nf-cod-link_external */
     KIT_ICON_RESET = 0xeae2,        /* nf-cod-discard */
     KIT_ICON_COPY = 0xebcc,         /* nf-cod-copy */
+    KIT_ICON_CLIPBOARD = 0xf018f,   /* nf-md-content_copy */
+    KIT_ICON_CUT = 0xf0190,         /* nf-md-content_cut */
+    KIT_ICON_PASTE = 0xf0192,       /* nf-md-content_paste */
+    KIT_ICON_DASH = 0xeacc,         /* nf-cod-dash */
+    KIT_ICON_SELECTION = 0xf0135,   /* nf-md-checkbox_multiple_blank_outline */
     KIT_ICON_EDIT = 0xea73,         /* nf-cod-edit */
     KIT_ICON_TRASH = 0xea81,        /* nf-cod-trash */
     KIT_ICON_WARNING = 0xea6c,      /* nf-cod-warning */
@@ -108,6 +115,8 @@ enum
     KIT_ICON_PASS = 0xeba4,         /* nf-cod-pass */
     KIT_ICON_LOADING = 0xeb19,      /* nf-cod-loading */
     KIT_ICON_PERFORMANCE = 0xf04c5, /* nf-md-speedometer */
+    KIT_ICON_SLOWER = 0xf0cd7,      /* nf-md-turtle */
+    KIT_ICON_FASTER = 0xf0907,      /* nf-md-rabbit */
     KIT_ICON_EMITTER = 0xf0674,     /* nf-md-creation */
     KIT_ICON_TERRAIN = 0xf058a,     /* nf-md-terrain */
     KIT_ICON_GAMEPAD = 0xf0297,     /* nf-md-gamepad_variant */

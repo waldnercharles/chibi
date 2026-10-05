@@ -59,6 +59,7 @@ char *asset_source_hover(const asset_source *source, int offset);
 const av_value *asset_source_value_at(const asset_source *source, int offset, const char **name);
 /* Preserve unchanged source; scalar edits replace only their lexeme. Container
  * shape edits rewrite the smallest changed node, retaining surrounding comments.
+ * Canonical source has nothing to preserve, so it stays canonical.
  * A failed reconciliation returns NULL with an error, never an unsafe rewrite. */
 char *asset_source_reconcile(const char *text, const av_value *replacement, char *error, size_t size);
 

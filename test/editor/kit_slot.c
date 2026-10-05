@@ -35,9 +35,9 @@ static void on_event(void *user, const rml_event *event)
     ui_mount_listen(user, event);
 }
 
-static void on_emit(void *user, const rml_event *event, const char *name, const char *value)
+static void on_emit(void *user, const rml_event *event, const char *name, int argc, const char *const *args)
 {
-    ui_mount_emit(user, event->current, name, value);
+    ui_mount_emit(user, event, name, argc, args);
 }
 
 /* A Studio kit whose host shows ui asset `name` under `root`, bound to
@@ -243,10 +243,6 @@ static void status_frame(slot_fixture *f)
     kit_root(k, "app");
     host(f, "status");
     kit_release_focus(k, f->host);
-    if (kit_slot_begin(k, "scale", f->host, "#ui-scale")) {
-        kit_button(k, "scale", &(kit_button_desc){ .label = "100%", .size = KIT_SM, .cls = "ui-scale" });
-        kit_slot_end(k);
-    }
     end_frame(f);
 }
 
@@ -280,8 +276,19 @@ static bool label_is(rml_element *el, const char *text)
 static bool counts_are(slot_fixture *f, const char *selected, const char *objects)
 {
     rml_element *flows[2];
-    return rml_element_query_selector_all(f->host, ".count number-flow", flows, 2) == 2 &&
+    return rml_element_query_selector_all(f->host, ".objects number-flow", flows, 2) == 2 &&
            label_is(flows[0], selected) && label_is(flows[1], objects);
+}
+
+/* The hidden objects' count, which shows only while any are hidden. */
+static bool hidden_is(slot_fixture *f, const char *hidden)
+{
+    rml_element *count = rml_element_query_selector(f->host, ".hidden-objects");
+    if (!hidden) {
+        return !count || !rml_element_is_visible(count, false);
+    }
+    return count && rml_element_is_visible(count, false) &&
+           label_is(rml_element_query_selector(count, "number-flow"), hidden);
 }
 
 static bool state_is(rml_element *el, const char *state)
@@ -299,6 +306,8 @@ static yyjson_mut_doc *chrome_doc(studio_command_state *commands)
     yyjson_mut_doc_set_root(doc, yyjson_mut_obj(doc));
     studio_status_add(doc);
     studio_commands_add(doc);
+    studio_menubar_add(doc);
+    studio_shell_add(doc);
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         const char *id = studio_command_id((studio_command)c);
         commands[c] = (studio_command_state){
@@ -324,7 +333,9 @@ static void status_checks()
         .reporting = true,
         .scene = "Sandbox",
         .selection = "Player",
+        .selected = 1,
         .objects = 12,
+        .hidden = 3,
         .maximized = -1,
     };
     bool shown = studio_status_show(doc, &status) &&
@@ -352,10 +363,11 @@ static void status_checks()
             toggle_count == 3 && state_is(toggles[0], "on") &&
             state_is(toggles[1], "off") && !strcmp(kbd, ASSETS_KEY "A") &&
             text_is(rml_element_query_selector(toggles[1], ".label"), "toggleOutput") &&
-            counts_are(&f, "1", "12") && count(&f, "#ui-scale .ui-scale") == 1 &&
+            counts_are(&f, "1", "12") && hidden_is(&f, "3") &&
+            count(&f, "#ui-scale .ui-scale") == 1 &&
             rml_element_box_size(bar, RML_BOX_BORDER).y == 28,
         "the authored status bar shows the editor and commands variables, "
-        "with UI Scale in its native slot"
+        "and UI Scale's menu"
     );
 
     click(&f, toggles[1]);
@@ -370,6 +382,8 @@ static void status_checks()
     status.hint_count = 1;
     status.reporting = false;
     status.selection = "";
+    status.selected = 0;
+    status.hidden = 0;
     if (studio_status_show(doc, &status)) {
         rml_data_model_dirty(f.data.model, "editor");
     }
@@ -377,9 +391,9 @@ static void status_checks()
     test_check(
         count(&f, "[data-ui=KeyHint]") == 1 &&
             rml_element_has_attribute(report, "data-ending-style") &&
-            counts_are(&f, "0", "12"),
+            counts_are(&f, "0", "12") && hidden_is(&f, NULL),
         "the status bar follows the editor variable as it changes: the report "
-        "leaves and the counts roll"
+        "leaves, the counts roll and the hidden count goes"
     );
     close_fixture(&f);
 }
@@ -393,18 +407,6 @@ static void topbar_frame(slot_fixture *f)
     kit_root(k, "app");
     host(f, "topbar");
     kit_release_focus(k, f->host);
-    if (kit_slot_begin(k, "menus", f->host, "#menubar")) {
-        assert(!kit_menubar_trigger(k, "file", "File"));
-        kit_slot_end(k);
-    }
-    if (kit_slot_begin(k, "target", f->host, "#play-target")) {
-        kit_button(
-            k,
-            "target",
-            &(kit_button_desc){ .label = "Scene", .variant = KIT_SUBTLE, .cls = "target" }
-        );
-        kit_slot_end(k);
-    }
     end_frame(f);
 }
 
@@ -431,8 +433,8 @@ static const studio_tab_view TABS[] = {
 };
 
 /* The top bar lists `editor.tabs` with their state, runs a tab's commands
-   with its index, reads its transport from `commands`, and hosts the
-   menubar and the play target natively. */
+   with its index, reads its transport from `commands`, and shows the
+   menubar, the play target and a paused run's steps. */
 static void topbar_checks()
 {
     studio_command_state commands[STUDIO_COMMAND_COUNT];
@@ -457,7 +459,6 @@ static void topbar_checks()
     assert(tab_count == 4 && button_count == 3);
     char tip[64] = "";
     rml_element_attribute(rml_element_query_selector(tabs[0], ".face"), "data-tip", tip, sizeof tip);
-    kit_rect rect;
     test_check(
         !ui_mount_error(f.mount)[0] && count(&f, ".doc-tab") == 3 &&
             state_is(tabs[1], "on") && state_is(tabs[0], "off") &&
@@ -468,10 +469,10 @@ static void topbar_checks()
             state_is(buttons[0], "on") &&
             rml_element_has_attribute(buttons[1], "data-disabled") &&
             !rml_element_has_attribute(buttons[0], "data-disabled") &&
-            kit_find(f.k, "app/topbar/menus/file", &rect) &&
-            kit_find(f.k, "app/topbar/target/target", &rect),
+            count(&f, "menubar > .trigger") == 6 &&
+            count(&f, "#play-target .target") == 1,
         "the authored top bar shows editor.tabs and the transport's commands, "
-        "with the menubar and the play target in its native slots"
+        "with the menubar's six menus and the play target"
     );
 
     click(&f, rml_element_query_selector(tabs[0], ".face"));
@@ -493,7 +494,7 @@ static void topbar_checks()
     rml_element_query_selector_all(f.host, ".group > .btn", buttons, 4);
     test_check(
         count(&f, ".doc-tab") == 1 && count(&f, ".group > .btn") == 2 &&
-            state_is(buttons[0], "off"),
+            count(&f, "#debug-steps > .btn") == 3 && state_is(buttons[0], "off"),
         "the top bar follows editor.tabs, and a paused run leaves the step "
         "to the debugger's steps"
     );
@@ -514,10 +515,6 @@ static void header_frame(slot_fixture *f, int area, char *filter, size_t size)
         kit_style_sheet(k, ui_mount_name(f->mount), ui_mount_style(f->mount));
     }
     kit_release_focus(k, f->host);
-    if (kit_slot_begin(k, "type", f->host, "#editor-type")) {
-        kit_button(k, "type", &(kit_button_desc){ .icon = KIT_ICON_VIEWPORT, .cls = "editor-type" });
-        kit_slot_end(k);
-    }
     if (kit_slot_begin(k, "controls", f->host, "#controls")) {
         kit_search(k, "filter", filter, size, "Filter");
         kit_slot_end(k);
@@ -550,7 +547,7 @@ static void header_checks()
     open_header(&top, STUDIO_AREA_TOP, &status, filter, sizeof filter);
     kit_rect rect;
     bool shown = !ui_mount_error(top.mount)[0] && count(&top, ".close") == 0 &&
-                 kit_find(top.k, "app/head/type/type", &rect) &&
+                 count(&top, ".editor-type") == 1 &&
                  kit_find(top.k, "app/head/controls/filter", &rect);
     rml_element *input = rml_element_query_selector(top.host, "#controls input");
     rml_element_focus(input, false);

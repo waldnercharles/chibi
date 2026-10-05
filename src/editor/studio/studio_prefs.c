@@ -55,6 +55,7 @@ static const char *const EDITORS[STUDIO_EDITOR_COUNT] = {
 };
 
 static const char *const WORKSPACES[STUDIO_WORKSPACE_COUNT] = { "verticalSplit", "horizontalSplit" };
+static const char *const TOOLS[SCENE_TOOL_COUNT] = { "select", "move", "rotate", "scale" };
 static const char *const PREVIOUS_WORKSPACES[STUDIO_WORKSPACE_COUNT] = {
     "layout",
     "ui"
@@ -96,6 +97,7 @@ studio_prefs studio_prefs_default()
     for (int i = 0; i < studio_setting_count; i++) {
         studio_setting_set(&p, &studio_settings[i], studio_settings[i].fallback);
     }
+    p.assets_tile = STUDIO_ASSETS_TILE;
 #ifdef __EMSCRIPTEN__
     p.reduced_motion = prefs_browser_reduced_motion();
 #endif
@@ -135,7 +137,8 @@ bool studio_prefs_equal(const studio_prefs *a, const studio_prefs *b)
             return false;
         }
     }
-    return a->workspace == b->workspace;
+    return a->workspace == b->workspace && a->tool == b->tool &&
+           a->assets_tile == b->assets_tile;
 }
 
 static int name_index(const char *const *names, int count, yyjson_val *value, int fallback)
@@ -202,17 +205,24 @@ static void read_setting(studio_prefs *p, const studio_setting *s, yyjson_val *r
 }
 
 #ifndef __EMSCRIPTEN__
-static const char *prefs_path(char path[1024])
+/* Honor the direct file override used by Studio integrations and the
+   directory override used by tests, keeping user preferences isolated. */
+static bool prefs_path(char *path, size_t size)
 {
     const char *override = getenv("CHIBI_STUDIO_PREFS_PATH");
     if (override && *override) {
-        return override;
+        return snprintf(path, size, "%s", override) < (int)size;
     }
-    const char *directory = cf_fs_get_user_directory("chibi", "editor");
-    if (!directory || snprintf(path, 1024, "%sstudio.json", directory) >= 1024) {
-        return NULL;
+    const char *directory = getenv("CHIBI_PREFS_DIR");
+    if (!directory || !directory[0]) {
+        directory = cf_fs_get_user_directory("chibi", "editor");
     }
-    return path;
+    if (!directory) {
+        return false;
+    }
+    size_t length = strlen(directory);
+    const char *slash = length && directory[length - 1] != '/' ? "/" : "";
+    return snprintf(path, size, "%s%sstudio.json", directory, slash) < (int)size;
 }
 #endif
 
@@ -221,9 +231,8 @@ static char *read_json()
 #ifdef __EMSCRIPTEN__
     return prefs_read_browser();
 #else
-    char storage[1024];
-    const char *path = prefs_path(storage);
-    return path ? text_file_read(path) : NULL;
+    char path[1024];
+    return prefs_path(path, sizeof path) ? text_file_read(path) : NULL;
 #endif
 }
 
@@ -299,6 +308,9 @@ studio_prefs studio_prefs_read(const char *json)
             p.recent[n++].uses = yyjson_get_int(uses);
         }
     }
+    p.tool = name_index(TOOLS, SCENE_TOOL_COUNT, value_at(root, "scene.tool"), SCENE_TOOL_SELECT);
+    yyjson_val *tile = yyjson_obj_get(yyjson_obj_get(root, "assets"), "tileSize");
+    p.assets_tile = (int)number(tile, (float)p.assets_tile, STUDIO_ASSETS_LIST, STUDIO_ASSETS_TILE_MAX);
     yyjson_val *layout = yyjson_obj_get(root, "layout");
     p.workspace = workspace_index(yyjson_obj_get(layout, "workspace"), STUDIO_WORKSPACE_VERTICAL_SPLIT);
     yyjson_val *presets = yyjson_obj_get(layout, "presets");
@@ -425,6 +437,8 @@ char *studio_prefs_write(const studio_prefs *p, const char *saved)
     for (int i = 0; i < studio_setting_count; i++) {
         write_setting(p, &studio_settings[i], doc, root);
     }
+    const char *tool = "scene.tool";
+    yyjson_mut_obj_add_str(doc, object_for(doc, root, &tool), tool, TOOLS[p->tool]);
     yyjson_mut_val *shortcuts = yyjson_mut_obj_add_obj(doc, root, "shortcuts");
     for (int c = 0; c < STUDIO_COMMAND_COUNT; c++) {
         if (p->shortcuts[c][0]) {
@@ -438,6 +452,8 @@ char *studio_prefs_write(const studio_prefs *p, const char *saved)
         yyjson_mut_obj_add_strcpy(doc, item, "key", p->recent[i].key);
         yyjson_mut_obj_add_int(doc, item, "uses", p->recent[i].uses);
     }
+    yyjson_mut_val *assets = yyjson_mut_obj_add_obj(doc, root, "assets");
+    yyjson_mut_obj_add_int(doc, assets, "tileSize", p->assets_tile);
     yyjson_mut_val *layout = yyjson_mut_obj_add_obj(doc, root, "layout");
     yyjson_mut_obj_add_str(doc, layout, "workspace", WORKSPACES[p->workspace]);
     yyjson_mut_val *presets = yyjson_mut_obj_add_obj(doc, layout, "presets");
@@ -463,9 +479,8 @@ bool studio_prefs_save(const studio_prefs *p)
 #ifdef __EMSCRIPTEN__
     bool ok = prefs_write_browser(json);
 #else
-    char storage[1024];
-    const char *path = prefs_path(storage);
-    FILE *file = path ? fopen(path, "wb") : NULL;
+    char path[1024];
+    FILE *file = prefs_path(path, sizeof path) ? fopen(path, "wb") : NULL;
     bool ok = file && fputs(json, file) >= 0;
     if (file) {
         ok &= fclose(file) == 0;
@@ -473,6 +488,20 @@ bool studio_prefs_save(const studio_prefs *p)
 #endif
     free(json);
     return ok;
+}
+
+bool studio_prefs_open_scene_view(game_save *store)
+{
+#ifdef __EMSCRIPTEN__
+    return game_save_open(store, "chibi.sceneView");
+#else
+    const char *directory = cf_fs_get_user_directory("chibi", "editor");
+    char path[1024];
+    return directory &&
+           snprintf(path, sizeof path, "%sscene-view.json", directory) <
+               (int)sizeof path &&
+           game_save_open(store, path);
+#endif
 }
 
 /* ---------- Shared with authored panels ---------- */

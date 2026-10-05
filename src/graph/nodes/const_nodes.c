@@ -649,6 +649,7 @@ static node_desc *const EXTRA_NODES[] = {
     &NODE_To_Byte,
     &NODE_To_Integer,
     &NODE_Format_Text,
+    &NODE_Text_Equal,
 };
 
 const registry_pack CORE_EXTRA_PACK = {

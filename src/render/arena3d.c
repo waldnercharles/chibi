@@ -660,7 +660,8 @@ static void collect_geometry(
     render_arena *arena,
     ecs_world *world,
     const render_arena_camera *camera,
-    const engine *runtime
+    const engine *runtime,
+    render_skip skip
 )
 {
     aclear(arena->entities);
@@ -670,7 +671,9 @@ static void collect_geometry(
     if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            apush(arena->entities, entity);
+            if (!render_skip_has(skip, entity)) {
+                apush(arena->entities, entity);
+            }
         }
         ecs_query_end(&query);
     }
@@ -745,7 +748,8 @@ bool render_arena_draw(
     const game_particles *particles,
     const render_arena_camera *camera,
     float time,
-    const struct engine *runtime
+    const struct engine *runtime,
+    render_skip skip
 )
 {
     arena->simulation_particles = game_particles_count(particles);
@@ -774,7 +778,7 @@ bool render_arena_draw(
                     )) {
         return false;
     }
-    collect_geometry(arena, world, camera, runtime);
+    collect_geometry(arena, world, camera, runtime, skip);
     collect_particles(arena, game_particles_data(particles), game_particles_count(particles), camera);
     if (!runtime) {
         const game_particles *emitted = game_particle_emitters_particles(arena->emitters);
@@ -806,6 +810,31 @@ bool render_arena_preview(
     const render_arena_activity *activity
 )
 {
+    shader_error error = { 0 };
+    bool registered = render_shader_upsert(asset, &error);
+    bool drawn = render_arena_preview_material(
+        arena,
+        render_shader_find(asset->name),
+        camera,
+        parameters_json,
+        time,
+        activity
+    );
+    if (!registered) {
+        snprintf(arena->binding_error, sizeof arena->binding_error, "%s", error.message);
+    }
+    return drawn;
+}
+
+bool render_arena_preview_material(
+    render_arena *arena,
+    int material,
+    const render_arena_camera *camera,
+    const char *parameters_json,
+    float time,
+    const render_arena_activity *activity
+)
+{
     arena->simulation_particles = 0;
     game_particle_emitters_reset(arena->emitters);
     arena->binding_error[0] = 0;
@@ -815,11 +844,6 @@ bool render_arena_preview(
     arena->rhythm = (CF_V4){ activity->beat_phase, activity->beat_pulse };
     render_arena_reset(arena);
     render_influences_preview(arena->influences, activity->influence, RENDER_ARENA_PREVIEW_RADIUS);
-    shader_error error = { 0 };
-    if (!render_shader_upsert(asset, &error)) {
-        snprintf(arena->binding_error, sizeof arena->binding_error, "%s", error.message);
-    }
-    int material = render_shader_find(asset->name);
     if (!material || render_shader_is_shape(material)) {
         return false;
     }

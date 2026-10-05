@@ -5,8 +5,7 @@
  *   transitions RCSS declares for it finish. Styling stays in RCSS.
  * - Layout: a node marked with kit_layout animates changes to its position
  *   within its parent with a spring (FLIP), keeping velocity when retargeted.
- * - Springs (kit_spring, over ui/motion.h's): values that ease toward a
- *   target. Reduced motion settles every animation immediately. */
+ *   Reduced motion settles every animation immediately. */
 #include "editor/rmlui/kit_internal.h"
 #include "support/math.h"
 
@@ -18,8 +17,7 @@
 
 /* ---------- Presence ---------- */
 
-/* Drop exiting nodes whose elements are about to go with an ancestor. */
-static void release_exiting_within(kit *k, rml_element *ancestor)
+void release_exiting_within(kit *k, rml_element *ancestor)
 {
     int kept = 0;
     for (int i = 0; i < acount(k->exiting); i++) {
@@ -83,19 +81,6 @@ void forget_motion(kit *k, node *n)
 }
 
 /* ---------- Frame ---------- */
-
-static void expire_springs(kit *k)
-{
-    for (int i = 0; i < cf_map_size(k->springs);) {
-        if (k->springs[i].frame + 2 >= k->frame) {
-            i++;
-            continue;
-        }
-        free(k->springs[i].key);
-        uint64_t key = cf_map_keys(k->springs)[i];
-        cf_map_del(k->springs, key);
-    }
-}
 
 /* Starting styles apply for one styled frame, then transition away. */
 static void settle_entering(kit *k)
@@ -179,7 +164,6 @@ static void layout_step(kit *k, node *n, spring_params p, double dt)
 
 void motion_frame(kit *k)
 {
-    expire_springs(k);
     double now = k->in.time;
     double dt = math_clamp(now - k->motion_time, 0.0, 0.1);
     k->motion_time = now;
@@ -188,8 +172,21 @@ void motion_frame(kit *k)
     if (!acount(k->layout_nodes)) {
         return;
     }
-    /* FLIP: measure this frame's layout before it renders. */
-    rml_document_update(k->doc);
+    /* FLIP: measure this frame's layout before it renders, laying out the
+       documents that hold animated nodes. */
+    rml_element **laid_out = NULL;
+    for (int i = 0; i < acount(k->layout_nodes); i++) {
+        rml_element *document = rml_element_owner_document(k->layout_nodes[i]->el);
+        bool seen = false;
+        for (int d = 0; d < acount(laid_out); d++) {
+            seen |= laid_out[d] == document;
+        }
+        if (!seen) {
+            apush(laid_out, document);
+            rml_document_update(document);
+        }
+    }
+    afree(laid_out);
     spring_params p = spring_for(0.35, 0);
     for (int i = 0; i < acount(k->layout_nodes); i++) {
         layout_step(k, k->layout_nodes[i], p, dt);
@@ -202,46 +199,6 @@ void kit_presence(kit *k)
 {
     assert(k->last);
     presence(k, k->last);
-}
-
-/* Settles the spring at path on target; takes path. */
-static void spring_reset(kit *k, spring_value *v, char *path, float target)
-{
-    spring_value settled = {
-        .key = path,
-        .target = target,
-        .time = k->in.time,
-        .frame = k->frame,
-    };
-    if (!v) {
-        cf_map_set(k->springs, str_hash(path), settled);
-        return;
-    }
-    free(v->key);
-    *v = settled;
-}
-
-float kit_spring(kit *k, const char *key, float target, float duration)
-{
-    char *path = NULL;
-    str_catf(&path, "%s/~%s", acount(k->stack) ? alast(k->stack)->path : "", key);
-    spring_value *v = cf_map_get_ptr(k->springs, str_hash(path));
-    assert(!v || str_eq(v->key, path));
-    if (!v || k->reduced_motion || duration <= 0) {
-        spring_reset(k, v, path, target);
-        return target;
-    }
-    free(path);
-    if (v->duration != duration) {
-        v->duration = duration;
-        v->params = spring_for(duration, 0);
-    }
-    v->s.x += v->target - target;
-    v->target = target;
-    spring_step(&v->s, v->params, math_clamp(k->in.time - v->time, 0.0, 0.1));
-    v->time = k->in.time;
-    v->frame = k->frame;
-    return (float)(v->target + v->s.x);
 }
 
 void kit_layout(kit *k)
@@ -263,12 +220,12 @@ static bool moving(spring s)
 }
 
 /* Relative to the last emitted frame. The host carries this deadline forward
- * while simulation keeps running; UI-only springs must not follow its cadence. */
+ * while simulation keeps running; UI-only motion must not follow its cadence. */
 double kit_idle_time(const kit *k)
 {
     double delay = rml_context_next_update_delay(k->context);
     double now = k->in.time;
-    if (k->restyle || acount(k->entering) || k->drag.pending || k->drag.active) {
+    if (k->restyle || acount(k->entering) || ui_drag_active(k->context, NULL)) {
         return 0;
     }
     for (int i = 0; i < acount(k->exiting); i++) {
@@ -277,11 +234,6 @@ double kit_idle_time(const kit *k)
     for (int i = 0; i < acount(k->layout_nodes); i++) {
         node *n = k->layout_nodes[i];
         if (moving(n->layout_x) || moving(n->layout_y)) {
-            return 0;
-        }
-    }
-    for (int i = 0; i < cf_map_size(k->springs); i++) {
-        if (moving(k->springs[i].s)) {
             return 0;
         }
     }
@@ -297,22 +249,12 @@ double kit_idle_time(const kit *k)
         }
     }
     if (k->tip_target && !k->tip_visible) {
-        delay = fmin(delay, fmax(0, k->tip_since + TOOLTIP_DELAY - now));
+        delay = fmin(delay, fmax(0, k->tip_since + FEEL_TOOLTIP_DELAY - now));
     }
-    for (int i = 0; i < acount(k->popup_stack); i++) {
-        const popup *p = k->popup_stack[i];
-        if (!str_eq(p->sub_hover, "")) {
-            double remaining = p->sub_hover_since + SUBMENU_DELAY - now;
-            /* Once due, open_hovered_submenus handles it at the next emission. */
-            if (remaining > 0) {
-                delay = fmin(delay, remaining);
-            }
-        }
-    }
-    for (int i = 0; i < cf_map_size(k->by_path); i++) {
-        const node *n = k->by_path[i];
-        if (n->kind == KIND_NUMBER && n->w.step_dir && k->in.down[0]) {
-            delay = fmin(delay, fmax(0, n->w.step_next - now));
+    /* A popup popover.c opened a submenu for emits at once. */
+    for (int i = 0; i < cf_map_size(k->popups); i++) {
+        if (k->popups[i]->open && !k->popups[i]->shown) {
+            return 0;
         }
     }
     return delay;

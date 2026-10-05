@@ -20,6 +20,7 @@ struct game_prototype_preview
     ecs_entity entity;
     ecs_entity *entities;
     engine *runtime;
+    char **component_strings;
 };
 
 game_entities *game_prototype_preview_entities(game_prototype_preview *preview)
@@ -53,6 +54,8 @@ static void clear_entity(game_prototype_preview *preview)
         }
     }
     afree(preview->entities);
+    game_prototype_owned_strings_free(preview->component_strings);
+    preview->component_strings = NULL;
     preview->entity = (ecs_entity){ 0 };
 }
 
@@ -255,11 +258,18 @@ int game_prototype_preview_launch_scene(
             clear_entity(preview);
             return result;
         }
+        /* Track the spawned entity before overrides allocate owned strings or
+         * behavior attachment can fail, so clear_entity destroys it first. */
+        apush(preview->entities, entity);
+        if (!preview->entity.slot) {
+            preview->entity = entity;
+        }
         if (entities[i].components && game_prototype_apply_components_value(
                                           preview->world,
                                           entity,
                                           entities[i].components,
                                           entities[i].prototype->registry,
+                                          &preview->component_strings,
                                           error,
                                           error_size
                                       ) != 0) {
@@ -284,10 +294,6 @@ int game_prototype_preview_launch_scene(
                 clear_entity(preview);
                 return ECS_ERR_COMMAND;
             }
-        }
-        apush(preview->entities, entity);
-        if (!preview->entity.slot) {
-            preview->entity = entity;
         }
     }
     if (game_entities_rebuild_global_bindings(preview->live->entities) != 0) {

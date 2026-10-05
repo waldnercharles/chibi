@@ -955,6 +955,26 @@ typedef enum
     GAME_HRC_SURFACE_DEPTH NODE_NAME("Depth thickness"),
 } GameHRCSurfaceMode;
 
+/* Maximum source tiles per axis before bounded child refinement. */
+typedef enum
+{
+    GAME_HRC_DEPTH_LOW NODE_NAME("Low"),
+    GAME_HRC_DEPTH_BALANCED NODE_NAME("Balanced"),
+    GAME_HRC_DEPTH_HIGH NODE_NAME("High"),
+} GameHRCDepthQuality;
+
+typedef enum
+{
+    GAME_HRC_DEPTH_VISIBILITY_MASK NODE_NAME("Angular masks"),
+    GAME_HRC_DEPTH_VISIBILITY_SEGMENTS NODE_NAME("Bounded segments"),
+} GameHRCDepthVisibility;
+
+typedef enum
+{
+    GAME_HRC_DEPTH_EMITTERS_VISIBLE NODE_NAME("Visible surfaces"),
+    GAME_HRC_DEPTH_EMITTERS_PROXIES NODE_NAME("Uniform material proxies"),
+} GameHRCDepthEmitters;
+
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
     /* Finest light grid as a fraction of the padded canvas; 0.5 solves one
@@ -1031,6 +1051,23 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     GameHRCSurfaceMode surface_mode;
     /* Screen-plane reach in project units for Depth thickness mode. */
     float surface_depth_radius;
+    /* Gain of the visible Depth contribution added to HRC. Zero disables it. */
+    float surface_depth_gain;
+    /* Source sampling budget; all levels preserve integrated emission. */
+    GameHRCDepthQuality surface_depth_quality;
+    /* Segments share one bounded visibility query per coarse source tile. */
+    GameHRCDepthVisibility surface_depth_visibility;
+    /* Independent proxies preserve camera-hidden uniform material emitters;
+     * shader-authored emission is excluded in this experimental source mode. */
+    GameHRCDepthEmitters surface_depth_emitters;
+    /* Refine nearby sources whose directions differ across a source tile. */
+    bool surface_depth_near_detail;
+    /* Blend visibility bins and reconstruction boundaries, in [0, 1]. */
+    float surface_depth_shadow_softness;
+    /* Reproject and validate a short history of the Depth contribution. */
+    bool surface_depth_temporal;
+    /* Maximum previous-frame weight; zero selects the default of 0.65. */
+    float surface_depth_history;
     /* Assumed camera-depth thickness of visible surfaces in project units. */
     float surface_thickness;
     /* Sideways reach of nearby light relative to its height above the plane;
@@ -1076,6 +1113,9 @@ static inline GameHRC2D game_hrc2d_defaults()
                         .feedback = true,
                         .surface_radius = 24,
                         .surface_depth_radius = 128,
+                        .surface_depth_gain = 1,
+                        .surface_depth_quality = GAME_HRC_DEPTH_BALANCED,
+                        .surface_depth_history = .65f,
                         .surface_thickness = 12,
                         .surface_relief = 1.5f,
                         .surface_bevel = 1,

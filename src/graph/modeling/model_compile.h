@@ -85,6 +85,8 @@ typedef struct
 {
     shader_graph shader,
         hit_shader; /* Hit outputs: owner part index, part-local point. */
+    shader_image_resolver resolve_image;
+    void *image_userdata;
     model_bounds bounds;
     char **dependencies, **material_dependencies;
     model_part *parts;
@@ -200,11 +202,11 @@ extern node_desc NODE_ModelProfileOffset, NODE_ModelProfileUnion,
     NODE_ModelShell, NODE_ModelTubeSweep, NODE_ModelBezierTube,
     NODE_ModelProfileBezier, NODE_ModelRotateAround, NODE_ModelScaleAround,
     NODE_ModelAnchor, NODE_ModelAttach;
-extern node_desc NODE_ModelSphere, NODE_ModelOutput, NODE_ModelBox,
-    NODE_ModelRoundedBox, NODE_ModelCylinder, NODE_ModelCapsule, NODE_ModelTorus,
-    NODE_ModelTranslate, NODE_ModelRotate, NODE_ModelScale, NODE_ModelReflect,
-    NODE_ModelUnion, NODE_ModelIntersection, NODE_ModelDifference,
-    NODE_ModelSmoothUnion, NODE_ModelPart, NODE_ModelInstance,
+extern node_desc NODE_ModelSampledSdf, NODE_ModelSphere, NODE_ModelOutput,
+    NODE_ModelBox, NODE_ModelRoundedBox, NODE_ModelCylinder, NODE_ModelCapsule,
+    NODE_ModelTorus, NODE_ModelTranslate, NODE_ModelRotate, NODE_ModelScale,
+    NODE_ModelReflect, NODE_ModelUnion, NODE_ModelIntersection,
+    NODE_ModelDifference, NODE_ModelSmoothUnion, NODE_ModelPart, NODE_ModelInstance,
     NODE_ModelParameter, NODE_ModelLinearArray, NODE_ModelRadialArray,
     NODE_ModelProfileCircle, NODE_ModelProfileRectangle, NODE_ModelProfilePolygon,
     NODE_ModelExtrude, NODE_ModelRevolve, NODE_ModelMaterialSlot;

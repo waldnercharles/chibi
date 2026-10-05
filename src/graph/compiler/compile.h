@@ -46,6 +46,7 @@ enum
     CMPL_RULE_QUERY_FUSION = 26,
     CMPL_RULE_QUERY_SCAN = 27,
     CMPL_RULE_CONTAINER = 28,
+    CMPL_RULE_EDITOR_NODE = 29, /* An editor-only node outside the project that runs it. */
 };
 
 #define CMPL_MESSAGE_MAX 192

@@ -32,7 +32,7 @@ static float half(uint16_t v)
                       : ldexpf((float)m, -24);
     return v & 0x8000 ? -f : f;
 }
-static bool read_center(CF_Canvas output, float color[4])
+static bool read_center_size(CF_Canvas output, int side, float color[4])
 {
     CF_Readback read = cf_canvas_readback(output);
     uint64_t start = cf_get_ticks();
@@ -40,22 +40,28 @@ static bool read_center(CF_Canvas output, float color[4])
            cf_get_ticks() - start < cf_get_tick_frequency() * 10) {
         cf_sleep(1);
     }
-    uint16_t pixels[PIXELS][4];
+    size_t bytes = (size_t)side * side * 4 * sizeof(uint16_t);
+    uint16_t (*pixels)[4] = xmalloc(bytes);
     bool ok = read.id && cf_readback_ready(read) &&
-              cf_readback_size(read) == sizeof pixels &&
-              cf_readback_data(read, pixels, sizeof pixels) == sizeof pixels;
-    for (int p = 0; p < PIXELS && ok; p++) {
+              (size_t)cf_readback_size(read) == bytes &&
+              (size_t)cf_readback_data(read, pixels, bytes) == bytes;
+    for (int p = 0; p < side * side && ok; p++) {
         for (int c = 0; c < 4; c++) {
             ok &= isfinite(half(pixels[p][c]));
         }
     }
     for (int c = 0; c < 4 && ok; c++) {
-        color[c] = half(pixels[(SIDE / 2) * SIDE + SIDE / 2][c]);
+        color[c] = half(pixels[(side / 2) * side + side / 2][c]);
     }
     if (read.id) {
         cf_destroy_readback(read);
     }
+    free(pixels);
     return ok;
+}
+static bool read_center(CF_Canvas output, float color[4])
+{
+    return read_center_size(output, SIDE, color);
 }
 /* A fully opaque receiver has no planar open-air field to blur into its
  * interior. An emitter above it must travel through depth to illuminate it. */
@@ -157,8 +163,664 @@ static bool draw(
     *work = render_radiance_surface_work(r);
     return ok && read_center(output, color);
 }
+static bool fill_tests(
+    render_radiance *r,
+    CF_Canvas output,
+    CF_Texture textures[INPUTS],
+    float data[INPUTS][PIXELS][4],
+    GameHRC2D lighting,
+    render_view_2d view
+)
+{
+    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.debug_view = GAME_HRC_DEBUG_NORMAL;
+    lighting.tone_mapping = GAME_HRC_TONE_AGX;
+    lighting.intensity = .5f;
+    lighting.specular = 0;
+    render_surface_work work = { 0 };
+    float base[4] = { 0 }, gains[3][4] = { 0 };
+    inputs(data, 0);
+    // Open transport keeps a measurable HRC base underneath the depth fill.
+    for (int p = 0; p < PIXELS; p++) {
+        data[SOURCE][p][3] = 0;
+        data[NORMAL][p][3] = 0;
+    }
+    lighting.surface_radius = 0;
+    render_radiance_reset(r);
+    bool ok = draw(r, output, textures, data, lighting, view, base, &work);
+    lighting.surface_radius = 16;
+    bool skipped = false;
+    for (int gain = 0; gain < 3; gain++) {
+        lighting.surface_depth_gain = gain;
+        render_radiance_reset(r);
+        ok = draw(r, output, textures, data, lighting, view, gains[gain], &work) && ok;
+        if (gain == 0) {
+            skipped = !work.cells && !work.candidates && !work.visibility_taps;
+        }
+    }
+    bool preserved = base[0] > .00001f;
+    bool additive = gains[1][0] > gains[0][0] + .00001f;
+    for (int c = 0; c < 3; c++) {
+        preserved &= fabsf(gains[0][c] - base[c]) < .001f;
+        float fill = gains[1][c] - gains[0][c];
+        additive &= fabsf(gains[2][c] - gains[0][c] - 2 * fill) <
+                    fmaxf(.001f, fabsf(fill) * .03f);
+    }
+    printf(
+        "Surface depth HRC preservation: %s; HRC %g gain zero %g\n",
+        preserved ? "PASS" : "FAIL",
+        base[0],
+        gains[0][0]
+    );
+    printf(
+        "Surface depth additive gain: %s; zero %g one %g two %g\n",
+        additive ? "PASS" : "FAIL",
+        gains[0][0],
+        gains[1][0],
+        gains[2][0]
+    );
+    printf("Surface depth zero gain skips passes: %s\n", skipped ? "PASS" : "FAIL");
+    ok &= preserved && additive && skipped;
+    lighting.surface_depth_gain = 4;
+    float open[4] = { 0 }, blocked[4] = { 0 }, empty[4] = { 0 };
+    inputs(data, 0);
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, open, &work) && ok;
+    inputs(data, 1);
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, blocked, &work) && ok;
+    inputs(data, 4);
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, empty, &work) && ok;
+    bool visibility = open[0] > .00001f && blocked[0] < open[0] * .35f &&
+                      fabsf(empty[0]) < .00001f && fabsf(empty[1]) < .00001f &&
+                      fabsf(empty[2]) < .00001f;
+    printf(
+        "Surface depth gain preserves occlusion: %s; open %g blocked %g no "
+        "source %g\n",
+        visibility ? "PASS" : "FAIL",
+        open[0],
+        blocked[0],
+        empty[0]
+    );
+    ok &= visibility;
+    // A dark receiver facing the half-vector exposes a glossy contribution
+    // independently of diffuse albedo. The emitter stays outside the receiver.
+    inputs(data, 0);
+    for (int p = 0; p < PIXELS; p++) {
+        data[ALBEDO][p][0] = data[ALBEDO][p][1] = data[ALBEDO][p][2] = .01f;
+        data[NORMAL][p][0] = .3f;
+        data[NORMAL][p][3] = 0;
+    }
+    lighting.surface_depth_gain = 1;
+    lighting.specular = 1;
+    float matte[4] = { 0 }, glossy[4] = { 0 }, glossy_base[4] = { 0 },
+          glossy_double[4] = { 0 };
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, matte, &work) && ok;
+    for (int p = 0; p < PIXELS; p++) {
+        data[NORMAL][p][3] = .6f;
+    }
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, glossy, &work) && ok;
+    bool highlight = glossy[0] > matte[0] * 1.1f + .00001f;
+    lighting.surface_depth_gain = 0;
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, glossy_base, &work) && ok;
+    lighting.surface_depth_gain = 2;
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, glossy_double, &work) && ok;
+    float glossy_fill = glossy[0] - glossy_base[0];
+    highlight &= fabsf(glossy_double[0] - glossy_base[0] - 2 * glossy_fill) <
+                 fmaxf(.001f, fabsf(glossy_fill) * .03f);
+    printf(
+        "Surface depth material gloss: %s; matte %g glossy %g double gain %g\n",
+        highlight ? "PASS" : "FAIL",
+        matte[0],
+        glossy[0],
+        glossy_double[0]
+    );
+    // A matte patch shares the exact plane, normal and albedo of its glossy
+    // surroundings. Geometry-only reconstruction must not borrow their BRDF.
+    for (int y = 12; y < 20; y++) {
+        for (int x = 12; x < 20; x++) {
+            data[NORMAL][y * SIDE + x][3] = 0;
+        }
+    }
+    lighting.surface_depth_gain = 1;
+    lighting.specular = 0;
+    float patch_off[4] = { 0 }, patch_on[4] = { 0 };
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, patch_off, &work) && ok;
+    lighting.specular = 1;
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, patch_on, &work) && ok;
+    bool boundary = true;
+    for (int c = 0; c < 3; c++) {
+        boundary &= fabsf(patch_on[c] - patch_off[c]) < .00001f;
+    }
+    printf(
+        "Surface depth matte/gloss boundary: %s; specular off %g on %g\n",
+        boundary ? "PASS" : "FAIL",
+        patch_off[0],
+        patch_on[0]
+    );
+    return ok && highlight && boundary;
+}
+/* Separate colors share one coarse pyramid tile. Their integrated luma crosses
+ * by only two percent, while their distances and normals produce different
+ * illumination. Assigning all tile RGB to the brightest source makes the
+ * receiver jump at the crossing even though every input varies smoothly. */
+static bool source_stability()
+{
+    enum
+    {
+        WIDTH = 128,
+        COUNT = WIDTH * WIDTH
+    };
+    float (*data)[COUNT][4] = xmalloc(sizeof(float) * INPUTS * COUNT * 4);
+    CF_Texture textures[INPUTS] = { 0 };
+    for (int i = 0; i < INPUTS; i++) {
+        CF_TextureParams p = cf_texture_defaults(WIDTH, WIDTH);
+        p.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
+        p.filter = CF_FILTER_NEAREST;
+        p.wrap_u = p.wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
+        textures[i] = cf_make_texture(p);
+    }
+    CF_CanvasParams p = cf_canvas_defaults(WIDTH, WIDTH);
+    p.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas output = cf_make_canvas(p);
+    render_radiance *r = render_radiance_new();
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    lighting.resolution = lighting.color_resolution = 1;
+    lighting.ambient = lighting.fog = lighting.shadow_floor = 0;
+    lighting.specular = 0;
+    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.surface_radius = lighting.surface_depth_radius = 128;
+    lighting.surface_thickness = 0;
+    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
+    render_view_2d view = {
+        -64, 64, WIDTH, WIDTH, .crop_max_u = 1, .crop_max_v = 1
+    };
+    bool ok = r && output.id && render_radiance_resize(r, WIDTH, WIDTH);
+    render_radiance_inputs input = { .material = { .scene = textures[SCENE],
+                                                   .source = textures[SOURCE],
+                                                   .albedo = textures[ALBEDO],
+                                                   .normal = textures[NORMAL],
+                                                   .cover = textures[COVER],
+                                                   .visibility = textures[VISIBILITY] } };
+    float previous[4] = { 0 }, largest = 0, smallest = INFINITY;
+    for (int frame = 0; frame < 9; frame++) {
+        memset(data, 0, sizeof(float) * INPUTS * COUNT * 4);
+        for (int cell = 0; cell < COUNT; cell++) {
+            data[SCENE][cell][3] = 1;
+            data[ALBEDO][cell][0] = data[ALBEDO][cell][1] = data[ALBEDO][cell][2] = 1;
+            data[NORMAL][cell][0] = .9f;
+            data[NORMAL][cell][2] = .4358899f;
+            data[COVER][cell][0] = data[COVER][cell][1] = data[COVER][cell][2] = 1;
+        }
+        for (int y = 64; y < 68; y++) {
+            for (int x = 80; x < 96; x++) {
+                if (x >= 84 && x < 92) {
+                    continue;
+                }
+                int cell = y * WIDTH + x;
+                data[ALBEDO][cell][3] = 12;
+                if (x < 84) {
+                    data[SOURCE][cell][0] = 4 * (1 + (frame - 4) * .005f);
+                } else {
+                    data[SOURCE][cell][2] = 4 * (.2126f / .0722f);
+                }
+            }
+        }
+        render_radiance_reset(r);
+        ok = render_radiance_set_lighting(r, lighting) && ok;
+        cf_app_update(NULL);
+        for (int i = 0; i < INPUTS; i++) {
+            cf_texture_update(textures[i], data[i], sizeof data[i]);
+        }
+        ok = render_radiance_draw(r, input, view, output) && ok;
+        cf_app_draw_onto_screen(false);
+        float color[4] = { 0 };
+        ok = read_center_size(output, WIDTH, color) && ok;
+        smallest = fminf(smallest, fminf(color[0], color[2]));
+        if (frame > 0) {
+            for (int c = 0; c < 3; c += 2) {
+                largest = fmaxf(
+                    largest,
+                    fabsf(color[c] - previous[c]) /
+                        fmaxf((color[c] + previous[c]) * .5f, .00001f)
+                );
+            }
+        }
+        memcpy(previous, color, sizeof previous);
+    }
+    bool continuous = smallest > .00001f && largest < .06f;
+    printf(
+        "Surface depth mixed-color source stability: %s; smallest channel %g "
+        "largest relative step %g\n",
+        continuous ? "PASS" : "FAIL",
+        smallest,
+        largest
+    );
+    for (int i = 0; i < INPUTS; i++) {
+        cf_destroy_texture(textures[i]);
+    }
+    cf_destroy_canvas(output);
+    render_radiance_free(r);
+    free(data);
+    return ok && continuous;
+}
+/* A readback patch tests every reconstructed pixel, including pixels between
+ * the quarter-resolution receiver centers. Center-only checks miss stripes. */
+static bool read_patch(
+    CF_Canvas output,
+    int side,
+    int x0,
+    int y0,
+    int x1,
+    int y1,
+    float *mean,
+    float *minimum,
+    float *maximum
+)
+{
+    CF_Readback read = cf_canvas_readback(output);
+    uint64_t start = cf_get_ticks();
+    while (read.id && !cf_readback_ready(read) &&
+           cf_get_ticks() - start < cf_get_tick_frequency() * 10) {
+        cf_sleep(1);
+    }
+    size_t bytes = (size_t)side * side * 4 * sizeof(uint16_t);
+    uint16_t (*pixels)[4] = xmalloc(bytes);
+    bool ok = read.id && cf_readback_ready(read) &&
+              (size_t)cf_readback_size(read) == bytes &&
+              (size_t)cf_readback_data(read, pixels, bytes) == bytes;
+    *mean = 0;
+    *minimum = INFINITY;
+    *maximum = 0;
+    for (int y = y0; y < y1 && ok; y++) {
+        for (int x = x0; x < x1; x++) {
+            float value = half(pixels[y * side + x][0]);
+            ok &= isfinite(value);
+            *mean += value / ((x1 - x0) * (y1 - y0));
+            *minimum = fminf(*minimum, value);
+            *maximum = fmaxf(*maximum, value);
+        }
+    }
+    if (read.id) {
+        cf_destroy_readback(read);
+    }
+    free(pixels);
+    return ok;
+}
+static bool segment_reconstruction_tests()
+{
+    enum
+    {
+        WIDTH = 128,
+        COUNT = WIDTH * WIDTH
+    };
+    float (*data)[COUNT][4] = xmalloc(sizeof(float) * INPUTS * COUNT * 4);
+    CF_Texture textures[INPUTS] = { 0 };
+    for (int i = 0; i < INPUTS; i++) {
+        CF_TextureParams p = cf_texture_defaults(WIDTH, WIDTH);
+        p.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
+        p.filter = CF_FILTER_NEAREST;
+        p.wrap_u = p.wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
+        textures[i] = cf_make_texture(p);
+    }
+    CF_CanvasParams p = cf_canvas_defaults(WIDTH, WIDTH);
+    p.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas output = cf_make_canvas(p);
+    render_radiance *r = render_radiance_new();
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    lighting.resolution = lighting.color_resolution = 1;
+    lighting.ambient = lighting.fog = lighting.shadow_floor = 0;
+    lighting.specular = 0;
+    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.surface_radius = lighting.surface_depth_radius = 384;
+    lighting.surface_thickness = 12;
+    lighting.surface_depth_visibility = GAME_HRC_DEPTH_VISIBILITY_SEGMENTS;
+    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
+    render_view_2d view = { -128,           128, WIDTH, WIDTH, .crop_max_u = 1,
+                            .crop_max_v = 1 };
+    render_radiance_inputs input = { .material = { .scene = textures[SCENE],
+                                                   .source = textures[SOURCE],
+                                                   .albedo = textures[ALBEDO],
+                                                   .normal = textures[NORMAL],
+                                                   .cover = textures[COVER],
+                                                   .visibility = textures[VISIBILITY] } };
+    bool ok = r && output.id && render_radiance_resize(r, WIDTH, WIDTH);
+    float means[3] = { 0 };
+    for (int scenario = 0; scenario < 3; scenario++) {
+        memset(data, 0, sizeof(float) * INPUTS * COUNT * 4);
+        for (int y = 0; y < WIDTH; y++) {
+            for (int x = 0; x < WIDTH; x++) {
+                int cell = y * WIDTH + x;
+                float wx = -128 + (x + .5f) * 2;
+                float wy = 128 - (y + .5f) * 2;
+                data[SCENE][cell][3] = 1;
+                data[SOURCE][cell][3] = 20;
+                data[ALBEDO][cell][0] = data[ALBEDO][cell][1] = data[ALBEDO][cell][2] = 1;
+                data[NORMAL][cell][2] = 1;
+                data[COVER][cell][0] = data[COVER][cell][1] = data[COVER][cell][2] = 1;
+                if (fabsf(wx + 70) < 4 && fabsf(wy) < 4) {
+                    data[SOURCE][cell][0] = 4;
+                    data[SOURCE][cell][3] = 0;
+                    data[ALBEDO][cell][3] = 80;
+                }
+                float blocker_x = scenario == 2 ? -100 : 0;
+                if (scenario != 1 && fabsf(wx - blocker_x) < 4 && fabsf(wy) < 35) {
+                    data[ALBEDO][cell][3] = 40;
+                }
+            }
+        }
+        render_radiance_reset(r);
+        ok = render_radiance_set_lighting(r, lighting) && ok;
+        cf_app_update(NULL);
+        for (int i = 0; i < INPUTS; i++) {
+            cf_texture_update(textures[i], data[i], sizeof data[i]);
+        }
+        ok = render_radiance_draw(r, input, view, output) && ok;
+        cf_app_draw_onto_screen(false);
+        float minimum, maximum;
+        // World x=56..64, y=-4..4, safely inside the expected umbra.
+        ok = read_patch(output, WIDTH, 92, 62, 96, 66, &means[scenario], &minimum, &maximum) &&
+             ok;
+    }
+    bool shadow = means[1] > .00001f && means[0] < means[1] * .25f &&
+                  fabsf(means[2] - means[1]) < means[1] * .1f;
+    printf(
+        "Surface depth finite-segment shadow placement: %s; blocked %g clear "
+        "%g beyond light %g\n",
+        shadow ? "PASS" : "FAIL",
+        means[0],
+        means[1],
+        means[2]
+    );
+
+    // The planar height changes 24 units per pixel, exceeding the old raw-height
+    // compatibility tolerance even at adjacent pixels. Its normal identifies
+    // a single continuous surface; all pixels must reconstruct some light.
+    lighting.surface_depth_visibility = 0;
+    lighting.surface_thickness = 0;
+    lighting.surface_radius = lighting.surface_depth_radius = 1024;
+    float slope = 12;
+    float nx = -slope / sqrtf(1 + slope * slope);
+    float plane_min = 0, plane_max = 0, plane_mean = 0, detached = 0;
+    for (int scenario = 0; scenario < 2; scenario++) {
+        memset(data, 0, sizeof(float) * INPUTS * COUNT * 4);
+        for (int y = 0; y < WIDTH; y++) {
+            for (int x = 0; x < WIDTH; x++) {
+                int cell = y * WIDTH + x;
+                float wx = -128 + (x + .5f) * 2;
+                data[SCENE][cell][3] = 1;
+                data[SOURCE][cell][3] = 0;
+                data[ALBEDO][cell][0] = data[ALBEDO][cell][1] = data[ALBEDO][cell][2] = 1;
+                data[ALBEDO][cell][3] = slope * wx;
+                data[NORMAL][cell][0] = nx;
+                data[NORMAL][cell][2] = 1;
+                data[COVER][cell][0] = data[COVER][cell][1] = data[COVER][cell][2] = 1;
+                if (x >= 24 && x < 28 && y >= 62 && y < 66) {
+                    data[SOURCE][cell][0] = 4;
+                    data[ALBEDO][cell][3] = 400;
+                }
+                // Receiver centers are x=2 mod 4. This narrow detached surface
+                // has none, and must not borrow light from the nearby plane.
+                if (scenario && x >= 64 && x < 66) {
+                    data[ALBEDO][cell][3] += 1000;
+                }
+            }
+        }
+        render_radiance_reset(r);
+        ok = render_radiance_set_lighting(r, lighting) && ok;
+        cf_app_update(NULL);
+        for (int i = 0; i < INPUTS; i++) {
+            cf_texture_update(textures[i], data[i], sizeof data[i]);
+        }
+        ok = render_radiance_draw(r, input, view, output) && ok;
+        cf_app_draw_onto_screen(false);
+        float mean, minimum, maximum;
+        ok = read_patch(output, WIDTH, scenario ? 64 : 56, 60, scenario ? 66 : 72, 68, &mean, &minimum, &maximum) &&
+             ok;
+        if (scenario) {
+            detached = maximum;
+        } else {
+            plane_min = minimum;
+            plane_max = maximum;
+            plane_mean = mean;
+        }
+    }
+    // This slope changes receiver-to-emitter distance substantially, so a
+    // physical lighting gradient is expected. Every interior pixel must be
+    // finite and lit; compatibility failures instead produce exact black
+    // stripes between the sampled receiver centers.
+    bool reconstructed = isfinite(plane_min) && isfinite(plane_max) && plane_min > 1e-8f;
+    bool separated = detached < plane_mean * .01f;
+    printf(
+        "Surface depth steep-plane reconstruction: %s; min %g max %g\n",
+        reconstructed ? "PASS" : "FAIL",
+        plane_min,
+        plane_max
+    );
+    printf(
+        "Surface depth disconnected-plane rejection: %s; detached max %g "
+        "continuous mean %g\n",
+        separated ? "PASS" : "FAIL",
+        detached,
+        plane_mean
+    );
+    for (int i = 0; i < INPUTS; i++) {
+        cf_destroy_texture(textures[i]);
+    }
+    cf_destroy_canvas(output);
+    render_radiance_free(r);
+    free(data);
+    return ok && shadow && reconstructed && separated;
+}
+static bool temporal_response(
+    render_radiance *r,
+    CF_Canvas output,
+    CF_Texture textures[INPUTS],
+    float data[INPUTS][PIXELS][4],
+    GameHRC2D lighting,
+    render_view_2d view
+)
+{
+    render_surface_work work = { 0 };
+    lighting.surface_depth_temporal = false;
+    inputs(data, 0);
+    for (int cell = 0; cell < PIXELS; cell++) {
+        data[SOURCE][cell][0] *= 1.05f;
+    }
+    render_radiance_reset(r);
+    float instant[4] = { 0 }, initial[4] = { 0 }, first[4] = { 0 },
+          converged[4] = { 0 };
+    bool ok = draw(r, output, textures, data, lighting, view, instant, &work);
+    inputs(data, 0);
+    lighting.surface_depth_temporal = true;
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, initial, &work) && ok;
+    for (int cell = 0; cell < PIXELS; cell++) {
+        data[SOURCE][cell][0] *= 1.05f;
+    }
+    ok = draw(r, output, textures, data, lighting, view, first, &work) && ok;
+    for (int frame = 0; frame < 24; frame++) {
+        ok = draw(r, output, textures, data, lighting, view, converged, &work) && ok;
+    }
+    float step = instant[0] - initial[0];
+    bool responds = step > initial[0] * .02f && first[0] > initial[0] &&
+                    first[0] < instant[0] - step * .2f &&
+                    fabsf(converged[0] - instant[0]) < step * .25f;
+    printf(
+        "Surface depth temporal accumulates and converges: %s; initial %g "
+        "first %g instant %g settled %g\n",
+        responds ? "PASS" : "FAIL",
+        initial[0],
+        first[0],
+        instant[0],
+        converged[0]
+    );
+
+    // Move the camera one receiver cell right and reproject the same emitting
+    // strip four pixels left. A uniform plane supplies compatible old samples,
+    // but its lighting gradient requires selecting the translated history cell.
+    inputs(data, 0);
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 28; x < SIDE; x++) {
+            int cell = y * SIDE + x;
+            data[SOURCE][cell][0] = 0;
+            data[SOURCE][cell][3] = 20;
+            data[ALBEDO][cell][3] = 0;
+        }
+    }
+    render_radiance_reset(r);
+    float before[4] = { 0 }, translated[4] = { 0 }, reference[4] = { 0 };
+    ok = draw(r, output, textures, data, lighting, view, before, &work) && ok;
+    for (int i = 0; i < INPUTS; i++) {
+        for (int y = 0; y < SIDE; y++) {
+            for (int x = 0; x < SIDE - 4; x++) {
+                memcpy(data[i][y * SIDE + x], data[i][y * SIDE + x + 4], sizeof data[i][0]);
+            }
+            for (int x = SIDE - 4; x < SIDE; x++) {
+                // Newly revealed space is the same nonemitting plane.
+                memcpy(data[i][y * SIDE + x], data[i][y * SIDE], sizeof data[i][0]);
+            }
+        }
+    }
+    view.min_x += 4;
+    view.center_x += 4;
+    ok = draw(r, output, textures, data, lighting, view, translated, &work) && ok;
+    lighting.surface_depth_temporal = false;
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, reference, &work) && ok;
+    bool reprojected = reference[0] > .00001f &&
+                       fabsf(translated[0] - reference[0]) < reference[0] * .1f;
+    printf(
+        "Surface depth temporal camera translation: %s; previous center %g "
+        "current %g history %g\n",
+        reprojected ? "PASS" : "FAIL",
+        before[0],
+        reference[0],
+        translated[0]
+    );
+    return ok && responds && reprojected;
+}
+static bool option_tests(
+    render_radiance *r,
+    CF_Canvas output,
+    CF_Texture textures[INPUTS],
+    float data[INPUTS][PIXELS][4],
+    GameHRC2D lighting,
+    render_view_2d view
+)
+{
+    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
+    lighting.surface_depth_radius = 16;
+    lighting.surface_depth_temporal = false;
+    render_surface_work work = { 0 };
+    bool ok = true, quality = true;
+    for (int q = GAME_HRC_DEPTH_LOW; q <= GAME_HRC_DEPTH_HIGH; q++) {
+        lighting.surface_depth_quality = q;
+        for (int near = 0; near < 2; near++) {
+            lighting.surface_depth_near_detail = near;
+            lighting.surface_depth_shadow_softness = near ? .5f : 0;
+            inputs(data, 0);
+            render_radiance_reset(r);
+            float color[4] = { 0 };
+            quality &= draw(r, output, textures, data, lighting, view, color, &work) &&
+                       color[0] > .00001f;
+            float blocked[4] = { 0 };
+            inputs(data, 1);
+            render_radiance_reset(r);
+            quality &= draw(r, output, textures, data, lighting, view, blocked, &work) &&
+                       blocked[0] < color[0] * .6f;
+        }
+    }
+    printf("Surface depth quality, near detail and soft visibility: %s\n", quality ? "PASS" : "FAIL");
+    ok &= quality;
+    lighting.surface_depth_quality = GAME_HRC_DEPTH_BALANCED;
+    lighting.surface_depth_near_detail = false;
+    lighting.surface_depth_shadow_softness = 0;
+    lighting.surface_depth_history = .9f;
+    float initial[4] = { 0 }, accumulated[4] = { 0 }, empty[4] = { 0 },
+          restored[4] = { 0 };
+    inputs(data, 0);
+    render_radiance_reset(r);
+    ok = draw(r, output, textures, data, lighting, view, initial, &work) && ok;
+    lighting.surface_depth_temporal = true;
+    for (int frame = 0; frame < 4; frame++) {
+        ok = draw(r, output, textures, data, lighting, view, accumulated, &work) && ok;
+    }
+    bool history = initial[0] > .00001f;
+    for (int c = 0; c < 3; c++) {
+        history &= fabsf(initial[c] - accumulated[c]) < .001f;
+    }
+    // Reveal a receiver facing away from the light while emission remains.
+    // Normal stores XY; Z is the solid-surface flag, and reconstructed NZ is
+    // positive. Reusing the prior right-facing lighting would leave a ghost.
+    for (int cell = 0; cell < PIXELS; cell++) {
+        if (data[SOURCE][cell][0] > 0) {
+            continue;
+        }
+        data[NORMAL][cell][0] = -.99f;
+        data[NORMAL][cell][1] = 0;
+    }
+    float back[4] = { 0 };
+    ok = draw(r, output, textures, data, lighting, view, back, &work) && ok;
+    bool disoccluded = fabsf(back[0]) < .00001f && fabsf(back[1]) < .00001f &&
+                       fabsf(back[2]) < .00001f;
+    inputs(data, 0);
+    ok = draw(r, output, textures, data, lighting, view, accumulated, &work) && ok;
+    inputs(data, 4);
+    ok = draw(r, output, textures, data, lighting, view, empty, &work) && ok;
+    bool clear = fabsf(empty[0]) < .00001f && fabsf(empty[1]) < .00001f &&
+                 fabsf(empty[2]) < .00001f;
+    inputs(data, 0);
+    lighting.surface_depth_temporal = false;
+    ok = draw(r, output, textures, data, lighting, view, restored, &work) && ok;
+    for (int c = 0; c < 3; c++) {
+        history &= fabsf(initial[c] - restored[c]) < .001f;
+    }
+    lighting.surface_depth_temporal = true;
+    render_radiance_reset(r);
+    inputs(data, 4);
+    ok = draw(r, output, textures, data, lighting, view, empty, &work) && ok;
+    for (int c = 0; c < 3; c++) {
+        clear &= fabsf(empty[c]) < .00001f;
+    }
+    printf(
+        "Surface depth temporal toggle preserves stationary lighting: %s; "
+        "initial %g history %g restored %g\n",
+        history ? "PASS" : "FAIL",
+        initial[0],
+        accumulated[0],
+        restored[0]
+    );
+    printf(
+        "Surface depth temporal source removal and reset: %s; empty %g\n",
+        clear ? "PASS" : "FAIL",
+        empty[0]
+    );
+    printf(
+        "Surface depth temporal changed receiver rejects history: %s; back "
+        "face %g\n",
+        disoccluded ? "PASS" : "FAIL",
+        back[0]
+    );
+    lighting.surface_depth_history = 0; // Omitted strength uses the default.
+    return temporal_response(r, output, textures, data, lighting, view) && ok &&
+           history && clear && disoccluded;
+}
 bool test_surface_depth()
 {
+    if (getenv("CHIBI_TEST_DEPTH_SOURCE_STABILITY")) {
+        return source_stability();
+    }
     float (*data)[PIXELS][4] = xmalloc(sizeof(float) * INPUTS * PIXELS * 4);
     CF_Texture textures[INPUTS] = { 0 };
     for (int i = 0; i < INPUTS; i++) {
@@ -181,6 +843,7 @@ bool test_surface_depth()
     lighting.surface_relief = 1;
     lighting.surface_depth_radius = 16;
     lighting.surface_thickness = 12;
+    lighting.specular = 0;
     lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
     lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
     render_view_2d view = { -.5f * SIDE, .5f * SIDE,      SIDE,
@@ -196,7 +859,7 @@ bool test_surface_depth()
     lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
     ok = draw(r, output, textures, data, lighting, view, open, &work) && ok;
     bool budget = work.mode == GAME_HRC_SURFACE_DEPTH && work.block == 4 &&
-                  work.cells == 64 && work.candidates == (size_t)work.cells * 81 &&
+                  work.cells == 64 && work.candidates == (size_t)work.cells * 49 &&
                   work.visibility_taps == (size_t)work.cells * 96 &&
                   !work.blur_quadrant_fetches;
     printf(
@@ -450,6 +1113,8 @@ bool test_surface_depth()
         restored[0]
     );
     ok &= reset;
+    ok = fill_tests(r, output, textures, data, lighting, view) && ok;
+    ok = option_tests(r, output, textures, data, lighting, view) && ok;
     for (int i = 0; i < INPUTS; i++) {
         if (textures[i].id) {
             cf_destroy_texture(textures[i]);
@@ -460,7 +1125,7 @@ bool test_surface_depth()
     }
     render_radiance_free(r);
     free(data);
-    return ok;
+    return source_stability() && segment_reconstruction_tests() && ok;
 }
 int surface_depth_run(const char *program, bool gles)
 {

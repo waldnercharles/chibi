@@ -449,9 +449,9 @@ static void completion()
         const char *expected;
     } cases[] = {
         { "<sp^", UI_SOURCE_RML, "[sp] span" },
-        { "<div data-i^", UI_SOURCE_RML, "[data-i] data-if data-alias- data-event-click data-event-dblclick data-event-submit data-visible" },
-        { "<div data-ev^", UI_SOURCE_RML, "[data-ev] data-event-blur data-event-change data-event-click data-event-dblclick data-event-focus data-event-keydown data-event-keyup data-event-mousedown data-event-mouseout data-event-mouseover data-event-mouseup data-event-submit" },
-        { "<use u^", UI_SOURCE_RML, "[u] ui autofocus data-event-blur data-event-focus data-event-keyup data-event-mousedown data-event-mouseout data-event-mouseover data-event-mouseup data-event-submit data-value data-value-lazy grouping suffix value" },
+        { "<div data-i^", UI_SOURCE_RML, "[data-i] data-if data-alias- data-event-click data-event-dblclick data-event-input data-event-submit data-visible" },
+        { "<div data-ev^", UI_SOURCE_RML, "[data-ev] data-event-blur data-event-change data-event-click data-event-contextmenu data-event-dblclick data-event-focus data-event-input data-event-keydown data-event-keyup data-event-mousedown data-event-mouseout data-event-mouseover data-event-mouseup data-event-submit" },
+        { "<use u^", UI_SOURCE_RML, "[u] ui autofocus data-event-blur data-event-contextmenu data-event-focus data-event-input data-event-keyup data-event-mousedown data-event-mouseout data-event-mouseover data-event-mouseup data-event-submit data-value data-value-lazy grouping suffix value" },
         { "<use ui=\"Menu^\"/>", UI_SOURCE_RML, "[Menu] MenuButton MenuCheck" },
         { "<div class=\"card w^\">", UI_SOURCE_RML, "[w] wide" },
         { "<div data-class-t^", UI_SOURCE_RML, "[t] title" },
@@ -702,6 +702,8 @@ static void references()
     snprintf(folder, sizeof folder, "%s/ui", root);
     assert(!mkdir(folder, 0700));
     snprintf(path, sizeof path, "%s/theme", folder);
+    assert(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/empty", folder);
     assert(!mkdir(path, 0700));
     snprintf(path, sizeof path, "%s/theme/tokens.rcss", folder);
     write_file(path, ":root { --primary: #fff; }\n.card { color: var(--primary); }\n");

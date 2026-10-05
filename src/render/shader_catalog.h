@@ -12,6 +12,7 @@
 bool render_shader_upsert(const behavior_asset *asset, shader_error *error);
 /* Validate and publish a complete proposed model dependency generation. */
 bool render_shader_models_upsert(const behavior_asset *const *sources, int count, shader_error *error);
+float render_shader_distance_lipschitz(int index);
 bool render_shader_model_remove(const char *name, shader_error *error);
 bool render_shader_model_rename(const char *from, const char *to, shader_error *error);
 bool render_shader_material_remove(const char *name, shader_error *error);

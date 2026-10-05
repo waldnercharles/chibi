@@ -1,0 +1,31 @@
+version 3
+name "SdfSampledSuzanne"
+domain "model"
+id_counter 17
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=1 type="Model Output"
+            - {
+                id 6
+                type "Model Sampled SDF"
+                inputs {
+                    Image "content/sdf/2ad9e0416fcbb9d2.sdf.png"
+                    "Half Size" {
+                        default x=57.927433 y=43.67289 z=37.69766
+                    }
+                    Resolution 144
+                    Range 49.56637
+                    Lipschitz 1.7337255
+                }
+            }
+            - id=13 type="Model Part" reference_name="Subdivided closed Suzanne"
+        }
+        (array)edges {
+            - from="6.Geometry" to="13.Geometry"
+            - from="13.Geometry" to="1.Geometry"
+        }
+    }
+}

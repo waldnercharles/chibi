@@ -22,6 +22,7 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/shader/shader_graph.h"
+#include "render/shader_images.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/xalloc.h"
@@ -841,7 +842,7 @@ static int add_node_inputs(edit_context *ctx, node *n, yyjson_val *inputs)
         return 0;
     }
     if (!yyjson_is_obj(inputs)) {
-        set_error(ctx, "add_node.inputs must be an object keyed by pin name");
+        set_error(ctx, "inputs must be an object keyed by pin name");
         return -1;
     }
     /* Settings shape the other pins, so they apply first in any order. */
@@ -1041,6 +1042,43 @@ static int refresh_expression_connection(edit_context *ctx, node *from, node *to
     return refresh_expression(ctx, to) || refresh_expression(ctx, from) ? -1 : 0;
 }
 
+/* "Equal.Result (bool)": a pin by its node, name and type. */
+static void describe_pin(char *text, size_t size, const node *n, const pin_spec *pin)
+{
+    const char *type = pin->type_name && pin->type_name[0] ? pin->type_name
+                     : pin->kind == PIN_EXEC ? "exec"
+                                             : pin_type_name(pin->type);
+    snprintf(text, size, "%s.%s (%s)", n->desc->name, pin->name ? pin->name : "?", type);
+}
+
+/* What to try when a data connection has no way to carry its value. */
+static const char *rejection_hint(const edit_context *ctx, const pin_spec *from, const pin_spec *to)
+{
+    bool shader = ctx->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+                  ctx->asset->domain == BEHAVIOR_DOMAIN_SHAPE;
+    if (shader && ((from->flags | to->flags) & PIN_FLAG_WILDCARD)) {
+        return "shader wildcard pins need an explicit type such as ShaderVec3 "
+               "or a fixed typed shader node";
+    }
+    if (shader && !pin_compatible(from, to)) {
+        return "shader pins need matching types; use a shader vector or math "
+               "node for conversion";
+    }
+    return pin_compatible(from, to) ? "" : "the pin types differ and no conversion joins them";
+}
+
+static bool wire_present(const graph *g, const node *from, uint64_t from_pin, const node *to, uint64_t to_pin)
+{
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *e = &g->edges[i];
+        if (e->kind == GRAPH_EDGE_DATA && e->from_id == from->id &&
+            e->from_pin_id == from_pin && e->to_id == to->id && e->to_pin_id == to_pin) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
 {
     node *from = node_by_selector(ctx, yyjson_obj_get(op, "from"));
@@ -1069,6 +1107,15 @@ static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
             set_error(ctx, "data connection requires data pins");
             return -1;
         }
+        /* The pins are named as they were asked for, before a wildcard or an
+           expression retypes them. */
+        char wire[320], to_text[160];
+        describe_pin(wire, sizeof wire, from, from_pin);
+        describe_pin(to_text, sizeof to_text, to, to_pin);
+        size_t used = strlen(wire);
+        snprintf(wire + used, sizeof wire - used, " to %s", to_text);
+        const char *hint = rejection_hint(ctx, from_pin, to_pin);
+        uint64_t from_id = from_pin->id, to_id = to_pin->id;
         yyjson_val *type_json = yyjson_obj_get(op, "type");
         if (type_json && !disconnect) {
             pin_type type;
@@ -1139,21 +1186,14 @@ static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
                        ? graph_connect_data_conversion(ctx->graph, from, from_index, to, to_index, conversion)
                        : graph_connect_data(ctx->graph, from, from_index, to, to_index);
         if (result) {
-            if (!disconnect &&
-                (ctx->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-                 ctx->asset->domain == BEHAVIOR_DOMAIN_SHAPE) &&
-                ((from_pin->flags | to_pin->flags) & PIN_FLAG_WILDCARD)) {
-                set_error(ctx, "data connection was rejected: shader wildcard pins need an explicit type such as ShaderVec3 or a fixed typed shader node");
-            } else if (
-                !disconnect &&
-                (ctx->asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-                 ctx->asset->domain == BEHAVIOR_DOMAIN_SHAPE) &&
-                !pin_compatible(from_pin, to_pin)
-            ) {
-                set_error(ctx, "data connection was rejected: shader pins need matching types; use a shader vector or math node for conversion");
-            } else {
-                set_error(ctx, "data connection was rejected");
-            }
+            set_error(
+                ctx,
+                "data connection %s: %s%s%s",
+                disconnect ? "was not present" : "was rejected",
+                wire,
+                hint[0] ? "; " : "",
+                hint
+            );
             return -1;
         }
         /* A named output is read by name, like the consumers it already has. */
@@ -1167,6 +1207,10 @@ static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
             return -1;
         }
         if (refresh_expression_connection(ctx, from, to) != 0) {
+            return -1;
+        }
+        if (!disconnect && !wire_present(ctx->graph, from, from_id, to, to_id)) {
+            set_error(ctx, "data connection was dropped when its expression regenerated: %s", wire);
             return -1;
         }
         return 0;
@@ -1845,7 +1889,10 @@ static int operation_add_variable_node(edit_context *ctx, yyjson_val *op)
         set_error(ctx, "could not configure variable %s node", kind);
         return -1;
     }
-    return add_node_ref(ctx, yyjson_obj_get(op, "ref"), n);
+    return add_node_ref(ctx, yyjson_obj_get(op, "ref"), n) ||
+                   add_node_inputs(ctx, n, yyjson_obj_get(op, "inputs"))
+             ? -1
+             : 0;
 }
 
 static int operation_add_self_node(edit_context *ctx, yyjson_val *op)
@@ -2641,6 +2688,9 @@ static int validate_asset(edit_context *ctx)
             &program,
             &error
         );
+        if (valid) {
+            valid = render_image_validate_volumes(&program.shader, &error);
+        }
         model_program_free(&program);
         behavior_asset_free(linked);
         if (!valid) {

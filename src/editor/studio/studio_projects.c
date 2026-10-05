@@ -324,16 +324,6 @@ void studio_new_project_open(studio *s)
     s->new_project = (studio_new_project){ .open = true, .focus = true };
 }
 
-void studio_new_project_menu(studio *s)
-{
-    kit_menu_item_desc item = { .label = "Project",
-                                .icon = KIT_ICON_FOLDER,
-                                .checked = -1 };
-    if (kit_menu_item(s->kit, "project", &item)) {
-        studio_new_project_open(s);
-    }
-}
-
 static void created_project(studio *s, const char *root)
 {
 #ifdef __EMSCRIPTEN__
@@ -447,27 +437,6 @@ void studio_new_project_frame(studio *s)
     }
 #endif
     studio_ui_new_project(s);
-}
-
-void studio_projects_menu(studio *s)
-{
-    kit *k = s->kit;
-    if (!acount(s->projects) ||
-        !kit_submenu_begin(k, "open_project", "Open Project", KIT_ICON_FOLDER)) {
-        return;
-    }
-    for (int i = 0; i < acount(s->projects); i++) {
-        char key[16];
-        snprintf(key, sizeof key, "project%d", i);
-        bool current = studio_project_current(s, i);
-        kit_menu_item_desc d = { .label = s->projects[i].name,
-                                 .checked = current,
-                                 .disabled = current };
-        if (kit_menu_item(k, key, &d)) {
-            studio_open_project(s, i);
-        }
-    }
-    kit_submenu_end(k);
 }
 
 char *studio_take_project(studio *s)

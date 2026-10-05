@@ -6,6 +6,7 @@
 #include "render/draw_textures.h"
 #include "render/fullscreen.h"
 #include "render/gpu_timing.h"
+#include "render/mesh_projection.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -103,8 +104,9 @@ struct render_radiance
     CF_Canvas quadrant_image[4];
     CF_Shader surface_seed_shd, surface_reduce_shd, surface_blur_shd,
         surface_filter_shd, surface_gather_shd, surface_depth_shd,
-        surface_emission_shd, surface_depth_filter_shd, trace_shd, extend_shd,
-        merge_shd, resolve_shd, prefilter_shd, downsample_shd, near_shd, gather_shd,
+        surface_emission_shd, surface_depth_filter_shd,
+        surface_depth_temporal_shd, trace_shd, extend_shd, merge_shd,
+        resolve_shd, prefilter_shd, downsample_shd, near_shd, gather_shd,
         filter_shd, bounce_shd, composite_shd, relief_pack_shd, horizon_shd,
         near_relief_shd, relief_dirty_shd, dirty_expand_shd, relief_reduce_shd,
         horizon_hierarchy_shd, horizon4_shd, horizon_hierarchy4_shd;
@@ -115,7 +117,10 @@ struct render_radiance
      * openness in alpha. [0] holds the result, [1] the intermediate blur. */
     CF_Canvas surface_canvas[2];
     /* Blocks of 4 pixels or more first seed 2-pixel blocks here. */
-    CF_Canvas surface_half, surface_history[2];
+    CF_Canvas surface_half, surface_history[2], depth_history[2];
+    render_view_2d depth_view;
+    int depth_ping;
+    bool depth_has_history;
     CF_Canvas surface_emission[SURFACE_EMISSION_LEVELS];
     int surface_w, surface_h, surface_block, surface_ping, surface_emission_block;
     GameHRCSurfaceMode surface_resource_mode;
@@ -126,6 +131,7 @@ struct render_radiance
     bool horizon_history, horizon_packed;
     render_view_2d horizon_view;
     render_material_textures horizon_inputs;
+    render_emitter_textures emitter_inputs;
     render_horizon_work horizon_work;
 };
 typedef render_radiance HRC;
@@ -274,6 +280,22 @@ static CF_Canvas s_make_targets(int w, int h, int count, CF_Filter filter)
         params.targets[i].wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
     }
     return cf_make_canvas(params);
+}
+
+/* Pass materials keep each texture a pass bound until its name is bound
+ * again, and WebGL validates every one on each draw: forget them before
+ * the canvases they name go. Each pass binds what it samples. */
+static void s_forget_textures(HRC *hrc)
+{
+    CF_Material materials[] = { hrc->pass_material, hrc->bounce_material };
+    for (int i = 0; i < 2; i++) {
+        if (materials[i].id) {
+            cf_material_clear_textures(materials[i]);
+        }
+    }
+    if (hrc->luminance) {
+        s_forget_textures(hrc->luminance);
+    }
 }
 
 static void s_destroy_level(CF_Canvas *level)
@@ -961,8 +983,18 @@ static void s_dispatch_horizon(HRC *hrc, render_view_2d view)
     hrc->horizon_work.pixels = hrc->canvas_w * hrc->canvas_h;
 }
 
+static void s_destroy_depth_history(HRC *hrc)
+{
+    s_clear_texture_bindings(hrc);
+    s_destroy_canvas(&hrc->depth_history[0]);
+    s_destroy_canvas(&hrc->depth_history[1]);
+    hrc->depth_has_history = false;
+    hrc->depth_ping = 0;
+}
+
 static void s_destroy_surface(HRC *hrc)
 {
+    s_destroy_depth_history(hrc);
     s_clear_texture_bindings(hrc);
     s_destroy_canvas(&hrc->surface_canvas[0]);
     s_destroy_canvas(&hrc->surface_canvas[1]);
@@ -1007,9 +1039,9 @@ static bool s_surface_resources(HRC *hrc, int width, int height, int block, Game
         }
     }
     if (mode == GAME_HRC_SURFACE_DEPTH) {
-        /* The coarsest level spans at most eight tiles on either axis. */
+        /* The coarsest level fits the lowest four-tile source budget. */
         int base = 4;
-        while (base * 256 < cf_max(hrc->canvas_w, hrc->canvas_h)) {
+        while (base * 128 < cf_max(hrc->canvas_w, hrc->canvas_h)) {
             base *= 2;
         }
         hrc->surface_emission_block = base;
@@ -1093,23 +1125,29 @@ static void s_dispatch_surface_emission(HRC *hrc)
     CF_Material mat = hrc->pass_material;
     int base = hrc->surface_emission_block;
     int w = s_ceil_div(hrc->canvas_w, base), h = s_ceil_div(hrc->canvas_h, base);
-    cf_material_set_uniform_fs(mat, "u_base_block", &base, CF_UNIFORM_TYPE_INT, 1);
+    int source_block = hrc->emitter_inputs.source.id ? base / 4 : base;
+    cf_material_set_uniform_fs(mat, "u_base_block", &source_block, CF_UNIFORM_TYPE_INT, 1);
     for (int i = 0; i < SURFACE_EMISSION_LEVELS; i++) {
         s_clear_texture_bindings(hrc);
         CF_Texture light = i ? cf_canvas_get_target2(hrc->surface_emission[i - 1], 0)
-                             : hrc->source;
+                         : hrc->emitter_inputs.source.id ? hrc->emitter_inputs.source
+                                                         : hrc->source;
         CF_Texture geometry = i ? cf_canvas_get_target2(hrc->surface_emission[i - 1], 1)
+                            : hrc->emitter_inputs.source.id
+                                ? hrc->emitter_inputs.moments
                                 : hrc->horizon_inputs.albedo;
         cf_material_set_texture_fs(mat, "u_source", light);
         cf_material_set_texture_fs(mat, "u_geometry", geometry);
         cf_material_set_texture_fs(mat, "u_cover", hrc->horizon_inputs.cover);
-        int first = i == 0;
+        int first = i == 0 ? (hrc->emitter_inputs.source.id ? 2 : 1)
+                           : (hrc->emitter_inputs.source.id ? 3 : 0);
         cf_material_set_uniform_fs(mat, "u_first_level", &first, CF_UNIFORM_TYPE_INT, 1);
         s_draw_region(hrc, hrc->surface_emission_shd, hrc->surface_emission[i], w, h);
         w = s_ceil_div(w, 2);
         h = s_ceil_div(h, 2);
     }
     render_gpu_timing_detail("Surface emission pyramid");
+    cf_material_set_uniform_fs(mat, "u_base_block", &base, CF_UNIFORM_TYPE_INT, 1);
     s_clear_texture_bindings(hrc);
     for (int i = 0; i < SURFACE_EMISSION_LEVELS; i++) {
         char name[32];
@@ -1118,6 +1156,96 @@ static void s_dispatch_surface_emission(HRC *hrc)
         snprintf(name, sizeof name, "u_emitter%d", i);
         cf_material_set_texture_fs(mat, name, cf_canvas_get_target2(hrc->surface_emission[i], 1));
     }
+}
+
+/* Depth history is independent of HRC transport history. Reprojection uses the
+ * same camera basis as mesh/SDF projection; matching geometry rejects changes,
+ * but tangential object motion needs motion vectors to identify perfectly. */
+static bool s_dispatch_depth_history(HRC *hrc, render_view_2d view, float sigma)
+{
+    if (!hrc->lighting.surface_depth_temporal) {
+        s_destroy_depth_history(hrc);
+        return false;
+    }
+    if (!hrc->surface_depth_temporal_shd.id) {
+        hrc->surface_depth_temporal_shd = s_make_pass_shader("hrc/surface_depth_temporal.frag");
+    }
+    if (!hrc->surface_depth_temporal_shd.id) {
+        return false;
+    }
+    for (int i = 0; i < 2; i++) {
+        if (!hrc->depth_history[i].id) {
+            hrc->depth_history[i] = s_make_targets(hrc->surface_w, hrc->surface_h, 4, CF_FILTER_NEAREST);
+        }
+        if (!hrc->depth_history[i].id) {
+            s_destroy_depth_history(hrc);
+            return false;
+        }
+    }
+    CF_Material mat = hrc->pass_material;
+    s_clear_texture_bindings(hrc);
+    s_surface_inputs(hrc, hrc->surface_canvas[1], 0);
+    static const char *const names[] = { "u_prev0", "u_prev1", "u_prev2", "u_prev3" };
+    int previous = hrc->depth_ping, current = 1 - previous;
+    for (int i = 0; i < 4; i++) {
+        cf_material_set_texture_fs(
+            mat,
+            names[i],
+            cf_canvas_get_target2(hrc->depth_history[previous], i)
+        );
+    }
+    render_view_2d prev = hrc->depth_has_history ? hrc->depth_view : view;
+    CF_V3 basis[3], old[3];
+    render_mesh_camera_basis(view, basis);
+    render_mesh_camera_basis(prev, old);
+    CF_V3 delta = cf_sub_v3(render_mesh_camera_target(view), render_mesh_camera_target(prev));
+    CF_V3 columns[] = { basis[0], cf_mul_v3_f(basis[2], -1), basis[1] };
+    CF_V3 rows[] = { old[0], cf_mul_v3_f(old[2], -1), old[1] };
+    const char *const row_names[] = { "u_transform0", "u_transform1", "u_transform2" };
+    for (int i = 0; i < 3; i++) {
+        float row[] = { cf_dot_v3(rows[i], columns[0]),
+                        cf_dot_v3(rows[i], columns[1]),
+                        cf_dot_v3(rows[i], columns[2]),
+                        cf_dot_v3(rows[i], delta) };
+        cf_material_set_uniform_fs(mat, row_names[i], row, CF_UNIFORM_TYPE_FLOAT4, 1);
+    }
+    float projection[] = { view.min_x - view.center_x,
+                           view.max_y - view.center_y,
+                           view.width,
+                           view.height };
+    float old_projection[] = { prev.min_x - prev.center_x,
+                               prev.max_y - prev.center_y,
+                               prev.width,
+                               prev.height };
+    float focal[] = { view.focal_distance, prev.focal_distance };
+    float raster[] = { (float)hrc->canvas_w, (float)hrc->canvas_h };
+    int valid = hrc->depth_has_history;
+    cf_material_set_uniform_fs(mat, "u_projection", projection, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_material_set_uniform_fs(mat, "u_previous_projection", old_projection, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_material_set_uniform_fs(mat, "u_focal", focal, CF_UNIFORM_TYPE_FLOAT2, 1);
+    cf_material_set_uniform_fs(mat, "u_raster", raster, CF_UNIFORM_TYPE_FLOAT2, 1);
+    cf_material_set_uniform_fs(mat, "u_block", &hrc->surface_block, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_uniform_fs(mat, "u_sigma", &sigma, CF_UNIFORM_TYPE_FLOAT, 1);
+    float history = hrc->lighting.surface_depth_history > 0
+                      ? hrc->lighting.surface_depth_history
+                      : .65f;
+    cf_material_set_uniform_fs(mat, "u_history", &history, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_material_set_uniform_fs(mat, "u_valid", &valid, CF_UNIFORM_TYPE_INT, 1);
+    s_draw_region(
+        hrc,
+        hrc->surface_depth_temporal_shd,
+        hrc->depth_history[current],
+        hrc->surface_w,
+        hrc->surface_h
+    );
+    hrc->depth_ping = current;
+    hrc->depth_has_history = true;
+    hrc->depth_view = view;
+    hrc->surface_work.temporal_cells = hrc->surface_w * hrc->surface_h;
+    hrc->surface_work.temporal_bytes = (size_t)hrc->surface_w * hrc->surface_h *
+                                       4 * 8 * 2;
+    render_gpu_timing_detail("Surface depth temporal filter");
+    return true;
 }
 
 static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
@@ -1135,7 +1263,8 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
     }
     if (hrc->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH) {
         *block = 4;
-        if (hrc->lighting.surface_depth_radius <= 0) {
+        if (hrc->lighting.surface_depth_radius <= 0 ||
+            hrc->lighting.surface_depth_gain <= 0) {
             return 0;
         }
         if (!hrc->surface_depth_shd.id) {
@@ -1159,10 +1288,30 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
     }
     hrc->surface_work.cells = width * height;
     hrc->surface_work.block = *block;
+    hrc->surface_work.visibility = hrc->lighting.surface_depth_visibility;
+    hrc->surface_work.emitter_sources = hrc->emitter_inputs.sources;
+    hrc->surface_work.emitter_pixels = hrc->emitter_inputs.width *
+                                       hrc->emitter_inputs.height;
+    hrc->surface_work.emitter_bytes = (size_t)hrc->surface_work.emitter_pixels * 16;
     hrc->surface_work.mode = hrc->lighting.surface_mode;
     if (hrc->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH) {
         CF_Material mat = hrc->pass_material;
         s_dispatch_surface_emission(hrc);
+        int axis = 4 + 2 * hrc->lighting.surface_depth_quality;
+        int near_detail = hrc->lighting.surface_depth_near_detail;
+        int visibility = hrc->lighting.surface_depth_visibility;
+        int independent = hrc->emitter_inputs.source.id != 0;
+        cf_material_set_uniform_fs(mat, "u_visibility_mode", &visibility, CF_UNIFORM_TYPE_INT, 1);
+        cf_material_set_uniform_fs(mat, "u_independent_emitters", &independent, CF_UNIFORM_TYPE_INT, 1);
+        cf_material_set_uniform_fs(mat, "u_source_axis", &axis, CF_UNIFORM_TYPE_INT, 1);
+        cf_material_set_uniform_fs(mat, "u_near_detail", &near_detail, CF_UNIFORM_TYPE_INT, 1);
+        cf_material_set_uniform_fs(
+            mat,
+            "u_shadow_softness",
+            &hrc->lighting.surface_depth_shadow_softness,
+            CF_UNIFORM_TYPE_FLOAT,
+            1
+        );
         cf_material_set_texture_fs(mat, "u_source", hrc->source);
         cf_material_set_texture_fs(mat, "u_albedo", hrc->horizon_inputs.albedo);
         cf_material_set_texture_fs(mat, "u_cover", hrc->horizon_inputs.cover);
@@ -1176,17 +1325,29 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
         cf_material_set_uniform_fs(mat, "u_projection", projection, CF_UNIFORM_TYPE_FLOAT4, 1);
         cf_material_set_uniform_fs(mat, "u_radius", &hrc->lighting.surface_depth_radius, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_thickness", &hrc->lighting.surface_thickness, CF_UNIFORM_TYPE_FLOAT, 1);
+        cf_material_set_uniform_fs(mat, "u_specular", &hrc->lighting.specular, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_block", block, CF_UNIFORM_TYPE_INT, 1);
         s_draw_region(hrc, hrc->surface_depth_shd, hrc->surface_canvas[0], width, height);
-        hrc->surface_work.candidates = (size_t)width * height * 81;
-        hrc->surface_work.visibility_taps = (size_t)width * height * 96;
+        hrc->surface_work.candidates = (size_t)width * height * (axis + 1) *
+                                       (axis + 1);
+        hrc->surface_work.visibility_taps = visibility == GAME_HRC_DEPTH_VISIBILITY_SEGMENTS
+                                              ? hrc->surface_work.candidates *
+                                                    (size_t)(32 +
+                                                             16 * hrc->lighting.surface_depth_quality)
+                                              : (size_t)width * height * 96;
         render_gpu_timing_detail("Surface depth thickness");
         s_clear_texture_bindings(hrc);
         s_surface_inputs(hrc, hrc->surface_canvas[0], 0);
         float depth_sigma = fmaxf(hrc->lighting.surface_thickness * .25f, spacing[0] * 8);
         cf_material_set_uniform_fs(mat, "u_sigma", &depth_sigma, CF_UNIFORM_TYPE_FLOAT, 1);
+        projection[3] = (float)*block;
+        float canvas_size[] = { (float)hrc->canvas_w, (float)hrc->canvas_h };
+        cf_material_set_uniform_fs(mat, "u_projection", projection, CF_UNIFORM_TYPE_FLOAT4, 1);
+        cf_material_set_uniform_fs(mat, "u_world_per_px", spacing, CF_UNIFORM_TYPE_FLOAT2, 1);
+        cf_material_set_uniform_fs(mat, "u_canvas_size", canvas_size, CF_UNIFORM_TYPE_FLOAT2, 1);
         s_draw_region(hrc, hrc->surface_depth_filter_shd, hrc->surface_canvas[1], width, height);
         render_gpu_timing_detail("Surface depth spatial filter");
+        s_dispatch_depth_history(hrc, view, depth_sigma);
         return sigma / (float)*block;
     }
     if (hrc->lighting.surface_mode == GAME_HRC_SURFACE_GATHER) {
@@ -1431,6 +1592,7 @@ void render_radiance_free(render_radiance *hrc)
                            hrc->surface_depth_shd,
                            hrc->surface_emission_shd,
                            hrc->surface_depth_filter_shd,
+                           hrc->surface_depth_temporal_shd,
                            hrc->composite_shd,
                            hrc->relief_pack_shd,
                            hrc->horizon_shd,
@@ -1468,6 +1630,7 @@ void render_radiance_reset(render_radiance *hrc)
     hrc->radiance_ping = 0;
     hrc->has_history = hrc->history_valid = false;
     hrc->surface_has_history = false;
+    hrc->depth_has_history = false;
     hrc->surface_work = (render_surface_work){ 0 };
     hrc->horizon_history = false;
     hrc->horizon_work = (render_horizon_work){ 0 };
@@ -1542,6 +1705,7 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
     bool images_changed = hrc->canvas_w != width || hrc->canvas_h != height ||
                           hrc->radiance_w != radiance_w ||
                           hrc->radiance_h != radiance_h;
+    s_forget_textures(hrc);
     bool ok = true;
     if (images_changed) {
         destroy_images(hrc);
@@ -1712,6 +1876,9 @@ static const s_float_range s_float_ranges[] = {
     { offsetof(GameHRC2D, particle_focal_length), 1, 100000, "particle_focal_length" },
     { offsetof(GameHRC2D, surface_radius), 0, 1024, "surface_radius" },
     { offsetof(GameHRC2D, surface_depth_radius), 0, 1024, "surface_depth_radius" },
+    { offsetof(GameHRC2D, surface_depth_gain), 0, 100, "surface_depth_gain" },
+    { offsetof(GameHRC2D, surface_depth_shadow_softness), 0, 1, "surface_depth_shadow_softness" },
+    { offsetof(GameHRC2D, surface_depth_history), 0, .95f, "surface_depth_history" },
     { offsetof(GameHRC2D, surface_thickness), 0, 1024, "surface_thickness" },
     { offsetof(GameHRC2D, surface_relief), 0, 100, "surface_relief" },
     { offsetof(GameHRC2D, surface_bevel), 0, 100, "surface_bevel" },
@@ -1735,6 +1902,18 @@ static const s_int_range s_int_ranges[] = {
     { offsetof(GameHRC2D, tone_mapping), 0, 1, "tone_mapping" },
     { offsetof(GameHRC2D, surface_shadow_mode), 0, 2, "surface_shadow_mode" },
     { offsetof(GameHRC2D, surface_mode), 0, GAME_HRC_SURFACE_DEPTH, "surface_mode" },
+    { offsetof(GameHRC2D, surface_depth_quality),
+      GAME_HRC_DEPTH_LOW,
+      GAME_HRC_DEPTH_HIGH,
+      "surface_depth_quality" },
+    { offsetof(GameHRC2D, surface_depth_visibility),
+      0,
+      GAME_HRC_DEPTH_VISIBILITY_SEGMENTS,
+      "surface_depth_visibility" },
+    { offsetof(GameHRC2D, surface_depth_emitters),
+      0,
+      GAME_HRC_DEPTH_EMITTERS_PROXIES,
+      "surface_depth_emitters" },
 };
 
 static void s_note(char *notes, size_t size, const char *name, double from, double to)
@@ -1823,6 +2002,26 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
         radiance->lighting.surface_radius != lighting.surface_radius ||
         radiance->lighting.surface_relief != lighting.surface_relief) {
         radiance->surface_has_history = false;
+    }
+    GameHRC2D prior = radiance->lighting;
+    if (prior.surface_mode != lighting.surface_mode ||
+        prior.surface_radius != lighting.surface_radius ||
+        prior.surface_depth_radius != lighting.surface_depth_radius ||
+        prior.surface_thickness != lighting.surface_thickness ||
+        prior.surface_depth_gain != lighting.surface_depth_gain ||
+        prior.surface_depth_quality != lighting.surface_depth_quality ||
+        prior.surface_depth_visibility != lighting.surface_depth_visibility ||
+        prior.surface_depth_emitters != lighting.surface_depth_emitters ||
+        prior.surface_depth_near_detail != lighting.surface_depth_near_detail ||
+        prior.surface_depth_shadow_softness != lighting.surface_depth_shadow_softness ||
+        prior.surface_depth_temporal != lighting.surface_depth_temporal ||
+        prior.surface_depth_history != lighting.surface_depth_history ||
+        prior.specular != lighting.specular) {
+        radiance->depth_has_history = false;
+    }
+    if (!lighting.surface_depth_temporal ||
+        lighting.surface_mode != GAME_HRC_SURFACE_DEPTH) {
+        s_destroy_depth_history(radiance);
     }
     radiance->lighting = lighting;
     radiance->authored_lighting = true;
@@ -2063,6 +2262,9 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     }
     int block = 1;
     s_push_hrc_label(hrc, "surface");
+    hrc->emitter_inputs = lighting.surface_depth_emitters == GAME_HRC_DEPTH_EMITTERS_PROXIES
+                            ? inputs.emitters
+                            : (render_emitter_textures){ 0 };
     float surface_sigma = s_dispatch_surface(hrc, view, &block);
     cf_pop_gpu_label();
     render_gpu_timing_mark("Surface light");
@@ -2109,17 +2311,27 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     for (int i = 0; i < 4; i++) {
         cf_draw_set_texture(
             surface_names[i],
-            surface_sigma > 0 ? cf_canvas_get_target2(
-                                    lighting.surface_mode == GAME_HRC_SURFACE_DEPTH
-                                        ? hrc->surface_canvas[1]
-                                        : hrc->surface_history[hrc->surface_ping],
-                                    i
-                                )
-                              : hrc->black
+            surface_sigma > 0
+                ? cf_canvas_get_target2(
+                      lighting.surface_mode == GAME_HRC_SURFACE_DEPTH
+                          ? (hrc->depth_has_history && lighting.surface_depth_temporal
+                                 ? hrc->depth_history[hrc->depth_ping]
+                                 : hrc->surface_canvas[1])
+                          : hrc->surface_history[hrc->surface_ping],
+                      i
+                  )
+                : hrc->black
         );
     }
     float world_per_px = view.width / (float)hrc->canvas_w;
     cf_draw_set_uniform("world_per_px", &world_per_px, CF_UNIFORM_TYPE_FLOAT, 1);
+    float surface_projection[] = { view.min_x - view.center_x,
+                                   view.max_y - view.center_y,
+                                   view.focal_distance,
+                                   (float)block };
+    float surface_spacing[] = { view.width / hrc->canvas_w, view.height / hrc->canvas_h };
+    cf_draw_set_uniform("surface_projection", surface_projection, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw_set_uniform("surface_world_per_px", surface_spacing, CF_UNIFORM_TYPE_FLOAT2, 1);
     float reconstruction_threshold = lighting.upscale_threshold;
     cf_draw_set_uniform("reconstruction_threshold", &reconstruction_threshold, CF_UNIFORM_TYPE_FLOAT, 1);
     float surface_params[4] = { surface_sigma > 0,
@@ -2139,6 +2351,13 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     int surface_mode = lighting.surface_mode;
     cf_draw_set_uniform("surface_mode", &surface_mode, CF_UNIFORM_TYPE_INT, 1);
     cf_draw_set_uniform("surface_thickness", &lighting.surface_thickness, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_draw_set_uniform("surface_depth_gain", &lighting.surface_depth_gain, CF_UNIFORM_TYPE_FLOAT, 1);
+    cf_draw_set_uniform(
+        "surface_depth_shadow_softness",
+        &lighting.surface_depth_shadow_softness,
+        CF_UNIFORM_TYPE_FLOAT,
+        1
+    );
     cf_draw_set_uniform("surface_sigma", &surface_sigma, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("surface_params", surface_params, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw_set_uniform("surface_map", surface_map, CF_UNIFORM_TYPE_FLOAT4, 1);

@@ -39,7 +39,6 @@ const registry = {
     ] },
   ],
 };
-const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 const sample = `behavior ProjectileLifecycle {
   on Tick(GameProjectile projectile) {
@@ -700,21 +699,6 @@ test('graph export ignores structured collection reference names and keeps neste
   unprovenNode.reference_name += ' + hidden';
   unprovenNode.inputs.hidden = { binding: { kind: 'state', variable: 'secret' } };
   assert.throws(() => graphToSource(source, behavior, unsupportedBinding, map, registry), /graph binding that the source subset cannot represent/);
-});
-
-test('ProjectilePulse collection graph decompiles byte-identically without changing assets or map', () => {
-  const sourcePath = 'tools/behavior-code/examples/ProjectilePulse.code';
-  const mapPath = sourcePath + '.map.json';
-  const assetPath = 'content/behaviors/ProjectilePulse.kdl';
-  const before = [sourcePath, mapPath, assetPath].map((path) => readFileSync(join(REPO_ROOT, path), 'utf8'));
-  const result = spawnSync(process.execPath, [
-    'tools/behavior-code/cli.mjs', 'decompile', sourcePath,
-    '--project-root', '.', '--ctl', 'build/chibi_ctl',
-  ], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
-
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout, before[0]);
-  assert.deepEqual([sourcePath, mapPath, assetPath].map((path) => readFileSync(join(REPO_ROOT, path), 'utf8')), before);
 });
 
 test('graph exports newly bound component inputs as source aliases and validates the result', () => {

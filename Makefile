@@ -62,6 +62,7 @@ TEST_ARGS ?=
 TEST_JOBS ?= 4
 TEST_TIMINGS ?= 0
 TEST_TOOL_TARGETS = \
+	test-tool-behavior-code \
 	test-tool-execution-policy \
 	test-tool-kdl-assets \
 	test-tool-fetchcontent-cache \
@@ -327,6 +328,9 @@ test-full:
 .PHONY: $(TEST_TOOL_TARGETS)
 test-tools:
 	+@$(MAKE) --no-print-directory -j$(TEST_JOBS) $(TEST_TOOL_TARGETS)
+
+test-tool-behavior-code:
+	@$(QUIET) behavior-code-test -- node --test tools/behavior-code/behavior-code.test.mjs
 
 test-tool-kdl-assets:
 	@$(QUIET) kdl_asset_test.py -- python3 test/kdl_asset_test.py

@@ -1,4 +1,5 @@
 #include "automation/controller.h"
+#include "automation/execution_policy.h"
 #include "automation/render_preview.h"
 #include "support/resources.h"
 
@@ -19,6 +20,9 @@ static void usage(const char *program)
         "Read newline-delimited JSON automation requests from stdin.\n"
         "Each non-empty line produces exactly one JSON response on stdout.\n"
         "With --render, read one preview request and produce one response.\n"
+        "Default iteration profile: bounded preview; see tools/agent.py list.\n"
+        "Full rendering requires CHIBI_EXECUTION_PROFILE=hardware and "
+        "CHIBI_ALLOW_FULL_GPU=1.\n"
         "With --format, rewrite authored assets in canonical form; --check\n"
         "only lists assets that differ and fails when any do.\n",
         program,
@@ -112,6 +116,7 @@ int main(int argc, char **argv)
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     if (render) {
+        chibi_render_deadline();
         return render_request(project_root, request_path);
     }
     if (format) {

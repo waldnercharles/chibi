@@ -2,6 +2,7 @@
 
 #include "automation/asset_write.h"
 #include "automation/controller.h"
+#include "automation/execution_policy.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
@@ -413,6 +414,8 @@ static void response_init(preview_response *response)
     yyjson_mut_obj_add_strcpy(response->doc, response->root, "operation", "preview_shader");
     response->result = yyjson_mut_obj_add_obj(response->doc, response->root, "result");
     response->diagnostics = yyjson_mut_obj_add_arr(response->doc, response->result, "diagnostics");
+    yyjson_mut_obj_add_bool(response->doc, response->root, "full_verification", false);
+    yyjson_mut_obj_add_str(response->doc, response->root, "coverage", "bounded-preview");
     response->status = PREVIEW_OK;
     yyjson_mut_doc_set_root(response->doc, response->root);
 }
@@ -930,6 +933,29 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         response_error(&response, PREVIEW_INVALID_REQUEST, "request must be a JSON object");
         if (exit_code) {
             *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
+    const char *requested_operation = yyjson_get_str(yyjson_obj_get(root, "operation"));
+    if (requested_operation) {
+        yyjson_mut_obj_remove_key(response.root, "operation");
+        yyjson_mut_obj_add_strcpy(response.doc, response.root, "operation", requested_operation);
+    }
+    const char *blocked = chibi_render_policy(root);
+    if (blocked) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, blocked);
+        yyjson_mut_obj_add_str(response.doc, response.root, "status", "blocked");
+        yyjson_mut_val *outstanding = yyjson_mut_obj_add_arr(
+            response.doc,
+            response.root,
+            "required_checks_outstanding"
+        );
+        yyjson_mut_arr_add_str(response.doc, outstanding, "full-native");
+        yyjson_mut_arr_add_str(response.doc, outstanding, "render");
+        yyjson_mut_obj_add_str(response.doc, response.root, "next_command", "python3 tools/agent.py --help");
+        if (exit_code) {
+            *exit_code = PREVIEW_INVALID_REQUEST;
         }
         yyjson_doc_free(document);
         return response_finish(&response);

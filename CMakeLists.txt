@@ -517,7 +517,7 @@ target_include_directories(chibi_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_ctl PRIVATE automation chibi_render editor engine)
 set_target_properties(chibi_ctl PROPERTIES LINKER_LANGUAGE CXX)
 
-target_sources(chibi_ctl PRIVATE src/automation/render_preview.c
+target_sources(chibi_ctl PRIVATE src/automation/execution_policy.c src/automation/render_preview.c
     src/automation/scene_preview.c src/render/scene_renderer.c
     src/render/shader_preview.c src/render/shader_fragment.c)
 if(APPLE)

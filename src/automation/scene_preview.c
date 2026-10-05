@@ -10,6 +10,7 @@
 #include "render/ui.h"
 #include "runtime/camera.h"
 #include "runtime/scenes/prototype_preview.h"
+#include "support/execution_policy.h"
 #include "third_party/yyjson/yyjson.h"
 
 #include <imgui/dcimgui.h>
@@ -78,6 +79,8 @@ typedef struct
 typedef struct
 {
     int width, height, frames, capture_frame, sdf_batch_limit;
+    int warmup;
+    bool bounded;
     bool frozen, pass_timing, pass_detail;
     bool quality_override, shadow_override, sdf_trace_debug;
     bool hidden_rejection, spatial_scratch;
@@ -200,7 +203,8 @@ static bool render_scene(
     int count = 0;
     double simulation_ms = 0, render_ms = 0;
     engine *runtime = ok ? game_prototype_preview_runtime(scene.preview) : NULL;
-    int warmup = render_frames > 2 ? 240 : 0;
+    int warmup = options->bounded ? options->warmup : (render_frames > 2 ? 240 : 0);
+    int skip = options->bounded ? 0 : 16;
     /* Command buffer timestamps avoid the per-pass waits of sync timing. */
     measurement->pass_timestamps = options->pass_timing && render_gpu_clock_install();
     render_gpu_timing_enable(
@@ -220,7 +224,7 @@ static bool render_scene(
         measurement->model_before = render_shader_model_stats();
     }
     for (int i = 0; ok && i < render_frames + warmup; i++) {
-        if (i == warmup + 16) {
+        if (i == warmup + skip) {
             measurement->model_measured = render_shader_model_stats();
         }
         bool capture = options->capture_path && i == warmup + options->capture_frame;
@@ -278,14 +282,14 @@ static bool render_scene(
             ok = false;
         }
         CHIBI_TRACE_FRAME_MARK("Scene preview frame");
-        if (i == warmup + 15) {
+        if (i == warmup + skip - 1) {
             render_gpu_timing_clear();
         }
-        if (frames && i >= warmup + 16 &&
+        if (frames && i >= warmup + skip &&
             !chibi_preview_readback_raw(width, height, frames, error, size)) {
             ok = false;
         }
-        if (i >= warmup + 16) {
+        if (i >= warmup + skip) {
             double elapsed = (seconds() - start) * 1000;
             timings[count++] = elapsed;
             simulation_ms += simulation_elapsed;
@@ -518,10 +522,12 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         }
         *sides[i] = (int)yyjson_get_sint(value);
     }
-    int render_frames = 2;
+    bool bounded = !chibi_execution_hardware();
+    int render_frames = bounded ? 1 : 2;
     yyjson_val *render_count = yyjson_obj_get(root, "render_frames");
     if (render_count) {
-        if (!yyjson_is_int(render_count) || yyjson_get_sint(render_count) < 2 ||
+        if (!yyjson_is_int(render_count) ||
+            yyjson_get_sint(render_count) < (bounded ? 1 : 2) ||
             yyjson_get_sint(render_count) > 3600) {
             snprintf(error, sizeof error, "render_frames must be between 2 and 3600");
         } else {
@@ -572,6 +578,10 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         .width = width,
         .height = height,
         .frames = render_frames,
+        .bounded = bounded,
+        .warmup = yyjson_obj_get(root, "gpu_warmup_frames")
+                    ? (int)yyjson_get_sint(yyjson_obj_get(root, "gpu_warmup_frames"))
+                    : 1,
         .capture_frame = capture_at,
         .sdf_batch_limit = batch_limit ? (int)yyjson_get_sint(batch_limit) : 0,
         .frozen = yyjson_get_bool(freeze),
@@ -603,6 +613,23 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
     yyjson_mut_val *object = yyjson_mut_obj(response);
     yyjson_mut_doc_set_root(response, object);
     yyjson_mut_obj_add_bool(response, object, "ok", ok);
+    yyjson_mut_obj_add_bool(response, object, "full_verification", false);
+    yyjson_mut_obj_add_str(response, object, "coverage", "scene-preview");
+    yyjson_mut_obj_add_int(
+        response,
+        object,
+        "planned_output_frames",
+        frames_path ? (bounded ? render_frames
+                               : (render_frames > 16 ? render_frames - 16 : 0))
+                    : 1
+    );
+    yyjson_mut_obj_add_int(
+        response,
+        object,
+        "planned_gpu_frames",
+        bounded ? render_frames + options.warmup
+                : render_frames + (render_frames > 2 ? 240 : 0)
+    );
     yyjson_mut_obj_add_int(response, object, "contract", CHIBI_AUTOMATION_CONTRACT);
     yyjson_mut_obj_add_str(response, object, "operation", "preview_scene");
     if (ok) {
@@ -634,7 +661,12 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         yyjson_mut_obj_add_bool(response, performance, "frozen", options.frozen);
         yyjson_mut_obj_add_bool(response, performance, "instrumented", instrumented);
         yyjson_mut_obj_add_int(response, performance, "samples", measurement.samples);
-        yyjson_mut_obj_add_int(response, performance, "warmup_frames", render_frames > 2 ? 240 : 0);
+        yyjson_mut_obj_add_int(
+            response,
+            performance,
+            "warmup_frames",
+            options.bounded ? options.warmup : (render_frames > 2 ? 240 : 0)
+        );
         yyjson_mut_obj_add_real(response, performance, "median_ms", measurement.median_ms);
         yyjson_mut_obj_add_real(response, performance, "p95_ms", measurement.p95_ms);
         yyjson_mut_obj_add_real(response, performance, "p99_ms", measurement.p99_ms);

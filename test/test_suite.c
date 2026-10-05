@@ -1,3 +1,4 @@
+#include "support/execution_policy.h"
 #include "test/instance_bank_fixture.h"
 #include "test/pending_fixture.h"
 #include "test/whole_array_op_fixture.h"
@@ -15,9 +16,11 @@
 #include "test/whole_state_fixture.h"
 #include "test/whole_switch_fixture.h"
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 #define PICO_UNIT_IMPLEMENTATION
 #include "suite_internal.h"
 
@@ -504,6 +507,38 @@ static void print_test_selectors()
     puts("The no-selector invocation is the full all_checks suite; --whole-function-audit is a separate full-coverage check.");
 }
 
+static bool agent_cpu_selector(const char *selector)
+{
+#define CHIBI_CPU_SELECTOR(name)                                               \
+    if (!strcmp(selector, name)) return true;
+#define CHIBI_GPU_SELECTOR(name)
+#include "test/execution_selectors.h"
+#undef CHIBI_CPU_SELECTOR
+#undef CHIBI_GPU_SELECTOR
+    return false;
+}
+
+static bool agent_gpu_selector(const char *selector)
+{
+#define CHIBI_CPU_SELECTOR(name)
+#define CHIBI_GPU_SELECTOR(name)                                               \
+    if (!strcmp(selector, name)) return true;
+#include "test/execution_selectors.h"
+#undef CHIBI_CPU_SELECTOR
+#undef CHIBI_GPU_SELECTOR
+    return false;
+}
+
+static void agent_timeout(int signal_number)
+{
+    (void)signal_number;
+    static const char
+        message[] = "{\"ok\":false,\"status\":\"blocked\",\"reason\":\"time_"
+                    "budget_exceeded\",\"full_verification\":false}\n";
+    write(STDERR_FILENO, message, sizeof message - 1);
+    _exit(124);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2 && (!strcmp(argv[1], "--list-tests") || !strcmp(argv[1], "--help"))) {
@@ -516,6 +551,29 @@ int main(int argc, char **argv)
             fprintf(stderr, "multiple test_suite selectors or flags are not supported: %s\n", argv[i]);
             return 2;
         }
+    }
+    if (!chibi_execution_hardware()) {
+        bool cpu = argc == 2 && agent_cpu_selector(argv[1]);
+        bool gpu = argc == 2 && chibi_execution_is("gpu-check") &&
+                   agent_gpu_selector(argv[1]);
+        if ((!chibi_execution_is("iteration") && !chibi_execution_is("gpu-check")) ||
+            (!cpu && !gpu)) {
+            fputs(
+                "{\"ok\":false,\"status\":\"blocked\",\"reason\":\"selector_"
+                "requires_hardware_or_classification\","
+                "\"full_verification\":false,\"required_checks_outstanding\":["
+                "\"full-native\",\"render\"],"
+                "\"next_command\":\"CHIBI_EXECUTION_PROFILE=hardware "
+                "CHIBI_ALLOW_FULL_GPU=1 make test test-render\"}\n",
+                stderr
+            );
+            return 2;
+        }
+        if (gpu) {
+            signal(SIGALRM, agent_timeout);
+            alarm(60);
+        }
+        fputs("{\"coverage\":\"focused\",\"full_verification\":false,\"required_checks_outstanding\":[\"full-native\",\"render\"]}\n", stderr);
     }
     isolate_test_preferences();
     if (argc == 2 && !strcmp(argv[1], "--collab")) {

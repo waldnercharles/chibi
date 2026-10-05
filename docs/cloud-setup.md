@@ -369,63 +369,78 @@ Record the exact candidate SHA and actual coverage; neither source review nor
 prior session/compiler checks substitute for these final gates. This preparation
 does not run them, publish settings, push the candidate, or merge the PR.
 
-Candidate-pinned preview sequence for the root coordinator (not executed):
+Candidate-pinned update to the existing saved configuration (not executed):
 
-1. Review the integrated candidate and documentation, then record its immutable
-   40-character commit SHA as `CANDIDATE`. Once authorized, push that reviewed
-   commit to the existing PR branch; verify the remote head matches. Do not pin a
-   mutable branch name in the setup recipe. Run the required full gates against
-   that same candidate on the authorized executor/CI before merge.
-2. Inspect the existing configuration's supported preview/draft-publication flow
-   and record its configuration ID, current publication revision, setup command,
-   selected profile and rollback revision. Root obtains publication approval and
-   performs the browser action. Use that existing configuration; do not create a
-   duplicate environment. If the product cannot publish/test a non-production
-   candidate revision while retaining rollback, stop and resolve that product
-   limitation instead of silently relaxing the premerge gate.
-3. In the approved preview setup recipe, fetch the exact reviewed commit into a
-   separate detached worktree before invoking its setup. This avoids changing
-   the production task checkout or pointing current main at scripts it does not
-   contain. For the known workspace layout, the concrete recipe is below; root
-   must replace the placeholder with the reviewed SHA before publication.
+The inspected product exposes install-script text and Publish, with no saved
+ref/version/rollback controls. This plan uses those actual controls. Publication
+changes the existing saved configuration for future tasks; it is not a private
+preview or a new environment. Root must obtain specific approval for the exact
+install-script update and publication before taking either action. Preserve the
+current script text and visible configuration identity for review; do not imply
+that the product provides automatic rollback or selectable publication versions.
+
+1. Review the integrated candidate and record its immutable 40-character SHA as
+   `CANDIDATE`. Once separately authorized, push that reviewed commit to the
+   existing PR branch and verify the remote head. Required full gates still run
+   against that candidate on the authorized executor/CI before merge. A mutable
+   branch name must not replace the SHA in the install script.
+2. Root presents the exact candidate-pinned install script for approval, then
+   updates and publishes the existing configuration through its supported UI.
+   The bootstrap below creates a fresh standalone Git checkout, fetches only the
+   reviewed commit, verifies HEAD and cleanliness, and runs its modeling setup
+   into the persistent tool prefix. It does not alter the configured repository's
+   main checkout or require the setup-source checkout to survive publication.
+   Replace the placeholder with the reviewed SHA before approval/publication.
 
    ```sh
    set -eu
-   repo=/workspace/c-blueprints
    candidate=REPLACE_WITH_REVIEWED_40_CHARACTER_SHA
-   preview=/workspace/c-blueprints-cloud-setup-preview
-   git -C "$repo" fetch origin "$candidate"
-   test "$(git -C "$repo" rev-parse FETCH_HEAD)" = "$candidate"
-   if test -e "$preview/.git"; then
-     test "$(git -C "$preview" rev-parse HEAD)" = "$candidate"
-     test -z "$(git -C "$preview" status --porcelain)"
-   else
-     git -C "$repo" worktree add --detach "$preview" "$candidate"
-   fi
-   CHIBI_CLOUD_TOOLS=/workspace/.cloud-tools bash "$preview/tools/cloud/setup.sh" modeling
+   test "${#candidate}" -eq 40
+   case "$candidate" in *[!0-9a-f]*) exit 1 ;; esac
+   setup_source=$(mktemp -d /workspace/cloud-setup-source.XXXXXX)
+   trap 'rm -rf "$setup_source"' EXIT HUP INT TERM
+   git -C "$setup_source" init -q
+   git -C "$setup_source" fetch --depth 1 https://github.com/waldnercharles/c-blueprints.git "$candidate"
+   test "$(git -C "$setup_source" rev-parse FETCH_HEAD)" = "$candidate"
+   git -C "$setup_source" checkout --detach FETCH_HEAD
+   test "$(git -C "$setup_source" rev-parse HEAD)" = "$candidate"
+   test -z "$(git -C "$setup_source" status --porcelain)"
+   CHIBI_CLOUD_TOOLS=/workspace/.cloud-tools bash "$setup_source/tools/cloud/setup.sh" modeling
    ```
 
-   The modeling profile covers CUT-52 as well as CUT-49. The recipe fails on an
-   existing mismatched/dirty preview checkout instead of resetting it. An older
-   preview must be deliberately retired or a reviewed new preview path chosen.
-4. Record the resulting preview publication revision and setup logs. Start a
-   genuinely new task from that revision with the reviewed PR checkout, and
-   verify `git rev-parse HEAD` equals `CANDIDATE`. If task checkout selection
-   cannot preserve that SHA, stop; running against old main cannot test the new
-   Make/MCP entry points. Do not manually install packages or source activation
-   in this acceptance task. In separate fresh tool shells, run plain
+   Every invocation creates a fresh path, so it never resets or overwrites an
+   existing source checkout. Cleanup removes only that invocation's new temporary
+   directory. The persistent `/workspace/.cloud-tools` prefix is outside it.
+   The modeling profile covers both CUT-49 and CUT-52. No credential or network
+   policy change is part of this script; it uses the already-approved access.
+3. Record the visible configuration identity, approved script with exact SHA,
+   publication completion/time and setup logs. Start a genuinely fresh task from
+   this existing configuration after publication. Its configured checkout starts
+   on main, which remains unchanged. Record that initial HEAD, then prepare an
+   ordinary isolated checkout of `CANDIDATE` solely to exercise the reviewed
+   Make/MCP entry points. Fetching/checking out source is permitted here and is
+   not environment repair. Verify that isolated checkout's HEAD equals the exact
+   reviewed SHA before testing. Do not run setup/install commands, install any
+   missing tool, or manually source activation in the acceptance task.
+4. From the candidate checkout, in separate fresh tool shells, run plain
    `make cloud-preflight`, `timeout 180 make cloud-smoke`, and the modeling entry
    `tools/cloud/bin/start_skill --modeling -- blender --background --factory-startup --version`.
-   Record exit status, selected paths and versions, configuration ID, publication
-   revision, checkout SHA and task ID. Check `make help`, `make -n build`, and a
-   bounded direct MCP initialization for quiet protocol output. This acceptance
-   tests the published setup and normal repository entry, not arbitrary-shell
-   automatic activation. Capture failures without repairing the task in place;
-   fix the candidate/recipe and repeat a new publication/task when needed.
-5. Root reviews all required checks and the recorded fresh-publication acceptance
-   before merging PR #170. Any candidate source change after validation needs its
-   affected checks and publication acceptance repeated. Only after successful
-   merge and separate approved production adoption should the saved production
-   recipe point at the merged scripts/revision. Keep rollback information and
-   verify a new production task; do not infer production adoption from preview
-   success. CI protections and required reviews remain in force.
+   These commands may use the repository's intended entry-point activation;
+   manual activation outside those entry points is prohibited for this check.
+   Record exit status, selected paths and versions, configuration identity,
+   publication evidence, initial main SHA, candidate SHA and fresh task ID. Check
+   `make help`, `make -n build`, and a bounded direct MCP initialization for quiet
+   protocol output. This validates published prerequisites plus candidate entry
+   behavior, not arbitrary-shell activation or main-based startup adoption.
+   Capture failures without repairing tools in place. A recipe/source fix needs
+   review, approval as applicable, republication and a genuinely new acceptance
+   task; session repair cannot turn a failed publication into a passing result.
+5. Root reviews the full required gates and fresh-publication acceptance before
+   merging PR #170. Candidate source changes require affected checks and
+   publication acceptance to be repeated. Production main remains unchanged
+   throughout premerge validation. After merge, separately review and approve
+   final main-based install-script adoption: verify the merged scripts exist,
+   define the intended main/revision selection explicitly, publish that recipe
+   on the same existing configuration, and verify a new main-based task without
+   tool repair or manual activation. Candidate-pinned acceptance does not prove
+   that final adoption. Required CI protections and reviews remain in force.

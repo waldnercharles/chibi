@@ -17,7 +17,8 @@ python3 tools/mesh_sdf/convert.py test/fixtures/mesh_sdf/box.obj /tmp/local-box 
 ```
 
 The committed `projects/local_mesh_sampled` project contains the 17³ result and
-MCP-authored `LocalBox` model (no scene or runtime rendering dependencies).
+MCP-authored `LocalBox` model and minimal camera/model scene. The scene satisfies
+the repository project contract; GPU rendering acceptance remains separate.
 The CC0 example is a closed asymmetric box, deliberately sized to reveal axis
 swaps: source extents `(2,4,6)` become engine extents `(4,12,8)`. The output has
 `content/sdf/<pixel-fnv1a64>.sdf.png` and `provenance.json`. The source and PNG also

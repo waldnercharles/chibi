@@ -1,0 +1,8 @@
+name "LocalBox"
+components {
+    GAME.GameGeometry3D depth=1.0 height=1.0 width=1.0
+    (object)GAME.GameOrientation
+    GAME.GameSdfSurface3D enabled=#true
+    GAME.GameShader shape="LocalBox"
+    (object)GAME.GameTransform
+}

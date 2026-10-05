@@ -26,7 +26,7 @@ for package in sorted(Path(sys.argv[2]).glob('*.deb')):
     record = subprocess.check_output(['dpkg-deb', '-f', str(package)], text=True).strip()
     name = next(line[9:] for line in record.splitlines() if line.startswith('Package: '))
     records[name] = record + '\nStatus: install ok installed'
-for name in ('binaryen', 'llvm-19', 'lld-19'):
+for name in ('llvm-19', 'lld-19'):
     assert name in records, f'Baseline archive missing {name}; use the prepared October 4 profile'
 Path(sys.argv[1]).write_text('\n\n'.join(records.values()) + '\n')
 PYDATA
@@ -57,7 +57,7 @@ CONTROL
 done
 PATH="$tmp/bin:$PATH" bash "$repo/tools/cloud/setup.sh" modeling
 [[ ! -e $CHIBI_CLOUD_TOOLS/root/stale-cache-marker ]]
-# The compiler smoke uses actual local LLVM/Binaryen and executes emitted JS/Wasm.
+# The compiler smoke uses the native LLVM and official SDK LLVM/Binaryen and executes emitted JS/Wasm.
 timeout 180 "$repo/tools/cloud/bin/start_skill" -- bash "$repo/tools/cloud/smoke.sh"
 # Repetition with mixed stale revisions still present must not replay the caches.
 PATH="$tmp/bin:$PATH" bash "$repo/tools/cloud/setup.sh" modeling
@@ -69,4 +69,4 @@ if CHIBI_CLOUD_TOOLS="$tmp/unsupported path" "$repo/tools/cloud/bin/start_skill"
 fi
 grep -q 'cannot contain whitespace' "$tmp/path.log"
 [[ ! -e $tmp/rejected-build ]]
-printf 'PASS real archive transactions: installed-host LLVM/Binaryen, stale revisions, repeat setup, C/C++/sanitizers/Wasm, whitespace guard\n'
+printf 'PASS real archive transactions: installed-host LLVM, stale revisions, repeat setup, C/C++/sanitizers/Wasm, whitespace guard\n'

@@ -21,21 +21,22 @@ class CloudEntry(workspace.WorkspaceMake):
         shutil.copyfile(ROOT / 'tools/clang-format.sh', self.root / 'tools/clang-format.sh')
         self.prefix = self.root / 'cloud'
         versions = {'cmake': 'cmake version 4.2.3', 'ninja': '1.12.1',
-                    'emcc': 'emcc 3.1.69', 'ccache': 'ccache 4.11.2',
+                    'emcc': 'emcc 6.0.10', 'ccache': 'ccache 4.11.2',
                     'clang-format': 'clang-format version 22.1.8',
                     'clang-19': 'Debian clang version 19.1.7',
                     'clang++-19': 'Debian clang version 19.1.7'}
         for name, version in versions.items():
             directory = ('python/bin' if name in ('cmake', 'clang-format') else
-                         'root/usr/share/emscripten' if name == 'emcc' else 'root/usr/bin')
+                         'emsdk-6.0.10/upstream/emscripten' if name == 'emcc' else 'root/usr/bin')
             self.executable(self.prefix / directory / name, f'echo "{version}"\n')
-        for name in ('llvm-ar', 'llvm-nm', 'wasm-ld'):
+        for name in ('llvm-ar', 'llvm-nm'):
             self.executable(self.prefix / 'root/usr/lib/llvm-19/bin' / name, ':\n')
-        self.executable(self.prefix / 'root/usr/bin/wasm-opt', ':\n')
-        for name in ('emscripten-config',
+        self.executable(self.prefix / 'emsdk-6.0.10/upstream/bin/wasm-opt', ':\n')
+        self.executable(self.prefix / 'emsdk-6.0.10/upstream/bin/wasm-ld', ':\n')
+        for name in ('emscripten-6.0.10-config',
                      'root/usr/lib/llvm-19/lib/clang/19/include/stddef.h',
                      'root/usr/lib/llvm-19/lib/clang/19/lib/linux/libclang_rt.asan-x86_64.a',
-                     'root/usr/share/emscripten/node_modules/acorn/package.json'):
+                     'emsdk-6.0.10/upstream/emscripten/tools/ports/sdl3.py'):
             path = self.prefix / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()
@@ -77,6 +78,21 @@ class CloudEntry(workspace.WorkspaceMake):
         env.update(CHIBI_CLOUD_TOOLS=str(self.prefix), **self.extra_env)
         with mock.patch.dict(os.environ, env, clear=True):
             return super().make(*args, **kwargs)
+
+    def test_old_emscripten_is_not_web_ready(self):
+        self.executable(self.prefix / 'emsdk-6.0.10/upstream/emscripten/emcc',
+                        'echo "emcc 3.1.69"\n')
+        result = self.make(['build'])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('emcc major/version 6.0.10', result.stderr)
+        self.assertFalse((self.root / 'outer-runs').exists())
+
+    def test_missing_sdl3_port_is_not_ready(self):
+        (self.prefix / 'emsdk-6.0.10/upstream/emscripten/tools/ports/sdl3.py').unlink()
+        result = self.make(['build'])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('sdl3.py', result.stderr)
+        self.assertFalse((self.root / 'outer-runs').exists())
 
     def test_plain_make_defaults_before_locked_recipes(self):
         result = self.make(['build'])

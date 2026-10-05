@@ -19,7 +19,7 @@ _chibi_cloud_activate() {
             path_rest=${path_rest/":$repo/tools/cloud/bin:"/:}
         done
         PATH="$repo/tools/cloud/bin${path_rest%:}"
-        for item in "$prefix/bin" "$prefix/python/bin" "$prefix/root/usr/share/emscripten" "$prefix/root/usr/bin" "$prefix/root/usr/lib/llvm-19/bin"; do
+        for item in "$prefix/bin" "$prefix/python/bin" "$prefix/emsdk-6.0.10/upstream/emscripten" "$prefix/root/usr/bin" "$prefix/root/usr/lib/llvm-19/bin"; do
             case :$PATH: in *:"$item":*) ;; *) PATH+=":$item" ;; esac
         done
         export PATH
@@ -33,7 +33,7 @@ _chibi_cloud_activate() {
     fi
     export PKG_CONFIG_SYSROOT_DIR="${PKG_CONFIG_SYSROOT_DIR-$prefix/root}"
     export XDG_CACHE_HOME="${XDG_CACHE_HOME-$prefix/cache}" XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR-$prefix/runtime}"
-    export EM_CONFIG="${EM_CONFIG-$prefix/emscripten-config}" EM_CACHE="${EM_CACHE-$prefix/emscripten-cache}"
+    export EM_CONFIG="${EM_CONFIG-$prefix/emscripten-6.0.10-config}" EM_CACHE="${EM_CACHE-$prefix/emscripten-cache-6.0.10}"
     export ASAN_SYMBOLIZER_PATH="${ASAN_SYMBOLIZER_PATH-$prefix/root/usr/lib/llvm-19/bin/llvm-symbolizer}"
     export VK_DRIVER_FILES="${VK_DRIVER_FILES-$prefix/root/usr/share/vulkan/icd.d/lvp_icd.json}"
     export CHIBI_DEPENDENCY_PACKAGES="${CHIBI_DEPENDENCY_PACKAGES-0}"

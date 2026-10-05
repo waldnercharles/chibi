@@ -27,9 +27,9 @@ Dir::Cache::archives "$prefix/apt/archives";
 APT::Sandbox::User "$(id -un)";
 CONFIG
 export APT_CONFIG="$prefix/apt.conf"
-# These roots include every workspace-local executable used by Emscripten.
+# These roots provide the native compiler and its tools.
 # Runtime shared-library dependencies may still be supplied by the Debian host.
-packages=(llvm-19 llvm-19-runtime llvm-19-tools lld-19 binaryen clang-19 libclang-19-dev libclang-common-19-dev libclang-rt-19-dev cmake ninja-build ccache libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev xvfb xauth emscripten node-acorn)
+packages=(llvm-19 llvm-19-runtime llvm-19-tools lld-19 clang-19 libclang-19-dev libclang-common-19-dev libclang-rt-19-dev cmake ninja-build ccache libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev xvfb xauth)
 apt-get update
 # Extract only this transaction. Old archive versions must never be replayed.
 archives=$(mktemp -d "$prefix/apt/transaction.XXXXXX")
@@ -53,17 +53,8 @@ for p in root.rglob('*'):
             p.unlink()
             p.symlink_to(host)
 PY
-# The platform Node is not Debian's patched Node; expose Debian's JS dependency
-# through standard package resolution rather than installing another Node runtime.
-mkdir -p "$prefix/root/usr/share/emscripten/node_modules"
-ln -sfn ../../nodejs/acorn "$prefix/root/usr/share/emscripten/node_modules/acorn"
 [[ -x $prefix/python/bin/python ]] || python3 -m venv "$prefix/python"
 "$prefix/python/bin/pip" install --no-cache-dir --disable-pip-version-check 'cmake==4.2.3' 'clang-format==22.*'
-python3 - "$prefix" "$(command -v node)" <<'PY'
-from pathlib import Path
-import sys
-p = Path(sys.argv[1])
-(p / 'emscripten-config').write_text(f'LLVM_ROOT = {str(p / "root/usr/lib/llvm-19/bin")!r}\nBINARYEN_ROOT = {str(p / "root/usr")!r}\nNODE_JS = {[sys.argv[2]]!r}\nCACHE = {str(p / "emscripten-cache")!r}\n')
-PY
+bash "$repo/tools/cloud/emscripten_setup.sh"
 if [[ $profile == modeling ]]; then bash "$repo/tools/cloud/modeling_setup.sh"; fi
 timeout 180 "$repo/tools/cloud/bin/start_skill" -- bash "$repo/tools/cloud/smoke.sh"

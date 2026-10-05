@@ -9,14 +9,14 @@ prefix=${CHIBI_CLOUD_TOOLS:-/workspace/.cloud-tools}
 missing() { echo "Missing $1; run bash $repo/tools/cloud/setup.sh" >&2; exit 1; }
 for tool in "$prefix/root/usr/lib/llvm-19/bin/llvm-ar" \
     "$prefix/root/usr/lib/llvm-19/bin/llvm-nm" \
-    "$prefix/root/usr/lib/llvm-19/bin/wasm-ld" "$prefix/root/usr/bin/wasm-opt" \
+    "$prefix/emsdk-6.0.10/upstream/bin/wasm-ld" "$prefix/emsdk-6.0.10/upstream/bin/wasm-opt" \
     cmake ninja ccache emcc node python3 start_skill; do
     command -v "$tool" >/dev/null || missing "$tool"
 done
-for file in "$prefix/emscripten-config" \
+for file in "$prefix/emscripten-6.0.10-config" \
     "$prefix/root/usr/lib/llvm-19/lib/clang/19/include/stddef.h" \
     "$prefix/root/usr/lib/llvm-19/lib/clang/19/lib/linux/libclang_rt.asan-x86_64.a" \
-    "$prefix/root/usr/share/emscripten/node_modules/acorn/package.json"; do
+    "$prefix/emsdk-6.0.10/upstream/emscripten/tools/ports/sdl3.py"; do
     [[ -f $file ]] || missing "$file"
 done
 # Resolve explicit compiler strings before use, without replacing empty values
@@ -53,7 +53,7 @@ if 'CMAKE' in os.environ and os.environ.get('CHIBI_CLOUD_KEEP_PATH') == '1':
         fail('explicit CMAKE requires the cloud cmake wrapper on your exact PATH, or must match its cmake executable')
 for tool, minimum, exact in (
     ('cmake', (4, 2), False), ('ninja', (1, 12), False),
-    ('emcc', (3, 1, 69), True),
+    ('emcc', (6, 0, 10), True),
     ('node', (22,), False),
 ):
     command = tool

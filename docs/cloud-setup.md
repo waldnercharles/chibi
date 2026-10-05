@@ -99,7 +99,8 @@ bash tools/cloud/setup.sh modeling    # optional Blender profile
 ```
 
 The scripts support x86_64 Debian 13 trixie, use its official signed package archives,
-and extract packages under `/workspace/.cloud-tools`. Set `CHIBI_CLOUD_TOOLS` to
+and extract packages under `/workspace/.cloud-tools`. Emscripten uses the official
+emsdk distribution pinned to 6.0.10, matching web CI. Set `CHIBI_CLOUD_TOOLS` to
 choose another absolute writable prefix without whitespace consistently for setup and activation. The base
 host supplies Python/venv, Node, apt/dpkg, and already-installed shared libraries;
 this is a workspace profile for that host, not a hermetic OS image. Downloaded
@@ -110,7 +111,7 @@ Whitespace prefixes fail before a command/configure runs because Make expands
 
 CMake is pinned to 4.2.3 in a local Python virtual environment; clang-format major
 22 is installed there for the repository commit hook. Clang/LLVM/LLD are major 19; LLVM runtime/tools, Clang resource headers and
-sanitizer runtimes, Binaryen, and node-acorn are explicit local prerequisites;
+sanitizer runtimes are explicit local prerequisites;
 remaining base packages follow the Debian trixie archive (not a byte-for-byte
 snapshot). Blender and blender-data are explicitly pinned to `4.3.2+dfsg-2`.
 If that Debian version is no longer available, setup fails: review and test a new
@@ -130,8 +131,9 @@ the earlier implementation, not the hardened transaction implementation.
 Setup finishes with the bounded compiler smoke and fails if it cannot compile
 and execute native C/C++, ASan/UBSan, and optimized Wasm under Node. Native header
 search uses CMake's prefix, not global include-path variables that contaminate
-Emscripten's sysroot. Debian Acorn is linked into Emscripten's `node_modules` for
-the platform Node's standard package lookup.
+Emscripten's sysroot. Official emsdk 6.0.10 supplies its matching LLVM/Binaryen
+and SDL3 port; platform Node remains the JavaScript runtime. Its versioned config
+and cache avoid reusing Debian Emscripten 3.1.69's incompatible sysroot.
 
 Concurrent setup processes against the same prefix are unsupported; parallel task
 commands may share an already-provisioned prefix.
@@ -279,3 +281,47 @@ configuration adoption or published fresh-task verification status.
 
 The corrected entry suite passed 30 checks; the unchanged workspace Make suite
 passed 12. Shell syntax checks and `git diff --check` passed.
+
+
+## SDL3 web toolchain correction (acceptance blocked)
+
+The earlier Emscripten 3.1.69 tiny C/Wasm smoke did **not** establish application
+web readiness: that Debian release lacks the SDL3 port required by Cute's
+`-sUSE_SDL=3`. Web CI already pins Emscripten 6.0.10. Setup now uses the official
+emsdk tag (commit `a2b92777574c2feda07994cd4f1079a3dfc151f8`) and compiler release
+`666337b525e673e769121856d175f6f52b8ead64`. The 6.0.10 SDL3 port pins SDL 3.4.2.
+See the [official installation instructions](https://emscripten.org/docs/getting_started/downloads.html).
+The SDK is workspace-local, and installation does not run `emsdk activate` or
+edit any shell/user/saved environment settings. Re-running the installer reuses
+an installed SDK. Preflight rejects 3.1.69 and a missing SDL3 port.
+
+On October 5, the official compiler archive at
+`https://storage.googleapis.com/webassembly/emscripten-releases-builds/linux/666337b525e673e769121856d175f6f52b8ead64/wasm-binaries.tar.xz`
+was blocked by the execution network proxy (`403 Forbidden`), including the
+network escalation attempt. Therefore 6.0.10 installation, repeated-install
+idempotence, its real tiny Wasm smoke, and actual `make web` acceptance remain
+**unverified**. The old installed 3.1.69 files are preserved; this corrected
+repository profile deliberately fails preflight until the new SDK is installed.
+
+After authorized access to the official archive is available, update an existing
+native prefix without repeating its apt provisioning:
+
+```sh
+bash tools/cloud/emscripten_setup.sh
+bash tools/cloud/emscripten_setup.sh  # verify the installed SDK is reused
+make cloud-preflight
+timeout 180 make cloud-smoke
+EMCC_CORES=2 make web JOBS=2
+```
+
+For application acceptance, use the language owner's native-path isolation fix
+`01ebe9ac` (PR #174) together with this cloud change; it is intentionally not
+copied into this branch. Start with a new web build directory when switching SDKs,
+e.g. `WEB_BUILD_DIR=build-web-emsdk-6.0.10`. Record both the tiny smoke and actual
+web result separately. Passing fixture tests or inspecting `sdl3.py` cannot replace
+those two real checks. Full `make test`, saved-config adoption, and genuinely fresh
+published-task acceptance remain outstanding final gates.
+
+The corrected fixture suite passed 32 entry tests, including rejection of the
+old Emscripten version and a missing SDL3 port. Shell syntax and diff checks passed.
+No broad regression suite was repeated for this blocked SDK migration.

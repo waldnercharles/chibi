@@ -16,7 +16,7 @@ case $tool in
             [[ $target != "$0" ]] || target="$prefix/python/bin/cmake"
         fi ;;
     clang-format) target="$prefix/python/bin/clang-format" ;;
-    emcc|emcmake) target="$prefix/root/usr/share/emscripten/$tool" ;;
+    emcc|emcmake) target="$prefix/emsdk-6.0.10/upstream/emscripten/$tool" ;;
     ninja|ccache) target="$prefix/root/usr/bin/$tool" ;;
     *) echo "Unknown cloud tool: $tool" >&2; exit 2 ;;
 esac

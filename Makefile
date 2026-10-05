@@ -101,6 +101,7 @@ TEST_TOOL_TARGETS = \
 	test-tool-workspace-retirement \
 	test-tool-workspace-make \
 	test-tool-cloud-entry \
+	test-tool-cloud-emscripten-setup \
 	test-tool-workspace-install \
 	test-tool-mcp-package \
 	test-tool-web-serve \
@@ -367,6 +368,8 @@ test-tool-workspace-make:
 
 test-tool-cloud-entry:
 	@$(QUIET) cloud_entry_test.py -- python3 test/cloud_entry_test.py
+test-tool-cloud-emscripten-setup:
+	@$(QUIET) cloud_emscripten_setup_test.py -- python3 test/cloud_emscripten_setup_test.py
 test-tool-workspace-install:
 	@$(QUIET) workspace_install_test.py -- python3 test/workspace_install_test.py
 test-tool-mcp-package:

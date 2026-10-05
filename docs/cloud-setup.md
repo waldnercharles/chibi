@@ -329,3 +329,18 @@ published-task acceptance remain outstanding final gates.
 The corrected fixture suite passed 32 entry tests, including rejection of the
 old Emscripten version and a missing SDL3 port. Shell syntax and diff checks passed.
 No broad regression suite was repeated for this blocked SDK migration.
+
+Offline installer control flow can be checked independently of provisioning:
+
+```sh
+CHIBI_CLOUD=0 make test-tool-cloud-emscripten-setup
+```
+
+Six tests passed using only local git/emsdk/emcc stubs on a restricted PATH. They
+exercise the real `emscripten_setup.sh` entry point: clone/install/reuse, generated
+config paths and quoting, failed installation retry, preservation of an existing
+config on reinstall failure, unexpected revision rejection, failed version-probe
+recovery, and invalid-prefix rejection. The stub models successful SDK reuse; it
+does not prove the official installer is idempotent or that the real SDK compiles.
+Real installation, tiny Wasm, both application web bundles, full final gate, and
+fresh published-task acceptance remain blocked or outstanding as stated above.

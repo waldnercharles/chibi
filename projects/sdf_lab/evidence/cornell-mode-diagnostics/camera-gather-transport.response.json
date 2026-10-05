@@ -1,0 +1,115 @@
+{
+  "ok": true,
+  "operation": "preview_scene",
+  "initial_state": {
+    "world_hash": "8c334c1f4fcfabb0",
+    "frame": 1,
+    "sound_cues": 0,
+    "visibility": {
+      "enabled": false
+    }
+  },
+  "final_state": {
+    "world_hash": "8ce017db843f590d",
+    "frame": 257,
+    "sound_cues": 0,
+    "visibility": {
+      "enabled": false
+    }
+  },
+  "backend": "CF_BACKEND_TYPE_VULKAN",
+  "performance": {
+    "frozen": false,
+    "instrumented": false,
+    "samples": 240,
+    "warmup_frames": 240,
+    "median_ms": 84.86439199987217,
+    "p95_ms": 134.62486600110424,
+    "p99_ms": 181.8347049993463,
+    "simulation_average_ms": 0.07122698748389666,
+    "render_average_ms": 88.00569413344117,
+    "particles": 0,
+    "entities": 10,
+    "material_pieces": 9,
+    "hrc_resolution": 0.5,
+    "scene_gpu_ms": -1.0,
+    "mesh_work": {
+      "scope": "last rendered frame surface submissions",
+      "sdf_batch_limit": 256,
+      "draw_calls": 9,
+      "sdf_draw_calls": 2,
+      "sdf_instances": 2,
+      "sdf_uploads": 1,
+      "sdf_upload_bytes": 416,
+      "surface_builds": 0,
+      "surface_reuses": 9,
+      "sdf_program_prepares": 2,
+      "sdf_lod_instances": 0,
+      "surface_pixels": 238464,
+      "sdf_pair_probes": 2,
+      "sdf_parameter_probes": 2,
+      "sdf_parameter_upload_bytes": 1024,
+      "sdf_parameter_rows": 1,
+      "sdf_parameter_uploads": 1,
+      "surface_capacity_pixels": 270336,
+      "scratch_groups": 1,
+      "composition_pixels": 59616,
+      "depth_copies": 6,
+      "depth_copy_pixels": 493360,
+      "sdf_program_count": 2,
+      "sdf_program_compilations": 2
+    },
+    "surface_work": {
+      "scope": "submission_upper_bounds",
+      "mode": 1,
+      "cells": 943,
+      "block": 8,
+      "candidates": 11316,
+      "visibility_taps": 45264,
+      "blur_quadrant_fetches": 0
+    },
+    "horizon_work": {
+      "builds": 0,
+      "pixels": 0,
+      "directions": 0,
+      "canvas_bytes": 0,
+      "pack_passes": 0,
+      "fused_packs": 0,
+      "dirty_passes": 0,
+      "reuse_passes": 0,
+      "reproject_passes": 0,
+      "hierarchy_passes": 0,
+      "tiles_x": 0,
+      "tiles_y": 0
+    },
+    "model_work": {
+      "scope": "render loop including warmup; loading and initial simulation excluded",
+      "compilations_before_render": 1,
+      "source_compilations": 0,
+      "parameter_updates": 0,
+      "bounds_updates": 0,
+      "cache_hits": 0,
+      "setter_validations": 0,
+      "program_revision_before": 28,
+      "program_revision_after": 28,
+      "parameter_revision_before": 28,
+      "parameter_revision_after": 28,
+      "measured_frames": {
+        "source_compilations": 0,
+        "parameter_updates": 0,
+        "bounds_updates": 0,
+        "cache_hits": 0,
+        "setter_validations": 0,
+        "program_revision_before": 28,
+        "program_revision_after": 28,
+        "parameter_revision_before": 28,
+        "parameter_revision_after": 28
+      }
+    }
+  },
+  "preview": {
+    "mime_type": "image/png",
+    "width": 320,
+    "height": 180
+  }
+}

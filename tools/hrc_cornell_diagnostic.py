@@ -133,7 +133,7 @@ def main():
                 project_source,
                 project_copy,
                 ignore=shutil.ignore_patterns(
-                    ".chibi", "build", ".git", "cornell-mode-diagnostics"
+                    ".chibi", "build", ".git", "evidence"
                 ),
             )
             scene_rel = Path("content/scenes") / f"{scene_name}.kdl"

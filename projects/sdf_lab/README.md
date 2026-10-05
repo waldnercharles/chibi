@@ -909,6 +909,12 @@ enumerating emitters ([surface_gather.frag](../../src/render/shaders/hrc/surface
 Depth thickness has a separate camera-relative emitter and slab solve. The
 scene is an open 2.5D cutaway, not a full 3D path-traced Cornell box.
 
+The low-resolution native intermediate captures and per-pixel Gather probe
+diagnostic are documented in
+[`evidence/cornell-mode-diagnostics/README.md`](evidence/cornell-mode-diagnostics/README.md).
+They use one still after a bounded warmup and compare bounce in a separate
+flat-HRC `Fluence` pair.
+
 The corrected flat-HRC bounce on/off capture is
 [`cornell2d-bounce-comparison.png`](../hrc_lab/evidence/cornell2d-bounce-comparison.png).
 It keeps ambient 0, fog 0.3, radius 128 and `edge_light=1`, then changes only

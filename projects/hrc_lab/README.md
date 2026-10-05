@@ -50,6 +50,9 @@ areas differ by 1.75/255 mean absolute pixel value, with 21% of pixels
 different by more than 2/255. This is a small but measurable HRC feedback
 effect, not a ground-truth indirect-light reference.
 
+The raw quadrant, processed Blur, and isolated `Fluence` bounce captures also
+appear in the [matched HRC diagnostics](../sdf_lab/evidence/cornell-mode-diagnostics/README.md).
+
 To capture the sweep with `preview_scene`, use 960×540 output, let simulation
 advance, and capture a warmed sequence. The light completes one circuit in
 eight seconds. The saved 15 fps video samples actual frames from that renderer

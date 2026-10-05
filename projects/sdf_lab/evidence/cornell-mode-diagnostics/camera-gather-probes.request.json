@@ -1,0 +1,11 @@
+{
+  "contract": 1,
+  "operation": "preview_scene",
+  "kind": "scene",
+  "name": "HrcCornellModesGather",
+  "frames": 1,
+  "render_frames": 256,
+  "freeze_simulation": false,
+  "width": 320,
+  "height": 180
+}

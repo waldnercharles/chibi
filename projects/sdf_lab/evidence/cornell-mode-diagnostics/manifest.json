@@ -1,0 +1,1622 @@
+{
+  "source_checkpoint": "39f1f8b88f7e9a30393b941d5ca583737e2ba66c",
+  "controller": "/workspace/c-blueprints/build-release/chibi_ctl",
+  "controller_sha256": "10c9ec50892865b63e4183138152d6b2d6d197c8ff56fa46b4d9cb9b9b81fe2b",
+  "render_frames": 256,
+  "freeze_simulation": false,
+  "width": 320,
+  "height": 180,
+  "output_count": 9,
+  "display_transfer": "RGB log1p(energy * 65535) / log1p(65535); alpha is shown in a separate strip",
+  "cases": [
+    {
+      "name": "flat-blur-transport",
+      "scene": "HRCLabCornell2D",
+      "debug_view": "HRC transport quadrants",
+      "bounce_intensity_override": null,
+      "source_scene_sha256": "096b1dadf182f3c9412e9eb2f10995989b2fe85aa12d8e9e388bc770ea4be4ed",
+      "debug_scene_sha256": "05edf6fc4e3569c0bf6569a76b87a25d195d46797dc32804258ddef9e9cd1963",
+      "project_root": "/tmp/hrc-cornell-diagnostic-w9gm63ff/flat-blur-transport-project",
+      "argv": [
+        "/workspace/c-blueprints/build-release/chibi_ctl",
+        "--project-root",
+        "/tmp/hrc-cornell-diagnostic-w9gm63ff/flat-blur-transport-project",
+        "--render-request",
+        "/workspace/c-blueprints/projects/sdf_lab/evidence/cornell-mode-diagnostics/flat-blur-transport.request.json"
+      ],
+      "request": {
+        "contract": 1,
+        "operation": "preview_scene",
+        "kind": "scene",
+        "name": "HRCLabCornell2D",
+        "frames": 1,
+        "render_frames": 256,
+        "freeze_simulation": false,
+        "width": 320,
+        "height": 180
+      },
+      "response": {
+        "ok": true,
+        "operation": "preview_scene",
+        "initial_state": {
+          "world_hash": "e5ca37db703f6ed6",
+          "frame": 1,
+          "sound_cues": 0,
+          "materials": {
+            "particles": 0,
+            "active_particles": 0,
+            "particle_bounds": {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 0.0,
+              "height": 0.0
+            },
+            "streaming": {
+              "resident": 0,
+              "stored": 0,
+              "loaded": 0,
+              "unloaded": 0,
+              "resident_bytes": 0,
+              "stored_bytes": 0
+            },
+            "fuel_particles": 0,
+            "burning_particles": 0,
+            "thermal_particles": 0,
+            "fuel_remaining": 0.0,
+            "thermal_energy": 0.0,
+            "elastic_particles": 0,
+            "volume_min": 1.0,
+            "volume_max": 1.0,
+            "strain_max": 0.0,
+            "mpm": {
+              "substeps": 0,
+              "nodes": 0,
+              "advanced_time": 0.0,
+              "limited": false
+            },
+            "solids": 0,
+            "cells": 0,
+            "fragments": 0,
+            "chunks": 0,
+            "hash": "f4ed18ebf16aa5cc"
+          },
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "final_state": {
+          "world_hash": "f851ae3f8774d89c",
+          "frame": 257,
+          "sound_cues": 0,
+          "materials": {
+            "particles": 0,
+            "active_particles": 0,
+            "particle_bounds": {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 0.0,
+              "height": 0.0
+            },
+            "streaming": {
+              "resident": 0,
+              "stored": 0,
+              "loaded": 0,
+              "unloaded": 0,
+              "resident_bytes": 0,
+              "stored_bytes": 0
+            },
+            "fuel_particles": 0,
+            "burning_particles": 0,
+            "thermal_particles": 0,
+            "fuel_remaining": 0.0,
+            "thermal_energy": 0.0,
+            "elastic_particles": 0,
+            "volume_min": 1.0,
+            "volume_max": 1.0,
+            "strain_max": 0.0,
+            "mpm": {
+              "substeps": 0,
+              "nodes": 0,
+              "advanced_time": 0.0,
+              "limited": false
+            },
+            "solids": 0,
+            "cells": 0,
+            "fragments": 0,
+            "chunks": 0,
+            "hash": "f4ed18ebf16aa5cc"
+          },
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "backend": "CF_BACKEND_TYPE_VULKAN",
+        "performance": {
+          "frozen": false,
+          "instrumented": false,
+          "samples": 240,
+          "warmup_frames": 240,
+          "median_ms": 91.11664000010933,
+          "p95_ms": 127.07725599830155,
+          "p99_ms": 140.4733320014202,
+          "simulation_average_ms": 0.07662489169888431,
+          "render_average_ms": 91.40460101669608,
+          "particles": 0,
+          "entities": 9,
+          "material_pieces": 7,
+          "hrc_resolution": 0.5,
+          "scene_gpu_ms": -1.0,
+          "mesh_work": {
+            "scope": "last rendered frame surface submissions",
+            "sdf_batch_limit": 256,
+            "draw_calls": 0,
+            "sdf_draw_calls": 0,
+            "sdf_instances": 0,
+            "sdf_uploads": 0,
+            "sdf_upload_bytes": 0,
+            "surface_builds": 0,
+            "surface_reuses": 0,
+            "sdf_program_prepares": 0,
+            "sdf_lod_instances": 0,
+            "surface_pixels": 0,
+            "sdf_pair_probes": 0,
+            "sdf_parameter_probes": 0,
+            "sdf_parameter_upload_bytes": 0,
+            "sdf_parameter_rows": 0,
+            "sdf_parameter_uploads": 0,
+            "surface_capacity_pixels": 0,
+            "scratch_groups": 0,
+            "composition_pixels": 0,
+            "depth_copies": 0,
+            "depth_copy_pixels": 0,
+            "sdf_program_count": 0,
+            "sdf_program_compilations": 0
+          },
+          "surface_work": {
+            "scope": "submission_upper_bounds",
+            "mode": 0,
+            "cells": 1260,
+            "block": 8,
+            "candidates": 0,
+            "visibility_taps": 0,
+            "blur_quadrant_fetches": 171360
+          },
+          "horizon_work": {
+            "builds": 0,
+            "pixels": 0,
+            "directions": 0,
+            "canvas_bytes": 0,
+            "pack_passes": 0,
+            "fused_packs": 0,
+            "dirty_passes": 0,
+            "reuse_passes": 0,
+            "reproject_passes": 0,
+            "hierarchy_passes": 0,
+            "tiles_x": 0,
+            "tiles_y": 0
+          },
+          "model_work": {
+            "scope": "render loop including warmup; loading and initial simulation excluded",
+            "compilations_before_render": 0,
+            "source_compilations": 0,
+            "parameter_updates": 0,
+            "bounds_updates": 0,
+            "cache_hits": 0,
+            "setter_validations": 0,
+            "program_revision_before": 1,
+            "program_revision_after": 1,
+            "parameter_revision_before": 1,
+            "parameter_revision_after": 1,
+            "measured_frames": {
+              "source_compilations": 0,
+              "parameter_updates": 0,
+              "bounds_updates": 0,
+              "cache_hits": 0,
+              "setter_validations": 0,
+              "program_revision_before": 1,
+              "program_revision_after": 1,
+              "parameter_revision_before": 1,
+              "parameter_revision_after": 1
+            }
+          }
+        },
+        "preview": {
+          "mime_type": "image/png",
+          "width": 320,
+          "height": 180
+        }
+      },
+      "image": "flat-blur-transport.png",
+      "image_sha256": "7ba19143b8068b406cc7b4ea1440f5df32c33aebe4adec774c28f8dfe65364d0"
+    },
+    {
+      "name": "flat-blur-surface",
+      "scene": "HRCLabCornell2D",
+      "debug_view": "Surface quadrants",
+      "bounce_intensity_override": null,
+      "source_scene_sha256": "096b1dadf182f3c9412e9eb2f10995989b2fe85aa12d8e9e388bc770ea4be4ed",
+      "debug_scene_sha256": "5cab08e5338f334d8d543c4b53f9fff3529fc3887983bc075d22cf5c1d69590b",
+      "project_root": "/tmp/hrc-cornell-diagnostic-w9gm63ff/flat-blur-surface-project",
+      "argv": [
+        "/workspace/c-blueprints/build-release/chibi_ctl",
+        "--project-root",
+        "/tmp/hrc-cornell-diagnostic-w9gm63ff/flat-blur-surface-project",
+        "--render-request",
+        "/workspace/c-blueprints/projects/sdf_lab/evidence/cornell-mode-diagnostics/flat-blur-surface.request.json"
+      ],
+      "request": {
+        "contract": 1,
+        "operation": "preview_scene",
+        "kind": "scene",
+        "name": "HRCLabCornell2D",
+        "frames": 1,
+        "render_frames": 256,
+        "freeze_simulation": false,
+        "width": 320,
+        "height": 180
+      },
+      "response": {
+        "ok": true,
+        "operation": "preview_scene",
+        "initial_state": {
+          "world_hash": "0c78c77781ddb039",
+          "frame": 1,
+          "sound_cues": 0,
+          "materials": {
+            "particles": 0,
+            "active_particles": 0,
+            "particle_bounds": {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 0.0,
+              "height": 0.0
+            },
+            "streaming": {
+              "resident": 0,
+              "stored": 0,
+              "loaded": 0,
+              "unloaded": 0,
+              "resident_bytes": 0,
+              "stored_bytes": 0
+            },
+            "fuel_particles": 0,
+            "burning_particles": 0,
+            "thermal_particles": 0,
+            "fuel_remaining": 0.0,
+            "thermal_energy": 0.0,
+            "elastic_particles": 0,
+            "volume_min": 1.0,
+            "volume_max": 1.0,
+            "strain_max": 0.0,
+            "mpm": {
+              "substeps": 0,
+              "nodes": 0,
+              "advanced_time": 0.0,
+              "limited": false
+            },
+            "solids": 0,
+            "cells": 0,
+            "fragments": 0,
+            "chunks": 0,
+            "hash": "f4ed18ebf16aa5cc"
+          },
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "final_state": {
+          "world_hash": "a1d7121314fa2c93",
+          "frame": 257,
+          "sound_cues": 0,
+          "materials": {
+            "particles": 0,
+            "active_particles": 0,
+            "particle_bounds": {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 0.0,
+              "height": 0.0
+            },
+            "streaming": {
+              "resident": 0,
+              "stored": 0,
+              "loaded": 0,
+              "unloaded": 0,
+              "resident_bytes": 0,
+              "stored_bytes": 0
+            },
+            "fuel_particles": 0,
+            "burning_particles": 0,
+            "thermal_particles": 0,
+            "fuel_remaining": 0.0,
+            "thermal_energy": 0.0,
+            "elastic_particles": 0,
+            "volume_min": 1.0,
+            "volume_max": 1.0,
+            "strain_max": 0.0,
+            "mpm": {
+              "substeps": 0,
+              "nodes": 0,
+              "advanced_time": 0.0,
+              "limited": false
+            },
+            "solids": 0,
+            "cells": 0,
+            "fragments": 0,
+            "chunks": 0,
+            "hash": "f4ed18ebf16aa5cc"
+          },
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "backend": "CF_BACKEND_TYPE_VULKAN",
+        "performance": {
+          "frozen": false,
+          "instrumented": false,
+          "samples": 240,
+          "warmup_frames": 240,
+          "median_ms": 95.57309599767905,
+          "p95_ms": 152.55026800150517,
+          "p99_ms": 194.6236570001929,
+          "simulation_average_ms": 0.08197321249099332,
+          "render_average_ms": 98.20396455840334,
+          "particles": 0,
+          "entities": 9,
+          "material_pieces": 7,
+          "hrc_resolution": 0.5,
+          "scene_gpu_ms": -1.0,
+          "mesh_work": {
+            "scope": "last rendered frame surface submissions",
+            "sdf_batch_limit": 256,
+            "draw_calls": 0,
+            "sdf_draw_calls": 0,
+            "sdf_instances": 0,
+            "sdf_uploads": 0,
+            "sdf_upload_bytes": 0,
+            "surface_builds": 0,
+            "surface_reuses": 0,
+            "sdf_program_prepares": 0,
+            "sdf_lod_instances": 0,
+            "surface_pixels": 0,
+            "sdf_pair_probes": 0,
+            "sdf_parameter_probes": 0,
+            "sdf_parameter_upload_bytes": 0,
+            "sdf_parameter_rows": 0,
+            "sdf_parameter_uploads": 0,
+            "surface_capacity_pixels": 0,
+            "scratch_groups": 0,
+            "composition_pixels": 0,
+            "depth_copies": 0,
+            "depth_copy_pixels": 0,
+            "sdf_program_count": 0,
+            "sdf_program_compilations": 0
+          },
+          "surface_work": {
+            "scope": "submission_upper_bounds",
+            "mode": 0,
+            "cells": 1260,
+            "block": 8,
+            "candidates": 0,
+            "visibility_taps": 0,
+            "blur_quadrant_fetches": 171360
+          },
+          "horizon_work": {
+            "builds": 0,
+            "pixels": 0,
+            "directions": 0,
+            "canvas_bytes": 0,
+            "pack_passes": 0,
+            "fused_packs": 0,
+            "dirty_passes": 0,
+            "reuse_passes": 0,
+            "reproject_passes": 0,
+            "hierarchy_passes": 0,
+            "tiles_x": 0,
+            "tiles_y": 0
+          },
+          "model_work": {
+            "scope": "render loop including warmup; loading and initial simulation excluded",
+            "compilations_before_render": 0,
+            "source_compilations": 0,
+            "parameter_updates": 0,
+            "bounds_updates": 0,
+            "cache_hits": 0,
+            "setter_validations": 0,
+            "program_revision_before": 1,
+            "program_revision_after": 1,
+            "parameter_revision_before": 1,
+            "parameter_revision_after": 1,
+            "measured_frames": {
+              "source_compilations": 0,
+              "parameter_updates": 0,
+              "bounds_updates": 0,
+              "cache_hits": 0,
+              "setter_validations": 0,
+              "program_revision_before": 1,
+              "program_revision_after": 1,
+              "parameter_revision_before": 1,
+              "parameter_revision_after": 1
+            }
+          }
+        },
+        "preview": {
+          "mime_type": "image/png",
+          "width": 320,
+          "height": 180
+        }
+      },
+      "image": "flat-blur-surface.png",
+      "image_sha256": "30dcbc3c55893ab22d3d2110ce1396662385935b34da2e5c52efcd4116719a44"
+    },
+    {
+      "name": "camera-blur-transport",
+      "scene": "HrcCornellModesBlur",
+      "debug_view": "HRC transport quadrants",
+      "bounce_intensity_override": null,
+      "source_scene_sha256": "0187aeae0d5f5ec5fcf8dec9b650afc27f57bc1fea88729aee6ff910839b9288",
+      "debug_scene_sha256": "e65a46a034e7f761c3658f2cf265aeb9781bf075cc8aaee8286e64c196109a89",
+      "project_root": "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-blur-transport-project",
+      "argv": [
+        "/workspace/c-blueprints/build-release/chibi_ctl",
+        "--project-root",
+        "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-blur-transport-project",
+        "--render-request",
+        "/workspace/c-blueprints/projects/sdf_lab/evidence/cornell-mode-diagnostics/camera-blur-transport.request.json"
+      ],
+      "request": {
+        "contract": 1,
+        "operation": "preview_scene",
+        "kind": "scene",
+        "name": "HrcCornellModesBlur",
+        "frames": 1,
+        "render_frames": 256,
+        "freeze_simulation": false,
+        "width": 320,
+        "height": 180
+      },
+      "response": {
+        "ok": true,
+        "operation": "preview_scene",
+        "initial_state": {
+          "world_hash": "7ba1f0d108748f9d",
+          "frame": 1,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "final_state": {
+          "world_hash": "260c30facecdc0c8",
+          "frame": 257,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "backend": "CF_BACKEND_TYPE_VULKAN",
+        "performance": {
+          "frozen": false,
+          "instrumented": false,
+          "samples": 240,
+          "warmup_frames": 240,
+          "median_ms": 84.9056320003001,
+          "p95_ms": 128.21100699875387,
+          "p99_ms": 149.30775799803087,
+          "simulation_average_ms": 0.07980579165026332,
+          "render_average_ms": 87.77193829590335,
+          "particles": 0,
+          "entities": 10,
+          "material_pieces": 9,
+          "hrc_resolution": 0.5,
+          "scene_gpu_ms": -1.0,
+          "mesh_work": {
+            "scope": "last rendered frame surface submissions",
+            "sdf_batch_limit": 256,
+            "draw_calls": 9,
+            "sdf_draw_calls": 2,
+            "sdf_instances": 2,
+            "sdf_uploads": 1,
+            "sdf_upload_bytes": 416,
+            "surface_builds": 0,
+            "surface_reuses": 9,
+            "sdf_program_prepares": 2,
+            "sdf_lod_instances": 0,
+            "surface_pixels": 238464,
+            "sdf_pair_probes": 2,
+            "sdf_parameter_probes": 2,
+            "sdf_parameter_upload_bytes": 1024,
+            "sdf_parameter_rows": 1,
+            "sdf_parameter_uploads": 1,
+            "surface_capacity_pixels": 270336,
+            "scratch_groups": 1,
+            "composition_pixels": 59616,
+            "depth_copies": 6,
+            "depth_copy_pixels": 493360,
+            "sdf_program_count": 2,
+            "sdf_program_compilations": 2
+          },
+          "surface_work": {
+            "scope": "submission_upper_bounds",
+            "mode": 0,
+            "cells": 943,
+            "block": 8,
+            "candidates": 0,
+            "visibility_taps": 0,
+            "blur_quadrant_fetches": 264040
+          },
+          "horizon_work": {
+            "builds": 0,
+            "pixels": 0,
+            "directions": 0,
+            "canvas_bytes": 0,
+            "pack_passes": 0,
+            "fused_packs": 0,
+            "dirty_passes": 0,
+            "reuse_passes": 0,
+            "reproject_passes": 0,
+            "hierarchy_passes": 0,
+            "tiles_x": 0,
+            "tiles_y": 0
+          },
+          "model_work": {
+            "scope": "render loop including warmup; loading and initial simulation excluded",
+            "compilations_before_render": 1,
+            "source_compilations": 0,
+            "parameter_updates": 0,
+            "bounds_updates": 0,
+            "cache_hits": 0,
+            "setter_validations": 0,
+            "program_revision_before": 28,
+            "program_revision_after": 28,
+            "parameter_revision_before": 28,
+            "parameter_revision_after": 28,
+            "measured_frames": {
+              "source_compilations": 0,
+              "parameter_updates": 0,
+              "bounds_updates": 0,
+              "cache_hits": 0,
+              "setter_validations": 0,
+              "program_revision_before": 28,
+              "program_revision_after": 28,
+              "parameter_revision_before": 28,
+              "parameter_revision_after": 28
+            }
+          }
+        },
+        "preview": {
+          "mime_type": "image/png",
+          "width": 320,
+          "height": 180
+        }
+      },
+      "image": "camera-blur-transport.png",
+      "image_sha256": "a2b5c069e5a16d410aa305e95932b3ccff9f4701624675d1fb423b7f70ff1301"
+    },
+    {
+      "name": "camera-blur-surface",
+      "scene": "HrcCornellModesBlur",
+      "debug_view": "Surface quadrants",
+      "bounce_intensity_override": null,
+      "source_scene_sha256": "0187aeae0d5f5ec5fcf8dec9b650afc27f57bc1fea88729aee6ff910839b9288",
+      "debug_scene_sha256": "7488e2b4b9e888132650d7a4b1c52513996601c46fd7c394ebadb32e95ae7e31",
+      "project_root": "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-blur-surface-project",
+      "argv": [
+        "/workspace/c-blueprints/build-release/chibi_ctl",
+        "--project-root",
+        "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-blur-surface-project",
+        "--render-request",
+        "/workspace/c-blueprints/projects/sdf_lab/evidence/cornell-mode-diagnostics/camera-blur-surface.request.json"
+      ],
+      "request": {
+        "contract": 1,
+        "operation": "preview_scene",
+        "kind": "scene",
+        "name": "HrcCornellModesBlur",
+        "frames": 1,
+        "render_frames": 256,
+        "freeze_simulation": false,
+        "width": 320,
+        "height": 180
+      },
+      "response": {
+        "ok": true,
+        "operation": "preview_scene",
+        "initial_state": {
+          "world_hash": "989506585fd6a464",
+          "frame": 1,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "final_state": {
+          "world_hash": "9e635b8443499bd9",
+          "frame": 257,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "backend": "CF_BACKEND_TYPE_VULKAN",
+        "performance": {
+          "frozen": false,
+          "instrumented": false,
+          "samples": 240,
+          "warmup_frames": 240,
+          "median_ms": 104.72164900056669,
+          "p95_ms": 273.227425001096,
+          "p99_ms": 319.1363240002829,
+          "simulation_average_ms": 0.10116193758828256,
+          "render_average_ms": 137.66626939580723,
+          "particles": 0,
+          "entities": 10,
+          "material_pieces": 9,
+          "hrc_resolution": 0.5,
+          "scene_gpu_ms": -1.0,
+          "mesh_work": {
+            "scope": "last rendered frame surface submissions",
+            "sdf_batch_limit": 256,
+            "draw_calls": 9,
+            "sdf_draw_calls": 2,
+            "sdf_instances": 2,
+            "sdf_uploads": 1,
+            "sdf_upload_bytes": 416,
+            "surface_builds": 0,
+            "surface_reuses": 9,
+            "sdf_program_prepares": 2,
+            "sdf_lod_instances": 0,
+            "surface_pixels": 238464,
+            "sdf_pair_probes": 2,
+            "sdf_parameter_probes": 2,
+            "sdf_parameter_upload_bytes": 1024,
+            "sdf_parameter_rows": 1,
+            "sdf_parameter_uploads": 1,
+            "surface_capacity_pixels": 270336,
+            "scratch_groups": 1,
+            "composition_pixels": 59616,
+            "depth_copies": 6,
+            "depth_copy_pixels": 493360,
+            "sdf_program_count": 2,
+            "sdf_program_compilations": 2
+          },
+          "surface_work": {
+            "scope": "submission_upper_bounds",
+            "mode": 0,
+            "cells": 943,
+            "block": 8,
+            "candidates": 0,
+            "visibility_taps": 0,
+            "blur_quadrant_fetches": 264040
+          },
+          "horizon_work": {
+            "builds": 0,
+            "pixels": 0,
+            "directions": 0,
+            "canvas_bytes": 0,
+            "pack_passes": 0,
+            "fused_packs": 0,
+            "dirty_passes": 0,
+            "reuse_passes": 0,
+            "reproject_passes": 0,
+            "hierarchy_passes": 0,
+            "tiles_x": 0,
+            "tiles_y": 0
+          },
+          "model_work": {
+            "scope": "render loop including warmup; loading and initial simulation excluded",
+            "compilations_before_render": 1,
+            "source_compilations": 0,
+            "parameter_updates": 0,
+            "bounds_updates": 0,
+            "cache_hits": 0,
+            "setter_validations": 0,
+            "program_revision_before": 28,
+            "program_revision_after": 28,
+            "parameter_revision_before": 28,
+            "parameter_revision_after": 28,
+            "measured_frames": {
+              "source_compilations": 0,
+              "parameter_updates": 0,
+              "bounds_updates": 0,
+              "cache_hits": 0,
+              "setter_validations": 0,
+              "program_revision_before": 28,
+              "program_revision_after": 28,
+              "parameter_revision_before": 28,
+              "parameter_revision_after": 28
+            }
+          }
+        },
+        "preview": {
+          "mime_type": "image/png",
+          "width": 320,
+          "height": 180
+        }
+      },
+      "image": "camera-blur-surface.png",
+      "image_sha256": "f3b518cf5c0168044918a9a210b1d0f02ed5c42b5e7a546872ffb147df3c6734"
+    },
+    {
+      "name": "camera-gather-transport",
+      "scene": "HrcCornellModesGather",
+      "debug_view": "HRC transport quadrants",
+      "bounce_intensity_override": null,
+      "source_scene_sha256": "6221c93eb4ab6f82e93010b7481d5d3b2ec75ccaab608883628e6760549e769b",
+      "debug_scene_sha256": "2c1642445947a77774d162802c9666df1e1c0fb7d2beeefa5fdf9d18cbf1425b",
+      "project_root": "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-gather-transport-project",
+      "argv": [
+        "/workspace/c-blueprints/build-release/chibi_ctl",
+        "--project-root",
+        "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-gather-transport-project",
+        "--render-request",
+        "/workspace/c-blueprints/projects/sdf_lab/evidence/cornell-mode-diagnostics/camera-gather-transport.request.json"
+      ],
+      "request": {
+        "contract": 1,
+        "operation": "preview_scene",
+        "kind": "scene",
+        "name": "HrcCornellModesGather",
+        "frames": 1,
+        "render_frames": 256,
+        "freeze_simulation": false,
+        "width": 320,
+        "height": 180
+      },
+      "response": {
+        "ok": true,
+        "operation": "preview_scene",
+        "initial_state": {
+          "world_hash": "8c334c1f4fcfabb0",
+          "frame": 1,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "final_state": {
+          "world_hash": "8ce017db843f590d",
+          "frame": 257,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "backend": "CF_BACKEND_TYPE_VULKAN",
+        "performance": {
+          "frozen": false,
+          "instrumented": false,
+          "samples": 240,
+          "warmup_frames": 240,
+          "median_ms": 84.86439199987217,
+          "p95_ms": 134.62486600110424,
+          "p99_ms": 181.8347049993463,
+          "simulation_average_ms": 0.07122698748389666,
+          "render_average_ms": 88.00569413344117,
+          "particles": 0,
+          "entities": 10,
+          "material_pieces": 9,
+          "hrc_resolution": 0.5,
+          "scene_gpu_ms": -1.0,
+          "mesh_work": {
+            "scope": "last rendered frame surface submissions",
+            "sdf_batch_limit": 256,
+            "draw_calls": 9,
+            "sdf_draw_calls": 2,
+            "sdf_instances": 2,
+            "sdf_uploads": 1,
+            "sdf_upload_bytes": 416,
+            "surface_builds": 0,
+            "surface_reuses": 9,
+            "sdf_program_prepares": 2,
+            "sdf_lod_instances": 0,
+            "surface_pixels": 238464,
+            "sdf_pair_probes": 2,
+            "sdf_parameter_probes": 2,
+            "sdf_parameter_upload_bytes": 1024,
+            "sdf_parameter_rows": 1,
+            "sdf_parameter_uploads": 1,
+            "surface_capacity_pixels": 270336,
+            "scratch_groups": 1,
+            "composition_pixels": 59616,
+            "depth_copies": 6,
+            "depth_copy_pixels": 493360,
+            "sdf_program_count": 2,
+            "sdf_program_compilations": 2
+          },
+          "surface_work": {
+            "scope": "submission_upper_bounds",
+            "mode": 1,
+            "cells": 943,
+            "block": 8,
+            "candidates": 11316,
+            "visibility_taps": 45264,
+            "blur_quadrant_fetches": 0
+          },
+          "horizon_work": {
+            "builds": 0,
+            "pixels": 0,
+            "directions": 0,
+            "canvas_bytes": 0,
+            "pack_passes": 0,
+            "fused_packs": 0,
+            "dirty_passes": 0,
+            "reuse_passes": 0,
+            "reproject_passes": 0,
+            "hierarchy_passes": 0,
+            "tiles_x": 0,
+            "tiles_y": 0
+          },
+          "model_work": {
+            "scope": "render loop including warmup; loading and initial simulation excluded",
+            "compilations_before_render": 1,
+            "source_compilations": 0,
+            "parameter_updates": 0,
+            "bounds_updates": 0,
+            "cache_hits": 0,
+            "setter_validations": 0,
+            "program_revision_before": 28,
+            "program_revision_after": 28,
+            "parameter_revision_before": 28,
+            "parameter_revision_after": 28,
+            "measured_frames": {
+              "source_compilations": 0,
+              "parameter_updates": 0,
+              "bounds_updates": 0,
+              "cache_hits": 0,
+              "setter_validations": 0,
+              "program_revision_before": 28,
+              "program_revision_after": 28,
+              "parameter_revision_before": 28,
+              "parameter_revision_after": 28
+            }
+          }
+        },
+        "preview": {
+          "mime_type": "image/png",
+          "width": 320,
+          "height": 180
+        }
+      },
+      "image": "camera-gather-transport.png",
+      "image_sha256": "a2b5c069e5a16d410aa305e95932b3ccff9f4701624675d1fb423b7f70ff1301"
+    },
+    {
+      "name": "camera-gather-surface",
+      "scene": "HrcCornellModesGather",
+      "debug_view": "Surface quadrants",
+      "bounce_intensity_override": null,
+      "source_scene_sha256": "6221c93eb4ab6f82e93010b7481d5d3b2ec75ccaab608883628e6760549e769b",
+      "debug_scene_sha256": "ea92dfe5065d863b25786f3e3e48f04ba59e4476feedb719e7a1d62e071c1d88",
+      "project_root": "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-gather-surface-project",
+      "argv": [
+        "/workspace/c-blueprints/build-release/chibi_ctl",
+        "--project-root",
+        "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-gather-surface-project",
+        "--render-request",
+        "/workspace/c-blueprints/projects/sdf_lab/evidence/cornell-mode-diagnostics/camera-gather-surface.request.json"
+      ],
+      "request": {
+        "contract": 1,
+        "operation": "preview_scene",
+        "kind": "scene",
+        "name": "HrcCornellModesGather",
+        "frames": 1,
+        "render_frames": 256,
+        "freeze_simulation": false,
+        "width": 320,
+        "height": 180
+      },
+      "response": {
+        "ok": true,
+        "operation": "preview_scene",
+        "initial_state": {
+          "world_hash": "0e80b3cecaf01391",
+          "frame": 1,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "final_state": {
+          "world_hash": "0e346890a583c1b4",
+          "frame": 257,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "backend": "CF_BACKEND_TYPE_VULKAN",
+        "performance": {
+          "frozen": false,
+          "instrumented": false,
+          "samples": 240,
+          "warmup_frames": 240,
+          "median_ms": 80.2492689981591,
+          "p95_ms": 120.3316810024262,
+          "p99_ms": 154.92772899960983,
+          "simulation_average_ms": 0.0818687750324898,
+          "render_average_ms": 82.5356223667465,
+          "particles": 0,
+          "entities": 10,
+          "material_pieces": 9,
+          "hrc_resolution": 0.5,
+          "scene_gpu_ms": -1.0,
+          "mesh_work": {
+            "scope": "last rendered frame surface submissions",
+            "sdf_batch_limit": 256,
+            "draw_calls": 9,
+            "sdf_draw_calls": 2,
+            "sdf_instances": 2,
+            "sdf_uploads": 1,
+            "sdf_upload_bytes": 416,
+            "surface_builds": 0,
+            "surface_reuses": 9,
+            "sdf_program_prepares": 2,
+            "sdf_lod_instances": 0,
+            "surface_pixels": 238464,
+            "sdf_pair_probes": 2,
+            "sdf_parameter_probes": 2,
+            "sdf_parameter_upload_bytes": 1024,
+            "sdf_parameter_rows": 1,
+            "sdf_parameter_uploads": 1,
+            "surface_capacity_pixels": 270336,
+            "scratch_groups": 1,
+            "composition_pixels": 59616,
+            "depth_copies": 6,
+            "depth_copy_pixels": 493360,
+            "sdf_program_count": 2,
+            "sdf_program_compilations": 2
+          },
+          "surface_work": {
+            "scope": "submission_upper_bounds",
+            "mode": 1,
+            "cells": 943,
+            "block": 8,
+            "candidates": 11316,
+            "visibility_taps": 45264,
+            "blur_quadrant_fetches": 0
+          },
+          "horizon_work": {
+            "builds": 0,
+            "pixels": 0,
+            "directions": 0,
+            "canvas_bytes": 0,
+            "pack_passes": 0,
+            "fused_packs": 0,
+            "dirty_passes": 0,
+            "reuse_passes": 0,
+            "reproject_passes": 0,
+            "hierarchy_passes": 0,
+            "tiles_x": 0,
+            "tiles_y": 0
+          },
+          "model_work": {
+            "scope": "render loop including warmup; loading and initial simulation excluded",
+            "compilations_before_render": 1,
+            "source_compilations": 0,
+            "parameter_updates": 0,
+            "bounds_updates": 0,
+            "cache_hits": 0,
+            "setter_validations": 0,
+            "program_revision_before": 28,
+            "program_revision_after": 28,
+            "parameter_revision_before": 28,
+            "parameter_revision_after": 28,
+            "measured_frames": {
+              "source_compilations": 0,
+              "parameter_updates": 0,
+              "bounds_updates": 0,
+              "cache_hits": 0,
+              "setter_validations": 0,
+              "program_revision_before": 28,
+              "program_revision_after": 28,
+              "parameter_revision_before": 28,
+              "parameter_revision_after": 28
+            }
+          }
+        },
+        "preview": {
+          "mime_type": "image/png",
+          "width": 320,
+          "height": 180
+        }
+      },
+      "image": "camera-gather-surface.png",
+      "image_sha256": "eebe8b83520cecd6ef81e24c777c4afb1f8df0954a5c48aad4123ba2834d59c8"
+    },
+    {
+      "name": "camera-gather-probes",
+      "scene": "HrcCornellModesGather",
+      "debug_view": "Gather probes",
+      "bounce_intensity_override": null,
+      "source_scene_sha256": "6221c93eb4ab6f82e93010b7481d5d3b2ec75ccaab608883628e6760549e769b",
+      "debug_scene_sha256": "e589a74e7a87bf528cb7c7b77b84c66fd2967496249d5725ff759fa791495d48",
+      "project_root": "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-gather-probes-project",
+      "argv": [
+        "/workspace/c-blueprints/build-release/chibi_ctl",
+        "--project-root",
+        "/tmp/hrc-cornell-diagnostic-w9gm63ff/camera-gather-probes-project",
+        "--render-request",
+        "/workspace/c-blueprints/projects/sdf_lab/evidence/cornell-mode-diagnostics/camera-gather-probes.request.json"
+      ],
+      "request": {
+        "contract": 1,
+        "operation": "preview_scene",
+        "kind": "scene",
+        "name": "HrcCornellModesGather",
+        "frames": 1,
+        "render_frames": 256,
+        "freeze_simulation": false,
+        "width": 320,
+        "height": 180
+      },
+      "response": {
+        "ok": true,
+        "operation": "preview_scene",
+        "initial_state": {
+          "world_hash": "819e099e3d065b2a",
+          "frame": 1,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "final_state": {
+          "world_hash": "380ef4f98cc986bb",
+          "frame": 257,
+          "sound_cues": 0,
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "backend": "CF_BACKEND_TYPE_VULKAN",
+        "performance": {
+          "frozen": false,
+          "instrumented": false,
+          "samples": 240,
+          "warmup_frames": 240,
+          "median_ms": 98.14165100033279,
+          "p95_ms": 228.4624050007551,
+          "p99_ms": 300.877705001767,
+          "simulation_average_ms": 0.0727544749527927,
+          "render_average_ms": 113.43501623764496,
+          "particles": 0,
+          "entities": 10,
+          "material_pieces": 9,
+          "hrc_resolution": 0.5,
+          "scene_gpu_ms": -1.0,
+          "mesh_work": {
+            "scope": "last rendered frame surface submissions",
+            "sdf_batch_limit": 256,
+            "draw_calls": 9,
+            "sdf_draw_calls": 2,
+            "sdf_instances": 2,
+            "sdf_uploads": 1,
+            "sdf_upload_bytes": 416,
+            "surface_builds": 0,
+            "surface_reuses": 9,
+            "sdf_program_prepares": 2,
+            "sdf_lod_instances": 0,
+            "surface_pixels": 238464,
+            "sdf_pair_probes": 2,
+            "sdf_parameter_probes": 2,
+            "sdf_parameter_upload_bytes": 1024,
+            "sdf_parameter_rows": 1,
+            "sdf_parameter_uploads": 1,
+            "surface_capacity_pixels": 270336,
+            "scratch_groups": 1,
+            "composition_pixels": 59616,
+            "depth_copies": 6,
+            "depth_copy_pixels": 493360,
+            "sdf_program_count": 2,
+            "sdf_program_compilations": 2
+          },
+          "surface_work": {
+            "scope": "submission_upper_bounds",
+            "mode": 1,
+            "cells": 943,
+            "block": 8,
+            "candidates": 11316,
+            "visibility_taps": 45264,
+            "blur_quadrant_fetches": 0
+          },
+          "horizon_work": {
+            "builds": 0,
+            "pixels": 0,
+            "directions": 0,
+            "canvas_bytes": 0,
+            "pack_passes": 0,
+            "fused_packs": 0,
+            "dirty_passes": 0,
+            "reuse_passes": 0,
+            "reproject_passes": 0,
+            "hierarchy_passes": 0,
+            "tiles_x": 0,
+            "tiles_y": 0
+          },
+          "model_work": {
+            "scope": "render loop including warmup; loading and initial simulation excluded",
+            "compilations_before_render": 1,
+            "source_compilations": 0,
+            "parameter_updates": 0,
+            "bounds_updates": 0,
+            "cache_hits": 0,
+            "setter_validations": 0,
+            "program_revision_before": 28,
+            "program_revision_after": 28,
+            "parameter_revision_before": 28,
+            "parameter_revision_after": 28,
+            "measured_frames": {
+              "source_compilations": 0,
+              "parameter_updates": 0,
+              "bounds_updates": 0,
+              "cache_hits": 0,
+              "setter_validations": 0,
+              "program_revision_before": 28,
+              "program_revision_after": 28,
+              "parameter_revision_before": 28,
+              "parameter_revision_after": 28
+            }
+          }
+        },
+        "preview": {
+          "mime_type": "image/png",
+          "width": 320,
+          "height": 180
+        }
+      },
+      "image": "camera-gather-probes.png",
+      "image_sha256": "995afaaeba2ee17ffabf364709e5915c871fe5945e5c289111b47ff042bda995"
+    },
+    {
+      "name": "flat-fluence-bounce-off",
+      "scene": "HRCLabCornell2D",
+      "debug_view": "Fluence",
+      "bounce_intensity_override": 0.0,
+      "source_scene_sha256": "096b1dadf182f3c9412e9eb2f10995989b2fe85aa12d8e9e388bc770ea4be4ed",
+      "debug_scene_sha256": "82e8a639f52834114f395961c77a8480276a8cedaaba97fb7bcde2b1792b1112",
+      "project_root": "/tmp/hrc-cornell-diagnostic-w9gm63ff/flat-fluence-bounce-off-project",
+      "argv": [
+        "/workspace/c-blueprints/build-release/chibi_ctl",
+        "--project-root",
+        "/tmp/hrc-cornell-diagnostic-w9gm63ff/flat-fluence-bounce-off-project",
+        "--render-request",
+        "/workspace/c-blueprints/projects/sdf_lab/evidence/cornell-mode-diagnostics/flat-fluence-bounce-off.request.json"
+      ],
+      "request": {
+        "contract": 1,
+        "operation": "preview_scene",
+        "kind": "scene",
+        "name": "HRCLabCornell2D",
+        "frames": 1,
+        "render_frames": 256,
+        "freeze_simulation": false,
+        "width": 320,
+        "height": 180
+      },
+      "response": {
+        "ok": true,
+        "operation": "preview_scene",
+        "initial_state": {
+          "world_hash": "57018acf1db6e42a",
+          "frame": 1,
+          "sound_cues": 0,
+          "materials": {
+            "particles": 0,
+            "active_particles": 0,
+            "particle_bounds": {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 0.0,
+              "height": 0.0
+            },
+            "streaming": {
+              "resident": 0,
+              "stored": 0,
+              "loaded": 0,
+              "unloaded": 0,
+              "resident_bytes": 0,
+              "stored_bytes": 0
+            },
+            "fuel_particles": 0,
+            "burning_particles": 0,
+            "thermal_particles": 0,
+            "fuel_remaining": 0.0,
+            "thermal_energy": 0.0,
+            "elastic_particles": 0,
+            "volume_min": 1.0,
+            "volume_max": 1.0,
+            "strain_max": 0.0,
+            "mpm": {
+              "substeps": 0,
+              "nodes": 0,
+              "advanced_time": 0.0,
+              "limited": false
+            },
+            "solids": 0,
+            "cells": 0,
+            "fragments": 0,
+            "chunks": 0,
+            "hash": "f4ed18ebf16aa5cc"
+          },
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "final_state": {
+          "world_hash": "260e9811a8da7b58",
+          "frame": 257,
+          "sound_cues": 0,
+          "materials": {
+            "particles": 0,
+            "active_particles": 0,
+            "particle_bounds": {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 0.0,
+              "height": 0.0
+            },
+            "streaming": {
+              "resident": 0,
+              "stored": 0,
+              "loaded": 0,
+              "unloaded": 0,
+              "resident_bytes": 0,
+              "stored_bytes": 0
+            },
+            "fuel_particles": 0,
+            "burning_particles": 0,
+            "thermal_particles": 0,
+            "fuel_remaining": 0.0,
+            "thermal_energy": 0.0,
+            "elastic_particles": 0,
+            "volume_min": 1.0,
+            "volume_max": 1.0,
+            "strain_max": 0.0,
+            "mpm": {
+              "substeps": 0,
+              "nodes": 0,
+              "advanced_time": 0.0,
+              "limited": false
+            },
+            "solids": 0,
+            "cells": 0,
+            "fragments": 0,
+            "chunks": 0,
+            "hash": "f4ed18ebf16aa5cc"
+          },
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "backend": "CF_BACKEND_TYPE_VULKAN",
+        "performance": {
+          "frozen": false,
+          "instrumented": false,
+          "samples": 240,
+          "warmup_frames": 240,
+          "median_ms": 65.7315069984179,
+          "p95_ms": 174.93512500004726,
+          "p99_ms": 199.28668499778723,
+          "simulation_average_ms": 0.07865667935220699,
+          "render_average_ms": 89.7252583121978,
+          "particles": 0,
+          "entities": 9,
+          "material_pieces": 7,
+          "hrc_resolution": 0.5,
+          "scene_gpu_ms": -1.0,
+          "mesh_work": {
+            "scope": "last rendered frame surface submissions",
+            "sdf_batch_limit": 256,
+            "draw_calls": 0,
+            "sdf_draw_calls": 0,
+            "sdf_instances": 0,
+            "sdf_uploads": 0,
+            "sdf_upload_bytes": 0,
+            "surface_builds": 0,
+            "surface_reuses": 0,
+            "sdf_program_prepares": 0,
+            "sdf_lod_instances": 0,
+            "surface_pixels": 0,
+            "sdf_pair_probes": 0,
+            "sdf_parameter_probes": 0,
+            "sdf_parameter_upload_bytes": 0,
+            "sdf_parameter_rows": 0,
+            "sdf_parameter_uploads": 0,
+            "surface_capacity_pixels": 0,
+            "scratch_groups": 0,
+            "composition_pixels": 0,
+            "depth_copies": 0,
+            "depth_copy_pixels": 0,
+            "sdf_program_count": 0,
+            "sdf_program_compilations": 0
+          },
+          "surface_work": {
+            "scope": "submission_upper_bounds",
+            "mode": 0,
+            "cells": 1260,
+            "block": 8,
+            "candidates": 0,
+            "visibility_taps": 0,
+            "blur_quadrant_fetches": 171360
+          },
+          "horizon_work": {
+            "builds": 0,
+            "pixels": 0,
+            "directions": 0,
+            "canvas_bytes": 0,
+            "pack_passes": 0,
+            "fused_packs": 0,
+            "dirty_passes": 0,
+            "reuse_passes": 0,
+            "reproject_passes": 0,
+            "hierarchy_passes": 0,
+            "tiles_x": 0,
+            "tiles_y": 0
+          },
+          "model_work": {
+            "scope": "render loop including warmup; loading and initial simulation excluded",
+            "compilations_before_render": 0,
+            "source_compilations": 0,
+            "parameter_updates": 0,
+            "bounds_updates": 0,
+            "cache_hits": 0,
+            "setter_validations": 0,
+            "program_revision_before": 1,
+            "program_revision_after": 1,
+            "parameter_revision_before": 1,
+            "parameter_revision_after": 1,
+            "measured_frames": {
+              "source_compilations": 0,
+              "parameter_updates": 0,
+              "bounds_updates": 0,
+              "cache_hits": 0,
+              "setter_validations": 0,
+              "program_revision_before": 1,
+              "program_revision_after": 1,
+              "parameter_revision_before": 1,
+              "parameter_revision_after": 1
+            }
+          }
+        },
+        "preview": {
+          "mime_type": "image/png",
+          "width": 320,
+          "height": 180
+        }
+      },
+      "image": "flat-fluence-bounce-off.png",
+      "image_sha256": "a42b2723c335455877206da19bdd87d08290599fda2925b0f0fe95e03f9e3b90"
+    },
+    {
+      "name": "flat-fluence-bounce-on",
+      "scene": "HRCLabCornell2D",
+      "debug_view": "Fluence",
+      "bounce_intensity_override": 0.35,
+      "source_scene_sha256": "096b1dadf182f3c9412e9eb2f10995989b2fe85aa12d8e9e388bc770ea4be4ed",
+      "debug_scene_sha256": "4c853cabe54a1b0042fe83cad6ecf43a19659f317e25857fba4a4c14e6e3ad6a",
+      "project_root": "/tmp/hrc-cornell-diagnostic-w9gm63ff/flat-fluence-bounce-on-project",
+      "argv": [
+        "/workspace/c-blueprints/build-release/chibi_ctl",
+        "--project-root",
+        "/tmp/hrc-cornell-diagnostic-w9gm63ff/flat-fluence-bounce-on-project",
+        "--render-request",
+        "/workspace/c-blueprints/projects/sdf_lab/evidence/cornell-mode-diagnostics/flat-fluence-bounce-on.request.json"
+      ],
+      "request": {
+        "contract": 1,
+        "operation": "preview_scene",
+        "kind": "scene",
+        "name": "HRCLabCornell2D",
+        "frames": 1,
+        "render_frames": 256,
+        "freeze_simulation": false,
+        "width": 320,
+        "height": 180
+      },
+      "response": {
+        "ok": true,
+        "operation": "preview_scene",
+        "initial_state": {
+          "world_hash": "3abf5d7e842b5c3b",
+          "frame": 1,
+          "sound_cues": 0,
+          "materials": {
+            "particles": 0,
+            "active_particles": 0,
+            "particle_bounds": {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 0.0,
+              "height": 0.0
+            },
+            "streaming": {
+              "resident": 0,
+              "stored": 0,
+              "loaded": 0,
+              "unloaded": 0,
+              "resident_bytes": 0,
+              "stored_bytes": 0
+            },
+            "fuel_particles": 0,
+            "burning_particles": 0,
+            "thermal_particles": 0,
+            "fuel_remaining": 0.0,
+            "thermal_energy": 0.0,
+            "elastic_particles": 0,
+            "volume_min": 1.0,
+            "volume_max": 1.0,
+            "strain_max": 0.0,
+            "mpm": {
+              "substeps": 0,
+              "nodes": 0,
+              "advanced_time": 0.0,
+              "limited": false
+            },
+            "solids": 0,
+            "cells": 0,
+            "fragments": 0,
+            "chunks": 0,
+            "hash": "f4ed18ebf16aa5cc"
+          },
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "final_state": {
+          "world_hash": "2656a2b89172fa75",
+          "frame": 257,
+          "sound_cues": 0,
+          "materials": {
+            "particles": 0,
+            "active_particles": 0,
+            "particle_bounds": {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 0.0,
+              "height": 0.0
+            },
+            "streaming": {
+              "resident": 0,
+              "stored": 0,
+              "loaded": 0,
+              "unloaded": 0,
+              "resident_bytes": 0,
+              "stored_bytes": 0
+            },
+            "fuel_particles": 0,
+            "burning_particles": 0,
+            "thermal_particles": 0,
+            "fuel_remaining": 0.0,
+            "thermal_energy": 0.0,
+            "elastic_particles": 0,
+            "volume_min": 1.0,
+            "volume_max": 1.0,
+            "strain_max": 0.0,
+            "mpm": {
+              "substeps": 0,
+              "nodes": 0,
+              "advanced_time": 0.0,
+              "limited": false
+            },
+            "solids": 0,
+            "cells": 0,
+            "fragments": 0,
+            "chunks": 0,
+            "hash": "f4ed18ebf16aa5cc"
+          },
+          "visibility": {
+            "enabled": false
+          }
+        },
+        "backend": "CF_BACKEND_TYPE_VULKAN",
+        "performance": {
+          "frozen": false,
+          "instrumented": false,
+          "samples": 240,
+          "warmup_frames": 240,
+          "median_ms": 63.84789499861654,
+          "p95_ms": 98.2443280008738,
+          "p99_ms": 150.99843999996665,
+          "simulation_average_ms": 0.07629822500045218,
+          "render_average_ms": 68.8402328707222,
+          "particles": 0,
+          "entities": 9,
+          "material_pieces": 7,
+          "hrc_resolution": 0.5,
+          "scene_gpu_ms": -1.0,
+          "mesh_work": {
+            "scope": "last rendered frame surface submissions",
+            "sdf_batch_limit": 256,
+            "draw_calls": 0,
+            "sdf_draw_calls": 0,
+            "sdf_instances": 0,
+            "sdf_uploads": 0,
+            "sdf_upload_bytes": 0,
+            "surface_builds": 0,
+            "surface_reuses": 0,
+            "sdf_program_prepares": 0,
+            "sdf_lod_instances": 0,
+            "surface_pixels": 0,
+            "sdf_pair_probes": 0,
+            "sdf_parameter_probes": 0,
+            "sdf_parameter_upload_bytes": 0,
+            "sdf_parameter_rows": 0,
+            "sdf_parameter_uploads": 0,
+            "surface_capacity_pixels": 0,
+            "scratch_groups": 0,
+            "composition_pixels": 0,
+            "depth_copies": 0,
+            "depth_copy_pixels": 0,
+            "sdf_program_count": 0,
+            "sdf_program_compilations": 0
+          },
+          "surface_work": {
+            "scope": "submission_upper_bounds",
+            "mode": 0,
+            "cells": 1260,
+            "block": 8,
+            "candidates": 0,
+            "visibility_taps": 0,
+            "blur_quadrant_fetches": 171360
+          },
+          "horizon_work": {
+            "builds": 0,
+            "pixels": 0,
+            "directions": 0,
+            "canvas_bytes": 0,
+            "pack_passes": 0,
+            "fused_packs": 0,
+            "dirty_passes": 0,
+            "reuse_passes": 0,
+            "reproject_passes": 0,
+            "hierarchy_passes": 0,
+            "tiles_x": 0,
+            "tiles_y": 0
+          },
+          "model_work": {
+            "scope": "render loop including warmup; loading and initial simulation excluded",
+            "compilations_before_render": 0,
+            "source_compilations": 0,
+            "parameter_updates": 0,
+            "bounds_updates": 0,
+            "cache_hits": 0,
+            "setter_validations": 0,
+            "program_revision_before": 1,
+            "program_revision_after": 1,
+            "parameter_revision_before": 1,
+            "parameter_revision_after": 1,
+            "measured_frames": {
+              "source_compilations": 0,
+              "parameter_updates": 0,
+              "bounds_updates": 0,
+              "cache_hits": 0,
+              "setter_validations": 0,
+              "program_revision_before": 1,
+              "program_revision_after": 1,
+              "parameter_revision_before": 1,
+              "parameter_revision_after": 1
+            }
+          }
+        },
+        "preview": {
+          "mime_type": "image/png",
+          "width": 320,
+          "height": 180
+        }
+      },
+      "image": "flat-fluence-bounce-on.png",
+      "image_sha256": "a19fa8b78a2a130e51973b1eda48feb96b8eb2640640903ad106886f01098ef3"
+    }
+  ],
+  "runtime_environment": {
+    "backend": "CF_BACKEND_TYPE_VULKAN",
+    "display": "Xvfb via xvfb-run",
+    "vulkan_icd": "/workspace/.cloud-tools/root/usr/share/vulkan/icd.d/lvp_icd.json",
+    "driver": "Mesa lavapipe 25.0.7-2+deb13u1, LLVM 19.1",
+    "vulkan_api": "1.4.305",
+    "resolution": "320x180",
+    "hrc_resolution": 0.5
+  }
+}

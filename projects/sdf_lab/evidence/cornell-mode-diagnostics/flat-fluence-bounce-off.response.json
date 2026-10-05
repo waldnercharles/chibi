@@ -1,0 +1,191 @@
+{
+  "ok": true,
+  "operation": "preview_scene",
+  "initial_state": {
+    "world_hash": "57018acf1db6e42a",
+    "frame": 1,
+    "sound_cues": 0,
+    "materials": {
+      "particles": 0,
+      "active_particles": 0,
+      "particle_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 0.0,
+        "height": 0.0
+      },
+      "streaming": {
+        "resident": 0,
+        "stored": 0,
+        "loaded": 0,
+        "unloaded": 0,
+        "resident_bytes": 0,
+        "stored_bytes": 0
+      },
+      "fuel_particles": 0,
+      "burning_particles": 0,
+      "thermal_particles": 0,
+      "fuel_remaining": 0.0,
+      "thermal_energy": 0.0,
+      "elastic_particles": 0,
+      "volume_min": 1.0,
+      "volume_max": 1.0,
+      "strain_max": 0.0,
+      "mpm": {
+        "substeps": 0,
+        "nodes": 0,
+        "advanced_time": 0.0,
+        "limited": false
+      },
+      "solids": 0,
+      "cells": 0,
+      "fragments": 0,
+      "chunks": 0,
+      "hash": "f4ed18ebf16aa5cc"
+    },
+    "visibility": {
+      "enabled": false
+    }
+  },
+  "final_state": {
+    "world_hash": "260e9811a8da7b58",
+    "frame": 257,
+    "sound_cues": 0,
+    "materials": {
+      "particles": 0,
+      "active_particles": 0,
+      "particle_bounds": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 0.0,
+        "height": 0.0
+      },
+      "streaming": {
+        "resident": 0,
+        "stored": 0,
+        "loaded": 0,
+        "unloaded": 0,
+        "resident_bytes": 0,
+        "stored_bytes": 0
+      },
+      "fuel_particles": 0,
+      "burning_particles": 0,
+      "thermal_particles": 0,
+      "fuel_remaining": 0.0,
+      "thermal_energy": 0.0,
+      "elastic_particles": 0,
+      "volume_min": 1.0,
+      "volume_max": 1.0,
+      "strain_max": 0.0,
+      "mpm": {
+        "substeps": 0,
+        "nodes": 0,
+        "advanced_time": 0.0,
+        "limited": false
+      },
+      "solids": 0,
+      "cells": 0,
+      "fragments": 0,
+      "chunks": 0,
+      "hash": "f4ed18ebf16aa5cc"
+    },
+    "visibility": {
+      "enabled": false
+    }
+  },
+  "backend": "CF_BACKEND_TYPE_VULKAN",
+  "performance": {
+    "frozen": false,
+    "instrumented": false,
+    "samples": 240,
+    "warmup_frames": 240,
+    "median_ms": 65.7315069984179,
+    "p95_ms": 174.93512500004726,
+    "p99_ms": 199.28668499778723,
+    "simulation_average_ms": 0.07865667935220699,
+    "render_average_ms": 89.7252583121978,
+    "particles": 0,
+    "entities": 9,
+    "material_pieces": 7,
+    "hrc_resolution": 0.5,
+    "scene_gpu_ms": -1.0,
+    "mesh_work": {
+      "scope": "last rendered frame surface submissions",
+      "sdf_batch_limit": 256,
+      "draw_calls": 0,
+      "sdf_draw_calls": 0,
+      "sdf_instances": 0,
+      "sdf_uploads": 0,
+      "sdf_upload_bytes": 0,
+      "surface_builds": 0,
+      "surface_reuses": 0,
+      "sdf_program_prepares": 0,
+      "sdf_lod_instances": 0,
+      "surface_pixels": 0,
+      "sdf_pair_probes": 0,
+      "sdf_parameter_probes": 0,
+      "sdf_parameter_upload_bytes": 0,
+      "sdf_parameter_rows": 0,
+      "sdf_parameter_uploads": 0,
+      "surface_capacity_pixels": 0,
+      "scratch_groups": 0,
+      "composition_pixels": 0,
+      "depth_copies": 0,
+      "depth_copy_pixels": 0,
+      "sdf_program_count": 0,
+      "sdf_program_compilations": 0
+    },
+    "surface_work": {
+      "scope": "submission_upper_bounds",
+      "mode": 0,
+      "cells": 1260,
+      "block": 8,
+      "candidates": 0,
+      "visibility_taps": 0,
+      "blur_quadrant_fetches": 171360
+    },
+    "horizon_work": {
+      "builds": 0,
+      "pixels": 0,
+      "directions": 0,
+      "canvas_bytes": 0,
+      "pack_passes": 0,
+      "fused_packs": 0,
+      "dirty_passes": 0,
+      "reuse_passes": 0,
+      "reproject_passes": 0,
+      "hierarchy_passes": 0,
+      "tiles_x": 0,
+      "tiles_y": 0
+    },
+    "model_work": {
+      "scope": "render loop including warmup; loading and initial simulation excluded",
+      "compilations_before_render": 0,
+      "source_compilations": 0,
+      "parameter_updates": 0,
+      "bounds_updates": 0,
+      "cache_hits": 0,
+      "setter_validations": 0,
+      "program_revision_before": 1,
+      "program_revision_after": 1,
+      "parameter_revision_before": 1,
+      "parameter_revision_after": 1,
+      "measured_frames": {
+        "source_compilations": 0,
+        "parameter_updates": 0,
+        "bounds_updates": 0,
+        "cache_hits": 0,
+        "setter_validations": 0,
+        "program_revision_before": 1,
+        "program_revision_after": 1,
+        "parameter_revision_before": 1,
+        "parameter_revision_after": 1
+      }
+    }
+  },
+  "preview": {
+    "mime_type": "image/png",
+    "width": 320,
+    "height": 180
+  }
+}

@@ -90,4 +90,5 @@ not evidence of volumetrics.
 
 The machine-readable run data, requests, responses, and renderer stderr logs
 are in this directory. `manifest.json` lists the controller hash, requests,
-per-case image hashes, and performance responses.
+per-case image hashes, and performance responses. The confirmed persistent
+Library IDs for all nine PNGs are in `library_ids.json`.

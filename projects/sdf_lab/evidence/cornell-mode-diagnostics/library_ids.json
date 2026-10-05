@@ -1,0 +1,14 @@
+{
+  "directory_id": "libdir_1adfa0d17cb481919704a56137f2a831",
+  "files": [
+    {"name": "flat-blur-transport.png", "library_file_id": "libfile_08d2e4a5764c81919a1f0c063f76f2b0"},
+    {"name": "flat-blur-surface.png", "library_file_id": "libfile_df73031c73b481919ab67f6289dec0e5"},
+    {"name": "camera-blur-transport.png", "library_file_id": "libfile_71bf333b7dd88191948f495a4c2f0e4c"},
+    {"name": "camera-blur-surface.png", "library_file_id": "libfile_87e8f524553c8191b0a51c923b79788b"},
+    {"name": "camera-gather-transport.png", "library_file_id": "libfile_fa49bdbb5c088191bc6249179adcf1c3"},
+    {"name": "camera-gather-surface.png", "library_file_id": "libfile_6a22784590348191b31a49eb9f97ad7d"},
+    {"name": "camera-gather-probes.png", "library_file_id": "libfile_f3c7fc298fd0819188cb114bb654faf7"},
+    {"name": "flat-fluence-bounce-off.png", "library_file_id": "libfile_c445d3cac54c819190c6a94cda0f441f"},
+    {"name": "flat-fluence-bounce-on.png", "library_file_id": "libfile_a075ac79dc4481919236c03a862e5d72"}
+  ]
+}

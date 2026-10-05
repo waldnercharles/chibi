@@ -30,6 +30,7 @@ class PackageTest(unittest.TestCase):
         (self.source / "third_party/yyjson").mkdir(parents=True)
         (self.source / "CMakeLists.txt").write_text("project(example)\n")
         (self.source / "cmake/dependencies.cmake").write_text("set(DEP_PIN v1)\n")
+        (self.source / "cmake/Findcrypto.cmake").write_text("# crypto discovery v1\n")
         (self.source / "cmake/patches/dep.patch").write_text("patch v1\n")
         (self.source / "third_party/yyjson/local.c").write_text("int dep;\n")
         sdk = self.root / "offline-sdk"
@@ -111,7 +112,7 @@ class PackageTest(unittest.TestCase):
         self.compiler = "compiler-v2"
         self.assertNotEqual(initial, self.key())
         self.compiler = "compiler-v1"
-        for name in ("cmake/dependencies.cmake", "cmake/dependency_package/CMakeLists.txt",
+        for name in ("cmake/dependencies.cmake", "cmake/Findcrypto.cmake", "cmake/dependency_package/CMakeLists.txt",
                      "cmake/patches/dep.patch", "third_party/yyjson/local.c"):
             path = self.source / name
             original = path.read_text()
@@ -267,12 +268,13 @@ class PackageTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("cmake") and shutil.which("make"), "CMake and Make required")
 class ExportTest(unittest.TestCase):
-    def run_cmake(self, *args):
+    def run_cmake(self, *args, expected=0):
         result = subprocess.run(["cmake", *map(str, args)], text=True, capture_output=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+        return result.stdout + result.stderr
 
     def test_directory_scoped_crypto_survives_clean_and_reused_imports(self):
-        for kind in ("STATIC", "SHARED", "BUILT"):
+        for kind in ("STATIC", "SHARED", "BUILT", "CUSTOM"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
                 source = root / "source"
@@ -283,22 +285,51 @@ class ExportTest(unittest.TestCase):
                 for name in package.PACKAGE_CMAKE:
                     if name != "dependency_package/CMakeLists.txt":
                         (cmake / name).write_text("")
+                shutil.copy2(TOOLS.parent / "cmake/Findcrypto.cmake", cmake)
                 provider = root / "provider"
                 provider.mkdir()
-                (provider / "crypto.c").write_text("int crypto_value(void) { return 42; }\n")
+                (provider / "helper.c").write_text("int helper_value(void) { return 42; }\n")
+                (provider / "crypto.c").write_text(
+                    "int helper_value(void); int crypto_value(void) { return helper_value(); }\n")
                 (provider / "CMakeLists.txt").write_text(
                     "cmake_minimum_required(VERSION 3.20)\nproject(crypto C)\n"
-                    f"add_library(crypto {'STATIC' if kind == 'BUILT' else kind} crypto.c)\n")
+                    "set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n"
+                    "add_library(helper STATIC helper.c)\n"
+                    f"add_library(crypto {'SHARED' if kind == 'SHARED' else 'STATIC'} crypto.c)\n"
+                    "target_link_libraries(crypto PRIVATE helper)\n")
                 library_build = root / "library"
                 self.run_cmake("-S", provider, "-B", library_build)
                 self.run_cmake("--build", library_build, "--parallel", "2")
                 library = next(library_build.glob("libcrypto.*"))
+                helper = next(library_build.glob("libhelper.*"))
+                (provider / "FindZLIB.cmake").write_text(
+                    "if(NOT TARGET ZLIB::ZLIB)\nadd_library(ZLIB::ZLIB UNKNOWN IMPORTED)\n"
+                    f'set_target_properties(ZLIB::ZLIB PROPERTIES IMPORTED_LOCATION "{helper}")\n'
+                    "endif()\nset(ZLIB_FOUND TRUE)\n")
+                # A metadata provider with a real, named transitive link dependency.
+                # Shared and pre-existing built targets must not use static discovery.
+                openssl = 'message(FATAL_ERROR "Unexpected OpenSSL discovery")\n'
+                if kind == "STATIC":
+                    openssl = ("if(NOT OPENSSL_USE_STATIC_LIBS)\n"
+                        'message(FATAL_ERROR "Static crypto metadata required")\nendif()\n'
+                        "find_package(ZLIB REQUIRED)\n"
+                        "add_library(OpenSSL::Crypto UNKNOWN IMPORTED)\n"
+                        f'set(OPENSSL_FIXTURE_LIBRARY "{library}" CACHE FILEPATH "")\n'
+                        f'set(OPENSSL_FIXTURE_INCLUDE "{provider}" CACHE PATH "")\n'
+                        "set_target_properties(OpenSSL::Crypto PROPERTIES\n"
+                        ' IMPORTED_LOCATION "${OPENSSL_FIXTURE_LIBRARY}"\n'
+                        ' INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_FIXTURE_INCLUDE}"\n'
+                        ' INTERFACE_LINK_LIBRARIES "ZLIB::ZLIB;Threads::Threads")\n'
+                        'set(OpenSSL_FOUND TRUE)\n')
+                (provider / "FindOpenSSL.cmake").write_text(openssl)
                 fixture = source / "fixture"
                 fixture.mkdir()
                 (fixture / "s2n.c").write_text(
                     "int crypto_value(void); int s2n_value(void) { return crypto_value(); }\n")
                 if kind == "BUILT":
-                    crypto = f'find_package(Threads REQUIRED)\nadd_library(crypto STATIC "{provider}/crypto.c")\n'
+                    crypto = (f'find_package(Threads REQUIRED)\nadd_library(crypto STATIC "{provider}/crypto.c")\n'
+                        f'add_library(helper STATIC "{provider}/helper.c")\n'
+                        "target_link_libraries(crypto PUBLIC helper)\n")
                     link = "crypto Threads::Threads"
                 else:
                     crypto = ("find_package(Threads REQUIRED)\n"
@@ -308,27 +339,58 @@ class ExportTest(unittest.TestCase):
                         f' INTERFACE_INCLUDE_DIRECTORIES "{provider}"\n'
                         ' IMPORTED_LINK_INTERFACE_LANGUAGES "C")\n'
                         'add_dependencies(AWS::crypto Threads::Threads)\n')
+                    if kind == "CUSTOM":
+                        crypto += ("find_package(ZLIB REQUIRED)\n"
+                            "set_property(TARGET AWS::crypto PROPERTY INTERFACE_LINK_LIBRARIES ZLIB::ZLIB)\n")
                     link = "AWS::crypto Threads::Threads"
-                (fixture / "CMakeLists.txt").write_text(crypto +
+                upstream = fixture / "cmake/modules"
+                upstream.mkdir(parents=True)
+                (upstream / "Findcrypto.cmake").write_text(
+                    "if(TARGET crypto OR TARGET AWS::crypto)\nreturn()\nendif()\n" +
+                    (crypto if kind in ("STATIC", "SHARED") else ""))
+                (fixture / "CMakeLists.txt").write_text(
+                    (crypto if kind in ("BUILT", "CUSTOM") else "") +
+                    f'set(s2n_SOURCE_DIR "{fixture}")\n'
+                    f'set(crypto_LIBRARY "{library}")\n'
+                    f'set(crypto_INCLUDE_DIR "{provider}")\n'
+                    'find_package(crypto REQUIRED)\n' +
                     "add_library(s2n STATIC s2n.c)\n"
                     f"target_link_libraries(s2n PUBLIC {link})\n")
                 (cmake / "dependencies.cmake").write_text(
-                    'add_subdirectory("${CHIBI_SOURCE_ROOT}/fixture" fixture)\n')
+                    f'list(PREPEND CMAKE_MODULE_PATH "{cmake}" "{provider}")\n'
+                    'add_subdirectory("${CHIBI_SOURCE_ROOT}/fixture" fixture)\n'
+                    'add_executable(direct "${CHIBI_SOURCE_ROOT}/fixture/main.c")\n'
+                    'target_link_libraries(direct PRIVATE s2n)\n')
+                (fixture / "main.c").write_text(
+                    "int s2n_value(void); int main(void) { return s2n_value() != 42; }\n")
                 build = root / "package"
                 self.run_cmake("-S", project, "-B", build, f"-DCHIBI_SOURCE_ROOT={source}",
                     "-DCHIBI_ENABLE_CCACHE=OFF", "-DCHIBI_ENABLE_SANITIZERS=OFF")
                 self.run_cmake("--build", build, "--target", "chibi_dependency_package", "--parallel", "2")
+                self.run_cmake("--build", build, "--target", "direct", "--parallel", "2")
+                subprocess.run([str(build / "direct")], check=True)
                 exported = build / "chibi-crypto.cmake"
                 self.assertEqual(exported.exists(), kind != "BUILT")
                 if exported.exists():
                     self.assertIn(str(library), exported.read_text())
+                if kind == "STATIC":
+                    for name, value in (("LIBRARY", helper), ("INCLUDE", library_build)):
+                        output = self.run_cmake("-S", project, "-B", root / f"mismatch-{name}",
+                            f"-DCHIBI_SOURCE_ROOT={source}", f"-DOPENSSL_FIXTURE_{name}={value}", expected=1)
+                        self.assertIn("OpenSSL metadata does not match", output)
                 consumer = root / "consumer"
                 consumer.mkdir()
                 (consumer / "main.c").write_text(
                     "int s2n_value(void); int main(void) { return s2n_value() != 42; }\n")
+                identity = ""
+                if kind != "BUILT":
+                    identity = ('get_target_property(selected AWS::crypto IMPORTED_LOCATION)\n'
+                        f'if(NOT selected STREQUAL "{library}")\n'
+                        'message(FATAL_ERROR "Crypto provider changed")\nendif()\n')
                 (consumer / "CMakeLists.txt").write_text(
                     "cmake_minimum_required(VERSION 3.20)\nproject(consumer C)\n"
-                    f'include("{build}/chibi-dependencies.cmake")\n'
+                    f'list(PREPEND CMAKE_MODULE_PATH "{provider}")\n'
+                    f'include("{build}/chibi-dependencies.cmake")\n' + identity +
                     "add_executable(probe main.c)\ntarget_link_libraries(probe PRIVATE s2n)\n")
                 for name in ("clean", "reused", "reused"):
                     destination = root / name

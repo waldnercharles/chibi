@@ -14,6 +14,8 @@
 #include "support/execution_policy.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_video.h>
 #include <imgui/dcimgui.h>
 #include <limits.h>
 #include <math.h>
@@ -69,6 +71,7 @@ typedef struct
     float resolution;
     double scene_gpu_ms;
     const char *backend;
+    char video_driver[64];
     bool pass_timestamps;
     char *initial_state, *final_state;
     render_mesh_material_work mesh_work;
@@ -132,7 +135,18 @@ static bool render_scene(
         NULL
     );
     if (cf_is_error(made)) {
-        snprintf(error, size, "%s", made.details);
+        const char *driver = getenv("SDL_VIDEO_DRIVER");
+        if (!driver) {
+            driver = getenv("SDL_VIDEODRIVER");
+        }
+        snprintf(
+            error,
+            size,
+            "%s (video driver request: %s; SDL: %s)",
+            made.details,
+            driver ? driver : "platform default",
+            SDL_GetError()
+        );
         return false;
     }
     cf_app_set_present_mode(CF_PRESENT_MODE_IMMEDIATE);
@@ -222,6 +236,7 @@ static bool render_scene(
     if (ok) {
         measurement->initial_state = chibi_preview_state(run);
         measurement->backend = cf_backend_type_to_string(cf_query_backend());
+        snprintf(measurement->video_driver, sizeof measurement->video_driver, "%s", SDL_GetCurrentVideoDriver());
         measurement->model_before = render_shader_model_stats();
     }
     for (int i = 0; ok && i < render_frames + warmup; i++) {
@@ -649,6 +664,7 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
             yyjson_doc_free(state);
         }
         yyjson_mut_obj_add_str(response, result, "backend", measurement.backend);
+        yyjson_mut_obj_add_strcpy(response, result, "video_driver", measurement.video_driver);
         if (capture_path) {
             yyjson_mut_obj_add_strcpy(response, result, "metal_capture", capture_path);
         }

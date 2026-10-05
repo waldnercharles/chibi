@@ -30,6 +30,11 @@ class PolicyTest(unittest.TestCase):
 #include <stdlib.h>
 #include <string.h>
 int main(int argc, char **argv) {
+    if (argc == 3 && !strcmp(argv[1], "--video-driver")) {
+        const char *driver = chibi_preview_video_driver(atoi(argv[2]));
+        puts(driver ? driver : "unchanged");
+        return 0;
+    }
     if (argc == 3) {
         puts(chibi_preview_hidden(atoi(argv[2])) ? "hidden" : "visible");
         return 0;
@@ -61,6 +66,30 @@ int main(int argc, char **argv) {
             result = subprocess.check_output([str(self.binary), '--window-mode', str(frames)],
                                              env=env, text=True).strip()
             self.assertEqual(result, expected)
+
+    def test_offscreen_selection_is_scoped_and_respects_explicit_choices(self):
+        base = dict(os.environ, CHIBI_EXECUTION_PROFILE='iteration')
+        for key in ['SDL_VIDEO_DRIVER', 'SDL_VIDEODRIVER', 'CHIBI_PREVIEW_DISPLAY_CONTEXT']:
+            base.pop(key, None)
+        cases = [
+            ({}, '1', 'offscreen'),
+            ({'CHIBI_EXECUTION_PROFILE': 'mp4'}, '1', 'offscreen'),
+            ({'WAYLAND_DISPLAY': 'wayland-0', 'DISPLAY': ':0'}, '1', 'offscreen'),
+            ({'CHIBI_PREVIEW_DISPLAY_CONTEXT': 'xvfb'}, '1', 'x11'),
+            ({'SDL_VIDEO_DRIVER': 'wayland'}, '1', 'unchanged'),
+            ({'SDL_VIDEO_DRIVER': 'x11'}, '1', 'unchanged'),
+            ({'SDL_VIDEO_DRIVER': ''}, '1', 'unchanged'),
+            ({'SDL_VIDEODRIVER': 'x11'}, '1', 'unchanged'),
+            ({'CHIBI_EXECUTION_PROFILE': 'hardware', 'CHIBI_ALLOW_FULL_GPU': '1'}, '1', 'unchanged'),
+            ({'CHIBI_EXECUTION_PROFILE': 'gpu-check'}, '1', 'unchanged'),
+            ({'CHIBI_EXECUTION_PROFILE': 'unknown'}, '1', 'unchanged'),
+            ({}, '0', 'unchanged'),
+        ]
+        for override, linux, expected in cases:
+            with self.subTest(override=override, linux=linux):
+                result = subprocess.check_output([str(self.binary), '--video-driver', linux],
+                                                 env=dict(base, **override), text=True).strip()
+                self.assertEqual(result, expected)
 
     def test_failed_health_probe_does_not_prevent_CPU_planning(self):
         with patch.object(agent.subprocess, 'run', side_effect=subprocess.TimeoutExpired('probe', 5)):

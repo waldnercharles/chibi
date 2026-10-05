@@ -20,6 +20,8 @@
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
 
+#include <SDL3/SDL_error.h>
+#include <SDL3/SDL_video.h>
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
@@ -833,9 +835,27 @@ static bool render_asset(
         program
     );
     if (cf_is_error(made)) {
-        set_error(error, error_size, made.details);
+        const char *driver = getenv("SDL_VIDEO_DRIVER");
+        if (!driver) {
+            driver = getenv("SDL_VIDEODRIVER");
+        }
+        snprintf(
+            error,
+            error_size,
+            "%s (video driver request: %s; SDL: %s)",
+            made.details,
+            driver ? driver : "platform default",
+            SDL_GetError()
+        );
         return false;
     }
+    yyjson_mut_obj_add_strcpy(response->doc, response->result, "video_driver", SDL_GetCurrentVideoDriver());
+    yyjson_mut_obj_add_str(
+        response->doc,
+        response->result,
+        "backend",
+        cf_backend_type_to_string(cf_query_backend())
+    );
     char mount_error[PREVIEW_MAX_ERROR] = { 0 };
     if (!render_image_mount_content("content", mount_error, sizeof mount_error)) {
         set_error(error, error_size, mount_error);

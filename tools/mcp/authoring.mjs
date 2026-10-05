@@ -612,7 +612,7 @@ const shaderAssetSelectorProperties = {
 
 const previewSceneDefinition = {
   name: "previewScene", operation: "preview_scene",
-  description: "Render a running scene or prototype through the native hidden-window renderer, without launching Studio. A graphics/display context may still be required. Iteration defaults: one output frame, one GPU warmup frame, at most 640x360 pixels and 30 seconds; blocked budgets are errors, not passes. This is focused evidence, not full verification. Returns a PNG. Inputs and saved state use the scenario contract; storage stays isolated.",
+  description: "Render a running scene or prototype without Studio. Bounded Linux renders prefer supported SDL offscreen; explicit video drivers are preserved. Other backends may need a display context. Iteration defaults: one output frame, one GPU warmup frame, at most 640x360 pixels and 30 seconds; blocked budgets are errors, not passes. This is focused evidence, not full verification. Returns a PNG. Inputs and saved state use the scenario contract; storage stays isolated.",
   inputSchema: { type: "object", additionalProperties: false, required: ["kind", "name"], properties: {
     kind: { type: "string", enum: ["scene", "prototype"] }, name: { type: "string" },
     width: { type: "integer", minimum: 64, maximum: 2048, default: 640 },
@@ -908,7 +908,10 @@ export function renderRequest(root, request, requestId) {
         active_backend: value.result?.backend ?? null,
         active_device: activeDevice,
         device_scope: activeDevice ? "renderer_log" : "not_reported",
-        display_context: process.env.CHIBI_PREVIEW_DISPLAY_CONTEXT || "backend-default",
+        video_driver: value.result?.video_driver ?? null,
+        render_mode: value.result?.video_driver === "offscreen" ? "offscreen" : "hidden-window",
+        display_context: value.result?.video_driver === "offscreen" ? "offscreen" :
+          (process.env.CHIBI_PREVIEW_DISPLAY_CONTEXT || value.result?.video_driver || "not_reported"),
       };
       resolveRequest(value);
     };

@@ -67,16 +67,31 @@ neither side above 640. Lower resolution is useful for iteration but can hide
 fine detail and representative memory pressure. One output cannot prove history
 convergence, motion or temporal stability.
 
-Bounded previews and MP4 capture use the native controller's **hidden-window**
-renderer, save their output, then exit. They do not launch the Studio editor.
-Shader previews already use this mode. Hidden-window rendering is headless from
-the user's perspective, but is not a simulation-only run or a guarantee of a
-window-system-free backend: SDL/Vulkan may still require a display context, and
-rendering still consumes graphics memory and GPU work (or software-renderer CPU).
-The native response reports `window_hidden`.
+On Linux, bounded previews and MP4 capture prefer SDL's existing **offscreen**
+video backend when the caller has not selected a driver. The native controller
+checks that the SDL build includes that backend before selecting it, saves the
+output, then exits. This needs no monitor, desktop changes, or Xvfb. The underlying
+preview window remains hidden; no new renderer or Studio process is involved.
+Both shader and scene previews use this selection. Headless rendering is not
+simulation-only: it still consumes graphics memory and GPU work (or software
+renderer CPU). Explicitly selected windowed backends may need a display context.
+The native response reports `window_hidden` and the actual SDL `video_driver`.
+The wrapper/MCP also report the native graphics backend and selected device from
+renderer logs, not an assumption based on discovery. Software rendering keeps
+exactly the same conservative budgets; offscreen does not imply hardware GPU use.
 
-When the backend needs a display and none is available, use the existing Xvfb
-fallback around the bounded command, explicitly reporting the display context:
+Explicit `SDL_VIDEO_DRIVER` and legacy `SDL_VIDEODRIVER` choices, including an
+explicit empty value, are preserved. Other platforms and explicit full-hardware
+profiles keep platform/caller selection. `make run`, `make play`, `make dev`, and
+editor/UI tests are unaffected: selection occurs only in `chibi_ctl --render`
+(and `--render-request`) for bounded profiles. A compiled-in offscreen driver can
+still fail Vulkan/device initialization; report that failure with the requested
+driver and SDL detail. No automatic fallback or extra render is attempted.
+
+If offscreen is unavailable for a particular SDL/backend build, the caller may
+explicitly choose the existing bounded Xvfb fallback. `CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb`
+selects SDL X11 only when no driver was explicitly configured and reports the
+actual runtime device, which may be software rendering:
 
 ```sh
 xvfb-run -a env CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb python3 tools/agent.py preview preview.json --project-root projects/your-game --output /tmp/preview-result.json
@@ -219,3 +234,18 @@ This is publication evidence for focused functionality, not full hardware
 certification. Representative hardware/backend gates remain pending; inherited
 GLES and NVK LeakSanitizer limitations remain owned by CUT-54/CUT-55. Startup
 provisioning/activation changes remain owned by CUT-49/CUT-52.
+
+
+## Linux offscreen follow-up
+
+A focused local check without DISPLAY/WAYLAND_DISPLAY used the automatic SDL
+offscreen route for a 96x64 `HRCSinglePixel` preview: one output plus one warmup,
+3.77 seconds, exit 0, Vulkan device `llvmpipe (LLVM 19.1.7, 256 bits)`. The output
+reported `video_driver:offscreen`; no Xvfb or Studio process was launched. Driver
+selection tests cover explicit modern/legacy choices, Xvfb opt-in, non-Linux and
+full-hardware preservation. A deliberately unavailable explicit driver fails
+with native SDL context rather than silently switching routes.
+
+The parent has separately verified SDL offscreen on Fedora RTX 4080 SUPER/NVK
+through `make play`; a bounded validation of this controller route on that
+hardware remains pending. No driver or desktop configuration is changed here.

@@ -141,7 +141,7 @@ def main():
                               mp4=dict(output_frames='3..180', fps=60, duration_seconds=3,
                                        warmup_frames='0..32', seconds=120, raw_bytes=256*1024*1024),
                               render_rss_mib=2048, render_mode='hidden-window',
-                              display_context='backend/display required; bounded xvfb-run fallback documented',
+                              display_context='Linux prefers supported SDL offscreen; explicit drivers respected; bounded Xvfb fallback documented',
                               next_command=NEXT)))
         return 0
     if args.action == 'hardware-check':
@@ -211,8 +211,10 @@ def main():
                   active_backend=response['result'].get('backend'),
                   active_device=(re.search(r'Vulkan Device: ([^\r\n]+)', output).group(1)
                                  if re.search(r'Vulkan Device: ([^\r\n]+)', output) else 'not_reported'),
-                  render_mode='hidden-window',
-                  display_context=os.environ.get('CHIBI_PREVIEW_DISPLAY_CONTEXT', 'backend-default'),
+                  video_driver=response['result'].get('video_driver', 'not_reported'),
+                  render_mode='offscreen' if response['result'].get('video_driver') == 'offscreen' else 'hidden-window',
+                  display_context=('offscreen' if response['result'].get('video_driver') == 'offscreen'
+                                   else os.environ.get('CHIBI_PREVIEW_DISPLAY_CONTEXT', response['result'].get('video_driver', 'not_reported'))),
                   output_frames=args.frames if args.action == 'mp4' else 1,
                   warmup_frames=request.get('gpu_warmup_frames', 1 if request.get('operation') == 'preview_scene' else 0))
 

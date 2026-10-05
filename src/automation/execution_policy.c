@@ -87,3 +87,14 @@ bool chibi_preview_hidden(int render_frames)
 {
     return !chibi_execution_hardware() || render_frames <= 2;
 }
+
+const char *chibi_preview_video_driver(bool linux_platform)
+{
+    if (!linux_platform ||
+        (!chibi_execution_is("iteration") && !chibi_execution_is("mp4")) ||
+        getenv("SDL_VIDEO_DRIVER") || getenv("SDL_VIDEODRIVER")) {
+        return NULL;
+    }
+    const char *context = getenv("CHIBI_PREVIEW_DISPLAY_CONTEXT");
+    return context && !strcmp(context, "xvfb") ? "x11" : "offscreen";
+}

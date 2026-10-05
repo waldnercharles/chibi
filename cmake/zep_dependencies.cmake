@@ -31,6 +31,7 @@ endif()
 # and no command line or airline while the command line is empty. A marker
 # that removes itself when text is typed inside it lives until it is done.
 chibi_apply_patches("${zep_SOURCE_DIR}"
+    "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/zep-integer-types.patch"
     "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/zep-wheel-scroll.patch"
     "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/zep-cursor-info.patch"
     "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/zep-select-range.patch"

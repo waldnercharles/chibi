@@ -118,12 +118,15 @@ The SDF visibility depth snapshot fixture clears its source depth to `.75` befor
 its unchanged full-canvas `.25` seed draw. That triangle covers every pixel of the
 8×8 target, with depth writes and `ALWAYS` enabled; the clear value is not a test
 expectation. All source color/depth, copied depth, and `.125` redraw assertions
-remain unchanged. Deliberately using `LESS` instead of `ALWAYS` still rejects the
-`.5` overwrite, failing all four cropped color/depth and copied-depth assertions.
+remain unchanged. In the earlier unknown-device offscreen check, deliberately
+using `LESS` instead of `ALWAYS` rejected the `.5` overwrite, failing all four
+cropped color/depth and copied-depth assertions. That mutation was not part of
+the later identity-verified Zink/NVK A/B.
 
 This is a **test-fixture isolation workaround**, not a production renderer or
-driver fix. It removes **endpoint clear (`0`/`1`) plus `ALWAYS` coverage** from this
-copy fixture. It retains the full seed, cropped overwrite, depth-copy, and later
+driver fix. It removes **clear-`1` plus `ALWAYS` coverage** from this copy fixture,
+which previously cleared only to `1`; clear `0` was tested only in the standalone
+matrix. It retains the full seed, cropped overwrite, depth-copy, and later
 source-redraw checks. The underlying driver issue remains open as CUT-54 /
 [issue #159](https://github.com/waldnercharles/c-blueprints/issues/159); the private
 upstream report has not been submitted.

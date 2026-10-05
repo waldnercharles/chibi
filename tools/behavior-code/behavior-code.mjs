@@ -173,6 +173,7 @@ export function parseBehavior(source) {
       expect('=');
       expect('[');
       const values = [];
+      const setValues = container === 'set' ? new Set() : null;
       while (!peek(']')) {
         const signToken = peek('-') ? next() : null;
         const sign = signToken ? -1 : 1;
@@ -192,6 +193,13 @@ export function parseBehavior(source) {
         }
         if (elementType.value === 'bool' && typeof value !== 'boolean') fail(valueToken, 'bool collections require boolean literals');
         if (elementType.value === 'string' && typeof value !== 'string') fail(valueToken, 'string collections require string literals');
+        if (setValues && ['int', 'float', 'bool', 'string'].includes(elementType.value)) {
+          const setValue = elementType.value === 'float' ? Math.fround(value) : value;
+          if (setValues.has(setValue)) {
+            fail(literalToken, 'set defaults must be unique after native type conversion', 'E_SET_DEFAULT_DUPLICATE');
+          }
+          setValues.add(setValue);
+        }
         values.push(value);
         if (!peek(',')) break;
         next();

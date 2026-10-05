@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   buildOperations,
   expectedConnections,
@@ -319,6 +323,78 @@ test('float array and set defaults fit finite binary32 values', () => {
         return true;
       });
     }
+  }
+});
+
+test('set defaults reject duplicate native values while arrays keep duplicates', () => {
+  const duplicates = [
+    { type: 'int', literals: '[-1, -1]', duplicate: '-1', array: [-1, -1] },
+    { type: 'float', literals: '[16777216, 16777217]', duplicate: '16777217', array: [16777216, 16777217] },
+    { type: 'float', literals: '[0, 1e-50]', duplicate: '1e-50', array: [0, 1e-50] },
+    { type: 'float', literals: '[0, -0]', duplicate: '-0', array: [0, -0] },
+    { type: 'bool', literals: '[true, false, true]', duplicate: 'true', array: [true, false, true] },
+    { type: 'string', literals: String.raw`["a", "\u{61}"]`, duplicate: String.raw`"\u{61}"`, array: ['a', 'a'] },
+  ];
+  for (const { type, literals, duplicate, array } of duplicates) {
+    const setSource = `behavior Duplicate { state set<${type}> values = ${literals}; on Tick() {} }`;
+    assert.throws(() => parseBehavior(setSource), (error) => {
+      assert.equal(error.code, 'E_SET_DEFAULT_DUPLICATE');
+      assert.equal(setSource.slice(error.span.start, error.span.end), duplicate);
+      return true;
+    });
+
+    const arraySource = `behavior Duplicate { state ${type}[] values = ${literals}; on Tick() {} }`;
+    assert.deepEqual(parseBehavior(arraySource).stateVariables[0].default, array);
+  }
+
+  for (const type of ['int', 'float', 'bool', 'string', 'entity']) {
+    const empty = `behavior Empty { state set<${type}> values = []; on Tick() {} }`;
+    assert.deepEqual(parseBehavior(empty).stateVariables[0].default, []);
+  }
+  const uniqueFloat = 'behavior Unique { state set<float> values = [16777216, 16777218]; on Tick() {} }';
+  assert.deepEqual(parseBehavior(uniqueFloat).stateVariables[0].default, [16777216, 16777218]);
+});
+
+test('duplicate set defaults fail before publishing or rewriting assets and maps', () => {
+  const root = mkdtempSync(join(tmpdir(), 'behavior-code-duplicate-set-'));
+  try {
+    const sourceDirectory = join(root, 'authoring');
+    const assetDirectory = join(root, 'content', 'behaviors');
+    mkdirSync(sourceDirectory, { recursive: true });
+    mkdirSync(assetDirectory, { recursive: true });
+    const sourceFile = join(sourceDirectory, 'DuplicateSet.code');
+    const mapFile = sourceFile + '.map.json';
+    const assetFile = join(assetDirectory, 'DuplicateSet.kdl');
+    const source = String.raw`behavior DuplicateSet { state set<string> values = ["a", "\u{61}"]; on Tick() {} }`;
+    const previousMap = '{"sentinel":"previous source map"}\n';
+    const previousAsset = 'sentinel existing asset\n';
+    writeFileSync(sourceFile, source);
+    writeFileSync(mapFile, previousMap);
+    writeFileSync(assetFile, previousAsset);
+
+    const markerFile = join(root, 'ctl-called');
+    const ctlFile = join(root, 'fake-ctl');
+    writeFileSync(ctlFile, '#!/bin/sh\n: > "$CHIBI_TEST_MARKER"\nexit 1\n');
+    chmodSync(ctlFile, 0o755);
+    const cliFile = fileURLToPath(new URL('./cli.mjs', import.meta.url));
+    const result = spawnSync(process.execPath, [
+      cliFile, 'compile', sourceFile, '--project-root', root, '--ctl', ctlFile,
+    ], {
+      encoding: 'utf8',
+      env: { ...process.env, CHIBI_TEST_MARKER: markerFile },
+    });
+
+    assert.equal(result.status, 1, result.stderr);
+    const failure = JSON.parse(result.stderr);
+    const diagnostic = failure.diagnostics[0];
+    assert.equal(failure.ok, false);
+    assert.equal(diagnostic.code, 'E_SET_DEFAULT_DUPLICATE');
+    assert.equal(source.slice(diagnostic.span.start, diagnostic.span.end), String.raw`"\u{61}"`);
+    assert.equal(existsSync(markerFile), false);
+    assert.equal(readFileSync(mapFile, 'utf8'), previousMap);
+    assert.equal(readFileSync(assetFile, 'utf8'), previousAsset);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

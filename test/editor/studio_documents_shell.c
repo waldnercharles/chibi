@@ -1816,23 +1816,30 @@ void studio_documents_shell_checks()
         capture_shell(dir);
         return;
     }
-    host_ui_refresh_keeps_input_immediate();
-    performance_snapshot_retains_intermediate_frames();
-    status_bar_follows_studio();
-    palette_finds_settings();
-    palette_recent_and_prefixes();
-    wheel_scrolls_lists();
-    wheel_zooms_canvases();
-    shortcut_repeat_policy();
-    keys_follow_pointer();
-    readout_follows_camera();
-    chrome_follows_studio();
-    layout_modes_are_explicit();
-    toolbar_shortcuts_keep_text_focus();
-    area_documents();
-    area_menus();
-    menubar_runs_commands();
-    menus_mount_when_open();
-    transport_menus();
-    workspace_layout();
+    studio_shell_cases(NULL, true);
+}
+
+bool studio_shell_cases(const char *only, bool run)
+{
+    bool matched = false;
+    STUDIO_CASE("host_ui_refresh_keeps_input_immediate", host_ui_refresh_keeps_input_immediate);
+    STUDIO_CASE("performance_snapshot_retains_intermediate_frames", performance_snapshot_retains_intermediate_frames);
+    STUDIO_CASE("status_bar_follows_studio", status_bar_follows_studio);
+    STUDIO_CASE("palette_finds_settings", palette_finds_settings);
+    STUDIO_CASE("palette_recent_and_prefixes", palette_recent_and_prefixes);
+    STUDIO_CASE("wheel_scrolls_lists", wheel_scrolls_lists);
+    STUDIO_CASE("wheel_zooms_canvases", wheel_zooms_canvases);
+    STUDIO_CASE("shortcut_repeat_policy", shortcut_repeat_policy);
+    STUDIO_CASE("keys_follow_pointer", keys_follow_pointer);
+    STUDIO_CASE("readout_follows_camera", readout_follows_camera);
+    STUDIO_CASE("chrome_follows_studio", chrome_follows_studio);
+    STUDIO_CASE("layout_modes_are_explicit", layout_modes_are_explicit);
+    STUDIO_CASE("toolbar_shortcuts_keep_text_focus", toolbar_shortcuts_keep_text_focus);
+    STUDIO_CASE("area_documents", area_documents);
+    STUDIO_CASE("area_menus", area_menus);
+    STUDIO_CASE("menubar_runs_commands", menubar_runs_commands);
+    STUDIO_CASE("menus_mount_when_open", menus_mount_when_open);
+    STUDIO_CASE("transport_menus", transport_menus);
+    STUDIO_CASE("workspace_layout", workspace_layout);
+    return matched;
 }

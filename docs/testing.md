@@ -109,3 +109,62 @@ each small code change. Prefer the closest focused selector during iteration
 and retain `make test` as the complete gate. Tool tests now run concurrently
 in isolated processes with a four-worker default; raising `TEST_JOBS`
 increases CPU and memory pressure.
+
+## Studio documents and shell iteration (CUT-50)
+
+List subgroup names without opening a window:
+
+```sh
+build/test_suite --studio-documents list
+build/test_suite --studio-shell list
+```
+
+Select one complete group or shell case. Quote Make's `TEST_ARGS` when passing a
+positional name:
+
+```sh
+make test-fast TEST_ARGS='--studio-documents tabs' TEST_TIMINGS=1
+make test-fast TEST_ARGS='--studio-shell readout_follows_camera' TEST_TIMINGS=1
+```
+
+These selectors keep each case's complete fixture, input sequence, settling frames,
+and assertions. An unknown group/case or extra positional argument exits 2 before
+creating the graphics app. The `list` output is the authoritative set of names.
+Existing surface selectors remain supported. `--studio-documents properties`
+runs the complete Properties group; the older `--studio-properties` runs only its
+field checks.
+
+With no positional argument, `--studio-documents` still runs all 19 documents
+groups in their original order, then graph-inputs and thumbnails. Those last two
+have their existing `--studio-graph-inputs` and `--studio-thumbnails` selectors.
+`--studio-shell` still runs all 19 shell cases in their original order. Full gates
+and capture mode are unchanged; an explicit shell case always runs assertions,
+even if `CHIBI_SHELL_CAPTURE_DIR` is set. A focused pass does not certify the
+aggregate or replace `make test-render`.
+
+`CHIBI_TEST_TIMINGS=1` (or `TEST_TIMINGS=1` through Make) now prints flushed
+`STUDIO_BEGIN` markers and `STUDIO_TIMING` records for documents groups, individual
+shell cases, and app setup/teardown. Wall times use SDL's monotonic performance
+counter. Shared-fixture records include fixture count, setup and teardown time,
+frame count, and frame time split into event pumping, scene/graph tick, Studio,
+and presentation. `batch_frames`/`batches` measure `frames()` calls, including
+settling and intentional multi-frame measurements; these overlap the frame stage
+totals and must not be added to them. Nested shell records likewise overlap the
+parent shell record. Groups with their own fixture/frame helpers (for example
+models and code intelligence) have complete wall time but incomplete shared-helper
+counters. Timings are diagnostic measurements, not performance assertions.
+
+For bounded cloud iteration, build first, then run one selector under an explicit
+bound (software Vulkan requires a display such as Xvfb):
+
+```sh
+timeout --kill-after=10s 90s env CHIBI_TEST_TIMINGS=1 \
+  ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 \
+  xvfb-run -a build/test_suite --studio-shell readout_follows_camera
+```
+
+Use the repository's render leak policy and strict UBSan; do not interpret a
+bound hit as a pass. Do not repeatedly run the full documents aggregate on
+software Vulkan or launch concurrent heavy tests on the hardware machine.
+The 60-frame cadence/recording loops and long motion/iframe settles are retained:
+static inspection does not establish that those frames are redundant.

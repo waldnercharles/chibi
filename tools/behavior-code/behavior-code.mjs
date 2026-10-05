@@ -1260,7 +1260,8 @@ export function graphToSource(source, behavior, graph, map, registry) {
   for (const handler of behavior.handlers) {
     const expressions = flatten(handler.body).map((statement) => {
       const node = nodes.get(Number(map.refs[statement.id]));
-      let graphSource = node?.reference_name;
+      const hasExpression = statement.kind === 'expression' || (statement.kind === 'if' && !statement.conditionSet);
+      let graphSource = hasExpression ? node?.reference_name : null;
       for (const [internal, field] of Object.entries(handler.eventFields ?? {})) {
         graphSource = graphSource?.replace(new RegExp('(^|[^A-Za-z0-9_])' + internal + '(?![A-Za-z0-9_])', 'g'), '$1event.' + field.alias);
       }

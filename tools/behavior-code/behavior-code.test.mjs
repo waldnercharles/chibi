@@ -39,6 +39,7 @@ const registry = {
     ] },
   ],
 };
+const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 const sample = `behavior ProjectileLifecycle {
   on Tick(GameProjectile projectile) {
@@ -631,6 +632,89 @@ test('graph expression edits roundtrip through scoped array and event aliases', 
     sourceGraphShape(behavior).map(({ ref, type }) => [ref, type]),
   );
   assertPlannedConnections(roundtrip.behavior);
+});
+
+test('graph export ignores structured collection reference names and keeps nested expression checks', () => {
+  const source = `behavior CollectionExport {
+  state int[] ids = [1, 2];
+  state set<int> seen = [];
+  on Tick(GameProjectile projectile) {
+    for (id in ids) {
+      projectile.age += id + event.dt;
+      if (seen.contains(id)) {
+        seen.remove(id);
+      } else {
+        seen.add(id);
+      }
+    }
+  }
+}`;
+  const { behavior, map } = compileModel(source);
+  const expression = behavior.handlers[0].body[0].body[0];
+  const graph = {
+    nodes: sourceGraphShape(behavior).map(({ ref, type, event, variable }) => ({
+      id: map.refs[ref],
+      type,
+      ...(event ? { reference_name: event } : {}),
+      ...(variable !== undefined ? { reference_name: variable } : {}),
+      ...(ref === expression.id ? {
+        reference_name: expression.resolvedSource,
+        inputs: {
+          _bc_component_0_age: {
+            binding: { kind: 'component_field', component: 'GAME.GameProjectile', field: 'age' },
+          },
+        },
+      } : {}),
+    })),
+    edges: expectedConnections(behavior, map.refs).map((edge) => ({
+      from: `${edge.from}.${edge.from_pin}`,
+      to: `${edge.to}.${edge.to_pin}`,
+      kind: edge.kind,
+    })),
+  };
+
+  const exported = graphToSource(source, behavior, graph, map, registry);
+  assert.equal(exported, source);
+  assertPlannedConnections(compileModel(exported, map).behavior);
+  assert(graph.nodes.some((node) => node.type === 'ForEach'));
+  assert(graph.nodes.some((node) => node.type === 'Set Contains'));
+  assert(graph.nodes.some((node) => node.type === 'Set Add' && node.reference_name === undefined));
+  assert(graph.nodes.some((node) => node.type === 'Set Remove' && node.reference_name === undefined));
+  assert(graph.nodes.some((node) => node.type === 'Set Variable' && node.reference_name === 'seen'));
+  assert(graph.nodes.some((node) => node.type === 'Get Variable' && node.reference_name === 'seen'));
+
+  for (const ref of ['state-get-seen', ...sourceGraphShape(behavior)
+    .filter((node) => node.type === 'Set Variable' && node.variable === 'seen')
+    .map((node) => node.ref)]) {
+    const altered = structuredClone(graph);
+    altered.nodes.find((node) => node.id === map.refs[ref]).reference_name = 'other';
+    assert.throws(() => graphToSource(source, behavior, altered, map, registry), /no longer matches its source binding/);
+  }
+
+  const unbound = structuredClone(graph);
+  unbound.nodes.find((node) => node.id === map.refs[expression.id]).reference_name += ' + missing';
+  assert.throws(() => graphToSource(source, behavior, unbound, map, registry), /missing has no verified source binding or supported default/);
+
+  const unsupportedBinding = structuredClone(graph);
+  const unprovenNode = unsupportedBinding.nodes.find((node) => node.id === map.refs[expression.id]);
+  unprovenNode.reference_name += ' + hidden';
+  unprovenNode.inputs.hidden = { binding: { kind: 'state', variable: 'secret' } };
+  assert.throws(() => graphToSource(source, behavior, unsupportedBinding, map, registry), /graph binding that the source subset cannot represent/);
+});
+
+test('ProjectilePulse collection graph decompiles byte-identically without changing assets or map', () => {
+  const sourcePath = 'tools/behavior-code/examples/ProjectilePulse.code';
+  const mapPath = sourcePath + '.map.json';
+  const assetPath = 'content/behaviors/ProjectilePulse.kdl';
+  const before = [sourcePath, mapPath, assetPath].map((path) => readFileSync(join(REPO_ROOT, path), 'utf8'));
+  const result = spawnSync(process.execPath, [
+    'tools/behavior-code/cli.mjs', 'decompile', sourcePath,
+    '--project-root', '.', '--ctl', 'build/chibi_ctl',
+  ], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, before[0]);
+  assert.deepEqual([sourcePath, mapPath, assetPath].map((path) => readFileSync(join(REPO_ROOT, path), 'utf8')), before);
 });
 
 test('graph exports newly bound component inputs as source aliases and validates the result', () => {

@@ -21,6 +21,7 @@ class RuntimeBuildHooks(unittest.TestCase):
         shutil.copyfile(ROOT / 'tools/quiet.py', self.root / 'tools/quiet.py')
         (self.root / 'tools/configure_native.sh').write_text('fixture-tool configure "$@"\n')
         (self.root / 'tools/configure_web.sh').write_text('fixture-tool configure-web "$@"\n')
+        shutil.copyfile(ROOT / 'tools/web_env.sh', self.root / 'tools/web_env.sh')
         self.bin = self.root / 'fake-bin'
         self.bin.mkdir()
         self.log = self.root / 'calls.jsonl'

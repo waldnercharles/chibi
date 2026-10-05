@@ -177,3 +177,98 @@ for (const search of ['', '?scene=scenes/Sandbox.json']) {
 }
 console.log('PASS: browser mirrors the workspace projects, opens the served one, routes saves to the server and follows edits on disk');
 console.log('PASS: local and packaged launches preserve launch arguments');
+
+// Each page load starts with chibi.data again, including assets removed since
+// the build. The current server snapshot must replace only mirrored Studio files.
+const studioRoot = '/projects/studio/';
+const studioPanel = 'projects/studio/content/ui/Panel.rml';
+const renamedPanel = 'projects/studio/content/ui/Renamed.rml';
+const studioSnapshot = {
+  'projects/studio/project.kdl': 'content "content"\n',
+  [studioPanel]: '<div>checkout</div>',
+};
+const preload = new Map([
+  ['/projects/studio/project.kdl', 'old manifest'],
+  ['/' + studioPanel, '<div>built</div>'],
+  [studioRoot + 'content/ui/Deleted.rml', 'deleted after build'],
+  [studioRoot + 'content/ui/old/Theme.rcss', 'renamed after build'],
+  [studioRoot + 'content/prototypes/Deleted.kdl', 'old prototype'],
+  [studioRoot + 'content/art/Deleted.PNG', 'old image'],
+  [studioRoot + 'content/font.woff2', 'non-mirrored resource'],
+  ['/projects/studio-game/content/Keep.rml', 'unrelated game'],
+  ['/projects/arena2d/content/Keep.rml', 'unrelated workspace asset'],
+  ['/content/Keep.kdl', 'unrelated packaged asset'],
+]);
+function loadStudioSnapshot() {
+  const memory = new Map(preload);
+  const isDirectory = path => [...memory.keys()].some(name => name.startsWith(path + '/'));
+  const fs = {
+    mkdirTree() {},
+    analyzePath: path => ({exists: memory.has(path) || isDirectory(path)}),
+    readdir: path => ['.', '..', ...new Set([...memory.keys()]
+      .filter(name => name.startsWith(path + '/'))
+      .map(name => name.slice(path.length + 1).split('/')[0]))],
+    stat: path => ({mode: isDirectory(path) ? 'directory' : 'file'}),
+    isDir: mode => mode === 'directory',
+    readFile: path => memory.get(path),
+    writeFile(path, value) { memory.set(path, value); },
+    unlink: path => memory.delete(path),
+  };
+  class StudioRequest {
+    open(method, path) { this.path = path; }
+    setRequestHeader() {}
+    getResponseHeader() { return '0'; }
+    send(body) {
+      if (this.path === '/__chibi/save') {
+        const {path, text} = JSON.parse(body);
+        const name = path.replace(/^\/+/, '');
+        if (text === null) delete studioSnapshot[name];
+        else studioSnapshot[name] = text;
+      }
+      this.status = 200;
+      this.responseText = JSON.stringify(studioSnapshot);
+    }
+  }
+  const module = {FS: fs, showError: message => assert.fail(message)};
+  let deliverChanges;
+  vm.runInNewContext(source, {
+    Module: module, XMLHttpRequest: StudioRequest, URLSearchParams,
+    location: {search: ''}, setTimeout,
+    fetch: () => new Promise(resolve => { deliverChanges = resolve; }),
+  });
+  module.onRuntimeInitialized();
+  return {module, memory, async change(delta) {
+    deliverChanges({ok: true, headers: {get: () => '1'}, json: async () => delta});
+    for (let turn = 0; turn < 5; turn++) await new Promise(setImmediate);
+  }};
+}
+function checkStudioMemory(memory) {
+  const expected = new Map([...preload].filter(([path]) =>
+    !path.startsWith(studioRoot) || path.endsWith('.woff2')));
+  for (const [path, text] of Object.entries(studioSnapshot)) expected.set('/' + path, text);
+  assert.deepEqual(memory, expected, 'reload must remove stale Studio assets and keep unrelated files');
+}
+let page = loadStudioSnapshot();
+checkStudioMemory(page.memory);
+assert.equal(page.memory.get('/' + studioPanel), '<div>checkout</div>');
+page.module.FS.writeFile('/' + studioPanel, '<div>saved</div>');
+assert.equal(page.module.chibiSaveAsset('/' + studioPanel, '<div>saved</div>'), 0);
+page = loadStudioSnapshot();
+checkStudioMemory(page.memory);
+assert.equal(page.memory.get('/' + studioPanel), '<div>saved</div>');
+// Rename follows the engine's save-new/delete-old sequence. Apply its watcher
+// delta, then reload from the original packaged files, not the last MEMFS state.
+assert.equal(page.module.chibiSaveAsset('/' + renamedPanel, '<div>renamed</div>'), 0);
+assert.equal(page.module.chibiDeleteAsset('/' + studioPanel), 0);
+await page.change({[renamedPanel]: '<div>renamed</div>', [studioPanel]: null});
+checkStudioMemory(page.memory);
+page = loadStudioSnapshot();
+checkStudioMemory(page.memory);
+assert(!page.memory.has('/' + studioPanel), 'reload must not resurrect the old name');
+assert.equal(page.module.chibiDeleteAsset('/' + renamedPanel), 0);
+await page.change({[renamedPanel]: null});
+checkStudioMemory(page.memory);
+page = loadStudioSnapshot();
+checkStudioMemory(page.memory);
+assert(!page.memory.has('/' + renamedPanel), 'deleted assets stay absent after reload');
+console.log('PASS: authoritative Studio snapshot read/save/rename/delete/reload preserves unrelated MEMFS assets');

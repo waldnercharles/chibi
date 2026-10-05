@@ -1,0 +1,85 @@
+version 1
+name "HRCLabCornell2D"
+(array)entities {
+    - {
+        name "Camera"
+        prototype "HRCLabCamera"
+        components {
+            GameTransform x=0.0 y=0.0
+        }
+    }
+    - {
+        name "HRC"
+        prototype "HRCLabHRC"
+        components {
+            GameTransform x=0.0 y=0.0
+            GameHRC2D adaptive=#false ambient=0.0 bloom=0.0 bounce_hysteresis=0.8 bounce_intensity=0.35 color_resolution="Full" exposure=0.0 falloff=0.8 feedback=#true fog=0.3 gather_resolution="Half" intensity=7.5 lighting_margin=48.0 min_resolution=0.5 radiance_hysteresis=0.8 resolution=0.5 shadow_floor=0.0 surface_bevel=0.0 surface_depth_gain=0.0 surface_mode="Blur" surface_radius=0.0 surface_relief=0.0 surface_thickness=0.0 trace_levels=3
+        }
+    }
+    - {
+        name "Neutral floor"
+        prototype "HRCLabReceiver"
+        components {
+            GameTransform x=0.0 y=-4.0
+            GameAppearance width=700.0 height=350.0 color=0xc9c6bcff shape="Box" layer=-40
+            GameMaterial absorption=0.0 albedo=0xc9c6bcff emission_color=0xc9c6bcff emission_intensity=0.004 emission_multiplier=1.0 edge_light=0.0 scene=0x242528ff
+        }
+    }
+    - {
+        name "Red left wall"
+        prototype "HRCLabOccluder"
+        components {
+            GameTransform x=-326.0 y=0.0
+            GameAppearance width=22.0 height=322.0 color=0xb2464aff shape="Box" layer=-10
+            GameMaterial absorption=1.0 albedo=0xb2464aff emission_color=0xb2464aff emission_intensity=0.012 emission_multiplier=1.0 edge_light=0.0 scene=0x210c0eff
+        }
+    }
+    - {
+        name "Green right wall"
+        prototype "HRCLabOccluder"
+        components {
+            GameTransform x=326.0 y=0.0
+            GameAppearance width=22.0 height=322.0 color=0x4e875cff shape="Box" layer=-10
+            GameMaterial absorption=1.0 albedo=0x4e875cff emission_color=0x4e875cff emission_intensity=0.012 emission_multiplier=1.0 edge_light=0.0 scene=0x0c1b10ff
+        }
+    }
+    - {
+        name "White back wall"
+        prototype "HRCLabOccluder"
+        components {
+            GameTransform x=0.0 y=163.0
+            GameAppearance width=674.0 height=20.0 color=0xe6e1d5ff shape="Box" layer=-10
+            GameMaterial absorption=1.0 albedo=0xe6e1d5ff emission_color=0xe6e1d5ff emission_intensity=0.012 emission_multiplier=1.0 edge_light=0.0 scene=0x262524ff
+        }
+    }
+    - {
+        name "Blue 2D block"
+        prototype "HRCLabOccluder"
+        components {
+            GameTransform x=-112.0 y=-28.0
+            GameAppearance width=94.0 height=118.0 color=0x3cabbaff shape="Box"
+            GameOrientation radians=0.1
+            GameMaterial absorption=1.0 albedo=0x3cabbaff emission_color=0x3cabbaff emission_intensity=0.012 emission_multiplier=1.0 edge_light=0.0 scene=0x07191cff
+        }
+    }
+    - {
+        name "Amber 2D block"
+        prototype "HRCLabOccluder"
+        components {
+            GameTransform x=108.0 y=-24.0
+            GameAppearance width=96.0 height=82.0 color=0xe2a053ff shape="Box"
+            GameOrientation radians=-0.12
+            GameMaterial absorption=1.0 albedo=0xe2a053ff emission_color=0xe2a053ff emission_intensity=0.012 emission_multiplier=1.0 edge_light=0.0 scene=0x211408ff
+        }
+    }
+    - {
+        name "Moving area emitter"
+        prototype "HRCLabEmitter"
+        components {
+            GameTransform x=0.0 y=-108.0
+            GameAppearance width=84.0 height=16.0 color=0xffe3b6ff shape="Box" layer=2
+            GameMaterial absorption=0.0 albedo=0xffe3b6ff emission_color=0xffe3b6ff emission_intensity=0.08 emission_multiplier=1.0 edge_light=0.0 scene=0xffe3b6ff
+        }
+        (array)behaviors "HrcCornell2DLightSweep"
+    }
+}

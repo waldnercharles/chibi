@@ -1,13 +1,15 @@
 # Test iteration
 
-Use a focused native selector while iterating on one feature, then run the full
-gate before a merge-ready handoff.
+Use `make agent-list` and the capability-aware commands in [agent execution](agent-execution.md)
+while iterating. Full/mixed GPU suites now require explicit hardware opt-in;
+CI sets it explicitly and retains complete coverage. A focused selector may contain
+GPU work: the old `test-fast` name alone does not establish CPU-only coverage.
 
 ## Commands and coverage
 
 | Command | Coverage |
 | --- | --- |
-| `make test-fast TEST_ARGS=--graph-optimize` | Builds or reuses the native `test_suite` in `BUILD_DIR`, then runs only that selector. It does not run tooling scripts, the full `all_checks` suite, the whole-function audit, or GPU tests. |
+| `make test-fast TEST_ARGS=--graph-optimize` | Builds or reuses the native `test_suite` in `BUILD_DIR`, then runs only that selector. It does not run tooling scripts or the full suite. Coverage depends on the selector; GPU/mixed and unclassified selectors require the hardware profile. |
 | `make test-list` | Builds or reuses `test_suite` and prints common focused selectors. |
 | `make test-tools` | Runs the isolated Python and Node tooling tests, with `TEST_JOBS` workers (default 4). |
 | `make test-slow` | Runs the full native `all_checks` suite and the separate whole-function audit. |

@@ -337,6 +337,87 @@ class ExportTest(unittest.TestCase):
                     else:
                         self.assertIn("fixture_closure", (build / "links.txt").read_text())
 
+    @unittest.skipUnless(shutil.which("pkg-config") and
+        Path("/usr/lib/x86_64-linux-gnu/libcrypto.a").is_file(), "Debian host crypto fixture required")
+    def test_cloud_crypto_scope_restores_environment_and_recovers_stale_metadata(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            cloud = root / "cloud"
+            for name in ("root/usr/bin/clang-19", "python/bin/cmake"):
+                path = cloud / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            upstream = root / "cmake/modules"
+            upstream.mkdir(parents=True)
+            (upstream / "Findcrypto.cmake").write_text(
+                "add_library(AWS::crypto UNKNOWN IMPORTED)\n"
+                "set_target_properties(AWS::crypto PROPERTIES\n"
+                ' IMPORTED_LOCATION "${crypto_LIBRARY}"\n'
+                ' INTERFACE_INCLUDE_DIRECTORIES "${crypto_INCLUDE_DIR}")\n')
+            (root / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 4.2)\nproject(cloud_crypto C)\n"
+                f'list(PREPEND CMAKE_MODULE_PATH "{TOOLS.parent}/cmake")\n'
+                f'set(s2n_SOURCE_DIR "{root}")\n'
+                'set(crypto_LIBRARY "/usr/lib/x86_64-linux-gnu/libcrypto.a")\n'
+                'set(crypto_INCLUDE_DIR "/usr/include")\n'
+                'set(OPENSSL_CRYPTO_LIBRARY "${crypto_LIBRARY}")\n'
+                'set(OPENSSL_INCLUDE_DIR "${crypto_INCLUDE_DIR}")\n'
+                'if(BLOCK_VAR)\nset(${BLOCK_VAR} "${BLOCK_VALUE}")\nendif()\n'
+                'set(__pkg_config_checked_UNRELATED "sentinel" CACHE INTERNAL "")\n'
+                'set(UNRELATED_STATIC_LIBRARIES "sentinel" CACHE INTERNAL "")\n'
+                'foreach(name PKG_CONFIG_SYSROOT_DIR PKG_CONFIG_PATH PKG_CONFIG_LIBDIR CMAKE_PREFIX_PATH)\n'
+                ' set(saved_${name} "$ENV{${name}}")\n'
+                ' set(defined_${name} FALSE)\n'
+                ' if(DEFINED ENV{${name}})\nset(defined_${name} TRUE)\nendif()\n'
+                'endforeach()\n'
+                'find_package(crypto REQUIRED)\n'
+                'foreach(name PKG_CONFIG_SYSROOT_DIR PKG_CONFIG_PATH PKG_CONFIG_LIBDIR CMAKE_PREFIX_PATH)\n'
+                ' if(NOT "$ENV{${name}}" STREQUAL "${saved_${name}}" OR\n'
+                '    (defined_${name} AND NOT DEFINED ENV{${name}}) OR\n'
+                '    (NOT defined_${name} AND DEFINED ENV{${name}}))\n'
+                '  message(FATAL_ERROR "Environment leaked: ${name}")\nendif()\n'
+                'endforeach()\n'
+                'if(NOT __pkg_config_checked_UNRELATED STREQUAL "sentinel" OR\n'
+                '   NOT UNRELATED_STATIC_LIBRARIES STREQUAL "sentinel")\n'
+                ' message(FATAL_ERROR "Unrelated package cache changed")\nendif()\n'
+                'file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/library.txt" CONTENT '
+                '"$<TARGET_PROPERTY:AWS::crypto,IMPORTED_LOCATION>")\n')
+            env = dict(package.os.environ)
+            for name in ("PKG_CONFIG_LIBDIR", "PKG_CONFIG", "CMAKE_TOOLCHAIN_FILE", "OPENSSL_ROOT_DIR"):
+                env.pop(name, None)
+            env.update(CHIBI_CLOUD_ACTIVE=str(cloud), CMAKE_PREFIX_PATH=f"{cloud}/root/usr",
+                PKG_CONFIG_PATH=f"{cloud}/root/usr/lib/x86_64-linux-gnu/pkgconfig:{cloud}/root/usr/share/pkgconfig",
+                PKG_CONFIG_SYSROOT_DIR=f"{cloud}/root")
+            aligned = "Using verified host OpenSSL metadata"
+            with mock.patch.dict(package.os.environ, env, clear=True):
+                stale = root / "stale"
+                self.run_cmake("-S", root, "-B", stale, "-DBLOCK_VAR=CMAKE_SYSROOT", "-DBLOCK_VALUE=", expected=1)
+                self.assertIn(f"_OPENSSL_LIBDIR:INTERNAL={cloud}/root/usr/lib", (stale / "CMakeCache.txt").read_text())
+                for _ in range(2):
+                    output = self.run_cmake("-S", root, "-B", stale, "-DBLOCK_VAR=")
+                    self.assertIn(aligned, output)
+                    self.assertEqual((stale / "library.txt").read_text(), "/usr/lib/x86_64-linux-gnu/libcrypto.a")
+                for variable, value in (("CMAKE_TOOLCHAIN_FILE", "/explicit/toolchain"),
+                        ("CMAKE_SYSROOT", "/explicit/sysroot"), ("CMAKE_SYSROOT_COMPILE", "/explicit/sysroot"),
+                        ("CMAKE_SYSROOT_LINK", "/explicit/sysroot"), ("CMAKE_FIND_ROOT_PATH", "/explicit/root"),
+                        ("CMAKE_CROSSCOMPILING", "TRUE"), ("OPENSSL_ROOT_DIR", "/explicit/provider")):
+                    with self.subTest(variable=variable):
+                        output = self.run_cmake("-S", root, "-B", root / variable,
+                            f"-DBLOCK_VAR={variable}", f"-DBLOCK_VALUE={value}", expected=1)
+                        self.assertNotIn(aligned, output)
+            for name, value, expected in (("PKG_CONFIG_SYSROOT_DIR", None, 0),
+                    ("PKG_CONFIG_SYSROOT_DIR", "", 0), ("PKG_CONFIG_SYSROOT_DIR", "/explicit/sysroot", 1),
+                    ("PKG_CONFIG_PATH", "/usr/lib/x86_64-linux-gnu/pkgconfig", 1),
+                    ("PKG_CONFIG_LIBDIR", "/usr/lib/x86_64-linux-gnu/pkgconfig", 1)):
+                with self.subTest(name=name, value=value), mock.patch.dict(package.os.environ, env, clear=True):
+                    if value is None:
+                        package.os.environ.pop(name, None)
+                    else:
+                        package.os.environ[name] = value
+                    output = self.run_cmake("-S", root, "-B", root / f"env-{name}-{expected}-{value is None}",
+                        expected=expected)
+                    self.assertNotIn(aligned, output)
+
     def test_directory_scoped_crypto_survives_clean_and_reused_imports(self):
         for kind in ("STATIC", "SHARED", "BUILT", "CUSTOM"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:

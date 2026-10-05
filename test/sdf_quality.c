@@ -659,7 +659,7 @@ bool test_sdf_quality()
     behavior_asset_free(sphere);
     return ok;
 }
-int sdf_quality_run(const char *program)
+int sdf_quality_run(const char *program, bool gles)
 {
     CF_Result result = cf_make_app(
         "SDF quality regression",
@@ -668,7 +668,8 @@ int sdf_quality_run(const char *program)
         0,
         WIDTH,
         HEIGHT,
-        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT |
+            (gles ? CF_APP_OPTIONS_GFX_OPENGL_BIT : 0),
         program
     );
     if (cf_is_error(result)) {

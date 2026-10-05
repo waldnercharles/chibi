@@ -224,8 +224,10 @@ bool shader_graph_eval_outputs(
  * void PREFIX(SGSample sg_sample,vec4 sg_params[32],out vec4 sg_out[8])
  * Caller defines vec4 PREFIX_image_N(vec2 uv) for every entry in g->images. */
 char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_error *error);
-/* malloc-owned vec3 PREFIX(SGSample,vec4[32]) for output[0]'s object-space
- * gradient. Unsupported reachable operations return NULL without an error;
+/* malloc-owned portable GLSL for output[0]'s object-space gradient. The emitted
+ * function accepts a nonnegative object-space singularity tolerance as its
+ * third argument; a two-argument overload uses exact singularity checks.
+ * Unsupported reachable operations return NULL without an error;
  * singular/non-differentiable samples return NaN for finite-difference fallback. */
 char *shader_graph_glsl_gradient_named(const shader_graph *g, const char *prefix, shader_error *error);
 /* Generates graph GLSL that reads ramp stops from sg_ramp_data. The offset is

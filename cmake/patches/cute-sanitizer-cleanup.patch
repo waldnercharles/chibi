@@ -185,20 +185,29 @@
  	Cute::Map<CF_Glyph> glyphs;
 --- a/include/cute_draw.h
 +++ b/include/cute_draw.h
-@@ -1018,9 +1018,10 @@
+@@ -983,9 +983,10 @@
   * @param    path        A virtual path to the font file. See [Virtual File System](https://randygaul.github.io/cute_framework/topics/virtual_file_system).
   * @param    font_name   A unique name for this font. Used by `cf_push_font` and friends.
   * @return   Returns any errors as `CF_Result`.
 - * @remarks  Memory is only consumed when you draw a certain glyph (text character). Just loading up the font initially is
 - *           a low-cost operation. You may load up many fonts with low overhead. Please note that bold, italic, etc. are actually
 - *           _different fonts_ and each must be loaded up individually.
-+ * @remarks  The input buffer is borrowed and must remain valid until the font is destroyed. Memory is only consumed when
-+ *           you draw a certain glyph (text character). Just loading up the font initially is a low-cost operation. You may
-+ *           load up many fonts with low overhead. Please note that bold, italic, etc. are actually _different fonts_ and each
-+ *           must be loaded up individually.
++ * @remarks  The font owns the file data it reads from `path` until it is destroyed. Memory is only consumed when you draw a
++ *           certain glyph (text character). Just loading up the font initially is a low-cost operation. You may load up many
++ *           fonts with low overhead. Please note that bold, italic, etc. are actually _different fonts_ and each must be
++ *           loaded up individually.
   * @related  cf_make_font cf_make_font_from_memory cf_destroy_font cf_push_font cf_push_font_size cf_push_font_blur cf_draw_text
   */
  CF_API CF_Result CF_CALL cf_make_font(const char* path, const char* font_name);
+@@ -1003,7 +1004,7 @@
+  * @return   Returns any errors as `CF_Result`.
+- * @remarks  Memory is only consumed when you draw a certain glyph (text character). Just loading up the font initially is
++ * @remarks  The input buffer is borrowed and must remain valid until the font is destroyed. Memory is only consumed when you draw a certain glyph (text character). Just loading up the font initially is
+  *           a low-cost operation. You may load up many fonts with low overhead. Please note that bold, italic, etc. are actually
+  *           _different fonts_ and each must be loaded up individually.
+  * @related  cf_make_font cf_make_font_from_memory cf_destroy_font cf_push_font cf_push_font_size cf_push_font_blur cf_draw_text
+  */
+ CF_API CF_Result CF_CALL cf_make_font_from_memory(void* data, int size, const char* font_name);
 --- a/src/cute_graphics.cpp
 +++ b/src/cute_graphics.cpp
 @@ -860,8 +860,8 @@

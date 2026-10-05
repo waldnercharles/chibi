@@ -164,7 +164,9 @@ static void list_files(const char *folder, const char *suffix, bool deep, char *
         }
     }
     closedir(dir);
-    qsort(found, (size_t)acount(found), sizeof *found, name_order);
+    if (acount(found) > 1) {
+        qsort(found, (size_t)acount(found), sizeof *found, name_order);
+    }
     for (int i = 0; i < acount(found); i++) {
         apush(*paths, found[i]);
     }

@@ -1470,7 +1470,13 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         );
         append(&text, "#define SG_ANALYTIC_GRADIENT %d\n", gradient != NULL);
         if (gradient) {
-            append(&text, "%s\n#define SG_GRADIENT_CALL(context,values) %s(context,values)\n", gradient, name);
+            append(
+                &text,
+                "%s\n#define SG_GRADIENT_CALL(context,values,tolerance) "
+                "%s(context,values,tolerance)\n",
+                gradient,
+                name
+            );
         }
         free(gradient);
         append(

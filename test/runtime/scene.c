@@ -11,6 +11,42 @@ static const char
 static const char
     *g_cycle_b = "name \"CycleB\"; (array)includes { - \"CycleA\"; }; ";
 
+void run_prototype_preview_lifetime_check(void)
+{
+    const game_prototype_registry registry = {
+        GAME_REGISTRY_COMPONENTS,
+        GAME_REGISTRY_COMPONENT_COUNT,
+        NULL,
+        NULL,
+    };
+    char error[256] = { 0 };
+    game_prototype *prototype = game_prototype_load(
+        "name \"StringOwner\"; components { GameUi document=\"prototype\"; };",
+        &registry,
+        error,
+        sizeof error
+    );
+    assert(prototype);
+    game_prototype_preview *preview = game_prototype_preview_new(&registry);
+    assert(preview);
+    av_value *components = test_read_asset_value("GameUi document=\"scene override string\";");
+    const char *missing_behavior[] = { "MissingPreviewBehavior" };
+    const game_prototype_preview_scene_entity entity = {
+        .prototype = prototype,
+        .components = components,
+        .behaviors = missing_behavior,
+        .behavior_count = 1,
+    };
+    assert(
+        game_prototype_preview_launch_scene(preview, &entity, 1, error, sizeof error) == ECS_ERR_COMMAND
+    );
+    assert(ecs_world_live_count(game_prototype_preview_world(preview)) == 0);
+    av_value_free(components);
+    game_prototype_preview_free(preview);
+    game_prototype_free(prototype);
+    puts("PASS: failed scene preview launch destroys entities before releasing component override strings");
+}
+
 static const char *prototype_include(const char *name, void *user)
 {
     (void)user;

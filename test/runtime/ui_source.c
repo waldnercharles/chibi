@@ -703,6 +703,8 @@ static void references()
     assert(!mkdir(folder, 0700));
     snprintf(path, sizeof path, "%s/theme", folder);
     assert(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/empty", folder);
+    assert(!mkdir(path, 0700));
     snprintf(path, sizeof path, "%s/theme/tokens.rcss", folder);
     write_file(path, ":root { --primary: #fff; }\n.card { color: var(--primary); }\n");
     snprintf(path, sizeof path, "%s/Button.rml", folder);

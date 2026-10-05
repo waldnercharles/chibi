@@ -46,11 +46,11 @@ float distance_at(vec3 p)
     return distance;
 }
 #if SG_ANALYTIC_GRADIENT
-vec3 gradient_at(vec3 p)
+vec3 gradient_at(vec3 p, float tolerance)
 {
     vec4 values[32];
     for(int i=0;i<32;i++) values[i]=SG_SHAPE_PARAMETER(i);
-    return SG_GRADIENT_CALL(shape_context(p),values);
+    return SG_GRADIENT_CALL(shape_context(p),values,tolerance);
 }
 #endif
 void hidden_fragment(int evaluations, float reason)
@@ -210,7 +210,7 @@ void main()
     }
 #elif SG_ANALYTIC_GRADIENT
     if(u_sdf_quality.y<0.5) {
-        normal=gradient_at(point);
+        normal=gradient_at(point,epsilon);
         normal_evaluations++;
         float squared=dot(normal,normal);
         analytic_normal=squared>=1e-16&&!isnan(squared)&&!isinf(squared);

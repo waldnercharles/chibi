@@ -960,7 +960,18 @@ static void gradient_glsl(char **text, const shader_graph *g, int id, const bool
             append(text, "if(%s==0.0)sg_gradient_valid=false;\n", b);
         }
         if (n->op == SHADER_ABS) {
-            append(text, "if(%s==0.0 && any(notEqual(%s,vec3(0))))sg_gradient_valid=false;\n", a, da);
+            /* A ray-marched hit is only known within its object-space epsilon.
+             * Treat an absolute-value crease inside that error bound as
+             * singular when its input changes in space. */
+            append(
+                text,
+                "if(any(notEqual(%s,vec3(0))) && "
+                "abs(%s)<=sg_gradient_tolerance*length(%s))"
+                "sg_gradient_valid=false;\n",
+                da,
+                a,
+                da
+            );
         }
         if (n->op == SHADER_MIN || n->op == SHADER_MAX ||
             n->op == SHADER_UNION || n->op == SHADER_INTERSECTION ||
@@ -1121,7 +1132,14 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
         free(helpers);
     }
     if (gradient) {
-        append(&s, "vec3 %s(SGSample sg_sample, vec4 sg_params[32]) {\nbool sg_gradient_valid=true;\n", prefix);
+        append(
+            &s,
+            "vec3 %s(SGSample sg_sample, vec4 sg_params[32], float "
+            "sg_gradient_tolerance) {\n"
+            "sg_gradient_tolerance=max(sg_gradient_tolerance,0.0);\n"
+            "bool sg_gradient_valid=true;\n",
+            prefix
+        );
     } else {
         append(&s, "void %s(SGSample sg_sample, vec4 sg_params[32], out vec4 sg_out[8]) {\n", prefix);
     }
@@ -1450,6 +1468,15 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
     }
     free(canon);
     append(&s, "}\n");
+    if (gradient) {
+        append(
+            &s,
+            "vec3 %s(SGSample sg_sample,vec4 sg_params[32]) {"
+            "return %s(sg_sample,sg_params,0.0); }\n",
+            prefix,
+            prefix
+        );
+    }
     char *result = xmalloc((size_t)acount(s) + 1);
     memcpy(result, s, (size_t)acount(s) + 1);
     afree(s);

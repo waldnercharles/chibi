@@ -44,7 +44,7 @@
  	c->has_depth = depth_info && (depth_info->caps & CF_GL_FMT_CAP_DEPTH);
  	c->has_stencil = depth_info && depth_info->has_stencil && (depth_info->caps & CF_GL_FMT_CAP_STENCIL);
  	if (params.depth_stencil_target.usage & CF_TEXTURE_USAGE_SAMPLER_BIT) {
-@@ -1560,6 +1562,26 @@
+@@ -1560,6 +1562,27 @@
  	// and it is backed by a depth texture rather than a renderbuffer.
  	CF_GL_Canvas* c = (CF_GL_Canvas*)(uintptr_t)ch.id;
  	return c ? c->cf_depth : CF_Texture{};
@@ -57,10 +57,11 @@
 +	CF_ASSERT(src && dst && src != dst && src->has_depth && dst->has_depth);
 +	CF_ASSERT(src->w == dst->w && src->h == dst->h && src->depth_format == dst->depth_format);
 +	CF_ASSERT(x >= 0 && y >= 0 && width > 0 && height > 0 && x <= src->w - width && y <= src->h - height);
-+	// A blit must not inherit the last draw's crop. Restore the actual state so
-+	// the cached render state remains valid on the next draw.
++	// A blit must not inherit the last draw's crop. Disable unconditionally: GL
++	// state may outlive or differ from the backend cache. Then restore the
++	// cached state so it matches GL on the next draw.
 +	bool scissor = g_ctx.current_state.scissor_enabled;
-+	if (scissor) glDisable(GL_SCISSOR_TEST);
++	glDisable(GL_SCISSOR_TEST);
 +	glBindFramebuffer(GL_READ_FRAMEBUFFER, src->fbo);
 +	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dst->fbo);
 +	glBlitFramebuffer(x, y, x + width, y + height,

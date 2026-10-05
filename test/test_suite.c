@@ -50,6 +50,7 @@ void test_automation_asset_write();
 void test_automation_refactor();
 void test_automation_preview_registration();
 void test_automation_profile_scenario_inputs();
+void run_prototype_preview_lifetime_check(void);
 
 int arena_play_run(const char *program);
 int compiled_arena_run(const char *program);
@@ -498,6 +499,7 @@ static void print_test_selectors()
     puts("  gameplay: --game-capabilities --arena-combat --arena-encounter --arena-hud");
     puts("  collaboration: --collab");
     puts("  Narrower costly checks: --automation-search --automation-refactor --automation-profile-scenario-inputs --editor-commands");
+    puts("  Focused CPU checks: --shader-graph-codegen --prototype-preview-lifetime");
     puts("  GPU/render coverage: make test-render");
     puts("The no-selector invocation is the full all_checks suite; --whole-function-audit is a separate full-coverage check.");
 }
@@ -521,6 +523,10 @@ int main(int argc, char **argv)
         test_collab_replay();
         return 0;
     }
+    if (argc == 2 && !strcmp(argv[1], "--prototype-preview-lifetime")) {
+        run_prototype_preview_lifetime_check();
+        return 0;
+    }
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
     test_timing_enabled = getenv("CHIBI_TEST_TIMINGS") &&
@@ -529,19 +535,21 @@ int main(int argc, char **argv)
         extern int shader_graph_gpu_run(const char *program);
         return shader_graph_gpu_run(program_name);
     }
-    if (argc == 2 && !strcmp(argv[1], "--sdf-quality")) {
-        extern int sdf_quality_run(const char *program);
-        return sdf_quality_run(program_name);
+    if (argc == 2 && (!strcmp(argv[1], "--sdf-quality") ||
+                      !strcmp(argv[1], "--sdf-quality-gles"))) {
+        extern int sdf_quality_run(const char *program, bool gles);
+        return sdf_quality_run(program_name, !strcmp(argv[1], "--sdf-quality-gles"));
     }
     if (argc == 2 && !strcmp(argv[1], "--sdf-spatial")) {
         extern int sdf_spatial_run(const char *program);
         registry_validate();
         return sdf_spatial_run(program_name);
     }
-    if (argc == 2 && !strcmp(argv[1], "--sdf-visibility")) {
-        extern int sdf_visibility_run(const char *program);
+    if (argc == 2 && (!strcmp(argv[1], "--sdf-visibility") ||
+                      !strcmp(argv[1], "--sdf-visibility-gles"))) {
+        extern int sdf_visibility_run(const char *program, bool gles);
         registry_validate();
-        return sdf_visibility_run(program_name);
+        return sdf_visibility_run(program_name, !strcmp(argv[1], "--sdf-visibility-gles"));
     }
     if (argc == 2 && (!strcmp(argv[1], "--camera-orbit") ||
                       !strcmp(argv[1], "--camera-orbit-gles"))) {
@@ -1498,6 +1506,11 @@ int main(int argc, char **argv)
         test_projectile();
         test_combat();
         test_auto_weapon();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--shader-graph-codegen")) {
+        registry_validate();
+        test_shader_graph();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--shader-detail") == 0) {

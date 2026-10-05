@@ -27,6 +27,9 @@ jobs:
             sanitizers: "OFF"
             sljit: "ON"
     env:
+      # CI explicitly retains the complete suite, including software-rendered coverage.
+      CHIBI_EXECUTION_PROFILE: hardware
+      CHIBI_ALLOW_FULL_GPU: "1"
       NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
       LOCAL_CMAKE_FLAGS: >-
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}

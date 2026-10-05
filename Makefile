@@ -83,10 +83,12 @@ VERBOSE ?= 0
 export VERBOSE
 MAKEFLAGS += --no-print-directory
 QUIET = python3 tools/quiet.py
+AGENT_SELECTOR ?= --graph-optimize
 TEST_ARGS ?=
 TEST_JOBS ?= 4
 TEST_TIMINGS ?= 0
 TEST_TOOL_TARGETS = \
+	test-tool-execution-policy \
 	test-tool-kdl-assets \
 	test-tool-fetchcontent-cache \
 	test-tool-configure-cache \
@@ -164,6 +166,9 @@ help:
 		'make build-tracy    Build native RelWithDebInfo with Tracy enabled' \
 		'make run-tracy      Run the native Tracy profile' \
 		'make tracy-mcp      Build and run the official Tracy MCP server' \
+		'make agent-list     List CPU selectors and bounded GPU capabilities' \
+		'make agent-test AGENT_SELECTOR=--graph-optimize  CPU iteration' \
+		'make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu  Explicit bounded GPU check' \
 		'make test           Run the complete tooling and native regression gate' \
 		'make test-fast TEST_ARGS=--graph-optimize  Run one focused native selector' \
 		'make test-list      List focused native selectors (builds test_suite)' \
@@ -327,9 +332,28 @@ format:
 check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
+# Agent iteration is explicitly narrower than the full merge gate.
+.PHONY: agent-list agent-test agent-gpu-test test-tool-execution-policy
+agent-list:
+	@python3 tools/agent.py list
+
+agent-test:
+	@$(MAKE) build BUILD_TARGET=test_suite
+	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" test -- $(AGENT_SELECTOR)
+
+agent-gpu-test:
+	@$(MAKE) build BUILD_TARGET=test_suite
+	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" gpu-test -- $(AGENT_SELECTOR)
+
+test-tool-execution-policy:
+	@python3 test/execution_policy_test.py
+	@node --test test/mcp_execution_policy_test.mjs
+
 test: test-full
 
-test-full: test-tools
+test-full:
+	@python3 tools/agent.py hardware-check
+	+@$(MAKE) test-tools
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
@@ -388,6 +412,7 @@ test-tool-collab-client:
 	@$(QUIET) collab_client_test.mjs -- node test/collab_client_test.mjs
 
 test-slow:
+	@python3 tools/agent.py hardware-check
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target test_suite --parallel $(JOBS)
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
@@ -410,6 +435,7 @@ test-compiler-parity:
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/test_suite" --behavior-parity
 
 test-render:
+	@python3 tools/agent.py hardware-check
 	@if [ "$(shell uname -s)" = Darwin ] && [ "$(CHIBI_ALLOW_DESKTOP_RENDER_TESTS)" != 1 ]; then \
 		printf '%s\n' 'Render tests can briefly show a window on macOS. Run them under Xvfb on Linux, or set CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 for a local run.'; \
 		exit 1; \

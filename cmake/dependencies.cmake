@@ -50,6 +50,17 @@ FetchContent_Declare(
     EXCLUDE_FROM_ALL
 )
 add_subdirectory("${cute_framework_SOURCE_DIR}" "${cute_framework_BINARY_DIR}")
+# s2n compiles in GNU C99 mode, while OpenSSL 3 headers use _Generic.
+# Clang 22 diagnoses those system-header macro expansions at their call sites.
+if(TARGET s2n AND CMAKE_C_COMPILER_ID MATCHES "Clang")
+    target_compile_options(s2n PRIVATE -Wno-c11-extensions)
+endif()
+# Cute populates SDL only for native builds without an installed SDL package.
+FetchContent_GetProperties(SDL3)
+if(sdl3_POPULATED)
+    chibi_apply_patches("${sdl3_SOURCE_DIR}"
+        "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/sdl-wayland-seat-pointer.patch")
+endif()
 # Cute enables SIMD in its physics targets even for the compatibility bundle.
 # Keep that bundle usable on browsers without Wasm SIMD.
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT CHIBI_WEB_THREADS)

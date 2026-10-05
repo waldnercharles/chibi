@@ -32,6 +32,20 @@ class PackageTest(unittest.TestCase):
         (self.source / "cmake/dependencies.cmake").write_text("set(DEP_PIN v1)\n")
         (self.source / "cmake/patches/dep.patch").write_text("patch v1\n")
         (self.source / "third_party/yyjson/local.c").write_text("int dep;\n")
+        sdk = self.root / "offline-sdk"
+        toolchain = sdk / "cmake/Modules/Platform/Emscripten.cmake"
+        toolchain.parent.mkdir(parents=True)
+        toolchain.write_text("# offline toolchain fixture\n")
+        for name in ("emcc", "em++", "emcmake"):
+            (sdk / name).write_text("# offline tool fixture\n")
+        patch = mock.patch.object(package, "web_toolchain", return_value=toolchain)
+        patch.start()
+        self.addCleanup(patch.stop)
+        which = shutil.which
+        patch = mock.patch.object(package.shutil, "which", side_effect=lambda name:
+            str(sdk / name) if name == "emcmake" else which(name))
+        patch.start()
+        self.addCleanup(patch.stop)
         self.compiler = "compiler-v1"
         patch = mock.patch.object(package, "executable_identity", side_effect=self.tool)
         patch.start()
@@ -90,12 +104,15 @@ class PackageTest(unittest.TestCase):
                 package.identity(self.source, "web", [f"-DCMAKE_TOOLCHAIN_FILE={custom}"])
 
     def test_flags_compilers_pins_patches_and_local_sources_invalidate(self):
+        (self.source / "cmake/dependency_package").mkdir()
+        (self.source / "cmake/dependency_package/CMakeLists.txt").write_text("# export v1\n")
         initial = self.key()
         self.assertNotEqual(initial, self.key(arguments=["-DCMAKE_BUILD_TYPE=Release"]))
         self.compiler = "compiler-v2"
         self.assertNotEqual(initial, self.key())
         self.compiler = "compiler-v1"
-        for name in ("cmake/dependencies.cmake", "cmake/patches/dep.patch", "third_party/yyjson/local.c"):
+        for name in ("cmake/dependencies.cmake", "cmake/dependency_package/CMakeLists.txt",
+                     "cmake/patches/dep.patch", "third_party/yyjson/local.c"):
             path = self.source / name
             original = path.read_text()
             path.write_text(original + "changed\n")
@@ -246,6 +263,78 @@ class PackageTest(unittest.TestCase):
         entry = self.root / "cache/native" / self.key()
         self.assertFalse(entry.exists())
         self.assertFalse((self.root / "build/.chibi-dependency-package.cmake").exists())
+
+
+@unittest.skipUnless(shutil.which("cmake") and shutil.which("make"), "CMake and Make required")
+class ExportTest(unittest.TestCase):
+    def run_cmake(self, *args):
+        result = subprocess.run(["cmake", *map(str, args)], text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_directory_scoped_crypto_survives_clean_and_reused_imports(self):
+        for kind in ("STATIC", "SHARED", "BUILT"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                source = root / "source"
+                cmake = source / "cmake"
+                project = cmake / "dependency_package"
+                project.mkdir(parents=True)
+                shutil.copy2(TOOLS.parent / "cmake/dependency_package/CMakeLists.txt", project)
+                for name in package.PACKAGE_CMAKE:
+                    if name != "dependency_package/CMakeLists.txt":
+                        (cmake / name).write_text("")
+                provider = root / "provider"
+                provider.mkdir()
+                (provider / "crypto.c").write_text("int crypto_value(void) { return 42; }\n")
+                (provider / "CMakeLists.txt").write_text(
+                    "cmake_minimum_required(VERSION 3.20)\nproject(crypto C)\n"
+                    f"add_library(crypto {'STATIC' if kind == 'BUILT' else kind} crypto.c)\n")
+                library_build = root / "library"
+                self.run_cmake("-S", provider, "-B", library_build)
+                self.run_cmake("--build", library_build, "--parallel", "2")
+                library = next(library_build.glob("libcrypto.*"))
+                fixture = source / "fixture"
+                fixture.mkdir()
+                (fixture / "s2n.c").write_text(
+                    "int crypto_value(void); int s2n_value(void) { return crypto_value(); }\n")
+                if kind == "BUILT":
+                    crypto = f'find_package(Threads REQUIRED)\nadd_library(crypto STATIC "{provider}/crypto.c")\n'
+                    link = "crypto Threads::Threads"
+                else:
+                    crypto = ("find_package(Threads REQUIRED)\n"
+                        "add_library(AWS::crypto UNKNOWN IMPORTED)\n"
+                        "set_target_properties(AWS::crypto PROPERTIES\n"
+                        f' IMPORTED_LOCATION "{library}"\n'
+                        f' INTERFACE_INCLUDE_DIRECTORIES "{provider}"\n'
+                        ' IMPORTED_LINK_INTERFACE_LANGUAGES "C")\n'
+                        'add_dependencies(AWS::crypto Threads::Threads)\n')
+                    link = "AWS::crypto Threads::Threads"
+                (fixture / "CMakeLists.txt").write_text(crypto +
+                    "add_library(s2n STATIC s2n.c)\n"
+                    f"target_link_libraries(s2n PUBLIC {link})\n")
+                (cmake / "dependencies.cmake").write_text(
+                    'add_subdirectory("${CHIBI_SOURCE_ROOT}/fixture" fixture)\n')
+                build = root / "package"
+                self.run_cmake("-S", project, "-B", build, f"-DCHIBI_SOURCE_ROOT={source}",
+                    "-DCHIBI_ENABLE_CCACHE=OFF", "-DCHIBI_ENABLE_SANITIZERS=OFF")
+                self.run_cmake("--build", build, "--target", "chibi_dependency_package", "--parallel", "2")
+                exported = build / "chibi-crypto.cmake"
+                self.assertEqual(exported.exists(), kind != "BUILT")
+                if exported.exists():
+                    self.assertIn(str(library), exported.read_text())
+                consumer = root / "consumer"
+                consumer.mkdir()
+                (consumer / "main.c").write_text(
+                    "int s2n_value(void); int main(void) { return s2n_value() != 42; }\n")
+                (consumer / "CMakeLists.txt").write_text(
+                    "cmake_minimum_required(VERSION 3.20)\nproject(consumer C)\n"
+                    f'include("{build}/chibi-dependencies.cmake")\n'
+                    "add_executable(probe main.c)\ntarget_link_libraries(probe PRIVATE s2n)\n")
+                for name in ("clean", "reused", "reused"):
+                    destination = root / name
+                    self.run_cmake("-S", consumer, "-B", destination)
+                    self.run_cmake("--build", destination, "--parallel", "2")
+                    subprocess.run([str(destination / "probe")], check=True)
 
 
 if __name__ == "__main__":

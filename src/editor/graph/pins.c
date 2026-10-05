@@ -106,6 +106,10 @@ bool ed_node_has_advanced_inputs(const node *n)
 
 void ed_pin_label(const node *n, const pin_spec *pin, char *buf, size_t cap)
 {
+    if (pin->display_name && pin->display_name[0]) {
+        snprintf(buf, cap, "%s", pin->display_name);
+        return;
+    }
     /* A generated field setter reads like Set Component showing that field. */
     if (n->desc->component_kind == NODE_COMPONENT_SET_FIELD && n->input_count == 3 &&
         (pin == &n->input_pins[1] || pin == &n->input_pins[2])) {

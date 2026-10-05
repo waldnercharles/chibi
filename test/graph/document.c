@@ -1,3 +1,5 @@
+#include "editor/workspace/editor_internal.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/shader/shader_graph.h"
 #include "test/suite_internal.h"
 
@@ -151,14 +153,36 @@ void run_graph_document_checks()
         graph_init(&source);
         node *sum = graph_add_node(&source, registry_node_by_name("Add"));
         uint64_t input_id = sum->input_pins[0].id;
+        uint64_t output_id = sum->output_pins[0].id;
+        const char *output_name = sum->output_pins[0].name;
         test_check(
             graph_set_pin_display_name(&source, sum, 0, 0, "projectile.age") == 0,
             "graph pins accept a presentation-only display label"
         );
+        char label[64];
+        ed_pin_label(sum, &sum->input_pins[0], label, sizeof label);
+        test_check(!strcmp(label, "projectile.age"), "ordinary input pins show their authored display label verbatim");
         test_check(
-            sum->input_pins[0].id == input_id && !strcmp(sum->input_pins[0].name, "A"),
-            "setting a display label keeps the internal pin name and ID "
-            "unchanged"
+            graph_set_pin_display_name(&source, sum, 1, 0, "calculated total") == 0,
+            "graph output pins accept a presentation-only display label"
+        );
+        ed_pin_label(sum, &sum->output_pins[0], label, sizeof label);
+        test_check(!strcmp(label, "calculated total"), "ordinary output pins show their authored display label verbatim");
+        test_check(
+            sum->input_pins[0].id == input_id && !strcmp(sum->input_pins[0].name, "A") &&
+                sum->output_pins[0].id == output_id &&
+                !strcmp(sum->output_pins[0].name, output_name),
+            "setting display labels keeps input/output names and IDs unchanged"
+        );
+        test_check(
+            graph_set_pin_display_name(&source, sum, 0, 0, "") == 0,
+            "an empty display label resets to the pin's internal-name fallback"
+        );
+        ed_pin_label(sum, &sum->input_pins[0], label, sizeof label);
+        test_check(!strcmp(label, "A"), "empty display labels retain ordinary identifier formatting");
+        test_check(
+            graph_set_pin_display_name(&source, sum, 0, 0, "projectile.age") == 0,
+            "display label is restored for the serialization check"
         );
         char *before = graph_save(&source);
         graph *copy = before ? graph_load(before) : NULL;
@@ -168,7 +192,11 @@ void run_graph_document_checks()
             copied_sum && copied_sum->input_pins[0].id == input_id &&
                 !strcmp(copied_sum->input_pins[0].name, "A") &&
                 copied_sum->input_pins[0].display_name &&
-                !strcmp(copied_sum->input_pins[0].display_name, "projectile.age"),
+                !strcmp(copied_sum->input_pins[0].display_name, "projectile.age") &&
+                copied_sum->output_pins[0].id == output_id &&
+                !strcmp(copied_sum->output_pins[0].name, output_name) &&
+                copied_sum->output_pins[0].display_name &&
+                !strcmp(copied_sum->output_pins[0].display_name, "calculated total"),
             "graph documents roundtrip display labels without changing pin "
             "identity"
         );
@@ -180,6 +208,27 @@ void run_graph_document_checks()
             free(copy);
         }
         graph_free(&source);
+    }
+
+    /* Behavior Expression pin labels retain their language-facing names. */
+    {
+        behavior_asset *asset = behavior_asset_new("PinLabels");
+        behavior_expression_error error = { 0 };
+        node *expression = behavior_expression_add(asset, asset->graph, "speed * 2", &error);
+        char label[64];
+        test_check(expression && expression->input_count == 1, "expression pin label fixture is created");
+        if (expression && expression->input_count == 1) {
+            ed_pin_label(expression, &expression->input_pins[0], label, sizeof label);
+            test_check(!strcmp(label, "speed"), "expression input labels preserve source identifiers");
+            test_check(
+                graph_set_pin_display_name(asset->graph, expression, 0, 0, "velocity source") ==
+                    0,
+                "expression inputs accept presentation labels"
+            );
+            ed_pin_label(expression, &expression->input_pins[0], label, sizeof label);
+            test_check(!strcmp(label, "velocity source"), "expression input display labels remain verbatim");
+        }
+        behavior_asset_free(asset);
     }
 
     /* 9. comprehensive v3 authored-field round trip. */

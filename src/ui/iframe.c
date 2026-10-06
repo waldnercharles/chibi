@@ -37,8 +37,6 @@ static int last_id;
 static bool profiling;
 static iframe_profile_phase phase;
 static iframe_profile_sample samples[IFRAME_PROFILE_PHASES];
-static iframe_profile_sample before;
-static iframe_profile_record current_record, *records;
 
 static double profile_clock()
 {
@@ -52,20 +50,13 @@ void iframe_profile_enable(bool enabled)
     profiling = enabled;
     phase = IFRAME_PROFILE_OUTSIDE;
     memset(samples, 0, sizeof samples);
-    aclear(records);
-    if (!enabled) {
-        afree(records);
-    }
 }
 
-void iframe_profile_begin(iframe_profile_phase next, const char *context)
+void iframe_profile_begin(iframe_profile_phase next)
 {
     if (profiling) {
         assert(phase == IFRAME_PROFILE_OUTSIDE);
         phase = next;
-        before = samples[phase];
-        snprintf(current_record.context, sizeof current_record.context, "%s", context);
-        current_record.phase = phase;
         samples[phase].calls++;
         samples[phase].started = profile_clock();
     }
@@ -75,23 +66,6 @@ void iframe_profile_end()
 {
     if (profiling) {
         samples[phase].seconds += profile_clock() - samples[phase].started;
-        iframe_profile_sample s = samples[phase];
-        current_record.sample = (iframe_profile_sample){
-            .calls = s.calls - before.calls,
-            .holder_updates = s.holder_updates - before.holder_updates,
-            .boxes = s.boxes - before.boxes,
-            .heights = s.heights - before.heights,
-            .passes = s.passes - before.passes,
-            .seconds = s.seconds - before.seconds,
-            .holder_seconds = s.holder_seconds - before.holder_seconds,
-            .started = s.started,
-            .context_calls = s.context_calls - before.context_calls,
-        };
-        for (int i = 0; i < RML_UPDATE_PARTS; i++) {
-            current_record.sample.context_seconds[i] = s.context_seconds[i] -
-                                                       before.context_seconds[i];
-        }
-        apush(records, current_record);
         phase = IFRAME_PROFILE_OUTSIDE;
     }
 }
@@ -113,17 +87,6 @@ void iframe_profile_context_add(const double seconds[RML_UPDATE_PARTS])
     for (int i = 0; i < RML_UPDATE_PARTS; i++) {
         samples[phase].context_seconds[i] += seconds[i];
     }
-}
-
-int iframe_profile_record_count()
-{
-    return acount(records);
-}
-
-iframe_profile_record iframe_profile_record_get(int index)
-{
-    assert(index >= 0 && index < acount(records));
-    return records[index];
 }
 
 void iframe_attach(rml_element *document, rml_element *element, bool fit)

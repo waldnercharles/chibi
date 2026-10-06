@@ -11,7 +11,7 @@ The implementation is complete for this scope. **Final runtime acceptance and
 landing remain blocked by main’s temporary test quarantine.** The PR stays draft.
 No overall Studio speedup or full verification is claimed.
 
-## Frozen source and configuration
+## Historical frozen source and configuration
 
 - Code and final focused evidence: `641424f550c8f78327e3e8ef232b904364688514`.
 - Tree: `9bf51cc95d42a0ff13d462f088ce1f77f26b779b`.
@@ -31,8 +31,10 @@ No overall Studio speedup or full verification is claimed.
   profiling configuration off. `web/provenance-final-641424f5.json` pins
   settings and all four JS/WASM hashes.
 
-Later evidence/documentation commits do not change this tested source. They do
-not turn these focused results into current-head full-gate evidence.
+The following measurements describe this frozen historical source. The later
+targeted-test migration changes test code and retires duplicate profiling paths;
+its evidence is recorded separately. Neither record is current-head full-gate
+evidence.
 
 ## Runtime change
 
@@ -57,12 +59,12 @@ callback safety for every pre-existing holder traversal.
 The new C fixtures check unrelated-model isolation, the subsequent normal
 binding update, copied styles/classes, relative image resolution, same-frame
 growth and repeated shrink, geometry/hit testing and callback-driven lifetime
-changes. The graphics-free lifecycle selector checks now use the existing C
-pico_unit driver. Python test launchers were removed; `analyze.py` reads saved
+changes. The graphics-free lifecycle selector checks used the existing C
+pico_unit driver at the recorded revision; the duplicate selector is now retired. Python test launchers were removed; `analyze.py` reads saved
 logs only. The original Python profiling runner is retained as historical text
 in `../run.py.txt`.
 
-## Fresh focused validation
+## Historical focused validation
 
 All test executions used the production `tools/test_policy.py` supervisor with a
 60-second deadline including cleanup. Configuration/build time is reported
@@ -88,7 +90,8 @@ remain 38, and no extra `OnUpdate` is added by the stable fitted refresh. The
 inner Context sum/residual retains the original **5 ns** rounding tolerance.
 `analysis.json` records successful offline reconciliation.
 
-Exact forms, after a separate build:
+Historical forms at the frozen source, after a separate build (the optional
+blank-document profiling loop has since been retired):
 
 ```sh
 make build JOBS=4 BUILD_TARGET=test_suite

@@ -10,7 +10,6 @@
 #include "render/scene_renderer.h"
 #include "runtime/generated.h"
 #include "test/suite_internal.h"
-#include "ui/iframe_profile.h"
 #include "ui/input_feel.h"
 
 #include <SDL3/SDL_events.h>
@@ -20,80 +19,6 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
-
-static bool profile_lifecycle;
-static int profile_frames;
-static double profile_frame_seconds;
-
-static double profile_now()
-{
-    struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return (double)t.tv_sec + (double)t.tv_nsec / 1e9;
-}
-
-static void profile_frame(double started, double seconds, rml_backend_stats before, rml_backend_stats after)
-{
-    static const char *names[] = { "outside", "pre", "context", "post" };
-    double phase_seconds = 0;
-    for (int i = 0; i < iframe_profile_record_count(); i++) {
-        iframe_profile_record r = iframe_profile_record_get(i);
-        iframe_profile_sample s = r.sample;
-        phase_seconds += s.seconds;
-        printf(
-            "STUDIO_IFRAME {\"frame\":%d,\"context\":\"%s\",\"phase\":\"%s\","
-            "\"started\":%.9f,\"seconds\":%.9f,\"calls\":%d,\"holder_updates\":"
-            "%d,"
-            "\"holder_seconds\":%.9f,\"boxes\":%d,\"heights\":%d,\"passes\":%d",
-            profile_frames,
-            r.context,
-            names[r.phase],
-            s.started,
-            s.seconds,
-            s.calls,
-            s.holder_updates,
-            s.holder_seconds,
-            s.boxes,
-            s.heights,
-            s.passes
-        );
-        if (s.context_calls) {
-            double *t = s.context_seconds;
-            printf(
-                ",\"context_calls\":%d,\"model_update_seconds\":%.9f,\"root_"
-                "update_"
-                "seconds\":%.9f,"
-                "\"layout_position_seconds\":%.9f,\"release_documents_"
-                "seconds\":%.9f,\"other_"
-                "context_seconds\":%.9f",
-                s.context_calls,
-                t[RML_UPDATE_MODELS],
-                t[RML_UPDATE_ROOT],
-                t[RML_UPDATE_LAYOUT],
-                t[RML_UPDATE_RELEASE],
-                s.seconds - t[RML_UPDATE_MODELS] - t[RML_UPDATE_ROOT] -
-                    t[RML_UPDATE_LAYOUT] - t[RML_UPDATE_RELEASE]
-            );
-        }
-        puts("}");
-    }
-    printf(
-        "STUDIO_FRAME {\"frame\":%d,\"started\":%.9f,\"seconds\":%.9f,"
-        "\"phase_seconds\":%.9f,\"outside_phase_seconds\":%.9f,"
-        "\"host_updates\":%llu,\"host_retained_frames\":%llu,"
-        "\"host_render_captures\":%llu,\"host_render_passes\":%llu}\n",
-        profile_frames,
-        started,
-        seconds,
-        phase_seconds,
-        seconds - phase_seconds,
-        (unsigned long long)(after.context_updates - before.context_updates),
-        (unsigned long long)(after.retained_frames - before.retained_frames),
-        (unsigned long long)(after.render_captures - before.render_captures),
-        (unsigned long long)(after.render_passes - before.render_passes)
-    );
-}
 
 static studio_test_sample measured;
 
@@ -210,14 +135,6 @@ void fixture_free(studio_fixture *f)
    canvas draws, so a reload lands between the scene and Studio frames. */
 void frame_delta(studio_fixture *f, bool reload, double delta_seconds)
 {
-    double profile_started = 0;
-    rml_backend_stats before = { 0 };
-    if (profile_lifecycle) {
-        iframe_profile_enable(true);
-        profile_frames++;
-        before = rml_backend_get_stats(f->studio->backend);
-        profile_started = profile_now();
-    }
     double started = wall_seconds();
     f->time += delta_seconds;
     cf_app_update(NULL);
@@ -240,16 +157,6 @@ void frame_delta(studio_fixture *f, bool reload, double delta_seconds)
     cf_app_draw_onto_screen(true);
     measured.present += wall_seconds() - started;
     measured.frames++;
-    if (profile_lifecycle) {
-        double seconds = profile_now() - profile_started;
-        profile_frame_seconds += seconds;
-        profile_frame(
-            profile_started,
-            seconds,
-            before,
-            rml_backend_get_stats(f->studio->backend)
-        );
-    }
 }
 
 void frame(studio_fixture *f, bool reload)
@@ -505,8 +412,6 @@ static int studio_documents_app(const char *program, const char *only, const cha
         studio_test_sample before = studio_test_begin(only);
         studio_documents_property_field_checks();
         studio_test_end(only, before);
-    } else if (only && !strcmp(only, "panel-lifecycle")) {
-        studio_documents_panel_lifecycle_check();
     } else {
         document_cases(only, true);
     }
@@ -578,30 +483,6 @@ int studio_chrome_run(const char *program)
 int studio_panels_run(const char *program)
 {
     return studio_documents_app(program, "panels", NULL);
-}
-
-int studio_panel_lifecycle_run(const char *program)
-{
-    const char *profile = getenv("CHIBI_IFRAME_PROFILE");
-    profile_lifecycle = profile && !strcmp(profile, "1");
-    profile_frames = 0;
-    profile_frame_seconds = 0;
-    double started = profile_lifecycle ? profile_now() : 0;
-    int result = studio_documents_app(program, "panel-lifecycle", NULL);
-    if (profile_lifecycle) {
-        printf(
-            "STUDIO_CASE {\"case\":\"area_panels_take_turns(false)\","
-            "\"frames\":%d,\"expected_frames\":2016,\"seconds\":%.9f,"
-            "\"frame_seconds\":%.9f,\"app_result\":%d}\n",
-            profile_frames,
-            profile_now() - started,
-            profile_frame_seconds,
-            result
-        );
-        iframe_profile_enable(false);
-    }
-    profile_lifecycle = false;
-    return result;
 }
 
 /* The UI Inspector (workstream I1) alone. */

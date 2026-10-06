@@ -7,84 +7,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <time.h>
-
-#define EMPTY_PROFILE_FRAMES 1000
-
-static double now()
-{
-    struct timespec time;
-    int result = clock_gettime(CLOCK_MONOTONIC, &time);
-    assert(result == 0);
-    (void)result;
-    return time.tv_sec + time.tv_nsec * 1e-9;
-}
-
-/* Same document replacement and dirty-model work in every recorded frame. */
-static void profile_empty_documents(rml_backend *backend, kit *k, rml_data_model *model, yyjson_mut_val *label)
-{
-    const char *profile = getenv("CHIBI_IFRAME_PROFILE");
-    if (!profile || strcmp(profile, "1")) {
-        return;
-    }
-    rml_context *context = rml_backend_context(backend);
-    rml_backend_stats before = rml_backend_get_stats(backend);
-    double creation_seconds = 0, frame_seconds = 0;
-    uint64_t creation_reads = 0, creation_lookups = 0, frame_reads = 0;
-    int opens = 0;
-    for (int i = 0; i < EMPTY_PROFILE_FRAMES; i++) {
-        double start = now();
-        kit_frame_input input = {
-            .width = 640,
-            .height = 480,
-            .dp_ratio = 1,
-            .time = i / 60.0,
-        };
-        kit_begin(k, &input);
-        kit_root(k, "app");
-        yyjson_mut_set_str(label, i & 1 ? "Odd" : "Even");
-        rml_data_model_dirty(model, "label");
-        rml_data_reads reads = rml_data_model_reads(model);
-        char key[32];
-        snprintf(key, sizeof key, "blank-%d", i);
-        int documents = rml_context_document_count(context);
-        double creation_start = now();
-        kit_document_begin(k, key, NULL, false);
-        creation_seconds += now() - creation_start;
-        rml_data_reads created = rml_data_model_reads(model);
-        creation_reads += created.values - reads.values;
-        creation_lookups += created.lookups - reads.lookups;
-        opens += rml_context_document_count(context) - documents;
-        kit_host(k, "marker", "empty-copy-marker");
-        kit_document_end(k);
-        kit_end(k);
-        rml_backend_update(backend, 1.0 / 60.0);
-        frame_seconds += now() - start;
-        frame_reads += rml_data_model_reads(model).values - reads.values;
-    }
-    rml_backend_stats after = rml_backend_get_stats(backend);
-    printf(
-        "EMPTY_DOC_PROFILE {\"frames\":%d,\"document_opens\":%d,"
-        "\"creation_seconds\":%.9f,\"frame_seconds\":%.9f,"
-        "\"creation_model_reads\":%llu,\"creation_model_lookups\":%llu,"
-        "\"frame_model_reads\":%llu,\"context_updates\":%llu,"
-        "\"render_captures\":%llu,\"render_passes\":%llu,"
-        "\"geometry_compiles\":%llu}\n",
-        EMPTY_PROFILE_FRAMES,
-        opens,
-        creation_seconds,
-        frame_seconds,
-        (unsigned long long)creation_reads,
-        (unsigned long long)creation_lookups,
-        (unsigned long long)frame_reads,
-        (unsigned long long)(after.context_updates - before.context_updates),
-        (unsigned long long)(after.render_captures - before.render_captures),
-        (unsigned long long)(after.render_passes - before.render_passes),
-        (unsigned long long)(after.geometry_compiles - before.geometry_compiles)
-    );
-}
 
 static bool title_is(rml_element *element, const char *expected)
 {
@@ -179,7 +102,6 @@ void test_kit_empty_documents()
             fabsf(size.x - 137) < 0.01f && fabsf(size.y - 19) < 0.01f,
         "blank kit documents retain copied stylesheets and body classes"
     );
-    profile_empty_documents(backend, k, model, label);
     kit_destroy(k);
     rml_document_close(bound);
     rml_context_update(context);

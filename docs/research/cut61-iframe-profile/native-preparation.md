@@ -1,4 +1,9 @@
-# Native lifecycle capture prepared (not run in cloud)
+# Historical native lifecycle capture preparation
+
+**Retired entrypoint:** `--studio-panel-lifecycle` and its capture wrapper have
+been removed. The authored panel lifecycle assertions remain in the quarantined
+Studio suite. Commands below describe the old revision and are not current
+execution instructions. Use the targeted tests in [testing.md](../../testing.md).
 
 Historical preparation at `dba9625c7c87e6cfe9817c2d39e1ab61c8d923d3`.
 The later parent-supplied Fedora result is recorded in

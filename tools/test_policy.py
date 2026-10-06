@@ -20,7 +20,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--iframe-updates',): '2.410s; CUT61 7b0389ea, 12 checks and optional 1000 profile frames; docs/research/cut61-iframe-profile/finish/README.md',
+    ('--iframe-updates',): '2.379s; CUT61 targeted CPU contracts, 3 pico cases/385 assertions and 12 existing checks; docs/research/cut61-iframe-profile/finish/README.md',
     ('--kit-documents',): '0.469–0.551s; CUT61 7b0389ea, 10 checks and 49 frames; docs/research/cut61-iframe-profile/finish/README.md',
     ('--compiled-behaviors',): '47.2s; docs/testing.md selector evidence',
     ('--automation-search',): '17.2s; docs/testing.md selector evidence',

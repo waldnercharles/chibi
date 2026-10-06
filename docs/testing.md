@@ -1,5 +1,38 @@
 # Test iteration
 
+## Fast, targeted tests
+
+Use deterministic C pico_unit tests as the primary regression checks. Cover a
+specific behavior and its failure cases through the smallest public runtime
+interface that exercises it. Advance a synthetic clock for time-dependent
+behavior; assert values, ownership, geometry, callback counts and work counts
+rather than elapsed-time thresholds. Keep compilation separate from execution.
+
+The goal is for every test to be fast and targeted. When replacing a smoke test,
+map each meaningful assertion to its replacement first. Remove duplicate
+entrypoints and measurement-only loops from regression commands. Keep unique
+pixel, renderer, backend and authored-workflow assertions until a focused test
+covers their contract. A short unit result does not satisfy unrelated integration
+requirements or clear a PR hold. The broad suites below still need migration.
+
+For iframe changes, after building `test_suite`, use:
+
+```sh
+make agent-test AGENT_SELECTOR=--iframe-updates
+make agent-test AGENT_SELECTOR=--kit-documents
+```
+
+`--iframe-updates` checks blank-document model isolation, same-frame fitted
+geometry and callback lifetimes, bound whole-document replacement with
+conditional/list views, and layout refresh with exact callback counts and
+synthetic animation time. `--kit-documents` covers the kit's document placement,
+focus, popup and input contracts. Neither needs a window or GPU rendering.
+
+The duplicate `--studio-panel-lifecycle` capture entrypoint and the optional
+1,000-frame blank-document profiling loop have been retired. The authored panel
+lifecycle assertions remain in the quarantined Studio suite; historical profiling
+captures remain research evidence for their recorded revisions.
+
 ## Temporary 60-second policy
 
 Managed test executions, including aggregates, have one hard 60-second ceiling.

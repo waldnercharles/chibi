@@ -1169,11 +1169,6 @@ static void area_panels_take_turns(bool designer)
     fixture_free(&f);
 }
 
-void studio_documents_panel_lifecycle_check()
-{
-    area_panels_take_turns(false);
-}
-
 void studio_documents_panel_checks()
 {
     area_panels_take_turns(false);

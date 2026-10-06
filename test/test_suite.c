@@ -128,7 +128,6 @@ int studio_chrome_run(const char *program);
 int studio_palette_run(const char *program);
 int studio_graph_chrome_run(const char *program);
 int studio_panels_run(const char *program);
-int studio_panel_lifecycle_run(const char *program);
 /* The visual designer (workstream D1). */
 int studio_designer_run(const char *program);
 int studio_graph_inputs_run(const char *program);
@@ -198,6 +197,7 @@ void test_arena_hud();
 void test_kit_documents();
 void test_iframe_updates();
 void test_kit_empty_documents();
+void test_iframe_contracts();
 /* ---------- Native controls (workstream F2) ---------- */
 void test_ui_controls();
 /* ---------- Popovers (workstream F3) ---------- */
@@ -455,6 +455,7 @@ TEST_CASE(all_checks)
     TEST_TIMED_CALL(test_kit_documents);
     TEST_TIMED_CALL(test_iframe_updates);
     TEST_TIMED_CALL(test_kit_empty_documents);
+    TEST_TIMED_CALL(test_iframe_contracts);
     /* ---------- Native controls (workstream F2) ---------- */
     TEST_TIMED_CALL(test_ui_controls);
     /* ---------- Popovers (workstream F3) ---------- */
@@ -462,9 +463,9 @@ TEST_CASE(all_checks)
     /* ---------- Lists and drag (workstream F4) ---------- */
     TEST_TIMED_CALL(test_ui_lists);
 
-    printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
+    printf("\n%s\n", fails || pu_test_failed() ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
-    return fails == 0;
+    return fails == 0 && !pu_test_failed();
 }
 
 #undef TEST_TIMED_CALL
@@ -512,7 +513,6 @@ static void print_test_selectors()
     puts("  collaboration: --collab");
     puts("  Narrower costly checks: --automation-search --automation-refactor --automation-profile-scenario-inputs --editor-commands");
     puts("  Focused CPU checks: --shader-graph-codegen --prototype-preview-lifetime");
-    puts("  Native panel lifecycle: --studio-panel-lifecycle (exactly area_panels_take_turns(false)); append validate for graphics-free selection validation");
     puts("  Studio subgroups: --studio-documents list; --studio-shell list (then replace list with one name)");
     puts("  GPU/render coverage: make test-render");
     puts("Use make agent-list for workload classifications; full/mixed checks require CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1.");
@@ -557,16 +557,6 @@ int main(int argc, char **argv)
         setvbuf(stdout, NULL, _IOLBF, 0);
         print_test_selectors();
         return 0;
-    }
-    if (argc > 1 && !strcmp(argv[1], "--studio-panel-lifecycle")) {
-        if (argc == 3 && !strcmp(argv[2], "validate")) {
-            puts("{\"selector\":\"--studio-panel-lifecycle\",\"case\":\"area_panels_take_turns(false)\",\"expected_frames\":2016,\"graphics_started\":false,\"validation_only\":true}");
-            return 0;
-        }
-        if (argc != 2) {
-            fputs("usage: test_suite --studio-panel-lifecycle [validate]\n", stderr);
-            return 2;
-        }
     }
     for (int i = 2; i < argc; i++) {
         if (argv[i][0] == '-' && argv[i][1] == '-') {
@@ -1472,10 +1462,6 @@ int main(int argc, char **argv)
     }
     /* Authored panels, game UI and the areas they take turns in: Studio's,
        in a hidden window. */
-    if (argc == 2 && !strcmp(argv[1], "--studio-panel-lifecycle")) {
-        registry_validate();
-        return studio_panel_lifecycle_run(program_name) || fails ? 1 : 0;
-    }
     if (argc > 1 && strcmp(argv[1], "--studio-panels") == 0) {
         registry_validate();
         return studio_panels_run(program_name) || fails ? 1 : 0;
@@ -1682,7 +1668,9 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--iframe-updates")) {
         test_iframe_updates();
         test_kit_empty_documents();
-        return fails ? 1 : 0;
+        test_iframe_contracts();
+        pu_print_stats();
+        return fails || pu_test_failed() ? 1 : 0;
     }
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-followups")) {

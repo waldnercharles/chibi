@@ -438,6 +438,8 @@ extern "C"
     } rml_update_part;
     bool rml_context_update_profiled(rml_context *context, double seconds[RML_UPDATE_PARTS]);
     bool rml_context_render(rml_context *context);
+    /* Empty body document, without loading markup or updating data models. */
+    rml_element *rml_context_create_document(rml_context *context, const char *source_url);
     rml_element *rml_context_load_document(rml_context *context, const char *path);
     /* `source_url` names the document in messages and resolves relative paths. */
     rml_element *rml_context_load_document_from_memory(

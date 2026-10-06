@@ -875,6 +875,11 @@ rml_element *rml_context_load_document(rml_context *c, const char *path)
     return wrap(context(c)->LoadDocument(path));
 }
 
+rml_element *rml_context_create_document(rml_context *c, const char *source_url)
+{
+    return wrap(context(c)->CreateDocument("body", source_url));
+}
+
 rml_element *rml_context_load_document_from_memory(rml_context *c, const char *rml, const char *source_url)
 {
     return wrap(context(c)->LoadDocumentFromMemory(rml, source_url));

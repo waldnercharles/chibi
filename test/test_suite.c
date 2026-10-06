@@ -196,6 +196,8 @@ void test_arena_hud();
 
 /* ---------- One document per area (workstream F5) ---------- */
 void test_kit_documents();
+void test_iframe_updates();
+void test_kit_empty_documents();
 /* ---------- Native controls (workstream F2) ---------- */
 void test_ui_controls();
 /* ---------- Popovers (workstream F3) ---------- */
@@ -451,6 +453,8 @@ TEST_CASE(all_checks)
     TEST_TIMED_CALL(test_arena_hud);
     /* ---------- One document per area (workstream F5) ---------- */
     TEST_TIMED_CALL(test_kit_documents);
+    TEST_TIMED_CALL(test_iframe_updates);
+    TEST_TIMED_CALL(test_kit_empty_documents);
     /* ---------- Native controls (workstream F2) ---------- */
     TEST_TIMED_CALL(test_ui_controls);
     /* ---------- Popovers (workstream F3) ---------- */
@@ -1673,6 +1677,11 @@ int main(int argc, char **argv)
     /* ---------- One document per area (workstream F5) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--kit-documents")) {
         test_kit_documents();
+        return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--iframe-updates")) {
+        test_iframe_updates();
+        test_kit_empty_documents();
         return fails ? 1 : 0;
     }
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */

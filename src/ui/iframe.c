@@ -10,6 +10,7 @@
 #include "ui/iframe_profile.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -22,6 +23,7 @@
 
 typedef struct iframe
 {
+    int id;
     rml_element_ref *document, *element;
     rml_context *context;
     bool fit;
@@ -30,6 +32,7 @@ typedef struct iframe
 } iframe;
 
 static iframe *iframes;
+static int last_id;
 
 static bool profiling;
 static iframe_profile_phase phase;
@@ -127,9 +130,11 @@ void iframe_attach(rml_element *document, rml_element *element, bool fit)
 {
     assert(rml_element_owner_document(document) == document);
     assert(rml_element_context(document) == rml_element_context(element));
+    assert(last_id < INT_MAX);
     apush(
         iframes,
-        ((iframe){ .document = rml_element_ref_create(document),
+        ((iframe){ .id = ++last_id,
+                   .document = rml_element_ref_create(document),
                    .element = rml_element_ref_create(element),
                    .context = rml_element_context(document),
                    .fit = fit,
@@ -147,6 +152,25 @@ static void drop(int i)
     if (!acount(iframes)) {
         afree(iframes);
     }
+}
+
+/* Callbacks can detach or append entries, invalidating every array pointer. */
+static iframe *resolve(int id, rml_element **document, rml_element **element)
+{
+    for (int i = 0; i < acount(iframes); i++) {
+        iframe *f = &iframes[i];
+        if (f->id != id) {
+            continue;
+        }
+        *document = rml_element_ref_get(f->document);
+        *element = rml_element_ref_get(f->element);
+        if (!*document || !*element) {
+            drop(i);
+            return NULL;
+        }
+        return f;
+    }
+    return NULL;
 }
 
 void iframe_detach(rml_element *document)
@@ -206,7 +230,7 @@ static float content_height(rml_element *document)
 
 /* The document and its element take the height of what the document
    holds; true when it changed. */
-static bool take_height(iframe *f, rml_element *document, rml_element *element)
+static bool take_height(int id, iframe *f, rml_element *document, rml_element *element)
 {
     float height = content_height(document);
     if (height == f->height) {
@@ -219,7 +243,9 @@ static bool take_height(iframe *f, rml_element *document, rml_element *element)
     set_pixels(document, "height", height);
     set_pixels(element, "height", height);
     rml_document_update(document);
-    rml_document_update(rml_element_owner_document(element));
+    if (resolve(id, &document, &element)) {
+        rml_document_update(rml_element_owner_document(element));
+    }
     return true;
 }
 
@@ -230,21 +256,48 @@ static bool settle_pass(rml_context *context)
         samples[phase].passes++;
     }
     bool moved = false;
-    for (int i = 0; i < acount(iframes);) {
-        iframe *f = &iframes[i];
-        rml_element *document = rml_element_ref_get(f->document),
-                    *element = rml_element_ref_get(f->element);
-        if (!document || !element) {
-            drop(i);
+    int upper = last_id, count = acount(iframes), after = 0;
+    for (;;) {
+        int id = 0;
+        for (int i = 0; i < acount(iframes); i++) {
+            int next = iframes[i].id;
+            if (next > after && next <= upper && (!id || next < id)) {
+                id = next;
+            }
+        }
+        if (!id) {
+            break;
+        }
+        after = id;
+        rml_element *document, *element;
+        iframe *f = resolve(id, &document, &element);
+        if (!f) {
+            moved = true;
             continue;
         }
-        if (f->context == context) {
-            moved |= take_box(f, document, element);
-            moved |= f->fit && take_height(f, document, element);
+        if (f->context != context) {
+            continue;
         }
-        i++;
+        bool box = take_box(f, document, element);
+        moved |= box;
+        f = resolve(id, &document, &element);
+        if (!f) {
+            moved = true;
+            continue;
+        }
+        /* A later Context callback can change fitted content without
+         * moving its slot. Resolve that content before measuring it. */
+        if (f->fit && !box) {
+            rml_document_update(document);
+            f = resolve(id, &document, &element);
+            if (!f) {
+                moved = true;
+                continue;
+            }
+        }
+        moved |= f->fit && take_height(id, f, document, element);
     }
-    return moved;
+    return moved || count != acount(iframes) || upper != last_id;
 }
 
 /* Lays out the documents that hold context's elements, each once. */

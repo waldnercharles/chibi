@@ -1,0 +1,32 @@
+diff --git a/Include/RmlUi/Core/Context.h b/Include/RmlUi/Core/Context.h
+--- a/Include/RmlUi/Core/Context.h
++++ b/Include/RmlUi/Core/Context.h
+@@ -62,7 +62,7 @@
+ 	/// Creates a new, empty document and places it into this context.
+ 	/// @param[in] instancer_name The name of the instancer used to create the document.
+ 	/// @return The new document, or nullptr if no document could be created.
+-	ElementDocument* CreateDocument(const String& instancer_name = "body");
++	ElementDocument* CreateDocument(const String& instancer_name = "body", const String& source_url = "");
+ 	/// Load a document into the context.
+ 	/// @param[in] document_path The path to the document to load. The path is passed directly to the file interface which is used to load the file.
+ 	/// The default file interface accepts both absolute paths and paths relative to the working directory.
+diff --git a/Source/Core/Context.cpp b/Source/Core/Context.cpp
+--- a/Source/Core/Context.cpp
++++ b/Source/Core/Context.cpp
+@@ -241,7 +241,7 @@
+ 	return true;
+ }
+ 
+-ElementDocument* Context::CreateDocument(const String& instancer_name)
++ElementDocument* Context::CreateDocument(const String& instancer_name, const String& source_url)
+ {
+ 	ElementPtr element = Factory::InstanceElement(nullptr, instancer_name, documents_base_tag, XMLAttributes());
+ 	if (!element)
+@@ -260,6 +260,7 @@
+ 	}
+ 
+ 	document->context = this;
++	document->source_url = source_url;
+ 	root->AppendChild(std::move(element));
+ 
+ 	PluginRegistry::NotifyDocumentLoad(document);

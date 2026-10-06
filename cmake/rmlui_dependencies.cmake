@@ -64,6 +64,8 @@ function(chibi_rmlui_dependencies)
     endforeach()
     # Optional Context::Update boundary timings; the default null output does no timing.
     list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-context-update-profile.patch")
+    # Empty authored containers keep relative URLs without updating unrelated models.
+    list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-document-source.patch")
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})
     add_subdirectory("${rmlui_SOURCE_DIR}" "${rmlui_BINARY_DIR}")
     foreach(target freetype rmlui_core rmlui_debugger)

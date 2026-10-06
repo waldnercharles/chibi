@@ -10,13 +10,21 @@ managed quarantine. Do not reconstruct a slow suite through repeated selectors.
 Managed tests run on supported POSIX hosts, including macOS. The outer runner
 owns a process group; nested policy/agent test wrappers stay in it and inherit
 one absolute monotonic deadline. On timeout/interruption and completion, the
-owner kills remaining group members. Linux additionally uses an isolated
+owner kills remaining group members. A nested portable timeout freezes and
+walks its live child subtree with the system `ps`, then kills descendants before
+the parent; it never kills the shared ancestor group or sibling processes.
+Linux additionally uses an isolated
 subreaper to own/reap orphaned descendants that escape with `setsid`. That
 stronger escaped-session guarantee is Linux-specific: arbitrary non-managed
-children that deliberately detach are not proven contained on macOS. This
+children that have already detached and been reparented before cleanup are not
+proven contained on macOS. This
 limitation does not disable Mac short coverage or label it slow. No system
-permission, configuration change or dependency is required. Platform-selection
-and group-reuse regressions run here; actual macOS execution remains unverified.
+permission, configuration change or dependency is required. Platform-selection, group-reuse and nested subtree cleanup regressions run here;
+actual macOS execution remains unverified. A Linux-hosted Darwin-branch regression
+reproduced the old delayed-marker escape in 0.737s, then passed in 0.731s after
+the fix. It uses a 0.15s nested deadline, a 0.4s grandchild marker and 0.5s
+observation while the outer aggregate stays alive, and verifies that a sibling
+in the same shared group survives.
 
 ## Disabled coverage inventory (temporary; NOT PASSED)
 
@@ -37,7 +45,7 @@ and group-reuse regressions run here; actual macOS execution remains unverified.
 
 `make test` / `make test-short` runs policy, validation-plan and execution-policy
 regressions under **one shared 60-second deadline**. This is a purposeful policy regression group,
-not a partition of the old full native suite. The revised default command passed in 5.519s including fixture setup: 15 policy,
+not a partition of the old full native suite. The revised default command passed in 6.183s including fixture setup: 16 policy,
 12 validation-plan, 18 execution-policy Python checks and the MCP check passed.
  Each independently requested native invocation below retains
 its complete existing assertions and has its own maximum 60-second deadline:

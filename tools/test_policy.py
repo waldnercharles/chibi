@@ -99,6 +99,47 @@ def cleanup_children():
             time.sleep(.001)
 
 
+def cleanup_subtree(child):
+    # Portable nested cleanup cannot kill the shared ancestor process group.
+    # Freeze the live child tree before killing it so parent death cannot hide
+    # descendants by reparenting them while we discover the owned subtree.
+    if child.poll() is not None:
+        return
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    owned, pending = [child.pid], [child.pid]
+    try:
+        while pending:
+            for pid in pending:
+                try:
+                    os.kill(pid, signal.SIGSTOP)
+                except ProcessLookupError:
+                    pass
+            rows = subprocess.check_output(['ps', '-A', '-o', 'pid=,ppid='],
+                                           text=True, timeout=1)
+            children = {}
+            for row in rows.splitlines():
+                pid, parent = map(int, row.split())
+                children.setdefault(parent, []).append(pid)
+            pending = []
+            frontier = list(owned)
+            seen = set(owned)
+            for parent in frontier:
+                for pid in children.get(parent, []):
+                    if pid not in seen:
+                        seen.add(pid)
+                        frontier.append(pid)
+                        pending.append(pid)
+            owned.extend(pending)
+    finally:
+        for pid in reversed(owned):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        child.wait()
+
+
 def wait_until(child, deadline):
     # Popen.wait adds a KeyboardInterrupt grace period; do not grant test work
     # extra runtime before cleanup on an interrupt.
@@ -150,9 +191,7 @@ def supervise(commands):
         if subreaper:
             cleanup_children()
         elif child is not None:
-            if child.poll() is None:
-                child.kill()
-            child.wait()
+            cleanup_subtree(child)
 
 
 def run_commands(commands, seconds=LIMIT, env=None, output=None):

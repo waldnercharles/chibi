@@ -21,6 +21,8 @@ and do not universally enforce the ceiling. Do not use them to bypass quarantine
 `tools/test_policy.py` gives each admitted test command one 60-second wall-clock
 deadline across all its subprocesses. Timeout stops the owned process group and returns failure (124), never a green
 skip. Nested managed test wrappers share that group and the absolute deadline.
+Portable nested timeout cleanup freezes and kills only the live child subtree,
+so descendants stop before the outer aggregate ends without killing siblings.
 Linux subreaping additionally kills/reaps descendants that escape with `setsid`;
 this stronger guarantee is not claimed on macOS, where short tests remain enabled. The short regression aggregate shares one
 deadline; it does not reset per test. Multiple Make validation goals are rejected

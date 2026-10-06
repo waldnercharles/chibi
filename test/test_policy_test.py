@@ -124,6 +124,42 @@ class TestPolicy(unittest.TestCase):
             self.assertEqual(policy.supervise([[sys.executable, '-c', 'pass']]), 0)
             libc.assert_not_called()
 
+    def test_macos_nested_timeout_reaps_subtree_without_touching_sibling(self):
+        # Simulate the actual supervisor platform branch in a fresh process.
+        # The caller remains inside the outer aggregate's live process group.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            marker, started, sibling_marker = (root / name for name in ('escaped', 'started', 'sibling'))
+            driver = root / 'portable_supervisor.py'
+            driver.write_text(
+                f'import sys,signal; sys.path.insert(0,{str(ROOT / "tools")!r})\n'
+                'import test_policy\n'
+                'test_policy.sys.platform="darwin"\n'
+                'signal.signal(signal.SIGTERM,test_policy.terminate)\n'
+                'signal.signal(signal.SIGINT,test_policy.terminate)\n'
+                'try: sys.exit(test_policy.main())\n'
+                'except (test_policy.TerminationRequested, KeyboardInterrupt): sys.exit(130)\n')
+            descendant = (f'from pathlib import Path; import time; '
+                          f'Path({str(started)!r}).touch(); time.sleep(.4); '
+                          f'Path({str(marker)!r}).touch()')
+            parent = (f'import subprocess,sys,time; '
+                      f'subprocess.Popen([sys.executable,"-c",{descendant!r}]); time.sleep(.8)')
+            sibling = subprocess.Popen([sys.executable, '-c',
+                f'from pathlib import Path; import time; time.sleep(.4); Path({str(sibling_marker)!r}).touch()'])
+            try:
+                with patch.object(policy, '__file__', str(driver)), \
+                        patch.dict(os.environ, {policy.PROCESS_GROUP: str(os.getpgrp())}):
+                    self.assertEqual(policy.run_commands([[sys.executable, '-c', parent]], .15), 124)
+                self.assertTrue(started.exists(), 'grandchild must have started before timeout')
+                time.sleep(.5)
+                self.assertFalse(marker.exists(), 'nested cleanup must not wait for the outer aggregate')
+                self.assertEqual(sibling.wait(timeout=.1), 0)
+                self.assertTrue(sibling_marker.exists(), 'cleanup must preserve sibling processes')
+            finally:
+                if sibling.poll() is None:
+                    sibling.kill()
+                sibling.wait()
+
     def test_nested_wrappers_reuse_the_owned_process_group(self):
         with tempfile.TemporaryDirectory() as directory:
             outer = Path(directory) / 'outer'

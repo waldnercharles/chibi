@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Temporary command-level test quarantine; remove only after timing review."""
 import argparse
+import ctypes
+import json
+import math
 import os
 from pathlib import Path
 import signal
@@ -8,15 +11,51 @@ import subprocess
 import sys
 import time
 
+from quiet import child_fds
+
 ROOT = Path(__file__).resolve().parents[1]
 LIMIT = 60
+DEADLINE = 'CHIBI_TEST_DEADLINE'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--compiled-behaviors',): '47.2s; docs/testing.md selector evidence',
+    ('--automation-search',): '17.2s; docs/testing.md selector evidence',
+    ('--automation-refactor',): '5.0s; docs/testing.md selector evidence',
+    ('--automation-profile-scenario-inputs',): '15.8s; docs/testing.md selector evidence',
+    ('--editor-commands',): '12.5s; docs/testing.md selector evidence',
+    ('--material-thermal',): '4.8s; docs/testing.md selector evidence',
+    ('--material-mpm',): '3.6s; docs/testing.md selector evidence',
+    ('--whole-function-audit',): '1.3s; docs/testing.md baseline',
     ('--graph-optimize',): '0.5s; docs/testing.md baseline',
     ('--studio-documents', 'tabs'): '8s; PR164 focused evidence',
     ('--studio-shell', 'readout_follows_camera'): '3s; PR164 focused evidence',
     ('--bench-arena-scene-scale', '2048', '240', '0'): '1.4s; Arena scaling evidence',
 }
+# Each of these 21 unchanged command shapes was part of the measured 24.4s
+# tooling baseline; validation-plan is separately admitted for this policy fix.
+TOOLS = {'fetchcontent-cache': ['python3', 'test/fetchcontent_cache_test.py'],
+ 'configure-cache': ['python3', 'test/configure_cache_test.py'],
+ 'dependency-package': ['python3', 'test/dependency_package_test.py'],
+ 'package-web': ['python3', 'test/package_web_test.py'],
+ 'publish-web': ['python3', 'test/publish_web_test.py'],
+ 'package-native': ['python3', 'test/package_native_test.py'],
+ 'install-game-runtime': ['python3', 'test/install_game_runtime_test.py'],
+ 'runtime-update-build': ['python3', 'test/runtime_update_build_test.py'],
+ 'quiet': ['python3', 'test/quiet_test.py'],
+ 'workspaces': ['python3', 'test/workspaces_test.py'],
+ 'workspace-retirement': ['python3', 'test/workspace_retirement_test.py'],
+ 'workspace-make': ['python3', 'test/workspace_make_test.py'],
+ 'workspace-install': ['python3', 'test/workspace_install_test.py'],
+ 'mcp-package': ['node', '--test', 'test/mcp_package_test.mjs'],
+ 'web-serve': ['python3', 'test/web_serve_test.py'],
+ 'web-workspace': ['node', 'test/web_workspace_test.mjs'],
+ 'web-storage': ['node', 'test/web_storage_test.mjs'],
+ 'web-frames': ['node', 'test/web_frames_test.mjs'],
+ 'web-isolation': ['node', 'test/web_isolation_test.mjs'],
+ 'collab-client': ['node', 'test/collab_client_test.mjs'],
+ 'validation-plan': ['python3', 'test/validation_plan_test.py'],
+ 'kdl-assets': ['python3', 'test/kdl_asset_test.py'],
+ 'execution-policy': ['python3', 'test/execution_policy_test.py']}
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render, tooling aggregate and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')
 
@@ -25,55 +64,132 @@ def admitted(arguments):
     return tuple(arguments) in NATIVE
 
 
-def run_commands(commands, seconds=LIMIT):
-    """One deadline for the entire invocation, including descendants and setup."""
-    if not 0 < seconds <= LIMIT:
+def absolute_deadline(seconds, env):
+    if not math.isfinite(seconds) or not 0 < seconds <= LIMIT:
         raise ValueError('test deadline must be at most 60 seconds')
-    started = time.monotonic()
-    deadline = started + seconds
+    deadline = time.monotonic() + seconds
+    if DEADLINE in env:
+        inherited = float(env[DEADLINE])
+        if not math.isfinite(inherited):
+            raise ValueError('invalid inherited test deadline')
+        deadline = min(deadline, inherited)
+    return deadline
+
+
+def cleanup_children():
+    # This dedicated subreaper owns all its children, including double-forked or
+    # setsid descendants adopted when their parent/nested supervisor is killed.
+    # Kill parents, reap, then repeat for newly adopted children until none remain.
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    children_file = Path(f'/proc/self/task/{os.getpid()}/children')
+    while True:
+        children = [int(pid) for pid in children_file.read_text().split()]
+        for pid in children:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        try:
+            pid, _ = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if not pid:
+            time.sleep(.001)
+
+
+def wait_until(child, deadline):
+    # Popen.wait adds a KeyboardInterrupt grace period; do not grant test work
+    # extra runtime before cleanup on an interrupt.
+    while child.poll() is None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(child.args, 0)
+        time.sleep(min(.005, remaining))
+    return child.returncode
+
+
+def supervise(commands):
+    # Fail closed where orphan ownership is unavailable. No system setting,
+    # cgroup, permission change or package installation is required.
+    if not sys.platform.startswith('linux'):
+        raise RuntimeError('test descendant containment requires Linux subreaper support')
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(36, 1, 0, 0, 0):  # PR_SET_CHILD_SUBREAPER
+        raise OSError(ctypes.get_errno(), 'cannot own test descendants')
+    deadline = absolute_deadline(LIMIT, os.environ)
     try:
         for command in commands:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return 124
-            child = subprocess.Popen(command, cwd=ROOT, start_new_session=True)
+            child = subprocess.Popen(command, cwd=ROOT, pass_fds=child_fds())
             try:
-                try:
-                    result = child.wait(timeout=max(0, deadline - time.monotonic()))
-                except subprocess.TimeoutExpired:
-                    print('FAIL: test command exceeded its aggregate deadline', file=sys.stderr)
-                    return 124
-                if time.monotonic() >= deadline:
-                    return 124
-                if result:
-                    return result if result > 0 else 128 - result
-            finally:
-                # Also clean up grandchildren after a failed or normally exiting parent.
-                try:
-                    os.killpg(child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                child.wait()
+                result = wait_until(child, deadline)
+            except subprocess.TimeoutExpired:
+                print('FAIL: test command exceeded its aggregate deadline', file=sys.stderr)
+                return 124
+            if time.monotonic() >= deadline:
+                return 124
+            if result:
+                return result if result > 0 else 128 - result
         return 0
     finally:
-        print(f'Test execution: {time.monotonic() - started:.3f}s; ceiling {seconds}s; '
-              'configuration/build excluded.', flush=True)
+        cleanup_children()
+
+
+def run_commands(commands, seconds=LIMIT, env=None, output=None):
+    """One inherited absolute deadline and one isolated descendant owner."""
+    environment = dict(os.environ if env is None else env)
+    # A caller-supplied environment may not erase an enclosing command's limit.
+    if DEADLINE in os.environ:
+        environment[DEADLINE] = str(min(float(environment.get(DEADLINE, 'inf')),
+                                      float(os.environ[DEADLINE])))
+    deadline = absolute_deadline(seconds, environment)
+    environment[DEADLINE] = str(deadline)
+    started = time.monotonic()
+    if deadline <= started:
+        return 124
+    child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
+                              '_supervise', json.dumps(commands)], cwd=ROOT,
+                             env=environment, start_new_session=True,
+                             stdout=output, stderr=output, pass_fds=child_fds())
+    try:
+        try:
+            result = wait_until(child, deadline)
+        except subprocess.TimeoutExpired:
+            return 124
+        if time.monotonic() >= deadline:
+            return 124
+        return result if result >= 0 else 128 - result
+    finally:
+        if child.poll() is None:
+            # SIGTERM unwinds the supervisor's subreaper cleanup, including
+            # descendants which left its process group. Never kill just a group.
+            child.terminate()
+        child.wait()
+        print(f'Test command wall time: {time.monotonic() - started:.3f}s; ceiling {seconds}s; '
+              'includes in-test fixture setup; external configuration/build excluded.', file=output or sys.stdout, flush=True)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['inventory', 'disabled', 'short', 'admit', 'native'])
+    parser.add_argument('action', choices=['inventory', 'disabled', 'short', 'tool', 'admit', 'native', 'studio-selectors', '_supervise'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments
     if arguments[:1] == ['--']:
         arguments = arguments[1:]
+    if args.action == '_supervise':
+        return supervise(json.loads(arguments[0]))
     print(NOTICE, flush=True)
     if args.action == 'inventory':
         for command, evidence in NATIVE.items():
             print('ADMITTED (60s ceiling):', ' '.join(command), '-', evidence)
-        print('ADMITTED: make test / test-short (test/test_policy_test.py only)')
-        print('All other native invocations and existing test-tool-* targets are quarantined pending timing review.')
+        print('ADMITTED: make test / test-short (policy, validation-plan and execution-policy regressions, one deadline)')
+        print('ADMITTED: test-tool-validation-plan, test-tool-execution-policy, test-studio-selectors')
+        print('ADMITTED TOOL TARGETS:', ', '.join('test-tool-' + name for name in TOOLS))
+        print('Other native commands and unmeasured tooling remain quarantined; see docs/test-quarantine.md.')
         return 0
     if args.action == 'disabled':
         print('DISABLED:', ' '.join(arguments), file=sys.stderr)
@@ -81,7 +197,21 @@ def main():
     if args.action == 'short':
         if arguments:
             parser.error('short accepts no arguments')
-        return run_commands([[sys.executable, str(ROOT / 'test/test_policy_test.py')]])
+        return run_commands([[sys.executable, str(ROOT / 'test/test_policy_test.py')],
+                             [sys.executable, str(ROOT / 'test/validation_plan_test.py')],
+                             [sys.executable, str(ROOT / 'test/execution_policy_test.py')],
+                             ['node', '--test', 'test/mcp_execution_policy_test.mjs']])
+    if args.action == 'studio-selectors':
+        if len(arguments) != 1:
+            parser.error('studio-selectors requires a test_suite binary')
+        return run_commands([[sys.executable, 'test/studio_selectors_test.py', arguments[0]]])
+    if args.action == 'tool':
+        if len(arguments) != 1 or arguments[0] not in TOOLS:
+            parser.error('unadmitted tooling command')
+        commands = [TOOLS[arguments[0]]]
+        if arguments[0] == 'execution-policy':
+            commands.append(['node', '--test', 'test/mcp_execution_policy_test.mjs'])
+        return run_commands(commands)
     selectors = arguments[1:] if args.action == 'native' else arguments
     if not admitted(selectors):
         print('DISABLED: unadmitted native invocation: ' + ' '.join(selectors), file=sys.stderr)
@@ -91,16 +221,21 @@ def main():
     return run_commands([arguments])
 
 
+class TerminationRequested(BaseException):
+    pass
+
+
 def terminate(_signal, _frame):
-    raise KeyboardInterrupt()
+    raise TerminationRequested()
 
 
 if __name__ == '__main__':
     signal.signal(signal.SIGTERM, terminate)
+    signal.signal(signal.SIGINT, terminate)
     try:
         sys.exit(main())
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, TerminationRequested):
         sys.exit(130)
-    except OSError as error:
+    except (OSError, ValueError, RuntimeError) as error:
         print(f'FAIL: {error}', file=sys.stderr)
         sys.exit(2)

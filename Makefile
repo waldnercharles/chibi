@@ -178,7 +178,7 @@ help:
 		'make agent-list     List CPU selectors and bounded GPU capabilities' \
 		'make agent-test AGENT_SELECTOR=--graph-optimize  CPU iteration' \
 		'make agent-gpu-test DISABLED pending command timing review' \
-		'make test           Bounded policy regressions only; full coverage DISABLED' \
+		'make test           Bounded partial regressions; full coverage DISABLED' \
 		'make test-fast TEST_ARGS=--graph-optimize  Run one focused native selector' \
 		'make test-list      Show admitted commands and quarantine' \
 		'make test-tools     DISABLED pending aggregate timing review' \
@@ -363,16 +363,18 @@ agent-gpu-test:
 	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" gpu-test -- $(AGENT_SELECTOR)
 
 test-tool-execution-policy:
-	@python3 tools/test_policy.py disabled test-tool-execution-policy
-	@python3 test/execution_policy_test.py
-	@node --test test/mcp_execution_policy_test.mjs
+	@python3 tools/test_policy.py tool execution-policy
 
 # Temporary user policy: no full gate is implied by a successful short result.
-.PHONY: test-short test-policy-inventory
+.PHONY: test-short test-policy-inventory test-studio-selectors
 test: test-short
 
 test-short:
 	@python3 tools/test_policy.py short
+
+test-studio-selectors:
+	@$(MAKE) build BUILD_TARGET=test_suite
+	@python3 tools/test_policy.py studio-selectors "$(BUILD_DIR)/test_suite"
 
 test-policy-inventory:
 	@python3 tools/test_policy.py inventory
@@ -393,52 +395,49 @@ test-tools:
 	+@$(MAKE) --no-print-directory -j$(TEST_JOBS) $(TEST_TOOL_TARGETS)
 
 test-tool-validation-plan:
-	@python3 tools/test_policy.py disabled test-tool-validation-plan
-	@$(QUIET) validation_plan_test.py -- python3 test/validation_plan_test.py
+	@python3 tools/test_policy.py tool validation-plan
 
 test-tool-behavior-code:
 	@python3 tools/test_policy.py disabled test-tool-behavior-code
 	@$(QUIET) behavior-code-test -- node --test tools/behavior-code/behavior-code.test.mjs
 
 test-tool-kdl-assets:
-	@python3 tools/test_policy.py disabled test-tool-kdl-assets
-	@$(QUIET) kdl_asset_test.py -- python3 test/kdl_asset_test.py
+	@python3 tools/test_policy.py tool kdl-assets
 test-tool-fetchcontent-cache:
-	@python3 tools/test_policy.py disabled test-tool-fetchcontent-cache
-	@$(QUIET) fetchcontent_cache_test.py -- python3 test/fetchcontent_cache_test.py
+	@python3 tools/test_policy.py tool fetchcontent-cache
+
 test-tool-configure-cache:
-	@python3 tools/test_policy.py disabled test-tool-configure-cache
-	@$(QUIET) configure_cache_test.py -- python3 test/configure_cache_test.py
+	@python3 tools/test_policy.py tool configure-cache
+
 test-tool-dependency-package:
-	@python3 tools/test_policy.py disabled test-tool-dependency-package
-	@$(QUIET) dependency_package_test.py -- python3 test/dependency_package_test.py
+	@python3 tools/test_policy.py tool dependency-package
+
 test-tool-package-web:
-	@python3 tools/test_policy.py disabled test-tool-package-web
-	@$(QUIET) package_web_test.py -- python3 test/package_web_test.py
+	@python3 tools/test_policy.py tool package-web
+
 test-tool-publish-web:
-	@python3 tools/test_policy.py disabled test-tool-publish-web
-	@$(QUIET) publish_web_test.py -- python3 test/publish_web_test.py
+	@python3 tools/test_policy.py tool publish-web
+
 test-tool-package-native:
-	@python3 tools/test_policy.py disabled test-tool-package-native
-	@$(QUIET) package_native_test.py -- python3 test/package_native_test.py
+	@python3 tools/test_policy.py tool package-native
+
 test-tool-install-game-runtime:
-	@python3 tools/test_policy.py disabled test-tool-install-game-runtime
-	@$(QUIET) install_game_runtime_test.py -- python3 test/install_game_runtime_test.py
+	@python3 tools/test_policy.py tool install-game-runtime
+
 test-tool-runtime-update-build:
-	@python3 tools/test_policy.py disabled test-tool-runtime-update-build
-	@$(QUIET) runtime_update_build_test.py -- python3 test/runtime_update_build_test.py
+	@python3 tools/test_policy.py tool runtime-update-build
+
 test-tool-quiet:
-	@python3 tools/test_policy.py disabled test-tool-quiet
-	@$(QUIET) quiet_test.py -- python3 test/quiet_test.py
+	@python3 tools/test_policy.py tool quiet
+
 test-tool-workspaces:
-	@python3 tools/test_policy.py disabled test-tool-workspaces
-	@$(QUIET) workspaces_test.py -- python3 test/workspaces_test.py
+	@python3 tools/test_policy.py tool workspaces
+
 test-tool-workspace-retirement:
-	@python3 tools/test_policy.py disabled test-tool-workspace-retirement
-	@$(QUIET) workspace_retirement_test.py -- python3 test/workspace_retirement_test.py
+	@python3 tools/test_policy.py tool workspace-retirement
+
 test-tool-workspace-make:
-	@python3 tools/test_policy.py disabled test-tool-workspace-make
-	@$(QUIET) workspace_make_test.py -- python3 test/workspace_make_test.py
+	@python3 tools/test_policy.py tool workspace-make
 
 test-tool-cloud-entry:
 	@python3 tools/test_policy.py disabled test-tool-cloud-entry
@@ -447,29 +446,28 @@ test-tool-cloud-emscripten-setup:
 	@python3 tools/test_policy.py disabled test-tool-cloud-emscripten-setup
 	@$(QUIET) cloud_emscripten_setup_test.py -- python3 test/cloud_emscripten_setup_test.py
 test-tool-workspace-install:
-	@python3 tools/test_policy.py disabled test-tool-workspace-install
-	@$(QUIET) workspace_install_test.py -- python3 test/workspace_install_test.py
+	@python3 tools/test_policy.py tool workspace-install
+
 test-tool-mcp-package:
-	@python3 tools/test_policy.py disabled test-tool-mcp-package
-	@$(QUIET) mcp-package-tests -- node --test test/mcp_package_test.mjs
+	@python3 tools/test_policy.py tool mcp-package
+
 test-tool-web-serve:
-	@python3 tools/test_policy.py disabled test-tool-web-serve
-	@$(QUIET) web_serve_test.py -- python3 test/web_serve_test.py
+	@python3 tools/test_policy.py tool web-serve
+
 test-tool-web-workspace:
-	@python3 tools/test_policy.py disabled test-tool-web-workspace
-	@$(QUIET) web_workspace_test.mjs -- node test/web_workspace_test.mjs
+	@python3 tools/test_policy.py tool web-workspace
+
 test-tool-web-storage:
-	@python3 tools/test_policy.py disabled test-tool-web-storage
-	@$(QUIET) web_storage_test.mjs -- node test/web_storage_test.mjs
+	@python3 tools/test_policy.py tool web-storage
+
 test-tool-web-frames:
-	@python3 tools/test_policy.py disabled test-tool-web-frames
-	@$(QUIET) web_frames_test.mjs -- node test/web_frames_test.mjs
+	@python3 tools/test_policy.py tool web-frames
+
 test-tool-web-isolation:
-	@python3 tools/test_policy.py disabled test-tool-web-isolation
-	@$(QUIET) web_isolation_test.mjs -- node test/web_isolation_test.mjs
+	@python3 tools/test_policy.py tool web-isolation
+
 test-tool-collab-client:
-	@python3 tools/test_policy.py disabled test-tool-collab-client
-	@$(QUIET) collab_client_test.mjs -- node test/collab_client_test.mjs
+	@python3 tools/test_policy.py tool collab-client
 
 test-slow:
 	@python3 tools/test_policy.py disabled test-slow

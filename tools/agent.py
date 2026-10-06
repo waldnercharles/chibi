@@ -12,7 +12,7 @@ import sys
 import tempfile
 import time
 
-from test_policy import admitted, NOTICE
+from test_policy import admitted, NOTICE, run_commands, DEADLINE
 
 ROOT = Path(__file__).resolve().parents[1]
 CPU = re.findall(r'CHIBI_CPU_SELECTOR\("([^"]+)"\)',
@@ -76,6 +76,8 @@ def test_plan(purpose, health):
 
 
 def run(command, timeout, env=None, request=None, rss_mib=None):
+    if DEADLINE in os.environ:
+        timeout = min(timeout, max(0, float(os.environ[DEADLINE]) - time.monotonic()))
     # A file avoids pipe deadlocks and keeps arbitrary child logs out of JSON stdout.
     with tempfile.TemporaryFile(mode='w+') as log, tempfile.TemporaryFile(mode='w+') as source:
         if request is not None:
@@ -182,7 +184,12 @@ def main():
         if args.selector not in allowed:
             return report('blocked', 'selector_not_classified_for_requested_capability', selector=args.selector)
         env['CHIBI_EXECUTION_PROFILE'] = 'iteration' if args.action == 'test' else 'gpu-check'
-        run([str(ROOT / args.build_dir / 'test_suite'), args.selector], max(0, 60 - (time.monotonic() - START)), env)
+        with tempfile.TemporaryFile(mode='w+') as log:
+            code = run_commands([[str(ROOT / args.build_dir / 'test_suite'), args.selector]],
+                                max(.001, 60 - (time.monotonic() - START)), env, log)
+            if code:
+                log.seek(0)
+                raise RuntimeError(f'child_exit_{code}: {log.read()[-4000:]}')
         return report('passed', 'selected_assertions_passed', selector=args.selector,
                       skipped=[dict(check='full-native/render', reason='temporary_60_second_quarantine')])
     if not Path('/proc/self/status').exists():

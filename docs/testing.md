@@ -8,17 +8,22 @@ Known slow commands are not scheduled, even with hardware opt-in. Unknown runtim
 is not evidence of speed. The [disabled coverage inventory](test-quarantine.md)
 lists exact quarantined targets and the small retained command set.
 
-`make test` now runs only `test/test_policy_test.py`; success means those policy
-regressions passed, not native, tooling, GPU or full verification. Every run prints
+`make test` now runs policy, validation-plan and execution-policy regressions
+under one deadline. This includes the unchanged MCP regression; its currently
+observed failure remains a default failure. Success would mean only these
+regressions passed, not full native, tooling or GPU verification. Every run prints
 a quarantine notice. `make test-list` reports admitted invocations without a build.
 `make test-full`, `test-slow`, `test-render` and other quarantined targets exit
 nonzero **before** their old recipes execute. Their recipes, tests, fixtures and
 assertions are retained for a reversible restoration after timing investigation.
-Do not use direct binaries, CMake check targets or captures to bypass quarantine.
+Direct binaries, raw scripts, CMake check targets and captures are unchanged
+and do not universally enforce the ceiling. Do not use them to bypass quarantine.
 
 `tools/test_policy.py` gives each admitted test command one 60-second wall-clock
-deadline across all its subprocesses. Timeout kills the process group and returns
-failure (124), never a green skip. The short regression aggregate shares one
+deadline across all its subprocesses. Timeout stops the isolated Linux supervisor and kills/reaps owned descendants,
+including nested wrappers and children that used `setsid`, then returns failure
+(124), never a green skip. Nested wrappers inherit the same absolute deadline.
+Other hosts fail closed before test execution until equivalent containment exists. The short regression aggregate shares one
 deadline; it does not reset per test. Multiple Make validation goals are rejected
 as an unadmitted aggregate. Do not manufacture chunks of a slow suite to evade
 the limit. No runtime knob raises the production ceiling.
@@ -29,7 +34,7 @@ reported full-command times 507s/145s include build/tooling overhead and are not
 native test times. Known test-only evidence, including PR164's Debug 1059s and
 optimized 125.66s render aggregates, justifies quarantine without another run.
 
-CI's existing named jobs explicitly report disabled coverage and run only the
+CI's explicitly labeled partial-coverage jobs report disabled coverage and run only the
 bounded subset described in the inventory. Existing server-required checks,
 independent review, PR/ticket holds, configuration requirements and protection
 rules still apply. The older CUT62 complete-gate requirement remains unsatisfied

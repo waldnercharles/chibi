@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   native:
-    name: Native tests (${{ matrix.build_type }})
+    name: Native partial coverage (${{ matrix.build_type }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

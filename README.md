@@ -61,7 +61,7 @@ or CMake cache settings trigger configuration again.
 
 `make test-fast TEST_ARGS=--graph-optimize` builds only the test executable in
 plain Debug and runs that selector. Use another `test_suite` selector for the
-area you changed. `make test` temporarily runs policy regressions only; see [the 60-second policy](docs/testing.md#temporary-60-second-policy) for disabled coverage.
+area you changed. `make test` temporarily runs policy, validation-plan and execution-policy regressions only; see [the 60-second policy](docs/testing.md#temporary-60-second-policy) for disabled coverage.
 
 Neon Swarm is the default project for native launches, editor profiles, MCP,
 and `make web-serve`. Its manifest selects `scenes/Sandbox.kdl`.

@@ -29,14 +29,18 @@ Configuration and compilation remain separate from test execution.
 | `test-full`, `test-slow`: native `all_checks` aggregate and audit | Native suite measurements exceed 60 seconds. |
 | `test-render`: scene/shader/Studio/RmlUi/Arena GPU and window checks | Measured render aggregates exceed 60 seconds; other components are unadmitted. |
 | Full `--studio-documents`, `--studio-panels`, `--studio-shell` | Measured aggregates exceed 60 seconds; only exact tuples below are admitted. |
-| Build-integrated runtime checks: `check-generation`, `check-reflect`, `check-reload`, `check-dev`, `check-assets`, `check-behavior-backend` | No admission for their complete execution; compilation alone is not a pass. |
+| `--editor-checkpoint`: workspace recovery assertions | Unadmitted runtime; retained native assertions are not execution evidence. |
+| Build-integrated runtime checks: `check-generation`, `check-reflect`, `check-host`, `check-assets`, `check-behavior-backend` | No admission for their complete execution; compilation alone is not a pass. |
 | `test-compiler-parity`, no-SLJIT rejection checks, web backend execution | Unadmitted runtime; retained smoke compilation is not assertion coverage. |
 | Make `benchmark` aggregate, long controller profiles/captures, CUT61 historical 2016-frame capture | No complete-command admission. |
 | `agent-gpu-test`, other selector/argument tuples, multi-goal validation | Unmeasured or outside the exact admission inventory. |
 
 Existing native assertions and fixtures remain. Retired Python/Node suites,
 cloud tooling, MCP script checks and old script benchmark drivers are removed,
-not quarantined. The minimal C suite does not reproduce their former coverage.
+not quarantined. CUT65 also removed the reload loader/watch fixtures and the
+Python application-recovery driver. `check-host` retains native process and
+state-file assertions under quarantine. The minimal C suite does not reproduce
+the former coverage.
 
 ## Retained short coverage
 

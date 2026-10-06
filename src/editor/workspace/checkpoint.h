@@ -8,8 +8,7 @@
 #include <math.h>
 #include <string.h>
 
-/* Checkpoint JSON is owned across module generations. No process pointers or
- * structure images cross this boundary. */
+/* Saved checkpoints contain owned JSON values, never process pointers. */
 static inline void checkpoint_text(
     yyjson_mut_doc *doc,
     yyjson_mut_val *object,

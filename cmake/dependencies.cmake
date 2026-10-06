@@ -1,11 +1,7 @@
 # --- cute_framework (window host + dcimgui), pinned commit ---
 include(FetchContent)
 set(CHIBI_SDL3_PACKAGE_PREFIX "" CACHE PATH "Pinned SDL3 package prefix")
-if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    set(CF_FRAMEWORK_STATIC OFF CACHE BOOL "" FORCE)
-else()
-    set(CF_FRAMEWORK_STATIC ON CACHE BOOL "" FORCE)
-endif()
+set(CF_FRAMEWORK_STATIC ON CACHE BOOL "" FORCE)
 set(CF_CUTE_SHADERC OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     cute_framework
@@ -142,10 +138,6 @@ if(CHIBI_ENABLE_SJLIT)
     add_library(chibi_sljit STATIC ${SLJIT_SOURCE_DIR}/sljit_src/sljitLir.c)
     target_include_directories(chibi_sljit PUBLIC ${SLJIT_SOURCE_DIR}/sljit_src)
     target_compile_definitions(chibi_sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
-    if(CHIBI_DEVELOPMENT_RELOAD)
-        set_target_properties(chibi_sljit PROPERTIES POSITION_INDEPENDENT_CODE ON
-            C_VISIBILITY_PRESET hidden)
-    endif()
 endif()
 
 
@@ -184,5 +176,4 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_THREADS)
         GIT_TAG 4cba61a045d8e759bd35e5d85691bf9f7271f822
         UPDATE_DISCONNECTED TRUE)
     FetchContent_MakeAvailable(enkits)
-    set_target_properties(enkiTS PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()

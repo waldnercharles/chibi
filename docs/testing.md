@@ -144,11 +144,11 @@ on the frozen candidate; their presence describes configuration, not a run.
 
 | Configured check | Required evidence on the candidate |
 | --- | --- |
-| Native Debug, sanitizers ON, SLJIT ON | Actual `make test` and `xvfb-run -a make test-render` results with the configured toolchain/flags |
-| Native RelWithDebInfo, sanitizers OFF, SLJIT ON | Actual aggregate and render results in that configuration |
+| Native Debug, sanitizers ON, SLJIT ON | CI runs the bounded C tooling group and admitted native tuples. Complete native aggregate and render requirements remain quarantined and pending. |
+| Native RelWithDebInfo, sanitizers OFF, SLJIT ON | CI runs the bounded C tooling group and admitted native tuples. Complete aggregate and render requirements in this configuration remain quarantined and pending. |
 | RelWithDebInfo Arena scaling | `CBLUEPRINT_BENCH_COMBAT=1 CBLUEPRINT_BENCH_REQUIRE_PARALLEL=1 build/test_suite --bench-arena-scene-scale 2048 240 0` under the configured display |
-| Debug job's no-SLJIT check | Separate Debug/sanitized, `CHIBI_ENABLE_SJLIT=OFF` configuration and `check-behavior-backend` result |
-| Debug job's development reload build | Separate RelWithDebInfo, reload ON, sanitizers OFF, SLJIT ON configuration and `chibi chibi_dll` build result |
+| Debug job's no-SLJIT compilation | Separate Debug/sanitized, `CHIBI_ENABLE_SJLIT=OFF` configuration builds `behavior_backend_smoke runtime_backend_smoke`. Runtime rejection assertions remain quarantined and pending. |
+| Debug job's development application and host compilation | Separate RelWithDebInfo, sanitizers OFF, SLJIT ON configuration builds `chibi test_host`. Host execution remains quarantined; compilation is not a pass for `check-host`. |
 | Format | `make check-format` (CI uses `sh tools/clang-format.sh --check`) |
 | Web workflow / affected web or UI work | Required Emscripten build, packaging and web/UI verification; record threaded validation when requested/applicable |
 

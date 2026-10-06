@@ -110,8 +110,6 @@ def cleanup_children(read_children):
     # This dedicated subreaper owns all its children, including double-forked or
     # setsid descendants adopted when their parent/nested supervisor is killed.
     # Kill parents, reap, then repeat for newly adopted children until none remain.
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
     while True:
         children = read_children()
         for pid in children:
@@ -133,8 +131,6 @@ def cleanup_subtree(child):
     # descendants by reparenting them while we discover the owned subtree.
     if child.poll() is not None:
         return
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
     owned, pending = [child.pid], [child.pid]
     try:
         while pending:
@@ -212,6 +208,10 @@ def supervise(commands):
                 return result if result > 0 else 128 - result
         return 0
     finally:
+        # The caller can reach the shared deadline and send SIGTERM while we
+        # start cleanup. Protect discovery and polling before either can run.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
         if subreaper:
             cleanup_children(read_children)
         elif child is not None:

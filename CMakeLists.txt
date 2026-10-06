@@ -76,9 +76,8 @@ endif()
 option(CHIBI_ENABLE_SANITIZERS
        "Enable the selected sanitizer for native targets" ON)
 option(CHIBI_ENABLE_CCACHE "Use ccache when it is available" ON)
-option(CHIBI_DEVELOPMENT_RELOAD "Build the native reload host and application DLL" OFF)
 option(CHIBI_DISTRIBUTION "Load native resources only from the installed package" OFF)
-if(CHIBI_DISTRIBUTION AND (CHIBI_DEVELOPMENT_RELOAD OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten"))
+if(CHIBI_DISTRIBUTION AND CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     message(FATAL_ERROR "CHIBI_DISTRIBUTION requires the static native application")
 endif()
 if(CHIBI_DISTRIBUTION)
@@ -212,7 +211,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wno-gnu-zero-variadic-macro-arguments)
 endif()
 
-# Project headers resolve from the source tree; only the reload ABI is public.
+# Project headers resolve from the source tree.
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include)
 include(cmake/sources.cmake)
 
@@ -463,53 +462,16 @@ set(EDITOR_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/editor_registry.c)
 chibi_registry("${EDITOR_REGISTRY}" ${APP_REGISTRY_PACKS} STUDIO_PACK GAME_REGISTRY_PACK)
 
 
-function(chibi_watch_platform target)
-    target_sources(${target} PRIVATE src/host/process.c src/host/watch.c src/support/xalloc.c)
-    find_package(Threads REQUIRED)
-    target_link_libraries(${target} PRIVATE Threads::Threads)
-    if(APPLE)
-        target_sources(${target} PRIVATE src/host/watch_macos.c)
-        target_link_libraries(${target} PRIVATE "-framework CoreServices")
-    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        target_sources(${target} PRIVATE src/host/watch_linux.c)
-    else()
-        message(FATAL_ERROR "Development source watching supports macOS and Linux")
-    endif()
-endfunction()
-
-set(HOST_SOURCES src/host/main.c src/host/module.c src/host/state_file.c src/host/stacktrace.c)
+set(HOST_SOURCES src/host/main.c src/host/state_file.c src/host/stacktrace.c)
 add_library(chibi_sources OBJECT ${APP_SOURCES} ${EDITOR_REGISTRY})
 target_include_directories(chibi_sources PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(chibi_sources PRIVATE chibi_render editor engine runtime_support cute)
 chibi_enable_tracy(chibi_sources)
-if(CHIBI_DEVELOPMENT_RELOAD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    foreach(project_target core ecs runtime_support authoring_graph engine editor chibi_render)
-        set_target_properties(${project_target} PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
-    endforeach()
-    if(TARGET chibi_sljit)
-        set_target_properties(chibi_sljit PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
-    endif()
-    set_target_properties(chibi_sources PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    add_library(chibi_dll SHARED $<TARGET_OBJECTS:chibi_sources>)
-    target_link_libraries(chibi_dll PRIVATE chibi_render editor engine runtime_support cute)
-    chibi_enable_tracy(chibi_dll)
-    set_target_properties(chibi_dll PROPERTIES C_VISIBILITY_PRESET hidden LINKER_LANGUAGE CXX)
-    add_executable(chibi ${HOST_SOURCES} src/host/dev.c src/support/resources.c)
-    chibi_watch_platform(chibi)
-    target_compile_definitions(chibi PRIVATE CHIBI_DEVELOPMENT_HOST=1)
-    target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
-    target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(chibi PRIVATE cute chibi_thirdparty ${CMAKE_DL_LIBS})
-    chibi_enable_tracy(chibi)
-    set_target_properties(chibi PROPERTIES LINKER_LANGUAGE CXX)
-else()
-    add_executable(chibi ${HOST_SOURCES} $<TARGET_OBJECTS:chibi_sources>)
-    target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-    target_compile_definitions(chibi PRIVATE CHIBI_STATIC_APPLICATION=1)
-    target_link_libraries(chibi PRIVATE ${CMAKE_DL_LIBS} chibi_render editor engine runtime_support cute)
-    chibi_enable_tracy(chibi)
-    set_target_properties(chibi PROPERTIES LINKER_LANGUAGE CXX)
-endif()
+add_executable(chibi ${HOST_SOURCES} $<TARGET_OBJECTS:chibi_sources>)
+target_include_directories(chibi PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(chibi PRIVATE chibi_render editor engine runtime_support cute)
+chibi_enable_tracy(chibi)
+set_target_properties(chibi PROPERTIES LINKER_LANGUAGE CXX)
 
 add_executable(chibi_ctl tools/chibi_ctl/main.c ${EDITOR_REGISTRY})
 add_dependencies(chibi_ctl generate_runtime_registry)
@@ -765,7 +727,7 @@ set(BENCH_BEHAVIOR_REGISTRY ${CMAKE_CURRENT_BINARY_DIR}/generated/bench_behavior
 chibi_registry("${BENCH_BEHAVIOR_REGISTRY}" WHOLE_VALUE_PACK ${BASE_REGISTRY_PACKS})
 add_executable(bench_behavior test/bench_behavior.c test/bench_integer.c test/bench_aggregate.c test/support/whole_values.c test/support/whole_components.c ${BENCH_BEHAVIOR_REGISTRY})
 target_include_directories(bench_behavior PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(bench_behavior PRIVATE ecs core ${CMAKE_DL_LIBS})
+target_link_libraries(bench_behavior PRIVATE ecs core)
 target_compile_options(bench_behavior PRIVATE -UNDEBUG -ffp-contract=off)
 
 add_executable(bench_scheduler test/bench_scheduler.c ${BASE_REGISTRY})
@@ -813,52 +775,19 @@ if(NOT CHIBI_COMPILE_COMMANDS_LINK_RESULT STREQUAL "0" AND
         "Could not publish the compile commands link: ${CHIBI_COMPILE_COMMANDS_LINK_RESULT}")
 endif()
 
-# Exercise the actual native loader with separately compiled generations.
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    foreach(fixture reload_one reload_two reload_bad reload_reject reload_checkpoint)
-        add_library(${fixture} MODULE test/reload/fixture.c)
-        target_include_directories(${fixture} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-        set_target_properties(${fixture} PROPERTIES C_VISIBILITY_PRESET hidden)
-    endforeach()
-    add_library(reload_no_entry MODULE test/reload/no_entry.c)
-    set_target_properties(reload_no_entry PROPERTIES C_VISIBILITY_PRESET hidden)
-    target_compile_definitions(reload_checkpoint PRIVATE FAIL_CHECKPOINT=1)
-    target_compile_definitions(reload_two PRIVATE GENERATION=2)
-    target_compile_definitions(reload_bad PRIVATE BAD_ABI=1)
-    target_compile_definitions(reload_reject PRIVATE REJECT_IMPORT=1)
-    add_executable(test_reload test/reload/loader.c src/host/module.c src/host/state_file.c)
-    target_include_directories(test_reload PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/include)
-    target_link_libraries(test_reload PRIVATE ${CMAKE_DL_LIBS})
-    add_custom_target(check-reload
-        COMMAND test_reload $<TARGET_FILE:reload_one> $<TARGET_FILE:reload_two>
-            $<TARGET_FILE:reload_bad> $<TARGET_FILE:reload_reject>
-            $<TARGET_FILE:reload_no_entry> $<TARGET_FILE:reload_checkpoint>
-        DEPENDS test_reload reload_one reload_two reload_bad reload_reject reload_no_entry reload_checkpoint
-        VERBATIM)
-endif()
-
-if(TARGET chibi_dll)
-    include(cmake/dev_config.cmake)
-endif()
-
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     add_subdirectory(test/tools)
-    add_executable(test_dev test/dev/main.c test/dev/watch.c test/dev/process.c test/dev/controller.c
-        src/host/dev.c src/host/state_file.c third_party/yyjson/yyjson.c)
-    target_include_directories(test_dev PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)
-    chibi_watch_platform(test_dev)
-    add_custom_target(check-dev COMMAND test_dev DEPENDS test_dev VERBATIM)
-    find_program(CHIBI_NINJA_EXECUTABLE ninja)
-    if(CHIBI_NINJA_EXECUTABLE)
-        add_custom_command(TARGET check-dev POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -DROOT=${CMAKE_CURRENT_SOURCE_DIR}
-                -DTEST_DIR=${CMAKE_CURRENT_BINARY_DIR}/ninja-retry-test
-                -DTEST_C_COMPILER=${CMAKE_C_COMPILER}
-                -DTEST_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tests/dev_ninja_retry.cmake
-            VERBATIM)
-    endif()
-    add_executable(concurrent_runner test/dev/concurrent.c src/host/process.c)
+    add_executable(test_host test/host/main.c test/host/process.c test/host/state_file.c
+        src/host/process.c src/host/state_file.c)
+    target_include_directories(test_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    # Host checks have no admission under the temporary execution quarantine.
+    # Keep test_host available for compilation without executing the checks.
+    find_program(CHIBI_PYTHON_EXECUTABLE python3 REQUIRED)
+    add_custom_target(check-host
+        COMMAND "${CHIBI_PYTHON_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/test_policy.py"
+            disabled check-host
+        VERBATIM)
+    add_executable(concurrent_runner test/host/concurrent.c src/host/process.c)
     add_custom_target(check-generation
         COMMAND ${CMAKE_COMMAND} "-DROOT=${CMAKE_SOURCE_DIR}"
             "-DTEST_DIR=${CMAKE_BINARY_DIR}/tests/generation"
@@ -876,7 +805,7 @@ endif()
 # Test drivers use assertions for fixture setup and verification. Keep them
 # active when measuring optimized runtime libraries, which retain their normal
 # Release flags. Otherwise a Release review silently skips the workload.
-foreach(driver test_suite test_reload test_dev concurrent_runner bench_activation
+foreach(driver test_suite test_host concurrent_runner bench_activation
                system_benchmark query_benchmark contact_benchmark)
     if(TARGET ${driver})
         target_compile_options(${driver} PRIVATE -UNDEBUG)
@@ -959,9 +888,6 @@ add_library(ui_source STATIC
     src/assets/ui_source_format.c)
 target_include_directories(ui_source PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ui_source PUBLIC runtime_support core chibi_tree_sitter)
-if(CHIBI_DEVELOPMENT_RELOAD)
-    set_target_properties(ui_source PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
-endif()
 target_link_libraries(editor PRIVATE ui_source chibi_render)
 # ui_edit validates through ui_check, which lives with the RmlUi host.
 target_link_libraries(automation PUBLIC ui_source chibi_render)

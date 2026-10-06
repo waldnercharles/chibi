@@ -24,7 +24,17 @@ static const char driver_source[] =
     "mode = os.environ.get('CHIBI_POLICY_FIXTURE', '')\n"
     "def unavailable():\n"
     "    raise OSError('fixture: discovery unavailable')\n"
-    "if mode == 'portable': policy.enable_subreaper = lambda: False\n"
+    "if mode == 'portable':\n"
+    "    policy.enable_subreaper = lambda: False\n"
+    "    cleanup = policy.cleanup_subtree\n"
+    /* A parent's deadline can send SIGTERM as the nested supervisor starts
+       its finally block. Inject it at that boundary without a timing race. */
+    "    def interrupted_cleanup(child):\n"
+    "        open(os.path.join(os.path.dirname(__file__), "
+    "'cleanup-entered'), 'w').close()\n"
+    "        os.kill(os.getpid(), signal.SIGTERM)\n"
+    "        cleanup(child)\n"
+    "    policy.cleanup_subtree = interrupted_cleanup\n"
     "if mode in ('missing-proc', 'no-reader'): policy.proc_children = "
     "unavailable\n"
     "if mode == 'no-reader':\n"
@@ -131,7 +141,8 @@ static int run(const char *action, const char *argument)
 
 static void reset_markers()
 {
-    const char *names[] = { "started", "escaped", "sibling", "last-command", "deadline" };
+    const char *names[] = { "started",      "escaped",  "sibling",
+                            "last-command", "deadline", "cleanup-entered" };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         char filename[PATH_MAX];
         path(filename, names[i]);
@@ -165,6 +176,7 @@ TEST_CASE(portable_nested_cleanup_preserves_sibling)
     reset_markers();
     REQUIRE(run("portable", NULL) == 124);
     REQUIRE(exists("started"));
+    REQUIRE(exists("cleanup-entered"));
     REQUIRE(!exists("escaped"));
     REQUIRE(exists("sibling"));
     return true;

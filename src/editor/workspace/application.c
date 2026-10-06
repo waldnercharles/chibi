@@ -38,7 +38,7 @@
 
 #define APP_DEFAULT_SCREENSHOT_PATH "/tmp/chibi-screenshot.png"
 /* The longest an idle editor goes without a frame, so file watches, toasts
-   and the development host still come round. */
+   and notices still come round. */
 #define APP_IDLE_FRAME 0.25
 #define APP_DEFAULT_SCREENSHOT_FRAMES 3
 
@@ -61,8 +61,7 @@ typedef struct
     double monotonic_time;
     double fixed_dt;
     uint64_t next_frame_ms; /* an idle editor waits for input until then */
-    const chibi_host *host;
-    char *project_root; /* the open project, as opened */
+    char *project_root;     /* the open project, as opened */
     char *local_project_root;
     char *local_workspace;
     bool collab_initialized;
@@ -111,10 +110,11 @@ static void app_cleanup(app_loop *loop)
     }
     studio_free(loop->studio);
     loop->studio = NULL;
+    app_input_shutdown();
     close_workspace(loop);
     free(loop->local_project_root);
     free(loop->local_workspace);
-    loop->host->release(loop);
+    free(loop);
 }
 
 /* Whether an idle editor waits instead of running this frame: until input
@@ -466,10 +466,10 @@ static bool app_replace_workspace(
      * candidate must start from a clean catalog and mount its own project. */
     render_shader_catalog_clear();
 
-    app_loop candidate = { .host = loop->host };
+    app_loop candidate = { 0 };
     bool candidate_ready = app_workspace_build(&candidate, project_root, workspace, error, error_size);
     if (!candidate_ready) {
-        app_loop previous = { .host = loop->host };
+        app_loop previous = { 0 };
         char recovery_error[512] = { 0 };
         bool recovered = app_workspace_build(&previous, previous_root, rollback, recovery_error, sizeof recovery_error);
         if (recovered) {
@@ -661,11 +661,9 @@ static void open_project(app_loop *loop, const char *path)
     }
 }
 
-static void *application_create(const chibi_host *host, const char *checkpoint, char *error, size_t error_size)
+void *chibi_application_create(int argc, char **argv, const char *checkpoint, char *error, size_t error_size)
 {
     snprintf(error, error_size, "Could not initialize application");
-    int argc = host->argc;
-    char **argv = host->argv;
     int frames = 0;
     int headless = 0;
     bool play = false;
@@ -732,8 +730,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         frames = APP_DEFAULT_SCREENSHOT_FRAMES;
     }
 
-    /* A reload reopens the project Studio had open, which may not be the one
-       the host launched with. */
+    /* A saved workspace reopens the project Studio had open at shutdown. */
     yyjson_doc *saved = checkpoint ? yyjson_read(checkpoint, strlen(checkpoint), 0)
                                    : NULL;
     const char *saved_project = yyjson_get_str(
@@ -743,9 +740,8 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
         project_path = saved_project;
         scene_path = NULL;
     }
-    app_loop *loop = host->allocate(sizeof *loop);
-    *loop = (app_loop){ .host = host,
-                        .frames = frames,
+    app_loop *loop = xmalloc(sizeof *loop);
+    *loop = (app_loop){ .frames = frames,
                         .screenshot_path = screenshot_path,
                         .show_graph = open && screenshot_path,
                         .headless = headless,
@@ -753,7 +749,7 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     bool opened = open_workspace(loop, project_path, scene_path, play, error, error_size);
     yyjson_doc_free(saved);
     if (!opened) {
-        host->release(loop);
+        free(loop);
         return NULL;
     }
     app_scene_authoring *authoring = loop->authoring;
@@ -803,15 +799,13 @@ static void *application_create(const chibi_host *host, const char *checkpoint, 
     return NULL;
 }
 
-static char *application_checkpoint(void *state)
+char *chibi_application_checkpoint(void *state)
 {
     app_loop *loop = state;
     if (loop->game) {
-        /* Reload starts Play from authored content, with launch arguments retained by the host. */
+        /* Play restarts from authored content with the current launch arguments. */
         const char saved[] = "{\"version\":1,\"mode\":\"play\"}";
-        char *json = loop->host->allocate(sizeof saved);
-        memcpy(json, saved, sizeof saved);
-        return json;
+        return xstrdup(saved);
     }
     char *scene = app_scene_authoring_checkpoint(loop->authoring);
     char *graph = editor_checkpoint(loop->graph_editor);
@@ -824,13 +818,7 @@ static char *application_checkpoint(void *state)
         yyjson_mut_obj_add_str(doc, root, "project", loop->project_root);
         yyjson_mut_obj_add_str(doc, root, "scene", scene);
         yyjson_mut_obj_add_str(doc, root, "graph", graph);
-        char *encoded = yyjson_mut_write(doc, 0, NULL);
-        if (encoded) {
-            size_t size = strlen(encoded) + 1;
-            json = loop->host->allocate(size);
-            memcpy(json, encoded, size);
-            free(encoded);
-        }
+        json = yyjson_mut_write(doc, 0, NULL);
         yyjson_mut_doc_free(doc);
     }
     free(scene);
@@ -838,7 +826,7 @@ static char *application_checkpoint(void *state)
     return json;
 }
 
-static void application_activate(void *state)
+void chibi_application_activate(void *state)
 {
     app_loop *loop = state;
 #ifndef __EMSCRIPTEN__
@@ -862,15 +850,7 @@ static void application_activate(void *state)
     }
 }
 
-static void application_deactivate(void *state)
-{
-    app_loop *loop = state;
-    studio_free(loop->studio);
-    loop->studio = NULL;
-    app_input_shutdown();
-}
-
-static int application_frame(void *state)
+int chibi_application_frame(void *state)
 {
     app_loop *loop = state;
     int finished = app_frame(loop);
@@ -889,21 +869,7 @@ static int application_frame(void *state)
     return finished ? (loop->capture_error ? -1 : 1) : 0;
 }
 
-static void application_destroy(void *state)
+void chibi_application_destroy(void *state)
 {
     app_cleanup(state);
-}
-
-CHIBI_APPLICATION_EXPORT const chibi_application_api *chibi_application()
-{
-    static const chibi_application_api api = {
-        .abi = CHIBI_APPLICATION_ABI,
-        .create = application_create,
-        .checkpoint = application_checkpoint,
-        .activate = application_activate,
-        .deactivate = application_deactivate,
-        .frame = application_frame,
-        .destroy = application_destroy,
-    };
-    return &api;
 }

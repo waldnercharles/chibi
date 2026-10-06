@@ -53,7 +53,7 @@ def source_files(source: Path) -> list[Path]:
     return sorted(paths)
 
 
-BOOL_DEFAULTS = {"CHIBI_DEVELOPMENT_RELOAD": "OFF", "CHIBI_WEB_THREADS": "OFF",
+BOOL_DEFAULTS = {"CHIBI_WEB_THREADS": "OFF",
                  "CHIBI_ENABLE_TRACY": "OFF", "CHIBI_ENABLE_SANITIZERS": "ON",
                  "CHIBI_ENABLE_CCACHE": "ON", "CHIBI_ENABLE_SJLIT": "ON"}
 
@@ -123,7 +123,7 @@ def package_arguments(arguments: list[str], profile: str) -> list[str]:
 
 DEPENDENCY_OPTIONS = {"CMAKE_BUILD_TYPE", "CMAKE_OSX_SYSROOT", "CMAKE_OSX_ARCHITECTURES",
                       "CMAKE_OSX_DEPLOYMENT_TARGET", "CMAKE_TOOLCHAIN_FILE",
-                      "CHIBI_ENABLE_SANITIZERS", "CHIBI_SANITIZERS", "CHIBI_DEVELOPMENT_RELOAD",
+                      "CHIBI_ENABLE_SANITIZERS", "CHIBI_SANITIZERS",
                       "CHIBI_ENABLE_SJLIT", "CHIBI_ENABLE_TRACY", "CHIBI_WEB_THREADS", "CHIBI_WEB_WORKERS"}
 
 
@@ -149,6 +149,7 @@ def effective_arguments(build: Path, arguments: list[str]) -> list[str]:
         try:
             marker = json.loads((package_build.parent / "complete.json").read_text())
             original = definitions(marker["arguments"])
+            original.pop("CHIBI_DEVELOPMENT_RELOAD", None)
             defaults = cache_values(package_build / "CMakeCache.txt")
         except (OSError, ValueError, KeyError):
             pass

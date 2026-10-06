@@ -38,6 +38,3 @@ set_source_files_properties(
     PROPERTIES INCLUDE_DIRECTORIES ${tree_sitter_html_SOURCE_DIR}/src)
 target_compile_definitions(chibi_tree_sitter PRIVATE _DEFAULT_SOURCE _DARWIN_C_SOURCE)
 target_compile_options(chibi_tree_sitter PRIVATE -w)
-set_target_properties(chibi_tree_sitter PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    C_VISIBILITY_PRESET hidden)

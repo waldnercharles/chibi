@@ -21,8 +21,7 @@ typedef enum
     APP_INPUT_COUNT
 } app_input_action;
 
-/* Bindings belong to the active application generation and Cute app lifetime.
- * Initialize before cf_app_update; destroy before Cute or module teardown. */
+/* Initialize bindings before cf_app_update; destroy them before Cute teardown. */
 void app_input_initialize();
 void app_input_shutdown();
 /* Once per frame, immediately after cf_app_update. */

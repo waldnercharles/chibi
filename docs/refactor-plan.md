@@ -1,8 +1,9 @@
 # Repository refactor and automatic reload
 
-Implementation tracker for the approved September 7 plan. Keep this file current
-as milestones are verified; a checked item means implementation and acceptance
-checks are complete.
+Historical implementation tracker for the approved September 7 plan. CUT65
+removed native code replacement, its library loader and development watcher.
+The contract and acceptance evidence below describe that earlier implementation.
+See [native development](reload.md) for the current rebuild and restart workflow.
 
 ## Contract
 

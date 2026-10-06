@@ -312,7 +312,7 @@ struct app_scene_authoring
     char prototype_message[256];
 };
 
-/* Document I/O is shared by disk commands and module checkpoints. */
+/* Document I/O is shared by disk commands and saved workspace checkpoints. */
 /* The open scene as saving would write it, leaving an edit in progress open,
    so reading it changes nothing. Owned; NULL when an object does not save. */
 game_scene_document *scene_authoring_document(app_scene_authoring *scene);

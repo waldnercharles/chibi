@@ -713,8 +713,6 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
         !yyjson_is_arr(actors)) {
         goto done;
     }
-    /* Candidate-only mutation. The host retains the old module and world until
-     * the entire workspace, including graph history, has passed restoration. */
     if (scene_authoring_load_text(scene, "version 1\nname Checkpoint\n(array)entities\n", NULL) !=
             0 ||
         !restore_behaviors(scene, behaviors) || !restore_prototypes(scene, prototypes) ||

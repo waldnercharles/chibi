@@ -32,11 +32,10 @@ static void write_profile(int invalid)
     snprintf(
         contents,
         sizeof contents,
-        "CHIBI_DISTRIBUTION:BOOL=%s\nCHIBI_DEVELOPMENT_RELOAD:BOOL=%s\n"
+        "CHIBI_DISTRIBUTION:BOOL=%s\n"
         "CHIBI_ENABLE_SANITIZERS:BOOL=%s\n",
         invalid == 0 ? "OFF" : "ON",
-        invalid == 1 ? "ON" : "OFF",
-        invalid == 2 ? "ON" : "OFF"
+        invalid == 1 ? "ON" : "OFF"
     );
     tool_write(filename, contents);
 }
@@ -68,7 +67,7 @@ TEST_CASE(package_preserves_unrelated_output_and_rejects_development_builds)
     REQUIRE(package() != 0);
     REQUIRE(file_equals(marker, "keep authored data\n"));
     tool_remove_tree(output);
-    for (int invalid = 0; invalid < 3; invalid++) {
+    for (int invalid = 0; invalid < 2; invalid++) {
         write_profile(invalid);
         REQUIRE(package() != 0);
         REQUIRE(access(output, F_OK) != 0);

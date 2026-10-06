@@ -95,7 +95,7 @@ oversized archives are rejected.
 The browser maps project paths into its temporary room workspace. C constructs
 a disposable candidate model and validates its scene, graph, and Studio state
 before replacing the current model. Only successful restoration acknowledges
-the snapshot. Existing reload checkpoints retain their own version contract;
+the snapshot. Existing workspace checkpoints retain their own version contract;
 the collaboration wrapper does not change the project format.
 
 ## Access and deployment
@@ -121,7 +121,7 @@ create a separate invite for each person. Viewer credentials cannot submit edits
 and editor credentials cannot accept proposals or upload canonical checkpoints.
 
 Invite credentials travel in the URL fragment and are moved to per-tab session
-storage for reload recovery. They are never bundled into HTML, JavaScript,
+storage for workspace recovery. They are never bundled into HTML, JavaScript,
 WebAssembly, or project files. A room link grants access to the full shared
 project and its unsaved documents. Only share an invite with its intended peer.
 

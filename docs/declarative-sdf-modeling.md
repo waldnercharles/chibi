@@ -236,7 +236,7 @@ directory. Build and assemble an isolated engine package with:
 
 ```text
 make build BUILD_DIR=build-package \
-  LOCAL_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_DEVELOPMENT_RELOAD=OFF -DCHIBI_DISTRIBUTION=ON' \
+  LOCAL_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_DISTRIBUTION=ON' \
   BUILD_TARGET='chibi chibi_ctl' UPDATE_GAME_RUNTIME=0
 python3 tools/package_native.py --build build-package \
   --output build/model-evidence/package

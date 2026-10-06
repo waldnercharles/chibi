@@ -1,116 +1,64 @@
-# Native reload contract
+# Native development and workspace recovery
 
-The host owns the Cute application, ImGui context, process lifetime, development
-watcher and checkpoint file. A single application library owns graph catalogs,
-ECS worlds, editor models, compiled programs, scene rendering resources and
-callbacks. Internal interfaces can change together because they never cross the
-binary boundary.
-
-The public contract is `include/chibi/application.h`. A candidate exposes an
-ABI version and six lifecycle operations. Replacement runs between frames:
-
-1. Open a uniquely named library and validate its interface.
-2. Export the active application to a UTF-8 JSON checkpoint.
-3. Create an inactive candidate and import the checkpoint.
-4. If creation or import fails, destroy candidate-owned state and keep the old
-   application active.
-5. Deactivate and destroy the old application using its own code.
-6. Activate the candidate, then unload the old library.
-
-Candidate preparation must not replace process-global callbacks. Activation
-rebinds input bindings; deactivation removes registrations. Game UI fonts belong
-to the resident ImGui atlas. GPU and JIT resources belong to the
-application and are released before its code is unloaded. The retained RmlUi
-context, documents, FreeType state and Cute render resources also belong to the
-application. Editor activation creates them and deactivation destroys them;
-inactive candidate creation does not initialize RmlUi. Checkpoints
-contain stable document data and identities, never native pointers or generated code.
-The host supplies the allocator for exported checkpoint bytes.
+`make dev` builds the ordinary native application in RelWithDebInfo and launches
+Studio with `.chibi/workspace.json` as its checkpoint. Native C changes take effect
+after rebuilding and restarting the application.
 
 ## Development loop
 
-`make dev` configures and builds the development host and application, then stages
-an immutable generation through CMake. The host bootstraps into that staged
-executable and reads `build-dev/dev.json`, the generated development descriptor.
-The descriptor records source roots, watched suffixes, build commands and shared
-libraries. macOS FSEvents and Linux inotify report source changes; the host
-debounces them and runs one CMake build subprocess at a time. Diagnostics go to
-`.chibi/build.log`. No Python runtime is required.
-The host performs one startup build check to catch edits made between staging
-and watcher startup; an unchanged workspace then stays idle.
-Permission and other metadata-only notifications do not trigger builds. This
-keeps dependency configuration from retriggering itself when it adjusts generated
-source permissions without changing their contents.
+Close Studio, edit the native source, and run `make dev` again. The build reuses
+unchanged objects and dependency packages. Build failures report diagnostics and
+leave the saved workspace available for the next successful launch.
 
-The check fingerprints source inputs and the CMake cache. A matching fingerprint
-skips configure and build; if the accepted immutable generation also matches
-the source, resident inputs and application binary, it is returned without
-copying a new generation. Source roots are the project directories and any local
-`FETCHCONTENT_SOURCE_DIR_*` checkouts; pinned FetchContent downloads change only
-through their pins and patches. A build directory configured for reload is not
-reconfigured by each build; its generated build reruns CMake when CMake inputs
-change. Studio's stylesheets (the Studio project's `ui/StudioShell.rcss` and its
-`ui/theme/` imports) need no build: Studio restyles within a second of a change.
+The native application has no code replacement, source watcher, application DLL,
+immutable application generations or restart-required notification. `make run`,
+`make debug` and `make dev` all use the same linked application lifecycle.
 
-Source fingerprints before and after each build reject results made stale by
-newer edits. Ninja retries incrementally, preserving unchanged resident binaries.
-Other generators force recompilation on retry so coarse filesystem timestamps
-cannot reuse an outdated object. New `make dev` directories prefer Ninja when
-available; existing directories keep their configured generator. Each accepted
-generation contains an immutable application, host and
-resident dependency snapshot. Compile, staging and checkpoint-import failures
-leave the current editor running. Application changes replace code in the same
-process. Host, framework, resident font and shader changes report that a restart
-is required. Close the editor and run `make dev` again to apply those changes.
+Authored assets still update while Studio runs. Graph assets and systems update
+when their files change; prototypes and the open scene update when the runtime
+is stopped. Studio's RML and RCSS assets retain their existing live update path.
+These asset updates do not require a native rebuild. Browser C/WASM changes
+require rebuilding the web application and refreshing the browser.
 
-Staging retains the eight newest generations and the generation named by
-`.chibi/application.current`. Loaded application and resident libraries hold a
-lease until unload or host exit, so staging also preserves any older generation
-still in use. The next successful stage removes older unused generations.
+## Workspace checkpoints
 
-Application filenames are unique across generations as well as their directories.
-This prevents macOS library search paths from reopening an older application with
-the same filename.
+Normal close, Ctrl-C and SIGTERM save the workspace and exit normally. The next
+`make dev` launch imports `.chibi/workspace.json`. Window size and position use
+its adjacent `.window` file. Other native launches can opt into recovery with
+`--checkpoint PATH`.
 
-Normal close, Ctrl-C and SIGTERM cancel any active build, save the workspace and
-exit normally. Restart imports `.chibi/workspace.json`. Window size and
-position use the adjacent `.window` file. Unsaved documents, Undo/Redo, graph
-navigation and selection survive. Play restarts from authored state with
-its prior running or paused intent; live simulation memory and active pointer
-gestures are recreated. A checkpoint is separate from saving source documents.
+Unsaved documents, saved baselines, Undo/Redo, graph navigation and selection
+survive the checkpoint. Play restarts from authored state with its prior running
+or paused intent. Live simulation state and active pointer gestures are recreated.
+A checkpoint is separate from saving source documents.
 
-If startup cannot load the saved workspace, the host preserves it as
-`.chibi/workspace.json.rejected-XXXXXX`, prints that path, and starts from
-project content. The preserved file retains unsaved documents for recovery after
-an alpha schema change. Live reload still rejects incompatible candidates and
-keeps the active workspace running.
-
-The earlier Python supervisor and its SIGUSR1/exit-75 automatic restart protocol
-have been removed. The native host remains the running process until the user
-closes it. Static native and web builds keep their normal application lifecycle.
-
-The approach follows the small-host/shared-library structure described by
-[remodule](https://github.com/bullno1/remodule) and the user's
-[hot-reloader example](https://gist.github.com/waldnercharles/fd506cf5127e6cc822a7a9505a83bccd).
-Explicit document import allows internal C struct layouts to change between
-generations.
+If startup cannot import the saved workspace, the application preserves it as
+`.chibi/workspace.json.rejected-XXXXXX`, prints that path, and starts from project
+content. The preserved file retains unsaved documents for recovery after a schema
+change. Checkpoints contain stable document data and identities, never native
+pointers or generated code.
 
 ## Checks
 
-`make test` exercises separately compiled loader fixtures, incompatible ABI,
-missing libraries, rejected import, repeated unload, dirty document restoration,
-Undo/Redo, pre-Play restoration and held input across binding recreation. Native
-process and filesystem tests cover argument handling, cancellation, recursive
-watching and atomic saves. CMake tests and a native concurrent-process helper
-verify generated bytes, stable reflection identities and failed publication.
+`make test`, `make test-short` and `make test-tools` run the minimal C tooling
+suite under one shared 60-second deadline. Native host, generation, reflection
+and full editor checkpoint checks remain quarantined, disabled and not passed.
+See [the test inventory](test-quarantine.md). Compilation does not establish
+runtime coverage.
 
-Configure with `-DCHIBI_DEVELOPMENT_RELOAD=ON`, then run:
+The retained `test_host` binary covers native process and state-file handling.
+`check-host` invokes the quarantine guard, which refuses execution. The binary
+remains available for compilation. The unadmitted `--editor-checkpoint` assertions in
+the native suite cover dirty documents, Undo/Redo, pre-Play restoration and held
+input across binding recreation; their existence is not current execution
+evidence. CUT65 removed the Python application-recovery driver and its CMake
+check target. Do not execute raw native or CMake checks to bypass quarantine.
 
-```sh
-cmake --build build-dev --target chibi chibi_dll
-```
+CUT65 removed the old `CHIBI_DEVELOPMENT_RELOAD` build mode, `chibi_dll`,
+`check-reload`, `check-dev`, staging descriptors and native watcher smoke checks.
 
-`make dev` builds the RelWithDebInfo host and DLL, stages the current generation,
-and starts the source watcher. The automated `check-reload` target covers the
-loader contract separately with small compiled modules: ABI rejection, import
-failure, checkpoint failure, repeated replacement, and state preservation.
+Existing `build-dev` directories are reconfigured by `make dev` to use the linked
+application. Dependency packages use the new build identity; existing caches stay
+on disk. Old generation directories and manifests are no longer read. Existing
+workspace checkpoints remain available for restart recovery. Remove the retired
+reload option from custom configure commands.

@@ -1061,7 +1061,7 @@ static bool scene_program_counters(const char *shape_name)
         &GAME_COMPONENT_GameTransform,       &GAME_COMPONENT_GameGeometry3D,
         &GAME_COMPONENT_GameVisualTransform, &GAME_COMPONENT_GameOrientation,
         &GAME_COMPONENT_GameMaterial,        &GAME_COMPONENT_GameShader,
-        &GAME_COMPONENT_GameSdfSurface3D
+        &GAME_COMPONENT_GameSdfSurface3D,    &GAME_COMPONENT_GameAppearance
     };
     for (int i = 0; i < (int)(sizeof components / sizeof *components); i++) {
         assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
@@ -1071,6 +1071,21 @@ static bool scene_program_counters(const char *shape_name)
     assert(
         ecs_world_record_add(world, entity, GAME_COMPONENT_GameTransform.id, &position, 0) == ECS_OK
     );
+    for (int i = 0; i < 2; i++) {
+        ecs_entity piece = ecs_world_create_entity(world);
+        GameTransform at = { i ? 28 : -28, 0 };
+        GameAppearance appearance = { .shape = GAME_SHAPE_BOX,
+                                      .width = 8,
+                                      .height = 8,
+                                      .color = 0xffffffffu,
+                                      .antialias = 1 };
+        assert(
+            ecs_world_record_add(world, piece, GAME_COMPONENT_GameTransform.id, &at, 0) == ECS_OK
+        );
+        assert(
+            ecs_world_record_add(world, piece, GAME_COMPONENT_GameAppearance.id, &appearance, 0) == ECS_OK
+        );
+    }
     assert(ecs_world_apply_commands(world) == ECS_OK);
     app_scene_renderer *renderer = app_scene_renderer_new();
     engine_viewport *viewport = engine_viewport_new(WIDTH, HEIGHT);
@@ -1091,6 +1106,23 @@ static bool scene_program_counters(const char *shape_name)
         ok = ok && second.sdf_instances == 1 &&
              second.sdf_program_count == first.sdf_program_count &&
              second.sdf_program_compilations == first.sdf_program_compilations;
+    }
+    render_radiance_status lighting;
+    ok = ok && app_scene_renderer_lighting_status(renderer, &lighting);
+    for (int unlit = 1; unlit >= 0 && ok; unlit--) {
+        app_scene_renderer_set_view(renderer, unlit != 0, false);
+        if (unlit) {
+            ok = !app_scene_renderer_lighting_status(renderer, &lighting);
+        }
+        cf_app_update(NULL);
+        ok = ok &&
+             app_scene_renderer_draw(renderer, world, particles, viewport, NULL, (render_skip){ 0 });
+        cf_app_draw_onto_screen(false);
+        render_mesh_material_work work = app_scene_renderer_mesh_work(renderer);
+        ok = ok && app_scene_renderer_material_pieces(renderer) == 3 &&
+             work.sdf_instances == 1 && work.sdf_draw_calls > 0 &&
+             work.sdf_program_compilations == first.sdf_program_compilations &&
+             app_scene_renderer_lighting_status(renderer, &lighting) == !unlit;
     }
     if (!ok) {
         fprintf(

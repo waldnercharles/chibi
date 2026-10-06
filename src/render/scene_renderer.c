@@ -4,8 +4,10 @@
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
 #include "render/arena_post.h"
+#include "render/draw_textures.h"
 #include "render/fluid_raster.h"
 #include "render/fog.h"
+#include "render/fullscreen.h"
 #include "render/geometry_2d.h"
 #include "render/gpu_clock.h"
 #include "render/gpu_timing.h"
@@ -62,7 +64,7 @@ struct app_scene_renderer
     render_reflections *reflections;
     render_reflection *reflectors;
     CF_Canvas output, background;
-    CF_Shader background_shader;
+    CF_Shader background_shader, unlit_shader;
     GameStarfield2D background_style;
     engine_viewport_camera background_camera;
     bool background_valid, gpu_clock;
@@ -166,6 +168,9 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     if (renderer->background_shader.id) {
         cf_destroy_shader(renderer->background_shader);
     }
+    if (renderer->unlit_shader.id) {
+        cf_destroy_shader(renderer->unlit_shader);
+    }
     render_programs_free(renderer->fragment);
     afree(renderer->fragment_programs);
     afree(renderer->entities);
@@ -204,6 +209,14 @@ int app_scene_renderer_particle_count(const app_scene_renderer *renderer)
 
 void app_scene_renderer_set_view(app_scene_renderer *renderer, bool unlit, bool fogless)
 {
+    if (renderer->unlit != unlit) {
+        renderer->span = (render_gpu_span){ 0 };
+        renderer->frame_start = 0;
+        renderer->background_valid = false;
+        if (renderer->radiance) {
+            render_radiance_reset(renderer->radiance);
+        }
+    }
     renderer->unlit = unlit;
     renderer->fogless = fogless;
 }
@@ -376,7 +389,7 @@ int app_scene_renderer_material_pieces(const app_scene_renderer *renderer)
 
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status)
 {
-    if (!renderer || !renderer->radiance) {
+    if (!renderer || !renderer->radiance || renderer->unlit) {
         return false;
     }
     *status = render_radiance_get_status(renderer->radiance);
@@ -1294,7 +1307,7 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
     renderer->particle_focal_length = lighting.particle_focal_length;
     *flat = (CF_V2){ lighting.ambient, lighting.intensity };
     renderer->lighting = lighting;
-    if (renderer->radiance &&
+    if (!renderer->unlit && renderer->radiance &&
         !render_radiance_set_lighting(renderer->radiance, lighting)) {
         snprintf(renderer->error, sizeof renderer->error, "HRC could not allocate its lighting resources.");
         return false;
@@ -1425,13 +1438,48 @@ static CF_Texture scene_background(
     }
     if (renderer->grid > 0) {
         /* The backdrop is linear light the presentation exposes. */
-        float exposure = renderer->lighting.tone_mapping > 0
+        float exposure = !renderer->unlit && renderer->lighting.tone_mapping > 0
                            ? renderer->lighting.exposure
                            : 0;
         render_grid_2d_draw(renderer->grid, screen, span.x / (float)renderer->width, exp2f(-exposure));
     }
     cf_render_to(renderer->background, true);
     return cf_canvas_get_target(renderer->background);
+}
+
+/* The same batched materials as the lit view, with no light transport. */
+static bool draw_unlit(app_scene_renderer *renderer, render_radiance_inputs inputs, CF_V2 flat)
+{
+    if (!renderer->unlit_shader.id) {
+        renderer->unlit_shader = cf_make_draw_shader("unlit.shd");
+    }
+    if (!renderer->unlit_shader.id) {
+        snprintf(renderer->error, sizeof renderer->error, "Unlit material composite could not compile");
+        return false;
+    }
+    CF_RenderState state = cf_render_state_defaults();
+    state.blend.enabled = false;
+    cf_draw_push_render_state(state);
+    cf_draw_push_shader(renderer->unlit_shader);
+    cf_draw_set_texture("scene_tex", inputs.material.scene);
+    cf_draw_set_texture("source_tex", inputs.material.source);
+    cf_draw_set_texture("cover_tex", inputs.material.cover);
+    cf_draw_set_texture(
+        "background_tex",
+        inputs.background.id ? inputs.background : inputs.material.scene
+    );
+    cf_draw_set_uniform_v2("lighting", flat);
+    cf_draw_set_uniform_float("background_present", inputs.background.id != 0);
+    cf_draw_push_filter(CF_DRAW_FILTER_LINEAR);
+    render_draw_fullscreen(render_material_raster_canvas(renderer->raster));
+    cf_draw_pop_filter();
+    cf_draw_pop_shader();
+    cf_canvas_set_clear_color(renderer->output, cf_make_color_rgba_f(0, 0, 0, 1));
+    cf_render_to(renderer->output, true);
+    RENDER_DRAW_UNBIND_TEXTURES("scene_tex", "source_tex", "cover_tex", "background_tex");
+    cf_draw_pop_render_state();
+    render_gpu_timing_mark("Unlit composite");
+    return true;
 }
 
 void app_scene_renderer_set_grid(app_scene_renderer *renderer, float increment)
@@ -1455,13 +1503,14 @@ bool app_scene_renderer_draw(
     initialize_resources(renderer);
     renderer->skip = skip;
     double gpu_ms;
-    while (renderer->radiance && render_gpu_span_take(&renderer->span, &gpu_ms)) {
+    while (!renderer->unlit && renderer->radiance &&
+           render_gpu_span_take(&renderer->span, &gpu_ms)) {
         render_radiance_frame_time(renderer->radiance, gpu_ms);
     }
     /* Without GPU timestamps, as on the web, adaptive lighting judges the
      * whole frame's interval, which includes the rest of the frame's work
      * and the wait for the display. */
-    if (renderer->radiance && !render_gpu_span_available()) {
+    if (!renderer->unlit && renderer->radiance && !render_gpu_span_available()) {
         uint64_t now = cf_get_ticks();
         if (renderer->frame_start) {
             double ms = (double)(now - renderer->frame_start) * 1000 /
@@ -1489,7 +1538,7 @@ bool app_scene_renderer_draw(
     if (!scene_lighting(renderer, world, &flat)) {
         return false;
     }
-    if (!renderer->raster || !renderer->radiance || renderer->unlit) {
+    if (!renderer->raster || (!renderer->radiance && !renderer->unlit)) {
         /* This is a supported rendering path, not a scene error. Its status is
          * available in the renderer diagnostics without covering the game. */
         renderer->error[0] = '\0';
@@ -1522,8 +1571,20 @@ bool app_scene_renderer_draw(
         }
         return draw_fog(renderer, runtime, &camera, NULL);
     }
-    render_view_2d_frame frame;
-    render_radiance_settings radiance = render_radiance_get_settings(renderer->radiance);
+    /* An unlit frame needs only the visible materials. No offscreen lighting
+     * margin or work-grid snapping, and no lighting target allocation. */
+    render_view_2d_frame frame = {
+        .raster_width = width,
+        .raster_height = height,
+        .view = {
+            .min_x = camera.center_x - camera.span_width * .5f,
+            .max_y = camera.center_y + camera.span_height * .5f,
+            .width = camera.span_width,
+            .height = camera.span_height,
+            .crop_max_u = 1,
+            .crop_max_v = 1,
+        },
+    };
     render_view_2d_camera camera_view = {
         .min_x = camera.center_x - camera.span_width * .5f,
         .max_y = camera.center_y + camera.span_height * .5f,
@@ -1532,23 +1593,32 @@ bool app_scene_renderer_draw(
         .output_width = width,
         .output_height = height,
     };
-    render_view_2d_settings padding = {
-        .margin = renderer->lighting.lighting_margin,
-        .work_scale = radiance.scale,
-        .min_work_scale = radiance.min_scale,
-        .max_raster_size = 4096,
-    };
-    if (!render_view_2d_world_margin(camera_view, padding, &frame)) {
-        snprintf(renderer->error, sizeof renderer->error, "HRC view cannot fit within the 4096-pixel raster limit");
-        return false;
+    if (!renderer->unlit) {
+        render_radiance_settings radiance = render_radiance_get_settings(
+            renderer->radiance
+        );
+        render_view_2d_settings padding = {
+            .margin = renderer->lighting.lighting_margin,
+            .work_scale = radiance.scale,
+            .min_work_scale = radiance.min_scale,
+            .max_raster_size = 4096,
+        };
+        if (!render_view_2d_world_margin(camera_view, padding, &frame)) {
+            snprintf(renderer->error, sizeof renderer->error, "HRC view cannot fit within the 4096-pixel raster limit");
+            return false;
+        }
     }
     int raster_width = frame.raster_width;
     int raster_height = frame.raster_height;
+    /* Unlit frames can resize the materials without resizing HRC. */
+    if (!renderer->unlit &&
+        !render_radiance_resize(renderer->radiance, raster_width, raster_height)) {
+        return false;
+    }
     if (renderer->width != width || renderer->height != height ||
         renderer->raster_width != raster_width ||
         renderer->raster_height != raster_height) {
-        if (!render_material_raster_resize(renderer->raster, raster_width, raster_height) ||
-            !render_radiance_resize(renderer->radiance, raster_width, raster_height)) {
+        if (!render_material_raster_resize(renderer->raster, raster_width, raster_height)) {
             return false;
         }
         CF_Canvas output = cf_make_canvas(cf_canvas_defaults(width, height));
@@ -1586,7 +1656,9 @@ bool app_scene_renderer_draw(
         return false;
     }
     CHIBI_TRACE_ZONE_BEGIN(raster_zone, "Material raster submission");
-    render_gpu_span_begin(&renderer->span);
+    if (!renderer->unlit) {
+        render_gpu_span_begin(&renderer->span);
+    }
     render_gpu_timing_start();
     bool drawn = render_material_raster_draw_mixed(
         renderer->raster,
@@ -1610,7 +1682,8 @@ bool app_scene_renderer_draw(
     }
     render_gpu_timing_mark("Material raster");
     render_material_textures textures = render_material_raster_textures(renderer->raster);
-    bool emitter_proxies = renderer->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH &&
+    bool emitter_proxies = !renderer->unlit &&
+                           renderer->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH &&
                            renderer->lighting.surface_depth_gain > 0 &&
                            renderer->lighting.surface_depth_emitters ==
                                GAME_HRC_DEPTH_EMITTERS_PROXIES;
@@ -1655,7 +1728,7 @@ bool app_scene_renderer_draw(
     };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
-    bool hdr = renderer->lighting.tone_mapping > 0;
+    bool hdr = !renderer->unlit && renderer->lighting.tone_mapping > 0;
     CF_Canvas composite = renderer->output;
     if (hdr) {
         if (!renderer->hdr) {
@@ -1667,7 +1740,10 @@ bool app_scene_renderer_draw(
         }
         composite = render_post_2d_target(renderer->hdr);
     }
-    if (!render_radiance_draw(renderer->radiance, inputs, view, composite)) {
+    bool composed = renderer->unlit
+                      ? draw_unlit(renderer, inputs, flat)
+                      : render_radiance_draw(renderer->radiance, inputs, view, composite);
+    if (!composed) {
         return false;
     }
     if (hdr) {
@@ -1703,7 +1779,9 @@ bool app_scene_renderer_draw(
         }
         render_gpu_timing_mark("Reflections");
     }
-    render_gpu_span_end(&renderer->span);
+    if (!renderer->unlit) {
+        render_gpu_span_end(&renderer->span);
+    }
     cf_draw_canvas(
         output,
         (CF_V2){ camera.center_x, camera.center_y },
@@ -1802,14 +1880,16 @@ void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned
 
 render_surface_work app_scene_renderer_surface_work(const app_scene_renderer *renderer)
 {
-    return renderer->radiance ? render_radiance_surface_work(renderer->radiance)
-                              : (render_surface_work){ 0 };
+    return renderer->radiance && !renderer->unlit
+             ? render_radiance_surface_work(renderer->radiance)
+             : (render_surface_work){ 0 };
 }
 
 render_horizon_work app_scene_renderer_horizon_work(const app_scene_renderer *renderer)
 {
-    return renderer->radiance ? render_radiance_horizon_work(renderer->radiance)
-                              : (render_horizon_work){ 0 };
+    return renderer->radiance && !renderer->unlit
+             ? render_radiance_horizon_work(renderer->radiance)
+             : (render_horizon_work){ 0 };
 }
 render_mesh_material_work app_scene_renderer_mesh_work(const app_scene_renderer *renderer)
 {

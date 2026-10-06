@@ -15,9 +15,9 @@ typedef struct pin_array
     int count;
     int capacity;
     pin_value *items;
-    /* Optional index into immutable, ordered items. Owned by the same arena
-     * as the snapshot; borrowed/mutable host arrays leave this NULL. */
-    const int *buckets;
+    /* Optional index into ordered items. Owned by the same arena as the
+     * snapshot; owned runtime sets update it on append. */
+    int *buckets;
     unsigned bucket_mask;
 } pin_array;
 
@@ -26,6 +26,9 @@ typedef struct pin_array
 void pin_array_index(arena *storage, pin_array *array);
 int pin_array_find(const pin_array *array, const pin_value *value);
 int pin_set_unique(arena *storage, pin_value *out, const pin_value *items, int count);
+/* Mutate an exclusively owned set. Capacity grows geometrically; the arena
+ * retains replaced snapshots until its owner resets it. */
+int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item);
 
 /* TYPE-8/TYPE-9: arrays own their item storage. Struct elements remain
  * borrowed until a type-specific copy callback exists. */

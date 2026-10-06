@@ -565,7 +565,8 @@ static void catalog_material_edits()
     behavior_asset *blue = material("CatalogBlue", 0, 0, 1);
     behavior_asset *a = model("CatalogPainted");
     node *body = part(a->graph, "Body", 2);
-    connect(a->graph, slot(a->graph, "BodyPaint", red->name), body, 1);
+    node *paint = slot(a->graph, "BodyPaint", red->name);
+    connect(a->graph, paint, body, 1);
     slot(a->graph, "UnusedPaint", blue->name);
     publish(a->graph, body);
     shader_error error = { 0 };
@@ -618,6 +619,39 @@ static void catalog_material_edits()
     assert(!strcmp(applied.material, "CatalogGreen"));
     assert(render_shader_find("CatalogGreen") == material_id);
     assert(render_shader_model_stats().compilations == 0);
+    assert(!strcmp(red->name, "CatalogRed"));
+    behavior_asset *renamed = behavior_asset_clone(red);
+    assert(renamed && !behavior_asset_set_name(renamed, "CatalogGreen"));
+    unsigned ramp_revision = render_shader_ramp_revision();
+    assert(render_shader_upsert(renamed, &error));
+    assert(render_shader_ramp_revision() == ramp_revision);
+    behavior_asset_free(renamed);
+    const char *renamed_model = "CatalogPaintedRenamed";
+    assert(render_shader_model_rename(a->name, renamed_model, &error));
+    assert(render_shader_find(renamed_model) == index);
+    behavior_asset *parent = model("CatalogOverride");
+    node *instance = graph_add_node(parent->graph, &NODE_ModelInstance);
+    instance->reference_asset = graph_own_str(parent->graph, renamed_model, strlen(renamed_model));
+    pin_spec override = { .name = "BodyPaint",
+                          .type = PIN_STR,
+                          .type_name = "MaterialAsset",
+                          .declaration_id = paint->id,
+                          .default_value = { .type = PIN_STR,
+                                             .type_name = "MaterialAsset",
+                                             .str = blue->name } };
+    assert(graph_add_pin(parent->graph, instance, false, &override) == 0);
+    publish(parent->graph, instance);
+    assert(render_shader_upsert(parent, &error));
+    int parent_id = render_shader_find(parent->name),
+        blue_id = render_shader_find(blue->name);
+    assert(render_shader_material_rename(blue->name, "CatalogBlueRenamed", &error));
+    assert(render_shader_find("CatalogBlueRenamed") == blue_id);
+    assert(render_shader_model_rename(parent->name, "CatalogOverrideRenamed", &error));
+    assert(render_shader_find("CatalogOverrideRenamed") == parent_id);
+    assert(render_shader_model_material_slot(parent_id, 0, &applied));
+    assert(!strcmp(applied.material, "CatalogBlueRenamed"));
+    assert(!strcmp(instance->input_pins[0].default_value.str, "CatalogBlue"));
+    behavior_asset_free(parent);
     behavior_asset_free(invalid);
     behavior_asset_free(red);
     behavior_asset_free(blue);

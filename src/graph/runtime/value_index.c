@@ -106,6 +106,93 @@ int pin_array_find(const pin_array *array, const pin_value *value)
     }
     return -1;
 }
+
+static pin_array *grow_owned_set(arena *storage, const pin_array *source)
+{
+    if (source->capacity > INT_MAX / 2) {
+        return NULL;
+    }
+    int capacity = source->capacity ? source->capacity * 2 : 4;
+    size_t bytes = sizeof(pin_array) + (size_t)capacity * sizeof(pin_value);
+    pin_array *copy = arena_alloc(storage, bytes);
+    *copy = (pin_array){ .element_type = source->element_type,
+                         .type_name = source->type_name,
+                         .count = source->count,
+                         .capacity = capacity,
+                         .items = (pin_value *)(copy + 1) };
+    for (int i = 0; i < source->count; i++) {
+        if (pin_value_snapshot_to_arena(storage, &copy->items[i], &source->items[i])) {
+            return NULL;
+        }
+    }
+    return copy;
+}
+
+static pin_array *empty_owned_set(arena *storage, const pin_value *item)
+{
+    int capacity = 4;
+    size_t bytes = sizeof(pin_array) + (size_t)capacity * sizeof(pin_value);
+    pin_array *array = arena_alloc(storage, bytes);
+    const char *type_name = NULL;
+    if (item->type_name) {
+        size_t size = strlen(item->type_name) + 1;
+        char *copy = arena_alloc(storage, size);
+        memcpy(copy, item->type_name, size);
+        type_name = copy;
+    }
+    *array = (pin_array){ .element_type = item->type,
+                          .type_name = type_name,
+                          .capacity = capacity,
+                          .items = (pin_value *)(array + 1) };
+    return array;
+}
+
+int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
+{
+    if (!storage || !set || !item || item->container != PIN_CONTAINER_SINGLE) {
+        return -1;
+    }
+    pin_array *array = *set;
+    if (!array) {
+        array = empty_owned_set(storage, item);
+        *set = array;
+    }
+    bool nominal = item->type == PIN_ENUM || item->type == PIN_HANDLE ||
+                   item->type == PIN_STRUCT;
+    if (item->type != array->element_type || array->count == INT_MAX ||
+        (nominal &&
+         strcmp(item->type_name ? item->type_name : "", array->type_name ? array->type_name : ""))) {
+        return -1;
+    }
+    if (pin_array_find(array, item) >= 0) {
+        return 0;
+    }
+    if (array->count == array->capacity) {
+        array = grow_owned_set(storage, array);
+        if (!array) {
+            return -1;
+        }
+        *set = array;
+    }
+    int next_count = array->count + 1;
+    bool rebuild = array->buckets && next_count > (int)((array->bucket_mask + 1) / 2);
+    if (rebuild) {
+        array->buckets = NULL;
+        array->bucket_mask = 0;
+    }
+    if (pin_value_snapshot_to_arena(storage, &array->items[array->count], item)) {
+        return -1;
+    }
+    array->count = next_count;
+    if (rebuild || (!array->buckets && array->count >= INDEX_MIN_COUNT)) {
+        pin_array_index(storage, array);
+    } else if (array->buckets && matches_itself(item)) {
+        unsigned at = position(array, item);
+        array->buckets[at] = array->count;
+    }
+    return 1;
+}
+
 void pin_array_index(arena *storage, pin_array *array)
 {
     if (!array || array->buckets) {

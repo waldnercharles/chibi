@@ -114,11 +114,32 @@
             }
         }
     };
+    // chibi.data preloads Studio before this hook. Remove mirrored files absent
+    // from the checkout snapshot so deletes/renames survive a page reload.
+    // Keep bundled resources the server does not mirror (for example fonts).
+    const reconcileStudio = assets => {
+        const fs = Module['FS'];
+        const root = '/projects/studio';
+        if (!fs.analyzePath(root).exists) return;
+        const visit = directory => {
+            for (const name of fs.readdir(directory)) {
+                if (name === '.' || name === '..') continue;
+                const path = `${directory}/${name}`;
+                if (fs.isDir(fs.stat(path).mode)) visit(path);
+                // Matches web_serve.py's TEXT_EXTENSIONS and IMAGE_EXTENSIONS.
+                else if (/\.(kdl|rml|rcss|png|jpe?g)$/i.test(name) &&
+                         !Object.prototype.hasOwnProperty.call(assets, path.slice(1))) fs.unlink(path);
+            }
+        };
+        visit(root);
+    };
     const initialize = Module['onRuntimeInitialized'];
     Module['onRuntimeInitialized'] = () => {
         try {
             const xhr = request('GET', '/__chibi/assets');
-            for (const [path, text] of Object.entries(JSON.parse(xhr.responseText))) mirror(path, text);
+            const assets = JSON.parse(xhr.responseText);
+            reconcileStudio(assets);
+            for (const [path, text] of Object.entries(assets)) mirror(path, text);
             follow(Number(xhr.getResponseHeader('X-Chibi-Version')));
         } catch (error) {
             Module['showError'](error.message);

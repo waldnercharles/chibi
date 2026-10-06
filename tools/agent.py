@@ -124,6 +124,8 @@ def main():
     sub.add_parser('doctor', help='Read-only Vulkan device discovery; no rendering or driver changes')
     sub.add_parser('list', help='CPU classification, explicit GPU checks and budgets')
     sub.add_parser('hardware-check', help='Refuse unless full hardware validation is opted in')
+    from validation_plan import add_parser, validation_plan
+    add_parser(sub)
     for action in ['test', 'gpu-test']:
         test = sub.add_parser(action)
         test.add_argument('selector', help='Pass -- before the native --selector')
@@ -135,6 +137,8 @@ def main():
         if action == 'mp4':
             render.add_argument('--frames', type=int, default=60, help='3..180 output frames at 60 fps (max 3 seconds)')
     args = parser.parse_args()
+    if args.action == 'validation-plan':
+        return validation_plan(args, ROOT, CPU, GPU)
     if args.action in ['doctor', 'plan', 'test', 'gpu-test', 'preview', 'mp4']:
         HEALTH = startup_health()
     if args.action == 'doctor':

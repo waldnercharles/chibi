@@ -1302,9 +1302,51 @@ int behavior_instance_set_variable(behavior_instance *bi, uint64_t id, const pin
     }
     return -1;
 }
+int behavior_instance_add_set_variable(behavior_instance *bi, uint64_t id, const pin_value *item)
+{
+    if (!bi || !item) {
+        return -1;
+    }
+    for (int i = 0; i < acount(bi->asset->variables); i++) {
+        const behavior_variable *variable = &bi->asset->variables[i];
+        if (variable->id != id) {
+            continue;
+        }
+        pin_value *value = &bi->variables[i];
+        bool nominal = variable->type == PIN_ENUM || variable->type == PIN_HANDLE ||
+                       variable->type == PIN_STRUCT;
+        if (value->container != PIN_CONTAINER_SET ||
+            value->type != variable->type || item->type != variable->type ||
+            (nominal && strcmp(
+                            item->type_name ? item->type_name : "",
+                            variable->type_name ? variable->type_name : ""
+                        ))) {
+            return -1;
+        }
+        pin_array *set = value->ptr;
+        if (pin_set_add_owned(&bi->variable_arenas[i], &set, item) < 0) {
+            return -1;
+        }
+        value->ptr = set;
+        return 0;
+    }
+    return -1;
+}
 static void store_value(void *owner, int index, const pin_value *value)
 {
     int result = instance_store_value(owner, index, value);
+    assert(!result);
+    (void)result;
+}
+static void add_set_value(void *owner, int index, const pin_value *item)
+{
+    behavior_instance *bi = owner;
+    assert(index >= 0 && index < acount(bi->asset->variables));
+    int result = behavior_instance_add_set_variable(
+        bi,
+        bi->asset->variables[index].id,
+        item
+    );
     assert(!result);
     (void)result;
 }
@@ -1322,6 +1364,7 @@ void behavior_instance_bind_values(behavior_instance *bi, behavior_function_cont
     ctx->owner_type_name = bi->owner.type_name;
     ctx->value_owner = bi;
     ctx->store_value = store_value;
+    ctx->add_set_value = add_set_value;
     ctx->own_type_name = own_type_name;
 }
 

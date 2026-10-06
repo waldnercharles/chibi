@@ -1,3 +1,14 @@
+## Cloud session startup
+
+In the Debian workspace cloud environment (`/workspace/.cloud-tools`), normal
+Make commands and direct MCP launch automatically run repository preflight before
+project work. Use `make cloud-preflight` to report readiness and `make cloud-smoke`
+for bounded compiler checks. For other tool calls use
+`tools/cloud/bin/start_skill -- <command> [args...]`, adding `--modeling` before
+Blender work. `CHIBI_CLOUD=0` opts Make/MCP out. Missing setup stops with recovery
+instructions. This does not activate arbitrary platform shells; see
+[cloud setup](docs/cloud-setup.md) for supported entry points and publication limits.
+
 - When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. When the change stops projects saved by earlier builds from loading, bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and the `version` in every `project.kdl`.
 - Follow YAGNI principles, and boring solutions.
 - Shared source implements components, nodes, functions, and systems reusable across games. Authored assets own scene composition, game rules, visual choices, and tuning.
@@ -11,7 +22,9 @@
 - Navigation and refactoring (find references, rename, go to definition, call hierarchy, hover): build each once outside `src/editor/` and ship it in both Studio and the MCP. `docs/authoring-navigation.md` tracks each feature's status.
 - Validate engine generalizations with another scene or prototype that uses different content and omits the motivating game's mechanics.
 - For routine agent iteration, use `make agent-list` and `make agent-test AGENT_SELECTOR=--<selector>`. For a relevant GPU assertion, explicitly use `make agent-gpu-test` with a listed selector. Inspect actual capabilities with `python3 tools/agent.py doctor`; do not infer hardware from the host name. See `docs/agent-execution.md` for preview/MP4 budgets and truthful coverage reporting. Routine previews/captures use the native hidden-window controller and exit after saving; do not launch Studio. If a display context is required, use the bounded Xvfb command and report it as described there. Headless rendering still spends GPU resources. Do not reconstruct expensive suites through repeated one-frame previews.
-- Before merging or after broad contract changes, full verification remains required. On suitable hardware or CI, when full execution is authorized, opt in with `CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 make test test-render`; `make test` remains the complete tooling and native regression gate. `make test-slow` runs the full native suite and whole-function audit, `make test-render` covers GPU/window checks, and `make test-compiler-parity` runs the focused behavior parity gate. See `docs/testing.md` for exact coverage and timing.
+- CUT62 permits focused checks for PR iteration and admission to a reviewed integration batch. One named integration owner pins fresh main, every reviewed source head, and the immutable combined commit/tree, then runs full required verification once on that candidate before any batch change lands on main. Land the tested combination atomically; sequential PR merges must not expose untested intermediate trees. Unknown/mixed scope and broad contract changes require full verification. Any base/source/tree, conflict resolution, dependency or validation-flag change invalidates evidence. Current-head automation and server requirements still apply; tree equality never bypasses them. See [batch validation](docs/testing.md#batch-validation-cut62) for review, identity, landing and invalidation rules.
+- At the batch gate (or before an individual merge outside a batch), on suitable hardware or CI, when full execution is authorized, opt in with `CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 make test test-render`; `make test` remains the complete tooling and native regression gate. `make test-slow` runs the full native suite and whole-function audit, `make test-render` covers GPU/window checks, and `make test-compiler-parity` runs the focused behavior parity gate. Keep required CI configurations, native/backend/load, web/UI and release validation. See `docs/testing.md` for exact coverage and timing.
+- Preserve every explicit PR/ticket hold and denied-action approval requirement when choosing batch members. Approval of the batch policy does not clear those holds. Do not bring held code into an integration PR through merges, cherry-picks or dependencies. The integration owner must verify each member is reviewed and eligible under the existing approval rules, and recheck before landing; helper confirmation never supplies or replaces that approval.
 - Prefer `make build` when building.
 - Keep code small: remove dead code/abstractions; use small functions, narrow APIs, few parameters, guards, and no `else` after `return` or `break`.
 - Fail fast: `assert` invalid state; use `xmalloc`/`xrealloc`; fix pointer bugs at the source; avoid defensive `NULL` checks that mask defects.

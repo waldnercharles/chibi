@@ -1,0 +1,5 @@
+name "ProjectilePulseProbe"
+components {
+    GAME.GameProjectile lifetime=10.0
+}
+(array)behaviors "ProjectilePulse"

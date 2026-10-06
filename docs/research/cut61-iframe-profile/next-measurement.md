@@ -1,5 +1,9 @@
 # CUT-61 representative panel measurement proposal
 
+Historical proposal saved at `6738e28b130b645a41023575705050a57d2eb9a8`.
+Its present-tense scope statements describe that checkpoint, not the later
+implementation. See [integration status](integration.md) for the current status.
+
 The initial result is unchanged: the 49-frame `--kit-documents` fixture spends
 0.21–0.34% of its measured pre/context/post time in post-context holder updates.
 That fixture is not representative evidence for the reported approximately

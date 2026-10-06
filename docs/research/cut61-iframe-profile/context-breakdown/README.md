@@ -1,5 +1,9 @@
 # Context boundary diagnostic preparation
 
+Historical CPU validation checkpoint, preserved without rerunning its evidence.
+Publication/review status below describes that checkpoint; see
+[integration status](../integration.md) for the current-main preparation.
+
 Prepared and CPU-validated at **dfacf12ea8c8e8732b5e16948f4590a8b224e530**, on top
 of the existing native profiling branch. This is diagnostic preparation for
 independent review, not an optimization. No GPU capture or broad gate ran, and

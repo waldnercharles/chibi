@@ -1,5 +1,10 @@
 # Native lifecycle capture prepared (not run in cloud)
 
+Historical preparation at `dba9625c7c87e6cfe9817c2d39e1ab61c8d923d3`.
+The later parent-supplied Fedora result is recorded in
+[the Context breakdown report](context-breakdown/README.md); see
+[integration status](integration.md) for the current-main preparation.
+
 The strict selector `--studio-panel-lifecycle` calls exactly
 `area_panels_take_turns(false)` through a new test-side wrapper. The original
 function body and `studio_documents_panel_checks()` call list are byte-for-byte

@@ -1,3 +1,29 @@
+# Bootstrap before workspace enrollment/locking; the child retains Make flags and
+# command-line overrides. Query/dry-run/touch and non-tool goals need no preflight.
+export CHIBI_CLOUD CHIBI_CLOUD_TOOLS
+CHIBI_CLOUD_GOALS := $(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
+CHIBI_CLOUD_BOOTSTRAP :=
+CHIBI_CLOUD_MAKE_FLAGS := $(filter-out --%,$(firstword $(MAKEFLAGS)))
+ifeq ($(filter help clean,$(CHIBI_CLOUD_GOALS)),$(CHIBI_CLOUD_GOALS))
+else
+ifeq ($(findstring n,$(CHIBI_CLOUD_MAKE_FLAGS))$(findstring q,$(CHIBI_CLOUD_MAKE_FLAGS))$(findstring t,$(CHIBI_CLOUD_MAKE_FLAGS)),)
+ifneq ($(wildcard tools/cloud/entry.sh),)
+CHIBI_CLOUD_BOOTSTRAP := $(shell bash tools/cloud/entry.sh --probe)
+endif
+endif
+endif
+ifeq ($(CHIBI_CLOUD_BOOTSTRAP),1)
+.DEFAULT_GOAL := all
+.PHONY: $(CHIBI_CLOUD_GOALS) .chibi-cloud-invocation
+$(CHIBI_CLOUD_GOALS): .chibi-cloud-invocation
+# A command-line PATH must stay exact in the child Make as well as preflight.
+ifeq ($(origin PATH),command line)
+export CHIBI_CLOUD_KEEP_PATH := 1
+endif
+.chibi-cloud-invocation:
+	+@bash tools/cloud/entry.sh $(MAKE) $(CHIBI_CLOUD_GOALS)
+else
+
 # Native desktop setup commands can run before a SessionStart hook.
 # Enrollment is silent and creates no state for repositories without installation.
 ifeq ($(wildcard .chibi-workspace.json),)
@@ -62,6 +88,8 @@ TEST_ARGS ?=
 TEST_JOBS ?= 4
 TEST_TIMINGS ?= 0
 TEST_TOOL_TARGETS = \
+	test-tool-validation-plan \
+	test-tool-behavior-code \
 	test-tool-execution-policy \
 	test-tool-kdl-assets \
 	test-tool-fetchcontent-cache \
@@ -76,6 +104,8 @@ TEST_TOOL_TARGETS = \
 	test-tool-workspaces \
 	test-tool-workspace-retirement \
 	test-tool-workspace-make \
+	test-tool-cloud-entry \
+	test-tool-cloud-emscripten-setup \
 	test-tool-workspace-install \
 	test-tool-mcp-package \
 	test-tool-web-serve \
@@ -111,6 +141,13 @@ NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 .PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web publish-web web-serial web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render clean
 
 all: build
+
+.PHONY: cloud-preflight cloud-smoke
+cloud-preflight:
+	@bash tools/cloud/entry.sh --report
+
+cloud-smoke:
+	@bash tools/cloud/entry.sh bash tools/cloud/smoke.sh
 
 .PHONY: package-native test-package update-game-runtime
 
@@ -258,7 +295,7 @@ benchmark:
 web-configure:
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	@$(QUIET) build-reflect -- cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
-	@$(QUIET) configure-web -- sh tools/configure_web.sh "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect $(WEB_CMAKE_FLAGS)
+	@$(QUIET) configure-web -- sh tools/web_env.sh env CHIBI_NATIVE_BUILD_DIR="$(BUILD_DIR)" sh tools/configure_web.sh "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect -DCMAKE_C_COMPILER_LAUNCHER=$(CURDIR)/tools/web_compiler.sh -DCMAKE_CXX_COMPILER_LAUNCHER=$(CURDIR)/tools/web_compiler.sh $(WEB_CMAKE_FLAGS)
 
 web: web-serial
 	@$(MAKE) web-threads
@@ -321,12 +358,19 @@ test-full:
 	+@$(MAKE) test-tools
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
+	@$(QUIET) studio-selectors -- env $(NATIVE_RUNTIME_ENV) python3 test/studio_selectors_test.py "$(BUILD_DIR)/test_suite"
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
 
 .PHONY: $(TEST_TOOL_TARGETS)
 test-tools:
 	+@$(MAKE) --no-print-directory -j$(TEST_JOBS) $(TEST_TOOL_TARGETS)
+
+test-tool-validation-plan:
+	@$(QUIET) validation_plan_test.py -- python3 test/validation_plan_test.py
+
+test-tool-behavior-code:
+	@$(QUIET) behavior-code-test -- node --test tools/behavior-code/behavior-code.test.mjs
 
 test-tool-kdl-assets:
 	@$(QUIET) kdl_asset_test.py -- python3 test/kdl_asset_test.py
@@ -354,6 +398,11 @@ test-tool-workspace-retirement:
 	@$(QUIET) workspace_retirement_test.py -- python3 test/workspace_retirement_test.py
 test-tool-workspace-make:
 	@$(QUIET) workspace_make_test.py -- python3 test/workspace_make_test.py
+
+test-tool-cloud-entry:
+	@$(QUIET) cloud_entry_test.py -- python3 test/cloud_entry_test.py
+test-tool-cloud-emscripten-setup:
+	@$(QUIET) cloud_emscripten_setup_test.py -- python3 test/cloud_emscripten_setup_test.py
 test-tool-workspace-install:
 	@$(QUIET) workspace_install_test.py -- python3 test/workspace_install_test.py
 test-tool-mcp-package:
@@ -375,6 +424,7 @@ test-slow:
 	@python3 tools/agent.py hardware-check
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target test_suite --parallel $(JOBS)
+	@$(QUIET) studio-selectors -- env $(NATIVE_RUNTIME_ENV) python3 test/studio_selectors_test.py "$(BUILD_DIR)/test_suite"
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
 
@@ -431,3 +481,5 @@ dev:
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 endif # CHIBI_WORKSPACE_INNER
+
+endif # CHIBI_CLOUD_BOOTSTRAP

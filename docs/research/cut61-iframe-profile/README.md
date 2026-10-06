@@ -1,5 +1,9 @@
 # CUT-61 initial causal profile
 
+Historical checkpoint measured at `6bedae240471c7436cf5af67874436dd901360b4`.
+The timings and environment statements below describe that revision only;
+see [integration status](integration.md) for the current-main preparation.
+
 The post-context holder traversal repeats, but its cost is small in the existing
 `--kit-documents` fixture: **0.285–0.472 ms across 49 frames**, or **0.21–0.34%**
 of the measured pre/context/post phases. This does not justify a behavior-changing

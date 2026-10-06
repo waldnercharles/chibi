@@ -287,6 +287,7 @@ int behavior_instance_stop_activation(behavior_instance *bi, flow_run *act);
 int behavior_instance_get_variable(behavior_instance *bi, uint64_t id, pin_value *out);
 int behavior_instance_copy_variable(behavior_instance *bi, uint64_t id, arena *storage, pin_value *out);
 int behavior_instance_set_variable(behavior_instance *bi, uint64_t id, const pin_value *value);
+int behavior_instance_add_set_variable(behavior_instance *bi, uint64_t id, const pin_value *item);
 void behavior_instance_bind_values(behavior_instance *bi, behavior_function_context *ctx);
 pin_value behavior_instance_owner(const behavior_instance *bi);
 void behavior_instance_set_breakpoints_enabled(behavior_instance *bi, int enabled);

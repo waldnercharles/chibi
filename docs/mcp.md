@@ -612,6 +612,14 @@ the new `name`; the source is rewritten to match. Bind an assignment's leftmost
 identifier pin with the normal `bind_input` operation; it does not need a special
 name.
 
+For generated or adapter-owned inputs that need a clearer editor label without
+changing their expression identifier, `set_pin` also accepts `display_name`.
+This label is presentation-only: the serialized pin keeps its internal `name`
+and stable ID, and `inspectGraph` reports custom labels in `input_labels` or
+`output_labels` while retaining the normal `in` and `out` pin names. Set
+`display_name` to null to clear the custom label; the editor then displays the
+internal pin name.
+
 For `bind_input`, choose `kind: "variable"` with a variable ID/name/alias,
 `kind: "component"` with a reflected component name or stable key and optional
 `field`, `kind: "delta_time"`, or `kind: "event_output"` with the source

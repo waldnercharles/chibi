@@ -3,6 +3,7 @@
 #include "graph/runtime/instance.h"
 #include "platform/cute.h"
 #include "render/fluid_raster.h"
+#include "render/fullscreen.h"
 #include "render/gpu_timing.h"
 #include "render/material_raster.h"
 #include "render/reflections.h"
@@ -2154,6 +2155,306 @@ static bool surface_mode_debug_views(render_material_raster *raster)
     return ok;
 }
 
+/* Known corner values distinguish all four directions and both ends of each
+ * band's complete source domain, independently of the transport solver. */
+static bool diagnostic_quadrant_mapping()
+{
+    CF_Shader shader = cf_make_draw_shader("hrc/composite.shd");
+    CF_Texture quadrants[4] = { 0 };
+    CF_TextureParams texture = cf_texture_defaults(2, 2);
+    texture.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
+    texture.filter = CF_FILTER_NEAREST;
+    texture.wrap_u = texture.wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
+    for (int q = 0; q < 4; q++) {
+        float corners[4][4];
+        for (int p = 0; p < 4; p++) {
+            corners[p][0] = (q + 1) * .125f;
+            corners[p][1] = p % 2;
+            corners[p][2] = p / 2;
+            corners[p][3] = p / 3.0f;
+        }
+        quadrants[q] = cf_make_texture(texture);
+        cf_texture_update(quadrants[q], corners, sizeof corners);
+    }
+    CF_CanvasParams params = cf_canvas_defaults(0, 0);
+    params.attach_target = quadrants[0];
+    CF_Canvas input = cf_make_canvas(params);
+    params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas output = cf_make_canvas(params);
+    bool ok = shader.id && input.id && output.id;
+    uint16_t pixels[PIXELS * 4];
+    for (int mode = GAME_HRC_DEBUG_TRANSPORT_QUADRANTS;
+         ok && mode <= GAME_HRC_DEBUG_GATHER_PROBES;
+         mode++) {
+        cf_app_update(NULL);
+        cf_draw_push_shader(shader);
+        const char *names[] = { "scene_tex",        "fluence_tex",
+                                "source_tex",       "albedo_tex",
+                                "normal_tex",       "background_tex",
+                                "visibility_tex",   "cover_tex",
+                                "horizon_cardinal", "horizon_diagonal" };
+        for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
+            cf_draw_set_texture(names[i], quadrants[0]);
+        }
+        for (int q = 0; q < 4; q++) {
+            char name[16];
+            snprintf(name, sizeof name, "surface_q%d", q);
+            cf_draw_set_texture(name, quadrants[q]);
+        }
+        float crop[] = { .2f, .1f, .8f, .9f }, map[] = { 1, 1, .5f, .5f };
+        int surface = GAME_HRC_SURFACE_GATHER;
+        cf_draw_set_uniform_float("debug_view", (float)mode);
+        cf_draw_set_uniform("surface_mode", &surface, CF_UNIFORM_TYPE_INT, 1);
+        cf_draw_set_uniform("surface_map", map, CF_UNIFORM_TYPE_FLOAT4, 1);
+        cf_draw_set_uniform("crop_uv", crop, CF_UNIFORM_TYPE_FLOAT4, 1);
+        render_draw_fullscreen(input);
+        cf_render_to(output, true);
+        cf_draw_pop_shader();
+        cf_app_draw_onto_screen(false);
+        ok = read_hdr_texture(cf_canvas_get_target(output), pixels, PIXELS);
+        bool matched = false;
+        /* Readback orientation varies by backend; one orientation must match
+         * every pixel, quadrant and band, including their outermost rows. */
+        for (int flip = 0; ok && flip < 2 && !matched; flip++) {
+            bool exact = true;
+            int columns = mode == GAME_HRC_DEBUG_GATHER_PROBES ? 2 : 4;
+            int rows = mode == GAME_HRC_DEBUG_GATHER_PROBES ? 2 : 1;
+            float band = rows == 2 ? .68f : .82f;
+            for (int y = 0; exact && y < SIDE; y++) {
+                float v = ((flip ? SIDE - 1 - y : y) + .5f) / SIDE * rows;
+                float local_y = v - floorf(v);
+                bool opacity = local_y >= band;
+                float source_y = opacity ? (local_y - band) / (1 - band)
+                                         : local_y / band;
+                for (int x = 0; exact && x < SIDE; x++) {
+                    float u = (x + .5f) / SIDE * columns;
+                    int q = (int)u + columns * (int)v;
+                    int corner = (u - floorf(u) >= .5f) + 2 * (source_y >= .5f);
+                    float expected[] = { (q + 1) * .125f, corner % 2, corner / 2, 1 };
+                    for (int c = 0; c < 3; c++) {
+                        if (opacity) {
+                            expected[c] = corner / 3.0f;
+                        } else if (rows == 1) {
+                            expected[c] = log1pf(expected[c] * 65535) / logf(65536);
+                        }
+                    }
+                    for (int c = 0; c < 4; c++) {
+                        exact &= fabsf(
+                                     half_value(pixels[4 * (y * SIDE + x) + c]) -
+                                     expected[c]
+                                 ) < .001f;
+                    }
+                }
+            }
+            matched |= exact;
+        }
+        ok &= matched;
+        printf("diagnostic quadrant identity and full-domain bands view %d: %s\n", mode, ok ? "PASS" : "FAIL");
+    }
+    cf_destroy_canvas(input);
+    cf_destroy_canvas(output);
+    for (int q = 0; q < 4; q++) {
+        cf_destroy_texture(quadrants[q]);
+    }
+    cf_destroy_shader(shader);
+    return ok;
+}
+
+typedef struct
+{
+    ecs_world *world;
+    ecs_entity settings;
+    game_particles *particles;
+    engine_viewport *viewport;
+    CF_Canvas canvas;
+} diagnostic_scene;
+
+static bool diagnostic_scene_frame(
+    diagnostic_scene *scene,
+    app_scene_renderer *renderer,
+    GameHRC2D lighting,
+    CF_Pixel *pixels
+)
+{
+    *GAME_GameHRC2D_get(scene->world, scene->settings) = lighting;
+    cf_app_update(NULL);
+    cf_draw_push();
+    cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+    bool ok = app_scene_renderer_draw(
+        renderer,
+        scene->world,
+        scene->particles,
+        scene->viewport,
+        NULL,
+        (render_skip){ 0 }
+    );
+    cf_render_to(scene->canvas, true);
+    cf_draw_pop();
+    cf_app_draw_onto_screen(false);
+    return ok && read_pixels(scene->canvas, pixels, PIXELS);
+}
+
+static bool diagnostic_scene_presentation()
+{
+    diagnostic_scene scene = { .world = ecs_world_new(),
+                               .particles = game_particles_new(),
+                               .viewport = engine_viewport_new(SIDE, SIDE),
+                               .canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE)) };
+    const ecs_component_desc *components[] = { &GAME_COMPONENT_GameTransform,
+                                               &GAME_COMPONENT_GameAppearance,
+                                               &GAME_COMPONENT_GameMaterial,
+                                               &GAME_COMPONENT_GameHRC2D };
+    for (int i = 0; i < 4; i++) {
+        assert(ecs_world_register_component(scene.world, components[i], NULL) == ECS_OK);
+    }
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    /* One means current samples only; the separate transition regression
+     * exercises temporal history. Keep this comparison about presentation. */
+    lighting.radiance_hysteresis = 1;
+    lighting.surface_mode = GAME_HRC_SURFACE_GATHER;
+    lighting.tone_mapping = GAME_HRC_TONE_AGX;
+    lighting.exposure = 2;
+    lighting.bloom = .6f;
+    scene.settings = ecs_world_create_entity(scene.world);
+    assert(
+        ecs_world_record_add(
+            scene.world,
+            scene.settings,
+            GAME_COMPONENT_GameHRC2D.id,
+            &lighting,
+            0
+        ) == ECS_OK
+    );
+    for (int i = 0; i < 2; i++) {
+        ecs_entity entity = ecs_world_create_entity(scene.world);
+        GameTransform position = { .x = i ? 12 : -28, .y = i ? -8 : 16 };
+        GameAppearance appearance = { .shape = GAME_SHAPE_BOX,
+                                      .width = i ? 12 : 18,
+                                      .height = i ? 80 : 18,
+                                      .antialias = 1 };
+        GameMaterial material = { .scene = 0x804020ff,
+                                  .albedo = 0xffffffff,
+                                  .emission_color = 0xff8040ff,
+                                  .emission_intensity = i ? 0 : .2f,
+                                  .emission_multiplier = 1,
+                                  .absorption = i ? 12 : 0 };
+        assert(
+            ecs_world_record_add(
+                scene.world,
+                entity,
+                GAME_COMPONENT_GameTransform.id,
+                &position,
+                0
+            ) == ECS_OK
+        );
+        assert(
+            ecs_world_record_add(
+                scene.world,
+                entity,
+                GAME_COMPONENT_GameAppearance.id,
+                &appearance,
+                0
+            ) == ECS_OK
+        );
+        assert(
+            ecs_world_record_add(
+                scene.world,
+                entity,
+                GAME_COMPONENT_GameMaterial.id,
+                &material,
+                0
+            ) == ECS_OK
+        );
+    }
+    assert(ecs_world_apply_commands(scene.world) == ECS_OK);
+    engine_viewport_view view = { .width = SIDE, .height = SIDE };
+    engine_viewport_set_view(scene.viewport, &view);
+    app_scene_renderer *renderer = app_scene_renderer_new();
+    CF_Pixel normal[PIXELS], actual[PIXELS], expected[PIXELS];
+    bool ok = scene.canvas.id &&
+              diagnostic_scene_frame(&scene, renderer, lighting, normal);
+    const GameHRCDebugView views[] = { GAME_HRC_DEBUG_TRANSPORT_QUADRANTS,
+                                       GAME_HRC_DEBUG_SURFACE_QUADRANTS,
+                                       GAME_HRC_DEBUG_GATHER_PROBES,
+                                       GAME_HRC_DEBUG_SURFACE_QUADRANTS,
+                                       GAME_HRC_DEBUG_GATHER_PROBES };
+    for (int i = 0; i < 5 && ok; i++) {
+        lighting.debug_view = views[i];
+        lighting.surface_mode = i == 3 ? GAME_HRC_SURFACE_DEPTH
+                              : i == 4 ? GAME_HRC_SURFACE_BLUR
+                                       : GAME_HRC_SURFACE_GATHER;
+        GameHRC2D unprocessed = lighting;
+        unprocessed.tone_mapping = GAME_HRC_TONE_CLAMP;
+        unprocessed.exposure = unprocessed.bloom = 0;
+        app_scene_renderer_set_time(renderer, (i + 1) * .137f);
+        ok = diagnostic_scene_frame(&scene, renderer, lighting, actual);
+        app_scene_renderer_set_time(renderer, 0);
+        ok = ok && diagnostic_scene_frame(&scene, renderer, unprocessed, expected);
+        if (ok && memcmp(actual, expected, sizeof actual)) {
+            for (int p = 0; p < PIXELS; p++) {
+                if (memcmp(&actual[p], &expected[p], sizeof *actual)) {
+                    fprintf(
+                        stderr,
+                        "diagnostic presentation view %d pixel %d: %u,%u,%u,%u "
+                        "expected %u,%u,%u,%u\n",
+                        views[i],
+                        p,
+                        actual[p].colors.r,
+                        actual[p].colors.g,
+                        actual[p].colors.b,
+                        actual[p].colors.a,
+                        expected[p].colors.r,
+                        expected[p].colors.g,
+                        expected[p].colors.b,
+                        expected[p].colors.a
+                    );
+                    break;
+                }
+            }
+            ok = false;
+        }
+        int varied = 0;
+        for (int p = 0; p < PIXELS && ok; p++) {
+            ok &= actual[p].colors.a == 255;
+            if (i >= 3) {
+                ok &= actual[p].colors.r == 255 && actual[p].colors.g == 0 &&
+                      actual[p].colors.b == 255;
+            } else {
+                varied += memcmp(&actual[p], &actual[0], sizeof *actual) != 0;
+            }
+        }
+        if (ok && i < 3 && varied <= PIXELS / 20) {
+            fprintf(stderr, "diagnostic presentation view %d only %d varied pixels\n", views[i], varied);
+            ok = false;
+        }
+        printf(
+            "scene diagnostic view %d surface %d bypasses "
+            "AgX/exposure/bloom/dither: %s\n",
+            views[i],
+            lighting.surface_mode,
+            ok ? "PASS" : "FAIL"
+        );
+    }
+    lighting.debug_view = GAME_HRC_DEBUG_NORMAL;
+    lighting.surface_mode = GAME_HRC_SURFACE_GATHER;
+    app_scene_renderer_set_time(renderer, 0);
+    ok = ok && diagnostic_scene_frame(&scene, renderer, lighting, actual) &&
+         !memcmp(actual, normal, sizeof normal);
+    lighting.tone_mapping = GAME_HRC_TONE_CLAMP;
+    ok = ok && diagnostic_scene_frame(&scene, renderer, lighting, expected) &&
+         memcmp(actual, expected, sizeof actual) != 0;
+    printf("scene normal presentation restored after diagnostics: %s\n", ok ? "PASS" : "FAIL");
+    app_scene_renderer_free(renderer);
+    cf_destroy_canvas(scene.canvas);
+    engine_viewport_free(scene.viewport);
+    game_particles_free(scene.particles);
+    render_shader_clear_world(scene.world);
+    ecs_world_free(scene.world);
+    return ok;
+}
+
 static bool fluid_lighting(
     render_material_raster *raster,
     render_radiance *radiance,
@@ -3189,6 +3490,8 @@ int test_radiance()
     ok &= surface_history(raster);
     ok &= surface_history_after_probe_transition(raster);
     ok &= surface_mode_debug_views(raster);
+    ok &= diagnostic_quadrant_mapping();
+    ok &= diagnostic_scene_presentation();
     ok &= split_luminance_transport(raster, canvas);
     ok &= fractional_cells(raster, canvas);
     ok &= liquid_refraction(raster, radiance, canvas);

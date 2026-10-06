@@ -1655,7 +1655,11 @@ bool app_scene_renderer_draw(
     };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
-    bool hdr = renderer->lighting.tone_mapping > 0;
+    /* These views already encode display values, including discrete probe
+     * fractions and opacity bands. Present them without HDR post-processing. */
+    bool diagnostic = renderer->lighting.debug_view >= GAME_HRC_DEBUG_TRANSPORT_QUADRANTS &&
+                      renderer->lighting.debug_view <= GAME_HRC_DEBUG_GATHER_PROBES;
+    bool hdr = renderer->lighting.tone_mapping > 0 && !diagnostic;
     CF_Canvas composite = renderer->output;
     if (hdr) {
         if (!renderer->hdr) {

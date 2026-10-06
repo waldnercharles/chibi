@@ -179,6 +179,7 @@ typedef struct behavior_function_context
     const char *(*copy_string)(void *storage, const char *text);
     pin_array *(*copy_array)(void *storage, const pin_array *array);
     void (*store_value)(void *owner, int variable, const pin_value *value);
+    void (*add_set_value)(void *owner, int variable, const pin_value *item);
     /* Intern borrowed names before persistent writes; returns owner-lived storage. */
     const char *(*own_type_name)(void *owner, const char *name);
     void (*watch)(void *user, const behavior_function_watch *source, const pin_value *value);

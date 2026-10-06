@@ -192,6 +192,8 @@ uint64_t graph_alloc_id(graph *g);
 /* Copies the value and owns its strings, arrays and registered struct data. */
 int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_value *value);
 int graph_set_pin_name(graph *g, node *n, int output, int index, const char *name);
+/* Sets an editor-only pin label; NULL or an empty name uses the pin name. */
+int graph_set_pin_display_name(graph *g, node *n, int output, int index, const char *name);
 int graph_set_pin_type(graph *g, node *n, int output, int index, pin_type type, const char *type_name);
 int graph_set_pin_container(graph *g, node *n, int output, int index, pin_container container);
 const pin_binding *graph_pin_binding(const graph *g, const node *n, int output, int index);

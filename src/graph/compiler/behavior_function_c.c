@@ -364,12 +364,11 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 );
                 break;
             case BF_STORE_VALUE:
-                fprintf(
-                    out,
-                    "c->store_value(c->value_owner,%d,&c->data->values[%d]);\n",
-                    i->target,
-                    i->left
-                );
+                if (i->offset == BF_STORE_VALUE_SET_ADD) {
+                    fprintf(out, "c->add_set_value(c->value_owner,%d,&c->data->values[%d]);\n", i->target, i->left);
+                } else {
+                    fprintf(out, "c->store_value(c->value_owner,%d,&c->data->values[%d]);\n", i->target, i->left);
+                }
                 break;
             case BF_HOST_SERVICE:
                 fprintf(out, "v%d=(uintptr_t)c->data->calls[%d].service;\n", i->output, i->target);

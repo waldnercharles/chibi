@@ -372,7 +372,11 @@ static int run(const behavior_function *f, behavior_function_context *ctx, bool 
                 break;
             }
             case BF_STORE_VALUE:
-                ctx->store_value(ctx->value_owner, i->target, &ctx->data->values[i->left]);
+                if (i->offset == BF_STORE_VALUE_SET_ADD) {
+                    ctx->add_set_value(ctx->value_owner, i->target, &ctx->data->values[i->left]);
+                } else {
+                    ctx->store_value(ctx->value_owner, i->target, &ctx->data->values[i->left]);
+                }
                 break;
             case BF_HOST_SERVICE: {
                 uintptr_t pointer = (uintptr_t)ctx->data->calls[i->target].service;

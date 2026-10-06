@@ -454,6 +454,9 @@ static bool depth_snapshot_backend()
     bool ok = seed.id && decode.id && mesh.id && source.id && destination.id &&
               output.id;
     if (ok) {
+        /* Isolate the copy fixture from the observed Zink endpoint-clear issue.
+         * The full .25 seed overwrites this; see docs/testing.md (depth snapshot). */
+        cf_canvas_set_clear_depth_stencil(source, .75f, 0);
         cf_app_update(NULL);
         cf_apply_canvas(source, true);
         cf_apply_mesh(mesh);

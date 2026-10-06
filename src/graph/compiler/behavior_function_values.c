@@ -1144,6 +1144,10 @@ static int input_value(builder *b, node *n, int pin)
     if (graph_input_source(b->graph, n, pin, &source, &source_pin)) {
         behavior_lower_trace(b, source, source_pin, n, pin, GRAPH_EDGE_DATA);
         int slot = behavior_lower_output(b, source, source_pin);
+        if (slot >= 0 && b->recording &&
+            (source->output_pins[source_pin].flags & PIN_FLAG_WATCH)) {
+            behavior_lower_watch(b, source, source_pin, true, slot);
+        }
         const array_value *array = behavior_lower_array(b, slot);
         if ((array != NULL) != (s->container >= PIN_CONTAINER_ARRAY) ||
             (array && array->container != s->container)) {
@@ -1208,12 +1212,8 @@ int behavior_lower_input(builder *b, node *n, int pin)
     int slot = input_value(b, n, pin);
     if (b->recording && slot >= 0) {
         apush(b->inputs, ((output){ n, pin, slot }));
-        node *source;
-        int source_pin;
-        if (n->desc->flow &&
-            graph_input_source(b->graph, n, pin, &source, &source_pin) &&
-            (source->output_pins[source_pin].flags & PIN_FLAG_WATCH)) {
-            behavior_lower_watch(b, source, source_pin, true, slot);
+        if (!n->desc->flow && (n->input_pins[pin].flags & PIN_FLAG_WATCH)) {
+            behavior_lower_watch(b, n, pin, false, slot);
         }
     }
     return slot;

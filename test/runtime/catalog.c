@@ -125,8 +125,9 @@ void run_runtime_catalog_checks()
             "unused-variable diagnostics have a stable rule"
         );
         test_check(
-            registry_node_by_name("Make Set") && registry_node_by_name("Set Contains"),
-            "Set and Map decision-gate families expose a typed core entry"
+            registry_node_by_name("Make Set") && registry_node_by_name("Set Contains") &&
+                registry_node_by_name("Set Add") && registry_node_by_name("Set Remove"),
+            "typed set membership, insertion and removal nodes are registered"
         );
         test_check(
             registry_node_by_name("Make_CF_V3") && registry_node_by_name("Break_CF_V3"),

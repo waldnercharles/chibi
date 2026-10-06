@@ -2238,6 +2238,10 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
     int signature = signature_side(ctx, n, output);
     if (signature >= 0 &&
         (!strcmp(operation, "set_pin") || !strcmp(operation, "remove_pin"))) {
+        if (!strcmp(operation, "set_pin") && yyjson_obj_get(op, "display_name")) {
+            set_error(ctx, "set_pin.display_name is available on graph pins, not function or macro signatures");
+            return -1;
+        }
         return signature_pin(
             ctx,
             op,
@@ -2306,6 +2310,15 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
             (!yyjson_is_str(name) ||
              graph_set_pin_name(ctx->graph, n, output, index, yyjson_get_str(name)))) {
             result = -1;
+        }
+        yyjson_val *display_name = yyjson_obj_get(op, "display_name");
+        if (!result && display_name) {
+            const char *label = NULL;
+            if ((!yyjson_is_null(display_name) && !string_value(display_name, &label)) ||
+                graph_set_pin_display_name(ctx->graph, n, output, index, label)) {
+                set_error(ctx, "set_pin.display_name must be a string or null");
+                result = -1;
+            }
         }
         yyjson_val *type_json = yyjson_obj_get(op, "type");
         if (!result && type_json) {

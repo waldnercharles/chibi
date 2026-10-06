@@ -61,7 +61,149 @@ isolated tool-test processes rather than deleting assertions.
 
 The full gate is unchanged for CI: CI can continue to call `make test`.
 Focused results are deliberately narrower coverage; they are useful feedback
-for the changed code path and do not replace the full gate.
+for the changed code path and admit reviewed work to a batch under CUT62 below.
+They do not replace the full gate.
+
+## Batch validation (CUT62)
+
+Use focused checks during each PR's iteration and admission, then run the full
+required validation once on the **exact combined reviewed tree before any part
+of the batch lands on main**. Assertions, coverage, sanitizers, reference images,
+loads and release validation remain unchanged. This removes redundant full runs
+on component PRs; it does not replace CUT50/CUT61 profiling and optimization of
+the actual slow tests.
+
+Batch-policy approval does not clear an explicit PR/ticket hold or a denied-action
+approval requirement. The integration owner must enumerate every source member
+and dependency, verify independent review and eligibility under the existing
+approval rules, and retain the supporting approval references. Held code must
+not enter an integration PR through cherry-picks, merges, copied patches or
+dependencies to evade its hold. A new PR number or passing batch gate does not
+clear the original restriction. Obtain the required approval through the existing
+process before admitting it; no new authorization mechanism is created here.
+
+1. **Name the integration owner.** One owner coordinates the batch, build slot,
+   source review, evidence and eventual landing. Fetch main normally and record
+   its full SHA. Pin each PR's full source SHA, dependencies and review result;
+   a branch name alone is insufficient. The author reports focused commands,
+   exit codes, timings and logs plus every pending check. Admission is provisional
+   and is not permission to merge. Do not start costly gates before independent
+   source review and batch coordination.
+2. **Review scope explicitly.** An independent reviewer inspects source, tests,
+   callers, generated outputs and dependency/build effects, and explains why the
+   chosen checks cover the changed contracts. File extensions, a selector name,
+   or a green focused run cannot establish absence of native/render/web impact.
+   Unknown or mixed scope, broad contracts and unreviewed selectors fall back to
+   full required validation; they receive no focused-only admission. Full work
+   still waits for the review/build slot. Use mixed scope for changes spanning
+   independent contracts or subsystems whose interactions are not bounded by
+   the selected checks. Retain required backend, sanitizer,
+   compiler parity, representative-load and web/UI checks for the affected code.
+3. **Freeze the candidate.** In a clean isolated integration worktree based on
+   the pinned main, combine only the reviewed source revisions. Independently
+   review the combined diff and all conflict resolutions, including interactions
+   between PRs. Commit the complete candidate and record `git rev-parse HEAD`
+   and `git rev-parse 'HEAD^{tree}'` before testing. No tracked or untracked
+   source edits may accompany the run. Build artifacts must originate from this
+   tree and the recorded configuration; a shared stale binary is not evidence.
+4. **Run the complete gate once per candidate.** Keep `make test`/`test-full`
+   intact: tooling, generated/build checks, native `all_checks` and the separate
+   whole-function audit. Run `make test-render` as well. `test-tools`, `test-slow`,
+   compiler parity or a collection of selectors alone is not the aggregate gate.
+   Use the explicit hardware opt-in above and the existing display requirements.
+   Complete the required configurations below, format checks, affected native
+   backends and web/UI validation (`make web` for UI changes), and existing
+   release validation when preparing a release. Do not substitute previews for
+   assertions or lower thresholds to gain speed.
+5. **Verify identity and land one combination.** Before landing, fetch main and
+   source refs again and recheck every member's holds and required approvals.
+   Eligibility can change without a Git change; a new hold blocks landing.
+   Compare the pinned base, all source SHAs, candidate SHA/tree
+   and validation configuration with the evidence; verify a clean worktree again.
+   The proposed landing tree must equal the tested tree, and its main parent/base
+   must be the pinned main. Land the complete combination in one atomic main
+   update through the authorized protected workflow. Do not merge component PRs
+   sequentially using the final combination's results: those intermediate trees
+   were not tested. If atomic landing is unavailable, stop batch publication or
+   fully review and validate each actual intermediate candidate separately.
+
+Any main advance (even unrelated), source-head change, batch membership change,
+rebase, conflict resolution, source/generated-file edit, dependency/toolchain
+change or compiler/build/runtime flag change invalidates the candidate evidence.
+Reassemble, review and repeat the full required gate on the new frozen candidate.
+Timeouts, failures, unavailable hardware, missing logs and absent/skipped CI jobs
+remain pending or failed, never passes. No Actions, protection, permission or
+credential changes are part of this policy.
+
+Existing automation instructions requiring current-head gates still apply. A
+batch meets them by making the exact combined reviewed candidate the current
+integration head and running the gates there. A server-created merge/squash
+commit may have a different commit ID: the owner must prove identical tree,
+unchanged base and sources, and satisfy the server's required current-head checks
+and review rules for that commit. Tree equality alone cannot transfer a status
+check or satisfy a check that depends on commit metadata. If those rules require
+new execution, run it. Component-head passes and this plan helper confer no
+merge authority and cannot bypass branch protection.
+
+### Configured checks versus execution evidence
+
+The current definitions are [.github/workflows/ci.yml](../.github/workflows/ci.yml)
+and [deploy-web.yml](../.github/workflows/deploy-web.yml). Inspect the definitions
+on the frozen candidate; their presence describes configuration, not a run.
+
+| Configured check | Required evidence on the candidate |
+| --- | --- |
+| Native Debug, sanitizers ON, SLJIT ON | Actual `make test` and `xvfb-run -a make test-render` results with the configured toolchain/flags |
+| Native RelWithDebInfo, sanitizers OFF, SLJIT ON | Actual aggregate and render results in that configuration |
+| RelWithDebInfo Arena scaling | `CBLUEPRINT_BENCH_COMBAT=1 CBLUEPRINT_BENCH_REQUIRE_PARALLEL=1 build/test_suite --bench-arena-scene-scale 2048 240 0` under the configured display |
+| Debug job's no-SLJIT check | Separate Debug/sanitized, `CHIBI_ENABLE_SJLIT=OFF` configuration and `check-behavior-backend` result |
+| Debug job's development reload build | Separate RelWithDebInfo, reload ON, sanitizers OFF, SLJIT ON configuration and `chibi chibi_dll` build result |
+| Format | `make check-format` (CI uses `sh tools/clang-format.sh --check`) |
+| Web workflow / affected web or UI work | Required Emscripten build, packaging and web/UI verification; record threaded validation when requested/applicable |
+
+`CHIBI_ENABLE_SJLIT` is the existing CMake option spelling. One local Debug run
+does not establish the other matrix rows. Record each required row as executed,
+failed or pending, with exact commit/tree, commands, exit codes, elapsed times,
+logs, toolchain/dependency identity, build/runtime flags and actual backend/device.
+If CI is unavailable, the owner must obtain equivalent authorized execution and
+still meet server rules; absence of CI cannot turn the table green. Release
+packaging, optimized-build and release-specific validation remain additional
+requirements, not waived by a successful development batch.
+
+### Small planning helper
+
+After source review, on a clean committed worktree:
+
+```sh
+python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --confirm-eligible-members --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize > /tmp/cut62-plan.json
+# Repeat the identical arguments after fetching main/source refs, adding:
+python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --confirm-eligible-members --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize --verify /tmp/cut62-plan.json
+make test-tool-validation-plan
+```
+
+Repeat `--source` for every batch member and `--selector` for relevant existing
+CPU/GPU allowlisted selectors; `--tools` adds `make test-tools`. The default scope
+is `unknown`; `unknown` and `mixed` list the full gate instead of focused commands.
+Any declared source members require `--confirm-eligible-members`, including when
+verifying a saved plan. Supply it only after freshly checking every member's
+review, holds and required approvals. It records an operator statement, grants
+no authority and cannot clear a hold or replace a denied-action approval. The
+helper does not query the approval system; the owner retains those references
+separately. Without source members it reports eligibility as `not-declared`, so
+a generic plan is not an eligible batch roster. Omitting a held source from the
+roster does not make its code eligible.
+Classification is a reviewer's recorded declaration, never inferred from paths.
+Review notes are data and are never executed. This helper only resolves local
+refs and lists commands, changed paths, exact base/head/tree and pending gates.
+It performs no fetch, builds, rendering, push, merge or status publication.
+Save output outside the worktree. Run through `tools/cloud/bin/start_skill --`
+where required by the cloud entry instructions.
+
+`--verify` exits nonzero for dirty worktrees, changed refs/plans or Git failures.
+Exit zero means only that the local plan still matches; it always reports
+`full_verification:false`. The owner separately verifies remote freshness,
+independent reviews, dependency/flag identity and actual execution evidence.
+The helper does not run a selector and cannot convert one into a full pass.
 
 ## Test timings
 
@@ -111,3 +253,57 @@ each small code change. Prefer the closest focused selector during iteration
 and retain `make test` as the complete gate. Tool tests now run concurrently
 in isolated processes with a four-worker default; raising `TEST_JOBS`
 increases CPU and memory pressure.
+
+### Depth snapshot fixture and Zink endpoint clears
+
+The SDF visibility depth snapshot fixture clears its source depth to `.75` before
+its unchanged full-canvas `.25` seed draw. That triangle covers every pixel of the
+8×8 target, with depth writes and `ALWAYS` enabled; the clear value is not a test
+expectation. All source color/depth, copied depth, and `.125` redraw assertions
+remain unchanged. In the earlier unknown-device offscreen check, deliberately
+using `LESS` instead of `ALWAYS` rejected the `.5` overwrite, failing all four
+cropped color/depth and copied-depth assertions. That mutation was not part of
+the later identity-verified Zink/NVK A/B.
+
+This is a **test-fixture isolation workaround**, not a production renderer or
+driver fix. It removes **clear-`1` plus `ALWAYS` coverage** from this copy fixture,
+which previously cleared only to `1`; clear `0` was tested only in the standalone
+matrix. It retains the full seed, cropped overwrite, depth-copy, and later
+source-redraw checks. The underlying driver issue remains open as CUT-54 /
+[issue #159](https://github.com/waldnercharles/c-blueprints/issues/159); the private
+upstream report has not been submitted.
+
+Matched diagnostic runs used the original fixture from base `7b35b66d` and the
+`.75` change from candidate `44744b5e`, with identical assertions, identity guard,
+launcher, build settings, and 120-second bound. Before either seed, both logged
+SDL `offscreen`, GL vendor `Mesa`, renderer
+`zink Vulkan 1.4(NVIDIA GeForce RTX 4080 SUPER (NVK AD103) (MESA_NVK))`, and
+OpenGL ES 3.2 Mesa 26.2.3. EGL enumeration selected index `1`, render node
+`/dev/dri/renderD128`, verified through sysfs as vendor/device `10de:2702`.
+
+| Matched Zink/NVK engine fixture | Result |
+| --- | --- |
+| Original clear `1.0` | FAIL, exit 1, 0.31 s: four pre-copy center pixels have color/depth `.25`, expected `.5` |
+| Candidate clear `.75` | PASS, exit 0, 0.32 s: unchanged source/copy/redraw assertions |
+
+These runs used ASan/UBSan with the repository render policy
+`ASAN_OPTIONS=detect_leaks=0` and `UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`.
+They establish fixture isolation on that route, not full-suite verification.
+Earlier uninstrumented offscreen GLES/Vulkan passes have unknown device identity;
+a separate identity-probed clear-`1` engine baseline passed on AMD RadeonSI.
+Those results must not be presented as Zink validation. SDL's offscreen path can
+select a different EGL device than the Vulkan ICD or desktop GPU.
+
+The preserved standalone GLES reproducer checks color only and fails the original
+clear-`1` case on both Zink/NVK and Zink/Lavapipe. A separate six-case clear matrix
+on Zink/NVK found that clear `1` leaves `.25` instead of `.5`, clear `0` leaves
+`.5` instead of a later `.125`, and clear `.75` passes both sequences. These are
+separate from the engine fixture's sampled-depth assertions. The Zink
+ALWAYS-to-LE/GE optimization, commit `a58cbdaabfb2f5734df24d40c754d9009883c4a1`,
+is strongly implicated by the matrix but not proven by bisection or driver revert.
+
+Private CUT-54 evidence retains the raw logs, matched diagnostic source diff,
+upstream draft, and original `cut54-repro.c` with SHA-256
+`6c006bbad7430b80e140fbd046933de244c0439c943a73f020fb6c505b0234a4`.
+The failing standalone remains unchanged; this workaround does not resolve its
+failure or establish that ordinary rendering with endpoint clears is correct.

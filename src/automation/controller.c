@@ -3245,6 +3245,29 @@ static void inspect_add_pins(yyjson_mut_doc *doc, yyjson_mut_val *nodes, const g
         const node *n = graph_node_by_id(source, id);
         add_pin_texts(doc, item, "in", n->input_pins, n->input_count, true);
         add_pin_texts(doc, item, "out", n->output_pins, n->output_count, true);
+        for (int output = 0; output <= 1; output++) {
+            const pin_spec *pins = output ? n->output_pins : n->input_pins;
+            int count = output ? n->output_count : n->input_count;
+            yyjson_mut_val *labels = yyjson_mut_arr(doc);
+            for (int pin = 0; pin < count; pin++) {
+                if (!pins[pin].display_name || !pins[pin].display_name[0]) {
+                    continue;
+                }
+                yyjson_mut_val *label = yyjson_mut_obj(doc);
+                yyjson_mut_obj_add_uint(doc, label, "id", pins[pin].id);
+                yyjson_mut_obj_add_strcpy(
+                    doc,
+                    label,
+                    "name",
+                    pins[pin].name ? pins[pin].name : ""
+                );
+                yyjson_mut_obj_add_strcpy(doc, label, "display_name", pins[pin].display_name);
+                yyjson_mut_arr_append(labels, label);
+            }
+            if (yyjson_mut_arr_size(labels)) {
+                yyjson_mut_obj_add_val(doc, item, output ? "output_labels" : "input_labels", labels);
+            }
+        }
     }
 }
 

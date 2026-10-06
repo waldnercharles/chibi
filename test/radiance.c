@@ -222,6 +222,28 @@ static bool draw_scaled(
     return draw_frames_scaled(raster, radiance, canvas, entities, count, size, world, frames, true);
 }
 
+static bool draw_view_once(
+    render_material_raster *raster,
+    render_radiance *radiance,
+    CF_Canvas canvas,
+    const render_material_entity *entities,
+    int count,
+    render_view_2d view
+)
+{
+    cf_app_update(NULL);
+    bool ok = render_material_raster_draw(raster, entities, count, view);
+    render_radiance_inputs inputs = { .material = render_material_raster_textures(raster) };
+    cf_draw_push();
+    cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
+    if (ok) {
+        ok = render_radiance_draw(radiance, inputs, view, canvas);
+    }
+    cf_draw_pop();
+    cf_app_draw_onto_screen(false);
+    return ok;
+}
+
 static bool solve_scaled(
     render_material_raster *raster,
     render_radiance *radiance,
@@ -1794,6 +1816,344 @@ static bool surface_history(render_material_raster *raster)
     return ok;
 }
 
+static bool surface_history_after_probe_transition(render_material_raster *raster)
+{
+    render_radiance *transition = render_radiance_new();
+    render_radiance *reference = render_radiance_new();
+    CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas canvas = cf_make_canvas(params);
+    GameHRC2D normal = game_hrc2d_defaults();
+    normal.adaptive = normal.feedback = false;
+    normal.ambient = normal.fog = 0;
+    normal.surface_mode = GAME_HRC_SURFACE_GATHER;
+    normal.surface_radius = 32;
+    normal.surface_relief = 1.5f;
+    normal.surface_bevel = normal.specular = 0;
+    normal.radiance_hysteresis = .3f;
+    normal.debug_view = GAME_HRC_DEBUG_NORMAL;
+    render_material_entity scene[] = { emitter(), lit_wall(6, 1.5f) };
+    scene[0].emission[1] = scene[0].border_emission[1] = 2.0f;
+    render_view_2d view = { .min_x = -64,
+                            .max_y = 64,
+                            .width = SIDE,
+                            .height = SIDE,
+                            .crop_max_u = 1,
+                            .crop_max_v = 1 };
+    uint16_t transitioned[PIXELS * 4], reset[PIXELS * 4];
+    bool ok = transition && reference && canvas.id &&
+              render_material_raster_resize(raster, SIDE, SIDE) &&
+              render_radiance_resize(transition, SIDE, SIDE) &&
+              render_radiance_resize(reference, SIDE, SIDE) &&
+              render_radiance_set_lighting(transition, normal) &&
+              render_radiance_set_lighting(reference, normal);
+    for (int frame = 0; frame < 12 && ok; frame++) {
+        ok = draw_view_once(raster, transition, canvas, scene, 2, view) &&
+             draw_view_once(raster, reference, canvas, scene, 2, view);
+    }
+
+    if (ok) {
+        GameHRC2D probes = normal;
+        probes.debug_view = GAME_HRC_DEBUG_GATHER_PROBES;
+        view.min_x = -61;
+        view.max_y = 62;
+        scene[0].pos[0] = -8;
+        ok = render_radiance_set_lighting(transition, probes) &&
+             render_radiance_set_lighting(reference, normal) &&
+             draw_view_once(raster, transition, canvas, scene, 2, view) &&
+             draw_view_once(raster, reference, canvas, scene, 2, view);
+    }
+
+    if (ok) {
+        view.min_x = -58;
+        view.max_y = 60;
+        scene[0].pos[0] = 20;
+        ok = draw_view_once(raster, transition, canvas, scene, 2, view) &&
+             draw_view_once(raster, reference, canvas, scene, 2, view);
+    }
+
+    if (ok) {
+        ok = render_radiance_set_lighting(transition, normal);
+        GameHRC2D no_surface_history = normal;
+        no_surface_history.surface_radius = 0;
+        ok = ok && render_radiance_set_lighting(reference, no_surface_history) &&
+             render_radiance_set_lighting(reference, normal) &&
+             draw_view_once(raster, transition, canvas, scene, 2, view) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), transitioned, PIXELS) &&
+             draw_view_once(raster, reference, canvas, scene, 2, view) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), reset, PIXELS);
+    }
+    float error = ok ? surface_history_difference(transitioned, reset) : INFINITY;
+    ok &= error < .0001f;
+    printf("surface history after normal/probes/normal with camera and light motion: %.6f %s\n", error, ok ? "PASS" : "FAIL");
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    render_radiance_free(transition);
+    render_radiance_free(reference);
+    return ok;
+}
+
+static bool magenta_marker(const uint16_t *pixels)
+{
+    int count = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        int p = 4 * i;
+        count += half_value(pixels[p]) > .95f && half_value(pixels[p + 1]) < .05f &&
+                 half_value(pixels[p + 2]) > .95f;
+    }
+    return count > PIXELS * .95f;
+}
+
+static float diagnostic_local_y(int y, int vertical_tiles, bool flip_y)
+{
+    float uv = ((float)y + .5f) / SIDE;
+    if (flip_y) {
+        uv = 1 - uv;
+    }
+    float tiled = uv * vertical_tiles;
+    return tiled - floorf(tiled);
+}
+
+static bool diagnostic_fraction(float value, float denominator)
+{
+    if (!isfinite(value) || value < -0.002f || value > 1.002f) {
+        return false;
+    }
+    return fabsf(value * denominator - roundf(value * denominator)) < 0.006f;
+}
+
+static bool surface_quadrant_channels(const uint16_t *pixels)
+{
+    for (int flip_y = 0; flip_y < 2; flip_y++) {
+        bool valid = true, ordered_rgb = false;
+        bool open_openness = false, partial_openness = false;
+        for (int y = 0; y < SIDE && valid; y++) {
+            float local_y = diagnostic_local_y(y, 1, flip_y != 0);
+            for (int x = 0; x < SIDE; x++) {
+                int p = 4 * (y * SIDE + x);
+                float r = half_value(pixels[p]);
+                float g = half_value(pixels[p + 1]);
+                float b = half_value(pixels[p + 2]);
+                float a = half_value(pixels[p + 3]);
+                if (!isfinite(r) || !isfinite(g) || !isfinite(b) || !isfinite(a)) {
+                    valid = false;
+                    break;
+                }
+                if (local_y < .82f) {
+                    if (r < -0.002f || r > 1.002f || g < -0.002f || g > 1.002f ||
+                        b < -0.002f || b > 1.002f || fabsf(a - 1) > .002f) {
+                        valid = false;
+                        break;
+                    }
+                    ordered_rgb |= r > g + .01f && g > b + .01f && r > .02f;
+                    continue;
+                }
+                if (fabsf(r - g) >= .002f || fabsf(g - b) >= .002f ||
+                    fabsf(a - 1) >= .002f || r < -0.002f || r > 1.002f) {
+                    valid = false;
+                    break;
+                }
+                open_openness |= r > .99f;
+                partial_openness |= r > .02f && r < .98f;
+            }
+        }
+        if (valid && ordered_rgb && open_openness && partial_openness) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool surface_closed_region_openness(const uint16_t *pixels)
+{
+    for (int flip_y = 0; flip_y < 2; flip_y++) {
+        bool valid = true;
+        int closed = 0, total = 0;
+        for (int y = 0; y < SIDE && valid; y++) {
+            float local_y = diagnostic_local_y(y, 1, flip_y != 0);
+            if (local_y < .82f) {
+                continue;
+            }
+            for (int x = 0; x < SIDE; x++) {
+                int p = 4 * (y * SIDE + x);
+                float r = half_value(pixels[p]);
+                float g = half_value(pixels[p + 1]);
+                float b = half_value(pixels[p + 2]);
+                float a = half_value(pixels[p + 3]);
+                if (!isfinite(r) || !isfinite(g) || !isfinite(b) || !isfinite(a) ||
+                    fabsf(r - g) >= .002f || fabsf(g - b) >= .002f ||
+                    fabsf(a - 1) >= .002f || r < -0.002f || r > 0.01f) {
+                    valid = false;
+                    break;
+                }
+                closed++;
+                total++;
+            }
+        }
+        if (valid && total >= (int)(SIDE * SIDE * .17f) && closed == total) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool gather_probe_channels(const uint16_t *pixels)
+{
+    for (int flip_y = 0; flip_y < 2; flip_y++) {
+        bool valid = true;
+        bool candidate_without_receiver = false;
+        bool fully_visible_receiver = false;
+        bool partly_or_fully_blocked_receiver = false;
+        bool open_openness = false, partial_openness = false, closed_openness = false;
+        for (int y = 0; y < SIDE && valid; y++) {
+            float local_y = diagnostic_local_y(y, 2, flip_y != 0);
+            for (int x = 0; x < SIDE; x++) {
+                int p = 4 * (y * SIDE + x);
+                float r = half_value(pixels[p]);
+                float g = half_value(pixels[p + 1]);
+                float b = half_value(pixels[p + 2]);
+                float a = half_value(pixels[p + 3]);
+                if (!isfinite(r) || !isfinite(g) || !isfinite(b) || !isfinite(a)) {
+                    valid = false;
+                    break;
+                }
+                if (local_y < .68f) {
+                    int visibility_tests = (int)roundf(g * 3.0f);
+                    if (fabsf(a - 1) > .002f || !diagnostic_fraction(r, 3) ||
+                        !diagnostic_fraction(g, 3) || b < -0.002f || b > 1.002f ||
+                        g > r + .002f || (g > .002f && fabsf(g - r) >= .002f) ||
+                        (visibility_tests == 0 && b > .002f) ||
+                        (visibility_tests > 0 &&
+                         !diagnostic_fraction(b, visibility_tests)) ||
+                        (g < .002f && b > .002f)) {
+                        valid = false;
+                        break;
+                    }
+                    candidate_without_receiver |= r >= (1.0f / 3.0f) - .002f &&
+                                                  g < .002f && b < .002f;
+                    fully_visible_receiver |= fabsf(r - 1) < .002f &&
+                                              fabsf(g - 1) < .002f &&
+                                              fabsf(b - 1) < .002f;
+                    partly_or_fully_blocked_receiver |= r > .002f &&
+                                                        g > .002f && b < .998f;
+                    continue;
+                }
+                if (fabsf(r - g) >= .002f || fabsf(g - b) >= .002f ||
+                    fabsf(a - 1) >= .002f || r < -0.002f || r > 1.002f) {
+                    valid = false;
+                    break;
+                }
+                open_openness |= r > .99f;
+                partial_openness |= r > .02f && r < .98f;
+                closed_openness |= r < .01f;
+            }
+        }
+        if (valid && candidate_without_receiver && fully_visible_receiver &&
+            partly_or_fully_blocked_receiver && open_openness &&
+            partial_openness && closed_openness) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static behavior_asset *horizon_height_material(const char *name, float slope, float height);
+
+static bool surface_mode_debug_views(render_material_raster *raster)
+{
+    render_radiance *radiance = render_radiance_new();
+    CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
+    CF_Canvas canvas = cf_make_canvas(params);
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.adaptive = lighting.feedback = false;
+    lighting.surface_radius = 24;
+    lighting.surface_depth_radius = 128;
+    lighting.surface_depth_gain = 1;
+    lighting.surface_thickness = 12;
+    lighting.radiance_hysteresis = .25f;
+    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_QUADRANTS;
+    render_material_entity scene[] = { emitter(), lit_wall(6, 1.5f) };
+    scene[0].border_thickness = 0;
+    memset(scene[0].border_emission, 0, sizeof scene[0].border_emission);
+    scene[0].emission[0] = .24f;
+    scene[0].emission[1] = .12f;
+    scene[0].emission[2] = .06f;
+    behavior_asset *probe_blocker = horizon_height_material("Gather probe blocker", 0, 12);
+    render_material_entity probe_scene[] = { emitter(), lit_wall(6, 1.5f), wall() };
+    probe_scene[2].pos[0] = -16;
+    probe_scene[2].reserved[0] = (float)render_shader_find("Gather probe blocker");
+    /* Alpha is absorption coverage; RGB carries optical depth. */
+    for (int channel = 0; channel < 3; channel++) {
+        probe_scene[1].absorption[channel] = 12;
+        probe_scene[2].absorption[channel] = 12;
+    }
+    render_view_2d view = { .min_x = -64,
+                            .max_y = 64,
+                            .width = SIDE,
+                            .height = SIDE,
+                            .crop_max_u = 1,
+                            .crop_max_v = 1 };
+    uint16_t pixels[PIXELS * 4];
+    bool ok = radiance && canvas.id && probe_blocker &&
+              render_material_raster_resize(raster, SIDE, SIDE) &&
+              render_radiance_resize(radiance, SIDE, SIDE);
+    for (int mode = GAME_HRC_SURFACE_BLUR; mode <= GAME_HRC_SURFACE_DEPTH && ok;
+         mode++) {
+        lighting.surface_mode = (GameHRCSurfaceMode)mode;
+        ok = render_radiance_set_lighting(radiance, lighting) &&
+             draw_view_once(raster, radiance, canvas, scene, 2, view) &&
+             read_hdr_texture(cf_canvas_get_target(canvas), pixels, PIXELS);
+        if (ok) {
+            bool is_magenta = magenta_marker(pixels);
+            ok = mode == GAME_HRC_SURFACE_DEPTH ? is_magenta : !is_magenta;
+            printf("surface quadrant debug mode %d: %s\n", mode, ok ? "PASS" : "FAIL");
+            if (ok && mode != GAME_HRC_SURFACE_DEPTH) {
+                ok = surface_quadrant_channels(pixels);
+                printf("surface quadrant RGB/openness channels mode %d: %s\n", mode, ok ? "PASS" : "FAIL");
+                if (ok) {
+                    render_material_entity closed_region = wall_with(12, 0);
+                    closed_region.extent[0] = closed_region.extent[1] = SIDE * .5f + 2;
+                    closed_region.points[0] = closed_region.points[1] = SIDE * .5f + 1;
+                    render_radiance_reset(radiance);
+                    ok = draw_view_once(raster, radiance, canvas, &closed_region, 1, view) &&
+                         read_hdr_texture(cf_canvas_get_target(canvas), pixels, PIXELS) &&
+                         surface_closed_region_openness(pixels);
+                    printf("surface closed-region openness mode %d: %s\n", mode, ok ? "PASS" : "FAIL");
+                }
+            }
+        }
+
+        lighting.debug_view = GAME_HRC_DEBUG_GATHER_PROBES;
+        if (ok) {
+            const render_material_entity *probe_entities = mode == GAME_HRC_SURFACE_GATHER
+                                                             ? probe_scene
+                                                             : scene;
+            int probe_count = mode == GAME_HRC_SURFACE_GATHER ? 3 : 2;
+            ok = render_radiance_set_lighting(radiance, lighting) &&
+                 draw_view_once(raster, radiance, canvas, probe_entities, probe_count, view) &&
+                 read_hdr_texture(cf_canvas_get_target(canvas), pixels, PIXELS);
+        }
+        if (ok) {
+            bool is_magenta = magenta_marker(pixels);
+            ok = mode == GAME_HRC_SURFACE_GATHER ? !is_magenta : is_magenta;
+            printf("Gather probe debug mode %d: %s\n", mode, ok ? "PASS" : "FAIL");
+            if (ok && mode == GAME_HRC_SURFACE_GATHER) {
+                ok = gather_probe_channels(pixels);
+                printf("Gather probe R/G/B/openness channels: %s\n", ok ? "PASS" : "FAIL");
+            }
+        }
+        lighting.debug_view = GAME_HRC_DEBUG_SURFACE_QUADRANTS;
+    }
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    render_radiance_free(radiance);
+    behavior_asset_free(probe_blocker);
+    return ok;
+}
+
 static bool fluid_lighting(
     render_material_raster *raster,
     render_radiance *radiance,
@@ -2827,6 +3187,8 @@ int test_radiance()
         }
     }
     ok &= surface_history(raster);
+    ok &= surface_history_after_probe_transition(raster);
+    ok &= surface_mode_debug_views(raster);
     ok &= split_luminance_transport(raster, canvas);
     ok &= fractional_cells(raster, canvas);
     ok &= liquid_refraction(raster, radiance, canvas);

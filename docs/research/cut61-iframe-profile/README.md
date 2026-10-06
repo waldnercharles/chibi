@@ -2,7 +2,9 @@
 
 Historical checkpoint measured at `6bedae240471c7436cf5af67874436dd901360b4`.
 The timings and environment statements below describe that revision only;
-see [integration status](integration.md) for the current-main preparation.
+see [completion status](finish/README.md) for the later optimization and current validation limits.
+The Python runner is retained as non-executable historical text; commands below
+are transcripts for this revision, not current reproduction instructions.
 
 The post-context holder traversal repeats, but its cost is small in the existing
 `--kit-documents` fixture: **0.285–0.472 ms across 49 frames**, or **0.21–0.34%**
@@ -43,7 +45,7 @@ make build JOBS=4 BUILD_TARGET=test_suite
 python3 docs/research/cut61-iframe-profile/run.py
 ```
 
-`run.py` executes exactly five sequential copies of:
+Historical `run.py.txt` executed exactly five sequential copies of:
 
 ```sh
 CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 CHIBI_IFRAME_PROFILE=1 build/test_suite --kit-documents

@@ -51,6 +51,8 @@ The original exact native admission table remains:
 | Exact native arguments | Existing execution evidence |
 | --- | --- |
 | `--graph-optimize` | 0.5s |
+| `--iframe-updates` | 2.410s at CUT61 `7b0389ea`, Debug ASan+UBSan, all 12 checks and optional 1000 profile frames. |
+| `--kit-documents` | 0.469–0.551s at CUT61 `7b0389ea`, Debug ASan+UBSan, all 10 checks and 49 frames. |
 | `--compiled-behaviors` | 47.2s |
 | `--automation-search` | 17.2s |
 | `--automation-refactor` | 5.0s |
@@ -70,6 +72,11 @@ and the Arena combat/parallel environment and optimized configuration. Each
 independently requested command has a maximum 60-second deadline. Do not combine
 the table into a reconstructed full suite. `make test-fast` checks its exact
 `TEST_ARGS` tuple before building.
+
+The two CUT61 CPU-only tuples were independently reviewed for scoped admission.
+Their complete logs, binary identity, configuration and fresh supervised runs
+are retained in [the iframe completion record](research/cut61-iframe-profile/finish/README.md).
+This admission leaves the 2016-frame lifecycle and all other UI/native tuples quarantined.
 
 `make test-studio-selectors` runs the C CLI process driver under the supervisor
 against a separately built native `test_suite`; it does not render Studio.

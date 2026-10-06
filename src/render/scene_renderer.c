@@ -1656,7 +1656,7 @@ bool app_scene_renderer_draw(
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
     /* These views already encode display values, including discrete probe
-     * fractions and opacity bands. Present them without HDR post-processing. */
+     * fractions and opacity bands. Present them without scene visual effects. */
     bool diagnostic = renderer->lighting.debug_view >= GAME_HRC_DEBUG_TRANSPORT_QUADRANTS &&
                       renderer->lighting.debug_view <= GAME_HRC_DEBUG_GATHER_PROBES;
     bool hdr = renderer->lighting.tone_mapping > 0 && !diagnostic;
@@ -1685,7 +1685,7 @@ bool app_scene_renderer_draw(
         render_gpu_timing_mark("Tone map and bloom");
     }
     CF_Canvas output = renderer->output;
-    if (acount(renderer->reflectors)) {
+    if (!diagnostic && acount(renderer->reflectors)) {
         if (!renderer->reflections) {
             renderer->reflections = render_reflections_new();
         }
@@ -1713,7 +1713,7 @@ bool app_scene_renderer_draw(
         (CF_V2){ camera.center_x, camera.center_y },
         (CF_V2){ camera.span_width, camera.span_height }
     );
-    return draw_fog(renderer, runtime, &camera, NULL);
+    return diagnostic || draw_fog(renderer, runtime, &camera, NULL);
 }
 
 void app_scene_renderer_set_parallel(app_scene_renderer *renderer, bool enabled)

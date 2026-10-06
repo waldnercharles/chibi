@@ -2264,6 +2264,8 @@ static bool diagnostic_quadrant_mapping()
 typedef struct
 {
     ecs_world *world;
+    game_live_world *live;
+    engine *runtime;
     ecs_entity settings;
     game_particles *particles;
     engine_viewport *viewport;
@@ -2286,7 +2288,7 @@ static bool diagnostic_scene_frame(
         scene->world,
         scene->particles,
         scene->viewport,
-        NULL,
+        scene->runtime,
         (render_skip){ 0 }
     );
     cf_render_to(scene->canvas, true);
@@ -2295,19 +2297,113 @@ static bool diagnostic_scene_frame(
     return ok && read_pixels(scene->canvas, pixels, PIXELS);
 }
 
+static bool diagnostic_scene_effects(diagnostic_scene *scene, app_scene_renderer *renderer, GameHRC2D lighting)
+{
+    ecs_world *world = scene->world;
+    ecs_entity mirror = ecs_world_create_entity(world);
+    GameDestructible destructible = { .cell_size = 2, .min_fragment_cells = 1 };
+    GameReflection style = { .roughness = .4f, .angle = 1.5707963f, .offset = -24 };
+    assert(GAME_GameTransform_add(world, mirror, 0) == ECS_OK);
+    assert(GAME_GameAppearance_add(world, mirror, 0) == ECS_OK);
+    assert(GAME_GameCollider_add(world, mirror, 0) == ECS_OK);
+    assert(
+        ecs_world_record_add(world, mirror, GAME_COMPONENT_GameDestructible.id, &destructible, 0) == ECS_OK
+    );
+    assert(GAME_GameMaterial_add(world, mirror, 0) == ECS_OK);
+    assert(
+        ecs_world_record_add(world, mirror, GAME_COMPONENT_GameReflection.id, &style, 0) == ECS_OK
+    );
+    assert(GAME_GameFog_add(world, scene->settings, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    *GAME_GameTransform_get(world, mirror) = (GameTransform){ 24, 0 };
+    *GAME_GameAppearance_get(world, mirror) = (GameAppearance){ .shape = GAME_SHAPE_BOX,
+                                                                .width = 64,
+                                                                .height = 80,
+                                                                .antialias = 1 };
+    *GAME_GameCollider_get(world, mirror) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                            .width = 64,
+                                                            .height = 80,
+                                                            .category = 8,
+                                                            .mask = 15 };
+    *GAME_GameMaterial_get(world, mirror) = (GameMaterial){ .scene = 0x202020ff,
+                                                            .albedo = 0x40a0ffff,
+                                                            .emission_multiplier = 1 };
+    GameReflection *reflection = ecs_component_data(
+        world,
+        mirror,
+        GAME_COMPONENT_GameReflection.id
+    );
+    GameFog *fog = GAME_GameFog_get(world, scene->settings);
+    *fog = (GameFog){ .origin = { -64, -64 },
+                      .columns = 16,
+                      .rows = 16,
+                      .cell_size = 8,
+                      .color = 0x123456ff,
+                      .disabled = true };
+    bool ok = !game_materials_prepare(scene->live->materials);
+    const material_mask *mask = game_materials_mask(scene->live->materials, mirror);
+    ok &= mask && material_mask_collision(mask).count > 0;
+    lighting.tone_mapping = GAME_HRC_TONE_AGX;
+    CF_Pixel expected[PIXELS], actual[PIXELS];
+    const GameHRCDebugView views[] = {
+        GAME_HRC_DEBUG_TRANSPORT_QUADRANTS, GAME_HRC_DEBUG_SURFACE_QUADRANTS,
+        GAME_HRC_DEBUG_GATHER_PROBES,       GAME_HRC_DEBUG_SURFACE_QUADRANTS,
+        GAME_HRC_DEBUG_GATHER_PROBES,       GAME_HRC_DEBUG_NORMAL
+    };
+    for (int i = 0; i < 6 && ok; i++) {
+        lighting.debug_view = views[i];
+        lighting.surface_mode = i == 3 ? GAME_HRC_SURFACE_DEPTH
+                              : i == 4 ? GAME_HRC_SURFACE_BLUR
+                                       : GAME_HRC_SURFACE_GATHER;
+        reflection->strength = 0;
+        fog->disabled = true;
+        ok = !game_visibility_update(scene->live->visibility, 0) &&
+             diagnostic_scene_frame(scene, renderer, lighting, expected);
+        /* Exercise each effect and their composition. In normal mode they
+         * must change the image, proving these are active fixtures. */
+        for (int effects = 1; effects <= 3 && ok; effects++) {
+            reflection->strength = effects & 1 ? .8f : 0;
+            fog->disabled = !(effects & 2);
+            GameFog settings;
+            ok = !game_visibility_update(scene->live->visibility, 0) &&
+                 (game_visibility_cells(scene->live->visibility, &settings) !=
+                  NULL) == !fog->disabled &&
+                 diagnostic_scene_frame(scene, renderer, lighting, actual);
+            if (ok) {
+                bool same = !memcmp(actual, expected, sizeof actual);
+                ok = views[i] == GAME_HRC_DEBUG_NORMAL ? !same : same;
+            }
+            printf(
+                "scene view %d surface %d reflection/fog %d: %s\n",
+                views[i],
+                lighting.surface_mode,
+                effects,
+                ok ? "PASS" : "FAIL"
+            );
+        }
+    }
+    reflection->strength = 0;
+    fog->disabled = true;
+    ok = ok && !game_visibility_update(scene->live->visibility, 0) &&
+         diagnostic_scene_frame(scene, renderer, lighting, actual) &&
+         !memcmp(actual, expected, sizeof actual);
+    printf("scene normal output restored after reflection/fog: %s\n", ok ? "PASS" : "FAIL");
+    return ok;
+}
+
 static bool diagnostic_scene_presentation()
 {
     diagnostic_scene scene = { .world = ecs_world_new(),
-                               .particles = game_particles_new(),
                                .viewport = engine_viewport_new(SIDE, SIDE),
                                .canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE)) };
-    const ecs_component_desc *components[] = { &GAME_COMPONENT_GameTransform,
-                                               &GAME_COMPONENT_GameAppearance,
-                                               &GAME_COMPONENT_GameMaterial,
-                                               &GAME_COMPONENT_GameHRC2D };
-    for (int i = 0; i < 4; i++) {
-        assert(ecs_world_register_component(scene.world, components[i], NULL) == ECS_OK);
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        assert(
+            ecs_world_register_component(scene.world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
+        );
     }
+    scene.live = game_live_world_new(scene.world);
+    scene.runtime = engine_new(scene.world, scene.live);
+    scene.particles = scene.live->particles;
     GameHRC2D lighting = game_hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     /* One means current samples only; the separate transition regression
@@ -2446,11 +2542,12 @@ static bool diagnostic_scene_presentation()
     ok = ok && diagnostic_scene_frame(&scene, renderer, lighting, expected) &&
          memcmp(actual, expected, sizeof actual) != 0;
     printf("scene normal presentation restored after diagnostics: %s\n", ok ? "PASS" : "FAIL");
+    ok &= diagnostic_scene_effects(&scene, renderer, lighting);
     app_scene_renderer_free(renderer);
     cf_destroy_canvas(scene.canvas);
     engine_viewport_free(scene.viewport);
-    game_particles_free(scene.particles);
-    render_shader_clear_world(scene.world);
+    engine_free(scene.runtime);
+    game_live_world_free(scene.live);
     ecs_world_free(scene.world);
     return ok;
 }

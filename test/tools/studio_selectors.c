@@ -166,6 +166,7 @@ TEST_CASE(panel_lifecycle_selection_needs_no_graphics)
         REQUIRE(strstr(output, "requires_hardware_or_classification"));
         REQUIRE(no_studio_started());
     }
+    assert(!setenv("CHIBI_ALLOW_FULL_GPU", "1", 1));
     REQUIRE(invoke("--studio-panel-lifecycle-typo", NULL, NULL) == 2);
     REQUIRE(strstr(output, "unknown test_suite selector:"));
     REQUIRE(no_studio_started());

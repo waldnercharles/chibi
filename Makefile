@@ -313,6 +313,7 @@ DEV_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=O
 dev:
 	@$(MAKE) build BUILD_DIR="$(DEV_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEV_CMAKE_FLAGS)" BUILD_TARGET="chibi"
 	@$(MAKE) update-game-runtime
+	@mkdir -p .chibi
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" $(if $(filter --play --checkpoint,$(ARGS)),,--checkpoint "$(abspath .chibi/workspace.json)") --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 endif # CHIBI_WORKSPACE_INNER

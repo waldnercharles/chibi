@@ -16,6 +16,7 @@ from quiet import child_fds
 ROOT = Path(__file__).resolve().parents[1]
 LIMIT = 60
 DEADLINE = 'CHIBI_TEST_DEADLINE'
+PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
     ('--compiled-behaviors',): '47.2s; docs/testing.md selector evidence',
@@ -109,14 +110,25 @@ def wait_until(child, deadline):
     return child.returncode
 
 
-def supervise(commands):
-    # Fail closed where orphan ownership is unavailable. No system setting,
-    # cgroup, permission change or package installation is required.
+def enable_subreaper():
+    # Linux additionally owns detached/orphaned descendants. Other supported
+    # POSIX hosts retain the portable process-group deadline path.
     if not sys.platform.startswith('linux'):
-        raise RuntimeError('test descendant containment requires Linux subreaper support')
+        return False
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(36, 1, 0, 0, 0):  # PR_SET_CHILD_SUBREAPER
         raise OSError(ctypes.get_errno(), 'cannot own test descendants')
+    return True
+
+
+def inherited_group(environment):
+    return environment.get(PROCESS_GROUP) == str(os.getpgrp())
+
+
+def supervise(commands):
+    subreaper = enable_subreaper()
+    os.environ[PROCESS_GROUP] = str(os.getpgrp())
+    child = None
     deadline = absolute_deadline(LIMIT, os.environ)
     try:
         for command in commands:
@@ -135,7 +147,12 @@ def supervise(commands):
                 return result if result > 0 else 128 - result
         return 0
     finally:
-        cleanup_children()
+        if subreaper:
+            cleanup_children()
+        elif child is not None:
+            if child.poll() is None:
+                child.kill()
+            child.wait()
 
 
 def run_commands(commands, seconds=LIMIT, env=None, output=None):
@@ -150,9 +167,10 @@ def run_commands(commands, seconds=LIMIT, env=None, output=None):
     started = time.monotonic()
     if deadline <= started:
         return 124
+    owns_group = not inherited_group(environment)
     child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
                               '_supervise', json.dumps(commands)], cwd=ROOT,
-                             env=environment, start_new_session=True,
+                             env=environment, start_new_session=owns_group,
                              stdout=output, stderr=output, pass_fds=child_fds())
     try:
         try:
@@ -164,10 +182,17 @@ def run_commands(commands, seconds=LIMIT, env=None, output=None):
         return result if result >= 0 else 128 - result
     finally:
         if child.poll() is None:
-            # SIGTERM unwinds the supervisor's subreaper cleanup, including
-            # descendants which left its process group. Never kill just a group.
+            # Let the supervisor unwind first; Linux also reaps descendants
+            # which escaped the portable process group.
             child.terminate()
         child.wait()
+        if owns_group:
+            # Also used on macOS: nested managed wrappers stay in this group.
+            # Arbitrary descendants that call setsid need Linux subreaping.
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         print(f'Test command wall time: {time.monotonic() - started:.3f}s; ceiling {seconds}s; '
               'includes in-test fixture setup; external configuration/build excluded.', file=output or sys.stdout, flush=True)
 

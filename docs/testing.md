@@ -9,8 +9,7 @@ is not evidence of speed. The [disabled coverage inventory](test-quarantine.md)
 lists exact quarantined targets and the small retained command set.
 
 `make test` now runs policy, validation-plan and execution-policy regressions
-under one deadline. This includes the unchanged MCP regression; its currently
-observed failure remains a default failure. Success would mean only these
+under one deadline. This includes the unchanged MCP regression. Success means only these
 regressions passed, not full native, tooling or GPU verification. Every run prints
 a quarantine notice. `make test-list` reports admitted invocations without a build.
 `make test-full`, `test-slow`, `test-render` and other quarantined targets exit
@@ -20,10 +19,10 @@ Direct binaries, raw scripts, CMake check targets and captures are unchanged
 and do not universally enforce the ceiling. Do not use them to bypass quarantine.
 
 `tools/test_policy.py` gives each admitted test command one 60-second wall-clock
-deadline across all its subprocesses. Timeout stops the isolated Linux supervisor and kills/reaps owned descendants,
-including nested wrappers and children that used `setsid`, then returns failure
-(124), never a green skip. Nested wrappers inherit the same absolute deadline.
-Other hosts fail closed before test execution until equivalent containment exists. The short regression aggregate shares one
+deadline across all its subprocesses. Timeout stops the owned process group and returns failure (124), never a green
+skip. Nested managed test wrappers share that group and the absolute deadline.
+Linux subreaping additionally kills/reaps descendants that escape with `setsid`;
+this stronger guarantee is not claimed on macOS, where short tests remain enabled. The short regression aggregate shares one
 deadline; it does not reset per test. Multiple Make validation goals are rejected
 as an unadmitted aggregate. Do not manufacture chunks of a slow suite to evade
 the limit. No runtime knob raises the production ceiling.
@@ -228,8 +227,11 @@ make test-tool-validation-plan
 ```
 
 Repeat `--source` for every batch member and `--selector` for relevant existing
-CPU/GPU allowlisted selectors; `--tools` adds `make test-tools`. The default scope
-is `unknown`; `unknown` and `mixed` list the full gate instead of focused commands.
+admitted CPU selectors; repeatable `--tool=validation-plan` selects admitted
+individual tooling commands. The quarantined `--tools` aggregate and GPU selectors
+are refused rather than included in a successful focused plan. The default scope
+is `unknown`; `unknown` and `mixed` retain full-gate requirements as quarantined/pending
+metadata and list only runnable integration commands (currently formatting).
 Any declared source members require `--confirm-eligible-members`, including when
 verifying a saved plan. Supply it only after freshly checking every member's
 review, holds and required approvals. It records an operator statement, grants

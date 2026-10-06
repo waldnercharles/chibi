@@ -49,6 +49,7 @@ class TestPolicy(unittest.TestCase):
             time.sleep(.5)
             self.assertFalse(marker.exists())
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux subreaper-specific escaped-session guarantee")
     def test_nested_wrapper_and_setsid_child_share_deadline_and_are_reaped(self):
         with tempfile.TemporaryDirectory() as directory:
             started = Path(directory) / 'started'
@@ -69,6 +70,7 @@ class TestPolicy(unittest.TestCase):
             time.sleep(.3)
             self.assertFalse(escaped.exists())
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux subreaper-specific escaped-session guarantee")
     def test_interruption_reaps_setsid_grandchild(self):
         with tempfile.TemporaryDirectory() as directory:
             started = Path(directory) / 'started'
@@ -104,6 +106,7 @@ class TestPolicy(unittest.TestCase):
             self.assertEqual(policy.run_commands([['unused']]), 124)
             spawn.assert_not_called()
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux subreaper-specific escaped-session guarantee")
     def test_setsid_orphan_is_reaped_after_parent_exits_normally(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / 'escaped'
@@ -113,12 +116,26 @@ class TestPolicy(unittest.TestCase):
             time.sleep(.25)
             self.assertFalse(marker.exists())
 
-    def test_unsupported_containment_fails_before_launch(self):
-        with patch.object(policy.sys, 'platform', 'unsupported'), \
-                patch.object(policy.subprocess, 'Popen') as spawn:
-            with self.assertRaisesRegex(RuntimeError, 'subreaper'):
-                policy.supervise([['unused']])
-            spawn.assert_not_called()
+    def test_macos_selection_keeps_short_commands_without_linux_subreaper(self):
+        with patch.object(policy.sys, 'platform', 'darwin'), \
+                patch.object(policy.ctypes, 'CDLL') as libc, \
+                patch.dict(os.environ):
+            self.assertFalse(policy.enable_subreaper())
+            self.assertEqual(policy.supervise([[sys.executable, '-c', 'pass']]), 0)
+            libc.assert_not_called()
+
+    def test_nested_wrappers_reuse_the_owned_process_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outer = Path(directory) / 'outer'
+            inner = Path(directory) / 'inner'
+            command = f'import os; from pathlib import Path; Path({str(inner)!r}).write_text(str(os.getpgrp()))'
+            nested = (f'import os,sys; from pathlib import Path; sys.path.insert(0,{str(ROOT / "tools")!r}); '
+                      f'import test_policy; Path({str(outer)!r}).write_text(str(os.getpgrp())); '
+                      f'sys.exit(test_policy.run_commands([[sys.executable,"-c",{command!r}]]))')
+            self.assertEqual(policy.run_commands([[sys.executable, '-c', nested]]), 0)
+            self.assertEqual(outer.read_text(), inner.read_text())
+        self.assertFalse(policy.inherited_group({}))
+        self.assertTrue(policy.inherited_group({policy.PROCESS_GROUP: str(os.getpgrp())}))
 
     def test_disabled_cli_never_starts_binary_even_with_hardware_opt_in(self):
         with tempfile.TemporaryDirectory() as directory:

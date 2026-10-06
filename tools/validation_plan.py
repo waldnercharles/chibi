@@ -4,9 +4,12 @@ from pathlib import Path
 import subprocess
 import sys
 
+from test_policy import admitted, TOOLS
+
 
 FULL = 'make test-full'  # Quarantined: fails closed; never schedules the full suite.
-INTEGRATION = [FULL, 'make check-format']
+INTEGRATION = ['make check-format']
+QUARANTINED = [FULL, 'make test-render', 'make test-tools', 'make test-compiler-parity']
 
 
 def add_parser(sub):
@@ -19,7 +22,9 @@ def add_parser(sub):
     parser.add_argument('--scope', choices=['focused', 'unknown', 'mixed'], default='unknown')
     parser.add_argument('--review-note', default='', help='Reviewer, changed contract and why these checks cover it')
     parser.add_argument('--selector', action='append', default=[], help='Use --selector=--name; repeat as needed')
-    parser.add_argument('--tools', action='store_true', help='Include make test-tools in focused work')
+    parser.add_argument('--tools', action='store_true', help='Legacy aggregate request; currently refused by temporary quarantine')
+    parser.add_argument('--tool', action='append', default=[], choices=sorted(TOOLS),
+                        help='Plan one admitted complete tooling command; repeat as needed')
     parser.add_argument('--verify', type=Path, help='Compare a saved plan to current local refs; does not fetch or certify tests')
 
 
@@ -36,23 +41,26 @@ def make_plan(args, root, cpu, gpu):
         raise ValueError('declared members require --confirm-eligible-members after checking reviews, holds and required approvals')
     if args.confirm_eligible_members and not args.source:
         raise ValueError('eligibility confirmation requires declared --source members')
+    if args.tools:
+        raise ValueError('make test-tools aggregate is quarantined; select an admitted --tool instead')
     selectors = sorted(set(args.selector))
     for selector in selectors:
         if selector not in cpu and selector not in gpu:
             raise ValueError(f'unclassified selector: {selector}')
-    if args.scope == 'focused' and (not args.review_note.strip() or not (selectors or args.tools)):
-        raise ValueError('focused scope requires a review note and selectors or --tools')
+        if not admitted([selector]) or selector not in cpu:
+            raise ValueError(f'selector is quarantined for agent-test: {selector}')
+    if args.scope == 'focused' and (not args.review_note.strip() or not (selectors or args.tool)):
+        raise ValueError('focused scope requires a review note and admitted selectors or --tool')
     base, head = commit(root, args.base), commit(root, args.head)
     if head != commit(root, 'HEAD') or git(root, 'status', '--porcelain', '--untracked-files=normal'):
         raise ValueError('check out the planned head with a clean worktree; save plans/logs outside the worktree')
     git(root, 'merge-base', '--is-ancestor', base, head)
     changes = git(root, 'diff', '--name-status', '--no-renames', base, head, '--').splitlines()
-    focused = ['make test-tools'] if args.tools else []
+    focused = [f'make test-tool-{name}' for name in sorted(set(args.tool))]
     for selector in selectors:
-        target = 'agent-test' if selector in cpu else 'agent-gpu-test'
-        focused.append(f'make {target} AGENT_SELECTOR={selector}')
+        focused.append(f'make agent-test AGENT_SELECTOR={selector}')
     return dict(
-        schema=2, full_verification=False,
+        schema=3, full_verification=False,
         identity=dict(base_ref=args.base, base=base, head_ref=args.head, head=head,
                       tree=git(root, 'rev-parse', head + '^{tree}'),
                       sources={ref: commit(root, ref) for ref in sorted(set(args.source))}),
@@ -61,7 +69,8 @@ def make_plan(args, root, cpu, gpu):
         classification='Reviewer declaration; paths/extensions do not prove impact or coverage.',
         iteration_commands=focused if args.scope == 'focused' else INTEGRATION,
         integration_commands=INTEGRATION,
-        scope_specific_commands={'web/UI': 'make web', 'compiler parity': 'make test-compiler-parity'},
+        quarantined_commands=QUARANTINED,
+        scope_specific_commands={'web/UI': 'make web'},
         pending=[
             'Recheck every member PR/ticket hold and required approval before admission/landing; confirmation grants no merge authority',
             'Independent source review of each pinned source and combined diff/conflict resolutions',

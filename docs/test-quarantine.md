@@ -7,11 +7,16 @@ they do **not** universally enforce this policy. Do not invoke them to bypass it
 Underlying assertions and fixtures remain intact. No hardware opt-in clears the
 managed quarantine. Do not reconstruct a slow suite through repeated selectors.
 
-Managed test execution currently requires Linux subreaper support. Its isolated
-supervisor owns descendants even after `setsid` or nested wrappers, passes the
-same absolute monotonic deadline to children, and kills/reaps adopted descendants
-on timeout or interruption. Unsupported hosts fail before launching the test.
-This is a per-process mechanism, not a system permission or configuration change.
+Managed tests run on supported POSIX hosts, including macOS. The outer runner
+owns a process group; nested policy/agent test wrappers stay in it and inherit
+one absolute monotonic deadline. On timeout/interruption and completion, the
+owner kills remaining group members. Linux additionally uses an isolated
+subreaper to own/reap orphaned descendants that escape with `setsid`. That
+stronger escaped-session guarantee is Linux-specific: arbitrary non-managed
+children that deliberately detach are not proven contained on macOS. This
+limitation does not disable Mac short coverage or label it slow. No system
+permission, configuration change or dependency is required. Platform-selection
+and group-reuse regressions run here; actual macOS execution remains unverified.
 
 ## Disabled coverage inventory (temporary; NOT PASSED)
 
@@ -32,10 +37,9 @@ This is a per-process mechanism, not a system permission or configuration change
 
 `make test` / `make test-short` runs policy, validation-plan and execution-policy
 regressions under **one shared 60-second deadline**. This is a purposeful policy regression group,
-not a partition of the old full native suite. The revised default command took 4.860s including fixture setup: 14 policy,
-11 validation-plan and 18 execution-policy Python checks passed; the MCP check
-failed. Its failure makes the default aggregate fail; it is not omitted to
-preserve a green result. Each independently requested native invocation below retains
+not a partition of the old full native suite. The revised default command passed in 5.519s including fixture setup: 15 policy,
+12 validation-plan, 18 execution-policy Python checks and the MCP check passed.
+ Each independently requested native invocation below retains
 its complete existing assertions and has its own maximum 60-second deadline:
 
 | Exact native arguments | Existing execution evidence |
@@ -98,18 +102,30 @@ test-tool-web-isolation
 test-tool-collab-client
 ```
 
-Additionally, `test-tool-validation-plan` passed 11 checks in 0.349s, and the
-existing `test-tool-execution-policy` aggregate was measured in 1.652s including
-its tiny C fixture compilation. **The latter did not pass:** Python's 18 checks
-passed, but the unchanged MCP regression failed (`active_device` was `null`,
-expected `fixture GPU`). It remains admitted and failing, not quarantined to hide
-the failure. `test-tool-workspace-make` passed 12 checks in 1.108s. These are local
-policy-revision results; native tests were not run again to justify admission.
+Additionally, `test-tool-validation-plan` and `test-tool-execution-policy` remain
+admitted and included in the default aggregate. The latter includes its small C
+fixture compilation. `test-tool-workspace-make` passed 12 checks in 1.108s on the
+preceding revision. Native tests were not rerun to justify admission.
+
+The initial MCP failure (`active_device: null` rather than `fixture GPU`) was a
+restricted execution-environment launch failure. One matched base/candidate
+reproduction completed in 0.238s; both failed identically. A launch probe exposed
+Node child creation returning `EPERM`, with no controller output. Scoped approved
+execution outside that tool restriction passed the unchanged fixture and default
+aggregate. No MCP implementation, fixture, expected value, OS setting or
+repository permission was changed to obtain the pass. A restricted environment
+that cannot spawn the fixture must still report failure, not skip it.
+
+The planner rejects quarantined `--tools` aggregate requests and unadmitted
+GPU/CPU selectors. Use repeatable `--tool=validation-plan` (or another admitted
+tool name) for complete individual tooling commands. Quarantined integration
+requirements are recorded separately from runnable commands; the plan never
+satisfies those requirements or silently substitutes a full suite.
 
 ## CI and restoration
 
 CI now labels its jobs **Native partial coverage (Debug/RelWithDebInfo)**, reports
-this inventory, runs the short aggregate (including its currently failing MCP check) and bounded graph/scaling checks, and
+this inventory, runs the short aggregate (including its MCP check) and bounded graph/scaling checks, and
 retains compile/configuration, formatting and web/reload builds. On 2026-10-06,
 read-only GitHub queries returned no classic `main` protection (HTTP 404, Branch
 not protected) and no applicable branch rules (`[]`). No settings were modified.

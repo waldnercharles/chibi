@@ -66,7 +66,8 @@ class ValidationPlanTest(unittest.TestCase):
         self.assertEqual(plan['identity']['tree'], self.git('rev-parse', 'HEAD^{tree}'))
         self.assertEqual(plan['changes'], ['M\tcontract.md'])
         self.assertEqual(plan['iteration_commands'], ['make agent-test AGENT_SELECTOR=--graph-optimize'])
-        self.assertEqual(plan['integration_commands'][0], 'make test-full')
+        self.assertEqual(plan['integration_commands'], ['make check-format'])
+        self.assertIn('make test-full', plan['quarantined_commands'])
         self.assertTrue(any('DISABLED' in check and 'NOT PASSED' in check for check in plan['pending']))
         code, result, _ = self.verify()
         self.assertEqual(code, 0)
@@ -74,12 +75,14 @@ class ValidationPlanTest(unittest.TestCase):
         self.assertFalse(result['full_verification'])
         self.assertTrue(result['pending'])
 
-    def test_unknown_and_mixed_scope_always_fall_back_to_full(self):
+    def test_unknown_and_mixed_scope_keep_full_requirements_without_scheduling_them(self):
         for scope in ['unknown', 'mixed']:
             with self.subTest(scope=scope):
                 code, plan, _ = self.invoke([*self.args, '--scope', scope])
                 self.assertEqual(code, 0)
                 self.assertEqual(plan['iteration_commands'], plan['integration_commands'])
+                self.assertIn('make test-full', plan['quarantined_commands'])
+                self.assertFalse(set(plan['iteration_commands']) & set(plan['quarantined_commands']))
                 self.assertFalse(plan['full_verification'])
         code, plan, _ = self.invoke(['--base', 'base'])
         self.assertEqual(code, 0)
@@ -107,12 +110,22 @@ class ValidationPlanTest(unittest.TestCase):
         for selector in ['', '--not-a-test', '--graph-optimize --materials', '--graph-optimize;false']:
             self.assertEqual(self.invoke([*self.args, '--selector=' + selector])[0], 2)
 
-    def test_gpu_and_tools_commands_are_only_planned(self):
-        code, plan, _ = self.invoke([*self.args, '--selector=--model-sampled-gpu', '--tools',
+    def test_quarantined_gpu_cpu_and_tool_aggregate_cannot_form_focused_plan(self):
+        for extra in [['--selector=--model-sampled-gpu'], ['--selector=--runtime-execution'], ['--tools']]:
+            code, plan, error = self.invoke([*self.args, *extra])
+            self.assertEqual(code, 2)
+            self.assertIsNone(plan)
+            self.assertIn('quarantined', error)
+
+    def test_admitted_tools_and_native_commands_are_only_planned(self):
+        code, plan, _ = self.invoke([*self.args, '--selector=--compiled-behaviors',
+                                    '--tool=validation-plan', '--tool=quiet',
                                     '--review-note', '$(exit 1); reviewer data'])
         self.assertEqual(code, 0)
-        self.assertIn('make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu', plan['iteration_commands'])
-        self.assertIn('make test-tools', plan['iteration_commands'])
+        self.assertIn('make agent-test AGENT_SELECTOR=--compiled-behaviors', plan['iteration_commands'])
+        self.assertIn('make test-tool-validation-plan', plan['iteration_commands'])
+        self.assertIn('make test-tool-quiet', plan['iteration_commands'])
+        self.assertFalse(set(plan['iteration_commands']) & set(plan['quarantined_commands']))
         self.assertFalse(plan['full_verification'])
 
     def test_changed_base_invalidates_even_when_tree_is_unchanged(self):

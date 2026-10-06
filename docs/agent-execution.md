@@ -1,21 +1,25 @@
 # Bounded agent execution
 
+**Temporary override:** the [60-second test policy](testing.md#temporary-60-second-policy)
+supersedes test deadlines, full-gate commands and selector admission below.
+Only exact measured invocations in `make test-list` are admitted. CPU classification
+is not timing evidence. Agent test commands now have a 60-second ceiling; full
+hardware opt-in cannot clear quarantine. Preview/MP4 authoring budgets below are
+not permission to run test/profiling captures beyond 60 seconds (including CUT61).
+The remaining text records the underlying capability policy and historical evidence.
+
 Use the smallest check that answers the current question. A GPU-heavy game still
 needs GPU evidence for shader, lighting, temporal and rendering changes. Avoid
 paying for a full suite after a parser or logic edit. Profiles are explicit and
-work on any machine; no hostname, driver name or assumed cloud capability selects
-a profile. `hardware` is an authorization to run the full gate, not proof that a
-physical GPU is present. CI explicitly opts in, retaining its previous coverage.
+work on any machine; no hostname, driver name or assumed device capability selects
+a profile. `hardware` permits underlying hardware operations but does not clear
+test quarantine or prove a physical GPU is present. CI currently reports partial
+coverage.
 
 ## Inspect, build, select
 
-The optional `zoom` MCP server in `.mcp.json` provides `view_image` and `zoom`
-for inspecting small text, graph wiring, and rendered details. It uses `uv` to
-run `tools/zoom/server.py` with Pillow and the MCP SDK. Call its `view_image`
-first, then pass crop coordinates in the reported view dimensions to `zoom`;
-the crop comes from the original image. Clients may resize displayed images,
-so use the reported dimensions rather than assuming a client's pixel scale.
-Agents with an existing image viewer can use that for ordinary inspection.
+Use the existing image viewer for graph wiring and rendered details. The former
+zoom MCP utility is retired.
 
 ```sh
 python3 tools/agent.py doctor
@@ -23,7 +27,6 @@ python3 tools/agent.py plan logic    # or render / temporal
 make agent-list
 make build BUILD_TARGET='test_suite chibi_ctl'
 make agent-test AGENT_SELECTOR=--graph-optimize
-make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu
 ```
 
 The agent wrapper runs lightweight discovery in an isolated process with a
@@ -57,11 +60,11 @@ check rather than silently trimmed. For example, `--studio-documents` includes
 window/render work; `--ui-bench` mixes headless and Studio cases. New selectors
 must be inspected and classified before adding them to this list.
 
-`gpu-check` opts into `--model-sampled-gpu` or `--shader-detail-gpu`, with a 60-second
-native deadline. Their assertions, reference resolutions and frame sequences are
-unchanged. Use this only when relevant to the edit. Other rendering selectors
-remain available in the full profile. CPU checks use existing sanitizer settings;
-the agent wrapper imposes a 180-second deadline without suppressing assertions or
+The underlying `gpu-check` profile includes `--model-sampled-gpu` and
+`--shader-detail-gpu`, but current timing quarantine refuses agent GPU tests.
+Their native assertions, reference resolutions and frame sequences remain.
+CPU checks use existing sanitizer settings;
+the agent wrapper imposes a 60-second deadline without suppressing assertions or
 leak checks. Timeouts are failures/blocked results, never passes.
 
 ## One output image and explicit MP4
@@ -166,7 +169,9 @@ results for reviewed PR admission, followed by full required checks on one froze
 combined commit/tree before any batch change lands. The integration owner retains
 all current-head/server checks and records pending matrix, web and release gates.
 `python3 tools/agent.py validation-plan --base origin/main` lists Git identity and
-outstanding work without probing graphics or claiming execution.
+outstanding work without probing graphics or claiming execution. `--tools` or
+`--tool=native-tools` selects the minimal C tooling command; former script test
+choices are retired.
 
 ## Bounded artifact validation (2026-10-05)
 

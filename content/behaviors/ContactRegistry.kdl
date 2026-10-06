@@ -1,0 +1,64 @@
+version 3
+name "ContactRegistry"
+id_counter 26
+description "Compiled from the bounded behavior-code prototype subset."
+owner_type "ecs.entity"
+(array)variables {
+    - {
+        id 1
+        name "contacted"
+        type "handle"
+        type_name "ecs.entity"
+        container 2
+        (array)default
+    }
+}
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 2
+                type "Get Variable"
+                reference_name "contacted"
+                outputs {
+                    Value type="handle" type_name="ecs.entity" container=2
+                }
+            }
+            - {
+                id 4
+                type "Event"
+                reference_name "Contact Begin"
+                outputs {
+                    Other id=6 type="handle" type_name="ecs.entity" kind="data"
+                    Point id=7 type="struct" type_name="CF_V2" kind="data"
+                }
+            }
+            - id=8 type="Set Contains"
+            - id=12 type="Branch"
+            - id=17 type="Set Add"
+            - {
+                id 21
+                type "Set Variable"
+                reference_name "contacted"
+                inputs {
+                    Value type="handle" type_name="ecs.entity" container=2
+                }
+                outputs {
+                    Value type="handle" type_name="ecs.entity" container=2
+                }
+            }
+        }
+        (array)edges {
+            - from="2.Value" to="8.Set"
+            - from="2.Value" to="17.Set"
+            - from="4.Then" to="12.Exec"
+            - from="4.Other" to="8.Item"
+            - from="4.Other" to="17.Item"
+            - from="8.Return Value" to="12.Condition"
+            - from="12.False" to="21.Exec"
+            - from="17.Set" to="21.Value"
+        }
+    }
+}

@@ -505,7 +505,7 @@ function buildToolDefinitions() {
       },
       include_pins: {
         type: "boolean",
-        description: "List each node's pins as \"name: type\" with the types wildcards resolved to, as searchNodes writes them; defaults to true.",
+        description: "List each node's pins as \"name: type\" with resolved wildcard types; editor-only labels are returned separately as input_labels/output_labels and do not replace internal pin names; defaults to true.",
       },
       include_uses: {
         type: "boolean",

@@ -126,6 +126,7 @@ typedef struct
     const char *field_name;
     uint64_t declaration_id; /* Stable parameter identity in an event definition. */
     pin_binding *binding; /* Optional authored source for an unconnected input. */
+    const char *display_name; /* Optional editor label; never an identity or runtime name. */
 } pin_spec;
 
 #endif

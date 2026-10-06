@@ -88,6 +88,8 @@ TEST_ARGS ?=
 TEST_JOBS ?= 4
 TEST_TIMINGS ?= 0
 TEST_TOOL_TARGETS = \
+	test-tool-validation-plan \
+	test-tool-behavior-code \
 	test-tool-execution-policy \
 	test-tool-kdl-assets \
 	test-tool-fetchcontent-cache \
@@ -293,7 +295,7 @@ benchmark:
 web-configure:
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	@$(QUIET) build-reflect -- cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
-	@$(QUIET) configure-web -- sh tools/configure_web.sh "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect $(WEB_CMAKE_FLAGS)
+	@$(QUIET) configure-web -- sh tools/web_env.sh env CHIBI_NATIVE_BUILD_DIR="$(BUILD_DIR)" sh tools/configure_web.sh "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect -DCMAKE_C_COMPILER_LAUNCHER=$(CURDIR)/tools/web_compiler.sh -DCMAKE_CXX_COMPILER_LAUNCHER=$(CURDIR)/tools/web_compiler.sh $(WEB_CMAKE_FLAGS)
 
 web: web-serial
 	@$(MAKE) web-threads
@@ -363,6 +365,12 @@ test-full:
 .PHONY: $(TEST_TOOL_TARGETS)
 test-tools:
 	+@$(MAKE) --no-print-directory -j$(TEST_JOBS) $(TEST_TOOL_TARGETS)
+
+test-tool-validation-plan:
+	@$(QUIET) validation_plan_test.py -- python3 test/validation_plan_test.py
+
+test-tool-behavior-code:
+	@$(QUIET) behavior-code-test -- node --test tools/behavior-code/behavior-code.test.mjs
 
 test-tool-kdl-assets:
 	@$(QUIET) kdl_asset_test.py -- python3 test/kdl_asset_test.py

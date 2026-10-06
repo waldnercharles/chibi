@@ -87,11 +87,17 @@ if(TARGET s2n)
         set(crypto_config "${CMAKE_CURRENT_BINARY_DIR}/chibi-crypto.cmake")
         file(GENERATE OUTPUT "${crypto_config}" CONTENT
 "if(NOT TARGET AWS::crypto)
+    set(crypto_links [==[$<TARGET_PROPERTY:AWS::crypto,INTERFACE_LINK_LIBRARIES>]==])
+    if(\"ZLIB::ZLIB\" IN_LIST crypto_links)
+        find_dependency(ZLIB)
+    endif()
     add_library(AWS::crypto UNKNOWN IMPORTED)
     set_target_properties(AWS::crypto PROPERTIES
         IMPORTED_LOCATION [==[$<TARGET_PROPERTY:AWS::crypto,IMPORTED_LOCATION>]==]
         IMPORTED_LINK_INTERFACE_LANGUAGES [==[$<TARGET_PROPERTY:AWS::crypto,IMPORTED_LINK_INTERFACE_LANGUAGES>]==]
-        INTERFACE_INCLUDE_DIRECTORIES [==[$<TARGET_PROPERTY:AWS::crypto,INTERFACE_INCLUDE_DIRECTORIES>]==])
+        INTERFACE_INCLUDE_DIRECTORIES [==[$<TARGET_PROPERTY:AWS::crypto,INTERFACE_INCLUDE_DIRECTORIES>]==]
+        INTERFACE_LINK_LIBRARIES \"\${crypto_links}\")
+    unset(crypto_links)
     add_dependencies(AWS::crypto Threads::Threads)
 endif()
 " TARGET s2n)

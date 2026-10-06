@@ -558,6 +558,8 @@ if(NODE_EXECUTABLE)
     add_custom_target(check-mcp
         COMMAND ${NODE_EXECUTABLE} --test ${CMAKE_SOURCE_DIR}/test/mcp_horizon_options_test.mjs
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
+            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/behavior-code/decompile-smoke.mjs ${CMAKE_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_SKIP_GPU=1
             ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}

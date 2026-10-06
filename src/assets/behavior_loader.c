@@ -52,6 +52,19 @@ static int path_compare(const void *left, const void *right)
     return strcmp(*a, *b);
 }
 
+static bool has_suffix(const char *text, const char *suffix)
+{
+    size_t text_length = strlen(text), suffix_length = strlen(suffix);
+    return text_length >= suffix_length &&
+           !strcmp(text + text_length - suffix_length, suffix);
+}
+
+static bool behavior_authoring_input(const char *name)
+{
+    /* Source and identity sidecars share the behavior folder with KDL assets. */
+    return has_suffix(name, ".code") || has_suffix(name, ".code.map.json");
+}
+
 int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *preview, const char *content_root)
 {
     if (!world || !content_root || !content_root[0]) {
@@ -72,7 +85,7 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
         }
         struct dirent *entry;
         while ((entry = readdir(directory))) {
-            if (entry->d_name[0] == '.') {
+            if (entry->d_name[0] == '.' || behavior_authoring_input(entry->d_name)) {
                 continue;
             }
             size_t path_size = strlen(directory_path) + strlen(entry->d_name) + 2;

@@ -1,4 +1,5 @@
 #include "graph/compiler/behavior_function.h"
+#include "graph/compiler/behavior_function_internal.h"
 #include "graph/model/registry.h"
 #include "support/array.h"
 
@@ -117,7 +118,10 @@ void behavior_asset_query_diagnostics(const behavior_asset *asset, compile_repor
             }
             reductions |= n->desc->work == NODE_WORK_ENTITY_REDUCTION;
             if (n->desc->work == NODE_WORK_SET || n->desc->work == NODE_WORK_SET_COPY) {
-                compile_diagnostic d = { .severity = n->desc->work == NODE_WORK_SET_COPY
+                bool owned_add = n->desc->work == NODE_WORK_SET_COPY &&
+                                 behavior_function_owned_set_add_candidate(asset, g, n);
+                compile_diagnostic d = { .severity = n->desc->work == NODE_WORK_SET_COPY &&
+                                                             !owned_add
                                                        ? CMPL_WARNING
                                                        : CMPL_NOTE,
                                          .rule = CMPL_RULE_CONTAINER,
@@ -128,7 +132,10 @@ void behavior_asset_query_diagnostics(const behavior_asset *asset, compile_repor
                     d.message,
                     sizeof d.message,
                     "%s",
-                    n->desc->work == NODE_WORK_SET_COPY
+                    owned_add ? "This ordered Set Add uses an owned "
+                                "per-instance append with geometric capacity; "
+                                "duplicate items leave the Set unchanged."
+                    : n->desc->work == NODE_WORK_SET_COPY
                         ? "Set updates copy their ordered result. Repeated Add "
                           "in a loop can still be quadratic. Large owned "
                           "scalar Sets index membership automatically."

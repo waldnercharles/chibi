@@ -119,6 +119,23 @@ pin rather than silently selecting another version. Modeling's local executable,
 data files, package marker and runtime version must all pass its check; a host
 `/usr/bin/blender` alone is insufficient.
 
+Full source and dependency-package builds already require CMake 4.2 through the
+pinned Cute dependency. The root and package `cmake_minimum_required(VERSION 3.20)`
+declarations understate that effective minimum. CUT-64 uses the newer public
+`FindOpenSSL` static dependency metadata available on this build path; it does
+not add or claim a validated CMake 3.20 fallback. Consumers of an existing package
+reuse its exported crypto interface without rerunning OpenSSL discovery.
+
+The legacy cloud profile sets a pkg-config sysroot for its partial extraction,
+although native crypto can come from the host. Crypto discovery recognizes only
+that profile's exact search defaults, native x86_64 configuration, system
+pkg-config, and verified `/usr` archive, headers, and PC-file origins. Explicit
+toolchain/sysroot/root-path or custom provider/search choices exclude this path.
+Within this lookup it temporarily removes the profile's pkg-config sysroot,
+refreshes only OpenSSL's metadata cache, and restores the original environment
+before checking results. Other package discovery and the crypto provenance guard
+remain unchanged; ordinary prepared Make needs no additional flags.
+
 The saved `/workspace/.cloud-tools/setup.sh` and `activate.sh` are not rewritten.
 To adopt this repository implementation in a published configuration, its setup
 command must explicitly call the checked-out `tools/cloud/setup.sh` with the

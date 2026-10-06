@@ -49,7 +49,13 @@ FetchContent_Declare(
     UPDATE_DISCONNECTED TRUE
     EXCLUDE_FROM_ALL
 )
+# s2n appends its Findcrypto module path. Supply our dependency-complete wrapper
+# first, while retaining any explicitly supplied discovery modules.
+set(CHIBI_SAVED_MODULE_PATH "${CMAKE_MODULE_PATH}")
+list(APPEND CMAKE_MODULE_PATH "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake")
 add_subdirectory("${cute_framework_SOURCE_DIR}" "${cute_framework_BINARY_DIR}")
+set(CMAKE_MODULE_PATH "${CHIBI_SAVED_MODULE_PATH}")
+unset(CHIBI_SAVED_MODULE_PATH)
 # s2n compiles in GNU C99 mode, while OpenSSL 3 headers use _Generic.
 # Clang 22 diagnoses those system-header macro expansions at their call sites.
 if(TARGET s2n AND CMAKE_C_COMPILER_ID MATCHES "Clang")

@@ -155,6 +155,13 @@ checks, and the next full-gate command. A blocked budget or unknown selector exi
 nonzero. Do not describe partial coverage, timeouts or blocked checks as a green
 merge gate.
 
+[CUT62 batch validation](testing.md#batch-validation-cut62) allows those focused
+results for reviewed PR admission, followed by full required checks on one frozen
+combined commit/tree before any batch change lands. The integration owner retains
+all current-head/server checks and records pending matrix, web and release gates.
+`python3 tools/agent.py validation-plan --base origin/main` lists Git identity and
+outstanding work without probing graphics or claiming execution.
+
 Activation and provisioning are owned by CUT-49/CUT-52. This change consumes the
 existing environment and does not own setup scripts or installation state.
 

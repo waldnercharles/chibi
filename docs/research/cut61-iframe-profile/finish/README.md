@@ -1,5 +1,10 @@
 # CUT61 iframe optimization and validation
 
+Current regression coverage is recorded in [targeted tests](targeted/README.md):
+three deterministic C cases plus the existing short checks. The duplicate long
+capture entrypoint and measurement-only blank-document loop have been retired;
+the measurements below retain their historical source identities.
+
 Empty Studio iframe documents now use `Context::CreateDocument` directly. This
 avoids parsing an empty RML body and evaluating unrelated dirty models during
 document creation. In the matched 1000-frame fixture, creation-time model reads

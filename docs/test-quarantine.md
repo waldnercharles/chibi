@@ -46,7 +46,7 @@ is bounded as one execution. Its earlier minimal-suite measurement was about
 not a timing or pass for the final expanded suite. Record fresh execution results
 on the reviewed source before claiming validation.
 
-The original exact native admission table remains:
+The exact native admission table is:
 
 | Exact native arguments | Existing execution evidence |
 | --- | --- |
@@ -76,7 +76,7 @@ the table into a reconstructed full suite. `make test-fast` checks its exact
 The two CUT61 CPU-only tuples were independently reviewed for scoped admission.
 Their complete logs, binary identity, configuration and fresh supervised runs
 are retained in [the iframe completion record](research/cut61-iframe-profile/finish/README.md).
-This admission leaves the 2016-frame lifecycle and all other UI/native tuples quarantined.
+This admission leaves the 2016-frame lifecycle and all other unadmitted UI/native tuples quarantined.
 
 `make test-studio-selectors` runs the C CLI process driver under the supervisor
 against a separately built native `test_suite`; it does not render Studio.

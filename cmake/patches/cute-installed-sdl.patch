@@ -1,6 +1,8 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1b3ace19..4649419f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -421,31 +421,39 @@
+@@ -428,31 +428,39 @@ endfunction()
  if(NOT EMSCRIPTEN) # Emscripten provides it's own SDL3.
  	# SDL for platform support.
  	set(SDL_REQUIRED_VERSION 3.4.0)

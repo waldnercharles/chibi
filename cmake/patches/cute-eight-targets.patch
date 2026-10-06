@@ -1,7 +1,8 @@
 diff --git a/include/cute_graphics.h b/include/cute_graphics.h
+index 54e4e586..bc27fb30 100644
 --- a/include/cute_graphics.h
 +++ b/include/cute_graphics.h
-@@ -1536,11 +1536,11 @@
+@@ -1557,11 +1557,11 @@ CF_INLINE const char* cf_samplecount_string(CF_SampleCount count) {
   * @function CF_MAX_CANVAS_TARGETS
   * @category graphics
   * @brief    The maximum number of color targets a single canvas may have.
@@ -17,9 +18,10 @@ diff --git a/include/cute_graphics.h b/include/cute_graphics.h
  /**
   * @struct   CF_CanvasParams
 diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
+index 8155aa35..a925ac0f 100644
 --- a/src/cute_graphics_gles.cpp
 +++ b/src/cute_graphics_gles.cpp
-@@ -1348,6 +1348,11 @@
+@@ -1398,6 +1398,11 @@ CF_Canvas cf_gles_make_canvas(CF_CanvasParams params)
  	int target_count = params.target_count > 1 ? params.target_count : 1;
  	if (target_count > CF_MAX_CANVAS_TARGETS) target_count = CF_MAX_CANVAS_TARGETS;
  	CF_ASSERT(target_count == 1 || params.sample_count == CF_SAMPLE_COUNT_1);

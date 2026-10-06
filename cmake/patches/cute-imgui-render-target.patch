@@ -1,8 +1,8 @@
 diff --git a/include/cute_app.h b/include/cute_app.h
-index ead3b798..308eb88f 100644
+index 35cc54b2..a6877b06 100644
 --- a/include/cute_app.h
 +++ b/include/cute_app.h
-@@ -363,6 +363,20 @@ CF_API void CF_CALL cf_app_update(CF_OnUpdateFn* on_update);
+@@ -379,6 +379,20 @@ CF_API void CF_CALL cf_app_push_event(const union SDL_Event* sdl_event);
   */
  CF_API int CF_CALL cf_app_draw_onto_screen(bool clear);
  
@@ -23,19 +23,19 @@ index ead3b798..308eb88f 100644
  /**
   * @function cf_app_get_size
   * @category app
-@@ -963,6 +977,7 @@ CF_INLINE bool app_is_running() { return cf_app_is_running(); }
- CF_INLINE void app_signal_shutdown() { cf_app_signal_shutdown(); }
+@@ -977,6 +991,7 @@ CF_INLINE void app_signal_shutdown() { cf_app_signal_shutdown(); }
  CF_INLINE void app_update(CF_OnUpdateFn* on_update = NULL) { cf_app_update(on_update); }
+ CF_INLINE void app_push_event(const union SDL_Event* sdl_event) { cf_app_push_event(sdl_event); }
  CF_INLINE int app_draw_onto_screen(bool clear = false) { return cf_app_draw_onto_screen(clear); }
 +CF_INLINE bool app_set_imgui_render_target(CF_Canvas target) { return cf_app_set_imgui_render_target(target); }
  CF_INLINE void app_get_size(int* w, int* h) { return cf_app_get_size(w, h); }
  CF_INLINE void app_set_size(int w, int h) { return cf_app_set_size(w, h); }
  CF_INLINE void app_get_position(int* x, int* y) { return cf_app_get_position(x, y); }
 diff --git a/src/cute_app.cpp b/src/cute_app.cpp
-index fe7a0784..653ea95d 100644
+index 60d1ad0b..d212540b 100644
 --- a/src/cute_app.cpp
 +++ b/src/cute_app.cpp
-@@ -146,6 +146,7 @@ using namespace Cute;
+@@ -147,6 +147,7 @@ using namespace Cute;
  
  static void s_canvas(int w, int h)
  {
@@ -43,15 +43,15 @@ index fe7a0784..653ea95d 100644
  	CF_CanvasParams params = cf_canvas_defaults(w, h);
  	params.target.filter = CF_FILTER_LINEAR;
  	if (app->offscreen_canvas.id) {
-@@ -154,6 +155,7 @@ static void s_canvas(int w, int h)
+@@ -155,6 +156,7 @@ static void s_canvas(int w, int h)
  	params.depth_stencil_enable = true;
  	params.sample_count = (CF_SampleCount)cf_clamp((app->sample_count >> 1), 0, 3);
  	app->offscreen_canvas = cf_make_canvas(params);
 +	if (target_app_canvas) app->imgui_render_target = app->offscreen_canvas;
  	app->canvas_w = w;
  	app->canvas_h = h;
- 	cf_draw_on_app_canvas_resized(w, h);
-@@ -487,6 +489,12 @@ void cf_app_update(CF_OnUpdateFn* on_update)
+ }
+@@ -505,6 +507,12 @@ void cf_app_update(CF_OnUpdateFn* on_update)
  				ImGui_ImplSDLGPU3_NewFrame();
  			}
  			ImGui_ImplSDL3_NewFrame();
@@ -64,7 +64,7 @@ index fe7a0784..653ea95d 100644
  			ImGui::NewFrame();
  		}
  
-@@ -554,6 +562,17 @@ int cf_app_draw_onto_screen(bool clear)
+@@ -572,6 +580,17 @@ int cf_app_draw_onto_screen(bool clear)
  	// Render any remaining geometry in the draw API.
  	cf_render_to(app->offscreen_canvas, clear);
  
@@ -82,7 +82,7 @@ index fe7a0784..653ea95d 100644
  	// Draw the app canvas
  	if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
  		cf_gles_blit_canvas(app->offscreen_canvas);
-@@ -563,10 +582,7 @@ int cf_app_draw_onto_screen(bool clear)
+@@ -581,10 +600,7 @@ int cf_app_draw_onto_screen(bool clear)
  #endif
  	}
  
@@ -94,7 +94,7 @@ index fe7a0784..653ea95d 100644
  		cf_imgui_draw();
  	}
  
-@@ -784,6 +800,17 @@ CF_Canvas cf_app_get_canvas()
+@@ -803,6 +819,17 @@ CF_Canvas cf_app_get_canvas()
  	return app->offscreen_canvas;
  }
  
@@ -113,10 +113,10 @@ index fe7a0784..653ea95d 100644
  {
  	s_canvas(w, h);
 diff --git a/src/cute_graphics_sdlgpu.cpp b/src/cute_graphics_sdlgpu.cpp
-index 3ea8eec5..5a50db9f 100644
+index 5466bdee..39227b2a 100644
 --- a/src/cute_graphics_sdlgpu.cpp
 +++ b/src/cute_graphics_sdlgpu.cpp
-@@ -941,6 +941,59 @@ SDL_GPUCommandBuffer* cf_sdlgpu_get_command_buffer()
+@@ -945,6 +945,59 @@ SDL_GPUCommandBuffer* cf_sdlgpu_get_command_buffer()
  	return g_ctx.cmd;
  }
  
@@ -208,10 +208,10 @@ index 807ed855..daf7b84f 100644
 +#endif
 +}
 diff --git a/src/internal/cute_app_internal.h b/src/internal/cute_app_internal.h
-index d5f674ba..bd3278d6 100644
+index c4b58190..51faf27e 100644
 --- a/src/internal/cute_app_internal.h
 +++ b/src/internal/cute_app_internal.h
-@@ -160,6 +160,7 @@ struct CF_App
+@@ -173,6 +173,7 @@ struct CF_App
  
  	// Dear ImGui stuff.
  	bool using_imgui = false;
@@ -251,4 +251,3 @@ index 5198426e..05e1a886 100644
 +bool cf_imgui_draw_to_canvas(CF_Canvas canvas);
  
  #endif // CF_IMGUI_INTERNAL_H
-

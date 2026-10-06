@@ -1,7 +1,8 @@
 diff --git a/include/cute_graphics.h b/include/cute_graphics.h
+index bc27fb30..7387ebba 100644
 --- a/include/cute_graphics.h
 +++ b/include/cute_graphics.h
-@@ -2036,6 +2036,15 @@
+@@ -2057,6 +2057,15 @@ CF_API void CF_CALL cf_mesh_update_vertex_data(CF_Mesh mesh, void* data, int cou
   */
  CF_API void CF_CALL cf_mesh_update_index_data(CF_Mesh mesh, void* data, int count);
  
@@ -18,9 +19,10 @@ diff --git a/include/cute_graphics.h b/include/cute_graphics.h
   * @function cf_mesh_update_instance_data
   * @category graphics
 diff --git a/src/internal/cute_graphics_internal.h b/src/internal/cute_graphics_internal.h
+index a1e4f05f..5c4ca582 100644
 --- a/src/internal/cute_graphics_internal.h
 +++ b/src/internal/cute_graphics_internal.h
-@@ -318,22 +318,10 @@
+@@ -318,22 +318,10 @@ int cf_mesh_instance_stride(CF_Mesh mesh);
  bool cf_mesh_draw3d_augmented(CF_Mesh mesh);
  void cf_mesh_set_draw3d_augmented(CF_Mesh mesh);
  

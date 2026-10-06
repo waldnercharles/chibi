@@ -1,6 +1,8 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4649419f..d095afed 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -318,17 +318,9 @@
+@@ -325,17 +325,9 @@ if(EMSCRIPTEN)
  		-sFULL_ES3=1
  		-sALLOW_MEMORY_GROWTH=1
  		-sFILESYSTEM=1
@@ -19,9 +21,11 @@
  endif()
  
  if(ANDROID)
+diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
+index 0b3c1d18..46f475a9 100644
 --- a/src/cute_graphics_gles.cpp
 +++ b/src/cute_graphics_gles.cpp
-@@ -540,6 +540,16 @@
+@@ -555,6 +555,16 @@ static inline CF_GL_Slot* s_force_slot(CF_GL_Ring* ring, uint32_t frame, int* ou
  	if (!ring->count) return NULL;
  	int index = ring->head;
  	CF_GL_Slot& slot = ring->slots[index];
@@ -38,7 +42,7 @@
  	if (!s_slot_ready(slot)) {
  		// Block the CPU until the GPU is done with this slot.
  		// If you're seeing this on the hot-path of a profile or flame-graph it means you're GPU bound.
-@@ -548,12 +558,6 @@
+@@ -563,12 +573,6 @@ static inline CF_GL_Slot* s_force_slot(CF_GL_Ring* ring, uint32_t frame, int* ou
  			slot.fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
  			glFlush();
  		}
@@ -51,7 +55,7 @@
  		if (slot.fence) {
  			glClientWaitSync(slot.fence, GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
  			glDeleteSync(slot.fence);
-@@ -561,8 +565,8 @@
+@@ -576,8 +580,8 @@ static inline CF_GL_Slot* s_force_slot(CF_GL_Ring* ring, uint32_t frame, int* ou
  			slot.in_flight_frame = 0;
  		}
  		while (!s_slot_ready(slot)) cf_sleep(0);

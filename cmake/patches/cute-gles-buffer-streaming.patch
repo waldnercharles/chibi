@@ -1,7 +1,8 @@
 diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
+index 7da001ad..aec1b77c 100644
 --- a/src/cute_graphics_gles.cpp
 +++ b/src/cute_graphics_gles.cpp
-@@ -1065,8 +1065,26 @@
+@@ -1115,8 +1115,26 @@ static inline bool s_texture_allocate_storage(CF_GL_Texture* t, CF_GL_Slot* slot
  
  static inline CF_GL_Slot* s_prepare_buffer_slot(CF_GL_Buffer* buffer, GLsizeiptr required_bytes, int* out_index)
  {
@@ -30,7 +31,7 @@ diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
  	if (!slot->handle) {
  		glGenBuffers(1, &slot->handle);
  		slot->size = 0;
-@@ -1076,14 +1094,16 @@
+@@ -1126,14 +1144,16 @@ static inline CF_GL_Slot* s_prepare_buffer_slot(CF_GL_Buffer* buffer, GLsizeiptr
  	if (buffer->target == GL_ARRAY_BUFFER) s_bind_array_buffer(slot->handle);
  	else if (buffer->target == GL_ELEMENT_ARRAY_BUFFER) s_bind_element_buffer(slot->handle);
  	else glBindBuffer(buffer->target, slot->handle);

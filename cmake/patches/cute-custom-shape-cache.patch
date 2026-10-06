@@ -1,7 +1,8 @@
 diff --git a/src/cute_draw.cpp b/src/cute_draw.cpp
+index de87c1d3..4c759bce 100644
 --- a/src/cute_draw.cpp
 +++ b/src/cute_draw.cpp
-@@ -2342,6 +2342,16 @@
+@@ -2453,6 +2453,16 @@ static CF_CustomShape s_make_custom_shape(const char* sdf_src, bool coverage_onl
  
  	// Stitch every registered snippet into custom_shapes.shd: rename each sdf() to
  	// sdf_<i> via the preprocessor, then generate the per-command dispatcher.

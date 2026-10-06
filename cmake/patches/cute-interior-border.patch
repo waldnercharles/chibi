@@ -1,11 +1,11 @@
 diff --git a/include/cute_draw.h b/include/cute_draw.h
+index 266b3b39..79c33394 100644
 --- a/include/cute_draw.h
 +++ b/include/cute_draw.h
-@@ -809,6 +809,20 @@
-  * @related  cf_draw_pop_outline cf_draw_push_glow cf_draw_push_color
+@@ -816,6 +816,20 @@ CF_API void CF_CALL cf_draw_pop_dash(void);
   */
  CF_API void CF_CALL cf_draw_push_outline(CF_Color color, float width);
-+
+ 
 +/**
 + * @function cf_draw_push_interior_border
 + * @category draw
@@ -19,10 +19,11 @@ diff --git a/include/cute_draw.h b/include/cute_draw.h
 + * @related  cf_draw_pop_outline cf_draw_push_outline cf_draw_push_glow
 + */
 +CF_API void CF_CALL cf_draw_push_interior_border(CF_Color color, float width);
- 
++
  /**
   * @function cf_draw_pop_outline
-@@ -2487,6 +2501,7 @@
+  * @category draw
+@@ -2493,6 +2507,7 @@ CF_INLINE CF_Color draw_peek_color() { return cf_draw_peek_color(); }
  CF_INLINE void draw_push_dash(float on_length, float off_length, float phase) { cf_draw_push_dash(on_length, off_length, phase); }
  CF_INLINE void draw_pop_dash() { cf_draw_pop_dash(); }
  CF_INLINE void draw_push_outline(CF_Color color, float width) { cf_draw_push_outline(color, width); }
@@ -31,9 +32,10 @@ diff --git a/include/cute_draw.h b/include/cute_draw.h
  CF_INLINE void draw_push_glow(CF_Color color, float radius) { cf_draw_push_glow(color, radius); }
  CF_INLINE void draw_pop_glow() { cf_draw_pop_glow(); }
 diff --git a/src/cute_draw.cpp b/src/cute_draw.cpp
+index ab52d97f..d3baf537 100644
 --- a/src/cute_draw.cpp
 +++ b/src/cute_draw.cpp
-@@ -708,7 +708,7 @@
+@@ -708,7 +708,7 @@ static void s_draw_report_tiled(const BatchGeometry* geoms, const CF_PendingUV*
  		// Shape effects: a trailing payload block (outline rgba, glow rgba, widths) pointed at
  		// by tc.fx.x. tc.fx.y is how far past the shape the effects reach, so the coverage quad
  		// and the tile cull can pad for a glow rather than clipping it.
@@ -42,7 +44,7 @@ diff --git a/src/cute_draw.cpp b/src/cute_draw.cpp
  			uint32_t fx_offset = (uint32_t)pay.count();
  			CF_MEMCPY(&tc.fx[0], &fx_offset, sizeof(fx_offset));
  			tc.fx[1] = cf_max(geom.fx.outline_width, geom.fx.glow_radius);
-@@ -722,8 +722,9 @@
+@@ -722,8 +722,9 @@ static void s_draw_report_tiled(const BatchGeometry* geoms, const CF_PendingUV*
  		// Clipped segments are excluded: their planes can cut mid-tile, so "interior
  		// covers the tile" cannot be decided from the SDF alone.
  		// Dashed strokes never claim opaque cover: their gaps don't hide what's beneath.
@@ -54,7 +56,7 @@ diff --git a/src/cute_draw.cpp b/src/cute_draw.cpp
  			tc.opaque = 1.0f;
  		}
  
-@@ -4597,7 +4598,15 @@
+@@ -4758,7 +4759,15 @@ void cf_draw_pop_dash()
  void cf_draw_push_outline(CF_Color color, float width)
  {
  	s_draw->outlines.add(color);
@@ -72,17 +74,17 @@ diff --git a/src/cute_draw.cpp b/src/cute_draw.cpp
  
  void cf_draw_pop_outline()
 diff --git a/tools/builtin_shaders.h b/tools/builtin_shaders.h
+index 73cfb49e..64c786c3 100644
 --- a/tools/builtin_shaders.h
 +++ b/tools/builtin_shaders.h
-@@ -449,10 +449,21 @@
+@@ -449,10 +449,21 @@ float sdf_stroke(float d)
  // surface, a glow a falloff past it. Both are exact and cost one smoothstep each: no second
  // pass, no blur kernel, no extra geometry. Globals are set per command by the tile walk and from
  // varyings in the instanced path; a zero width/radius disables that effect.
 -vec4 sdf_effects(vec4 shape_color, float d)
--{
--	if (v_outline_width <= 0.0 && v_glow_radius <= 0.0) return shape_color;
 +vec4 sdf_effects(vec4 shape_color, float d, vec4 fill_color, float border_d)
-+{
+ {
+-	if (v_outline_width <= 0.0 && v_glow_radius <= 0.0) return shape_color;
 +	if (v_outline_width == 0.0 && v_glow_radius <= 0.0) return shape_color;
  	float aa = max(v_aa, 1.0e-6);
 +	if (v_outline_width < 0.0) {
@@ -99,7 +101,7 @@ diff --git a/tools/builtin_shaders.h b/tools/builtin_shaders.h
  	vec4 under = vec4(0.0);
  	// Glow first (furthest back): a falloff from the surface outward, squared so it reads like
  	// light rather than a flat halo.
-@@ -492,7 +503,7 @@
+@@ -492,7 +503,7 @@ vec4 sdf(vec4 a, vec4 b, float d)
  	vec4 fill = mix(fill_no_aa, fill_aa, v_aa > 0.0 ? 1.0 : 0.0);
  
  	result = mix(stroke, fill, v_fill);

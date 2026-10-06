@@ -1,18 +1,17 @@
 diff --git a/src/cute_app.cpp b/src/cute_app.cpp
-index 653ea95d..5fb68936 100644
+index d212540b..03a3e3c2 100644
 --- a/src/cute_app.cpp
 +++ b/src/cute_app.cpp
-@@ -165,6 +165,9 @@ void cf_app_recreate_default_canvas_if_needed()
+@@ -165,6 +165,8 @@ void cf_app_recreate_default_canvas_if_needed()
  {
  	int w = (int)CF_ROUNDF(app->w * app->pixel_scale);
  	int h = (int)CF_ROUNDF(app->h * app->pixel_scale);
-+	// A canvas can't be zero-sized. A window without area, such as a hidden browser
-+	// canvas, keeps its canvas until a resize gives it area again.
++	// A canvas cannot be zero-sized. Preserve it until the window has area again.
 +	if (w <= 0 || h <= 0) return;
  	s_canvas(w, h);
+ 	cf_draw_on_app_canvas_resized(app->w, app->h); // The draw API stays in window points.
  }
- 
-@@ -344,7 +347,8 @@ CF_Result cf_make_app(const char* window_title, CF_DisplayID display_id, int x,
+@@ -349,7 +351,8 @@ CF_Result cf_make_app(const char* window_title, CF_DisplayID display_id, int x,
  		SDL_GetWindowPosition(app->window, &app->x, &app->y);
  		app->display_scale = SDL_GetWindowDisplayScale(app->window);
  		app->pixel_scale = window ? SDL_GetWindowPixelDensity(app->window) : 1.0f;
@@ -23,7 +22,7 @@ index 653ea95d..5fb68936 100644
  	}
  	::app = app;
 diff --git a/src/cute_input.cpp b/src/cute_input.cpp
-index 321959f2..6a6ae1d5 100644
+index a8338cb0..679e6cd2 100644
 --- a/src/cute_input.cpp
 +++ b/src/cute_input.cpp
 @@ -512,7 +512,8 @@ static void s_refresh_pixel_scale()

@@ -1,7 +1,8 @@
 diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
+index aec1b77c..32bc140e 100644
 --- a/src/cute_graphics_gles.cpp
 +++ b/src/cute_graphics_gles.cpp
-@@ -631,6 +631,9 @@
+@@ -646,6 +646,9 @@ static inline void s_apply_state()
  	) {
  		glScissor(target->scissor.x, target->scissor.y, target->scissor.w, target->scissor.h);
  	}
@@ -11,7 +12,7 @@ diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
  
  	if (target->stencil_reference != current->stencil_reference) {
  		GLenum front_compare = GL_ALWAYS;
-@@ -659,6 +662,7 @@
+@@ -674,6 +677,7 @@ static inline void s_apply_state()
  	}
  
  	*current = *target;

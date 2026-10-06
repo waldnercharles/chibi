@@ -1,6 +1,8 @@
+diff --git a/libraries/cute/cute_spirv.h b/libraries/cute/cute_spirv.h
+index e8f0002f..d4d8c4f6 100644
 --- a/libraries/cute/cute_spirv.h
 +++ b/libraries/cute/cute_spirv.h
-@@ -935,6 +935,7 @@
+@@ -971,6 +971,7 @@ typedef struct cspv_ctx
  	uint32_t continue_target;
  	uint32_t entry_func_id;
  	uint32_t gl_pervertex_var;
@@ -8,7 +10,7 @@
  
  	// Reflection, built up during global declaration codegen. Ownership transfers
  	// to CSPV_Result on success.
-@@ -3548,9 +3549,15 @@
+@@ -3584,9 +3585,15 @@ static cspv_value cspv_gen_member(cspv_ctx* ctx, cspv_expr* e)
  //--------------------------------------------------------------------------------------------------
  // References.
  
@@ -24,7 +26,7 @@
  	if (!sym) cspv_errorf(ctx, e->line, "undeclared identifier '%s'", e->u.name);
  
  	cspv_value v;
-@@ -7772,6 +7779,7 @@
+@@ -8700,6 +8707,7 @@ static void cspv_emit_hlsl(cspv_ctx* ctx)
  		sappend(ctx->tp_out, "static float4 gl_Position;\nstatic int gl_VertexIndex;\nstatic int gl_InstanceIndex;\n");
  	} else if (ctx->stage == CSPV_STAGE_FRAGMENT) {
  		sappend(ctx->tp_out, "static float4 gl_FragCoord;\n");
@@ -32,7 +34,7 @@
  	} else {
  		sappend(ctx->tp_out,
  			"static uint3 gl_GlobalInvocationID;\nstatic uint3 gl_LocalInvocationID;\n"
-@@ -7917,6 +7925,7 @@
+@@ -8845,6 +8853,7 @@ static void cspv_emit_hlsl(cspv_ctx* ctx)
  			sfmt_append(ctx->tp_out, "_in : TEXCOORD%d;\n", d->location);
  		}
  		sappend(ctx->tp_out, "};\nstruct cf_ps_out\n{\n");
@@ -40,7 +42,7 @@
  		for (int i = 0; i < (int)asize(ctx->decls); i++) {
  			cspv_decl* d = ctx->decls + i;
  			if (d->kind != CSPV_D_INOUT || d->is_input) continue;
-@@ -7931,6 +7940,7 @@
+@@ -8859,6 +8868,7 @@ static void cspv_emit_hlsl(cspv_ctx* ctx)
  			sfmt_append(ctx->tp_out, "\t%s = cf_in.%s_in;\n", d->name, d->name);
  		}
  		sappend(ctx->tp_out, "\tcf_main_();\n\tcf_ps_out cf_out;\n");
@@ -48,7 +50,7 @@
  		for (int i = 0; i < (int)asize(ctx->decls); i++) {
  			cspv_decl* d = ctx->decls + i;
  			if (d->kind != CSPV_D_INOUT || d->is_input) continue;
-@@ -8630,6 +8640,7 @@
+@@ -9578,6 +9588,7 @@ static void cspv_emit_msl(cspv_ctx* ctx)
  		sappend(ctx->tp_out, "\tfloat4 gl_Position;\n\tint gl_VertexIndex;\n\tint gl_InstanceIndex;\n");
  	} else if (ctx->stage == CSPV_STAGE_FRAGMENT) {
  		sappend(ctx->tp_out, "\tfloat4 gl_FragCoord;\n");
@@ -56,7 +58,7 @@
  	} else {
  		sappend(ctx->tp_out, "\tuint3 gl_GlobalInvocationID;\n\tuint3 gl_LocalInvocationID;\n\tuint3 gl_WorkGroupID;\n\tuint gl_LocalInvocationIndex;\n");
  	}
-@@ -8677,6 +8688,7 @@
+@@ -9625,6 +9636,7 @@ static void cspv_emit_msl(cspv_ctx* ctx)
  			sfmt_append(ctx->tp_out, "\t%s %s [[user(locn%d)%s]];\n", cspv_hlsl_type_name(d->type), d->name, d->location, d->flat ? ", flat" : "");
  		}
  		sappend(ctx->tp_out, "};\nstruct cf_ps_out\n{\n");
@@ -64,7 +66,7 @@
  		for (int i = 0; i < (int)asize(ctx->decls); i++) {
  			cspv_decl* d = ctx->decls + i;
  			if (d->kind != CSPV_D_INOUT || d->is_input) continue;
-@@ -8797,6 +8809,7 @@
+@@ -9745,6 +9757,7 @@ static void cspv_emit_msl(cspv_ctx* ctx)
  		sappend(ctx->tp_out, "\treturn cf_out;\n}\n");
  	} else if (ctx->stage == CSPV_STAGE_FRAGMENT) {
  		sappend(ctx->tp_out, "\tcf_ps_out cf_out;\n");
@@ -72,7 +74,7 @@
  		for (int i = 0; i < (int)asize(ctx->decls); i++) {
  			cspv_decl* d = ctx->decls + i;
  			if (d->kind == CSPV_D_INOUT && !d->is_input) sfmt_append(ctx->tp_out, "\tcf_out.%s = s.%s;\n", d->name, d->name);
-@@ -8887,6 +8900,27 @@
+@@ -9835,6 +9848,27 @@ static void cspv_init_types(cspv_ctx* ctx)
  	cspv_register_type(ctx, "image2D", cspv_make_type(ctx, CSPV_T_IMAGE2D, NULL, -1, 0));
  }
  
@@ -100,7 +102,7 @@
  static void cspv_add_builtin_input(cspv_ctx* ctx, const char* name, cspv_type* type, int builtin)
  {
  	uint32_t ptr_tid = cspv_ptr_type_id(ctx, type, CSpvStorageInput);
-@@ -8987,6 +9021,9 @@
+@@ -9935,6 +9969,9 @@ static uint32_t* cspv_assemble(cspv_ctx* ctx, size_t* out_word_count)
  	if (ctx->stage == CSPV_STAGE_FRAGMENT) {
  		// OpExecutionMode %main OriginUpperLeft.
  		cspv_emit2(&mod, CSpvOpExecutionMode, ctx->entry_func_id, 7);

@@ -6,7 +6,7 @@ set(CF_CUTE_SHADERC OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     cute_framework
     GIT_REPOSITORY https://github.com/RandyGaul/cute_framework.git
-    GIT_TAG        a13f4661f5ba27e8d45027b52f121c1704786425
+    GIT_TAG        7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_GetProperties(cute_framework)
@@ -22,7 +22,7 @@ if(NOT cute_framework_POPULATED)
 endif()
 include("${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/apply_patch.cmake")
 set(CUTE_PATCHES "")
-foreach(name cute-app-exists cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-draw-samplers cute-gles-ring-reuse cute-gles-buffer-streaming cute-zero-size-window cute-png-zlib-window cute-gles-scissor-cache cute-gpu-submit cute-eight-targets cute-gles-float-readback cute-web-no-asyncify cute-gles-storage-samplers cute-fragment-depth cute-gles-ubo-instance-scope cute-instance-buffer cute-depth-snapshot cute-sanitizer-cleanup)
+foreach(name cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-gles-buffer-streaming cute-zero-size-window cute-gles-scissor-cache cute-gpu-submit cute-eight-targets cute-gles-float-readback cute-web-no-asyncify cute-fragment-depth cute-gles-ubo-instance-scope cute-instance-buffer cute-depth-snapshot cute-sanitizer-cleanup)
     list(APPEND CUTE_PATCHES "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/${name}.patch")
 endforeach()
 chibi_apply_patches("${cute_framework_SOURCE_DIR}" ${CUTE_PATCHES})

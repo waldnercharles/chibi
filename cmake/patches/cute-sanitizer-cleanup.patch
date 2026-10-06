@@ -1,6 +1,35 @@
+diff --git a/include/cute_draw.h b/include/cute_draw.h
+index 5a835c11..ac9f80d4 100644
+--- a/include/cute_draw.h
++++ b/include/cute_draw.h
+@@ -1024,9 +1024,10 @@ CF_API void CF_CALL cf_draw_peek_tri_attributes(CF_Color* a0, CF_Color* a1, CF_C
+  * @param    path        A virtual path to the font file. See [Virtual File System](https://randygaul.github.io/cute_framework/topics/virtual_file_system).
+  * @param    font_name   A unique name for this font. Used by `cf_push_font` and friends.
+  * @return   Returns any errors as `CF_Result`.
+- * @remarks  Memory is only consumed when you draw a certain glyph (text character). Just loading up the font initially is
+- *           a low-cost operation. You may load up many fonts with low overhead. Please note that bold, italic, etc. are actually
+- *           _different fonts_ and each must be loaded up individually.
++ * @remarks  The font owns the file data it reads from `path` until it is destroyed. Memory is only consumed when you draw a
++ *           certain glyph (text character). Just loading up the font initially is a low-cost operation. You may load up many
++ *           fonts with low overhead. Please note that bold, italic, etc. are actually _different fonts_ and each must be
++ *           loaded up individually.
+  * @related  cf_make_font cf_make_font_from_memory cf_destroy_font cf_push_font cf_push_font_size cf_push_font_blur cf_draw_text
+  */
+ CF_API CF_Result CF_CALL cf_make_font(const char* path, const char* font_name);
+@@ -1039,7 +1040,7 @@ CF_API CF_Result CF_CALL cf_make_font(const char* path, const char* font_name);
+  * @param    size        The size of `data` in bytes.
+  * @param    font_name   A unique name for this font. Used by `cf_push_font` and friends.
+  * @return   Returns any errors as `CF_Result`.
+- * @remarks  Memory is only consumed when you draw a certain glyph (text character). Just loading up the font initially is
++ * @remarks  The input buffer is borrowed and must remain valid until the font is destroyed. Memory is only consumed when you draw a certain glyph (text character). Just loading up the font initially is
+  *           a low-cost operation. You may load up many fonts with low overhead. Please note that bold, italic, etc. are actually
+  *           _different fonts_ and each must be loaded up individually.
+  * @related  cf_make_font cf_make_font_from_memory cf_destroy_font cf_push_font cf_push_font_size cf_push_font_blur cf_draw_text
+diff --git a/libraries/cute/cute_spirv.h b/libraries/cute/cute_spirv.h
+index 3c4c1f46..ccae761f 100644
 --- a/libraries/cute/cute_spirv.h
 +++ b/libraries/cute/cute_spirv.h
-@@ -943,6 +943,11 @@
+@@ -979,6 +979,11 @@ typedef struct cspv_ctx
  
  	// Top-level declarations in source order, for the transpiler backends.
  	CK_DYNA cspv_decl* decls;
@@ -12,7 +41,7 @@
  	// Transpiler output under construction (kept on the context so a longjmp
  	// during validation cannot leak it; each emitter's result moves to
  	// CSPV_Result right after it runs).
-@@ -2542,6 +2547,7 @@
+@@ -2578,6 +2583,7 @@ static cspv_expr* cspv_new_expr(cspv_ctx* ctx, cspv_expr_kind kind, int line)
  	memset(e, 0, sizeof(*e));
  	e->kind = kind;
  	e->line = line;
@@ -20,7 +49,7 @@
  	return e;
  }
  
-@@ -2773,6 +2779,7 @@
+@@ -2809,6 +2815,7 @@ static cspv_stmt* cspv_new_stmt(cspv_ctx* ctx, cspv_stmt_kind kind, int line)
  	memset(s, 0, sizeof(*s));
  	s->kind = kind;
  	s->line = line;
@@ -28,7 +57,7 @@
  	return s;
  }
  
-@@ -5518,6 +5525,7 @@
+@@ -5588,6 +5595,7 @@ static void cspv_gen_uniform_block(cspv_ctx* ctx, cspv_layout* layout, const cha
  		memset(view, 0, sizeof(*view));
  		view->kind = CSPV_T_STRUCT;
  		view->name = block_name;
@@ -36,7 +65,7 @@
  		for (int i = 0; i < (int)asize(member_types); i++) {
  			apush(view->field_names, member_names[i]);
  			apush(view->field_types, member_types[i]);
-@@ -5813,6 +5821,7 @@
+@@ -5883,6 +5891,7 @@ static void cspv_gen_struct_decl(cspv_ctx* ctx)
  	memset(t, 0, sizeof(*t));
  	t->kind = CSPV_T_STRUCT;
  	t->name = name;
@@ -44,7 +73,7 @@
  
  	cspv_expect_punct(ctx, '{');
  	while (!cspv_is_punct(ctx, '}')) {
-@@ -9049,6 +9058,29 @@
+@@ -9997,6 +10006,29 @@ static uint32_t* cspv_assemble(cspv_ctx* ctx, size_t* out_word_count)
  
  static void cspv_cleanup(cspv_ctx* ctx)
  {
@@ -74,7 +103,7 @@
  	afree(ctx->es_shadows);
  	afree(ctx->names);
  	afree(ctx->decos);
-@@ -9063,6 +9095,11 @@
+@@ -10011,6 +10043,11 @@ static void cspv_cleanup(cspv_ctx* ctx)
  	map_free(ctx->const_ids);
  	map_free(ctx->fn_type_ids);
  	map_free(ctx->type_names);
@@ -86,27 +115,31 @@
  	for (int i = 0; i < (int)map_size(ctx->functions); i++) {
  		for (cspv_symbol* o = map_val(ctx->functions, i); o; o = o->next_overload) {
  			afree(o->params);
---- a/src/internal/cute_draw_internal.h
-+++ b/src/internal/cute_draw_internal.h
-@@ -459,6 +459,7 @@
+diff --git a/src/cute_app.cpp b/src/cute_app.cpp
+index 03a3e3c2..a8351817 100644
+--- a/src/cute_app.cpp
++++ b/src/cute_app.cpp
+@@ -439,6 +439,7 @@ void cf_destroy_app()
+ 	if (app->gfx_enabled) {
+ 		cf_destroy_canvas(app->offscreen_canvas);
+ 		cf_destroy_draw();
++		cf_destroy_all_fonts();
+ 		cf_unload_internal_shaders();
  
- void cf_make_draw();
- void cf_destroy_draw();
-+void cf_destroy_all_fonts();
- 
- // 3d mesh submission layer (cute_draw3d.cpp). Made/destroyed inside cf_make_draw and
- // cf_destroy_draw; cf_draw3d_process renders one mesh command from s_process_command after
+ 		if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
+diff --git a/src/cute_draw.cpp b/src/cute_draw.cpp
+index 4c759bce..044d0a93 100644
 --- a/src/cute_draw.cpp
 +++ b/src/cute_draw.cpp
-@@ -1137,6 +1137,7 @@
+@@ -1247,6 +1247,7 @@ void cf_destroy_draw()
  	cf_destroy_texture(s_draw->white_texture);
  	atlas_cache_term(&s_draw->atlas_cache);
  	cf_destroy_material(s_draw->material);
 +	cf_destroy_arena(&s_draw->uniform_arena);
  	s_draw->~CF_Draw();
  	CF_FREE(s_draw);
- }
-@@ -2525,7 +2525,6 @@
+ 	s_draw = NULL;
+@@ -2639,7 +2640,6 @@ CF_Result cf_make_font_from_memory(void* data, int size, const char* font_name)
  	CF_Font* font = (CF_Font*)CF_NEW(CF_Font);
  	font->file_data = (uint8_t*)data;
  	if (!stbtt_InitFont(&font->info, font->file_data, stbtt_GetFontOffsetForIndex(font->file_data, 0))) {
@@ -114,20 +147,11 @@
  		CF_FREE(font);
  		return result_failure("Failed to parse ttf file with stb_truetype.h.");
  	}
-@@ -2579,16 +2578,20 @@
+@@ -2693,16 +2693,20 @@ CF_Result cf_make_font(const char* path, const char* font_name)
  	if (!data) {
  		return cf_result_error("Unable to open font file.");;
  	}
 -	return cf_make_font_from_memory(data, (int)size, font_name);
--}
--
--void cf_destroy_font(const char* font_name)
--{
--	font_name = sintern(font_name);
--	CF_Font* font = app->fonts.get(font_name);
--	if (!font) return;
--	app->fonts.remove(font_name);
--	CF_FREE(font->file_data);
 +	CF_Result result = cf_make_font_from_memory(data, (int)size, font_name);
 +	if (cf_is_error(result)) {
 +		CF_FREE(data);
@@ -137,20 +161,24 @@
 +	CF_ASSERT(font && *font);
 +	(*font)->owns_file_data = true;
 +	return result;
-+}
-+
+ }
+ 
+-void cf_destroy_font(const char* font_name)
 +static void s_destroy_font(CF_Font* font)
-+{
+ {
+-	font_name = sintern(font_name);
+-	CF_Font* font = app->fonts.get(font_name);
+-	if (!font) return;
+-	app->fonts.remove(font_name);
+-	CF_FREE(font->file_data);
 +	if (font->owns_file_data) CF_FREE(font->file_data);
  	for (int i = 0; i < font->image_ids.count(); ++i) {
  		uint64_t image_id = font->image_ids[i];
  		CF_Pixel* pixels = app->font_pixels.get(image_id);
-@@ -2599,6 +2602,25 @@
- 	}
- 	font->~CF_Font();
+@@ -2715,6 +2719,25 @@ void cf_destroy_font(const char* font_name)
  	CF_FREE(font);
-+}
-+
+ }
+ 
 +void cf_destroy_font(const char* font_name)
 +{
 +	font_name = sintern(font_name);
@@ -168,57 +196,16 @@
 +		app->fonts.remove(key);
 +		s_destroy_font(font);
 +	}
- }
- 
++}
++
  CF_Font* cf_font_get(const char* font_name)
---- a/src/cute_app.cpp
-+++ b/src/cute_app.cpp
-@@ -423,6 +423,7 @@
- 	if (app->gfx_enabled) {
- 		cf_destroy_canvas(app->offscreen_canvas);
- 		cf_destroy_draw();
-+		cf_destroy_all_fonts();
- 		cf_unload_internal_shaders();
- 
- 		if (app->gfx_backend_type == CF_BACKEND_TYPE_GLES3) {
---- a/src/internal/cute_font_internal.h
-+++ b/src/internal/cute_font_internal.h
-@@ -44,6 +44,7 @@
- struct CF_Font
  {
- 	uint8_t* file_data = NULL;
-+	bool owns_file_data = false;
- 	stbtt_fontinfo info;
- 	Cute::Map<int> kerning;
- 	Cute::Map<CF_Glyph> glyphs;
---- a/include/cute_draw.h
-+++ b/include/cute_draw.h
-@@ -983,9 +983,10 @@
-  * @param    path        A virtual path to the font file. See [Virtual File System](https://randygaul.github.io/cute_framework/topics/virtual_file_system).
-  * @param    font_name   A unique name for this font. Used by `cf_push_font` and friends.
-  * @return   Returns any errors as `CF_Result`.
-- * @remarks  Memory is only consumed when you draw a certain glyph (text character). Just loading up the font initially is
-- *           a low-cost operation. You may load up many fonts with low overhead. Please note that bold, italic, etc. are actually
-- *           _different fonts_ and each must be loaded up individually.
-+ * @remarks  The font owns the file data it reads from `path` until it is destroyed. Memory is only consumed when you draw a
-+ *           certain glyph (text character). Just loading up the font initially is a low-cost operation. You may load up many
-+ *           fonts with low overhead. Please note that bold, italic, etc. are actually _different fonts_ and each must be
-+ *           loaded up individually.
-  * @related  cf_make_font cf_make_font_from_memory cf_destroy_font cf_push_font cf_push_font_size cf_push_font_blur cf_draw_text
-  */
- CF_API CF_Result CF_CALL cf_make_font(const char* path, const char* font_name);
-@@ -1003,7 +1004,7 @@
-  * @return   Returns any errors as `CF_Result`.
-- * @remarks  Memory is only consumed when you draw a certain glyph (text character). Just loading up the font initially is
-+ * @remarks  The input buffer is borrowed and must remain valid until the font is destroyed. Memory is only consumed when you draw a certain glyph (text character). Just loading up the font initially is
-  *           a low-cost operation. You may load up many fonts with low overhead. Please note that bold, italic, etc. are actually
-  *           _different fonts_ and each must be loaded up individually.
-  * @related  cf_make_font cf_make_font_from_memory cf_destroy_font cf_push_font cf_push_font_size cf_push_font_blur cf_draw_text
-  */
- CF_API CF_Result CF_CALL cf_make_font_from_memory(void* data, int size, const char* font_name);
+ 	CF_ASSERT(font_name);
+diff --git a/src/cute_graphics.cpp b/src/cute_graphics.cpp
+index 950d478f..f789eb0c 100644
 --- a/src/cute_graphics.cpp
 +++ b/src/cute_graphics.cpp
-@@ -860,8 +860,8 @@
+@@ -860,8 +860,8 @@ CF_Material cf_make_material()
  void cf_destroy_material(CF_Material material_handle)
  {
  	CF_MaterialInternal* material = (CF_MaterialInternal*)material_handle.id;
@@ -229,9 +216,11 @@
  	material->~CF_MaterialInternal();
  	CF_FREE(material);
  }
+diff --git a/src/cute_graphics_sdlgpu.cpp b/src/cute_graphics_sdlgpu.cpp
+index b73ef77d..0894b3df 100644
 --- a/src/cute_graphics_sdlgpu.cpp
 +++ b/src/cute_graphics_sdlgpu.cpp
-@@ -2825,6 +2825,7 @@
+@@ -2825,6 +2825,7 @@ void cf_sdlgpu_destroy_compute_shader(CF_ComputeShader shader)
  	CF_ComputeShaderInternal* cs = (CF_ComputeShaderInternal*)shader.id;
  	if (!cs) return;
  	SDL_ReleaseGPUComputePipeline(g_ctx.device, cs->pipeline);
@@ -239,3 +228,27 @@
  	CF_FREE(cs);
  }
  
+diff --git a/src/internal/cute_draw_internal.h b/src/internal/cute_draw_internal.h
+index 68bc7cc1..087479ef 100644
+--- a/src/internal/cute_draw_internal.h
++++ b/src/internal/cute_draw_internal.h
+@@ -551,6 +551,7 @@ struct CF_DrawListData
+ 
+ void cf_make_draw();
+ void cf_destroy_draw();
++void cf_destroy_all_fonts();
+ 
+ // 3d mesh submission layer (cute_draw3d.cpp). Made/destroyed inside cf_make_draw and
+ // cf_destroy_draw; cf_draw3d_process renders one mesh command from s_process_command after
+diff --git a/src/internal/cute_font_internal.h b/src/internal/cute_font_internal.h
+index e4ae8307..ede7649a 100644
+--- a/src/internal/cute_font_internal.h
++++ b/src/internal/cute_font_internal.h
+@@ -44,6 +44,7 @@ struct CF_CurveGlyph
+ struct CF_Font
+ {
+ 	uint8_t* file_data = NULL;
++	bool owns_file_data = false;
+ 	stbtt_fontinfo info;
+ 	Cute::Map<int> kerning;
+ 	Cute::Map<CF_Glyph> glyphs;

@@ -1,0 +1,66 @@
+{
+  "audited_on": "2026-10-06",
+  "upstream_commit": "7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d",
+  "builds": {
+    "build": {
+      "dependency_package": "5bce4eb040332f88f382c16a0c4b50aeca85bde708e3707c080c7dad6b8b6b69",
+      "all_17_patch_hashes_match": true,
+      "upstream_pin_matches": true,
+      "build_type": "Debug"
+    },
+    "build-web": {
+      "dependency_package": "df50bf0bba0b71e720622ce25c18474f999954310ace124b8323aadd4b88539b",
+      "all_17_patch_hashes_match": true,
+      "upstream_pin_matches": true,
+      "build_type": "Release"
+    },
+    "build-web-threads": {
+      "dependency_package": "9227a3d06b7c08f9e69ab8a6068e1a63d3e5fac46a494b80de09d482e2afc3c8",
+      "all_17_patch_hashes_match": true,
+      "upstream_pin_matches": true,
+      "build_type": "Release"
+    }
+  },
+  "native": {
+    "command": "make build BUILD_TARGET='chibi chibi_ctl test_suite'",
+    "status": "passed",
+    "configure_seconds": 0.8,
+    "build_seconds": 44.2,
+    "compiler": "Clang 23.1.1",
+    "sanitizers": "address,undefined"
+  },
+  "web": {
+    "command": "make web",
+    "status": "passed",
+    "compiler": "Emscripten 6.0.9",
+    "serial_configure_seconds": 72.9,
+    "serial_build_seconds": 61.3,
+    "threaded_configure_seconds": 1.4,
+    "threaded_build_seconds": 1.0,
+    "package_seconds": 0.1
+  },
+  "tooling_tests": {
+    "command": "make test",
+    "status": "passed",
+    "tests": 17,
+    "assertions": 188,
+    "execution_seconds": 19.461,
+    "deadline_seconds": 60
+  },
+  "patch_applicability": {
+    "status": "passed",
+    "independent_patches": 16,
+    "cache_prerequisite": "cute-custom-coverage",
+    "ordered_series_patches": 17,
+    "patched_source_diff_check": "passed"
+  },
+  "not_run": [
+    "full native and render aggregate tests, quarantined by repository policy",
+    "GPU selectors, quarantined by repository policy",
+    "runtime reproductions of the gist examples",
+    "sanitizer leak reproductions"
+  ],
+  "maintenance_notes": [
+    "Build retirement metadata capture skipped for Makefile-based web builds because its Ninja target query failed. Build and packaging commands completed successfully."
+  ]
+}

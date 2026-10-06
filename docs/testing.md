@@ -1,70 +1,57 @@
 # Test iteration
 
-Use `make agent-list` and the capability-aware commands in [agent execution](agent-execution.md)
-while iterating. Full/mixed GPU suites now require explicit hardware opt-in;
-CI sets it explicitly and retains complete coverage. A focused selector may contain
-GPU work: the old `test-fast` name alone does not establish CPU-only coverage.
+## Temporary 60-second policy
 
-## Commands and coverage
+Managed test executions, including aggregates, have one hard 60-second ceiling.
+Known slow and unmeasured commands are quarantined; hardware opt-in cannot clear
+it. See [the inventory](test-quarantine.md) for preserved native coverage,
+retired script coverage and the original 12 exact admitted native tuples.
 
-| Command | Coverage |
+`make test`, `make test-short` and `make test-tools` run the same minimal C
+pico_unit suite through the production `tools/test_policy.py` supervisor. The
+suite covers essential execution policy, package/install preservation, room
+service behavior and minimal supervisor/planner regressions. Packaging and room
+service implementations remain Python/Node external programs; their tests are C.
+The removed script suites have not been reproduced completely.
+
+Configure/build separately and report that time separately from test execution:
+
+```sh
+make tools-build
+make test
+make build BUILD_TARGET=test_suite
+make test-studio-selectors
+make test-list
+make test-fast TEST_ARGS=--graph-optimize
+```
+
+| Command | Current coverage |
 | --- | --- |
-| `make test-fast TEST_ARGS=--graph-optimize` | Builds or reuses the native `test_suite` in `BUILD_DIR`, then runs only that selector. It does not run tooling scripts or the full suite. Coverage depends on the selector; GPU/mixed and unclassified selectors require the hardware profile. |
-| `make test-list` | Builds or reuses `test_suite` and prints common focused selectors. |
-| `make tools-build` | Configures and builds the standalone C tooling targets without the engine or graphics dependencies. |
-| `make test-tools` | Builds and runs the minimal C pico_unit tooling suite, `test_tools`. |
-| `make test-studio-selectors` | Runs C process checks against the native `test_suite`; build that executable first. |
-| `make test-slow` | Runs the full native `all_checks` suite and the separate whole-function audit. |
-| `make test-compiler-parity` | Builds the behavior-backend check and runs the focused native behavior parity selector. |
-| `make test-render` | Runs native GPU previews and hidden-window checks. It remains separate from `make test`. |
-| `make test` or `make test-full` | Runs the complete tooling and native regression gate, including generated/build checks, `all_checks`, and the whole-function audit. |
+| `test`, `test-short`, `test-tools` | Same C tooling group under one shared 60-second deadline. |
+| `test-studio-selectors` | Bounded C process checks against a separately built native suite, CPU-only discovery and argument handling. |
+| `test-fast` | One exact admitted native argument tuple, with complete existing assertions. |
+| `test-list`, `agent-list` | Admission inventory without test execution. |
+| `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Quarantined, disabled and not passed. |
 
-`TEST_ARGS` is only accepted by `make test-fast` and is passed through to
-`test_suite`. An empty selector is an error. Unknown selectors exit with status
-2 instead of falling through to the complete suite. A second `--...` selector
-or option is rejected with status 2 rather than silently ignored. With no
-selector, `test_suite` runs the full `all_checks` suite. When a selector accepts
-positional arguments, pass them after the selector as ordinary Make arguments.
+Timeout is failure. Nested managed wrappers inherit the deadline; no child gets
+a fresh aggregate budget. Multi-goal test execution is unadmitted. Direct native
+binaries, raw CMake checks and controller captures do not universally enforce
+the ceiling; do not use them to bypass it or rebuild slow suites from chunks.
+The supervisor verifies cleanup discovery before test work. Linux subreaping
+contains escaped sessions; arbitrary already-detached descendants are not proven
+contained on macOS. Platform validation must report what actually ran.
 
-The common focused selector list includes asset/support checks such as
-`--asset-documents`, `--rcss`, and `--tree-watch`; authoring and graph checks such as
-`--automation-authoring`, `--graph-editing`, and `--graph-optimize`;
-runtime/compiler checks such as `--runtime-execution`, `--behavior-parity`,
-and `--simulation`; Studio checks such as `--editor-graph`,
-`--studio-documents`, and `--rmlui-kit`; modeling/material checks such as
-`--modeling` and `--materials`; and game checks such as `--arena-combat`
-and `--arena-encounter`. Run `make test-list` for the current common list.
+For repeated admitted C workloads, `benchmark_trials` accepts three or five trials
+and a total 3–60-second timeout including cleanup. It preserves workload output
+and reports elapsed time. The Make benchmark aggregate remains quarantined.
+Retired Python drivers' generated-C comparisons and report formats were not
+migrated individually. Research/review command transcripts, measurements and
+hashes are historical records of their revisions, not current reproduction
+instructions or passes for this cleanup.
 
-The timing sweep found several costly calls inside the native full suite.
-Final per-call readings were: `test_compiled_behaviors` 49.0s,
-`test_automation_profile_scenario_inputs` 18.0s, `test_automation_search`
-17.2s, `test_refactor` 16.8s, `test_rmlui_kit` 13.7s,
-`run_editor_command_checks` 12.3s, `test_encounter` 11.9s, and
-`test_materials` 10.7s. Their coverage remains in `make test`; focused
-selectors expose these checks individually (`--compiled-behaviors`,
-`--automation-profile-scenario-inputs`, `--automation-search`, `--refactor`,
-`--rmlui-kit`, `--editor-commands`, `--arena-encounter`, `--material-thermal`,
-and `--material-mpm`). The thermal and MPM selectors avoid running the larger
-materials group when one is the relevant change. These timings describe one
-debug/sanitizer build on one Mac and are guides, not performance guarantees.
-
-The costly cases exercise distinct behavior, so I kept them in full coverage.
-`test_compiled_behaviors` compares compiled behavior execution across the
-bytecode, oracle, and SLJIT backends. Automation search checks thirteen search
-contracts, including 38 user-intent queries that must rank their intended node
-in the first three results. Refactor coverage uses separate Arena, general
-content, and Studio projects to check event, asset, value, function, member,
-refusal, and delete cases; its repeated project loads keep mutations isolated
-and references realistic. Profile-scenario coverage includes HRC fluid work,
-sparse input playback through warmup and measured frames, and named scenarios.
-None of those repetitions was a proven duplicate check. The time savings come
-from selecting only the closest native check during iteration.
-
-CI continues to call `make test`. Script-based tooling tests have been retired;
-the minimal C tooling suite does not reproduce their former coverage.
-Focused results are deliberately narrower coverage; they are useful feedback
-for the changed code path and admit reviewed work to a batch under CUT62 below.
-They do not replace the full gate.
+CI remains partial coverage. Existing server-required checks, source review,
+PR/ticket holds and configuration requirements still apply; short results cannot
+replace unavailable required gates.
 
 ## Batch validation (CUT62)
 
@@ -109,11 +96,12 @@ process before admitting it; no new authorization mechanism is created here.
    and `git rev-parse 'HEAD^{tree}'` before testing. No tracked or untracked
    source edits may accompany the run. Build artifacts must originate from this
    tree and the recorded configuration; a shared stale binary is not evidence.
-4. **Run the complete gate once per candidate.** Keep `make test`/`test-full`
-   intact: tooling, generated/build checks, native `all_checks` and the separate
-   whole-function audit. Run `make test-render` as well. `test-tools`, `test-slow`,
-   compiler parity or a collection of selectors alone is not the aggregate gate.
-   Use the explicit hardware opt-in above and the existing display requirements.
+4. **Obtain required complete verification once per candidate.** The temporary
+   quarantine currently disables native `all_checks`, the audit and render gates.
+   Those requirements remain unsatisfied until measured admission is restored.
+   Tooling, compiler parity or collected selectors alone do not establish the
+   aggregate gate. Once admitted, retain explicit hardware opt-in and display
+   requirements.
    Complete the required configurations below, format checks, affected native
    backends and web/UI validation (`make web` for UI changes), and existing
    release validation when preparing a release. Do not substitute previews for
@@ -173,308 +161,25 @@ still meet server rules; absence of CI cannot turn the table green. Release
 packaging, optimized-build and release-specific validation remain additional
 requirements, not waived by a successful development batch.
 
-### Small planning helper
-
-After source review, on a clean committed worktree:
+### Planning helper
 
 ```sh
-python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --confirm-eligible-members --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize > /tmp/cut62-plan.json
-# Repeat the identical arguments after fetching main/source refs, adding:
-python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --confirm-eligible-members --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize --verify /tmp/cut62-plan.json
+python3 tools/agent.py validation-plan --base origin/main --scope focused --review-note 'Reviewer: essential tooling changes' --tools
 ```
 
-Repeat `--source` for every batch member and `--selector` for relevant existing
-CPU/GPU allowlisted selectors; `--tools` adds `make test-tools`. The default scope
-is `unknown`; `unknown` and `mixed` list the full gate instead of focused commands.
-Any declared source members require `--confirm-eligible-members`, including when
-verifying a saved plan. Supply it only after freshly checking every member's
-review, holds and required approvals. It records an operator statement, grants
-no authority and cannot clear a hold or replace a denied-action approval. The
-helper does not query the approval system; the owner retains those references
-separately. Without source members it reports eligibility as `not-declared`, so
-a generic plan is not an eligible batch roster. Omitting a held source from the
-roster does not make its code eligible.
-Classification is a reviewer's recorded declaration, never inferred from paths.
-Review notes are data and are never executed. This helper only resolves local
-refs and lists commands, changed paths, exact base/head/tree and pending gates.
-It performs no fetch, builds, rendering, push, merge or status publication.
-Save output outside the worktree.
+`--tools` and `--tool=native-tools` emit `make test-tools`. Other former tool
+choices are retired. Repeat `--source` for every reviewed batch member and use
+`--confirm-eligible-members` only after checking review, holds and approvals.
+Exact admitted CPU selectors can be requested with `--selector=--name`.
+Unknown/mixed scope keeps full requirements pending; it does not run a full gate.
+`--verify <saved-plan>` checks local identity, not remote freshness or execution.
+Keep saved plans outside the worktree. A plan grants no merge authority.
 
-`--verify` exits nonzero for dirty worktrees, changed refs/plans or Git failures.
-Exit zero means only that the local plan still matches; it always reports
-`full_verification:false`. The owner separately verifies remote freshness,
-independent reviews, dependency/flag identity and actual execution evidence.
-The helper does not run a selector and cannot convert one into a full pass.
+## Historical timing evidence
 
-## Standalone tooling and benchmark trials
-
-```sh
-make tools-build
-make test-tools
-make build BUILD_TARGET=test_suite
-make test-studio-selectors
-```
-
-The C tooling suite checks render policy, package/install preservation and basic
-collaboration room behavior. It invokes the retained Python packaging commands
-and Node room service as external programs. Studio CLI checks exercise CPU-only
-discovery and argument handling in the separately built native suite. The former
-script suites are retired; this smaller suite does not replace their coverage.
-
-For repeated C workloads, build an optimized native executable first, then run:
-
-```sh
-build-tools/benchmark_trials --trials 3 --timeout 60 -- build-release/test_suite --bench-arena-reference 100 64 0 0
-```
-
-The runner repeats one command three or five times with a total timeout of
-3–60 seconds including cleanup, and reports elapsed time and exit status. Engine
-benchmark selectors remain C. The retired Python runners' generated-C comparisons
-and report formats have not been migrated individually. Recorded commands in research and review reports
-are historical transcripts; their measurements and source hashes remain evidence
-for the recorded revisions, not current reproduction instructions.
-
-## Test timings
-
-Set `TEST_TIMINGS=1` on `make test`, `make test-fast`, or
-`make test-slow` to add per-call elapsed timings to the native suite log.
-`tools/quiet.py` prints the log path for each stage. Timing is opt-in so normal
-test output stays compact.
-
-## Historical baseline
-
-The timings below describe the former script-based tooling suite and its
-parallel runner. Those scripts and `TEST_JOBS` are retired. They are not timings
-or coverage evidence for the current minimal C tooling suite.
-
-On 2026-10-04, a clean isolated worktree at `96322c7191565c543e8375cde20e07d4fd2ab45a`
-ran the original serial `make test JOBS=8` in 340.9 seconds. The full native
-`all_checks` stage took 221.4 seconds, the tooling scripts took about 76
-seconds, configure plus build checks took 37.8 seconds, and the separate
-whole-function audit took 1.3 seconds. A focused
-`build/test_suite --graph-optimize` invocation took 0.47 seconds on that
-already-built sanitized binary. The focused invocation runs much less coverage;
-it is not an equivalent-speed comparison with the full suite.
-
-The first full gate after parallelizing tools completed in 277.8 seconds
-(4m38s), with a 32.8-second build and 218.8-second native suite. A separate
-`make test-tools TEST_JOBS=4` run took 24.4 seconds wall time. Against the
-serial baseline, the complete gate was 63.1 seconds (18.5%) faster, and the
-tooling stage dropped from about 76 seconds to 24.4 seconds. After the final
-selector and argument-validation edits, the full gate passed again in 267.2
-seconds (4m27s) with an incremental 26.0-second build, a 215.2-second native
-suite, and a 1.3-second audit. These full runs still include all 21 tooling
-tests and native checks; the 267.2-second rerun benefited from the current
-build and should not be compared to the clean baseline as a cold-build result.
-
-A separate warm
-`make test-fast TEST_ARGS=--graph-optimize` completed in 2.83 seconds total;
-the selector itself took 0.5 seconds, with configure at 1.0 second and an
-incremental build at 0.1 second.
-
-The newly split selectors were all run individually after the final argument
-validation change: compiled behaviors 47.2s, automation search 17.2s,
-automation refactor 5.0s, profile-scenario inputs 15.8s, editor commands
-12.5s, material thermal 4.8s, and material MPM 3.6s. These are selector-stage
-times from the quiet runner and exclude each wrapper's configure/build steps.
-An unknown selector and a combined `--graph-optimize --materials` invocation
-both exited 2 quickly; neither ran the full suite or silently ignored the
-second flag.
-
-The largest routine cost is running every native test in `all_checks` for
-each small code change. Prefer the closest focused selector during iteration
-and retain `make test` as the complete gate. The former script tooling runner
-used four workers by default.
-
-### Depth snapshot fixture and Zink endpoint clears
-
-The SDF visibility depth snapshot fixture clears its source depth to `.75` before
-its unchanged full-canvas `.25` seed draw. That triangle covers every pixel of the
-8×8 target, with depth writes and `ALWAYS` enabled; the clear value is not a test
-expectation. All source color/depth, copied depth, and `.125` redraw assertions
-remain unchanged. In the earlier unknown-device offscreen check, deliberately
-using `LESS` instead of `ALWAYS` rejected the `.5` overwrite, failing all four
-cropped color/depth and copied-depth assertions. That mutation was not part of
-the later identity-verified Zink/NVK A/B.
-
-This is a **test-fixture isolation workaround**, not a production renderer or
-driver fix. It removes **clear-`1` plus `ALWAYS` coverage** from this copy fixture,
-which previously cleared only to `1`; clear `0` was tested only in the standalone
-matrix. It retains the full seed, cropped overwrite, depth-copy, and later
-source-redraw checks. The underlying driver issue remains open as CUT-54 /
-[issue #159](https://github.com/waldnercharles/c-blueprints/issues/159); the private
-upstream report has not been submitted.
-
-Matched diagnostic runs used the original fixture from base `7b35b66d` and the
-`.75` change from candidate `44744b5e`, with identical assertions, identity guard,
-launcher, build settings, and 120-second bound. Before either seed, both logged
-SDL `offscreen`, GL vendor `Mesa`, renderer
-`zink Vulkan 1.4(NVIDIA GeForce RTX 4080 SUPER (NVK AD103) (MESA_NVK))`, and
-OpenGL ES 3.2 Mesa 26.2.3. EGL enumeration selected index `1`, render node
-`/dev/dri/renderD128`, verified through sysfs as vendor/device `10de:2702`.
-
-| Matched Zink/NVK engine fixture | Result |
-| --- | --- |
-| Original clear `1.0` | FAIL, exit 1, 0.31 s: four pre-copy center pixels have color/depth `.25`, expected `.5` |
-| Candidate clear `.75` | PASS, exit 0, 0.32 s: unchanged source/copy/redraw assertions |
-
-These runs used ASan/UBSan with the repository render policy
-`ASAN_OPTIONS=detect_leaks=0` and `UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`.
-They establish fixture isolation on that route, not full-suite verification.
-Earlier uninstrumented offscreen GLES/Vulkan passes have unknown device identity;
-a separate identity-probed clear-`1` engine baseline passed on AMD RadeonSI.
-Those results must not be presented as Zink validation. SDL's offscreen path can
-select a different EGL device than the Vulkan ICD or desktop GPU.
-
-The preserved standalone GLES reproducer checks color only and fails the original
-clear-`1` case on both Zink/NVK and Zink/Lavapipe. A separate six-case clear matrix
-on Zink/NVK found that clear `1` leaves `.25` instead of `.5`, clear `0` leaves
-`.5` instead of a later `.125`, and clear `.75` passes both sequences. These are
-separate from the engine fixture's sampled-depth assertions. The Zink
-ALWAYS-to-LE/GE optimization, commit `a58cbdaabfb2f5734df24d40c754d9009883c4a1`,
-is strongly implicated by the matrix but not proven by bisection or driver revert.
-
-Private CUT-54 evidence retains the raw logs, matched diagnostic source diff,
-upstream draft, and original `cut54-repro.c` with SHA-256
-`6c006bbad7430b80e140fbd046933de244c0439c943a73f020fb6c505b0234a4`.
-The failing standalone remains unchanged; this workaround does not resolve its
-failure or establish that ordinary rendering with endpoint clears is correct.
-
-## Studio documents and shell iteration (CUT-50)
-
-List subgroup names without opening a window:
-
-```sh
-build/test_suite --studio-documents list
-build/test_suite --studio-shell list
-```
-
-Select one complete group or shell case. Quote Make's `TEST_ARGS` when passing a
-positional name:
-
-```sh
-CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 \
-  make test-fast TEST_ARGS='--studio-documents tabs' TEST_TIMINGS=1
-CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 \
-  make test-fast TEST_ARGS='--studio-shell readout_follows_camera' TEST_TIMINGS=1
-```
-
-Listing and invalid arguments are handled on CPU before execution-policy checks
-or graphics initialization. Running a valid Studio group/case requires the explicit
-full-execution opt-in above; these mixed selectors are not added to the bounded
-CPU/GPU allowlists. `make test` and `make test-slow` also run the CPU-only
-C `test_tools --studio-selectors` process checks against their built binary,
-covering discovery, strict errors and profile enforcement.
-
-These selectors keep each case's complete fixture, input sequence, settling frames,
-and assertions. An unknown group/case or extra positional argument exits 2 before
-creating the graphics app. The `list` output is the authoritative set of names.
-Existing surface selectors remain supported. `--studio-documents properties`
-runs the complete Properties group; the older `--studio-properties` runs only its
-field checks.
-
-With no positional argument, `--studio-documents` still runs all 19 documents
-groups in their original order, then graph-inputs and thumbnails. Those last two
-have their existing `--studio-graph-inputs` and `--studio-thumbnails` selectors.
-`--studio-shell` still runs all 19 shell cases in their original order. Full gates
-and capture mode are unchanged; an explicit shell case always runs assertions,
-even if `CHIBI_SHELL_CAPTURE_DIR` is set. A focused pass does not certify the
-aggregate or replace `make test-render`.
-
-`CHIBI_TEST_TIMINGS=1` (or `TEST_TIMINGS=1` through Make) now prints flushed
-`STUDIO_BEGIN` markers and `STUDIO_TIMING` records for documents groups, individual
-shell cases, and app setup/teardown. Wall times use SDL's monotonic performance
-counter. Shared-fixture records include fixture count, setup and teardown time,
-frame count, and frame time split into event pumping, scene/graph tick, Studio,
-and presentation. `batch_frames`/`batches` measure `frames()` calls, including
-settling and intentional multi-frame measurements; these overlap the frame stage
-totals and must not be added to them. Nested shell records likewise overlap the
-parent shell record. Groups with their own fixture/frame helpers (for example
-models and code intelligence) have complete wall time but incomplete shared-helper
-counters. Timings are diagnostic measurements, not performance assertions.
-
-For bounded iteration, build first, then run one selector under an explicit
-bound (software Vulkan requires a display such as Xvfb):
-
-```sh
-timeout --kill-after=10s 90s env CHIBI_TEST_TIMINGS=1 \
-  CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 \
-  ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 \
-  xvfb-run -a build/test_suite --studio-shell readout_follows_camera
-```
-
-Use the repository's render leak policy and strict UBSan; do not interpret a
-bound hit as a pass. Do not repeatedly run the full documents aggregate on
-software Vulkan or launch concurrent heavy tests on the hardware machine.
-The 60-frame cadence/recording loops and long motion/iframe settles are retained:
-static inspection does not establish that those frames are redundant.
-
-### CUT-50 measurement checkpoint (2026-10-05)
-
-Implementation source: `196f09c74a2d68e6e3338b6a33cd56c8237aaeed`, rebased onto
-merged main `de73cb85652f43694957377dfc3607d2e15da386`. The rebase changed no
-files relative to the measured pre-rebase commit `decc5fbc`; main's tree also
-matches the original PR151 baseline `be4d5c0d6d6a38f0747ec5d1c7f66b618c0c9b8a`.
-
-Machine: Linux 6.18.44 x86_64, Intel Xeon Platinum 8573C, five exposed CPUs with
-a four-CPU quota and 16 GiB memory limit. Build: Clang 19, Debug,
-`CHIBI_ENABLE_SANITIZERS=ON`, `CHIBI_SANITIZERS=address,undefined`;
-`make build BUILD_TARGET=test_suite JOBS=4`. Graphics: Xvfb and software Vulkan,
-Mesa lavapipe package `25.0.7-2+deb13u1`.
-These are not hardware-GPU timings.
-
-All measurements ran sequentially after compilation, from the repository root,
-with `ASAN_OPTIONS=detect_leaks=0`, `UBSAN_OPTIONS=halt_on_error=1`, and a 90-second
-bound plus 10-second termination grace. The shell command shape was the bounded
-example above; elapsed times include `timeout`/Xvfb/process startup and shutdown,
-measured with Python's monotonic clock, but exclude configure/build. Candidate
-runs:
-
-| Selector | Wall seconds | Result |
-| --- | --- | --- |
-| `--studio-shell readout_follows_camera`, timing on, first run | 3.883 | Exit 0; camera/readout assertion passed |
-| Same, second run | 2.534 | Exit 0; same assertion passed |
-| Same, timing off, capture environment set | 2.544 | Exit 0; assertion still ran, no timing output or capture |
-| `--studio-documents tabs`, timing on | 14.908 | Exit 0; 35 assertions passed |
-| `--studio-shell transport_menus`, timing on | 12.864 | Exit 0; transport assertion passed |
-
-Readout's repeat range was 2.534–3.883 seconds; do not treat the first-run versus
-repeat difference as an optimization. Its timed case body took 2.960 then 2.141
-seconds: setup 0.280/0.229, teardown 0.070/0.070, six frames 2.605/1.838, with
-Studio work 2.499/1.752 and presentation 0.103/0.084 seconds. Transport's 24 frames
-took 11.449 seconds, including 7.689 in Studio and 3.721 in presentation; setup
-was 0.224 and teardown 0.569 seconds. This localizes most readout cost to Studio
-frame work, rather than fixture loading or presentation. It does not separately
-profile RmlUi layout versus other Studio work. The issue's earlier hardware CPU
-stack samples identify style/layout and iframe settling; this change makes those
-cases independently repeatable without removing their settling coverage.
-
-Additional checks passed: clang-format 22.1.0 on changed C/headers, `git diff
---check`, both 19-entry subgroup lists without a display, and unknown/empty names,
-extra positional arguments and extra flags returning 2 without app creation.
-A static comparison against `be4d5c0d` verified all 19 documents and 19 shell calls
-in their original order and every shell case body byte-for-byte unchanged.
-An independent read-only review found no missing coverage or selector dispatch
-problem.
-
-For the before comparison, the original four modified test sources were restored
-from `be4d5c0d`, rebuilt with the same configuration, and the baseline binary was
-saved separately; candidate sources/binary were then restored. The old smallest
-selector containing camera readout, `--studio-shell`, hit the unchanged 90-second
-experimental bound at **90.004 seconds, exit 124**. It logged 29 passing assertions,
-through camera readout, but did not complete the shell suite. Its terminal XIO
-message followed timeout termination. This is an incomplete baseline, not a pass
-or an observed full-suite duration. Against that lower bound, a complete focused
-readout run now takes 2.534–3.883 seconds. The improvement is less unrelated work
-per iteration, not faster execution of equivalent full coverage. No assertion,
-settle, hard case, or gate was removed to obtain it.
-
-Remaining validation: no complete candidate `--studio-shell` or
-`--studio-documents` aggregate was run in cloud, and no full `make test`,
-`make test-render`, whole-function audit, web build, or hardware GPU validation was
-repeated for this test-only change. Other new subgroups were listed and reviewed,
-not individually executed. The existing hardware pass at `262d96db` (16m47.33,
-RTX 4080 SUPER/Mesa NVK, Debug ASan+UBSan) is historical evidence, not a candidate
-pass. CUT-50 must remain open until a complete relevant aggregate passes on the
-final candidate and comparable full-suite timing is recorded. The parent can
-arrange that hardware run; do not run concurrent heavy jobs on that machine.
+The original exact native admissions are recorded in
+[test quarantine](test-quarantine.md#retained-short-coverage). The former tooling
+suite's 24.4-second parallel run and longer native/Studio/render aggregates
+belong to their recorded revisions and removed runners. They are not measurements
+of the new C group. PR186 retains the original process-cleanup reproduction and
+startup-margin evidence; current results must identify the actual reviewed head.

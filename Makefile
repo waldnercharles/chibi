@@ -1,3 +1,11 @@
+# Each measured validation command owns one deadline; aggregates are unmeasured.
+CHIBI_TEST_GOALS := $(filter test% agent-test agent-gpu-test benchmark,$(MAKECMDGOALS))
+ifneq ($(strip $(CHIBI_TEST_GOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Temporary 60-second policy: use one validation goal per invocation; aggregate is unadmitted)
+endif
+endif
+
 # Native desktop setup commands can run before a SessionStart hook.
 # Enrollment is silent and creates no state for repositories without installation.
 ifeq ($(wildcard .chibi-workspace.json),)
@@ -53,7 +61,7 @@ FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
 BUILD_TARGET ?= chibi chibi_ctl
 VERBOSE ?= 0
-export VERBOSE
+export VERBOSE TEST_ARGS AGENT_SELECTOR
 MAKEFLAGS += --no-print-directory
 QUIET = python3 tools/quiet.py
 AGENT_SELECTOR ?= --graph-optimize
@@ -103,17 +111,20 @@ help:
 		'make run-tracy      Run the native Tracy profile' \
 		'make agent-list     List CPU selectors and bounded GPU capabilities' \
 		'make agent-test AGENT_SELECTOR=--graph-optimize  CPU iteration' \
-		'make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu  Explicit bounded GPU check' \
-		'make test           Run the complete tooling and native regression gate' \
+		'make agent-gpu-test Quarantined: unmeasured GPU agent command' \
+		'make test           Run essential C regressions under one 60-second deadline' \
+		'make test-short     Run essential C regressions under one deadline' \
+		'make test-studio-selectors  Validate native selector discovery in C' \
+		'make test-policy-inventory  Report temporary test admission policy' \
 		'make test-fast TEST_ARGS=--graph-optimize  Run one focused native selector' \
-		'make test-list      List focused native selectors (builds test_suite)' \
-		'make test-tools     Run essential native pico_unit tooling tests' \
+		'make test-list      Report exact admitted commands and quarantined coverage' \
+		'make test-tools     Alias for the bounded essential C regressions' \
 		'make tools-build    Build native tooling tests and benchmark_trials' \
-		'make test-slow      Run the complete native suite and function audit' \
-		'make test-full      Alias for the complete tooling and native gate' \
-		'make test-compiler-parity  Run focused behavior compiler parity checks' \
-		'make test-render    Run GPU previews and hidden-window checks' \
-		'make benchmark      Run optimized benchmarks with symbols' \
+		'make test-slow      Quarantined: complete native suite and function audit' \
+		'make test-full      Quarantined: full tooling and native gate' \
+		'make test-compiler-parity  Quarantined: unmeasured compiler parity checks' \
+		'make test-render    Quarantined: full GPU and window checks' \
+		'make benchmark      Quarantined: unmeasured benchmark aggregate' \
 		'make dev            Run the RelWithDebInfo source reload host' \
 		'make mcp            Run the MCP server over stdio' \
 		'make mcp-controller Build only the chibi_ctl MCP controller' \
@@ -206,12 +217,7 @@ run-tracy: build-tracy
 	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 benchmark:
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BENCHMARK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(BENCHMARK_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BENCHMARK_BUILD_DIR)" --target bench_activation system_benchmark query_benchmark contact_benchmark --parallel $(JOBS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/bench_activation" $(ARGS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/system_benchmark" $(ARGS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/query_benchmark"
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/contact_benchmark"
+	@python3 tools/test_policy.py disabled benchmark
 
 # Web builds generate reflection with the native tool.
 web-configure:
@@ -224,7 +230,7 @@ web: web-serial
 	@$(QUIET) package_web.py -- python3 tools/package_web.py --serial "$(WEB_BUILD_DIR)" --threads "$(WEB_THREADS_BUILD_DIR)" --output "$(WEB_BUILD_DIR)"
 
 web-serial: web-configure
-	@$(QUIET) build -- cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
+	@$(QUIET) build -- cmake --build "$(WEB_BUILD_DIR)" --target chibi --parallel $(JOBS)
 
 publish-web:
 	python3 tools/publish_web.py --jobs "$(JOBS)" --collab-url "$(CHIBI_COLLAB_URL)"
@@ -249,85 +255,47 @@ format:
 check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
-# Agent iteration is explicitly narrower than the full merge gate.
-.PHONY: agent-list agent-test agent-gpu-test
+# Test configuration and compilation run outside the measured test deadline.
+.PHONY: agent-list agent-test agent-gpu-test test-short test-policy-inventory tools-build test-studio-selectors
 agent-list:
 	@python3 tools/agent.py list
 
 agent-test:
+	@python3 tools/test_policy.py admit-env AGENT_SELECTOR
 	@$(MAKE) build BUILD_TARGET=test_suite
-	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" test -- $(AGENT_SELECTOR)
+	@python3 tools/test_policy.py agent-env "$(BUILD_DIR)" test
 
 agent-gpu-test:
-	@$(MAKE) build BUILD_TARGET=test_suite
-	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" gpu-test -- $(AGENT_SELECTOR)
+	@python3 tools/test_policy.py disabled agent-gpu-test
 
-test: test-full
-
-test-full:
-	@python3 tools/agent.py hardware-check
-	+@$(MAKE) test-tools
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-assets check-behavior-backend test_suite --parallel $(JOBS)
-	@$(MAKE) tools-build
-	@"$(TOOLS_BUILD_DIR)/test_tools" --studio-selectors "$(abspath $(BUILD_DIR))/test_suite"
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
+test: test-short
 
 TOOLS_BUILD_DIR ?= build-tools
 TOOLS_C_COMPILER ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),/opt/homebrew/opt/llvm/bin/clang,$(CC))
-.PHONY: tools-build test-studio-selectors
 tools-build:
 	@cmake -S test/tools -B "$(TOOLS_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug
 	@cmake --build "$(TOOLS_BUILD_DIR)" --parallel $(JOBS)
 
-test-tools: tools-build
-	@"$(TOOLS_BUILD_DIR)/test_tools"
+test-short: tools-build
+	@python3 tools/test_policy.py short "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
+
+test-tools: test-short
 
 test-studio-selectors: tools-build
 	@$(MAKE) build BUILD_TARGET=test_suite
-	@"$(TOOLS_BUILD_DIR)/test_tools" --studio-selectors "$(abspath $(BUILD_DIR))/test_suite"
+	@python3 tools/test_policy.py studio-selectors "$(abspath $(TOOLS_BUILD_DIR))/test_tools" "$(abspath $(BUILD_DIR))/test_suite"
 
-test-slow:
-	@python3 tools/agent.py hardware-check
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	@$(MAKE) tools-build
-	@"$(TOOLS_BUILD_DIR)/test_tools" --studio-selectors "$(abspath $(BUILD_DIR))/test_suite"
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
+test-full test-slow test-render test-compiler-parity:
+	@python3 tools/test_policy.py disabled $@
 
 test-fast:
-	@test -n "$(strip $(TEST_ARGS))" || { printf '%s\n' 'Set TEST_ARGS to a focused test_suite selector, such as --graph-optimize'; exit 2; }
+	@python3 tools/test_policy.py admit-env TEST_ARGS
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(FAST_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) "$(FAST_BUILD_DIR)/test_suite" $(TEST_ARGS)
+	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) python3 tools/test_policy.py native-env TEST_ARGS "$(FAST_BUILD_DIR)/test_suite"
 
-test-list:
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(FAST_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	@env $(NATIVE_RUNTIME_ENV) "$(FAST_BUILD_DIR)/test_suite" --list-tests
-
-test-compiler-parity:
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-behavior-backend test_suite --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/test_suite" --behavior-parity
-
-test-render:
-	@python3 tools/agent.py hardware-check
-	@if [ "$(shell uname -s)" = Darwin ] && [ "$(CHIBI_ALLOW_DESKTOP_RENDER_TESTS)" != 1 ]; then \
-		printf '%s\n' 'Render tests can briefly show a window on macOS. Run them under Xvfb on Linux, or set CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 for a local run.'; \
-		exit 1; \
-	fi
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target test_suite chibi --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --shader-detail-gpu
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --studio-documents
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --rmlui-render
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --rmlui-render-gles
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --arena-play
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/chibi --headless --frames 3
+test-list test-policy-inventory:
+	@python3 tools/test_policy.py inventory
 
 clean:
 	@if git worktree list --porcelain | awk -v root="$(abspath $(BUILD_DIR))" \

@@ -24,7 +24,7 @@ make package-native # package native engine, Studio, and MCP for external games
 make test-tools   # run essential C tooling checks
 make build-tracy  # build native RelWithDebInfo with Tracy enabled
 make run-tracy    # run the native Tracy profile
-make test         # model, runtime, native UI, generation, and loader checks
+make test         # bounded policy regressions; full coverage temporarily DISABLED
 make test-fast TEST_ARGS=--graph-optimize  # focused plain Debug check
 make mcp          # run the local MCP authoring server over stdio
 make mcp-setup    # generate local Codex MCP configuration
@@ -60,8 +60,10 @@ concurrent worktrees. An unchanged configuration is reused; changed Make flags
 or CMake cache settings trigger configuration again.
 
 `make test-fast TEST_ARGS=--graph-optimize` builds only the test executable in
-plain Debug and runs that selector. Use another `test_suite` selector for the
-area you changed. `make test` remains the full ASan and UBSan gate.
+plain Debug and runs an exact admitted selector. `make test`, `make test-short`
+and `make test-tools` run the minimal C pico_unit tooling suite under one shared
+60-second production supervisor deadline. Native full/render and unmeasured
+commands remain quarantined; see [the policy](docs/testing.md#temporary-60-second-policy).
 
 Neon Swarm is the default project for native launches, editor profiles, MCP,
 and `make web-serve`. Its manifest selects `scenes/Sandbox.kdl`.
@@ -145,9 +147,9 @@ threaded browser, and incompatible toolchain or build options use separate entri
 Dependency pins, patches, compiler and SDK identity, and build flags determine
 reuse. A failed or concurrent first build cannot publish an incomplete package.
 Application objects and generated files remain in each checkout's build directory.
-The Tracy Python server keeps a private build because its launcher needs local
-bindings; ordinary Tracy client libraries are shared. External source overrides
-also retain private builds so local dependency edits remain in use. Set
+Native Tracy client libraries are shared; the former Python MCP bridge is
+retired. External source overrides retain private builds so local dependency
+edits remain in use. Set
 `CHIBI_DEPENDENCY_PACKAGES=0` to request a private dependency build explicitly.
 
 Dependency sources are seeded from pristine snapshots in
@@ -167,7 +169,7 @@ Failures print bounded diagnostic excerpts and the full log path. Use `VERBOSE=1
 to stream output. Old completed logs are limited to 20 files and 64 MiB; running
 logs and the current phase are retained. `make build BUILD_TARGET=chibi_ctl` builds
 only the controller; `BUILD_TARGET=` requests the default CMake target set.
-`make test` still runs the complete required checks. Ordinary builds do not create
+`make test` does not certify full coverage during the temporary quarantine. Ordinary builds do not create
 a separate runtime distribution; launch commands refresh registered games, or use
 `make update-game-runtime` explicitly.
 

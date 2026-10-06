@@ -9,6 +9,14 @@ physical GPU is present. CI explicitly opts in, retaining its previous coverage.
 
 ## Inspect, build, select
 
+The optional `zoom` MCP server in `.mcp.json` provides `view_image` and `zoom`
+for inspecting small text, graph wiring, and rendered details. It uses `uv` to
+run `tools/zoom/server.py` with Pillow and the MCP SDK. Call its `view_image`
+first, then pass crop coordinates in the reported view dimensions to `zoom`;
+the crop comes from the original image. Clients may resize displayed images,
+so use the reported dimensions rather than assuming a client's pixel scale.
+Agents with an existing image viewer can use that for ordinary inspection.
+
 ```sh
 python3 tools/agent.py doctor
 python3 tools/agent.py plan logic    # or render / temporal

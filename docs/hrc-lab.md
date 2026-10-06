@@ -1,5 +1,9 @@
 # HRC experiment lab
 
+> Script test and benchmark runners referenced below are retired. Their commands
+> are historical records, not current workflows. Measurements and source hashes
+> describe the recorded revisions; see [testing](testing.md) for current C tooling.
+
 The branch contains an isolated `projects/hrc_lab` project so lighting tests do
 not inherit the arena's starfield, gameplay, or material palette. The fixtures
 use a neutral authored backdrop and fixed camera. The current clean-lab source
@@ -175,7 +179,7 @@ by the unconditional `scene.rgb * ambient` term. The shadow floor is also zero.
 
 ## Run the lab
 
-```sh
+```text
 make build-release
 python3 tools/benchmark_hrc_lab.py \
   --project projects/hrc_lab \
@@ -246,7 +250,7 @@ labels for active dispatch levels.
 
 Capture one warmed Metal frame with:
 
-```sh
+```text
 python3 tools/benchmark_hrc_lab.py \
   --project projects/hrc_lab \
   --hrc-prototype HRCLabHRC \
@@ -261,9 +265,7 @@ timing should not be mixed with ordinary benchmark timing.
 
 ## Angular partition audit
 
-```sh
-python3 tools/audit_hrc_angles.py --levels 5
-```
+The former Python angular audit is retired; its recorded conclusions follow.
 
 The current trace shader uses integer endpoint slopes. That makes endpoint
 spacing uniform in slope, not in radians. Levels 0 and 1 happen to have equal

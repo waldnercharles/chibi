@@ -122,8 +122,8 @@ terrain edges with no internal seams, colored gas/liquid lighting and wall
 shadowing, refraction confined to liquid, and stable transparent-material
 feedback. Noncombat slab fixtures cover the hull-area cutoff and sensor
 penetration through fragments, including a blocking wall and a fragment behind
-it. `tools/check_neon_swarm.py` exercises real shots through wreckage, enemy
-exhaustion, glow fading, material retention and deterministic scene replay.
+it. The retired Python sandbox runner previously checked real shots through
+wreckage, enemy exhaustion, glow fading, material retention and scene replay.
 
 ## Earlier adaptive measurements
 

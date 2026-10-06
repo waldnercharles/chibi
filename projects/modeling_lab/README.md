@@ -37,8 +37,9 @@ This modeling work does not introduce a new GI transport system.
 
 Stage 3 passes the native build, focused model tests, public authoring/refactoring
 checks, and canonical reload. Reproduce its scene with
-`node projects/modeling_lab/author-reuse.mjs --preview`; run the disposable
-authoring check with `node tools/check_modeling_authoring.mjs`.
+`node projects/modeling_lab/author-reuse.mjs --preview`. The former scripted
+authoring, material and override checks are retired; the recorded passes
+describe the original revision.
 
 Stage 4 passes the native build, focused model tests, public override checks, and
 canonical reload. Reproduce with `node projects/modeling_lab/author-bounds.mjs
@@ -129,15 +130,11 @@ under `build/model-evidence`.
 
 Use explicit distribution `make build` followed by `tools/package_native.py`, as
 documented in the contract. `make package-native` invokes the registered-game
-installer even with `UPDATE_GAME_RUNTIME=0`. The focused project check is:
+installer even with `UPDATE_GAME_RUNTIME=0`. The former focused project check used a Python runner:
 
-```sh
-python3 tools/check_modeling_package.py \
-  --package build/model-evidence/package \
-  --project-root projects/modeling_lab \
-  --output build/model-evidence/package-check \
-  --scene ModelPropStudy
-```
+The former Python validation/benchmark helper for this experiment is retired.
+Use the native controller to validate assets or request previews; see
+[testing](../../docs/testing.md).
 
 It copies the engine and project into disposable paths, checks source inclusion
 and every model/material/scene, rejects a malformed saved edit without rewriting

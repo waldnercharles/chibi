@@ -1,14 +1,3 @@
-## Cloud session startup
-
-In the Debian workspace cloud environment (`/workspace/.cloud-tools`), normal
-Make commands and direct MCP launch automatically run repository preflight before
-project work. Use `make cloud-preflight` to report readiness and `make cloud-smoke`
-for bounded compiler checks. For other tool calls use
-`tools/cloud/bin/start_skill -- <command> [args...]`, adding `--modeling` before
-Blender work. `CHIBI_CLOUD=0` opts Make/MCP out. Missing setup stops with recovery
-instructions. This does not activate arbitrary platform shells; see
-[cloud setup](docs/cloud-setup.md) for supported entry points and publication limits.
-
 - When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. When the change stops projects saved by earlier builds from loading, bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and the `version` in every `project.kdl`.
 - Follow YAGNI principles, and boring solutions.
 - Shared source implements components, nodes, functions, and systems reusable across games. Authored assets own scene composition, game rules, visual choices, and tuning.
@@ -34,6 +23,7 @@ instructions. This does not activate arbitrary platform shells; see
 - Includes: `"project.h"` for project code; `<system.h>` otherwise.
 - Keep ownership/lifetimes explicit; mark file-private symbols `static`.
 - Prefer direct calls and `switch` statements to function pointers.
+- Write benchmarks, unit tests, and integration tests in C using pico_unit; use another third-party library when additional functionality is needed.
 - Write C, never C++. The only exceptions are pass-through shims to C++ APIs: `src/ui/rml.cpp` (RmlUi), `src/editor/text/zep_bridge.cpp` (Zep) and `test/draw_backend.cpp` (Cute's C++-linkage draw diagnostics). They only convert types and forward calls, so all logic stays in C.
 - Follow existing names and clang-format; keep short names local; name constants and invariants with `#define`, `enum`, or `static const`.
 

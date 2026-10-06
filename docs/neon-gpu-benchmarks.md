@@ -1,5 +1,9 @@
 # NeonSwarm GPU benchmarks and captures
 
+> Script test and benchmark runners referenced below are retired. Their commands
+> are historical records, not current workflows. Measurements and source hashes
+> describe the recorded revisions; see [testing](testing.md) for current C tooling.
+
 The first measured renderer optimization is documented in
 [compact HRC radiance buffers](neon-hrc-optimization.md).
 
@@ -10,7 +14,7 @@ both scale and directly traced levels are recorded.
 
 ## Run the suite
 
-```sh
+```text
 make build-release
 python3 tools/benchmark_neon_materials.py --scenario all --output /tmp/neon-1080
 python3 tools/benchmark_neon_materials.py --scenario all --mode live --resolution .5 \
@@ -91,7 +95,7 @@ See [the timestamp method](neon-hrc-optimization.md#per-pass-gpu-time).
 
 ## Record a Metal frame
 
-```sh
+```text
 python3 tools/benchmark_neon_materials.py --scenario ignition --mode frozen \
   --resolution .5 --metal-capture --output /tmp/neon-metal-ignition
 python3 tools/benchmark_neon_materials.py --scenario travel --mode frozen \
@@ -122,7 +126,7 @@ submission. It does not record initialization or all warmup frames.
 
 ## Replay or open under a debugger
 
-```sh
+```text
 /tmp/neon-1080/travel-frozen-1-1/replay.sh
 python3 tools/benchmark_neon_materials.py \
   --replay /tmp/neon-1080/travel-frozen-1-1 --allow-renderer-changes

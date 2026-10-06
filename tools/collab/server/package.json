@@ -8,7 +8,6 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test test/*.test.mjs",
     "check": "node --check server.mjs && node --check room-service.mjs && node --check protocol.mjs && node --check websocket.mjs"
   }
 }

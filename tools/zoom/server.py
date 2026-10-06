@@ -5,9 +5,9 @@
 """MCP zoom tool: crop a region of an image file and return it magnified.
 
 Adapted from https://platform.claude.com/cookbook/multimodal-crop-tool.
-view_image returns the image pre-resized to exactly what Claude sees, so the
-pixel coordinates Claude passes to zoom map 1:1 onto it; zoom crops from the
-full-resolution original and upscales the crop to fill the image budget.
+view_image reports the returned image dimensions. Pass coordinates in that
+image to zoom, which crops from the full-resolution original and magnifies
+the crop within the configured image budget.
 """
 
 import math
@@ -18,9 +18,8 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP, Image
 from PIL import Image as PILImage
 
-# High-resolution tier (Claude 4.7 and later) token budget. The edge is capped at
-# 2000 because Claude Code downscales larger images client-side, which would break
-# the 1:1 coordinate mapping. Use 1568/1568 for standard-tier models.
+# Output budgets are configurable because clients may resize tool images.
+# Use the dimensions returned by this server when choosing crop coordinates.
 MAX_EDGE = int(os.environ.get("ZOOM_MAX_EDGE", 2000))
 MAX_TOKENS = int(os.environ.get("ZOOM_MAX_TOKENS", 4784))
 MAX_PNG_BYTES = 1_500_000
@@ -33,7 +32,7 @@ def count_image_tokens(width: int, height: int) -> int:
 
 
 def resized_size(width: int, height: int) -> tuple[int, int]:
-    """The size Claude resizes an image to (reference implementation from the vision docs)."""
+    """Fit an image within the configured edge and approximate token budgets."""
 
     def fits(w: int, h: int) -> bool:
         return (
@@ -91,7 +90,7 @@ def encode(image: PILImage.Image, prefer_png: bool) -> Image:
 
 @mcp.tool()
 def view_image(path: str) -> list:
-    """Show an image file at exactly the resolution you see it, and report that size.
+    """Show an image file and report the dimensions of the returned view.
 
     Call this before zoom: zoom coordinates are pixels in the image as returned here.
     Prefer this over reading the image file directly when you may need to zoom.

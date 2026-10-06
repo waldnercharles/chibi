@@ -9,9 +9,15 @@ physical GPU is present. CI explicitly opts in, retaining its previous coverage.
 
 ## Inspect, build, select
 
+The optional `zoom` MCP server in `.mcp.json` provides `view_image` and `zoom`
+for inspecting small text, graph wiring, and rendered details. It uses `uv` to
+run `tools/zoom/server.py` with Pillow and the MCP SDK. Call its `view_image`
+first, then pass crop coordinates in the reported view dimensions to `zoom`;
+the crop comes from the original image. Clients may resize displayed images,
+so use the reported dimensions rather than assuming a client's pixel scale.
+Agents with an existing image viewer can use that for ordinary inspection.
+
 ```sh
-# In this saved cloud environment, if present:
-source /workspace/.cloud-tools/activate.sh
 python3 tools/agent.py doctor
 python3 tools/agent.py plan logic    # or render / temporal
 make agent-list
@@ -162,15 +168,6 @@ all current-head/server checks and records pending matrix, web and release gates
 `python3 tools/agent.py validation-plan --base origin/main` lists Git identity and
 outstanding work without probing graphics or claiming execution.
 
-Activation and provisioning are owned by CUT-49/CUT-52. This change consumes the
-existing environment and does not own setup scripts or installation state.
-
-Smallest saved-cloud-start change: keep the existing dependency activation and
-caches, and optionally export `CHIBI_EXECUTION_PROFILE=iteration` (already the
-code default). Run `doctor` once when capabilities change. No new installation,
-driver changes, security changes, network changes or unpublished setup scripts
-are required. This change does not edit the saved cloud setup.
-
 ## Bounded artifact validation (2026-10-05)
 
 At the isolated PR151 base `95d70d0d`, the ASan/UBSan build exercised the existing
@@ -184,7 +181,6 @@ With that JSON saved as `/tmp/chibi-agent-feature-validation/request.json`, the
 commands below produced actual artifacts (use fresh output paths when repeating):
 
 ```sh
-source /workspace/.cloud-tools/activate.sh
 xvfb-run -a env CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb python3 tools/agent.py preview /tmp/chibi-agent-feature-validation/request.json --project-root projects/arena2d --output /tmp/chibi-agent-feature-validation/preview.json
 xvfb-run -a env CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb python3 tools/agent.py mp4 /tmp/chibi-agent-feature-validation/request.json --project-root projects/arena2d --frames 60 --output /tmp/chibi-agent-feature-validation/capture.mp4
 ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=codec_name,width,height,pix_fmt,r_frame_rate,nb_read_frames,duration -of json /tmp/chibi-agent-feature-validation/capture.mp4

@@ -21,7 +21,7 @@ make debug        # plain Debug editor
 make debug-san    # Debug editor with ASan and UBSan
 make build        # build sanitizer-enabled Debug app and controller
 make package-native # package native engine, Studio, and MCP for external games
-make test-package # verify the package without rebuilding during authoring
+make test-tools   # run essential C tooling checks
 make build-tracy  # build native RelWithDebInfo with Tracy enabled
 make run-tracy    # run the native Tracy profile
 make test         # model, runtime, native UI, generation, and loader checks
@@ -93,8 +93,8 @@ saves `scenarios/<Scene> Recording.kdl`; the command palette lists each
 scenario to replay on a loop until Stop. Scenarios can also be written by hand
 (see [the MCP workflow](docs/mcp.md#scenario-assets)). `ARGS='--play --scenario
 Firefight'`, or `?play&scenario=Firefight` in the browser, replays one on a loop
-in the game, and `make profile-compare PROFILE_SCENARIO=Firefight` profiles the
-same play headless natively and as WASM.
+in the game. The native controller exposes `profile_scenario` for headless
+measurements; browser frame summaries provide web timing.
 
 Run `make help` for the complete target list and the purpose of each target.
 

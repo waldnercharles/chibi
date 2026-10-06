@@ -15,7 +15,7 @@ build-web-site/
 build-web-asan/
 build-reflect/
 build-tracy/
-build-tracy-mcp/
+build-tools/
 generated/
 .pi-lens/
 .cache/

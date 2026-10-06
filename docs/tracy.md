@@ -23,8 +23,8 @@ plus a fixed-step histogram, catch-up-frame count and dropped-time totals.
 `Module.chibiDownloadFrames()` saves them as CSV. Add
 `?play&scenario=Firefight` to the URL to replay the same gameplay each time, so
 a summary before a change and one after it compare the same play on real
-hardware. `make profile-compare PROFILE_SCENARIO=Firefight` compares that play
-headless, natively and as WASM. A catch-up frame ran more than one fixed step;
+hardware. Use the native controller's `profile_scenario` operation for headless
+measurements. A catch-up frame ran more than one fixed step;
 a dropped frame reports nonzero `dropped_ms`. `interval_ms` is the spacing
 between app log samples, which are recorded before presentation; it is not a
 GPU-completion time. Use the `Present / GPU wait` trace zone to investigate
@@ -144,35 +144,6 @@ frame to distinguish steady costs from work concentrated in slow frames.
 Nested zones split pair sorting from contact comparison, and contact-batch
 dispatch from lifecycle processing. `Detach behavior attachments` isolates
 behavior removal within bulk entity destruction.
-
-## Tracy MCP
-
-Tracy's upstream source includes an optional MCP server. It loads `.tracy`
-captures, connects to a live instrumented process, and exposes the Worker
-analysis surface for CPU zones, GPU zones, frames, threads, memory, locks,
-plots, and callstacks. The server is separate from the project's authoring
-MCP because it needs Python bindings and runs as a local HTTP MCP service.
-
-Build the bindings when MCP analysis is needed:
-
-```sh
-make build-tracy-mcp
-python3 -m pip install -r build-tracy-mcp/_deps/tracy-src/extra/mcp/requirements.txt
-make tracy-mcp
-```
-
-The launcher finds the generated `TracyServerBindings` module and prints the
-MCP URL. Set `TRACY_MCP_PYTHON` before both build and run to use a virtual
-environment for the bindings and server. Set `TRACY_MCP_BUILD_DIR` to use
-another build directory. Call `unload_capture` after analysis so large traces
-do not remain resident in the MCP process.
-
-The useful workflow is:
-
-1. Run the deterministic scenario and record its world hash and timing result.
-2. Capture the same run with Tracy attached.
-3. Ask the MCP for the hottest self time zones and frame percentiles.
-4. Compare captures after a code change, then rerun the deterministic check.
 
 GPU pass timing depends on the renderer backend exposing GPU timestamps. The
 existing preview measurement records GPU complete host time and the Tracy

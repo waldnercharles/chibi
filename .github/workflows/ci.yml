@@ -65,8 +65,8 @@ jobs:
         run: |
           make test-policy-inventory | tee -a "$GITHUB_STEP_SUMMARY"
           cat docs/test-quarantine.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Short policy regressions (60-second aggregate ceiling)
-        run: make test-short
+      - name: Essential C regressions (60-second aggregate ceiling)
+        run: make test-short TOOLS_C_COMPILER=clang-18
       - name: Configure and compile native suite (not test runtime)
         run: make build BUILD_TARGET=test_suite
       - name: Focused graph optimizer (60-second ceiling)

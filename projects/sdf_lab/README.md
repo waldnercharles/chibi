@@ -80,11 +80,9 @@ frame measurements. Root-level tooling records validation and preview evidence.
 
 Capture all seven scenes, or measure advancing frames in a release build:
 
-```sh
-python3 tools/check_sdf_lab.py
-python3 tools/check_sdf_lab.py --build build-release --benchmark \
-  --scene SdfSwarm256 --scene SdfSwarm1000
-```
+The former Python validation/benchmark helper for this experiment is retired.
+Use the native controller to validate assets or request previews; see
+[testing](../../docs/testing.md).
 
 The benchmark excludes 240 warmup frames and the first 16 measured frames.
 It includes simulation, rendering, a wait for scene GPU work, and the CPU
@@ -121,14 +119,9 @@ SDF instances could use this path, but particle simulation is unchanged.
 
 Compare grouping with one instance per draw in the same release executable:
 
-```sh
-python3 tools/check_sdf_lab.py --build build-release --benchmark \
-  --scene SdfInstanceSwarm1000 --sdf-batch-limit 1 \
-  --output build/sdf-batching-evidence/reference
-python3 tools/check_sdf_lab.py --build build-release --benchmark \
-  --scene SdfInstanceSwarm1000 --sdf-batch-limit 256 \
-  --output build/sdf-batching-evidence/batched
-```
+The former Python validation/benchmark helper for this experiment is retired.
+Use the native controller to validate assets or request previews; see
+[testing](../../docs/testing.md).
 
 `performance.mesh_work` reports the last rendered frame's surface submissions,
 SDF instance count, uploads and bytes. Each group containing SDFs uploads once,
@@ -232,7 +225,7 @@ clamps values above one; raw RGBA16F fixture readbacks provide exact counts.
 These counts exclude discarded rays and occluded fragments and do not measure
 GPU time or individual arithmetic instructions.
 
-The serial comparison driver is `tools/check_sdf_optimizations.py`. It separates
+The retired `tools/check_sdf_optimizations.py` comparison driver separated
 record/replay, image and measurement phases. CPU comparisons use preserved
 executables, an identical isolated asset set and the same archived shaders on
 both sides. Quality comparisons use one executable and change one option at a
@@ -321,7 +314,7 @@ Five independent scenes exercise optional horizon reuse without gameplay:
 
 `author-hrc-reuse.mjs` publishes through the public MCP protocol, verifies the
 project root, validates/canonicalizes new assets, and preserves every prior KDL
-file by hash. `tools/check_hrc_reuse.py` validates 360-frame record/replay and
+file by hash. The retired `tools/check_hrc_reuse.py` validated 360-frame record/replay and
 checks that only the intended entity changes. It compares the four independent
 `horizon_reuse` request booleans (`fuse_relief`, `cache`, `reproject`, `hierarchy`)
 and combined modes. Cache and reprojection comparisons require exact PNG parity;
@@ -329,11 +322,9 @@ fusion/hierarchy differences are saved for rendered review. Pass counters do not
 measure GPU cache hits or repaired pixels. The default 480×270 image captures
 keep the validation workload bounded. Timings are a separate opt-in phase.
 
-```sh
-node projects/sdf_lab/author-hrc-reuse.mjs
-python3 tools/check_hrc_reuse.py --build build --phase replay
-python3 tools/check_hrc_reuse.py --build build-release --phase images
-```
+The former Python validation/benchmark helper for this experiment is retired.
+Use the native controller to validate assets or request previews; see
+[testing](../../docs/testing.md).
 
 The five reuse scenes pass deterministic 360-frame replay and pose checks.
 Native fixed-pose pairs preserve exact pixels for caching and batching controls;
@@ -422,11 +413,9 @@ central normals to Analytic; the isolated fallback compares four-sample
 tetrahedral normals to Analytic and requires exact image parity. Run bounded
 captures at two fixed poses to exercise the breathing sphere:
 
-```sh
-python3 tools/check_hrc_reuse.py --build build --phase images \
-  --case normal-analytic-gradients --case normal-analytic-fallback \
-  --image-frame 0 --image-frame 90 --output build/sdf-gradient-evidence/images
-```
+The former Python validation/benchmark helper for this experiment is retired.
+Use the native controller to validate assets or request previews; see
+[testing](../../docs/testing.md).
 
 These image comparisons measure visible differences. They do not establish frame
 time or the number of surviving fragment evaluations. The engine gradient tests
@@ -474,13 +463,9 @@ not reflected scene components. The driver keeps surface quality and the other
 optimization stable while toggling one feature. Each pair requires matching
 simulation state and exact final PNGs; work counters are saved separately.
 
-```sh
-python3 tools/check_hrc_reuse.py --build build --phase images \
-  --case hidden-surface --case hidden-near-plane \
-  --case spatial-scratch-sparse --case spatial-scratch-hidden \
-  --case spatial-scratch-near-plane \
-  --output build/sdf-occlusion-evidence/images
-```
+The former Python validation/benchmark helper for this experiment is retired.
+Use the native controller to validate assets or request previews; see
+[testing](../../docs/testing.md).
 
 These cases default to fixed poses at frames 0 and 90. `scratch_groups` counts
 submitted scratch regions, `composition_pixels` counts composed region pixels,

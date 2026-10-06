@@ -1,5 +1,9 @@
 # NeonSwarm performance and gas appearance
 
+> Script test and benchmark runners referenced below are retired. Their commands
+> are historical records, not current workflows. Measurements and source hashes
+> describe the recorded revisions; see [testing](testing.md) for current C tooling.
+
 For the expanded stress suite, frozen comparisons and replayable GPU traces, see
 [GPU benchmarks and captures](neon-gpu-benchmarks.md). The measurements below
 record earlier implementation passes.
@@ -21,7 +25,7 @@ The reported frame time includes GPU completion and excludes the preview's
 The latter includes submission, window work and GPU waiting, not isolated GPU
 execution. No per-pass GPU timestamps are exposed by the current backend.
 
-```sh
+```text
 python3 tools/benchmark_neon_materials.py --output /tmp/neon-half --scale .5
 python3 tools/benchmark_neon_materials.py --output /tmp/neon-full --scale 1
 python3 tools/benchmark_neon_materials.py --output /tmp/neon-800 --width 1280 --height 800
@@ -30,7 +34,7 @@ python3 tools/benchmark_neon_materials.py --output /tmp/neon-800 --width 1280 --
 Tracy uses the same scenario and a symbolized build. The matching upstream
 `capture` and `csvexport` tools can be built from `build-tracy/_deps/tracy-src`.
 
-```sh
+```text
 python3 tools/benchmark_neon_materials.py --build build-tracy \
   --mode live --scale .5 --tracy-capture build-tracy/capture/tracy-capture --output /tmp/neon-tracy
 build-tracy/csvexport/tracy-csvexport -u /tmp/neon-tracy/travel-live-0.5-1/capture.tracy > /tmp/neon-zones.csv

@@ -9,7 +9,7 @@ from test_policy import admitted, TOOLS
 
 FULL = 'make test-full'  # Quarantined: fails closed; never schedules the full suite.
 INTEGRATION = ['make check-format']
-QUARANTINED = [FULL, 'make test-render', 'make test-tools', 'make test-compiler-parity']
+QUARANTINED = [FULL, 'make test-render', 'make test-compiler-parity']
 
 
 def add_parser(sub):
@@ -22,7 +22,7 @@ def add_parser(sub):
     parser.add_argument('--scope', choices=['focused', 'unknown', 'mixed'], default='unknown')
     parser.add_argument('--review-note', default='', help='Reviewer, changed contract and why these checks cover it')
     parser.add_argument('--selector', action='append', default=[], help='Use --selector=--name; repeat as needed')
-    parser.add_argument('--tools', action='store_true', help='Legacy aggregate request; currently refused by temporary quarantine')
+    parser.add_argument('--tools', action='store_true', help='Include the admitted essential C tooling aggregate')
     parser.add_argument('--tool', action='append', default=[], choices=sorted(TOOLS),
                         help='Plan one admitted complete tooling command; repeat as needed')
     parser.add_argument('--verify', type=Path, help='Compare a saved plan to current local refs; does not fetch or certify tests')
@@ -41,22 +41,20 @@ def make_plan(args, root, cpu, gpu):
         raise ValueError('declared members require --confirm-eligible-members after checking reviews, holds and required approvals')
     if args.confirm_eligible_members and not args.source:
         raise ValueError('eligibility confirmation requires declared --source members')
-    if args.tools:
-        raise ValueError('make test-tools aggregate is quarantined; select an admitted --tool instead')
     selectors = sorted(set(args.selector))
     for selector in selectors:
         if selector not in cpu and selector not in gpu:
             raise ValueError(f'unclassified selector: {selector}')
         if not admitted([selector]) or selector not in cpu:
             raise ValueError(f'selector is quarantined for agent-test: {selector}')
-    if args.scope == 'focused' and (not args.review_note.strip() or not (selectors or args.tool)):
-        raise ValueError('focused scope requires a review note and admitted selectors or --tool')
+    if args.scope == 'focused' and (not args.review_note.strip() or not (selectors or args.tools or args.tool)):
+        raise ValueError('focused scope requires a review note and admitted selectors or tooling')
     base, head = commit(root, args.base), commit(root, args.head)
     if head != commit(root, 'HEAD') or git(root, 'status', '--porcelain', '--untracked-files=normal'):
         raise ValueError('check out the planned head with a clean worktree; save plans/logs outside the worktree')
     git(root, 'merge-base', '--is-ancestor', base, head)
     changes = git(root, 'diff', '--name-status', '--no-renames', base, head, '--').splitlines()
-    focused = [f'make test-tool-{name}' for name in sorted(set(args.tool))]
+    focused = ['make test-tools'] if args.tools or args.tool else []
     for selector in selectors:
         focused.append(f'make agent-test AGENT_SELECTOR={selector}')
     return dict(

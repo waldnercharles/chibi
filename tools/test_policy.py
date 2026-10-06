@@ -33,32 +33,8 @@ NATIVE = {
     ('--studio-shell', 'readout_follows_camera'): '3s; PR164 focused evidence',
     ('--bench-arena-scene-scale', '2048', '240', '0'): '1.4s; Arena scaling evidence',
 }
-# Each of these 21 unchanged command shapes was part of the measured 24.4s
-# tooling baseline; validation-plan is separately admitted for this policy fix.
-TOOLS = {'fetchcontent-cache': ['python3', 'test/fetchcontent_cache_test.py'],
- 'configure-cache': ['python3', 'test/configure_cache_test.py'],
- 'dependency-package': ['python3', 'test/dependency_package_test.py'],
- 'package-web': ['python3', 'test/package_web_test.py'],
- 'publish-web': ['python3', 'test/publish_web_test.py'],
- 'package-native': ['python3', 'test/package_native_test.py'],
- 'install-game-runtime': ['python3', 'test/install_game_runtime_test.py'],
- 'runtime-update-build': ['python3', 'test/runtime_update_build_test.py'],
- 'quiet': ['python3', 'test/quiet_test.py'],
- 'workspaces': ['python3', 'test/workspaces_test.py'],
- 'workspace-retirement': ['python3', 'test/workspace_retirement_test.py'],
- 'workspace-make': ['python3', 'test/workspace_make_test.py'],
- 'workspace-install': ['python3', 'test/workspace_install_test.py'],
- 'mcp-package': ['node', '--test', 'test/mcp_package_test.mjs'],
- 'web-serve': ['python3', 'test/web_serve_test.py'],
- 'web-workspace': ['node', 'test/web_workspace_test.mjs'],
- 'web-storage': ['node', 'test/web_storage_test.mjs'],
- 'web-frames': ['node', 'test/web_frames_test.mjs'],
- 'web-isolation': ['node', 'test/web_isolation_test.mjs'],
- 'collab-client': ['node', 'test/collab_client_test.mjs'],
- 'validation-plan': ['python3', 'test/validation_plan_test.py'],
- 'kdl-assets': ['python3', 'test/kdl_asset_test.py'],
- 'execution-policy': ['python3', 'test/execution_policy_test.py']}
-NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render, tooling aggregate and '
+TOOLS = {'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools')]}
+NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')
 
 
@@ -298,32 +274,25 @@ def main():
     if args.action == 'inventory':
         for command, evidence in NATIVE.items():
             print('ADMITTED (60s ceiling):', ' '.join(command), '-', evidence)
-        print('ADMITTED: make test / test-short (policy, validation-plan and execution-policy regressions, one deadline)')
-        print('ADMITTED: test-tool-validation-plan, test-tool-execution-policy, test-studio-selectors')
-        print('ADMITTED TOOL TARGETS:', ', '.join('test-tool-' + name for name in TOOLS))
-        print('Other native commands and unmeasured tooling remain quarantined; see docs/test-quarantine.md.')
+        print('ADMITTED: make test / test-short / test-tools (essential C pico_unit tooling, one deadline)')
+        print('ADMITTED: make test-studio-selectors (C CLI checks, one deadline)')
+        print('Retired script suites are absent. Other native commands remain quarantined; see docs/test-quarantine.md.')
         return 0
     if args.action == 'disabled':
         print('DISABLED:', ' '.join(arguments), file=sys.stderr)
         return 2
     if args.action == 'short':
-        if arguments:
-            parser.error('short accepts no arguments')
-        return run_commands([[sys.executable, str(ROOT / 'test/test_policy_test.py')],
-                             [sys.executable, str(ROOT / 'test/validation_plan_test.py')],
-                             [sys.executable, str(ROOT / 'test/execution_policy_test.py')],
-                             ['node', '--test', 'test/mcp_execution_policy_test.mjs']])
-    if args.action == 'studio-selectors':
         if len(arguments) != 1:
-            parser.error('studio-selectors requires a test_suite binary')
-        return run_commands([[sys.executable, 'test/studio_selectors_test.py', arguments[0]]])
+            parser.error('short requires the native C tooling test binary')
+        return run_commands([[str(Path(arguments[0]).resolve())]])
+    if args.action == 'studio-selectors':
+        if len(arguments) != 2:
+            parser.error('studio-selectors requires the C tooling driver and test_suite binary')
+        return run_commands([[str(Path(arguments[0]).resolve()), '--studio-selectors', str(Path(arguments[1]).resolve())]])
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
-        commands = [TOOLS[arguments[0]]]
-        if arguments[0] == 'execution-policy':
-            commands.append(['node', '--test', 'test/mcp_execution_policy_test.mjs'])
-        return run_commands(commands)
+        return run_commands([TOOLS[arguments[0]]])
     if args.action in ('admit-env', 'native-env', 'agent-env'):
         expected = 1 if args.action == 'admit-env' else 2
         if len(arguments) != expected:

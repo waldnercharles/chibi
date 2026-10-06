@@ -42,7 +42,12 @@ Arrays lower to the existing `ForEach` node and behavior variables. That node vi
 
 Code-to-graph and graph-to-code cover the structured forms above. The map records semantic variable targets as well as node IDs and types, so retargeting a source set operation recreates its Get/Set Variable nodes instead of keeping stale references. Graph input bindings must map back to a declared source component alias and a registered field; an unbound input must have an explicit scalar default that can be written as a source literal, or graph-to-code rejects it for missing provenance. The exported source is resolved again before it is returned. An edit that changes source-owned node types or wires, changes a mapped variable reference in the graph, or adds an unsupported cross-link stops export/compile with an error before the source or map is rewritten. Extra graph content outside the mapped source-owned region remains outside the export. `// @node name` markers are optional and only needed when statement identities cannot be matched uniquely.
 
-The current bridge keeps `.code` source, a `.map.json` identity sidecar, and the existing `.kdl` behavior graph. A future code-canonical behavior format can treat the typed graph as the compiler/editor representation and retain layout and node identities as editor metadata. It would need versioned migration that preserves state, identity, and unsupported graph content; other asset types are outside that direction. No destructive KDL migration is part of this slice.
+The current bridge keeps `.code` source, a `.map.json` identity sidecar, and the
+existing `.kdl` behavior graph. The intended replacement makes `.code` canonical
+and constructs typed native graphs directly. It requires versioned migration
+preserving state, identity and arbitrary graph content. The complete goal spans
+all KDL-backed asset domains; this bridge still supports only its current behavior
+slice. See the [source roadmap](../../docs/code-source-roadmap.md), CUT-70 and CUT-71.
 
 `validate FILE` prints one JSON object. On failure its diagnostic includes a stable `code`, `message`, and source `span` (`start`, `end`, `line`, `column`). It checks parsing and schema/name resolution; expression typing and executable graph rules are confirmed by `compile` through the native graph compiler. Native build diagnostics retain their graph compiler rule code and are mapped back to the owning source statement where the operation can be identified.
 

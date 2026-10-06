@@ -1,28 +1,10 @@
-# Bootstrap before workspace enrollment/locking; the child retains Make flags and
-# command-line overrides. Query/dry-run/touch and non-tool goals need no preflight.
-export CHIBI_CLOUD CHIBI_CLOUD_TOOLS
-CHIBI_CLOUD_GOALS := $(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
-CHIBI_CLOUD_BOOTSTRAP :=
-CHIBI_CLOUD_MAKE_FLAGS := $(filter-out --%,$(firstword $(MAKEFLAGS)))
-ifeq ($(filter help clean,$(CHIBI_CLOUD_GOALS)),$(CHIBI_CLOUD_GOALS))
-else
-ifeq ($(findstring n,$(CHIBI_CLOUD_MAKE_FLAGS))$(findstring q,$(CHIBI_CLOUD_MAKE_FLAGS))$(findstring t,$(CHIBI_CLOUD_MAKE_FLAGS)),)
-ifneq ($(wildcard tools/cloud/entry.sh),)
-CHIBI_CLOUD_BOOTSTRAP := $(shell bash tools/cloud/entry.sh --probe)
+# Each measured validation command owns one deadline; aggregates are unmeasured.
+CHIBI_TEST_GOALS := $(filter test% agent-test agent-gpu-test benchmark,$(MAKECMDGOALS))
+ifneq ($(strip $(CHIBI_TEST_GOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Temporary 60-second policy: use one validation goal per invocation; aggregate is unadmitted)
 endif
 endif
-endif
-ifeq ($(CHIBI_CLOUD_BOOTSTRAP),1)
-.DEFAULT_GOAL := all
-.PHONY: $(CHIBI_CLOUD_GOALS) .chibi-cloud-invocation
-$(CHIBI_CLOUD_GOALS): .chibi-cloud-invocation
-# A command-line PATH must stay exact in the child Make as well as preflight.
-ifeq ($(origin PATH),command line)
-export CHIBI_CLOUD_KEEP_PATH := 1
-endif
-.chibi-cloud-invocation:
-	+@bash tools/cloud/entry.sh $(MAKE) $(CHIBI_CLOUD_GOALS)
-else
 
 # Native desktop setup commands can run before a SessionStart hook.
 # Enrollment is silent and creates no state for repositories without installation.
@@ -70,7 +52,6 @@ PACKAGE_BUILD_DIR ?= build-package
 PACKAGE_OUTPUT ?= dist/chibi-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 UPDATE_GAME_RUNTIME ?= 1
 TRACY_BUILD_DIR ?= build-tracy
-TRACY_MCP_BUILD_DIR ?= build-tracy-mcp
 WEB_BUILD_DIR ?= build-web
 WEB_PROFILE_BUILD_DIR ?= build-web-profile
 WEB_THREADS_BUILD_DIR ?= build-web-threads
@@ -80,53 +61,15 @@ FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
 BUILD_TARGET ?= chibi chibi_ctl
 VERBOSE ?= 0
-export VERBOSE
+export VERBOSE TEST_ARGS AGENT_SELECTOR
 MAKEFLAGS += --no-print-directory
 QUIET = python3 tools/quiet.py
 AGENT_SELECTOR ?= --graph-optimize
 TEST_ARGS ?=
-# Selector text is data: export it rather than inserting it into shell recipes.
-export TEST_ARGS AGENT_SELECTOR
-TEST_JOBS ?= 4
 TEST_TIMINGS ?= 0
-TEST_TOOL_TARGETS = \
-	test-tool-validation-plan \
-	test-tool-behavior-code \
-	test-tool-execution-policy \
-	test-tool-kdl-assets \
-	test-tool-fetchcontent-cache \
-	test-tool-configure-cache \
-	test-tool-dependency-package \
-	test-tool-package-web \
-	test-tool-publish-web \
-	test-tool-package-native \
-	test-tool-install-game-runtime \
-	test-tool-runtime-update-build \
-	test-tool-quiet \
-	test-tool-workspaces \
-	test-tool-workspace-retirement \
-	test-tool-workspace-make \
-	test-tool-cloud-entry \
-	test-tool-cloud-emscripten-setup \
-	test-tool-workspace-install \
-	test-tool-mcp-package \
-	test-tool-web-serve \
-	test-tool-web-workspace \
-	test-tool-web-storage \
-	test-tool-web-frames \
-	test-tool-web-isolation \
-	test-tool-collab-client
-
 ifneq ($(strip $(TEST_ARGS)),)
 ifneq ($(MAKECMDGOALS),test-fast)
 $(error TEST_ARGS is only supported with test-fast as the sole make goal)
-endif
-endif
-# Do not repackage separate admitted commands into an unmeasured aggregate.
-CHIBI_TEST_GOALS := $(filter test% agent-test agent-gpu-test benchmark profile-compare,$(MAKECMDGOALS))
-ifneq ($(strip $(CHIBI_TEST_GOALS)),)
-ifneq ($(words $(MAKECMDGOALS)),1)
-$(error Temporary 60-second policy: use one validation goal per invocation; aggregate is unadmitted)
 endif
 endif
 # Apple Clang 17 does not unregister ASan globals on dlclose. Use installed
@@ -136,8 +79,6 @@ DEBUG_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DCH
 RELEASE_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 BENCHMARK_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 TRACY_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_TRACY=ON -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
-TRACY_MCP_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_TRACY=ON -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON -DTRACY_CLIENT_PYTHON=ON -DTRACY_STATIC=OFF
-TRACY_MCP_PYTHON ?= python3
 SANITIZERS ?= address,undefined
 SANITIZER_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=ON -DCHIBI_SANITIZERS=$(SANITIZERS) -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
@@ -147,18 +88,11 @@ FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy build-tracy-mcp mcp mcp-controller mcp-setup tracy-mcp run debug debug-san play build-release run-tracy benchmark web publish-web web-serial web-configure web-serve web-profile web-threads web-threads-serve profile-compare format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render clean
+.PHONY: all help build build-debug build-tracy mcp mcp-controller mcp-setup run debug debug-san play build-release run-tracy benchmark web publish-web web-serial web-configure web-serve web-profile web-threads web-threads-serve format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render clean
 
 all: build
 
-.PHONY: cloud-preflight cloud-smoke
-cloud-preflight:
-	@bash tools/cloud/entry.sh --report
-
-cloud-smoke:
-	@bash tools/cloud/entry.sh bash tools/cloud/smoke.sh
-
-.PHONY: package-native test-package update-game-runtime
+.PHONY: package-native update-game-runtime
 
 help:
 	@printf '%s\n' \
@@ -173,22 +107,24 @@ help:
 		'make build-release  Build the fully optimized native profile' \
 		'make package-native Build a relocatable engine, Studio, and MCP package' \
 		'make update-game-runtime Refresh registered games explicitly' \
-		'make test-package   Verify the native package against an external game' \
 		'make build-tracy    Build native RelWithDebInfo with Tracy enabled' \
 		'make run-tracy      Run the native Tracy profile' \
-		'make tracy-mcp      Build and run the official Tracy MCP server' \
 		'make agent-list     List CPU selectors and bounded GPU capabilities' \
 		'make agent-test AGENT_SELECTOR=--graph-optimize  CPU iteration' \
-		'make agent-gpu-test DISABLED pending command timing review' \
-		'make test           Bounded partial regressions; full coverage DISABLED' \
+		'make agent-gpu-test Quarantined: unmeasured GPU agent command' \
+		'make test           Run essential C regressions under one 60-second deadline' \
+		'make test-short     Run essential C regressions under one deadline' \
+		'make test-studio-selectors  Validate native selector discovery in C' \
+		'make test-policy-inventory  Report temporary test admission policy' \
 		'make test-fast TEST_ARGS=--graph-optimize  Run one focused native selector' \
-		'make test-list      Show admitted commands and quarantine' \
-		'make test-tools     DISABLED pending aggregate timing review' \
-		'make test-slow      DISABLED: full native suite exceeds 60 seconds' \
-		'make test-full      DISABLED: complete gate exceeds 60 seconds' \
-		'make test-compiler-parity  DISABLED pending command timing review' \
-		'make test-render    DISABLED: render suite exceeds 60 seconds' \
-		'make benchmark      DISABLED pending aggregate timing review' \
+		'make test-list      Report exact admitted commands and quarantined coverage' \
+		'make test-tools     Alias for the bounded essential C regressions' \
+		'make tools-build    Build native tooling tests and benchmark_trials' \
+		'make test-slow      Quarantined: complete native suite and function audit' \
+		'make test-full      Quarantined: full tooling and native gate' \
+		'make test-compiler-parity  Quarantined: unmeasured compiler parity checks' \
+		'make test-render    Quarantined: full GPU and window checks' \
+		'make benchmark      Quarantined: unmeasured benchmark aggregate' \
 		'make dev            Run the RelWithDebInfo source reload host' \
 		'make mcp            Run the MCP server over stdio' \
 		'make mcp-controller Build only the chibi_ctl MCP controller' \
@@ -200,7 +136,6 @@ help:
 		'make web-serial     Build only the serial browser application' \
 		'make web-threads    Build only the worker browser application' \
 		'make web-threads-serve Serve the threaded application with isolation headers' \
-		'make profile-compare Profile PROJECT headless natively and as WASM' \
 		'make format         Rewrite project C sources with clang-format' \
 		'make check-format   Check project C source formatting' \
 		'make clean          Remove the default build directories'
@@ -274,12 +209,6 @@ package-native:
 	@$(QUIET) package_native.py -- python3 tools/package_native.py --build "$(PACKAGE_BUILD_DIR)" --output "$(PACKAGE_OUTPUT)"
 	@$(QUIET) install_game_runtime.py -- python3 tools/install_game_runtime.py --package "$(PACKAGE_OUTPUT)"
 
-test-package:
-	@python3 tools/test_policy.py disabled test-package
-	@$(MAKE) package-native
-	@$(QUIET) package_native_test.py -- python3 test/package_native_test.py --package "$(PACKAGE_OUTPUT)"
-	@$(QUIET) mcp-package-tests -- node --test test/mcp_package_test.mjs
-
 build-tracy:
 	@$(MAKE) build BUILD_DIR="$(TRACY_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(TRACY_CMAKE_FLAGS)" BUILD_TARGET="chibi chibi_ctl"
 
@@ -287,21 +216,8 @@ run-tracy: build-tracy
 	@$(MAKE) update-game-runtime
 	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
-build-tracy-mcp:
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(TRACY_MCP_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(TRACY_MCP_CMAKE_FLAGS) -DPython_EXECUTABLE="$(TRACY_MCP_PYTHON)" $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	@$(QUIET) build -- cmake --build "$(TRACY_MCP_BUILD_DIR)" --target TracyServerBindings --parallel $(JOBS)
-
-tracy-mcp: build-tracy-mcp
-	TRACY_MCP_BUILD_DIR="$(TRACY_MCP_BUILD_DIR)" TRACY_MCP_PYTHON="$(TRACY_MCP_PYTHON)" sh tools/tracy/launch_mcp.sh
-
 benchmark:
 	@python3 tools/test_policy.py disabled benchmark
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BENCHMARK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(BENCHMARK_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BENCHMARK_BUILD_DIR)" --target bench_activation system_benchmark query_benchmark contact_benchmark --parallel $(JOBS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/bench_activation" $(ARGS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/system_benchmark" $(ARGS)
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/query_benchmark"
-	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/contact_benchmark"
 
 # Web builds generate reflection with the native tool.
 web-configure:
@@ -314,17 +230,7 @@ web: web-serial
 	@$(QUIET) package_web.py -- python3 tools/package_web.py --serial "$(WEB_BUILD_DIR)" --threads "$(WEB_THREADS_BUILD_DIR)" --output "$(WEB_BUILD_DIR)"
 
 web-serial: web-configure
-	@printf "%s\n" "DISABLED, NOT PASSED: web check-behavior-backend; see docs/testing.md"
 	@$(QUIET) build -- cmake --build "$(WEB_BUILD_DIR)" --target chibi --parallel $(JOBS)
-
-# Profile PROJECT's start scene (or PROFILE_SCENE, or PROFILE_SCENARIO's replayed
-# gameplay) headless, natively and as WASM under Node, with the same fixed steps.
-profile-compare:
-	@python3 tools/test_policy.py disabled profile-compare
-	@$(MAKE) web-configure
-	@$(MAKE) build-release BUILD_TARGET=chibi_ctl
-	@$(QUIET) build -- cmake --build "$(WEB_BUILD_DIR)" --target chibi_ctl --parallel $(JOBS)
-	python3 tools/profile_compare.py --project-root "$(PROJECT)" --native "$(RELEASE_BUILD_DIR)/chibi_ctl" --wasm "$(WEB_BUILD_DIR)/chibi_ctl.js" $(if $(PROFILE_SCENE),--scene "$(PROFILE_SCENE)") $(if $(PROFILE_SCENARIO),--scenario "$(PROFILE_SCENARIO)") $(PROFILE_ARGS)
 
 publish-web:
 	python3 tools/publish_web.py --jobs "$(JOBS)" --collab-url "$(CHIBI_COLLAB_URL)"
@@ -349,8 +255,8 @@ format:
 check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
-# Agent iteration is explicitly narrower than the full merge gate.
-.PHONY: agent-list agent-test agent-gpu-test test-tool-execution-policy
+# Test configuration and compilation run outside the measured test deadline.
+.PHONY: agent-list agent-test agent-gpu-test test-short test-policy-inventory tools-build test-studio-selectors
 agent-list:
 	@python3 tools/agent.py list
 
@@ -361,124 +267,26 @@ agent-test:
 
 agent-gpu-test:
 	@python3 tools/test_policy.py disabled agent-gpu-test
-	@$(MAKE) build BUILD_TARGET=test_suite
-	@python3 tools/test_policy.py agent-env "$(BUILD_DIR)" gpu-test
 
-test-tool-execution-policy:
-	@python3 tools/test_policy.py tool execution-policy
-
-# Temporary user policy: no full gate is implied by a successful short result.
-.PHONY: test-short test-policy-inventory test-studio-selectors
 test: test-short
 
-test-short:
-	@python3 tools/test_policy.py short
+TOOLS_BUILD_DIR ?= build-tools
+TOOLS_C_COMPILER ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),/opt/homebrew/opt/llvm/bin/clang,$(CC))
+tools-build:
+	@cmake -S test/tools -B "$(TOOLS_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug
+	@cmake --build "$(TOOLS_BUILD_DIR)" --parallel $(JOBS)
 
-test-studio-selectors:
+test-short: tools-build
+	@python3 tools/test_policy.py short "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
+
+test-tools: test-short
+
+test-studio-selectors: tools-build
 	@$(MAKE) build BUILD_TARGET=test_suite
-	@python3 tools/test_policy.py studio-selectors "$(BUILD_DIR)/test_suite"
+	@python3 tools/test_policy.py studio-selectors "$(abspath $(TOOLS_BUILD_DIR))/test_tools" "$(abspath $(BUILD_DIR))/test_suite"
 
-test-policy-inventory:
-	@python3 tools/test_policy.py inventory
-
-test-full:
-	@python3 tools/test_policy.py disabled test-full
-	@python3 tools/agent.py hardware-check
-	+@$(MAKE) test-tools
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
-	@$(QUIET) studio-selectors -- env $(NATIVE_RUNTIME_ENV) python3 test/studio_selectors_test.py "$(BUILD_DIR)/test_suite"
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
-
-.PHONY: $(TEST_TOOL_TARGETS)
-test-tools:
-	@python3 tools/test_policy.py disabled test-tools
-	+@$(MAKE) --no-print-directory -j$(TEST_JOBS) $(TEST_TOOL_TARGETS)
-
-test-tool-validation-plan:
-	@python3 tools/test_policy.py tool validation-plan
-
-test-tool-behavior-code:
-	@python3 tools/test_policy.py disabled test-tool-behavior-code
-	@$(QUIET) behavior-code-test -- node --test tools/behavior-code/behavior-code.test.mjs
-
-test-tool-kdl-assets:
-	@python3 tools/test_policy.py tool kdl-assets
-test-tool-fetchcontent-cache:
-	@python3 tools/test_policy.py tool fetchcontent-cache
-
-test-tool-configure-cache:
-	@python3 tools/test_policy.py tool configure-cache
-
-test-tool-dependency-package:
-	@python3 tools/test_policy.py tool dependency-package
-
-test-tool-package-web:
-	@python3 tools/test_policy.py tool package-web
-
-test-tool-publish-web:
-	@python3 tools/test_policy.py tool publish-web
-
-test-tool-package-native:
-	@python3 tools/test_policy.py tool package-native
-
-test-tool-install-game-runtime:
-	@python3 tools/test_policy.py tool install-game-runtime
-
-test-tool-runtime-update-build:
-	@python3 tools/test_policy.py tool runtime-update-build
-
-test-tool-quiet:
-	@python3 tools/test_policy.py tool quiet
-
-test-tool-workspaces:
-	@python3 tools/test_policy.py tool workspaces
-
-test-tool-workspace-retirement:
-	@python3 tools/test_policy.py tool workspace-retirement
-
-test-tool-workspace-make:
-	@python3 tools/test_policy.py tool workspace-make
-
-test-tool-cloud-entry:
-	@python3 tools/test_policy.py disabled test-tool-cloud-entry
-	@$(QUIET) cloud_entry_test.py -- python3 test/cloud_entry_test.py
-test-tool-cloud-emscripten-setup:
-	@python3 tools/test_policy.py disabled test-tool-cloud-emscripten-setup
-	@$(QUIET) cloud_emscripten_setup_test.py -- python3 test/cloud_emscripten_setup_test.py
-test-tool-workspace-install:
-	@python3 tools/test_policy.py tool workspace-install
-
-test-tool-mcp-package:
-	@python3 tools/test_policy.py tool mcp-package
-
-test-tool-web-serve:
-	@python3 tools/test_policy.py tool web-serve
-
-test-tool-web-workspace:
-	@python3 tools/test_policy.py tool web-workspace
-
-test-tool-web-storage:
-	@python3 tools/test_policy.py tool web-storage
-
-test-tool-web-frames:
-	@python3 tools/test_policy.py tool web-frames
-
-test-tool-web-isolation:
-	@python3 tools/test_policy.py tool web-isolation
-
-test-tool-collab-client:
-	@python3 tools/test_policy.py tool collab-client
-
-test-slow:
-	@python3 tools/test_policy.py disabled test-slow
-	@python3 tools/agent.py hardware-check
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	@$(QUIET) studio-selectors -- env $(NATIVE_RUNTIME_ENV) python3 test/studio_selectors_test.py "$(BUILD_DIR)/test_suite"
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
+test-full test-slow test-render test-compiler-parity:
+	@python3 tools/test_policy.py disabled $@
 
 test-fast:
 	@python3 tools/test_policy.py admit-env TEST_ARGS
@@ -486,31 +294,8 @@ test-fast:
 	@$(QUIET) build -- cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) python3 tools/test_policy.py native-env TEST_ARGS "$(FAST_BUILD_DIR)/test_suite"
 
-test-list:
+test-list test-policy-inventory:
 	@python3 tools/test_policy.py inventory
-
-test-compiler-parity:
-	@python3 tools/test_policy.py disabled test-compiler-parity
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-behavior-backend test_suite --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/test_suite" --behavior-parity
-
-test-render:
-	@python3 tools/test_policy.py disabled test-render
-	@python3 tools/agent.py hardware-check
-	@if [ "$(shell uname -s)" = Darwin ] && [ "$(CHIBI_ALLOW_DESKTOP_RENDER_TESTS)" != 1 ]; then \
-		printf '%s\n' 'Render tests can briefly show a window on macOS. Run them under Xvfb on Linux, or set CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 for a local run.'; \
-		exit 1; \
-	fi
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-mcp-gpu test_suite chibi --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --shader-detail-gpu
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --studio-documents
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --rmlui-render
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --rmlui-render-gles
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --arena-play
-	env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/chibi --headless --frames 3
 
 clean:
 	@if git worktree list --porcelain | awk -v root="$(abspath $(BUILD_DIR))" \
@@ -519,7 +304,7 @@ clean:
 	else \
 		rm -rf "$(BUILD_DIR)"; \
 	fi
-	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TRACY_MCP_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(WEB_PROFILE_BUILD_DIR)" "$(DEV_BUILD_DIR)"
+	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TOOLS_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(WEB_PROFILE_BUILD_DIR)" "$(DEV_BUILD_DIR)"
 
 # Watch sources and preserve the workspace across native application changes.
 .PHONY: dev
@@ -533,5 +318,3 @@ dev:
 	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 endif # CHIBI_WORKSPACE_INNER
-
-endif # CHIBI_CLOUD_BOOTSTRAP

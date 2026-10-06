@@ -143,16 +143,14 @@ interface and MCP catalog.
 
 ```sh
 make package-native
-make test-package
+make test-tools
 python3 tools/package_native.py --build build-package \
   --output dist/chibi-darwin-arm64 --archive dist/chibi-darwin-arm64.tar.gz
 ```
 
-`make test-package` moves a copy into a path containing spaces, starts it from
-an unrelated directory, checks native dependencies and resource discovery,
-and uses real MCP asset edits, validation, deterministic runs, and runtime
-snapshots in an external game workspace. Build commands are blocked during
-these checks. `make test` includes the packaging failure and MCP setup tests.
+`make test-tools` runs C checks for package/install preservation and rejection of
+invalid build profiles. The former script-based relocation and MCP package tests
+are retired; the minimal suite does not establish their former coverage.
 
 `share/chibi/engine.json` records SHA-256 hashes of the payload, a build ID
 derived from those hashes, the project version, host platform, and source

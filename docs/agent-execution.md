@@ -11,21 +11,22 @@ The remaining text records the underlying capability policy and historical evide
 Use the smallest check that answers the current question. A GPU-heavy game still
 needs GPU evidence for shader, lighting, temporal and rendering changes. Avoid
 paying for a full suite after a parser or logic edit. Profiles are explicit and
-work on any machine; no hostname, driver name or assumed cloud capability selects
-a profile. `hardware` is an authorization to run the full gate, not proof that a
-physical GPU is present. CI explicitly opts in, retaining its previous coverage.
+work on any machine; no hostname, driver name or assumed device capability selects
+a profile. `hardware` permits underlying hardware operations but does not clear
+test quarantine or prove a physical GPU is present. CI currently reports partial
+coverage.
 
 ## Inspect, build, select
 
+Use the existing image viewer for graph wiring and rendered details. The former
+zoom MCP utility is retired.
+
 ```sh
-# In this saved cloud environment, if present:
-source /workspace/.cloud-tools/activate.sh
 python3 tools/agent.py doctor
 python3 tools/agent.py plan logic    # or render / temporal
 make agent-list
 make build BUILD_TARGET='test_suite chibi_ctl'
 make agent-test AGENT_SELECTOR=--graph-optimize
-make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu
 ```
 
 The agent wrapper runs lightweight discovery in an isolated process with a
@@ -59,10 +60,10 @@ check rather than silently trimmed. For example, `--studio-documents` includes
 window/render work; `--ui-bench` mixes headless and Studio cases. New selectors
 must be inspected and classified before adding them to this list.
 
-`gpu-check` opts into `--model-sampled-gpu` or `--shader-detail-gpu`, with a 60-second
-native deadline. Their assertions, reference resolutions and frame sequences are
-unchanged. Use this only when relevant to the edit. Other rendering selectors
-remain available in the full profile. CPU checks use existing sanitizer settings;
+The underlying `gpu-check` profile includes `--model-sampled-gpu` and
+`--shader-detail-gpu`, but current timing quarantine refuses agent GPU tests.
+Their native assertions, reference resolutions and frame sequences remain.
+CPU checks use existing sanitizer settings;
 the agent wrapper imposes a 60-second deadline without suppressing assertions or
 leak checks. Timeouts are failures/blocked results, never passes.
 
@@ -168,16 +169,9 @@ results for reviewed PR admission, followed by full required checks on one froze
 combined commit/tree before any batch change lands. The integration owner retains
 all current-head/server checks and records pending matrix, web and release gates.
 `python3 tools/agent.py validation-plan --base origin/main` lists Git identity and
-outstanding work without probing graphics or claiming execution.
-
-Activation and provisioning are owned by CUT-49/CUT-52. This change consumes the
-existing environment and does not own setup scripts or installation state.
-
-Smallest saved-cloud-start change: keep the existing dependency activation and
-caches, and optionally export `CHIBI_EXECUTION_PROFILE=iteration` (already the
-code default). Run `doctor` once when capabilities change. No new installation,
-driver changes, security changes, network changes or unpublished setup scripts
-are required. This change does not edit the saved cloud setup.
+outstanding work without probing graphics or claiming execution. `--tools` or
+`--tool=native-tools` selects the minimal C tooling command; former script test
+choices are retired.
 
 ## Bounded artifact validation (2026-10-05)
 
@@ -192,7 +186,6 @@ With that JSON saved as `/tmp/chibi-agent-feature-validation/request.json`, the
 commands below produced actual artifacts (use fresh output paths when repeating):
 
 ```sh
-source /workspace/.cloud-tools/activate.sh
 xvfb-run -a env CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb python3 tools/agent.py preview /tmp/chibi-agent-feature-validation/request.json --project-root projects/arena2d --output /tmp/chibi-agent-feature-validation/preview.json
 xvfb-run -a env CHIBI_PREVIEW_DISPLAY_CONTEXT=xvfb python3 tools/agent.py mp4 /tmp/chibi-agent-feature-validation/request.json --project-root projects/arena2d --frames 60 --output /tmp/chibi-agent-feature-validation/capture.mp4
 ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=codec_name,width,height,pix_fmt,r_frame_rate,nb_read_frames,duration -of json /tmp/chibi-agent-feature-validation/capture.mp4

@@ -1,5 +1,6 @@
 """CPU-only regression checks for the temporary command-level quarantine."""
 import os
+import json
 import signal
 from pathlib import Path
 import subprocess
@@ -272,6 +273,45 @@ class TestPolicy(unittest.TestCase):
             self.assertIn('DISABLED', result.stdout + result.stderr)
             self.assertNotIn('configure-native', result.stdout)
             self.assertNotIn('cmake --build', result.stdout)
+
+    def test_make_selector_metacharacters_never_execute_extra_commands(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / 'injected'
+            env = dict(os.environ, CHIBI_CLOUD='0')
+            for target, variable in [('test-fast', 'TEST_ARGS'), ('agent-test', 'AGENT_SELECTOR')]:
+                for suffix in [f'; touch {marker}', f' && touch {marker}',
+                               f' `touch {marker}`', f' $$(touch {marker})']:
+                    with self.subTest(variable=variable, suffix=suffix):
+                        # Even a regression cannot proceed into a real build.
+                        result = subprocess.run(['make', target, 'QUIET=false',
+                                                 f'{variable}=--graph-optimize{suffix}'],
+                                                cwd=ROOT, env=env, capture_output=True,
+                                                text=True, timeout=3)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn('DISABLED: unadmitted native invocation', result.stdout + result.stderr)
+                        self.assertFalse(marker.exists(), 'selector data was executed by a shell')
+
+    def test_environment_transport_preserves_multi_token_selectors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binary, record = Path(directory) / 'test_suite', Path(directory) / 'argv.json'
+            binary.write_text(f'#!{sys.executable}\nimport sys,json\nfrom pathlib import Path\n'
+                              f'Path({str(record)!r}).write_text(json.dumps(sys.argv[1:]))\n')
+            binary.chmod(0o755)
+            for value in ['--studio-documents tabs', '--studio-documents "tabs"']:
+                with self.subTest(value=value):
+                    result = subprocess.run([sys.executable, 'tools/test_policy.py',
+                                             'native-env', 'TEST_ARGS', str(binary)],
+                                            cwd=ROOT, env=dict(os.environ, TEST_ARGS=value),
+                                            capture_output=True, text=True, timeout=3)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(json.loads(record.read_text()), ['--studio-documents', 'tabs'])
+            # The agent transport also builds argv directly and keeps the deadline wrapper.
+            with patch.dict(os.environ, AGENT_SELECTOR='--graph-optimize'), \
+                    patch.object(sys, 'argv', ['test_policy.py', 'agent-env', directory, 'test']), \
+                    patch.object(policy, 'run_commands', return_value=0) as run:
+                self.assertEqual(policy.main(), 0)
+                self.assertEqual(run.call_args.args[0], [[sys.executable, str(ROOT / 'tools/agent.py'),
+                                                        '--build-dir', directory, 'test', '--', '--graph-optimize']])
 
     def test_ci_does_not_schedule_quarantined_suites(self):
         ci = (ROOT / '.github/workflows/ci.yml').read_text()

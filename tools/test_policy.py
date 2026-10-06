@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import signal
+import shlex
 import subprocess
 import sys
 import time
@@ -63,6 +64,13 @@ NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render, tooling aggregate and 
 
 def admitted(arguments):
     return tuple(arguments) in NATIVE
+
+
+def selector_arguments(name):
+    if name not in ('TEST_ARGS', 'AGENT_SELECTOR'):
+        raise ValueError('unsupported selector environment variable')
+    # Tokenize quoted positional arguments without executing shell syntax.
+    return shlex.split(os.environ.get(name, ''))
 
 
 def absolute_deadline(seconds, env):
@@ -278,7 +286,7 @@ def run_commands(commands, seconds=LIMIT, env=None, output=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['inventory', 'disabled', 'short', 'tool', 'admit', 'native', 'studio-selectors', '_supervise'])
+    parser.add_argument('action', choices=['inventory', 'disabled', 'short', 'tool', 'admit', 'native', 'admit-env', 'native-env', 'agent-env', 'studio-selectors', '_supervise'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments
@@ -316,6 +324,23 @@ def main():
         if arguments[0] == 'execution-policy':
             commands.append(['node', '--test', 'test/mcp_execution_policy_test.mjs'])
         return run_commands(commands)
+    if args.action in ('admit-env', 'native-env', 'agent-env'):
+        expected = 1 if args.action == 'admit-env' else 2
+        if len(arguments) != expected:
+            parser.error('invalid environment-selector invocation')
+        name = 'AGENT_SELECTOR' if args.action == 'agent-env' else arguments[0]
+        selectors = selector_arguments(name)
+        if not admitted(selectors):
+            print('DISABLED: unadmitted native invocation: ' + ' '.join(selectors), file=sys.stderr)
+            return 2
+        if args.action == 'admit-env':
+            return 0
+        if args.action == 'agent-env':
+            if arguments[1] not in ('test', 'gpu-test'):
+                parser.error('invalid agent test mode')
+            return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
+                                  '--build-dir', arguments[0], arguments[1], '--', *selectors]])
+        return run_commands([[arguments[1], *selectors]])
     selectors = arguments[1:] if args.action == 'native' else arguments
     if not admitted(selectors):
         print('DISABLED: unadmitted native invocation: ' + ' '.join(selectors), file=sys.stderr)

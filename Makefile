@@ -85,6 +85,8 @@ MAKEFLAGS += --no-print-directory
 QUIET = python3 tools/quiet.py
 AGENT_SELECTOR ?= --graph-optimize
 TEST_ARGS ?=
+# Selector text is data: export it rather than inserting it into shell recipes.
+export TEST_ARGS AGENT_SELECTOR
 TEST_JOBS ?= 4
 TEST_TIMINGS ?= 0
 TEST_TOOL_TARGETS = \
@@ -353,14 +355,14 @@ agent-list:
 	@python3 tools/agent.py list
 
 agent-test:
-	@python3 tools/test_policy.py admit -- $(AGENT_SELECTOR)
+	@python3 tools/test_policy.py admit-env AGENT_SELECTOR
 	@$(MAKE) build BUILD_TARGET=test_suite
-	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" test -- $(AGENT_SELECTOR)
+	@python3 tools/test_policy.py agent-env "$(BUILD_DIR)" test
 
 agent-gpu-test:
 	@python3 tools/test_policy.py disabled agent-gpu-test
 	@$(MAKE) build BUILD_TARGET=test_suite
-	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" gpu-test -- $(AGENT_SELECTOR)
+	@python3 tools/test_policy.py agent-env "$(BUILD_DIR)" gpu-test
 
 test-tool-execution-policy:
 	@python3 tools/test_policy.py tool execution-policy
@@ -479,11 +481,10 @@ test-slow:
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
 
 test-fast:
-	@python3 tools/test_policy.py admit -- $(TEST_ARGS)
-	@test -n "$(strip $(TEST_ARGS))" || { printf '%s\n' 'Set TEST_ARGS to a focused test_suite selector, such as --graph-optimize'; exit 2; }
+	@python3 tools/test_policy.py admit-env TEST_ARGS
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(FAST_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) python3 tools/test_policy.py native "$(FAST_BUILD_DIR)/test_suite" $(TEST_ARGS)
+	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) python3 tools/test_policy.py native-env TEST_ARGS "$(FAST_BUILD_DIR)/test_suite"
 
 test-list:
 	@python3 tools/test_policy.py inventory

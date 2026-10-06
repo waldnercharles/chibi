@@ -191,7 +191,9 @@ void test_iframe_updates()
     frame(&f);
     test_check(f.visited && f.changes == 2 && geometry(&f, 120, 20), "rearming a later iframe callback also settles shrinking geometry this frame");
     frame(&f);
-    /* Arm after Context traversal so the detach happens inside iframe settling. */
+    /* Resize after Context traversal so take_box calls the fitted hook while
+     * the settling traversal holds its attachment. */
+    pixels(f.fit_slot, "width", 160);
     f.reattach = true;
     iframes_settle(f.context);
     test_check(f.reattached && geometry(&f, 120, 45), "a fitted callback can detach and reattach itself during bounded settling");

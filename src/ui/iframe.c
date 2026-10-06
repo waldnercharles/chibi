@@ -288,7 +288,7 @@ static bool settle_pass(rml_context *context)
         /* A later Context callback can change fitted content without
          * moving its slot. Resolve that content before measuring it. */
         if (f->fit && !box) {
-            rml_document_update(document);
+            rml_document_refresh_layout(document);
             f = resolve(id, &document, &element);
             if (!f) {
                 moved = true;

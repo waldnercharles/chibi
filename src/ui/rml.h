@@ -472,6 +472,8 @@ extern "C"
     );
     void rml_document_close(rml_element *document);
     void rml_document_update(rml_element *document);
+    /* Resolves styles, animations and layout without repeating OnUpdate hooks. */
+    void rml_document_refresh_layout(rml_element *document);
 
     /* ---------- Elements ---------- */
 

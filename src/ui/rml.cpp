@@ -962,6 +962,11 @@ void rml_document_update(rml_element *d)
     document(d)->UpdateDocument();
 }
 
+void rml_document_refresh_layout(rml_element *d)
+{
+    document(d)->UpdateDocument(false);
+}
+
 /* ---------- Elements ---------- */
 
 rml_element *rml_element_create_child(rml_element *parent, const char *tag, rml_element *before)

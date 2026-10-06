@@ -51,8 +51,8 @@ for run, enabled in enumerate(['1', '0', '1', '0', '1', '0'], 1):
                            sum(row['passes'] for row in group)])
         # Fit content is refreshed before measuring even when its slot is
         # stable. Two layouts now settle before the ordinary Context pass.
-        assert counts == [[49, 105, 22, 5, 1, 52], [0, 196, 16, 0, 0, 0],
-                          [49, 98, 0, 0, 0, 49]], counts
+        assert counts == [[49, 55, 22, 5, 1, 52], [0, 196, 16, 0, 0, 0],
+                          [49, 49, 0, 0, 0, 49]], counts
         context = [row for row in rows if row['phase'] == 'context']
         for row in context:
             assert row['context_calls'] == row['calls'] == 1

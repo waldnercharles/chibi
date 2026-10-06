@@ -49,11 +49,6 @@ target_compile_features(chibi_ui PRIVATE cxx_std_17)
 target_include_directories(chibi_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(chibi_ui SYSTEM PRIVATE ${cute_framework_SOURCE_DIR}/include)
 target_link_libraries(chibi_ui PRIVATE RmlUi::Core cute core)
-set_target_properties(chibi_ui PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    C_VISIBILITY_PRESET hidden
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON)
 
 add_library(chibi_rmlui STATIC
     src/editor/rmlui/kit.c
@@ -78,8 +73,3 @@ target_include_directories(chibi_rmlui SYSTEM PRIVATE ${cute_framework_SOURCE_DI
 # core supplies arrange_path to kit_wire_shape.c; listing it here keeps it
 # after this library on single-pass link lines.
 target_link_libraries(chibi_rmlui PUBLIC chibi_ui PRIVATE cute core)
-set_target_properties(chibi_rmlui PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    C_VISIBILITY_PRESET hidden
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON)

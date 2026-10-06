@@ -157,7 +157,7 @@ on the frozen candidate; their presence describes configuration, not a run.
 | Native RelWithDebInfo, sanitizers OFF, SLJIT ON | Actual aggregate and render results in that configuration |
 | RelWithDebInfo Arena scaling | `CBLUEPRINT_BENCH_COMBAT=1 CBLUEPRINT_BENCH_REQUIRE_PARALLEL=1 build/test_suite --bench-arena-scene-scale 2048 240 0` under the configured display |
 | Debug job's no-SLJIT check | Separate Debug/sanitized, `CHIBI_ENABLE_SJLIT=OFF` configuration and `check-behavior-backend` result |
-| Debug job's development reload build | Separate RelWithDebInfo, reload ON, sanitizers OFF, SLJIT ON configuration and `chibi chibi_dll` build result |
+| Debug job's development application and host checks | Separate RelWithDebInfo, sanitizers OFF, SLJIT ON configuration and `chibi check-host` build/check result plus `check-application-recovery` under the configured display |
 | Format | `make check-format` (CI uses `sh tools/clang-format.sh --check`) |
 | Web workflow / affected web or UI work | Required Emscripten build, packaging and web/UI verification; record threaded validation when requested/applicable |
 

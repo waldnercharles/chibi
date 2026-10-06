@@ -120,8 +120,7 @@ ifneq ($(MAKECMDGOALS),test-fast)
 $(error TEST_ARGS is only supported with test-fast as the sole make goal)
 endif
 endif
-# Apple Clang 17 does not unregister ASan globals on dlclose. Use installed
-# upstream LLVM for native sanitized reload tests, without disabling checks.
+# Use installed upstream LLVM for native sanitizer checks when available.
 NATIVE_TOOLCHAIN_FLAGS ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++)
 DEBUG_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 RELEASE_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
@@ -180,7 +179,7 @@ help:
 		'make test-compiler-parity  Run focused behavior compiler parity checks' \
 		'make test-render    Run GPU previews and hidden-window checks' \
 		'make benchmark      Run optimized benchmarks with symbols' \
-		'make dev            Run the RelWithDebInfo source reload host' \
+		'make dev            Build and run RelWithDebInfo with a saved workspace' \
 		'make mcp            Run the MCP server over stdio' \
 		'make mcp-controller Build only the chibi_ctl MCP controller' \
 		'make mcp-setup      Generate local Codex MCP configuration' \
@@ -261,7 +260,7 @@ endif
 endif
 
 package-native:
-	@$(MAKE) build BUILD_DIR="$(PACKAGE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=OFF -DCHIBI_DISTRIBUTION=ON" BUILD_TARGET="chibi chibi_ctl" UPDATE_GAME_RUNTIME=0
+	@$(MAKE) build BUILD_DIR="$(PACKAGE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_DISTRIBUTION=ON" BUILD_TARGET="chibi chibi_ctl" UPDATE_GAME_RUNTIME=0
 	@$(QUIET) package_native.py -- python3 tools/package_native.py --build "$(PACKAGE_BUILD_DIR)" --output "$(PACKAGE_OUTPUT)"
 	@$(QUIET) install_game_runtime.py -- python3 tools/install_game_runtime.py --package "$(PACKAGE_OUTPUT)"
 
@@ -357,7 +356,7 @@ test-full:
 	@python3 tools/agent.py hardware-check
 	+@$(MAKE) test-tools
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-reload check-dev check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
+	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-generation check-reflect check-host check-mcp check-assets check-behavior-backend test_suite --parallel $(JOBS)
 	@$(QUIET) studio-selectors -- env $(NATIVE_RUNTIME_ENV) python3 test/studio_selectors_test.py "$(BUILD_DIR)/test_suite"
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) $(BUILD_DIR)/test_suite
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
@@ -452,6 +451,7 @@ test-render:
 	fi
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-mcp-gpu test_suite chibi --parallel $(JOBS)
+	@$(QUIET) application-recovery -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 cmake --build "$(BUILD_DIR)" --target check-application-recovery
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --scene-documents
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --shader-detail-gpu
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --studio-documents
@@ -469,16 +469,15 @@ clean:
 	fi
 	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TRACY_MCP_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(WEB_PROFILE_BUILD_DIR)" "$(DEV_BUILD_DIR)"
 
-# Watch sources and preserve the workspace across native application changes.
+# Build explicitly and restore the workspace saved on the previous exit.
 .PHONY: dev
 DEV_BUILD_DIR ?= build-dev
 DEV_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 
 dev:
-	@$(MAKE) build BUILD_DIR="$(DEV_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEV_CMAKE_FLAGS) -DCHIBI_DEVELOPMENT_RELOAD=ON" BUILD_TARGET="chibi chibi_dll"
+	@$(MAKE) build BUILD_DIR="$(DEV_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEV_CMAKE_FLAGS)" BUILD_TARGET="chibi"
 	@$(MAKE) update-game-runtime
-	cmake -DDEV_CONFIG="$(abspath $(DEV_BUILD_DIR))/dev.json" -DRESULT="$(abspath $(DEV_BUILD_DIR))/dev-result.json" -DSKIP_BUILD=ON -DJOBS=$(JOBS) -P cmake/dev_build.cmake
-	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" --bootstrap "$(abspath $(DEV_BUILD_DIR))/dev-result.json" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" $(if $(filter --play --checkpoint,$(ARGS)),,--checkpoint "$(abspath .chibi/workspace.json)") --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
 
 endif # CHIBI_WORKSPACE_INNER
 

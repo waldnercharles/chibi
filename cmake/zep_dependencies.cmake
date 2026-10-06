@@ -61,9 +61,4 @@ target_compile_options(zep PRIVATE -w)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_compile_options(zep PRIVATE -Os)
 endif()
-set_target_properties(zep PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    C_VISIBILITY_PRESET hidden
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON)
 

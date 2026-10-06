@@ -74,8 +74,7 @@ void render_gpu_clock_release(void)
     if (!g_commit || --g_users > 0) {
         return;
     }
-    /* Hot reload unloads this code next: restore -commit and let every
-     * completion handler that calls back into it finish first. */
+    /* Restore -commit and finish outstanding timing reports before teardown. */
     method_setImplementation(g_method, g_commit);
     g_commit = NULL;
     render_gpu_timing_track_commits(false);

@@ -1,5 +1,5 @@
-# Keep the retained UI and its font rasterizer inside the application module.
-# Function scope avoids changing BUILD_SHARED_LIBS for Cute's resident library.
+# Build the retained UI and font rasterizer as static dependencies.
+# Function scope keeps the dependency linkage policy local.
 function(chibi_rmlui_dependencies)
     set(BUILD_SHARED_LIBS OFF)
     foreach(feature ZLIB BZIP2 PNG HARFBUZZ BROTLI)
@@ -64,13 +64,6 @@ function(chibi_rmlui_dependencies)
     endforeach()
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})
     add_subdirectory("${rmlui_SOURCE_DIR}" "${rmlui_BINARY_DIR}")
-    foreach(target freetype rmlui_core rmlui_debugger)
-        set_target_properties(${target} PROPERTIES
-            POSITION_INDEPENDENT_CODE ON
-            C_VISIBILITY_PRESET hidden
-            CXX_VISIBILITY_PRESET hidden
-            VISIBILITY_INLINES_HIDDEN ON)
-    endforeach()
 endfunction()
 
 chibi_rmlui_dependencies()

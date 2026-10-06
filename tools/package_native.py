@@ -78,7 +78,6 @@ def assemble(build, output):
         raise ValueError('Existing output is not an engine package; choose a new directory')
     cache = cache_values(build)
     for key, expected in (('CHIBI_DISTRIBUTION', 'ON'),
-                          ('CHIBI_DEVELOPMENT_RELOAD', 'OFF'),
                           ('CHIBI_ENABLE_SANITIZERS', 'OFF')):
         if cache.get(key) != expected:
             raise ValueError(f'Packaging requires {key}={expected}; run make package-native')

@@ -61,8 +61,7 @@ endfunction()
 # OpenSSL metadata only for the same library and headers; never switch providers.
 function(chibi_crypto_dependencies)
     # FindOpenSSL temporarily restricts library suffixes to archives. Discover
-    # optional zlib first with the caller's normal policy: its archive may not
-    # be PIC, while libcrypto itself is also used inside the reload shared object.
+    # optional zlib first with the caller's normal discovery policy.
     find_package(ZLIB QUIET)
     set(OPENSSL_USE_STATIC_LIBS TRUE)
     chibi_cloud_crypto_metadata(host_metadata)

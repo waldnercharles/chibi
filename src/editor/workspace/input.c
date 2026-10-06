@@ -21,7 +21,7 @@ static CF_AxisBinding horizontal, vertical;
 static CF_AxisBinding aim_horizontal, aim_vertical;
 static bool ready;
 static bool first_frame;
-static bool held_at_reload[APP_INPUT_COUNT];
+static bool held_at_start[APP_INPUT_COUNT];
 static bool controller_aim;
 static bool pressed_actions[APP_INPUT_COUNT], frame_actions[APP_INPUT_COUNT];
 static uint64_t held_controls;
@@ -111,7 +111,7 @@ void app_input_initialize()
 
 /* Sample after Cute updates its bindings, before any application consumer.
  * Held movement remains continuous; a held action must be released before it
- * can fire in the replacement generation. */
+ * can fire after startup. */
 void app_input_frame()
 {
     if (!ready) {
@@ -122,10 +122,10 @@ void app_input_frame()
         pressed_actions[i] = false;
         bool down = cf_button_binding_down(buttons[i]);
         if (first_frame) {
-            held_at_reload[i] = down;
+            held_at_start[i] = down;
         }
         if (!down) {
-            held_at_reload[i] = false;
+            held_at_start[i] = false;
         }
     }
     uint64_t controls = raw_controls();
@@ -161,7 +161,7 @@ void app_input_shutdown()
 bool app_input_pressed(app_input_action action)
 {
     assert(action >= 0 && action < APP_INPUT_COUNT);
-    return ready && !held_at_reload[action] &&
+    return ready && !held_at_start[action] &&
            (frame_actions[action] || cf_button_binding_pressed(buttons[action]) ||
             cf_button_binding_repeated(buttons[action]));
 }

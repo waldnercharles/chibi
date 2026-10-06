@@ -18,7 +18,7 @@ static void await_exit(chibi_process *process)
     assert(process->finished);
 }
 
-void test_dev_process()
+void test_host_process()
 {
     char root[] = "/tmp/chibi-process-XXXXXX";
     assert(mkdtemp(root));

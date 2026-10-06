@@ -663,8 +663,8 @@ int scene_history_redo(scene_history *history, ecs_world *world, ecs_entity *out
     return apply_edit(history, world, out_entity, true);
 }
 
-/* History is translated through reflected names so a reordered component or
- * field cannot silently retarget an Undo after native code reload. */
+/* History uses reflected names so restoring a saved workspace cannot retarget
+ * an Undo after a component or field is reordered. */
 
 static void history_text(av_doc *doc, av_value *object, const char *key, const char *text)
 {

@@ -146,6 +146,16 @@ class ValidationPlanTest(unittest.TestCase):
         self.saved.write_text(json.dumps(plan))
         self.assertEqual(self.verify()[0], 2)
 
+    def test_removed_development_reload_requirement_invalidates_saved_plan(self):
+        plan = self.save()
+        plan['pending'] = [item.replace('development application and host checks',
+                                        'development reload') for item in plan['pending']]
+        self.saved.write_text(json.dumps(plan))
+        code, result, error = self.verify()
+        self.assertEqual(code, 2)
+        self.assertIsNone(result)
+        self.assertIn('stale or changed plan', error)
+
     def test_existing_focused_runner_propagates_child_failure(self):
         with self.assertRaisesRegex(RuntimeError, 'child_exit_7'):
             agent.run([sys.executable, '-c', 'raise SystemExit(7)'], timeout=5)

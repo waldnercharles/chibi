@@ -66,7 +66,7 @@ def make_plan(args, root, cpu, gpu):
             'Recheck every member PR/ticket hold and required approval before admission/landing; confirmation grants no merge authority',
             'Independent source review of each pinned source and combined diff/conflict resolutions',
             'Full native/render gate and formatting on the immutable combined tree',
-            'CI matrix: Debug + ASan/UBSan + SLJIT; RelWithDebInfo + SLJIT; scaling; no-SLJIT rejection; development reload',
+            'CI matrix: Debug + ASan/UBSan + SLJIT; RelWithDebInfo + SLJIT; scaling; no-SLJIT rejection; development application and host checks',
             'Required web build/UI verification and scope-specific backend/parity/load checks; release validation when applicable',
             'Owner records actual commands, flags, dependencies, device, exit codes, timings and logs; configured CI is not execution',
             'Fresh main/source identity check and current-head server requirements before one atomic landing',

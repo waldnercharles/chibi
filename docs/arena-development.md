@@ -213,7 +213,7 @@ The searchable Inspector selector accepts a project image or a path. Files can
 drop an image onto that selector or create a node on the shader canvas. Reload
 replaces resident pixels without changing graph JSON; decode or size failures
 retain the previous image and display the error. Resources are mounted before
-production graph registration, including standalone Play and development reload.
+production graph registration, including standalone Play and the development application.
 
 The renderer shares decoded straight-alpha pixels and GPU variants. Programs
 have an eight-variant image budget, while a scene can use more images through

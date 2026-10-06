@@ -9,7 +9,7 @@
  * back to waiting, and spans report nothing. */
 bool render_gpu_clock_install(void);
 /* Balances an install that succeeded. The last release restores the backend
- * and waits for outstanding reports, so the code can be unloaded. */
+ * and waits for outstanding reports before renderer teardown. */
 void render_gpu_clock_release(void);
 
 #endif

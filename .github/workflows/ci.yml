@@ -79,15 +79,15 @@ jobs:
             -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
           cmake --build build-nojit --target check-behavior-backend --parallel 4
-      - name: Build development reload targets
+      - name: Build development application and check host
         if: matrix.build_type == 'Debug'
         run: |
           sh tools/configure_native.sh build-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCHIBI_DEVELOPMENT_RELOAD=ON \
             -DCHIBI_ENABLE_SANITIZERS=OFF \
             -DCHIBI_ENABLE_SJLIT=ON -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
             -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
-          cmake --build build-dev --target chibi chibi_dll --parallel 4
+          cmake --build build-dev --target chibi check-host --parallel 4
+          xvfb-run -a cmake --build build-dev --target check-application-recovery
 
   format:
     name: clang-format

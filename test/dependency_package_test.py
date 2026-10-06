@@ -68,7 +68,7 @@ class PackageTest(unittest.TestCase):
             ["-DCHIBI_REFLECT_EXECUTABLE=/two/reflection", "-DCHIBI_COLLAB_URL=https://two"]))
 
     def test_equivalent_defaults_and_boolean_spellings_share_packages(self):
-        defaults = ["-DCHIBI_DEVELOPMENT_RELOAD=OFF", "-DCHIBI_WEB_THREADS=OFF",
+        defaults = ["-DCHIBI_WEB_THREADS=OFF",
                     "-DCHIBI_ENABLE_TRACY=OFF", "-DCHIBI_ENABLE_SANITIZERS=ON",
                     "-DCHIBI_SANITIZERS=address,undefined", "-DCHIBI_ENABLE_CCACHE=ON",
                     "-DCHIBI_ENABLE_SJLIT=ON", "-DCHIBI_WEB_WORKERS=12"]
@@ -164,10 +164,10 @@ class PackageTest(unittest.TestCase):
         build = self.root / "existing"
         build.mkdir()
         (build / "CMakeCache.txt").write_text("CMAKE_BUILD_TYPE:STRING=Release\n"
-            "CHIBI_ENABLE_SANITIZERS:BOOL=OFF\nCHIBI_DEVELOPMENT_RELOAD:BOOL=ON\n"
+            "CHIBI_ENABLE_SANITIZERS:BOOL=OFF\n"
             "CMAKE_C_FLAGS:STRING=-march=armv8.4-a\n")
         expected = ["-DCMAKE_BUILD_TYPE=Release", "-DCHIBI_ENABLE_SANITIZERS=OFF",
-                    "-DCHIBI_DEVELOPMENT_RELOAD=ON", "-DCMAKE_C_FLAGS=-march=armv8.4-a"]
+                    "-DCMAKE_C_FLAGS=-march=armv8.4-a"]
         effective = package.effective_arguments(build, [])
         self.assertEqual(self.key(arguments=effective), self.key(arguments=sorted(expected)))
         override = package.effective_arguments(build, ["-DCHIBI_ENABLE_SANITIZERS=ON"])
@@ -186,6 +186,27 @@ class PackageTest(unittest.TestCase):
         (build / "CMakeCache.txt").write_text(defaults +
             f"CHIBI_DEPENDENCY_PACKAGE:FILEPATH={shared / 'chibi-dependencies.cmake'}\n")
         self.assertEqual(package.effective_arguments(build, []), initial)
+
+    def test_existing_reload_package_becomes_ordinary_with_same_toolchain_and_provider(self):
+        build = self.root / "consumer"
+        shared = self.root / "reload-package/build"
+        build.mkdir()
+        shared.mkdir(parents=True)
+        retained = ["-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DCMAKE_C_COMPILER=selected-clang",
+                    "-DCMAKE_C_FLAGS=-march=armv8.4-a", "-DOPENSSL_ROOT_DIR=/selected/provider"]
+        (shared.parent / "complete.json").write_text(json.dumps({
+            "arguments": [*retained, "-DCHIBI_DEVELOPMENT_RELOAD=ON"]}))
+        cached = ("CMAKE_BUILD_TYPE:STRING=RelWithDebInfo\n"
+                  "CMAKE_C_COMPILER:FILEPATH=selected-clang\n"
+                  "CMAKE_C_FLAGS:STRING=-march=armv8.4-a\n"
+                  "OPENSSL_ROOT_DIR:PATH=/selected/provider\n"
+                  "CHIBI_DEVELOPMENT_RELOAD:BOOL=ON\n")
+        (shared / "CMakeCache.txt").write_text(cached)
+        (build / "CMakeCache.txt").write_text(cached +
+            f"CHIBI_DEPENDENCY_PACKAGE:FILEPATH={shared / 'chibi-dependencies.cmake'}\n")
+        effective = package.effective_arguments(build, [])
+        self.assertEqual(effective, sorted(retained))
+        self.assertEqual(self.key(arguments=effective), self.key(arguments=retained))
 
     def test_custom_toolchain_external_file_and_environment_reads_are_rejected(self):
         custom = self.root / "custom.cmake"

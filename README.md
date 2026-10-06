@@ -24,11 +24,11 @@ make package-native # package native engine, Studio, and MCP for external games
 make test-package # verify the package without rebuilding during authoring
 make build-tracy  # build native RelWithDebInfo with Tracy enabled
 make run-tracy    # run the native Tracy profile
-make test         # model, runtime, native UI, generation, and loader checks
+make test         # model, runtime, native UI, generation, and host checks
 make test-fast TEST_ARGS=--graph-optimize  # focused plain Debug check
 make mcp          # run the local MCP authoring server over stdio
 make mcp-setup    # generate local Codex MCP configuration
-make dev          # watch sources, rebuild, and reload the running editor
+make dev          # build and launch RelWithDebInfo editor with workspace recovery
 make format       # format project C sources with clang-format 22, as CI does
 make check-format
 make web          # static browser application; requires Emscripten
@@ -121,14 +121,13 @@ Open the repository root in Zed and run `Build (Debug)` from `task: spawn` once
 after cloning. The project settings use clangd and the checked-in
 `.clang-format`; the build creates the compilation database that powers
 completion, diagnostics, navigation, and formatting. `.zed/tasks.json` also
-provides editor, Arena3D, development-reload, test, render-check, and release
+provides editor, Arena3D, development, test, render-check, and release
 tasks. `.zed/debug.json` provides CodeLLDB launch profiles for the editor,
 Arena3D, and the test suite.
 
 Native builds require CMake, a C23 compiler, and libclang. Dependencies
 are pinned in CMake. On macOS, the Makefile uses Homebrew
-LLVM when installed: Apple's Clang 17 ASan runtime does not correctly unregister
-dynamic-library globals during unload. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
+LLVM when installed. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
 `CC` and `CXX` for CMake to select another compiler.
 Fresh Linux Make builds prefer installed Clang, matching native CI; existing
 CMake caches and explicit compiler or toolchain selections are preserved.
@@ -171,16 +170,14 @@ only the controller; `BUILD_TARGET=` requests the default CMake target set.
 a separate runtime distribution; launch commands refresh registered games, or use
 `make update-game-runtime` explicitly.
 
-`make dev ARGS="--fps 60"` starts the native development host. Save a source file
-to build a new generation. Build diagnostics go to `.chibi/build.log`.
-A failed build or rejected import leaves the current generation running. A
-successful import replaces the editor and runtime together. Host, framework,
-font, and shader changes request a manual restart: close the editor and run `make dev` again.
+`make dev ARGS="--fps 60"` builds and launches the native RelWithDebInfo
+application with workspace recovery. Close Studio after editing native code,
+then run `make dev` again to rebuild and restart. Asset edits retain their live
+update workflow.
 
 New development directories use Ninja when it is installed. To switch an older
 Make directory, use a fresh directory: `make dev DEV_BUILD_DIR=build-dev/ninja`.
-Existing directories retain their generator. With GNU Make versions before 4,
-changed sources require a clean build because timestamp precision can miss relinks.
+Existing directories retain their generator.
 
 The workspace checkpoint preserves the open project, unsaved scene, prototype and graph edits,
 Undo/Redo, selection, graph navigation and native window geometry. Play restarts from the
@@ -201,8 +198,8 @@ and offers Reload. `make web-serve` sends the same edits to the browser.
 
 | Location | Responsibility |
 | --- | --- |
-| `include/chibi` | Versioned application lifecycle contract shared with the host |
-| `src/host` | Window lifetime, module replacement, checkpoint files, native source watching |
+| `include/chibi` | Application lifecycle declarations shared with the host |
+| `src/host` | Window lifetime, application launch and checkpoint files |
 | `src/editor` | Workspace, documents, graph editing and the RmlUi Studio |
 | `src/graph` | Graph model, node catalog, documents, compilation and execution |
 | `src/runtime` | ECS-backed behavior, system and scene execution |
@@ -212,13 +209,13 @@ and offers Reload. `make web-serve` sends the same edits to the browser.
 | `src/support` | Allocation, arrays, text and small shared utilities |
 | `src/platform` | Integration with the actual framework headers |
 | `tools/reflect` | Native reflection generator and identity manifest checks |
-| `cmake` | Build generation, development descriptors and immutable staging |
+| `cmake` | Build generation and dependency packaging |
 | `test` | Tests and fixture-only reflection packs, assets and helpers |
 | `content` | Assets shipped with the editor |
 
 Internal headers live beside their implementations. The `include` tree contains
-only the boundary another binary consumes. `cmake/sources.cmake` records compilation
+the application lifecycle declarations. `cmake/sources.cmake` records compilation
 ownership separately from the conceptual folder layout.
 
 See [the implementation tracker](docs/refactor-plan.md) and
-[the reload contract](docs/reload.md) for the acceptance checks and lifetime rules.
+[the native development workflow](docs/reload.md) for the acceptance checks and lifetime rules.

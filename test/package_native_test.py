@@ -25,8 +25,7 @@ class PackagingFailureTests(unittest.TestCase):
     def fake_build(self, root, overrides=None):
         build = root / 'distribution build'
         build.mkdir()
-        profile = {'CHIBI_DISTRIBUTION': 'ON', 'CHIBI_DEVELOPMENT_RELOAD': 'OFF',
-                   'CHIBI_ENABLE_SANITIZERS': 'OFF'}
+        profile = {'CHIBI_DISTRIBUTION': 'ON', 'CHIBI_ENABLE_SANITIZERS': 'OFF'}
         profile.update(overrides or {})
         (build / 'CMakeCache.txt').write_text(''.join(
             f'{key}:BOOL={value}\n' for key, value in profile.items()) +
@@ -166,7 +165,6 @@ class PackagingFailureTests(unittest.TestCase):
 
     def test_development_profiles_are_rejected(self):
         for key, invalid in (('CHIBI_DISTRIBUTION', 'OFF'),
-                             ('CHIBI_DEVELOPMENT_RELOAD', 'ON'),
                              ('CHIBI_ENABLE_SANITIZERS', 'ON')):
             with self.subTest(key=key), tempfile.TemporaryDirectory(prefix='chibi-package-test-') as directory:
                 root = Path(directory)

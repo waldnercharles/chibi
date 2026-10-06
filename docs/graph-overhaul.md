@@ -84,7 +84,7 @@ Box2D and Erin Catto's [Box3D](https://github.com/erincatto/box3d) remain future
 ## Verification
 
 `make test` passes with ASan/UBSan, including runtime, authoring, reload, and
-headless application checks. `make dev` runs the RelWithDebInfo reload host locally.
+headless application checks. `make dev` builds and launches the RelWithDebInfo application locally.
 
 Browser verification opened ShaderDemo, framed its two materials and custom SDF,
 edited Radius from 24 to 16, and restored 24 with one Undo. PulseRing opens and

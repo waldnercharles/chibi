@@ -539,8 +539,8 @@ or requirements to add generic plugin infrastructure now.
    readable labels, keyboard focus, useful empty states, and narrow-window
    behavior. Inspect the real rendered editor, not only model tests.
 5. **Architecture follow-through.** Assess the paused architecture experiment
-   against the working workflow before integrating anything. DLL loading,
-   remodule, and additional document types remain separate milestones.
+   against the working workflow before integrating anything. Additional document
+   types remain separate milestones. Native module reload was retired in CUT65.
 
 ## Verification
 

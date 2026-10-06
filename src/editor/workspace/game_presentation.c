@@ -64,8 +64,7 @@ static void render_game(void *user)
     app_scene_authoring_render(scene);
 }
 
-/* Game UI text uses the embedded Inter face. The host keeps ImGui's atlas
- * across application reloads, so the atlas owns a copy of the font. */
+/* Game UI text uses the embedded Inter face. ImGui's atlas owns a copy. */
 static void prepare_ui()
 {
     ImGuiIO *io = ImGui_GetIO();

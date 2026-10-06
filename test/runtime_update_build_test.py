@@ -97,8 +97,40 @@ if command == 'python3' and args[0] == 'tools/package_native.py' and os.environ.
                 self.assertLess(calls.index(installs[0]), calls.index(launch))
                 configures = [call for call in calls if call['command'] == 'configure']
                 self.assertIn('-DCHIBI_DISTRIBUTION=ON', configures[1]['args'])
-                self.assertIn('-DCHIBI_DEVELOPMENT_RELOAD=OFF', configures[1]['args'])
                 self.log.unlink()
+
+    def test_dev_builds_then_launches_with_workspace_and_requested_arguments(self):
+        result, calls = self.make(target='dev', registered=False,
+                                  PROJECT='external game', SCENE='scenes/example.kdl',
+                                  ARGS='--headless --frames 2')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        build = next(call for call in calls if call['command'] == 'cmake')
+        launch = next(call for call in calls if call['command'] == 'launch')
+        self.assertEqual(build['args'], ['--build', 'build-dev', '--target',
+                                         'chibi', '--parallel', '2'])
+        self.assertLess(calls.index(build), calls.index(launch))
+        self.assertEqual(launch['args'], ['--checkpoint', str(self.root.resolve() / '.chibi/workspace.json'),
+                                         '--project-root', 'external game',
+                                         '--scene', 'scenes/example.kdl',
+                                         '--headless', '--frames', '2'])
+
+    def test_dev_preserves_play_and_explicit_checkpoint_arguments(self):
+        for arguments, expected in (('--play', ['--play']),
+                                    ('--checkpoint "/custom workspace.json"',
+                                     ['--checkpoint', '/custom workspace.json'])):
+            with self.subTest(arguments=arguments):
+                result, calls = self.make(target='dev', registered=False, ARGS=arguments)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                launch = next(call for call in calls if call['command'] == 'launch')
+                self.assertEqual(launch['args'], ['--project-root', 'projects/arena2d', *expected])
+                self.log.unlink()
+
+    def test_failed_dev_build_does_not_refresh_or_launch(self):
+        result, calls = self.make(target='dev', FAIL_EDITOR='1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.script_calls(calls, 'package_native'))
+        self.assertFalse(self.script_calls(calls, 'install_game_runtime'))
+        self.assertFalse(any(call['command'] == 'launch' for call in calls))
 
     def test_default_build_limits_targets_to_app_and_controller(self):
         result, calls = self.make(build_target=None)

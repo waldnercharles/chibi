@@ -1,13 +1,10 @@
 #include "chibi/application.h"
 #include "host/stacktrace.h"
-#include "module.h"
-#ifdef CHIBI_DEVELOPMENT_HOST
-#include "dev.h"
-#endif
 #include "platform/cute.h"
 #include "render/shader_dir.h"
 #include "state_file.h"
 #include "support/resources.h"
+#include "support/xalloc.h"
 
 #include <imgui/dcimgui.h>
 #include <signal.h>
@@ -22,18 +19,9 @@
 
 static volatile sig_atomic_t stop_requested;
 static bool closing;
-#ifdef CHIBI_DEVELOPMENT_HOST
-static chibi_dev *development;
-#endif
-static chibi_module application;
-static chibi_host host;
-#ifndef CHIBI_STATIC_APPLICATION
-static const char *manifest;
-#endif
+static void *application;
 static const char *checkpoint_path;
 static char *window_path;
-
-static char *last_generation;
 
 static int result;
 
@@ -43,15 +31,6 @@ static void request_stop(int)
     stop_requested = 1;
 }
 #endif
-static void *allocate(size_t size)
-{
-    void *memory = malloc(size);
-    if (!memory) {
-        abort();
-    }
-    return memory;
-}
-
 static const char *option(int argc, char **argv, const char *name)
 {
     for (int i = 1; i + 1 < argc; i++) {
@@ -76,7 +55,7 @@ static bool checkpoint()
     if (!checkpoint_path) {
         return true;
     }
-    char *json = application.api->checkpoint(application.state);
+    char *json = chibi_application_checkpoint(application);
     int x, y, width, height;
     cf_app_get_position(&x, &y);
     cf_app_get_size(&width, &height);
@@ -94,7 +73,7 @@ static bool checkpoint()
 static bool preserve_rejected_checkpoint(const char *reason)
 {
     size_t size = strlen(checkpoint_path) + sizeof ".rejected-XXXXXX";
-    char *archive = allocate(size);
+    char *archive = xmalloc(size);
     snprintf(archive, size, "%s.rejected-XXXXXX", checkpoint_path);
     int fd = mkstemp(archive);
     if (fd < 0) {
@@ -120,11 +99,7 @@ static bool preserve_rejected_checkpoint(const char *reason)
 
 static void finish()
 {
-    chibi_module_close(&application);
-    free(last_generation);
-#ifdef CHIBI_DEVELOPMENT_HOST
-    chibi_dev_free(development);
-#endif
+    chibi_application_destroy(application);
     free(window_path);
     cf_destroy_app();
 }
@@ -136,69 +111,16 @@ static bool close_frame()
         if (!checkpoint()) {
             result = 1;
         }
-#ifdef CHIBI_DEVELOPMENT_HOST
-        if (development) {
-            chibi_dev_stop(development);
-        }
-#endif
     }
-#ifdef CHIBI_DEVELOPMENT_HOST
-    if (development && !chibi_dev_stopped(development)) {
-        cf_sleep(10);
-        return false;
-    }
-#endif
     return true;
 }
-
-#ifndef CHIBI_STATIC_APPLICATION
-static void replace_application(const char *generation)
-{
-    char error[1024] = { 0 };
-    bool loaded = chibi_module_replace(&application, generation, &host, NULL, error, sizeof error);
-#ifdef CHIBI_DEVELOPMENT_HOST
-    if (development) {
-        chibi_dev_accept(development, loaded);
-    }
-#endif
-    fprintf(
-        stderr,
-        loaded ? "Loaded application %s\n" : "Application rejected: %s\n",
-        loaded ? generation : error
-    );
-}
-#endif
 
 static bool frame()
 {
     if (stop_requested || closing) {
         return close_frame();
     }
-#ifndef CHIBI_STATIC_APPLICATION
-#ifdef CHIBI_DEVELOPMENT_HOST
-    if (development) {
-        const char *candidate = chibi_dev_poll(development);
-        if (candidate) {
-            replace_application(candidate);
-        }
-    }
-#endif
-    if (manifest) {
-        char *generation = chibi_read_file(manifest);
-        if (generation) {
-            generation[strcspn(generation, "\r\n")] = 0;
-            if (*generation &&
-                (!last_generation || strcmp(last_generation, generation))) {
-                replace_application(generation);
-                free(last_generation);
-                last_generation = generation;
-                generation = NULL;
-            }
-            free(generation);
-        }
-    }
-#endif
-    int status = application.api->frame(application.state);
+    int status = chibi_application_frame(application);
     if (!status) {
         return false;
     }
@@ -243,54 +165,21 @@ int main(int argc, char **argv)
             "             [--checkpoint PATH]\n"
             "             [--engine-info]\n"
             "Play: Escape pauses, Enter resumes, R restarts, Q quits while "
-            "paused.\n"
-            "Development: --bootstrap RESULT, or --module MANIFEST."
+            "paused."
         );
         return 0;
     }
-#ifdef CHIBI_DEVELOPMENT_HOST
-    const char *bootstrap = option(argc, argv, "--bootstrap");
-    if (bootstrap) {
-        return chibi_dev_bootstrap(argc, argv, bootstrap);
-    }
-    const char *config = option(argc, argv, "--dev-config");
-    if (config) {
-        const char *jobs = option(argc, argv, "--jobs");
-        development = chibi_dev_create(
-            config,
-            option(argc, argv, "--generation"),
-            jobs ? atoi(jobs) : 0
-        );
-        if (!development) {
-            return 1;
-        }
-    }
-#endif
     stacktrace_init(argv[0]);
 
     cf_set_assert_handler(stacktrace_assert_handler);
-    host = (chibi_host){ argc, argv, allocate, free };
-#ifndef CHIBI_STATIC_APPLICATION
-    manifest = option(argc, argv, "--module");
-#ifdef CHIBI_DEVELOPMENT_HOST
-    if (development) {
-        manifest = NULL;
-    }
-#endif
-#endif
     checkpoint_path = option(argc, argv, "--checkpoint");
-#ifdef CHIBI_DEVELOPMENT_HOST
-    if (development && !checkpoint_path && !flag(argc, argv, "--play")) {
-        checkpoint_path = chibi_dev_checkpoint_path(development);
-    }
-#endif
 
     bool hidden = flag(argc, argv, "--headless") || flag(argc, argv, "--screenshot");
     int x = 0, y = 0, width = 1920, height = 1080;
     bool centered = true;
     if (checkpoint_path) {
         size_t size = strlen(checkpoint_path) + sizeof ".window";
-        window_path = allocate(size);
+        window_path = xmalloc(size);
         snprintf(window_path, size, "%s.window", checkpoint_path);
         char *window = chibi_read_file(window_path);
         int saved_x, saved_y, saved_width, saved_height;
@@ -333,9 +222,6 @@ int main(int argc, char **argv)
 #ifdef __EMSCRIPTEN__
         web_startup_error(made.details);
 #endif
-#ifdef CHIBI_DEVELOPMENT_HOST
-        chibi_dev_free(development);
-#endif
         free(window_path);
         return 1;
     }
@@ -350,68 +236,22 @@ int main(int argc, char **argv)
     }
     char *saved = checkpoint_path ? chibi_read_file(checkpoint_path) : NULL;
     char error[1024] = { 0 };
-#ifdef CHIBI_STATIC_APPLICATION
-    application.api = chibi_application();
-    application.state = application.api->create(&host, saved, error, sizeof error);
-    if (!application.state && saved && preserve_rejected_checkpoint(error)) {
+    application = chibi_application_create(argc, argv, saved, error, sizeof error);
+    if (!application && saved && preserve_rejected_checkpoint(error)) {
         error[0] = 0;
-        application.state = application.api->create(&host, NULL, error, sizeof error);
+        application = chibi_application_create(argc, argv, NULL, error, sizeof error);
     }
-    if (application.state) {
-        application.api->activate(application.state);
-    }
-#else
-#ifdef CHIBI_DEVELOPMENT_HOST
-    if (development) {
-        last_generation = strdup(chibi_dev_initial_application(development));
-    }
-#endif
-    if (!last_generation && manifest) {
-        last_generation = chibi_read_file(manifest);
-    }
-
-    if (last_generation) {
-        last_generation[strcspn(last_generation, "\r\n")] = 0;
-    }
-    bool loaded = last_generation &&
-                  chibi_module_replace(&application, last_generation, &host, saved, error, sizeof error);
-    if (!loaded && last_generation && saved && preserve_rejected_checkpoint(error)) {
-        error[0] = 0;
-        loaded = chibi_module_replace(&application, last_generation, &host, NULL, error, sizeof error);
-    }
-    if (!loaded) {
-        fprintf(stderr, "Could not load application: %s\n", *error ? error : "missing --module manifest");
-        free(saved);
-        free(last_generation);
-#ifdef CHIBI_DEVELOPMENT_HOST
-        chibi_dev_free(development);
-#endif
-        free(window_path);
-        cf_destroy_app();
-        return 1;
-    }
-#endif
-#ifndef CHIBI_STATIC_APPLICATION
-#ifdef CHIBI_DEVELOPMENT_HOST
-    if (development) {
-        chibi_dev_accept(development, true);
-    }
-#endif
-    fprintf(stderr, "Loaded application %s\n", last_generation);
-#endif
     free(saved);
-    if (!application.state) {
+    if (!application) {
         fprintf(stderr, "%s\n", error);
 #ifdef __EMSCRIPTEN__
         web_startup_error(error);
 #endif
-#ifdef CHIBI_DEVELOPMENT_HOST
-        chibi_dev_free(development);
-#endif
         free(window_path);
         cf_destroy_app();
         return 1;
     }
+    chibi_application_activate(application);
 #ifndef __EMSCRIPTEN__
     signal(SIGINT, request_stop);
     signal(SIGTERM, request_stop);

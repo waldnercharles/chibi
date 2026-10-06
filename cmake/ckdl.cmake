@@ -12,7 +12,3 @@ target_include_directories(ckdl PUBLIC ${CHIBI_DEPENDENCY_SOURCE_ROOT}/third_par
 target_include_directories(ckdl PRIVATE ${CHIBI_DEPENDENCY_SOURCE_ROOT}/third_party/ckdl/src)
 target_compile_definitions(ckdl PUBLIC KDL_STATIC_LIB=1 PRIVATE BUILDING_KDL=1)
 target_compile_options(ckdl PRIVATE -w)
-
-if(CHIBI_DEVELOPMENT_RELOAD)
-    set_target_properties(ckdl PROPERTIES POSITION_INDEPENDENT_CODE ON C_VISIBILITY_PRESET hidden)
-endif()

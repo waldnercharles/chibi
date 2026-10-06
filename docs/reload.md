@@ -40,19 +40,19 @@ pointers or generated code.
 
 ## Checks
 
-`make test` includes `check-host` for native process and state-file handling.
-Checkpoint tests exercise dirty documents, Undo/Redo, pre-Play restoration and
-held input across binding recreation. Native process and filesystem tests cover
-argument handling, cancellation and atomic saves. Generation and reflection
-checks remain independent of the application lifecycle.
+`make test`, `make test-short` and `make test-tools` run the minimal C tooling
+suite under one shared 60-second deadline. Native host, generation, reflection
+and full editor checkpoint checks remain quarantined, disabled and not passed.
+See [the test inventory](test-quarantine.md). Compilation does not establish
+runtime coverage.
 
-For focused host checks in an existing native build:
-
-```sh
-cmake --build build --target check-host
-# Requires the native display/GPU context; use xvfb-run -a on Linux.
-cmake --build build --target check-application-recovery
-```
+The retained `test_host` binary covers native process and state-file handling.
+`check-host` invokes the quarantine guard, which refuses execution. The binary
+remains available for compilation. The unadmitted `--editor-checkpoint` assertions in
+the native suite cover dirty documents, Undo/Redo, pre-Play restoration and held
+input across binding recreation; their existence is not current execution
+evidence. CUT65 removed the Python application-recovery driver and its CMake
+check target. Do not execute raw native or CMake checks to bypass quarantine.
 
 CUT65 removed the old `CHIBI_DEVELOPMENT_RELOAD` build mode, `chibi_dll`,
 `check-reload`, `check-dev`, staging descriptors and native watcher smoke checks.

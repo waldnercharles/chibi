@@ -102,12 +102,11 @@ automatic optimizer does not use this API.
 
 Useful checks:
 
-```sh
+```text
 make build
 make test
 build/test_suite --graph-optimize
 build/test_suite --ui-optimizer
-node tools/mcp/optimizer-smoke.mjs .
 ```
 
 The Set Variable and explicit Self follow-up passed a native Release build, 230

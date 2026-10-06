@@ -493,7 +493,7 @@ endif()
 chibi_enable_tracy(chibi_ctl)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # Under Node the controller reads projects from disk, so the same headless
-    # scenarios run natively and as WASM (make profile-compare).
+    # scenarios run natively and as WASM through the same controller API.
     target_link_options(chibi_ctl PRIVATE "-sENVIRONMENT=node" "-sNODERAWFS=1" "-sEXIT_RUNTIME=1")
 endif()
 
@@ -514,40 +514,6 @@ foreach(asset_root ${CHIBI_ASSET_ROOTS})
         $<TARGET_FILE:chibi_ctl> --project-root ${asset_root} --format --check)
 endforeach()
 add_custom_target(check-assets ${CHIBI_ASSET_CHECKS} DEPENDS chibi_ctl VERBATIM)
-
-find_program(NODE_EXECUTABLE node)
-if(NODE_EXECUTABLE)
-    add_custom_target(check-mcp
-        COMMAND ${NODE_EXECUTABLE} --test ${CMAKE_SOURCE_DIR}/test/mcp_horizon_options_test.mjs
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/behavior-code/decompile-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_SKIP_GPU=1
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/material-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/optimizer-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
-        DEPENDS chibi_ctl
-        VERBATIM)
-    add_custom_target(check-mcp-gpu
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_GPU=1
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
-        DEPENDS chibi_ctl
-        VERBATIM)
-else()
-    add_custom_target(check-mcp
-        COMMAND ${CMAKE_COMMAND} -E echo "Node.js not found; skipping MCP protocol check"
-        VERBATIM)
-    add_custom_target(check-mcp-gpu
-        COMMAND ${CMAKE_COMMAND} -E echo "Node.js not found; skipping MCP GPU check"
-        VERBATIM)
-endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CHIBI_WEB_SHELL "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
@@ -810,14 +776,17 @@ if(NOT CHIBI_COMPILE_COMMANDS_LINK_RESULT STREQUAL "0" AND
 endif()
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    add_subdirectory(test/tools)
     add_executable(test_host test/host/main.c test/host/process.c test/host/state_file.c
         src/host/process.c src/host/state_file.c)
-    add_custom_target(check-host COMMAND test_host DEPENDS test_host VERBATIM)
+    target_include_directories(test_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    # Host checks have no admission under the temporary execution quarantine.
+    # Keep test_host available for compilation without executing the checks.
     find_program(CHIBI_PYTHON_EXECUTABLE python3 REQUIRED)
-    add_custom_target(check-application-recovery
-        COMMAND "${CHIBI_PYTHON_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/test/host/application_test.py"
-            "$<TARGET_FILE:chibi>"
-        DEPENDS chibi VERBATIM)
+    add_custom_target(check-host
+        COMMAND "${CHIBI_PYTHON_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/test_policy.py"
+            disabled check-host
+        VERBATIM)
     add_executable(concurrent_runner test/host/concurrent.c src/host/process.c)
     add_custom_target(check-generation
         COMMAND ${CMAKE_COMMAND} "-DROOT=${CMAKE_SOURCE_DIR}"

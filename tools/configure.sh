@@ -50,20 +50,6 @@ fi
 package=
 package_helper="$source_dir/tools/dependency_package.py"
 package_enabled=${CHIBI_DEPENDENCY_PACKAGES:-1}
-# Tracy's Python module is tooling with an interpreter-specific ABI and a
-# local output path consumed by tools/tracy/launch_mcp.sh.
-python_bindings=
-if [ -f "$build_dir/CMakeCache.txt" ]; then
-    python_bindings=$(sed -n 's/^TRACY_CLIENT_PYTHON:[^=]*=//p' "$build_dir/CMakeCache.txt")
-fi
-for argument do
-    case "$argument" in
-        -DTRACY_CLIENT_PYTHON=*|-DTRACY_CLIENT_PYTHON:*=*) python_bindings=${argument#*=} ;;
-    esac
-done
-case "$python_bindings" in
-    ON|TRUE|1|YES|on|true|yes) package_enabled=0 ;;
-esac
 if [ "$package_enabled" = 1 ]; then
     package_enabled=$(python3 - "$build_dir" "$@" <<'PY_OVERRIDES'
 from pathlib import Path

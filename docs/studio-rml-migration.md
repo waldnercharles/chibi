@@ -1,5 +1,9 @@
 # Studio in RML and RCSS
 
+> Script test and benchmark runners referenced below are retired. Their commands
+> are historical records, not current workflows. Measurements and source hashes
+> describe the recorded revisions; see [testing](testing.md) for current C tooling.
+
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
@@ -121,9 +125,9 @@ changes CUT-50's native test selectors or production performance paths.
 | Physical macOS trackpad | Owned separately by CUT-57; not completed by this work. |
 | Active-checkout web Studio assets | Implemented in `tools/web_serve.py`. Regression fixture reproduces the old stale read, then checks checkout override with/without a workspace Studio copy, repeated save/reload, external edits/additions/removals, manifest writes, ignored stale edits, path containment and the reserved Studio project name. `test/web_serve_test.py` also checks the actual launch mount; `test/web_workspace_test.mjs` covers browser mirroring, launch arguments and preloaded Studio read/save/delete/rename/reload reconciliation. |
 
-Validation for the process slice: `python3 test/web_serve_test.py` (45 tests)
-and `node test/web_workspace_test.mjs` pass on Linux, CPU/headless (also via
-`make test-tool-web-serve test-tool-web-workspace`). A bounded real HTTP smoke
+Historical validation for this process slice passed 45 Python web-server checks
+and the Node workspace checks on Linux without graphics. Those script suites and
+Make targets are retired. A bounded real HTTP smoke
 check passed checkout Studio/workspace game reads, Studio save, watcher update
 and reload with the stale copy untouched. `git diff --check` and
 `make check-format` pass (clang-format 22.1.8 installed under `/tmp` for the check).

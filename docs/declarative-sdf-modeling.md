@@ -205,9 +205,9 @@ Authoring scripts under `projects/modeling_lab` use the public graph tools:
 | `author-materials.mjs` | ModelMaterialStudy, cut/smooth ownership and component slot overrides |
 | `author-cost.mjs` | Isolated program sharing, variants, complex construction, and hit-resolution controls |
 
-Pass `--preview` to capture fixed scene views. Disposable public authoring checks
-live in `tools/check_modeling_authoring.mjs`. See the lab README and retained
-`build/model-evidence` results for actual gate evidence. The local HRC relief
+Pass `--preview` to capture fixed scene views. Scripted public authoring, material
+and override checks are retired. See the lab README and retained
+`build/model-evidence` results for historical gate evidence. The local HRC relief
 approximation still shows aliasing at sharp creases; the relief-disabled control
 isolates that from model geometry. No new GI transport is introduced here.
 
@@ -234,13 +234,12 @@ The native package contains the engine, Studio resources, shaders, and MCP.
 The external project's model KDL and dependencies remain in its project content
 directory. Build and assemble an isolated engine package with:
 
-```sh
+```text
 make build BUILD_DIR=build-package \
   LOCAL_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_DISTRIBUTION=ON' \
   BUILD_TARGET='chibi chibi_ctl' UPDATE_GAME_RUNTIME=0
 python3 tools/package_native.py --build build-package \
   --output build/model-evidence/package
-python3 test/package_native_test.py --package build/model-evidence/package
 ```
 
 `make package-native` unconditionally invokes the registered-game runtime
@@ -267,14 +266,11 @@ The saved modeling-project check passed against build
 recovered, and the relocated engine rendered an inspected 120-frame camera capture.
 Project and package hashes remained unchanged. Retained evidence is in
 `build/model-evidence/package-check-preserved/packaged-model-9if_1_r7`.
-Run the same check against an isolated copy with:
+The original isolated check used a Python runner:
 
-```sh
-python3 tools/check_modeling_package.py \
-  --package build/model-evidence/package \
-  --project-root projects/modeling_lab \
-  --output build/model-evidence/package-check --scene ModelPropStudy
-```
+The former Python validation/benchmark helper for this experiment is retired.
+Use the native controller to validate assets or request previews; see
+[testing](testing.md).
 
 This check relocates the package, copies source and dependencies, validates
 models/materials/scenes, verifies invalid-source rejection and recovery, and
@@ -290,18 +286,11 @@ and two small nameplates sampled from the photo. Silhouette, proportions,
 grooves, and reflections differ from the reference. Fresh script reproduction
 produced byte-identical model source and semantic matches for all 17 assets.
 
-For Release comparisons, run the packaged controller with its resource mounts:
+The earlier Release comparisons used these packaged controller resource mounts:
 
-```sh
-export CHIBI_ENGINE_PACKAGE=1
-export CHIBI_RESOURCE_DIR="$PWD/build/model-evidence/package/share/chibi"
-export CHIBI_RENDER_SHADER_DIR="$PWD/build/model-evidence/package/share/chibi/shaders"
-python3 tools/check_modeling_lab.py \
-  --build build/model-evidence/package/bin --benchmark \
-  --width 1080 --height 740 \
-  --scene ModelCostHitEntityMaterial --scene ModelCostHitPartMaterial \
-  --output build/model-evidence/release-hit-pair-01
-```
+The former Python validation/benchmark helper for this experiment is retired.
+Use the native controller to validate assets or request previews; see
+[testing](testing.md).
 
 Repeat in reverse scene order into a new output directory, then alternate both
 orders. Apply the same protocol to raw/model sphere and simple/complex controls;

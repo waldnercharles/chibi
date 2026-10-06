@@ -26,6 +26,19 @@ the fix. It uses a 0.15s nested deadline, a 0.4s grandchild marker and 0.5s
 observation while the outer aggregate stays alive, and verifies that a sibling
 in the same shared group survives.
 
+
+Linux probes its own `/proc/self/task/<pid>/children` reader before test work.
+Some kernels support subreaping without exposing that file. If it is missing,
+unreadable or malformed, the supervisor verifies the existing system `ps`
+PID/parent reader and uses it to find/reap its adopted children instead. The
+one-second read-only probe must see the supervisor and excludes its own completed
+probe PID from cleanup. The same reader serves portable live-subtree cleanup.
+If no usable discovery reader exists (including denied, missing, malformed or
+timed-out `ps` when needed), validation fails before launching test workloads.
+No kernel option, installation or security setting is changed. A subsecond
+missing-file simulation verifies ordinary success, timeout cleanup of a real
+`setsid` descendant, and refusal before test launch when both readers fail.
+
 ## Disabled coverage inventory (temporary; NOT PASSED)
 
 | Disabled command / coverage | Reason |
@@ -45,8 +58,9 @@ in the same shared group survives.
 
 `make test` / `make test-short` runs policy, validation-plan and execution-policy
 regressions under **one shared 60-second deadline**. This is a purposeful policy regression group,
-not a partition of the old full native suite. The revised default command passed in 6.183s including fixture setup: 16 policy,
-12 validation-plan, 18 execution-policy Python checks and the MCP check passed.
+not a partition of the old full native suite. The default contains the policy, validation-plan and execution-policy Python
+checks and the MCP check, including missing-cleanup-capability regressions.
+Exact final-head counts and command wall times are recorded in the PR evidence.
  Each independently requested native invocation below retains
 its complete existing assertions and has its own maximum 60-second deadline:
 

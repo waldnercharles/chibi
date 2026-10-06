@@ -77,15 +77,59 @@ def absolute_deadline(seconds, env):
     return deadline
 
 
-def cleanup_children():
+def process_children():
+    # Shared portable PID/parent snapshot. Exclude the probe itself: it has
+    # already been reaped when we use the snapshot and is not owned test work.
+    probe = subprocess.Popen(['ps', '-A', '-o', 'pid=,ppid='],
+                             stdout=subprocess.PIPE, text=True)
+    try:
+        rows, _ = probe.communicate(timeout=1)
+    finally:
+        if probe.poll() is None:
+            probe.kill()
+        probe.wait()
+    if probe.returncode:
+        raise RuntimeError('test cleanup process inspection failed')
+    children = {}
+    own_process_seen = False
+    for row in rows.splitlines():
+        pid, parent = map(int, row.split())
+        own_process_seen |= pid == os.getpid()
+        if pid != probe.pid:
+            children.setdefault(parent, []).append(pid)
+    if not own_process_seen:
+        raise RuntimeError('test cleanup cannot inspect its own process')
+    return children
+
+
+def proc_children():
+    path = Path(f'/proc/self/task/{os.getpid()}/children')
+    return [int(pid) for pid in path.read_text().split()]
+
+
+def cleanup_reader(subreaper):
+    # Verify the selected discovery capability before launching test work.
+    if subreaper:
+        try:
+            proc_children()
+            return proc_children
+        except (OSError, ValueError):
+            pass
+    try:
+        process_children()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        raise RuntimeError('test cleanup unavailable: no usable proc children reader or ps; no test started') from error
+    return lambda: process_children().get(os.getpid(), [])
+
+
+def cleanup_children(read_children):
     # This dedicated subreaper owns all its children, including double-forked or
     # setsid descendants adopted when their parent/nested supervisor is killed.
     # Kill parents, reap, then repeat for newly adopted children until none remain.
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    children_file = Path(f'/proc/self/task/{os.getpid()}/children')
     while True:
-        children = [int(pid) for pid in children_file.read_text().split()]
+        children = read_children()
         for pid in children:
             try:
                 os.kill(pid, signal.SIGKILL)
@@ -115,12 +159,7 @@ def cleanup_subtree(child):
                     os.kill(pid, signal.SIGSTOP)
                 except ProcessLookupError:
                     pass
-            rows = subprocess.check_output(['ps', '-A', '-o', 'pid=,ppid='],
-                                           text=True, timeout=1)
-            children = {}
-            for row in rows.splitlines():
-                pid, parent = map(int, row.split())
-                children.setdefault(parent, []).append(pid)
+            children = process_children()
             pending = []
             frontier = list(owned)
             seen = set(owned)
@@ -168,6 +207,7 @@ def inherited_group(environment):
 
 def supervise(commands):
     subreaper = enable_subreaper()
+    read_children = cleanup_reader(subreaper)
     os.environ[PROCESS_GROUP] = str(os.getpgrp())
     child = None
     deadline = absolute_deadline(LIMIT, os.environ)
@@ -189,7 +229,7 @@ def supervise(commands):
         return 0
     finally:
         if subreaper:
-            cleanup_children()
+            cleanup_children(read_children)
         elif child is not None:
             cleanup_subtree(child)
 

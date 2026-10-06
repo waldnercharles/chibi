@@ -116,6 +116,47 @@ class TestPolicy(unittest.TestCase):
             time.sleep(.25)
             self.assertFalse(marker.exists())
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux subreaper capability regression")
+    def test_missing_proc_children_uses_ps_and_still_reaps_descendants(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            marker, started = root / 'escaped', root / 'started'
+            driver = root / 'missing_children_supervisor.py'
+            driver.write_text(
+                f'import sys,signal; sys.path.insert(0,{str(ROOT / "tools")!r})\n'
+                'import test_policy\n'
+                'read_text=test_policy.Path.read_text\n'
+                'def missing_children(path,*args,**kwargs):\n'
+                '    if str(path).startswith("/proc/") and path.name=="children":\n'
+                '        raise FileNotFoundError("kernel has no proc children file")\n'
+                '    return read_text(path,*args,**kwargs)\n'
+                'test_policy.Path.read_text=missing_children\n'
+                'signal.signal(signal.SIGTERM,test_policy.terminate)\n'
+                'signal.signal(signal.SIGINT,test_policy.terminate)\n'
+                'try: sys.exit(test_policy.main())\n'
+                'except (test_policy.TerminationRequested,KeyboardInterrupt): sys.exit(130)\n')
+            descendant = (f'from pathlib import Path; import time; '
+                          f'Path({str(started)!r}).touch(); time.sleep(.4); '
+                          f'Path({str(marker)!r}).touch()')
+            parent = (f'import subprocess,sys,time; '
+                      f'subprocess.Popen([sys.executable,"-c",{descendant!r}], start_new_session=True); '
+                      'time.sleep(.8)')
+            with patch.object(policy, '__file__', str(driver)):
+                self.assertEqual(policy.run_commands([[sys.executable, '-c', 'pass']]), 0)
+                self.assertEqual(policy.run_commands([[sys.executable, '-c', parent]], .15), 124)
+            self.assertTrue(started.exists(), 'escaped-session descendant must actually start')
+            time.sleep(.5)
+            self.assertFalse(marker.exists(), 'fallback must retain subreaper cleanup')
+
+    def test_no_cleanup_reader_fails_before_test_work(self):
+        with patch.object(policy, 'enable_subreaper', return_value=True), \
+                patch.object(policy, 'proc_children', side_effect=FileNotFoundError()), \
+                patch.object(policy, 'process_children', side_effect=OSError('ps unavailable')), \
+                patch.object(policy.subprocess, 'Popen') as spawn:
+            with self.assertRaisesRegex(RuntimeError, 'no test started'):
+                policy.supervise([['must-not-run']])
+            spawn.assert_not_called()
+
     def test_macos_selection_keeps_short_commands_without_linux_subreaper(self):
         with patch.object(policy.sys, 'platform', 'darwin'), \
                 patch.object(policy.ctypes, 'CDLL') as libc, \

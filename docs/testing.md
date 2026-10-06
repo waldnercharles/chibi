@@ -23,7 +23,9 @@ deadline across all its subprocesses. Timeout stops the owned process group and 
 skip. Nested managed test wrappers share that group and the absolute deadline.
 Portable nested timeout cleanup freezes and kills only the live child subtree,
 so descendants stop before the outer aggregate ends without killing siblings.
-Linux subreaping additionally kills/reaps descendants that escape with `setsid`;
+Cleanup discovery is checked before test work; Linux uses a verified `ps`
+fallback if its proc children file is unavailable, and refuses work if neither
+reader is usable. Linux subreaping additionally kills/reaps descendants that escape with `setsid`;
 this stronger guarantee is not claimed on macOS, where short tests remain enabled. The short regression aggregate shares one
 deadline; it does not reset per test. Multiple Make validation goals are rejected
 as an unadmitted aggregate. Do not manufacture chunks of a slow suite to evade

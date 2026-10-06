@@ -24,7 +24,7 @@ make package-native # package native engine, Studio, and MCP for external games
 make test-package # verify the package without rebuilding during authoring
 make build-tracy  # build native RelWithDebInfo with Tracy enabled
 make run-tracy    # run the native Tracy profile
-make test         # model, runtime, native UI, generation, and loader checks
+make test         # bounded policy regressions; full coverage temporarily DISABLED
 make test-fast TEST_ARGS=--graph-optimize  # focused plain Debug check
 make mcp          # run the local MCP authoring server over stdio
 make mcp-setup    # generate local Codex MCP configuration
@@ -61,7 +61,7 @@ or CMake cache settings trigger configuration again.
 
 `make test-fast TEST_ARGS=--graph-optimize` builds only the test executable in
 plain Debug and runs that selector. Use another `test_suite` selector for the
-area you changed. `make test` remains the full ASan and UBSan gate.
+area you changed. `make test` temporarily runs policy regressions only; see [the 60-second policy](docs/testing.md#temporary-60-second-policy) for disabled coverage.
 
 Neon Swarm is the default project for native launches, editor profiles, MCP,
 and `make web-serve`. Its manifest selects `scenes/Sandbox.kdl`.
@@ -167,7 +167,7 @@ Failures print bounded diagnostic excerpts and the full log path. Use `VERBOSE=1
 to stream output. Old completed logs are limited to 20 files and 64 MiB; running
 logs and the current phase are retained. `make build BUILD_TARGET=chibi_ctl` builds
 only the controller; `BUILD_TARGET=` requests the default CMake target set.
-`make test` still runs the complete required checks. Ordinary builds do not create
+`make test` does not certify full coverage during the temporary quarantine. Ordinary builds do not create
 a separate runtime distribution; launch commands refresh registered games, or use
 `make update-game-runtime` explicitly.
 

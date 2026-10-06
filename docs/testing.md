@@ -1,5 +1,46 @@
 # Test iteration
 
+## Temporary 60-second policy
+
+The user's temporary policy supersedes the full-gate commands and historical
+coverage descriptions below: **disable test commands that take over one minute**.
+Known slow commands are not scheduled, even with hardware opt-in. Unknown runtime
+is not evidence of speed. The [disabled coverage inventory](test-quarantine.md)
+lists exact quarantined targets and the small retained command set.
+
+`make test` now runs only `test/test_policy_test.py`; success means those policy
+regressions passed, not native, tooling, GPU or full verification. Every run prints
+a quarantine notice. `make test-list` reports admitted invocations without a build.
+`make test-full`, `test-slow`, `test-render` and other quarantined targets exit
+nonzero **before** their old recipes execute. Their recipes, tests, fixtures and
+assertions are retained for a reversible restoration after timing investigation.
+Do not use direct binaries, CMake check targets or captures to bypass quarantine.
+
+`tools/test_policy.py` gives each admitted test command one 60-second wall-clock
+deadline across all its subprocesses. Timeout kills the process group and returns
+failure (124), never a green skip. The short regression aggregate shares one
+deadline; it does not reset per test. Multiple Make validation goals are rejected
+as an unadmitted aggregate. Do not manufacture chunks of a slow suite to evade
+the limit. No runtime knob raises the production ceiling.
+
+Configure and compile separately (`make build BUILD_TARGET=test_suite`); report
+their elapsed times under build/configuration, never under test execution. The
+reported full-command times 507s/145s include build/tooling overhead and are not
+native test times. Known test-only evidence, including PR164's Debug 1059s and
+optimized 125.66s render aggregates, justifies quarantine without another run.
+
+CI's existing named jobs explicitly report disabled coverage and run only the
+bounded subset described in the inventory. Existing server-required checks,
+independent review, PR/ticket holds, configuration requirements and protection
+rules still apply. The older CUT62 complete-gate requirement remains unsatisfied
+while its tests are quarantined; do not merge by treating short runs as full
+coverage. Do not enable Actions or alter protections to resolve this gap.
+
+## Previous full-gate policy and historical evidence
+
+The following sections document preserved coverage and previous timings. Their
+full-test execution instructions are suspended by the temporary policy above.
+
 Use `make agent-list` and the capability-aware commands in [agent execution](agent-execution.md)
 while iterating. Full/mixed GPU suites now require explicit hardware opt-in;
 CI sets it explicitly and retains complete coverage. A focused selector may contain

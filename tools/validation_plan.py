@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 
-FULL = 'CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 make test test-render'
+FULL = 'make test-full'  # Quarantined: fails closed; never schedules the full suite.
 INTEGRATION = [FULL, 'make check-format']
 
 
@@ -65,7 +65,8 @@ def make_plan(args, root, cpu, gpu):
         pending=[
             'Recheck every member PR/ticket hold and required approval before admission/landing; confirmation grants no merge authority',
             'Independent source review of each pinned source and combined diff/conflict resolutions',
-            'Full native/render gate and formatting on the immutable combined tree',
+            'Full native/render DISABLED by temporary 60-second quarantine, NOT PASSED; server-required checks still block landing',
+            'Formatting on the immutable combined tree',
             'CI matrix: Debug + ASan/UBSan + SLJIT; RelWithDebInfo + SLJIT; scaling; no-SLJIT rejection; development reload',
             'Required web build/UI verification and scope-specific backend/parity/load checks; release validation when applicable',
             'Owner records actual commands, flags, dependencies, device, exit codes, timings and logs; configured CI is not execution',

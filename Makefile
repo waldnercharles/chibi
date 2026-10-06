@@ -120,6 +120,13 @@ ifneq ($(MAKECMDGOALS),test-fast)
 $(error TEST_ARGS is only supported with test-fast as the sole make goal)
 endif
 endif
+# Do not repackage separate admitted commands into an unmeasured aggregate.
+CHIBI_TEST_GOALS := $(filter test% agent-test agent-gpu-test benchmark profile-compare,$(MAKECMDGOALS))
+ifneq ($(strip $(CHIBI_TEST_GOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Temporary 60-second policy: use one validation goal per invocation; aggregate is unadmitted)
+endif
+endif
 # Apple Clang 17 does not unregister ASan globals on dlclose. Use installed
 # upstream LLVM for native sanitized reload tests, without disabling checks.
 NATIVE_TOOLCHAIN_FLAGS ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++)
@@ -170,16 +177,16 @@ help:
 		'make tracy-mcp      Build and run the official Tracy MCP server' \
 		'make agent-list     List CPU selectors and bounded GPU capabilities' \
 		'make agent-test AGENT_SELECTOR=--graph-optimize  CPU iteration' \
-		'make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu  Explicit bounded GPU check' \
-		'make test           Run the complete tooling and native regression gate' \
+		'make agent-gpu-test DISABLED pending command timing review' \
+		'make test           Bounded policy regressions only; full coverage DISABLED' \
 		'make test-fast TEST_ARGS=--graph-optimize  Run one focused native selector' \
-		'make test-list      List focused native selectors (builds test_suite)' \
-		'make test-tools     Run isolated tooling tests, bounded parallelism' \
-		'make test-slow      Run the complete native suite and function audit' \
-		'make test-full      Alias for the complete tooling and native gate' \
-		'make test-compiler-parity  Run focused behavior compiler parity checks' \
-		'make test-render    Run GPU previews and hidden-window checks' \
-		'make benchmark      Run optimized benchmarks with symbols' \
+		'make test-list      Show admitted commands and quarantine' \
+		'make test-tools     DISABLED pending aggregate timing review' \
+		'make test-slow      DISABLED: full native suite exceeds 60 seconds' \
+		'make test-full      DISABLED: complete gate exceeds 60 seconds' \
+		'make test-compiler-parity  DISABLED pending command timing review' \
+		'make test-render    DISABLED: render suite exceeds 60 seconds' \
+		'make benchmark      DISABLED pending aggregate timing review' \
 		'make dev            Run the RelWithDebInfo source reload host' \
 		'make mcp            Run the MCP server over stdio' \
 		'make mcp-controller Build only the chibi_ctl MCP controller' \
@@ -265,7 +272,9 @@ package-native:
 	@$(QUIET) package_native.py -- python3 tools/package_native.py --build "$(PACKAGE_BUILD_DIR)" --output "$(PACKAGE_OUTPUT)"
 	@$(QUIET) install_game_runtime.py -- python3 tools/install_game_runtime.py --package "$(PACKAGE_OUTPUT)"
 
-test-package: package-native
+test-package:
+	@python3 tools/test_policy.py disabled test-package
+	@$(MAKE) package-native
 	@$(QUIET) package_native_test.py -- python3 test/package_native_test.py --package "$(PACKAGE_OUTPUT)"
 	@$(QUIET) mcp-package-tests -- node --test test/mcp_package_test.mjs
 
@@ -284,6 +293,7 @@ tracy-mcp: build-tracy-mcp
 	TRACY_MCP_BUILD_DIR="$(TRACY_MCP_BUILD_DIR)" TRACY_MCP_PYTHON="$(TRACY_MCP_PYTHON)" sh tools/tracy/launch_mcp.sh
 
 benchmark:
+	@python3 tools/test_policy.py disabled benchmark
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BENCHMARK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(BENCHMARK_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BENCHMARK_BUILD_DIR)" --target bench_activation system_benchmark query_benchmark contact_benchmark --parallel $(JOBS)
 	env $(NATIVE_RUNTIME_ENV) "$(BENCHMARK_BUILD_DIR)/bench_activation" $(ARGS)
@@ -302,11 +312,14 @@ web: web-serial
 	@$(QUIET) package_web.py -- python3 tools/package_web.py --serial "$(WEB_BUILD_DIR)" --threads "$(WEB_THREADS_BUILD_DIR)" --output "$(WEB_BUILD_DIR)"
 
 web-serial: web-configure
-	@$(QUIET) build -- cmake --build "$(WEB_BUILD_DIR)" --target chibi check-behavior-backend --parallel $(JOBS)
+	@printf "%s\n" "DISABLED, NOT PASSED: web check-behavior-backend; see docs/testing.md"
+	@$(QUIET) build -- cmake --build "$(WEB_BUILD_DIR)" --target chibi --parallel $(JOBS)
 
 # Profile PROJECT's start scene (or PROFILE_SCENE, or PROFILE_SCENARIO's replayed
 # gameplay) headless, natively and as WASM under Node, with the same fixed steps.
-profile-compare: web-configure
+profile-compare:
+	@python3 tools/test_policy.py disabled profile-compare
+	@$(MAKE) web-configure
 	@$(MAKE) build-release BUILD_TARGET=chibi_ctl
 	@$(QUIET) build -- cmake --build "$(WEB_BUILD_DIR)" --target chibi_ctl --parallel $(JOBS)
 	python3 tools/profile_compare.py --project-root "$(PROJECT)" --native "$(RELEASE_BUILD_DIR)/chibi_ctl" --wasm "$(WEB_BUILD_DIR)/chibi_ctl.js" $(if $(PROFILE_SCENE),--scene "$(PROFILE_SCENE)") $(if $(PROFILE_SCENARIO),--scenario "$(PROFILE_SCENARIO)") $(PROFILE_ARGS)
@@ -340,20 +353,32 @@ agent-list:
 	@python3 tools/agent.py list
 
 agent-test:
+	@python3 tools/test_policy.py admit -- $(AGENT_SELECTOR)
 	@$(MAKE) build BUILD_TARGET=test_suite
 	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" test -- $(AGENT_SELECTOR)
 
 agent-gpu-test:
+	@python3 tools/test_policy.py disabled agent-gpu-test
 	@$(MAKE) build BUILD_TARGET=test_suite
 	@python3 tools/agent.py --build-dir "$(BUILD_DIR)" gpu-test -- $(AGENT_SELECTOR)
 
 test-tool-execution-policy:
+	@python3 tools/test_policy.py disabled test-tool-execution-policy
 	@python3 test/execution_policy_test.py
 	@node --test test/mcp_execution_policy_test.mjs
 
-test: test-full
+# Temporary user policy: no full gate is implied by a successful short result.
+.PHONY: test-short test-policy-inventory
+test: test-short
+
+test-short:
+	@python3 tools/test_policy.py short
+
+test-policy-inventory:
+	@python3 tools/test_policy.py inventory
 
 test-full:
+	@python3 tools/test_policy.py disabled test-full
 	@python3 tools/agent.py hardware-check
 	+@$(MAKE) test-tools
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
@@ -364,63 +389,90 @@ test-full:
 
 .PHONY: $(TEST_TOOL_TARGETS)
 test-tools:
+	@python3 tools/test_policy.py disabled test-tools
 	+@$(MAKE) --no-print-directory -j$(TEST_JOBS) $(TEST_TOOL_TARGETS)
 
 test-tool-validation-plan:
+	@python3 tools/test_policy.py disabled test-tool-validation-plan
 	@$(QUIET) validation_plan_test.py -- python3 test/validation_plan_test.py
 
 test-tool-behavior-code:
+	@python3 tools/test_policy.py disabled test-tool-behavior-code
 	@$(QUIET) behavior-code-test -- node --test tools/behavior-code/behavior-code.test.mjs
 
 test-tool-kdl-assets:
+	@python3 tools/test_policy.py disabled test-tool-kdl-assets
 	@$(QUIET) kdl_asset_test.py -- python3 test/kdl_asset_test.py
 test-tool-fetchcontent-cache:
+	@python3 tools/test_policy.py disabled test-tool-fetchcontent-cache
 	@$(QUIET) fetchcontent_cache_test.py -- python3 test/fetchcontent_cache_test.py
 test-tool-configure-cache:
+	@python3 tools/test_policy.py disabled test-tool-configure-cache
 	@$(QUIET) configure_cache_test.py -- python3 test/configure_cache_test.py
 test-tool-dependency-package:
+	@python3 tools/test_policy.py disabled test-tool-dependency-package
 	@$(QUIET) dependency_package_test.py -- python3 test/dependency_package_test.py
 test-tool-package-web:
+	@python3 tools/test_policy.py disabled test-tool-package-web
 	@$(QUIET) package_web_test.py -- python3 test/package_web_test.py
 test-tool-publish-web:
+	@python3 tools/test_policy.py disabled test-tool-publish-web
 	@$(QUIET) publish_web_test.py -- python3 test/publish_web_test.py
 test-tool-package-native:
+	@python3 tools/test_policy.py disabled test-tool-package-native
 	@$(QUIET) package_native_test.py -- python3 test/package_native_test.py
 test-tool-install-game-runtime:
+	@python3 tools/test_policy.py disabled test-tool-install-game-runtime
 	@$(QUIET) install_game_runtime_test.py -- python3 test/install_game_runtime_test.py
 test-tool-runtime-update-build:
+	@python3 tools/test_policy.py disabled test-tool-runtime-update-build
 	@$(QUIET) runtime_update_build_test.py -- python3 test/runtime_update_build_test.py
 test-tool-quiet:
+	@python3 tools/test_policy.py disabled test-tool-quiet
 	@$(QUIET) quiet_test.py -- python3 test/quiet_test.py
 test-tool-workspaces:
+	@python3 tools/test_policy.py disabled test-tool-workspaces
 	@$(QUIET) workspaces_test.py -- python3 test/workspaces_test.py
 test-tool-workspace-retirement:
+	@python3 tools/test_policy.py disabled test-tool-workspace-retirement
 	@$(QUIET) workspace_retirement_test.py -- python3 test/workspace_retirement_test.py
 test-tool-workspace-make:
+	@python3 tools/test_policy.py disabled test-tool-workspace-make
 	@$(QUIET) workspace_make_test.py -- python3 test/workspace_make_test.py
 
 test-tool-cloud-entry:
+	@python3 tools/test_policy.py disabled test-tool-cloud-entry
 	@$(QUIET) cloud_entry_test.py -- python3 test/cloud_entry_test.py
 test-tool-cloud-emscripten-setup:
+	@python3 tools/test_policy.py disabled test-tool-cloud-emscripten-setup
 	@$(QUIET) cloud_emscripten_setup_test.py -- python3 test/cloud_emscripten_setup_test.py
 test-tool-workspace-install:
+	@python3 tools/test_policy.py disabled test-tool-workspace-install
 	@$(QUIET) workspace_install_test.py -- python3 test/workspace_install_test.py
 test-tool-mcp-package:
+	@python3 tools/test_policy.py disabled test-tool-mcp-package
 	@$(QUIET) mcp-package-tests -- node --test test/mcp_package_test.mjs
 test-tool-web-serve:
+	@python3 tools/test_policy.py disabled test-tool-web-serve
 	@$(QUIET) web_serve_test.py -- python3 test/web_serve_test.py
 test-tool-web-workspace:
+	@python3 tools/test_policy.py disabled test-tool-web-workspace
 	@$(QUIET) web_workspace_test.mjs -- node test/web_workspace_test.mjs
 test-tool-web-storage:
+	@python3 tools/test_policy.py disabled test-tool-web-storage
 	@$(QUIET) web_storage_test.mjs -- node test/web_storage_test.mjs
 test-tool-web-frames:
+	@python3 tools/test_policy.py disabled test-tool-web-frames
 	@$(QUIET) web_frames_test.mjs -- node test/web_frames_test.mjs
 test-tool-web-isolation:
+	@python3 tools/test_policy.py disabled test-tool-web-isolation
 	@$(QUIET) web_isolation_test.mjs -- node test/web_isolation_test.mjs
 test-tool-collab-client:
+	@python3 tools/test_policy.py disabled test-tool-collab-client
 	@$(QUIET) collab_client_test.mjs -- node test/collab_client_test.mjs
 
 test-slow:
+	@python3 tools/test_policy.py disabled test-slow
 	@python3 tools/agent.py hardware-check
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target test_suite --parallel $(JOBS)
@@ -429,22 +481,23 @@ test-slow:
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) ASAN_OPTIONS=detect_leaks=0 $(BUILD_DIR)/test_suite --whole-function-audit
 
 test-fast:
+	@python3 tools/test_policy.py admit -- $(TEST_ARGS)
 	@test -n "$(strip $(TEST_ARGS))" || { printf '%s\n' 'Set TEST_ARGS to a focused test_suite selector, such as --graph-optimize'; exit 2; }
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(FAST_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) "$(FAST_BUILD_DIR)/test_suite" $(TEST_ARGS)
+	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) python3 tools/test_policy.py native "$(FAST_BUILD_DIR)/test_suite" $(TEST_ARGS)
 
 test-list:
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(FAST_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	@env $(NATIVE_RUNTIME_ENV) "$(FAST_BUILD_DIR)/test_suite" --list-tests
+	@python3 tools/test_policy.py inventory
 
 test-compiler-parity:
+	@python3 tools/test_policy.py disabled test-compiler-parity
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" --target check-behavior-backend test_suite --parallel $(JOBS)
 	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/test_suite" --behavior-parity
 
 test-render:
+	@python3 tools/test_policy.py disabled test-render
 	@python3 tools/agent.py hardware-check
 	@if [ "$(shell uname -s)" = Darwin ] && [ "$(CHIBI_ALLOW_DESKTOP_RENDER_TESTS)" != 1 ]; then \
 		printf '%s\n' 'Render tests can briefly show a window on macOS. Run them under Xvfb on Linux, or set CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 for a local run.'; \

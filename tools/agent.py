@@ -12,6 +12,8 @@ import sys
 import tempfile
 import time
 
+from test_policy import admitted, NOTICE
+
 ROOT = Path(__file__).resolve().parents[1]
 CPU = re.findall(r'CHIBI_CPU_SELECTOR\("([^"]+)"\)',
                  (ROOT / 'test/execution_selectors.h').read_text())
@@ -19,7 +21,7 @@ GPU = re.findall(r'CHIBI_GPU_SELECTOR\("([^"]+)"\)',
                  (ROOT / 'test/execution_selectors.h').read_text())
 START = time.monotonic()
 HEALTH = None
-NEXT = 'CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 make test test-render'
+NEXT = 'make test-policy-inventory'
 
 
 class TerminationRequested(BaseException):
@@ -66,7 +68,8 @@ def test_plan(purpose, health):
         return dict(plan, commands=['python3 tools/agent.py mp4 REQUEST.json --frames 60 --output OUTPUT.mp4'],
                     requires_explicit_mp4_request=True, warmup='set gpu_warmup_frames for the scene',
                     output_frames=60, render_seconds=120, gpu_startup=True)
-    return dict(plan, commands=['make agent-gpu-test AGENT_SELECTOR=--model-sampled-gpu'],
+    return dict(plan, commands=['make test-policy-inventory'], status='blocked',
+                quarantine=NOTICE,
                 gpu_startup=True, render_seconds=60, reference_resolution='unchanged',
                 preview_size=[320, 180] if health.get('acceleration') == 'hardware' else [96, 64],
                 reason='purposeful_GPU_assertions_on_' + health.get('acceleration', 'unknown') + '_renderer')
@@ -96,6 +99,9 @@ def run(command, timeout, env=None, request=None, rss_mib=None):
                 if reason:
                     break
                 time.sleep(.05)
+            # A child may exit between polls just after the deadline.
+            if time.monotonic() - start >= timeout:
+                reason = 'time_budget_exceeded'
         finally:
             # Own the detached group, including descendants of a normally
             # exiting child. Also runs for Ctrl-C and monitoring exceptions.
@@ -139,6 +145,8 @@ def main():
     args = parser.parse_args()
     if args.action == 'validation-plan':
         return validation_plan(args, ROOT, CPU, GPU)
+    if args.action in ['test', 'gpu-test'] and not admitted([args.selector]):
+        return report('blocked', NOTICE, selector=args.selector)
     if args.action in ['doctor', 'plan', 'test', 'gpu-test', 'preview', 'mp4']:
         HEALTH = startup_health()
     if args.action == 'doctor':
@@ -149,8 +157,9 @@ def main():
         print(json.dumps(plan))
         return 2 if plan.get('status') == 'blocked' else 0
     if args.action == 'list':
-        print(json.dumps(dict(cpu_selectors=CPU, opt_in_gpu_selectors=GPU,
-                              other_selectors='hardware-required or unclassified (never silently run)',
+        print(json.dumps(dict(cpu_selectors=[s for s in CPU if admitted([s])], opt_in_gpu_selectors=[],
+                              temporary_quarantine=NOTICE,
+                              other_selectors='temporarily quarantined; hardware opt-in cannot authorize them',
                               authoring_workloads=dict(
                                   cpu=['asset inspection/edit/validation', 'preview_field', 'run_scenario', 'profile_scenario (simulation)'],
                                   bounded_gpu=['preview_shader', 'preview_scene'],
@@ -173,9 +182,9 @@ def main():
         if args.selector not in allowed:
             return report('blocked', 'selector_not_classified_for_requested_capability', selector=args.selector)
         env['CHIBI_EXECUTION_PROFILE'] = 'iteration' if args.action == 'test' else 'gpu-check'
-        run([str(ROOT / args.build_dir / 'test_suite'), args.selector], 180 if args.action == 'test' else 60, env)
+        run([str(ROOT / args.build_dir / 'test_suite'), args.selector], max(0, 60 - (time.monotonic() - START)), env)
         return report('passed', 'selected_assertions_passed', selector=args.selector,
-                      skipped=[dict(check='full-native/render', reason='requires_hardware_opt_in')])
+                      skipped=[dict(check='full-native/render', reason='temporary_60_second_quarantine')])
     if not Path('/proc/self/status').exists():
         return report('blocked', 'render_RSS_budget_requires_Linux_proc_use_hardware_profile_on_other_hosts')
     request = json.loads(args.request.read_text())

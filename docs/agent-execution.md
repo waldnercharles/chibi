@@ -1,5 +1,13 @@
 # Bounded agent execution
 
+**Temporary override:** the [60-second test policy](testing.md#temporary-60-second-policy)
+supersedes test deadlines, full-gate commands and selector admission below.
+Only exact measured invocations in `make test-list` are admitted. CPU classification
+is not timing evidence. Agent test commands now have a 60-second ceiling; full
+hardware opt-in cannot clear quarantine. Preview/MP4 authoring budgets below are
+not permission to run test/profiling captures beyond 60 seconds (including CUT61).
+The remaining text records the underlying capability policy and historical evidence.
+
 Use the smallest check that answers the current question. A GPU-heavy game still
 needs GPU evidence for shader, lighting, temporal and rendering changes. Avoid
 paying for a full suite after a parser or logic edit. Profiles are explicit and
@@ -55,7 +63,7 @@ must be inspected and classified before adding them to this list.
 native deadline. Their assertions, reference resolutions and frame sequences are
 unchanged. Use this only when relevant to the edit. Other rendering selectors
 remain available in the full profile. CPU checks use existing sanitizer settings;
-the agent wrapper imposes a 180-second deadline without suppressing assertions or
+the agent wrapper imposes a 60-second deadline without suppressing assertions or
 leak checks. Timeouts are failures/blocked results, never passes.
 
 ## One output image and explicit MP4

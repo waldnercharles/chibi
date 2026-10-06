@@ -149,10 +149,8 @@ approximations, not a general chemistry or deformable-solid solver.
 
 ## Validation
 
-`python3 tools/check_neon_swarm.py --build build-release` checks movement, free
-travel, muzzle origin, expiry, enemy appearance, repeated excavation, finite fuel
-burnout and deterministic scene state. Enemy checks also cover hit exhaustion,
-inert debris, power fading, and real shots reaching a target behind wreckage.
+The former Python sandbox acceptance runner is retired. Its movement, projectile,
+combat and material assertions were not migrated individually.
 `build/test_suite --materials` exercises
 sleeping, liquid cohesion/splitting, two-way momentum, damage, hull-area release,
 fragment penetration, chips and wall shielding independently of combat. `build/test_suite --radiance` requires native

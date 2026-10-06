@@ -382,10 +382,8 @@ the file it is about with its `line` and `column` when it has them:
 ## Check adapter distribution
 
 The adapter package keeps the runtime modules and launcher in its published
-file boundary. From `tools/mcp`, run `npm ci`, `npm run audit:names`, and
-`npm run pack:check`. The audit uses `o200k_base` to report candidate name
-token counts, token pieces, description limits, and the serialized
-`tools/list` budget.
+file boundary. From `tools/mcp`, run `npm run check` for JavaScript syntax and
+`npm run pack:check` to inspect the published file list.
 
 The client can also read these MCP resources:
 
@@ -832,8 +830,8 @@ content.
 ### Scenario assets
 
 A `scenarios` asset replays gameplay input on a scene from its start, so the
-same play can be run, profiled natively or as WASM (`make profile-compare
-PROFILE_SCENARIO=Name`), and replayed in Studio as often as needed:
+same play can run through the native controller's `profile_scenario` operation
+and replay in Studio or the browser as often as needed:
 
 ```kdl
 scene "Sandbox"
@@ -1070,13 +1068,10 @@ honors an explicit `CHIBI_ROOT`. It sets the controller path from its own
 location. When launching `server.mjs` directly outside the repository, set
 `CHIBI_ROOT` or `CHIBI_CTL` to an explicitly built controller executable.
 
-`make test` includes the MCP protocol and native-controller smoke checks,
-including `design-smoke.mjs`, which builds independent fixtures entirely through
-MCP. `CHIBI_KEEP_DESIGN_FIXTURE=1` retains them; `CHIBI_MCP_GPU=1` also renders
-2D/3D fog, fitting and dock previews. `--game-capabilities` runs native save,
-visibility and sound checks. Set
-`CHIBI_VISIBILITY_BENCH=1` for the moving-observer visibility benchmark.
-Custom build checks use that build's controller and render-controller binaries.
+The script-based MCP smoke and protocol checks are retired. Native authoring
+checks remain in the C suite. `--game-capabilities` runs native save, visibility
+and sound checks. Set `CHIBI_VISIBILITY_BENCH=1` for the moving-observer visibility
+benchmark. A native pass does not establish adapter protocol coverage.
 
 The adapter is intentionally local and bounded. Semantic asset edits, runtime
 inspection, deterministic recordings, and shader previews share the native

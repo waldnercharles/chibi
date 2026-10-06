@@ -11,7 +11,9 @@ GPU work: the old `test-fast` name alone does not establish CPU-only coverage.
 | --- | --- |
 | `make test-fast TEST_ARGS=--graph-optimize` | Builds or reuses the native `test_suite` in `BUILD_DIR`, then runs only that selector. It does not run tooling scripts or the full suite. Coverage depends on the selector; GPU/mixed and unclassified selectors require the hardware profile. |
 | `make test-list` | Builds or reuses `test_suite` and prints common focused selectors. |
-| `make test-tools` | Runs the isolated Python and Node tooling tests, with `TEST_JOBS` workers (default 4). |
+| `make tools-build` | Configures and builds the standalone C tooling targets without the engine or graphics dependencies. |
+| `make test-tools` | Builds and runs the minimal C pico_unit tooling suite, `test_tools`. |
+| `make test-studio-selectors` | Runs C process checks against the native `test_suite`; build that executable first. |
 | `make test-slow` | Runs the full native `all_checks` suite and the separate whole-function audit. |
 | `make test-compiler-parity` | Builds the behavior-backend check and runs the focused native behavior parity selector. |
 | `make test-render` | Runs native GPU previews and hidden-window checks. It remains separate from `make test`. |
@@ -56,10 +58,10 @@ refusal, and delete cases; its repeated project loads keep mutations isolated
 and references realistic. Profile-scenario coverage includes HRC fluid work,
 sparse input playback through warmup and measured frames, and named scenarios.
 None of those repetitions was a proven duplicate check. The time savings come
-from selecting only the closest check during iteration and parallelizing
-isolated tool-test processes rather than deleting assertions.
+from selecting only the closest native check during iteration.
 
-The full gate is unchanged for CI: CI can continue to call `make test`.
+CI continues to call `make test`. Script-based tooling tests have been retired;
+the minimal C tooling suite does not reproduce their former coverage.
 Focused results are deliberately narrower coverage; they are useful feedback
 for the changed code path and admit reviewed work to a batch under CUT62 below.
 They do not replace the full gate.
@@ -68,8 +70,9 @@ They do not replace the full gate.
 
 Use focused checks during each PR's iteration and admission, then run the full
 required validation once on the **exact combined reviewed tree before any part
-of the batch lands on main**. Assertions, coverage, sanitizers, reference images,
-loads and release validation remain unchanged. This removes redundant full runs
+of the batch lands on main**. Preserve assertions, sanitizers, reference images,
+loads and release validation for each retained native gate. The tooling cleanup retires script suites and
+does not claim equivalent coverage. This removes redundant full runs
 on component PRs; it does not replace CUT50/CUT61 profiling and optimization of
 the actual slow tests.
 
@@ -178,7 +181,6 @@ After source review, on a clean committed worktree:
 python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --confirm-eligible-members --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize > /tmp/cut62-plan.json
 # Repeat the identical arguments after fetching main/source refs, adding:
 python3 tools/agent.py validation-plan --base origin/main --source reviewed-topic --confirm-eligible-members --scope focused --review-note 'Reviewer: graph optimizer only; checked callers and dependency effects' --selector=--graph-optimize --verify /tmp/cut62-plan.json
-make test-tool-validation-plan
 ```
 
 Repeat `--source` for every batch member and `--selector` for relevant existing
@@ -196,14 +198,41 @@ Classification is a reviewer's recorded declaration, never inferred from paths.
 Review notes are data and are never executed. This helper only resolves local
 refs and lists commands, changed paths, exact base/head/tree and pending gates.
 It performs no fetch, builds, rendering, push, merge or status publication.
-Save output outside the worktree. Run through `tools/cloud/bin/start_skill --`
-where required by the cloud entry instructions.
+Save output outside the worktree.
 
 `--verify` exits nonzero for dirty worktrees, changed refs/plans or Git failures.
 Exit zero means only that the local plan still matches; it always reports
 `full_verification:false`. The owner separately verifies remote freshness,
 independent reviews, dependency/flag identity and actual execution evidence.
 The helper does not run a selector and cannot convert one into a full pass.
+
+## Standalone tooling and benchmark trials
+
+```sh
+make tools-build
+make test-tools
+make build BUILD_TARGET=test_suite
+make test-studio-selectors
+```
+
+The C tooling suite checks render policy, package/install preservation and basic
+collaboration room behavior. It invokes the retained Python packaging commands
+and Node room service as external programs. Studio CLI checks exercise CPU-only
+discovery and argument handling in the separately built native suite. The former
+script suites are retired; this smaller suite does not replace their coverage.
+
+For repeated C workloads, build an optimized native executable first, then run:
+
+```sh
+build-tools/benchmark_trials --trials 3 --timeout 60 -- build-release/test_suite --bench-arena-reference 100 64 0 0
+```
+
+The runner repeats one command three or five times with a total timeout of
+3–60 seconds including cleanup, and reports elapsed time and exit status. Engine
+benchmark selectors remain C. The retired Python runners' generated-C comparisons
+and report formats have not been migrated individually. Recorded commands in research and review reports
+are historical transcripts; their measurements and source hashes remain evidence
+for the recorded revisions, not current reproduction instructions.
 
 ## Test timings
 
@@ -212,7 +241,11 @@ Set `TEST_TIMINGS=1` on `make test`, `make test-fast`, or
 `tools/quiet.py` prints the log path for each stage. Timing is opt-in so normal
 test output stays compact.
 
-## Baseline
+## Historical baseline
+
+The timings below describe the former script-based tooling suite and its
+parallel runner. Those scripts and `TEST_JOBS` are retired. They are not timings
+or coverage evidence for the current minimal C tooling suite.
 
 On 2026-10-04, a clean isolated worktree at `96322c7191565c543e8375cde20e07d4fd2ab45a`
 ran the original serial `make test JOBS=8` in 340.9 seconds. The full native
@@ -250,9 +283,8 @@ second flag.
 
 The largest routine cost is running every native test in `all_checks` for
 each small code change. Prefer the closest focused selector during iteration
-and retain `make test` as the complete gate. Tool tests now run concurrently
-in isolated processes with a four-worker default; raising `TEST_JOBS`
-increases CPU and memory pressure.
+and retain `make test` as the complete gate. The former script tooling runner
+used four workers by default.
 
 ### Depth snapshot fixture and Zink endpoint clears
 
@@ -331,8 +363,8 @@ Listing and invalid arguments are handled on CPU before execution-policy checks
 or graphics initialization. Running a valid Studio group/case requires the explicit
 full-execution opt-in above; these mixed selectors are not added to the bounded
 CPU/GPU allowlists. `make test` and `make test-slow` also run the CPU-only
-`test/studio_selectors_test.py` subprocess regression checks against their built
-binary, covering discovery, strict errors and profile enforcement.
+C `test_tools --studio-selectors` process checks against their built binary,
+covering discovery, strict errors and profile enforcement.
 
 These selectors keep each case's complete fixture, input sequence, settling frames,
 and assertions. An unknown group/case or extra positional argument exits 2 before
@@ -361,7 +393,7 @@ parent shell record. Groups with their own fixture/frame helpers (for example
 models and code intelligence) have complete wall time but incomplete shared-helper
 counters. Timings are diagnostic measurements, not performance assertions.
 
-For bounded cloud iteration, build first, then run one selector under an explicit
+For bounded iteration, build first, then run one selector under an explicit
 bound (software Vulkan requires a display such as Xvfb):
 
 ```sh
@@ -388,8 +420,7 @@ Machine: Linux 6.18.44 x86_64, Intel Xeon Platinum 8573C, five exposed CPUs with
 a four-CPU quota and 16 GiB memory limit. Build: Clang 19, Debug,
 `CHIBI_ENABLE_SANITIZERS=ON`, `CHIBI_SANITIZERS=address,undefined`;
 `make build BUILD_TARGET=test_suite JOBS=4`. Graphics: Xvfb and software Vulkan,
-Mesa lavapipe package `25.0.7-2+deb13u1`, explicitly selected using
-`VK_DRIVER_FILES=/workspace/.cloud-tools/root/usr/share/vulkan/icd.d/lvp_icd.json`.
+Mesa lavapipe package `25.0.7-2+deb13u1`.
 These are not hardware-GPU timings.
 
 All measurements ran sequentially after compilation, from the repository root,

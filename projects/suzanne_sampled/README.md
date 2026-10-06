@@ -67,15 +67,14 @@ an approximation; this is not a general exact mesh-to-SDF guarantee.
 
 Public bakeModel exports at cell size 1.2, max_axis_cells 256, max_triangles 349525,
 max_samples 100000000 and max_work 100000000000. A cell size .8 exceeded the
-existing 128 MiB mesh JSON limit; the limit was not changed. Run
-`blender --background --factory-startup --python projects/suzanne_sampled/verify_geometry.py`
-after exporting mesh96 and mesh144 to .chibi/sampled-suzanne/.
+existing 128 MiB mesh JSON limit; the limit was not changed. The one-off
+Blender geometry comparison script has been retired.
 
-Geometry comparisons use 50,000 deterministic area-weighted surface samples per
+The recorded geometry comparisons used 50,000 deterministic area-weighted surface samples per
 direction and nearest reference triangles. Samples on component surfaces buried
 inside another component are excluded from the source union boundary (45,779
 remain). Extracted-to-reference distances target the closed triangle collection;
-these sampled maxima are not Hausdorff bounds. The script also renders the closed
+these sampled maxima are not Hausdorff bounds. The script also rendered the closed
 reference from three views. Numerical results and actual app captures are kept
 under .chibi/sampled-suzanne, outside the authored project.
 

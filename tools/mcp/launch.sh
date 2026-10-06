@@ -3,11 +3,6 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd -P)
-# Direct MCP launches share Make's opt-in detection and recursion guard.
-if [ -f "$repo_root/tools/cloud/entry.sh" ] &&
-   [ "$(bash "$repo_root/tools/cloud/entry.sh" --probe)" = 1 ]; then
-    exec bash "$repo_root/tools/cloud/entry.sh" sh "$0" "$@"
-fi
 default_project_root="$repo_root/projects/arena2d"
 project_root=${CHIBI_ROOT:-}
 if [ -z "$project_root" ]; then

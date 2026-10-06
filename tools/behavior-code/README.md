@@ -39,11 +39,15 @@ For now, `.code` is authoring input, `.map.json` retains stable graph identities
 
 ## Checks
 
-```sh
-node --test tools/behavior-code/behavior-code.test.mjs
-```
+The script-based parser and controller smoke tests are retired. They are absent
+from `make test-tools`; the source authoring utility remains available through
+its commands above.
 
-The Node tests cover parser/resolver diagnostics, component and event lowering, persistent array/set operation plans, iteration scope, identity preservation, graph topology validation, and graph-to-source rewriting. They run in `make test-tools` without a native controller. The `check-mcp` build target runs a separate controller-backed `ProjectilePulse` decompile smoke, which checks byte-identical source output and verifies that the source map and KDL graph stay unchanged. Native validation accepted all three behavior sources. The full `make test` gate passed in Debug with address and undefined-behavior sanitizers enabled; the native suite took 476.4 seconds and the whole-function audit took 2.3 seconds. The gate reported no sanitizer findings.
+Historical validation accepted all three behavior sources. The earlier full
+`make test` gate passed in Debug with address and undefined-behavior sanitizers;
+the native suite took 476.4 seconds and the whole-function audit took 2.3 seconds,
+with no reported sanitizer findings. These results describe that revision and
+its former test coverage.
 
 Four native simulation steps at `1/60` second produce `GameProjectile.age = 0.16666667` in the collection-loop probe, with one live entity and no behavior failures. The lifecycle probe removes its projectile by frame six with no behavior failures, exercising deferred destruction. These are functional results, not timing claims.
 

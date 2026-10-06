@@ -165,14 +165,13 @@ Run the noncombat scene with `make play SCENE=scenes/MaterialStudy.kdl`.
 
 Useful checks:
 
-```sh
+```text
 CCACHE_DISABLE=1 make build
 CCACHE_DISABLE=1 make test
 build/test_suite --materials
 build/test_suite --material-engine
 build-release/test_suite --bench-fields
 build-release/test_suite --bench-system-schedule
-node tools/mcp/material-smoke.mjs .
 ```
 
 See [validation results](material-engine-validation.md) for measured parity,

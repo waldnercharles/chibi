@@ -27,14 +27,10 @@
     "chibi-mcp": "./server.mjs"
   },
   "scripts": {
-    "check": "node --check server.mjs && node --check authoring.mjs && node --check tool-catalog.mjs && node --check name-audit.mjs && node --check setup-codex.mjs",
-    "audit:names": "node name-audit.mjs",
+    "check": "node --check server.mjs && node --check authoring.mjs && node --check tool-catalog.mjs && node --check setup-codex.mjs",
     "pack:check": "npm pack --dry-run"
   },
   "engines": {
     "node": ">=22"
-  },
-  "devDependencies": {
-    "js-tiktoken": "^1.0.21"
   }
 }

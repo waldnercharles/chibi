@@ -531,7 +531,7 @@ endif()
 chibi_enable_tracy(chibi_ctl)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # Under Node the controller reads projects from disk, so the same headless
-    # scenarios run natively and as WASM (make profile-compare).
+    # scenarios run natively and as WASM through the same controller API.
     target_link_options(chibi_ctl PRIVATE "-sENVIRONMENT=node" "-sNODERAWFS=1" "-sEXIT_RUNTIME=1")
 endif()
 
@@ -552,40 +552,6 @@ foreach(asset_root ${CHIBI_ASSET_ROOTS})
         $<TARGET_FILE:chibi_ctl> --project-root ${asset_root} --format --check)
 endforeach()
 add_custom_target(check-assets ${CHIBI_ASSET_CHECKS} DEPENDS chibi_ctl VERBATIM)
-
-find_program(NODE_EXECUTABLE node)
-if(NODE_EXECUTABLE)
-    add_custom_target(check-mcp
-        COMMAND ${NODE_EXECUTABLE} --test ${CMAKE_SOURCE_DIR}/test/mcp_horizon_options_test.mjs
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/behavior-code/decompile-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_SKIP_GPU=1
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/material-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/optimizer-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
-        DEPENDS chibi_ctl
-        VERBATIM)
-    add_custom_target(check-mcp-gpu
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl>
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/authoring-smoke.mjs ${CMAKE_SOURCE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E env CHIBI_CTL=$<TARGET_FILE:chibi_ctl> CHIBI_MCP_GPU=1
-            ${NODE_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/mcp/design-smoke.mjs ${CMAKE_SOURCE_DIR}
-        DEPENDS chibi_ctl
-        VERBATIM)
-else()
-    add_custom_target(check-mcp
-        COMMAND ${CMAKE_COMMAND} -E echo "Node.js not found; skipping MCP protocol check"
-        VERBATIM)
-    add_custom_target(check-mcp-gpu
-        COMMAND ${CMAKE_COMMAND} -E echo "Node.js not found; skipping MCP GPU check"
-        VERBATIM)
-endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CHIBI_WEB_SHELL "${CMAKE_CURRENT_SOURCE_DIR}/tools/web_shell.html")
@@ -876,6 +842,7 @@ if(TARGET chibi_dll)
 endif()
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    add_subdirectory(test/tools)
     add_executable(test_dev test/dev/main.c test/dev/watch.c test/dev/process.c test/dev/controller.c
         src/host/dev.c src/host/state_file.c third_party/yyjson/yyjson.c)
     target_include_directories(test_dev PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson)

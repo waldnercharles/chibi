@@ -623,7 +623,7 @@ const previewSceneDefinition = {
     height: { type: "integer", minimum: 64, maximum: 2048, default: 360 },
     frames: { type: "integer", minimum: 0, maximum: 1800, default: 1 },
     gpu_warmup_frames: { type: "integer", minimum: 0, maximum: 32, default: 1,
-      description: "Cloud preview/capture GPU warmup frames; explicitly budget history convergence. Hardware retains its reference warmup." },
+      description: "Preview/capture GPU warmup frames; explicitly budget history convergence. Hardware retains its reference warmup." },
     render_frames: { type: "integer", minimum: 1, maximum: 3600,
       description: "Iteration: exactly one output frame. Explicit mp4 profile: 3..180 outputs at 60fps; use tools/agent.py mp4 to encode. Hardware: values above two retain 240 warmup plus 16 excluded measurement frames." },
     freeze_simulation: { type: "boolean", default: false,

@@ -35,7 +35,13 @@ Small source examples live in `tools/behavior-code/examples/`: `ProjectilePulse.
 
 State variable shape and default values are fixed after the first source compile in this slice. The bridge rejects source edits to those declarations rather than silently replacing persistent graph state. The visual editor can still edit the generated graph. Sets are not iterable; set methods accept a same-typed array-loop element or direct event payload field. `entity` sets start empty and can store entity handles from payloads such as `event.other`.
 
-For now, `.code` is authoring input, `.map.json` retains stable graph identities, and the existing `.kdl` behavior graph remains the project asset. A future code-canonical format could keep graph nodes as the compiler/editor representation and store layout plus stable node identities as editor metadata. That needs a versioned, loss-aware behavior-only migration: unsupported graph topology must stay recoverable, state defaults and identity must survive, and other asset types remain out of scope. This prototype does not replace or delete KDL assets.
+For now, `.code` is authoring input, `.map.json` retains stable graph identities,
+and the existing `.kdl` behavior graph remains the project asset. The intended
+direction is complete KDL replacement with canonical `.code` and direct native
+graph construction. Behavior graphs are the first milestone; the broader goal
+includes every KDL-backed asset domain. This prototype has not performed that
+migration. See the [source roadmap](../../docs/code-source-roadmap.md) and CUT-70;
+CUT-71 defines the next shared C frontend implementation.
 
 ## Checks
 

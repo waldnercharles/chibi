@@ -507,6 +507,7 @@ static void print_test_selectors()
     puts("  collaboration: --collab");
     puts("  Narrower costly checks: --automation-search --automation-refactor --automation-profile-scenario-inputs --editor-commands");
     puts("  Focused CPU checks: --shader-graph-codegen --prototype-preview-lifetime");
+    puts("  HRC diagnostic GPU group (hardware opt-in): --radiance-diagnostics-vulkan --radiance-diagnostics-gles");
     puts("  Studio subgroups: --studio-documents list; --studio-shell list (then replace list with one name)");
     puts("  GPU/render coverage: make test-render");
     puts("Use make agent-list for workload classifications; full/mixed checks require CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1.");
@@ -557,6 +558,13 @@ int main(int argc, char **argv)
             fprintf(stderr, "multiple test_suite selectors or flags are not supported: %s\n", argv[i]);
             return 2;
         }
+    }
+    bool radiance_diagnostics = argc > 1 &&
+                                (!strcmp(argv[1], "--radiance-diagnostics-vulkan") ||
+                                 !strcmp(argv[1], "--radiance-diagnostics-gles"));
+    if (radiance_diagnostics && argc != 2) {
+        fprintf(stderr, "HRC diagnostic selectors accept no arguments\n");
+        return 2;
     }
     if (argc > 3 && (!strcmp(argv[1], "--studio-documents") ||
                      !strcmp(argv[1], "--studio-shell"))) {
@@ -723,6 +731,10 @@ int main(int argc, char **argv)
         (!strcmp(argv[1], "--radiance") || !strcmp(argv[1], "--radiance-gles"))) {
         extern int radiance_run(const char *program, bool gles);
         return radiance_run(program_name, !strcmp(argv[1], "--radiance-gles"));
+    }
+    if (radiance_diagnostics) {
+        extern int radiance_diagnostics_run(const char *program, bool gles);
+        return radiance_diagnostics_run(program_name, !strcmp(argv[1], "--radiance-diagnostics-gles"));
     }
     if (argc == 2 && !strcmp(argv[1], "--math-expression")) {
         registry_validate();

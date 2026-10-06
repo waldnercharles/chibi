@@ -3630,6 +3630,52 @@ int test_radiance()
     return !ok;
 }
 
+int radiance_diagnostics_run(const char *program, bool gles)
+{
+    CF_BackendType requested = gles ? CF_BACKEND_TYPE_GLES3 : CF_BACKEND_TYPE_VULKAN;
+    CF_Result result = cf_make_app(
+        "HRC diagnostic regressions",
+        0,
+        0,
+        0,
+        SIDE,
+        SIDE,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT |
+            (gles ? CF_APP_OPTIONS_GFX_OPENGL_BIT : CF_APP_OPTIONS_GFX_VULKAN_BIT),
+        program
+    );
+    if (cf_is_error(result)) {
+        fprintf(
+            stderr,
+            "radiance diagnostics SKIP: requested %s unavailable: %s\n",
+            cf_backend_type_to_string(requested),
+            result.details
+        );
+        return 77;
+    }
+    CF_BackendType actual = cf_query_backend();
+    printf(
+        "radiance diagnostics backend: requested %s, actual %s\n",
+        cf_backend_type_to_string(requested),
+        cf_backend_type_to_string(actual)
+    );
+    if (actual != requested) {
+        fprintf(stderr, "radiance diagnostics FAIL: backend fallback\n");
+        cf_destroy_app();
+        return 1;
+    }
+    app_scene_renderer_initialize();
+    render_material_raster *raster = render_material_raster_new();
+    bool ok = surface_history_after_probe_transition(raster);
+    ok &= surface_mode_debug_views(raster);
+    render_material_raster_free(raster);
+    ok &= diagnostic_quadrant_mapping();
+    ok &= diagnostic_scene_presentation();
+    cf_destroy_app();
+    printf("radiance diagnostics %s: all four helpers\n", ok ? "PASS" : "FAIL");
+    return !ok;
+}
+
 int radiance_run(const char *program, bool gles)
 {
     CF_Result result = cf_make_app(

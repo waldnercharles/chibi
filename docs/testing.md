@@ -33,6 +33,24 @@ and `--simulation`; Studio checks such as `--editor-graph`,
 `--modeling` and `--materials`; and game checks such as `--arena-combat`
 and `--arena-encounter`. Run `make test-list` for the current common list.
 
+`build/test_suite --radiance-diagnostics-vulkan` and
+`build/test_suite --radiance-diagnostics-gles` each run the same complete HRC
+diagnostic regression group: `surface_history_after_probe_transition`,
+`surface_mode_debug_views`, `diagnostic_quadrant_mapping` and
+`diagnostic_scene_presentation` (including reflections/fog). All four also remain
+in the existing radiance aggregate. These are **GPU checks requiring the hardware
+profile**, not CPU selectors or additions to the bounded `gpu-check` allowlist.
+Set `CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1`, use the reviewed
+deadline runner with a limit of at most 60 seconds, and build separately. Do not
+substitute the full radiance/render aggregate for this group. Each selector
+accepts no arguments, requests its named backend and reports the actual backend;
+a fallback fails with exit 1, unavailable startup reports SKIP with exit 77, and
+invalid arguments or missing authorization exit 2. Only all four helpers passing
+on the requested backend returns 0. Retain device logs (`SDL_LOGGING=gpu=info`);
+the hardware profile alone does not establish a hardware device. A timeout, SKIP
+or fallback supplies no passing backend coverage; an unknown or software device
+supplies no hardware-device coverage.
+
 The timing sweep found several costly calls inside the native full suite.
 Final per-call readings were: `test_compiled_behaviors` 49.0s,
 `test_automation_profile_scenario_inputs` 18.0s, `test_automation_search`

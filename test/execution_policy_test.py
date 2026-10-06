@@ -174,6 +174,9 @@ int main(int argc, char **argv) {
         for selector in ['--model-sampled-gpu', '--studio-documents', '--radiance', '--ui-bench', '--typo']:
             self.assertNotIn(selector, agent.CPU)
         self.assertNotIn('--studio-documents', agent.GPU)
+        for selector in ['--radiance-diagnostics-vulkan', '--radiance-diagnostics-gles']:
+            self.assertNotIn(selector, agent.CPU)
+            self.assertNotIn(selector, agent.GPU)
 
     def test_runner_failure_and_timeout_never_pass(self):
         with self.assertRaisesRegex(RuntimeError, 'child_exit_7'):

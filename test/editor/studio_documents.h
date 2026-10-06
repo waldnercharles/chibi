@@ -31,6 +31,39 @@ typedef struct
     double time;
 } studio_fixture;
 
+/* Opt-in wall times and frame work, including nested shell cases. */
+typedef struct
+{
+    double wall, setup, teardown, pump, scene, studio, present, batches;
+    int fixtures, frames, batch_frames;
+} studio_test_sample;
+
+studio_test_sample studio_test_begin(const char *name);
+void studio_test_end(const char *name, studio_test_sample before);
+bool studio_shell_cases(const char *only, bool run);
+int studio_documents_select(const char *program, const char *only);
+/* CPU-only name validation; list prints the available names. */
+int studio_documents_validate(const char *only);
+int studio_shell_validate(const char *only);
+int studio_shell_select(const char *program, const char *only);
+
+/* The same ordered calls serve listing, validation, focused and full runs.
+   No fixture or graphics work happens while listing/validating names. */
+#define STUDIO_CASE(name, function)                                            \
+    do {                                                                       \
+        if (only && !strcmp(only, "list")) {                                   \
+            puts(name);                                                        \
+            matched = true;                                                    \
+        } else if (!only || !strcmp(only, name)) {                             \
+            matched = true;                                                    \
+            if (run) {                                                         \
+                studio_test_sample before = studio_test_begin(name);           \
+                function();                                                    \
+                studio_test_end(name, before);                                 \
+            }                                                                  \
+        }                                                                      \
+    } while (0)
+
 /* ---------- Fixtures ---------- */
 
 studio_fixture fixture_open(const char *project, const char *scene, const char *behavior);

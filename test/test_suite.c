@@ -105,6 +105,10 @@ void test_input_bindings();
 void test_graph_optimizer();
 int scene_documents_run(const char *program);
 int studio_documents_run(const char *program);
+int studio_documents_select(const char *program, const char *only);
+int studio_documents_validate(const char *only);
+int studio_shell_validate(const char *only);
+int studio_shell_select(const char *program, const char *only);
 int studio_models_run(const char *program);
 int studio_properties_run(const char *program);
 /* Lists and drag (workstream F4). */
@@ -503,6 +507,7 @@ static void print_test_selectors()
     puts("  collaboration: --collab");
     puts("  Narrower costly checks: --automation-search --automation-refactor --automation-profile-scenario-inputs --editor-commands");
     puts("  Focused CPU checks: --shader-graph-codegen --prototype-preview-lifetime");
+    puts("  Studio subgroups: --studio-documents list; --studio-shell list (then replace list with one name)");
     puts("  GPU/render coverage: make test-render");
     puts("Use make agent-list for workload classifications; full/mixed checks require CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1.");
     puts("The no-selector invocation is the full all_checks suite; --whole-function-audit is a separate full-coverage check.");
@@ -551,6 +556,22 @@ int main(int argc, char **argv)
         if (argv[i][0] == '-' && argv[i][1] == '-') {
             fprintf(stderr, "multiple test_suite selectors or flags are not supported: %s\n", argv[i]);
             return 2;
+        }
+    }
+    if (argc > 3 && (!strcmp(argv[1], "--studio-documents") ||
+                     !strcmp(argv[1], "--studio-shell"))) {
+        fprintf(stderr, "Studio selectors accept one group/case or list\n");
+        return 2;
+    }
+    /* Discovery and argument errors never need a display or GPU authorization.
+       A valid selection continues through the execution-profile guard. */
+    if (argc == 3 && (!strcmp(argv[1], "--studio-documents") ||
+                      !strcmp(argv[1], "--studio-shell"))) {
+        int result = !strcmp(argv[1], "--studio-documents")
+                       ? studio_documents_validate(argv[2])
+                       : studio_shell_validate(argv[2]);
+        if (result || !strcmp(argv[2], "list")) {
+            return result;
         }
     }
     if (!chibi_execution_hardware()) {
@@ -1352,6 +1373,10 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--studio-documents") == 0) {
         registry_validate();
+        if (argc == 3) {
+            int result = studio_documents_select(program_name, argv[2]);
+            return result ? result : (fails ? 1 : 0);
+        }
         int documents = studio_documents_run(program_name);
         int graph_inputs = studio_graph_inputs_run(program_name);
         int thumbnails = studio_thumbnails_run(program_name);
@@ -1401,6 +1426,10 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--studio-shell") == 0) {
         registry_validate();
+        if (argc == 3) {
+            int result = studio_shell_select(program_name, argv[2]);
+            return result ? result : (fails ? 1 : 0);
+        }
         return studio_shell_run(program_name) || fails ? 1 : 0;
     }
     /* The Scene area (workstream C1): Studio's, in a hidden window. */

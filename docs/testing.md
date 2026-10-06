@@ -307,3 +307,143 @@ upstream draft, and original `cut54-repro.c` with SHA-256
 `6c006bbad7430b80e140fbd046933de244c0439c943a73f020fb6c505b0234a4`.
 The failing standalone remains unchanged; this workaround does not resolve its
 failure or establish that ordinary rendering with endpoint clears is correct.
+
+## Studio documents and shell iteration (CUT-50)
+
+List subgroup names without opening a window:
+
+```sh
+build/test_suite --studio-documents list
+build/test_suite --studio-shell list
+```
+
+Select one complete group or shell case. Quote Make's `TEST_ARGS` when passing a
+positional name:
+
+```sh
+CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 \
+  make test-fast TEST_ARGS='--studio-documents tabs' TEST_TIMINGS=1
+CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 \
+  make test-fast TEST_ARGS='--studio-shell readout_follows_camera' TEST_TIMINGS=1
+```
+
+Listing and invalid arguments are handled on CPU before execution-policy checks
+or graphics initialization. Running a valid Studio group/case requires the explicit
+full-execution opt-in above; these mixed selectors are not added to the bounded
+CPU/GPU allowlists. `make test` and `make test-slow` also run the CPU-only
+`test/studio_selectors_test.py` subprocess regression checks against their built
+binary, covering discovery, strict errors and profile enforcement.
+
+These selectors keep each case's complete fixture, input sequence, settling frames,
+and assertions. An unknown group/case or extra positional argument exits 2 before
+creating the graphics app. The `list` output is the authoritative set of names.
+Existing surface selectors remain supported. `--studio-documents properties`
+runs the complete Properties group; the older `--studio-properties` runs only its
+field checks.
+
+With no positional argument, `--studio-documents` still runs all 19 documents
+groups in their original order, then graph-inputs and thumbnails. Those last two
+have their existing `--studio-graph-inputs` and `--studio-thumbnails` selectors.
+`--studio-shell` still runs all 19 shell cases in their original order. Full gates
+and capture mode are unchanged; an explicit shell case always runs assertions,
+even if `CHIBI_SHELL_CAPTURE_DIR` is set. A focused pass does not certify the
+aggregate or replace `make test-render`.
+
+`CHIBI_TEST_TIMINGS=1` (or `TEST_TIMINGS=1` through Make) now prints flushed
+`STUDIO_BEGIN` markers and `STUDIO_TIMING` records for documents groups, individual
+shell cases, and app setup/teardown. Wall times use SDL's monotonic performance
+counter. Shared-fixture records include fixture count, setup and teardown time,
+frame count, and frame time split into event pumping, scene/graph tick, Studio,
+and presentation. `batch_frames`/`batches` measure `frames()` calls, including
+settling and intentional multi-frame measurements; these overlap the frame stage
+totals and must not be added to them. Nested shell records likewise overlap the
+parent shell record. Groups with their own fixture/frame helpers (for example
+models and code intelligence) have complete wall time but incomplete shared-helper
+counters. Timings are diagnostic measurements, not performance assertions.
+
+For bounded cloud iteration, build first, then run one selector under an explicit
+bound (software Vulkan requires a display such as Xvfb):
+
+```sh
+timeout --kill-after=10s 90s env CHIBI_TEST_TIMINGS=1 \
+  CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 \
+  ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 \
+  xvfb-run -a build/test_suite --studio-shell readout_follows_camera
+```
+
+Use the repository's render leak policy and strict UBSan; do not interpret a
+bound hit as a pass. Do not repeatedly run the full documents aggregate on
+software Vulkan or launch concurrent heavy tests on the hardware machine.
+The 60-frame cadence/recording loops and long motion/iframe settles are retained:
+static inspection does not establish that those frames are redundant.
+
+### CUT-50 measurement checkpoint (2026-10-05)
+
+Implementation source: `196f09c74a2d68e6e3338b6a33cd56c8237aaeed`, rebased onto
+merged main `de73cb85652f43694957377dfc3607d2e15da386`. The rebase changed no
+files relative to the measured pre-rebase commit `decc5fbc`; main's tree also
+matches the original PR151 baseline `be4d5c0d6d6a38f0747ec5d1c7f66b618c0c9b8a`.
+
+Machine: Linux 6.18.44 x86_64, Intel Xeon Platinum 8573C, five exposed CPUs with
+a four-CPU quota and 16 GiB memory limit. Build: Clang 19, Debug,
+`CHIBI_ENABLE_SANITIZERS=ON`, `CHIBI_SANITIZERS=address,undefined`;
+`make build BUILD_TARGET=test_suite JOBS=4`. Graphics: Xvfb and software Vulkan,
+Mesa lavapipe package `25.0.7-2+deb13u1`, explicitly selected using
+`VK_DRIVER_FILES=/workspace/.cloud-tools/root/usr/share/vulkan/icd.d/lvp_icd.json`.
+These are not hardware-GPU timings.
+
+All measurements ran sequentially after compilation, from the repository root,
+with `ASAN_OPTIONS=detect_leaks=0`, `UBSAN_OPTIONS=halt_on_error=1`, and a 90-second
+bound plus 10-second termination grace. The shell command shape was the bounded
+example above; elapsed times include `timeout`/Xvfb/process startup and shutdown,
+measured with Python's monotonic clock, but exclude configure/build. Candidate
+runs:
+
+| Selector | Wall seconds | Result |
+| --- | --- | --- |
+| `--studio-shell readout_follows_camera`, timing on, first run | 3.883 | Exit 0; camera/readout assertion passed |
+| Same, second run | 2.534 | Exit 0; same assertion passed |
+| Same, timing off, capture environment set | 2.544 | Exit 0; assertion still ran, no timing output or capture |
+| `--studio-documents tabs`, timing on | 14.908 | Exit 0; 35 assertions passed |
+| `--studio-shell transport_menus`, timing on | 12.864 | Exit 0; transport assertion passed |
+
+Readout's repeat range was 2.534–3.883 seconds; do not treat the first-run versus
+repeat difference as an optimization. Its timed case body took 2.960 then 2.141
+seconds: setup 0.280/0.229, teardown 0.070/0.070, six frames 2.605/1.838, with
+Studio work 2.499/1.752 and presentation 0.103/0.084 seconds. Transport's 24 frames
+took 11.449 seconds, including 7.689 in Studio and 3.721 in presentation; setup
+was 0.224 and teardown 0.569 seconds. This localizes most readout cost to Studio
+frame work, rather than fixture loading or presentation. It does not separately
+profile RmlUi layout versus other Studio work. The issue's earlier hardware CPU
+stack samples identify style/layout and iframe settling; this change makes those
+cases independently repeatable without removing their settling coverage.
+
+Additional checks passed: clang-format 22.1.0 on changed C/headers, `git diff
+--check`, both 19-entry subgroup lists without a display, and unknown/empty names,
+extra positional arguments and extra flags returning 2 without app creation.
+A static comparison against `be4d5c0d` verified all 19 documents and 19 shell calls
+in their original order and every shell case body byte-for-byte unchanged.
+An independent read-only review found no missing coverage or selector dispatch
+problem.
+
+For the before comparison, the original four modified test sources were restored
+from `be4d5c0d`, rebuilt with the same configuration, and the baseline binary was
+saved separately; candidate sources/binary were then restored. The old smallest
+selector containing camera readout, `--studio-shell`, hit the unchanged 90-second
+experimental bound at **90.004 seconds, exit 124**. It logged 29 passing assertions,
+through camera readout, but did not complete the shell suite. Its terminal XIO
+message followed timeout termination. This is an incomplete baseline, not a pass
+or an observed full-suite duration. Against that lower bound, a complete focused
+readout run now takes 2.534–3.883 seconds. The improvement is less unrelated work
+per iteration, not faster execution of equivalent full coverage. No assertion,
+settle, hard case, or gate was removed to obtain it.
+
+Remaining validation: no complete candidate `--studio-shell` or
+`--studio-documents` aggregate was run in cloud, and no full `make test`,
+`make test-render`, whole-function audit, web build, or hardware GPU validation was
+repeated for this test-only change. Other new subgroups were listed and reviewed,
+not individually executed. The existing hardware pass at `262d96db` (16m47.33,
+RTX 4080 SUPER/Mesa NVK, Debug ASan+UBSan) is historical evidence, not a candidate
+pass. CUT-50 must remain open until a complete relevant aggregate passes on the
+final candidate and comparable full-suite timing is recorded. The parent can
+arrange that hardware run; do not run concurrent heavy jobs on that machine.

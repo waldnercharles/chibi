@@ -20,7 +20,8 @@ children that have already detached and been reparented before cleanup are not
 proven contained on macOS. This
 limitation does not disable Mac short coverage or label it slow. No system
 permission, configuration change or dependency is required. Platform-selection, group-reuse and nested subtree cleanup regressions run here;
-actual macOS execution remains unverified. A Linux-hosted Darwin-branch regression
+actual macOS policy checks also pass, with four Linux-specific tests skipped.
+The original Linux-hosted Darwin-branch regression
 reproduced the old delayed-marker escape in 0.737s, then passed in 0.731s after
 the fix. It uses a 0.15s nested deadline, a 0.4s grandchild marker and 0.5s
 observation while the outer aggregate stays alive, and verifies that a sibling
@@ -35,9 +36,19 @@ one-second read-only probe must see the supervisor and excludes its own complete
 probe PID from cleanup. The same reader serves portable live-subtree cleanup.
 If no usable discovery reader exists (including denied, missing, malformed or
 timed-out `ps` when needed), validation fails before launching test workloads.
-No kernel option, installation or security setting is changed. A subsecond
+No kernel option, installation or security setting is changed. A
 missing-file simulation verifies ordinary success, timeout cleanup of a real
 `setsid` descendant, and refusal before test launch when both readers fail.
+
+Cleanup timeout fixtures now allow two seconds for nested interpreter startup,
+require a child startup marker, and keep parents alive for six seconds. Escaped
+descendants attempt their marker after three seconds; a 3.1-second observation
+after cleanup detects a surviving descendant. The portable fixture's sibling
+also remains alive beyond the timeout. The interruption fixture allows three
+seconds for startup before sending SIGTERM, within a six-second wrapper deadline.
+These fixture margins replace the startup-sensitive 0.15–0.35-second budgets;
+they do not change the inherited production deadline or reset the default
+aggregate's single 60-second ceiling.
 
 ## Disabled coverage inventory (temporary; NOT PASSED)
 

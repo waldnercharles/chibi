@@ -14,6 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 import test_policy as policy
 
+# Allow nested interpreters to start before testing cleanup. Descendants and
+# siblings stay alive beyond the timeout; observation outlasts an escaped write.
+CLEANUP_TIMEOUT = 2
+ESCAPE_DELAY = 3
+CLEANUP_OBSERVATION = ESCAPE_DELAY + .1
+
 
 class TestPolicy(unittest.TestCase):
     def test_admission_is_exact_and_does_not_split_suites(self):
@@ -43,11 +49,14 @@ class TestPolicy(unittest.TestCase):
 
     def test_timeout_kills_descendants(self):
         with tempfile.TemporaryDirectory() as directory:
+            started = Path(directory) / 'started'
             marker = Path(directory) / 'escaped'
-            descendant = f'import time; from pathlib import Path; time.sleep(.4); Path({str(marker)!r}).touch()'
-            parent = f'import subprocess,sys,time; subprocess.Popen([sys.executable,"-c",{descendant!r}]); time.sleep(.8)'
-            self.assertEqual(policy.run_commands([[sys.executable, '-c', parent]], .15), 124)
-            time.sleep(.5)
+            descendant = (f'import time; from pathlib import Path; Path({str(started)!r}).touch(); '
+                          f'time.sleep({ESCAPE_DELAY}); Path({str(marker)!r}).touch()')
+            parent = f'import subprocess,sys,time; subprocess.Popen([sys.executable,"-c",{descendant!r}]); time.sleep(6)'
+            self.assertEqual(policy.run_commands([[sys.executable, '-c', parent]], CLEANUP_TIMEOUT), 124)
+            self.assertTrue(started.exists(), 'descendant must actually start')
+            time.sleep(CLEANUP_OBSERVATION)
             self.assertFalse(marker.exists())
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "Linux subreaper-specific escaped-session guarantee")
@@ -57,18 +66,18 @@ class TestPolicy(unittest.TestCase):
             escaped = Path(directory) / 'escaped'
             grandchild = (f'import os,time; from pathlib import Path; '
                           f'Path({str(started)!r}).write_text(os.environ["CHIBI_TEST_DEADLINE"]); '
-                          f'time.sleep(.5); Path({str(escaped)!r}).touch()')
+                          f'time.sleep({ESCAPE_DELAY}); Path({str(escaped)!r}).touch()')
             parent = (f'import subprocess,sys,time; '
                       f'subprocess.Popen([sys.executable,"-c",{grandchild!r}], start_new_session=True); '
-                      'time.sleep(.8)')
+                      'time.sleep(6)')
             nested = (f'import sys; sys.path.insert(0,{str(ROOT / "tools")!r}); '
                       f'import test_policy; sys.exit(test_policy.run_commands('
                       f'[[sys.executable,"-c",{parent!r}]], 60))')
             before = time.monotonic()
-            self.assertEqual(policy.run_commands([[sys.executable, '-c', nested]], .35), 124)
+            self.assertEqual(policy.run_commands([[sys.executable, '-c', nested]], CLEANUP_TIMEOUT), 124)
             self.assertTrue(started.exists(), 'nested setsid child must actually start')
-            self.assertLessEqual(float(started.read_text()), before + .36)
-            time.sleep(.3)
+            self.assertLessEqual(float(started.read_text()), before + CLEANUP_TIMEOUT + .01)
+            time.sleep(CLEANUP_OBSERVATION)
             self.assertFalse(escaped.exists())
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "Linux subreaper-specific escaped-session guarantee")
@@ -77,29 +86,29 @@ class TestPolicy(unittest.TestCase):
             started = Path(directory) / 'started'
             escaped = Path(directory) / 'escaped'
             grandchild = (f'from pathlib import Path; import time; '
-                          f'Path({str(started)!r}).touch(); time.sleep(.5); '
+                          f'Path({str(started)!r}).touch(); time.sleep({ESCAPE_DELAY}); '
                           f'Path({str(escaped)!r}).touch()')
             parent = (f'import subprocess,sys,time; '
                       f'subprocess.Popen([sys.executable,"-c",{grandchild!r}], start_new_session=True); '
-                      'time.sleep(.8)')
+                      'time.sleep(6)')
             wrapper = (f'import sys,signal; sys.path.insert(0,{str(ROOT / "tools")!r}); '
                        f'import test_policy; signal.signal(signal.SIGTERM,test_policy.terminate); '
-                       f'test_policy.run_commands([[sys.executable,"-c",{parent!r}]], .8)')
+                       f'test_policy.run_commands([[sys.executable,"-c",{parent!r}]], 6)')
             process = subprocess.Popen([sys.executable, '-c', wrapper], stdout=subprocess.DEVNULL,
                                        stderr=subprocess.DEVNULL)
             try:
-                until = time.monotonic() + .35
+                until = time.monotonic() + 3
                 while not started.exists() and time.monotonic() < until:
                     time.sleep(.005)
                 self.assertTrue(started.exists())
                 process.send_signal(signal.SIGTERM)
-                self.assertNotEqual(process.wait(timeout=.3), 0)
-                time.sleep(.5)
+                self.assertNotEqual(process.wait(timeout=2), 0)
+                time.sleep(CLEANUP_OBSERVATION)
                 self.assertFalse(escaped.exists())
             finally:
                 if process.poll() is None:
                     process.terminate()
-                process.wait(timeout=.3)
+                process.wait(timeout=2)
 
     def test_expired_inherited_deadline_never_launches(self):
         with patch.dict(os.environ, {policy.DEADLINE: str(time.monotonic() - 1)}), \
@@ -137,16 +146,16 @@ class TestPolicy(unittest.TestCase):
                 'try: sys.exit(test_policy.main())\n'
                 'except (test_policy.TerminationRequested,KeyboardInterrupt): sys.exit(130)\n')
             descendant = (f'from pathlib import Path; import time; '
-                          f'Path({str(started)!r}).touch(); time.sleep(.4); '
+                          f'Path({str(started)!r}).touch(); time.sleep({ESCAPE_DELAY}); '
                           f'Path({str(marker)!r}).touch()')
             parent = (f'import subprocess,sys,time; '
                       f'subprocess.Popen([sys.executable,"-c",{descendant!r}], start_new_session=True); '
-                      'time.sleep(.8)')
+                      'time.sleep(6)')
             with patch.object(policy, '__file__', str(driver)):
                 self.assertEqual(policy.run_commands([[sys.executable, '-c', 'pass']]), 0)
-                self.assertEqual(policy.run_commands([[sys.executable, '-c', parent]], .15), 124)
+                self.assertEqual(policy.run_commands([[sys.executable, '-c', parent]], CLEANUP_TIMEOUT), 124)
             self.assertTrue(started.exists(), 'escaped-session descendant must actually start')
-            time.sleep(.5)
+            time.sleep(CLEANUP_OBSERVATION)
             self.assertFalse(marker.exists(), 'fallback must retain subreaper cleanup')
 
     def test_no_cleanup_reader_fails_before_test_work(self):
@@ -182,18 +191,18 @@ class TestPolicy(unittest.TestCase):
                 'try: sys.exit(test_policy.main())\n'
                 'except (test_policy.TerminationRequested, KeyboardInterrupt): sys.exit(130)\n')
             descendant = (f'from pathlib import Path; import time; '
-                          f'Path({str(started)!r}).touch(); time.sleep(.4); '
+                          f'Path({str(started)!r}).touch(); time.sleep({ESCAPE_DELAY}); '
                           f'Path({str(marker)!r}).touch()')
             parent = (f'import subprocess,sys,time; '
-                      f'subprocess.Popen([sys.executable,"-c",{descendant!r}]); time.sleep(.8)')
+                      f'subprocess.Popen([sys.executable,"-c",{descendant!r}]); time.sleep(6)')
             sibling = subprocess.Popen([sys.executable, '-c',
-                f'from pathlib import Path; import time; time.sleep(.4); Path({str(sibling_marker)!r}).touch()'])
+                f'from pathlib import Path; import time; time.sleep({ESCAPE_DELAY}); Path({str(sibling_marker)!r}).touch()'])
             try:
                 with patch.object(policy, '__file__', str(driver)), \
                         patch.dict(os.environ, {policy.PROCESS_GROUP: str(os.getpgrp())}):
-                    self.assertEqual(policy.run_commands([[sys.executable, '-c', parent]], .15), 124)
+                    self.assertEqual(policy.run_commands([[sys.executable, '-c', parent]], CLEANUP_TIMEOUT), 124)
                 self.assertTrue(started.exists(), 'grandchild must have started before timeout')
-                time.sleep(.5)
+                time.sleep(CLEANUP_OBSERVATION)
                 self.assertFalse(marker.exists(), 'nested cleanup must not wait for the outer aggregate')
                 self.assertEqual(sibling.wait(timeout=.1), 0)
                 self.assertTrue(sibling_marker.exists(), 'cleanup must preserve sibling processes')

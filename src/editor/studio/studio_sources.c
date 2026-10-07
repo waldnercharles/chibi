@@ -1798,8 +1798,12 @@ static void inspector_action(studio *s, const char *action, const ui_activation 
 
 static const char *const HINT_TEXTS[] = { "icon", "key", "label", NULL };
 static const item_shape HINT = { HINT_TEXTS, NO_FLAGS };
-static const char *const TAB_TEXTS[] = { "label", "path", "icon", NULL };
-static const char *const TAB_FLAGS[] = { "dirty", "active", "closable", NULL };
+static const char *const TAB_TEXTS[] = { "label",    "path",        "icon",
+                                         "pinLabel", "closeReason", "shortcut",
+                                         NULL };
+static const char *const TAB_FLAGS[] = { "dirty",    "active",   "closable",
+                                         "pinned",   "pinnable", "checked",
+                                         "disabled", NULL };
 static const item_shape TAB = { TAB_TEXTS, TAB_FLAGS };
 static const char *const STATUS_TEXTS[] = { "report", "scene", "selection", "speed", NULL };
 static const char *const STATUS_FLAGS[] = { "reporting", "playing", "paused", NULL };
@@ -1865,11 +1869,13 @@ static bool show_tabs(yyjson_mut_doc *doc, yyjson_mut_val *editor, const studio_
         yyjson_mut_val *item = yyjson_mut_arr_iter_next(&it);
         char icon[5];
         studio_glyph(icon, t->icon);
-        const char *texts[] = { t->label, t->path, icon };
+        const char *texts[] = { t->label,     t->path,         icon,
+                                t->pin_label, t->close_reason, "" };
         for (int k = 0; TAB_TEXTS[k]; k++) {
             changed |= ui_data_put_text(doc, item, TAB_TEXTS[k], texts[k]);
         }
-        const bool flags[] = { t->dirty, t->active, t->closable };
+        const bool flags[] = { t->dirty,    t->active, t->closable, t->pinned,
+                               t->pinnable, t->active, false };
         for (int f = 0; TAB_FLAGS[f]; f++) {
             changed |= ui_data_put_bool(item, TAB_FLAGS[f], flags[f]);
         }

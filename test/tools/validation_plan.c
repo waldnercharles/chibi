@@ -138,7 +138,28 @@ TEST_CASE(validation_plans_native_tools_without_certifying_full_gate)
     REQUIRE(plan("--tool=quiet", NULL, NULL, NULL) == 2);
     REQUIRE(strstr(output, "invalid choice"));
     REQUIRE(plan("--tools", "--scope", "mixed", NULL) == 0);
-    REQUIRE(only_command(json(), "iteration_commands", "make check-format"));
+    root = json();
+    REQUIRE(only_command(root, "iteration_commands", "make test-tools"));
+    REQUIRE(string_equals(yyjson_obj_get(root, "validation_basis"), "reviewed affected contracts"));
+    REQUIRE(strstr(output, "Local or CI results"));
+    REQUIRE(!strstr(output, "CI build matrix"));
+    return true;
+}
+
+TEST_CASE(validation_requires_review_and_checks_for_mixed_scope)
+{
+    REQUIRE(plan("--tools", "--scope=mixed", "--review-note=", NULL) == 2);
+    REQUIRE(strstr(output, "reviewed scope requires"));
+    REQUIRE(plan("--scope", "mixed", NULL, NULL) == 2);
+    REQUIRE(strstr(output, "reviewed scope requires"));
+    REQUIRE(plan("--selector=--graph-optimize", "--scope", "mixed", NULL) == 0);
+    yyjson_val *root = json();
+    REQUIRE(only_command(root, "iteration_commands", "make agent-test AGENT_SELECTOR=--graph-optimize"));
+    REQUIRE(yyjson_is_false(yyjson_obj_get(root, "full_verification")));
+    REQUIRE(plan("--scope", "unknown", NULL, NULL) == 0);
+    root = json();
+    REQUIRE(string_equals(yyjson_obj_get(root, "validation_basis"), "scope review required"));
+    REQUIRE(strstr(output, "Resolve unknown scope"));
     return true;
 }
 
@@ -228,6 +249,7 @@ void test_tool_validation_plan()
     git("branch", "source", NULL, NULL);
     RUN_TEST_CASE(validation_identity_is_frozen_and_requires_clean_checkout);
     RUN_TEST_CASE(validation_plans_native_tools_without_certifying_full_gate);
+    RUN_TEST_CASE(validation_requires_review_and_checks_for_mixed_scope);
     RUN_TEST_CASE(validation_refuses_gpu_and_unadmitted_selectors);
     RUN_TEST_CASE(make_selector_data_never_reaches_the_shell);
     yyjson_doc_free(document);

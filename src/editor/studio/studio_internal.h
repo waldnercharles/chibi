@@ -123,6 +123,9 @@ typedef enum
     /* Authored top bar and area headers (workstream T) */
     STUDIO_COMMAND_SELECT_TAB,
     STUDIO_COMMAND_CLOSE_TAB,
+    STUDIO_COMMAND_TOGGLE_PIN_TAB,
+    STUDIO_COMMAND_PREVIOUS_TAB,
+    STUDIO_COMMAND_NEXT_TAB,
     STUDIO_COMMAND_CLOSE_DRAWER,
     STUDIO_COMMAND_RESUME,
     STUDIO_COMMAND_STEP_OVER,
@@ -949,6 +952,7 @@ struct studio
     studio_project *projects;
     studio_new_project new_project;
     char *open_project; /* root chosen to open, until the application takes it */
+    char *tab_menu_key; /* the document under the tab context menu, owned */
     studio_disk_toast *disk_toasts; /* files that changed on disk under unsaved edits */
     int discard_toast;   /* toast confirming unsaved changes are discarded */
     int discard_project; /* the project that toast opens */
@@ -2363,7 +2367,9 @@ typedef struct studio_tab_view
     const char *path; /* its file, the tab's tooltip */
     uint32_t icon;    /* a kit icon */
     bool dirty, active;
-    bool closable; /* a UI document; others stay for the session */
+    bool closable, pinned, pinnable;
+    const char *pin_label;
+    const char *close_reason;
 } studio_tab_view;
 
 /* What the editor's authored chrome shows: Studio's `editor` variable

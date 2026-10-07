@@ -1,4 +1,7 @@
 #include <assert.h>
+#include <errno.h>
+#include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,9 +28,51 @@ static void marker(const char *directory, const char *name)
     assert(!fclose(file));
 }
 
+/* Probe inside the driver's lifetime, before its caller performs group cleanup. */
+static int cleanup_probe(const char *directory)
+{
+    char path[4096];
+    int length = snprintf(path, sizeof path, "%s/started", directory);
+    assert(length > 0 && length < (int)sizeof path);
+    FILE *record = fopen(path, "r");
+    if (!record) {
+        return 2;
+    }
+    int pid = 0;
+    bool valid = fscanf(record, "%d", &pid) == 1 && pid > 0;
+    fclose(record);
+    if (!valid) {
+        return 2;
+    }
+    struct timespec start, now;
+    assert(!clock_gettime(CLOCK_MONOTONIC, &start));
+    for (;;) {
+        if (kill(pid, 0)) {
+            if (errno != ESRCH) {
+                return 2;
+            }
+            snprintf(path, sizeof path, "%s/escaped", directory);
+            if (!access(path, F_OK)) {
+                return 1;
+            }
+            return errno == ENOENT ? 0 : 2;
+        }
+        assert(!clock_gettime(CLOCK_MONOTONIC, &now));
+        double elapsed = (double)(now.tv_sec - start.tv_sec) +
+                         (double)(now.tv_nsec - start.tv_nsec) / 1e9;
+        if (elapsed >= 3.1) {
+            return 1;
+        }
+        pause_seconds(.001);
+    }
+}
+
 int main(int argc, char **argv)
 {
     assert(argc >= 3);
+    if (!strcmp(argv[1], "cleanup-probe")) {
+        return cleanup_probe(argv[2]);
+    }
     if (!strcmp(argv[1], "exit")) {
         return atoi(argv[2]);
     }
@@ -40,7 +85,14 @@ int main(int argc, char **argv)
         return 0;
     }
     if (!strcmp(argv[1], "sibling")) {
-        pause_seconds(3);
+        marker(argv[2], "sibling-ready");
+        char path[4096];
+        int length = snprintf(path, sizeof path, "%s/sibling-release", argv[2]);
+        assert(length > 0 && length < (int)sizeof path);
+        for (int i = 0; i < 6000 && access(path, F_OK); i++) {
+            pause_seconds(.001);
+        }
+        assert(!access(path, F_OK));
         marker(argv[2], "sibling");
         return 0;
     }

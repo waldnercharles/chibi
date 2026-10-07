@@ -940,9 +940,10 @@ static int discard_tab(app_scene_authoring *scene, int index)
     return -1;
 }
 
-static bool can_close_tab(const app_scene_authoring *scene, int index)
+bool scene_tabs_can_close(const app_scene_authoring *scene, int index)
 {
-    if (acount(scene->tabs) <= 1) {
+    if (index < 0 || index >= acount(scene->tabs) ||
+        scene->tabs[index].pinned || acount(scene->tabs) <= 1) {
         return false;
     }
     if (scene->tabs[index].kind != APP_EDITOR_DOCUMENT_SCENE) {
@@ -954,6 +955,43 @@ static bool can_close_tab(const app_scene_authoring *scene, int index)
         }
     }
     return false;
+}
+
+/* Pins form a stable leading group. Moving a tab only changes navigation;
+   the active document and the underlying scene retain their identities. */
+void scene_tabs_toggle_pin(app_scene_authoring *scene, int index)
+{
+    assert(index >= 0 && index < acount(scene->tabs));
+    char *active_key = scene->tabs[scene->active_tab].key;
+    scene_document_tab moved = scene->tabs[index];
+    moved.pinned = !moved.pinned;
+    int target = 0;
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        if (i != index && scene->tabs[i].pinned) {
+            target++;
+        }
+    }
+    if (target < index) {
+        memmove(
+            &scene->tabs[target + 1],
+            &scene->tabs[target],
+            (size_t)(index - target) * sizeof *scene->tabs
+        );
+    }
+    if (target > index) {
+        memmove(
+            &scene->tabs[index],
+            &scene->tabs[index + 1],
+            (size_t)(target - index) * sizeof *scene->tabs
+        );
+    }
+    scene->tabs[target] = moved;
+    for (int i = 0; i < acount(scene->tabs); i++) {
+        if (scene->tabs[i].key == active_key) {
+            scene->active_tab = i;
+            break;
+        }
+    }
 }
 
 /* A graph whose tab closes leaves the Behavior area, which shows no graph
@@ -972,18 +1010,22 @@ static void forget_graph(app_scene_authoring *scene, const scene_document_tab *t
 
 static int remove_tab(app_scene_authoring *scene, int index)
 {
-    if (!can_close_tab(scene, index)) {
+    if (!scene_tabs_can_close(scene, index)) {
         return -1;
     }
     const char *scene_key = scene_tabs_current_scene_key(scene);
     bool underlying = scene_key && !strcmp(scene_key, scene->tabs[index].key);
     if (underlying || index == scene->active_tab) {
         int next = -1;
-        for (int i = 0; i < acount(scene->tabs); i++) {
-            if (i != index &&
-                (!underlying || scene->tabs[i].kind == APP_EDITOR_DOCUMENT_SCENE)) {
-                next = i;
-                break;
+        for (int distance = 1; distance < acount(scene->tabs) && next < 0; distance++) {
+            int candidates[] = { index + distance, index - distance };
+            for (int c = 0; c < 2; c++) {
+                int i = candidates[c];
+                if (i >= 0 && i < acount(scene->tabs) &&
+                    (!underlying || scene->tabs[i].kind == APP_EDITOR_DOCUMENT_SCENE)) {
+                    next = i;
+                    break;
+                }
             }
         }
         assert(next >= 0);
@@ -1039,20 +1081,48 @@ void scene_tabs_close(app_scene_authoring *scene, app_editor_document_kind kind,
     }
 }
 
+void scene_tabs_forget(app_scene_authoring *scene, app_editor_document_kind kind, const char *id)
+{
+    assert(kind == APP_EDITOR_DOCUMENT_BEHAVIOR || kind == APP_EDITOR_DOCUMENT_PROTOTYPE);
+    char *key = tab_key(kind, id, NULL);
+    int index = tab_find(scene, key);
+    free(key);
+    if (index >= 0) {
+        scene->tabs[index].pinned = false;
+        remove_tab(scene, index);
+    }
+}
+
 int scene_tabs_discard(app_scene_authoring *scene, int index)
 {
     if (!scene || index < 0 || index >= acount(scene->tabs)) {
         return -1;
     }
+    if (!scene_tabs_can_close(scene, index)) {
+        return -1;
+    }
     scene_document_tab *tab = &scene->tabs[index];
-    if (tab->kind != APP_EDITOR_DOCUMENT_SCENE && index != scene->active_tab &&
-        scene_tabs_activate(scene, index) != 0) {
-        return -1;
+    bool background = tab->kind != APP_EDITOR_DOCUMENT_SCENE &&
+                      index != scene->active_tab;
+    char *previous = background ? xstrdup(scene->tabs[scene->active_tab].key) : NULL;
+    int result = background ? scene_tabs_activate(scene, index) : 0;
+    if (result == 0) {
+        result = discard_tab(scene, index);
     }
-    if (discard_tab(scene, index) != 0) {
-        return -1;
+    if (result == 0) {
+        result = remove_tab(scene, index);
     }
-    return remove_tab(scene, index);
+    /* Discarding a graph or prototype needs its live document, but closing
+       a background tab keeps the document the user was working in. */
+    if (previous) {
+        int active = tab_find(scene, previous);
+        assert(active >= 0);
+        if (scene_tabs_activate(scene, active) != 0) {
+            result = -1;
+        }
+    }
+    free(previous);
+    return result;
 }
 
 /* ---------- UI documents ---------- */

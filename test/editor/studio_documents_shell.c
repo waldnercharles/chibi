@@ -963,7 +963,10 @@ static void chrome_follows_studio()
                            : NULL;
     bool listed = count == acount(f.scene->tabs) && f.scene->active_tab == bank &&
                   close && rml_element_is_visible(close, true) &&
-                  !rml_element_is_visible(rml_element_query_selector(tabs[scene], ".doc-close"), true);
+                  rml_element_has_attribute(
+                      rml_element_query_selector(tabs[scene], ".doc-close"),
+                      "data-disabled"
+                  );
     /* The press takes the focus from the Text Editor, whose focused text
        would make its document active again, and passes the keyboard on. */
     press(s, rml_element_query_selector(tabs[scene], ".face"));
@@ -1000,6 +1003,470 @@ static void chrome_follows_studio()
         "Studio's authored top bar and area headers show the menubar, the "
         "play target and the controls' slots, and run tab, transport and "
         "area commands"
+    );
+    fixture_free(&f);
+}
+
+static rml_element *document_tab_control(studio *s, int index, const char *selector)
+{
+    rml_element *tabs[32];
+    int count = test_query_all(rml_backend_context(s->backend), ".doc-tab", tabs, 32);
+    int row = 0;
+    for (int i = 0; i < count; i++) {
+        if (rml_element_has_attribute(tabs[i], "data-for")) {
+            continue;
+        }
+        if (row++ == index) {
+            if (!selector) {
+                return tabs[i];
+            }
+            rml_element *controls[8];
+            int matches = rml_element_query_selector_all(tabs[i], selector, controls, 8);
+            for (int j = 0; j < matches; j++) {
+                if (rml_element_is_visible(controls[j], true)) {
+                    return controls[j];
+                }
+            }
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
+static void document_tab_key(studio_fixture *f, SDL_Scancode key, SDL_Keymod mod)
+{
+    key_event_mod(key, true, mod, false);
+    key_event_mod(key, false, mod, false);
+    frames(f, 3);
+}
+
+static void document_tab_press(studio_fixture *f, rml_element *control)
+{
+    rml_vec2 at = rml_element_absolute_offset(control, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(control, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(f->studio);
+    mouse_move(f->studio, (at.x + size.x / 2) / ratio, (at.y + size.y / 2) / ratio);
+    frames(f, 2);
+    press(f->studio, control);
+}
+
+static void document_tab_shot(const char *state)
+{
+    const char *dir = getenv("CHIBI_TAB_CAPTURE_DIR");
+    if (!dir || !dir[0]) {
+        return;
+    }
+    char shot[PATH_MAX];
+    assert(mkdir(dir, 0755) == 0 || access(dir, F_OK) == 0);
+    snprintf(shot, sizeof shot, "%s/native-document-tabs-%s.png", dir, state);
+    assert(app_save_screenshot(shot) == 0);
+}
+
+static void document_tab_pin_menu(studio_fixture *f, int index)
+{
+    studio *s = f->studio;
+    rml_element *face = document_tab_control(s, index, ".face");
+    assert(face);
+    rml_vec2 at = rml_element_absolute_offset(face, RML_BOX_BORDER);
+    rml_vec2 size = rml_element_box_size(face, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    float x = (at.x + size.x / 2) / ratio;
+    float y = (at.y + size.y / 2) / ratio;
+    mouse_move(s, x, y);
+    button_at(s, x, y, SDL_BUTTON_RIGHT, true);
+    frames(f, 1);
+    button_at(s, x, y, SDL_BUTTON_RIGHT, false);
+    frames(f, 3);
+    rml_element *menu = studio_element(s, "#tab-menu");
+    assert(menu && popover_open(menu));
+    rml_element *items[16];
+    int count = rml_element_query_selector_all(menu, ".menu-item", items, 16);
+    rml_element *pin = NULL;
+    for (int i = 0; i < count; i++) {
+        char text[256];
+        rml_element *label = rml_element_query_selector(items[i], ".label");
+        rml_element_inner_rml(label ? label : items[i], text, sizeof text);
+        if (strstr(text, "Pin Tab") && rml_element_is_visible(items[i], true)) {
+            pin = items[i];
+            break;
+        }
+    }
+    if (!pin) {
+        char markup[4096];
+        rml_element_inner_rml(menu, markup, sizeof markup);
+        printf("  tab pin menu: index=%d items=%d pointer=(%.2f,%.2f)\n%s\n", index, count, x, y, markup);
+        for (int i = 0; i < count; i++) {
+            char text[512];
+            rml_element_inner_rml(items[i], text, sizeof text);
+            printf("  item %d visible=%d: %s\n", i, rml_element_is_visible(items[i], true), text);
+        }
+        const char *dir = getenv("CHIBI_TAB_CAPTURE_DIR");
+        if (dir && dir[0]) {
+            char shot[PATH_MAX];
+            assert(mkdir(dir, 0755) == 0 || access(dir, F_OK) == 0);
+            snprintf(shot, sizeof shot, "%s/native-document-tab-menu.png", dir);
+            assert(app_save_screenshot(shot) == 0);
+        }
+        fflush(stdout);
+    }
+    assert(pin);
+    press(s, pin);
+    frames(f, 3);
+}
+
+/* Document controls preserve the selected document when pinning reorders the
+   strip, protect unsaved work, and keep overflow reachable without a scrollbar. */
+static void document_tabs()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    char path[PATH_MAX];
+    assert(realpath(BANK, path) && studio_open_ui_source(s, path, 1));
+    frames(&f, 4);
+    int bank = tab_named(f.scene, "Bank");
+    assert(bank >= 0);
+    rml_element *code = studio_element(s, "kit-code");
+    assert(code && s->code.editor && rml_element_focus(code, true));
+    frames(&f, 1);
+    char *source = strdup(kit_code_text(s->code.editor, NULL));
+    assert(source);
+    int initial_count = acount(f.scene->tabs);
+    document_tab_key(&f, SDL_SCANCODE_TAB, SDL_KMOD_CTRL);
+    bool code_next = f.scene->active_tab == (bank + 1) % initial_count;
+    document_tab_key(&f, SDL_SCANCODE_TAB, SDL_KMOD_CTRL | SDL_KMOD_SHIFT);
+    test_check(
+        code_next && f.scene->active_tab == bank && s->code.editor &&
+            !strcmp(source, kit_code_text(s->code.editor, NULL)),
+        "document cycling works from the Text Editor without inserting text"
+    );
+    free(source);
+    /* Keep another tab after Bank to catch hover shifting its neighbor. */
+    assert(app_scene_authoring_open_behavior(f.scene, "Weapons") == 0);
+    frames(&f, 3);
+    press(s, document_tab_control(s, bank, ".face"));
+    frames(&f, 3);
+    code = studio_element(s, "kit-code");
+    assert(code && rml_element_focus(code, true));
+    mouse_move(s, 8, 100);
+    frames(&f, 15);
+    rml_element *close = document_tab_control(s, bank, ".doc-close");
+    assert(close);
+    char opacity[32];
+    rml_element_property(close, "opacity", opacity, sizeof opacity);
+    float rest_opacity = atof(opacity);
+    bool resting = atof(opacity) < 0.01 && !document_tab_control(s, bank, ".doc-pin");
+    rml_element *row = document_tab_control(s, bank, NULL);
+    rml_vec2 row_at = rml_element_absolute_offset(row, RML_BOX_BORDER);
+    rml_vec2 row_size = rml_element_box_size(row, RML_BOX_BORDER);
+    float ratio = studio_pixel_ratio(s);
+    rml_element *tab_face = document_tab_control(s, bank, ".face");
+    rml_vec2 face_rest = rml_element_box_size(tab_face, RML_BOX_BORDER);
+    rml_element *following = document_tab_control(s, bank + 1, NULL);
+    assert(following);
+    float following_x = rml_element_absolute_offset(following, RML_BOX_BORDER).x;
+    bool uniform = fabsf(row_size.x - 180 * ratio) < 0.5f &&
+                   fabsf(rml_element_box_size(following, RML_BOX_BORDER).x - 180 * ratio) <
+                       0.5f;
+    document_tab_shot("resting");
+    mouse_move(s, (row_at.x + row_size.x / 2) / ratio, (row_at.y + row_size.y / 2) / ratio);
+    frames(&f, 15);
+    bool hover_stable = fabsf(
+                            rml_element_box_size(row, RML_BOX_BORDER).x -
+                            row_size.x
+                        ) < 0.5f &&
+                        fabsf(
+                            rml_element_absolute_offset(following, RML_BOX_BORDER)
+                                .x -
+                            following_x
+                        ) < 0.5f;
+    document_tab_shot("hover");
+    rml_element_property(close, "opacity", opacity, sizeof opacity);
+    if (!resting || atof(opacity) <= 0.99) {
+        printf(
+            "  tab hover: resting=%d opacity=%.3f hover=%.3f pin=%p "
+            "row=(%.2f,%.2f,%.2f,%.2f) pointer=(%.2f,%.2f) ratio=%.3f "
+            "row_hover=%d close_hover=%d\n",
+            resting,
+            rest_opacity,
+            atof(opacity),
+            (void *)document_tab_control(s, bank, ".doc-pin"),
+            row_at.x,
+            row_at.y,
+            row_size.x,
+            row_size.y,
+            (row_at.x + row_size.x / 2) / ratio,
+            (row_at.y + row_size.y / 2) / ratio,
+            ratio,
+            rml_element_is_pseudo_class_set(row, "hover"),
+            rml_element_is_pseudo_class_set(close, "hover")
+        );
+    }
+    test_check(resting && atof(opacity) > 0.99, "unpinned tabs show no pin icon and reveal close only on hover");
+    mouse_move(s, 8, 100);
+    frames(&f, 15);
+    bool leave_stable = fabsf(
+                            rml_element_box_size(row, RML_BOX_BORDER).x -
+                            row_size.x
+                        ) < 0.5f &&
+                        fabsf(
+                            rml_element_absolute_offset(following, RML_BOX_BORDER)
+                                .x -
+                            following_x
+                        ) < 0.5f;
+    if (!uniform || !hover_stable || !leave_stable) {
+        printf(
+            "  tab geometry: uniform=%d hover_stable=%d leave_stable=%d "
+            "row=%.2f face=%.2f ratio=%.2f following=%.2f\n",
+            uniform,
+            hover_stable,
+            leave_stable,
+            row_size.x,
+            face_rest.x,
+            ratio,
+            following_x
+        );
+    }
+    test_check(uniform && hover_stable && leave_stable, "tabs keep a uniform 180dp width and stable neighboring positions through hover");
+    char *saved_label = f.scene->tabs[bank].label;
+    f.scene->tabs[bank].label = strdup("CustomerAccessPermissionsAndNotificationSettings.rml");
+    assert(f.scene->tabs[bank].label);
+    frames(&f, 15);
+    row = document_tab_control(s, bank, NULL);
+    rml_element *long_label = document_tab_control(s, bank, ".label");
+    assert(row && long_label);
+    rml_vec2 long_at = rml_element_absolute_offset(long_label, RML_BOX_BORDER);
+    rml_vec2 long_size = rml_element_box_size(long_label, RML_BOX_BORDER);
+    rml_vec2 long_row_at = rml_element_absolute_offset(row, RML_BOX_BORDER);
+    rml_vec2 long_row_size = rml_element_box_size(row, RML_BOX_BORDER);
+    rml_element *title_fade = document_tab_control(s, bank, ".doc-title-fade");
+    assert(title_fade);
+    float fade_width = rml_element_box_size(title_fade, RML_BOX_BORDER).x / ratio;
+    test_check(
+        fabsf(long_row_size.x - 180 * ratio) < 0.5f && long_size.x > 0 &&
+            long_at.x >= long_row_at.x &&
+            long_at.x + long_size.x <= long_row_at.x + long_row_size.x + 0.5f &&
+            fade_width >= 12 && fade_width <= 16.1f &&
+            fabsf(rml_element_absolute_offset(following, RML_BOX_BORDER).x - following_x) <
+                0.5f,
+        "a long document title stays inside its 180dp tab with a 12 to 16dp "
+        "fade and keeps its neighbor stable"
+    );
+    document_tab_shot("long-label");
+    free(f.scene->tabs[bank].label);
+    f.scene->tabs[bank].label = saved_label;
+    frames(&f, 3);
+    close = document_tab_control(s, bank, ".doc-close");
+    assert(close);
+    assert(rml_element_focus(close, true));
+    frames(&f, 15);
+    rml_element_property(close, "opacity", opacity, sizeof opacity);
+    test_check(atof(opacity) > 0.99, "keyboard focus reveals the close action without pointer hover");
+    code = studio_element(s, "kit-code");
+    assert(code && rml_element_focus(code, true));
+    frames(&f, 2);
+    document_tab_pin_menu(&f, bank);
+    bank = tab_named(f.scene, "Bank");
+    row = document_tab_control(s, bank, NULL);
+    assert(row);
+    test_check(
+        bank == 0 && f.scene->tabs[bank].pinned && f.scene->active_tab == bank &&
+            !document_tab_control(s, bank, ".doc-close") &&
+            fabsf(rml_element_box_size(row, RML_BOX_BORDER).x - 180 * ratio) < 0.5f,
+        "pinning a document moves it first, preserves the active document, and "
+        "replaces close with unpin"
+    );
+    rml_element *pin = document_tab_control(s, bank, ".doc-pin");
+    assert(pin);
+    press(s, pin);
+    frames(&f, 3);
+    bank = tab_named(f.scene, "Bank");
+    test_check(
+        bank >= 0 && !f.scene->tabs[bank].pinned && f.scene->active_tab == bank &&
+            document_tab_control(s, bank, ".doc-close"),
+        "unpin restores the close control and preserves the active document"
+    );
+
+    assert(app_scene_authoring_open_behavior(f.scene, "Teller") == 0);
+    frames(&f, 4);
+    int count = acount(f.scene->tabs);
+    int selected = f.scene->active_tab;
+    assert(count >= 3);
+    rml_element *face = document_tab_control(s, selected, ".face");
+    assert(face && rml_element_focus(face, true));
+    document_tab_key(&f, SDL_SCANCODE_TAB, SDL_KMOD_CTRL);
+    bool next = f.scene->active_tab == (selected + 1) % count;
+    document_tab_key(&f, SDL_SCANCODE_TAB, SDL_KMOD_CTRL | SDL_KMOD_SHIFT);
+    test_check(next && f.scene->active_tab == selected, "Control Tab cycles open documents and Shift reverses the cycle");
+    face = document_tab_control(s, f.scene->active_tab, ".face");
+    assert(face && rml_element_focus(face, true));
+    document_tab_key(&f, SDL_SCANCODE_HOME, SDL_KMOD_NONE);
+    bool home = f.scene->active_tab == 0;
+    document_tab_key(&f, SDL_SCANCODE_RIGHT, SDL_KMOD_NONE);
+    bool right = f.scene->active_tab == 1;
+    document_tab_key(&f, SDL_SCANCODE_END, SDL_KMOD_NONE);
+    test_check(home && right && f.scene->active_tab == count - 1, "tab focus supports Home, Right Arrow and End navigation");
+
+    /* Constrain the strip so the menu must reveal a document outside its viewport. */
+    kit_style_sheet(s->kit, "document-tabs-probe", ".doc-tab-list { width: 220dp; max-width: 220dp; flex-grow: 0; flex-shrink: 0; }");
+    frames(&f, 4);
+    rml_element *trigger = studio_element(s, ".open-tabs");
+    assert(trigger && rml_element_is_visible(trigger, true));
+    press(s, trigger);
+    frames(&f, 3);
+    rml_element *menu = studio_element(s, "#open-tabs-menu");
+    rml_element *items[32];
+    int menu_count = menu
+                       ? rml_element_query_selector_all(menu, ".menu-item", items, 32)
+                       : 0;
+    rml_element *bank_item = NULL;
+    for (int i = 0; i < menu_count; i++) {
+        char text[256];
+        rml_element_inner_rml(rml_element_query_selector(items[i], ".label"), text, sizeof text);
+        if (strstr(text, "Bank") && rml_element_is_visible(items[i], true)) {
+            bank_item = items[i];
+            break;
+        }
+    }
+    bool menu_open = menu && popover_open(menu);
+    assert(bank_item);
+    press(s, bank_item);
+    frames(&f, 4);
+    bank = tab_named(f.scene, "Bank");
+    face = document_tab_control(s, bank, ".face");
+    rml_element *strip = studio_element(s, ".doc-tab-list");
+    assert(face && strip);
+    rml_vec2 strip_at = rml_element_absolute_offset(strip, RML_BOX_CONTENT);
+    rml_vec2 strip_size = rml_element_box_size(strip, RML_BOX_CONTENT);
+    rml_vec2 face_at = rml_element_absolute_offset(face, RML_BOX_BORDER);
+    rml_vec2 face_size = rml_element_box_size(face, RML_BOX_BORDER);
+    bool revealed = face_at.x >= strip_at.x - 1 &&
+                    face_at.x + face_size.x <= strip_at.x + strip_size.x + 1;
+    test_check(menu_open && f.scene->active_tab == bank && !popover_open(menu) && revealed, "the open documents menu selects and reveals a tab in a constrained strip");
+
+    const char *dir = getenv("CHIBI_TAB_CAPTURE_DIR");
+    if (dir && dir[0]) {
+        char shot[PATH_MAX];
+        assert(mkdir(dir, 0755) == 0 || access(dir, F_OK) == 0);
+        frames(&f, 30);
+        snprintf(shot, sizeof shot, "%s/native-document-tabs.png", dir);
+        assert(app_save_screenshot(shot) == 0);
+    }
+    kit_style_sheet(s->kit, "document-tabs-probe", "");
+    frames(&f, 3);
+
+    f.scene->tabs[bank].source_dirty = true;
+    close = document_tab_control(s, bank, ".doc-close");
+    assert(close);
+    document_tab_press(&f, close);
+    frames(&f, 3);
+    char title[256] = "";
+    rml_element *toast = studio_element(s, ".toast .title");
+    if (toast) {
+        rml_element_inner_rml(toast, title, sizeof title);
+    }
+    test_check(
+        tab_named(f.scene, "Bank") >= 0 && acount(f.scene->tabs) == count &&
+            strstr(title, "without saving"),
+        "closing an unsaved tab retains its document and asks before "
+        "discarding edits"
+    );
+    document_tab_pin_menu(&f, bank);
+    bank = tab_named(f.scene, "Bank");
+    rml_element *action = studio_element(s, ".toast-action");
+    assert(action);
+    press(s, action);
+    frames(&f, 3);
+    bank = tab_named(f.scene, "Bank");
+    test_check(bank >= 0 && f.scene->tabs[bank].pinned && acount(f.scene->tabs) == count, "pinning a tab while discard confirmation is pending protects it from the old close action");
+    pin = document_tab_control(s, bank, ".doc-pin");
+    assert(pin);
+    press(s, pin);
+    frames(&f, 3);
+    bank = tab_named(f.scene, "Bank");
+    f.scene->tabs[bank].source_dirty = false;
+    kit_toast_dismiss(s->kit, s->code.close_toast);
+    int adjacent = bank + 1 < count ? bank + 1 : bank - 1;
+    char adjacent_key[PATH_MAX];
+    snprintf(adjacent_key, sizeof adjacent_key, "%s", f.scene->tabs[adjacent].key);
+    SDL_Keymod primary = s->mac ? SDL_KMOD_GUI : SDL_KMOD_CTRL;
+    code = studio_element(s, "kit-code");
+    assert(code && rml_element_focus(code, true));
+    document_tab_key(&f, SDL_SCANCODE_W, primary);
+    test_check(
+        tab_named(f.scene, "Bank") < 0 && acount(f.scene->tabs) == count - 1 &&
+            !strcmp(f.scene->tabs[f.scene->active_tab].key, adjacent_key),
+        "the close shortcut removes a clean active document and selects its "
+        "adjacent tab"
+    );
+    int scene = -1;
+    for (int i = 0; i < acount(f.scene->tabs); i++) {
+        if (f.scene->tabs[i].kind == APP_EDITOR_DOCUMENT_SCENE) {
+            scene = i;
+        }
+    }
+    assert(scene >= 0);
+    char root_key[PATH_MAX];
+    snprintf(root_key, sizeof root_key, "%s", f.scene->tabs[scene].key);
+    assert(realpath(PROJECT "/content/scenes/Main.kdl", path));
+    assert(scene_tabs_open_scene(f.scene, path) == 0);
+    frames(&f, 4);
+    int second_scene = f.scene->active_tab;
+    assert(second_scene != scene && f.scene->tabs[second_scene].kind == APP_EDITOR_DOCUMENT_SCENE);
+    close = document_tab_control(s, second_scene, ".doc-close");
+    assert(close && !rml_element_has_attribute(close, "data-disabled"));
+    f.scene->scene_dirty = true;
+    document_tab_press(&f, close);
+    frames(&f, 3);
+    test_check(
+        acount(f.scene->tabs) == count && f.scene->active_tab == second_scene &&
+            s->code.close_toast != 0,
+        "closing an unsaved scene retains its tab until discard is confirmed"
+    );
+    f.scene->scene_dirty = false;
+    kit_toast_dismiss(s->kit, s->code.close_toast);
+    close = document_tab_control(s, second_scene, ".doc-close");
+    assert(close);
+    document_tab_press(&f, close);
+    frames(&f, 4);
+    scene = f.scene->active_tab;
+    test_check(
+        acount(f.scene->tabs) == count - 1 &&
+            f.scene->tabs[scene].kind == APP_EDITOR_DOCUMENT_SCENE &&
+            !strcmp(f.scene->tabs[scene].key, root_key),
+        "the scene close button removes a clean second scene and restores the "
+        "remaining scene"
+    );
+    close = document_tab_control(s, scene, ".doc-close");
+    assert(close);
+    bool disabled = rml_element_has_attribute(close, "data-disabled");
+    mouse_move(s, 8, 100);
+    frames(&f, 3);
+    rml_element_property(close, "opacity", opacity, sizeof opacity);
+    bool root_close_hidden = atof(opacity) < 0.01;
+    rml_element_property(rml_element_query_selector(close, ".icon"), "opacity", opacity, sizeof opacity);
+    root_close_hidden = root_close_hidden && atof(opacity) < 0.01;
+    rml_element_click(close);
+    frames(&f, 3);
+    test_check(disabled && root_close_hidden && acount(f.scene->tabs) == count - 1, "the final scene tab keeps its disabled close action hidden at rest and stays open");
+    assert(realpath(BANK, path) && studio_open_ui_source(s, path, 1));
+    frames(&f, 4);
+    bank = tab_named(f.scene, "Bank");
+    int teller = tab_named(f.scene, "Teller");
+    assert(bank >= 0 && teller >= 0 && f.scene->active_tab == bank);
+    assert(!scene_tabs_dirty(f.scene, &f.scene->tabs[teller]));
+    char bank_key[PATH_MAX];
+    snprintf(bank_key, sizeof bank_key, "%s", f.scene->tabs[bank].key);
+    int background_count = acount(f.scene->tabs);
+    close = document_tab_control(s, teller, ".doc-close");
+    assert(close);
+    document_tab_press(&f, close);
+    frames(&f, 4);
+    test_check(
+        tab_named(f.scene, "Teller") < 0 &&
+            acount(f.scene->tabs) == background_count - 1 &&
+            !strcmp(f.scene->tabs[f.scene->active_tab].key, bank_key),
+        "closing an inactive graph tab preserves the active Text Editor "
+        "document"
     );
     fixture_free(&f);
 }
@@ -1045,7 +1512,7 @@ static void toolbar_shortcuts_keep_text_focus()
     assert(tab);
     press(s, tab);
     frames(&f, 1);
-    tab = studio_element(s, ".doc-tab");
+    tab = studio_element(s, ".doc-tab .face");
     assert(tab && rml_element_focus(tab, true));
     frames(&f, 1);
     bool tab_focus = rml_context_focus_element(context) == tab &&
@@ -1833,6 +2300,7 @@ bool studio_shell_cases(const char *only, bool run)
     STUDIO_CASE("keys_follow_pointer", keys_follow_pointer);
     STUDIO_CASE("readout_follows_camera", readout_follows_camera);
     STUDIO_CASE("chrome_follows_studio", chrome_follows_studio);
+    STUDIO_CASE("document-tabs", document_tabs);
     STUDIO_CASE("layout_modes_are_explicit", layout_modes_are_explicit);
     STUDIO_CASE("toolbar_shortcuts_keep_text_focus", toolbar_shortcuts_keep_text_focus);
     STUDIO_CASE("area_documents", area_documents);

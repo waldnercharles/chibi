@@ -30,23 +30,85 @@ body { flex: 0 0 auto; }
 .sep { width: 1dp; height: 14dp; background-color: var(--border); margin: 0dp 6dp; flex-shrink: 0; }
 // Documents occupy their own row so the toolbar keeps every action in reach.
 .doc-tabs {
-  display: flex; align-items: center; gap: 2dp; height: var(--header-h); flex: 0 0 auto;
-  padding: 0dp 6dp 4dp; overflow-x: auto; overflow-y: hidden;
+  --tab-hover: color-mix(in srgb, var(--foreground) 5%, var(--app));
+  --tab-close-hover: color-mix(in srgb, var(--foreground) 9%, var(--app));
+  --tab-active-close-hover: color-mix(in srgb, var(--foreground) 9%, var(--background));
+  display: flex; align-items: center; gap: 4dp; height: var(--header-h); flex: 0 0 auto;
+  padding: 0dp 6dp 4dp;
   background-color: var(--app);
 }
-// A tab selects from its face and closes from its button, hover-revealed on the
-// others. The active document reads as a piece of the panels below it.
-.doc-tab {
-  height: 100%; padding: 0dp; gap: 0dp; color: var(--muted-foreground);
-  border-radius: var(--r-lg);
-  &:hover { color: var(--foreground); background-color: var(--accent); }
-  &[data-state=on] { background-color: var(--background); color: var(--foreground); }
-  &[data-state=on] .icon { color: var(--primary-text); }
+.doc-tab-list {
+  display: flex; align-items: center; gap: 2dp; height: 100%; flex: 1 1 0dp;
+  min-width: 0dp; overflow-x: auto; overflow-y: hidden;
 }
-.face { display: flex; align-items: center; gap: 6dp; height: 100%; padding: 0dp 6dp 0dp 8dp; }
-.dirty-dot { width: 6dp; height: 6dp; border-radius: 3dp; background-color: var(--muted-foreground); }
-.doc-close { width: 16dp; height: 16dp; margin-right: 4dp; opacity: 0; }
-.doc-tab:hover .doc-close, .doc-tab[data-state=on] .doc-close { opacity: 1; }
+.doc-tab-list scrollbarhorizontal { height: 0dp; }
+// Equal tab widths keep document names and hover actions in predictable places.
+.doc-tab {
+  position: relative; display: flex; align-items: center; flex: 0 0 180dp;
+  box-sizing: border-box; width: 180dp;
+  height: 100%; padding: 0dp 2dp 0dp 0dp; color: var(--muted-foreground);
+  border-radius: var(--r-lg);
+  &:hover { color: var(--foreground); background-color: var(--tab-hover); }
+  &[data-state=on] { background-color: var(--background); color: var(--foreground); }
+  &[data-state=on] .face .icon { color: var(--primary-text); }
+  &[data-pinned] .doc-pin { color: var(--primary-text); opacity: 1; }
+}
+.doc-tab .face {
+  position: relative; flex: 1 1 0dp; min-width: 0dp; justify-content: flex-start;
+  gap: 6dp; height: 100%; padding: 0dp 6dp 0dp 8dp;
+  transition: none;
+}
+.doc-tab .face > .icon { flex: 0 0 auto; }
+.doc-tab .face:hover { background-color: transparent; }
+.doc-tab .face:focus-visible { background-color: transparent; }
+.doc-tab[data-state=on] .face { color: var(--foreground); }
+.face .label {
+  position: relative; display: block; flex: 1 1 0dp; min-width: 0dp;
+  overflow: hidden; white-space: nowrap;
+}
+.doc-title-fade {
+  position: absolute; right: 0dp; top: 0dp; width: 16dp; height: 100%;
+  pointer-events: none; decorator: horizontal-gradient(#00000000 var(--app));
+}
+.doc-tab:hover .doc-title-fade { decorator: horizontal-gradient(#00000000 var(--tab-hover)); }
+.doc-tab[data-state=on] .doc-title-fade { decorator: horizontal-gradient(#00000000 var(--background)); }
+.dirty-dot { flex: 0 0 auto; width: 6dp; height: 6dp; border-radius: 3dp; background-color: var(--muted-foreground); }
+.doc-tab .doc-pin, .doc-tab .doc-close { width: 22dp; height: 22dp; flex: 0 0 auto; }
+.doc-tab .doc-close {
+  position: absolute; right: 2dp; top: 50%; margin-top: -11dp;
+  opacity: 0; pointer-events: none; background-color: transparent; transition: none;
+}
+.doc-tab .doc-close[data-disabled] { opacity: 0; }
+.doc-close > .icon { position: relative; z-index: 1; }
+// Cover the title through the button's transparent border and rounded corners.
+.doc-close-cover {
+  position: absolute; left: -1dp; right: -1dp; top: -1dp; bottom: -1dp;
+  pointer-events: none; background-color: var(--app);
+}
+.doc-tab:hover .doc-close-cover { background-color: var(--tab-hover); }
+.doc-tab[data-state=on] .doc-close-cover { background-color: var(--background); }
+.doc-close-highlight {
+  position: absolute; left: -1dp; right: -1dp; top: -1dp; bottom: -1dp;
+  box-sizing: border-box; border: 1dp transparent; border-radius: var(--r);
+  pointer-events: none;
+}
+.doc-close:focus-visible .doc-close-highlight { border-color: var(--ring); }
+.doc-close-fade {
+  position: absolute; left: -16dp; top: 0dp; width: 16dp; height: 100%;
+  pointer-events: none; decorator: horizontal-gradient(#00000000 var(--app));
+}
+.doc-tab:hover .doc-close-fade { decorator: horizontal-gradient(#00000000 var(--tab-hover)); }
+.doc-tab[data-state=on] .doc-close-fade { decorator: horizontal-gradient(#00000000 var(--background)); }
+.doc-tab:hover .doc-close, .doc-tab .doc-close:focus-visible { opacity: 1; pointer-events: auto; }
+.doc-tab .doc-close:hover { background-color: transparent; }
+.doc-tab .doc-close:hover .doc-close-highlight { background-color: var(--tab-close-hover); }
+.doc-tab[data-state=on] .doc-close:hover .doc-close-highlight { background-color: var(--tab-active-close-hover); }
+.doc-tab:hover .doc-close[data-disabled] { opacity: 1; }
+.doc-close[data-disabled] .icon { opacity: 0; }
+.doc-tab:hover .doc-close[data-disabled] .icon, .doc-close[data-disabled]:focus-visible .icon { opacity: 0.38; }
+.open-tabs { flex: 0 0 auto; }
+#open-tabs-menu { min-width: 220dp; max-width: 360dp; }
+#open-tabs-menu .label { display: block; overflow: hidden; text-overflow: ellipsis; }
 .transport { display: flex; align-items: center; gap: 4dp; flex: 0 0 auto; }
 #play-target { display: flex; flex: 0 0 auto; }
 .target { width: 168dp; overflow: hidden; }

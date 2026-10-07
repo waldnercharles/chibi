@@ -1051,6 +1051,7 @@ void studio_free(studio *s)
     if (!s->hosted) {
         release_window(s);
     }
+    free(s->tab_menu_key);
     afree(s->events);
     afree(s->bound.bindings);
     afree(s->records);

@@ -28,6 +28,24 @@ conditional/list views, and layout refresh with exact callback counts and
 synthetic animation time. `--kit-documents` covers the kit's document placement,
 focus, popup and input contracts. Neither needs a window or GPU rendering.
 
+`make agent-test AGENT_SELECTOR=--ui-tab-list` runs the existing tab-strip input
+and layout checks independently of the other control fixtures. It preserves all
+10 assertions for selection, focus, disabled tabs, selected-row reveal, wheel
+scrolling, layout stability and middle-click close. The reviewed CPU-only
+entrypoint completed in 1.743 seconds under the production 60-second supervisor
+with Debug ASan+UBSan during admission. Record fresh results on each candidate;
+this does not replace authored Studio or visual tab checks.
+
+`make test-fast TEST_ARGS='--studio-shell document-tabs'` runs all 17 authored
+tab checks: hover/focus geometry, contextual pinning, keyboard cycling, overflow
+selection, unsaved-close safeguards, adjacent selection and the final scene
+guard. Independent review confirmed one fixture with fixed frame counts and no
+authored file writes. Its initial complete production-supervised run took 9.2
+seconds with Debug ASan+UBSan and native Metal on macOS; configure/build time was
+separate. It requires the hardware execution profile. Leave capture environment
+variables unset for timing. Record fresh candidate results; full Studio suites
+remain quarantined, and rendered verification still checks close/title masking.
+
 The duplicate `--studio-panel-lifecycle` capture entrypoint and the optional
 1,000-frame blank-document profiling loop have been retired. The authored panel
 lifecycle assertions remain in the quarantined Studio suite; historical profiling
@@ -38,14 +56,18 @@ captures remain research evidence for their recorded revisions.
 Managed test executions, including aggregates, have one hard 60-second ceiling.
 Known slow and unmeasured commands are quarantined; hardware opt-in cannot clear
 it. See [the inventory](test-quarantine.md) for preserved native coverage,
-retired script coverage and the original 12 exact admitted native tuples.
+retired script coverage and exact admitted native tuples.
 
-`make test`, `make test-short` and `make test-tools` run the same minimal C
-pico_unit suite through the production `tools/test_policy.py` supervisor. The
-suite covers essential execution policy, package/install preservation, room
-service behavior and minimal supervisor/planner regressions. Packaging and room
-service implementations remain Python/Node external programs; their tests are C.
-The removed script suites have not been reproduced completely.
+`make test` and `make test-short` run six pure C execution-policy cases through
+`tools/test_policy.py`. This default checks execution-policy decisions only.
+`make test-tools` runs the complete C tooling group: execution policy,
+package/install and configure preservation, room service, publication,
+supervisor cleanup/deadlines and validation-planner regressions. Packaging,
+publication and room service implementations remain external programs; C tests
+own their assertions. Select this complete group for affected tooling contracts.
+CI runs `make test-tools`; the planner's `--tools` also selects that complete group.
+Both modes retain one shared 60-second supervisor deadline. Retired script suites
+have not been reproduced completely.
 
 Configure/build separately and report that time separately from test execution:
 
@@ -60,7 +82,8 @@ make test-fast TEST_ARGS=--graph-optimize
 
 | Command | Current coverage |
 | --- | --- |
-| `test`, `test-short`, `test-tools` | Same C tooling group under one shared 60-second deadline. |
+| `test`, `test-short` | Six pure C execution-policy unit cases under one deadline. |
+| `test-tools` | Complete C tooling and process integration group under one shared deadline. |
 | `test-studio-selectors` | Bounded C process checks against a separately built native suite, CPU-only discovery and argument handling. |
 | `test-fast` | One exact admitted native argument tuple, with complete existing assertions. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
@@ -82,131 +105,68 @@ migrated individually. Research/review command transcripts, measurements and
 hashes are historical records of their revisions, not current reproduction
 instructions or passes for this cleanup.
 
-CI remains partial coverage. Existing server-required checks, source review,
-PR/ticket holds and configuration requirements still apply; short results cannot
-replace unavailable required gates.
+CI remains partial coverage. Report the checks that actually ran. Applicable
+server-required checks, independent review, explicit holds and approval rules
+remain binding.
 
 ## Batch validation (CUT62)
 
-Use focused checks during each PR's iteration and admission, then run the full
-required validation once on the **exact combined reviewed tree before any part
-of the batch lands on main**. Preserve assertions, sanitizers, reference images,
-loads and release validation for each retained native gate. The tooling cleanup retires script suites and
-does not claim equivalent coverage. This removes redundant full runs
-on component PRs; it does not replace CUT50/CUT61 profiling and optimization of
-the actual slow tests.
+Publication uses independently reviewed validation for the affected contracts.
+A change spanning several subsystems can use focused checks when review accounts
+for each changed contract and their interactions. A mixed scope label or an
+unavailable full suite does not automatically block landing.
 
-Batch-policy approval does not clear an explicit PR/ticket hold or a denied-action
-approval requirement. The integration owner must enumerate every source member
-and dependency, verify independent review and eligibility under the existing
-approval rules, and retain the supporting approval references. Held code must
-not enter an integration PR through cherry-picks, merges, copied patches or
-dependencies to evade its hold. A new PR number or passing batch gate does not
-clear the original restriction. Obtain the required approval through the existing
-process before admitting it; no new authorization mechanism is created here.
+1. **Review and choose checks.** Independently inspect the diff, callers, tests
+   and dependency/build effects. Record which contracts changed and why the
+   selected admitted checks cover them. Include applicable backend, sanitizer,
+   load, web/UI and release validation. File extensions and selector names alone
+   do not establish coverage. Resolve unknown impact before publication. When
+   affected coverage is quarantined, provide a reviewed admitted replacement;
+   otherwise that specific coverage gap blocks landing. Unaffected quarantined
+   suites remain disabled and not passed, without blocking the change.
+2. **Freeze and validate.** Use a clean candidate based on freshly fetched main.
+   For a batch, pin each reviewed source and review the combined interactions
+   and conflict resolutions. Record the candidate commit/tree, configuration,
+   commands, exit codes and logs. Run selected checks, formatting and affected
+   builds against that candidate. Use `make web` and web verification for UI
+   changes. Preserve assertions and failure cases; previews do not replace them.
+3. **Publish the tested tree.** Recheck main and sources, explicit PR/ticket
+   holds, required approvals and actual server protections. Land the complete
+   tested combination atomically through the authorized workflow. A new hold
+   blocks publication even when Git is unchanged. Held code stays excluded,
+   including indirect dependencies and copied patches. If the base, source,
+   tree, conflict resolution, dependency or validation flags change, review and
+   validate the new candidate. Intermediate batch trees require their own review
+   and validation.
 
-1. **Name the integration owner.** One owner coordinates the batch, build slot,
-   source review, evidence and eventual landing. Fetch main normally and record
-   its full SHA. Pin each PR's full source SHA, dependencies and review result;
-   a branch name alone is insufficient. The author reports focused commands,
-   exit codes, timings and logs plus every pending check. Admission is provisional
-   and is not permission to merge. Do not start costly gates before independent
-   source review and batch coordination.
-2. **Review scope explicitly.** An independent reviewer inspects source, tests,
-   callers, generated outputs and dependency/build effects, and explains why the
-   chosen checks cover the changed contracts. File extensions, a selector name,
-   or a green focused run cannot establish absence of native/render/web impact.
-   Unknown or mixed scope, broad contracts and unreviewed selectors fall back to
-   full required validation; they receive no focused-only admission. Full work
-   still waits for the review/build slot. Use mixed scope for changes spanning
-   independent contracts or subsystems whose interactions are not bounded by
-   the selected checks. Retain required backend, sanitizer,
-   compiler parity, representative-load and web/UI checks for the affected code.
-3. **Freeze the candidate.** In a clean isolated integration worktree based on
-   the pinned main, combine only the reviewed source revisions. Independently
-   review the combined diff and all conflict resolutions, including interactions
-   between PRs. Commit the complete candidate and record `git rev-parse HEAD`
-   and `git rev-parse 'HEAD^{tree}'` before testing. No tracked or untracked
-   source edits may accompany the run. Build artifacts must originate from this
-   tree and the recorded configuration; a shared stale binary is not evidence.
-4. **Obtain required complete verification once per candidate.** The temporary
-   quarantine currently disables native `all_checks`, the audit and render gates.
-   Those requirements remain unsatisfied until measured admission is restored.
-   Tooling, compiler parity or collected selectors alone do not establish the
-   aggregate gate. Once admitted, retain explicit hardware opt-in and display
-   requirements.
-   Complete the required configurations below, format checks, affected native
-   backends and web/UI validation (`make web` for UI changes), and existing
-   release validation when preparing a release. Do not substitute previews for
-   assertions or lower thresholds to gain speed.
-5. **Verify identity and land one combination.** Before landing, fetch main and
-   source refs again and recheck every member's holds and required approvals.
-   Eligibility can change without a Git change; a new hold blocks landing.
-   Compare the pinned base, all source SHAs, candidate SHA/tree
-   and validation configuration with the evidence; verify a clean worktree again.
-   The proposed landing tree must equal the tested tree, and its main parent/base
-   must be the pinned main. Land the complete combination in one atomic main
-   update through the authorized protected workflow. Do not merge component PRs
-   sequentially using the final combination's results: those intermediate trees
-   were not tested. If atomic landing is unavailable, stop batch publication or
-   fully review and validate each actual intermediate candidate separately.
+Local execution evidence is sufficient when CI is disabled or unavailable unless
+server protections actually require CI checks. Workflow configuration describes
+possible jobs, not mandatory execution of every matrix row. Inspect applicable
+server requirements before landing; required checks and approvals remain binding.
+An absent CI job is not a pass. Preserve existing backend and configuration
+requirements for each selected check, and report other coverage as unexecuted.
+Full native/render suites remain quarantined under the 60-second policy.
 
-Any main advance (even unrelated), source-head change, batch membership change,
-rebase, conflict resolution, source/generated-file edit, dependency/toolchain
-change or compiler/build/runtime flag change invalidates the candidate evidence.
-Reassemble, review and repeat the full required gate on the new frozen candidate.
-Timeouts, failures, unavailable hardware, missing logs and absent/skipped CI jobs
-remain pending or failed, never passes. No Actions, protection, permission or
-credential changes are part of this policy.
-
-Existing automation instructions requiring current-head gates still apply. A
-batch meets them by making the exact combined reviewed candidate the current
-integration head and running the gates there. A server-created merge/squash
-commit may have a different commit ID: the owner must prove identical tree,
-unchanged base and sources, and satisfy the server's required current-head checks
-and review rules for that commit. Tree equality alone cannot transfer a status
-check or satisfy a check that depends on commit metadata. If those rules require
-new execution, run it. Component-head passes and this plan helper confer no
-merge authority and cannot bypass branch protection.
-
-### Configured checks versus execution evidence
-
-The current definitions are [.github/workflows/ci.yml](../.github/workflows/ci.yml)
-and [deploy-web.yml](../.github/workflows/deploy-web.yml). Inspect the definitions
-on the frozen candidate; their presence describes configuration, not a run.
-
-| Configured check | Required evidence on the candidate |
-| --- | --- |
-| Native Debug, sanitizers ON, SLJIT ON | CI runs the bounded C tooling group and admitted native tuples. Complete native aggregate and render requirements remain quarantined and pending. |
-| Native RelWithDebInfo, sanitizers OFF, SLJIT ON | CI runs the bounded C tooling group and admitted native tuples. Complete aggregate and render requirements in this configuration remain quarantined and pending. |
-| RelWithDebInfo Arena scaling | `CBLUEPRINT_BENCH_COMBAT=1 CBLUEPRINT_BENCH_REQUIRE_PARALLEL=1 build/test_suite --bench-arena-scene-scale 2048 240 0` under the configured display |
-| Debug job's no-SLJIT compilation | Separate Debug/sanitized, `CHIBI_ENABLE_SJLIT=OFF` configuration builds `behavior_backend_smoke runtime_backend_smoke`. Runtime rejection assertions remain quarantined and pending. |
-| Debug job's development application and host compilation | Separate RelWithDebInfo, sanitizers OFF, SLJIT ON configuration builds `chibi test_host`. Host execution remains quarantined; compilation is not a pass for `check-host`. |
-| Format | `make check-format` (CI uses `sh tools/clang-format.sh --check`) |
-| Web workflow / affected web or UI work | Required Emscripten build, packaging and web/UI verification; record threaded validation when requested/applicable |
-
-`CHIBI_ENABLE_SJLIT` is the existing CMake option spelling. One local Debug run
-does not establish the other matrix rows. Record each required row as executed,
-failed or pending, with exact commit/tree, commands, exit codes, elapsed times,
-logs, toolchain/dependency identity, build/runtime flags and actual backend/device.
-If CI is unavailable, the owner must obtain equivalent authorized execution and
-still meet server rules; absence of CI cannot turn the table green. Release
-packaging, optimized-build and release-specific validation remain additional
-requirements, not waived by a successful development batch.
+A server-created merge/squash commit may have a different ID. Prove identical
+tested tree and unchanged base and source revisions, and satisfy current-head
+server requirements. Tree equality does not transfer a required status check or
+replace a metadata-dependent check. Plans and component-head results grant no
+merge authority.
 
 ### Planning helper
 
 ```sh
-python3 tools/agent.py validation-plan --base origin/main --scope focused --review-note 'Reviewer: essential tooling changes' --tools
+python3 tools/agent.py validation-plan --base origin/main --scope mixed --review-note 'Independent review: affected tooling and runtime contracts covered by selected checks' --tools --selector=--graph-optimize
 ```
 
-`--tools` and `--tool=native-tools` emit `make test-tools`. Other former tool
-choices are retired. Repeat `--source` for every reviewed batch member and use
-`--confirm-eligible-members` only after checking review, holds and approvals.
-Exact admitted CPU selectors can be requested with `--selector=--name`.
-Unknown/mixed scope keeps full requirements pending; it does not run a full gate.
+The helper records Git identity and admitted commands; it does not execute them
+or certify coverage. Both `focused` and `mixed` require a review note and selected
+checks. `unknown` records unresolved scope. Use `--tools` (or
+`--tool=native-tools`) for the C tooling group and repeat `--selector=--name` for
+admitted CPU selectors. For batches, repeat `--source` and confirm eligibility
+only after checking every source's review, holds and approvals.
 `--verify <saved-plan>` checks local identity, not remote freshness or execution.
-Keep saved plans outside the worktree. A plan grants no merge authority.
+Keep saved plans outside the worktree.
 
 ## Historical timing evidence
 

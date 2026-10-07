@@ -143,6 +143,7 @@ typedef struct
     char *key;
     char *label;
     char *path;
+    bool pinned;
     av_value *scene_value;
     av_value *scene_history;
     uint64_t *scene_entities;
@@ -355,7 +356,11 @@ void scene_tabs_rename(
     const char *path
 );
 void scene_tabs_close(app_scene_authoring *scene, app_editor_document_kind kind, const char *id);
+/* Asset removal closes its tab even when it was pinned. */
+void scene_tabs_forget(app_scene_authoring *scene, app_editor_document_kind kind, const char *id);
 int scene_tabs_discard(app_scene_authoring *scene, int index);
+bool scene_tabs_can_close(const app_scene_authoring *scene, int index);
+void scene_tabs_toggle_pin(app_scene_authoring *scene, int index);
 bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab);
 const char *scene_tabs_current_scene_key(const app_scene_authoring *scene);
 int load_system_document_value(app_scene_authoring *scene, av_value *value, const char *path, bool reload);

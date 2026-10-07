@@ -36,11 +36,11 @@ def report(status, reason, **extra):
     value = dict(ok=status == 'passed', status=status, reason=reason,
                  coverage='focused-iteration', full_verification=False,
                  elapsed_seconds=round(time.monotonic() - START, 3), capabilities=HEALTH,
-                 pending=[dict(check='full-native/render', status='pending', command=NEXT)],
-                 required_checks_outstanding=['full-native', 'render'], next_command=NEXT)
+                 quarantined_checks=['full-native', 'render'],
+                 next_command=NEXT)
     value.update(extra)
     print(json.dumps(value), flush=True)
-    print(f'Agent iteration: {status} ({reason}); full hardware verification outstanding.', file=sys.stderr)
+    print(f'Agent iteration: {status} ({reason}); full native/render coverage disabled, not passed.', file=sys.stderr)
     return 0 if status == 'passed' else 2
 
 
@@ -58,7 +58,7 @@ def startup_health():
 def test_plan(purpose, health):
     """A small purpose-based plan; discovery never authorizes a full suite."""
     plan = dict(purpose=purpose, capabilities=health, full_verification=False,
-                pending=[dict(check='full-native/render', status='pending', command=NEXT)])
+                quarantined_checks=['full-native', 'render'])
     if purpose == 'logic':
         return dict(plan, commands=['make agent-test AGENT_SELECTOR=--graph-optimize'],
                     gpu_startup=False, reason='logic_change_selects_CPU_assertions')

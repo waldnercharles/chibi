@@ -33,9 +33,18 @@ def main():
     parser.add_argument('--threads', type=Path)
     parser.add_argument('--output', type=Path, default=Path('build-web-site'))
     args = parser.parse_args()
+    threaded = args.output / 'threads'
+    entries = [threaded / name for name in ('index.html', 'chibi.html')]
+    for path in (args.output, threaded, *entries):
+        if path.is_symlink():
+            raise ValueError(f'Package destination must not be a symlink: {path}')
     copy_build(args.serial, args.output)
     if args.threads:
-        copy_build(args.threads, args.output / 'threads', threaded=True)
+        copy_build(args.threads, threaded, threaded=True)
+    else:
+        # Old worker binaries may remain, but cannot be selected by the launcher.
+        for entry in entries:
+            entry.unlink(missing_ok=True)
     (args.output / '.nojekyll').touch()
 
 

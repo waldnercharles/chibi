@@ -35,8 +35,9 @@ make web          # static browser application; requires Emscripten
 make publish-web  # publish the latest origin/main commit to GitHub Pages
 ```
 
-`make publish-web` fetches and builds the latest `origin/main` commit in a
-temporary checkout, publishes the compiled files to `gh-pages`, and waits for
+`make web` builds the serial app. Use `WEB_THREADS=1` to include the worker app.
+`make publish-web` fetches the latest `origin/main` commit into an isolated
+checkout, publishes the compiled files to `gh-pages`, and waits for
 the live deployment marker and matching asset hashes. It requires Emscripten,
 the native build tools, and an authenticated `gh` session with repository push and Pages access. Local
 engine edits are excluded, and `main` is never pushed. Project links tracked in the published engine commit are snapshotted from
@@ -44,7 +45,10 @@ their game repository’s committed `HEAD`; local game edits and ignored mounts
 are excluded.
 `BUILD_SOURCES.json` records the engine and game commits. Set `JOBS` to control build
 parallelism and `CHIBI_COLLAB_URL` to configure the collaboration server.
-If `main` advances during the build, rerun the command.
+Verified bundles are cached under `.cache/publish-web`; an identical publication
+reuses its bundle and skips a redundant deployment. Compiler and dependency
+caches also serve successive commits. Native game delivery is explicit with
+`PUBLISH_GAME_RUNTIME=1`. If `main` advances during the build, rerun the command.
 
 `make run` and `make play` use the fully optimized `Release` profile. Their
 launch targets build only the application; `make build-release` still builds

@@ -20,6 +20,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--ui-tab-list',): '1.743s; reviewed CPU-only tab input/layout contracts, 10 existing checks; docs/testing.md',
     ('--iframe-updates',): '2.379s; CUT61 targeted CPU contracts, 3 pico cases/385 assertions and 12 existing checks; docs/research/cut61-iframe-profile/finish/README.md',
     ('--kit-documents',): '0.469–0.551s; CUT61 7b0389ea, 10 checks and 49 frames; docs/research/cut61-iframe-profile/finish/README.md',
     ('--compiled-behaviors',): '47.2s; docs/testing.md selector evidence',
@@ -32,6 +33,7 @@ NATIVE = {
     ('--whole-function-audit',): '1.3s; docs/testing.md baseline',
     ('--graph-optimize',): '0.5s; docs/testing.md baseline',
     ('--studio-documents', 'tabs'): '8s; PR164 focused evidence',
+    ('--studio-shell', 'document-tabs'): '9.2s; independently reviewed authored tab fixture, 17 checks, Debug ASan+UBSan with native Metal; docs/testing.md',
     ('--studio-shell', 'readout_follows_camera'): '3s; PR164 focused evidence',
     ('--bench-arena-scene-scale', '2048', '240', '0'): '1.4s; Arena scaling evidence',
 }
@@ -264,7 +266,7 @@ def run_commands(commands, seconds=LIMIT, env=None, output=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['inventory', 'disabled', 'short', 'tool', 'admit', 'native', 'admit-env', 'native-env', 'agent-env', 'studio-selectors', '_supervise'])
+    parser.add_argument('action', choices=['inventory', 'disabled', 'unit', 'short', 'tool', 'admit', 'native', 'admit-env', 'native-env', 'agent-env', 'studio-selectors', '_supervise'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments
@@ -276,17 +278,21 @@ def main():
     if args.action == 'inventory':
         for command, evidence in NATIVE.items():
             print('ADMITTED (60s ceiling):', ' '.join(command), '-', evidence)
-        print('ADMITTED: make test / test-short / test-tools (essential C pico_unit tooling, one deadline)')
+        print('ADMITTED: make test / test-short (C execution-policy units, one deadline)')
+        print('ADMITTED: make test-tools (all C tooling and process integrations, one deadline)')
         print('ADMITTED: make test-studio-selectors (C CLI checks, one deadline)')
         print('Retired script suites are absent. Other native commands remain quarantined; see docs/test-quarantine.md.')
         return 0
     if args.action == 'disabled':
         print('DISABLED:', ' '.join(arguments), file=sys.stderr)
         return 2
-    if args.action == 'short':
+    if args.action in ('unit', 'short'):
         if len(arguments) != 1:
-            parser.error('short requires the native C tooling test binary')
-        return run_commands([[str(Path(arguments[0]).resolve())]])
+            parser.error('unit/short requires the native C tooling test binary')
+        command = [str(Path(arguments[0]).resolve())]
+        if args.action == 'unit':
+            command.append('--unit')
+        return run_commands([command])
     if args.action == 'studio-selectors':
         if len(arguments) != 2:
             parser.error('studio-selectors requires the C tooling driver and test_suite binary')

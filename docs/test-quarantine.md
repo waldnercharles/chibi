@@ -32,7 +32,7 @@ Configuration and compilation remain separate from test execution.
 | `--editor-checkpoint`: workspace recovery assertions | Unadmitted runtime; retained native assertions are not execution evidence. |
 | Build-integrated runtime checks: `check-generation`, `check-reflect`, `check-host`, `check-assets`, `check-behavior-backend` | No admission for their complete execution; compilation alone is not a pass. |
 | `test-compiler-parity`, no-SLJIT rejection checks, web backend execution | Unadmitted runtime; retained smoke compilation is not assertion coverage. |
-| Make `benchmark` aggregate, long controller profiles/captures, CUT61 historical 2016-frame capture | No complete-command admission. |
+| Make `benchmark` aggregate and long controller profiles/captures | No complete-command admission. |
 | `agent-gpu-test`, other selector/argument tuples, multi-goal validation | Unmeasured or outside the exact admission inventory. |
 
 Existing native assertions and fixtures remain. Retired Python/Node suites,
@@ -50,11 +50,13 @@ is bounded as one execution. Its earlier minimal-suite measurement was about
 not a timing or pass for the final expanded suite. Record fresh execution results
 on the reviewed source before claiming validation.
 
-The original exact native admission table remains:
+The exact native admission table is:
 
 | Exact native arguments | Existing execution evidence |
 | --- | --- |
 | `--graph-optimize` | 0.5s |
+| `--iframe-updates` | 2.379s for the targeted CUT61 command, Debug ASan+UBSan; 3 pico cases/385 assertions plus 12 existing checks. No profile loop. |
+| `--kit-documents` | 0.469–0.551s at CUT61 `7b0389ea`, Debug ASan+UBSan, all 10 checks and 49 frames. |
 | `--compiled-behaviors` | 47.2s |
 | `--automation-search` | 17.2s |
 | `--automation-refactor` | 5.0s |
@@ -74,6 +76,17 @@ and the Arena combat/parallel environment and optimized configuration. Each
 independently requested command has a maximum 60-second deadline. Do not combine
 the table into a reconstructed full suite. `make test-fast` checks its exact
 `TEST_ARGS` tuple before building.
+
+The two CUT61 CPU-only tuples were independently reviewed for scoped admission.
+Their complete logs, binary identity, configuration and fresh supervised runs
+are retained in [the iframe completion record](research/cut61-iframe-profile/finish/README.md).
+The dedicated 2016-frame `--studio-panel-lifecycle` capture entrypoint is now
+retired. Its original authored-panel assertions remain in `--studio-panels`,
+which stays quarantined, as do all other unadmitted UI/native tuples. The optional
+1,000-frame blank-document measurement loop was also removed from
+`--iframe-updates`; deterministic replacement/binding, animation and callback
+contracts are now part of that focused command. See
+[fast, targeted tests](testing.md#fast-targeted-tests).
 
 `make test-studio-selectors` runs the C CLI process driver under the supervisor
 against a separately built native `test_suite`; it does not render Studio.

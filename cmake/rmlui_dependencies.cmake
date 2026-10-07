@@ -62,9 +62,13 @@ function(chibi_rmlui_dependencies)
     foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when event-propagation variable-line-height move-keeps-data data-template)
         list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-${name}.patch")
     endforeach()
+    # Optional Context::Update boundary timings; the default null output does no timing.
+    list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-context-update-profile.patch")
+    # Empty authored containers keep relative URLs without updating unrelated models.
+    list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-document-source.patch")
+    list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-document-layout.patch")
     chibi_apply_patches("${rmlui_SOURCE_DIR}" ${patches})
     add_subdirectory("${rmlui_SOURCE_DIR}" "${rmlui_BINARY_DIR}")
 endfunction()
 
 chibi_rmlui_dependencies()
-

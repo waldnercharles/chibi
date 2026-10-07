@@ -860,6 +860,11 @@ bool rml_context_update(rml_context *c)
     return context(c)->Update();
 }
 
+bool rml_context_update_profiled(rml_context *c, double seconds[RML_UPDATE_PARTS])
+{
+    return context(c)->Update(seconds);
+}
+
 bool rml_context_render(rml_context *c)
 {
     return context(c)->Render();
@@ -868,6 +873,11 @@ bool rml_context_render(rml_context *c)
 rml_element *rml_context_load_document(rml_context *c, const char *path)
 {
     return wrap(context(c)->LoadDocument(path));
+}
+
+rml_element *rml_context_create_document(rml_context *c, const char *source_url)
+{
+    return wrap(context(c)->CreateDocument("body", source_url));
 }
 
 rml_element *rml_context_load_document_from_memory(rml_context *c, const char *rml, const char *source_url)
@@ -950,6 +960,11 @@ void rml_document_close(rml_element *d)
 void rml_document_update(rml_element *d)
 {
     document(d)->UpdateDocument();
+}
+
+void rml_document_refresh_layout(rml_element *d)
+{
+    document(d)->UpdateDocument(false);
 }
 
 /* ---------- Elements ---------- */

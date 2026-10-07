@@ -10,9 +10,13 @@
 static const char *program;
 static const char *const selectors[] = { "--studio-documents", "--studio-shell" };
 static const char *const variables[] = {
-    "CHIBI_EXECUTION_PROFILE", "CHIBI_ALLOW_FULL_GPU",
-    "CHIBI_TEST_TIMINGS",      "DISPLAY",
-    "WAYLAND_DISPLAY",         "SDL_VIDEO_DRIVER",
+    "CHIBI_EXECUTION_PROFILE",
+    "CHIBI_ALLOW_FULL_GPU",
+    "CHIBI_IFRAME_PROFILE",
+    "CHIBI_TEST_TIMINGS",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "SDL_VIDEO_DRIVER",
     "SDL_VIDEODRIVER",
 };
 static char *saved[sizeof variables / sizeof *variables];
@@ -29,6 +33,7 @@ static void setup()
     assert(!setenv("CHIBI_EXECUTION_PROFILE", "iteration", 1));
     assert(!setenv("CHIBI_ALLOW_FULL_GPU", "0", 1));
     assert(!setenv("CHIBI_TEST_TIMINGS", "1", 1));
+    assert(!setenv("CHIBI_IFRAME_PROFILE", "1", 1));
     assert(!setenv("DISPLAY", "", 1));
     assert(!setenv("WAYLAND_DISPLAY", "", 1));
     assert(!setenv("SDL_VIDEO_DRIVER", "chibi-no-such-video-driver", 1));
@@ -69,6 +74,7 @@ static bool no_studio_started()
 {
     return !strstr(output, "STUDIO_BEGIN:") && !strstr(output, "PASS:") &&
            !strstr(output, "ALL CHECKS PASSED") &&
+           !strstr(output, "RmlUi info:") && !strstr(output, "STUDIO_FRAME ") &&
            !strstr(output, "Studio documents app:");
 }
 
@@ -124,6 +130,20 @@ TEST_CASE(studio_execution_requires_opt_in)
     return true;
 }
 
+TEST_CASE(retired_panel_lifecycle_is_not_discoverable)
+{
+    const char *selector = "--studio-panel-lifecycle";
+    assert(!setenv("CHIBI_EXECUTION_PROFILE", "hardware", 1));
+    assert(!setenv("CHIBI_ALLOW_FULL_GPU", "1", 1));
+    REQUIRE(invoke(selector, NULL, NULL) == 2);
+    REQUIRE(strstr(output, "unknown test_suite selector:"));
+    REQUIRE(no_studio_started());
+    REQUIRE(invoke("--list-tests", NULL, NULL) == 0);
+    REQUIRE(!strstr(output, selector));
+    REQUIRE(no_studio_started());
+    return true;
+}
+
 void test_tool_studio_selectors(const char *binary)
 {
     program = binary;
@@ -131,5 +151,6 @@ void test_tool_studio_selectors(const char *binary)
     RUN_TEST_CASE(studio_listing_needs_no_graphics);
     RUN_TEST_CASE(studio_arguments_rejected_before_policy);
     RUN_TEST_CASE(studio_execution_requires_opt_in);
+    RUN_TEST_CASE(retired_panel_lifecycle_is_not_discoverable);
     pu_clear_setup();
 }

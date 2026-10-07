@@ -2,6 +2,8 @@
  * fail closed until classified; the hardware suite retains every assertion. */
 CHIBI_CPU_SELECTOR("--asset-documents")
 CHIBI_CPU_SELECTOR("--rcss")
+CHIBI_CPU_SELECTOR("--iframe-updates")
+CHIBI_CPU_SELECTOR("--kit-documents")
 CHIBI_CPU_SELECTOR("--tree-watch")
 CHIBI_CPU_SELECTOR("--graph-arrange")
 CHIBI_CPU_SELECTOR("--graph-editing")

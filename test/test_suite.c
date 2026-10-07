@@ -195,6 +195,9 @@ void test_arena_hud();
 
 /* ---------- One document per area (workstream F5) ---------- */
 void test_kit_documents();
+void test_iframe_updates();
+void test_kit_empty_documents();
+void test_iframe_contracts();
 /* ---------- Native controls (workstream F2) ---------- */
 void test_ui_controls();
 /* ---------- Popovers (workstream F3) ---------- */
@@ -450,6 +453,9 @@ TEST_CASE(all_checks)
     TEST_TIMED_CALL(test_arena_hud);
     /* ---------- One document per area (workstream F5) ---------- */
     TEST_TIMED_CALL(test_kit_documents);
+    TEST_TIMED_CALL(test_iframe_updates);
+    TEST_TIMED_CALL(test_kit_empty_documents);
+    TEST_TIMED_CALL(test_iframe_contracts);
     /* ---------- Native controls (workstream F2) ---------- */
     TEST_TIMED_CALL(test_ui_controls);
     /* ---------- Popovers (workstream F3) ---------- */
@@ -457,9 +463,9 @@ TEST_CASE(all_checks)
     /* ---------- Lists and drag (workstream F4) ---------- */
     TEST_TIMED_CALL(test_ui_lists);
 
-    printf("\n%s\n", fails ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
+    printf("\n%s\n", fails || pu_test_failed() ? "SOME CHECKS FAILED" : "ALL CHECKS PASSED");
 
-    return fails == 0;
+    return fails == 0 && !pu_test_failed();
 }
 
 #undef TEST_TIMED_CALL
@@ -1658,6 +1664,13 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--kit-documents")) {
         test_kit_documents();
         return fails ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--iframe-updates")) {
+        test_iframe_updates();
+        test_kit_empty_documents();
+        test_iframe_contracts();
+        pu_print_stats();
+        return fails || pu_test_failed() ? 1 : 0;
     }
     /* ---------- Wave 2 follow-ups (workstream P) ---------- */
     if (argc > 1 && !strcmp(argv[1], "--ui-followups")) {

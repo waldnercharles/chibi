@@ -1206,6 +1206,26 @@ float rml_element_scroll_height(rml_element *e)
     return element(e)->GetScrollHeight();
 }
 
+float rml_element_scroll_left(rml_element *e)
+{
+    return element(e)->GetScrollLeft();
+}
+
+void rml_element_set_scroll_left(rml_element *e, float scroll_left)
+{
+    element(e)->SetScrollLeft(scroll_left);
+}
+
+float rml_element_client_width(rml_element *e)
+{
+    return element(e)->GetClientWidth();
+}
+
+float rml_element_scroll_width(rml_element *e)
+{
+    return element(e)->GetScrollWidth();
+}
+
 rml_vec2 rml_element_absolute_offset(rml_element *e, rml_box_area area)
 {
     return vec2(element(e)->GetAbsoluteOffset((Rml::BoxArea)area));

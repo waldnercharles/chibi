@@ -35,6 +35,7 @@
         <use ui="MenuSeparator"/>
         <use ui="MenuCommand" data-alias-command="commands.save"/>
         <use ui="MenuCommand" data-alias-command="commands.reload"/>
+        <use ui="MenuCommand" data-alias-command="commands.closeTab"/>
         <use ui="MenuItem" data-if="menubar.web" data-alias-item="menubar.items.importProject" data-event-click="emit('menubar.importProject')"/>
         <use ui="MenuItem" data-if="menubar.web" data-alias-item="menubar.items.exportProject" data-event-click="emit('menubar.exportProject')"/>
         <use ui="MenuSeparator"/>
@@ -58,6 +59,10 @@
       </use>
       <button class="btn trigger" popovertarget="menu-view" aria-haspopup="menu"><span class="label">View</span></button>
       <use ui="Menu" id="menu-view">
+        <use ui="MenuCommand" data-alias-command="commands.previousTab"/>
+        <use ui="MenuCommand" data-alias-command="commands.nextTab"/>
+        <use ui="MenuCommand" data-alias-command="commands.togglePinTab"/>
+        <use ui="MenuSeparator"/>
         <use ui="MenuCommand" data-alias-command="commands.frame"/>
         <use ui="MenuCommand" data-alias-command="commands.frameAll"/>
         <use ui="MenuCommand" data-alias-command="commands.resetCamera"/>
@@ -185,10 +190,22 @@
     <button class="btn icon-only" data-attr-data-tip="commands.settings.label" data-attr-data-kbd="commands.settings.shortcut" data-event-click="emit('studio.settings')"><span class="icon">{{ commands.settings.icon }}</span></button>
     <button class="btn search-trigger" data-attr-data-tip="commands.search.label" data-attr-data-kbd="commands.search.shortcut" data-event-click="emit('studio.search')"><span class="icon">{{ commands.search.icon }}</span><span class="label">{{ commands.search.label }}</span><span class="kbd">{{ commands.search.shortcut }}</span></button>
   </header>
-  <nav class="doc-tabs">
-    <div class="btn doc-tab" data-for="tab, i : editor.tabs" data-attr-data-state="tab.active ? 'on' : 'off'">
-      <span class="face" data-attr-data-tip="tab.path != '' ? tab.path : tab.label" data-event-click="emit('studio.selectTab', i)"><span class="icon">{{ tab.icon }}</span><span class="label">{{ tab.label }}</span><span class="dirty-dot" data-if="tab.dirty"/></span>
-      <button class="btn sm icon-only doc-close" data-if="tab.closable" data-attr-data-tip="commands.closeTab.label" data-event-click="emit('studio.closeTab', i)"><span class="icon">&#xea76;</span></button>
-    </div>
+  <nav class="doc-tabs" aria-label="Open documents">
+    <tab-list class="doc-tab-list" role="tablist" aria-label="Open documents">
+      <div class="doc-tab" role="presentation" data-for="tab, i : editor.tabs" data-attr-data-state="tab.active ? 'on' : 'off'" data-attrif-data-pinned="tab.pinned" data-event-contextmenu="emit('shell.tabMenu', i)">
+        <button class="btn face" role="tab" data-attr-aria-selected="tab.active ? 'true' : 'false'" data-attr-aria-label="tab.label" data-attr-data-tip="tab.path != '' ? tab.path : tab.label" data-event-click="emit('studio.selectTab', i)"><span class="icon">{{ tab.icon }}</span><span class="label">{{ tab.label }}<span class="doc-title-fade" aria-hidden="true"/></span><span class="dirty-dot" data-if="tab.dirty" data-tip="Unsaved changes"/></button>
+        <button class="btn icon-only doc-pin" data-when="tab.pinned" data-attr-data-tip="tab.pinLabel" data-attr-aria-label="tab.pinLabel" aria-pressed="true" data-event-click="emit('studio.togglePinTab', i)"><span class="icon">&#xf0931;</span></button>
+        <button class="btn icon-only doc-close" data-when="!tab.pinned" data-tab-close data-attr-data-tip="tab.closeReason" data-attr-aria-label="tab.closeReason" data-attr-data-kbd="commands.closeTab.shortcut" data-attrif-data-disabled="!tab.closable" data-event-click="emit('studio.closeTab', i)"><span class="doc-close-cover" aria-hidden="true"/><span class="doc-close-fade" aria-hidden="true"/><span class="doc-close-highlight" aria-hidden="true"/><span class="icon">&#xea76;</span></button>
+      </div>
+    </tab-list>
+    <button class="btn icon-only open-tabs" popovertarget="open-tabs-menu" aria-haspopup="menu" aria-label="Open tabs" data-tip="Open tabs"><span class="icon">&#xeab4;</span></button>
+    <use ui="Menu" id="open-tabs-menu">
+      <use ui="MenuGroup">Open tabs</use>
+      <use ui="MenuItem" data-for="tab, i : editor.tabs" data-alias-item="tab" data-event-click="emit('studio.selectTab', i)"/>
+    </use>
+    <use ui="Menu" id="tab-menu">
+      <use ui="MenuItem" data-alias-item="shell.tabMenu.pin" data-event-click="emit('shell.tabPin')"/>
+      <use ui="MenuItem" data-alias-item="shell.tabMenu.close" data-event-click="emit('shell.tabClose')"/>
+    </use>
   </nav>
 </div>

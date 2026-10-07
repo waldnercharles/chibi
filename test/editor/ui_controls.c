@@ -669,6 +669,117 @@ static void widget_checks()
     rml_backend_destroy(backend);
 }
 
+static const char TAB_DOCUMENT
+    [] = "<rml><head><style>"
+         "body { font-family: Inter; font-size: 13dp; }"
+         "tab-list { display: flex; width: 180dp; height: 32dp; overflow-x: "
+         "auto; overflow-y: hidden; }"
+         "tab-list scrollbarhorizontal { height: 0dp; }"
+         ".tab { display: flex; flex: 0 0 110dp; height: 32dp; }"
+         "button { display: block; width: 80dp; height: 30dp; }"
+         "button.close { width: 26dp; }"
+         "</style></head><body><tab-list id=\"tabs\" role=\"tablist\">"
+         "<div class=\"tab\" role=\"presentation\"><button role=\"tab\" "
+         "id=\"first\" aria-selected=\"true\">First</button>"
+         "<button class=\"close\" data-tab-close=\"\">X</button></div>"
+         "<div class=\"tab\" role=\"presentation\"><button role=\"tab\" "
+         "id=\"disabled\" data-disabled=\"\">Disabled</button></div>"
+         "<div class=\"tab\" role=\"presentation\"><button role=\"tab\" "
+         "id=\"last\" aria-selected=\"false\">Last</button>"
+         "<button class=\"close\" data-tab-close=\"\">X</button></div>"
+         "</tab-list></body></rml>";
+
+typedef struct tab_events
+{
+    rml_element *first, *last;
+    int selections, closes;
+} tab_events;
+
+static void tab_clicked(void *user, const rml_event *e)
+{
+    tab_events *events = user;
+    if (rml_element_has_attribute(e->target, "data-tab-close")) {
+        events->closes++;
+        return;
+    }
+    events->selections++;
+    rml_element_set_attribute(
+        events->first,
+        "aria-selected",
+        e->target == events->first ? "true" : "false"
+    );
+    rml_element_set_attribute(events->last, "aria-selected", e->target == events->last ? "true" : "false");
+}
+
+static void tab_checks()
+{
+    controls_fixture f = { 0 };
+    f.backend = rml_backend_create(640, 480, 1);
+    f.context = rml_backend_context(f.backend);
+    f.doc = rml_context_load_document_from_memory(f.context, TAB_DOCUMENT, "[tabs]");
+    assert(f.doc);
+    rml_document_show(f.doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_NONE);
+    frames(&f, 3);
+    rml_element *tabs = by_id(&f, "tabs");
+    tab_events events = { .first = by_id(&f, "first"), .last = by_id(&f, "last") };
+    rml_listener *clicks = rml_listener_create(tab_clicked, &events);
+    rml_element_add_event_listener(tabs, RML_EVENT_CLICK, clicks, false);
+    rml_element_focus(events.first, true);
+    key(&f, RML_KEY_RIGHT);
+    frames(&f, 2);
+    test_check(
+        events.selections == 1 && rml_context_focus_element(f.context) == events.last,
+        "tab arrows skip disabled tabs, focus and activate the next tab"
+    );
+    test_check(
+        rml_element_scroll_left(tabs) > 100 &&
+            rml_element_has_attribute(tabs, "data-overflow"),
+        "activating an overflowed tab reveals its row and close action"
+    );
+    key(&f, RML_KEY_RIGHT);
+    test_check(
+        events.selections == 2 && rml_context_focus_element(f.context) == events.first,
+        "tab arrows wrap at the end of the strip"
+    );
+    key(&f, RML_KEY_END);
+    test_check(rml_context_focus_element(f.context) == events.last, "End activates the last enabled tab");
+    key(&f, RML_KEY_HOME);
+    test_check(rml_context_focus_element(f.context) == events.first, "Home activates the first enabled tab");
+    int selections = events.selections;
+    rml_context_process_key_down(f.context, RML_KEY_RIGHT, RML_KM_CTRL);
+    rml_context_process_key_up(f.context, RML_KEY_RIGHT, RML_KM_CTRL);
+    test_check(
+        events.selections == selections &&
+            rml_context_focus_element(f.context) == events.first,
+        "modified arrow chords do not activate tabs"
+    );
+    frames(&f, 2);
+    rml_element_set_scroll_left(tabs, 0);
+    move(&f, center(events.first));
+    rml_context_process_mouse_wheel(f.context, (rml_vec2){ 0, 1 }, 0);
+    frames(&f, 2);
+    float scrolled = rml_element_scroll_left(tabs);
+    test_check(scrolled > 0, "a vertical wheel over a tab strip scrolls horizontally");
+    rml_element_set_property(f.doc, "padding-top", "1dp");
+    frames(&f, 3);
+    test_check(fabsf(rml_element_scroll_left(tabs) - scrolled) < 0.5f, "unrelated layouts preserve manual tab scrolling");
+    rml_element_set_scroll_left(tabs, 0);
+    move(&f, center(events.first));
+    rml_context_process_mouse_button_down(f.context, 2, 0);
+    rml_context_process_mouse_button_up(f.context, 2, 0);
+    test_check(events.closes == 1, "middle-click activates the tab row's close action once");
+    rml_element *close = rml_element_query_selector(rml_element_parent(events.first), "[data-tab-close]");
+    rml_element_set_attribute(close, "data-disabled", "");
+    rml_context_process_mouse_button_down(f.context, 2, 0);
+    rml_context_process_mouse_button_up(f.context, 2, 0);
+    test_check(events.closes == 1, "middle-click respects a disabled close action");
+    rml_element_remove_event_listener(tabs, RML_EVENT_CLICK, clicks, false);
+    rml_listener_destroy(clicks);
+    rml_document_close(f.doc);
+    frames(&f, 1);
+    rml_backend_destroy(f.backend);
+}
+
 void test_ui_controls()
 {
     controls_fixture f = { 0 };
@@ -684,4 +795,5 @@ void test_ui_controls()
     chart_checks(&f);
     close_fixture(&f);
     widget_checks();
+    tab_checks();
 }

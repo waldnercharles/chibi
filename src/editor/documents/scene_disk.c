@@ -508,7 +508,7 @@ static game_live_definition *other_definition(app_scene_authoring *scene, const 
 static void forget_definition(app_scene_authoring *scene, game_live_definition *leaving)
 {
     char *name = xstrdup(leaving->name);
-    scene_tabs_close(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, name);
+    scene_tabs_forget(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, name);
     game_live_definition *shown = other_definition(scene, leaving);
     if (scene->definition == leaving && shown) {
         open_behavior_graph(scene, shown->name);
@@ -548,7 +548,7 @@ static void forget_prototype(app_scene_authoring *scene, scene_prototype_asset *
     if (previewed_prototype(scene) == asset) {
         app_scene_authoring_stop_prototype_preview(scene);
     }
-    scene_tabs_close(scene, APP_EDITOR_DOCUMENT_PROTOTYPE, name);
+    scene_tabs_forget(scene, APP_EDITOR_DOCUMENT_PROTOTYPE, name);
     int removed = (int)(asset - scene->prototypes);
     forget_index(&scene->selected_prototype, removed);
     forget_index(&scene->runtime_preview_prototype, removed);

@@ -26,6 +26,7 @@ add_library(chibi_ui STATIC
     src/ui/controls/live_text.c
     src/ui/controls/number_field.c
     src/ui/controls/splitter.c
+    src/ui/controls/tab_list.c
     # Popovers, menus and menubars (workstream F3).
     src/ui/popover.c
     # Lists and drag (workstream F4): element-level drag and drop and

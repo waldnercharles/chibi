@@ -1,9 +1,11 @@
 #include "editor/workspace/editor.h"
 #include "editor/workspace/editor_internal.h"
+#include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -123,8 +125,66 @@ static void compile_keeps_unedited_document()
     puts("editor documents PASS: compiling an unedited document leaves it as saved");
 }
 
+/* Reordering pins preserves the selected document and scene context, and
+   closing a protected tab cannot discard a dirty source buffer. */
+static void document_tab_pins()
+{
+    app_scene_authoring scene = { .active_tab = 2, .current_scene_tab_key = "scene:a" };
+    apush(scene.tabs, ((scene_document_tab){ .kind = APP_EDITOR_DOCUMENT_SCENE, .key = "scene:a" }));
+    apush(scene.tabs, ((scene_document_tab){ .kind = APP_EDITOR_DOCUMENT_UI, .key = "ui:b" }));
+    apush(
+        scene.tabs,
+        ((scene_document_tab){ .kind = APP_EDITOR_DOCUMENT_UI, .key = "ui:c", .source_dirty = true })
+    );
+    scene_tabs_toggle_pin(&scene, 2);
+    assert(scene.active_tab == 0 && !strcmp(scene.tabs[0].key, "ui:c"));
+    assert(!strcmp(scene_tabs_current_scene_key(&scene), "scene:a"));
+    assert(scene_tabs_discard(&scene, 0) == -1 && scene.tabs[0].source_dirty);
+    scene_tabs_toggle_pin(&scene, 2);
+    assert(!strcmp(scene.tabs[0].key, "ui:c") && !strcmp(scene.tabs[1].key, "ui:b"));
+    assert(scene.active_tab == 0);
+    scene_tabs_toggle_pin(&scene, 0);
+    assert(!strcmp(scene.tabs[0].key, "ui:b") && !strcmp(scene.tabs[1].key, "ui:c"));
+    assert(scene.active_tab == 1 && scene_tabs_can_close(&scene, 1));
+    assert(!scene_tabs_can_close(&scene, 2));
+    apush(scene.tabs, ((scene_document_tab){ .kind = APP_EDITOR_DOCUMENT_SCENE, .key = "scene:d" }));
+    assert(scene_tabs_can_close(&scene, 2) && scene_tabs_can_close(&scene, 3));
+    afree(scene.tabs);
+    puts("editor documents PASS: pins retain document identity and prevent dirty or last-scene closure");
+}
+
+/* An asset disappearing invalidates its tab even when ordinary close is
+   protected by a pin. The background removal keeps the scene selected. */
+static void disappearing_asset_forgets_pinned_tab()
+{
+    app_scene_authoring scene = { .active_tab = 0,
+                                  .current_scene_tab_key = "scene:root" };
+    apush(scene.tabs, ((scene_document_tab){ .kind = APP_EDITOR_DOCUMENT_SCENE, .key = "scene:root" }));
+    const app_editor_document_kind kinds[] = { APP_EDITOR_DOCUMENT_BEHAVIOR,
+                                               APP_EDITOR_DOCUMENT_PROTOTYPE };
+    const char *keys[] = { "behavior:Deleted", "prototype:Deleted" };
+    for (int i = 0; i < 2; i++) {
+        apush(
+            scene.tabs,
+            ((scene_document_tab){ .kind = kinds[i],
+                                   .key = xstrdup(keys[i]),
+                                   .label = xstrdup("Deleted"),
+                                   .pinned = true })
+        );
+        scene_tabs_close(&scene, kinds[i], "Deleted");
+        assert(acount(scene.tabs) == 2 && scene.tabs[1].pinned);
+        scene_tabs_forget(&scene, kinds[i], "Deleted");
+        assert(acount(scene.tabs) == 1 && scene.active_tab == 0);
+        assert(!strcmp(scene_tabs_current_scene_key(&scene), "scene:root"));
+    }
+    afree(scene.tabs);
+    puts("editor documents PASS: disappearing behavior and prototype assets remove pinned tabs");
+}
+
 void test_editor_documents()
 {
+    document_tab_pins();
+    disappearing_asset_forgets_pinned_tab();
     reload_keeps_document_identity();
     nested_callers_survive_document_visits();
     compile_keeps_unedited_document();

@@ -1178,6 +1178,13 @@ static void key_down(kit_code_editor *e, const rml_event *event)
         return;
     }
     block_hover(e);
+    /* Physical Control switches documents, including on a Mac, before Tab
+       can accept a completion or change the text. */
+    if (m.ctrl && !m.alt && key == RML_KEY_TAB) {
+        snprintf(e->result.chord, sizeof e->result.chord, "Ctrl+%sTab", m.shift ? "Shift+" : "");
+        e->result.events |= KIT_CODE_CHORD;
+        return;
+    }
     if (completion_key(e, key) || host_request(e, key, m)) {
         return;
     }

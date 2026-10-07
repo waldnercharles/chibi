@@ -438,6 +438,27 @@ static bool completions(fixture *f)
     label = rml_element_query_selector(popup, ".label");
     rml_element_inner_rml(label, markup, sizeof markup);
     ok &= check(strstr(markup, "<b>w</b>") && strstr(markup, "<b>l</b>"), "completion labels highlight fuzzy match positions");
+    clear_events(f);
+    press(f, RML_KEY_TAB, RML_KM_CTRL);
+    frame(f);
+    ok &= check(
+        !strcmp(f->chord, "Ctrl+Tab") && !strcmp(text(f), "wl") &&
+            !(f->events & KIT_CODE_COMPLETED),
+        "Control+Tab switches documents without accepting a completion"
+    );
+    f->desc.mac = true;
+    frame(f);
+    clear_events(f);
+    press(f, RML_KEY_TAB, RML_KM_META | RML_KM_SHIFT);
+    frame(f);
+    ok &= check(
+        !strcmp(f->chord, "Ctrl+Shift+Tab") && !strcmp(text(f), "wl") &&
+            !(f->events & KIT_CODE_COMPLETED),
+        "physical Control+Shift+Tab switches documents on a Mac without "
+        "editing text"
+    );
+    f->desc.mac = false;
+    frame(f);
     press(f, RML_KEY_TAB, 0);
     frame(f);
     ok &= check(!strcmp(text(f), "world()"), "Tab accepts a fuzzy completion immediately");

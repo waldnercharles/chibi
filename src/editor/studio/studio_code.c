@@ -255,6 +255,9 @@ void studio_code_save(studio *s)
    document has unsaved, as reverting it would. */
 static void close_tab(studio *s, int index)
 {
+    if (!scene_tabs_can_close(s->scene, index)) {
+        return;
+    }
     scene_document_tab *tab = &s->scene->tabs[index];
     if (tab->kind == APP_EDITOR_DOCUMENT_UI) {
         scene_tabs_close(s->scene, APP_EDITOR_DOCUMENT_UI, tab->path);
@@ -272,6 +275,9 @@ static void close_tab(studio *s, int index)
 
 void studio_close_tab(studio *s, int index)
 {
+    if (!scene_tabs_can_close(s->scene, index)) {
+        return;
+    }
     scene_document_tab *tab = &s->scene->tabs[index];
     if (!scene_tabs_dirty(s->scene, tab)) {
         close_tab(s, index);
@@ -1481,14 +1487,14 @@ static void respond(
     if (events & KIT_CODE_SAVED) {
         studio_save(s);
     }
-    if (events & KIT_CODE_CHORD) {
-        run_chord(s, r->chord);
-    }
     if (events & KIT_CODE_DEFINITION) {
         go_to_definition(s, b, e);
     }
     if (events & KIT_CODE_REFERENCES) {
         find_references(s, b, e);
+    }
+    if (events & KIT_CODE_CHORD) {
+        run_chord(s, r->chord);
     }
 }
 
@@ -1536,8 +1542,6 @@ void studio_code_body(studio *s, int)
         if ((r.events & KIT_CODE_SAVED) ||
             (chord && chord_command(s, r.chord) == STUDIO_COMMAND_SAVE)) {
             save_asset(s, code);
-        } else if (r.events & KIT_CODE_CHORD) {
-            run_chord(s, r.chord);
         }
         if (asset_code_error(code)[0]) {
             kit_push(k, "status", NULL, "code-status");
@@ -1546,6 +1550,9 @@ void studio_code_body(studio *s, int)
             kit_pop(k);
         }
         kit_pop(k);
+        if (chord && chord_command(s, r.chord) != STUDIO_COMMAND_SAVE) {
+            run_chord(s, r.chord);
+        }
         return;
     }
     studio_code *c = &s->code;
@@ -1594,12 +1601,12 @@ void studio_code_body(studio *s, int)
     if (c->find.open) {
         find_widget(s);
     }
-    respond(s, tab, shown_editor, part, &r);
     if (b->error[0]) {
         kit_push(k, "status", NULL, "code-status");
         kit_icon(k, "icon", NULL, KIT_ICON_ERROR);
         kit_label(k, "message", "message", b->error);
         kit_pop(k);
     }
+    respond(s, tab, shown_editor, part, &r);
     kit_pop(k);
 }

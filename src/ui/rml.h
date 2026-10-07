@@ -544,6 +544,10 @@ extern "C"
     void rml_element_set_scroll_top(rml_element *element, float scroll_top);
     float rml_element_client_height(rml_element *element);
     float rml_element_scroll_height(rml_element *element);
+    float rml_element_scroll_left(rml_element *element);
+    void rml_element_set_scroll_left(rml_element *element, float scroll_left);
+    float rml_element_client_width(rml_element *element);
+    float rml_element_scroll_width(rml_element *element);
     rml_vec2 rml_element_absolute_offset(rml_element *element, rml_box_area area);
     rml_vec2 rml_element_relative_offset(rml_element *element, rml_box_area area);
     rml_vec2 rml_element_box_size(rml_element *element, rml_box_area area);

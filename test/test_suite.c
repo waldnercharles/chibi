@@ -776,6 +776,7 @@ int main(int argc, char **argv)
         run_kdl_text_checks();
         test_asset_source();
         test_asset_code_checkpoint();
+        test_editor_documents();
         run_graph_document_checks();
         return fails ? 1 : 0;
     }

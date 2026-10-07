@@ -3,6 +3,8 @@
 #include "editor/workspace/model_preview.h"
 #include "support/array.h"
 #include "support/text_file.h"
+#include "support/xalloc.h"
+#include "ui/popover.h"
 
 #include <assert.h>
 #include <math.h>
@@ -751,12 +753,9 @@ static uint32_t tab_icon(const scene_document_tab *tab)
     return KIT_ICON_FILE;
 }
 
-/* Every document but a scene closes from its tab, as in VS Code; a scene is
-   the root the other documents open over. */
 bool studio_tab_closes(const studio *s, int tab)
 {
-    return tab >= 0 && tab < acount(s->scene->tabs) &&
-           s->scene->tabs[tab].kind != APP_EDITOR_DOCUMENT_SCENE;
+    return scene_tabs_can_close(s->scene, tab);
 }
 
 /* The top bar's TopBar lists these from `editor.tabs`; a tab runs
@@ -774,6 +773,12 @@ studio_tab_view *studio_document_tabs(studio *s)
             .dirty = scene_tabs_dirty(scene, tab),
             .active = i == scene->active_tab,
             .closable = studio_tab_closes(s, i),
+            .pinned = tab->pinned,
+            .pinnable = true,
+            .pin_label = tab->pinned ? "Unpin Tab" : "Pin Tab",
+            .close_reason = tab->pinned             ? "Unpin to close"
+                          : studio_tab_closes(s, i) ? "Close Tab"
+                                                    : "Keep one scene open",
         };
         apush(tabs, shown);
     }
@@ -976,6 +981,9 @@ void studio_menubar_action(studio *s, const char *action, const ui_activation *a
 void studio_shell_add(yyjson_mut_doc *doc)
 {
     yyjson_mut_val *shell = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "shell");
+    yyjson_mut_val *tab_menu = yyjson_mut_obj_add_obj(doc, shell, "tabMenu");
+    item_add(doc, yyjson_mut_obj_add_obj(doc, tab_menu, "pin"));
+    item_add(doc, yyjson_mut_obj_add_obj(doc, tab_menu, "close"));
     yyjson_mut_val *target = yyjson_mut_obj_add_obj(doc, shell, "target");
     yyjson_mut_obj_add_strcpy(doc, target, "label", "");
     yyjson_mut_obj_add_strcpy(doc, target, "icon", "");
@@ -1114,21 +1122,84 @@ static bool show_scale(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *scale)
     return changed;
 }
 
+/* Resolve the document by identity each time: pinning moves it, and another
+   action may close it while the menu is open. */
+static int tab_menu_index(const studio *s)
+{
+    for (int i = 0; s->tab_menu_key && i < acount(s->scene->tabs); i++) {
+        if (!strcmp(s->scene->tabs[i].key, s->tab_menu_key)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool show_tab_menu(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *menu)
+{
+    int index = tab_menu_index(s);
+    bool pinned = index >= 0 && s->scene->tabs[index].pinned;
+    bool closable = studio_tab_closes(s, index);
+    bool changed = item_put(
+        doc,
+        yyjson_mut_obj_get(menu, "pin"),
+        pinned ? "Unpin Tab" : "Pin Tab",
+        KIT_ICON_PIN,
+        pinned,
+        index < 0
+    );
+    yyjson_mut_val *close = yyjson_mut_obj_get(menu, "close");
+    changed |= item_put(doc, close, "Close Tab", KIT_ICON_CLOSE, false, !closable);
+    const char *chord = studio_command_chord(&s->prefs, STUDIO_COMMAND_CLOSE_TAB);
+    changed |= ui_data_put_text(doc, close, "shortcut", chord[0] ? studio_chord(s, chord) : "");
+    return changed;
+}
+
+static void open_tab_menu(studio *s, int index, const ui_activation *a)
+{
+    if (index < 0 || index >= acount(s->scene->tabs)) {
+        return;
+    }
+    free(s->tab_menu_key);
+    s->tab_menu_key = xstrdup(s->scene->tabs[index].key);
+    studio_ui_resync(s, "shell");
+    rml_element *from = a->anchor ? rml_element_ref_get(a->anchor) : NULL;
+    rml_element *menu = from ? rml_element_by_id(rml_element_owner_document(from), "tab-menu")
+                             : NULL;
+    if (menu) {
+        popover_show(menu, &(popover_anchor){ .side = POPOVER_POINT, .box = { a->x, a->y, 0, 0 } });
+    }
+}
+
 bool studio_shell_sync(studio *s, const studio_panel_sync *at)
 {
     yyjson_mut_val *shell = at->variable;
-    bool changed = show_target(s, at->doc, yyjson_mut_obj_get(shell, "target"));
+    bool changed = show_tab_menu(s, at->doc, yyjson_mut_obj_get(shell, "tabMenu"));
+    changed |= show_target(s, at->doc, yyjson_mut_obj_get(shell, "target"));
     changed |= show_speed(s, at->doc, yyjson_mut_obj_get(shell, "speed"));
     return show_scale(s, at->doc, yyjson_mut_obj_get(shell, "scale")) || changed;
 }
 
 void studio_shell_action(studio *s, const char *action, const ui_activation *a)
 {
+    if (!strcmp(action, "tabPin") || !strcmp(action, "tabClose")) {
+        int index = tab_menu_index(s);
+        if (index >= 0) {
+            studio_command_run_with(
+                s,
+                !strcmp(action, "tabPin") ? STUDIO_COMMAND_TOGGLE_PIN_TAB
+                                          : STUDIO_COMMAND_CLOSE_TAB,
+                index
+            );
+        }
+        return;
+    }
     if (!a->argc) {
         return;
     }
     int index = atoi(a->args[0]);
-    if (!strcmp(action, "target")) {
+    if (!strcmp(action, "tabMenu")) {
+        open_tab_menu(s, index, a);
+    } else if (!strcmp(action, "target")) {
         choose_target(s, a->args[0]);
     } else if (!strcmp(action, "speed") && index >= 0 && index < studio_speed_count) {
         app_scene_authoring_set_time_scale(s->scene, studio_speeds[index]);

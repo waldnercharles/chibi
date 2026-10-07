@@ -36,6 +36,14 @@
  *   sending change with the option's value. Shown again, it clears its
  *   search and highlights the current option (aria-selected or
  *   data-current). A `virtualized` one's app filters it (choice_list.c).
+ * - <tab-list>: authored [role=tab] buttons with aria-selected and optional
+ *   [role=presentation] rows holding tab actions. Unmodified Left, Right,
+ *   Home and End focus and activate enabled tabs; arrows wrap. Horizontal
+ *   or vertical wheel movement scrolls horizontally. Selection, contents
+ *   and geometry changes reveal the selected row, while manual scrolling
+ *   stays put. Middle-click a row activates its enabled [data-tab-close]
+ *   button. The strip reflects data-overflow; authored CSS supplies flex
+ *   layout, overflow-x: auto and hidden scrollbar styling.
  * - <line-chart series="name ..." window unit precision reference min max
  *   fill live/>: Liveline's live line chart with Recharts' ticks. It draws
  *   the series C published under the names `series` lists

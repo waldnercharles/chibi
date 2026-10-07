@@ -443,11 +443,30 @@ static const command_entry COMMANDS[STUDIO_COMMAND_COUNT] = {
                                     .indexed = true,
                                     .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_CLOSE_TAB] = { .id = "closeTab",
+                                   .chord = "Mod+W",
                                    .label = "Close Tab",
                                    .context = "Global",
                                    .keywords = "document",
                                    .icon = KIT_ICON_CLOSE,
                                    .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_TOGGLE_PIN_TAB] = { .id = "togglePinTab",
+                                        .label = "Pin / Unpin Tab",
+                                        .context = "Global",
+                                        .keywords = "document keep",
+                                        .icon = KIT_ICON_PIN,
+                                        .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_PREVIOUS_TAB] = { .id = "previousTab",
+                                      .label = "Previous Tab",
+                                      .chord = "Ctrl+Shift+Tab",
+                                      .context = "Global",
+                                      .icon = KIT_ICON_FILE,
+                                      .phase = SHORTCUT_EDITOR },
+    [STUDIO_COMMAND_NEXT_TAB] = { .id = "nextTab",
+                                  .label = "Next Tab",
+                                  .chord = "Ctrl+Tab",
+                                  .context = "Global",
+                                  .icon = KIT_ICON_FILE,
+                                  .phase = SHORTCUT_EDITOR },
     [STUDIO_COMMAND_CLOSE_DRAWER] = { .id = "closeDrawer",
                                       .label = "Close Drawer",
                                       .context = "Global",
@@ -934,6 +953,13 @@ studio_command_info studio_command_describe(studio *s, studio_command command)
         .indexed = e->indexed,
     };
     switch (command) {
+        case STUDIO_COMMAND_TOGGLE_PIN_TAB:
+            info.label = info.menu = s->scene->active_tab >= 0 &&
+                                             s->scene->tabs[s->scene->active_tab]
+                                                 .pinned
+                                       ? "Unpin Tab"
+                                       : "Pin Tab";
+            break;
         case STUDIO_COMMAND_PLAY:
             /* Play resumes a run paused at a breakpoint (Unreal). */
             if (s->pause.active) {
@@ -977,6 +1003,9 @@ static bool drawer_showing(const studio *s, studio_editor editor)
 int studio_command_checked(studio *s, studio_command command)
 {
     switch (command) {
+        case STUDIO_COMMAND_TOGGLE_PIN_TAB:
+            return s->scene->active_tab >= 0 &&
+                   s->scene->tabs[s->scene->active_tab].pinned;
         case STUDIO_COMMAND_TOGGLE_ASSETS:
             return drawer_showing(s, STUDIO_EDITOR_ASSETS);
         case STUDIO_COMMAND_TOGGLE_OUTPUT:
@@ -1084,6 +1113,11 @@ static bool enabled_with(studio *s, studio_command command, int argument)
         case STUDIO_COMMAND_SELECT_TAB:
             return argument >= 0 && argument < acount(s->scene->tabs) &&
                    argument != s->scene->active_tab;
+        case STUDIO_COMMAND_TOGGLE_PIN_TAB:
+            return tab_at(s, argument) >= 0 &&
+                   tab_at(s, argument) < acount(s->scene->tabs);
+        case STUDIO_COMMAND_PREVIOUS_TAB:
+        case STUDIO_COMMAND_NEXT_TAB: return acount(s->scene->tabs) > 1;
         case STUDIO_COMMAND_CLOSE_TAB:
             return studio_tab_closes(s, tab_at(s, argument));
         case STUDIO_COMMAND_CLOSE_DRAWER:
@@ -1360,6 +1394,17 @@ void studio_command_run_with(studio *s, studio_command command, int argument)
             finish_transform_edit(s->scene, false);
             scene_tabs_activate(s->scene, argument);
             break;
+        case STUDIO_COMMAND_TOGGLE_PIN_TAB:
+            scene_tabs_toggle_pin(s->scene, tab_at(s, argument));
+            break;
+        case STUDIO_COMMAND_PREVIOUS_TAB:
+        case STUDIO_COMMAND_NEXT_TAB: {
+            finish_transform_edit(s->scene, false);
+            int count = acount(s->scene->tabs);
+            int direction = command == STUDIO_COMMAND_NEXT_TAB ? 1 : -1;
+            scene_tabs_activate(s->scene, (s->scene->active_tab + direction + count) % count);
+            break;
+        }
         case STUDIO_COMMAND_CLOSE_TAB:
             studio_close_tab(s, tab_at(s, argument));
             break;
@@ -1483,12 +1528,14 @@ void studio_shortcuts(studio *s, bool field)
     for (int i = 0; i < acount(s->keys); i++) {
         studio_key key = s->keys[i];
         bool primary = studio_primary(s, key.mod);
+        int command = studio_command_for_key(&s->prefs, key.key, key.mod, editor, s->mac);
+        bool tab_navigation = command == STUDIO_COMMAND_PREVIOUS_TAB ||
+                              command == STUDIO_COMMAND_NEXT_TAB;
         /* A focused field keeps its keys; chords that edit no text still
            reach Studio, as VS Code's do. */
-        if (field && (!primary || studio_text_key(key.key))) {
+        if (field && !tab_navigation && (!primary || studio_text_key(key.key))) {
             continue;
         }
-        int command = studio_command_for_key(&s->prefs, key.key, key.mod, editor, s->mac);
         bool repeatable = command >= 0
                             ? COMMANDS[command].repeat
                             : !primary &&
@@ -1502,7 +1549,7 @@ void studio_shortcuts(studio *s, bool field)
             studio_command_run(s, (studio_command)command);
             continue;
         }
-        if (gameplay && !primary && !function_key(key.key)) {
+        if (gameplay && !primary && !tab_navigation && !function_key(key.key)) {
             continue;
         }
         if (command >= 0 && COMMANDS[command].phase == SHORTCUT_EARLY) {

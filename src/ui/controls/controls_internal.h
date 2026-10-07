@@ -45,6 +45,7 @@ void color_field_register();
 void splitter_register();
 void live_text_register();
 void choice_list_register();
+void tab_list_register();
 void line_chart_register();
 
 #endif

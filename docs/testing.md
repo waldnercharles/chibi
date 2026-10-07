@@ -36,6 +36,16 @@ entrypoint completed in 1.743 seconds under the production 60-second supervisor
 with Debug ASan+UBSan during admission. Record fresh results on each candidate;
 this does not replace authored Studio or visual tab checks.
 
+`make test-fast TEST_ARGS='--studio-shell document-tabs'` runs all 17 authored
+tab checks: hover/focus geometry, contextual pinning, keyboard cycling, overflow
+selection, unsaved-close safeguards, adjacent selection and the final scene
+guard. Independent review confirmed one fixture with fixed frame counts and no
+authored file writes. Its initial complete production-supervised run took 9.2
+seconds with Debug ASan+UBSan and native Metal on macOS; configure/build time was
+separate. It requires the hardware execution profile. Leave capture environment
+variables unset for timing. Record fresh candidate results; full Studio suites
+remain quarantined, and rendered verification still checks close/title masking.
+
 The duplicate `--studio-panel-lifecycle` capture entrypoint and the optional
 1,000-frame blank-document profiling loop have been retired. The authored panel
 lifecycle assertions remain in the quarantined Studio suite; historical profiling

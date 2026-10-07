@@ -33,6 +33,7 @@ NATIVE = {
     ('--whole-function-audit',): '1.3s; docs/testing.md baseline',
     ('--graph-optimize',): '0.5s; docs/testing.md baseline',
     ('--studio-documents', 'tabs'): '8s; PR164 focused evidence',
+    ('--studio-shell', 'document-tabs'): '9.2s; independently reviewed authored tab fixture, 17 checks, Debug ASan+UBSan with native Metal; docs/testing.md',
     ('--studio-shell', 'readout_follows_camera'): '3s; PR164 focused evidence',
     ('--bench-arena-scene-scale', '2048', '240', '0'): '1.4s; Arena scaling evidence',
 }

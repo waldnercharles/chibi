@@ -69,6 +69,7 @@ The exact native admission table is:
 | `--material-mpm` | 3.6s |
 | `--whole-function-audit` | 1.3s |
 | `--studio-documents tabs` | 8s |
+| `--studio-shell document-tabs` | 9.2s initial supervised admission, all 17 authored tab checks, Debug ASan+UBSan with native Metal. |
 | `--studio-shell readout_follows_camera` | 3s |
 | `--bench-arena-scene-scale 2048 240 0` | 1.4s |
 

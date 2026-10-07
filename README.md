@@ -142,9 +142,16 @@ under `${XDG_CACHE_HOME:-$HOME/.cache}/chibi-dependency-packages`. Set
 use this cache regardless of which app created them or where their folders live.
 Packages include Cute and its compiled dependencies, SDL, RmlUi, FreeType, Zep,
 enkiTS, SLJIT, tree-sitter, and bundled C libraries where enabled. Native, browser,
-threaded browser, and incompatible toolchain or build options use separate entries.
-Dependency pins, patches, compiler and SDK identity, and build flags determine
-reuse. A failed or concurrent first build cannot publish an incomplete package.
+threaded browser, and incompatible toolchain or sanitizer options use separate entries.
+Dependencies are always built as Release without precompiled headers, whatever the
+consumer's build type, so Debug, Release and RelWithDebInfo checkouts share one
+package and debug builds step into them without symbols. Dependency pins, patches,
+compiler and SDK identity, and other build flags determine reuse. A failed or
+concurrent first build cannot publish an incomplete package. Each configure marks
+its package as used; creating a package then removes ones beyond the newest six per
+profile that have been idle for a day (`CHIBI_DEPENDENCY_PACKAGE_KEEP` sets the
+count). Package builds go through ccache with a base directory at the package, so a
+changed patch or pin recompiles only the sources that differ.
 Application objects and generated files remain in each checkout's build directory.
 Native Tracy client libraries are shared; the former Python MCP bridge is
 retired. External source overrides retain private builds so local dependency

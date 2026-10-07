@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 import fetchcontent_cache
 
@@ -118,10 +119,28 @@ def package_arguments(arguments: list[str], profile: str) -> list[str]:
             options.pop(name)
     if options.get("CHIBI_SANITIZERS") == "address,undefined":
         options.pop("CHIBI_SANITIZERS")
+    # Dependencies are always built as Release so every consumer build type shares them.
+    for name in list(options):
+        if name == "CMAKE_BUILD_TYPE" or re.fullmatch(r"CMAKE_\w+_FLAGS_[A-Z_]+", name):
+            options.pop(name)
+        elif re.fullmatch(r"CMAKE_\w+_FLAGS", name):
+            options[name] = re.sub(r"\s*-fdebug-(?:compilation-dir|prefix-map)=\S*", "", options[name]).strip()
+            if not options[name]:
+                options.pop(name)
+    if sys.platform == "darwin" and profile == "native":
+        options["CMAKE_OSX_SYSROOT"] = sdk_path(options)
     return [f"-D{name}={value}" for name, value in sorted(options.items())]
 
 
-DEPENDENCY_OPTIONS = {"CMAKE_BUILD_TYPE", "CMAKE_OSX_SYSROOT", "CMAKE_OSX_ARCHITECTURES",
+def sdk_path(options: dict[str, str]) -> str:
+    sysroot = options.get("CMAKE_OSX_SYSROOT") or os.environ.get("SDKROOT")
+    if sysroot:
+        return sysroot
+    return subprocess.run(["xcrun", "--show-sdk-path"], capture_output=True, text=True,
+                          check=True).stdout.strip()
+
+
+DEPENDENCY_OPTIONS = {"CMAKE_OSX_SYSROOT", "CMAKE_OSX_ARCHITECTURES",
                       "CMAKE_OSX_DEPLOYMENT_TARGET", "CMAKE_TOOLCHAIN_FILE",
                       "CHIBI_ENABLE_SANITIZERS", "CHIBI_SANITIZERS",
                       "CHIBI_ENABLE_SJLIT", "CHIBI_ENABLE_TRACY", "CHIBI_WEB_THREADS", "CHIBI_WEB_WORKERS"}
@@ -260,10 +279,7 @@ def identity(source: Path, profile: str, arguments: list[str]) -> dict:
                                   for path in sorted(modules.rglob("*")) if path.is_file()}
         tools["emcc"] = executable_identity("emcc")
         tools["emcmake"] = file_identity(Path(shutil.which("emcmake") or "missing-emcmake"))
-    sdk = options.get("CMAKE_OSX_SYSROOT") or os.environ.get("SDKROOT")
-    if sys.platform == "darwin":
-        result = subprocess.run(["xcrun", "--show-sdk-path"], capture_output=True, text=True, check=True)
-        sdk = sdk or result.stdout.strip()
+    sdk = sdk_path(options) if sys.platform == "darwin" else options.get("CMAKE_OSX_SYSROOT") or os.environ.get("SDKROOT")
     sdk_identity = None
     if sdk:
         path = Path(sdk)
@@ -274,6 +290,8 @@ def identity(source: Path, profile: str, arguments: list[str]) -> dict:
         else:
             sdk_identity = sdk
     environment = {name: os.environ.get(name) for name in ENVIRONMENT}
+    if sys.platform == "darwin" and profile == "native":
+        environment["SDKROOT"] = None
     if selected_web and environment.get("CMAKE_TOOLCHAIN_FILE"):
         if Path(environment["CMAKE_TOOLCHAIN_FILE"]).resolve() == selected_web:
             environment["CMAKE_TOOLCHAIN_FILE"] = None
@@ -303,6 +321,53 @@ def atomic_write(path: Path, contents: str) -> None:
         temporary = Path(output.name)
         output.write(contents)
     os.replace(temporary, path)
+
+
+def probe_path(root: Path, profile: str, value: dict) -> Path:
+    """Configure-time compile checks depend on the toolchain and dependency pins, not on patches."""
+    pins = {name: digest for name, digest in value["files"].items()
+            if name.startswith("cmake/") and not name.endswith(".patch")}
+    identity = {name: item for name, item in value.items()
+                if name not in ("files", "helper", "fetchcontent_helper")}
+    return root / profile / "probes" / f"{package_key({**identity, 'files': pins})}.cmake"
+
+
+def save_probes(build: Path, destination: Path) -> None:
+    """Keep the results of every try_compile check so equivalent configures can skip them."""
+    log = build / "CMakeFiles/CMakeConfigureLog.yaml"
+    if not log.is_file():  # CMake before 3.26 does not record its checks.
+        return
+    names, current = [], None
+    for line in log.read_text().splitlines():
+        if line.startswith("    kind:"):
+            current = line.split('"')[1]
+        elif current and current.startswith("try_compile") and line.strip().startswith("variable:"):
+            names.append(line.split('"')[1])
+    cache = cache_values(build / "CMakeCache.txt")
+    lines = [f"set({name} {fetchcontent_cache.cmake_bracket(cache[name])} CACHE INTERNAL \"\")\n"
+             for name in sorted(set(names)) if name in cache]
+    atomic_write(destination, "".join(lines))
+
+
+KEEP_PACKAGES = 6
+PROTECT_SECONDS = 24 * 3600
+
+
+def evict(root: Path, current: Path) -> None:
+    """Bound every profile: drop packages beyond the newest few that have been idle for a day."""
+    keep = int(os.environ.get("CHIBI_DEPENDENCY_PACKAGE_KEEP", KEEP_PACKAGES))
+    for profile in (path for path in root.iterdir() if path.is_dir()):
+        entries = sorted((path for path in profile.iterdir() if (path / "complete.json").is_file()),
+                         key=lambda path: (path / "complete.json").stat().st_mtime, reverse=True)
+        for entry in entries[keep:]:
+            if entry == current or time.time() - (entry / "complete.json").stat().st_mtime < PROTECT_SECONDS:
+                continue
+            with (profile / f".{entry.name}.lock").open("a+") as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    continue
+                shutil.rmtree(entry, ignore_errors=True)
 
 
 def prepare(source: Path, build: Path, profile: str, arguments: list[str], root: Path) -> Path:
@@ -337,7 +402,11 @@ def prepare(source: Path, build: Path, profile: str, arguments: list[str], root:
                     fetchcontent_cache.cache_root_from_env(), include_tracy=tracy, web=profile == "web")
                 command = ["cmake", "-S", str(snapshot / "cmake/dependency_package"),
                            "-B", str(package_build), f"-DCHIBI_SOURCE_ROOT={snapshot}",
+                           "-DCMAKE_BUILD_TYPE=Release",
                            "-C", str(package_build / ".chibi-fetchcontent-cache.cmake"), *arguments]
+                probes = probe_path(root, profile, value)
+                if probes.is_file():
+                    command.extend(["-C", str(probes)])
                 if profile == "web":
                     command.insert(0, "emcmake")
                 generator = options.get("CMAKE_GENERATOR")
@@ -345,12 +414,15 @@ def prepare(source: Path, build: Path, profile: str, arguments: list[str], root:
                     command.extend(["-G", generator])
                 elif not os.environ.get("CMAKE_GENERATOR") and shutil.which("ninja"):
                     command.extend(["-G", "Ninja"])
-                subprocess.run(command, check=True, stdout=sys.stderr)
+                # Entries live at different paths; base_dir makes their compile commands identical to ccache.
+                environment = {**os.environ, "CCACHE_BASEDIR": str(entry)}
+                subprocess.run(command, check=True, stdout=sys.stderr, env=environment)
                 subprocess.run(["cmake", "--build", str(package_build), "--target",
                                 "chibi_dependency_package", "--parallel",
                                 os.environ.get("CHIBI_DEPENDENCY_PACKAGE_JOBS", "4")],
-                               check=True, stdout=sys.stderr)
+                               check=True, stdout=sys.stderr, env=environment)
                 publish_sources(snapshot, package_build)
+                save_probes(package_build, probes)
                 for path in package_build.rglob("*"):
                     relative = path.relative_to(package_build)
                     compiler_directory = "CMakeFiles" in relative.parts and any(
@@ -366,6 +438,8 @@ def prepare(source: Path, build: Path, profile: str, arguments: list[str], root:
             except BaseException:
                 shutil.rmtree(entry, ignore_errors=True)
                 raise
+        os.utime(entry / "complete.json")
+    evict(root, entry)
     bracket = fetchcontent_cache.cmake_bracket
     atomic_write(build / ".chibi-dependency-package.cmake",
         "# Generated by tools/dependency_package.py; do not edit.\n"

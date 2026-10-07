@@ -59,7 +59,7 @@ def prepare(home, state, source, launch_agent):
                f"exec {shlex.quote(str(python))} "
                f"{shlex.quote(str(state / 'bin/workspaces.py'))} \"$@\"\n")
     files = {launcher: (command.encode(), 0o755)}
-    for name in ("workspaces.py", "workspace_retirement.py"):
+    for name in ("workspaces.py", "workspace_retirement.py", "worktree_reaper.py"):
         files[state / "bin" / name] = ((source / name).read_bytes(), 0o755)
     for app, config in (("codex", home / ".codex/hooks.json"),
                         ("claude", home / ".claude/settings.json")):

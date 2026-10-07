@@ -22,6 +22,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         add_compile_definitions(CHIBI_WEB_WORKERS=${CHIBI_WEB_WORKERS})
     endif()
 endif()
+# Precompiled headers are uncacheable by ccache; skipping them lets every package share objects.
+set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON)
 include("${CHIBI_SOURCE_ROOT}/cmake/dependencies.cmake")
 if(CHIBI_ENABLE_SANITIZERS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
    AND CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")

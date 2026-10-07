@@ -418,6 +418,8 @@ def main():
         results = sweep(args.apply, args.keep, args.idle_days)
         if results:
             print(json.dumps(results))
+        import worktree_reaper
+        worktree_reaper.reap_registered(args.apply)
 
 
 if __name__ == '__main__':

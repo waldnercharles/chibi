@@ -95,6 +95,10 @@ if(CHIBI_ENABLE_CCACHE)
            (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_BUILD_TYPE STREQUAL "Release"))
             cmake_path(RELATIVE_PATH CMAKE_BINARY_DIR BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
                 OUTPUT_VARIABLE CHIBI_CCACHE_RELATIVE_BINARY_DIR)
+            # Debug info only needs the directory depth to resolve ../ source paths. Naming every
+            # component "build" lets differently named build directories share ccache objects.
+            string(REGEX REPLACE "[^/]+" "build" CHIBI_CCACHE_DEBUG_BINARY_DIR
+                "${CHIBI_CCACHE_RELATIVE_BINARY_DIR}")
         endif()
         foreach(language C CXX OBJC)
             if(NOT DEFINED CMAKE_${language}_COMPILER_LAUNCHER)
@@ -111,10 +115,10 @@ if(CHIBI_ENABLE_CCACHE)
                     if(CMAKE_${language}_COMPILER_ID MATCHES "^(AppleClang|Clang)$")
                         # Keep DWARF paths relative to the worktree root for debugger lookup.
                         string(APPEND CMAKE_${language}_FLAGS
-                            " -fdebug-compilation-dir=${CHIBI_CCACHE_RELATIVE_BINARY_DIR}")
+                            " -fdebug-compilation-dir=${CHIBI_CCACHE_DEBUG_BINARY_DIR}")
                     elseif(CMAKE_${language}_COMPILER_ID STREQUAL "GNU")
                         string(APPEND CMAKE_${language}_FLAGS
-                            " -fdebug-prefix-map=${CMAKE_BINARY_DIR}=${CHIBI_CCACHE_RELATIVE_BINARY_DIR}")
+                            " -fdebug-prefix-map=${CMAKE_BINARY_DIR}=${CHIBI_CCACHE_DEBUG_BINARY_DIR}")
                     endif()
                 endif()
             endif()

@@ -94,6 +94,28 @@ and `--idle-days` change its policy. The installed job uses
 `~/Library/LaunchAgents/com.chibi.workspace-retirement.plist`, and logs are under
 `~/.local/share/chibi-workspaces/logs`.
 
+## Idle builds and finished worktrees
+
+The same hourly job also runs `tools/worktree_reaper.py` for every registered
+repository, including builds that predate the registry and worktrees outside it:
+
+- A top-level `build*` directory whose `.ninja_log` is two days old and that no
+  process has open has its Ninja outputs removed with `ninja -t clean`. Sources,
+  configuration, scratch files and shared caches are untouched, and the next build
+  recreates the outputs from ccache.
+- A worktree is removed with `git worktree remove` only when it is clean, its HEAD
+  is on a remote branch, its HEAD reflog and builds are three days old, it is not
+  locked, and no process uses it. Anything with uncommitted or unpushed work is
+  reported and kept. Ignored files are not uncommitted work and go with the checkout.
+
+```sh
+python3 tools/worktree_reaper.py            # preview every registered repository
+python3 tools/worktree_reaper.py --apply    # clean and remove now
+```
+
+Rerun `python3 tools/install_workspace_tools.py --apply` once to install the
+updated helper scripts.
+
 To stop scheduled cleanup:
 
 ```sh

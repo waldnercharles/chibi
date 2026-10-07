@@ -874,7 +874,7 @@ void run_runtime_instance_checks()
         node *name_lit = graph_add_node(asset->graph, registry_node_by_name("Name"));
         graph_set_pin_default(asset->graph, name_lit, 0, 0, &(pin_value){ .type = PIN_NAME, .str = "ExactSpelling" });
         char *before = behavior_asset_save(asset);
-        test_check(before && strstr(before, "owner_type \"UnavailableOwner\""), "the authored owner handle type is written");
+        test_check(before && strstr(before, "owner \"UnavailableOwner\""), "the authored owner handle type is written");
         behavior_instance *bi = behavior_instance_create(
             asset,
             &(pin_value){ .type = PIN_HANDLE, .u64 = 5, .type_name = "UnavailableOwner" },

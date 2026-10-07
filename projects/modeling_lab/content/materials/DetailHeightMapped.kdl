@@ -62,5 +62,5 @@ description "Linear generated height texture perturbs normals with world-unit re
             - from="68.Value" to="1.Normal"
         }
     }
-    - id=24 kind="function" math_expression="(color.x - 0.5) * 1.5" entry_id=47
+    - id=24 kind="function" math_expression="(color.x - 0.5) * 1.5" expression_mode=1 entry_id=47
 }

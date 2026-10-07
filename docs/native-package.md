@@ -19,7 +19,7 @@ A game repository contains `project.kdl` and its `content` directory. For
 example, `project.kdl` can select an empty starting scene:
 
 ```kdl
-version 4
+version 7
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"

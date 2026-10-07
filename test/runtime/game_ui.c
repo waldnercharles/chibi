@@ -93,20 +93,23 @@ static void data_values()
             &(pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &points[i] }
         );
     }
-    bool written = data_is(&(pin_value){ .type = PIN_I32, .i = 7 }, "value 7; ") &&
-                   data_is(&(pin_value){ .type = PIN_STR, .str = "Gem" }, "value \"Gem\"; ") &&
+    bool written = data_is(&(pin_value){ .type = PIN_I32, .i = 7 }, "value 7\n") &&
+                   data_is(&(pin_value){ .type = PIN_STR, .str = "Gem" }, "value \"Gem\"\n") &&
                    data_is(
                        &(pin_value){ .type = PIN_STRUCT,
                                      .type_name = "CF_V2",
                                      .ptr = &points[0] },
-                       "value x=1.0 y=2.0; "
+                       "value x=1.0 y=2.0\n"
                    ) &&
                    data_is(
                        &(pin_value){ .type = PIN_STRUCT,
                                      .container = PIN_CONTAINER_ARRAY,
                                      .type_name = "CF_V2",
                                      .ptr = list },
-                       "(array)value { - x=1.0 y=2.0; - x=3.0 y=4.0; }; "
+                       "(array)value {\n"
+                       "    - x=1.0 y=2.0\n"
+                       "    - x=3.0 y=4.0\n"
+                       "}\n"
                    );
     pin_array_free(list);
     game_ui *ui = game_ui_new();

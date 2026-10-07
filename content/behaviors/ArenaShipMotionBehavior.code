@@ -1,0 +1,153 @@
+behavior "ArenaShipMotionBehavior" {
+    owner "ecs.entity";
+    state "Roll Speed (Degrees/Second)": float = 36.0;
+    state "Reverse Nose Lift (Degrees)": float = 3.0;
+    state "Settle Response (Hz)": float = 1.0;
+    state "Settle Damping": float = 1.0;
+    state "Roll Angle": float = 0.0;
+    state "Roll Velocity": float = 0.0;
+    state "Nose Position": float = 0.0;
+    state "Nose Velocity": float = 0.0;
+    state "Face Rocking": float = 0.5;
+    state "Roll Acceleration (Per Second)": float = 3.0;
+    state "Strafe Dead Zone": float = 0.12;
+    state "Resting Face": float = 0.0;
+    action advance_damped_spring = "Advance Damped Spring"(Position: &state."Roll Angle", Velocity: &state."Roll Velocity", Target: &state."Resting Face", Frequency: &state."Settle Response (Hz)", Damping: &state."Settle Damping", Delta: &delta);
+    value compute_aim_basis = "Compute Aim Basis"(Move: &component("GAME.GameInput", "move"), Aim: &component("GAME.GameAim", "direction"));
+    action apply_ship_pose = "Apply Ship Pose"(reverseNoseLift: &state."Reverse Nose Lift (Degrees)", Delta: &delta, Frequency: &state."Settle Response (Hz)", Damping: &state."Settle Damping", forward: compute_aim_basis.Forward);
+    on Tick as tick() {
+        if (abs(compute_aim_basis.Strafe) > cast<double>(&state."Strafe Dead Zone")) {
+            await "Advance Rolling Motion"(Delta: &delta, Position: &state."Roll Angle", Velocity: &state."Roll Velocity", Strafe: compute_aim_basis.Strafe);
+            apply_ship_pose();
+        } else {
+            advance_damped_spring();
+        }
+    }
+    after advance_damped_spring {
+        await set_variable<"Roll Angle">(Value: float = advance_damped_spring.Position);
+        await set_variable<"Roll Velocity">(Value: float = advance_damped_spring.Velocity);
+        apply_ship_pose();
+    }
+    function "Advance Damped Spring"(Position: float = 0.0, Velocity: float = 0.0, Target: float = 0.0, Frequency: float = 0.0, Damping: float = 0.0, Delta: float = 0.0) -> (Position: float = 0.0, Velocity: float = 0.0) {
+        depth_limit 64;
+        value advance_damped_spring = engine["Advance Damped Spring"](Position: entry.Position, Velocity: entry.Velocity, Target: entry.Target, Frequency: entry.Frequency, Damping: entry.Damping, Delta: entry.Delta);
+        result Position: float = advance_damped_spring.Position;
+        result Velocity: float = advance_damped_spring.Velocity;
+        after entry {
+            return();
+        }
+    }
+    function "Advance Face Roll"(Position: float = 0.0, Velocity: float = 0.0, Strafe: float = 0.0, Speed: float = 0.0, Rocking: float = 0.0, Acceleration: float = 0.0, Delta: float = 0.0) -> (Position: float = 0.0, Velocity: float = 0.0, Face: float = 0.0) {
+        depth_limit 64;
+        value roll_gain = "Roll Gain"(Acceleration: float = entry.Acceleration, Delta: float = entry.Delta);
+        value desired_roll = "Desired Roll"(Strafe: float = entry.Strafe, Speed: float = entry.Speed, Rocking: float = entry.Rocking, Position: float = entry.Position);
+        value roll_velocity = "Roll Velocity"(Velocity: float = entry.Velocity, Gain: float = roll_gain, Desired: float = desired_roll);
+        value roll_position = "Roll Position"(Position: float = entry.Position, NewVelocity: float = roll_velocity, Delta: float = entry.Delta);
+        result Position: float = roll_position;
+        result Velocity: float = roll_velocity;
+        result Face: float = quantize_angle(Angle: roll_position, Step: 1.5707963267948966);
+        after entry {
+            return();
+        }
+    }
+    pure function "Roll Gain"<T0: float, T1: float, T2: float>(Acceleration: T0 = 0.0, Delta: T1 = 0.0) -> (Result: T2 = 0.0) {
+        depth_limit 64;
+        value real = real(Value: 0.0);
+        value max = max(A: double = entry.Acceleration, B: double = real);
+        value real_2 = real(Value: 0.0);
+        value max_2 = max(A: double = entry.Delta, B: double = real_2);
+        value multiply = multiply(A: double = max, B: double = max_2);
+        result Result: float = multiply;
+    }
+    pure function "Desired Roll"<T0: float, T1: float, T2: float, T3: float, T4: float>(Strafe: T0 = 0.0, Speed: T1 = 0.0, Rocking: T2 = 0.0, Position: T3 = 0.0) -> (Result: T4 = 0.0) {
+        depth_limit 64;
+        value real = real(Value: 0.0);
+        value max = max(A: double = entry.Speed, B: double = real);
+        value multiply = multiply(A: double = entry.Strafe, B: double = max);
+        value real_2 = real(Value: 3.141592653589793);
+        value real_3 = real(Value: 180.0);
+        value divide = divide(A: double = real_2, B: double = real_3);
+        value multiply_2 = multiply(A: double = multiply, B: double = divide);
+        value real_4 = real(Value: 1.0);
+        value real_5 = real(Value: 0.0);
+        value max_2 = max(A: double = entry.Rocking, B: double = real_5);
+        value real_6 = real(Value: 0.85);
+        value min = min(A: double = max_2, B: double = real_6);
+        value real_7 = real(Value: 4.0);
+        value multiply_3 = multiply(A: double = entry.Position, B: double = real_7);
+        value cosine = cosine(Value: multiply_3);
+        value multiply_4 = multiply(A: double = min, B: double = cosine);
+        value subtract = subtract(A: double = real_4, B: double = multiply_4);
+        value multiply_5 = multiply(A: double = multiply_2, B: double = subtract);
+        result Result: float = multiply_5;
+    }
+    pure function "Roll Velocity"<T0: float, T1: float, T2: float, T3: float>(Velocity: T0 = 0.0, Gain: T1 = 0.0, Desired: T2 = 0.0) -> (Result: T3 = 0.0) {
+        depth_limit 64;
+        value multiply = multiply(A: double = entry.Gain, B: double = entry.Desired);
+        value add = add(A: double = entry.Velocity, B: double = multiply);
+        value real = real(Value: 1.0);
+        value add_2 = add(A: double = real, B: double = entry.Gain);
+        value divide = divide(A: double = add, B: double = add_2);
+        result Result: float = divide;
+    }
+    pure function "Roll Position"<T0: float, T1: float, T2: float, T3: float>(Position: T0 = 0.0, NewVelocity: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
+        depth_limit 64;
+        value real = real(Value: 0.0);
+        value max = max(A: double = entry.Delta, B: double = real);
+        value multiply = multiply(A: double = entry.NewVelocity, B: double = max);
+        value add = add(A: float = entry.Position, B: double = multiply);
+        result Result: float = add;
+    }
+    pure function "Compute Aim Basis"(Move: struct<"CF_V2"> = null, Aim: struct<"CF_V2"> = null) -> (Strafe: double = 0.0, Forward: double = 0.0) {
+        depth_limit 64;
+        value aim_strafe = "Aim Strafe"(move: struct<"CF_V2"> = entry.Move, aim: struct<"CF_V2"> = entry.Aim);
+        result Strafe: double = aim_strafe;
+        result Forward: double = (dot(entry.Move, entry.Aim));
+    }
+    pure function "Aim Strafe"<T0: struct<"CF_V2">, T1: struct<"CF_V2">, T2: float>(move: T0 = null, aim: T1 = null) -> (Result: T2 = 0.0) {
+        depth_limit 64;
+        value multiply = multiply(A: double = entry.move.y, B: double = entry.aim.x);
+        value multiply_2 = multiply(A: double = entry.move.x, B: double = entry.aim.y);
+        value subtract = subtract(A: double = multiply, B: double = multiply_2);
+        result Result: float = subtract;
+    }
+    pure function "Nose Lift Target"<T0: double, T1: float, T2: double>(forward: T0 = 0.0, reverseNoseLift: T1 = 0.0) -> (Result: T2 = 0.0) {
+        depth_limit 64;
+        value negate = negate(Value: double = entry.forward);
+        value real = real(Value: 0.0);
+        value max = max(A: double = negate, B: double = real);
+        value multiply = multiply(A: double = max, B: double = entry.reverseNoseLift);
+        value real_2 = real(Value: 3.141592653589793);
+        value real_3 = real(Value: 180.0);
+        value divide = divide(A: double = real_2, B: double = real_3);
+        value multiply_2 = multiply(A: double = multiply, B: double = divide);
+        result Result: double = multiply_2;
+    }
+    function "Advance Rolling Motion"(Delta: float = 0.0, Position: float = 0.0, Velocity: float = 0.0, Strafe: double = 0.0) -> () {
+        depth_limit 64;
+        action advance_face_roll = "Advance Face Roll"(Position: entry.Position, Velocity: entry.Velocity, Strafe: entry.Strafe, Speed: &state."Roll Speed (Degrees/Second)", Rocking: &state."Face Rocking", Acceleration: &state."Roll Acceleration (Per Second)", Delta: entry.Delta);
+        after entry {
+            advance_face_roll();
+        }
+        after advance_face_roll {
+            await set_variable<"Roll Angle">(Value: float = advance_face_roll.Position);
+            await set_variable<"Roll Velocity">(Value: float = advance_face_roll.Velocity);
+            await set_variable<"Resting Face">(Value: float = advance_face_roll.Face);
+            return();
+        }
+    }
+    function "Apply Ship Pose"(reverseNoseLift: float = 0.0, Delta: float = 0.0, Frequency: float = 0.0, Damping: float = 0.0, forward: double = 0.0) -> () {
+        depth_limit 64;
+        value nose_lift_target = "Nose Lift Target"(forward: double = entry.forward, reverseNoseLift: float = entry.reverseNoseLift);
+        action advance_damped_spring = "Advance Damped Spring"(Position: &state."Nose Position", Velocity: &state."Nose Velocity", Target: nose_lift_target, Frequency: entry.Frequency, Damping: entry.Damping, Delta: entry.Delta);
+        after entry {
+            advance_damped_spring();
+        }
+        after advance_damped_spring {
+            await set_variable<"Nose Position">(Value: float = advance_damped_spring.Position);
+            await set_variable<"Nose Velocity">(Value: float = advance_damped_spring.Velocity);
+            await set_component(Component: "GAME.GameVisualTransform", Entity: 0, Value.pitch: float = &state."Nose Position", Value.roll: float = &state."Roll Angle");
+            return();
+        }
+    }
+}

@@ -224,6 +224,8 @@ pin_value graph_pin_initial_default(const pin_spec *template_pin);
 const type_desc *graph_output_struct(const node *n, int output_index);
 /* The pin that exposes one field of the struct output at source_index. */
 pin_spec graph_field_pin(const node *n, int source_index, const type_field *field);
+/* Reveals one registered field without changing the aggregate or its wires. */
+int graph_expose_output_field(graph *g, node *n, int output_index, const char *field_name);
 int graph_expose_output_fields(graph *g, node *n, int output_index);
 int graph_hide_output_fields(graph *g, node *n, int output_index);
 const type_field *graph_output_field(const node *n, int output_index, int *source_index);

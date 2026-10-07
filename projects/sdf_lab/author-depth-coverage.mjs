@@ -15,7 +15,7 @@ mkdirSync(evidence, { recursive: true });
 function files(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = resolve(directory, entry.name);
-    return entry.isDirectory() ? files(path) : path.endsWith('.kdl') ? [path] : [];
+    return entry.isDirectory() ? files(path) : (path.endsWith('.kdl') || path.endsWith('.code')) ? [path] : [];
   });
 }
 const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -44,7 +44,7 @@ call('searchNodes', { query: 'Behavior Expression' });
 call('inspectGraph', { kind: 'shape', name: 'SdfSphere' });
 call('readAsset', { kind: 'prototype', name: 'SdfComparisonMesh' });
 const behavior = 'SdfCoverageLightCircle';
-if (!existsSync(resolve(project, 'content/behaviors', behavior + '.kdl'))) {
+if (!existsSync(resolve(project, 'content/behaviors', behavior + '.code'))) {
   call('buildGraph', { kind: 'behavior', name: behavior, create: true, owner_type: 'ecs.entity',
     description: 'A small light circles a stationary receiver every eight seconds at radius 60 and fixed elevation. Separate x/y assignments are required because GameTransform exposes scalar fields.',
     operations: [
@@ -152,7 +152,7 @@ writeFileSync(resolve(evidence, 'conditions.json'), JSON.stringify({ scenes: sce
   mode: 'Depth thickness', depth_radius: 128, thickness: 12, preserved_assets: Object.keys(runBaseline).length, original_preserved_assets: Object.keys(baseline).length,
   energy_pair: 'radius 3 intensity 6 versus radius 6 intensity 1.5; equal projected area times intensity at equal depth',
 }, null, 2) + '\n');
-console.log(`Preserved ${Object.keys(runBaseline).length} prior KDL assets including manifest.`);
+console.log(`Preserved ${Object.keys(runBaseline).length} prior code assets including manifest.`);
 const snapshots = [];
 for (const frames of [0, 120, 240, 360, 480]) {
   const snapshot = call('captureRuntimeSnapshot', { kind: 'scene', name: 'SdfDepthCoverageCircle', frames,

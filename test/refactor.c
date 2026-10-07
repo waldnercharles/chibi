@@ -1,5 +1,6 @@
 #include "assets/refactor.h"
 
+#include "assets/code_catalog.h"
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
 #include "assets/ui_document.h"
@@ -7,6 +8,7 @@
 #include "graph/document/events.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
+#include "graph/runtime/instance.h"
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -60,7 +62,36 @@ typedef struct
     game_prototype_registry registry;
 } test_project;
 
-static void add_content(test_project *p, int position, const test_asset *asset)
+static code_catalog *project_catalog(const test_project *project)
+{
+    const char **texts = NULL;
+    for (int i = 0; i < acount(project->assets); i++) {
+        apush(texts, project->assets[i].text);
+    }
+    code_catalog *catalog = code_catalog_from_texts(texts, acount(texts));
+    afree(texts);
+    return catalog;
+}
+
+static behavior_asset *catalog_graph(const code_catalog *catalog, const char *text)
+{
+    char error[256];
+    behavior_asset *asset = code_catalog_load_behavior(catalog, text, error, sizeof error);
+    if (!asset) {
+        fprintf(stderr, "refactor project source: %s\n", error);
+    }
+    return asset;
+}
+
+static behavior_asset *project_graph(const test_project *project, const char *text)
+{
+    code_catalog *catalog = project_catalog(project);
+    behavior_asset *asset = catalog_graph(catalog, text);
+    code_catalog_free(catalog);
+    return asset;
+}
+
+static void add_content(test_project *p, int position, const test_asset *asset, const code_catalog *catalog)
 {
     char error[256];
     switch (asset->kind) {
@@ -92,7 +123,7 @@ static void add_content(test_project *p, int position, const test_asset *asset)
             reference_index_add_ui(p->index, position, asset->text);
             return;
         default: {
-            behavior_asset *graphs = behavior_asset_load(asset->text);
+            behavior_asset *graphs = catalog_graph(catalog, asset->text);
             assert(graphs);
             reference_index_add_graphs(p->index, position, graphs);
             behavior_asset_free(graphs);
@@ -120,11 +151,13 @@ static void index_project(test_project *p)
                                            )
                                          : -1;
     }
+    code_catalog *catalog = project_catalog(p);
     for (int i = 0; i < acount(p->assets); i++) {
         if (positions[i] >= 0) {
-            add_content(p, positions[i], &p->assets[i]);
+            add_content(p, positions[i], &p->assets[i], catalog);
         }
     }
+    code_catalog_free(catalog);
     p->texts = xcalloc(
         (size_t)reference_index_asset_count(p->index) + 1,
         sizeof *p->texts
@@ -147,8 +180,13 @@ static test_project project_load(const char *content)
         DIR *directory = opendir(folder);
         struct dirent *item;
         /* A ui asset is its markup. */
-        const char *extension = FOLDERS[f].kind == REFERENCE_ASSET_UI ? UI_MARKUP_EXTENSION
-                                                                      : ".kdl";
+        reference_asset_kind kind = FOLDERS[f].kind;
+        const char *extension = kind == REFERENCE_ASSET_UI ? UI_MARKUP_EXTENSION
+                              : kind == REFERENCE_ASSET_BEHAVIOR ||
+                                        kind == REFERENCE_ASSET_SYSTEM ||
+                                        !strcmp(FOLDERS[f].folder, "libraries")
+                                  ? ".code"
+                                  : ".kdl";
         size_t suffix = strlen(extension);
         while (directory && (item = readdir(directory))) {
             size_t length = strlen(item->d_name);
@@ -212,14 +250,15 @@ static test_asset *asset_of(test_project *p, int position)
    events as validation links it. */
 static int errors(const test_project *p, const char *text)
 {
-    behavior_asset *asset = behavior_asset_load(text);
+    code_catalog *sources = project_catalog(p);
+    behavior_asset *asset = catalog_graph(sources, text);
     assert(asset);
     behavior_asset **catalog = NULL;
     for (int i = 0; i < acount(p->assets); i++) {
         const test_asset *other = &p->assets[i];
         if (other->text && (other->kind == REFERENCE_ASSET_EVENT ||
                             other->kind == REFERENCE_ASSET_LIBRARY)) {
-            apush(catalog, behavior_asset_load(other->text));
+            apush(catalog, catalog_graph(sources, other->text));
         }
     }
     char error[256];
@@ -240,6 +279,7 @@ static int errors(const test_project *p, const char *text)
         behavior_asset_free(catalog[i]);
     }
     afree(catalog);
+    code_catalog_free(sources);
     return count;
 }
 
@@ -350,7 +390,7 @@ static void events()
     );
 
     int harm = asset_named(&p, REFERENCE_ASSET_EVENT, "Harm");
-    behavior_asset *definition = behavior_asset_load(p.texts[harm]);
+    behavior_asset *definition = project_graph(&p, p.texts[harm]);
     behavior_variable *amount = behavior_asset_find_variable_by_name(definition, "Amount");
     reference_symbol variable = { .kind = REFERENCE_SYMBOL_VARIABLE,
                                   .asset = harm,
@@ -367,7 +407,7 @@ static void events()
     /* Send Event has Exec and Entity inputs, and Event a Then output. */
     char error[256];
     refactor_project project = view(&p);
-    definition = behavior_asset_load(p.texts[harm]);
+    definition = project_graph(&p, p.texts[harm]);
     variable.id = behavior_asset_find_variable_by_name(definition, "Points")->id;
     reference_symbol source = {
         .kind = REFERENCE_SYMBOL_VARIABLE,
@@ -585,16 +625,21 @@ static void values()
     p = project_load(ARENA);
     apush(
         p.assets,
-        (
-            (test_asset){ REFERENCE_ASSET_PROTOTYPE,
-                          xstrdup("Tile"),
-                          xstrdup("name \"Tile\"\ncomponents {\n    GAME.GameMeshParts {\n        parts \"(array)- { - { material \\\"Basalt\\\"; }; - { material \\\"Basalt\\\"; }; }\\n\"\n    }\n}\n") }
-        )
+        ((test_asset){ REFERENCE_ASSET_PROTOTYPE,
+                       xstrdup("Tile"),
+                       xstrdup(
+                           "name \"Tile\"\n"
+                           "components {\n"
+                           "    GAME.GameMeshParts parts=\"(array)- {\\n    - "
+                           "material=\\\"Basalt\\\"\\n    - "
+                           "material=\\\"Basalt\\\"\\n}\\n\"\n"
+                           "}\n"
+                       ) })
     );
     test_asset *sandbox = asset_of(&p, asset_named(&p, REFERENCE_ASSET_SCENE, "Sandbox"));
     char error[256];
     game_scene_document *scene = game_scene_document_load(sandbox->text, error, sizeof error);
-    av_value *overrides = test_read_asset_value("GameShader { material \"Basalt\"; }; ");
+    av_value *overrides = test_read_asset_value("GameShader material=\"Basalt\"\n");
     assert(game_scene_document_set_entity_components(scene, 0, overrides) == 0);
     av_value_free(overrides);
     free(sandbox->text);
@@ -624,7 +669,7 @@ static void values()
 
 static uint64_t graph_named(const test_project *p, int asset, const char *name)
 {
-    behavior_asset *graphs = behavior_asset_load(p->texts[asset]);
+    behavior_asset *graphs = project_graph(p, p->texts[asset]);
     graph *g = behavior_asset_find_graph_by_name(graphs, name);
     uint64_t id = g ? g->graph_id : 0;
     behavior_asset_free(graphs);
@@ -652,12 +697,11 @@ static void library_functions()
     test_check(
         listed && applied && calls >= 3 &&
             reference_index_count_uses(p.index, spawn, REFERENCE_USES) == calls &&
-            strstr(hull, "reference_name \"Spawn At\"") &&
-            !strstr(hull, "Spawn Prototype At"),
+            strstr(hull, "Spawn At") && !strstr(hull, "Spawn Prototype At"),
         "renaming a library function renames its calls in other assets"
     );
 
-    behavior_asset *graphs = behavior_asset_load(p.texts[library]);
+    behavior_asset *graphs = project_graph(&p, p.texts[library]);
     graph *g = behavior_asset_find_graph(graphs, spawn.id);
     node *entry = graph_node_by_id(g, g->entry_id);
     uint64_t prototype = 0;
@@ -676,7 +720,7 @@ static void library_functions()
              edits(&p, &plan, "WeaponActions");
     applied = planned && apply(&p, &plan);
     hull = p.texts[asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "HullDamage")];
-    test_check(listed && applied && strstr(hull, "Template ") && !strstr(hull, "Prototype "), "renaming a library function's parameter renames the pins of its calls in other assets");
+    test_check(listed && applied && strstr(hull, "Template:") && !strstr(hull, "Prototype:"), "renaming a library function's parameter renames the pins of its calls in other assets");
     project_free(&p);
 }
 
@@ -685,7 +729,7 @@ static void asset_members()
 {
     test_project p = project_load(ARENA);
     int weapon = asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "Weapon");
-    behavior_asset *graphs = behavior_asset_load(p.texts[weapon]);
+    behavior_asset *graphs = project_graph(&p, p.texts[weapon]);
     assert(acount(graphs->variables));
     behavior_variable *variable = &graphs->variables[0];
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_VARIABLE,
@@ -698,9 +742,7 @@ static void asset_members()
     bool planned = rename_to(&p, symbol, "Charge", &plan);
     bool listed = planned && acount(plan.edits) == 1 && edits(&p, &plan, "Weapon");
     bool applied = planned && apply(&p, &plan);
-    graphs = behavior_asset_load(
-        p.texts[asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "Weapon")]
-    );
+    graphs = project_graph(&p, p.texts[asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "Weapon")]);
     bool named = behavior_asset_find_variable_by_name(graphs, "Charge") &&
                  !behavior_asset_find_variable_by_name(graphs, old);
     behavior_asset_free(graphs);
@@ -763,7 +805,7 @@ static void deletes()
     test_check(blocked && forced, "deleting an asset refuses while it is used, and force lists what it leaves dangling");
 
     int weapon = asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "Weapon");
-    behavior_asset *graphs = behavior_asset_load(p.texts[weapon]);
+    behavior_asset *graphs = project_graph(&p, p.texts[weapon]);
     reference_symbol variable = { .kind = REFERENCE_SYMBOL_VARIABLE,
                                   .asset = weapon,
                                   .id = graphs->variables[0].id };
@@ -792,6 +834,69 @@ static void deletes()
     project_free(&p);
 }
 
+static void delete_assignment_state()
+{
+    test_project p = { 0 };
+    apush(
+        p.assets,
+        ((test_asset){
+            .kind = REFERENCE_ASSET_BEHAVIOR,
+            .name = xstrdup("State deletion"),
+            .text = xstrdup(
+                "behavior \"State deletion\" {\n"
+                " state removed: int = 7; state kept: int = 11;\n"
+                " on Step() { &state.kept += 1; &state.removed += 7; "
+                "&state.kept += 2; }\n"
+                " on Read() { &state.kept += &state.removed; }\n"
+                " on Other() { &state.kept += 4; }\n"
+                "}\n"
+            ),
+        })
+    );
+    index_project(&p);
+    behavior_asset *asset = project_graph(&p, p.texts[0]);
+    uint64_t removed = behavior_asset_find_variable_by_name(asset, "removed")->id;
+    behavior_asset_free(asset);
+    reference_symbol symbol = { .kind = REFERENCE_SYMBOL_VARIABLE, .asset = 0, .id = removed };
+    refactor_project project = view(&p);
+    refactor_plan plan;
+    char error[256];
+    bool blocked = refactor_delete(&project, symbol, false, &plan, error, sizeof error) !=
+                       0 &&
+                   !acount(plan.edits);
+    refactor_plan_free(&plan);
+    bool forced = refactor_delete(&project, symbol, true, &plan, error, sizeof error) == 0;
+    if (!forced) {
+        printf("  delete assignment state: %s\n", error);
+    }
+    bool applied = forced && apply(&p, &plan);
+    test_check(blocked && applied, "state deletion refuses references, then force emits reloadable readable source");
+    if (applied) {
+        asset = project_graph(&p, p.texts[0]);
+        behavior_variable *kept = behavior_asset_find_variable_by_name(asset, "kept");
+        bool clean = !behavior_asset_find_variable_by_name(asset, "removed") && kept;
+        behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+        assert(behavior_instance_set_backend(instance, BEHAVIOR_BYTECODE) == 0);
+        const char *events[] = { "Step", "Read", "Other" };
+        int expected[] = { 14, 14, 18 };
+        for (int i = 0; i < 3; i++) {
+            flow_error failure = { 0 };
+            flow_run *run = behavior_instance_dispatch(instance, events[i], (flow_inputs){ 0 }, &failure);
+            pin_value value;
+            clean &= run && flow_run_status(run) == FLOW_COMPLETED &&
+                     behavior_instance_get_variable(instance, kept->id, &value) == 0 &&
+                     value.i == expected[i];
+            if (run) {
+                flow_run_free(run);
+            }
+        }
+        test_check(clean, "force state deletion preserves surrounding actions and unrelated state, with reads using deletion defaults");
+        behavior_instance_destroy(instance);
+        behavior_asset_free(asset);
+    }
+    project_free(&p);
+}
+
 void test_refactor()
 {
     events();
@@ -801,4 +906,5 @@ void test_refactor()
     asset_members();
     refused();
     deletes();
+    delete_assignment_state();
 }

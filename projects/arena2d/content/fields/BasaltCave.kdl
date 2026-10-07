@@ -826,8 +826,8 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - from="7220.Result" to="7092.Distance"
         }
     }
-    - id=7101 kind="function" math_expression="hash(i, j, 13)" entry_id=7496
-    - id=7153 kind="function" math_expression="circle(x - centerX, y - centerY, select(size + 0.5, 170 + 180 * (size * 0.5 + 0.5), 90))" entry_id=9968
+    - id=7101 kind="function" math_expression="hash(i, j, 13)" expression_mode=1 entry_id=7496
+    - id=7153 kind="function" math_expression="circle(x - centerX, y - centerY, select(size + 0.5, 170 + 180 * (size * 0.5 + 0.5), 90))" expression_mode=1 entry_id=9968
     - {
         id 7511
         kind "function"
@@ -888,7 +888,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - from="7607.Result" to="7514.Distance"
         }
     }
-    - id=7525 kind="function" math_expression="select(hash(doorI, doorJ, 22) + 0.5, capsule(x, y, fromX, fromY, doorX, doorY, 65 + 55 * (hash(doorI, doorJ, 23) * 0.5 + 0.5)), 100000)" entry_id=10035
+    - id=7525 kind="function" math_expression="select(hash(doorI, doorJ, 22) + 0.5, capsule(x, y, fromX, fromY, doorX, doorY, 65 + 55 * (hash(doorI, doorJ, 23) * 0.5 + 0.5)), 100000)" expression_mode=1 entry_id=10035
     - {
         id 8273
         kind "function"
@@ -949,7 +949,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - from="8362.Result" to="8276.Distance"
         }
     }
-    - id=8287 kind="function" math_expression="select(hash(doorI, doorJ, 25), capsule(x, y, fromX, fromY, doorX, doorY, 55 + 45 * (hash(doorI, doorJ, 26) * 0.5 + 0.5)), 100000)" entry_id=10117
+    - id=8287 kind="function" math_expression="select(hash(doorI, doorJ, 25), capsule(x, y, fromX, fromY, doorX, doorY, 55 + 45 * (hash(doorI, doorJ, 26) * 0.5 + 0.5)), 100000)" expression_mode=1 entry_id=10117
     - {
         id 8972
         kind "function"
@@ -1004,7 +1004,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - from="9035.Result" to="8975.Side"
         }
     }
-    - id=8984 kind="function" math_expression="y - (fromY + clamp((x - fromX) / (doorX - fromX), 0, 1) * (doorY - fromY))" entry_id=10192
+    - id=8984 kind="function" math_expression="y - (fromY + clamp((x - fromX) / (doorX - fromX), 0, 1) * (doorY - fromY))" expression_mode=1 entry_id=10192
     - {
         id 9349
         kind "function"
@@ -1050,7 +1050,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - from="9382.Result" to="9352.Side"
         }
     }
-    - id=9358 kind="function" math_expression="y - (fromY + doorY) * 0.5" entry_id=10243
+    - id=9358 kind="function" math_expression="y - (fromY + doorY) * 0.5" expression_mode=1 entry_id=10243
     - {
         id 9459
         kind "function"
@@ -1104,8 +1104,8 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - from="9597.Result" to="9462.Length"
         }
     }
-    - id=9466 kind="function" math_expression="hash(column, 0, 32)" entry_id=9694
-    - id=9505 kind="function" math_expression="26 * hash(column, 0, 31) + 14 * noise(column / 2.7, 0, 34) + select(roll - 0.76, 50, select(-0.8 - roll, -40, 0))" entry_id=10267
+    - id=9466 kind="function" math_expression="hash(column, 0, 32)" expression_mode=1 entry_id=9694
+    - id=9505 kind="function" math_expression="26 * hash(column, 0, 31) + 14 * noise(column / 2.7, 0, 34) + select(roll - 0.76, 50, select(-0.8 - roll, -40, 0))" expression_mode=1 entry_id=10267
     - {
         id 9711
         kind "function"
@@ -1145,7 +1145,7 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - from="9841.Result" to="9714.Length"
         }
     }
-    - id=9718 kind="function" math_expression="20 * hash(column, 0, 41) + 10 * noise(column / 2.3, 0, 44) + select(hash(column, 0, 42) - 0.4, 30 + 60 * (hash(column, 0, 43) * 0.5 + 0.5), 0)" entry_id=10359
+    - id=9718 kind="function" math_expression="20 * hash(column, 0, 41) + 10 * noise(column / 2.3, 0, 44) + select(hash(column, 0, 42) - 0.4, 30 + 60 * (hash(column, 0, 43) * 0.5 + 0.5), 0)" expression_mode=1 entry_id=10359
     - {
         id 10481
         kind "function"
@@ -3205,75 +3205,75 @@ description "Unbounded columnar basalt caves: a warped chamber network joined to
             - id=20376 name="southFar" from="18571.Distance"
         }
     }
-    - id=10493 kind="function" math_expression="0.55 * radius * noise(x / 700, 0, 3)" entry_id=10887
-    - id=10608 kind="function" math_expression="x / (5 * radius)" entry_id=10745
-    - id=10669 kind="function" math_expression="arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)" entry_id=11125
-    - id=10870 kind="function" math_expression="y - arteryCenter" entry_id=19309
-    - id=10935 kind="function" math_expression="abs(tunnelSide) - radius * (1 + 0.4 * noise(x / 420, 0, 4))" entry_id=19257
-    - id=11108 kind="function" math_expression="y - pocketCenter" entry_id=19378
-    - id=11206 kind="function" math_expression="abs(pocketSide) - 0.43 * radius" entry_id=19158
-    - id=11266 kind="function" math_expression="x + 220 * noise(x / 900, y / 900, 60) + 70 * noise(x / 260, y / 260, 62)" entry_id=18747
-    - id=11492 kind="function" math_expression="y + 220 * noise(x / 900 + 17.3, y / 900 - 5.1, 61) + 70 * noise(x / 260 - 8.9, y / 260 + 3.7, 63)" entry_id=18928
-    - id=11802 kind="function" math_expression="floor(warpX / spacing)" entry_id=18718
-    - id=11910 kind="function" math_expression="floor(warpY / spacing)" entry_id=17707
-    - id=12046 kind="function" math_expression="i + 1" entry_id=13313
-    - id=12078 kind="function" math_expression="i - 1" entry_id=16525
-    - id=12110 kind="function" math_expression="j + 1" entry_id=13411
-    - id=12142 kind="function" math_expression="j - 1" entry_id=18733
-    - id=12174 kind="function" math_expression="(i + 0.5 + 0.22 * hash(i, j, 11)) * spacing" entry_id=18066
-    - id=12287 kind="function" math_expression="(j + 0.5 + 0.22 * hash(i, j, 12)) * spacing" entry_id=18514
-    - id=12400 kind="function" math_expression="(east + 0.5 + 0.22 * hash(east, j, 11)) * spacing" entry_id=15403
-    - id=12512 kind="function" math_expression="(j + 0.5 + 0.22 * hash(east, j, 12)) * spacing" entry_id=15442
-    - id=12624 kind="function" math_expression="(west + 0.5 + 0.22 * hash(west, j, 11)) * spacing" entry_id=16738
-    - id=12736 kind="function" math_expression="(j + 0.5 + 0.22 * hash(west, j, 12)) * spacing" entry_id=16777
-    - id=12848 kind="function" math_expression="(i + 0.5 + 0.22 * hash(i, north, 11)) * spacing" entry_id=17563
-    - id=12960 kind="function" math_expression="(north + 0.5 + 0.22 * hash(i, north, 12)) * spacing" entry_id=18005
-    - id=13072 kind="function" math_expression="(i + 0.5 + 0.22 * hash(i, south, 11)) * spacing" entry_id=18582
-    - id=13184 kind="function" math_expression="(south + 0.5 + 0.22 * hash(i, south, 12)) * spacing" entry_id=19030
-    - id=13296 kind="function" math_expression="east * spacing" entry_id=15481
-    - id=13338 kind="function" math_expression="(west + 1) * spacing" entry_id=16816
-    - id=13394 kind="function" math_expression="north * spacing" entry_id=18044
-    - id=13436 kind="function" math_expression="(south + 1) * spacing" entry_id=19069
-    - id=13492 kind="function" math_expression="(j + 0.5 + 0.2 * hash(i, j, 21)) * spacing" entry_id=15493
-    - id=13605 kind="function" math_expression="(j + 0.5 + 0.2 * hash(west, j, 21)) * spacing" entry_id=16835
-    - id=13717 kind="function" math_expression="(i + 0.5 + 0.2 * hash(i, j, 24)) * spacing" entry_id=17641
-    - id=13830 kind="function" math_expression="(i + 0.5 + 0.2 * hash(i, south, 24)) * spacing" entry_id=18660
-    - id=14234 kind="function" math_expression="warpY - hereY" entry_id=19991
-    - id=19087 kind="function" math_expression="min(min(min(min(min(min(min(min(min(min(chamber, eastNear), eastFar), westNear), westFar), northNear), northFar), southNear), southFar), tunnel), pocket)" entry_id=20285
-    - id=19231 kind="function" math_expression="select(tunnel - nearest, pocketSide, tunnelSide)" entry_id=19428
-    - id=19389 kind="function" math_expression="select(southNear - nearest, select(southFar - nearest, arterySide, southFarSide), southNearSide)" entry_id=19599
-    - id=19503 kind="function" math_expression="select(northNear - nearest, select(northFar - nearest, southSide, northFarSide), northNearSide)" entry_id=19667
-    - id=19628 kind="function" math_expression="select(westNear - nearest, select(westFar - nearest, northSide, westFarSide), westNearSide)" entry_id=19792
-    - id=19753 kind="function" math_expression="select(eastNear - nearest, select(eastFar - nearest, westSide, eastFarSide), eastNearSide)" entry_id=19961
-    - id=19878 kind="function" math_expression="select(chamber - nearest, eastSide, chamberSide)" entry_id=20142
-    - id=20008 kind="function" math_expression="-(nearest + roughness * 0.4 * noise(x / 170, y / 170, 0)) - select(side, ragged, hanging)" entry_id=20378
-    - id=20439 kind="function" math_expression="x + originX" entry_id=20856
-    - id=20479 kind="function" math_expression="-y" entry_id=23609
-    - id=20502 kind="function" math_expression="x / 180 + z / 420 + 1.3" entry_id=23848
-    - id=20561 kind="function" math_expression="x / 95 - z / 300 + 0.4" entry_id=23881
-    - id=20620 kind="function" math_expression="x / 1300 + z / 2100" entry_id=23914
-    - id=20672 kind="function" math_expression="x / 900 + z / 260 + 2.2" entry_id=23940
-    - id=20731 kind="function" math_expression="0.5 + 0.5 * sin(drift)" entry_id=21490
-    - id=20784 kind="function" math_expression="x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)" entry_id=21738
-    - id=20990 kind="function" math_expression="1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)" entry_id=23973
-    - id=21255 kind="function" math_expression="0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)" entry_id=24089
-    - id=21513 kind="function" math_expression="floor(columnCoord)" entry_id=24191
-    - id=21598 kind="function" math_expression="(columnCoord - floor(columnCoord) - 0.5) / columnsPerX" entry_id=23619
-    - id=21801 kind="function" math_expression="0.5 / columnsPerX" entry_id=23408
-    - id=21927 kind="function" math_expression="offset / halfWidth" entry_id=22930
-    - id=21983 kind="function" math_expression="columnsPerZ / columnsPerX" entry_id=23597
-    - id=22210 kind="function" math_expression="z - lean * offset" entry_id=22823
-    - id=22280 kind="function" math_expression="26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))" entry_id=23448
-    - id=22353 kind="function" math_expression="0.5 + 0.5 * sin(column * 1.93716 + 1.1)" entry_id=22994
-    - id=22412 kind="function" math_expression="jointSpacing * jointPhase" entry_id=23292
-    - id=22518 kind="function" math_expression="sin(column * 3.30119 + 2.2)" entry_id=24201
-    - id=22591 kind="function" math_expression="sin(column * 0.83261 + 4.4)" entry_id=24225
-    - id=22664 kind="function" math_expression="(along + 0.45 * jointSpacing * sin(along / (0.9 * jointSpacing) + 7 * jointPhase) - start - 0.2 * tilt * offset - 3 * bow * across * across) / jointSpacing" entry_id=23157
-    - id=23031 kind="function" math_expression="floor(blockCoord)" entry_id=23356
-    - id=23140 kind="function" math_expression="blockCoord - block" entry_id=23500
-    - id=23262 kind="function" math_expression="start + (block + 0.5) * jointSpacing" entry_id=23658
-    - id=23365 kind="function" math_expression="min(min(blockT, 1 - blockT) * jointSpacing, halfWidth - abs(offset))" entry_id=23773
-    - id=23511 kind="function" math_expression="x - offset - lean * (center - z)" entry_id=23690
-    - id=23644 kind="function" math_expression="-center" entry_id=23717
-    - id=23744 kind="function" math_expression="select(clearance, min(clearance, edge), max(clearance, -edge))" entry_id=23809
+    - id=10493 kind="function" math_expression="0.55 * radius * noise(x / 700, 0, 3)" expression_mode=1 entry_id=10887
+    - id=10608 kind="function" math_expression="x / (5 * radius)" expression_mode=1 entry_id=10745
+    - id=10669 kind="function" math_expression="arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)" expression_mode=1 entry_id=11125
+    - id=10870 kind="function" math_expression="y - arteryCenter" expression_mode=1 entry_id=19309
+    - id=10935 kind="function" math_expression="abs(tunnelSide) - radius * (1 + 0.4 * noise(x / 420, 0, 4))" expression_mode=1 entry_id=19257
+    - id=11108 kind="function" math_expression="y - pocketCenter" expression_mode=1 entry_id=19378
+    - id=11206 kind="function" math_expression="abs(pocketSide) - 0.43 * radius" expression_mode=1 entry_id=19158
+    - id=11266 kind="function" math_expression="x + 220 * noise(x / 900, y / 900, 60) + 70 * noise(x / 260, y / 260, 62)" expression_mode=1 entry_id=18747
+    - id=11492 kind="function" math_expression="y + 220 * noise(x / 900 + 17.3, y / 900 - 5.1, 61) + 70 * noise(x / 260 - 8.9, y / 260 + 3.7, 63)" expression_mode=1 entry_id=18928
+    - id=11802 kind="function" math_expression="floor(warpX / spacing)" expression_mode=1 entry_id=18718
+    - id=11910 kind="function" math_expression="floor(warpY / spacing)" expression_mode=1 entry_id=17707
+    - id=12046 kind="function" math_expression="i + 1" expression_mode=1 entry_id=13313
+    - id=12078 kind="function" math_expression="i - 1" expression_mode=1 entry_id=16525
+    - id=12110 kind="function" math_expression="j + 1" expression_mode=1 entry_id=13411
+    - id=12142 kind="function" math_expression="j - 1" expression_mode=1 entry_id=18733
+    - id=12174 kind="function" math_expression="(i + 0.5 + 0.22 * hash(i, j, 11)) * spacing" expression_mode=1 entry_id=18066
+    - id=12287 kind="function" math_expression="(j + 0.5 + 0.22 * hash(i, j, 12)) * spacing" expression_mode=1 entry_id=18514
+    - id=12400 kind="function" math_expression="(east + 0.5 + 0.22 * hash(east, j, 11)) * spacing" expression_mode=1 entry_id=15403
+    - id=12512 kind="function" math_expression="(j + 0.5 + 0.22 * hash(east, j, 12)) * spacing" expression_mode=1 entry_id=15442
+    - id=12624 kind="function" math_expression="(west + 0.5 + 0.22 * hash(west, j, 11)) * spacing" expression_mode=1 entry_id=16738
+    - id=12736 kind="function" math_expression="(j + 0.5 + 0.22 * hash(west, j, 12)) * spacing" expression_mode=1 entry_id=16777
+    - id=12848 kind="function" math_expression="(i + 0.5 + 0.22 * hash(i, north, 11)) * spacing" expression_mode=1 entry_id=17563
+    - id=12960 kind="function" math_expression="(north + 0.5 + 0.22 * hash(i, north, 12)) * spacing" expression_mode=1 entry_id=18005
+    - id=13072 kind="function" math_expression="(i + 0.5 + 0.22 * hash(i, south, 11)) * spacing" expression_mode=1 entry_id=18582
+    - id=13184 kind="function" math_expression="(south + 0.5 + 0.22 * hash(i, south, 12)) * spacing" expression_mode=1 entry_id=19030
+    - id=13296 kind="function" math_expression="east * spacing" expression_mode=1 entry_id=15481
+    - id=13338 kind="function" math_expression="(west + 1) * spacing" expression_mode=1 entry_id=16816
+    - id=13394 kind="function" math_expression="north * spacing" expression_mode=1 entry_id=18044
+    - id=13436 kind="function" math_expression="(south + 1) * spacing" expression_mode=1 entry_id=19069
+    - id=13492 kind="function" math_expression="(j + 0.5 + 0.2 * hash(i, j, 21)) * spacing" expression_mode=1 entry_id=15493
+    - id=13605 kind="function" math_expression="(j + 0.5 + 0.2 * hash(west, j, 21)) * spacing" expression_mode=1 entry_id=16835
+    - id=13717 kind="function" math_expression="(i + 0.5 + 0.2 * hash(i, j, 24)) * spacing" expression_mode=1 entry_id=17641
+    - id=13830 kind="function" math_expression="(i + 0.5 + 0.2 * hash(i, south, 24)) * spacing" expression_mode=1 entry_id=18660
+    - id=14234 kind="function" math_expression="warpY - hereY" expression_mode=1 entry_id=19991
+    - id=19087 kind="function" math_expression="min(min(min(min(min(min(min(min(min(min(chamber, eastNear), eastFar), westNear), westFar), northNear), northFar), southNear), southFar), tunnel), pocket)" expression_mode=1 entry_id=20285
+    - id=19231 kind="function" math_expression="select(tunnel - nearest, pocketSide, tunnelSide)" expression_mode=1 entry_id=19428
+    - id=19389 kind="function" math_expression="select(southNear - nearest, select(southFar - nearest, arterySide, southFarSide), southNearSide)" expression_mode=1 entry_id=19599
+    - id=19503 kind="function" math_expression="select(northNear - nearest, select(northFar - nearest, southSide, northFarSide), northNearSide)" expression_mode=1 entry_id=19667
+    - id=19628 kind="function" math_expression="select(westNear - nearest, select(westFar - nearest, northSide, westFarSide), westNearSide)" expression_mode=1 entry_id=19792
+    - id=19753 kind="function" math_expression="select(eastNear - nearest, select(eastFar - nearest, westSide, eastFarSide), eastNearSide)" expression_mode=1 entry_id=19961
+    - id=19878 kind="function" math_expression="select(chamber - nearest, eastSide, chamberSide)" expression_mode=1 entry_id=20142
+    - id=20008 kind="function" math_expression="-(nearest + roughness * 0.4 * noise(x / 170, y / 170, 0)) - select(side, ragged, hanging)" expression_mode=1 entry_id=20378
+    - id=20439 kind="function" math_expression="x + originX" expression_mode=1 entry_id=20856
+    - id=20479 kind="function" math_expression="-y" expression_mode=1 entry_id=23609
+    - id=20502 kind="function" math_expression="x / 180 + z / 420 + 1.3" expression_mode=1 entry_id=23848
+    - id=20561 kind="function" math_expression="x / 95 - z / 300 + 0.4" expression_mode=1 entry_id=23881
+    - id=20620 kind="function" math_expression="x / 1300 + z / 2100" expression_mode=1 entry_id=23914
+    - id=20672 kind="function" math_expression="x / 900 + z / 260 + 2.2" expression_mode=1 entry_id=23940
+    - id=20731 kind="function" math_expression="0.5 + 0.5 * sin(drift)" expression_mode=1 entry_id=21490
+    - id=20784 kind="function" math_expression="x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)" expression_mode=1 entry_id=21738
+    - id=20990 kind="function" math_expression="1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)" expression_mode=1 entry_id=23973
+    - id=21255 kind="function" math_expression="0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)" expression_mode=1 entry_id=24089
+    - id=21513 kind="function" math_expression="floor(columnCoord)" expression_mode=1 entry_id=24191
+    - id=21598 kind="function" math_expression="(columnCoord - floor(columnCoord) - 0.5) / columnsPerX" expression_mode=1 entry_id=23619
+    - id=21801 kind="function" math_expression="0.5 / columnsPerX" expression_mode=1 entry_id=23408
+    - id=21927 kind="function" math_expression="offset / halfWidth" expression_mode=1 entry_id=22930
+    - id=21983 kind="function" math_expression="columnsPerZ / columnsPerX" expression_mode=1 entry_id=23597
+    - id=22210 kind="function" math_expression="z - lean * offset" expression_mode=1 entry_id=22823
+    - id=22280 kind="function" math_expression="26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))" expression_mode=1 entry_id=23448
+    - id=22353 kind="function" math_expression="0.5 + 0.5 * sin(column * 1.93716 + 1.1)" expression_mode=1 entry_id=22994
+    - id=22412 kind="function" math_expression="jointSpacing * jointPhase" expression_mode=1 entry_id=23292
+    - id=22518 kind="function" math_expression="sin(column * 3.30119 + 2.2)" expression_mode=1 entry_id=24201
+    - id=22591 kind="function" math_expression="sin(column * 0.83261 + 4.4)" expression_mode=1 entry_id=24225
+    - id=22664 kind="function" math_expression="(along + 0.45 * jointSpacing * sin(along / (0.9 * jointSpacing) + 7 * jointPhase) - start - 0.2 * tilt * offset - 3 * bow * across * across) / jointSpacing" expression_mode=1 entry_id=23157
+    - id=23031 kind="function" math_expression="floor(blockCoord)" expression_mode=1 entry_id=23356
+    - id=23140 kind="function" math_expression="blockCoord - block" expression_mode=1 entry_id=23500
+    - id=23262 kind="function" math_expression="start + (block + 0.5) * jointSpacing" expression_mode=1 entry_id=23658
+    - id=23365 kind="function" math_expression="min(min(blockT, 1 - blockT) * jointSpacing, halfWidth - abs(offset))" expression_mode=1 entry_id=23773
+    - id=23511 kind="function" math_expression="x - offset - lean * (center - z)" expression_mode=1 entry_id=23690
+    - id=23644 kind="function" math_expression="-center" expression_mode=1 entry_id=23717
+    - id=23744 kind="function" math_expression="select(clearance, min(clearance, edge), max(clearance, -edge))" expression_mode=1 entry_id=23809
 }

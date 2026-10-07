@@ -263,7 +263,10 @@ int editor_set_behavior_expression(editor *e, node *call, const char *source, be
         return 0;
     }
     behavior_asset *before = ed_snapshot(e);
-    if (behavior_expression_set(e->asset, call, source, error) != 0) {
+    if (behavior_expression_set(e->asset, call, source, error) != 0 ||
+        behavior_expression_refresh_mode(e->asset, call, GRAPH_EXPRESSION_NONE, error) !=
+            0) {
+        ed_adopt_behavior_asset(e, before);
         behavior_asset_free(before);
         return -1;
     }
@@ -299,7 +302,9 @@ int editor_rewire_behavior_expression(
 {
     behavior_asset *before = ed_snapshot(e);
     if (behavior_expression_rename_input(e->asset, call, from, to, error) != 0 ||
-        behavior_expression_set(e->asset, call, source, error) != 0) {
+        behavior_expression_set(e->asset, call, source, error) != 0 ||
+        behavior_expression_refresh_mode(e->asset, call, GRAPH_EXPRESSION_NONE, error) !=
+            0) {
         ed_adopt_behavior_asset(e, before);
         behavior_asset_free(before);
         return -1;

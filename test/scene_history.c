@@ -175,8 +175,8 @@ static void actor_history()
         scene_history_push(history, unrelated, (GameTransform){ 50, 60 }, (GameTransform){ 70, 80 })
     );
     char name[] = "Actor", prototype[] = "Player";
-    av_value *base = test_read_asset_value("marker \"base\"; ");
-    av_value *state = test_read_asset_value("marker \"state\"; ");
+    av_value *base = test_read_asset_value("marker \"base\"\n");
+    av_value *state = test_read_asset_value("marker \"state\"\n");
     scene_actor_edit actor = { .identity = 123,
                                .index = 2,
                                .name = name,
@@ -394,10 +394,7 @@ static void component_override_roundtrip()
     game_prototype *base = game_prototype_load(
         "name \"Base\"\n"
         "components {\n"
-        "    GameTransform {\n"
-        "        x 1\n"
-        "        y 2\n"
-        "    }\n"
+        "    GameTransform x=1 y=2\n"
         "}\n",
         &registry,
         error,
@@ -406,7 +403,10 @@ static void component_override_roundtrip()
     assert(base);
     ecs_entity entity;
     assert(game_prototype_spawn_components(base, world, &entity, error, sizeof error) == 0);
-    av_value *changes = test_read_asset_value("GameTransform #null\nGameHealth {\n    current 73\n    maximum 100\n}\n");
+    av_value *changes = test_read_asset_value(
+        "GameTransform #null\n"
+        "GameHealth current=73 maximum=100\n"
+    );
     assert(
         game_prototype_apply_components_value(world, entity, changes, &registry, &owned_strings, error, sizeof error) ==
         0

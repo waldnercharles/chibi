@@ -1,6 +1,7 @@
 #include "graph/document/library.h"
 #include "graph/runtime/runtime.h"
 #include "runtime/scenes/prototype_preview.h"
+#include "support/asset_text.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -159,8 +160,9 @@ static void library_contract_checks()
         "isolated preview owns the shared function catalog"
     );
     game_prototype *prototype = game_prototype_load(
-        "name \"LibraryActor\"; components { }; (array)graphs { - "
-        "\"LibraryConsumer\"; }; ",
+        "name \"LibraryActor\"\n"
+        "(object)components\n"
+        "(array)graphs \"LibraryConsumer\"\n",
         &registry,
         error,
         sizeof error
@@ -1029,20 +1031,27 @@ void run_runtime_execution_checks()
         graph_connect_data(&gj, condition, 0, branch, 1);
         graph_set_node_presentation(&gj, condition, NODE_PRESENTATION_EXPANDED);
         char *json = graph_save(&gj);
+        av_doc *saved = json ? av_doc_read(json, NULL, 0) : NULL;
+        av_value *document = av_doc_root(saved);
+        av_value *saved_edge = av_arr_get(av_obj_get(document, "edges"), 0);
+        av_value *saved_event = av_arr_get(av_obj_get(document, "nodes"), 0);
+        const char *from = av_get_str(av_obj_get(saved_edge, "from"));
+        const char *reference = av_get_str(av_obj_get(saved_event, "reference_name"));
         test_check(
-            json && strstr(json, "version 3") &&
-                strstr(json, "from=\"1.Then\"") && strstr(json, "order=12") &&
-                (strstr(json, "reference_name \"Saved\"") ||
-                 strstr(json, "reference_name=\"Saved\"")),
+            saved && av_get_uint(av_obj_get(document, "version")) == 3 &&
+                from && !strcmp(from, "1.Then") &&
+                av_get_sint(av_obj_get(saved_edge, "order")) == 12 &&
+                reference && !strcmp(reference, "Saved"),
             "v3 KDL names flow endpoints by pin"
         );
+        av_doc_free(saved);
         graph *loaded = json ? graph_load(json) : NULL;
         test_check(
             loaded && acount(loaded->edges) == 2 &&
                 loaded->edges[0].kind == GRAPH_EDGE_EXEC &&
                 graph_event_name(loaded->nodes[0]) &&
                 strcmp(graph_event_name(loaded->nodes[0]), "Saved") == 0,
-            "v3 KDL loads flow metadata"
+            "v3 code loads flow metadata"
         );
         if (loaded) {
             graph_free(loaded);
@@ -1077,12 +1086,19 @@ void run_runtime_execution_checks()
         graph_free(&gj);
 
         test_check(
-            graph_load("version 2; (array)nodes { }; (array)edges { }; ") == NULL &&
+            graph_load(
+                "version 2\n"
+                "(array)nodes\n"
+                "(array)edges\n"
+            ) == NULL &&
                 strstr(graph_last_error(), "version"),
             "v2 documents are rejected"
         );
         test_check(
-            graph_load("(array)nodes { }; (array)edges { }; ") == NULL &&
+            graph_load(
+                "(array)nodes\n"
+                "(array)edges\n"
+            ) == NULL &&
                 strstr(graph_last_error(), "version"),
             "versionless documents are rejected"
         );

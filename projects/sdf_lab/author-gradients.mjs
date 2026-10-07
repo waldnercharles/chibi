@@ -14,7 +14,7 @@ mkdirSync(evidence, { recursive: true });
 function files(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = resolve(directory, entry.name);
-    return entry.isDirectory() ? files(path) : path.endsWith('.kdl') ? [path] : [];
+    return entry.isDirectory() ? files(path) : (path.endsWith('.kdl') || path.endsWith('.code')) ? [path] : [];
   });
 }
 const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -82,4 +82,4 @@ scene('SdfAnalyticGradientFallback', [
 const run = spawnSync(controller, ['--project-root', project, '--format'], { cwd: engine, encoding: 'utf8' });
 if (run.status !== 0) throw Error(run.stderr || run.stdout);
 for (const [path, hash] of Object.entries(baseline)) if (digest(path) !== hash) throw Error(`Existing asset changed: ${path}`);
-console.log(`Preserved ${Object.keys(baseline).length} prior KDL assets.`);
+console.log(`Preserved ${Object.keys(baseline).length} prior code assets.`);

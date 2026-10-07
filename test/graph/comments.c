@@ -48,25 +48,31 @@ static void check_node_comments()
     behavior_asset *asset = behavior_asset_new("Lines");
     node *noted = graph_add_node(asset->graph, registry_node_by_name("Add"));
     graph_set_node_comment(asset->graph, noted, "First line\nSecond: line", false);
-    char *text = behavior_asset_save(asset), error[256];
-    char *kdl = text ? asset_text_to_disk(text, error, sizeof error) : NULL;
-    behavior_asset *reread = kdl ? behavior_asset_load(kdl) : NULL;
+    char *text = behavior_asset_save(asset);
+    char *code = text ? strdup(text) : NULL;
+    behavior_asset *reread = code ? behavior_asset_load(code) : NULL;
     char *resaved = reread ? behavior_asset_save(reread) : NULL;
-    char *reyaml = resaved ? asset_text_to_disk(resaved, error, sizeof error) : NULL;
+    char *reyaml = resaved ? strdup(resaved) : NULL;
     node *renoted = reread ? graph_node_by_id(reread->graph, noted->id) : NULL;
     test_check(
         renoted && !strcmp(renoted->comment, "First line\nSecond: line") &&
-            reyaml && !strcmp(kdl, reyaml),
+            reyaml && !strcmp(code, reyaml),
         "comments: comment lines round-trip through the asset file"
     );
     free(text);
-    free(kdl);
+    free(code);
     free(resaved);
     free(reyaml);
     behavior_asset_free(reread);
     behavior_asset_free(asset);
 
-    graph *bad = graph_load("\"version\" 1; \"id_counter\" 3; (array)\"nodes\" { \"-\" { \"id\" 1; \"type\" \"Real\"; \"comment\" 7; }; }; ");
+    graph *bad = graph_load(
+        "version 1\n"
+        "id_counter 3\n"
+        "(array)nodes {\n"
+        "    - id=1 type=\"Real\" comment=7\n"
+        "}\n"
+    );
     test_check(!bad, "comments: a comment that is not a string is rejected");
 }
 

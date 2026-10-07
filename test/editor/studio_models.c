@@ -35,9 +35,10 @@
 #define STRINGIFY(value) STRINGIFY_INNER(value)
 #define PROJECT_VERSION_TEXT STRINGIFY(CHIBI_PROJECT_VERSION)
 #define MANIFEST                                                               \
-    "version " PROJECT_VERSION_TEXT                                            \
-    "\nname \"Fresh\"\ncontent \"content\"\nstart_scene "                      \
-    "\"scenes/Main.kdl\"\n"
+    "version " PROJECT_VERSION_TEXT "\n"                                       \
+    "name \"Fresh\"\n"                                                         \
+    "content \"content\"\n"                                                    \
+    "start_scene \"scenes/Main.kdl\"\n"
 
 typedef struct
 {

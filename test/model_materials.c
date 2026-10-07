@@ -1,6 +1,7 @@
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
 #include "render/shader_catalog.h"
+#include "runtime/behaviors/live.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -691,7 +692,7 @@ static void flattened_parameter_limit()
     snprintf(
         text,
         sizeof text,
-        "(array)\"material.%s.Color0\" 0 0.5 0.25;\n",
+        "(array)\"material.%s.Color0\" 0 0.5 0.25\n",
         applied.name
     );
     assert(render_shader_model_material_snapshot(
@@ -719,7 +720,7 @@ static void flattened_parameter_limit()
         index,
         NULL,
         (ecs_entity){ 0 },
-        "(array)Color0 0 0 0;\n",
+        "(array)Color0 0 0 0\n",
         0,
         bindings,
         parameters,
@@ -844,7 +845,7 @@ static void scoped_namespace_collision()
     assert(render_shader_model_material_slot(index, 0, &applied));
     char lookup[1024], overrides[1200];
     snprintf(lookup, sizeof lookup, "%s.Color0", applied.name);
-    snprintf(overrides, sizeof overrides, "(array)\"material.%s\" 0 0.5 0.25;\n", lookup);
+    snprintf(overrides, sizeof overrides, "(array)\"material.%s\" 0 0.5 0.25\n", lookup);
     float bindings[MODEL_MATERIAL_SLOT_MAX + 1][4], parameters[32][4];
     render_shader_set resources = { 0 };
     assert(render_shader_model_material_snapshot(
@@ -895,8 +896,56 @@ static void scoped_namespace_collision()
     render_shader_catalog_clear();
 }
 
+static void live_rename_updates_applied_sources()
+{
+    ecs_world *ecs = ecs_world_new();
+    game_live_world *world = game_live_world_new(ecs);
+    behavior_asset *paint = material("LiveRenamePaint", 1, 0, 0);
+    game_live_definition *paint_definition = game_live_definition_new(paint->name, paint);
+    assert(!game_live_add_definition(world, paint_definition));
+    behavior_asset *base = model("LiveRenameBase");
+    node *body = part(base->graph, "Body", 2);
+    node *paint_slot = slot(base->graph, "Paint", paint->name);
+    connect(base->graph, paint_slot, body, 1);
+    publish(base->graph, body);
+    game_live_definition *base_definition = game_live_definition_new(base->name, base);
+    assert(!game_live_add_definition(world, base_definition));
+    behavior_asset *parent = model("LiveRenameParent");
+    node *instance = graph_add_node(parent->graph, &NODE_ModelInstance);
+    instance->reference_asset = graph_own_str(parent->graph, base->name, strlen(base->name));
+    pin_spec override = { .name = "Paint",
+                          .type = PIN_STR,
+                          .type_name = "MaterialAsset",
+                          .declaration_id = paint_slot->id,
+                          .default_value = { .type = PIN_STR,
+                                             .type_name = "MaterialAsset",
+                                             .str = paint->name } };
+    assert(graph_add_pin(parent->graph, instance, false, &override) == 0);
+    publish(parent->graph, instance);
+    uint64_t instance_id = instance->id;
+    game_live_definition *parent_definition = game_live_definition_new(parent->name, parent);
+    assert(!game_live_add_definition(world, parent_definition));
+    assert(!game_live_rename_definition(world, "LiveRenameBase", "LiveRenamedBase"));
+    assert(!strcmp(base_definition->working->name, "LiveRenamedBase"));
+    assert(!strcmp(base_definition->applied->name, "LiveRenamedBase"));
+    assert(!strcmp(instance->reference_asset, "LiveRenamedBase"));
+    node *applied_instance = graph_node_by_id(parent_definition->applied->graph, instance_id);
+    assert(applied_instance && !strcmp(applied_instance->reference_asset, "LiveRenamedBase"));
+    assert(!game_live_rename_definition(world, "LiveRenamePaint", "LiveRenamedPaint"));
+    assert(!strcmp(paint_definition->working->name, "LiveRenamedPaint"));
+    assert(!strcmp(paint_definition->applied->name, "LiveRenamedPaint"));
+    assert(!strcmp(instance->input_pins[0].default_value.str, "LiveRenamedPaint"));
+    assert(!strcmp(applied_instance->input_pins[0].default_value.str, "LiveRenamedPaint"));
+    assert(!game_live_remove_definition(world, "LiveRenameParent"));
+    assert(!game_live_remove_definition(world, "LiveRenamedBase"));
+    assert(!game_live_remove_definition(world, "LiveRenamedPaint"));
+    game_live_world_free(world);
+    ecs_world_free(ecs);
+}
+
 void test_model_materials()
 {
+    live_rename_updates_applied_sources();
     material_coordinate_inputs();
     csg_ownership();
     transformed_part_coordinates();

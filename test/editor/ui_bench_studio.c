@@ -685,7 +685,7 @@ static void print_lines(editor *graph, int count)
             text,
             sizeof text,
             "warning: Player hit \"Wall %d\" at (%d.5, -%d.25) for %d damage "
-            "in content/behaviors/Weapon.kdl",
+            "in content/behaviors/Weapon.code",
             printed % 97,
             printed,
             printed % 13,

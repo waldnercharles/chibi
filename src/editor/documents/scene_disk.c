@@ -54,20 +54,15 @@ static scene_document_tab *tab_at(
 static app_disk_result add_definition(app_scene_authoring *scene, const char *path)
 {
     char *json = read_scene_file(path);
-    behavior_asset *asset = json ? behavior_asset_load(json) : NULL;
+    char error[256] = "";
+    behavior_asset *asset = scene_graph_source_path(scene, json, path, error, sizeof error);
     free(json);
     game_live_definition *definition = asset
                                          ? game_live_definition_new(asset->name, asset)
                                          : NULL;
     if (!definition) {
         behavior_asset_free(asset);
-        snprintf(
-            scene->message,
-            sizeof scene->message,
-            "Could not load %s: %s",
-            content_basename(path),
-            graph_last_error()
-        );
+        snprintf(scene->message, sizeof scene->message, "Could not load %s: %s", content_basename(path), error);
         return APP_DISK_FAILED;
     }
     game_live_definition_set_path(definition, path);
@@ -118,8 +113,12 @@ static app_disk_result sync_system(app_scene_authoring *scene, const char *path,
         return APP_DISK_UNSAVED;
     }
     char *json = read_scene_file(path);
-    behavior_asset *asset = json ? behavior_asset_load(json) : NULL;
     char error[256] = "not a system";
+    av_doc *document = json ? scene_code_document_path(scene, json, path, error, sizeof error)
+                            : NULL;
+    behavior_asset *asset = document
+                              ? behavior_asset_from_value(av_doc_root(document))
+                              : NULL;
     bool registered = asset &&
                       game_live_register_system(scene->live, asset->name, json, error, sizeof error) ==
                           0 &&
@@ -132,24 +131,24 @@ static app_disk_result sync_system(app_scene_authoring *scene, const char *path,
                                                     ) == 0);
     behavior_asset_free(asset);
     if (!registered) {
+        av_doc_free(document);
         free(json);
         snprintf(scene->message, sizeof scene->message, "Could not reload %s: %s", content_basename(path), error);
         return APP_DISK_FAILED;
     }
     if (scene->system_path && !strcmp(scene->system_path, path)) {
+        av_doc_free(document);
         free(json);
         return load_system_asset(scene, path, true) == 0 ? APP_DISK_RELOADED
                                                          : APP_DISK_FAILED;
     }
     if (tab) {
-        av_doc *native = asset_text_read(json, error, sizeof error);
-        assert(native);
         av_value_free(tab->system_saved);
-        tab->system_saved = av_value_copy(av_doc_root(native));
+        tab->system_saved = av_value_copy(av_doc_root(document));
         av_value_free(tab->system_value);
-        tab->system_value = av_value_copy(av_doc_root(native));
-        av_doc_free(native);
+        tab->system_value = av_value_copy(av_doc_root(document));
     }
+    av_doc_free(document);
     free(json);
     snprintf(scene->message, sizeof scene->message, "Reloaded %s.", content_basename(path));
     return APP_DISK_RELOADED;
@@ -325,7 +324,27 @@ app_disk_change *app_scene_authoring_sync_disk(app_scene_authoring *scene, doubl
     if (!scene->content_root) {
         return changes;
     }
-    char **changed = tree_watch_poll(&scene->disk, scene->content_root, ASSET_EXTENSION, now);
+    char **changed = tree_watch_poll(&scene->disk, scene->content_root, DECLARATIVE_ASSET_EXTENSION, now);
+    char **code_changed = tree_watch_poll(&scene->code_disk, scene->content_root, CODE_ASSET_EXTENSION, now);
+    for (int i = 0; i < acount(code_changed); i++) {
+        apush(changed, code_changed[i]);
+    }
+    afree(code_changed);
+    char **metadata_changed = tree_watch_poll(
+        &scene->code_metadata_disk,
+        scene->content_root,
+        CODE_ASSET_METADATA_EXTENSION,
+        now
+    );
+    for (int i = 0; i < acount(metadata_changed); i++) {
+        char *path = metadata_changed[i];
+        path[strlen(path) - strlen(".meta")] = '\0';
+        struct stat info;
+        if (stat(path, &info) == 0 && S_ISREG(info.st_mode)) {
+            push_unique(&changed, path);
+        }
+    }
+    tree_watch_changes_free(metadata_changed);
     if (!changed && (!acount(scene->disk_pending) || runtime_session(scene))) {
         return changes;
     }
@@ -465,13 +484,14 @@ static void move_prototype(app_scene_authoring *scene, scene_prototype_asset *as
 static void move_definition(app_scene_authoring *scene, game_live_definition *definition, const char *to)
 {
     char *json = read_scene_file(to);
-    behavior_asset *loaded = json ? behavior_asset_load(json) : NULL;
+    char error[256] = "";
+    behavior_asset *loaded = scene_graph_source_path(scene, json, to, error, sizeof error);
     free(json);
     char *from = xstrdup(definition->name);
     char *name = loaded ? xstrdup(loaded->name) : NULL;
     behavior_asset_free(loaded);
     if (!name || game_live_rename_definition(scene->live, from, name) != 0) {
-        snprintf(scene->message, sizeof scene->message, "Could not load %s.", content_basename(to));
+        snprintf(scene->message, sizeof scene->message, "Could not load %s: %s", content_basename(to), error);
         free(from);
         free(name);
         return;
@@ -567,7 +587,9 @@ static bool named_file(const char *path, const char *name)
 {
     const char *base = content_basename(path);
     size_t length = strlen(name);
-    return !strncmp(base, name, length) && !strcmp(base + length, ASSET_EXTENSION);
+    return !strncmp(base, name, length) &&
+           (!strcmp(base + length, DECLARATIVE_ASSET_EXTENSION) ||
+            !strcmp(base + length, CODE_ASSET_EXTENSION));
 }
 
 /* A file that comes back, as Undo brings back a deleted one, takes up what
@@ -610,14 +632,35 @@ static void forget_file(app_scene_authoring *scene, const char *from)
     }
 }
 
+void scene_disk_note(app_scene_authoring *scene, const char *path)
+{
+    size_t length = strlen(path);
+    size_t metadata_length = strlen(CODE_ASSET_METADATA_EXTENSION);
+    if (length > metadata_length &&
+        !strcmp(path + length - metadata_length, CODE_ASSET_METADATA_EXTENSION)) {
+        tree_watch_note(&scene->code_metadata_disk, path);
+        return;
+    }
+    const char *extension = strrchr(path, '.');
+    if (extension && !strcmp(extension, CODE_ASSET_EXTENSION)) {
+        tree_watch_note(&scene->code_disk, path);
+        char *metadata = xmalloc(length + sizeof ".meta");
+        snprintf(metadata, length + sizeof ".meta", "%s.meta", path);
+        tree_watch_note(&scene->code_metadata_disk, metadata);
+        free(metadata);
+        return;
+    }
+    tree_watch_note(&scene->disk, path);
+}
+
 void scene_disk_follow(app_scene_authoring *scene, const scene_move *moves, int count)
 {
     for (int i = 0; i < count; i++) {
         if (moves[i].from) {
-            tree_watch_note(&scene->disk, moves[i].from);
+            scene_disk_note(scene, moves[i].from);
         }
         if (moves[i].to) {
-            tree_watch_note(&scene->disk, moves[i].to);
+            scene_disk_note(scene, moves[i].to);
         }
     }
     content_refresh(scene);

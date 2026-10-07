@@ -41,6 +41,6 @@ description "Rounded box: name the offset before computing its distance."
             - from="75.Result" to="1.Distance"
         }
     }
-    - id=7 kind="function" math_expression="abs(p) - vec3(27, 23, 27)" entry_id=8
-    - id=35 kind="function" math_expression="length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0) - 6" entry_id=79
+    - id=7 kind="function" math_expression="abs(p) - vec3(27, 23, 27)" expression_mode=1 entry_id=8
+    - id=35 kind="function" math_expression="length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0) - 6" expression_mode=1 entry_id=79
 }

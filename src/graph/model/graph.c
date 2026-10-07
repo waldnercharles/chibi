@@ -5,6 +5,7 @@
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/value_array.h"
@@ -365,6 +366,16 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
             conversion = splat;
         }
     }
+    /* A generated expression's concrete Result is its callee's return ABI.
+       A consumer coerces that value; only an explicit pin edit changes it. */
+    bool expression_result = from->desc == &NODE_BehaviorExpression &&
+                             out->container == PIN_CONTAINER_SINGLE &&
+                             out->type >= PIN_I8 && out->type <= PIN_F64;
+    if (!conversion && expression_result && !(in->flags & PIN_FLAG_WILDCARD) &&
+        in->container == PIN_CONTAINER_SINGLE && in->type >= PIN_I8 &&
+        in->type <= PIN_F64 && !pin_compatible(out, in)) {
+        conversion = conversion_for_pins(out, in);
+    }
     int numeric_wildcard = (in->flags & PIN_FLAG_WILDCARD) && graph_numeric_node(to);
     if (!conversion && numeric_wildcard) {
         conversion = graph_numeric_unwrap(out);
@@ -377,8 +388,11 @@ int graph_connect_data_conversion(graph *g, node *from, int from_pin, node *to, 
         (conversion && !conversion_matches_pins(out, target, conversion))) {
         return -1;
     }
-    if (!conversion && (out->flags & PIN_FLAG_WILDCARD) &&
-        !(in->flags & PIN_FLAG_WILDCARD)) {
+    /* Compatible storage and nominal aliases already carry the requested value.
+       Preserve the producer's authored type instead of inferring it backwards. */
+    if (!conversion && !expression_result &&
+        (out->type != in->type || !pin_compatible(out, in)) &&
+        (out->flags & PIN_FLAG_WILDCARD) && !(in->flags & PIN_FLAG_WILDCARD)) {
         graph_wildcard_resolve_group(g, from, out->group, in->type, in->type_name);
         out = &from->output_pins[from_pin];
     }
@@ -1776,6 +1790,34 @@ pin_spec graph_field_pin(const node *n, int source_index, const type_field *fiel
                                 (field->color ? PIN_FLAG_COLOR : 0) };
 }
 
+int graph_expose_output_field(graph *g, node *n, int index, const char *name)
+{
+    if (!graph_mutation_allowed(g) || !node_in_graph(g, n) || !name) {
+        return -1;
+    }
+    const type_desc *type = graph_output_struct(n, index);
+    if (!type) {
+        return -1;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (strcmp(field->name, name)) {
+            continue;
+        }
+        uint64_t source = n->output_pins[index].id;
+        for (int p = 0; p < n->output_count; p++) {
+            const pin_spec *pin = &n->output_pins[p];
+            if (pin->field_source == source && pin->field_name &&
+                !strcmp(pin->field_name, name)) {
+                return p;
+            }
+        }
+        pin_spec pin = graph_field_pin(n, index, field);
+        return graph_add_pin(g, n, true, &pin);
+    }
+    return -1;
+}
+
 int graph_expose_output_fields(graph *g, node *n, int index)
 {
     if (!graph_mutation_allowed(g) || !node_in_graph(g, n)) {
@@ -1785,20 +1827,8 @@ int graph_expose_output_fields(graph *g, node *n, int index)
     if (!type || !type->field_count) {
         return -1;
     }
-    uint64_t source = n->output_pins[index].id;
     for (int i = 0; i < type->field_count; i++) {
-        const type_field *field = &type->fields[i];
-        bool exists = false;
-        for (int p = 0; p < n->output_count; p++) {
-            const pin_spec *pin = &n->output_pins[p];
-            exists |= pin->field_source == source && pin->field_name &&
-                      strcmp(pin->field_name, field->name) == 0;
-        }
-        if (exists) {
-            continue;
-        }
-        pin_spec pin = graph_field_pin(n, index, field);
-        if (graph_add_pin(g, n, 1, &pin) < 0) {
+        if (graph_expose_output_field(g, n, index, type->fields[i].name) < 0) {
             return -1;
         }
     }

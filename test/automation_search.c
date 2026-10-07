@@ -303,10 +303,15 @@ static void inspected_pins()
     snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
     snprintf(content, sizeof content, "%s/content", root);
     snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
-    snprintf(asset, sizeof asset, "%s/Pins.kdl", behaviors);
+    snprintf(asset, sizeof asset, "%s/Pins.code", behaviors);
     FILE *file = fopen(manifest, "w");
     assert(file);
-    fprintf(file, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
+    fprintf(
+        file,
+        "version %d\n"
+        "content \"content\"\n",
+        CHIBI_PROJECT_VERSION
+    );
     fclose(file);
     assert(!mkdir(content, 0755) && !mkdir(behaviors, 0755));
     char request[1024];
@@ -373,7 +378,13 @@ static void ui_events()
     snprintf(pause, sizeof pause, "%s/PauseMenu.rml", ui);
     assert(!mkdir(content, 0755) && !mkdir(ui, 0755));
     char version[64];
-    snprintf(version, sizeof version, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
+    snprintf(
+        version,
+        sizeof version,
+        "version %d\n"
+        "content \"content\"\n",
+        CHIBI_PROJECT_VERSION
+    );
     write_text(manifest, version);
     write_text(
         hud,
@@ -445,23 +456,20 @@ static void behavior_ui_events()
         { "content/prototypes/Hero.kdl",
           "name \"Hero\"\n"
           "components {\n"
-          "    GAME.GameUi {\n"
-          "        document \"Hud\"\n"
-          "    }\n"
+          "    GAME.GameUi document=\"Hud\"\n"
           "}\n"
-          "(array)behaviors {\n"
-          "    - \"Player\"\n"
-          "}\n" },
-        { "content/behaviors/Player.kdl",
-          "version 3\n"
-          "name \"Player\"\n"
-          "id_counter 1\n"
-          "owner_type \"ecs.entity\"\n"
-          "(array)graphs\n" },
+          "(array)behaviors \"Player\"\n" },
+        { "content/behaviors/Player.code", "behavior Player {}\n" },
     };
     char path[256], version[64];
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    snprintf(version, sizeof version, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
+    snprintf(
+        version,
+        sizeof version,
+        "version %d\n"
+        "content \"content\"\n",
+        CHIBI_PROJECT_VERSION
+    );
     write_text(path, version);
     for (size_t i = 0; i < sizeof FOLDERS / sizeof *FOLDERS; i++) {
         snprintf(path, sizeof path, "%s/%s", root, FOLDERS[i]);
@@ -594,7 +602,7 @@ static void text_search_scores()
     assert(text_search_score("playar", "Player", NULL) >= 0);
     assert(text_search_score("plsyr", "Player", NULL) < 0);
     assert(
-        text_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.kdl") <
+        text_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.code") <
         0
     );
     assert(text_search_score("cat", "Cast", NULL) >= 0);
@@ -634,18 +642,22 @@ static void asset_source_assistance()
     char content[160], behaviors[160], source[192];
     snprintf(content, sizeof content, "%s/content", root);
     snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
-    snprintf(source, sizeof source, "%s/Draft.kdl", behaviors);
+    snprintf(source, sizeof source, "%s/Draft.code", behaviors);
     assert(!mkdir(content, 0755) && !mkdir(behaviors, 0755));
-    write_text(source, "na {\n");
-    int exit_code = 0;
-    char *response = chibi_automation_handle(
+    const char *draft = "behavior Draft { state score: int = 0; on Tick() { "
+                        "score = sco";
+    write_text(source, draft);
+    int end = (int)strlen(draft), start = end - 3;
+    char request[256];
+    snprintf(
+        request,
+        sizeof request,
         "{\"contract\":1,\"operation\":\"read_asset\",\"kind\":\"behavior\","
-        "\"name\":"
-        "\"Draft\","
-        "\"complete\":{\"line\":1,\"column\":3}}",
-        root,
-        &exit_code
+        "\"name\":\"Draft\",\"complete\":{\"line\":1,\"column\":%d}}",
+        end + 1
     );
+    int exit_code = 0;
+    char *response = chibi_automation_handle(request, root, &exit_code);
     yyjson_doc *doc = yyjson_read(response, strlen(response), 0);
     yyjson_val *result = yyjson_obj_get(yyjson_doc_get_root(doc), "result");
     yyjson_val *items = yyjson_obj_get(result, "completions");
@@ -655,15 +667,15 @@ static void asset_source_assistance()
     yyjson_arr_foreach(items, i, count, item)
     {
         const char *insert = yyjson_get_str(yyjson_obj_get(item, "insert"));
-        offered |= insert && !strcmp(insert, "name") &&
-                   yyjson_get_int(yyjson_obj_get(item, "start")) == 0 &&
-                   yyjson_get_int(yyjson_obj_get(item, "end")) == 2;
+        offered |= insert && !strcmp(insert, "score") &&
+                   yyjson_get_int(yyjson_obj_get(item, "start")) == start &&
+                   yyjson_get_int(yyjson_obj_get(item, "end")) == end;
     }
     test_check(
         exit_code == 0 && offered &&
             yyjson_is_null(yyjson_obj_get(result, "document")) &&
             yyjson_arr_size(yyjson_obj_get(result, "diagnostics")) > 0,
-        "readAsset completes incomplete KDL and reports source diagnostics"
+        "readAsset completes incomplete code and reports source diagnostics"
     );
     yyjson_doc_free(doc);
     free(response);

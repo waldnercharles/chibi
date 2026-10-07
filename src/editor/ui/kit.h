@@ -678,6 +678,9 @@ extern "C"
         KIT_CODE_REFERENCES = 1 << 9,
         /* Control+Space: complete at the cursor. */
         KIT_CODE_SUGGEST = 1 << 10,
+        KIT_CODE_BREAKPOINT = 1 << 11,
+        KIT_CODE_RENAME = 1 << 12, /* F2, or Vim gR */
+        KIT_CODE_CALLS = 1 << 13,  /* Shift+Alt+H, or Vim gc */
     };
     typedef struct kit_code_result
     {
@@ -707,6 +710,7 @@ extern "C"
         /* Workstream Q: bytes [start, end) of the text it is about, which
          * the underline spans; the whole line when end <= start. */
         int start, end;
+        bool indicator_only;
     } kit_code_marker;
     /* Highlighting, as Shiki's tokens carry classes: bytes [start, end)
      * draw in the color the theme gives `cls`, tok-* classes such as

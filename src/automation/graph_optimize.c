@@ -1,5 +1,6 @@
 #include "automation/graph_optimize.h"
 
+#include "assets/code_catalog.h"
 #include "graph/authoring/layout.h"
 #include "graph/authoring/optimize.h"
 #include "graph/document/serialize.h"
@@ -217,8 +218,9 @@ static int add_report(
     return changed;
 }
 
-int automation_graph_optimize(
+int automation_graph_optimize_context(
     const char *source_text,
+    const code_source_context *source_context,
     yyjson_val *request,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,
@@ -237,11 +239,8 @@ int automation_graph_optimize(
         }
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    behavior_asset *asset = behavior_asset_load(source_text);
+    behavior_asset *asset = code_catalog_load_with_context(source_context, source_text, error, error_size);
     if (!asset) {
-        if (error && error_size) {
-            snprintf(error, error_size, "could not load asset: %s", graph_last_error());
-        }
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     optimize_context context = {
@@ -343,8 +342,13 @@ int automation_graph_optimize(
     graph_optimize_report_free(&report);
     behavior_asset_free(asset);
     /* A published change takes the form --format writes. */
-    behavior_asset *reloaded = changed && serialized ? behavior_asset_load(serialized)
-                                                     : NULL;
+    behavior_asset *reloaded = changed && serialized
+                                 ? code_catalog_load_with_context(source_context, serialized, error, error_size)
+                                 : NULL;
+    if (changed && serialized && !reloaded) {
+        free(serialized);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
     if (reloaded) {
         free(serialized);
         serialized = behavior_asset_save(reloaded);
@@ -358,4 +362,17 @@ int automation_graph_optimize(
     }
     *edited_text = serialized;
     return CHIBI_AUTOMATION_OK;
+}
+
+int automation_graph_optimize(
+    const char *source_text,
+    yyjson_val *request,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    char **edited_text,
+    char *error,
+    size_t error_size
+)
+{
+    return automation_graph_optimize_context(source_text, NULL, request, doc, result, edited_text, error, error_size);
 }

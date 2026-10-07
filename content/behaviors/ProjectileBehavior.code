@@ -1,0 +1,27 @@
+behavior "ProjectileBehavior" {
+    owner "ecs.entity";
+    on Tick as tick() {
+        await "Face Direction"(X: &component("GAME.GameVelocity", "x"), Y: &component("GAME.GameVelocity", "y"));
+        await set_game_projectile_age(Value: add(A: float = &component("GAME.GameProjectile", "age"), B: float = &delta), Target: 0);
+        if (cast<double>(&component("GAME.GameProjectile", "age")) >= cast<double>(&component("GAME.GameProjectile", "lifetime"))) {
+            destroy_entity(Entity: self);
+        } else {
+        }
+    }
+    function "Face Direction"(X: float = 0.0, Y: float = 0.0) -> () {
+        depth_limit 64;
+        value has_gameorientation = has_game_orientation();
+        after entry {
+            if (has_gameorientation) {
+                if (abs(entry.X) + abs(entry.Y) <= 0) {
+                    return();
+                } else {
+                    await set_game_orientation(Value: "DirectionMath"."Direction Orientation"(X: entry.X, Y: entry.Y));
+                    return();
+                }
+            } else {
+                return();
+            }
+        }
+    }
+}

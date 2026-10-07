@@ -1,4 +1,4 @@
-version 5
+version 9
 name "Local mesh sampled box"
 content "content"
 start_scene "scenes/LocalBox.kdl"

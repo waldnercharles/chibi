@@ -2,6 +2,7 @@
  * makes is written as its model saves it, joins the asset index at once and
  * opens as Assets opens it; the Project rows rewrite project.kdl. */
 #include "assets/behavior_loader.h"
+#include "assets/code_source.h"
 #include "assets/new_asset.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
@@ -28,9 +29,10 @@
 #define STRINGIFY(value) STRINGIFY_INNER(value)
 #define PROJECT_VERSION_TEXT STRINGIFY(CHIBI_PROJECT_VERSION)
 #define MANIFEST                                                               \
-    "version " PROJECT_VERSION_TEXT                                            \
-    "\nname \"Fresh\"\ncontent \"content\"\nstart_scene "                      \
-    "\"scenes/Main.kdl\"\n"
+    "version " PROJECT_VERSION_TEXT "\n"                                       \
+    "name \"Fresh\"\n"                                                         \
+    "content \"content\"\n"                                                    \
+    "start_scene \"scenes/Main.kdl\"\n"
 
 typedef struct
 {
@@ -169,7 +171,11 @@ static char *canonical(new_asset_kind kind, const char *text)
 {
     char error[256];
     char *json = NULL;
-    if (kind == NEW_ASSET_SCENE) {
+    if (kind == NEW_ASSET_BEHAVIOR || kind == NEW_ASSET_LIBRARY) {
+        code_source *source = code_source_parse(text);
+        json = code_source_persist(source);
+        code_source_free(source);
+    } else if (kind == NEW_ASSET_SCENE) {
         game_scene_document *scene = game_scene_document_load(text, error, sizeof error);
         json = scene ? game_scene_document_save(scene) : NULL;
         game_scene_document_free(scene);
@@ -188,9 +194,7 @@ static char *canonical(new_asset_kind kind, const char *text)
         json = asset ? behavior_asset_save(asset) : NULL;
         behavior_asset_free(asset);
     }
-    char *disk = json ? asset_text_to_disk(json, error, sizeof error) : NULL;
-    free(json);
-    return disk;
+    return json;
 }
 
 /* Whether no node of a graph asset's text holds a position, so the editor
@@ -266,7 +270,8 @@ static void creates_every_kind()
         press(SDL_SCANCODE_RETURN);
         frames(&f, 2);
         char file[288];
-        const char *extension = kind < NEW_ASSET_KIND_COUNT ? ASSET_EXTENSION
+        const char *extension = kind < NEW_ASSET_KIND_COUNT
+                                  ? new_asset_extension((new_asset_kind)kind)
                               : kind == STUDIO_NEW_KIND_COUNT - 1
                                   ? UI_STYLE_EXTENSION
                                   : UI_MARKUP_EXTENSION;
@@ -283,6 +288,21 @@ static void creates_every_kind()
         bool automatic_positions = kind >= NEW_ASSET_KIND_COUNT ||
                                    (text && automatic((new_asset_kind)kind, text));
         bool canonical_text = canonical_bytes && automatic_positions;
+        if (kind == NEW_ASSET_BEHAVIOR || kind == NEW_ASSET_LIBRARY ||
+            kind == NEW_ASSET_SYSTEM) {
+            code_source *source = text ? code_source_parse(text) : NULL;
+            test_check(
+                source && source->asset && code_source_is_behavior(source) &&
+                    !strcmp(source->asset->name, name),
+                "creating an executable asset writes readable source that "
+                "reconstructs its named model"
+            );
+            code_source_free(source);
+        } else if (kind < NEW_ASSET_KIND_COUNT) {
+            av_doc *document = text ? av_doc_read(text, NULL, 0) : NULL;
+            test_check(document != NULL, "creating a declarative asset preserves KDL");
+            av_doc_free(document);
+        }
         const reference_index *index = app_scene_authoring_asset_index(f.scene);
         bool indexed = reference_index_find_asset(index, INDEXED[kind], file, NULL) >= 0;
         bool open = opened(f.scene, kind, name, file);
@@ -523,8 +543,9 @@ static void project_settings_write()
     }
     join(path, sizeof path, f.root, CHIBI_PROJECT_MANIFEST);
     char *manifest = text_file_read(path);
-    const char *expected = "version " PROJECT_VERSION_TEXT
-                           "\nname \"Renamed\"\ncontent \"content\"\n"
+    const char *expected = "version " PROJECT_VERSION_TEXT "\n"
+                           "name \"Renamed\"\n"
+                           "content \"content\"\n"
                            "start_scene \"scenes/Boss.kdl\"\n";
     bool written = manifest && !strcmp(manifest, expected);
     bool current_scene = s->project.start_scene &&
@@ -583,7 +604,7 @@ static void project_creation_reload()
     game_scene_document_free(scene);
     join(path, sizeof path, project.content, "behaviors");
     assert(mkdir(path, 0755) == 0);
-    join(path, sizeof path, project.content, "behaviors/Broken.kdl");
+    join(path, sizeof path, project.content, "behaviors/Broken.code");
     write_text(path, "invalid: [\n");
     bool rejected_behavior = app_scene_authoring_load_content(f.scene) != 0;
     assert(unlink(path) == 0);
@@ -596,7 +617,7 @@ static void project_creation_reload()
     assert(unlink(path) == 0);
     join(path, sizeof path, project.content, "systems");
     assert(mkdir(path, 0755) == 0);
-    join(path, sizeof path, project.content, "systems/OnlySystem.kdl");
+    join(path, sizeof path, project.content, "systems/OnlySystem.code");
     char *system = new_asset_text(NEW_ASSET_SYSTEM, "OnlySystem");
     assert(system);
     write_text(path, system);

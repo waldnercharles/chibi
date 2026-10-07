@@ -564,3 +564,8 @@ char *asset_text_to_disk(const char *text, char *error, size_t error_size)
     av_doc_free(doc);
     return out;
 }
+
+char *asset_text_write(const av_value *root)
+{
+    return av_is_obj(root) ? av_value_write(root) : NULL;
+}

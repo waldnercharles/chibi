@@ -156,6 +156,8 @@ extern "C"
 
     bool flow_run_waiting_for_host(const flow_run *run);
     flow_state flow_run_status(const flow_run *run);
+    /* Host safepoints check retained invocation ownership before side effects. */
+    bool flow_run_owner_valid(const flow_run *run);
     const flow_run *flow_run_active_leaf(const flow_run *run);
     double flow_run_wake_time(const flow_run *run);
     const flow_error *flow_run_error(const flow_run *run);

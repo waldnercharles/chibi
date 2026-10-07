@@ -1,9 +1,10 @@
-behavior ProjectileLifecycle {
-  on Tick(GameProjectile projectile) {
-    projectile.age += event.dt;
-    // The graph editor can change this comparison; it comes back as code.
-    if (projectile.age >= projectile.lifetime) {
-      destroy(self);
+behavior "ProjectileLifecycle" {
+    owner "ecs.entity";
+    on Tick as tick(DeltaSeconds: float = 0.0) {
+        &component("GAME.GameProjectile", "age") += tick.DeltaSeconds;
+        if (cast<double>(&component("GAME.GameProjectile", "age")) >= cast<double>(&component("GAME.GameProjectile", "lifetime"))) {
+            destroy_entity(Entity: self);
+        } else {
+        }
     }
-  }
 }

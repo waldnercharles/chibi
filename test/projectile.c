@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/event_fixture.h"
 #include "support/xalloc.h"
+#include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 #include "test/support/simulation_fixture.h"
 
@@ -31,7 +32,7 @@ static char *read_content(const char *path)
 static behavior_asset *read_behavior(const char *path)
 {
     char *text = read_content(path);
-    behavior_asset *asset = behavior_asset_load(text);
+    behavior_asset *asset = test_project_asset(path, text);
     if (asset) {
         asset = link_test_libraries(asset);
     }
@@ -117,7 +118,7 @@ void test_projectile()
                                        !strcmp(names[i], "WeaponBehavior")
                                  ? "test/fixtures/content/behaviors"
                                  : "content/behaviors";
-            snprintf(path, sizeof path, "%s/%s.kdl", root, names[i]);
+            snprintf(path, sizeof path, "%s/%s.code", root, names[i]);
             behavior_asset *asset = read_behavior(path);
             if (isolated) {
                 assert(game_prototype_preview_register_behavior(preview, names[i], asset) == 0);

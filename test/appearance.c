@@ -73,7 +73,7 @@ static game_prototype *read_prototype(const char *name, const game_prototype_reg
 static void reject_component_values(const game_prototype_registry *registry, const char *components)
 {
     char json[512], error[256];
-    snprintf(json, sizeof json, "name \"Invalid values\"\ncomponents { %s; }\n", components);
+    snprintf(json, sizeof json, "name \"Invalid values\"\ncomponents { %s }\n", components);
     game_prototype *invalid = game_prototype_load(json, registry, error, sizeof error);
     assert(!invalid);
     game_prototype_free(invalid);
@@ -309,11 +309,7 @@ static void legacy_appearance(const game_prototype_registry *registry, ecs_world
 {
     const char *json = "name \"Legacy appearance\"\n"
                        "components {\n"
-                       "    GameAppearance {\n"
-                       "        width 24\n"
-                       "        height 16\n"
-                       "        color 287454020\n"
-                       "    }\n"
+                       "    GameAppearance width=24 height=16 color=287454020\n"
                        "}\n";
     char error[256];
     game_prototype *prototype = game_prototype_load(json, registry, error, sizeof error);
@@ -339,9 +335,9 @@ void test_appearance()
     for (int i = 0; i < registry.component_count; i++) {
         assert(ecs_world_register_component(world, registry.components[i], NULL) == ECS_OK);
     }
-    reject_component_values(&registry, "GameAppearance { shape 2147483648; }");
-    reject_component_values(&registry, "GameAppearance { color 4294967296; }");
-    reject_component_values(&registry, "GameHealth { current 2147483648; }");
+    reject_component_values(&registry, "GameAppearance shape=2147483648\n");
+    reject_component_values(&registry, "GameAppearance color=4294967296\n");
+    reject_component_values(&registry, "GameHealth current=2147483648\n");
     added_component_defaults(&registry, world);
     legacy_appearance(&registry, world);
     game_live_world *live = game_live_world_new(world);

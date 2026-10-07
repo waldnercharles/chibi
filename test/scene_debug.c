@@ -1,5 +1,6 @@
 #include "editor/workspace/scene_debug.h"
 
+#include "assets/code_catalog.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/scene_internal.h"
 #include "graph/document/serialize.h"
@@ -10,14 +11,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static behavior_asset *debug_copy(const behavior_asset *source)
+static behavior_asset *debug_copy_context(const behavior_asset *source, const code_source_context *context)
 {
     char *json = behavior_asset_save(source);
     assert(json);
-    behavior_asset *copy = behavior_asset_load(json);
+    behavior_asset *copy = code_catalog_load_with_context(context, json, NULL, 0);
     free(json);
     assert(copy);
     return copy;
+}
+
+static behavior_asset *debug_copy(const behavior_asset *source)
+{
+    return debug_copy_context(source, NULL);
 }
 
 static void linked_pin_metadata()
@@ -66,7 +72,10 @@ static void linked_runtime()
     assert(behavior_asset_add_function_call_node(working, value));
     game_live_definition *definition = game_live_definition_new("DebugLinked", working);
     assert(definition && game_live_add_definition(live, definition) == 0);
-    behavior_asset *open = debug_copy(definition->working);
+    const behavior_asset *libraries[] = { imported->working };
+    code_catalog *catalog = code_catalog_from_assets(libraries, 1);
+    behavior_asset *open = debug_copy_context(definition->working, code_catalog_context(catalog));
+    code_catalog_free(catalog);
     assert(!scene_debug_matches(open, definition->applied));
     assert(scene_debug_runs(live, open, definition->applied));
     node *edited = graph_node_by_id(open->graph, set->id);

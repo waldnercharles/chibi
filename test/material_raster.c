@@ -212,12 +212,39 @@ bool test_material_raster_uploads()
                                             { mesh_actor(world), { 16, 0 } } };
     render_material_entity layers[] = {
         box(-32, 1, 0, 0),
-        graph_entity(-12, material_id, shape_id, "(array)Tint 0 1 0; (array)Glow 0.1 0.2 0.3; Roughness 0.2; Height 2; Radius 10;"),
+        graph_entity(
+            -12,
+            material_id,
+            shape_id,
+            "(array)Tint 0 1 0\n"
+            "(array)Glow 0.1 0.2 0.3\n"
+            "Roughness 0.2\n"
+            "Height 2\n"
+            "Radius 10\n"
+        ),
         { .shape_type = RENDER_SHAPE_MESH, .points = { 0 } },
-        graph_entity(0, material_id, shape_id, "(array)Tint 0.7 0 0.6; (array)Glow 0.4 0.5 0.6; Roughness 0.4; Height 4; Radius 10;"),
+        graph_entity(
+            0,
+            material_id,
+            shape_id,
+            "(array)Tint 0.7 0 0.6\n"
+            "(array)Glow 0.4 0.5 0.6\n"
+            "Roughness 0.4\n"
+            "Height 4\n"
+            "Radius 10\n"
+        ),
         box(16, 1, 1, 0),
         { .shape_type = RENDER_SHAPE_MESH, .points = { 1 } },
-        graph_entity(24, material_id, shape_id, "(array)Tint 0 0.5 1; (array)Glow 0.7 0.8 0.9; Roughness 0.6; Height 6; Radius 6;")
+        graph_entity(
+            24,
+            material_id,
+            shape_id,
+            "(array)Tint 0 0.5 1\n"
+            "(array)Glow 0.7 0.8 0.9\n"
+            "Roughness 0.6\n"
+            "Height 6\n"
+            "Radius 6\n"
+        )
     };
     render_material_raster *r = render_material_raster_new();
     bool ok = r && render_material_raster_resize(r, WIDTH, HEIGHT) &&

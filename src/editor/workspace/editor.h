@@ -9,6 +9,7 @@
 #include "graph/runtime/instance.h"
 
 typedef struct editor editor;
+struct code_source;
 struct ui_event;
 struct ui_data_binding;
 
@@ -121,6 +122,9 @@ void editor_free(editor *e);
 
 /* Returns the editor-owned working document without transferring ownership. */
 const behavior_asset *editor_behavior_asset(const editor *e);
+/* Source views share the working document. Preserve graph, view and selection. */
+int editor_source_behavior_asset(editor *e, const behavior_asset *source);
+void editor_source_diagnostics(const editor *e, const behavior_asset *source, struct code_source *document);
 
 /* Workspace visits retain document Undo/Redo and working values by stable key. */
 int editor_visit_behavior_asset(

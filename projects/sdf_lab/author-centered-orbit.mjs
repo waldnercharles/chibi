@@ -16,7 +16,7 @@ mkdirSync(evidence, { recursive: true });
 function files(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = resolve(directory, entry.name);
-    return entry.isDirectory() ? files(path) : path.endsWith('.kdl') ? [path] : [];
+    return entry.isDirectory() ? files(path) : (path.endsWith('.kdl') || path.endsWith('.code')) ? [path] : [];
   });
 }
 const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -39,7 +39,7 @@ function call(name, args) {
 if (resolve(call('getProjectStatus', {}).project_root) !== project) throw Error('Unexpected project root');
 
 function behavior(name, description, assignments) {
-  if (!existsSync(resolve(project, 'content/behaviors', name + '.kdl'))) {
+  if (!existsSync(resolve(project, 'content/behaviors', name + '.code'))) {
     const operations = [
       { op: 'add_variable', name: 'elapsed', type: 'float', default: 0 },
       { op: 'add_node', ref: 'tick', type: 'Event', reference_name: 'Tick' },
@@ -123,7 +123,7 @@ try {
 for (const [path, hash] of Object.entries(baseline)) if (path !== resolve(project, 'content/scenes', name + '.kdl') && digest(path) !== hash) throw Error(`Existing asset changed: ${path}`);
 const targetPath = resolve(project, 'content/scenes', name + '.kdl');
 const preservedCount = Object.keys(baseline).filter(path => path !== targetPath).length;
-console.log(`Preserved ${preservedCount} other KDL assets including manifest; target scene ${lightOperations.length ? 'updated' : 'already configured'}.`);
+console.log(`Preserved ${preservedCount} other code assets including manifest; target scene ${lightOperations.length ? 'updated' : 'already configured'}.`);
 writeFileSync(resolve(evidence, 'conditions.json'), JSON.stringify({ scene: name, source: 'SdfAnalyticGradientStudy',
   period_seconds: 16, center: [0, 0], target_elevation: 0, focal_distance: 700, width: 500, height: 320,
   yaw_radians: Math.PI / 2, roll_radians: Math.PI / 2, pitch_formula: 'elapsed * (2*pi/16)',

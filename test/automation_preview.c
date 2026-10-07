@@ -74,7 +74,14 @@ void test_automation_preview_registration()
     char path[512];
     snprintf(path, sizeof path, "%s/project.kdl", root);
     char manifest[128];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"Preview Test\"\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "version %d\n"
+        "name \"Preview Test\"\n"
+        "content \"content\"\n",
+        CHIBI_PROJECT_VERSION
+    );
     preview_test_write(path, manifest);
     snprintf(path, sizeof path, "%s/PreviewScene.kdl", scenes);
     preview_test_write(
@@ -83,10 +90,7 @@ void test_automation_preview_registration()
         "name \"PreviewScene\"\n"
         "presentation \"2d\"\n"
         "(array)entities {\n"
-        "    - {\n"
-        "        name \"Entity\"\n"
-        "        prototype \"PreviewPrototype\"\n"
-        "    }\n"
+        "    - name=\"Entity\" prototype=\"PreviewPrototype\"\n"
         "}\n"
     );
     snprintf(path, sizeof path, "%s/PreviewPrototype.kdl", prototypes);
@@ -128,7 +132,7 @@ void test_automation_preview_registration()
     behavior_asset *behavior = behavior_asset_new("ExecutionBehavior");
     char *json = behavior_asset_save(behavior);
     assert(json);
-    snprintf(path, sizeof path, "%s/ExecutionBehavior.kdl", behaviors);
+    snprintf(path, sizeof path, "%s/ExecutionBehavior.code", behaviors);
     preview_test_write(path, json);
     free(json);
     behavior_asset_free(behavior);
@@ -141,12 +145,17 @@ void test_automation_preview_registration()
     behavior = whole_batch_fixture(false);
     json = behavior_asset_save(behavior);
     assert(json);
-    snprintf(path, sizeof path, "%s/Counter Tick batch.kdl", behaviors);
+    snprintf(path, sizeof path, "%s/Counter Tick batch.code", behaviors);
     preview_test_write(path, json);
     free(json);
     behavior_asset_free(behavior);
     snprintf(path, sizeof path, "%s/PreviewPrototype.kdl", prototypes);
-    preview_test_write(path, "name \"PreviewPrototype\"\n(object)components\n(array)behaviors {\n    - \"Counter Tick batch\"\n}\n");
+    preview_test_write(
+        path,
+        "name \"PreviewPrototype\"\n"
+        "(object)components\n"
+        "(array)behaviors \"Counter Tick batch\"\n"
+    );
     behavior_backend previous = behavior_debug_backend(
         graph_sljit_available() ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE
     );
@@ -207,7 +216,7 @@ void test_automation_preview_registration()
     yyjson_doc_free(detailed);
     yyjson_doc_free(ordinary);
     yyjson_doc_free(replay);
-    snprintf(path, sizeof path, "%s/Counter Tick batch.kdl", behaviors);
+    snprintf(path, sizeof path, "%s/Counter Tick batch.code", behaviors);
     assert(!unlink(path) && !rmdir(behaviors));
 
     const char *files[] = {

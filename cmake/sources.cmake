@@ -101,6 +101,8 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/serialize_write.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/document/problems.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/behavior_asset.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/reactive.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/reactive_presentation.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/graph.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/model/local.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/authoring/describe.c
@@ -144,9 +146,35 @@ set(CORE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/graph/runtime/value_array.c
     src/graph/runtime/value_index.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/arena.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/support/code_lex.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_text.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_value.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/asset_source.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_source.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_source_diagnostics.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_query.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_catalog.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_value.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_calls.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_program.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_components.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_reactive.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_program_match.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_program_partial.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_program_reconcile.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_program_validate.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_statements.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_statement_expression.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_statement_match.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_statement_labels.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_print.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_source_intelligence.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_program_intelligence.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_source_context.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_source_imports.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_source_labels.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_source_locations.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/assets/code_source_metadata.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/asset_json.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/file_watch.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/support/rcss.c
@@ -344,6 +372,7 @@ set(RUNTIME_SUPPORT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_motion_lower.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/visual_parts.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/behavior.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/reactive.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/parallel.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/pending.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/behaviors/entities.c

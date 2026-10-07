@@ -2,6 +2,7 @@
  * so reloading a viewed asset leaves it saved; layout, calculations, drags,
  * value controls and completion follow edits and Undo. */
 
+#include "assets/code_source.h"
 #include "assets/ui_events.h"
 #include "editor/collab/collab.h"
 #include "editor/studio/studio_designer_internal.h"
@@ -11,6 +12,10 @@
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
 #include "graph/document/serialize.h"
+#include "graph/model/reactive.h"
+#include "graph/model/reactive_presentation.h"
+#include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/compare_nodes.h"
 #include "graph/nodes/component_nodes.h"
 #include "platform/cute.h"
 #include "render/scene_renderer.h"
@@ -580,19 +585,33 @@ static void replay_close_stop_reopen_keeps_graph_layout()
     bool restored = hidden && gr && gr->lifetime_id != lifetime && positions_equal;
     char *before_text = behavior_asset_save(before);
     char *after_text = behavior_asset_save(editor_behavior_asset(f.graph));
-    char error[256];
-    char *before_disk = before_text
-                          ? asset_text_to_disk(before_text, error, sizeof error)
-                          : NULL;
-    char *after_disk = after_text
-                         ? asset_text_to_disk(after_text, error, sizeof error)
-                         : NULL;
-    bool authored_equal = before_disk && after_disk &&
-                          !strcmp(before_disk, after_disk);
+    bool authored_equal = before_text && after_text &&
+                          !strcmp(before_text, after_text);
+    if (!restored || !authored_equal) {
+        size_t different = 0;
+        if (before_text && after_text) {
+            while (before_text[different] &&
+                   before_text[different] == after_text[different]) {
+                different++;
+            }
+        }
+        printf(
+            "  replay layout: hidden %d, fresh %d, positions %d, authored %d, "
+            "byte %zu\n",
+            hidden,
+            gr && gr->lifetime_id != lifetime,
+            positions_equal,
+            authored_equal,
+            different
+        );
+        printf(
+            "  before: %.160s\n  after: %.160s\n",
+            before_text ? before_text + different : "missing",
+            after_text ? after_text + different : "missing"
+        );
+    }
     free(before_text);
     free(after_text);
-    free(before_disk);
-    free(after_disk);
     test_check(
         restored && authored_equal,
         "Firefight replay, closing both graph tabs, Stop and reopening Weapon "
@@ -761,6 +780,49 @@ static bool graph_hit_geometry(studio *s)
     return found_socket;
 }
 
+static void expression_edit_keeps_socket_geometry()
+{
+    studio_fixture f = fixture_new();
+    studio *s = f.studio;
+    behavior_expression_error error = { 0 };
+    node *n = editor_add_behavior_expression(
+        f.graph,
+        "first_value + second_value + third_value + fourth_value + fifth_value "
+        "+ sixth_value",
+        120,
+        90,
+        &error
+    );
+    assert(n);
+    uint64_t id = n->id;
+    assert(
+        !graph_set_pin_display_name(f.graph->active_graph, n, 0, 0, "normalize_vector_2(Value: &component(\"GAME.GameVelocity\"))")
+    );
+    n->placed = true;
+    frames(&f, 3);
+    n = graph_node_by_id(f.graph->active_graph, id);
+    assert(n);
+    node_layout before = *sg_layout_of(s, n);
+    bool bounded = before.code_lines > 1 && before.label < before.w - 22;
+    char path[96];
+    snprintf(path, sizeof path, "world/stage/n%llu/b/i0/l", (unsigned long long)id);
+    kit_rect label;
+    bounded &= kit_find(s->graph.kit, path, &label) &&
+               label.x + label.w <= n->x - s->graph.x + before.w - 1;
+    bool static_geometry = graph_hit_geometry(s);
+    sg_begin_expression_edit(s, s->graph.kit, n, 0);
+    frames(&f, 3);
+    n = graph_node_by_id(f.graph->active_graph, id);
+    node_layout editing = *sg_layout_of(s, n);
+    bool editing_geometry = graph_hit_geometry(s) &&
+                            before.top == editing.top && before.h == editing.h;
+    s->graph.input_edit_node = 0;
+    s->graph.input_edit_kit = NULL;
+    frames(&f, 3);
+    test_check(bounded && static_geometry && editing_geometry && graph_hit_geometry(s), "long expression labels remain inside their node and editing preserves rendered socket and wire geometry");
+    fixture_free(&f);
+}
+
 static void graph_font_size_preserves_hit_geometry()
 {
     studio_fixture f = fixture_new();
@@ -786,8 +848,66 @@ static void graph_font_size_preserves_hit_geometry()
     fixture_free(&f);
 }
 
+/* No window is needed for generated binding presentation rules. */
+void studio_documents_reactive_presentation_checks()
+{
+    code_source *source = code_source_parse(
+        "behavior Binding { bind self.ParticleEmitter.Active = "
+        "self.ParticleEmitter.Parent.ActionBinding.Pressed; }"
+    );
+    assert(source->asset && acount(source->asset->reactives) == 1);
+    behavior_asset *asset = behavior_asset_clone(source->asset);
+    code_source_free(source);
+    const behavior_reactive *r = &asset->reactives[0];
+    graph *g = behavior_asset_find_graph(asset, r->graph_id);
+    node *set = graph_node_by_id(g, r->statement_node_id);
+    node *event = graph_node_by_id(g, r->event_id);
+    node *read = graph_node_by_id(g, r->source_node_id);
+    node *branch = NULL, *guard = NULL;
+    int pin;
+    assert(graph_exec_output_target(g, event, 0, 0, &branch, &pin));
+    for (int i = 0; i < branch->input_count; i++) {
+        if (!strcmp(branch->input_pins[i].name, "Condition")) {
+            assert(graph_input_source(g, branch, i, &guard, &pin));
+        }
+    }
+    assert(guard);
+    test_check(
+        sg_node_visible(g, set) && !sg_node_visible(g, event) &&
+            !sg_node_visible(g, branch) && !sg_node_visible(g, guard) &&
+            behavior_reactive_authored_node(g, event) == set &&
+            behavior_reactive_authored_node(g, guard) == set,
+        "binding guards stay hidden and source/debug targets present the "
+        "editable Set"
+    );
+    node *authored = graph_add_node(g, &NODE_Not_Equal);
+    int output = behavior_reactive_output_index(read, r->source_pin_id);
+    assert(output >= 0);
+    for (int i = 0; i < authored->input_count; i++) {
+        assert(
+            graph_set_pin_type(
+                g,
+                authored,
+                false,
+                i,
+                PIN_BOOL,
+                read->output_pins[output].type_name
+            ) == 0
+        );
+    }
+    assert(output >= 0 && graph_connect_data(g, read, output, authored, 0) == 0);
+    test_check(sg_node_visible(g, authored) && behavior_reactive_authored_node(g, read) == read, "binding presentation preserves an authored comparison and its shared read-back source");
+    behavior_asset_free(asset);
+}
+
+void studio_documents_expression_geometry_checks()
+{
+    expression_edit_keeps_socket_geometry();
+}
+
 void studio_documents_graph_checks()
 {
+    studio_documents_reactive_presentation_checks();
     graph_layout_does_not_wiggle();
     graph_calculations_follow_edits();
     graph_drag_retains_calculations_and_undo();
@@ -798,4 +918,5 @@ void studio_documents_graph_checks()
     reload_keeps_viewed_graph_saved();
     graph_drag_threshold();
     graph_font_size_preserves_hit_geometry();
+    expression_edit_keeps_socket_geometry();
 }

@@ -56,11 +56,19 @@ int open_behavior_graph(app_scene_authoring *scene, const char *asset_name)
 
 int open_behavior_asset(app_scene_authoring *scene, const char *asset_name)
 {
-    if (open_behavior_graph(scene, asset_name) != 0) {
-        return -1;
+    bool was_transitioning = scene->tabs_transitioning;
+    if (!was_transitioning) {
+        scene_tabs_sync_current(scene);
+    }
+    scene->tabs_transitioning = true;
+    int result = open_behavior_graph(scene, asset_name);
+    if (result != 0) {
+        scene->tabs_transitioning = was_transitioning;
+        return result;
     }
     set_behavior_component_context(scene, asset_name);
     scene_authoring_select_document(scene, APP_EDITOR_DOCUMENT_BEHAVIOR, asset_name);
+    scene->tabs_transitioning = was_transitioning;
     snprintf(
         scene->message,
         sizeof scene->message,
@@ -96,9 +104,16 @@ static int content_behavior_index(const app_scene_authoring *scene, const char *
 {
     const char *name = content_basename(path);
     for (int i = 0; i < game_live_definition_count(scene->live); i++) {
-        const char *asset_name = game_live_definition_at(scene->live, i)->name;
+        const game_live_definition *definition = game_live_definition_at(scene->live, i);
+        const char *asset_name = definition->name;
         char filename[256];
-        snprintf(filename, sizeof filename, "%s" ASSET_EXTENSION, asset_name);
+        snprintf(
+            filename,
+            sizeof filename,
+            "%s%s",
+            asset_name,
+            behavior_asset_extension(definition->working->domain)
+        );
         if (strcmp(name, asset_name) == 0 || strcmp(name, filename) == 0) {
             return i;
         }
@@ -175,6 +190,7 @@ static char *document_default_path(app_scene_authoring *scene)
 {
     const char *folder = NULL;
     const char *name = NULL;
+    const char *extension = DECLARATIVE_ASSET_EXTENSION;
     if (scene->document.kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
         scene_prototype_asset *asset = selected_prototype(scene);
         folder = "prototypes";
@@ -186,6 +202,9 @@ static char *document_default_path(app_scene_authoring *scene)
         folder = scene->definition ? folders[scene->definition->working->domain]
                                    : "behaviors";
         name = scene->definition ? scene->definition->name : NULL;
+        if (scene->definition) {
+            extension = behavior_asset_extension(scene->definition->working->domain);
+        }
     }
     if (!name || !name[0] || ensure_directory(scene->content_root) != 0) {
         return NULL;
@@ -196,9 +215,9 @@ static char *document_default_path(app_scene_authoring *scene)
         free(directory);
         return NULL;
     }
-    size_t filename_size = strlen(name) + strlen(ASSET_EXTENSION) + 1;
+    size_t filename_size = strlen(name) + strlen(extension) + 1;
     char *filename = (char *)xmalloc(filename_size);
-    snprintf(filename, filename_size, "%s" ASSET_EXTENSION, name);
+    snprintf(filename, filename_size, "%s%s", name, extension);
     char *path = content_path_join(directory, filename);
     free(filename);
     free(directory);
@@ -223,10 +242,11 @@ int reload_behavior_from_disk(app_scene_authoring *scene, const char *asset_name
         return -1;
     }
     char *json = read_scene_file(path);
-    behavior_asset *loaded = json ? behavior_asset_load(json) : NULL;
+    char error[256] = "";
+    behavior_asset *loaded = scene_graph_source_path(scene, json, path, error, sizeof error);
     free(json);
     if (!loaded) {
-        snprintf(scene->message, sizeof scene->message, "Could not reload %s: %s", path, graph_last_error());
+        snprintf(scene->message, sizeof scene->message, "Could not reload %s: %s", path, error);
         return -1;
     }
     if (!loaded->name || strcmp(loaded->name, definition->name) != 0) {
@@ -468,7 +488,8 @@ int load_system_document_value(app_scene_authoring *scene, av_value *value, cons
 int load_system_document_text(app_scene_authoring *scene, const char *text, const char *path, bool reload)
 {
     char error[256];
-    av_doc *doc = text ? asset_text_read(text, error, sizeof error) : NULL;
+    av_doc *doc = text ? scene_code_document_path(scene, text, path, error, sizeof error)
+                       : NULL;
     int result = doc ? load_system_document_value(scene, av_doc_root(doc), path, reload)
                      : -1;
     av_doc_free(doc);

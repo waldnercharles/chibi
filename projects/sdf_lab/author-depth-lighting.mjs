@@ -15,7 +15,7 @@ mkdirSync(evidence, { recursive: true });
 function files(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = resolve(directory, entry.name);
-    return entry.isDirectory() ? files(path) : path.endsWith('.kdl') ? [path] : [];
+    return entry.isDirectory() ? files(path) : (path.endsWith('.kdl') || path.endsWith('.code')) ? [path] : [];
   });
 }
 const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -85,7 +85,7 @@ try {
     copyFileSync(resolve(scratch, path.slice(project.length + 1)), path);
 } finally { rmSync(scratch, { recursive: true }); }
 for (const [path, hash] of Object.entries(baseline)) if (digest(path) !== hash) throw Error(`Existing asset changed: ${path}`);
-console.log(`Preserved ${Object.keys(baseline).length} prior KDL assets including manifest.`);
+console.log(`Preserved ${Object.keys(baseline).length} prior code assets including manifest.`);
 writeFileSync(resolve(evidence, 'conditions.json'), JSON.stringify({ scenes: ['SdfDepthThicknessOrbit', 'SdfDepthThicknessStudy'],
   surface_mode: 'Depth thickness', surface_depth_radius: 128, surface_thickness: 12,
   ambient: 0, fog: 0, shadow_floor: 0, bounce_intensity: 0, feedback: false,

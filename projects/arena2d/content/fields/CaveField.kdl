@@ -240,12 +240,12 @@ id_counter 2304
             - id=2188 name="x" from="880.X"
         }
     }
-    - id=888 kind="function" math_expression="0.55 * radius * noise(x / 700, 0, 3)" entry_id=1386
-    - id=1003 kind="function" math_expression="x / (5 * radius)" entry_id=1177
-    - id=1064 kind="function" math_expression="arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)" entry_id=1596
-    - id=1265 kind="function" math_expression="abs(y - arteryCenter) - radius * (1 + 0.4 * noise(x / 420, 0, 4))" entry_id=1709
-    - id=1536 kind="function" math_expression="abs(y - pocketCenter) - 0.43 * radius" entry_id=1766
-    - id=1692 kind="function" math_expression="min(tunnel, pocket)" entry_id=2190
+    - id=888 kind="function" math_expression="0.55 * radius * noise(x / 700, 0, 3)" expression_mode=1 entry_id=1386
+    - id=1003 kind="function" math_expression="x / (5 * radius)" expression_mode=1 entry_id=1177
+    - id=1064 kind="function" math_expression="arteryCenter + select(hash(floor(segment), 0, 5), 1, -1) * radius * 2.15 * sin((segment - floor(segment)) * pi)" expression_mode=1 entry_id=1596
+    - id=1265 kind="function" math_expression="abs(y - arteryCenter) - radius * (1 + 0.4 * noise(x / 420, 0, 4))" expression_mode=1 entry_id=1709
+    - id=1536 kind="function" math_expression="abs(y - pocketCenter) - 0.43 * radius" expression_mode=1 entry_id=1766
+    - id=1692 kind="function" math_expression="min(tunnel, pocket)" expression_mode=1 entry_id=2190
     - {
         id 1792
         kind "function"
@@ -288,6 +288,6 @@ id_counter 2304
             - from="1903.Result" to="1795.Value"
         }
     }
-    - id=1800 kind="function" math_expression="0.57 * noise(x / 170, y / 170, 0) + 0.28 * noise(x / 65, y / 65, 1) + 0.15 * noise(x / 23, y / 23, 2)" entry_id=2202
-    - id=2122 kind="function" math_expression="-(artery + roughness * wallNoise)" entry_id=2168
+    - id=1800 kind="function" math_expression="0.57 * noise(x / 170, y / 170, 0) + 0.28 * noise(x / 65, y / 65, 1) + 0.15 * noise(x / 23, y / 23, 2)" expression_mode=1 entry_id=2202
+    - id=2122 kind="function" math_expression="-(artery + roughness * wallNoise)" expression_mode=1 entry_id=2168
 }

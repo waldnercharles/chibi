@@ -1,5 +1,6 @@
 #include "assets/asset_source.h"
 #include "assets/behavior_loader.h"
+#include "assets/code_source.h"
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
 #include "editor/collab/actions_scene.h"
@@ -13,6 +14,7 @@
 #include "editor/workspace/model_preview.h"
 #include "editor/workspace/scene_debug.h"
 #include "editor/workspace/scene_internal.h"
+#include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
 #include "graph/document/serialize_internal.h"
 #include "graph/model/pin_fmt.h"
@@ -91,25 +93,142 @@ int write_file_atomic(const char *path, const char *text)
     return result;
 }
 
-int write_text_file_atomic(const char *path, const char *json)
+static char *reconcile_code_file(
+    const char *path,
+    const char *text,
+    const char *previous,
+    const code_source_context *context,
+    char **metadata
+)
 {
+    code_source *base = previous && *previous
+                          ? code_source_parse_context(previous, NULL, context)
+                          : NULL;
+    if (base) {
+        code_source_metadata_load(base, path);
+    }
+    code_source *incoming = code_source_parse_context(text, base, context);
+    code_source_free(base);
+    for (int i = 0; i < acount(incoming->diagnostics); i++) {
+        if (incoming->diagnostics[i].severity == CMPL_ERROR) {
+            code_source_free(incoming);
+            return NULL;
+        }
+    }
+    behavior_asset *asset = code_source_build_behavior(incoming);
+    if (!asset) {
+        code_source_free(incoming);
+        return NULL;
+    }
+    char error[256];
+    char *result;
+    if (previous && *previous) {
+        code_source *source = code_source_parse_context(previous, NULL, context);
+        code_source_metadata_load(source, path);
+        result = code_source_reconcile_with_metadata(source, asset, metadata, error, sizeof error);
+        code_source_free(source);
+    } else {
+        result = code_source_persist(incoming);
+        *metadata = code_source_metadata_export_source(incoming);
+    }
+    if (result && strstr(path, "/systems/")) {
+        code_source *source = code_source_parse_context(result, NULL, context);
+        if (*metadata) {
+            code_source_metadata_restore(source, *metadata);
+        }
+        av_value *query = incoming->document
+                            ? av_obj_get(av_doc_root(incoming->document), "query")
+                            : NULL;
+        char *with_query = code_source_reconcile_query(source, query, error, sizeof error);
+        free(result);
+        result = with_query;
+        if (result) {
+            code_source *updated = code_source_parse_context(result, source, context);
+            free(*metadata);
+            *metadata = updated->asset ? code_source_metadata_export_source(updated)
+                                       : NULL;
+            code_source_free(updated);
+        }
+        code_source_free(source);
+    }
+    behavior_asset_free(asset);
+    code_source_free(incoming);
+    return result;
+}
+
+static bool save_code_metadata(
+    const char *path,
+    const char *text,
+    const char *metadata,
+    const code_source_context *context
+)
+{
+    code_source *source = code_source_parse_context(text, NULL, context);
+    bool valid = source->asset &&
+                 (!metadata || code_source_metadata_restore(source, metadata)) &&
+                 code_source_metadata_save(source, path);
+    code_source_free(source);
+    return valid;
+}
+
+static int write_asset_file(const char *path, const char *json, const code_source_context *context)
+{
+    if (code_source_is_structured(json)) {
+        char *previous = text_file_read(path);
+        char *metadata = NULL;
+        char *text = reconcile_code_file(path, json, previous, context, &metadata);
+        free(previous);
+        if (!text) {
+            free(metadata);
+            return -1;
+        }
+        int result = write_file_atomic(path, text);
+        if (!result && !save_code_metadata(path, text, metadata, context)) {
+            result = -1;
+        }
+        free(metadata);
+        free(text);
+        return result;
+    }
     char error[128];
     av_doc *document = asset_text_read(json, error, sizeof error);
     if (!document) {
         return -1;
     }
     char *previous = text_file_read(path);
-    char *text = previous
-                   ? asset_source_reconcile(previous, av_doc_root(document), error, sizeof error)
-                   : av_doc_write(document);
+    char *text = NULL, *metadata = NULL;
+    if (previous && code_source_is_structured(previous)) {
+        code_source *source = code_source_parse_context(previous, NULL, context);
+        code_source_metadata_load(source, path);
+        behavior_asset *asset = behavior_asset_from_value(av_doc_root(document));
+        text = asset
+                 ? code_source_reconcile_with_metadata(source, asset, &metadata, error, sizeof error)
+                 : NULL;
+        behavior_asset_free(asset);
+        code_source_free(source);
+    } else {
+        text = previous && *previous
+                 ? asset_source_reconcile(previous, av_doc_root(document), error, sizeof error)
+                 : av_doc_write(document);
+    }
     free(previous);
     av_doc_free(document);
     if (!text) {
+        free(metadata);
         return -1;
     }
     int result = write_file_atomic(path, text);
+    if (!result && metadata && !save_code_metadata(path, text, metadata, context)) {
+        result = -1;
+    }
+    free(metadata);
     free(text);
     return result;
+}
+
+int write_text_file_atomic(const char *path, const char *text)
+{
+    return write_asset_file(path, text, NULL);
 }
 
 #ifdef __EMSCRIPTEN__
@@ -132,11 +251,120 @@ int remove_content_file(const char *path)
 #endif
 }
 
+static code_reference *scene_code_references(const app_scene_authoring *scene)
+{
+    code_reference *references = NULL;
+    for (int i = 0; i < acount(scene->prototypes); i++) {
+        apush(
+            references,
+            ((code_reference){ CODE_REFERENCE_PROTOTYPE,
+                               scene->prototypes[i].prototype->name })
+        );
+    }
+    return references;
+}
+
+av_doc *scene_code_document_path(
+    app_scene_authoring *scene,
+    const char *text,
+    const char *path,
+    char *error,
+    size_t size
+)
+{
+    const behavior_asset **libraries = NULL, **events = NULL;
+    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
+        const behavior_asset *asset = game_live_definition_at(scene->live, i)->working;
+        if (asset->domain == BEHAVIOR_DOMAIN_LIBRARY) {
+            apush(libraries, asset);
+        } else if (asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
+            apush(events, asset);
+        }
+    }
+    code_reference *references = scene_code_references(scene);
+    code_source_context context = { .libraries = libraries,
+                                    .library_count = acount(libraries),
+                                    .events = events,
+                                    .event_count = acount(events),
+                                    .references = references,
+                                    .reference_count = acount(references) };
+    code_source *source = code_source_parse_context(text, NULL, &context);
+    if (path) {
+        code_source_metadata_load(source, path);
+    }
+    bool valid = source->document != NULL;
+    for (int i = 0; i < acount(source->diagnostics); i++) {
+        if (source->diagnostics[i].severity == CMPL_ERROR) {
+            snprintf(error, size, "%s", source->diagnostics[i].message);
+            valid = false;
+            break;
+        }
+    }
+    av_doc *document = valid ? av_doc_new() : NULL;
+    if (document) {
+        av_doc_set_root(document, av_clone(document, av_doc_root(source->document)));
+    }
+    code_source_free(source);
+    afree(libraries);
+    afree(events);
+    afree(references);
+    return document;
+}
+
+behavior_asset *scene_graph_source_path(
+    app_scene_authoring *scene,
+    const char *text,
+    const char *path,
+    char *error,
+    size_t size
+)
+{
+    if (!text) {
+        snprintf(error, size, "Cannot read source");
+        return NULL;
+    }
+    if (!code_source_is_structured(text)) {
+        behavior_asset *asset = behavior_asset_load(text);
+        if (!asset) {
+            snprintf(error, size, "%s", graph_last_error());
+        }
+        return asset;
+    }
+    av_doc *document = scene_code_document_path(scene, text, path, error, size);
+    behavior_asset *asset = document
+                              ? behavior_asset_from_value(av_doc_root(document))
+                              : NULL;
+    if (document && !asset) {
+        snprintf(error, size, "%s", graph_last_error());
+    }
+    av_doc_free(document);
+    return asset;
+}
+
 int save_content_file(app_scene_authoring *scene, const char *path, const char *json)
 {
-    int result = write_text_file_atomic(path, json);
+    const behavior_asset **libraries = NULL, **events = NULL;
+    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
+        const behavior_asset *asset = game_live_definition_at(scene->live, i)->working;
+        if (asset->domain == BEHAVIOR_DOMAIN_LIBRARY) {
+            apush(libraries, asset);
+        } else if (asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
+            apush(events, asset);
+        }
+    }
+    code_reference *references = scene_code_references(scene);
+    code_source_context context = { .libraries = libraries,
+                                    .library_count = acount(libraries),
+                                    .events = events,
+                                    .event_count = acount(events),
+                                    .references = references,
+                                    .reference_count = acount(references) };
+    int result = write_asset_file(path, json, &context);
+    afree(libraries);
+    afree(events);
+    afree(references);
     if (result == 0) {
-        tree_watch_note(&scene->disk, path);
+        scene_disk_note(scene, path);
     }
     return result;
 }
@@ -366,6 +594,12 @@ static void content_scan_directory(app_scene_authoring *scene, const char *path)
             continue;
         }
         bool is_directory = S_ISDIR(info.st_mode);
+        size_t length = strlen(child), suffix = strlen(CODE_ASSET_METADATA_EXTENSION);
+        if (!is_directory && length >= suffix &&
+            !strcmp(child + length - suffix, CODE_ASSET_METADATA_EXTENSION)) {
+            free(child);
+            continue;
+        }
         apush(
             scene->content,
             ((scene_content_entry){ .path = child,
@@ -1617,6 +1851,13 @@ static int apply_behavior_definition(app_scene_authoring *scene, game_live_defin
 
 void preview_behavior_edits(app_scene_authoring *scene)
 {
+    const char *path = scene->definition
+                         ? game_live_definition_path(scene->definition)
+                         : NULL;
+    if (path && scene->source_preview_hold[0] &&
+        !strcmp(path, scene->source_preview_hold)) {
+        return;
+    }
     if (!scene->graph_document_id ||
         scene->graph_document_kind != APP_EDITOR_DOCUMENT_BEHAVIOR) {
         return;
@@ -1784,6 +2025,8 @@ void app_scene_authoring_free(app_scene_authoring *scene)
     }
     afree(scene->content);
     tree_watch_free(&scene->disk);
+    tree_watch_free(&scene->code_disk);
+    tree_watch_free(&scene->code_metadata_disk);
     tree_watch_changes_free(scene->disk_pending);
     free(scene->content_root);
     free(scene->scene_path);
@@ -1856,6 +2099,7 @@ static void refresh_asset_index(app_scene_authoring *scene, bool ui_active)
     }
     unsigned system_revision = game_system_document_revision(scene->system_document);
     if (scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM && scene->system_document &&
+        (!scene->system_path || strcmp(scene->system_path, scene->source_preview_hold)) &&
         (system_revision != scene->asset_index_system_revision ||
          editor_revision != scene->system_runtime_editor_revision)) {
         scene->system_runtime_editor_revision = editor_revision;

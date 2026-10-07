@@ -1,4 +1,5 @@
 /* Node sizes, rows and socket positions for the graph canvas. */
+#include "assets/code_print.h"
 #include "editor/documents/component_properties.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/labels.h"
@@ -14,6 +15,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const float HEAD = 24, PAD = 4;
@@ -273,7 +275,17 @@ static uint32_t binding_chip(const studio *s, const pin_binding *b, char *out, s
                 }
                 editor_identifier_label(pin->name, second, sizeof second);
                 if (event->reference_name) {
-                    snprintf(out, size, "%s \xe2\x80\xba %s", event->reference_name, second);
+                    char semantic[512];
+                    const char *name = code_print_reactive_event(
+                                           e->asset,
+                                           e->active_graph,
+                                           event,
+                                           semantic,
+                                           sizeof semantic
+                                       )
+                                         ? semantic
+                                         : event->reference_name;
+                    snprintf(out, size, "%s \xe2\x80\xba %s", name, second);
                 } else {
                     snprintf(out, size, "%s", second);
                 }
@@ -295,6 +307,15 @@ static uint32_t binding_chip(const studio *s, const pin_binding *b, char *out, s
    chip that is one read takes that read's icon. */
 static uint32_t folded_chip(const studio *s, node *n, int p, char *out, size_t size)
 {
+    node *source = NULL;
+    int source_pin;
+    if (graph_input_source(sg_active_graph(s), n, p, &source, &source_pin) &&
+        source->desc == &NODE_BehaviorExpression) {
+        char *readable = studio_code_expression(s, source);
+        snprintf(out, size, "%s", readable ? readable : "");
+        free(readable);
+        return 0;
+    }
     char text[256];
     behavior_expression_read *reads = NULL;
     behavior_expression_format(
@@ -346,7 +367,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
         out->connected = input ? ed->to_id == n->id && ed->to_pin_id == spec->id
                                : ed->from_id == n->id && ed->from_pin_id == spec->id;
     }
-    ed_pin_label(n, spec, out->label, sizeof out->label);
+    studio_code_pin_label(s, n, spec, out->label, sizeof out->label);
     if (local) {
         editor_identifier_label(local->name, out->label, sizeof out->label);
     }
@@ -372,7 +393,7 @@ void sg_pin_parts_of(const studio *s, node *n, int kind, int p, pin_parts *out)
     ) {
         char title[128], pin_label[96];
         ed_node_title(sg_graph_editor(s), src, title, sizeof title);
-        ed_pin_label(src, &src->output_pins[src_pin], pin_label, sizeof pin_label);
+        studio_code_pin_label(s, src, &src->output_pins[src_pin], pin_label, sizeof pin_label);
         snprintf(out->chip, sizeof out->chip, "%s \xe2\x80\xba %s", title, pin_label);
         out->chip_icon = sg_node_icon(s, src);
         out->value = VALUE_CHIP;
@@ -534,6 +555,11 @@ float sg_code_room(const node_layout *l)
     return l->w - 2 * EDGE - CODE_INSET;
 }
 
+float sg_code_height(const node_layout *l)
+{
+    return l->code_lines ? CODE_PAD + (float)l->code_lines * CODE_LINE : 0;
+}
+
 static node_layout measure_operator(const studio *s, node *n, node_layout l, const char *symbol)
 {
     graph *gr = sg_active_graph(s);
@@ -618,17 +644,20 @@ static node_layout measure_node(const studio *s, node *n)
             2 * SOCKET_PAD + l.label + (l.label > 0 && values > 0 ? PART_GAP : 0) + values
         );
     }
-    const char *code = behavior_expression_source(sg_graph_editor(s)->asset, n);
+    char *code = studio_code_expression(s, n);
     if (code) {
         width = fmaxf(width, sg_text_width(s, code, CODE_SIZE, 400) + CODE_INSET);
     }
     l.w = ceilf(fminf(fmaxf(2 * EDGE + width, NODE_MIN), NODE_MAX));
+    float room = l.w - 2 * EDGE - 2 * SOCKET_PAD;
+    float value_room = fminf(values, room * 0.6f);
+    l.label = fminf(l.label, fmaxf(0, room - value_room - (values > 0 ? PART_GAP : 0)));
     if (code) {
         int starts[CODE_LINES];
         l.code_lines = sg_code_lines(s, code, sg_code_room(&l), starts);
     }
-    l.top = EDGE + HEAD + PAD +
-            (l.code_lines ? CODE_PAD + (float)l.code_lines * CODE_LINE : 0);
+    free(code);
+    l.top = EDGE + HEAD + PAD + sg_code_height(&l);
     /* Variadic nodes end with a row that adds a pin (Unreal); Format Text
        keeps a spare argument itself. */
     graph_pin_run run;

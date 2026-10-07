@@ -151,6 +151,17 @@ int game_behavior_dispatch_all(
  * around other entries. Inspection, waits and unproven effects retain their
  * compiled activations. */
 int game_behavior_update(game_behavior_world *world, flow_error *error);
+/* Maintains compiled ECS relationships and delivers real field transitions at
+ * a host safe point, independently of an entity's sleeping activations. */
+int game_behavior_maintain(game_behavior_world *world, flow_error *error);
+int game_behavior_field_changed(
+    game_behavior_world *,
+    ecs_entity,
+    ecs_component_id,
+    size_t,
+    pin_value,
+    flow_error *
+);
 typedef struct
 {
     int entries, prepared, native_loop, system_loop, scheduled;

@@ -1147,7 +1147,7 @@ static void named_disk_references()
     assert(graph_connect_data(asset->graph, source, 0, local_use, 0) == 0);
     uint64_t local_id = graph_create_local(asset->graph, source, 0, "CurrentSpeed");
     assert(local_id);
-    graph *function = behavior_asset_add_graph(asset, GRAPH_FUNCTION, "ApplySpeed");
+    graph *function = behavior_asset_add_function(asset, "ApplySpeed", 0);
     assert(function);
     uint64_t function_id = function->graph_id;
     node *call = graph_add_node(asset->graph, &NODE_CallFunction);
@@ -1163,8 +1163,7 @@ static void named_disk_references()
     );
     char *text = behavior_asset_save(asset);
     test_check(
-        text && strstr(text, "name=\"Velocity\"") &&
-            strstr(text, "name=\"CurrentVelocity\"") &&
+        text && strstr(text, "Velocity") && strstr(text, "CurrentVelocity") &&
             strstr(text, "ApplyVelocity") && !strstr(text, "variable_id") &&
             !strstr(text, "local_id") && !strstr(text, "reference_id"),
         "asset files use current unique names for bindings and forward "

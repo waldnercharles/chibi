@@ -569,7 +569,9 @@ void sg_select_linked(studio *s, bool upstream, bool all)
     node **linked = NULL;
     graph_linked_nodes(sg_active_graph(s), e->selected, acount(e->selected), upstream, all, &linked);
     for (int i = 0; i < acount(linked); i++) {
-        ed_add_selected(e, linked[i]);
+        if (sg_node_visible(e->active_graph, linked[i])) {
+            ed_add_selected(e, linked[i]);
+        }
     }
     afree(linked);
 }

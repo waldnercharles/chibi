@@ -4,6 +4,7 @@
  * behaviors and data bindings work as they do in games. Studio's preferences
  * are that world's saved keys. */
 #include "assets/behavior_loader.h"
+#include "assets/code_catalog.h"
 #include "assets/project.h"
 #include "assets/scene_document.h"
 #include "editor/collab/collab.h"
@@ -15,6 +16,7 @@
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/text_file.h"
 #include "support/tree_watch.h"
 #include "support/xalloc.h"
@@ -24,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <yyjson.h>
 
 /* A scene entity with a GameUi document. */
@@ -36,6 +39,11 @@ typedef struct panel
     char error[256]; /* the last error reported */
 } panel;
 
+typedef struct
+{
+    char *name, *path;
+} pending_behavior;
+
 struct studio_ui
 {
     char *content_root;
@@ -45,7 +53,9 @@ struct studio_ui
     game_prototype_preview *world;
     game_prototype **prototypes;
     panel *panels;
-    tree_watch files; /* the project's assets, reloaded when edited */
+    pending_behavior *pending; /* valid edits waiting for active runs to finish */
+    tree_watch files, code_files,
+        metadata_files; /* declarative and executable project assets */
     rml_listener *listener;
     ui_data data; /* what the kit's hosted panels bind */
     studio_sources sources;
@@ -190,20 +200,72 @@ static void refresh_all(studio_ui *ui)
     ui->wake = true;
 }
 
+static void remove_pending(studio_ui *ui, int index)
+{
+    free(ui->pending[index].name);
+    free(ui->pending[index].path);
+    memmove(
+        &ui->pending[index],
+        &ui->pending[index + 1],
+        (size_t)(acount(ui->pending) - index - 1) * sizeof *ui->pending
+    );
+    asetlen(ui->pending, acount(ui->pending) - 1);
+}
+
+/* The private engine has pumped its active runs before retrying. Incompatible
+ * state remains held; only an explicit restart may recreate instances. */
+static void retry_behaviors(studio *s)
+{
+    studio_ui *ui = s->ui;
+    game_live_world *live = game_prototype_preview_live(ui->world);
+    for (int i = acount(ui->pending) - 1; i >= 0; i--) {
+        game_live_definition
+            *definition = game_live_find_definition(live, ui->pending[i].name);
+        assert(definition);
+        char message[256];
+        int result = game_live_preview(live, definition, message, sizeof message);
+        if (result == INSTANCE_UPDATE_BUSY) {
+            continue;
+        }
+        if (result) {
+            report_error(s, ui->pending[i].path, message);
+        } else {
+            refresh_all(ui);
+        }
+        remove_pending(ui, i);
+    }
+}
+
 /* Recompiles an edited panel behavior into the running world, keeping its
  * state; a behavior that fails keeps its last valid version. */
 static void reload_behavior(studio *s, const char *path)
 {
+    for (int i = acount(s->ui->pending) - 1; i >= 0; i--) {
+        if (!strcmp(s->ui->pending[i].path, path)) {
+            remove_pending(s->ui, i);
+        }
+    }
     char *text = text_file_read(path);
     if (!text) {
         return;
     }
-    behavior_asset *asset = behavior_asset_load(text);
-    free(text);
     char message[256] = "is not a behavior";
-    if (!asset ||
-        game_prototype_preview_update_behavior(s->ui->world, asset->name, asset, false, message, sizeof message) <
-            0) {
+    code_catalog *catalog = code_catalog_load(s->ui->content_root);
+    behavior_asset *asset = code_catalog_load_path(catalog, text, path, message, sizeof message);
+    code_catalog_free(catalog);
+    free(text);
+    int result = asset ? game_prototype_preview_update_behavior(
+                             s->ui->world,
+                             asset->name,
+                             asset,
+                             false,
+                             message,
+                             sizeof message
+                         )
+                       : -1;
+    if (result == INSTANCE_UPDATE_BUSY) {
+        apush(s->ui->pending, ((pending_behavior){ xstrdup(asset->name), xstrdup(path) }));
+    } else if (result) {
         report_error(s, path, message);
     }
     behavior_asset_free(asset);
@@ -211,6 +273,11 @@ static void reload_behavior(studio *s, const char *path)
 
 static void free_world(studio_ui *ui)
 {
+    for (int i = acount(ui->pending) - 1; i >= 0; i--) {
+        remove_pending(ui, i);
+    }
+    afree(ui->pending);
+    ui->pending = NULL;
     for (int i = 0; i < acount(ui->panels); i++) {
         free(ui->panels[i].name);
         ui_mount_free(ui->panels[i].mount);
@@ -253,7 +320,34 @@ static bool in_folder(const studio_ui *ui, const char *path, const char *folder)
 static void follow_disk(studio *s)
 {
     studio_ui *ui = s->ui;
-    char **changed = tree_watch_poll(&ui->files, ui->content_root, ".kdl", s->time);
+    char **changed = tree_watch_poll(&ui->files, ui->content_root, DECLARATIVE_ASSET_EXTENSION, s->time);
+    char **code = tree_watch_poll(&ui->code_files, ui->content_root, CODE_ASSET_EXTENSION, s->time);
+    for (int i = 0; i < acount(code); i++) {
+        apush(changed, code[i]);
+    }
+    afree(code);
+    char **metadata = tree_watch_poll(
+        &ui->metadata_files,
+        ui->content_root,
+        CODE_ASSET_METADATA_EXTENSION,
+        s->time
+    );
+    for (int i = 0; i < acount(metadata); i++) {
+        char *path = metadata[i];
+        path[strlen(path) - strlen(".meta")] = '\0';
+        struct stat info;
+        if (stat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
+            continue;
+        }
+        bool known = false;
+        for (int j = 0; j < acount(changed); j++) {
+            known |= !strcmp(changed[j], path);
+        }
+        if (!known) {
+            apush(changed, xstrdup(path));
+        }
+    }
+    tree_watch_changes_free(metadata);
     bool relaunch = false;
     ui->wake |= acount(changed) != 0;
     for (int i = 0; i < acount(changed); i++) {
@@ -298,7 +392,9 @@ studio_ui *studio_ui_new(studio *s, const char *project_root, char *error, size_
         studio_ui_free(ui);
         return NULL;
     }
-    tree_watch_poll(&ui->files, ui->content_root, ".kdl", 0);
+    tree_watch_poll(&ui->files, ui->content_root, DECLARATIVE_ASSET_EXTENSION, 0);
+    tree_watch_poll(&ui->code_files, ui->content_root, CODE_ASSET_EXTENSION, 0);
+    tree_watch_poll(&ui->metadata_files, ui->content_root, CODE_ASSET_METADATA_EXTENSION, 0);
     return ui;
 }
 
@@ -315,6 +411,8 @@ void studio_ui_free(studio_ui *ui)
     studio_sources_free(&ui->sources);
     ui_data_free(&ui->data);
     tree_watch_free(&ui->files);
+    tree_watch_free(&ui->code_files);
+    tree_watch_free(&ui->metadata_files);
     rml_listener_destroy(ui->listener);
     free(ui->content_root);
     free(ui);
@@ -358,6 +456,7 @@ bool studio_ui_tick(studio *s)
     studio_ui *ui = s->ui;
     follow_disk(s);
     game_prototype_preview_tick(ui->world, s->time);
+    retry_behaviors(s);
     uint64_t stamp = studio_nodes_stamp(s);
     if (stamp != ui->stamp) {
         ui->stamp = stamp;

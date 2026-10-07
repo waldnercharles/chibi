@@ -154,8 +154,8 @@ description "Attributed OneStep photograph badge projected onto the retained ivo
             - from="604.Result" to="1.Base Color"
         }
     }
-    - id=94 kind="function" math_expression="mix(vec3(0.8, 0.77, 0.66), color, mask)" entry_id=95
-    - id=126 kind="function" math_expression="(0.07984942711997488 * ((p.x + 1) / 2) + 0.024484557021055658 * ((0.42 - p.y) / 0.84) + 0.31579) / (-0.01682506120629482 * ((p.x + 1) / 2) + 0.07379392540331241 * ((0.42 - p.y) / 0.84) + 1)" entry_id=233
-    - id=347 kind="function" math_expression="(0.0049502169819823985 * ((p.x + 1) / 2) + 0.08442762437852608 * ((0.42 - p.y) / 0.84) + 0.38889) / (-0.01682506120629482 * ((p.x + 1) / 2) + 0.07379392540331241 * ((0.42 - p.y) / 0.84) + 1)" entry_id=454
-    - id=580 kind="function" math_expression="mix(color, vec3(0.75, 0.72, 0.61), indexMask)" entry_id=581
+    - id=94 kind="function" math_expression="mix(vec3(0.8, 0.77, 0.66), color, mask)" expression_mode=1 entry_id=95
+    - id=126 kind="function" math_expression="(0.07984942711997488 * ((p.x + 1) / 2) + 0.024484557021055658 * ((0.42 - p.y) / 0.84) + 0.31579) / (-0.01682506120629482 * ((p.x + 1) / 2) + 0.07379392540331241 * ((0.42 - p.y) / 0.84) + 1)" expression_mode=1 entry_id=233
+    - id=347 kind="function" math_expression="(0.0049502169819823985 * ((p.x + 1) / 2) + 0.08442762437852608 * ((0.42 - p.y) / 0.84) + 0.38889) / (-0.01682506120629482 * ((p.x + 1) / 2) + 0.07379392540331241 * ((0.42 - p.y) / 0.84) + 1)" expression_mode=1 entry_id=454
+    - id=580 kind="function" math_expression="mix(color, vec3(0.75, 0.72, 0.61), indexMask)" expression_mode=1 entry_id=581
 }

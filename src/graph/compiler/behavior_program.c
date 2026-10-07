@@ -432,10 +432,35 @@ uint64_t behavior_asset_revision(const behavior_asset *asset)
     for (int i = 0; i < acount(asset->variables); i++) {
         const behavior_variable *v = &asset->variables[i];
         revision = revise(revision, v->id);
+        revision = revise(revision, v->shared);
         revision = revise(revision, (uint64_t)v->type << 8 | (uint64_t)v->container);
         for (const char *c = v->type_name; c && *c; c++) {
             revision = revise(revision, (unsigned char)*c);
         }
+    }
+    revision = revise(revision, (uint64_t)acount(asset->component_parameters));
+    for (int i = 0; i < acount(asset->component_parameters); i++) {
+        const behavior_component_parameter *p = &asset->component_parameters[i];
+        revision = revise(revision, p->optional);
+        for (const char *c = p->name; *c; c++) {
+            revision = revise(revision, (unsigned char)*c);
+        }
+        revision = revise(revision, 0);
+        for (const char *c = p->key; *c; c++) {
+            revision = revise(revision, (unsigned char)*c);
+        }
+    }
+    revision = revise(revision, (uint64_t)acount(asset->reactives));
+    for (int i = 0; i < acount(asset->reactives); i++) {
+        const behavior_reactive *r = &asset->reactives[i];
+        revision = revise(revision, r->kind);
+        revision = revise(revision, r->graph_id);
+        revision = revise(revision, r->event_id);
+        revision = revise(revision, r->source_node_id);
+        revision = revise(revision, r->source_pin_id);
+        revision = revise(revision, r->statement_node_id);
+        revision = revise(revision, r->value_node_id);
+        revision = revise(revision, r->value_pin_id);
     }
     return revision;
 }
@@ -569,6 +594,19 @@ behavior_program *behavior_program_publish(behavior_asset *asset)
         behavior_program_event(program, entry->reference_name, &duplicate);
         if (!duplicate) {
             apush(program->batches, ((batch_event){ entry, f }));
+        }
+    }
+    for (int i = 0; i < acount(asset->reactives); i++) {
+        const behavior_reactive *reactive = &asset->reactives[i];
+        if (reactive->kind != BEHAVIOR_REACTIVE_BIND) {
+            continue;
+        }
+        node *entry = graph_node_by_id(asset->graph, reactive->event_id);
+        node *compiled_entry = NULL;
+        if (!entry ||
+            !behavior_program_batch_event(program, entry->reference_name, &compiled_entry)) {
+            diagnostic(program, asset->graph, entry, -1, "Binding requires a synchronous compiled ECS maintenance body");
+            return program;
         }
     }
     return program;

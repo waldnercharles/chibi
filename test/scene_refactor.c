@@ -23,54 +23,30 @@ typedef struct
     char root[64];
 } refactor_fixture;
 
-static const char PULSE[] = "version 3\n"
-                            "name \"Pulse\"\n"
-                            "id_counter 10\n"
-                            "owner_type \"ecs.entity\"\n"
-                            "(array)graphs {\n"
-                            "    - {\n"
-                            "        kind \"event\"\n"
-                            "        name \"\"\n"
-                            "        (array)nodes {\n"
-                            "            - {\n"
-                            "                id 1\n"
-                            "                type \"Event\"\n"
-                            "                reference_name \"Tick\"\n"
-                            "            }\n"
-                            "        }\n"
-                            "    }\n"
-                            "}\n";
+static const char PULSE[] = "behavior Pulse { on Tick() {} }\n";
 static const char DOT[] = "name \"Dot\"\n"
                           "components {\n"
-                          "    GAME.GameTransform {\n"
-                          "        x 1.0\n"
-                          "    }\n"
+                          "    GAME.GameTransform x=1.0\n"
                           "}\n"
-                          "(array)behaviors {\n"
-                          "    - \"Pulse\"\n"
-                          "}\n";
+                          "(array)behaviors \"Pulse\"\n";
 static const char MAIN[] = "version 1\n"
                            "name \"Main\"\n"
                            "(array)entities {\n"
                            "    - {\n"
                            "        name \"Dot_1\"\n"
                            "        prototype \"Dot\"\n"
-                           "        (array)behaviors {\n"
-                           "            - \"Pulse\"\n"
-                           "        }\n"
+                           "        (array)behaviors \"Pulse\"\n"
                            "    }\n"
                            "    - {\n"
                            "        name \"Dot_2\"\n"
                            "        prototype \"Dot\"\n"
-                           "        (array)behaviors {\n"
-                           "            - \"Pulse\"\n"
-                           "        }\n"
+                           "        (array)behaviors \"Pulse\"\n"
                            "    }\n"
                            "}\n";
 
 static const char *const FOLDERS[] = { "behaviors", "libraries", "prototypes", "scenes" };
 #define FOLDER_COUNT ((int)(sizeof FOLDERS / sizeof *FOLDERS))
-#define WEAPONS "projects/arena2d/content/libraries/WeaponActions.kdl"
+#define WEAPONS "projects/arena2d/content/libraries/WeaponActions.code"
 
 static void path_to(const refactor_fixture *f, const char *name, char *out, size_t size)
 {
@@ -118,9 +94,13 @@ static refactor_fixture fixture_new()
     }
     char *library = text_file_read(WEAPONS);
     assert(library);
-    write_asset(&f, "libraries/WeaponActions.kdl", library);
+    write_asset(&f, "libraries/WeaponActions.code", library);
     free(library);
-    write_asset(&f, "behaviors/Pulse.kdl", PULSE);
+    library = text_file_read("projects/arena2d/content/libraries/DirectionMath.code");
+    assert(library);
+    write_asset(&f, "libraries/DirectionMath.code", library);
+    free(library);
+    write_asset(&f, "behaviors/Pulse.code", PULSE);
     write_asset(&f, "prototypes/Dot.kdl", DOT);
     write_asset(&f, "scenes/Main.kdl", MAIN);
     f.live = game_live_world_new(f.world);
@@ -142,6 +122,8 @@ static refactor_fixture fixture_new()
     path_to(&f, "scenes/Main.kdl", scene, sizeof scene);
     assert(app_scene_authoring_set_content_root(f.scene, f.root) == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
+    assert(game_live_find_definition(f.live, "WeaponActions"));
+    assert(game_live_find_definition(f.live, "DirectionMath"));
     assert(app_scene_authoring_load(f.scene, scene) == 0);
     return f;
 }
@@ -219,8 +201,8 @@ static void behaviors()
     bool applied = plan &&
                    app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) ==
                        0;
-    bool moved = applied && exists(&f, "behaviors/Beat.kdl") &&
-                 !exists(&f, "behaviors/Pulse.kdl") &&
+    bool moved = applied && exists(&f, "behaviors/Beat.code") &&
+                 !exists(&f, "behaviors/Pulse.code") &&
                  holds(&f, "prototypes/Dot.kdl", "Beat") &&
                  holds(&f, "scenes/Main.kdl", "Beat");
     bool loaded = game_live_find_definition(f.live, "Beat") &&
@@ -236,8 +218,8 @@ static void behaviors()
     bool undone = undo &&
                   app_scene_authoring_apply_refactor(f.scene, undo, &redo, error, sizeof error) ==
                       0 &&
-                  exists(&f, "behaviors/Pulse.kdl") &&
-                  !exists(&f, "behaviors/Beat.kdl") &&
+                  exists(&f, "behaviors/Pulse.code") &&
+                  !exists(&f, "behaviors/Beat.code") &&
                   game_live_find_definition(f.live, "Pulse") &&
                   !game_live_find_definition(f.live, "Beat");
     if (!(listed && moved && loaded && undone)) {
@@ -336,13 +318,11 @@ static void refusals()
         &f,
         "prototypes/Dot.kdl",
         "name \"Dot\"\n"
-        "(array)behaviors {\n"
-        "    - \"Pulse\"\n"
-        "}\n"
+        "(array)behaviors \"Pulse\"\n"
     );
     app_refactor *undo = NULL;
     assert(app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) != 0);
-    assert(!undo && exists(&f, "behaviors/Pulse.kdl") && !exists(&f, "behaviors/Beat.kdl"));
+    assert(!undo && exists(&f, "behaviors/Pulse.code") && !exists(&f, "behaviors/Beat.code"));
     app_refactor_free(plan);
 
     /* Edits made after a rename keep its Undo from reloading over them. */
@@ -359,7 +339,7 @@ static void refusals()
     app_refactor *redo = NULL;
     bool kept = app_scene_authoring_apply_refactor(f.scene, undo, &redo, error, sizeof error) !=
                     0 &&
-                strstr(error, "Save Dot") && exists(&f, "behaviors/Beat.kdl") &&
+                strstr(error, "Save Dot") && exists(&f, "behaviors/Beat.code") &&
                 find_prototype(f.scene, "Dot")->dirty;
     if (!kept) {
         printf("  undo over unsaved edits: %s\n", error);
@@ -382,10 +362,10 @@ static void deletes()
     assert(app_refactor_count(plan) == 1);
     app_refactor *undo = NULL;
     assert(app_scene_authoring_apply_refactor(f.scene, plan, &undo, error, sizeof error) == 0);
-    assert(!exists(&f, "behaviors/Pulse.kdl"));
+    assert(!exists(&f, "behaviors/Pulse.code"));
     app_refactor *redo = NULL;
     assert(app_scene_authoring_apply_refactor(f.scene, undo, &redo, error, sizeof error) == 0);
-    assert(exists(&f, "behaviors/Pulse.kdl") && game_live_find_definition(f.live, "Pulse"));
+    assert(exists(&f, "behaviors/Pulse.code") && game_live_find_definition(f.live, "Pulse"));
     app_refactor_free(plan);
     app_refactor_free(undo);
     app_refactor_free(redo);

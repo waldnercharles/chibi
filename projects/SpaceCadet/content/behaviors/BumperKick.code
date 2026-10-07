@@ -1,0 +1,14 @@
+behavior "BumperKick" {
+    owner "ecs.entity";
+    state pulse: float = 0.0;
+    value get_component = get_component(Component: "GAME.GameTransform", Entity: contact_begin.Other);
+    value get_component_2 = get_component(Component: "GAME.GameVelocity", Entity: contact_begin.Other);
+    on "Contact Begin" as contact_begin(Other: handle<"ecs.entity"> = 0, Point: struct<"CF_V2"> = null) {
+        await set_variable<"pulse">(Value: float = 1.0);
+        set_component(Component: "GAME.GameVelocity", Entity: contact_begin.Other, Value: (get_component_2 + (get_component - &component("GAME.GameTransform")) * 180 / max(distance(get_component, &component("GAME.GameTransform")), 1)));
+    }
+    on Tick as tick(DeltaSeconds: float = 0.0) {
+        &state.pulse = max(&state.pulse - cast<double>(&delta) * 4, 0);
+        &component("GAME.GameAppearance", "glow_radius") = 5 + 14 * cast<double>(&state.pulse);
+    }
+}

@@ -1,0 +1,10 @@
+behavior "MaterialShowcaseRelease" {
+    owner "ecs.entity";
+    on Begin as begin() {
+        await delay(Duration: 0.8);
+        damage_material(Entity: self, Point: {
+            x: -50.0,
+            y: -18.0
+        }, Radius: 23.0, Energy: 10.0, Cause: 0, Source: 0);
+    }
+}

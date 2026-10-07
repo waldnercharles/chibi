@@ -34,10 +34,7 @@ static void prototype_component_gain(app_scene_authoring *scene, ecs_world *worl
             "version 1\n"
             "name \"ComponentGain\"\n"
             "components {\n"
-            "    GameTransform {\n"
-            "        x 0\n"
-            "        y 0\n"
-            "    }\n"
+            "    GameTransform x=0 y=0\n"
             "}\n"
             "(array)behaviors\n",
             NULL
@@ -100,10 +97,7 @@ static void prototype_spawn_refresh(app_scene_authoring *scene, game_live_world 
             scene,
             "name \"RuntimeRefreshChild\"\n"
             "components {\n"
-            "    GameHealth {\n"
-            "        current 73\n"
-            "        maximum 100\n"
-            "    }\n"
+            "    GameHealth current=73 maximum=100\n"
             "}\n",
             NULL
         ) == 0
@@ -113,9 +107,7 @@ static void prototype_spawn_refresh(app_scene_authoring *scene, game_live_world 
             scene,
             "name \"RuntimeRefreshSpawner\"\n"
             "(object)components\n"
-            "(array)behaviors {\n"
-            "    - \"PrototypeRefreshSpawner\"\n"
-            "}\n",
+            "(array)behaviors \"PrototypeRefreshSpawner\"\n",
             NULL
         ) == 0
     );
@@ -341,6 +333,8 @@ static void rename_instance(app_scene_authoring *scene, const char *folder)
     ecs_entity other = app_scene_authoring_runtime_state(scene).selected_entity;
     assert(app_scene_authoring_add_instance(scene, "First") == 0);
     ecs_entity entity = app_scene_authoring_runtime_state(scene).selected_entity;
+    uint64_t identity = scene_actor_identity(scene, entity);
+    assert(identity);
     char *before = strdup(actor_name(scene, entity));
     scene->scene_dirty = false;
     assert(app_scene_authoring_rename_instance(scene, entity, "Hero") == 0);
@@ -361,14 +355,24 @@ static void rename_instance(app_scene_authoring *scene, const char *folder)
     free(checkpoint);
     assert(history(scene, false) == 0);
     assert(!strcmp(actor_name(scene, entity), before));
+    assert(scene_actor_identity(scene, entity) == identity);
     assert(history(scene, true) == 0);
     assert(!strcmp(actor_name(scene, entity), "Hero"));
+    assert(scene_actor_identity(scene, entity) == identity);
     char path[1024];
     snprintf(path, sizeof path, "%s/Renamed.kdl", folder);
     assert(app_scene_authoring_save(scene, path) == 0);
     char *text = saved_canonically(path, canonical_scene);
-    /* An entity without overrides saves on one line, name="Hero". */
-    assert(strstr(text, "name \"Hero\"\n") || strstr(text, "name=\"Hero\""));
+    char error[256];
+    game_scene_document *document = game_scene_document_load(text, error, sizeof error);
+    assert(document);
+    int renamed = game_scene_document_entity_index(document, "Hero");
+    assert(
+        renamed >= 0 && !strcmp(document->entities[renamed].prototype, "First") &&
+        game_scene_document_entity_index(document, before) < 0
+    );
+    assert(scene_actor_identity(scene, entity) == identity);
+    game_scene_document_free(document);
     free(text);
     free(before);
     puts("rename instance PASS: a rename is one Undo step, refuses names in use, survives checkpoints and saves");
@@ -406,14 +410,8 @@ static void prototype_component_removal(app_scene_authoring *scene, ecs_world *w
             "version 1\n"
             "name \"Removable\"\n"
             "components {\n"
-            "    GameTransform {\n"
-            "        x 0\n"
-            "        y 0\n"
-            "    }\n"
-            "    GameHealth {\n"
-            "        current 73\n"
-            "        maximum 100\n"
-            "    }\n"
+            "    GameTransform x=0 y=0\n"
+            "    GameHealth current=73 maximum=100\n"
             "}\n"
             "(array)behaviors\n",
             NULL
@@ -556,14 +554,8 @@ static void view_state(app_scene_authoring *scene, const char *folder)
     const char *pickable = "version 1\n"
                            "name \"Pickable\"\n"
                            "components {\n"
-                           "    GameAppearance {\n"
-                           "        height 20\n"
-                           "        width 20\n"
-                           "    }\n"
-                           "    GameTransform {\n"
-                           "        x 0\n"
-                           "        y 0\n"
-                           "    }\n"
+                           "    GameAppearance height=20 width=20\n"
+                           "    GameTransform x=0 y=0\n"
                            "}\n"
                            "(array)behaviors\n";
     assert(app_scene_authoring_register_prototype(scene, pickable, NULL) == 0);
@@ -635,14 +627,8 @@ static int prototype_current(app_scene_authoring *scene, const char *prototype)
 static const char *const APPLIED = "version 1\n"
                                    "name \"Applied\"\n"
                                    "components {\n"
-                                   "    GameTransform {\n"
-                                   "        x 0\n"
-                                   "        y 0\n"
-                                   "    }\n"
-                                   "    GameHealth {\n"
-                                   "        current 10\n"
-                                   "        maximum 100\n"
-                                   "    }\n"
+                                   "    GameTransform x=0 y=0\n"
+                                   "    GameHealth current=10 maximum=100\n"
                                    "}\n"
                                    "(array)behaviors\n";
 
@@ -788,9 +774,7 @@ static void field_preview(app_scene_authoring *scene, ecs_world *world)
     const char *shaded = "version 1\n"
                          "name \"Shaded\"\n"
                          "components {\n"
-                         "    GameShader {\n"
-                         "        material \"Base\"\n"
-                         "    }\n"
+                         "    GameShader material=\"Base\"\n"
                          "}\n"
                          "(array)behaviors\n";
     assert(app_scene_authoring_register_prototype(scene, shaded, NULL) == 0);
@@ -835,14 +819,8 @@ void test_scene_instances()
     const char *first = "version 1\n"
                         "name \"First\"\n"
                         "components {\n"
-                        "    GameTransform {\n"
-                        "        x 0\n"
-                        "        y 0\n"
-                        "    }\n"
-                        "    GameHealth {\n"
-                        "        current 73\n"
-                        "        maximum 100\n"
-                        "    }\n"
+                        "    GameTransform x=0 y=0\n"
+                        "    GameHealth current=73 maximum=100\n"
                         "}\n"
                         "(array)behaviors\n";
     assert(app_scene_authoring_register_prototype(scene, first, NULL) == 0);

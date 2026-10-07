@@ -511,21 +511,24 @@ static int screen_light(const CF_Pixel *pixels, CF_V2 point)
 static void planar_orientation(arena_fixture *f)
 {
     const char *json =
-        "version 1\nname \"Planar orientation\"\npresentation "
-        "\"2d\"\n(array)entities {\n    - {\n        name \"Player\"\n        "
-        "prototype \"ArenaPlayer\"\n        components {\n            "
-        "GameTransform {\n                x 0\n                y 0\n           "
-        " }\n            GameAppearance {\n                shape 3\n           "
-        "     width 80\n                height 60\n                color "
-        "4294967295\n                glow_radius 0\n                "
-        "border_width 0\n                stroke_width 0\n            }\n       "
-        "     GameShader {\n                material \"\"\n                "
-        "shape \"\"\n                parameters \"\"\n            }\n          "
-        "  GameMaterial {\n                scene 4294967295\n                "
-        "emission_color 4294967295\n                emission_intensity 0.1\n   "
-        "             emission_multiplier 1\n                absorption 1\n    "
-        "        }\n        }\n        (array)behaviors {\n            - "
-        "\"TwinStickInputBehavior\"\n        }\n    }\n}\n";
+        "version 1\n"
+        "name \"Planar orientation\"\n"
+        "presentation \"2d\"\n"
+        "(array)entities {\n"
+        "    - {\n"
+        "        name \"Player\"\n"
+        "        prototype \"ArenaPlayer\"\n"
+        "        components {\n"
+        "            GameTransform x=0 y=0\n"
+        "            GameAppearance shape=3 width=80 height=60 "
+        "color=4294967295 glow_radius=0 border_width=0 stroke_width=0\n"
+        "            GameShader material=\"\" shape=\"\" parameters=\"\"\n"
+        "            GameMaterial scene=4294967295 emission_color=4294967295 "
+        "emission_intensity=0.1 emission_multiplier=1 absorption=1\n"
+        "        }\n"
+        "        (array)behaviors \"TwinStickInputBehavior\"\n"
+        "    }\n"
+        "}\n";
     char path[] = "/tmp/arena-ui-orientation-XXXXXX";
     int descriptor = mkstemp(path);
     assert(descriptor >= 0 && close(descriptor) == 0);
@@ -1401,10 +1404,8 @@ static void ship_motion_review(arena_fixture *f, const char *directory)
                        "        name \"Player\"\n"
                        "        prototype \"ArenaPlayer\"\n"
                        "        (object)components\n"
-                       "        (array)behaviors {\n"
-                       "            - \"TwinStickInputBehavior\"\n"
-                       "            - \"ArenaShipMotionBehavior\"\n"
-                       "        }\n"
+                       "        (array)behaviors \"TwinStickInputBehavior\" "
+                       "\"ArenaShipMotionBehavior\"\n"
                        "    }\n"
                        "    - {\n"
                        "        name \"Environment\"\n"

@@ -1,11 +1,13 @@
 #include "editor/workspace/asset_refactor.h"
 
+#include "assets/code_source.h"
 #include "assets/refactor.h"
 #include "editor/documents/ui_buffer.h"
 #include "editor/workspace/scene_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +22,7 @@ typedef struct
     char *from, *to;
     char *text, *before;
     int changes;
+    bool metadata;
 } refactor_file;
 
 struct app_refactor
@@ -52,12 +55,23 @@ void app_refactor_free(app_refactor *plan)
 
 int app_refactor_count(const app_refactor *plan)
 {
-    return acount(plan->files);
+    int count = 0;
+    for (int i = 0; i < acount(plan->files); i++) {
+        count += !plan->files[i].metadata;
+    }
+    return count;
 }
 
 app_refactor_asset app_refactor_at(const app_refactor *plan, int index)
 {
-    const refactor_file *file = &plan->files[index];
+    const refactor_file *file = NULL;
+    for (int i = 0; i < acount(plan->files); i++) {
+        if (!plan->files[i].metadata && index-- == 0) {
+            file = &plan->files[i];
+            break;
+        }
+    }
+    assert(file);
     return (app_refactor_asset){ .kind = file->kind,
                                  .name = file->name,
                                  .renamed = file->renamed,
@@ -129,6 +143,48 @@ static char **saved_texts(app_scene_authoring *scene)
     return texts;
 }
 
+static char *metadata_path(const char *path)
+{
+    size_t size = strlen(path) + sizeof ".meta";
+    char *out = xmalloc(size);
+    snprintf(out, size, "%s.meta", path);
+    return out;
+}
+
+static char **saved_metadata(app_scene_authoring *scene, char *const *texts)
+{
+    int count = reference_index_asset_count(scene->asset_index);
+    char **metadata = xcalloc((size_t)count + 1, sizeof *metadata);
+    for (int i = 0; i < count; i++) {
+        const reference_asset *asset = reference_index_asset_at(scene->asset_index, i);
+        if (!texts[i] || !asset->path || !code_source_is_structured(texts[i])) {
+            continue;
+        }
+        for (int j = 0; j < acount(scene->tabs); j++) {
+            const scene_document_tab *tab = &scene->tabs[j];
+            if (!tab->source_state || !scene_same_file(tab->path, asset->path)) {
+                continue;
+            }
+            const char *text = av_get_str(av_obj_get(tab->source_state, "text"));
+            if (text && !strcmp(text, texts[i])) {
+                metadata[i] = copy(av_get_str(av_obj_get(tab->source_state, "metadata")));
+                break;
+            }
+        }
+        if (!metadata[i]) {
+            char *path = metadata_path(asset->path);
+            char *json = read_scene_file(path);
+            free(path);
+            if (json && code_source_metadata_matches(json, texts[i])) {
+                metadata[i] = json;
+            } else {
+                free(json);
+            }
+        }
+    }
+    return metadata;
+}
+
 /* A sibling of `path` named `name`, with its extension. */
 static char *renamed_path(const char *path, const char *name)
 {
@@ -172,6 +228,37 @@ static void add_styles(app_refactor *out, const reference_asset *asset, const re
     apush(out->files, file);
 }
 
+/* Metadata is a transaction companion, not an additional authored asset. */
+static void add_metadata(app_refactor *out, const refactor_file *source, const refactor_edit *edit)
+{
+    if (!code_source_is_structured(source->before)) {
+        return;
+    }
+    char *from = metadata_path(source->from);
+    char *before = read_scene_file(from);
+    char *text = edit->text && edit->metadata
+                   ? code_source_metadata_bind(edit->metadata, edit->text)
+                   : NULL;
+    if (!before && !text) {
+        free(from);
+        return;
+    }
+    refactor_file file = {
+        .kind = source->kind,
+        .name = xstrdup(source->name),
+        .renamed = copy(source->renamed),
+        .from = before ? from : NULL,
+        .to = text ? metadata_path(source->to) : NULL,
+        .text = text,
+        .before = before,
+        .metadata = true,
+    };
+    if (!before) {
+        free(from);
+    }
+    apush(out->files, file);
+}
+
 static app_refactor *files_of(const reference_index *index, char *const *texts, const refactor_plan *plan)
 {
     app_refactor *out = xcalloc(1, sizeof *out);
@@ -192,6 +279,7 @@ static app_refactor *files_of(const reference_index *index, char *const *texts, 
             .changes = changes_in(edit),
         };
         apush(out->files, file);
+        add_metadata(out, &file, edit);
         if (asset->kind == REFERENCE_ASSET_UI && (edit->name || !edit->text)) {
             add_styles(out, asset, edit);
         }
@@ -215,8 +303,10 @@ static int plan_symbol(
     }
     char **texts = saved_texts(scene);
     const reference_index *index = scene->asset_index;
+    char **metadata = saved_metadata(scene, texts);
     refactor_project project = { .index = index,
                                  .texts = (const char *const *)texts,
+                                 .metadata = (const char *const *)metadata,
                                  .registry = &scene->registry };
     refactor_plan plan;
     int result = name
@@ -233,8 +323,10 @@ static int plan_symbol(
     refactor_plan_free(&plan);
     for (int i = 0; i < reference_index_asset_count(index); i++) {
         free(texts[i]);
+        free(metadata[i]);
     }
     free(texts);
+    free(metadata);
     return result;
 }
 
@@ -344,7 +436,8 @@ static app_refactor *reversed(const app_refactor *plan)
                                .to = copy(file->from),
                                .text = copy(file->before),
                                .before = copy(file->text),
-                               .changes = file->changes };
+                               .changes = file->changes,
+                               .metadata = file->metadata };
         apush(undo->files, back);
     }
     return undo;
@@ -387,9 +480,11 @@ int app_scene_authoring_apply_refactor(
     }
     scene_move *moves = NULL;
     for (int i = 0; i < count; i++) {
-        apush(moves, ((scene_move){ plan->files[i].from, plan->files[i].to }));
+        if (!plan->files[i].metadata) {
+            apush(moves, ((scene_move){ plan->files[i].from, plan->files[i].to }));
+        }
     }
-    scene_disk_follow(scene, moves, count);
+    scene_disk_follow(scene, moves, acount(moves));
     afree(moves);
     *undo = reversed(plan);
     return 0;

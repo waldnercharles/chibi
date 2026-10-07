@@ -224,9 +224,9 @@ static char *prototype_folder(const app_scene_authoring *scene)
 static char *prototype_path(const app_scene_authoring *scene, const char *name)
 {
     char *folder = prototype_folder(scene);
-    size_t length = strlen(folder) + strlen(name) + sizeof "/" ASSET_EXTENSION;
+    size_t length = strlen(folder) + strlen(name) + sizeof "/" DECLARATIVE_ASSET_EXTENSION;
     char *path = xmalloc(length);
-    snprintf(path, length, "%s/%s" ASSET_EXTENSION, folder, name);
+    snprintf(path, length, "%s/%s" DECLARATIVE_ASSET_EXTENSION, folder, name);
     free(folder);
     return path;
 }

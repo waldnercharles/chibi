@@ -134,7 +134,7 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     char *scenes = join_path(content, "scenes");
     bool folders = mkdir(content, 0755) == 0 && mkdir(scenes, 0755) == 0;
     char *manifest_path = join_path(root, CHIBI_PROJECT_MANIFEST);
-    char *scene_path = join_path(scenes, "Start" ASSET_EXTENSION);
+    char *scene_path = join_path(scenes, "Start" DECLARATIVE_ASSET_EXTENSION);
     char *manifest = manifest_text(name);
     char *scene = start_scene_text();
     bool written = folders && manifest && scene &&
@@ -251,7 +251,7 @@ static int read_manifest(const char *path, chibi_project *project, char *error, 
     av_value *root = av_doc_root(document);
     if (!av_is_obj(root)) {
         av_doc_free(document);
-        set_errorf(error, error_size, "Project manifest must contain named KDL nodes: %s", path);
+        set_errorf(error, error_size, "Project manifest must contain a code asset object: %s", path);
         return -1;
     }
     av_value *version = av_obj_get(root, "version");
@@ -311,16 +311,16 @@ static void choose_start_scene(chibi_project *project)
     if (project->start_scene) {
         return;
     }
-    char *arena_2d = join_path(project->content, "scenes/Sandbox" ASSET_EXTENSION);
+    char *arena_2d = join_path(project->content, "scenes/Sandbox" DECLARATIVE_ASSET_EXTENSION);
     if (is_file(arena_2d)) {
-        project->start_scene = xstrdup("scenes/Sandbox" ASSET_EXTENSION);
+        project->start_scene = xstrdup("scenes/Sandbox" DECLARATIVE_ASSET_EXTENSION);
         free(arena_2d);
         return;
     }
     free(arena_2d);
-    char *arena_3d = join_path(project->content, "scenes/Arena3D" ASSET_EXTENSION);
+    char *arena_3d = join_path(project->content, "scenes/Arena3D" DECLARATIVE_ASSET_EXTENSION);
     if (is_file(arena_3d)) {
-        project->start_scene = xstrdup("scenes/Arena3D" ASSET_EXTENSION);
+        project->start_scene = xstrdup("scenes/Arena3D" DECLARATIVE_ASSET_EXTENSION);
     }
     free(arena_3d);
 }

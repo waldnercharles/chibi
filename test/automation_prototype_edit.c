@@ -38,14 +38,8 @@ static int edit_request(const char *source, const char *request_json, char **edi
 
 static const char GUARD[] = "name \"Guard\"\n"
                             "components {\n"
-                            "    GameTransform {\n"
-                            "        x 5\n"
-                            "        y 6\n"
-                            "    }\n"
-                            "    GameHealth {\n"
-                            "        current 10\n"
-                            "        maximum 100\n"
-                            "    }\n"
+                            "    GameTransform x=5 y=6\n"
+                            "    GameHealth current=10 maximum=100\n"
                             "}\n";
 
 static const char
@@ -156,10 +150,7 @@ void test_automation_prototype_edit(void)
     prototype_from_instance();
     const char *source = "name \"PrototypeEdit\"\n"
                          "components {\n"
-                         "    GameTransform {\n"
-                         "        x 1\n"
-                         "        y 2\n"
-                         "    }\n"
+                         "    GameTransform x=1 y=2\n"
                          "}\n";
     char *edited = NULL;
     yyjson_mut_doc *response = NULL;

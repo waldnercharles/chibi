@@ -1,0 +1,27 @@
+behavior "TwinStickWeaponBehavior" {
+    owner "ecs.entity";
+    state Elapsed: float = 0.0;
+    value min: float = min(A: plain float = &state.Elapsed, B: plain float = &component("GAME.GameWeapon", "cooldown"));
+    on Tick as tick() {
+        await set_variable<"Elapsed">(Value: float = add(A: float = &state.Elapsed, B: float = &delta));
+        if (&component("GAME.GameAim", "firing")) {
+            "Fire Ready Projectiles"(Origin: &component("GAME.GameTransform"), Direction: &component("GAME.GameAim", "direction"), Damage: &component("GAME.GameWeapon", "damage"), Prototype: "ArenaProjectile");
+        } else {
+            set_variable<"Elapsed">(Value: float = min);
+        }
+    }
+    on Begin as begin() {
+        set_variable<"Elapsed">(Value: float = &component("GAME.GameWeapon", "cooldown"));
+    }
+    function "Fire Ready Projectiles"(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0, Prototype: name = "") -> () {
+        depth_limit 64;
+        value check_firing_interval = "WeaponActions"."Check Firing Interval"(Elapsed: &state.Elapsed, Cooldown: &component("GAME.GameWeapon", "cooldown"));
+        after entry {
+            while (check_firing_interval.Ready) {
+                await set_variable<"Elapsed">(Value: float = check_firing_interval.Remainder);
+                "WeaponActions"."Fire Projectile"(Origin: entry.Origin, Direction: entry.Direction, Damage: entry.Damage, Prototype: entry.Prototype, Shooter: self);
+            }
+            return();
+        }
+    }
+}

@@ -114,11 +114,6 @@ static uint32_t graph_icon(const graph *gr)
                                       : KIT_ICON_EVENT;
 }
 
-static const char *graph_label(const graph *gr)
-{
-    return gr->name && gr->name[0] ? gr->name : "Event Graph";
-}
-
 /* The behavior's kind among the assets, for its crumb and the assets the
    crumb switches to. */
 static reference_asset_kind document_kind(const studio *s)
@@ -226,10 +221,11 @@ void studio_graph_header_add(yyjson_mut_doc *doc)
 {
     static const char *const TEXTS[] = { "backKbd",     "forwardKbd", "target",
                                          "targetAbout", "arrangeKbd", NULL };
-    static const char *const FLAGS[] = { "open",     "back",  "forward",
-                                         "renaming", "debug", "readonly",
-                                         "find",     NULL };
+    static const char *const FLAGS[] = { "open",     "back",       "forward",
+                                         "renaming", "debug",      "readonly",
+                                         "find",     "sourceView", NULL };
     yyjson_mut_val *h = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "graph_header");
+    yyjson_mut_obj_add_int(doc, h, "view", 0);
     for (const char *const *text = TEXTS; *text; text++) {
         yyjson_mut_obj_add_strcpy(doc, h, *text, "");
     }
@@ -262,7 +258,9 @@ static bool show_callers(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *array)
         if (caller) {
             char id[16];
             snprintf(id, sizeof id, "%d", i);
-            header_item shown = { .id = id, .label = graph_label(caller) };
+            char label[256];
+            studio_code_graph_label(s, caller, label, sizeof label);
+            header_item shown = { .id = id, .label = label };
             changed |= put_item(doc, yyjson_mut_arr_iter_next(&it), &shown);
         }
     }
@@ -276,7 +274,9 @@ static bool show_crumbs(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *h)
     yyjson_mut_val *shown = yyjson_mut_obj_get(h, "graph");
     bool changed = ui_data_put_text(doc, asset, "label", s->scene->graph_document_id);
     changed |= put_glyph(doc, asset, "icon", studio_asset_kind_icon(document_kind(s)));
-    changed |= ui_data_put_text(doc, shown, "label", graph_label(gr));
+    char label[256];
+    studio_code_graph_label(s, gr, label, sizeof label);
+    changed |= ui_data_put_text(doc, shown, "label", label);
     changed |= put_glyph(doc, shown, "icon", graph_icon(gr));
     return show_callers(s, doc, yyjson_mut_obj_get(h, "callers")) || changed;
 }
@@ -307,6 +307,13 @@ bool studio_graph_header_sync(studio *s, const studio_panel_sync *at)
     yyjson_mut_val *h = at->variable;
     bool open = studio_graph_active(s);
     bool changed = ui_data_put_bool(h, "open", open);
+    changed |= ui_data_put_int(h, "view", studio_behavior_view(s));
+    changed |= ui_data_put_bool(
+        h,
+        "sourceView",
+        s->scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR ||
+            s->scene->graph_document_kind == APP_EDITOR_DOCUMENT_SYSTEM
+    );
     if (!open) {
         return changed;
     }
@@ -393,8 +400,10 @@ static bool show_graphs(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *array)
         }
         char id[24];
         snprintf(id, sizeof id, "%llu", (unsigned long long)item->graph_id);
+        char label[256];
+        studio_code_graph_label(s, item, label, sizeof label);
         header_item shown = { .id = id,
-                              .label = graph_label(item),
+                              .label = label,
                               .icon = graph_icon(item),
                               .current = item == gr };
         changed |= put_item(doc, yyjson_mut_arr_iter_next(&it), &shown);
@@ -861,7 +870,9 @@ void studio_graph_header_action(studio *s, const char *action, const ui_activati
     if (!studio_graph_active(s)) {
         return;
     }
-    if (!strcmp(action, "back") || !strcmp(action, "forward")) {
+    if (!strcmp(action, "view")) {
+        studio_behavior_show(s, atoi(argument(a)));
+    } else if (!strcmp(action, "back") || !strcmp(action, "forward")) {
         studio_nav_step(s, !strcmp(action, "back") ? -1 : 1);
     } else if (!strcmp(action, "assetRefs")) {
         studio_find_document_references(s);

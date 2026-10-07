@@ -1,0 +1,8 @@
+behavior "HrcReuseLightSweep" {
+    owner "ecs.entity";
+    state elapsed: float = 0.0;
+    on Tick as tick(DeltaSeconds: float = 0.0) {
+        &state.elapsed += cast<double>(&delta);
+        &component("GAME.GameMaterial", "emission_intensity") = 0.35 + 0.2 * sin(cast<double>(&state.elapsed) * 1.1);
+    }
+}

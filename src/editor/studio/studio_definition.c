@@ -8,9 +8,9 @@
 
 #include <stdio.h>
 
-bool studio_node_definable(const node *n)
+bool studio_node_definable(const studio *s, const node *n)
 {
-    return ed_is_graph_call(n) || studio_node_referable(n);
+    return ed_is_graph_call(n) || studio_node_referable(s, n);
 }
 
 static void report(studio *s, const char *format, const char *name)

@@ -48,5 +48,5 @@ description "Concentric lens relief perturbs normals while the bore and rim rema
             - from="294.Value" to="1.Normal"
         }
     }
-    - id=157 kind="function" math_expression="0.016 * sin(sqrt((p.x + 0.05) * (p.x + 0.05) + (p.y - 5.7) * (p.y - 5.7)) * 150)" entry_id=222
+    - id=157 kind="function" math_expression="0.016 * sin(sqrt((p.x + 0.05) * (p.x + 0.05) + (p.y - 5.7) * (p.y - 5.7)) * 150)" expression_mode=1 entry_id=222
 }

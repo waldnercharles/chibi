@@ -418,7 +418,7 @@ av_value *game_scene_document_to_value(const game_scene_document *document)
 char *game_scene_document_save(const game_scene_document *document)
 {
     av_value *value = game_scene_document_to_value(document);
-    char *text = av_value_write(value);
+    char *text = asset_text_write(value);
     av_value_free(value);
     return text;
 }

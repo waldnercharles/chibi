@@ -1,3 +1,4 @@
+#include "test/support/code_fixture.h"
 #ifndef CHIBI_TEST_EVENT_FIXTURE_H
 #define CHIBI_TEST_EVENT_FIXTURE_H
 #include "graph/document/library.h"
@@ -18,7 +19,7 @@ static inline void register_damage_event(game_live_world *world)
     for (int i = 0; i < (int)(sizeof paths / sizeof *paths); i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load(json);
+        behavior_asset *asset = test_project_asset(paths[i], json);
         free(json);
         assert(asset);
         assert(game_live_add_definition(world, game_live_definition_new(asset->name, asset)) == 0);
@@ -26,9 +27,9 @@ static inline void register_damage_event(game_live_world *world)
 }
 static inline behavior_asset *link_test_libraries(behavior_asset *asset)
 {
-    const char *paths[] = { "content/libraries/DirectionMath.kdl",
-                            "content/libraries/MovementActions.kdl",
-                            "content/libraries/WeaponActions.kdl",
+    const char *paths[] = { "content/libraries/DirectionMath.code",
+                            "content/libraries/MovementActions.code",
+                            "content/libraries/WeaponActions.code",
                             "content/shader-libraries/ShaderMath.kdl",
                             "content/events/Damage.kdl",
                             "content/events/Damaged.kdl",
@@ -43,7 +44,7 @@ static inline behavior_asset *link_test_libraries(behavior_asset *asset)
     for (int i = 0; i < count; i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        catalog[i] = behavior_asset_load(json);
+        catalog[i] = test_project_asset(paths[i], json);
         free(json);
         assert(catalog[i]);
     }
@@ -67,9 +68,9 @@ static inline void register_test_preview_catalog(game_prototype_preview *preview
     if (!preview) {
         return;
     }
-    const char *paths[] = { "content/libraries/DirectionMath.kdl",
-                            "content/libraries/MovementActions.kdl",
-                            "content/libraries/WeaponActions.kdl",
+    const char *paths[] = { "content/libraries/DirectionMath.code",
+                            "content/libraries/MovementActions.code",
+                            "content/libraries/WeaponActions.code",
                             "content/events/Damage.kdl",
                             "content/events/Damaged.kdl",
                             "content/events/Died.kdl",
@@ -78,7 +79,7 @@ static inline void register_test_preview_catalog(game_prototype_preview *preview
     for (int i = 0; i < (int)(sizeof paths / sizeof *paths); i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load(json);
+        behavior_asset *asset = test_project_asset(paths[i], json);
         free(json);
         assert(asset);
         assert(game_prototype_preview_register_behavior(preview, asset->name, asset) == 0);

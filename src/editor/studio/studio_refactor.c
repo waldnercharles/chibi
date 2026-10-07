@@ -4,9 +4,12 @@
  * Safe Delete; Blender asks in a popup menu). Applying writes every file or
  * none (editor/workspace/asset_refactor.h); a toast then offers Undo, which
  * puts every file back. */
+#include "assets/code_source.h"
+#include "assets/code_source_intelligence.h"
 #include "assets/refactor.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/workspace/asset_refactor.h"
+#include "graph/compiler/compile.h"
 #include "graph/document/events.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -21,6 +24,9 @@
 static void close_state(studio_refactor *r)
 {
     app_refactor_free(r->plan);
+    free(r->source_before);
+    free(r->source_after);
+    free(r->source_metadata);
     afree(r->uses);
     *r = (studio_refactor){ .undo = r->undo,
                             .undo_toast = r->undo_toast,
@@ -64,6 +70,66 @@ static void begin(studio *s, studio_refactor_mode mode, reference_symbol symbol,
     r->opening = true;
 }
 
+static asset_code *source_code(studio *s, const char *path)
+{
+    for (int i = 0; i < acount(s->code.assets); i++) {
+        if (!strcmp(path, asset_code_path(s->code.assets[i]))) {
+            return s->code.assets[i];
+        }
+    }
+    return NULL;
+}
+
+void studio_refactor_source(studio *s, const char *path, int offset)
+{
+    asset_code *code = source_code(s, path);
+    const code_semantic_symbol
+        *symbol = code ? code_intelligence_symbol_at(asset_code_source(code), offset)
+                       : NULL;
+    if (!symbol || !symbol->renameable) {
+        studio_report(s, "No editable symbol at this position");
+        return;
+    }
+    const code_source *source = asset_code_source(code);
+    bool exported = !symbol->asset_name && source->asset &&
+                    source->asset->domain == BEHAVIOR_DOMAIN_LIBRARY &&
+                    (symbol->kind == CODE_SYMBOL_FUNCTION ||
+                     symbol->kind == CODE_SYMBOL_MACRO ||
+                     symbol->kind == CODE_SYMBOL_PARAMETER);
+    studio_refactor *r = &s->refactor;
+    if (exported) {
+        app_scene_authoring_refresh_asset_index(s->scene);
+        int asset = reference_index_find_name(
+            app_scene_authoring_asset_index(s->scene),
+            REFERENCE_ASSET_LIBRARY,
+            source->asset->name
+        );
+        if (asset < 0) {
+            studio_report(s, "Save the library before renaming its exported symbols");
+            return;
+        }
+        reference_symbol target = {
+            .asset = asset,
+            .graph_id = symbol->kind == CODE_SYMBOL_PARAMETER ? symbol->graph_id : 0,
+            .kind = symbol->kind == CODE_SYMBOL_PARAMETER ? REFERENCE_SYMBOL_PARAMETER
+                                                          : REFERENCE_SYMBOL_GRAPH,
+            .id = symbol->kind == CODE_SYMBOL_PARAMETER ? symbol->pin_id
+                                                        : symbol->graph_id
+        };
+        begin(s, STUDIO_REFACTOR_RENAME, target, symbol->name);
+        r->source_project = true;
+    } else {
+        close_state(r);
+        r->mode = STUDIO_REFACTOR_RENAME;
+        r->opening = true;
+    }
+    r->source_offset = offset;
+    snprintf(r->source_path, sizeof r->source_path, "%s", path);
+    snprintf(r->title, sizeof r->title, "%s", symbol->name);
+    snprintf(r->name, sizeof r->name, "%s", symbol->name);
+    r->source_before = xstrdup(asset_code_text(code));
+}
+
 static void plan(studio *s)
 {
     studio_refactor *r = &s->refactor;
@@ -71,6 +137,54 @@ static void plan(studio *s)
     r->plan = NULL;
     r->error[0] = '\0';
     snprintf(r->planned, sizeof r->planned, "%s", r->name);
+    asset_code *code = r->source_path[0] ? source_code(s, r->source_path) : NULL;
+    if (r->source_path[0] &&
+        (!code || strcmp(r->source_before, asset_code_text(code)))) {
+        snprintf(r->error, sizeof r->error, "Source changed; reopen Rename");
+        return;
+    }
+    if (r->source_project && asset_code_dirty(code)) {
+        snprintf(r->error, sizeof r->error, "Save %s first", r->asset);
+        return;
+    }
+    if (r->source_path[0] && !r->source_project) {
+        free(r->source_after);
+        r->source_after = NULL;
+        free(r->source_metadata);
+        r->source_metadata = NULL;
+        r->source_after = code_intelligence_rename_with_metadata(
+            asset_code_source(code),
+            r->source_offset,
+            r->name,
+            &r->source_metadata,
+            r->error,
+            sizeof r->error
+        );
+        if (r->source_after) {
+            code_source *proposal = code_source_parse_context(
+                r->source_after,
+                NULL,
+                &asset_code_source(code)->context
+            );
+            code_source_metadata_restore(proposal, r->source_metadata);
+            for (int i = 0; i < acount(proposal->diagnostics); i++) {
+                if (proposal->diagnostics[i].severity == CMPL_ERROR) {
+                    snprintf(
+                        r->error,
+                        sizeof r->error,
+                        "%s",
+                        proposal->diagnostics[i].message
+                    );
+                    free(r->source_after);
+                    r->source_after = NULL;
+                    break;
+                }
+            }
+            code_source_free(proposal);
+        }
+        return;
+    }
+
     app_scene_authoring_plan_rename(
         s->scene,
         resolved(s),
@@ -192,6 +306,24 @@ static void apply(studio *s, const app_refactor *plan, const char *title)
 static void apply_rename(studio *s)
 {
     studio_refactor *r = &s->refactor;
+    if (r->source_project) {
+        asset_code *code = source_code(s, r->source_path);
+        if (!code || strcmp(r->source_before, asset_code_text(code)) ||
+            asset_code_dirty(code)) {
+            snprintf(r->error, sizeof r->error, "Source changed; reopen Rename");
+            return;
+        }
+    }
+    if (r->source_path[0] && !r->source_project) {
+        if (!r->source_after ||
+            !studio_code_replace(s, r->source_path, r->source_before, r->source_after, r->source_metadata)) {
+            snprintf(r->error, sizeof r->error, "Source changed; reopen Rename");
+            return;
+        }
+        studio_report(s, "Renamed symbol");
+        close_state(r);
+        return;
+    }
     char title[192];
     snprintf(title, sizeof title, "Renamed %s", r->title);
     apply(s, r->plan, title);
@@ -265,8 +397,11 @@ static void confirm_delete(studio *s)
 
 /* ---------- Symbols ---------- */
 
-const char *studio_event_renameable(const node *n)
+const char *studio_event_renameable(const studio *s, const node *n)
 {
+    if (studio_node_reactive(s, n)) {
+        return NULL;
+    }
     const char *name = n && n->desc ? n->desc->name : "";
     bool event = !strcmp(name, "Event") || !strcmp(name, "Call Event") ||
                  !strcmp(name, "Send Event");
@@ -321,7 +456,9 @@ static void list_more(listed_row **rows, int more)
 
 static bool planned_now(const studio_refactor *r)
 {
-    return r->plan && !strcmp(r->planned, r->name);
+    return (r->source_path[0] && !r->source_project ? r->source_after != NULL
+                                                    : r->plan != NULL) &&
+           !strcmp(r->planned, r->name);
 }
 
 /* A rename lists each asset it rewrites with the name it takes or how many
@@ -354,7 +491,11 @@ static listed_row *rows_of(const studio_refactor *r)
 {
     listed_row *rows = NULL;
     if (r->mode == STUDIO_REFACTOR_RENAME && planned_now(r)) {
-        plan_rows(r, &rows);
+        if (r->source_path[0] && !r->source_project) {
+            list_row(&rows, KIT_ICON_EXPRESSION, r->source_path, "Shared Undo");
+        } else {
+            plan_rows(r, &rows);
+        }
     }
     for (int i = 0;
          r->mode == STUDIO_REFACTOR_DELETE && i < acount(r->uses) && i < LISTED;

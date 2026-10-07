@@ -6,13 +6,19 @@
  * Workstream Q: Output lists the problems, Back and Forward follow F12, and
  * the Hierarchy moves a row with the keyboard. */
 #define _GNU_SOURCE
+#include "assets/code_source.h"
+#include "assets/system_document.h"
 #include "editor/studio/studio_designer_internal.h"
 #include "editor/studio/studio_internal.h"
+#include "editor/workspace/asset_refactor.h"
 #include "editor/workspace/editor.h"
+#include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
+#include "graph/nodes/behavior_expression.h"
 #include "platform/cute.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/text_file.h"
 #include "support/text_overlay.h"
 #include "support/xalloc.h"
 #include "test/suite_internal.h"
@@ -24,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #define FRAME_SECONDS (1.0 / 60.0)
 #define PROJECT "test/fixtures/studio"
@@ -402,6 +409,343 @@ static void keyboard_reorder(fixture *f)
     free(before);
 }
 
+static void generated_debug_capture_labels()
+{
+    code_source *source = code_source_parse("behavior Captures { state float count = 0; state float amount = 2; on Tick() { count += amount * event.dt; } }");
+    assert(source && source->asset);
+    editor *e = editor_new(code_source_build_behavior(source));
+    app_scene_authoring scene = { .graph_editor = e };
+    studio s = { .scene = &scene };
+    bool count = false, amount = false, delta = false;
+    const behavior_asset *asset = editor_behavior_asset(e);
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        graph *generated = asset->graphs[g];
+        if (!generated->math_expression) {
+            continue;
+        }
+        for (int i = 0; i < acount(generated->nodes); i++) {
+            node *entry = generated->nodes[i];
+            if (entry->desc != &NODE_FunctionEntry) {
+                continue;
+            }
+            for (int p = 0; p < entry->output_count; p++) {
+                char label[128];
+                studio_code_pin_label(&s, entry, &entry->output_pins[p], label, sizeof label);
+                count |= !strcmp(label, "count");
+                amount |= !strcmp(label, "amount");
+                delta |= !strcmp(label, "event.dt");
+            }
+        }
+    }
+    test_check(count && amount && delta, "generated expression Entry uses the caller's readable capture labels while debugging");
+    editor_free(e);
+    code_source_free(source);
+}
+
+static void component_capture_labels()
+{
+    const char *text = "behavior Labels { on Tick(GameMovement movement) { "
+                       "movement.speed += event.dt; } }";
+    char path[] = "/tmp/chibi-code-labels-XXXXXX", error[256];
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    FILE *file = fdopen(fd, "w");
+    assert(file && fputs(text, file) >= 0 && !fclose(file));
+    asset_code *code = asset_code_open(path, error, sizeof error);
+    assert(code && asset_code_source(code)->asset);
+    editor *e = editor_new(behavior_asset_clone(asset_code_source(code)->asset));
+    const behavior_asset *asset = editor_behavior_asset(e);
+    node *expression = NULL;
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        graph *graph = asset->graphs[g];
+        for (int n = 0; n < acount(graph->nodes); n++) {
+            node *candidate = graph->nodes[n];
+            if (candidate->desc != &NODE_BehaviorExpression) {
+                continue;
+            }
+            expression = candidate;
+            for (int p = 0; p < expression->input_count; p++) {
+                assert(!graph_set_pin_display_name(graph, expression, false, p, ""));
+            }
+        }
+    }
+    assert(expression);
+    app_scene_authoring scene = { .graph_editor = e,
+                                  .graph_document_id = "Labels",
+                                  .system_path = path,
+                                  .document = { .kind = APP_EDITOR_DOCUMENT_SYSTEM } };
+    studio s = { .scene = &scene };
+    apush(s.code.assets, code);
+    asset_code_sync_graph(code, e, false);
+    bool movement = false, delta = false, entry_movement = false;
+    for (int p = 0; p < expression->input_count; p++) {
+        char label[128];
+        studio_code_pin_label(&s, expression, &expression->input_pins[p], label, sizeof label);
+        movement |= !strcmp(label, "movement");
+        delta |= !strcmp(label, "event.dt");
+    }
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        graph *generated = asset->graphs[g];
+        if (!generated->math_expression) {
+            continue;
+        }
+        node *entry = graph_node_by_id(generated, generated->entry_id);
+        assert(entry);
+        for (int p = 0; p < entry->output_count; p++) {
+            char label[128];
+            studio_code_pin_label(&s, entry, &entry->output_pins[p], label, sizeof label);
+            entry_movement |= !strcmp(label, "movement");
+        }
+    }
+    char *readable = studio_code_expression(&s, expression);
+    test_check(
+        movement && delta && entry_movement && readable &&
+            strstr(readable, "movement.speed") &&
+            strstr(readable, "event.dt") && !strstr(readable, "_code_input"),
+        "source facts name metadata-cleared component captures, member "
+        "expressions and generated Entry pins"
+    );
+    char *lowered = studio_code_expression_resolve(&s, expression, readable, error, sizeof error);
+    test_check(lowered && !strcmp(lowered, behavior_expression_source(asset, expression)), "source-aware graph expression editing resolves readable members back to the exact native body");
+    char *invalid = malloc(strlen(text) + 4);
+    assert(invalid);
+    snprintf(invalid, strlen(text) + 4, "??\n%s", text);
+    assert(asset_code_replace(code, text, invalid));
+    char *held = studio_code_expression(&s, expression);
+    test_check(held && !strcmp(held, readable), "an invalid draft retains readable labels from the displayed graph generation");
+    free(held);
+    free(invalid);
+    free(lowered);
+    free(readable);
+    afree(s.code.assets);
+    asset_code_free(code);
+    editor_free(e);
+    assert(!unlink(path));
+}
+
+static void imported_source_calls(fixture *f)
+{
+    char libraries[PATH_MAX], behaviors[PATH_MAX], library_path[PATH_MAX],
+        caller_path[PATH_MAX];
+    snprintf(libraries, sizeof libraries, "%s/libraries", f->root);
+    snprintf(behaviors, sizeof behaviors, "%s/behaviors", f->root);
+    assert(!mkdir(libraries, 0777) && !mkdir(behaviors, 0777));
+    snprintf(library_path, sizeof library_path, "%s/Shared.code", libraries);
+    snprintf(caller_path, sizeof caller_path, "%s/Caller.code", behaviors);
+    const char
+        *library_text = "library Shared { pure function Seven(Input: float = "
+                        "7) -> (Result: "
+                        "float) { result Result: float = entry.Input; } }";
+    const char *
+        caller_text = "behavior Caller { state float count = 0; value chosen = "
+                      "Shared.Seven(Input: 7); on Tick() { count += "
+                      "chosen.Result; } }";
+    FILE *file = fopen(library_path, "w");
+    assert(file && fputs(library_text, file) >= 0 && !fclose(file));
+    file = fopen(caller_path, "w");
+    assert(file && fputs(caller_text, file) >= 0 && !fclose(file));
+    assert(!app_scene_authoring_set_content_root(f->scene, f->root));
+    assert(!app_scene_authoring_load_content(f->scene));
+    assert(!open_behavior_asset(f->scene, "Shared"));
+    assert(!open_behavior_asset(f->scene, "Caller"));
+    asset_code *caller = asset_code_open(caller_path, NULL, 0);
+    assert(caller);
+    asset_code_set_catalog(caller, f->graph->asset_catalog, acount(f->graph->asset_catalog));
+    assert(asset_code_source(caller)->asset);
+    apush(f->studio->code.assets, caller);
+    int offset = (int)(strstr(caller_text, "Seven") - caller_text);
+    studio_calls_source(f->studio, caller_path, offset, false);
+    bool found = false;
+    int row = -1;
+    for (int i = 0; i < acount(f->studio->calls.rows); i++) {
+        studio_call *call = &f->studio->calls.rows[i];
+        if (!strcmp(call->meta, "Caller")) {
+            found = true;
+            row = i;
+        }
+    }
+    test_check(
+        found && acount(f->studio->calls.rows) > 0 &&
+            !strcmp(f->studio->calls.root.title, "Shared.Seven") &&
+            !strcmp(f->studio->calls.root.asset, "Shared") &&
+            !f->studio->calls.source_path[0],
+        "source Callers resolves an imported library through the project "
+        "hierarchy"
+    );
+    if (row >= 0) {
+        assert(!open_behavior_asset(f->scene, "Shared"));
+        studio_calls_open(f->studio, row);
+        test_check(
+            !strcmp(f->scene->graph_document_id, "Caller"),
+            "an imported source caller navigates to the actual calling asset"
+        );
+    }
+    assert(!open_behavior_asset(f->scene, "Shared"));
+    asset_code *library = asset_code_open(library_path, NULL, 0);
+    assert(library);
+    asset_code_set_catalog(library, f->graph->asset_catalog, acount(f->graph->asset_catalog));
+    apush(f->studio->code.assets, library);
+    studio *s = f->studio;
+    ui_code_place from = { .offset = offset, .line = 1 },
+                  to = { .offset = (int)(strstr(library_text, "Seven") - library_text),
+                         .line = 1 };
+    snprintf(from.path, sizeof from.path, "%s", caller_path);
+    snprintf(to.path, sizeof to.path, "%s", library_path);
+    studio_show_editor(s, STUDIO_EDITOR_CODE);
+    assert(studio_code_open_place(s, &from));
+    frames(f, 3);
+    assert(studio_code_open_place(s, &to));
+    studio_nav_jump(s, &from, &to);
+    frames(f, 3);
+    studio_nav_step(s, -1);
+    frames(f, 3);
+    test_check(!strcmp(f->scene->graph_document_id, "Caller") && studio_nav_can_step(s, 1), "source Back across behavior and library keeps Forward after graph frames");
+    studio_nav_step(s, 1);
+    frames(f, 3);
+    test_check(
+        !strcmp(f->scene->graph_document_id, "Shared"),
+        "source Forward returns to the library after Both graph synchronization"
+    );
+    int declaration = (int)(strstr(library_text, "Seven") - library_text);
+    studio_refactor_source(s, library_path, declaration);
+    ui_activation name = { .argc = 1, .args = { "Eight" } };
+    studio_refactor_action(s, "name", &name);
+    studio_refactor_action(s, "enter", NULL);
+    test_check(
+        s->refactor.source_project && s->refactor.plan &&
+            app_refactor_count(s->refactor.plan) == 2,
+        "source exported function Rename previews the library and separate "
+        "caller through shared project refactoring"
+    );
+    char *draft = malloc(strlen(library_text) + 20);
+    assert(draft);
+    snprintf(draft, strlen(library_text) + 20, "// unsaved\n%s", library_text);
+    assert(asset_code_replace(library, library_text, draft));
+    studio_refactor_action(s, "apply", NULL);
+    char *disk = text_file_read_disk(library_path);
+    char *calls = text_file_read_disk(caller_path);
+    test_check(
+        strstr(s->refactor.error, "Source changed") && disk &&
+            !strcmp(disk, library_text) && calls && !strcmp(calls, caller_text),
+        "source exported Rename refuses a stale draft without changing its "
+        "saved library or caller"
+    );
+    free(disk);
+    free(calls);
+    free(draft);
+    studio_refactor_source(s, library_path, declaration + 11);
+    studio_refactor_action(s, "name", &name);
+    studio_refactor_action(s, "enter", NULL);
+    test_check(!s->refactor.plan && strstr(s->refactor.error, "Save Shared first"), "source exported Rename requires unsaved source edits to be saved before a cross-file plan");
+    assert(asset_code_replay(library, false, false));
+    assert(!asset_code_dirty(library));
+    studio_refactor_source(s, library_path, declaration);
+    strcpy(name.args[0], "");
+    studio_refactor_action(s, "name", &name);
+    studio_refactor_action(s, "enter", NULL);
+    disk = text_file_read_disk(library_path);
+    calls = text_file_read_disk(caller_path);
+    test_check(
+        !s->refactor.plan && s->refactor.error[0] && disk &&
+            !strcmp(disk, library_text) && calls && !strcmp(calls, caller_text),
+        "source exported Rename rejects an invalid candidate before changing "
+        "any files"
+    );
+    free(disk);
+    free(calls);
+    studio_refactor_source(s, library_path, declaration);
+    strcpy(name.args[0], "Eight");
+    studio_refactor_action(s, "name", &name);
+    studio_refactor_action(s, "enter", NULL);
+    assert(s->refactor.plan);
+    studio_refactor_action(s, "apply", NULL);
+    disk = text_file_read_disk(library_path);
+    calls = text_file_read_disk(caller_path);
+    test_check(
+        disk && strstr(disk, "Eight") && calls &&
+            (strstr(calls, "Shared.Eight(") || strstr(calls, "\"Shared\".Eight(")),
+        "source exported function Rename publishes the library and separate "
+        "caller atomically"
+    );
+    free(disk);
+    free(calls);
+    /* The open source session follows the same catalogue/disk refresh used
+       after project publication; its semantic parameter facts stay current. */
+    asset_code_set_catalog(library, f->graph->asset_catalog, acount(f->graph->asset_catalog));
+    asset_code_refresh(library);
+    test_check(!asset_code_dirty(library) && strstr(asset_code_text(library), "Eight"), "project source Rename refreshes the retained source session without creating an unsaved edit");
+    disk = text_file_read_disk(library_path);
+    int parameter = (int)(strstr(disk, "Input:") - disk);
+    studio_refactor_source(s, library_path, parameter);
+    strcpy(name.args[0], "Value");
+    studio_refactor_action(s, "name", &name);
+    studio_refactor_action(s, "enter", NULL);
+    test_check(
+        s->refactor.source_project && s->refactor.plan &&
+            app_refactor_count(s->refactor.plan) == 2,
+        "source exported parameter Rename previews its declaration and caller "
+        "argument"
+    );
+    studio_refactor_action(s, "apply", NULL);
+    free(disk);
+    disk = text_file_read_disk(library_path);
+    calls = text_file_read_disk(caller_path);
+    test_check(disk && strstr(disk, "Value:") && calls && strstr(calls, "Value:"), "source exported parameter Rename updates the signature and separate named caller argument");
+    free(disk);
+    free(calls);
+}
+
+static void prototype_source_navigation(fixture *f)
+{
+    char folder[PATH_MAX], path[PATH_MAX];
+    snprintf(folder, sizeof folder, "%s/prototypes", f->root);
+    assert(!mkdir(folder, 0777));
+    snprintf(path, sizeof path, "%s/SourceTarget.kdl", folder);
+    FILE *file = fopen(path, "w");
+    assert(file && fputs("name \"SourceTarget\"\ncomponents {}\n", file) >= 0 && !fclose(file));
+    assert(!app_scene_authoring_set_content_root(f->scene, f->root));
+    assert(!app_scene_authoring_load_content(f->scene));
+    ui_code_place target = { .line = 1, .offset = 0 };
+    snprintf(target.path, sizeof target.path, "%s", path);
+    test_check(studio_code_open_place(f->studio, &target), "a prototype definition opens its authored source");
+    scene_document_tab *tab = &f->scene->tabs[f->scene->active_tab];
+    test_check(tab->kind == APP_EDITOR_DOCUMENT_PROTOTYPE && !strcmp(tab->path, path) && !tab->ui, "prototype source navigation keeps the prototype document kind and inspector");
+    assert(studio_code_open_place(f->studio, &target));
+    int matches = 0;
+    for (int i = 0; i < acount(f->scene->tabs); i++) {
+        tab = &f->scene->tabs[i];
+        matches += tab->path && !strcmp(tab->path, path);
+        test_check(
+            !tab->path || strcmp(tab->path, path) || tab->kind != APP_EDITOR_DOCUMENT_UI,
+            "repeated prototype source jumps never register a UI document"
+        );
+    }
+    test_check(matches == 1, "repeated prototype source navigation reuses its document tab");
+}
+
+static void system_behavior_tab_transition(fixture *f)
+{
+    code_source *source = code_source_parse("system Separate { query has(\"GAME.GameTransform\"); state float elapsed = 0; on Tick() { elapsed += event.dt; } }");
+    assert(source && source->asset && source->document);
+    assert(
+        load_system_document_value(f->scene, av_doc_root(source->document), "/tmp/chibi-code-separate.code", false) ==
+        0
+    );
+    int system = f->scene->active_tab;
+    assert(open_behavior_asset(f->scene, "Editing") == 0);
+    test_check(!strcmp(av_get_str(av_obj_get(f->scene->tabs[system].system_value, "name")), "Separate"), "opening a behavior captures the previous System before replacing its graph");
+    assert(scene_tabs_activate(f->scene, system) == 0);
+    test_check(
+        !strcmp(f->scene->graph_document_id, "Separate") &&
+            !strcmp(editor_behavior_asset(f->graph)->name, "Separate") &&
+            ecs_query_expr_get_component(
+                game_system_document_query(f->scene->system_document)
+            ) == GAME_COMPONENT_GameTransform.id,
+        "returning to a System restores its own graph identity and query"
+    );
+    code_source_free(source);
+}
+
 void test_code_intelligence_studio()
 {
     fixture f = fixture_new();
@@ -412,6 +756,11 @@ void test_code_intelligence_studio()
     shorter_external_text(&f);
     navigation(&f);
     keyboard_reorder(&f);
+    generated_debug_capture_labels();
+    component_capture_labels();
+    system_behavior_tab_transition(&f);
+    imported_source_calls(&f);
+    prototype_source_navigation(&f);
     text_overlay_clear();
     fixture_free(&f);
 }

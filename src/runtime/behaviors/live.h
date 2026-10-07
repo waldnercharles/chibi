@@ -12,6 +12,7 @@
 #include <stddef.h>
 
 typedef struct game_live_world game_live_world;
+typedef struct game_system_document game_system_document;
 
 typedef struct game_live_definition
 {
@@ -35,6 +36,14 @@ int game_live_register_system(
     game_live_world *world,
     const char *name,
     const char *json,
+    char *error,
+    size_t size
+);
+/* Parses against the current project declarations and links an independently
+ * owned system document, including its authored query. */
+game_system_document *game_live_load_system(
+    game_live_world *world,
+    const char *text,
     char *error,
     size_t size
 );

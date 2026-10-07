@@ -2,6 +2,7 @@
  * Canvas preview, Settings, modals, the widget gallery and fields that keep
  * their editing keys. */
 
+#include "assets/code_source.h"
 #include "assets/ui_events.h"
 #include "editor/collab/collab.h"
 #include "editor/studio/studio_designer_internal.h"
@@ -621,6 +622,127 @@ static void source_reload_write(const char *path, const char *text)
     assert(file && fputs(text, file) >= 0 && fclose(file) == 0);
 }
 
+/* Studio's private project owns its executable catalog, independently of the
+ * scene being edited. A failed disk edit retains the running generation. */
+static void private_panel_code_reloads()
+{
+    studio_fixture f = vault_open();
+    studio *s = f.studio;
+    char root[] = "/tmp/chibi-studio-ui-XXXXXX";
+    assert(mkdtemp(root));
+    const char *directories[] = { "content",
+                                  "content/behaviors",
+                                  "content/libraries",
+                                  "content/prototypes",
+                                  "content/scenes" };
+    char path[1024];
+    for (int i = 0; i < 5; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        assert(!mkdir(path, 0700));
+    }
+    const char *files[] = { "project.kdl",
+                            "content/scenes/Studio.kdl",
+                            "content/prototypes/Panel.kdl",
+                            "content/libraries/Shared.code",
+                            "content/behaviors/Panel.code" };
+    const char *texts[] = {
+        "version 7\nname \"Private Studio\"\ncontent \"content\"\nstart_scene "
+        "\"scenes/Studio.kdl\"\n",
+        "version 1\nname \"Studio\"\n(array)entities {\n - name=\"Panel\" "
+        "prototype=\"Panel\" {\n (array)behaviors \"Panel\"\n }\n}\n",
+        "name \"Panel\"\ncomponents {}\n",
+        "library Shared { pure function Seven() -> (Result: int) { result "
+        "Result: int = 7; } }",
+        "behavior Panel { state count: int = 0; on Begin() { count += "
+        "Shared.Seven().Result; } }"
+    };
+    for (int i = 0; i < 5; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        source_reload_write(path, texts[i]);
+    }
+    studio_ui *original = s->ui;
+    rml_backend *original_backend = s->backend;
+    s->backend = rml_backend_create(640, 480, 1);
+    assert(s->backend);
+    char error[256];
+    studio_ui *private_ui = studio_ui_new(s, root, error, sizeof error);
+    assert(private_ui);
+    s->ui = private_ui;
+    game_behavior_world *world = studio_ui_behaviors(s);
+    assert(game_behavior_attachment_count(world) == 1);
+    game_behavior_attachment_info panel = game_behavior_attachment_info_index(world, 0);
+    behavior_instance *instance = panel.instance;
+    flow_error flow = { 0 };
+    assert(game_behavior_dispatch(world, panel.entity, "Begin", (flow_inputs){ 0 }, &flow) == 1);
+    assert(acount(instance->activations) > 0);
+    const behavior_asset *original_generation = panel.definition;
+    int before = instance->variables[0].i;
+    snprintf(path, sizeof path, "%s/%s", root, files[4]);
+    source_reload_write(path, "behavior Panel { state count: int = 0; on Begin() { count += Shared.Seven().Result * 2; } }");
+    s->time += 2;
+    studio_ui_tick(s);
+    bool held = game_behavior_attachment_info_index(world, 0).definition ==
+                original_generation;
+    s->time += FRAME_SECONDS;
+    studio_ui_tick(s);
+    assert(game_behavior_dispatch(world, panel.entity, "Begin", (flow_inputs){ 0 }, &flow) == 1);
+    bool reloaded = game_behavior_instance(world, panel.entity, "Panel") == instance &&
+                    instance->variables[0].i == before + 14;
+    const behavior_asset *generation = game_behavior_attachment_info_index(world, 0)
+                                           .definition;
+    s->time += FRAME_SECONDS;
+    studio_ui_tick(s);
+    bool once = game_behavior_attachment_info_index(world, 0).definition == generation;
+    source_reload_write(path, "behavior Panel { on Begin() { await Missing.Seven(); } }");
+    s->time += 2;
+    studio_ui_tick(s);
+    assert(game_behavior_dispatch(world, panel.entity, "Begin", (flow_inputs){ 0 }, &flow) == 1);
+    bool retained = game_behavior_instance(world, panel.entity, "Panel") == instance &&
+                    game_behavior_attachment_info_index(world, 0).definition ==
+                        generation &&
+                    instance->variables[0].i == before + 28;
+    if (!(reloaded && retained)) {
+        printf(
+            "private reload before=%d current=%d reloaded=%d retained=%d\n",
+            before,
+            instance->variables[0].i,
+            reloaded,
+            retained
+        );
+        for (int i = 0; i < acount(s->records); i++) {
+            puts(s->records[i].text);
+        }
+    }
+    test_check(held && reloaded && retained && once, "private Studio .code reload waits for active runs, resolves its own library, applies once with retained state, and keeps the last valid runtime after an invalid edit");
+    s->ui = original;
+    studio_ui_free(private_ui);
+    rml_backend_destroy(s->backend);
+    s->backend = original_backend;
+    for (int i = 0; i < 5; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        assert(!unlink(path));
+    }
+    for (int i = 4; i >= 0; i--) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        assert(!rmdir(path));
+    }
+    assert(!rmdir(root));
+    fixture_free(&f);
+}
+
+/* Stored source retains metadata while the editor shows the executable prefix. */
+static bool source_view_equals(asset_code *code, const char *text)
+{
+    int start, end;
+    size_t length = strlen(text);
+    if (code_source_metadata_range(text, &start, &end)) {
+        length = (size_t)start;
+    }
+    const char *shown = kit_code_text(asset_code_editor(code), NULL);
+    return !strcmp(asset_code_text(code), text) && strlen(shown) == length &&
+           !memcmp(shown, text, length);
+}
+
 /* A failed disk reload keeps the actual editor, including its view and modal
    state; a successful reload removes the draft and its saved checkpoint. */
 static void source_reload_preserves_failed_draft()
@@ -632,8 +754,8 @@ static void source_reload_preserves_failed_draft()
     char directory[PATH_MAX], path[PATH_MAX];
     snprintf(directory, sizeof directory, "%s/behaviors", folder);
     assert(mkdir(directory, 0700) == 0);
-    snprintf(path, sizeof path, "%s/Teller.kdl", directory);
-    char *saved = text_file_read_disk(PROJECT "/content/behaviors/Teller.kdl");
+    snprintf(path, sizeof path, "%s/Teller.code", directory);
+    char *saved = text_file_read_disk(PROJECT "/content/behaviors/Teller.code");
     assert(saved);
     source_reload_write(path, saved);
     assert(app_scene_authoring_set_content_root(f.scene, folder) == 0);
@@ -675,20 +797,20 @@ static void source_reload_preserves_failed_draft()
     app_disk_result failed = studio_code_reload_path(s, path);
     bool retained = failed == APP_DISK_FAILED && acount(s->code.assets) == 1 &&
                     s->code.assets[0] == code && asset_code_editor(code) == editor &&
-                    !strcmp(kit_code_text(editor, NULL), draft) &&
+                    source_view_equals(code, draft) &&
                     kit_code_cursor(editor) == 5 && asset_code_dirty(code) &&
                     tab->source_dirty && av_equals(checkpoint, tab->source_state) &&
                     text_overlay_text(path) &&
                     !strcmp(text_overlay_text(path), draft);
-    test_check(retained, "failed KDL reload preserves the live editor, draft, history, cursor and preview overlay");
+    test_check(retained, "failed code reload preserves the live editor, draft, history, cursor and preview overlay");
     /* On Save keeps a newer valid draft separate from its last live preview.
        Checkpoint restoration can also replace the overlay's revision. */
     text_overlay_set(path, saved);
     failed = studio_code_reload_path(s, path);
     test_check(
         failed == APP_DISK_FAILED && asset_code_editor(code) == editor &&
-            !strcmp(kit_code_text(editor, NULL), draft) &&
-            text_overlay_text(path) && !strcmp(text_overlay_text(path), saved),
+            source_view_equals(code, draft) && text_overlay_text(path) &&
+            !strcmp(text_overlay_text(path), saved),
         "failed reload restores the actual preview bytes while keeping a newer "
         "deferred source draft"
     );
@@ -703,9 +825,8 @@ static void source_reload_preserves_failed_draft()
     frames(&f, 3);
     asset_code *fresh = acount(s->code.assets) ? s->code.assets[0] : NULL;
     test_check(
-        cleared && fresh && !asset_code_dirty(fresh) &&
-            !strcmp(kit_code_text(asset_code_editor(fresh), NULL), saved),
-        "successful KDL reload clears its checkpoint and redraws exact disk "
+        cleared && fresh && !asset_code_dirty(fresh) && source_view_equals(fresh, saved),
+        "successful code reload clears its checkpoint and redraws exact disk "
         "text without restoring the old draft"
     );
     /* A restored checkpoint publishes its preview before the Text Editor
@@ -734,8 +855,7 @@ static void source_reload_preserves_failed_draft()
     frames(&f, 3);
     fresh = acount(s->code.assets) ? s->code.assets[0] : NULL;
     test_check(
-        cleared && fresh && !asset_code_dirty(fresh) &&
-            !strcmp(kit_code_text(asset_code_editor(fresh), NULL), saved),
+        cleared && fresh && !asset_code_dirty(fresh) && source_view_equals(fresh, saved),
         "successful checkpoint-only reload reads disk rather than preview and "
         "cannot restore the discarded draft"
     );
@@ -1180,6 +1300,7 @@ void studio_documents_panel_checks()
     virtual_list_rows();
     settings_reopens_after_font_change();
     source_reload_preserves_failed_draft();
+    private_panel_code_reloads();
     scene_text_field();
     authored_modals_and_collaboration();
     authored_fields_keep_editing_keys();

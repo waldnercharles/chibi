@@ -37,7 +37,7 @@ Use the MCP's current tool catalog and schemas to choose operations.
    `world_hash`. `captureRuntimeSnapshot` supplies entity and component state.
 
 Keep game rules, scene composition, visual choices, and tuning in authored
-assets. After editing KDL by hand, format and check it:
+assets. After editing code assets by hand, format and check it:
 
 ```sh
 ./.chibi/runtime/bin/chibi_ctl --project-root "$PWD" --format

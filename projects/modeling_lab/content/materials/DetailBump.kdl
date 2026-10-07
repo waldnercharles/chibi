@@ -48,5 +48,5 @@ description "World-height procedural ridges perturb normals only; the tile's sil
             - from="62.Value" to="1.Normal"
         }
     }
-    - id=12 kind="function" math_expression="0.8 * sin(p.x * 0.6)" entry_id=38
+    - id=12 kind="function" math_expression="0.8 * sin(p.x * 0.6)" expression_mode=1 entry_id=38
 }

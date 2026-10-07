@@ -1,5 +1,7 @@
 #include "automation/controller.h"
+#include "graph/document/serialize.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 #include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
@@ -153,11 +155,33 @@ static bool holds(const char *root, const char *path, const char *text)
     "\"new_name\":\"Harm\"%s}"
 
 /* A dry run lists every asset and change; publishing needs its hashes. */
+static bool behavior_references(const char *root, const char *relative, const char *name)
+{
+    char path[PATH_MAX];
+    snprintf(path, sizeof path, "%s/%s", root, relative);
+    char *text = text_file_read_disk(path);
+    behavior_asset *asset = text ? test_project_asset(path, text) : NULL;
+    bool found = false;
+    for (int i = 0; asset && i < acount(asset->graphs); i++) {
+        graph *g = asset->graphs[i];
+        for (int j = 0; j < acount(g->nodes); j++) {
+            const char *reference = g->nodes[j]->reference_name;
+            found |= reference && !strcmp(reference, name);
+        }
+    }
+    behavior_asset_free(asset);
+    free(text);
+    return found;
+}
+
 static void renames(const char *root)
 {
     reply dry = ask(root, RENAME_DAMAGE, NULL);
+    int expected_hash_count = 3 + exists(root, "content/behaviors/ProjectileHit.code.meta") +
+                              exists(root, "content/behaviors/HullDamage.code.meta");
     bool listed = ok(&dry) && count(&dry, "assets") == 3 &&
-                  yyjson_obj_size(yyjson_obj_get(dry.result, "expected_hashes")) == 3 &&
+                  yyjson_obj_size(yyjson_obj_get(dry.result, "expected_hashes")) ==
+                      (size_t)expected_hash_count &&
                   exists(root, "content/events/Damage.kdl");
     reply unhashed = ask(root, RENAME_DAMAGE, ",\"dry_run\":false");
     char *expected = hashes(&dry);
@@ -168,7 +192,7 @@ static void renames(const char *root)
                      yyjson_get_bool(yyjson_obj_get(applied.result, "published")) &&
                      exists(root, "content/events/Harm.kdl") &&
                      !exists(root, "content/events/Damage.kdl") &&
-                     holds(root, "content/behaviors/HullDamage.kdl", "reference_name \"Harm\"");
+                     behavior_references(root, "content/behaviors/HullDamage.code", "Harm");
     reply valid = ask(root, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"behavior\",\"name\":\"ProjectileHit\"%s}", NULL);
     test_check(listed && !ok(&unhashed) && published && ok(&valid), "renameSymbol dry-runs, then publishes every asset with the dry run's hashes");
     free(expected);
@@ -184,7 +208,7 @@ static void renames(const char *root)
                             "At\",\"parameter\":\"Prototype\",\"new_name\":"
                             "\"Template\"%s}";
     dry = ask(root, parameter, NULL);
-    bool calls = ok(&dry) && strstr(dry.text, "content/behaviors/HullDamage.kdl");
+    bool calls = ok(&dry) && strstr(dry.text, "content/behaviors/HullDamage.code");
     if (!ok(&dry)) {
         printf("  parameter rename: %s\n", dry.text);
     }
@@ -193,6 +217,21 @@ static void renames(const char *root)
         calls && !ok(&component) && !strcmp(error_code(&component), "invalid_request"),
         "renameSymbol selects parameters of functions and refuses components"
     );
+    expected = hashes(&dry);
+    snprintf(extra, sizeof extra, ",\"dry_run\":false,\"expected_hashes\":%s", expected);
+    reply parameters = ask(root, parameter, extra);
+    reply parameter_valid = ask(root, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"behavior\",\"name\":\"HullDamage\"%s}", NULL);
+    test_check(
+        ok(&parameters) &&
+            yyjson_get_bool(yyjson_obj_get(parameters.result, "published")) &&
+            ok(&parameter_valid) &&
+            holds(root, "content/libraries/WeaponActions.code", "Template"),
+        "renameSymbol atomically publishes readable library parameter and "
+        "caller edits against the updated signature"
+    );
+    free(expected);
+    reply_free(&parameters);
+    reply_free(&parameter_valid);
     reply_free(&dry);
     reply_free(&component);
 }
@@ -218,8 +257,8 @@ static void conflicts(const char *root)
     reply stale = ask(root, RENAME_PURSUIT, extra);
     test_check(
         !ok(&stale) && !strcmp(error_code(&stale), "asset_conflict") &&
-            exists(root, "content/behaviors/Pursuit.kdl") &&
-            !exists(root, "content/behaviors/Chase.kdl") &&
+            exists(root, "content/behaviors/Pursuit.code") &&
+            !exists(root, "content/behaviors/Chase.code") &&
             holds(root, "content/scenes/Sandbox.kdl", "Pursuit"),
         "renameSymbol publishes nothing when an asset changed since the dry run"
     );
@@ -265,7 +304,7 @@ static void deletes(const char *root)
     char extra[2048];
     snprintf(extra, sizeof extra, ",\"force\":true,\"dry_run\":false,\"expected_hashes\":%s", expected);
     reply deleted = ask(root, DELETE_PURSUIT, extra);
-    test_check(listed && dangling && ok(&deleted) && !exists(root, "content/behaviors/Pursuit.kdl"), "deleteSymbol refuses a used asset, listing its references, and force deletes it");
+    test_check(listed && dangling && ok(&deleted) && !exists(root, "content/behaviors/Pursuit.code"), "deleteSymbol refuses a used asset, listing its references, and force deletes it");
     reply unused = ask(root, "{\"contract\":1,\"operation\":\"delete_symbol\",\"event\":\"RefreshEncounter\",\"force\":true%s}", NULL);
     yyjson_val *asset = yyjson_arr_get_first(yyjson_obj_get(unused.result, "assets"));
     test_check(

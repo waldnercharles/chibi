@@ -110,7 +110,7 @@ av_value *scene_authoring_scene_value(app_scene_authoring *scene)
 char *scene_authoring_scene_text(app_scene_authoring *scene)
 {
     av_value *value = scene_authoring_scene_value(scene);
-    char *text = value ? av_value_write(value) : NULL;
+    char *text = value ? asset_text_write(value) : NULL;
     av_value_free(value);
     return text;
 }

@@ -93,9 +93,9 @@ void instance_bank_smoke(behavior_backend backend)
         assert(!behavior_instance_release_activation(bi, bi->activations[0]));
     }
     for (int a = 0; a < 2; a++) {
-        char *json = behavior_asset_save(assets[a]);
-        behavior_asset *next = behavior_asset_load(json);
-        free(json);
+        /* Schema migration keeps the native program and declaration IDs.
+         * Source persistence is exercised by the source/graph roundtrip tests. */
+        behavior_asset *next = behavior_asset_clone(assets[a]);
         assert(next);
         int last = acount(next->variables) - 1;
         behavior_variable swap = next->variables[0];

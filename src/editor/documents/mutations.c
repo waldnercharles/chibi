@@ -444,7 +444,8 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
             behavior_asset_find_graph(e->asset, expression->reference_id) &&
             behavior_asset_find_graph(e->asset, expression->reference_id)->math_expression) {
             behavior_expression_error error;
-            if (behavior_expression_refresh(e->asset, expression, &error) != 0) {
+            if (behavior_expression_refresh_mode(e->asset, expression, GRAPH_EXPRESSION_NONE, &error) !=
+                0) {
                 if (reference_before) {
                     (void)ed_adopt_behavior_asset(e, reference_before);
                 } else if (reference_input) {
@@ -487,7 +488,7 @@ int ed_connect(editor *e, const ed_pin_view *a, const ed_pin_view *b)
                           : NULL;
         if (source && source->math_expression) {
             behavior_expression_error error;
-            (void)behavior_expression_refresh(e->asset, output->n, &error);
+            (void)behavior_expression_refresh_mode(e->asset, output->n, GRAPH_EXPRESSION_NONE, &error);
         }
         ed_drop_replaced_source(e, output, input, replaced_id);
         if (!reference_input) {
@@ -581,12 +582,8 @@ static bool ed_expression_call_stale(const graph *caller, const node *call)
         }
         return true;
     }
-    for (int i = 0; i < call->input_count; i++) {
-        if ((call->input_pins[i].flags & PIN_FLAG_REFERENCE) &&
-            call->input_pins[i].binding) {
-            return true;
-        }
-    }
+    /* A bound reference is an established capture, not a stale direct edge.
+       Rebuilding it during compilation changes authored expression contracts. */
     return false;
 }
 
@@ -609,7 +606,7 @@ void ed_refresh_stale_behavior_expressions(editor *e)
                 continue;
             }
             behavior_expression_error error = { 0 };
-            (void)behavior_expression_refresh(e->asset, call, &error);
+            (void)behavior_expression_refresh_mode(e->asset, call, generated->expression_mode, &error);
         }
     }
 }

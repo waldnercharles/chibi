@@ -1,4 +1,4 @@
-version 5
+version 9
 name "SDF Lab"
 content "content"
 start_scene "scenes/SdfShapes.kdl"

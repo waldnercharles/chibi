@@ -141,7 +141,7 @@ static void attached_documents()
     int bank = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Bank", "content/ui/Bank.rml", NULL);
     int desk = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Desk", "content/ui/Desk.rml", NULL);
     reference_index_add_asset(index, REFERENCE_ASSET_UI, "Notice", "content/ui/Notice.rml", NULL);
-    int teller = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Teller", "content/behaviors/Teller.kdl", NULL);
+    int teller = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Teller", "content/behaviors/Teller.code", NULL);
     int prototype = reference_index_add_asset(
         index,
         REFERENCE_ASSET_PROTOTYPE,

@@ -3,6 +3,7 @@
 #include "graph/model/local.h"
 #include "support/text_file.h"
 #include "test/suite_internal.h"
+#include "test/support/code_fixture.h"
 
 #include <assert.h>
 
@@ -254,8 +255,8 @@ static void explicit_self()
 
 static void arena_shard()
 {
-    char *json = text_file_read("test/fixtures/content/behaviors/ArenaShardBehavior.kdl");
-    behavior_asset *asset = behavior_asset_load(json);
+    char *json = text_file_read("test/fixtures/content/behaviors/ArenaShardBehavior.code");
+    behavior_asset *asset = test_project_asset("test/fixtures/content/behaviors/ArenaShardBehavior.code", json);
     free(json);
     assert(asset);
     editor e = { .asset = asset,

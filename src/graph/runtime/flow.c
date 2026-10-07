@@ -982,6 +982,12 @@ flow_run *graph_run_event(graph *g, const char *name, flow_inputs inputs, flow_e
     return run;
 }
 
+bool flow_run_owner_valid(const flow_run *run)
+{
+    return !run->instance || !run->instance->activation_valid ||
+           run->instance->activation_valid(run->instance);
+}
+
 int flow_run_continue(flow_run *run, int clear_step_mode)
 {
     if (!run) {
@@ -1017,7 +1023,19 @@ int flow_run_continue(flow_run *run, int clear_step_mode)
     } else {
         run->activation_budget = 0;
     }
-    return flow_run_execute(run);
+    behavior_instance *instance = run->instance;
+    bool synchronize = instance && instance->activation_enter;
+    if (synchronize && instance->activation_depth++ == 0 &&
+        !instance->activation_enter(instance)) {
+        instance->activation_depth--;
+        flow_run_stop(run);
+        return FLOW_OK;
+    }
+    int result = flow_run_execute(run);
+    if (synchronize && --instance->activation_depth == 0) {
+        instance->activation_leave(instance);
+    }
+    return result;
 }
 
 int flow_run_resume(flow_run *run)

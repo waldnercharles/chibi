@@ -6,6 +6,7 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/behaviors/parallel.h"
 #include "runtime/behaviors/pending.h"
+#include "runtime/behaviors/reactive.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -110,6 +111,7 @@ struct game_behavior_world
     int last_pump_count;
     uint64_t next_sequence;
     behavior_clock clock;
+    game_reactive *reactive;
     behavior_profile_record profile[GAME_BEHAVIOR_PROFILE_MAX];
     int profile_count;
     bool profile_disabled;
@@ -598,6 +600,7 @@ game_behavior_world *game_behavior_world_new(ecs_world *world)
     }
     game_behavior_world *result = (game_behavior_world *)xcalloc(1, sizeof *result);
     result->ecs = world;
+    result->reactive = game_reactive_new(world);
     result->save = game_save_new();
     result->audio = game_audio_new();
     result->ui = game_ui_new();
@@ -680,6 +683,7 @@ void game_behavior_world_free(game_behavior_world *world)
     behavior_update_free_code(world->update_code);
     clear_update_bindings(world);
     game_behavior_parallel_free(world->update_parallel);
+    game_reactive_free(world->reactive);
     afree(world->updates);
     afree(world->update_spans);
     behavior_update_free_kernels(world->update_kernels);
@@ -1531,6 +1535,84 @@ static void prepare_updates(game_behavior_world *world)
     );
     world->update_revision = world->attachment_revision;
     CHIBI_TRACE_ZONE_END(zone);
+}
+
+int game_behavior_maintain(game_behavior_world *world, flow_error *error)
+{
+    assert(world);
+    game_reactive_begin(world->reactive);
+    uint64_t revision = world->attachment_revision, next = 0;
+    int at = 0, result = FLOW_OK;
+    while (at < acount(world->attachments)) {
+        if (revision != world->attachment_revision) {
+            revision = world->attachment_revision;
+            at = 0;
+            while (at < acount(world->attachments) &&
+                   world->attachments[at].sequence < next) {
+                at++;
+            }
+            if (at == acount(world->attachments)) {
+                break;
+            }
+        }
+        behavior_attachment *attachment = &world->attachments[at++];
+        next = attachment->sequence + 1;
+        if (!ecs_entity_is_alive(world->ecs, attachment->entity) ||
+            ecs_entity_is_retiring(world->ecs, attachment->entity)) {
+            continue;
+        }
+        result = game_reactive_apply(world->reactive, attachment->instance, error);
+        if (result < 0) {
+            break;
+        }
+    }
+    game_reactive_end(world->reactive);
+    return result;
+}
+
+int game_behavior_field_changed(
+    game_behavior_world *world,
+    ecs_entity entity,
+    ecs_component_id component,
+    size_t offset,
+    pin_value value,
+    flow_error *error
+)
+{
+    uint64_t revision = world->attachment_revision, next = 0;
+    int at = 0;
+    while (at < acount(world->attachments)) {
+        if (revision != world->attachment_revision) {
+            revision = world->attachment_revision;
+            at = 0;
+            while (at < acount(world->attachments) &&
+                   world->attachments[at].sequence < next) {
+                at++;
+            }
+            if (at == acount(world->attachments)) {
+                break;
+            }
+        }
+        behavior_attachment *attachment = &world->attachments[at++];
+        next = attachment->sequence + 1;
+        if (!ecs_entity_is_alive(world->ecs, attachment->entity) ||
+            ecs_entity_is_retiring(world->ecs, attachment->entity)) {
+            continue;
+        }
+        int result = game_reactive_changed(
+            world->reactive,
+            attachment->instance,
+            entity,
+            component,
+            offset,
+            value,
+            error
+        );
+        if (result < 0) {
+            return result;
+        }
+    }
+    return FLOW_OK;
 }
 
 int game_behavior_update(game_behavior_world *world, flow_error *error)

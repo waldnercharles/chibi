@@ -407,6 +407,11 @@ static void boolean_symbol_and_member_assignment()
     assert(call && flag && call->output_count == 1);
     assert(graph_connect_data(asset->graph, flag, 0, call, 0) == 0);
     assert(behavior_expression_refresh(asset, call, &error) == 0);
+    assert(
+        behavior_asset_find_graph(asset, call->reference_id)->expression_mode == GRAPH_EXPRESSION_VALUE
+    );
+    assert(named_pin(call, false, "Exec") < 0);
+    assert(behavior_expression_refresh_mode(asset, call, GRAPH_EXPRESSION_NONE, &error) == 0);
     graph *generated = behavior_asset_find_graph(asset, call->reference_id);
     assert(generated && generated->expression_mode == GRAPH_EXPRESSION_BRANCH);
     int flag_pin = named_pin(call, false, "flag");
@@ -649,12 +654,15 @@ static void integer_operand_expressions()
         graph_connect_data(g, configured_variable_getter(g, index), 0, sum, named_pin(sum, false, "Index")) == 0
     );
     assert(behavior_expression_refresh(asset, sum, &error) == 0);
+    assert(sum->output_pins[named_pin(sum, true, "Result")].type == PIN_F64);
     node *store = graph_add_node(g, &NODE_SetVariable);
     assert(store && graph_set_node_reference(g, store, after->id, after->name) == 0);
     assert(graph_set_pin_type(g, store, 0, 1, PIN_I32, "int") == 0);
     assert(graph_set_pin_type(g, store, 1, 1, PIN_I32, "int") == 0);
     assert(graph_connect_data(g, sum, named_pin(sum, true, "Result"), store, 1) == 0);
+    assert(graph_input_conversion(g, store, 1));
     assert(behavior_expression_refresh(asset, sum, &error) == 0);
+    assert(sum->output_pins[named_pin(sum, true, "Result")].type == PIN_F64);
     assert(graph_connect_exec(g, next, named_pin(next, true, "Then"), store, 0, 0) == 0);
     behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
     assert(instance);
@@ -728,8 +736,35 @@ static void reference_assignment_expressions()
     uint64_t getter_id = getter->id;
     const graph *generated = behavior_asset_find_graph(asset, call->reference_id);
     char *serialized = behavior_asset_save(asset);
-    /* The expression's body is rebuilt from its source rather than stored. */
-    assert(serialized && !strstr(serialized, "\"Function Entry\""));
+    /* Generated identities may be kept in optional presentation metadata;
+       executable expressions must stand on their readable source alone. */
+    assert(serialized);
+    char *metadata = strstr(serialized, "/* @authoring ");
+    if (metadata) {
+        *metadata = '\0';
+    }
+    assert(!strstr(serialized, "\"Function Entry\""));
+    behavior_asset *bare = behavior_asset_load(serialized);
+    assert(bare);
+    behavior_instance *bare_instance = behavior_instance_create(bare, NULL, NULL, NULL);
+    assert(bare_instance);
+    flow_error bare_error;
+    flow_run *bare_run = behavior_instance_dispatch(bare_instance, "Run", (flow_inputs){ 0 }, &bare_error);
+    pin_value bare_value;
+    assert(bare_run && flow_run_status(bare_run) == FLOW_COMPLETED);
+    assert(
+        behavior_instance_get_variable(
+            bare_instance,
+            behavior_asset_find_variable_by_name(bare, "position")->id,
+            &bare_value
+        ) == 0
+    );
+    assert(bare_value.type == PIN_F64 && bare_value.d == 12);
+    behavior_instance_destroy(bare_instance);
+    behavior_asset_free(bare);
+    if (metadata) {
+        *metadata = '/';
+    }
     behavior_asset *reloaded = behavior_asset_load(serialized);
     free(serialized);
     assert(reloaded);
@@ -994,6 +1029,8 @@ static void integer_component_compound_assignment_roundtrip()
     assert(graph_connect_exec(asset->graph, event, 0, call, exec, 0) == 0);
     assert(behavior_expression_refresh(asset, call, &error) == 0);
     assert(graph_set_pin_type(asset->graph, call, 1, result, PIN_I32, "int") == 0);
+    assert(behavior_expression_refresh(asset, call, &error) == 0);
+    assert(call->output_pins[named_pin(call, true, "Result")].type == PIN_I32);
 
     uint64_t call_id = call->id;
     char *serialized = behavior_asset_save(asset);
@@ -1006,7 +1043,7 @@ static void integer_component_compound_assignment_roundtrip()
     call = graph_node_by_id(asset->graph, call_id);
     assert(call);
     result = named_pin(call, true, "Result");
-    assert(result >= 0);
+    assert(result >= 0 && call->output_pins[result].type == PIN_I32);
 
     ecs_world *world = ecs_world_new();
     assert(world && ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) == ECS_OK);
@@ -1028,7 +1065,7 @@ static void integer_component_compound_assignment_roundtrip()
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
     pin_value value;
     assert(flow_run_watch_output(run, call, result, &value) == 0);
-    assert(value.type == PIN_F64 && value.d == 2);
+    assert(value.type == PIN_I32 && value.i == 2);
     assert(GAME_GameHealth_get_const(world, owner)->current == 2);
     behavior_instance_destroy(instance);
     ecs_world_free(world);
@@ -2008,6 +2045,7 @@ void test_math_expression()
     uint64_t a_id = call->input_pins[0].id, b_id = call->input_pins[1].id;
     uint64_t output_id = call->output_pins[0].id, graph_id = generated->graph_id;
     node *second = behavior_asset_add_function_call_node(asset, generated);
+    uint64_t second_id = second->id;
     uint64_t second_a_id = second->input_pins[0].id;
     assert(evaluate(asset, call) == 7);
     assert(behavior_expression_set(asset, call, "b + a + c", &error) == 0);
@@ -2023,6 +2061,8 @@ void test_math_expression()
     assert(evaluate(asset, call) == 9);
     uint64_t call_id = call->id;
     char *snapshot = behavior_asset_save(asset);
+    behavior_asset *native_snapshot = behavior_asset_clone(asset);
+    assert(native_snapshot);
     const char *invalid[] = { "",          "a +",        "(a + b",  "sin()",
                               "sin(1, 2)", "unknown(2)", "rand(1)", "1 $ 2",
                               "1 2",       "max(1,)",    "1e999" };
@@ -2038,8 +2078,44 @@ void test_math_expression()
     assert(acount(g->edges) == 1 && evaluate(asset, call) == 7);
     behavior_asset_free(asset);
     asset = behavior_asset_load(snapshot);
+    assert(asset);
+    call = graph_node_by_id(asset->graph, call_id);
+    second = graph_node_by_id(asset->graph, second_id);
+    /* A shared generated body becomes one readable function with two calls. */
+    assert(call && second && call->desc == &NODE_CallPureFunction);
+    assert(second->desc == &NODE_CallPureFunction && second->reference_id == call->reference_id);
+    assert(call->input_pins[0].id == a_id && call->input_pins[1].id == b_id);
+    assert(second->input_pins[0].id == second_a_id);
+    assert(evaluate(asset, call) == 9);
+    behavior_asset_free(asset);
+    char *metadata = strstr(snapshot, "/* @authoring ");
+    assert(metadata);
+    *metadata = 0;
+    asset = behavior_asset_load(snapshot);
     free(snapshot);
     assert(asset);
+    call = second = NULL;
+    for (int i = 0; i < acount(asset->graph->nodes); i++) {
+        node *n = asset->graph->nodes[i];
+        if (n->desc != &NODE_CallPureFunction) {
+            continue;
+        }
+        node *driver;
+        int output;
+        if (graph_input_source(asset->graph, n, 0, &driver, &output)) {
+            assert(!call);
+            call = n;
+        } else {
+            assert(!second);
+            second = n;
+        }
+    }
+    assert(call && second && second->reference_id == call->reference_id);
+    assert(evaluate(asset, call) == 9);
+    behavior_asset_free(asset);
+
+    /* Native formula editing keeps its expression model in an in-memory snapshot. */
+    asset = native_snapshot;
     call = graph_node_by_id(asset->graph, call_id);
     assert(call && !strcmp(behavior_expression_source(asset, call), "b + a + c"));
     assert(call->input_pins[0].id == a_id && call->input_pins[1].id == b_id);

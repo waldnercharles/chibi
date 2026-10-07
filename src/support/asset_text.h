@@ -3,7 +3,9 @@
 
 #include "support/asset_value.h"
 
-#define ASSET_EXTENSION ".kdl"
+#define DECLARATIVE_ASSET_EXTENSION ".kdl"
+#define CODE_ASSET_EXTENSION ".code"
+#define CODE_ASSET_METADATA_EXTENSION ".code.meta"
 
 /* KDL 2 source decodes directly into native asset values. The root is an
  * implicit object whose keys are the document's top-level node names. */
@@ -13,6 +15,7 @@ char *av_doc_write(const av_doc *doc);
 char *av_value_write(const av_value *value);
 av_doc *av_value_read(const char *text, char *error, size_t error_size);
 av_doc *asset_text_read(const char *text, char *error, size_t error_size);
+char *asset_text_write(const av_value *root);
 char *asset_text_to_disk(const char *text, char *error, size_t error_size);
 
 #endif

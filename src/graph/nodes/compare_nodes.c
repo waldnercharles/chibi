@@ -1,5 +1,7 @@
 #include "graph/nodes/compare_nodes.h"
 
+#include "graph/runtime/value_array.h"
+
 #include <assert.h>
 
 static pin_spec real_inputs[] = {
@@ -15,33 +17,40 @@ static pin_spec compare_outputs[] = {
 };
 static const node_access pure = { .flags = NODE_EFFECT_PURE };
 
-#define REAL_COMPARE(NAME, LABEL, OP, KEYWORDS, DESCRIPTION)                   \
-    static pin_value NAME##_value(const pin_value *inputs, int count, arena *) \
-    {                                                                          \
-        assert(count == 2);                                                    \
-        assert(                                                                \
-            (inputs[0].type == PIN_F32 || inputs[0].type == PIN_F64) &&        \
-            (inputs[1].type == PIN_F32 || inputs[1].type == PIN_F64)           \
-        );                                                                     \
-        assert(inputs[0].container == PIN_CONTAINER_SINGLE);                   \
-        assert(inputs[1].container == PIN_CONTAINER_SINGLE);                   \
-        double left = inputs[0].type == PIN_F64 ? inputs[0].d : inputs[0].f;   \
-        double right = inputs[1].type == PIN_F64 ? inputs[1].d : inputs[1].f;  \
-        return (pin_value){ .type = PIN_BOOL, .b = left OP right };            \
-    }                                                                          \
-    node_desc NODE_##NAME = {                                                  \
-        .name = LABEL,                                                         \
-        .input_count = 2,                                                      \
-        .output_count = 1,                                                     \
-        .inputs = real_inputs,                                                 \
-        .outputs = compare_outputs,                                            \
-        .pure_kind = NODE_PURE_CALL,                                           \
-        .fn = NAME##_value,                                                    \
-        .display_class = NODE_DISPLAY_PURE,                                    \
-        .category = "Math/Comparison",                                         \
-        .keywords = KEYWORDS,                                                  \
-        .description = DESCRIPTION,                                            \
-        .access = &pure,                                                       \
+#define REAL_COMPARE(NAME, LABEL, OP, KEYWORDS, DESCRIPTION)                         \
+    static pin_value NAME##_value(const pin_value *inputs, int count, arena *)       \
+    {                                                                                \
+        assert(count == 2);                                                          \
+        if ((&NODE_##NAME == &NODE_Equal || &NODE_##NAME == &NODE_Not_Equal) &&      \
+            inputs[0].type != PIN_F32 && inputs[0].type != PIN_F64) {                \
+            assert(inputs[0].type == inputs[1].type);                                \
+            bool equal = pin_value_equal(&inputs[0], &inputs[1]);                    \
+            return (pin_value){ .type = PIN_BOOL,                                    \
+                                .b = &NODE_##NAME == &NODE_Equal ? equal : !equal }; \
+        }                                                                            \
+        assert(                                                                      \
+            (inputs[0].type == PIN_F32 || inputs[0].type == PIN_F64) &&              \
+            (inputs[1].type == PIN_F32 || inputs[1].type == PIN_F64)                 \
+        );                                                                           \
+        assert(inputs[0].container == PIN_CONTAINER_SINGLE);                         \
+        assert(inputs[1].container == PIN_CONTAINER_SINGLE);                         \
+        double left = inputs[0].type == PIN_F64 ? inputs[0].d : inputs[0].f;         \
+        double right = inputs[1].type == PIN_F64 ? inputs[1].d : inputs[1].f;        \
+        return (pin_value){ .type = PIN_BOOL, .b = left OP right };                  \
+    }                                                                                \
+    node_desc NODE_##NAME = {                                                        \
+        .name = LABEL,                                                               \
+        .input_count = 2,                                                            \
+        .output_count = 1,                                                           \
+        .inputs = real_inputs,                                                       \
+        .outputs = compare_outputs,                                                  \
+        .pure_kind = NODE_PURE_CALL,                                                 \
+        .fn = NAME##_value,                                                          \
+        .display_class = NODE_DISPLAY_PURE,                                          \
+        .category = "Math/Comparison",                                               \
+        .keywords = KEYWORDS,                                                        \
+        .description = DESCRIPTION,                                                  \
+        .access = &pure,                                                             \
     };
 
 #define INTEGER_COMPARE(NAME, LABEL, OP, KEYWORDS, DESCRIPTION)                  \

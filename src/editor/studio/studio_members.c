@@ -8,6 +8,7 @@
  * MembersHeader.rml); this is its `members` source, which windows the rows
  * into its List and takes what the rows, the name field and the menu send
  * (docs/studio-rml-migration.md, P5). */
+#include "assets/code_print.h"
 #include "editor/studio/studio_members_internal.h"
 #include "support/array.h"
 #include "ui/list.h"
@@ -530,6 +531,17 @@ static bool event_node(const node *n)
            n->reference_name && n->reference_name[0];
 }
 
+static const char *event_label(
+    const behavior_asset *asset,
+    const graph *g,
+    const node *n,
+    char *out,
+    size_t size
+)
+{
+    return code_print_reactive_event(asset, g, n, out, size) ? out : n->reference_name;
+}
+
 /* Whether an Event node for this event comes before node `index` of graph
    `at`; each event lists once. */
 static bool event_listed(const behavior_asset *asset, int at, int index, const char *name)
@@ -537,8 +549,9 @@ static bool event_listed(const behavior_asset *asset, int at, int index, const c
     for (int g = 0; g <= at; g++) {
         const graph *gr = asset->graphs[g];
         for (int i = 0; i < (g == at ? index : acount(gr->nodes)); i++) {
+            char label[512];
             if (event_node(gr->nodes[i]) &&
-                !strcmp(gr->nodes[i]->reference_name, name)) {
+                !strcmp(event_label(asset, gr, gr->nodes[i], label, sizeof label), name)) {
                 return true;
             }
         }
@@ -563,8 +576,12 @@ static int event_rows(const studio *s, member_row **rows)
         const graph *gr = asset->graphs[g];
         for (int i = 0; gr->kind == GRAPH_EVENT && i < acount(gr->nodes); i++) {
             const node *n = gr->nodes[i];
-            if (event_node(n) && studio_matches(filter, n->reference_name) &&
-                !event_listed(asset, g, i, n->reference_name)) {
+            char label[512];
+            const char *name = event_node(n)
+                                 ? event_label(asset, gr, n, label, sizeof label)
+                                 : NULL;
+            if (name && studio_matches(filter, name) &&
+                !event_listed(asset, g, i, name)) {
                 apush(*rows, ((member_row){ ROW_EVENT, g, 1, 0, i }));
                 count++;
             }
@@ -768,6 +785,13 @@ static bool row_symbol(const studio *s, const member_row *row, reference_symbol 
             return true;
         }
         case ROW_EVENT:
+            if (row->index >= 0) {
+                const graph *g = asset->graphs[row->index];
+                char label[512];
+                if (code_print_reactive_event(asset, g, g->nodes[row->node], label, sizeof label)) {
+                    return false;
+                }
+            }
             *title = event_name(s, row);
             *symbol = (reference_symbol){ .kind = REFERENCE_SYMBOL_EVENT,
                                           .asset = -1,
@@ -1036,6 +1060,13 @@ static row_look row_look_of(const studio *s, const member_row *row, pin_spec *pi
         case ROW_VARIABLE: return variable_look(s, row, pin, meta, size);
         case ROW_LOCAL: return local_look(s, row, meta, size);
         case ROW_EVENT:
+            if (row->index >= 0) {
+                const graph *g = asset->graphs[row->index];
+                return (
+                    row_look
+                ){ .label = event_label(asset, g, g->nodes[row->node], meta, size),
+                   .icon = KIT_ICON_EVENT };
+            }
             return (row_look){ .label = event_name(s, row), .icon = KIT_ICON_EVENT };
     }
     return (row_look){ 0 };
@@ -1083,7 +1114,7 @@ static bool open_graph(const studio *s, const member_row *row)
 static bool show_row(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *item, const member_row *row)
 {
     pin_spec pin;
-    char meta[96], key[40];
+    char meta[512], key[40];
     row_look look = row_look_of(s, row, &pin, meta, sizeof meta);
     row_key(s, row, key, sizeof key);
     bool changed = ui_data_put_text(doc, item, "key", key);

@@ -86,7 +86,7 @@ static bool link_items(studio *s, sg_menu *m, node *n, int kind, int p)
                                                     : &from->output_pins[from_pin];
         char title[128], name[128], text[272], key[16];
         ed_node_title(e, other, title, sizeof title);
-        ed_pin_label(other, far, name, sizeof name);
+        studio_code_pin_label(s, other, far, name, sizeof name);
         snprintf(text, sizeof text, "%s \xe2\x80\xba %s", title, name);
         snprintf(key, sizeof key, "l%d", i);
         if (sg_menu_item(m, key, text, 0, NULL, readonly)) {
@@ -158,10 +158,11 @@ static bool promotable(const studio *s, const pin_spec *spec)
 }
 
 /* The pin's label, numbered past the variables already named so. */
-static void variable_name(const editor *e, const node *n, const pin_spec *spec, char *out, size_t size)
+static void variable_name(const studio *s, const node *n, const pin_spec *spec, char *out, size_t size)
 {
+    const editor *e = sg_graph_editor(s);
     char label[96];
-    ed_pin_label(n, spec, label, sizeof label);
+    studio_code_pin_label(s, n, spec, label, sizeof label);
     snprintf(out, size, "%s", label);
     for (int i = 2; behavior_asset_find_variable_by_name(e->asset, out); i++) {
         snprintf(out, size, "%s %d", label, i);
@@ -203,7 +204,7 @@ static void promote(studio *s, node *n, int kind, int p)
     graph *gr = sg_active_graph(s);
     bool output = kind == ED_PIN_OUTPUT;
     char name[128];
-    variable_name(e, n, pin_of(n, kind, p), name, sizeof name);
+    variable_name(s, n, pin_of(n, kind, p), name, sizeof name);
     int before = acount(gr->nodes);
     e->pending_snapshot = ed_snapshot(e);
     if (!behavior_asset_promote_pin_to_variable(e->asset, n, output, p, name)) {
@@ -445,7 +446,7 @@ void sg_emit_pin_edit(studio *s, node *n, int p)
 void sg_pin_menu(studio *s, sg_menu *m, node *n, int kind, int p)
 {
     char label[128];
-    ed_pin_label(n, pin_of(n, kind, p), label, sizeof label);
+    studio_code_pin_label(s, n, pin_of(n, kind, p), label, sizeof label);
     sg_menu_title(m, label);
     if (sg_pin_renameable(s, n, kind, p) &&
         sg_menu_item(m, "rename", "Rename", KIT_ICON_EDIT, "F2", false)) {

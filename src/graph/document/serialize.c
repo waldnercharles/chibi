@@ -1,9 +1,13 @@
+#include "assets/code_source.h"
+#include "graph/authoring/pin_edit.h"
 #include "graph/document/serialize_internal.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/local.h"
+#include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
+#include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/value_array.h"
 #include "support/asset_text.h"
 #include "support/asset_value.h"
@@ -318,6 +322,21 @@ static int load_pin_list(graph *g, node *n, av_value *arr, int output, uint64_t 
     int i = 0;
     int count = output ? n->output_count : n->input_count;
     int serialized_count = (int)av_arr_size(arr);
+    graph_pin_run run;
+    if (serialized_count < count && graph_pin_run_of(n, &run) &&
+        run.output == output && serialized_count >= count - run.count) {
+        while (count > serialized_count) {
+            if (graph_remove_pin(g, n, output, run.first + run.count - 1)) {
+                serialize_error_set(
+                    "node %llu cannot shrink its variadic pin run",
+                    (unsigned long long)n->id
+                );
+                return -1;
+            }
+            run.count--;
+            count--;
+        }
+    }
     if (serialized_count < count &&
         (n->desc == &NODE_FunctionEntry || n->desc == &NODE_Return ||
          compact_component_node(g, n))) {
@@ -938,7 +957,21 @@ static int load_edges(graph *g, av_value *edges)
                 serialize_error_set("data edge has an exec order");
                 return -1;
             }
+            unsigned flags = to->input_pins[tp].flags;
+            unsigned source_flags = from->output_pins[fp].flags;
+            bool fixed_conversion = conversion &&
+                                    conversion_matches_pins(fps, tps, conversion);
+            if (fixed_conversion || (!conversion && pin_compatible(fps, tps))) {
+                /* Snapshot pins already declare storage. Replaying a compatible
+                 * driver must preserve the consumer's nominal type and width. */
+                to->input_pins[tp].flags &= ~PIN_FLAG_WILDCARD;
+                if (!conversion && fps->type != PIN_FLOW && tps->type != PIN_FLOW) {
+                    from->output_pins[fp].flags &= ~PIN_FLAG_WILDCARD;
+                }
+            }
             r = graph_connect_data_conversion(g, from, fp, to, tp, conversion);
+            to->input_pins[tp].flags = flags;
+            from->output_pins[fp].flags = source_flags;
         } else if (strcmp(kind_name, "exec") == 0) {
             if (conversion) {
                 serialize_error_set("exec edge cannot have a conversion");
@@ -1024,7 +1057,7 @@ graph *graph_load(const char *text)
     char error[160];
     av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
     if (!doc) {
-        serialize_error_set("%s", text ? error : "null KDL input");
+        serialize_error_set("%s", text ? error : "null code input");
         return NULL;
     }
     graph *result = graph_from_value(av_doc_root(doc));
@@ -1174,6 +1207,7 @@ static int load_variable(behavior_asset *asset, av_value *v)
         return -1;
     }
     var->id = id;
+    var->shared = av_get_bool(av_obj_get(v, "shared"));
     return 0;
 }
 
@@ -1436,14 +1470,32 @@ static int serialize_repair_math_calls(behavior_asset *asset)
 
 behavior_asset *behavior_asset_load(const char *text)
 {
+    if (text && code_source_is_structured(text)) {
+        code_source *source = code_source_parse(text);
+        behavior_asset *asset = code_source_build_behavior(source);
+        if (!asset) {
+            serialize_error_set(
+                "%s",
+                acount(source->diagnostics) ? source->diagnostics[0].message : "invalid behavior source"
+            );
+        }
+        code_source_free(source);
+        return asset;
+    }
     char error[160];
     av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
     if (!doc) {
-        serialize_error_set("%s", text ? error : "null KDL input");
+        serialize_error_set("%s", text ? error : "null code input");
         return NULL;
     }
     behavior_asset *result = behavior_asset_from_value(av_doc_root(doc));
     av_doc_free(doc);
+    if (result && (result->domain == BEHAVIOR_DOMAIN_EVENT ||
+                   result->domain == BEHAVIOR_DOMAIN_LIBRARY)) {
+        behavior_asset_free(result);
+        serialize_error_set("Executable behaviors require readable .code source");
+        return NULL;
+    }
     return result;
 }
 
@@ -1525,7 +1577,64 @@ behavior_asset *behavior_asset_from_value(av_value *root)
         serialize_error_set("cannot set owner type");
         goto fail;
     }
+    av_value *parameters = av_obj_get(root, "component_parameters");
+    if (parameters && !av_is_arr(parameters)) {
+        serialize_error_set("component_parameters must be an array");
+        goto fail;
+    }
+    for (size_t i = 0; i < av_arr_size(parameters); i++) {
+        const av_value *parameter = av_arr_get(parameters, i);
+        const char *name = av_get_str(av_obj_get(parameter, "name"));
+        const char *key = av_get_str(av_obj_get(parameter, "key"));
+        if (!name || !*name || !key || !*key) {
+            serialize_error_set("invalid component parameter");
+            goto fail;
+        }
+        behavior_asset_add_component_parameter(
+            asset,
+            name,
+            key,
+            av_get_bool(av_obj_get(parameter, "optional"))
+        );
+    }
     av_value *vars = av_obj_get(root, "variables");
+    av_value *reactives = av_obj_get(root, "reactives");
+    if (reactives && !av_is_arr(reactives)) {
+        serialize_error_set("reactives must be an array");
+        goto fail;
+    }
+    if (reactives) {
+        av_arr_iter iter;
+        av_arr_iter_init(reactives, &iter);
+        av_value *value;
+        while ((value = av_arr_iter_next(&iter))) {
+            const char *fields[] = { "kind",          "graph_id",
+                                     "event_id",      "source_node_id",
+                                     "source_pin_id", "statement_node_id",
+                                     "value_node_id", "value_pin_id" };
+            for (int i = 0; i < 8; i++) {
+                if (!av_is_uint(av_obj_get(value, fields[i]))) {
+                    serialize_error_set("invalid executable reactive record");
+                    goto fail;
+                }
+            }
+            behavior_reactive r = {
+                .kind = av_get_uint(av_obj_get(value, "kind")),
+                .graph_id = av_get_uint(av_obj_get(value, "graph_id")),
+                .event_id = av_get_uint(av_obj_get(value, "event_id")),
+                .source_node_id = av_get_uint(av_obj_get(value, "source_node_id")),
+                .source_pin_id = av_get_uint(av_obj_get(value, "source_pin_id")),
+                .statement_node_id = av_get_uint(av_obj_get(value, "statement_node_id")),
+                .value_node_id = av_get_uint(av_obj_get(value, "value_node_id")),
+                .value_pin_id = av_get_uint(av_obj_get(value, "value_pin_id")),
+            };
+            if (r.kind > BEHAVIOR_REACTIVE_PRESSED_CHANGED || !r.event_id) {
+                serialize_error_set("invalid executable reactive kind or event");
+                goto fail;
+            }
+            apush(asset->reactives, r);
+        }
+    }
     if (vars && !av_is_arr(vars)) {
         serialize_error_set("variables must be an array");
         goto fail;

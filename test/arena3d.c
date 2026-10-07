@@ -8,6 +8,7 @@
 #include "runtime/generated.h"
 #include "runtime/visual_parts.h"
 #include "runtime/visual_transform.h"
+#include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 
 #include <assert.h>
@@ -348,9 +349,9 @@ static bool prism_checks(CF_Pixel *pixels)
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
     game_live_world *live = game_live_world_new(world);
-    char *json = text_file_read("content/behaviors/TwinStickInputBehavior.kdl");
+    char *json = text_file_read("content/behaviors/TwinStickInputBehavior.code");
     assert(json);
-    behavior_asset *asset = behavior_asset_load(json);
+    behavior_asset *asset = test_project_asset("content/behaviors/TwinStickInputBehavior.code", json);
     free(json);
     assert(asset);
     asset = link_test_libraries(asset);
@@ -755,10 +756,13 @@ static bool parallel_geometry(CF_Pixel *first, CF_Pixel *second)
         GameGeometry3D *shape = GAME_GameGeometry3D_get(world, entity);
         shape->width = shape->height = shape->depth = .1f;
         if (i % 200 == 0) {
-            GameMeshParts parts = {
-                .parts = "(array)- { - { primitive 0; (array)size 0.1 0.1 0.1; "
-                         "(array)rotation 0 0.3 0; }; }\n"
-            };
+            GameMeshParts parts = { .parts = "(array)- {\n"
+                                             "    - {\n"
+                                             "        primitive 0\n"
+                                             "        (array)size 0.1 0.1 0.1\n"
+                                             "        (array)rotation 0 0.3 0\n"
+                                             "    }\n"
+                                             "}\n" };
             assert(!ecs_world_record_add(
                 world,
                 entity,

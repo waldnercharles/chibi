@@ -1,3 +1,4 @@
+#include "assets/code_print.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/authoring/layout.h"
@@ -67,13 +68,12 @@ const char *ed_binding_label(const editor *e, const pin_binding *binding, char *
         const pin_spec *pin = event
                                 ? graph_pin_by_id(event, binding->event_pin_id, &output, NULL)
                                 : NULL;
-        snprintf(
-            buf,
-            cap,
-            "On %s.%s",
-            event && event->reference_name ? event->reference_name : "Event",
-            pin && output && pin->name ? pin->name : "Value"
-        );
+        char semantic[512];
+        const char *name = event && code_print_reactive_event(e->asset, e->active_graph, event, semantic, sizeof semantic)
+                             ? semantic
+                         : event && event->reference_name ? event->reference_name
+                                                          : "Event";
+        snprintf(buf, cap, "On %s.%s", name, pin && output && pin->name ? pin->name : "Value");
         return buf;
     }
     if (binding->kind == PIN_BINDING_COMPONENT) {

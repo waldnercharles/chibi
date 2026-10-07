@@ -142,9 +142,9 @@ static void failure_lifetime(behavior_backend backend)
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
     flow_run_free(run);
     assert(behavior_instance_last_failure(bi) == f);
-    char *json = behavior_asset_save(asset);
-    behavior_asset *next = behavior_asset_load(json);
-    free(json);
+    /* Failure snapshots must outlive replacement of the same native program.
+     * Source/graph roundtrip tests cover source persistence separately. */
+    behavior_asset *next = behavior_asset_clone(asset);
     assert(next && behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_READY);
     behavior_instance_update(bi, next);
     behavior_asset_free(asset);

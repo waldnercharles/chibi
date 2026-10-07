@@ -356,7 +356,7 @@ static void local_details(gd_view *v, studio *s, const graph_local *local)
     if (r.open) {
         row_id(id, 'l', local->id, "n");
         text_row(&r, id, "Name", local->name, "", sg_graph_readonly(s));
-        ed_pin_label(source, pin, pin_label, sizeof pin_label);
+        studio_code_pin_label(s, source, pin, pin_label, sizeof pin_label);
         snprintf(text, sizeof text, "%s \xe2\x80\xba %s", ed_node_title(e, source, title, sizeof title), pin_label);
         row_id(id, 'l', local->id, "s");
         label_row(&r, id, "Source", text);

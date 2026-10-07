@@ -89,7 +89,7 @@ static void rejected_documents()
 {
     static const struct
     {
-        const char *kdl;
+        const char *code;
         const char *error;
     } cases[] = {
         { "components {\n"
@@ -233,7 +233,7 @@ static void rejected_documents()
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         component_presentation p = { 0 };
         char error[256] = { 0 };
-        bool ok = component_presentation_read(cases[i].kdl, &registry, &p, error, sizeof error);
+        bool ok = component_presentation_read(cases[i].code, &registry, &p, error, sizeof error);
         char message[320];
         snprintf(
             message,

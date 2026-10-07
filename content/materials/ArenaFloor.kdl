@@ -698,21 +698,21 @@ description "Permanent triangular cell outlines surround small breathing inner t
             - from="1126.Result" to="754.Cell"
         }
     }
-    - id=761 kind="function" math_expression="position.xz / max(tile_size, 0.01)" entry_id=870
-    - id=839 kind="function" math_expression="vec2(grid.x * 0.8660254 - grid.y * 0.5, grid.y)" entry_id=1131
-    - id=969 kind="function" math_expression="fract(lattice)" entry_id=1213
-    - id=1038 kind="function" math_expression="step(1, offset.x + offset.y)" entry_id=1223
-    - id=1114 kind="function" math_expression="lattice - offset" entry_id=1201
-    - id=1251 kind="function" math_expression="cell + (1 + upper) / 3" entry_id=1400
-    - id=1327 kind="function" math_expression="max(tile_size, 0.01)" entry_id=1424
-    - id=1356 kind="function" math_expression="vec3((centroid.x + centroid.y * 0.5) / 0.8660254 * size, position.y, centroid.y * size)" entry_id=1587
-    - id=1642 kind="function" math_expression="mix(offset, 1 - offset, upper)" entry_id=1732
-    - id=1703 kind="function" math_expression="min(min(barycentric.x, barycentric.y), 1 - (barycentric.x + barycentric.y))" entry_id=1964
-    - id=1824 kind="function" math_expression="(1 - clamp(scale, 0.01, 1)) / 3" entry_id=2001
-    - id=1883 kind="function" math_expression="max(width, 0.002)" entry_id=1951
-    - id=1912 kind="function" math_expression="1 - smoothstep(line_width, line_width + 0.006, abs(edge_distance - inset))" entry_id=2095
-    - id=2127 kind="function" math_expression="saturate(max(max(color.x, color.y), color.z) * 2.5)" entry_id=2188
-    - id=2220 kind="function" math_expression="mix(idle_size, active_size, activity) + beat * beat_amount" entry_id=2348
-    - id=2371 kind="function" math_expression="max(max(breathing, resting * 0.24), outline)" entry_id=2554
-    - id=2399 kind="function" math_expression="(influence * reaction_gain + vec3(0.42, 0.55, 0.64) * idle_glow) * line_mask" entry_id=2651
+    - id=761 kind="function" math_expression="position.xz / max(tile_size, 0.01)" expression_mode=1 entry_id=870
+    - id=839 kind="function" math_expression="vec2(grid.x * 0.8660254 - grid.y * 0.5, grid.y)" expression_mode=1 entry_id=1131
+    - id=969 kind="function" math_expression="fract(lattice)" expression_mode=1 entry_id=1213
+    - id=1038 kind="function" math_expression="step(1, offset.x + offset.y)" expression_mode=1 entry_id=1223
+    - id=1114 kind="function" math_expression="lattice - offset" expression_mode=1 entry_id=1201
+    - id=1251 kind="function" math_expression="cell + (1 + upper) / 3" expression_mode=1 entry_id=1400
+    - id=1327 kind="function" math_expression="max(tile_size, 0.01)" expression_mode=1 entry_id=1424
+    - id=1356 kind="function" math_expression="vec3((centroid.x + centroid.y * 0.5) / 0.8660254 * size, position.y, centroid.y * size)" expression_mode=1 entry_id=1587
+    - id=1642 kind="function" math_expression="mix(offset, 1 - offset, upper)" expression_mode=1 entry_id=1732
+    - id=1703 kind="function" math_expression="min(min(barycentric.x, barycentric.y), 1 - (barycentric.x + barycentric.y))" expression_mode=1 entry_id=1964
+    - id=1824 kind="function" math_expression="(1 - clamp(scale, 0.01, 1)) / 3" expression_mode=1 entry_id=2001
+    - id=1883 kind="function" math_expression="max(width, 0.002)" expression_mode=1 entry_id=1951
+    - id=1912 kind="function" math_expression="1 - smoothstep(line_width, line_width + 0.006, abs(edge_distance - inset))" expression_mode=1 entry_id=2095
+    - id=2127 kind="function" math_expression="saturate(max(max(color.x, color.y), color.z) * 2.5)" expression_mode=1 entry_id=2188
+    - id=2220 kind="function" math_expression="mix(idle_size, active_size, activity) + beat * beat_amount" expression_mode=1 entry_id=2348
+    - id=2371 kind="function" math_expression="max(max(breathing, resting * 0.24), outline)" expression_mode=1 entry_id=2554
+    - id=2399 kind="function" math_expression="(influence * reaction_gain + vec3(0.42, 0.55, 0.64) * idle_glow) * line_mask" expression_mode=1 entry_id=2651
 }

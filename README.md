@@ -115,7 +115,7 @@ behaviors, prototypes, and scenes. See [the MCP workflow](docs/mcp.md) for
 the public tools and validation sequence.
 
 To edit an asset directly in Studio, open it from Assets and switch the
-area to Text Editor. The KDL editor highlights syntax and offers reflected
+area to Text Editor. The code editor highlights syntax and offers reflected
 component, field, enum and asset completions as you type or with Control+Space.
 Diagnostics mark invalid source. Live preview keeps the last valid asset while
 you finish an edit. Saving writes the valid source exactly as typed, preserving

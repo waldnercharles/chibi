@@ -20,7 +20,7 @@ function parameter(ref, name, defaults, minimum, maximum, type = "float") {
   ];
 }
 function graph(kind, name, description, operations, metadata = {}) {
-  if (!existsSync(resolve(project, `content/${kind === "behavior" ? "behaviors" : "models"}/${name}.kdl`)))
+  if (!existsSync(resolve(project, `content/${kind === "behavior" ? "behaviors" : "models"}/${name}.${kind === "behavior" ? "code" : "kdl"}`)))
     call("buildGraph", { kind, name, create: true, description, operations, ...metadata });
   call("validateAsset", { kind, name });
 }

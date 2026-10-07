@@ -1,78 +1,108 @@
-# Canonical .code source
+# Behavior code and declarative assets
 
 [CUT-70](https://linear.app/cute-engine/issue/CUT-70/replace-kdl-with-canonical-code-assets-and-first-class-graph-authoring)
-tracks complete replacement of KDL as the authored asset format. Graphs are to
-be built directly from `.code`, with text and visual editing using the same
-native model. Behavior graphs are the first milestone. The goal also includes
-other KDL-backed graph domains, scenes, prototypes, systems, scenarios and
-project manifests. RML/RCSS markup remains a separate format.
+and [CUT-71](https://linear.app/cute-engine/issue/CUT-71/build-the-shared-c-code-frontend-and-direct-behavior-graph)
+provide the shared native source frontend and direct behavior graph authoring.
+The current requirement keeps declarative content in KDL and makes readable
+`.code` the authority for executable behavior. LuaJIT is not part of this
+implementation.
 
-## Current implementation
+## Persistence contract
 
-The JavaScript bridge under `tools/behavior-code` parses source and invokes
-MCP graph edits. It persists an executable KDL graph and a JSON identity map.
-The native loader skips `.code`; Studio does not invoke this frontend.
-[CUT-45](https://linear.app/cute-engine/issue/CUT-45/deliver-behavior-scripting-through-the-existing-graph-runtime)
-tracks that bridge and its remaining acceptance. It does not deliver canonical
-source storage. Its recorded behavior-editor panel hold remains in effect.
+Project manifests are `project.kdl`, with project version 7. Scenes, prototypes,
+event declarations, models, shapes, materials, fields, shader libraries,
+scenarios and editor configuration use KDL 2. Behaviors, behavior libraries and
+systems use `.code`. RML and RCSS remain separate formats.
 
-## Native source contract
+Behavior code describes executable operations through readable syntax. Graph
+editing and text editing consume the same native model. Stable identities,
+layout and comments belong to the source document; a generated executable graph
+or identity sidecar is not an independent authoring authority. Unsupported
+source or graph edits must produce a diagnostic before replacement.
 
-One shared C frontend outside `src/editor` serves Studio, the controller/MCP
-and Native/WASM loading. Source parsing, reflected name resolution and graph
-construction produce a candidate native model with diagnostics and source
-ranges. Existing graph validation and runtime compilers consume that model.
+The [language reference](code-language.md) records supported source forms.
+[Authoring navigation](authoring-navigation.md) records shared language services
+and editor/controller integration. The graph runtime and its native compiler
+remain the execution path.
 
-`.code` owns authored content. Graph saves update the same source document.
-IDs, layout and comments have explicit authoring metadata in the source
-contract. Generated caches are derivable. Converted assets require neither
-persistent generated KDL nor an independently edited `.code.map.json`.
+## Native boundaries
 
-The language needs an explicit typed node/connection form for graph topology
-outside structured statements. It must preserve functions/macros, variables
-and defaults, bindings, disabled nodes, IDs, edges, reroutes and comment boxes.
-Raw KDL embedded in source does not complete the format migration.
+`src/support/code_lex.*` provides shared tokens and source locations.
+`src/support/asset_text.*` implements KDL declarative values.
+`src/assets/code_value.*` parses executable source literals.
+`src/assets/code_source.*`, `code_program.*` and `code_statements.c` build
+behavior models through engine reflection and graph APIs; `code_print.*`
+prints readable programs from those models. Existing graph
+validation and compilation consume candidate models. This frontend uses no
+Node subprocess or MCP graph-edit replay. Examples live under
+`examples/behaviors`.
 
-Non-graph assets need declarative document syntax sharing lexical rules,
-references, values and diagnostics. Invalid source retains the last valid
-document/runtime generation. State declaration edits need defined runtime
-replacement semantics.
+Source objects own text, byte ranges, diagnostics and candidate models. Compile
+and build APIs return independently owned models. Callers retain the previous
+valid model when parsing or compilation fails. Studio and the controller use
+these shared APIs rather than separate language implementations.
 
-## Start here
+## Declarative migration evidence
 
-[CUT-71](https://linear.app/cute-engine/issue/CUT-71/build-the-shared-c-code-frontend-and-direct-behavior-graph)
-is the next implementation milestone:
+The requirements restart was captured at tree
+`48a953d7578ba091afde0df7120ef30ec3537fea` in
+`build/requirements-restart-baseline`. The declarative conversion reads current
+values rather than restoring repository files, preserving edits made since the
+original snapshot.
 
-1. Specify behavior grammar and identity/layout metadata, including explicit
-   graph forms alongside the current structured language.
-2. Add a shared C source API under `src/assets`, with explicit ownership of
-   parsed source and caller-owned candidate `behavior_asset` values.
-3. Resolve through existing engine registries and construct graph models
-   directly. No Node/MCP subprocess or textual KDL step is needed.
-4. Implement canonical formatting and source reconciliation with stable IDs.
-5. Expose the same API through the controller and verify Native/WASM builds.
-6. Add focused C/pico_unit checks for parsing, diagnostics, model round trips,
-   identity, failed edits, state lifecycle and existing runtime parity.
+511 declarative documents were converted from the intermediate code storage to
+KDL. Their emitted KDL was parsed and compared semantically before activation.
+313 nested parameter/mesh-part payloads were converted and compared separately.
+All nine manifests were updated to version 7 and KDL start-scene paths. The
+105 executable source documents were reserved for the separate readable source
+migration below. Original declarative documents contained no lexical comments;
+authored graph comment/layout metadata remains in their native model fields.
 
-Relevant boundaries are `src/graph/model/behavior_asset.h`, `graph.h`,
-`src/graph/document/serialize.h`, `src/assets/asset_source.h`,
-`src/editor/documents/asset_code.c` and `src/editor/studio/studio_code.c`.
-The frontend foundation can proceed before the deferred Studio panel work.
+Proof and exact before/after files are stored under
+`build/requirements-declarative-migration`. The earlier all-code migration's
+proof under `build/cut70-migration` describes the superseded persistence choice.
+Native canonical checks, source parity and final runtime/build gates for the
+mixed persistence contract are separate validation work; the conversion proof
+does not claim those gates have passed.
 
-## Subsequent migration
+## Executable migration evidence
 
-Convert every asset in a domain, parse the emitted source, and compare native
-semantic content and authoring metadata before changing its persistence path.
-Unsupported topology must remain recoverable; conversion cannot silently omit
-it. Complete each corpus conversion before removing its obsolete KDL loader,
-serializer and files. Do not retain permanent dual authoring paths.
+All 105 existing behaviors, libraries and systems now contain readable source.
+The final1277 comparison preserves the original raw document facts and proves
+matching executable models both without metadata and after independently
+reopening the optional authoring metadata. Both models compile without errors;
+system queries match. The three existing source examples remain readable code.
+Activation checked every current file against its expected hash, backed up all
+105 files, and verified every written file.
 
-Breaking project loading requires incrementing `CHIBI_PROJECT_VERSION` and
-updating every project manifest. Re-read the current version when implementing.
-Manifest migration also changes `CHIBI_PROJECT_MANIFEST`, project discovery,
-creation and package/install paths.
+Generated formulas with shared bodies, aggregate captures or precision
+boundaries sometimes become ordinary typed functions. Their operations and
+evaluation semantics remain in code. Editing those functions owns their bodies;
+the former formula-regeneration provenance is discarded. Some unused pin
+inference flags, cached displays, historical socket labels and four promoted
+parameter lineage records are also discarded or regenerated. Caller signatures,
+state initializers, actual numeric widths, executable connections and resource
+names remain checked.
 
-After behavior persistence, integrate Studio source/graph editing, drafts,
-diagnostics, undo/save/live apply and navigation through the shared frontend.
-Then migrate the remaining graph and declarative document domains. Remove the
-old JavaScript bridge and identity sidecars when their replacements are complete.
+66 assets retain every original identity and presentation record; 88 retain all
+matched surviving records. Representation changes remove 44 authoring records.
+No breakpoint, watch, comment or comment-box value was lost or changed. Four
+regenerated helper nodes in ArenaPickup lose their old nonzero positions. A
+pre-existing Flipper graph/pin ID collision is repaired by moving graph 1926 to
+2666 while retaining execution pin 1926.
+
+Exact per-asset changes, frozen compiler/input identities and activation backups
+are under `build/requirements-behavior-migration`, particularly
+`final1277-authored-review.json`, `final1277-loss-summary.json` and
+`final1277-authored-activation.json`. Full integration results are tracked
+separately from this migration proof.
+
+Postcanonical verification compares every current asset with the immutable
+activated source using the final loader. All 105 complete native models and
+their authoring metadata match; metadata-free execution, queries, compilation
+and persist/reopen comparisons also pass. Callable expression owners and full
+aggregate field ancestry keep optional identities stable. Three assets affected
+by intermediate formatting were restored from the activation snapshots with
+hash guards and complete native-model comparisons. These records are in
+`postcanonical-final-report.json`, `postcanonical-final-provenance.json` and
+`authoring-recovery-review.json` under the same migration evidence directory.

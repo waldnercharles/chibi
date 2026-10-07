@@ -1,0 +1,15 @@
+behavior "BloomCircuitGoal" {
+    owner "ecs.entity";
+    value find_nearest_entity = find_nearest_entity(Position: {
+        x: 0.0,
+        y: 2.51
+    }, Radius: 10000.0, Categories: 1, Exclude: 0);
+    value getentity_gameexperience = get_entity_game_experience(Entity: find_nearest_entity.Entity);
+    value current: int = getentity_gameexperience.Value.current;
+    on Tick as tick(DeltaSeconds: float = 0.0) {
+        if (convert<"To Real">(current) >= 8) {
+            set_ui_text(Entity: 0, Element: "#goal", Text: "CIRCUIT COMPLETE!  All 8 blooms collected.");
+        } else {
+        }
+    }
+}

@@ -1,3 +1,4 @@
+#include "assets/code_source.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/suite_internal.h"
 #include "test/whole_array_op_fixture.h"
@@ -73,6 +74,17 @@ static void aliases(int kind)
     /* Reordering variables must move both arenas with their stable identity. */
     char *json = behavior_asset_save(a);
     behavior_asset *next = behavior_asset_load(json);
+    if (!next) {
+        fprintf(stderr, "Managed reuse save/load failed:\n%s\n", json ? json : "NULL");
+        if (json) {
+            code_source *source = code_source_parse(json);
+            for (int i = 0; i < acount(source->diagnostics); i++) {
+                const code_source_diagnostic *d = &source->diagnostics[i];
+                fprintf(stderr, "%d..%d: %s\n", d->start, d->end, d->message);
+            }
+            code_source_free(source);
+        }
+    }
     free(json);
     assert(next);
     behavior_variable swap = next->variables[0];

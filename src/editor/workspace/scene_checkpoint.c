@@ -1,3 +1,4 @@
+#include "assets/code_catalog.h"
 #include "assets/scene_document.h"
 #include "editor/collab/actions_scene.h"
 #include "editor/workspace/checkpoint.h"
@@ -5,6 +6,7 @@
 #include "graph/document/serialize.h"
 #include "runtime/generated.h"
 #include "support/asset_json.h"
+#include "support/asset_text.h"
 #include "support/text_overlay.h"
 
 #include <assert.h>
@@ -14,6 +16,50 @@ static void owned_text(yyjson_mut_doc *doc, yyjson_mut_val *object, const char *
 {
     checkpoint_text(doc, object, key, text);
     free(text);
+}
+
+static void checkpoint_behavior(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const char *key,
+    const char *metadata_key,
+    const behavior_asset *asset
+)
+{
+    char *metadata = NULL;
+    char *text = code_source_format_with_metadata(asset, &metadata);
+    owned_text(doc, object, key, text);
+    owned_text(doc, object, metadata_key, metadata);
+}
+
+static behavior_asset *checkpoint_behavior_load(
+    const code_catalog *catalog,
+    yyjson_val *object,
+    const char *key,
+    const char *metadata_key,
+    char *error,
+    size_t size
+)
+{
+    const char *text = yyjson_get_str(yyjson_obj_get(object, key));
+    const char *metadata = yyjson_get_str(yyjson_obj_get(object, metadata_key));
+    if (!metadata || !code_source_is_structured(text)) {
+        return code_catalog_load_behavior(catalog, text, error, size);
+    }
+    code_source *source = code_source_parse_context(text, NULL, code_catalog_context(catalog));
+    bool restored = code_source_metadata_restore(source, metadata);
+    behavior_asset *asset = restored ? code_source_build_behavior(source) : NULL;
+    if (!asset && size) {
+        snprintf(
+            error,
+            size,
+            "%s",
+            acount(source->diagnostics) ? source->diagnostics[0].message
+                                        : "Invalid checkpoint identity metadata"
+        );
+    }
+    code_source_free(source);
+    return asset;
 }
 
 static av_value *checkpoint_native_value(yyjson_val *object, const char *key)
@@ -115,6 +161,7 @@ static void checkpoint_tabs(yyjson_mut_doc *doc, yyjson_mut_val *root, app_scene
         yyjson_mut_obj_add_val(doc, item, "asset_saved", av_to_json(doc, tab->asset_saved));
         yyjson_mut_obj_add_val(doc, item, "source", av_to_json(doc, tab->source_state));
         yyjson_mut_obj_add_bool(doc, item, "source_dirty", tab->source_dirty);
+        yyjson_mut_obj_add_bool(doc, item, "source_only", tab->source_only);
         if (tab->ui) {
             yyjson_mut_obj_add_val(doc, item, "ui", ui_buffer_checkpoint(tab->ui, doc));
         }
@@ -234,6 +281,7 @@ static bool restore_tabs(app_scene_authoring *scene, yyjson_val *root)
             .asset_saved = checkpoint_native_value(item, "asset_saved"),
             .source_state = checkpoint_native_value(item, "source"),
             .source_dirty = yyjson_get_bool(yyjson_obj_get(item, "source_dirty")),
+            .source_only = yyjson_get_bool(yyjson_obj_get(item, "source_only")),
             .ui = kind == APP_EDITOR_DOCUMENT_UI
                     ? ui_buffer_restore(yyjson_obj_get(item, "ui"))
                     : NULL,
@@ -441,27 +489,36 @@ char *app_scene_authoring_checkpoint(app_scene_authoring *scene)
         yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, behaviors);
         checkpoint_text(doc, item, "name", definition->name);
         checkpoint_text(doc, item, "path", definition->path);
-        owned_text(doc, item, "working", behavior_asset_save(definition->working));
-        owned_text(doc, item, "applied", behavior_asset_save(definition->applied));
+        checkpoint_behavior(doc, item, "working", "working_metadata", definition->working);
+        checkpoint_behavior(doc, item, "applied", "applied_metadata", definition->applied);
         yyjson_mut_obj_add_bool(doc, item, "dirty", definition->dirty);
         yyjson_mut_obj_add_bool(doc, item, "unsaved", definition->unsaved);
     }
     checkpoint_text(doc, root, "system_path", scene->system_path);
-    owned_text(
-        doc,
-        root,
-        "system",
-        scene->system_document
-            ? game_system_document_save(scene->system_document, resolve_component, component_name, NULL)
-            : NULL
-    );
+    char *system_metadata = NULL;
+    char *system_text = scene->system_document
+                          ? game_system_document_save_with_metadata(
+                                scene->system_document,
+                                &system_metadata,
+                                resolve_component,
+                                component_name,
+                                NULL
+                            )
+                          : NULL;
+    owned_text(doc, root, "system", system_text);
+    owned_text(doc, root, "system_metadata", system_metadata);
     checkpoint_tabs(doc, root, scene);
     char *json = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
     return json;
 }
 
-static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
+static bool restore_behavior_models(
+    app_scene_authoring *scene,
+    yyjson_val *behaviors,
+    const code_catalog *applied_catalog,
+    const code_catalog *working_catalog
+)
 {
     scene->definition = NULL;
     bool removed = true;
@@ -490,8 +547,18 @@ static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
             if (!name || !applied_json || !working_json) {
                 return false;
             }
-            behavior_asset *applied = behavior_asset_load(applied_json);
+            char error[256];
+            behavior_asset *applied = checkpoint_behavior_load(
+                applied_catalog,
+                item,
+                "applied",
+                "applied_metadata",
+                error,
+                sizeof error
+            );
             if (!applied) {
+                snprintf(scene->message, sizeof scene->message, "Checkpoint applied %s: %.160s", name, error);
+                fprintf(stderr, "%s\n", scene->message);
                 return false;
             }
             behavior_domain domain = applied->domain;
@@ -506,7 +573,18 @@ static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
                 behavior_asset_free(applied);
                 continue;
             }
-            behavior_asset *working = behavior_asset_load(working_json);
+            behavior_asset *working = checkpoint_behavior_load(
+                working_catalog,
+                item,
+                "working",
+                "working_metadata",
+                error,
+                sizeof error
+            );
+            if (!working) {
+                snprintf(scene->message, sizeof scene->message, "Checkpoint working %s: %.160s", name, error);
+                fprintf(stderr, "%s\n", scene->message);
+            }
             game_live_definition *definition = working
                                                  ? game_live_definition_new(name, applied)
                                                  : NULL;
@@ -536,6 +614,61 @@ static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors)
         }
     }
     return true;
+}
+
+static bool checkpoint_references(code_catalog *applied, code_catalog *working, yyjson_val *prototypes)
+{
+    size_t i, count;
+    yyjson_val *item;
+    yyjson_arr_foreach(prototypes, i, count, item)
+    {
+        const char *text = yyjson_get_str(yyjson_obj_get(item, "json"));
+        char error[256];
+        av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
+        const av_value *root = doc ? av_doc_root(doc) : NULL;
+        const av_value *name = root && av_is_obj(root) ? av_obj_get(root, "name")
+                                                       : NULL;
+        bool valid = name && av_is_str(name) && *av_get_str(name);
+        if (valid) {
+            code_catalog_add_reference(applied, CODE_REFERENCE_PROTOTYPE, av_get_str(name));
+            code_catalog_add_reference(working, CODE_REFERENCE_PROTOTYPE, av_get_str(name));
+        }
+        av_doc_free(doc);
+        if (!valid) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool restore_behaviors(app_scene_authoring *scene, yyjson_val *behaviors, yyjson_val *prototypes)
+{
+    const char **applied = NULL, **working = NULL;
+    const char **applied_metadata = NULL, **working_metadata = NULL;
+    size_t i, count;
+    yyjson_val *item;
+    yyjson_arr_foreach(behaviors, i, count, item)
+    {
+        apush(applied, yyjson_get_str(yyjson_obj_get(item, "applied")));
+        apush(working, yyjson_get_str(yyjson_obj_get(item, "working")));
+        apush(applied_metadata, yyjson_get_str(yyjson_obj_get(item, "applied_metadata")));
+        apush(working_metadata, yyjson_get_str(yyjson_obj_get(item, "working_metadata")));
+    }
+    /* Snapshot declarations, rather than disk sources, own both generations.
+     * Unsaved signature changes must not alter the applied generation. */
+    code_catalog *applied_catalog = code_catalog_from_texts(applied, acount(applied));
+    code_catalog *working_catalog = code_catalog_from_texts(working, acount(working));
+    bool restored = checkpoint_references(applied_catalog, working_catalog, prototypes) &&
+                    code_catalog_restore_metadata(applied_catalog, applied, applied_metadata, acount(applied)) &&
+                    code_catalog_restore_metadata(working_catalog, working, working_metadata, acount(working)) &&
+                    restore_behavior_models(scene, behaviors, applied_catalog, working_catalog);
+    code_catalog_free(applied_catalog);
+    code_catalog_free(working_catalog);
+    afree(applied);
+    afree(working);
+    afree(applied_metadata);
+    afree(working_metadata);
+    return restored;
 }
 
 static bool restore_prototypes(app_scene_authoring *scene, yyjson_val *prototypes)
@@ -593,7 +726,49 @@ static bool restore_system(app_scene_authoring *scene, yyjson_val *root)
         return true;
     }
     char error[256];
-    scene->system_document = game_system_document_load(json, resolve_component, NULL, error, sizeof error);
+    const behavior_asset **assets = NULL;
+    for (int i = 0; i < game_live_definition_count(scene->live); i++) {
+        apush(assets, game_live_definition_at(scene->live, i)->working);
+    }
+    code_catalog *catalog = code_catalog_from_assets(assets, acount(assets));
+    for (int i = 0; i < acount(scene->prototypes); i++) {
+        code_catalog_add_reference(
+            catalog,
+            CODE_REFERENCE_PROTOTYPE,
+            scene->prototypes[i].prototype->name
+        );
+    }
+    scene->system_document = game_system_document_load_context(
+        json,
+        code_catalog_context(catalog),
+        resolve_component,
+        NULL,
+        error,
+        sizeof error
+    );
+    if (scene->system_document &&
+        yyjson_get_str(yyjson_obj_get(root, "system_metadata"))) {
+        behavior_asset *definition = checkpoint_behavior_load(
+            catalog,
+            root,
+            "system",
+            "system_metadata",
+            error,
+            sizeof error
+        );
+        if (!definition) {
+            game_system_document_free(scene->system_document);
+            scene->system_document = NULL;
+        } else {
+            game_system_document_replace_behavior_asset(scene->system_document, definition);
+        }
+    }
+    code_catalog_free(catalog);
+    afree(assets);
+    if (!scene->system_document) {
+        snprintf(scene->message, sizeof scene->message, "Checkpoint system: %.200s", error);
+        fprintf(stderr, "%s\n", scene->message);
+    }
     return scene->system_document != NULL;
 }
 
@@ -715,7 +890,8 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     }
     if (scene_authoring_load_text(scene, "version 1\nname Checkpoint\n(array)entities\n", NULL) !=
             0 ||
-        !restore_behaviors(scene, behaviors) || !restore_prototypes(scene, prototypes) ||
+        !restore_behaviors(scene, behaviors, prototypes) ||
+        !restore_prototypes(scene, prototypes) ||
         !restore_system(scene, root) || !restore_scene(scene, root, actors) ||
         yyjson_arr_size(actors) != (size_t)acount(scene->actors) ||
         !restore_playback(scene, root)) {
@@ -791,6 +967,12 @@ int app_scene_authoring_restore_checkpoint(app_scene_authoring *scene, const cha
     app_scene_authoring_refresh_content(scene);
     if (!restore_tabs(scene, root) || !restore_next_actor_id(scene, root)) {
         goto done;
+    }
+    if (scene->active_tab >= 0 && scene->tabs[scene->active_tab].source_only) {
+        free(scene->graph_document_id);
+        scene->graph_document_id = NULL;
+        scene->definition = NULL;
+        scene->behavior_apply_pending = false;
     }
     result = 0;
 done:

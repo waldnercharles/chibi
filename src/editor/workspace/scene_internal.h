@@ -162,7 +162,8 @@ typedef struct
     unsigned system_editor_revision;
     unsigned system_query_revision;
     ui_buffer *ui;     /* a UI document's text, owned; NULL for other kinds */
-    bool source_dirty; /* exact KDL text differs from disk */
+    bool source_dirty; /* exact code text differs from disk */
+    bool source_only;  /* executable source whose graph has not loaded */
     av_value *source_state; /* source draft, history and selection; owned native checkpoint */
 } scene_document_tab;
 
@@ -170,6 +171,7 @@ typedef struct
  * checkpoints, never this layout or its runtime pointers. */
 struct app_scene_authoring
 {
+    char source_preview_hold[1024]; /* On Save source edits still update the authored graph. */
     app_sdf_shapes shapes;
     app_scene_renderer *renderer;
     engine_viewport *render_viewport;
@@ -213,7 +215,9 @@ struct app_scene_authoring
     char *content_root;
     char *ui;         /* the scene's root ui document, or NULL for default_ui */
     char *default_ui; /* the project's, or NULL */
-    tree_watch disk;  /* content files as last loaded or saved */
+    tree_watch disk;  /* declarative content files as last loaded or saved */
+    tree_watch code_disk;
+    tree_watch code_metadata_disk;
     char **disk_pending; /* changes waiting for the runtime to stop */
     int selected;
     /* The selection each recent step began and ended with (scene_actors.c). */
@@ -347,6 +351,12 @@ bool scene_tabs_path_in_use(
     const char *path
 );
 int scene_tabs_activate(app_scene_authoring *scene, int index);
+int scene_tabs_open_source(
+    app_scene_authoring *scene,
+    app_editor_document_kind kind,
+    const char *name,
+    const char *path
+);
 /* A behavior's or prototype's tab follows its rename, or closes. */
 void scene_tabs_rename(
     app_scene_authoring *scene,
@@ -551,6 +561,20 @@ const ecs_component_desc *resolve_system_component(const char *name, void *);
 int restore_retained_components(app_scene_authoring *scene, scene_actor *actor, const game_prototype *prototype);
 int save_active_document(app_scene_authoring *scene);
 /* Writes a content file and records it, so it does not reload as a change on disk. */
+av_doc *scene_code_document_path(
+    app_scene_authoring *scene,
+    const char *text,
+    const char *path,
+    char *error,
+    size_t size
+);
+behavior_asset *scene_graph_source_path(
+    app_scene_authoring *scene,
+    const char *text,
+    const char *path,
+    char *error,
+    size_t size
+);
 int save_content_file(app_scene_authoring *scene, const char *path, const char *json);
 int save_behavior_document(app_scene_authoring *scene);
 void select_prototype(app_scene_authoring *scene, int index);
@@ -563,7 +587,7 @@ void write_position(app_scene_authoring *scene, ecs_entity entity, GameTransform
 /* Replaces the file with `text` at once; on the web the workspace server
  * keeps it too. */
 int write_file_atomic(const char *path, const char *text);
-/* Reconciles authored KDL with existing source before writing atomically. */
+/* Reconciles authored code with existing source before writing atomically. */
 int write_text_file_atomic(const char *path, const char *text);
 /* Removes a content file, from browser storage too. */
 int remove_content_file(const char *path);
@@ -578,6 +602,7 @@ typedef struct
    what a removed file held goes. */
 /* Whether two paths name one file, as realpath resolves them. */
 bool scene_same_file(const char *a, const char *b);
+void scene_disk_note(app_scene_authoring *scene, const char *path);
 void scene_disk_follow(app_scene_authoring *scene, const scene_move *moves, int count);
 
 /* ---------- Editor view state (scene_view.c) ---------- */

@@ -6,6 +6,7 @@
  * rows (studio_output.c): a click selects a row, a double click or Enter
  * opens it, and the arrows walk and fold the tree. */
 #include "assets/call_hierarchy.h"
+#include "assets/code_source_intelligence.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "graph/document/events.h"
 #include "support/array.h"
@@ -151,6 +152,7 @@ static void trace_symbol(studio *s, reference_symbol symbol, const char *title)
         studio_report(s, "Not in the project");
         return;
     }
+    s->calls.source_path[0] = 0;
     studio_call_root *root = &s->calls.root;
     *root = (studio_call_root){ .kind = symbol.kind,
                                 .asset_kind = asset ? (int)asset->kind : 0,
@@ -161,10 +163,136 @@ static void trace_symbol(studio *s, reference_symbol symbol, const char *title)
     trace(s);
 }
 
+static asset_code *source_code(studio *s, const char *path)
+{
+    for (int i = 0; i < acount(s->code.assets); i++) {
+        if (!strcmp(path, asset_code_path(s->code.assets[i]))) {
+            return s->code.assets[i];
+        }
+    }
+    return NULL;
+}
+
+static studio_reference source_place(asset_code *code, int offset)
+{
+    studio_reference place = { .ui = { .line = 1, .offset = offset } };
+    snprintf(place.ui.path, sizeof place.ui.path, "%s", asset_code_path(code));
+    const char *text = kit_code_text(asset_code_editor(code), NULL);
+    for (int i = 0; i < offset && text[i]; i++) {
+        place.ui.line += text[i] == '\n';
+    }
+    return place;
+}
+
+static void source_rows(
+    studio *s,
+    asset_code *code,
+    const code_semantic_symbol *symbol,
+    int offset,
+    uint64_t *ancestors,
+    int depth
+)
+{
+    if (acount(s->calls.rows) >= 512) {
+        return;
+    }
+    const code_source *source = asset_code_source(code);
+    bool cycle = false;
+    for (int i = 0; i < depth; i++) {
+        cycle |= ancestors[i] == symbol->id;
+    }
+    code_semantic_call
+        *calls = cycle
+                   ? NULL
+                   : code_intelligence_calls_for(source, symbol->id, !s->calls.callees);
+    studio_call row = { .icon = symbol->kind == CODE_SYMBOL_EVENT ? KIT_ICON_EVENT
+                                                                  : KIT_ICON_FUNCTION,
+                        .at = source_place(code, offset),
+                        .depth = depth,
+                        .open = depth == 0,
+                        .cycle = cycle,
+                        .parent = acount(calls) > 0 };
+    snprintf(row.label, sizeof row.label, "%s", symbol->name);
+    snprintf(row.meta, sizeof row.meta, "%s", symbol->signature ? symbol->signature : "");
+    apush(s->calls.rows, row);
+    if (depth < CALLS_DEPTH && !cycle) {
+        ancestors[depth] = symbol->id;
+        for (int i = 0; i < acount(calls); i++) {
+            uint64_t id = s->calls.callees ? calls[i].target_id : calls[i].caller_id;
+            const code_semantic_symbol *child = code_intelligence_symbol_by_id(source, id);
+            if (child) {
+                source_rows(s, code, child, calls[i].start, ancestors, depth + 1);
+            }
+        }
+    }
+    afree(calls);
+}
+
+void studio_calls_source(studio *s, const char *path, int offset, bool callees)
+{
+    asset_code *code = source_code(s, path);
+    const code_semantic_symbol
+        *symbol = code ? code_intelligence_symbol_at(asset_code_source(code), offset)
+                       : NULL;
+    if (!symbol || (symbol->kind != CODE_SYMBOL_FUNCTION && symbol->kind != CODE_SYMBOL_MACRO &&
+                    symbol->kind != CODE_SYMBOL_EVENT)) {
+        studio_report(s, "No callable symbol at this position");
+        return;
+    }
+    if (symbol->graph_id && (symbol->kind == CODE_SYMBOL_FUNCTION ||
+                             symbol->kind == CODE_SYMBOL_MACRO)) {
+        app_scene_authoring_refresh_asset_index(s->scene);
+        const reference_index *index = app_scene_authoring_asset_index(s->scene);
+        int asset = symbol->asset_name
+                      ? reference_index_find_name(
+                            index,
+                            REFERENCE_ASSET_LIBRARY,
+                            symbol->asset_name
+                        )
+                      : reference_index_find_asset(index, REFERENCE_ASSET_LIBRARY, path, NULL);
+        if (asset >= 0) {
+            trace_symbol(
+                s,
+                (reference_symbol){ .kind = REFERENCE_SYMBOL_GRAPH,
+                                    .asset = asset,
+                                    .id = symbol->graph_id },
+                symbol->name
+            );
+            if (callees) {
+                s->calls.callees = true;
+                trace(s);
+            }
+            return;
+        }
+    }
+    if (path != s->calls.source_path) {
+        snprintf(s->calls.source_path, sizeof s->calls.source_path, "%s", path);
+    }
+    s->calls.source_offset = offset;
+    s->calls.callees = callees;
+    snprintf(s->calls.root.title, sizeof s->calls.root.title, "%s", symbol->name);
+    asetlen(s->calls.rows, 0);
+    uint64_t ancestors[CALLS_DEPTH + 1];
+    source_rows(s, code, symbol, symbol->start >= 0 ? symbol->start : offset, ancestors, 0);
+    s->calls.selected = -1;
+    studio_output_calls(s);
+}
+
 void studio_calls_node(studio *s, const node *n)
 {
     const char *title;
     reference_symbol symbol = studio_node_symbol(s, n, &title);
+    trace_symbol(s, symbol, title);
+}
+
+void studio_calls_library(studio *s, const char *asset, uint64_t graph_id, const char *title)
+{
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    reference_symbol symbol = {
+        .kind = REFERENCE_SYMBOL_GRAPH,
+        .asset = reference_index_find_name(index, REFERENCE_ASSET_LIBRARY, asset),
+        .id = graph_id,
+    };
     trace_symbol(s, symbol, title);
 }
 
@@ -180,6 +308,7 @@ void studio_calls_clear(studio *s)
 {
     asetlen(s->calls.rows, 0);
     s->calls.root.title[0] = '\0';
+    s->calls.source_path[0] = '\0';
     s->calls.selected = -1;
 }
 
@@ -251,7 +380,11 @@ void studio_calls_direction(studio *s, bool callees)
 {
     if (s->calls.callees != callees && s->calls.root.title[0]) {
         s->calls.callees = callees;
-        trace(s);
+        if (s->calls.source_path[0]) {
+            studio_calls_source(s, s->calls.source_path, s->calls.source_offset, callees);
+        } else {
+            trace(s);
+        }
     }
 }
 

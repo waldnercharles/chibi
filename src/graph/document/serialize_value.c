@@ -332,7 +332,7 @@ int serialize_read_value(pin_type t, const char *type_name, av_value *v, pin_val
         }
         case PIN_NAME:
         case PIN_STR:
-            if (!av_is_str(v)) {
+            if (!av_is_str(v) || strlen(av_get_str(v)) != av_get_len(v)) {
                 return -1;
             }
             out->str = graph_own_str(g, av_get_str(v), av_get_len(v));

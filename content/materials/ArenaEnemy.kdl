@@ -137,5 +137,5 @@ description "Warm rose pursuer surface with a dark body and readable emissive ed
             - from="108.Result" to="29.Emission"
         }
     }
-    - id=86 kind="function" math_expression="glow_color * (fresnel * edge_glow) + flash_glow" entry_id=225
+    - id=86 kind="function" math_expression="glow_color * (fresnel * edge_glow) + flash_glow" expression_mode=1 entry_id=225
 }

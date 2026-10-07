@@ -43,7 +43,14 @@ static void public_export(const char *root, const char *source)
     assert(!mkdir(project, 0700) && !mkdir(content, 0700) && !mkdir(models, 0700));
     snprintf(path, sizeof path, "%s/project.kdl", project);
     char manifest[128];
-    snprintf(manifest, sizeof manifest, "version %d\nname \"Bake test\"\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "version %d\n"
+        "name \"Bake test\"\n"
+        "content \"content\"\n",
+        CHIBI_PROJECT_VERSION
+    );
     write_source(path, manifest);
     snprintf(path, sizeof path, "%s/Ball.kdl", models);
     write_source(path, source);

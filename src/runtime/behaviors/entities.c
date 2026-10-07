@@ -766,6 +766,10 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
     if (!run) {
         return -1;
     }
+    if (flow_run_status(run) != FLOW_COMPLETED && !flow_run_owner_valid(run)) {
+        flow_run_stop(run);
+        return -1;
+    }
     if (!request->entity.slot) {
         char error[256];
         if (game_prototype_spawn_components(

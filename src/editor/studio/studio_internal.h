@@ -664,8 +664,9 @@ typedef struct
 typedef struct
 {
     studio_refactor_mode mode;
-    bool opening; /* show the popover at the pointer this frame */
-    bool mounted; /* its document showed last frame */
+    bool opening;        /* show the popover at the pointer this frame */
+    bool mounted;        /* its document showed last frame */
+    bool source_project; /* exported source declarations use the project plan */
     reference_symbol symbol;
     int asset_kind;
     char asset[128]; /* the asset holding the symbol, or the asset itself */
@@ -673,6 +674,9 @@ typedef struct
     char title[128]; /* the symbol's name */
     char name[128];  /* the new name, as typed */
     char planned[128];
+    char source_path[PATH_MAX];
+    int source_offset;
+    char *source_before, *source_after, *source_metadata;
     struct app_refactor *plan; /* renames to `planned` */
     char error[192];
     studio_refactor_use *uses; /* what a delete leaves dangling */
@@ -745,7 +749,7 @@ typedef struct
        the one shown with the document and part it holds (the designer
        follows its cursor). */
     studio_code_editor *editors; /* array */
-    asset_code **assets;         /* KDL source sessions, owned */
+    asset_code **assets;         /* code source sessions, owned */
     kit_code_editor *editor;
     char editor_path[1024];
     ui_part editor_part;
@@ -1064,6 +1068,8 @@ struct studio
     struct
     {
         studio_call_root root;
+        char source_path[PATH_MAX];
+        int source_offset;
         int callees; /* 0 lists callers, 1 callees */
         studio_call *rows;
         int selected; /* a row, or -1 */
@@ -1642,7 +1648,8 @@ void studio_find_asset_references(studio *s, int asset);
 void studio_find_graph_references(studio *s, const graph *gr);
 void studio_find_variable_references(studio *s, uint64_t variable_id);
 /* Calls, variable nodes, events and spawns reference something. */
-bool studio_node_referable(const node *n);
+bool studio_node_reactive(const studio *s, const node *n);
+bool studio_node_referable(const studio *s, const node *n);
 void studio_find_node_references(studio *s, const node *n);
 void studio_find_references(studio *s, const char *title, reference_symbol symbol);
 /* The references Output's filter keeps, as indices into references. */
@@ -1663,16 +1670,18 @@ void studio_open_reference(studio *s, const studio_reference *row);
    Set its variable in Members, an event node its event definition, Spawn
    Prototype its prototype, and a component node peeks its fields and their
    uses. */
-bool studio_node_definable(const node *n);
+bool studio_node_definable(const studio *s, const node *n);
 void studio_go_to_definition(studio *s, node *n);
 /* The component peek; call every frame with the Behavior area. */
 void studio_definition_peek(studio *s);
 
 /* Call Hierarchy (studio_calls.c): a function's or event's callers or
    callees as a tree in Output's Calls view. Calls and event nodes trace. */
-bool studio_node_traceable(const node *n);
+bool studio_node_traceable(const studio *s, const node *n);
+void studio_calls_source(studio *s, const char *path, int offset, bool callees);
 void studio_calls_node(studio *s, const node *n);
 void studio_calls_graph(studio *s, const graph *gr);
+void studio_calls_library(studio *s, const char *asset, uint64_t graph_id, const char *title);
 /* The rows under open rows that Output's filter keeps, as indices into
    calls.rows, each open row with more children than the trace kept
    followed past its subtree by its More row, as -1 - row. */
@@ -1701,10 +1710,18 @@ void studio_record(studio *s, kit_toast_type kind, const char *text);
 bool studio_asset_refactorable(const reference_asset *asset);
 /* Renames an event, its definition when it has one, and what sends and
    handles it; host events keep their names. */
+bool studio_code_replace(
+    studio *s,
+    const char *path,
+    const char *before,
+    const char *text,
+    const char *metadata
+);
+void studio_refactor_source(studio *s, const char *path, int offset);
 void studio_refactor_rename_event(studio *s, const char *event);
 /* The event an Event, Call Event or Send Event node names, unless the host
    names it; NULL for other nodes. */
-const char *studio_event_renameable(const node *n);
+const char *studio_event_renameable(const studio *s, const node *n);
 void studio_refactor_rename_asset(studio *s, int asset);
 /* A member rename that reaches other assets goes through the popover: true
    when it took it. */
@@ -1888,6 +1905,22 @@ uint32_t studio_prototype_icon(const studio *s, const char *prototype);
 /* Before the areas: applies UI edits live (the code_apply_live preference)
  * and shows the Text Editor when a UI document becomes active. */
 void studio_code_frame(studio *s);
+bool studio_code_history(studio *s, bool redo, bool apply);
+bool studio_code_graph_readonly(const studio *s);
+/* Owned strings; graph expressions use authored names in every source editor. */
+char *studio_code_expression(const studio *s, const node *n);
+void studio_code_graph_label(const studio *s, const graph *g, char *out, size_t size);
+void studio_code_pin_label(const studio *s, const node *n, const pin_spec *pin, char *out, size_t size);
+char *studio_code_expression_resolve(
+    const studio *s,
+    const node *n,
+    const char *text,
+    char *error,
+    size_t size
+);
+void studio_code_reveal_node(studio *s, const studio_node_ref *at);
+int studio_behavior_view(const studio *s);
+void studio_behavior_show(studio *s, int view);
 /* Opens the UI document `path` belongs to (ui_buffer_document) at a 1-based
  * line of its part, as a style origin names a line of a ui asset's .rcss
  * (UI_PART_RCSS); false when it cannot be opened. studio_open_ui_source opens
@@ -2843,7 +2876,7 @@ void studio_graph_find_add(yyjson_mut_doc *doc);
 bool studio_graph_find_sync(studio *s, const studio_panel_sync *at);
 void studio_graph_find_action(studio *s, const char *action, const ui_activation *a);
 /* The Text Editor's header (studio_code.c, CodeHeader.rml): `code_header`'s
- * mode (0 nothing shown, 1 an asset's KDL source, 2 a UI document), live
+ * mode (0 nothing shown, 1 an asset's code source, 2 a UI document), live
  * (the apply mode), dirty, and for an asset its title; for a document back
  * and forward (and their chords), parts (it has RML and RCSS), part, icon,
  * name and path (the shown part's file), find (open), vim (the mode, or ""),

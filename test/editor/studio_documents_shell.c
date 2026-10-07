@@ -1,3 +1,4 @@
+#include "editor/documents/asset_code.h"
 /* Studio's shell: the authored top bar, status bar and area headers,
  * layouts, the command palette, keys, the wheel and the Performance
  * editor. */
@@ -817,8 +818,20 @@ static void keys_follow_pointer()
     editor *e = f.graph;
     int count = acount(editor_active_graph(e)->nodes);
     assert(count > 0);
+    /* Entry/Return own the function declaration; duplicate an executable
+       operation so this check measures shortcut routing and graph history. */
+    const struct graph *owner = editor_active_graph(e);
+    node *operation = NULL;
+    for (int i = 0; i < acount(owner->nodes); i++) {
+        node *n = owner->nodes[i];
+        if (n->id != owner->entry_id && n->id != owner->return_id) {
+            operation = n;
+            break;
+        }
+    }
+    assert(operation);
     ed_clear_selection(e);
-    ed_add_selected(e, editor_active_graph(e)->nodes[0]);
+    ed_add_selected(e, operation);
     ed_duplicate_selected(e);
     bool duplicated = acount(editor_active_graph(e)->nodes) > count;
     int other = graph == STUDIO_AREA_OUTLINER ? STUDIO_AREA_PROPERTIES
@@ -830,6 +843,40 @@ static void keys_follow_pointer()
     bool undone = acount(editor_active_graph(e)->nodes) == count;
     press_over(s, graph, SDLK_F, primary);
     bool found = s->graph.find.open;
+    if (!duplicated || !menu_follows_click || !undone || !found || s->key_area >= 0) {
+        printf(
+            "  Pointer history: duplicated=%d menu=%d undone=%d found=%d "
+            "key_area=%d count=%d/%d undo=%d redo=%d\n",
+            duplicated,
+            menu_follows_click,
+            undone,
+            found,
+            s->key_area,
+            acount(editor_active_graph(e)->nodes),
+            count,
+            editor_can_undo(e),
+            editor_can_redo(e)
+        );
+        printf(
+            "  Graph identity: working=%s document=%s active=%d "
+            "source_sessions=%d\n",
+            editor_behavior_asset(e)->name,
+            s->scene->graph_document_id ? s->scene->graph_document_id : "(none)",
+            s->scene->document.kind,
+            acount(s->code.assets)
+        );
+        for (int i = 0; i < acount(s->code.assets); i++) {
+            asset_code *code = s->code.assets[i];
+            printf(
+                "  Source history: %s undo=%d redo=%d pending=%d error=%s\n",
+                asset_code_path(code),
+                asset_code_can_replay(code, false),
+                asset_code_can_replay(code, true),
+                asset_code_pending(code),
+                asset_code_error(code)
+            );
+        }
+    }
     test_check(
         duplicated && menu_follows_click && undone && found && s->key_area < 0,
         "Undo and Find from the keyboard act on the area under the pointer, "

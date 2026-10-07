@@ -1,10 +1,13 @@
 #include "graph/model/behavior_asset.h"
 
 #include "graph/compiler/behavior_program.h"
+#include "graph/document/graph_signature.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/value_array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdatomic.h>
 #include <string.h>
@@ -24,6 +27,22 @@ const char *behavior_domain_name(behavior_domain domain)
         case BEHAVIOR_DOMAIN_SHADER_LIBRARY: return "shader-library";
     }
     return "invalid";
+}
+
+const char *behavior_asset_extension(behavior_domain domain)
+{
+    switch (domain) {
+        case BEHAVIOR_DOMAIN_EVENT:
+        case BEHAVIOR_DOMAIN_LIBRARY: return CODE_ASSET_EXTENSION;
+        case BEHAVIOR_DOMAIN_EVENT_DEFINITION:
+        case BEHAVIOR_DOMAIN_SHADER_LIBRARY:
+        case BEHAVIOR_DOMAIN_FIELD:
+        case BEHAVIOR_DOMAIN_MODEL:
+        case BEHAVIOR_DOMAIN_MATERIAL:
+        case BEHAVIOR_DOMAIN_SHAPE: return DECLARATIVE_ASSET_EXTENSION;
+    }
+    assert(false);
+    return NULL;
 }
 
 bool behavior_domain_pure(behavior_domain domain)
@@ -62,12 +81,31 @@ behavior_asset *behavior_asset_new(const char *name)
     return asset;
 }
 
+behavior_component_parameter *behavior_asset_add_component_parameter(
+    behavior_asset *asset,
+    const char *name,
+    const char *key,
+    bool optional
+)
+{
+    assert(asset && name && *name && key && *key && behavior_asset_mutable(asset));
+    behavior_component_parameter parameter = {
+        graph_own_str(asset->graph, name, strlen(name)),
+        graph_own_str(asset->graph, key, strlen(key)),
+        optional
+    };
+    apush(asset->component_parameters, parameter);
+    return &asset->component_parameters[acount(asset->component_parameters) - 1];
+}
+
 void behavior_asset_free(behavior_asset *asset)
 {
     if (!asset) {
         return;
     }
     afree(asset->variables);
+    afree(asset->component_parameters);
+    afree(asset->reactives);
     behavior_program_free(asset->program);
     for (int i = 0; i < acount(asset->graphs); i++) {
         graph_free(asset->graphs[i]);
@@ -627,7 +665,7 @@ behavior_variable *behavior_asset_duplicate_variable(behavior_asset *asset, uint
     }
     /* Adding may move the variables, and with them v. */
     behavior_variable source = *v;
-    return behavior_asset_add_variable(
+    behavior_variable *copy = behavior_asset_add_variable(
         asset,
         name,
         source.type,
@@ -636,6 +674,10 @@ behavior_variable *behavior_asset_duplicate_variable(behavior_asset *asset, uint
         &source.default_value,
         source.category
     );
+    if (copy) {
+        copy->shared = source.shared;
+    }
+    return copy;
 }
 
 static bool variable_node(const node *n, uint64_t id)
@@ -644,23 +686,119 @@ static bool variable_node(const node *n, uint64_t id)
            (n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable);
 }
 
+static bool variable_binding(const behavior_asset *asset, const pin_binding *binding, uint64_t id)
+{
+    return binding && binding->kind == PIN_BINDING_VARIABLE &&
+           binding->variable_id == id &&
+           (!binding->source_asset || !strcmp(binding->source_asset, asset->name));
+}
+
+static bool variable_assignment(behavior_asset *asset, graph *g, const node *n, uint64_t id)
+{
+    if (n->desc != &NODE_BehaviorExpression) {
+        return false;
+    }
+    for (int p = 0; p < n->input_count; p++) {
+        if (!(n->input_pins[p].flags & PIN_FLAG_REFERENCE)) {
+            continue;
+        }
+        if (variable_binding(asset, n->input_pins[p].binding, id)) {
+            return true;
+        }
+        node *source = NULL;
+        int pin = -1;
+        pin_binding binding;
+        if (graph_input_source(g, n, p, &source, &pin) &&
+            graph_resolve_reference(g, source, pin, &binding) == 0 &&
+            variable_binding(asset, &binding, id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Removing a write must retain the independent actions after its continuation. */
+static int remove_variable_node(graph *g, node *n)
+{
+    edge *incoming = NULL, *outgoing = NULL;
+    int then = continuation(n);
+    for (int i = 0; i < acount(g->edges); i++) {
+        const edge *e = &g->edges[i];
+        if (e->kind != GRAPH_EDGE_EXEC) {
+            continue;
+        }
+        if (e->to_id == n->id && e->from_id != n->id) {
+            apush(incoming, *e);
+        }
+        if (then >= 0 && e->from_id == n->id && e->to_id != n->id &&
+            e->from_pin_id == n->output_pins[then].id) {
+            apush(outgoing, *e);
+        }
+    }
+    int result = graph_remove_node(g, n);
+    if (!result) {
+        for (int i = 0; i < acount(incoming); i++) {
+            for (int j = 0; j < acount(outgoing); j++) {
+                int connected = graph_connect_exec_ids(
+                    g,
+                    incoming[i].from_id,
+                    incoming[i].from_pin_id,
+                    outgoing[j].to_id,
+                    outgoing[j].to_pin_id,
+                    incoming[i].exec_order + outgoing[j].exec_order
+                );
+                assert(connected == 0);
+                (void)connected;
+            }
+        }
+    }
+    afree(incoming);
+    afree(outgoing);
+    return result;
+}
+
 int behavior_asset_remove_variable_uses(behavior_asset *asset, uint64_t id)
 {
     int removed = 0;
+    uint64_t *expressions = NULL;
+    /* Remove assignments before their referenced Get nodes or bindings. */
+    for (int g = 0; g < acount(asset->graphs); g++) {
+        graph *target = asset->graphs[g];
+        for (int i = acount(target->nodes) - 1; i >= 0; i--) {
+            node *n = target->nodes[i];
+            if (variable_assignment(asset, target, n, id)) {
+                apush(expressions, n->reference_id);
+                removed += remove_variable_node(target, n) == 0;
+            }
+        }
+    }
+    for (int i = 0; i < acount(expressions); i++) {
+        bool used = false;
+        for (int g = 0; g < acount(asset->graphs); g++) {
+            for (int n = 0; n < acount(asset->graphs[g]->nodes); n++) {
+                const node *call = asset->graphs[g]->nodes[n];
+                used |= call->reference_id == expressions[i] && !call->reference_asset;
+            }
+        }
+        graph *generated = behavior_asset_find_graph(asset, expressions[i]);
+        if (!used && generated && generated->math_expression) {
+            int deleted = behavior_asset_delete_graph(asset, expressions[i]);
+            assert(deleted == 0);
+            (void)deleted;
+        }
+    }
+    afree(expressions);
     for (int g = 0; g < acount(asset->graphs); g++) {
         graph *target = asset->graphs[g];
         for (int i = acount(target->nodes) - 1; i >= 0; i--) {
             node *n = target->nodes[i];
             if (variable_node(n, id)) {
-                removed += graph_remove_node(target, n) == 0;
+                removed += remove_variable_node(target, n) == 0;
                 continue;
             }
             for (int p = 0; p < n->input_count; p++) {
                 const pin_binding *binding = n->input_pins[p].binding;
-                if (binding && binding->kind == PIN_BINDING_VARIABLE &&
-                    binding->variable_id == id &&
-                    (!binding->source_asset ||
-                     !strcmp(binding->source_asset, asset->name))) {
+                if (variable_binding(asset, binding, id)) {
                     graph_set_pin_binding(target, n, 0, p, NULL);
                 }
             }
@@ -708,6 +846,97 @@ node *behavior_asset_add_self_node(behavior_asset *asset)
     }
     graph_set_pin_type(asset->graph, n, 1, 0, PIN_HANDLE, asset->owner_type_name);
     return n;
+}
+
+void behavior_asset_promote_shared_expressions(behavior_asset *asset)
+{
+    assert(asset && behavior_asset_mutable(asset));
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        graph *target = asset->graphs[i];
+        if (!target->math_expression || target->expression_mode != GRAPH_EXPRESSION_VALUE ||
+            !graph_signature_pure(target)) {
+            continue;
+        }
+        int callers = 0;
+        for (int j = 0; j < acount(asset->graphs); j++) {
+            graph *g = asset->graphs[j];
+            for (int k = 0; k < acount(g->nodes); k++) {
+                node *n = g->nodes[k];
+                callers += n->desc == &NODE_BehaviorExpression &&
+                           !n->reference_asset && n->reference_id == target->graph_id;
+            }
+        }
+        if (callers < 2) {
+            continue;
+        }
+        const char *name = target->name && target->name[0] ? target->name
+                                                           : target->math_expression;
+        char unique[160];
+        for (int j = 0; j < acount(asset->graphs); j++) {
+            graph *other = asset->graphs[j];
+            if (other != target && other->kind == GRAPH_FUNCTION &&
+                other->name && !strcmp(other->name, name)) {
+                snprintf(
+                    unique,
+                    sizeof unique,
+                    "Expression %llu",
+                    (unsigned long long)target->graph_id
+                );
+                name = unique;
+                break;
+            }
+        }
+        int changed = graph_set_metadata(
+            target,
+            name,
+            target->description ? target->description : ""
+        );
+        assert(!changed);
+        (void)changed;
+        target->math_expression = NULL;
+        target->expression_mode = GRAPH_EXPRESSION_NONE;
+        node *entry = graph_node_by_id(target, target->entry_id);
+        node *ret = graph_node_by_id(target, target->return_id);
+        assert(entry && ret);
+        for (int j = 0; j < acount(asset->graphs); j++) {
+            graph *g = asset->graphs[j];
+            for (int k = 0; k < acount(g->nodes); k++) {
+                node *n = g->nodes[k];
+                if (n->desc != &NODE_BehaviorExpression || n->reference_asset ||
+                    n->reference_id != target->graph_id) {
+                    continue;
+                }
+                n->desc = &NODE_CallPureFunction;
+                for (int side = 0; side < 2; side++) {
+                    pin_spec *pins = side ? n->output_pins : n->input_pins;
+                    int count = side ? n->output_count : n->input_count;
+                    const pin_spec *signature = side ? ret->input_pins
+                                                     : entry->output_pins;
+                    int total = side ? ret->input_count : entry->output_count;
+                    for (int p = 0; p < count; p++) {
+                        for (int q = 0; q < total; q++) {
+                            if (pins[p].declaration_id == signature[q].id ||
+                                (!pins[p].declaration_id &&
+                                 !strcmp(pins[p].name, signature[q].name))) {
+                                pins[p].declaration_id = signature[q].id;
+                                if (pins[p].flags & PIN_FLAG_WILDCARD) {
+                                    pins[p].group = signature[q].group;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                changed = graph_set_node_reference(
+                    g,
+                    n,
+                    target->graph_id,
+                    target->name
+                );
+                assert(!changed);
+            }
+        }
+    }
 }
 
 static int behavior_asset_add_call_pin(graph *caller, node *call, int output, const pin_spec *source)

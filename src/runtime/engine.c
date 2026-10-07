@@ -5,6 +5,7 @@
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
 #include "render/sdf_motion.h"
+#include "runtime/behaviors/reactive.h"
 #include "runtime/components.h" /* IWYU pragma: keep */
 #include "runtime/engine_input.h"
 #include "runtime/generated.h"
@@ -120,7 +121,8 @@ engine *engine_new(ecs_world *world, game_live_world *live)
     }
     result->playing = true;
     result->time_scale = 1;
-    result->input = engine_input_new(world, live ? live->behaviors : NULL);
+    result
+        ->input = engine_input_new(world, live ? live->behaviors : NULL, result->systems);
     if (live) {
         game_behavior_set_delta_seconds(live->behaviors, ENGINE_FIXED_SECONDS);
     }
@@ -149,22 +151,21 @@ void engine_free(engine *engine)
 
 int engine_register_system(engine *engine, const engine_system_desc *desc)
 {
+    if (desc && desc->graph && engine->live) {
+        game_system *system = desc->graph;
+        game_behavior_world *behaviors = engine->live->behaviors;
+        game_system_bind_service(system, "game.entities", engine->live->entities);
+        game_system_bind_service(system, "game.particles", engine->live->particles);
+        game_system_bind_service(system, "game.save", game_behavior_save(behaviors));
+        game_system_bind_service(system, "game.audio", game_behavior_audio(behaviors));
+        game_system_bind_service(system, "game.ui", game_behavior_ui(behaviors));
+        game_system_bind_service(system, "game.visibility", engine->live->visibility);
+    }
     return system_schedule_register(engine->systems, desc);
 }
 const system_schedule *engine_system_schedule(const engine *engine)
 {
     return engine->systems;
-}
-
-static const ecs_component_desc *resolve_system_component(const char *name, void *)
-{
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        const ecs_component_desc *c = GAME_REGISTRY_COMPONENTS[i];
-        if (!strcmp(c->name, name) || !strcmp(c->key, name)) {
-            return c;
-        }
-    }
-    return NULL;
 }
 
 static int sync_authored_systems(engine *engine)
@@ -226,10 +227,9 @@ static int sync_authored_systems(engine *engine)
             engine->authored[index].seen = true;
             continue;
         }
-        game_system_document *doc = game_system_document_load(
+        game_system_document *doc = game_live_load_system(
+            engine->live,
             asset->json,
-            resolve_system_component,
-            NULL,
             engine->error,
             sizeof engine->error
         );
@@ -290,6 +290,30 @@ static int sync_authored_systems(engine *engine)
     return 0;
 }
 
+static int maintain_bindings(engine *engine)
+{
+    flow_error error = { 0 };
+    game_reactive_world_begin(engine->world);
+    int result = system_schedule_maintain(
+        engine->systems,
+        engine->timing.simulation_time,
+        ENGINE_FIXED_SECONDS,
+        &error
+    );
+    if (result >= 0 && engine->live) {
+        result = game_behavior_maintain(engine->live->behaviors, &error);
+    }
+    game_reactive_world_end(engine->world);
+    if (result < 0) {
+        const char *message = error.message;
+        if (!message) {
+            message = system_schedule_error(engine->systems);
+        }
+        snprintf(engine->error, sizeof engine->error, "%s", message && *message ? message : "Reactive maintenance failed");
+    }
+    return result;
+}
+
 static int run_system_phase(engine *engine, system_phase phase)
 {
     int result = system_schedule_run(engine->systems, phase, engine->timing.simulation_time, ENGINE_FIXED_SECONDS);
@@ -301,7 +325,7 @@ static int run_system_phase(engine *engine, system_phase phase)
             system_schedule_error(engine->systems)
         );
     }
-    return result;
+    return result < 0 ? result : maintain_bindings(engine);
 }
 
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user)
@@ -660,6 +684,9 @@ static int finish_systems(engine *engine)
     if (result != ECS_OK) {
         return result;
     }
+    if ((result = maintain_bindings(engine)) < 0) {
+        return result;
+    }
     CHIBI_TRACE_ZONE_BEGIN(systems_zone, "ECS systems");
     if (!engine->live) {
         if ((result = run_system_phase(engine, SYSTEM_PRE_PHYSICS)) < 0 ||
@@ -747,14 +774,29 @@ static int continue_step(engine *engine)
             result = follow_input(engine);
         }
         if (result >= 0) {
+            result = maintain_bindings(engine);
+        }
+        if (result >= 0) {
             CHIBI_TRACE_ZONE_BEGIN(input_zone, "Input actions");
             result = engine_input_apply(engine->input);
             CHIBI_TRACE_ZONE_END(input_zone);
+            if (result < 0) {
+                const char *message = engine_input_error(engine->input);
+                snprintf(
+                    engine->error,
+                    sizeof engine->error,
+                    "%s",
+                    message && *message ? message : "Input event dispatch failed"
+                );
+            }
         }
         if (result >= 0) {
             CHIBI_TRACE_ZONE_BEGIN(events_zone, "Input events");
             result = game_entities_dispatch_events(live->entities);
             CHIBI_TRACE_ZONE_END(events_zone);
+        }
+        if (result >= 0) {
+            result = maintain_bindings(engine);
         }
         if (result >= 0) {
             CHIBI_TRACE_ZONE_BEGIN(behavior_zone, "Behavior update");
@@ -784,6 +826,9 @@ static int continue_step(engine *engine)
     result = flush_initializers(engine);
     if (result != 0 || game_behavior_paused(live->behaviors)) {
         return result < 0 ? result : FLOW_OK;
+    }
+    if ((result = maintain_bindings(engine)) < 0) {
+        return result;
     }
     return finish_step(engine);
 }

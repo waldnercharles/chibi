@@ -5,6 +5,7 @@
 #include "graph/nodes/compare_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/math_nodes.h"
+#include "graph/nodes/snapshot_nodes.h"
 #include "graph/runtime/flow.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -14,6 +15,22 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+int behavior_lower_snapshot(builder *b, node *n, int pin)
+{
+    int stored = behavior_lower_local(b, b->frame, n, 1);
+    if (stored < 0) {
+        return -1;
+    }
+    if (pin >= 0) {
+        return behavior_lower_source(b, BF_LOCAL, stored, &n->output_pins[1], n, 1);
+    }
+    int value = behavior_lower_input(b, n, 1);
+    if (value < 0 || !behavior_lower_store(b, BF_SAVE, value, stored)) {
+        return -1;
+    }
+    return 0;
+}
 
 int behavior_lower_unsupported(builder *b, const node *n, int pin, bool output, const char *reason)
 {
@@ -903,15 +920,16 @@ static int output_value(builder *b, node *n, int pin)
             }
             if (left >= 0 && right >= 0 &&
                 behavior_lower_scalar(b->function->slots[left]) &&
-                b->function->slots[left] != PIN_BOOL &&
-                b->function->slots[left] != PIN_HANDLE &&
+                ((op == BF_EQ || op == BF_NE) ||
+                 (b->function->slots[left] != PIN_BOOL &&
+                  b->function->slots[left] != PIN_HANDLE)) &&
                 b->function->slots[left] == b->function->slots[right] &&
                 ((op >= BF_LT && op <= BF_NE) || op == BF_FLAGS ||
                  b->function->slots[left] == type) &&
                 (!behavior_function_math(op) || type == PIN_F64) &&
                 (!behavior_scalar_integer(b->function->slots[left]) ||
-                 b->function->slots[left] == PIN_I32 ||
-                 b->function->slots[left] == PIN_I64 || op == BF_FLAGS)) {
+                 b->function->slots[left] == PIN_I32 || b->function->slots[left] == PIN_I64 ||
+                 op == BF_FLAGS || op == BF_EQ || op == BF_NE)) {
                 behavior_function_instruction i = { .op = op,
                                                     .type = type,
                                                     .left = left,

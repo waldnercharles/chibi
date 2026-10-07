@@ -75,6 +75,7 @@ typedef struct
     term *terms;
     char **symbols;
     behavior_expression_error *error;
+    const node *previous;
     int assignment_operator;
     int assignment_left;
     int assignment_right;
@@ -779,16 +780,6 @@ static int parse_symbols(
     return 0;
 }
 
-static bool contains_symbol(char **symbols, int count, const char *name)
-{
-    for (int i = 0; i < count; i++) {
-        if (!strcmp(symbols[i], name)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static bool renamed_to(const char *from, const char *to, const expression_rename *renames, int rename_count)
 {
     for (int i = 0; i < rename_count; i++) {
@@ -801,9 +792,10 @@ static bool renamed_to(const char *from, const char *to, const expression_rename
 
 static bool generic_expression_value(const pin_spec *pin)
 {
-    return pin->type == PIN_F32 || pin->type == PIN_F64 ||
-           pin->type == PIN_I32 || pin->type == PIN_I64 ||
-           pin->type == PIN_STRUCT || pin->container >= PIN_CONTAINER_ARRAY;
+    /* Keep concrete numeric, opaque and aggregate captures. Bool demand and
+       wired Bool coercion are handled separately by synchronize_call. */
+    return (pin->type >= PIN_I8 && pin->type <= PIN_ENUM) ||
+           pin->container >= PIN_CONTAINER_ARRAY;
 }
 
 static bool expression_comparison(const node_desc *desc)
@@ -816,6 +808,17 @@ static bool expression_comparison(const node_desc *desc)
 static bool expression_logical(const node_desc *desc)
 {
     return desc == &NODE_And || desc == &NODE_Or || desc == &NODE_Not;
+}
+
+static bool expression_previous_bool(const node *previous, const char *name);
+
+static bool expression_boolean_term(const parser *p, int index)
+{
+    const term *value = &p->terms[index];
+    return value->is_boolean_literal || expression_logical(value->desc) ||
+           expression_comparison(value->desc) ||
+           (value->symbol >= 0 && !value->field[0] && !value->index_count &&
+            expression_previous_bool(p->previous, p->symbols[value->symbol]));
 }
 
 static void expression_require_symbol(
@@ -895,8 +898,21 @@ static void expression_require_term(
         if (expected != PIN_FLOW && expected != PIN_BOOL) {
             *invalid = true;
         }
+        bool boolean_equality = (value->desc == &NODE_Equal ||
+                                 value->desc == &NODE_Not_Equal) &&
+                                (expression_boolean_term(p, value->args[0]) ||
+                                 expression_boolean_term(p, value->args[1]));
         for (int i = 0; i < value->count; i++) {
-            expression_require_term(p, value->args[i], PIN_F64, types, known, arrays, structs, invalid);
+            expression_require_term(
+                p,
+                value->args[i],
+                boolean_equality ? PIN_BOOL : PIN_F64,
+                types,
+                known,
+                arrays,
+                structs,
+                invalid
+            );
         }
         return;
     }
@@ -1665,6 +1681,27 @@ static bool scalar_number(const pin_spec *pin)
            pin->type <= PIN_F64;
 }
 
+static bool expression_numeric_operand(const pin_spec *pin)
+{
+    if (pin->container != PIN_CONTAINER_SINGLE) {
+        return false;
+    }
+    if (scalar_number(pin) || pin->type == PIN_BOOL || pin_vector_width(pin)) {
+        return true;
+    }
+    if (pin->type != PIN_STRUCT) {
+        return false;
+    }
+    const type_desc *type = registry_type_by_name(pin->type_name);
+    if (!type || type->field_count != 1) {
+        return false;
+    }
+    const type_field *field = &type->fields[0];
+    pin_spec value = { .type = field->type, .type_name = field->type_name, .kind = PIN_DATA };
+    return (scalar_number(&value) || pin_vector_width(&value)) &&
+           conversion_for_pins(pin, &value);
+}
+
 /* Behavior arithmetic runs in double. A number of another width converts on
    its way in or out, so it neither retypes an operation away from its
    literals nor reaches an int as raw bits. A bool read as a number is 1 or 0. */
@@ -1677,7 +1714,12 @@ static int connect_number(graph *g, value_source from, node *to, int pin)
                    out->type != in->type;
     bool widened = numbers && in->type == PIN_F64 && (in->flags & PIN_FLAG_WILDCARD);
     const node_desc *conversion = numbers ? conversion_for(out->type, in->type) : NULL;
+    unsigned flags = from.node->output_pins[from.pin].flags;
+    if (numbers && !conversion && pin_compatible(out, in)) {
+        from.node->output_pins[from.pin].flags &= ~PIN_FLAG_WILDCARD;
+    }
     int rc = graph_connect_data_conversion(g, from.node, from.pin, to, pin, conversion);
+    from.node->output_pins[from.pin].flags = flags;
     /* A float shares the Real category, so it connects as is; the operation
        stays double. */
     return rc || !widened || conversion
@@ -1700,14 +1742,7 @@ static void convert_numbers(graph *g)
         const pin_spec *in = out ? graph_pin_by_id(to, e.to_pin_id, NULL, &to_pin)
                                  : NULL;
         if (in && scalar_number(out) && scalar_number(in) && out->type != in->type) {
-            int rc = graph_connect_data_conversion(
-                g,
-                from,
-                from_pin,
-                to,
-                to_pin,
-                conversion_for(out->type, in->type)
-            );
+            int rc = connect_number(g, (value_source){ from, from_pin }, to, to_pin);
             assert(rc == 0);
             (void)rc;
         }
@@ -1722,13 +1757,15 @@ static behavior_asset *generate(
     behavior_expression_error *error,
     const expression_rename *renames,
     int rename_count,
-    uint64_t first_id
+    uint64_t first_id,
+    graph_expression_mode requested_mode
 )
 {
     parser p = { .source = source,
                  .cursor = source,
                  .dialect = dialect_of(asset, caller),
-                 .error = error };
+                 .error = error,
+                 .previous = previous };
     int result = parse_source(&p);
     if (result >= 0 && p.assignment_operator && p.dialect != DIALECT_BEHAVIOR) {
         result = fail(&p, "Assignments need a behavior graph");
@@ -1788,12 +1825,17 @@ static behavior_asset *generate(
                                 previous,
                                 p.symbols[result_term->symbol]
                             )));
-    graph_expression_mode mode = p.assignment_operator
-                                   ? GRAPH_EXPRESSION_ACTION
-                                   : (expression_branch_context(caller) && boolean_result &&
-                                              !expression_read_as_value(caller, previous)
-                                          ? GRAPH_EXPRESSION_BRANCH
-                                          : GRAPH_EXPRESSION_VALUE);
+    graph_expression_mode
+        mode = p.assignment_operator
+                 ? GRAPH_EXPRESSION_ACTION
+                 : (requested_mode == GRAPH_EXPRESSION_VALUE
+                        ? GRAPH_EXPRESSION_VALUE
+                        : (boolean_result &&
+                                   (requested_mode == GRAPH_EXPRESSION_BRANCH ||
+                                    (expression_branch_context(caller) &&
+                                     !expression_read_as_value(caller, previous)))
+                               ? GRAPH_EXPRESSION_BRANCH
+                               : GRAPH_EXPRESSION_VALUE));
     behavior_asset *staged = behavior_asset_new("Expression staging");
     staged->graph->id_counter = first_id;
     char name[64];
@@ -1895,15 +1937,26 @@ static behavior_asset *generate(
     }
     for (int i = 0; i < symbol_count && p.dialect == DIALECT_BEHAVIOR; i++) {
         if (symbol_known[i] && !symbol_structs[i]) {
-            rc = graph_set_pin_type(
-                target,
-                entry,
-                1,
-                symbol_pins[i],
-                symbol_types[i],
-                symbol_types[i] == PIN_BOOL ? "bool" : "double"
-            );
-            assert(rc == 0);
+            /* Comparison operands use double arithmetic internally. Keep a
+               wired numeric parameter's storage type so refreshing the call
+               does not remove its driver; connect_number widens in the body.
+               An already boolean capture also keeps its reflected spelling. */
+            const pin_spec *input = &entry->output_pins[symbol_pins[i]];
+            bool preserve_type = previous && ((symbol_types[i] == PIN_F64 &&
+                                               scalar_number(input)) ||
+                                              (symbol_types[i] == PIN_BOOL &&
+                                               input->type == PIN_BOOL));
+            if (!preserve_type) {
+                rc = graph_set_pin_type(
+                    target,
+                    entry,
+                    1,
+                    symbol_pins[i],
+                    symbol_types[i],
+                    symbol_types[i] == PIN_BOOL ? "bool" : "double"
+                );
+                assert(rc == 0);
+            }
             entry->output_pins[symbol_pins[i]].flags &= ~PIN_FLAG_WILDCARD;
         }
         if (symbol_arrays[i]) {
@@ -2033,6 +2086,17 @@ static behavior_asset *generate(
         assert(n);
         bool logical = term->is_boolean_literal || expression_logical(term->desc);
         bool comparison = expression_comparison(term->desc);
+        bool boolean_equality = term->count == 2 &&
+                                (term->desc == &NODE_Equal ||
+                                 term->desc == &NODE_Not_Equal) &&
+                                values[term->args[0]]
+                                        .node
+                                        ->output_pins[values[term->args[0]].pin]
+                                        .type == PIN_BOOL &&
+                                values[term->args[1]]
+                                        .node
+                                        ->output_pins[values[term->args[1]].pin]
+                                        .type == PIN_BOOL;
         bool aggregate = term->desc && term->desc->pure_kind == NODE_PURE_MAKE;
         if (!aggregate) {
             /* Numbers become doubles; a vector pin such as Vector Length's
@@ -2042,7 +2106,14 @@ static behavior_asset *generate(
                     !(n->input_pins[j].flags & PIN_FLAG_WILDCARD)) {
                     continue;
                 }
-                rc = graph_set_pin_type(target, n, 0, j, logical ? PIN_BOOL : PIN_F64, logical ? "bool" : "double");
+                rc = graph_set_pin_type(
+                    target,
+                    n,
+                    0,
+                    j,
+                    logical || boolean_equality ? PIN_BOOL : PIN_F64,
+                    logical || boolean_equality ? "bool" : "double"
+                );
                 assert(rc == 0);
                 (void)rc;
             }
@@ -2075,13 +2146,32 @@ static behavior_asset *generate(
         depths[i] = 1;
         for (int j = 0; j < term->count; j++) {
             value_source input = values[term->args[j]];
+            if (!aggregate &&
+                !expression_numeric_operand(&input.node->output_pins[input.pin])) {
+                char message[160];
+                snprintf(
+                    message,
+                    sizeof message,
+                    "%s requires a numeric operand for %s",
+                    n->desc->name,
+                    n->input_pins[term->order ? term->order[j] : j].name
+                );
+                result = fail(&p, message);
+                break;
+            }
             rc = connect_number(target, input, n, term->order ? term->order[j] : j);
-            assert(rc == 0);
+            if (rc) {
+                result = fail(&p, "Could not connect expression operand");
+                break;
+            }
             (void)rc;
             int depth = depths[term->args[j]] + 1;
             if (depth > depths[i]) {
                 depths[i] = depth;
             }
+        }
+        if (result < 0) {
+            break;
         }
         if (depths[i] > max_depth) {
             max_depth = depths[i];
@@ -2111,13 +2201,21 @@ static behavior_asset *generate(
                               : p.assignment_operator == TOKEN_MUL_ASSIGN
                                   ? "Multiply"
                                   : "Divide";
-        node *compound = graph_add_node(target, registry_node_by_name(operation));
-        if (!compound) {
-            result = fail(&p, "Could not lower assignment operator");
+        const pin_spec *left = &values[p.assignment_left]
+                                    .node->output_pins[values[p.assignment_left].pin];
+        const pin_spec *right = &values[p.assignment_right]
+                                     .node
+                                     ->output_pins[values[p.assignment_right].pin];
+        node *compound = NULL;
+        if (!expression_numeric_operand(left) || !expression_numeric_operand(right)) {
+            result = fail(&p, "Compound assignment requires numeric operands");
         } else {
-            const pin_spec *left = &values[p.assignment_left]
-                                        .node
-                                        ->output_pins[values[p.assignment_left].pin];
+            compound = graph_add_node(target, registry_node_by_name(operation));
+        }
+        if (result >= 0 && !compound) {
+            result = fail(&p, "Could not lower assignment operator");
+        }
+        if (compound) {
             /* count += 1 on an int adds in double like the rest. */
             pin_type type = scalar_number(left) ? PIN_F64 : left->type;
             const char *type_name = scalar_number(left) ? "double" : left->type_name;
@@ -2319,8 +2417,71 @@ static behavior_asset *generate(
     if (result < 0 || result_pin < 0) {
         result = fail(&p, "Generated expression has no Result output");
     }
+    unsigned result_flags = result_pin >= 0 ? ret->input_pins[result_pin].flags : 0;
+    int previous_result = previous ? find_named_output(previous, "Result") : -1;
+    bool saved_number = result >= 0 && previous_result >= 0 &&
+                        scalar_number(&previous->output_pins[previous_result]) &&
+                        scalar_number(&final.node->output_pins[final.pin]);
+    pin_type resolved_member_type = PIN_FLOW;
+    if (saved_number) {
+        const graph *old = behavior_asset_find_graph(asset, previous->reference_id);
+        const node *old_entry = old ? graph_node_by_id(old, old->entry_id) : NULL;
+        const node *old_return = old ? graph_node_by_id(old, old->return_id) : NULL;
+        int old_result = old_return ? find_named_input(old_return, "Result") : -1;
+        /* An unresolved member temporarily evaluates its numeric parent.
+           Typing that parent as a struct resolves the actual field storage;
+           its provisional result must not become a numeric ABI constraint.
+           A caller Result override differing from the old Return stays fixed. */
+        bool inferred_result = old_result >= 0 &&
+                               previous->output_pins[previous_result].type ==
+                                   old_return->input_pins[old_result].type;
+        for (int i = 0; inferred_result && old_entry && i < acount(p.terms); i++) {
+            const term *term = &p.terms[i];
+            if (term->symbol < 0 || !term->field[0]) {
+                continue;
+            }
+            int old_input = find_named_output(old_entry, p.symbols[term->symbol]);
+            if (old_input >= 0 && old_entry->output_pins[old_input].type != PIN_STRUCT &&
+                entry->output_pins[symbol_pins[term->symbol]].type == PIN_STRUCT) {
+                if (scalar_number(&values[i].node->output_pins[values[i].pin])) {
+                    resolved_member_type = values[i]
+                                               .node->output_pins[values[i].pin]
+                                               .type;
+                }
+                saved_number = false;
+                break;
+            }
+        }
+    }
+    for (int i = 0; resolved_member_type != PIN_FLOW && i < acount(p.terms); i++) {
+        const pin_spec *operand = &values[i].node->output_pins[values[i].pin];
+        if (p.terms[i].symbol >= 0 && scalar_number(operand) &&
+            operand->type != resolved_member_type) {
+            resolved_member_type = PIN_FLOW;
+            saved_number = true;
+        }
+    }
+    if (saved_number || resolved_member_type != PIN_FLOW) {
+        const pin_spec *saved = &previous->output_pins[previous_result];
+        pin_type type = resolved_member_type != PIN_FLOW ? resolved_member_type
+                                                         : saved->type;
+        rc = graph_set_pin_type(
+            target,
+            ret,
+            0,
+            result_pin,
+            type,
+            resolved_member_type != PIN_FLOW ? NULL : saved->type_name
+        );
+        saved_number = true;
+        assert(rc == 0);
+        ret->input_pins[result_pin].flags &= ~PIN_FLAG_WILDCARD;
+    }
     if (result >= 0 &&
-        graph_connect_data(target, final.node, final.pin, ret, result_pin) != 0) {
+        (saved_number &&
+                 !pin_compatible(&final.node->output_pins[final.pin], &ret->input_pins[result_pin])
+             ? connect_number(target, final, ret, result_pin)
+             : graph_connect_data(target, final.node, final.pin, ret, result_pin)) != 0) {
         result = fail(&p, "Could not connect generated Result");
     }
     if (result < 0) {
@@ -2336,6 +2497,7 @@ static behavior_asset *generate(
         return NULL;
     }
     convert_numbers(target);
+    ret->input_pins[result_pin].flags = result_flags;
     ret->x = (float)(max_depth + 1) * 220;
     ret->y = final.node->y;
     free(depths);
@@ -2421,6 +2583,14 @@ static void synchronize_connected_inputs(behavior_asset *asset, node *call)
         if ((output->flags & PIN_FLAG_WILDCARD) && output->type == PIN_FLOW) {
             continue;
         }
+        /* A concrete real parameter owns its storage width. Compatible
+           incoming real values coerce at that boundary instead of changing
+           the expression's declared parameter type. */
+        if ((input->type == PIN_F32 || input->type == PIN_F64) &&
+            (output->type == PIN_F32 || output->type == PIN_F64) &&
+            pin_compatible(input, output)) {
+            continue;
+        }
         bool type_name_changed = input->type == PIN_STRUCT &&
                                  strcmp(
                                      input->type_name ? input->type_name : "",
@@ -2475,6 +2645,8 @@ static void retype_result(graph *caller, node *call, int output, const pin_spec 
         }
     }
     int rc = graph_set_pin_type(caller, call, 1, output, source->type, source->type_name);
+    assert(rc == 0);
+    rc = graph_set_pin_container(caller, call, 1, output, source->container);
     assert(rc == 0);
     /* The body fixes the result's type: rewiring its consumers must not
        resolve the generic result to theirs again, or the call would read a
@@ -2583,9 +2755,14 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
         call->input_pins[parameter].declaration_id = entry_pin->id;
         bool retype = !(entry_pin->flags & PIN_FLAG_WILDCARD) &&
                       (call->input_pins[parameter].type != entry_pin->type ||
-                       (call->input_pins[parameter].type == PIN_STRUCT &&
-                        strcmp(call->input_pins[parameter].type_name, entry_pin->type_name) !=
-                            0));
+                       ((call->input_pins[parameter].type == PIN_STRUCT ||
+                         call->input_pins[parameter].type == PIN_BOOL) &&
+                        strcmp(
+                            call->input_pins[parameter].type_name
+                                ? call->input_pins[parameter].type_name
+                                : "",
+                            entry_pin->type_name ? entry_pin->type_name : ""
+                        ) != 0));
         /* A bool wired into a generic input stays a bool; the body reads it
            as a number through a conversion. */
         if ((entry_pin->flags & PIN_FLAG_WILDCARD) &&
@@ -2662,6 +2839,7 @@ static void synchronize_call(graph *caller, node *call, const node *entry, const
         call->output_pins[output].group = source->group;
         call->output_pins[output].declaration_id = source->id;
         if (call->output_pins[output].type != source->type ||
+            call->output_pins[output].container != source->container ||
             (source->type == PIN_STRUCT &&
              strcmp(
                  call->output_pins[output].type_name ? call->output_pins[output].type_name : "",
@@ -2791,7 +2969,8 @@ static graph *rebuild(const behavior_asset *asset, const graph *generated, uint6
         &error,
         NULL,
         0,
-        first_id
+        first_id,
+        generated->expression_mode
     );
     if (!staged) {
         return NULL;
@@ -2894,6 +3073,31 @@ static graph *adopt(behavior_asset *asset, behavior_asset *staged, graph *previo
         apush(asset->graphs, generated);
         return generated;
     }
+    for (int i = 0; i < acount(generated->nodes); i++) {
+        node *next = generated->nodes[i];
+        const node *old = graph_node_by_id(previous, next->id);
+        if (!old || old->desc != next->desc) {
+            continue;
+        }
+        next->x = old->x;
+        next->y = old->y;
+        next->placed = old->placed;
+        next->presentation = old->presentation;
+        next->breakpoint = old->breakpoint;
+        next->breakpoint_enabled = old->breakpoint_enabled;
+        next->show_advanced = old->show_advanced;
+        next->comment = old->comment
+                          ? graph_own_str(generated, old->comment, strlen(old->comment))
+                          : NULL;
+        next->comment_hidden = old->comment_hidden;
+    }
+    generated->breakpoints_enabled = previous->breakpoints_enabled;
+    generated->description = previous->description ? graph_own_str(
+                                                         generated,
+                                                         previous->description,
+                                                         strlen(previous->description)
+                                                     )
+                                                   : NULL;
     uint64_t id = previous->graph_id;
     char *name = xstrdup(previous->name);
     unsigned long long revision = previous->topology_revision;
@@ -2941,10 +3145,19 @@ static bool prepare_error(behavior_expression_error *error, const behavior_asset
     return true;
 }
 
-static void read_named_values(behavior_asset *asset, node *call);
+static void read_named_values(behavior_asset *asset, node *call, graph_expression_mode mode);
 
-node *behavior_expression_add(behavior_asset *asset, graph *caller, const char *source, behavior_expression_error *error)
+node *behavior_expression_add_mode(
+    behavior_asset *asset,
+    graph *caller,
+    const char *source,
+    graph_expression_mode mode,
+    behavior_expression_error *error
+)
 {
+    assert(
+        mode == GRAPH_EXPRESSION_NONE || mode == GRAPH_EXPRESSION_VALUE || mode == GRAPH_EXPRESSION_BRANCH
+    );
     behavior_expression_error local;
     error = error ? error : &local;
     if (!prepare_error(error, asset, source)) {
@@ -2962,7 +3175,8 @@ node *behavior_expression_add(behavior_asset *asset, graph *caller, const char *
         error,
         NULL,
         0,
-        asset->graph->id_counter
+        asset->graph->id_counter,
+        mode
     );
     if (!staged) {
         return NULL;
@@ -2979,13 +3193,18 @@ node *behavior_expression_add(behavior_asset *asset, graph *caller, const char *
         graph_node_by_id(generated, generated->entry_id),
         graph_node_by_id(generated, generated->return_id)
     );
-    read_named_values(asset, call);
+    read_named_values(asset, call, mode);
     return call;
 }
 
 /* An input named like one of the graph's named values reads it, as code reads
    a variable in scope. */
-static void read_named_values(behavior_asset *asset, node *call)
+node *behavior_expression_add(behavior_asset *asset, graph *caller, const char *source, behavior_expression_error *error)
+{
+    return behavior_expression_add_mode(asset, caller, source, GRAPH_EXPRESSION_NONE, error);
+}
+
+static void read_named_values(behavior_asset *asset, node *call, graph_expression_mode mode)
 {
     graph *caller = caller_graph(asset, call);
     bool bound = false;
@@ -3006,7 +3225,9 @@ static void read_named_values(behavior_asset *asset, node *call)
         }
     }
     if (bound) {
-        int rc = behavior_expression_refresh(asset, call, NULL);
+        int rc = mode == GRAPH_EXPRESSION_NONE
+                   ? behavior_expression_refresh(asset, call, NULL)
+                   : behavior_expression_refresh_mode(asset, call, mode, NULL);
         assert(rc == 0);
         (void)rc;
     }
@@ -3191,7 +3412,9 @@ static int set_source(
         error,
         renames,
         rename_count,
-        asset->graph->id_counter
+        asset->graph->id_counter,
+        previous->expression_mode == GRAPH_EXPRESSION_VALUE ? GRAPH_EXPRESSION_VALUE
+                                                            : GRAPH_EXPRESSION_NONE
     );
     if (!staged) {
         free_symbols(symbols);
@@ -3222,7 +3445,7 @@ static int set_source(
         }
     }
     free_symbols(symbols);
-    read_named_values(asset, call);
+    read_named_values(asset, call, GRAPH_EXPRESSION_NONE);
     return 0;
 }
 
@@ -3234,21 +3457,83 @@ static behavior_asset *regenerate(
     node *call,
     const char *source,
     const graph *previous,
+    graph_expression_mode mode,
     behavior_expression_error *error
 )
 {
     assert(previous->entry_id);
     graph *caller = caller_graph(asset, call);
-    behavior_asset *staged = generate(asset, caller, call, source, error, NULL, 0, previous->entry_id - 1);
+    behavior_asset *staged = generate(asset, caller, call, source, error, NULL, 0, previous->entry_id - 1, mode);
     if (!staged || body_ids_free(asset, staged->graphs[1], previous)) {
         return staged;
     }
     behavior_asset_free(staged);
-    return generate(asset, caller, call, source, error, NULL, 0, asset->graph->id_counter);
+    return generate(asset, caller, call, source, error, NULL, 0, asset->graph->id_counter, mode);
 }
 
-int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expression_error *error)
+int behavior_expression_infer_assignment_result(behavior_asset *asset, node *call, behavior_expression_error *error)
 {
+    behavior_expression_error local = { 0 };
+    error = error ? error : &local;
+    const char *source = behavior_expression_source(asset, call);
+    if (!prepare_error(error, asset, source)) {
+        return -1;
+    }
+    parser p = { .source = source, .cursor = source, .error = error };
+    int result = parse_source(&p);
+    int symbol = result >= 0 ? expression_assignment_symbol(&p) : -1;
+    if (symbol >= 0) {
+        pin_binding binding;
+        graph *caller = caller_graph(asset, call);
+        int reference = expression_assignment_reference(caller, call, p.symbols[symbol], NULL, 0, &binding);
+        pin_type type;
+        const char *name;
+        pin_container container;
+        const term *left = &p.terms[p.assignment_left];
+        if (reference < 0 ||
+            (reference > 0 &&
+             expression_binding_type(asset, &binding, left, &type, &name, &container))) {
+            snprintf(error->message, sizeof error->message, "Assignment target binding is invalid");
+            result = -1;
+        } else if (reference > 0) {
+            if (left->index_count) {
+                container = PIN_CONTAINER_SINGLE;
+            }
+            if (left->field[0]) {
+                const type_desc *root = registry_type_by_name(name);
+                const type_field *field = root ? pin_type_field_path(root, left->field)
+                                               : NULL;
+                if (!field) {
+                    snprintf(error->message, sizeof error->message, "Assignment member is invalid");
+                    result = -1;
+                } else {
+                    type = field->type;
+                    name = field->type_name;
+                }
+            }
+            int output = find_named_output(call, "Result");
+            if (result >= 0 && output >= 0 && type >= PIN_I8 &&
+                type <= PIN_F64 && container == PIN_CONTAINER_SINGLE &&
+                graph_set_pin_type(caller, call, true, output, type, name)) {
+                snprintf(error->message, sizeof error->message, "Assignment result type could not be inferred");
+                result = -1;
+            }
+        }
+    }
+    parser_free(&p);
+    return result < 0 ? -1 : 0;
+}
+
+int behavior_expression_refresh_mode(
+    behavior_asset *asset,
+    node *call,
+    graph_expression_mode mode,
+    behavior_expression_error *error
+)
+{
+    assert(
+        mode == GRAPH_EXPRESSION_NONE || mode == GRAPH_EXPRESSION_VALUE || mode == GRAPH_EXPRESSION_BRANCH
+    );
     behavior_expression_error local;
     error = error ? error : &local;
     const char *source = behavior_expression_source(asset, call);
@@ -3261,7 +3546,7 @@ int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expr
         return -1;
     }
     synchronize_connected_inputs(asset, call);
-    behavior_asset *staged = regenerate(asset, call, source, previous, error);
+    behavior_asset *staged = regenerate(asset, call, source, previous, mode, error);
     if (!staged) {
         return -1;
     }
@@ -3287,4 +3572,13 @@ int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expr
         }
     }
     return 0;
+}
+
+int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expression_error *error)
+{
+    const graph *generated = expression_graph(asset, call);
+    graph_expression_mode mode = generated && generated->expression_mode == GRAPH_EXPRESSION_VALUE
+                                   ? GRAPH_EXPRESSION_VALUE
+                                   : GRAPH_EXPRESSION_NONE;
+    return behavior_expression_refresh_mode(asset, call, mode, error);
 }

@@ -67,29 +67,54 @@ or open a new task after adding or changing project MCP configuration.
 
 ## Asset files
 
-Authored assets under `content/` are KDL 2 (`.kdl`); `project.kdl` is the
-project manifest, at project version 5. The document is an implicit object.
-Each named node defines one member: a positional argument is a scalar,
-properties define a compact object, and child nodes define a nested object.
-`(array)` marks arrays, whose values are arguments or `-` child nodes;
-`(object)` marks empty objects. Arrays retain their annotation even when
-empty or holding one value. Booleans and null use `#true`, `#false`, and
-`#null`. Duplicate object keys are rejected. For example:
+Declarative assets under `content/` use KDL 2 (`.kdl`); `project.kdl` is the
+version 7 project manifest. Behaviors, behavior libraries and systems use
+`.code` as their executable source. Scenes, prototypes, event declarations,
+models, shapes, materials, fields, shader libraries and editor configuration
+remain declarative KDL. For example, a prototype document is:
 
 ```kdl
 name "Player"
 components {
-    GAME.GameHealth current=20 maximum=20
-    (object)GAME.GameInput
+    "GAME.GameHealth" current=20 maximum=20
+    (object)"GAME.GameInput"
 }
 (array)behaviors "Movement" "Weapon"
 ```
 
-Reflected string fields that carry structured asset data also contain KDL:
-`GameShader.parameters` and `MaterialTerrain.parameters` hold an object
-document, while `GameMeshParts.parts` holds a root `(array)-` document.
-An empty string means no parameters. These remain reflected string fields;
-use KDL string escapes or multiline strings for their payload text.
+Behavior code uses the shared native source frontend. `analyzeCode` accepts
+unsaved source and returns a validated graph document, canonical code,
+highlighting spans and structured diagnostics with byte ranges, line/column,
+severity, rule and graph identities. Optional `offset` requests completion and
+hover; optional `location: {graph_id, node_id, pin_id}` resolves a graph selection
+to its source range. Invalid source remains an analysis result with `valid: false`.
+Diagnostics originating in an imported library include its `asset` and `graph`
+names and original native graph/node/pin IDs. Their source range highlights the
+importing call, and their message names the library and graph.
+
+At a byte `offset`, parser-resolved semantic facts supply typed completions,
+hover signatures, definitions, references, and caller/callee ranges. An optional
+`rename` identifier returns `renamed_source` after scope checks and frontend
+validation, or `rename_error`; analysis never publishes a rename. The
+`semantic_spans` array supplements lexical `spans` with resolved symbol kinds.
+Imported callable definitions return `{asset, graph_id, node_id, pin_id}`;
+local definitions return `{start, end}`. Call entries include `target_asset`
+and `target_graph_id` for imported targets. Native identities are scoped to their
+asset, so equal graph IDs in separate libraries identify different declarations.
+Declarative assets remain KDL, and behavior source uses `.code`.
+
+`buildCode` validates source before atomically publishing it. Read the asset first
+and pass its `expected_hash` for a replacement, or use `create: true` for a new
+asset. `dry_run: true` validates without saving. A failed candidate preserves the
+current file. Structured source retains authored statements and comments while
+persisting stable `@node` identities and an inline `@authoring` metadata block in
+the same file. The response's `source` and hash describe the persisted candidate.
+`--format` applies the same persistence rules. `buildGraph` uses the same native asset model and reconciles graph
+edits back into structured source, preserving unaffected text.
+
+Reflected string fields containing parameter objects or part arrays use KDL
+value syntax; an empty string means no parameters. These remain string fields, so
+escape their payload when embedding them in another source document.
 
 Declarative models use `content/models`, `domain "model"`, and the existing
 `GameShader.shape` binding. Author them with the generic graph tools using
@@ -175,7 +200,9 @@ saving them. Tool results include complete `structuredContent` and
 - `searchNodes`: list a domain's node types, or find nodes, configured component nodes, and their pins by words.
 - `inspectGraph`: inspect graph content, diagnostics, and the current content hash; with `include_uses: true`, the asset, its functions and macros, and a behavior's variables carry `uses`, their project-wide use counts by role. Counting reads every asset, so it is off by default.
 - `inspectUi`: read a ui asset's outline, props, events, slots, widgets, tokens, save keys, syntax errors and hash; with `complete`, the completions Studio's Text Editor offers at a line and column.
-- `readAsset`: read authored KDL source and parsed content; with `complete: {line, column}`, return shared source editor completions, hover, and diagnostics. Completion uses ranked fuzzy matching and includes each item's symbol `kind`. Spaces after a reflected component or value offer its remaining properties. Line and byte column are 1-based; completion replacement ranges are zero-based byte offsets. Incomplete KDL returns `document: null` with diagnostics when completion is requested.
+- `analyzeCode`: analyze unsaved behavior source, return graph data, canonical code, source diagnostics, highlighting and shared completion/hover/navigation.
+- `buildCode`: validate and atomically publish source with `expected_hash`, or analyze a `dry_run`; failed compilation preserves the current asset.
+- `readAsset`: read authored code source and parsed content; with `complete: {line, column}`, return shared source editor completions, hover, and diagnostics. Completion uses ranked fuzzy matching and includes each item's symbol `kind`. Spaces after a reflected component or value offer its remaining properties. Line and byte column are 1-based; completion replacement ranges are zero-based byte offsets. Incomplete code returns `document: null` with diagnostics when completion is requested.
 - `validateAsset`: run native asset loading and compiler diagnostics; for a ui asset, its syntax errors and every warning RmlUi logs, with lines.
 - `listAssets`: list deterministic asset paths, sizes, and hashes.
 - `getAssetCatalog`: read semantic asset metadata, dependencies, diagnostics, and registry counts. Graph assets compile linked with the project's libraries and events, as Studio's Problems do.
@@ -294,13 +321,13 @@ publishes nothing:
 
 ```json
 {"dry_run": true, "published": false,
- "assets": [{"kind": "behavior", "name": "HullDamage", "path": "content/behaviors/HullDamage.kdl",
+ "assets": [{"kind": "behavior", "name": "HullDamage", "path": "content/behaviors/HullDamage.code",
              "hash": "1b670a0c93c49454", "after_hash": "2f787d311593ea17",
              "changes": [{"role": "handle", "graph_id": 0, "node": 1}]},
             {"kind": "event", "name": "Damage", "path": "content/events/Damage.kdl",
              "hash": "2944b52c078d8949", "new_name": "Harm", "new_path": "content/events/Harm.kdl",
              "after_hash": "7ff62620cd89e472", "changes": [{"role": "define"}]}, ...],
- "expected_hashes": {"content/behaviors/HullDamage.kdl": "1b670a0c93c49454", ...},
+ "expected_hashes": {"content/behaviors/HullDamage.code": "1b670a0c93c49454", ...},
  "mentions": [], "dangling": []}
 ```
 
@@ -599,9 +626,12 @@ Add a Behavior Expression with `add_node` and its `source` text, for example
 Two expressions may share a source; each is its own node with its own generated
 graph, and a saved asset keeps each call's graph by `reference_id` when the
 names are shared.
+`inspectGraph` returns each Behavior Expression's current readable `expression`.
+Use that expression's source-visible captures when editing a saved asset; generated
+input names and inlined defaults can change during source lowering.
 Use `set_expression` with the node selector and new `source` to regenerate it;
-valid edits reconcile pins and disconnect incompatible wires, while invalid edits
-leave the previous generated graph in place. Inputs match by name, as in
+valid edits reconcile pins. An edit that drops a connected input rejects the
+batch with a diagnostic; invalid edits leave the published generation in place. Inputs match by name, as in
 Unreal's Math Expression: a name that stays keeps its wire or binding, a name
 that disappears loses it (the result lists it under `unfed_inputs`), and a new
 name starts unfed unless it matches a graph local, which it then reads. To

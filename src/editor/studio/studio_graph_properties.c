@@ -583,7 +583,7 @@ static void inline_rows(gd_rows *r, studio *s, node *target, int p)
             }
             char label[128];
             row_id(id, 'n', part->id, 'o', k);
-            ed_pin_label(part, &part->output_pins[k], label, sizeof label);
+            studio_code_pin_label(s, part, &part->output_pins[k], label, sizeof label);
             pin_row pr = { s, part, 1, k, id, sg_graph_readonly(s) };
             value_row(r, &pr, &(gd_row){ .id = id, .label = label });
         }
@@ -596,7 +596,7 @@ void sg_input_row(gd_rows *r, studio *s, node *n, int p)
     const pin_spec *spec = &n->input_pins[p];
     char id[GD_ROW_ID], label[160], text[256];
     row_id(id, 'n', n->id, 'i', p);
-    ed_pin_label(n, spec, label, sizeof label);
+    studio_code_pin_label(s, n, spec, label, sizeof label);
     gd_row d = { .id = id, .label = label, .readonly = sg_graph_readonly(s) };
     if (expression_editing(s, n, p)) {
         /* Edit Expression: the folded expression's source, in place. */
@@ -677,7 +677,7 @@ static void outputs_panel(gd_view *v, studio *s, node *n)
     for (int p = 0; r.open && p < n->output_count; p++) {
         const pin_spec *spec = &n->output_pins[p];
         char id[GD_ROW_ID], label[160];
-        ed_pin_label(n, spec, label, sizeof label);
+        studio_code_pin_label(s, n, spec, label, sizeof label);
         if (ed_pin_editable(gr, n, ED_PIN_OUTPUT, p) && !readonly &&
             sg_value_kind_of(s, n, 1, p) != VALUE_NONE) {
             row_id(id, 'n', n->id, 'o', p);
@@ -1042,18 +1042,19 @@ void studio_node_details(studio *s, gd_view *v)
         return;
     }
     char title[256];
+    char *source = n->desc == &NODE_BehaviorExpression
+                     ? studio_code_expression(s, n)
+                     : NULL;
     gd_identity(
         v,
         sg_node_icon(s, n) ? sg_node_icon(s, n) : KIT_ICON_HEXAGON,
-        ed_node_title(e, n, title, sizeof title),
+        source ? source : ed_node_title(e, n, title, sizeof title),
         n->desc->category ? n->desc->category : n->desc->name
     );
-    const char *source = n->desc == &NODE_BehaviorExpression
-                           ? behavior_expression_source(e->asset, n)
-                           : NULL;
     if (source) {
         expression_panel(v, s, n, source);
     }
+    free(source);
     if (n->input_count) {
         gd_rows r = gd_panel(v, "inputs", "Inputs");
         for (int p = 0; r.open && p < n->input_count; p++) {
@@ -1212,9 +1213,20 @@ int sg_set_expression_source(studio *s, node *n, const char *source)
 {
     studio_graph *g = &s->graph;
     graph *gr = sg_active_graph(s);
+    uint64_t id = n->id;
     char **before = input_names(n), **lost = behavior_expression_fed_inputs(gr, n);
     behavior_expression_error error = { 0 };
-    int status = editor_set_behavior_expression(sg_graph_editor(s), n, source, &error);
+    char *resolved = studio_code_expression_resolve(
+        s,
+        n,
+        source,
+        error.message,
+        sizeof error.message
+    );
+    int status = resolved
+                   ? editor_set_behavior_expression(sg_graph_editor(s), n, resolved, &error)
+                   : -1;
+    free(resolved);
     if (status != 0) {
         snprintf(
             g->expression_error,
@@ -1224,6 +1236,9 @@ int sg_set_expression_source(studio *s, node *n, const char *source)
         );
     } else {
         g->expression_error[0] = '\0';
+        gr = sg_active_graph(s);
+        n = graph_node_by_id(gr, id);
+        assert(n);
         behavior_expression_keep_unfed(gr, n, &lost);
         if (acount(lost)) {
             offer_rewire(s, n, before, lost, source);
@@ -1521,8 +1536,9 @@ static void edit_expression(studio *s, node *n, const ui_activation *a)
     }
     g->details.error_node = n->id;
     snprintf(g->details.error, sizeof g->details.error, "%s", g->expression_error);
-    const char *was = behavior_expression_source(sg_graph_editor(s)->asset, n);
+    char *was = studio_code_expression(s, n);
     snprintf(g->details.error_source, sizeof g->details.error_source, "%s", was ? was : "");
+    free(was);
 }
 
 static void frame_edit(studio *s, graph_comment_box *box, char part, const char *action, const ui_activation *a)

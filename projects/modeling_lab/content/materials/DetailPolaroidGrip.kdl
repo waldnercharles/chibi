@@ -134,8 +134,8 @@ description "Finite film-door decal and subtle molded-plastic bump replace small
             - from="732.Value" to="1.Normal"
         }
     }
-    - id=179 kind="function" math_expression="mix(vec3(0.025, 0.026, 0.022), color, mask)" entry_id=180
-    - id=211 kind="function" math_expression="(0.3943505133411161 * ((p.x + 4.45) / 8.9) + 0.01156964233830683 * ((0.46 - p.y) / 0.92) + 0.23575) / (0.003760336032618848 * ((p.x + 4.45) / 8.9) + 0.022911913054457875 * ((0.46 - p.y) / 0.92) + 1)" entry_id=318
-    - id=432 kind="function" math_expression="(0.09221917629443654 * ((p.x + 4.45) / 8.9) + 0.0777369763424368 * ((0.46 - p.y) / 0.92) + 0.71637) / (0.003760336032618848 * ((p.x + 4.45) / 8.9) + 0.022911913054457875 * ((0.46 - p.y) / 0.92) + 1)" entry_id=539
-    - id=653 kind="function" math_expression="0.025 * sin(p.x * 12) * sin(p.y * 11)" entry_id=692
+    - id=179 kind="function" math_expression="mix(vec3(0.025, 0.026, 0.022), color, mask)" expression_mode=1 entry_id=180
+    - id=211 kind="function" math_expression="(0.3943505133411161 * ((p.x + 4.45) / 8.9) + 0.01156964233830683 * ((0.46 - p.y) / 0.92) + 0.23575) / (0.003760336032618848 * ((p.x + 4.45) / 8.9) + 0.022911913054457875 * ((0.46 - p.y) / 0.92) + 1)" expression_mode=1 entry_id=318
+    - id=432 kind="function" math_expression="(0.09221917629443654 * ((p.x + 4.45) / 8.9) + 0.0777369763424368 * ((0.46 - p.y) / 0.92) + 0.71637) / (0.003760336032618848 * ((p.x + 4.45) / 8.9) + 0.022911913054457875 * ((0.46 - p.y) / 0.92) + 1)" expression_mode=1 entry_id=539
+    - id=653 kind="function" math_expression="0.025 * sin(p.x * 12) * sin(p.y * 11)" expression_mode=1 entry_id=692
 }

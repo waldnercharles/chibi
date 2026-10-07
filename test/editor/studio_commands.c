@@ -1,3 +1,4 @@
+#include "editor/documents/asset_code.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/studio/studio_internal.h"
 #include "editor/workspace/input.h"
@@ -377,7 +378,7 @@ void test_studio_menu_context(studio *s)
     bool undo_clicked = enabled && menu_click(s, undo);
     behavior_asset *undone = ed_snapshot(e);
     bool changed = undo_clicked && !behavior_asset_equal(before, undone) &&
-                   editor_can_redo(e);
+                   studio_command_enabled(s, STUDIO_COMMAND_REDO);
     opened = menu_click(s, labeled(s, "menubar .trigger", "Edit"));
     rml_element *redo = labeled(s, "#menu-edit .menu-item", "Redo");
     bool redo_enabled = opened && redo &&
@@ -386,6 +387,38 @@ void test_studio_menu_context(studio *s)
                         studio_command_enabled(s, STUDIO_COMMAND_REDO);
     bool redo_clicked = redo_enabled && menu_click(s, redo);
     behavior_asset *restored = ed_snapshot(e);
+    if (!enabled || !changed || !redo_enabled || !redo_clicked ||
+        !behavior_asset_equal(before, restored)) {
+        printf(
+            "  Graph menu history: enabled=%d undo=%d changed=%d "
+            "redo_enabled=%d redo=%d restored=%d\n",
+            enabled,
+            undo_clicked,
+            changed,
+            redo_enabled,
+            redo_clicked,
+            behavior_asset_equal(before, restored)
+        );
+        printf(
+            "  Graph identity: working=%s document=%s active=%d "
+            "source_sessions=%d\n",
+            editor_behavior_asset(e)->name,
+            s->scene->graph_document_id ? s->scene->graph_document_id : "(none)",
+            s->scene->document.kind,
+            acount(s->code.assets)
+        );
+        for (int i = 0; i < acount(s->code.assets); i++) {
+            asset_code *code = s->code.assets[i];
+            printf(
+                "  Source history: %s undo=%d redo=%d pending=%d error=%s\n",
+                asset_code_path(code),
+                asset_code_can_replay(code, false),
+                asset_code_can_replay(code, true),
+                asset_code_pending(code),
+                asset_code_error(code)
+            );
+        }
+    }
     test_check(
         enabled && changed && redo_enabled && redo_clicked &&
             behavior_asset_equal(before, restored),

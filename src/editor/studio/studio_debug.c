@@ -2,6 +2,7 @@
  * playing scene's runtime errors (Unreal's PIE message log) and a run paused
  * at a breakpoint (Unreal's Blueprint debugger): stepping, the paused node
  * and its call stack. */
+#include "assets/code_print.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/ui/labels.h"
 #include "graph/document/library.h"
@@ -9,6 +10,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* ---------- Jumping to a node ---------- */
@@ -86,7 +88,10 @@ void studio_node_place(const studio *s, const studio_node_ref *at, char *out, si
                  ? behavior_asset_find_graph(e->asset, at->graph_id)
                  : NULL;
     node *n = g && at->node_id ? graph_node_by_id(g, at->node_id) : NULL;
-    const char *name = g && g->name && g->name[0] ? g->name : "Event Graph";
+    char name[256] = "Event Graph";
+    if (g) {
+        studio_code_graph_label(s, g, name, sizeof name);
+    }
     if (!n) {
         snprintf(out, size, "%s", g ? name : at->asset);
         return;
@@ -151,8 +156,26 @@ static void node_label(const studio *s, const studio_node_ref *at, const node *n
                  ? behavior_asset_find_graph(e->asset, at->graph_id)
                  : NULL;
     node *open = g ? graph_node_by_id(g, at->node_id) : NULL;
+    for (int i = 0; i < acount(e->asset_catalog); i++) {
+        const behavior_asset *asset = e->asset_catalog[i];
+        if (strcmp(asset->name, at->asset)) {
+            continue;
+        }
+        const graph *graph = behavior_asset_find_graph(asset, at->graph_id);
+        if (graph && code_print_reactive_event(asset, graph, n, out, size)) {
+            return;
+        }
+    }
     if (open) {
-        ed_node_title(e, open, out, size);
+        char *expression = open->desc == &NODE_BehaviorExpression
+                             ? studio_code_expression(s, open)
+                             : NULL;
+        if (expression) {
+            snprintf(out, size, "%s", expression);
+            free(expression);
+            return;
+        }
+        ed_node_title_in(e, e->asset, g, open, out, size);
     } else if (n->reference_name && n->reference_name[0]) {
         editor_identifier_label(n->reference_name, out, size);
     } else {
@@ -306,6 +329,7 @@ static void follow_pause(studio *s)
         node *n = shown_node(s, &s->pause.at);
         s->graph.reveal = n ? n->id : 0;
         s->graph.reveal_frame = false;
+        studio_code_reveal_node(s, &s->pause.at);
     }
     app_scene_authoring_set_debug_target(scene, scene->active_runtime_target, info.entity, info.asset_name);
 }
@@ -414,7 +438,7 @@ static void push_row(const studio *s, stack_row **rows, const char *behavior, co
 {
     stack_row row = { .at = authored(behavior, g, n->id) };
     node_label(s, &row.at, n, row.label, sizeof row.label);
-    snprintf(row.graph, sizeof row.graph, "%s", g->name && g->name[0] ? g->name : "Event Graph");
+    studio_code_graph_label(s, g, row.graph, sizeof row.graph);
     apush(*rows, row);
 }
 

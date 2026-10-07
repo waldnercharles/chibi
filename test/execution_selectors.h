@@ -1,6 +1,9 @@
 /* CPU-only entry points reviewed for agent iteration. Unknown/new selectors
  * fail closed until classified; the hardware suite retains every assertion. */
 CHIBI_CPU_SELECTOR("--asset-documents")
+CHIBI_CPU_SELECTOR("--code-source")
+CHIBI_CPU_SELECTOR("--code-intelligence")
+CHIBI_CPU_SELECTOR("--kit-code")
 CHIBI_CPU_SELECTOR("--rcss")
 CHIBI_CPU_SELECTOR("--iframe-updates")
 CHIBI_CPU_SELECTOR("--kit-documents")

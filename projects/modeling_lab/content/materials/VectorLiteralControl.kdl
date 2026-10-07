@@ -56,5 +56,5 @@ id_counter 25
             - from="23.Result" to="10.Alpha" conversion="Scalar to ShaderVec3"
         }
     }
-    - id=15 kind="function" math_expression="0.25" entry_id=16
+    - id=15 kind="function" math_expression="0.25" expression_mode=1 entry_id=16
 }

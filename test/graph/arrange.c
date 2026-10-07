@@ -1,5 +1,7 @@
 #include "graph/authoring/arrange.h"
 
+#include "assets/code_catalog.h"
+#include "assets/code_source.h"
 #include "graph/authoring/arrange_score.h"
 #include "graph/authoring/layout.h"
 #include "support/asset_text.h"
@@ -548,9 +550,9 @@ static void arrange_collect(const char *dir, char ***paths)
             arrange_collect(path, paths);
             continue;
         }
-        size_t len = strlen(path);
-        size_t ext = strlen(ASSET_EXTENSION);
-        if (len > ext && !strcmp(path + len - ext, ASSET_EXTENSION)) {
+        const char *ext = strrchr(path, '.');
+        if (ext && (!strcmp(ext, DECLARATIVE_ASSET_EXTENSION) ||
+                    !strcmp(ext, CODE_ASSET_EXTENSION))) {
             apush(*paths, strdup(path));
         }
     }
@@ -564,14 +566,17 @@ static void arrange_sort_paths(char **paths)
     }
 }
 
-static behavior_asset *arrange_load(const char *path)
+static behavior_asset *arrange_load(const char *path, const code_catalog *catalog)
 {
     char *json = text_file_read(path);
-    if (!json || !strstr(json, "graphs")) {
+    if (!json || (!strstr(json, "graphs") && !code_source_is_structured(json))) {
         free(json);
         return NULL;
     }
-    behavior_asset *asset = behavior_asset_load(json);
+    char error[256] = { 0 };
+    behavior_asset *asset = catalog
+                              ? code_catalog_load_behavior(catalog, json, error, sizeof error)
+                              : behavior_asset_load(json);
     free(json);
     return asset;
 }
@@ -590,7 +595,12 @@ static void arrange_score_add(arrange_score *total, arrange_score s)
 
 /* Freeze the corpus that established the original budgets. New content gets
  * its own budget instead of silently weakening those regression ceilings. */
-static arrange_score arrange_arena_score(arrange_route_style style, int *graphs, bool sweep)
+static arrange_score arrange_arena_score(
+    arrange_route_style style,
+    int *graphs,
+    bool sweep,
+    const code_catalog *catalog
+)
 {
     static const char *const canonical[] = {
         "BoostEmitter",      "CameraFollow",    "CutMaterial",
@@ -601,18 +611,19 @@ static arrange_score arrange_arena_score(arrange_route_style style, int *graphs,
     };
     char **paths = NULL;
     if (sweep) {
-        apush(paths, strdup("test/fixtures/graph/MeshSurfaceSweep01.kdl"));
+        apush(paths, strdup("test/fixtures/graph/MeshSurfaceSweep01.code"));
     } else {
         for (int i = 0; i < (int)(sizeof canonical / sizeof *canonical); i++) {
             char path[256];
-            snprintf(path, sizeof path, "projects/arena2d/content/behaviors/%s.kdl", canonical[i]);
+            snprintf(path, sizeof path, "projects/arena2d/content/behaviors/%s.code", canonical[i]);
             apush(paths, strdup(path));
         }
     }
     arrange_score total = { 0 };
     *graphs = 0;
     for (int p = 0; p < acount(paths); p++) {
-        behavior_asset *asset = arrange_load(paths[p]);
+        behavior_asset *asset = arrange_load(paths[p], catalog);
+        test_check(asset != NULL, paths[p]);
         for (int gi = 0; asset && gi < acount(asset->graphs); gi++) {
             arrange_case c = arrange_case_of(asset->graphs[gi]);
             arrange_graph g = arrange_input(&c);
@@ -659,9 +670,11 @@ static void arrange_content_checks()
         [ARRANGE_ROUTE_STRAIGHT] = { 2, 10850 },
         [ARRANGE_ROUTE_SUBWAY] = { 1, 11150 },
     };
+    code_catalog *catalog = code_catalog_load_project("projects/arena2d");
+    test_check(code_catalog_error_count(catalog) == 0, "arrange loads the complete arena2d authoring catalogue");
     for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
         int graphs = 0;
-        arrange_score s = arrange_arena_score(style, &graphs, false);
+        arrange_score s = arrange_arena_score(style, &graphs, false, catalog);
         printf(
             "arrange arena2d %-10s graphs=%d crossings=%d hits=%d overlaps=%d "
             "wire_overlaps=%d bends=%d flow_bends=%d length=%.0f ink=%.0f\n",
@@ -683,7 +696,7 @@ static void arrange_content_checks()
         test_check(s.wire_bends <= ceiling[style].bends, "arrange keeps arena2d turns in budget");
         test_check(s.flow_bends <= ceiling[style].flow_bends, "arrange keeps arena2d execution chains straight");
         test_check(s.ink_length <= ceiling[style].ink, "arrange keeps arena2d ink in budget");
-        arrange_score motion = arrange_arena_score(style, &graphs, true);
+        arrange_score motion = arrange_arena_score(style, &graphs, true, NULL);
         printf(
             "arrange mesh sweep %-10s graphs=%d crossings=%d hits=%d "
             "overlaps=%d wire_overlaps=%d bends=%d flow_bends=%d length=%.0f "
@@ -713,6 +726,7 @@ static void arrange_content_checks()
         );
         test_check(motion.ink_length <= sweep_ceiling[style].ink, "arrange keeps mesh sweep ink in its separate budget");
     }
+    code_catalog_free(catalog);
 }
 
 void run_graph_arrange_checks()
@@ -841,6 +855,8 @@ int bench_graph_arrange(int repeats, const char *only, const char *style)
 {
     registry_validate();
     char **paths = arrange_content_paths();
+    char *catalog_root = NULL;
+    code_catalog *catalog = NULL;
     arrange_bench_total totals[ARRANGE_ROUTE_STYLE_COUNT] = { 0 };
     printf(
         "%-64s %-10s %5s %5s %8s %8s %5s %5s %5s %5s %5s %6s %9s %9s %8s %8s\n",
@@ -862,7 +878,17 @@ int bench_graph_arrange(int repeats, const char *only, const char *style)
         "hash"
     );
     for (int p = 0; p < acount(paths); p++) {
-        behavior_asset *asset = arrange_load(paths[p]);
+        const char *content = strstr(paths[p], "/content/");
+        char *root = content ? strndup(paths[p], (size_t)(content - paths[p]))
+                             : strdup(".");
+        if (!catalog_root || strcmp(catalog_root, root)) {
+            free(catalog_root);
+            code_catalog_free(catalog);
+            catalog_root = strdup(root);
+            catalog = code_catalog_load_project(root);
+        }
+        free(root);
+        behavior_asset *asset = arrange_load(paths[p], catalog);
         for (int gi = 0; asset && gi < acount(asset->graphs); gi++) {
             char name[512];
             snprintf(name, sizeof name, "%s#%d", paths[p], gi);
@@ -882,6 +908,8 @@ int bench_graph_arrange(int repeats, const char *only, const char *style)
         }
         free(paths[p]);
     }
+    code_catalog_free(catalog);
+    free(catalog_root);
     afree(paths);
     for (int s = 0; s < ARRANGE_ROUTE_STYLE_COUNT; s++) {
         const arrange_bench_total *t = &totals[s];

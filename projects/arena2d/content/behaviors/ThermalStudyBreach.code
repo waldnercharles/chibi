@@ -1,0 +1,10 @@
+behavior "ThermalStudyBreach" {
+    owner "ecs.entity";
+    on Begin as begin() {
+        await delay(Duration: 0.5);
+        damage_material(Entity: self, Point: {
+            x: 0.0,
+            y: 0.0
+        }, Radius: 36.0, Energy: 10.0, Cause: 0, Source: 0);
+    }
+}

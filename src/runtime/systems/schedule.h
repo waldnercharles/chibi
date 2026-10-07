@@ -39,6 +39,9 @@ void system_schedule_free(system_schedule *schedule);
 int system_schedule_register(system_schedule *schedule, const engine_system_desc *desc);
 void system_schedule_remove(system_schedule *schedule, const char *name);
 bool system_schedule_build(system_schedule *schedule);
+/* Serial maintenance in authored scheduling order; does not run Tick or native callbacks. */
+int system_schedule_maintain(system_schedule *, double time, double delta, flow_error *error);
+int system_schedule_field_changed(system_schedule *, ecs_entity, ecs_component_id, size_t, pin_value, flow_error *);
 int system_schedule_run(system_schedule *schedule, system_phase phase, double time, double delta);
 const char *system_schedule_error(const system_schedule *schedule);
 const char *system_schedule_warning(const system_schedule *schedule);

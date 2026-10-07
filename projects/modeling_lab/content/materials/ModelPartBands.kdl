@@ -58,5 +58,5 @@ description "Bands use named-Part coordinates and remain attached through parent
             - from="56.Value" to="46.B"
         }
     }
-    - id=15 kind="function" math_expression="0.5 + 0.5 * sin(x * 0.55)" entry_id=16
+    - id=15 kind="function" math_expression="0.5 + 0.5 * sin(x * 0.55)" expression_mode=1 entry_id=16
 }

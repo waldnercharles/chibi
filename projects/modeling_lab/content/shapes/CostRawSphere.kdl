@@ -29,5 +29,5 @@ description "Independent numerical equivalent of CostSphere. Its unit-radius dis
             - from="21.Result" to="1.Distance"
         }
     }
-    - id=5 kind="function" math_expression="length(p) - 1" entry_id=6
+    - id=5 kind="function" math_expression="length(p) - 1" expression_mode=1 entry_id=6
 }

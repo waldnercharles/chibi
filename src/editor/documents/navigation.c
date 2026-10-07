@@ -1,6 +1,8 @@
+#include "assets/code_source_diagnostics.h"
 #include "editor/collab/actions_internal.h"
 #include "editor/collab/collab.h"
 #include "editor/workspace/editor_internal.h"
+#include "graph/document/problems.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 
@@ -12,6 +14,46 @@
 const behavior_asset *editor_behavior_asset(const editor *e)
 {
     return e ? e->asset : NULL;
+}
+
+int editor_source_behavior_asset(editor *e, const behavior_asset *source)
+{
+    uint64_t *selected = NULL;
+    for (int i = 0; i < acount(e->selected); i++) {
+        apush(selected, e->selected[i]->id);
+    }
+    int result = ed_adopt_behavior_asset(e, source);
+    if (!result) {
+        for (int i = 0; i < acount(selected); i++) {
+            node *n = graph_node_by_id(e->active_graph, selected[i]);
+            if (n) {
+                ed_add_selected(e, n);
+            }
+        }
+        ed_compile(e);
+        e->arrange_pending = true;
+    }
+    afree(selected);
+    return result;
+}
+
+void editor_source_diagnostics(const editor *e, const behavior_asset *source, code_source *document)
+{
+    compile_report report;
+    compile_report_init(&report);
+    behavior_asset *linked = behavior_asset_validate(
+        source,
+        e->asset_catalog,
+        acount(e->asset_catalog),
+        &report
+    );
+    if (linked && !compile_report_blocked(&report) &&
+        !strcmp(code_source_kind(document), "system")) {
+        behavior_asset_compile_for_system(linked, &report);
+    }
+    code_source_compile_diagnostics(document, linked, &report);
+    behavior_asset_free(linked);
+    compile_report_free(&report);
 }
 
 int editor_open_behavior_asset(editor *e, const behavior_asset *source, uint64_t graph_id)

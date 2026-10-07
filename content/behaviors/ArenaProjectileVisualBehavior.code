@@ -1,0 +1,25 @@
+behavior "ArenaProjectileVisualBehavior" {
+    owner "ecs.entity";
+    value random_range_vector = random_range_vector(Min: {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0
+    }, Max: {
+        x: 6.2831855,
+        y: 6.2831855,
+        z: 6.2831855
+    });
+    value random_range_vector_2 = random_range_vector(Min: {
+        x: -10.0,
+        y: -10.0,
+        z: -10.0
+    }, Max: {
+        x: 10.0,
+        y: 10.0,
+        z: 10.0
+    });
+    on Begin as begin() {
+        await set_game_visual_motion_rotation(Value: random_range_vector, Target: 0);
+        set_game_visual_motion_angular_velocity(Value: random_range_vector_2, Target: 0);
+    }
+}

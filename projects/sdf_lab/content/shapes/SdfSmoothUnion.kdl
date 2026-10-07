@@ -71,8 +71,8 @@ description "Smooth union of two offset spheres with a 12-unit blend."
             - from="152.Result" to="1.Distance"
         }
     }
-    - id=7 kind="function" math_expression="length(p - vec3(-15, 0, 0)) - 23" entry_id=8
-    - id=41 kind="function" math_expression="length(p - vec3(15, 0, 0)) - 23" entry_id=42
-    - id=75 kind="function" math_expression="clamp(0.5 + 0.5 * (right - left) / 12, 0, 1)" entry_id=76
-    - id=118 kind="function" math_expression="mix(right, left, blend) - 12 * blend * (1 - blend)" entry_id=119
+    - id=7 kind="function" math_expression="length(p - vec3(-15, 0, 0)) - 23" expression_mode=1 entry_id=8
+    - id=41 kind="function" math_expression="length(p - vec3(15, 0, 0)) - 23" expression_mode=1 entry_id=42
+    - id=75 kind="function" math_expression="clamp(0.5 + 0.5 * (right - left) / 12, 0, 1)" expression_mode=1 entry_id=76
+    - id=118 kind="function" math_expression="mix(right, left, blend) - 12 * blend * (1 - blend)" expression_mode=1 entry_id=119
 }

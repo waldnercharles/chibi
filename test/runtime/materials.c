@@ -4,6 +4,7 @@
 #include "runtime/generated.h"
 #include "runtime/material_terrain.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 float *reference_cave_generate(unsigned, int, int, float, float, float);
 #include "runtime/material_debris.h"
 #include "runtime/material_destruction.h"
@@ -1031,7 +1032,8 @@ static void terrain_boundary_cut()
                             .height = 512,
                             .cell_size = 2,
                             .field = "CaveField",
-                            .parameters = "Radius 72\nRoughness 30\n",
+                            .parameters = "Radius 72\n"
+                                          "Roughness 30\n",
                             .connectivity = MATERIAL_CONNECTIVITY_FIRST_AIR,
                             .border_cells = 8,
                             .category = 8,
@@ -1087,7 +1089,8 @@ static void terrain_boundary_cut()
     assert(!ecs_entity_is_alive(world, target));
     MaterialTerrain *terrain = GAME_MaterialTerrain_get(world, source);
     const char *original_parameters = terrain->parameters;
-    terrain->parameters = "Radius 96\nRoughness 30\n";
+    terrain->parameters = "Radius 96\n"
+                          "Roughness 30\n";
     assert(!game_materials_prepare(live->materials));
     assert(game_materials_inspect(live->materials).cells < initial.cells);
     terrain = GAME_MaterialTerrain_get(world, source);
@@ -1134,7 +1137,8 @@ static void terrain_stream_restore()
                             .height = 512,
                             .cell_size = 2,
                             .field = "CaveField",
-                            .parameters = "Radius 72\nRoughness 30\n",
+                            .parameters = "Radius 72\n"
+                                          "Roughness 30\n",
                             .category = 8,
                             .mask = 1,
                             .min_fragment_cells = 4,
@@ -1252,7 +1256,8 @@ static void terrain_host_views()
                             .height = 512,
                             .cell_size = 2,
                             .field = "CaveField",
-                            .parameters = "Radius 72\nRoughness 30\n",
+                            .parameters = "Radius 72\n"
+                                          "Roughness 30\n",
                             .category = 8,
                             .mask = 1,
                             .min_fragment_cells = 4,
@@ -1325,7 +1330,8 @@ static void terrain_preparation_scratch()
                                     .height = 512,
                                     .cell_size = 2,
                                     .field = "CaveField",
-                                    .parameters = "Radius 72\nRoughness 30\n",
+                                    .parameters = "Radius 72\n"
+                                                  "Roughness 30\n",
                                     .category = 8,
                                     .mask = 1,
                                     .min_fragment_cells = 4,
@@ -2322,12 +2328,12 @@ static void blast_policy()
     game_live_world *live = game_live_world_new(world);
     const char *paths[] = {
         "projects/arena2d/content/events/Material Impact.kdl",
-        "projects/arena2d/content/behaviors/MaterialImpactHealth.kdl"
+        "projects/arena2d/content/behaviors/MaterialImpactHealth.code"
     };
     for (int i = 0; i < 2; i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load(json);
+        behavior_asset *asset = test_project_asset(paths[i], json);
         free(json);
         assert(asset);
         assert(!game_live_add_definition(live, game_live_definition_new(asset->name, asset)));

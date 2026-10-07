@@ -18,7 +18,23 @@ typedef struct behavior_variable
     pin_container container;
     pin_value default_value; /* authored default; strings are graph-owned */
     char *category;
+    bool shared; /* System registration storage; false is entity-private state. */
 } behavior_variable;
+
+typedef enum
+{
+    BEHAVIOR_REACTIVE_BIND,
+    BEHAVIOR_REACTIVE_PRESSED_CHANGED,
+} behavior_reactive_kind;
+
+/* Executable relationship roots. Node/pin IDs address native graph semantics;
+ * optional authoring metadata never defines a binding or subscription. */
+typedef struct
+{
+    behavior_reactive_kind kind;
+    uint64_t graph_id, event_id, source_node_id, source_pin_id, statement_node_id;
+    uint64_t value_node_id, value_pin_id;
+} behavior_reactive;
 
 typedef enum
 {
@@ -40,6 +56,12 @@ typedef struct
     bool locked;
 } model_reference;
 
+typedef struct
+{
+    char *name, *key; /* Graph-owned executable system parameter declaration. */
+    bool optional;
+} behavior_component_parameter;
+
 typedef struct behavior_asset
 {
     struct behavior_program *program; /* immutable compiled generation */
@@ -53,15 +75,26 @@ typedef struct behavior_asset
     char *description;     /* graph-owned */
     char *owner_type_name; /* optional nominal PIN_HANDLE owner type */
     behavior_variable *variables;
+    behavior_component_parameter *component_parameters;
+    behavior_reactive *reactives;
 } behavior_asset;
 
 const char *behavior_domain_name(behavior_domain domain);
+/* Executable behavior/library assets use code; declarative graph domains use KDL. */
+const char *behavior_asset_extension(behavior_domain domain);
 /* Materials, shapes, shader libraries and fields compute values only: their
  * graphs have no execution pins, so their functions are pure. */
 bool behavior_domain_pure(behavior_domain domain);
 
 /* Create a behavior_asset with one empty default event graph. `name` is copied. */
 behavior_asset *behavior_asset_new(const char *name);
+
+behavior_component_parameter *behavior_asset_add_component_parameter(
+    behavior_asset *,
+    const char *name,
+    const char *key,
+    bool optional
+);
 
 /* CHIBI-2..CHIBI-4: named graphs share the Behavior Asset ID namespace. The default
  * event graph is created by behavior_asset_new() and cannot be deleted. */
@@ -77,6 +110,9 @@ void behavior_asset_free(behavior_asset *asset);
 /* The definition is mutable only while no runtime instance is attached and no
  * legacy flow_run holds the graph guard (graph->flow_pause_count == 0). */
 int behavior_asset_mutable(const behavior_asset *asset);
+/* Clipboard duplication shares a pure expression body. Promote shared bodies
+ * to ordinary functions so source authoring retains their common definition. */
+void behavior_asset_promote_shared_expressions(behavior_asset *asset);
 int behavior_asset_set_name(behavior_asset *asset, const char *name);
 void behavior_asset_set_description(behavior_asset *asset, const char *description);
 bool behavior_asset_set_model_reference(behavior_asset *asset, const model_reference *reference);

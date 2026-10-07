@@ -190,7 +190,8 @@ static behavior_asset *graph_asset(studio *s, const studio_thumb_job *job)
         return behavior_asset_clone(working);
     }
     char *text = text_file_read(job->path);
-    behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
+    char error[256];
+    behavior_asset *asset = scene_graph_source_path(s->scene, text, job->path, error, sizeof error);
     free(text);
     return asset;
 }

@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* Shared KDL language service. Byte ranges always refer to the original source,
+/* Shared declarative KDL language service. Byte ranges always refer to the original source,
  * including comments and whitespace. Arrays use support/array.h. */
 typedef struct
 {
@@ -40,6 +40,9 @@ typedef struct
     asset_source_completion *items;
 } asset_source_completions;
 
+/* Independent highlighting for incomplete behavior or declarative KDL source.
+ * The caller frees the returned array with afree. */
+asset_source_span *asset_source_highlight(const char *text);
 asset_source *asset_source_parse(const char *text);
 void asset_source_free(asset_source *source);
 void asset_source_position(const asset_source *source, int offset, int *line, int *column);
@@ -54,11 +57,15 @@ void asset_source_complete(
     asset_source_completions *out
 );
 void asset_source_completions_free(asset_source_completions *out);
+/* Draft behavior symbol navigation. References include the declaration, and
+ * resolve lexical brace scopes; callers free the returned array with afree. */
+bool asset_source_definition_at(const asset_source *source, int offset, asset_source_span *definition);
+asset_source_span *asset_source_references_at(const asset_source *source, int offset);
 char *asset_source_hover(const asset_source *source, int offset);
 /* Value at a source position, with its key when it has one. NULL on whitespace. */
 const av_value *asset_source_value_at(const asset_source *source, int offset, const char **name);
 /* Preserve unchanged source; scalar edits replace only their lexeme. Container
- * shape edits rewrite the smallest changed node, retaining surrounding comments.
+ * shape edits rewrite the smallest changed container, retaining surrounding comments.
  * Canonical source has nothing to preserve, so it stays canonical.
  * A failed reconciliation returns NULL with an error, never an unsafe rewrite. */
 char *asset_source_reconcile(const char *text, const av_value *replacement, char *error, size_t size);

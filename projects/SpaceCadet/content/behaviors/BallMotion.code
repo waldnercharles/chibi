@@ -1,0 +1,35 @@
+behavior "BallMotion" {
+    owner "ecs.entity";
+    value get_global_variable: double = get_global_variable(Name: "Ready");
+    value clamp_vy_gravity_dt_1150_1000: double = (clamp(cast<double>(&component("GAME.GameVelocity", "y")) + 480.0 * cast<double>(&delta), -1150, 1000));
+    value get_global_variable_2: float = get_global_variable(Name: "Lives");
+    on Tick as tick(DeltaSeconds: float = 0.0) {
+        if (get_global_variable < 0.5) {
+            await set_game_velocity_y(Value: clamp_vy_gravity_dt_1150_1000, Target: 0);
+            if (cast<double>(&component("GAME.GameTransform", "y")) > 345) {
+                await set_global_variable(Name: "Lives", Value: float = "max(lives - 1, 0)"(lives: float = get_global_variable_2));
+                await set_global_variable(Name: "Ready", Value: float = 1.0);
+                await set_global_variable(Name: "Charge", Value: float = 0.0);
+                await set_game_transform(Value: {
+                    x: 196.0,
+                    y: 260.0
+                });
+                await set_game_velocity(Value: {
+                    x: 0.0,
+                    y: 0.0
+                });
+                play_sound(Frequency: 190.0, "End Frequency": 55.0, Duration: 0.4, Volume: 0.4, Pan: 0.5, Noise: 0.0);
+            } else {
+            }
+        } else {
+        }
+    }
+    pure function "max(lives - 1, 0)"<T0: float, T1: float>(lives: T0 = 0.0) -> (Result: T1 = 0.0) {
+        depth_limit 64;
+        value real = real(Value: 1.0);
+        value subtract = subtract(A: double = entry, B: double = real);
+        value real_2 = real(Value: 0.0);
+        value max = max(A: double = subtract, B: double = real_2);
+        result Result: float = max;
+    }
+}

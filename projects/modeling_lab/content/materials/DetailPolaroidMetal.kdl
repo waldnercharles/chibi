@@ -66,6 +66,6 @@ description "Dark accessory-shoe recess represented by a bounded material mask o
             - from="112.Result" to="1.Base Color"
         }
     }
-    - id=12 kind="function" math_expression="vec3(p.x, p.z - 0.8, p.y - 8.06)" entry_id=40
-    - id=78 kind="function" math_expression="mix(vec3(0.34, 0.33, 0.27), vec3(0.025, 0.026, 0.022), slotMask)" entry_id=79
+    - id=12 kind="function" math_expression="vec3(p.x, p.z - 0.8, p.y - 8.06)" expression_mode=1 entry_id=40
+    - id=78 kind="function" math_expression="mix(vec3(0.34, 0.33, 0.27), vec3(0.025, 0.026, 0.022), slotMask)" expression_mode=1 entry_id=79
 }

@@ -5,6 +5,7 @@
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 #include "test/support/simulation_fixture.h"
 
@@ -31,9 +32,9 @@ static char *read_content(const char *path)
 static behavior_asset *read_behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.kdl", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.code", name);
     char *text = read_content(path);
-    behavior_asset *asset = behavior_asset_load(text);
+    behavior_asset *asset = test_project_asset(path, text);
     free(text);
     assert(asset);
     if (strcmp(name, "EnemyBehavior") == 0) {

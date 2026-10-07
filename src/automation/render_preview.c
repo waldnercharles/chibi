@@ -268,8 +268,8 @@ static bool safe_component(const char *value, size_t max)
 static bool valid_filename(const char *name)
 {
     size_t length = name ? strlen(name) : 0;
-    return length > sizeof ASSET_EXTENSION - 1 && length < 256 &&
-           !strcmp(name + length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION) &&
+    return length > sizeof DECLARATIVE_ASSET_EXTENSION - 1 && length < 256 &&
+           !strcmp(name + length - (sizeof DECLARATIVE_ASSET_EXTENSION - 1), DECLARATIVE_ASSET_EXTENSION) &&
            safe_component(name, 256);
 }
 
@@ -314,7 +314,7 @@ static int resolve_preview_ref(yyjson_val *request, preview_ref *out, char *erro
         *slash = 0;
         out->family = family_by_folder(copy);
         if (!out->family || !valid_filename(slash + 1)) {
-            set_error(error, error_size, "path must name a material, shape, or shader library JSON asset");
+            set_error(error, error_size, "path must name a material, shape, or shader library KDL asset");
             return PREVIEW_INVALID_REQUEST;
         }
         snprintf(out->filename, sizeof out->filename, "%s", slash + 1);
@@ -331,18 +331,18 @@ static int resolve_preview_ref(yyjson_val *request, preview_ref *out, char *erro
         return PREVIEW_INVALID_REQUEST;
     }
     const char *name = yyjson_get_str(name_value);
-    if (strstr(name, ASSET_EXTENSION)) {
+    if (strstr(name, DECLARATIVE_ASSET_EXTENSION)) {
         if (!valid_filename(name)) {
-            set_error(error, error_size, "name is not a valid JSON asset filename");
+            set_error(error, error_size, "name is not a valid KDL asset filename");
             return PREVIEW_INVALID_REQUEST;
         }
         snprintf(out->filename, sizeof out->filename, "%s", name);
     } else {
-        if (strlen(name) + sizeof ASSET_EXTENSION >= sizeof out->filename) {
+        if (strlen(name) + sizeof DECLARATIVE_ASSET_EXTENSION >= sizeof out->filename) {
             set_error(error, error_size, "name is too long");
             return PREVIEW_INVALID_REQUEST;
         }
-        snprintf(out->filename, sizeof out->filename, "%s" ASSET_EXTENSION, name);
+        snprintf(out->filename, sizeof out->filename, "%s" DECLARATIVE_ASSET_EXTENSION, name);
     }
     snprintf(out->relative, sizeof out->relative, "content/%s/%s", out->family->folder, out->filename);
     return PREVIEW_OK;
@@ -520,8 +520,8 @@ static behavior_asset **load_libraries(const char *root)
             continue;
         }
         size_t name_length = strlen(entry->d_name);
-        if (name_length < sizeof ASSET_EXTENSION - 1 ||
-            strcmp(entry->d_name + name_length - (sizeof ASSET_EXTENSION - 1), ASSET_EXTENSION)) {
+        if (name_length < sizeof DECLARATIVE_ASSET_EXTENSION - 1 ||
+            strcmp(entry->d_name + name_length - (sizeof DECLARATIVE_ASSET_EXTENSION - 1), DECLARATIVE_ASSET_EXTENSION)) {
             continue;
         }
         char file_path[PATH_MAX];

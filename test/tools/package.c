@@ -249,7 +249,14 @@ TEST_CASE(package_installation_preserves_game_and_rejects_corruption)
     path(game, directory, "authored game");
     assert(!mkdir(game, 0700));
     path(filename, game, "project.kdl");
-    snprintf(contents, sizeof contents, "version %d\nname \"Independent\"\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
+    snprintf(
+        contents,
+        sizeof contents,
+        "version %d\n"
+        "name \"Independent\"\n"
+        "content \"content\"\n",
+        CHIBI_PROJECT_VERSION
+    );
     tool_write(filename, contents);
     path(filename, game, "content");
     assert(!mkdir(filename, 0700));

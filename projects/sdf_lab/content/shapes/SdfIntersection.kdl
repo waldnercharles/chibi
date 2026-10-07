@@ -67,8 +67,8 @@ description "Intersection of a sphere and a thin slab."
             - from="146.Result" to="1.Distance"
         }
     }
-    - id=7 kind="function" math_expression="length(p) - 33" entry_id=8
-    - id=26 kind="function" math_expression="abs(p) - vec3(36, 13, 24)" entry_id=27
-    - id=54 kind="function" math_expression="length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0)" entry_id=92
-    - id=134 kind="function" math_expression="max(sphere, slab)" entry_id=135
+    - id=7 kind="function" math_expression="length(p) - 33" expression_mode=1 entry_id=8
+    - id=26 kind="function" math_expression="abs(p) - vec3(36, 13, 24)" expression_mode=1 entry_id=27
+    - id=54 kind="function" math_expression="length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0)" expression_mode=1 entry_id=92
+    - id=134 kind="function" math_expression="max(sphere, slab)" expression_mode=1 entry_id=135
 }

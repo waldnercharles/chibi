@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* An empty asset of each kind a project's content holds as KDL, the form
+/* An empty asset of each kind a project's content holds, the form
  * Studio's New menu and the MCP's create requests start from. Each is built
  * as its in-memory model and written by that model's serializer. */
 typedef enum
@@ -27,6 +27,8 @@ typedef enum
 
 /* The folder under the content directory that holds the kind's files. */
 const char *new_asset_folder(new_asset_kind kind);
+/* Executable definitions use .code; declarative documents use .kdl. */
+const char *new_asset_extension(new_asset_kind kind);
 /* Whether `name` can name a new asset's file: a letter, then letters,
  * digits, - and _; false with why in `error`. */
 bool new_asset_name_valid(const char *name, char *error, size_t size);
@@ -34,7 +36,7 @@ bool new_asset_name_valid(const char *name, char *error, size_t size);
  * output node a material, shape or field needs, and a shape has 32-unit
  * half extents. */
 behavior_asset *new_asset_graph(behavior_domain domain, const char *name);
-/* The owned KDL source of an empty `kind` named `name`, as its loader reads it. */
+/* The owned code source of an empty `kind` named `name`, as its loader reads it. */
 char *new_asset_text(new_asset_kind kind, const char *name);
 
 #endif

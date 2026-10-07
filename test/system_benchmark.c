@@ -140,7 +140,7 @@ int main(int argc, char **argv)
         return 1;
     }
     registry_validate();
-    char *json = text_file_read("test/fixtures/systems/MovementSystem.kdl");
+    char *json = text_file_read("test/fixtures/systems/MovementSystem.code");
     behavior_asset *definition = json ? behavior_asset_load(json) : NULL;
     free(json);
     ecs_world *world = ecs_world_new();

@@ -4,6 +4,7 @@
 #include "graph/document/problems.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/text_file.h"
 
 #include <assert.h>
@@ -42,8 +43,9 @@ static bool load_folder(
     struct dirent *entry;
     while ((entry = readdir(dir))) {
         size_t name_length = strlen(entry->d_name);
-        if (entry->d_name[0] == '.' || name_length < 4 ||
-            strcmp(entry->d_name + name_length - 4, ".kdl")) {
+        if (entry->d_name[0] == '.' ||
+            name_length < sizeof DECLARATIVE_ASSET_EXTENSION - 1 ||
+            strcmp(entry->d_name + name_length - (sizeof DECLARATIVE_ASSET_EXTENSION - 1), DECLARATIVE_ASSET_EXTENSION)) {
             continue;
         }
         size_t path_length = strlen(directory) + name_length + 2;

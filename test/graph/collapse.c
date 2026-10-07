@@ -90,6 +90,20 @@ static bool round_trips(const behavior_asset *asset)
     behavior_asset *loaded = behavior_asset_load(first);
     char *second = loaded ? behavior_asset_save(loaded) : NULL;
     bool same = second && !strcmp(first, second);
+    if (!same) {
+        static int failure;
+        char path[128];
+        const char *texts[] = { first, second };
+        for (int i = 0; i < 2; i++) {
+            snprintf(path, sizeof path, "build/requirements-collapse-%d-%s.code", failure, i ? "actual" : "expected");
+            FILE *file = fopen(path, "w");
+            if (file) {
+                fputs(texts[i] ? texts[i] : "<load failed>", file);
+                fclose(file);
+            }
+        }
+        failure++;
+    }
     free(first);
     free(second);
     behavior_asset_free(loaded);

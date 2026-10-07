@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const float GRID = 32;
@@ -255,6 +256,11 @@ static void emit_pin(studio *s, node *n, int kind, int p, const char *cls, float
         sg_emit_pin_edit(s, n, p);
     } else if (parts.show_label && l.form == FORM_FULL && !sg_in_head(&l, kind, p)) {
         kit_label(k, "l", "gpin-label", parts.label);
+        char *expression = n->desc == &NODE_BehaviorExpression
+                             ? studio_code_expression(s, n)
+                             : NULL;
+        kit_tip(k, parts.label, NULL, expression);
+        free(expression);
         if (input && label_width > 0 && !sg_pin_exec(n, kind, p)) {
             snprintf(width, sizeof width, "%.0fdp", label_width);
             kit_style(k, "width", width);
@@ -318,13 +324,24 @@ static void emit_about(studio *s, node *n)
     }
 }
 
+/* Value controls may atomically replace the asset. Draw traversal owns IDs,
+ * and rebinds its borrowed nodes after each control that can publish an edit. */
+static node *current_node(studio *s, uint64_t id)
+{
+    node *n = graph_node_by_id(sg_active_graph(s), id);
+    assert(n);
+    return n;
+}
+
 static void emit_head(studio *s, node *n, const node_layout *l)
 {
+    uint64_t id = n->id;
     kit *k = s->graph.kit;
     char title[256];
     kit_push(k, "h", NULL, "gnode-head");
     if (l->head_in >= 0) {
         emit_pin(s, n, ED_PIN_INPUT, l->head_in, "hpin in", 0);
+        n = current_node(s, id);
     }
     const char *symbol = ed_node_symbol(n->desc);
     uint32_t icon = sg_node_icon(s, n);
@@ -349,7 +366,7 @@ static void emit_code(studio *s, node *n, const node_layout *l)
         sg_emit_expression_editor(s, k, n, 0);
         return;
     }
-    const char *code = behavior_expression_source(sg_graph_editor(s)->asset, n);
+    char *code = studio_code_expression(s, n);
     int starts[CODE_LINES], length = (int)strlen(code);
     int count = sg_code_lines(s, code, sg_code_room(l), starts);
     kit_push(k, "code", NULL, "gcode");
@@ -364,6 +381,7 @@ static void emit_code(studio *s, node *n, const node_layout *l)
         highlight_markup(HIGHLIGHT_EXPRESSION, line, markup, sizeof markup);
         kit_markup(k, key, "gcode-line", markup);
     }
+    free(code);
     kit_button_desc edit = { .icon = KIT_ICON_EDIT,
                              .variant = KIT_GHOST,
                              .size = KIT_SM,
@@ -381,12 +399,15 @@ static void emit_code(studio *s, node *n, const node_layout *l)
 
 static void emit_rows(studio *s, node *n, const node_layout *l)
 {
+    uint64_t id = n->id;
     kit *k = s->graph.kit;
     graph *gr = sg_active_graph(s);
     char key[16];
     kit_push(k, "b", NULL, "gnode-body");
     if (l->code_lines) {
         emit_code(s, n, l);
+        n = current_node(s, id);
+        gr = sg_active_graph(s);
     }
     for (int row = 0; row < sg_exec_rows(gr, n, l); row++) {
         snprintf(key, sizeof key, "e%d", row);
@@ -397,6 +418,8 @@ static void emit_rows(studio *s, node *n, const node_layout *l)
                 if (sg_pin_in_rows(gr, n, l, kind, p) && sg_pin_exec(n, kind, p) &&
                     sg_pin_order(gr, n, l, kind, p) == row) {
                     emit_pin(s, n, kind, p, kind == ED_PIN_INPUT ? "ghalf in" : "ghalf out", 0);
+                    n = current_node(s, id);
+                    gr = sg_active_graph(s);
                 }
             }
         }
@@ -406,12 +429,16 @@ static void emit_rows(studio *s, node *n, const node_layout *l)
         if (sg_pin_in_rows(gr, n, l, ED_PIN_OUTPUT, p) &&
             !sg_pin_exec(n, ED_PIN_OUTPUT, p)) {
             emit_pin(s, n, ED_PIN_OUTPUT, p, "grow out", 0);
+            n = current_node(s, id);
+            gr = sg_active_graph(s);
         }
     }
     for (int p = 0; p < n->input_count; p++) {
         if (sg_pin_in_rows(gr, n, l, ED_PIN_INPUT, p) &&
             !sg_pin_exec(n, ED_PIN_INPUT, p)) {
             emit_pin(s, n, ED_PIN_INPUT, p, "grow in", l->label);
+            n = current_node(s, id);
+            gr = sg_active_graph(s);
         }
     }
     if (l->add_pin >= 0) {
@@ -432,6 +459,7 @@ static void emit_rows(studio *s, node *n, const node_layout *l)
    takes the space between, so none of them overlap. */
 static void emit_operator(studio *s, node *n, const node_layout *l)
 {
+    uint64_t id = n->id;
     kit *k = s->graph.kit;
     graph *gr = sg_active_graph(s);
     float body = l->h - 2 * EDGE;
@@ -439,6 +467,8 @@ static void emit_operator(studio *s, node *n, const node_layout *l)
     for (int p = 0; p < n->input_count; p++) {
         if (ed_pin_visible(gr, n, ED_PIN_INPUT, p)) {
             emit_pin(s, n, ED_PIN_INPUT, p, "grow in", 0);
+            n = current_node(s, id);
+            gr = sg_active_graph(s);
             emit_dp(k, "width", l->column);
         }
     }
@@ -559,6 +589,7 @@ static void emit_marks(studio *s, const studio_node_problem *problem, bool pause
 static void emit_node(studio *s, node *n)
 {
     static const char *const FORMS[] = { "full", "operator", "getter" };
+    uint64_t id = n->id;
     studio_graph *g = &s->graph;
     kit *k = g->kit;
     editor *e = sg_graph_editor(s);
@@ -588,10 +619,12 @@ static void emit_node(studio *s, node *n)
     } else {
         emit_head(s, n, &l);
     }
+    n = current_node(s, id);
     if (l.form == FORM_FULL &&
         (l.code_lines || sg_row_count(sg_active_graph(s), n, &l))) {
         emit_rows(s, n, &l);
     }
+    n = current_node(s, id);
     editor_node_activity activity;
     editor_query_node_activity(e, n->id, &activity);
     emit_marks(s, problem, paused, activity.pulse >= 1);
@@ -913,6 +946,7 @@ void sg_emit_canvas(studio *s)
     for (int i = 0; i < acount(gr->nodes); i++) {
         if (sg_node_visible(gr, gr->nodes[i]) && keep_node(s, gr->nodes[i], focused)) {
             emit_node(s, gr->nodes[i]);
+            gr = sg_active_graph(s);
         }
     }
     kit_pop(k);

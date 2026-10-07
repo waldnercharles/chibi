@@ -1,8 +1,10 @@
 #include "assets/behavior_loader.h"
 
+#include "assets/code_catalog.h"
 #include "graph/document/serialize.h"
 #include "render/shader_catalog.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <dirent.h>
@@ -59,11 +61,10 @@ static bool has_suffix(const char *text, const char *suffix)
            !strcmp(text + text_length - suffix_length, suffix);
 }
 
-static bool behavior_authoring_input(const char *name)
+typedef struct
 {
-    /* Source and identity sidecars share the behavior folder with KDL assets. */
-    return has_suffix(name, ".code") || has_suffix(name, ".code.map.json");
-}
+    char *name, *path, *text;
+} pending_system;
 
 int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *preview, const char *content_root)
 {
@@ -74,6 +75,13 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
     const char *folders[] = { "libraries", "shader-libraries", "events",
                               "systems",   "fields",           "materials",
                               "shapes",    "models",           "behaviors" };
+    const char *extensions[] = {
+        CODE_ASSET_EXTENSION,        DECLARATIVE_ASSET_EXTENSION,
+        DECLARATIVE_ASSET_EXTENSION, CODE_ASSET_EXTENSION,
+        DECLARATIVE_ASSET_EXTENSION, DECLARATIVE_ASSET_EXTENSION,
+        DECLARATIVE_ASSET_EXTENSION, DECLARATIVE_ASSET_EXTENSION,
+        CODE_ASSET_EXTENSION
+    };
     for (int f = 0; f < (int)(sizeof folders / sizeof *folders); f++) {
         size_t size = strlen(content_root) + strlen(folders[f]) + 2;
         char *directory_path = xmalloc(size);
@@ -85,7 +93,7 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
         }
         struct dirent *entry;
         while ((entry = readdir(directory))) {
-            if (entry->d_name[0] == '.' || behavior_authoring_input(entry->d_name)) {
+            if (entry->d_name[0] == '.' || !has_suffix(entry->d_name, extensions[f])) {
                 continue;
             }
             size_t path_size = strlen(directory_path) + strlen(entry->d_name) + 2;
@@ -104,31 +112,27 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
     if (acount(paths) > 1) {
         qsort(paths, (size_t)acount(paths), sizeof *paths, path_compare);
     }
+    code_catalog *catalog = code_catalog_load(content_root);
+    for (int i = 0; i < code_catalog_error_count(catalog); i++) {
+        const code_catalog_error *error = code_catalog_error_at(catalog, i);
+        load_error(error->path, "declarations", error->message);
+    }
+    pending_system *systems = NULL;
     game_live_definition **pending = NULL;
     int loaded = 0;
     for (int i = 0; i < acount(paths); i++) {
         char *text = read_file(paths[i]);
-        if (text && strstr(paths[i], "/systems/")) {
-            char error[256];
-            behavior_asset *definition = behavior_asset_load(text);
-            if (!definition ||
-                game_live_register_system(world, definition->name, text, error, sizeof error) !=
-                    0 ||
-                (preview &&
-                 game_prototype_preview_register_system(preview, definition->name, text, error, sizeof error) !=
-                     0)) {
-                load_error(paths[i], "register system", definition ? error : graph_last_error());
-            } else {
-                loaded++;
-            }
-            behavior_asset_free(definition);
-            free(text);
-            free(paths[i]);
-            continue;
-        }
-        behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
+        char error[256];
+        behavior_asset *asset = text
+                                  ? code_catalog_load_path(catalog, text, paths[i], error, sizeof error)
+                                  : NULL;
         if (text && !asset) {
-            load_error(paths[i], "deserialize", graph_last_error());
+            load_error(paths[i], "deserialize", error);
+        }
+        if (text && asset && strstr(paths[i], "/systems/")) {
+            apush(systems, ((pending_system){ xstrdup(asset->name), paths[i], text }));
+            behavior_asset_free(asset);
+            continue;
         }
         free(text);
         game_live_definition *definition = asset
@@ -201,6 +205,27 @@ int app_behavior_fixtures_load(game_live_world *world, game_prototype_preview *p
             loaded++;
         }
     }
+    for (int i = 0; i < acount(systems); i++) {
+        pending_system *system = &systems[i];
+        char error[256];
+        if (game_live_register_system(world, system->name, system->text, error, sizeof error) ||
+            (preview && game_prototype_preview_register_system(
+                            preview,
+                            system->name,
+                            system->text,
+                            error,
+                            sizeof error
+                        ))) {
+            load_error(system->path, "register system", error);
+        } else {
+            loaded++;
+        }
+        free(system->name);
+        free(system->path);
+        free(system->text);
+    }
+    afree(systems);
+    code_catalog_free(catalog);
     afree(models);
     for (int i = 0; i < acount(pending); i++) {
         game_live_definition_free(pending[i]);

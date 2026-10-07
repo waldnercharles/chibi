@@ -1,3 +1,4 @@
+#include "assets/code_print.h"
 #include "editor/ui/labels.h"
 #include "editor/workspace/editor_internal.h"
 #include "graph/nodes/behavior_expression.h"
@@ -67,6 +68,9 @@ const char *ed_node_title_in(
     size_t cap
 )
 {
+    if (g && code_print_reactive_event(asset, g, n, buf, cap)) {
+        return buf;
+    }
     if (ed_component_title(n, buf, cap)) {
         return buf;
     }

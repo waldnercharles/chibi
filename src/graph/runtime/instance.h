@@ -136,6 +136,14 @@ struct behavior_instance
      * never execute graphs. Different instances may notify in parallel. */
     void (*activations_changed)(behavior_instance *instance);
 
+    /* Optional host-owned invocation storage synchronization. Called at the
+     * outer execution boundary, including external host-request resumes. */
+    bool (*activation_valid)(behavior_instance *instance);
+    bool (*activation_enter)(behavior_instance *instance);
+    void (*activation_leave)(behavior_instance *instance);
+    void *activation_user;
+    int activation_depth;
+
     /* RUN-12: the compile check, redone whenever the topology revision moves.
      * Any error refuses every dispatch/enqueue start. A lowered asset uses its
      * published program's report; only an asset with unlowered component
@@ -260,6 +268,15 @@ typedef struct behavior_batch behavior_batch;
 /* The caller initializes *batch to NULL, reuses it across ordered instances,
  * and frees it at teardown. It caches portable scratch for one program entry. */
 bool behavior_instance_dispatch_batch(
+    behavior_instance *bi,
+    const char *name,
+    behavior_batch **batch,
+    flow_run **failed
+);
+/* Synchronous ECS maintenance does not join the event queue and may run while
+ * another activation sleeps. The caller proves the body only reads values and
+ * maintains component fields; it cannot write behavior state or suspend. */
+bool behavior_instance_maintain_batch(
     behavior_instance *bi,
     const char *name,
     behavior_batch **batch,

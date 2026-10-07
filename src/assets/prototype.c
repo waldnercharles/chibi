@@ -912,7 +912,7 @@ av_value *game_prototype_to_value(const game_prototype *prototype)
 char *game_prototype_save(const game_prototype *prototype)
 {
     av_value *value = game_prototype_to_value(prototype);
-    char *text = value ? av_value_write(value) : NULL;
+    char *text = value ? asset_text_write(value) : NULL;
     av_value_free(value);
     return text;
 }

@@ -94,7 +94,7 @@ static void test_assets()
     );
     assert(!strcmp(reference_index_asset_at(index, scratch)->name, "Renamed"));
     assert(
-        reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Renamed", "content/behaviors/Renamed.kdl", NULL) ==
+        reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Renamed", "content/behaviors/Renamed.code", NULL) ==
         scratch
     );
     assert(reference_index_asset_at(index, scratch)->path);
@@ -171,7 +171,7 @@ static void test_graphs()
     healer h = healer_new();
     reference_index *index = reference_index_new();
     int event = reference_index_add_asset(index, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.kdl", NULL);
-    int source = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.kdl", NULL);
+    int source = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.code", NULL);
     behavior_asset *damaged = behavior_asset_new("Damaged");
     damaged->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
     reference_index_add_graphs(index, event, damaged);
@@ -277,19 +277,11 @@ static void test_documents()
     char error[256];
     game_prototype *ship = game_prototype_load(
         "name \"Ship\"\n"
-        "(array)behaviors {\n"
-        "    - \"Flight\"\n"
-        "}\n"
+        "(array)behaviors \"Flight\"\n"
         "components {\n"
-        "    GameShader {\n"
-        "        material \"Hull\"\n"
-        "    }\n"
-        "    GameUi {\n"
-        "        document \"Hud\"\n"
-        "    }\n"
-        "    GameActionBinding {\n"
-        "        action \"Fire\"\n"
-        "    }\n"
+        "    GameShader material=\"Hull\"\n"
+        "    GameUi document=\"Hud\"\n"
+        "    GameActionBinding action=\"Fire\"\n"
         "}\n",
         &registry,
         error,
@@ -322,7 +314,7 @@ static void test_documents()
     );
 
     const char *behaviors[] = { "Flight" };
-    av_value *overrides = test_read_asset_value("GAME.GameShader material=\"Chrome\"; ");
+    av_value *overrides = test_read_asset_value("GAME.GameShader material=\"Chrome\"\n");
     reference_object object = {
         .name = "player",
         .prototype = "Ship",
@@ -412,7 +404,7 @@ static void test_calls()
     assert(behavior_asset_add_function_call_node_to_graph(h.asset, h.heal, h.heal));
     reference_index *index = reference_index_new();
     int event = reference_index_add_asset(index, REFERENCE_ASSET_EVENT, "Damaged", "content/events/Damaged.kdl", NULL);
-    int source = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.kdl", NULL);
+    int source = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Healer", "content/behaviors/Healer.code", NULL);
     behavior_asset *damaged = behavior_asset_new("Damaged");
     damaged->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
     reference_index_add_graphs(index, event, damaged);

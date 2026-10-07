@@ -184,6 +184,6 @@ description "Cyan player surface. A color ramp along local X marks the forward e
             - from="231.Result" to="29.Emission"
         }
     }
-    - id=113 kind="function" math_expression="position.x / 28 + 0.5" entry_id=616
-    - id=184 kind="function" math_expression="body_color * (fresnel * edge_glow + body_glow) + flash_glow + vec3(0.06, 0.65, 1) * dash_glow" entry_id=569
+    - id=113 kind="function" math_expression="position.x / 28 + 0.5" expression_mode=1 entry_id=616
+    - id=184 kind="function" math_expression="body_color * (fresnel * edge_glow + body_glow) + flash_glow + vec3(0.06, 0.65, 1) * dash_glow" expression_mode=1 entry_id=569
 }

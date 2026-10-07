@@ -1,0 +1,36 @@
+behavior "SurfacePulseBehavior" {
+    owner "ecs.entity";
+    state Duration: float = 0.28;
+    state Remaining: float = 0.0;
+    state "Peak Strength": float = 0.0;
+    value remaining_dt: double = (cast<double>(&state.Remaining) - cast<double>(&delta));
+    action remaining_2 = set_variable<"Remaining">(Value: float = remaining_dt);
+    value remaining_max_duration_0_001 = "Remaining / max(Duration, 0.001)"(Remaining: float = remaining_2.Value, Duration: double = &state.Duration);
+    on Begin as begin() {
+        await set_variable<"Peak Strength">(Value: float = &component("GAME.GameSurfaceInfluence", "strength"));
+        set_variable<"Remaining">(Value: float = &state.Duration);
+    }
+    on Tick as tick() {
+        remaining_2();
+    }
+    after remaining_2 {
+        if (cast<double>(&state.Remaining) > 0) {
+            set_game_surface_influence_strength(Value: "fade * fade * PeakStrength"(fade: float = remaining_max_duration_0_001, PeakStrength: double = &state."Peak Strength"), Target: 0);
+        } else {
+            destroy_entity(Entity: self);
+        }
+    }
+    pure function "Remaining / max(Duration, 0.001)"<T0: float, T1: double, T2: float>(Remaining: T0 = 0.0, Duration: T1 = 0.0) -> (Result: T2 = 0.0) {
+        depth_limit 64;
+        value real = real(Value: 0.001);
+        value max = max(A: double = entry.Duration, B: double = real);
+        value divide = divide(A: float = entry.Remaining, B: double = max);
+        result Result: float = divide;
+    }
+    pure function "fade * fade * PeakStrength"<T0: float, T1: double, T2: float>(fade: T0 = 0.0, PeakStrength: T1 = 0.0) -> (Result: T2 = 0.0) {
+        depth_limit 64;
+        value multiply = multiply(A: double = entry.fade, B: double = entry.fade);
+        value multiply_2 = multiply(A: double = multiply, B: double = entry.PeakStrength);
+        result Result: float = multiply_2;
+    }
+}

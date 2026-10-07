@@ -67,8 +67,8 @@ description "Difference: rounded box minus a through-cylinder along local Y."
             - from="190.Result" to="1.Distance"
         }
     }
-    - id=7 kind="function" math_expression="abs(p) - vec3(27, 23, 27)" entry_id=8
-    - id=35 kind="function" math_expression="length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0) - 6" entry_id=79
-    - id=127 kind="function" math_expression="length(p.xz) - 14" entry_id=147
-    - id=172 kind="function" math_expression="max(body, -bore)" entry_id=173
+    - id=7 kind="function" math_expression="abs(p) - vec3(27, 23, 27)" expression_mode=1 entry_id=8
+    - id=35 kind="function" math_expression="length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0) - 6" expression_mode=1 entry_id=79
+    - id=127 kind="function" math_expression="length(p.xz) - 14" expression_mode=1 entry_id=147
+    - id=172 kind="function" math_expression="max(body, -bore)" expression_mode=1 entry_id=173
 }

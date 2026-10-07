@@ -125,7 +125,7 @@ if (!fixturesOnly && !instancesOnly && !instanceSwarmOnly) {
     { op: "connect", from: "advance", from_pin: "Then", to: "heading", to_pin: "Exec", kind: "exec" },
     { op: "connect", from: "heading", from_pin: "Then", to: "pitch", to_pin: "Exec", kind: "exec" },
   ];
-  if (!existsSync(resolve(project, "content/behaviors/SdfRigidSweep.kdl")))
+  if (!existsSync(resolve(project, "content/behaviors/SdfRigidSweep.code")))
     call("buildGraph", { kind: "behavior", name: "SdfRigidSweep", create: true,
       description: "Rigid rotation and banking only. The object's distance field remains unchanged.", owner_type: "ecs.entity", operations });
   call("validateAsset", { kind: "behavior", name: "SdfRigidSweep" });

@@ -1,9 +1,14 @@
 #include "assets/system_document.h"
 
+#include "assets/code_print.h"
+#include "assets/code_source.h"
 #include "graph/document/serialize.h"
+#include "support/array.h"
+#include "support/asset_json.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -135,16 +140,37 @@ game_system_document *game_system_document_load(
     size_t error_size
 )
 {
-    av_doc *doc = text ? av_doc_read(text, error, error_size) : NULL;
-    game_system_document *document = doc ? game_system_document_from_value(
-                                               av_doc_root(doc),
-                                               resolve,
-                                               user,
-                                               error,
-                                               error_size
-                                           )
-                                         : NULL;
-    av_doc_free(doc);
+    return game_system_document_load_context(text, NULL, resolve, user, error, error_size);
+}
+
+game_system_document *game_system_document_load_context(
+    const char *text,
+    const code_source_context *context,
+    game_query_component_resolver resolve,
+    void *user,
+    char *error,
+    size_t error_size
+)
+{
+    code_source *source = code_source_parse_context(text, NULL, context);
+    if (!source->asset) {
+        set_error(
+            error,
+            error_size,
+            acount(source->diagnostics) ? source->diagnostics[0].message
+                                        : "Expected executable system source"
+        );
+        code_source_free(source);
+        return NULL;
+    }
+    game_system_document *document = game_system_document_from_value(
+        av_doc_root(source->document),
+        resolve,
+        user,
+        error,
+        error_size
+    );
+    code_source_free(source);
     return document;
 }
 
@@ -167,6 +193,34 @@ av_value *game_system_document_to_value(
     return root;
 }
 
+char *game_system_document_save_with_metadata(
+    const game_system_document *document,
+    char **metadata,
+    game_query_component_resolver resolve,
+    game_query_component_name_resolver name,
+    void *user
+)
+{
+    if (metadata) {
+        *metadata = NULL;
+    }
+    if (!document) {
+        return NULL;
+    }
+    av_doc *doc = av_doc_new();
+    av_value *query = document->query
+                        ? game_query_save_value(doc, document->query, resolve, name, user)
+                        : NULL;
+    if (document->query && !query) {
+        av_doc_free(doc);
+        return NULL;
+    }
+    char error[256];
+    char *text = code_print_system_with_metadata(document->behavior_asset, query, metadata, error, sizeof error);
+    av_doc_free(doc);
+    return text;
+}
+
 char *game_system_document_save(
     const game_system_document *document,
     game_query_component_resolver resolve,
@@ -174,19 +228,5 @@ char *game_system_document_save(
     void *user
 )
 {
-    if (!document) {
-        return NULL;
-    }
-    av_doc *doc = av_doc_new();
-    av_value *root = game_system_document_to_value(doc, document, resolve, name, user);
-    if (root) {
-        av_value *query = av_obj_get(root, "query");
-        root = behavior_asset_to_disk_value(doc, document->behavior_asset);
-        if (query) {
-            av_obj_set(doc, root, "query", query);
-        }
-    }
-    char *text = root ? av_value_write(root) : NULL;
-    av_doc_free(doc);
-    return text;
+    return game_system_document_save_with_metadata(document, NULL, resolve, name, user);
 }

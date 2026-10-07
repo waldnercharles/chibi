@@ -419,7 +419,7 @@ static bool material_parameter_writes(const behavior_asset *material, int id)
     ecs_entity first = ecs_world_create_entity(world),
                second = ecs_world_create_entity(world);
     GameShader binding = { .material = material->name,
-                           .parameters = "(array)Tint 0 1 0; " };
+                           .parameters = "(array)Tint 0 1 0\n" };
     ok &= ecs_world_record_add(world, first, GAME_COMPONENT_GameShader.id, &binding, 0) ==
           ECS_OK;
     ok &= ecs_world_record_add(world, second, GAME_COMPONENT_GameShader.id, &binding, 0) ==
@@ -456,10 +456,10 @@ static bool material_parameter_writes(const behavior_asset *material, int id)
     render_shader_clear_world(world);
     render_shader_parameters(id, world, first, binding.parameters, a);
     ok &= a[0][1] == 1;
-    char edited[] = "(array)Tint 1 0 0; ";
+    char edited[] = "(array)Tint 1 0 0\n";
     render_shader_parameters(id, world, second, edited, b);
     ok &= b[0][0] == 1 && b[0][1] == 0;
-    memcpy(edited, "(array)Tint 0 0 1; ", sizeof edited);
+    memcpy(edited, "(array)Tint 0 0 1\n", sizeof edited);
     render_shader_parameters(id, world, second, edited, b);
     ok &= b[0][0] == 0 && b[0][2] == 1;
     render_shader_parameters(id, world, first, binding.parameters, a);

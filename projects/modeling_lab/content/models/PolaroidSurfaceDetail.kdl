@@ -886,5 +886,5 @@ description "Reduced baseline Polaroid: four small marks and plates become surfa
             - from="514.Geometry" to="1.Geometry"
         }
     }
-    - id=142 kind="function" math_expression="r / 1.8" entry_id=143
+    - id=142 kind="function" math_expression="r / 1.8" expression_mode=1 entry_id=143
 }

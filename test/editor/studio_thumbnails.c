@@ -48,7 +48,7 @@ static bool box_inside(const studio_minimap_box *b, float low, float high)
 
 void test_studio_minimap()
 {
-    char *text = text_file_read(ARENA "/content/behaviors/Movement.kdl");
+    char *text = text_file_read(ARENA "/content/behaviors/Movement.code");
     behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
     free(text);
     assert(asset);
@@ -491,6 +491,10 @@ static char *disk_text(new_asset_kind kind, const char *name)
 {
     char error[128];
     char *json = new_asset_text(kind, name);
+    if (kind == NEW_ASSET_BEHAVIOR || kind == NEW_ASSET_LIBRARY ||
+        kind == NEW_ASSET_SYSTEM) {
+        return json;
+    }
     char *disk = asset_text_to_disk(json, error, sizeof error);
     free(json);
     return disk;
@@ -545,20 +549,66 @@ static void make_project(char *root)
         snprintf(path, sizeof path, "%s/%s", root, folders[i]);
         assert(mkdir(path, 0755) == 0);
     }
-    write_in(root, CHIBI_PROJECT_MANIFEST, "version " STRINGIFY(CHIBI_PROJECT_VERSION) "\nname \"Thumbs\"\ncontent \"content\"\nstart_scene \"scenes/Main.kdl\"\n");
+    write_in(
+        root,
+        CHIBI_PROJECT_MANIFEST,
+        "version " STRINGIFY(
+            CHIBI_PROJECT_VERSION
+        ) "\n"
+          "name \"Thumbs\"\n"
+          "content \"content\"\n"
+          "start_scene \"scenes/Main.kdl\"\n"
+    );
     write_in(root, "content/scenes/Main.kdl", MAIN_SCENE);
     write_in(root, "content/prototypes/Dot.kdl", DOT_PROTOTYPE);
     char *behavior = disk_text(NEW_ASSET_BEHAVIOR, "Spin");
-    write_in(root, "content/behaviors/Spin.kdl", behavior);
+    write_in(root, "content/behaviors/Spin.code", behavior);
     free(behavior);
 }
 
 /* A behavior renders again once its file's content changes; a newer
    modification time alone, as a checkout leaves, changes nothing. */
+static void imported_graph_renders(const char *root)
+{
+    char libraries[PATH_MAX], library[PATH_MAX + 32], caller[PATH_MAX];
+    snprintf(libraries, sizeof libraries, "%s/content/libraries", root);
+    assert(mkdir(libraries, 0755) == 0);
+    snprintf(library, sizeof library, "%s/Shared.code", libraries);
+    snprintf(caller, sizeof caller, "%s/content/behaviors/Imported.code", root);
+    write_text(library, "library Shared { pure function Seven(Input: float = 7) -> (Result: float) { result Result: float = entry.Input; } }");
+    const char *source = "behavior Imported { state float count = 0; value "
+                         "chosen = Shared.Seven(Input: 7); on Tick() { count "
+                         "+= chosen.Result; } }";
+    write_text(caller, source);
+    thumbs_fixture f = fixture_open(root, "scenes/Main.kdl");
+    assert(app_scene_authoring_refresh_asset_index(f.scene) == 0);
+    const reference_index *index = app_scene_authoring_asset_index(f.scene);
+    int asset = -1;
+    for (int i = 0; i < reference_index_asset_count(index); i++) {
+        const reference_asset *item = reference_index_asset_at(index, i);
+        if (item->kind == REFERENCE_ASSET_BEHAVIOR && !strcmp(item->name, "Imported")) {
+            asset = i;
+            break;
+        }
+    }
+    assert(asset >= 0);
+    bool drawn = false;
+    for (int i = 0; i < 120 && !drawn; i++) {
+        bool loading;
+        drawn = studio_thumb(f.studio, asset, STUDIO_THUMB_TILE, &loading) != NULL;
+        frame(&f, FRAME_SECONDS);
+    }
+    char *saved = text_file_read_disk(caller);
+    test_check(drawn && saved && !strcmp(saved, source), "a saved behavior thumbnail resolves project library calls without modifying its source");
+    free(saved);
+    fixture_free(&f);
+    assert(remove(caller) == 0 && remove(library) == 0 && rmdir(libraries) == 0);
+}
+
 static void changed_file_renders_again(const char *root)
 {
     char path[PATH_MAX];
-    snprintf(path, sizeof path, "%s/content/behaviors/Spin.kdl", root);
+    snprintf(path, sizeof path, "%s/content/behaviors/Spin.code", root);
     thumbs_fixture f = fixture_open(root, "scenes/Main.kdl");
     studio *s = f.studio;
     s->assets_kind = REFERENCE_ASSET_BEHAVIOR;
@@ -795,6 +845,7 @@ static void project_thumbnails()
 {
     char root[64] = "/tmp/chibi-thumbs-XXXXXX";
     make_project(root);
+    imported_graph_renders(root);
     changed_file_renders_again(root);
     unsaved_scene_renders(root);
     pictures_persist(root);

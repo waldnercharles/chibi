@@ -5,6 +5,7 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/generated.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 
 #include <assert.h>
@@ -116,9 +117,11 @@ static void query_guard_parity(
 void bench_encounter_query(int count, unsigned budget, int repeats)
 {
     assert(count >= 0 && count <= 20000 && repeats > 0);
-    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.kdl");
+    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.code");
     assert(json);
-    behavior_asset *asset = link_test_libraries(behavior_asset_load(json));
+    behavior_asset *asset = link_test_libraries(
+        test_project_asset("content/behaviors/ArenaWaveBehavior.code", json)
+    );
     free(json);
     assert(asset);
     ecs_world *world = ecs_world_new();
@@ -197,8 +200,10 @@ void bench_encounter_query(int count, unsigned budget, int repeats)
 void encounter_query_code(const char *path, int count, int repeats)
 {
     assert(count >= 0 && count <= 20000 && repeats >= 0);
-    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.kdl");
-    behavior_asset *asset = link_test_libraries(behavior_asset_load(json));
+    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.code");
+    behavior_asset *asset = link_test_libraries(
+        test_project_asset("content/behaviors/ArenaWaveBehavior.code", json)
+    );
     free(json);
     assert(asset);
     behavior_program_publish(asset);

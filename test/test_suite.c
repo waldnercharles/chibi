@@ -25,6 +25,28 @@
 #include "suite_internal.h"
 
 void test_automation_graph_edit();
+void test_automation_code();
+void test_automation_metadata_write();
+void test_scene_metadata_disk();
+void run_code_source_location_checks();
+void run_code_source_name_checks();
+void run_code_source_checks();
+void run_code_query_checks();
+void run_code_catalog_checks();
+void run_code_value_checks();
+void run_code_call_checks();
+void run_code_method_checks();
+void run_code_declaration_checks();
+void test_code_print();
+void test_code_source_intelligence();
+void run_code_source_metadata_checks();
+void run_code_components_checks();
+void run_code_ecs_intelligence_checks();
+void test_code_system_query_inference();
+void test_code_ecs_syntax();
+void run_code_ecs_print_checks();
+void test_code_reactive();
+void test_code_system_runtime();
 void test_compiled_behaviors();
 void run_editor_command_checks();
 void test_modeling();
@@ -167,6 +189,7 @@ void test_ui_wiring();
 bool test_kit_code();
 /* Workstream I: code intelligence in the Text Editor. */
 void test_code_intelligence();
+void studio_documents_reactive_presentation_checks();
 
 /* ---------- Settings (workstream F) ---------- */
 void test_studio_settings();
@@ -265,6 +288,7 @@ TEST_CASE(all_checks)
     stacktrace_init(program_name);
     TEST_TIMED_CALL(registry_validate);
     TEST_TIMED_CALL(test_automation_graph_edit);
+    TEST_TIMED_CALL(test_automation_code);
     TEST_TIMED_CALL(test_automation_search);
     TEST_TIMED_CALL(test_automation_navigation);
     TEST_TIMED_CALL(test_automation_graph_optimize);
@@ -339,7 +363,26 @@ TEST_CASE(all_checks)
     TEST_TIMED_CALL(test_asset_value);
     TEST_TIMED_CALL(test_asset_source);
     TEST_TIMED_CALL(test_asset_code_checkpoint);
-    TEST_TIMED_CALL(run_kdl_text_checks);
+    TEST_TIMED_CALL(run_asset_text_checks);
+    TEST_TIMED_CALL(run_code_source_location_checks);
+    TEST_TIMED_CALL(run_code_source_name_checks);
+    TEST_TIMED_CALL(run_code_source_checks);
+    TEST_TIMED_CALL(run_code_query_checks);
+    TEST_TIMED_CALL(run_code_catalog_checks);
+    TEST_TIMED_CALL(run_code_value_checks);
+    TEST_TIMED_CALL(run_code_call_checks);
+    TEST_TIMED_CALL(run_code_method_checks);
+    TEST_TIMED_CALL(run_code_declaration_checks);
+    TEST_TIMED_CALL(test_code_print);
+    TEST_TIMED_CALL(test_code_source_intelligence);
+    TEST_TIMED_CALL(run_code_source_metadata_checks);
+    TEST_TIMED_CALL(run_code_components_checks);
+    TEST_TIMED_CALL(run_code_ecs_intelligence_checks);
+    TEST_TIMED_CALL(test_code_system_query_inference);
+    TEST_TIMED_CALL(test_code_ecs_syntax);
+    TEST_TIMED_CALL(run_code_ecs_print_checks);
+    TEST_TIMED_CALL(test_code_reactive);
+    TEST_TIMED_CALL(test_code_system_runtime);
     TEST_TIMED_CALL(test_number_serialization);
     TEST_TIMED_CALL(test_auto_weapon);
     TEST_TIMED_CALL(test_graph_navigation);
@@ -506,7 +549,7 @@ static void print_test_selectors()
 {
     puts("Common focused native selectors (pass one to make test-fast):");
     puts("  authoring/graphs: --automation-authoring --graph-arrange --graph-editing --graph-inline --graph-optimize --graph-signature --graph-overhaul");
-    puts("  assets/support: --asset-documents --rcss --tree-watch");
+    puts("  assets/support: --asset-documents --code-source --rcss --tree-watch");
     puts("  runtime/compiler: --runtime-execution --behavior-parity --compiled-behaviors --simulation --system-arithmetic");
     puts("  Studio/UI: --editor-graph --editor-flow --scene-documents --studio-documents --studio-models --studio-lists --studio-outliner --studio-output --studio-properties --ui-documents --ui-designer --ui-controls --ui-popovers --ui-lists --rmlui-kit --code-intelligence --ui-motion");
     puts("  modeling/materials: --model-constructive --model-bake --model-export --model-inspection --modeling --materials --material-thermal --material-mpm");
@@ -770,10 +813,39 @@ int main(int argc, char **argv)
         run_graph_inline_checks();
         return fails ? 1 : 0;
     }
+    if (argc == 2 && !strcmp(argv[1], "--code-source")) {
+        registry_validate();
+        run_code_components_checks();
+        run_code_ecs_intelligence_checks();
+        test_code_system_query_inference();
+        test_code_ecs_syntax();
+        run_code_ecs_print_checks();
+        test_code_reactive();
+        test_code_system_runtime();
+        run_code_method_checks();
+        run_code_declaration_checks();
+        run_code_query_checks();
+        run_code_catalog_checks();
+        run_code_value_checks();
+        run_code_call_checks();
+        test_code_print();
+        test_code_source_intelligence();
+        run_code_source_checks();
+        run_code_source_metadata_checks();
+        run_code_source_name_checks();
+        run_code_source_location_checks();
+        test_automation_code();
+        test_automation_metadata_write();
+        return fails ? 1 : 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--asset-documents")) {
         registry_validate();
         test_asset_value();
-        run_kdl_text_checks();
+        run_asset_text_checks();
+        run_code_source_location_checks();
+        run_code_source_name_checks();
+        run_code_source_checks();
+        run_code_source_metadata_checks();
         test_asset_source();
         test_asset_code_checkpoint();
         test_editor_documents();
@@ -1504,7 +1576,10 @@ int main(int argc, char **argv)
     }
     /* Workstream I: code intelligence in the Text Editor. */
     if (argc > 1 && strcmp(argv[1], "--code-intelligence") == 0) {
+        test_asset_code_checkpoint();
+        studio_documents_reactive_presentation_checks();
         test_code_intelligence();
+        test_scene_metadata_disk();
         return fails ? 1 : 0;
     }
     if (argc > 1 && strcmp(argv[1], "--rmlui-render") == 0) {
@@ -1516,6 +1591,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--automation-authoring") == 0) {
         registry_validate();
         test_automation_graph_edit();
+        test_automation_code();
         test_automation_search();
         test_automation_navigation();
         test_automation_graph_optimize();

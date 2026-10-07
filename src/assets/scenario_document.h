@@ -34,6 +34,6 @@ typedef struct
 } scenario_document;
 
 scenario_document *scenario_document_load(const char *text, char *error, size_t error_size);
-/* Owned KDL source. */
+/* Owned code source. */
 char *scenario_document_save(const scenario_document *document);
 void scenario_document_free(scenario_document *document);

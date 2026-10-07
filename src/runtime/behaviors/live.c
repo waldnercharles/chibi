@@ -368,7 +368,9 @@ static void rename_model_material_references(behavior_asset *asset, const char *
                     pin_value value = { .type = PIN_STR,
                                         .type_name = "MaterialAsset",
                                         .str = to };
-                    assert(!graph_set_pin_default(g, n, false, k, &value));
+                    int changed = graph_set_pin_default(g, n, false, k, &value);
+                    assert(!changed);
+                    (void)changed;
                 }
             }
         }
@@ -397,7 +399,9 @@ int game_live_rename_definition(game_live_world *world, const char *from, const 
             for (int j = 0; j < 2; j++) {
                 behavior_asset *asset = snapshots[j];
                 if (d == definition) {
-                    assert(behavior_asset_set_name(asset, to) == 0);
+                    int renamed = behavior_asset_set_name(asset, to);
+                    assert(!renamed);
+                    (void)renamed;
                 }
                 for (int k = 0; k < acount(asset->graphs); k++) {
                     graph *g = asset->graphs[k];
@@ -419,8 +423,11 @@ int game_live_rename_definition(game_live_world *world, const char *from, const 
             registration_error(definition, error.message);
             return -1;
         }
-        assert(!behavior_asset_set_name(definition->working, to));
-        assert(!behavior_asset_set_name(definition->applied, to));
+        int renamed = behavior_asset_set_name(definition->working, to);
+        assert(!renamed);
+        renamed = behavior_asset_set_name(definition->applied, to);
+        assert(!renamed);
+        (void)renamed;
         for (int i = 0; i < acount(world->definitions); i++) {
             game_live_definition *d = world->definitions[i];
             if (d->working->domain == BEHAVIOR_DOMAIN_MODEL) {
@@ -778,6 +785,48 @@ const game_live_system_asset *game_live_find_system(const game_live_world *world
     }
     return NULL;
 }
+game_system_document *game_live_load_system(game_live_world *world, const char *text, char *error, size_t size)
+{
+    const behavior_asset **libraries = NULL, **events = NULL;
+    for (int i = 0; i < acount(world->definitions); i++) {
+        const behavior_asset *asset = world->definitions[i]->applied;
+        if (asset->domain == BEHAVIOR_DOMAIN_LIBRARY) {
+            apush(libraries, asset);
+        }
+        if (asset->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
+            apush(events, asset);
+        }
+    }
+    code_source_context context = { libraries, acount(libraries), events, acount(events) };
+    game_system_document *document = game_system_document_load_context(
+        text,
+        &context,
+        resolve_system_component,
+        NULL,
+        error,
+        size
+    );
+    afree(libraries);
+    afree(events);
+    if (!document) {
+        return NULL;
+    }
+    behavior_asset *linked = linked_snapshot(
+        world,
+        game_system_document_behavior_asset(document),
+        NULL,
+        error,
+        size
+    );
+    if (!linked) {
+        game_system_document_free(document);
+        return NULL;
+    }
+    int replaced = game_system_document_replace_behavior_asset(document, linked);
+    assert(!replaced);
+    (void)replaced;
+    return document;
+}
 int game_live_register_system(
     game_live_world *world,
     const char *name,
@@ -786,8 +835,7 @@ int game_live_register_system(
     size_t size
 )
 {
-    game_system_document *
-        document = game_system_document_load(json, resolve_system_component, NULL, error, size);
+    game_system_document *document = game_live_load_system(world, json, error, size);
     if (!document) {
         return -1;
     }

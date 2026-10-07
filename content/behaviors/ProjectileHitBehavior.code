@@ -1,0 +1,45 @@
+behavior "ProjectileHitBehavior" {
+    owner "ecs.entity";
+    value self_2 = engine["Self"]();
+    value self_3 = engine["Self"]();
+    action destroy_entity = engine["Destroy Entity"](Entity: self_3);
+    value hasentity_gamehealth = has_entity_game_health(Entity: contact_begin.Other);
+    value has_gamegeometry3d = has_game_geometry3_d();
+    action branch_3 = engine["Branch"](Condition: has_gamegeometry3d);
+    on "Contact Begin" as contact_begin(Other: handle<"ecs.entity"> = 0, Point: struct<"CF_V2"> = null) {
+        if (hasentity_gamehealth) {
+            await send_event<"Damage">(Entity: contact_begin.Other, Amount: int = &component("GAME.GameProjectile", "damage"), Source: self_2);
+            branch_3();
+        } else {
+            branch_3();
+        }
+    }
+    after branch_3.True {
+        await "Impact Particles"(Position: &component("GAME.GameTransform"), Elevation: &component("GAME.GameGeometry3D", "elevation"));
+        destroy_entity();
+    }
+    after branch_3.False {
+        await "Impact Particles"(Position: &component("GAME.GameTransform"), Elevation: 0.0);
+        destroy_entity();
+    }
+    function "Impact Particles"(Position: struct<"GameTransform"> = null, Elevation: float = 0.0) -> () {
+        depth_limit 64;
+        local Position = entry.Position;
+        local Elevation = entry.Elevation;
+        after entry {
+            await emit_directed_particles(Position: &local.Position, Direction: {
+                x: 1.0,
+                y: 0.0
+            }, Count: 8, Color: 4291524863, "End Color": 4065531392, "Min Speed": 60.0, "Max Speed": 140.0, "Min Lifetime": 0.09, "Max Lifetime": 0.22, "Min Size": 1.1, "Max Size": 2.2, Spread: 6.2831855, "Min Drag": 3.0, "Max Drag": 5.0, "Min Emission": 1.1, "Max Emission": 1.8, "Size Exponent": 0.7, Elevation: &local.Elevation, Shape: 4);
+            await emit_directed_particles(Position: &local.Position, Direction: {
+                x: 1.0,
+                y: 0.0
+            }, Count: 3, Color: 4293107711, "End Color": 4015135488, "Min Speed": 15.0, "Max Speed": 42.0, "Min Lifetime": 0.1, "Max Lifetime": 0.18, "Min Size": 2.5, "Max Size": 4.0, Spread: 6.2831855, "Min Drag": 3.0, "Max Drag": 5.0, "Min Emission": 1.2, "Max Emission": 1.8, "Size Exponent": 0.7, Elevation: &local.Elevation, Shape: 0);
+            await emit_directed_particles(Position: &local.Position, Direction: {
+                x: 1.0,
+                y: 0.0
+            }, Count: 1, Color: 2448359423, "End Color": 427153664, "Min Speed": 0.0, "Max Speed": 0.0, "Min Lifetime": 0.18, "Max Lifetime": 0.18, "Min Size": 10.0, "Max Size": 10.0, Spread: 6.2831855, "Min Drag": 3.0, "Max Drag": 5.0, "Min Emission": 0.8, "Max Emission": 0.8, "Size Exponent": 0.7, Elevation: &local.Elevation, Shape: 3);
+            return();
+        }
+    }
+}

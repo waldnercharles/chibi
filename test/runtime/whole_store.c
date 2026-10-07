@@ -1,6 +1,26 @@
+#include "assets/code_source.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/suite_internal.h"
 #include "test/whole_store_fixture.h"
+
+static behavior_asset *reload(const behavior_asset *asset)
+{
+    char *text = behavior_asset_save(asset);
+    behavior_asset *next = behavior_asset_load(text);
+    if (!next) {
+        fprintf(stderr, "Whole store save/load failed:\n%s\n", text ? text : "NULL");
+        if (text) {
+            code_source *source = code_source_parse(text);
+            for (int i = 0; i < acount(source->diagnostics); i++) {
+                const code_source_diagnostic *d = &source->diagnostics[i];
+                fprintf(stderr, "%d..%d: %s\n", d->start, d->end, d->message);
+            }
+            code_source_free(source);
+        }
+    }
+    free(text);
+    return next;
+}
 
 static pin_value snapshot(arena *storage, pin_value v)
 {
@@ -145,9 +165,7 @@ static void lifecycle(behavior_backend backend)
     assert(bi->variable_storage[0].data == backing);
     same(retained, v);
     assert(!behavior_instance_set_variable(bi, id, &v) && bi->variables[0].ptr == backing);
-    char *json = behavior_asset_save(a);
-    behavior_asset *next = behavior_asset_load(json);
-    free(json);
+    behavior_asset *next = reload(a);
     assert(next);
     /* Stable IDs remap backing storage together with values. */
     behavior_variable swap = next->variables[0];
@@ -200,9 +218,7 @@ static void managed_storage()
     arena storage = { 0 };
     pin_value retained;
     assert(!behavior_instance_copy_variable(bi, id, &storage, &retained));
-    char *json = behavior_asset_save(a);
-    behavior_asset *next = behavior_asset_load(json);
-    free(json);
+    behavior_asset *next = reload(a);
     assert(next && behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_READY);
     behavior_instance_update(bi, next);
     behavior_asset_free(a);

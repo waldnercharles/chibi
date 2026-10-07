@@ -47,7 +47,7 @@ const char *studio_scene_title(const app_scene_authoring *scene, char *out, size
     const char *path = scene->scene_path;
     const char *base = path && path[0] ? content_basename(path) : NULL;
     snprintf(out, size, "%s", base ? base : "Scene");
-    /* The document name without its storage format (.json, .kdl). */
+    /* The document name without its storage format (.code). */
     char *extension = strrchr(out, '.');
     if (extension && extension != out) {
         *extension = '\0';
@@ -103,6 +103,16 @@ static bool graph_focused(const studio *s)
             (s->tab == STUDIO_TAB_NODE || s->tab == STUDIO_TAB_MEMBER));
 }
 
+static bool behavior_history_focused(const studio *s)
+{
+    if (graph_focused(s)) {
+        return true;
+    }
+    int area = studio_command_area(s);
+    return area >= 0 && s->prefs.layouts[s->prefs.workspace].editors[area] ==
+                            STUDIO_EDITOR_CODE;
+}
+
 static void toast(studio *s, kit_toast_type type, const char *title, const char *description)
 {
     char text[256];
@@ -126,6 +136,10 @@ void studio_error(studio *s, const char *title, const char *message)
 void studio_save(studio *s)
 {
     app_scene_authoring *scene = s->scene;
+    if (scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
+        studio_code_save(s);
+        return;
+    }
     if (scene->active_tab >= 0 && scene->active_tab < acount(scene->tabs) &&
         scene->tabs[scene->active_tab].source_dirty) {
         studio_code_save(s);
@@ -200,6 +214,11 @@ void studio_save(studio *s)
 bool studio_can_replay(studio *s, bool redo)
 {
     app_scene_authoring *scene = s->scene;
+    if ((scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR ||
+         scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) &&
+        behavior_history_focused(s)) {
+        return studio_code_history(s, redo, false);
+    }
     if (graph_focused(s)) {
         return studio_graph_can_replay(s, redo);
     }
@@ -262,6 +281,14 @@ static void document_history(studio *s, bool redo)
 
 void studio_history(studio *s, bool redo)
 {
+    if ((s->scene->document.kind == APP_EDITOR_DOCUMENT_BEHAVIOR ||
+         s->scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) &&
+        behavior_history_focused(s)) {
+        if (studio_code_history(s, redo, true)) {
+            studio_report(s, redo ? "Redo" : "Undo");
+        }
+        return;
+    }
     ui_buffer *text = graph_focused(s) ? NULL : studio_ui_buffer(s);
     /* Text replays while the scene runs, as it applies live. */
     if (text && studio_can_replay(s, redo)) {
@@ -1766,6 +1793,9 @@ static void reveal_document(studio *s)
         }
     }
     studio_editor shown = studio_active_layout(s)->editors[s->maximized];
+    if (tab->kind == APP_EDITOR_DOCUMENT_BEHAVIOR && shown == STUDIO_EDITOR_CODE) {
+        target = STUDIO_EDITOR_CODE;
+    }
     if (shown == target || shown == STUDIO_EDITOR_CODE ||
         (shown == STUDIO_EDITOR_PROPERTIES && tab->kind == APP_EDITOR_DOCUMENT_PROTOTYPE)) {
         return;

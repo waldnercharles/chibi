@@ -21,7 +21,8 @@ int automation_asset_publish(
 );
 
 /* One file of a batch: its new text at `rename_to` (or in place), or, with
- * no text, its removal. expected_hash is the file's current hash. */
+ * no text, its removal. Existing files require their current expected_hash;
+ * create requires an absent filename, text, and no rename_to. */
 typedef struct
 {
     const char *folder;
@@ -29,13 +30,14 @@ typedef struct
     const char *rename_to; /* NULL keeps the file name */
     const char *text;      /* NULL deletes the file */
     const char *expected_hash;
+    bool create; /* expected_hash is unnecessary for a new file. */
 } automation_asset_change;
 
 typedef struct automation_asset_batch automation_asset_batch;
 
-/* Publishes every change or none. Every file is checked against its hash,
- * and a renamed one's new name must be free, before anything moves; the
- * originals then move aside and the new files take their places. On
+/* Publishes every change or none. Every existing file is checked against its
+ * hash, and each created or renamed destination must be free before anything
+ * moves; the originals then move aside and the new files take their places. On
  * success the batch holds each folder's lock and the originals until
  * automation_assets_commit drops them or automation_assets_rollback puts
  * them back, so a caller can validate the published files first. */

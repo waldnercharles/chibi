@@ -29,5 +29,5 @@ description "Small spatial-noise displacement deliberately exercises tetrahedral
             - from="37.Result" to="1.Distance"
         }
     }
-    - id=5 kind="function" math_expression="length(position) - 30 + 0.05 * noise(position, 0.15)" entry_id=6
+    - id=5 kind="function" math_expression="length(position) - 30 + 0.05 * noise(position, 0.15)" expression_mode=1 entry_id=6
 }

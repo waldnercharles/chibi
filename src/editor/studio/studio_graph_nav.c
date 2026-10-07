@@ -60,8 +60,8 @@ static void see(studio_graph *g, const studio_visit *visit)
     apush(g->shown, *visit);
 }
 
-/* Records the open graph and its breadcrumb once it differs from the graph
-   last seen, which a Text Editor place does not change. */
+/* Records a changed graph and its breadcrumb. Source visits synchronize
+   the displayed graph separately without adding a graph history entry. */
 void sg_nav_track(studio *s)
 {
     studio_graph *g = &s->graph;
@@ -86,7 +86,16 @@ void sg_nav_track(studio *s)
 static bool open_visit(studio *s, const studio_visit *visit)
 {
     if (visit->kind == APP_EDITOR_DOCUMENT_UI) {
-        return studio_code_open_place(s, &visit->place);
+        if (!studio_code_open_place(s, &visit->place)) {
+            return false;
+        }
+        /* A source visit can also change the graph shown in Both. Record
+           that view without making a new visit that discards Forward. */
+        if (studio_graph_active(s)) {
+            studio_visit graph = here(s);
+            see(&s->graph, &graph);
+        }
+        return true;
     }
     app_scene_authoring *scene = s->scene;
     bool open = scene->graph_document_id &&

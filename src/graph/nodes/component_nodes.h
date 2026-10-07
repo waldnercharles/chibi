@@ -110,6 +110,8 @@ bool component_node_field_pin(const node *n, const char *field, pin_spec *out);
 /* Replaces component nodes with generated descriptors, keeping node and pin
  * IDs. A Set with several field inputs becomes a chain of field setters: the
  * first keeps the node's ID and Exec, the last its Then and Value. */
+/* Lowers one configured node, preserving unrelated authored nodes. */
+int component_node_lower(graph *g, node *n, char *error, size_t error_size);
 int graph_lower_component_nodes(graph *g, char *error, size_t error_size);
 int behavior_asset_lower_component_nodes(behavior_asset *asset, char *error, size_t error_size);
 bool behavior_asset_has_component_nodes(const behavior_asset *asset);

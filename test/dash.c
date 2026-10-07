@@ -4,6 +4,7 @@
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 #include "test/support/simulation_fixture.h"
 
@@ -28,10 +29,10 @@ static void load_behavior(game_live_world *live, const char *name)
     const char *root = !strcmp(name, "DashBehavior")
                          ? "test/fixtures/content/behaviors"
                          : "content/behaviors";
-    snprintf(path, sizeof path, "%s/%s.kdl", root, name);
+    snprintf(path, sizeof path, "%s/%s.code", root, name);
     char *text = text_file_read(path);
     assert(text);
-    behavior_asset *asset = behavior_asset_load(text);
+    behavior_asset *asset = test_project_asset(path, text);
     free(text);
     if (!asset) {
         fprintf(stderr, "Could not load dash fixture behavior %s: %s\n", name, graph_last_error());

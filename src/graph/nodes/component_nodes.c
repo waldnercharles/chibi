@@ -1072,6 +1072,16 @@ static int lower_node(graph *g, node *n, char *error, size_t size)
     return 0;
 }
 
+int component_node_lower(graph *g, node *n, char *error, size_t error_size)
+{
+    if (!component_node_kind_of(n->desc)) {
+        return 0;
+    }
+    int result = lower_node(g, n, error, error_size);
+    reindexed(g);
+    return result;
+}
+
 int graph_lower_component_nodes(graph *g, char *error, size_t error_size)
 {
     int count = acount(g->nodes);

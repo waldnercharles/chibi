@@ -5,6 +5,7 @@
 #include "runtime/generated.h"
 #include "runtime/systems/schedule.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 
 #include <assert.h>
 #include <math.h>
@@ -168,7 +169,7 @@ static void live_system()
     ecs_world *world = world_new();
     game_live_world *live = game_live_world_new(world);
     engine *runtime = engine_new(world, live);
-    char *json = text_file_read("projects/arena2d/content/systems/FreeMotion.kdl");
+    char *json = text_file_read("projects/arena2d/content/systems/FreeMotion.code");
     assert(json);
     char error[256];
     assert(!game_live_register_system(live, "FreeMotion", json, error, sizeof error));
@@ -220,7 +221,7 @@ static behavior_asset *copy_system(const char *path, const char *name)
 {
     char *json = text_file_read(path);
     assert(json);
-    behavior_asset *asset = behavior_asset_load(json);
+    behavior_asset *asset = test_project_asset(path, json);
     free(json);
     assert(asset);
     assert(!behavior_asset_set_name(asset, name));
@@ -267,7 +268,7 @@ static uint64_t parallel_world(bool parallel, int count, int frames, double *ela
     assert(!ecs_world_apply_commands(world));
     game_system *motion = game_system_new(
         world,
-        copy_system("projects/arena2d/content/systems/FreeMotion.kdl", "motion")
+        copy_system("projects/arena2d/content/systems/FreeMotion.code", "motion")
     );
     game_system *health = health_system(world);
     assert(motion);

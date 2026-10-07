@@ -2,6 +2,7 @@
 #include "graph/runtime/update_internal.h"
 #include "support/text_file.h"
 #include "test/suite_internal.h"
+#include "test/support/code_fixture.h"
 #include "test/whole_aggregate_fixture.h"
 #include "test/whole_batch_fixture.h"
 #include "test/whole_command_fixture.h"
@@ -399,8 +400,8 @@ static void unread_event_output(behavior_backend backend)
 /* Pursuit's Tick declares DeltaSeconds, which only its debugger watches read. */
 static void watched_event_output()
 {
-    char *text = text_file_read("projects/arena2d/content/behaviors/Pursuit.kdl");
-    behavior_asset *asset = behavior_asset_load(text);
+    char *text = text_file_read("projects/arena2d/content/behaviors/Pursuit.code");
+    behavior_asset *asset = test_project_asset("projects/arena2d/content/behaviors/Pursuit.code", text);
     free(text);
     node *entry = tick_entry(asset);
     assert(entry->output_count == 2);

@@ -330,7 +330,7 @@ bool render_shader_parameters_validate(int index, const char *text, shader_error
     av_value *root = doc ? av_doc_root(doc) : NULL;
     if (!root || !av_is_obj(root)) {
         if (error) {
-            snprintf(error->message, sizeof error->message, "Preview parameters must be KDL named values.");
+            snprintf(error->message, sizeof error->message, "Preview parameters must be code named values.");
         }
         av_doc_free(doc);
         return false;
@@ -1967,7 +1967,7 @@ static bool binding_parameter_values_from(
     av_value *root = doc ? av_doc_root(doc) : NULL;
     if (!root || !av_is_obj(root)) {
         if (error) {
-            snprintf(error->message, sizeof error->message, "Shader parameters require named KDL values.");
+            snprintf(error->message, sizeof error->message, "Shader parameters require named code values.");
         }
         av_doc_free(doc);
         return false;
@@ -2474,7 +2474,7 @@ static bool parse_material_parameters_scoped(
     av_value *root = doc ? av_doc_root(doc) : NULL;
     if (!root || !av_is_obj(root)) {
         if (error) {
-            snprintf(error->message, sizeof error->message, "Shader parameters require named KDL values.");
+            snprintf(error->message, sizeof error->message, "Shader parameters require named code values.");
         }
         av_doc_free(doc);
         return false;

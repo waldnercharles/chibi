@@ -84,7 +84,7 @@ description "Fine concentric lens grooves vary color and roughness in the named 
             - from="223.Result" to="1.Roughness"
         }
     }
-    - id=12 kind="function" math_expression="0.5 + 0.5 * sin(sqrt((p.x + 0.05) * (p.x + 0.05) + (p.y - 5.7) * (p.y - 5.7)) * 150)" entry_id=83
-    - id=161 kind="function" math_expression="0.65 + 0.35 * g * g * g * g" entry_id=162
-    - id=204 kind="function" math_expression="0.2 + 0.25 * g" entry_id=205
+    - id=12 kind="function" math_expression="0.5 + 0.5 * sin(sqrt((p.x + 0.05) * (p.x + 0.05) + (p.y - 5.7) * (p.y - 5.7)) * 150)" expression_mode=1 entry_id=83
+    - id=161 kind="function" math_expression="0.65 + 0.35 * g * g * g * g" expression_mode=1 entry_id=162
+    - id=204 kind="function" math_expression="0.2 + 0.25 * g" expression_mode=1 entry_id=205
 }

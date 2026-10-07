@@ -2,6 +2,7 @@
  * uses a function, variable, event, component or asset, from the reference
  * index, listed in Output's Find view (studio_output.c). A row opens its
  * asset and reveals its node. */
+#include "assets/code_print.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
@@ -160,16 +161,23 @@ static const char *accessed_component(const node *n)
              : NULL;
 }
 
-bool studio_node_referable(const node *n)
+bool studio_node_reactive(const studio *s, const node *n)
 {
-    return graph_call(n) || n->desc == &NODE_GetVariable ||
-           n->desc == &NODE_SetVariable || event_node(n) ||
-           spawned_prototype(n) || accessed_component(n);
+    const editor *e = sg_graph_editor(s);
+    char label[512];
+    return n && code_print_reactive_event(e->asset, e->active_graph, n, label, sizeof label);
 }
 
-bool studio_node_traceable(const node *n)
+bool studio_node_referable(const studio *s, const node *n)
 {
-    return graph_call(n) || event_node(n);
+    return !studio_node_reactive(s, n) &&
+           (graph_call(n) || n->desc == &NODE_GetVariable || n->desc == &NODE_SetVariable ||
+            event_node(n) || spawned_prototype(n) || accessed_component(n));
+}
+
+bool studio_node_traceable(const studio *s, const node *n)
+{
+    return !studio_node_reactive(s, n) && (graph_call(n) || event_node(n));
 }
 
 /* What a node references: the function it calls, the variable it reads or

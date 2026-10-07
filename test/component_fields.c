@@ -161,10 +161,7 @@ static void handle_field(ecs_world *world, ecs_entity owner, ecs_entity other)
     game_prototype *prototype = game_prototype_load(
         "name \"Owner\"\n"
         "components {\n"
-        "    GameCollider {\n"
-        "        radius 12\n"
-        "        ignore_entity #null\n"
-        "    }\n"
+        "    GameCollider radius=12 ignore_entity=#null\n"
         "}\n",
         &registry,
         error,
@@ -183,9 +180,7 @@ static void handle_field(ecs_world *world, ecs_entity owner, ecs_entity other)
     assert(!game_prototype_load(
         "name \"Stale\"\n"
         "components {\n"
-        "    GameCollider {\n"
-        "        ignore_entity 123\n"
-        "    }\n"
+        "    GameCollider ignore_entity=123\n"
         "}\n",
         &registry,
         error,

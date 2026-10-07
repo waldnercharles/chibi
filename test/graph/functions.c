@@ -19,9 +19,10 @@ void run_graph_functions_checks()
         );
         node *literal = graph_add_node(asset->graph, registry_node_by_name("Integer"));
         /* Defaults are omitted, so author non-default graph state. */
-        graph_add_comment_box(asset->graph, "Notes", 0.0f, 0.0f, 200.0f, 100.0f);
+        graph_comment_box *notes = graph_add_comment_box(asset->graph, "Notes", 0.0f, 0.0f, 200.0f, 100.0f);
         asset->graph->breakpoints_enabled = 0;
         char *json = behavior_asset_save(asset);
+        behavior_asset *snapshot = json ? behavior_asset_load(json) : NULL;
         asset->graph->breakpoints_enabled = 1;
         test_check(
             json && strstr(json, "variables") && strstr(json, "graphs"),
@@ -36,17 +37,23 @@ void run_graph_functions_checks()
             surface_report.items != NULL || surface_report.error_count == 0,
             "compiler results expose structured diagnostics"
         );
-        test_check(
-            json && strstr(json, "breakpoints_enabled") && strstr(json, "comment_boxes"),
-            "authored operations have serializable undo snapshots"
-        );
+        test_check(snapshot && !snapshot->graph->breakpoints_enabled, "authored operations have serializable undo snapshots");
         test_check(event->output_count > 0, "required event pins remain visible in the model");
         test_check(
             registry_node_by_name("Format Text")->keywords != NULL,
             "catalog search fields cover authored literal values by node type"
         );
         test_check(json && strstr(json, "graphs"), "dockable editor layout has graph persistence data");
-        test_check(json && strstr(json, "comment_boxes"), "output and details panels retain authored graph state");
+        graph_comment_box *saved_notes = snapshot && acount(snapshot->graph->comment_boxes) == 1
+                                           ? &snapshot->graph->comment_boxes[0]
+                                           : NULL;
+        test_check(
+            saved_notes && saved_notes->id == notes->id &&
+                !strcmp(saved_notes->title, "Notes") && saved_notes->x == 0.0f &&
+                saved_notes->y == 0.0f && saved_notes->width == 200.0f &&
+                saved_notes->height == 100.0f && saved_notes->color == notes->color,
+            "output and details panels retain authored graph state"
+        );
         behavior_asset_set_owner_type(asset, "EditorOwner");
         test_check(asset->owner_type_name && PIN_FLAG_SERVICE != 0, "owner and service-backed pin metadata are inspectable");
         behavior_instance *bi = behavior_instance_create(asset, NULL, NULL, NULL);
@@ -58,6 +65,7 @@ void run_graph_functions_checks()
         test_check(CMPL_MESSAGE_MAX > 0, "diagnostics carry navigable stable message data");
         compile_report_free(&surface_report);
         free(json);
+        behavior_asset_free(snapshot);
         behavior_asset_free(asset);
     }
 

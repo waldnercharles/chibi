@@ -26,29 +26,37 @@ static void check_rebase(const char *values, const char *previous, const char *c
 static void retained_inheritance()
 {
     check_rebase(
-        "Health {\n    current 73\n    maximum 100\n}\n",
-        "Health {\n    current 100\n    maximum 100\n}\n",
-        "Health {\n    current 200\n    maximum 200\n}\n",
-        "Health {\n    current 73\n    maximum 200\n}\n"
+        "Health current=73 maximum=100\n",
+        "Health current=100 maximum=100\n",
+        "Health current=200 maximum=200\n",
+        "Health current=73 maximum=200\n"
     );
     check_rebase(
-        "Input {\n    move {\n        x 3\n        y 0\n    }\n    label "
-        "\"custom\"\n}\n",
-        "Input {\n    move {\n        x 0\n        y 0\n    }\n    label "
-        "\"default\"\n}\n",
-        "Input {\n    move {\n        x 1\n        y 2\n    }\n    label "
-        "\"new\"\n    enabled #true\n}\n",
-        "Input {\n    move {\n        x 3\n        y 2\n    }\n    label "
-        "\"custom\"\n    enabled #true\n}\n"
+        "Input {\n"
+        "    move x=3 y=0\n"
+        "    label \"custom\"\n"
+        "}\n",
+        "Input {\n"
+        "    move x=0 y=0\n"
+        "    label \"default\"\n"
+        "}\n",
+        "Input {\n"
+        "    move x=1 y=2\n"
+        "    label \"new\"\n"
+        "    enabled #true\n"
+        "}\n",
+        "Input {\n"
+        "    move x=3 y=2\n"
+        "    label \"custom\"\n"
+        "    enabled #true\n"
+        "}\n"
     );
-    check_rebase(
-        "Health {\n    current 73\n}\n",
-        "",
-        "Health {\n    current 200\n    maximum 200\n}\n",
-        "Health {\n    current 73\n    maximum 200\n}\n"
-    );
-    check_rebase("Health {\n    current 73\n}\n", "Health {\n    current 100\n}\n", "", "Health {\n    current 73\n}\n");
-    const char *invalid[] = { "", "Health #null\n", "(object)Health\n(object)Input\n" };
+    check_rebase("Health current=73\n", "", "Health current=200 maximum=200\n", "Health current=73 maximum=200\n");
+    check_rebase("Health current=73\n", "Health current=100\n", "", "Health current=73\n");
+    const char *invalid[] = { "",
+                              "Health #null\n",
+                              "(object)Health\n"
+                              "(object)Input\n" };
     av_value *empty = test_read_asset_value("");
     av_doc *null_doc = av_doc_new();
     assert(!game_prototype_rebase_component_value(av_null(null_doc), empty, empty));
@@ -87,9 +95,7 @@ static void retained_strings()
     game_prototype *prototype = game_prototype_load(
         "name \"StringOwner\"\n"
         "components {\n"
-        "    test.Label {\n"
-        "        text \"customized\"\n"
-        "    }\n"
+        "    test.Label text=\"customized\"\n"
         "}\n",
         &registry,
         error,
@@ -130,19 +136,10 @@ void test_retained_components()
     game_prototype *prototype = game_prototype_load(
         "name \"Retained\"\n"
         "components {\n"
-        "    GameTransform {\n"
-        "        x 10\n"
-        "        y 20\n"
-        "    }\n"
-        "    GameHealth {\n"
-        "        current 73\n"
-        "        maximum 100\n"
-        "    }\n"
+        "    GameTransform x=10 y=20\n"
+        "    GameHealth current=73 maximum=100\n"
         "    GameInput {\n"
-        "        move {\n"
-        "            x 3\n"
-        "            y 4\n"
-        "        }\n"
+        "        move x=3 y=4\n"
         "    }\n"
         "}\n",
         &registry,

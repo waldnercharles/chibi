@@ -1068,7 +1068,7 @@ static void output_rows()
                     sizeof text,
                     "[%06d] warning: Player hit \"Wall %d\" at (%d.5, -%d.25) "
                     "for %d damage in "
-                    "content/behaviors/Weapon.kdl",
+                    "content/behaviors/Weapon.code",
                     line + i,
                     i,
                     line,

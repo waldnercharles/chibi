@@ -4,6 +4,7 @@
 #include "runtime/generated.h"
 #include "runtime/scenes/prototype_preview.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -45,10 +46,10 @@ static arena_fixture arena_new()
     assert(app_scene_authoring_set_content_root(f.scene, "content") == 0);
     assert(app_scene_authoring_load_content(f.scene) == 0);
     const char
-        *weapon_path = "test/fixtures/content/behaviors/WeaponBehavior.kdl";
+        *weapon_path = "test/fixtures/content/behaviors/WeaponBehavior.code";
     char *weapon_json = text_file_read(weapon_path);
     assert(weapon_json);
-    behavior_asset *weapon_asset = behavior_asset_load(weapon_json);
+    behavior_asset *weapon_asset = test_project_asset(weapon_path, weapon_json);
     free(weapon_json);
     assert(weapon_asset);
     game_live_definition

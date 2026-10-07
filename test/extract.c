@@ -71,7 +71,7 @@ static behavior_asset *roundtrip(const behavior_asset *asset)
     assert(json);
     behavior_asset *copy = behavior_asset_load(json);
     if (!copy) {
-        fprintf(stderr, "extracted asset reload: %s\n", graph_last_error());
+        fprintf(stderr, "extracted asset reload: %s\n%s\n", graph_last_error(), json);
     }
     assert(copy);
     free(json);

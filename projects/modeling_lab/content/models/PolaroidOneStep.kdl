@@ -992,5 +992,5 @@ description "Single-image reconstruction in editable named 3D parts: convex hous
             - from="582.Geometry" to="1.Geometry"
         }
     }
-    - id=295 kind="function" math_expression="r / 1.8" entry_id=296
+    - id=295 kind="function" math_expression="r / 1.8" expression_mode=1 entry_id=296
 }

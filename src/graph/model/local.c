@@ -64,20 +64,40 @@ int graph_rename_local(graph *g, uint64_t id, const char *name)
     return 0;
 }
 
-uint64_t graph_create_local(graph *g, node *source, int pin, const char *name)
+static bool local_declaration_valid(graph *g, node *source, int pin, const char *name)
 {
     if (g->flow_pause_count || !source || graph_node_by_id(g, source->id) != source ||
         pin < 0 || pin >= source->output_count || !name || !name[0] ||
         source->output_pins[pin].kind != PIN_DATA ||
         graph_output_local(g, source, pin)) {
+        return false;
+    }
+    for (int i = 0; i < acount(g->locals); i++) {
+        if (!strcmp(g->locals[i].name, name)) {
+            return false;
+        }
+    }
+    return true;
+}
+uint64_t graph_declare_local(graph *g, node *source, int pin, const char *name)
+{
+    if (!local_declaration_valid(g, source, pin, name)) {
+        return 0;
+    }
+    graph_local local = { .id = graph_alloc_id(g),
+                          .name = graph_own_str(g, name, strlen(name)),
+                          .source_id = source->id,
+                          .source_pin_id = source->output_pins[pin].id };
+    apush(g->locals, local);
+    g->topology_revision++;
+    return local.id;
+}
+uint64_t graph_create_local(graph *g, node *source, int pin, const char *name)
+{
+    if (!local_declaration_valid(g, source, pin, name)) {
         return 0;
     }
     int count = 0;
-    for (int i = 0; i < acount(g->locals); i++) {
-        if (!strcmp(g->locals[i].name, name)) {
-            return 0;
-        }
-    }
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
         if (e->from_id != source->id ||
@@ -100,11 +120,9 @@ uint64_t graph_create_local(graph *g, node *source, int pin, const char *name)
     if (!count) {
         return 0;
     }
-    graph_local local = { .id = graph_alloc_id(g),
-                          .name = graph_own_str(g, name, strlen(name)),
-                          .source_id = source->id,
-                          .source_pin_id = source->output_pins[pin].id };
-    apush(g->locals, local);
+    uint64_t id = graph_declare_local(g, source, pin, name);
+    assert(id);
+    const graph_local local = *graph_local_by_id(g, id);
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
         if (e->from_id != local.source_id || e->from_pin_id != local.source_pin_id) {
@@ -118,7 +136,6 @@ uint64_t graph_create_local(graph *g, node *source, int pin, const char *name)
         assert(set_pin_binding_result == 0);
         (void)set_pin_binding_result;
     }
-    g->topology_revision++;
     return local.id;
 }
 

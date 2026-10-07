@@ -1,6 +1,8 @@
 #include "assets/refactor.h"
 
 #include "assets/asset_source.h"
+#include "assets/code_catalog.h"
+#include "assets/code_source.h"
 #include "assets/scene_document.h"
 #include "assets/system_document.h"
 #include "assets/ui_document.h"
@@ -24,7 +26,7 @@
 
 #define NAME_MAX_LENGTH 120
 
-/* GameMeshParts.parts holds KDL parts, each naming its material. */
+/* GameMeshParts.parts holds code parts, each naming its material. */
 #define MESH_PARTS "GameMeshParts.parts"
 
 /* An asset the plan edits: parsed on first use, unless only deleted. */
@@ -38,6 +40,7 @@ typedef struct
     game_scene_document *scene;
     char *rml; /* a ui asset's markup */
     char *name;
+    char *metadata;
     bool deleted;
     const reference **references;
 } loaded;
@@ -49,6 +52,7 @@ typedef struct
     loaded **assets;
     char *error;
     size_t error_size;
+    code_catalog *catalog;
 } work;
 
 static bool fail(work *w, const char *format, ...)
@@ -123,6 +127,7 @@ static bool read_markup(const char *text, loaded *l, char *why, size_t size)
 /* Reads an asset's text with its kind's loader; false with why. */
 static bool read_asset(
     const refactor_project *project,
+    const code_catalog *catalog,
     reference_asset_kind kind,
     const char *text,
     loaded *l,
@@ -133,8 +138,18 @@ static bool read_asset(
     void *registry = (void *)project->registry;
     switch (kind) {
         case REFERENCE_ASSET_SYSTEM:
-            l->system = game_system_document_load(text, component_named, registry, why, size);
-            l->graphs = l->system ? behavior_asset_load(text) : NULL;
+            l->system = game_system_document_load_context(
+                text,
+                code_catalog_context(catalog),
+                component_named,
+                registry,
+                why,
+                size
+            );
+            l->graphs = l->system ? behavior_asset_clone(
+                                        game_system_document_behavior_asset(l->system)
+                                    )
+                                  : NULL;
             return l->graphs != NULL;
         case REFERENCE_ASSET_PROTOTYPE:
             l->prototype = game_prototype_load(text, project->registry, why, size);
@@ -145,11 +160,81 @@ static bool read_asset(
         case REFERENCE_ASSET_UI: return read_markup(text, l, why, size);
         case REFERENCE_ASSET_KIND_COUNT: break;
         default:
-            l->graphs = behavior_asset_load(text);
+            l->graphs = code_catalog_load_behavior(catalog, text, why, size);
             snprintf(why, size, "%s", l->graphs ? "" : graph_last_error());
             return l->graphs != NULL;
     }
     return false;
+}
+
+static code_source *project_source(const code_catalog *catalog, const char *text, const char *metadata)
+{
+    code_source *source = code_source_parse_context(text, NULL, code_catalog_context(catalog));
+    if (metadata) {
+        code_source_metadata_restore(source, metadata);
+    }
+    return source;
+}
+
+static bool restore_loaded_source(const code_catalog *catalog, loaded *l, const char *text, const char *metadata)
+{
+    if (!l->graphs || !code_source_is_structured(text)) {
+        return true;
+    }
+    code_source *source = project_source(catalog, text, metadata);
+    behavior_asset *asset = code_source_build_behavior(source);
+    code_source_free(source);
+    if (!asset) {
+        return false;
+    }
+    behavior_asset_free(l->graphs);
+    l->graphs = asset;
+    return true;
+}
+
+static code_catalog *project_catalog(const refactor_project *project)
+{
+    int count = reference_index_asset_count(project->index);
+    code_catalog *catalog = code_catalog_from_texts(project->texts, count);
+    for (int i = 0; i < count; i++) {
+        const reference_asset *asset = reference_index_asset_at(project->index, i);
+        if (asset->kind == REFERENCE_ASSET_PROTOTYPE && project->texts[i]) {
+            code_catalog_add_reference(catalog, CODE_REFERENCE_PROTOTYPE, asset->name);
+        }
+    }
+    const char **metadata = NULL;
+    char **owned = NULL;
+    for (int i = 0; i < count; i++) {
+        const reference_asset *asset = reference_index_asset_at(project->index, i);
+        const char *snapshot = project->metadata ? project->metadata[i] : NULL;
+        char *restored = NULL;
+        if (asset->kind == REFERENCE_ASSET_LIBRARY && project->texts[i] &&
+            code_source_is_structured(project->texts[i])) {
+            code_source *source = code_source_parse_context(
+                project->texts[i],
+                NULL,
+                code_catalog_context(catalog)
+            );
+            bool applied = snapshot && code_source_metadata_restore(source, snapshot);
+            if (applied) {
+                restored = code_source_metadata_export_source(source);
+            }
+            code_source_free(source);
+        }
+        apush(metadata, restored);
+        apush(owned, restored);
+    }
+    bool valid = code_catalog_restore_metadata(catalog, project->texts, metadata, count);
+    for (int i = 0; i < acount(owned); i++) {
+        free(owned[i]);
+    }
+    afree(owned);
+    afree(metadata);
+    if (!valid) {
+        code_catalog_free(catalog);
+        return NULL;
+    }
+    return catalog;
 }
 
 static loaded *entry(work *w, int asset)
@@ -179,8 +264,17 @@ static loaded *load(work *w, int asset)
         fail(w, "%s has no saved text to rewrite", a->name);
         return NULL;
     }
-    if (!read_asset(w->project, a->kind, text, l, why, sizeof why)) {
+    if (!read_asset(w->project, w->catalog, a->kind, text, l, why, sizeof why)) {
         fail(w, "%s does not load: %s", a->name, why);
+        return NULL;
+    }
+    if (!restore_loaded_source(
+            w->catalog,
+            l,
+            text,
+            w->project->metadata ? w->project->metadata[asset] : NULL
+        )) {
+        fail(w, "%s identity metadata does not restore", a->name);
         return NULL;
     }
     l->parsed = true;
@@ -220,9 +314,52 @@ static char *saved_source(const refactor_project *project, reference_asset_kind 
     return NULL;
 }
 
-/* Reconcile native edits with the original KDL source. */
+/* Rewritten callers resolve against the signatures that this plan changes. */
+static code_catalog *edited_catalog(const work *w)
+{
+    const code_source_context *context = code_catalog_context(w->catalog);
+    const behavior_asset **assets = NULL;
+    for (int kind = 0; kind < 2; kind++) {
+        const behavior_asset *const *items = kind ? context->events : context->libraries;
+        int count = kind ? context->event_count : context->library_count;
+        for (int i = 0; i < count; i++) {
+            const behavior_asset *asset = items[i];
+            for (int j = 0; j < acount(w->assets); j++) {
+                loaded *l = w->assets[j];
+                if (l->graphs && !strcmp(asset_name(w, l->asset), asset->name)) {
+                    asset = l->deleted ? NULL : l->graphs;
+                    break;
+                }
+            }
+            if (asset) {
+                apush(assets, asset);
+            }
+        }
+    }
+    code_catalog *catalog = code_catalog_from_assets(assets, acount(assets));
+    for (int i = 0; i < context->reference_count; i++) {
+        const code_reference *ref = &context->references[i];
+        const char *name = ref->name;
+        for (int j = 0; j < acount(w->assets); j++) {
+            const loaded *l = w->assets[j];
+            if (l->prototype && !strcmp(asset_name(w, l->asset), name)) {
+                name = l->deleted ? NULL : l->prototype->name;
+                break;
+            }
+        }
+        if (name) {
+            code_catalog_add_reference(catalog, ref->kind, name);
+        }
+    }
+    afree(assets);
+    return catalog;
+}
+
+/* Reconcile native edits with the original code source. */
 static char *saved_text(
     const refactor_project *project,
+    const code_catalog *original,
+    const code_catalog *updated,
     reference_asset_kind kind,
     loaded *l,
     char *why,
@@ -231,6 +368,24 @@ static char *saved_text(
 {
     if (kind == REFERENCE_ASSET_UI) {
         return xstrdup(l->rml);
+    }
+    if (l->graphs && code_source_is_structured(project->texts[l->asset])) {
+        code_source *source = project_source(
+            original,
+            project->texts[l->asset],
+            project->metadata ? project->metadata[l->asset] : NULL
+        );
+        source->context = *code_catalog_context(updated);
+        free(l->metadata);
+        l->metadata = NULL;
+        char *text = code_source_reconcile_with_metadata(source, l->graphs, &l->metadata, why, size);
+        if (text && l->metadata) {
+            char *bound = code_source_metadata_bind(l->metadata, text);
+            free(l->metadata);
+            l->metadata = bound;
+        }
+        code_source_free(source);
+        return text;
     }
     char *emitted = saved_source(project, kind, l);
     av_doc *doc = emitted ? av_doc_read(emitted, why, size) : NULL;
@@ -247,14 +402,46 @@ static char *file_text(work *w, loaded *l)
 {
     reference_asset_kind kind = asset_at(w, l->asset)->kind;
     char why[256] = "";
-    char *text = saved_text(w->project, kind, l, why, sizeof why);
-    loaded check = { 0 };
-    if (!text || !read_asset(w->project, kind, text, &check, why, sizeof why)) {
+    code_catalog *updated = edited_catalog(w);
+    char *text = saved_text(w->project, w->catalog, updated, kind, l, why, sizeof why);
+    loaded check = { .asset = l->asset };
+    if (!text || !read_asset(w->project, updated, kind, text, &check, why, sizeof why)) {
         fail(w, "the rewritten %s would not load: %s", asset_name(w, l->asset), why);
         free(text);
         text = NULL;
     }
+    if (text && !restore_loaded_source(updated, &check, text, l->metadata)) {
+        fail(w, "the rewritten %s identity metadata would not restore", asset_name(w, l->asset));
+        free(text);
+        text = NULL;
+    }
+    if (text && kind == REFERENCE_ASSET_SYSTEM) {
+        const ecs_query_expr *before = game_system_document_query(l->system);
+        const ecs_query_expr *after = game_system_document_query(check.system);
+        char *before_text = before ? game_query_save(
+                                         before,
+                                         component_named,
+                                         component_key,
+                                         (void *)w->project->registry
+                                     )
+                                   : NULL;
+        char *after_text = after ? game_query_save(
+                                       after,
+                                       component_named,
+                                       component_key,
+                                       (void *)w->project->registry
+                                   )
+                                 : NULL;
+        if (!same_text(before_text, after_text)) {
+            fail(w, "the rewritten %s would change its system query", asset_name(w, l->asset));
+            free(text);
+            text = NULL;
+        }
+        free(before_text);
+        free(after_text);
+    }
     release(&check);
+    code_catalog_free(updated);
     return text;
 }
 
@@ -290,7 +477,7 @@ static bool mesh_parts(const reference *r)
     return r->component && !strcmp(r->component, MESH_PARTS);
 }
 
-/* Parts KDL with each part's material `from` renamed; NULL without one. */
+/* Parts code with each part's material `from` renamed; NULL without one. */
 static char *parts_renamed(const char *parts, const char *from, const char *to, int *count)
 {
     av_doc *read = parts ? av_value_read(parts, NULL, 0) : NULL;
@@ -1142,17 +1329,58 @@ static void scan(av_value *value, const char *name, char *path, size_t length, i
 /* Values that still name an asset or event once the plan applies. */
 static void scan_mentions(const refactor_project *project, const char *name, refactor_plan *plan)
 {
-    for (int asset = 0; asset < reference_index_asset_count(project->index); asset++) {
-        const char *text = project->texts[asset];
+    const char **texts = NULL;
+    int count = reference_index_asset_count(project->index);
+    for (int asset = 0; asset < count; asset++) {
+        apush(texts, project->texts[asset]);
+    }
+    for (int i = 0; i < acount(plan->edits); i++) {
+        texts[plan->edits[i].asset] = plan->edits[i].text;
+    }
+    code_catalog *catalog = code_catalog_from_texts(texts, count);
+    for (int i = 0; i < count; i++) {
+        const reference_asset *asset = reference_index_asset_at(project->index, i);
+        if (asset->kind != REFERENCE_ASSET_PROTOTYPE || !texts[i]) {
+            continue;
+        }
+        char error[160];
+        av_doc *doc = av_doc_read(texts[i], error, sizeof error);
+        const av_value *root = doc ? av_doc_root(doc) : NULL;
+        const av_value *name = root && av_is_obj(root) ? av_obj_get(root, "name")
+                                                       : NULL;
+        if (name && av_is_str(name)) {
+            code_catalog_add_reference(catalog, CODE_REFERENCE_PROTOTYPE, av_get_str(name));
+        }
+        av_doc_free(doc);
+    }
+    for (int asset = 0; asset < count; asset++) {
+        const char *text = texts[asset];
         for (int i = 0; i < acount(plan->edits); i++) {
             text = plan->edits[i].asset == asset ? plan->edits[i].text : text;
         }
         char why[160];
         av_doc *doc = text ? asset_text_read(text, why, sizeof why) : NULL;
+        code_source *source = text && !doc && code_source_is_structured(text)
+                                ? code_source_parse_context(text, NULL, code_catalog_context(catalog))
+                                : NULL;
         char path[MENTION_PATH] = "";
-        scan(av_doc_root(doc), name, path, 0, asset, plan);
+        scan(
+            av_doc_root(
+                doc      ? doc
+                : source ? source->document
+                         : NULL
+            ),
+            name,
+            path,
+            0,
+            asset,
+            plan
+        );
         av_doc_free(doc);
+        code_source_free(source);
     }
+    code_catalog_free(catalog);
+    afree(texts);
 }
 
 /* An edit per asset the plan changes; one whose text and name stay, as an
@@ -1168,16 +1396,20 @@ static bool finish(work *w, refactor_plan *plan)
         }
         if (text && !l->name && same_text(text, w->project->texts[l->asset])) {
             free(text);
+            free(l->metadata);
+            l->metadata = NULL;
             continue;
         }
         apush(
             plan->edits,
             ((refactor_edit){ .asset = l->asset,
                               .text = text,
+                              .metadata = l->metadata,
                               .name = l->name,
                               .references = l->references })
         );
         l->name = NULL;
+        l->metadata = NULL;
         l->references = NULL;
     }
     qsort(plan->edits, (size_t)acount(plan->edits), sizeof *plan->edits, edit_order);
@@ -1189,10 +1421,12 @@ static void work_free(work *w)
     for (int i = 0; i < acount(w->assets); i++) {
         release(w->assets[i]);
         free(w->assets[i]->name);
+        free(w->assets[i]->metadata);
         afree(w->assets[i]->references);
         free(w->assets[i]);
     }
     afree(w->assets);
+    code_catalog_free(w->catalog);
 }
 
 /* The name an asset or event rename or delete leaves behind, for mentions. */
@@ -1232,8 +1466,16 @@ int refactor_rename(
 )
 {
     *plan = (refactor_plan){ 0 };
-    work w = { project, symbol, NULL, error, error_size };
+    work w = { .project = project,
+               .symbol = symbol,
+               .error = error,
+               .error_size = error_size,
+               .catalog = project_catalog(project) };
     error[0] = '\0';
+    if (!w.catalog) {
+        snprintf(error, error_size, "Project library identity metadata does not restore");
+        return -1;
+    }
     return conclude(&w, valid_name(&w, name) && rename_symbol(&w, symbol, name), plan);
 }
 
@@ -1362,8 +1604,16 @@ int refactor_delete(
 )
 {
     *plan = (refactor_plan){ 0 };
-    work w = { project, symbol, NULL, error, error_size };
+    work w = { .project = project,
+               .symbol = symbol,
+               .error = error,
+               .error_size = error_size,
+               .catalog = project_catalog(project) };
     error[0] = '\0';
+    if (!w.catalog) {
+        snprintf(error, error_size, "Project library identity metadata does not restore");
+        return -1;
+    }
     const reference **blockers = NULL;
     refactor_blockers(project->index, symbol, &blockers);
     bool ok = !acount(blockers) || force || refuse(&w, blockers);
@@ -1401,6 +1651,7 @@ void refactor_plan_free(refactor_plan *plan)
 {
     for (int i = 0; i < acount(plan->edits); i++) {
         free(plan->edits[i].text);
+        free(plan->edits[i].metadata);
         free(plan->edits[i].name);
         afree(plan->edits[i].references);
     }

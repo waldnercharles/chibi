@@ -365,6 +365,9 @@ static bool document_cases(const char *only, bool run)
 {
     bool matched = false;
     STUDIO_CASE("graph", studio_documents_graph_checks);
+    if (!run || only) {
+        STUDIO_CASE("expression-geometry", studio_documents_expression_geometry_checks);
+    }
     STUDIO_CASE("tabs", test_ui_document_tabs);
     STUDIO_CASE("new-assets", test_studio_new_assets);
     STUDIO_CASE("models", test_studio_models);

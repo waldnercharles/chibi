@@ -177,7 +177,7 @@ void test_shader_image_cpu()
 {
     sampling();
     authoring();
-    puts("shader image CPU PASS: color space, straight alpha, pixel centers, wrap/filter edges, missing image diagnostics and owned KDL/clipboard keys");
+    puts("shader image CPU PASS: color space, straight alpha, pixel centers, wrap/filter edges, missing image diagnostics and owned code/clipboard keys");
 }
 
 static void gpu_variant(shader_image_color_space color_space, shader_image_filter filter, shader_image_wrap wrap)

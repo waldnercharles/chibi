@@ -17,6 +17,8 @@ const graph_local *graph_local_by_id(const graph *g, uint64_t id);
 const graph_local *graph_output_local(const graph *g, const node *n, int pin);
 const graph_local *graph_input_local(const graph *g, const node *n, int pin);
 bool graph_edge_is_local(const graph *g, const edge *e);
+/* Declares a proven producer before consumers are wired. */
+uint64_t graph_declare_local(graph *g, node *source, int pin, const char *name);
 /* Names every existing consumer atomically. Refuses dormant bindings. */
 uint64_t graph_create_local(graph *g, node *source, int pin, const char *name);
 /* Names must stay unique within the graph. */

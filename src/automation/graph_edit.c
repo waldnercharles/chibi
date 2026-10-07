@@ -1,5 +1,6 @@
 #include "automation/graph_edit.h"
 
+#include "assets/code_catalog.h"
 #include "assets/new_asset.h"
 #include "graph/authoring/expand.h"
 #include "graph/authoring/layout.h"
@@ -67,6 +68,8 @@ typedef struct
 typedef struct
 {
     behavior_asset *asset;
+    code_catalog *catalog;
+    code_source *source;
     graph *graph;
     yyjson_mut_doc *doc;
     yyjson_mut_val *result;
@@ -115,6 +118,8 @@ static void free_edit_context(edit_context *ctx)
     afree(ctx->graphs);
     afree(ctx->variables);
     afree(ctx->layout_graphs);
+    code_source_free(ctx->source);
+    code_catalog_free(ctx->catalog);
     behavior_asset_free(ctx->asset);
     ctx->asset = NULL;
 }
@@ -979,9 +984,17 @@ static int operation_set_expression(edit_context *ctx, yyjson_val *op)
         set_error(ctx, "set_expression requires a Behavior Expression node and source text");
         return -1;
     }
+    char *resolved = code_source_resolve_expression(ctx->source, ctx->asset, n, source, ctx->error, ctx->error_size);
+    if (!resolved) {
+        return -1;
+    }
     char **lost = behavior_expression_fed_inputs(ctx->graph, n);
     behavior_expression_error error = { 0 };
-    int result = behavior_expression_set(ctx->asset, n, source, &error);
+    int result = behavior_expression_set(ctx->asset, n, resolved, &error);
+    if (!result) {
+        result = behavior_expression_refresh_mode(ctx->asset, n, GRAPH_EXPRESSION_NONE, &error);
+    }
+    free(resolved);
     if (result != 0) {
         set_error(ctx, "%s", error.message[0] ? error.message : "could not set Behavior Expression source");
     }
@@ -1028,7 +1041,8 @@ static int refresh_expression(edit_context *ctx, node *n)
         return 0;
     }
     behavior_expression_error error = { 0 };
-    if (behavior_expression_refresh(ctx->asset, n, &error) != 0) {
+    if (behavior_expression_refresh_mode(ctx->asset, n, GRAPH_EXPRESSION_NONE, &error) !=
+        0) {
         set_error(ctx, "%s", error.message[0] ? error.message : "could not refresh behavior expression");
         return -1;
     }
@@ -1207,6 +1221,9 @@ static int operation_connect(edit_context *ctx, yyjson_val *op, bool disconnect)
             return -1;
         }
         if (refresh_expression_connection(ctx, from, to) != 0) {
+            char reason[256];
+            snprintf(reason, sizeof reason, "%s", ctx->error ? ctx->error : "invalid expression");
+            set_error(ctx, "data connection was rejected: %s; %s", wire, reason);
             return -1;
         }
         if (!disconnect && !wire_present(ctx->graph, from, from_id, to, to_id)) {
@@ -2424,7 +2441,8 @@ static int operation_pin(edit_context *ctx, yyjson_val *op, const char *operatio
                    : -1;
         if (!result && n->desc == &NODE_BehaviorExpression) {
             behavior_expression_error error = { 0 };
-            if (behavior_expression_refresh(ctx->asset, n, &error) != 0) {
+            if (behavior_expression_refresh_mode(ctx->asset, n, GRAPH_EXPRESSION_NONE, &error) !=
+                0) {
                 set_error(ctx, "%s", error.message[0] ? error.message : "could not refresh behavior expression");
                 result = -1;
             }
@@ -2856,8 +2874,19 @@ static int apply_metadata(edit_context *ctx, yyjson_val *request)
     return 0;
 }
 
+/* Graph edit transactions retain the complete native model until the IO owner
+ * emits executable source and its independent presentation metadata. */
+static char *edit_model_text(const behavior_asset *asset)
+{
+    av_doc *document = av_doc_new();
+    char *text = av_json_write(behavior_asset_to_value(document, asset));
+    av_doc_free(document);
+    return text;
+}
+
 int automation_graph_edit(
     const char *source_text,
+    const char *source_metadata,
     const char *kind,
     const char *name,
     const behavior_asset *const *libraries,
@@ -2899,9 +2928,22 @@ int automation_graph_edit(
         }
     }
     if (source_text) {
-        ctx.asset = behavior_asset_load(source_text);
+        ctx.catalog = code_catalog_from_assets(libraries, library_count);
+        ctx.asset = code_catalog_load_behavior(ctx.catalog, source_text, error, error_size);
+        if (ctx.asset && code_source_is_structured(source_text)) {
+            ctx.source = code_source_parse_context(source_text, NULL, code_catalog_context(ctx.catalog));
+            if (source_metadata) {
+                code_source_metadata_restore(ctx.source, source_metadata);
+                behavior_asset_free(ctx.asset);
+                ctx.asset = code_source_build_behavior(ctx.source);
+            }
+        }
         if (!ctx.asset) {
-            return fail_validation(&ctx, "could not load asset: %s", graph_last_error());
+            char message[256];
+            snprintf(message, sizeof message, "%s", error);
+            int status = fail_validation(&ctx, "could not load asset: %s", message);
+            free_edit_context(&ctx);
+            return status;
         }
         if (kind && ctx.asset->domain != requested_domain) {
             const char *actual = behavior_domain_name(ctx.asset->domain);
@@ -2918,6 +2960,7 @@ int automation_graph_edit(
         if (!kind) {
             return fail_request(&ctx, "asset kind is required when creating an asset");
         }
+        ctx.catalog = code_catalog_from_assets(libraries, library_count);
         ctx.asset = new_asset_graph(requested_domain, name && name[0] ? name : "Untitled");
         /* A material's, shape's or field's output node, its only one. */
         node **nodes = ctx.asset->graph->nodes;
@@ -2980,17 +3023,21 @@ int automation_graph_edit(
     for (int i = 0; i < acount(ctx.layout_graphs); i++) {
         graph_layout(ctx.layout_graphs[i]);
     }
-    /* Publish only what loads back, in the form --format writes. */
-    char *saved = behavior_asset_save(ctx.asset);
-    behavior_asset *reloaded = saved ? behavior_asset_load(saved) : NULL;
+    /* Validate the complete transaction before the IO owner persists it. */
+    char *saved = edit_model_text(ctx.asset);
+    behavior_asset *reloaded = saved
+                                 ? code_catalog_load_behavior(ctx.catalog, saved, error, error_size)
+                                 : NULL;
     free(saved);
     if (!reloaded) {
-        set_error(&ctx, "edited asset does not load back: %s", graph_last_error());
+        char detail[256];
+        snprintf(detail, sizeof detail, "%s", error && error[0] ? error : graph_last_error());
+        set_error(&ctx, "edited asset does not load back: %s", detail);
         add_failure(&ctx);
         free_edit_context(&ctx);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    char *serialized = behavior_asset_save(reloaded);
+    char *serialized = edit_model_text(reloaded);
     behavior_asset_free(reloaded);
     assert(serialized);
     yyjson_mut_obj_add_uint(doc, result, "graph_id", ctx.graph->graph_id);

@@ -1,9 +1,12 @@
+#include "assets/code_source.h"
 #include "assets/project.h"
 #include "automation/controller.h"
 #include "automation/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/runtime/eval.h"
+#include "graph/runtime/instance.h"
 #include "suite_internal.h"
 #include "support/text_file.h"
 #include "third_party/yyjson/yyjson.h"
@@ -26,18 +29,30 @@ static void automatic_layout_on_disk(const char *edited)
     char content[256], behaviors[256], path[256];
     snprintf(content, sizeof content, "%s/content", root);
     snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
-    snprintf(path, sizeof path, "%s/content/behaviors/GraphEditBehavior.kdl", root);
+    snprintf(path, sizeof path, "%s/content/behaviors/GraphEditBehavior.code", root);
     assert(!mkdir(content, 0700) && !mkdir(behaviors, 0700));
     FILE *file = fopen(path, "wb");
     assert(file && fputs(edited, file) >= 0 && !fclose(file));
     int formatted = chibi_automation_format_assets(root, false);
     char *disk = text_file_read_disk(path);
-    bool canonical = formatted == 1 && disk && !strstr(disk, "placed=") &&
-                     !strstr(disk, " x=") && !strstr(disk, " y=") &&
+    bool canonical = formatted >= 0 && formatted <= 1 && disk &&
+                     code_source_is_structured(disk) && !strstr(disk, "@node") &&
+                     !strstr(disk, "@authoring") && !strstr(disk, "placed =") &&
+                     !strstr(disk, " x =") && !strstr(disk, " y =") &&
                      chibi_automation_format_assets(root, true) == 0;
     test_check(canonical, "MCP automatic graph layout formats to stable disk text without positions");
+    behavior_asset *original = behavior_asset_load(edited);
+    code_source *reopened = disk ? code_source_parse(disk) : NULL;
+    test_check(reopened && reopened->asset, "MCP graph executable reopens without optional layout metadata");
+    bool restored = reopened && code_source_metadata_load(reopened, path);
+    test_check(restored && original && behavior_asset_equal(original, reopened->asset), "MCP graph layout and complete identities survive separate disk metadata");
+    code_source_free(reopened);
+    behavior_asset_free(original);
     free(disk);
-    assert(!unlink(path) && !rmdir(behaviors) && !rmdir(content) && !rmdir(root));
+    assert(!unlink(path));
+    snprintf(path, sizeof path, "%s/content/behaviors/GraphEditBehavior.code.meta", root);
+    unlink(path);
+    assert(!rmdir(behaviors) && !rmdir(content) && !rmdir(root));
 }
 
 static int edit_request(
@@ -61,6 +76,7 @@ static int edit_request(
     edit_error[0] = '\0';
     int status = automation_graph_edit(
         source,
+        NULL,
         kind,
         name,
         libraries,
@@ -161,6 +177,95 @@ static int edit_behavior(const char *source, const char *request, char **edited)
     return edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, request, edited, NULL);
 }
 
+/* Observe executable results independently of generated capture names. */
+static bool numeric_result(behavior_asset *asset, node *n, double expected)
+{
+    if (!asset || !n) {
+        return false;
+    }
+    int output = find_pin(n, "Result", true);
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    if (output < 0 || !instance) {
+        behavior_instance_destroy(instance);
+        return false;
+    }
+    arena memory = { 0 };
+    eval_context context;
+    eval_context_init(&context);
+    context.instance = instance;
+    pin_value value = { 0 };
+    bool result = !graph_eval_output(asset->graph, n, output, &memory, &value, &context) &&
+                  ((value.type == PIN_F64 && value.d == expected) ||
+                   (value.type == PIN_F32 && value.f == expected));
+    eval_context_free(&context);
+    arena_free(&memory);
+    behavior_instance_destroy(instance);
+    return result;
+}
+
+/* Find an expression's connected data capture without relying on translated names. */
+static const edge *expression_wire(const graph *g, const node *n)
+{
+    for (int i = 0; n && i < n->input_count; i++) {
+        if (n->input_pins[i].kind == PIN_DATA) {
+            const edge *wire = edge_into(g, n, n->input_pins[i].name);
+            if (wire) {
+                return wire;
+            }
+        }
+    }
+    return NULL;
+}
+
+static bool sequence_result(behavior_asset *asset, int expected)
+{
+    if (!asset) {
+        return false;
+    }
+    behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
+    if (!instance) {
+        return false;
+    }
+    flow_error error = { 0 };
+    flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, &error);
+    pin_value value = { 0 };
+    bool result = run && flow_run_status(run) == FLOW_COMPLETED &&
+                  !behavior_instance_get_variable(instance, asset->variables[0].id, &value) &&
+                  value.type == PIN_I32 && value.i == expected;
+    behavior_instance_destroy(instance);
+    return result;
+}
+
+/* Socket order determines actual Sequence branch execution, regardless of labels. */
+static void sequence_order(void)
+{
+    const char
+        *source = "behavior SequenceOrder { state order:int=0; on Tick() { "
+                  "sequence { branch { order=1; } branch { order=2; } } } }";
+    behavior_asset *original = behavior_asset_load(source);
+    node *sequence = original ? find_node_type(original->graph, "Sequence") : NULL;
+    char request[256];
+    snprintf(
+        request,
+        sizeof request,
+        "{\"operations\":[{\"op\":\"set_pin\",\"node\":%llu,"
+        "\"side\":\"output\",\"pin\":\"Then0\",\"order\":1}]}",
+        (unsigned long long)(sequence ? sequence->id : 0)
+    );
+    char *edited = NULL;
+    int status = edit_behavior(source, request, &edited);
+    behavior_asset *changed = edited ? behavior_asset_load(edited) : NULL;
+    test_check(
+        status == CHIBI_AUTOMATION_OK && sequence_result(original, 2) &&
+            sequence_result(changed, 1),
+        "MCP reordering connected Sequence outputs preserves their branches "
+        "and changes execution order"
+    );
+    behavior_asset_free(changed);
+    behavior_asset_free(original);
+    free(edited);
+}
+
 /* Two expressions with one source are two nodes with two bodies. */
 static void duplicate_expressions(const char *source)
 {
@@ -189,20 +294,27 @@ static void duplicate_expressions(const char *source)
                                 : NULL;
     test_check(
         status == CHIBI_AUTOMATION_OK && first_body && second_body &&
-            first_body != second_body && !strcmp(first_body->math_expression, "x + 1") &&
-            !strcmp(second_body->math_expression, "x + 1") &&
-            edge_into(loaded->graph, second, "x") &&
-            !edge_into(loaded->graph, first, "x"),
+            first_body != second_body && expression_wire(loaded->graph, second) &&
+            !expression_wire(loaded->graph, first) &&
+            numeric_result(loaded, first, 1) && numeric_result(loaded, second, 3),
         "MCP graph edits add two Behavior Expressions with the same source"
     );
-    char request[256];
-    snprintf(
-        request,
-        sizeof request,
-        "{\"operations\":[{\"op\":\"set_expression\",\"node\":%llu,\"source\":"
-        "\"x + 3\"}]}",
-        (unsigned long long)(second ? second->id : 0)
-    );
+    code_source *parsed = edited ? code_source_parse(edited) : NULL;
+    char *readable = second ? code_source_expression(parsed, loaded, second) : NULL;
+    /* Edit the public expression returned by the shared code/graph service. */
+    char *last = readable ? strrchr(readable, '1') : NULL;
+    if (last) {
+        *last = '3';
+    }
+    yyjson_mut_doc *request_doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *request_root = yyjson_mut_obj(request_doc);
+    yyjson_mut_doc_set_root(request_doc, request_root);
+    yyjson_mut_val *operations = yyjson_mut_obj_add_arr(request_doc, request_root, "operations");
+    yyjson_mut_val *op = yyjson_mut_arr_add_obj(request_doc, operations);
+    yyjson_mut_obj_add_str(request_doc, op, "op", "set_expression");
+    yyjson_mut_obj_add_uint(request_doc, op, "node", second ? second->id : 0);
+    yyjson_mut_obj_add_str(request_doc, op, "source", readable ? readable : "");
+    char *request = yyjson_mut_write(request_doc, 0, NULL);
     char *changed = NULL;
     status = edited ? edit_behavior(edited, request, &changed)
                     : CHIBI_AUTOMATION_INVALID_REQUEST;
@@ -212,12 +324,16 @@ static void duplicate_expressions(const char *source)
                               : NULL;
     test_check(
         status == CHIBI_AUTOMATION_OK && kept && edited_call &&
-            !strcmp(behavior_asset_find_graph(again, kept->reference_id)->math_expression, "x + 1") &&
-            !strcmp(behavior_asset_find_graph(again, edited_call->reference_id)->math_expression, "x + 3") &&
-            edge_into(again->graph, edited_call, "x"),
+            kept->id == first->id && edited_call->id == second->id &&
+            expression_wire(again->graph, edited_call) &&
+            numeric_result(again, kept, 1) && numeric_result(again, edited_call, 5),
         "editing one of two same-source Behavior Expressions leaves the other "
         "alone"
     );
+    free(request);
+    yyjson_mut_doc_free(request_doc);
+    free(readable);
+    code_source_free(parsed);
     behavior_asset_free(again);
     behavior_asset_free(loaded);
     free(changed);
@@ -228,6 +344,8 @@ static void duplicate_expressions(const char *source)
  * pins; it is never dropped. */
 static void bool_wires(const char *source)
 {
+    char *original = strdup(source);
+    assert(original);
     char *edited = NULL;
     int status = edit_behavior(
         source,
@@ -262,10 +380,12 @@ static void bool_wires(const char *source)
     loaded = edited ? behavior_asset_load(edited) : NULL;
     node *scaled = loaded ? find_node_type(loaded->graph, "Behavior Expression") : NULL;
     node *flag = loaded ? find_node_type(loaded->graph, "Equal") : NULL;
-    wire = scaled ? edge_into(loaded->graph, scaled, "x") : NULL;
+    wire = scaled ? expression_wire(loaded->graph, scaled) : NULL;
     test_check(
         status == CHIBI_AUTOMATION_OK && wire && flag && wire->from_id == flag->id &&
-            body_has_conversion(loaded, scaled, &NODE_To_Real),
+            (wire->conversion == &NODE_To_Real ||
+             body_has_conversion(loaded, scaled, &NODE_To_Real)) &&
+            numeric_result(loaded, scaled, 2),
         "MCP keeps a bool wired into an expression that reads it as a number"
     );
     behavior_asset_free(loaded);
@@ -298,11 +418,13 @@ static void bool_wires(const char *source)
         &edited
     );
     test_check(
-        status != CHIBI_AUTOMATION_OK && !edited && strstr(edit_error, "dropped") &&
+        status != CHIBI_AUTOMATION_OK && !edited && !strcmp(source, original) &&
+            strstr(edit_error, "rejected") &&
             strstr(edit_error, "String.Value (const char *)") &&
             strstr(edit_error, "Behavior Expression.x"),
-        "MCP reports a wire an expression drops instead of losing it silently"
+        "MCP rejects invalid expression operands atomically and names both pins"
     );
+    free(original);
 }
 
 static void variable_node_inputs(const char *source)
@@ -416,18 +538,6 @@ static bool edit_published(yyjson_doc *document)
            yyjson_get_bool(yyjson_obj_get(yyjson_obj_get(response, "result"), "published"));
 }
 
-static size_t occurrences(const char *text, const char *needle)
-{
-    size_t count = 0;
-    for (const char *at = text; text && (at = strstr(at, needle));
-         at += strlen(needle)) {
-        count++;
-    }
-    return count;
-}
-
-/* Editing a published asset to hold a second expression of one source keeps
- * both, and a failed edit still says why. */
 static void published_duplicate_expressions(void)
 {
     char root[] = "/tmp/chibi-graph-edit-XXXXXX";
@@ -436,7 +546,12 @@ static void published_duplicate_expressions(void)
     snprintf(path, sizeof path, "%s/project.kdl", root);
     FILE *file = fopen(path, "wb");
     assert(file);
-    fprintf(file, "version %d\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
+    fprintf(
+        file,
+        "version %d\n"
+        "content \"content\"\n",
+        CHIBI_PROJECT_VERSION
+    );
     assert(!fclose(file));
     snprintf(path, sizeof path, "%s/content", root);
     assert(!mkdir(path, 0755));
@@ -459,15 +574,46 @@ static void published_duplicate_expressions(void)
         yyjson_get_str(yyjson_obj_get(yyjson_obj_get(yyjson_doc_get_root(first), "result"), "hash"))
     );
     yyjson_doc *second = edit_project(root, again);
-    snprintf(path, sizeof path, "%s/content/behaviors/Gates.kdl", root);
+    snprintf(path, sizeof path, "%s/content/behaviors/Gates.code", root);
     char *text = text_file_read_disk(path);
-    test_check(
-        edit_published(first) && edit_published(second) &&
-            occurrences(text, "math_expression=\"x + 1\"") == 2 &&
-            occurrences(text, "reference_id") == 2,
-        "MCP publishes an asset edited to hold two Behavior Expressions with "
-        "one source"
+    behavior_asset *published = text ? behavior_asset_load(text) : NULL;
+    int expressions = 0;
+    for (int i = 0; published && i < acount(published->graph->nodes); i++) {
+        node *n = published->graph->nodes[i];
+        graph *function = behavior_asset_find_graph(published, n->reference_id);
+        if (!strcmp(n->desc->name, "Behavior Expression") && function &&
+            function->math_expression && numeric_result(published, n, 1)) {
+            expressions++;
+        }
+    }
+    test_check(edit_published(first) && edit_published(second) && expressions == 2, "MCP publishes an asset edited to hold two Behavior Expressions with one source");
+    char inspect_request[512];
+    snprintf(
+        inspect_request,
+        sizeof inspect_request,
+        "{\"contract\":1,\"operation\":\"inspect_graph\",\"project_root\":\"%"
+        "s\","
+        "\"kind\":\"behavior\",\"name\":\"Gates\",\"graph_id\":0}",
+        root
     );
+    int inspect_exit = 0;
+    char *inspection = chibi_automation_handle(inspect_request, ".", &inspect_exit);
+    yyjson_doc *inspected = yyjson_read(inspection, strlen(inspection), 0);
+    yyjson_val *inspected_result = yyjson_obj_get(yyjson_doc_get_root(inspected), "result");
+    yyjson_val *inspected_graph = yyjson_obj_get(inspected_result, "graph");
+    yyjson_val *nodes = yyjson_obj_get(inspected_graph, "nodes");
+    size_t index, maximum;
+    yyjson_val *item;
+    int readable = 0;
+    yyjson_arr_foreach(nodes, index, maximum, item)
+    {
+        const char *expression = yyjson_get_str(yyjson_obj_get(item, "expression"));
+        readable += expression && expression[0] && !strstr(expression, "_code_input_");
+    }
+    test_check(!inspect_exit && readable == 2, "MCP graph inspection exposes readable expressions for subsequent source edits");
+    yyjson_doc_free(inspected);
+    free(inspection);
+    behavior_asset_free(published);
     free(text);
 
     char stale[256];
@@ -522,6 +668,18 @@ static void diagnostics_outlive_validation(const char *source)
     behavior_asset_free(unrelated);
 }
 
+static int asset_node_count(const behavior_asset *asset, const char *type)
+{
+    int count = 0;
+    for (int i = 0; asset && i < acount(asset->graphs); i++) {
+        graph *g = asset->graphs[i];
+        for (int j = 0; j < acount(g->nodes); j++) {
+            count += !strcmp(g->nodes[j]->desc->name, type);
+        }
+    }
+    return count;
+}
+
 void test_automation_graph_edit(void)
 {
     behavior_asset *empty = behavior_asset_new("GraphEditBehavior");
@@ -540,10 +698,12 @@ void test_automation_graph_edit(void)
         &edited,
         &response
     );
-    bool behavior_ok = status == CHIBI_AUTOMATION_OK && edited &&
-                       strstr(edited, "type \"Integer\"") &&
+    behavior_asset *added = edited ? behavior_asset_load(edited) : NULL;
+    bool behavior_ok = status == CHIBI_AUTOMATION_OK && added &&
+                       asset_node_count(added, "Integer") == 1 &&
                        yyjson_mut_obj_get(yyjson_mut_doc_get_root(response), "nodes");
     test_check(behavior_ok, "MCP graph edits add typed behavior nodes and return refs");
+    behavior_asset_free(added);
     yyjson_mut_doc_free(response);
     free(edited);
 
@@ -583,26 +743,30 @@ void test_automation_graph_edit(void)
         snprintf(request, sizeof request, "{\"operations\":[%s,%s]}", base, actions[i]);
         statuses[i] = edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, request, &results[i], NULL);
     }
-    int multiplies = 0;
-    for (const char *at = results[1]; at && (at = strstr(at, "type \"Multiply\""));
-         at++) {
-        multiplies++;
+    behavior_asset *models[6] = { 0 };
+    for (int i = 0; i < 6; i++) {
+        models[i] = results[i] ? behavior_asset_load(results[i]) : NULL;
+    }
+    bool actions_ok = true;
+    for (int i = 0; i < 6; i++) {
+        actions_ok &= statuses[i] == CHIBI_AUTOMATION_OK && models[i];
     }
     test_check(
-        statuses[0] == CHIBI_AUTOMATION_OK && strstr(results[0], "name \"Double\"") &&
-            strstr(results[0], "type \"Call Pure Function\"") &&
-            statuses[1] == CHIBI_AUTOMATION_OK && multiplies == 2 &&
-            !strstr(results[1], "type \"Call Pure Function\"") &&
-            statuses[2] == CHIBI_AUTOMATION_OK &&
-            strstr(results[2], "type \"Behavior Expression\"") &&
-            statuses[3] == CHIBI_AUTOMATION_OK &&
-            strstr(results[3], "name \"Condition\"") &&
-            strstr(results[3], "type \"Get Variable\"") &&
-            statuses[4] == CHIBI_AUTOMATION_OK && strstr(results[4], "(array)locals") &&
-            statuses[5] == CHIBI_AUTOMATION_OK && !strstr(results[5], "(array)locals"),
+        actions_ok && behavior_asset_find_graph_by_name(models[0], "Double") &&
+            asset_node_count(models[0], "Call Pure Function") == 1 &&
+            asset_node_count(models[1], "Multiply") == 2 &&
+            asset_node_count(models[1], "Call Pure Function") == 0 &&
+            asset_node_count(models[2], "Behavior Expression") == 1 &&
+            behavior_asset_find_variable_by_name(models[3], "Condition") &&
+            asset_node_count(models[3], "Get Variable") > 0 &&
+            acount(models[4]->graph->locals) > 0 &&
+            acount(models[5]->graph->locals) == 0,
         "MCP graph edits collapse, expand, convert, promote and name values "
         "like Studio"
     );
+    for (int i = 0; i < 6; i++) {
+        behavior_asset_free(models[i]);
+    }
     for (int i = 0; i < 6; i++) {
         free(results[i]);
     }
@@ -650,7 +814,7 @@ void test_automation_graph_edit(void)
     free(edited);
 
     /* set_pin.order moves a signature pin, and each call's pins follow with
-     * their wires; a Sequence's outputs move as any node's pins do. */
+     * their wires. Connected Sequence ordering is verified separately at runtime. */
     static const char reorder
         [] = "{\"op\":\"add_graph\",\"name\":\"Math\",\"kind\":\"function\","
              "\"pure\":true,\"ref\":\"math\"},"
@@ -677,14 +841,12 @@ void test_automation_graph_edit(void)
     status = edit_request(source, "behavior", "GraphEditBehavior", NULL, 0, request, &edited, NULL);
     behavior_asset *moved = edited ? behavior_asset_load(edited) : NULL;
     call = moved ? find_node_type(moved->graph, "Call Pure Function") : NULL;
-    node *sequence = moved ? find_node_type(moved->graph, "Sequence") : NULL;
     node *two = NULL;
     int two_pin = -1;
     test_check(
         status == CHIBI_AUTOMATION_OK && call && find_pin(call, "Scale", false) == 0 &&
             graph_input_source(moved->graph, call, 1, &two, &two_pin) &&
-            !strcmp(two->desc->name, "Real") && sequence &&
-            find_pin(sequence, "Then0", true) == 1,
+            !strcmp(two->desc->name, "Real"),
         "MCP set_pin.order reorders a signature and its calls keep their wires"
     );
     behavior_asset_free(moved);
@@ -1263,6 +1425,7 @@ void test_automation_graph_edit(void)
     test_check(rollback_ok, "MCP graph edit batches reject invalid operations atomically");
     yyjson_mut_doc_free(response);
 
+    sequence_order();
     duplicate_expressions(source);
     bool_wires(source);
     variable_node_inputs(source);

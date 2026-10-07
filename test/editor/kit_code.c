@@ -1,15 +1,22 @@
 /* kit_code without a GPU: typing with the standard keys, a table of Vim
  * commands, text_edits and their undo, :w, chords for the host, completions,
  * and renders through a renderer that only counts what it is handed. */
+#include "assets/code_source.h"
+#include "editor/documents/asset_code.h"
 #include "editor/ui/kit.h"
+#include "editor/workspace/editor_internal.h"
+#include "graph/document/serialize.h"
+#include "support/array.h"
 #include "support/text_edit.h"
 #include "test/suite_internal.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 typedef struct counts
 {
@@ -230,6 +237,69 @@ static bool vim_cases(fixture *f)
             ok = false;
         }
     }
+    return ok;
+}
+
+static bool indentation(fixture *f)
+{
+    bool ok = true;
+    static const struct
+    {
+        const char *source;
+        int cursor;
+        const char *expected;
+    } cases[] = {
+        { "    elapsed := 0", 16, "    elapsed := 0\n    " },
+        { "    on Begin {", 14, "    on Begin {\n        " },
+        { "    {}", 5, "    {\n        \n    }" },
+        { "\ton Begin {", 11, "\ton Begin {\n\t\t" },
+        { "    text := \"{\"", 15, "    text := \"{\"\n    " },
+        { "    on Begin { // note", 22, "    on Begin { // note\n        " },
+        { "    // {", 8, "    // {\n    " },
+        { "    /* {", 8, "    /* {\n    " },
+        { "    a\n    b", 11, "    a\n    b\n    " },
+    };
+    for (int vim = 0; vim < 2; vim++) {
+        f->desc.vim = vim;
+        for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+            kit_code_set_text(f->e, cases[i].source);
+            frame(f);
+            if (vim) {
+                press(f, RML_KEY_ESCAPE, 0);
+                type(f, "i");
+            }
+            kit_code_set_cursor(f->e, cases[i].cursor);
+            press(f, RML_KEY_RETURN, 0);
+            frame(f);
+            ok &= check(!strcmp(text(f), cases[i].expected), "newline inherits indentation and handles code braces");
+            kit_code_undo(f->e);
+            ok &= check(!strcmp(text(f), cases[i].source), "newline and indentation undo together");
+            kit_code_redo(f->e);
+            ok &= check(!strcmp(text(f), cases[i].expected), "redo restores the entire indented newline");
+        }
+    }
+    f->desc.vim = false;
+    kit_code_set_text(f->e, "    remove");
+    frame(f);
+    kit_code_select(f->e, 4, 10);
+    press(f, RML_KEY_RETURN, 0);
+    frame(f);
+    ok &= check(!strcmp(text(f), "    \n    "), "indented newline replaces the selection");
+    kit_code_undo(f->e);
+    ok &= check(!strcmp(text(f), "    remove"), "selection replacement and indentation share one undo");
+    f->desc.vim = true;
+    kit_code_set_text(f->e, "    on Begin {}");
+    frame(f);
+    press(f, RML_KEY_ESCAPE, 0);
+    keys(f, "oelapsed := 0<Esc>");
+    frame(f);
+    ok &= check(!strcmp(text(f), "    on Begin {}\n    elapsed := 0"), "Vim o inherits indentation");
+    keys(f, "u");
+    frame(f);
+    ok &= check(!strcmp(text(f), "    on Begin {}"), "Vim open-line insertion undoes as one change");
+    keys(f, "Oelapsed := 0<Esc>");
+    frame(f);
+    ok &= check(!strcmp(text(f), "    elapsed := 0\n    on Begin {}"), "Vim O inherits indentation above");
     return ok;
 }
 
@@ -591,6 +661,14 @@ static bool host_keys(fixture *f)
     frame(f);
     ok &= check(f->events & KIT_CODE_REFERENCES, "Shift+F12 asks for the references");
     clear_events(f);
+    press(f, RML_KEY_F2, 0);
+    frame(f);
+    ok &= check(f->events & KIT_CODE_RENAME, "F2 requests semantic rename");
+    clear_events(f);
+    press(f, RML_KEY_H, RML_KM_SHIFT | RML_KM_ALT);
+    frame(f);
+    ok &= check(f->events & KIT_CODE_CALLS, "Shift+Alt+H requests callable hierarchy");
+    clear_events(f);
     press(f, RML_KEY_SPACE, RML_KM_CTRL);
     frame(f);
     ok &= check((f->events & KIT_CODE_SUGGEST) && !strcmp(text(f), "one two"), "Control+Space asks for completions");
@@ -767,6 +845,108 @@ static bool rendering(fixture *f)
     return ok;
 }
 
+static void source_frame(fixture *f, asset_code *code)
+{
+    kit_begin(f->k, &f->in);
+    kit_root(f->k, "app");
+    asset_code_draw(code, f->k, "code", &f->desc, false);
+    kit_style(f->k, "width", "480dp");
+    kit_style(f->k, "height", "240dp");
+    if (f->focus) {
+        kit_focus(f->k);
+        f->focus = false;
+    }
+    kit_end(f->k);
+    rml_context_update(f->context);
+    rml_context_render(f->context);
+    f->in.time += 1.0 / 60.0;
+}
+
+static bool source_typing_history(fixture *f)
+{
+    const char *source = "behavior Typing { on Tick() { "
+                         "destroy_entity(Entity: self); destroy_entity(Entity: "
+                         "self); } }";
+    char path[] = "/tmp/chibi-kit-source-history-XXXXXX", error[256];
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    FILE *file = fdopen(fd, "w");
+    assert(file && fputs(source, file) >= 0 && !fclose(file));
+    asset_code *code = asset_code_open(path, error, sizeof error);
+    assert(code && asset_code_source(code)->asset);
+    behavior_asset *authored = behavior_asset_clone(asset_code_source(code)->asset);
+    node *tracked = authored->graph->nodes[0];
+    uint64_t id = tracked->id;
+    tracked->x = 137;
+    tracked->placed = true;
+    tracked->breakpoint = true;
+    char *metadata = code_source_metadata_export(authored);
+    assert(asset_code_replace_with_metadata(code, source, source, metadata));
+    free(metadata);
+    editor *graph_editor = editor_new(behavior_asset_clone(authored));
+    graph_editor->arrange_pending = false;
+    asset_code_sync_graph(code, graph_editor, false);
+    kit_code_editor *previous = f->e;
+    f->e = asset_code_editor(code);
+    f->desc.vim = false;
+    f->focus = true;
+    for (int i = 0; i < 3; i++) {
+        source_frame(f, code);
+    }
+    kit_code_set_cursor(f->e, 0);
+    type(f, "// authored comment");
+    source_frame(f, code);
+    press(f, RML_KEY_RETURN, 0);
+    source_frame(f, code);
+    asset_code_time(code, 1);
+    asset_code_sync_graph(code, graph_editor, false);
+    bool ok = check(!asset_code_error(code)[0], "typing publishes a valid source edit");
+    av_value *checkpoint = asset_code_capture(code);
+    const av_value *history = av_obj_get(checkpoint, "history");
+    int step = av_get_int(av_obj_get(checkpoint, "step"));
+    const av_value *snapshot = av_arr_get(history, (size_t)step);
+    const char *edited = av_get_str(av_obj_get(snapshot, "text"));
+    code_source *independent = code_source_parse(edited);
+    ok &= check(
+        code_source_metadata_restore(independent, av_get_str(av_obj_get(snapshot, "metadata"))),
+        "typed history metadata anchors belong to that exact source"
+    );
+    ok &= check(behavior_asset_equal(independent->asset, asset_code_source(code)->asset), "typed history reconstructs exact native identities and presentation independently");
+    code_source_free(independent);
+    av_value_free(checkpoint);
+    for (int i = 0; i < 2; i++) {
+        press(f, RML_KEY_Z, RML_KM_CTRL);
+        source_frame(f, code);
+    }
+    ok &= check(!strcmp(asset_code_text(code), source), "source undo restores the original executable text");
+    const node *restored = graph_node_by_id(asset_code_source(code)->asset->graph, id);
+    ok &= check(
+        restored && restored->x == 137 && restored->placed && restored->breakpoint,
+        "source undo preserves node identity, layout and breakpoint"
+    );
+    for (int i = 0; i < 2; i++) {
+        press(f, RML_KEY_Y, RML_KM_CTRL);
+        source_frame(f, code);
+    }
+    ok &= check(
+        strstr(asset_code_text(code), "// authored comment\n") == asset_code_text(code),
+        "source redo restores the valid typed comment"
+    );
+    restored = graph_node_by_id(asset_code_source(code)->asset->graph, id);
+    ok &= check(
+        restored && restored->x == 137 && restored->placed && restored->breakpoint,
+        "source redo preserves node identity, layout and breakpoint"
+    );
+    f->e = previous;
+    asset_code_free(code);
+    behavior_asset_free(authored);
+    editor_free(graph_editor);
+    assert(!unlink(path));
+    f->focus = true;
+    settle(f);
+    return ok;
+}
+
 bool test_kit_code()
 {
     fixture f = { .completion = -1 };
@@ -781,6 +961,7 @@ bool test_kit_code()
     settle(&f);
     ok &= check(kit_wants_keyboard(f.k), "a focused editor takes the keyboard");
     ok &= standard_keys(&f);
+    ok &= indentation(&f);
     ok &= clipboard_paste(&f);
     ok &= vim_cases(&f);
     ok &= mac_keys(&f);
@@ -790,6 +971,7 @@ bool test_kit_code()
     ok &= host_keys(&f);
     ok &= rendering(&f);
     ok &= pointer_features(&f);
+    ok &= source_typing_history(&f);
     /* The element outlives its editor until the next frame drops it. */
     kit_code_editor_destroy(f.e);
     rml_context_render(f.context);

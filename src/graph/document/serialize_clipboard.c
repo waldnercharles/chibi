@@ -186,6 +186,9 @@ int graph_append_value(graph *g, av_value *document, float dx, float dy)
     graph_reindex(g);
     g->topology_revision++;
     graph_prune_locals(g);
+    if (g->owner) {
+        behavior_asset_promote_shared_expressions(g->owner);
+    }
     afree(tmp->nodes);
     afree(tmp->edges);
     afree(tmp->strings);
@@ -200,7 +203,7 @@ int graph_append(graph *g, const char *text, float dx, float dy)
     char error[160];
     av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
     if (!doc) {
-        serialize_error_set("%s", text ? error : "null KDL input");
+        serialize_error_set("%s", text ? error : "null code input");
         return -1;
     }
     int result = graph_append_value(g, av_doc_root(doc), dx, dy);

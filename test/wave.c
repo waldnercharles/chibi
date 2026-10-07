@@ -5,6 +5,7 @@
 #include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 #include "test/support/simulation_fixture.h"
 
@@ -44,9 +45,9 @@ static behavior_asset *behavior(const char *name)
     const char *root = !strcmp(name, "WaveBehavior")
                          ? "test/fixtures/content/behaviors"
                          : "content/behaviors";
-    snprintf(path, sizeof path, "%s/%s.kdl", root, name);
+    snprintf(path, sizeof path, "%s/%s.code", root, name);
     char *text = read_file(path);
-    behavior_asset *asset = behavior_asset_load(text);
+    behavior_asset *asset = test_project_asset(path, text);
     free(text);
     assert(asset);
     asset = link_test_libraries(asset);

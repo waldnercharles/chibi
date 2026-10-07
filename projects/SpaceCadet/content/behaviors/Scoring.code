@@ -1,0 +1,62 @@
+behavior "Scoring" {
+    owner "ecs.entity";
+    state award: float = 0.0;
+    value get_global_variable: float = get_global_variable(Name: "Score");
+    value get_global_variable_2: float = get_global_variable(Name: "Rank");
+    action set_global_variable = engine["Set Global Variable"](Name: "Score", Value: float = "score + award * rank"(score: float = &local.score, award: double = &state.award, rank: float = &local.rank));
+    value get_global_variable_3: double = get_global_variable(Name: "Hits");
+    value collider_category = "collider.category"(collider: struct<"GameCollider"> = get_entity_game_collider(Entity: contact_begin.Other));
+    value has_any_flags = has_any_flags(Value: collider_category, Flags: 4);
+    value has_any_flags_2 = has_any_flags(Value: collider_category, Flags: 16);
+    local rank = get_global_variable_2;
+    local score = get_global_variable;
+    local hits = get_global_variable_3;
+    on "Contact Begin" as contact_begin(Other: handle<"ecs.entity"> = 0, Point: struct<"CF_V2"> = null) {
+        if (has_any_flags) {
+            await set_variable<"award">(Value: float = 1000.0);
+            set_global_variable();
+        } else {
+            if (has_any_flags_2) {
+                await set_variable<"award">(Value: float = 5000.0);
+                set_global_variable();
+            } else {
+            }
+        }
+    }
+    after set_global_variable {
+        await engine["Set Global Variable"](Name: "Hits", Value: double = (&local.hits + 1));
+        await play_sound(Frequency: 900.0, "End Frequency": 1450.0, Duration: 0.08, Volume: 0.28, Pan: 0.5, Noise: 0.0);
+        if (&local.hits >= 8) {
+            await engine["Set Global Variable"](Name: "Score", Value: float = "score + 25000 * rank"(score: float = &local.score, rank: float = &local.rank));
+            await engine["Set Global Variable"](Name: "Rank", Value: float = "min(rank + 1, 9)"(rank: float = &local.rank));
+            await engine["Set Global Variable"](Name: "Hits", Value: float = 0.0);
+            play_sound(Frequency: 500.0, "End Frequency": 2200.0, Duration: 0.5, Volume: 0.4, Pan: 0.5, Noise: 0.0);
+        } else {
+        }
+    }
+    pure function "score + award * rank"<T0: float, T1: double, T2: float, T3: float>(score: T0 = 0.0, award: T1 = 0.0, rank: T2 = 0.0) -> (Result: T3 = 0.0) {
+        depth_limit 64;
+        value multiply = multiply(A: double = entry.award, B: double = entry.rank);
+        value add = add(A: float = entry.score, B: double = multiply);
+        result Result: float = add;
+    }
+    pure function "score + 25000 * rank"<T0: float, T1: float, T2: float>(score: T0 = 0.0, rank: T1 = 0.0) -> (Result: T2 = 0.0) {
+        depth_limit 64;
+        value real = real(Value: 25000.0);
+        value multiply = multiply(A: double = real, B: double = entry.rank);
+        value add = add(A: float = entry.score, B: double = multiply);
+        result Result: float = add;
+    }
+    pure function "min(rank + 1, 9)"<T0: float, T1: float>(rank: T0 = 0.0) -> (Result: T1 = 0.0) {
+        depth_limit 64;
+        value real = real(Value: 1.0);
+        value add = add(A: double = entry, B: double = real);
+        value real_2 = real(Value: 9.0);
+        value min = min(A: double = add, B: double = real_2);
+        result Result: float = min;
+    }
+    pure function "collider.category"<T0: struct<"GameCollider">, T1: uint>(collider: T0 = null) -> (Result: T1 = 0) {
+        depth_limit 64;
+        result Result: uint = entry.collider.category;
+    }
+}

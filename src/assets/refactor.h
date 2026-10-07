@@ -9,7 +9,7 @@
 
 /* Rename and safe delete across a project's assets, as a language server's
  * do. The caller indexes the project (reference_index.h) and gives each
- * indexed asset's KDL source, parallel to the index's assets, or NULL when
+ * indexed asset's code source, parallel to the index's assets, or NULL when
  * it has none, as for an unresolved or unsaved asset. A plan holds the new
  * file text of every asset it changes, preserving unchanged source.
  * The caller publishes every edit
@@ -19,6 +19,7 @@ typedef struct
     const reference_index *index;
     const char *const *texts;
     const game_prototype_registry *registry; /* loads prototypes and systems */
+    const char *const *metadata; /* optional parallel executable identity snapshots */
 } refactor_project;
 
 typedef struct
@@ -29,6 +30,7 @@ typedef struct
     /* The definitions and references it rewrites or removes, borrowed from
      * the index (support/array.h). */
     const reference **references;
+    char *metadata; /* optional executable identity/layout sidecar, owned */
 } refactor_edit;
 
 /* A value equal to the old name that no indexed reference accounts for,

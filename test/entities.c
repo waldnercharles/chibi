@@ -152,14 +152,9 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
     game_prototype *prototype = game_prototype_load(
         "name \"ChildPrototype\"\n"
         "components {\n"
-        "    GameTransform {\n"
-        "        x 1\n"
-        "        y 2\n"
-        "    }\n"
+        "    GameTransform x=1 y=2\n"
         "}\n"
-        "(array)behaviors {\n"
-        "    - \"child\"\n"
-        "}\n",
+        "(array)behaviors \"child\"\n",
         &registry,
         error,
         sizeof error
@@ -575,14 +570,9 @@ static void delayed_spawn_case(bool isolated, int mode)
     game_prototype *child = game_prototype_load(
         "name \"ChildPrototype\"\n"
         "components {\n"
-        "    GameTransform {\n"
-        "        x 1\n"
-        "        y 2\n"
-        "    }\n"
+        "    GameTransform x=1 y=2\n"
         "}\n"
-        "(array)behaviors {\n"
-        "    - \"child\"\n"
-        "}\n",
+        "(array)behaviors \"child\"\n",
         &registry,
         error,
         sizeof error
@@ -590,9 +580,7 @@ static void delayed_spawn_case(bool isolated, int mode)
     game_prototype *prototype = game_prototype_load(
         "name \"ParentPrototype\"\n"
         "(object)components\n"
-        "(array)behaviors {\n"
-        "    - \"parent\"\n"
-        "}\n",
+        "(array)behaviors \"parent\"\n",
         &registry,
         error,
         sizeof error
@@ -961,14 +949,9 @@ static void children_survive_source(bool descendants)
     game_prototype *prototype = game_prototype_load(
         "name \"ChildPrototype\"\n"
         "components {\n"
-        "    GameTransform {\n"
-        "        x 1\n"
-        "        y 2\n"
-        "    }\n"
+        "    GameTransform x=1 y=2\n"
         "}\n"
-        "(array)behaviors {\n"
-        "    - \"child\"\n"
-        "}\n",
+        "(array)behaviors \"child\"\n",
         &registry,
         error,
         sizeof error
@@ -1107,41 +1090,17 @@ void bench_spawn(int count)
     game_prototype *shot = game_prototype_load(
         "name \"Shot\"\n"
         "components {\n"
-        "    GameAppearance {\n"
-        "        color 16777215\n"
-        "        height 4\n"
-        "        width 16\n"
-        "    }\n"
-        "    GameBody {\n"
-        "        continuous #true\n"
-        "    }\n"
-        "    GameCollider {\n"
-        "        category 4\n"
-        "        mask 10\n"
-        "        radius 2\n"
-        "        sensor #true\n"
-        "    }\n"
-        "    GameIgniter {\n"
-        "        heat 2.5\n"
-        "    }\n"
-        "    GameMaterial {\n"
-        "        absorption 0.1\n"
-        "    }\n"
+        "    GameAppearance color=16777215 height=4 width=16\n"
+        "    GameBody continuous=#true\n"
+        "    GameCollider category=4 mask=10 radius=2 sensor=#true\n"
+        "    GameIgniter heat=2.5\n"
+        "    GameMaterial absorption=0.1\n"
         "    (object)GameOrientation\n"
-        "    GameProjectile {\n"
-        "        damage 1\n"
-        "        speed 400\n"
-        "    }\n"
-        "    GameTransform {\n"
-        "        x 1\n"
-        "    }\n"
+        "    GameProjectile damage=1 speed=400\n"
+        "    GameTransform x=1\n"
         "    (object)GameVelocity\n"
         "}\n"
-        "(array)behaviors {\n"
-        "    - \"ShotEffects\"\n"
-        "    - \"ShotHit\"\n"
-        "    - \"ShotLifecycle\"\n"
-        "}\n",
+        "(array)behaviors \"ShotEffects\" \"ShotHit\" \"ShotLifecycle\"\n",
         &registry,
         error,
         sizeof error
@@ -1236,10 +1195,7 @@ static void prototype_registry_lifetime()
     game_prototype *source = game_prototype_load(
         "name \"Lifetime\"\n"
         "components {\n"
-        "    GameTransform {\n"
-        "        x 12\n"
-        "        y 34\n"
-        "    }\n"
+        "    GameTransform x=12 y=34\n"
         "}\n",
         &registry,
         error,

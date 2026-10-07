@@ -8,6 +8,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
+#include "graph/model/reactive.h"
 #include "graph/model/registry.h"
 #include "graph/modeling/model_compile.h"
 #include "graph/nodes/component_nodes.h"
@@ -500,7 +501,7 @@ static bool call_signature_matches(const node *call, const graph *target)
 
 /* CMPL-7: a reference to a retired or missing variable, function, or macro.
  * Get/Set reference variables; Function and macro references use graph IDs. */
-static void pass_references(compile_report *out, const behavior_asset *asset, bool system)
+static void pass_references(compile_report *out, const behavior_asset *asset)
 {
     for (int graph_index = 0; graph_index < acount(asset->graphs); graph_index++) {
         const graph *g = asset->graphs[graph_index];
@@ -564,10 +565,6 @@ static void pass_references(compile_report *out, const behavior_asset *asset, bo
                 node *source = NULL;
                 int source_pin = -1;
                 if (graph_input_source(g, n, p, &source, &source_pin)) {
-                    continue;
-                }
-                if (system) {
-                    emit(out, CMPL_ERROR, n->id, pin->id, CMPL_RULE_INPUT_BINDING, "input bindings are unavailable in Systems until query lowering is supported");
                     continue;
                 }
                 if (asset->domain == BEHAVIOR_DOMAIN_LIBRARY ||
@@ -1019,27 +1016,6 @@ static void sort_diagnostics(compile_report *out, const graph *g)
     }
 }
 
-static void pass_system_host_wait(compile_report *out, const graph *g)
-{
-    for (int i = 0; i < acount(g->nodes); i++) {
-        const node *n = g->nodes[i];
-        if (n->disabled || !n->desc || !n->desc->latent || !n->desc->access ||
-            !(n->desc->access->flags & NODE_EFFECT_STRUCTURAL)) {
-            continue;
-        }
-        emit(
-            out,
-            CMPL_ERROR,
-            n->id,
-            0,
-            CMPL_RULE_SYSTEM_HOST_WAIT,
-            "%s waits for entity initialization and cannot run in a System. "
-            "Move it to an entity Behavior.",
-            n->desc->name
-        );
-    }
-}
-
 static void pass_field_projections(compile_report *out, const graph *g)
 {
     for (int i = 0; i < acount(g->nodes); i++) {
@@ -1106,14 +1082,17 @@ static int compile_asset(const behavior_asset *asset, compile_report *out, bool 
         pass_wildcards(out, g);
         pass_nominal_types(out, g);
         pass_field_projections(out, g);
-        if (system) {
-            pass_system_host_wait(out, g);
-        }
     }
     compile_graph_id = asset->graph->graph_id;
-    pass_references(out, asset, system);
+    pass_references(out, asset);
     pass_duplicates(out, asset);
     pass_shader_library_functions(out, asset);
+    if (!out->error_count && acount(asset->reactives)) {
+        char error[CMPL_MESSAGE_MAX] = "";
+        if (!behavior_reactive_validate(asset, error, sizeof error)) {
+            emit(out, CMPL_ERROR, 0, 0, CMPL_RULE_OPERATOR, "%s", error);
+        }
+    }
     if (!out->error_count && !system) {
         behavior_asset_query_diagnostics(asset, out);
     }

@@ -178,9 +178,6 @@ void editor_set_ui_context(editor *e, editor_ui_context context)
         return;
     }
     e->ui_context = context;
-    if (context == EDITOR_UI_CONTEXT_SYSTEM && e->active_graph) {
-        e->active_graph->dataflow = 1;
-    }
 }
 
 void editor_set_studio_nodes(editor *e, bool offered)

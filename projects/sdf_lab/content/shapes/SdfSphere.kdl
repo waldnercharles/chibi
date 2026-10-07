@@ -29,5 +29,5 @@ description "Sphere: signed distance in local authored units."
             - from="23.Result" to="1.Distance"
         }
     }
-    - id=7 kind="function" math_expression="length(p) - 30" entry_id=8
+    - id=7 kind="function" math_expression="length(p) - 30" expression_mode=1 entry_id=8
 }

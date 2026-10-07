@@ -108,8 +108,8 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - from="305.Result" to="107.Mask"
         }
     }
-    - id=163 kind="function" math_expression="(sin(time * speed) + 1) * 0.5" entry_id=249
-    - id=275 kind="function" math_expression="saturate(1 - abs(distance) / max(width, 0.001))" entry_id=370
+    - id=163 kind="function" math_expression="(sin(time * speed) + 1) * 0.5" expression_mode=1 entry_id=249
+    - id=275 kind="function" math_expression="saturate(1 - abs(distance) / max(width, 0.001))" expression_mode=1 entry_id=370
     - {
         id 399
         kind "function"
@@ -166,6 +166,6 @@ description "Shared pulse, ring mask and hit flash functions with explicit input
             - from="515.Result" to="402.Glow"
         }
     }
-    - id=408 kind="function" math_expression="mix(color, vec3(0.75, 0.95, 1), saturate(flash))" entry_id=541
-    - id=493 kind="function" math_expression="vec3(0.75, 0.95, 1) * flash" entry_id=568
+    - id=408 kind="function" math_expression="mix(color, vec3(0.75, 0.95, 1), saturate(flash))" expression_mode=1 entry_id=541
+    - id=493 kind="function" math_expression="vec3(0.75, 0.95, 1) * flash" expression_mode=1 entry_id=568
 }

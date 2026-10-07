@@ -28,12 +28,12 @@ static int by_name(const void *a, const void *b)
 
 bool studio_asset_nameable(const reference_asset *asset, int kind)
 {
-    const char *suffix = kind == REFERENCE_ASSET_UI ? UI_MARKUP_EXTENSION
-                                                    : ASSET_EXTENSION;
-    size_t length = asset->path ? strlen(asset->path) : 0, extension = strlen(suffix);
-    return (int)asset->kind == kind && !asset->unresolved &&
-           (!asset->path || (length > extension &&
-                             !strcmp(asset->path + length - extension, suffix)));
+    const char *extension = asset->path ? strrchr(asset->path, '.') : NULL;
+    bool source = !extension ||
+                  !strcmp(extension, kind == REFERENCE_ASSET_UI ? UI_MARKUP_EXTENSION : DECLARATIVE_ASSET_EXTENSION) ||
+                  (kind != REFERENCE_ASSET_UI &&
+                   !strcmp(extension, CODE_ASSET_EXTENSION));
+    return (int)asset->kind == kind && !asset->unresolved && source;
 }
 
 const char **studio_asset_names(const reference_index *index, int kind)

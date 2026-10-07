@@ -395,7 +395,7 @@ target_link_libraries(authoring_graph PUBLIC runtime_support core)
 add_library(automation STATIC src/automation/controller.c src/automation/field_preview.c
     src/automation/graph_optimize.c src/automation/navigation.c
     src/automation/prototype_edit.c src/automation/prototype_instance.c src/automation/scene_edit.c
-    src/automation/asset_write.c)
+    src/automation/asset_write.c src/automation/code_edit.c)
 target_include_directories(automation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(automation PUBLIC runtime_support core authoring_graph editor)
 
@@ -477,7 +477,7 @@ target_link_libraries(chibi PRIVATE chibi_render editor engine runtime_support c
 chibi_enable_tracy(chibi)
 set_target_properties(chibi PROPERTIES LINKER_LANGUAGE CXX)
 
-add_executable(chibi_ctl tools/chibi_ctl/main.c ${EDITOR_REGISTRY})
+add_executable(chibi_ctl tools/chibi_ctl/main.c src/assets/project.c ${EDITOR_REGISTRY})
 add_dependencies(chibi_ctl generate_runtime_registry)
 target_include_directories(chibi_ctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(chibi_ctl PRIVATE automation chibi_render editor engine)
@@ -599,8 +599,10 @@ file(GLOB_RECURSE TEST_CONCEPT_SOURCES CONFIGURE_DEPENDS
 add_executable(test_suite
     test/model_sampled.c
     test/automation_preview.c
-    test/asset_value.c test/asset_source.c test/kdl_text.c
-    test/collab_protocol.c test/collab_replay.c
+    test/asset_value.c test/asset_source.c test/asset_text.c test/code_source_locations.c test/code_source_names.c test/code_source_metadata.c test/code_source.c test/automation_code.c
+    test/code_query.c test/code_value.c test/code_calls.c test/code_methods.c test/code_declarations.c test/code_print.c test/code_source_intelligence.c
+    test/code_components.c test/code_ecs_intelligence.c test/code_system_query_inference.c test/code_ecs_syntax.c test/code_ecs_print.c test/code_reactive.c test/code_system_runtime.c
+    test/code_catalog.c test/collab_protocol.c test/collab_replay.c
     ${TEST_CONCEPT_SOURCES}
     test/automation_asset_write.c test/automation_refactor.c test/automation_graph_edit.c test/automation_search.c test/automation_navigation.c test/automation_graph_optimize.c test/automation_prototype_edit.c test/automation_scene_edit.c test/test_suite.c test/host_wait.c test/entities.c test/projectile.c test/system_host_wait.c test/combat.c test/targeting.c test/pursuit.c test/vector.c test/arena.c test/number_serialization.c test/auto_weapon.c test/graph_navigation.c test/extract.c test/component_conversion.c test/field_outputs.c test/function_wait.c test/function_fields.c test/enemy_attack.c test/particles.c test/labels.c test/appearance.c
     test/arena3d.c
@@ -817,6 +819,24 @@ foreach(driver test_suite test_host concurrent_runner bench_activation
 endforeach()
 
 # Backend policy smoke target also runs under Node in the Emscripten build.
+add_executable(code_source_checks test/code_source_main.c test/code_source.c test/code_methods.c test/code_declarations.c
+    test/code_components.c test/code_ecs_intelligence.c test/code_system_query_inference.c test/code_ecs_syntax.c test/code_ecs_print.c test/code_reactive.c
+    test/code_query.c test/code_value.c test/code_calls.c test/code_print.c test/code_source_intelligence.c
+    test/code_source_names.c test/code_source_locations.c test/code_source_metadata.c
+    test/asset_source.c ${APP_REGISTRY})
+target_link_libraries(code_source_checks PRIVATE runtime_support)
+target_compile_options(code_source_checks PRIVATE -UNDEBUG)
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    target_link_options(code_source_checks PRIVATE "-sENVIRONMENT=node" "-sNODERAWFS=1"
+        "-sEXIT_RUNTIME=1" "-sALLOW_MEMORY_GROWTH=1" "-sSTACK_SIZE=1048576")
+    find_program(CHIBI_NODE_EXECUTABLE node REQUIRED)
+    add_custom_target(check-code-source
+        COMMAND "${CHIBI_NODE_EXECUTABLE}" "$<TARGET_FILE:code_source_checks>"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" DEPENDS code_source_checks VERBATIM)
+else()
+    add_custom_target(check-code-source COMMAND "$<TARGET_FILE:code_source_checks>"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" DEPENDS code_source_checks VERBATIM)
+endif()
 add_executable(behavior_backend_smoke test/behavior_backend_smoke.c test/support/instance_bank.c test/support/whole_retrigger.c test/support/whole_multigate.c test/support/whole_state.c test/support/whole_switch.c test/support/whole_recursion.c test/support/whole_loops.c test/support/whole_values.c test/support/whole_components.c test/support/whole_alias.c test/support/whole_stores.c test/support/whole_arrays.c test/support/whole_queries.c test/support/whole_commands.c test/support/whole_suspend.c test/support/whole_delay.c test/support/whole_batch.c test/support/bound_components.c test/support/whole_async.c test/support/whole_motion.c test/support/whole_random.c test/support/whole_data.c test/support/whole_particles.c test/support/whole_managed.c test/support/whole_owned_arrays.c test/support/whole_array_ops.c test/support/value_index.c test/support/whole_names.c test/support/whole_search.c src/graph/nodes/vector_nodes.c src/graph/nodes/particle_nodes.c src/render/particles.c)
 target_include_directories(behavior_backend_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${cute_framework_SOURCE_DIR}/include)
 target_link_libraries(behavior_backend_smoke PRIVATE ecs core)

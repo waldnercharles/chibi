@@ -29,5 +29,5 @@ description "Ring around the local Y axis. The opening is real geometry."
             - from="36.Result" to="1.Distance"
         }
     }
-    - id=7 kind="function" math_expression="length(vec2(length(p.xz) - 27, p.y)) - 10" entry_id=40
+    - id=7 kind="function" math_expression="length(vec2(length(p.xz) - 27, p.y)) - 10" expression_mode=1 entry_id=40
 }

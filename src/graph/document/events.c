@@ -12,12 +12,22 @@ static const pin_spec TICK_PAYLOAD[] = {
 static const pin_spec INPUT_PAYLOAD[] = {
     { .name = "Direction", .type = PIN_STRUCT, .type_name = "CF_V2" },
 };
+static const pin_spec PRESSED_PAYLOAD[] = {
+    { .name = "pressed", .type = PIN_BOOL, .type_name = "bool" },
+};
 static const pin_spec CONTACT_PAYLOAD[] = {
     { .name = "Other", .type = PIN_HANDLE, .type_name = "ecs.entity" },
     { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" },
 };
 
 const graph_host_event_desc GRAPH_HOST_EVENTS[GRAPH_HOST_EVENT_COUNT] = {
+    [GRAPH_HOST_EVENT_PRESSED_CHANGED] = {
+        .name = "PressedChanged",
+        .keywords = "input action binding pressed released changed",
+        .description = "Runs when this entity's ActionBinding pressed state changes.",
+        .payload = PRESSED_PAYLOAD,
+        .payload_count = 1,
+    },
     [GRAPH_HOST_EVENT_BEGIN] = { .name = "Begin", .keywords = "start spawn create init ready", .description = "Runs once when the behavior starts." },
     [GRAPH_HOST_EVENT_TICK] = { .name = "Tick",
                                 .keywords = "update frame every loop delta "

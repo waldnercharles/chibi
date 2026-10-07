@@ -126,8 +126,8 @@
                 if (name === '.' || name === '..') continue;
                 const path = `${directory}/${name}`;
                 if (fs.isDir(fs.stat(path).mode)) visit(path);
-                // Matches web_serve.py's TEXT_EXTENSIONS and IMAGE_EXTENSIONS.
-                else if (/\.(kdl|rml|rcss|png|jpe?g)$/i.test(name) &&
+                // Matches web_serve.py's supported text/metadata and image assets.
+                else if (/\.(kdl|code(?:\.meta)?|rml|rcss|png|jpe?g)$/i.test(name) &&
                          !Object.prototype.hasOwnProperty.call(assets, path.slice(1))) fs.unlink(path);
             }
         };

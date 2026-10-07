@@ -22,7 +22,7 @@ const part = (ref, source, name, slot) => [
   ...node(ref, "Part", {}, { reference_name: name }), geo(source, ref), wire(slot, "Slot", ref, "Material"),
 ];
 function asset(kind, name, description, operations) {
-  if (!existsSync(resolve(project, `content/${kind}s/${name}.kdl`)))
+  if (!existsSync(resolve(project, `content/${kind}s/${name}.${["behavior", "library", "system"].includes(kind) ? "code" : "kdl"}`)))
     call("buildGraph", { kind, name, description, create: true, operations });
   call("validateAsset", { kind, name });
 }

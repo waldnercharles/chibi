@@ -145,14 +145,24 @@ static void parts_and_trails()
     assert(copy.count == 2 && !memcmp(&parts.parts, &copy.parts, sizeof parts.parts));
     free(json);
     assert(!render_arena_parts_parse(
-        "(array)- { - { primitive 0; (array)size 1 0 1; }; }\n",
+        "(array)- {\n"
+        "    - {\n"
+        "        primitive 0\n"
+        "        (array)size 1 0 1\n"
+        "    }\n"
+        "}\n",
         &copy,
         error,
         sizeof error
     ));
     assert(strstr(error, "part 1"));
     assert(!render_arena_parts_parse(
-        "(array)- { - { primitive 4294967296; (array)size 1 1 1; }; }\n",
+        "(array)- {\n"
+        "    - {\n"
+        "        primitive 4294967296\n"
+        "        (array)size 1 1 1\n"
+        "    }\n"
+        "}\n",
         &copy,
         error,
         sizeof error
@@ -703,19 +713,9 @@ static void visual_motion_defaults()
     game_prototype *prototype = game_prototype_load(
         "name \"Motion defaults\"\n"
         "components {\n"
-        "    GameVisualTransform {\n"
-        "        pitch 0.3\n"
-        "        yaw -0.2\n"
-        "        roll 0.7\n"
-        "        scale 0.8\n"
-        "    }\n"
-        "    GameGeometry3D {\n"
-        "        primitive 0\n"
-        "        width 11\n"
-        "        height 11\n"
-        "        depth 11\n"
-        "        elevation 12\n"
-        "    }\n"
+        "    GameVisualTransform pitch=0.3 yaw=-0.2 roll=0.7 scale=0.8\n"
+        "    GameGeometry3D primitive=0 width=11 height=11 depth=11 "
+        "elevation=12\n"
         "}\n",
         &registry,
         error,
@@ -856,6 +856,8 @@ static void rhythm_and_defaults()
         game_prototype_read_field(prototype, "GameMeshParts", "parts", &value) == 0 &&
         !strcmp(value.str, "(array)-\n")
     );
+    arena_parts parts;
+    assert(render_arena_parts_parse(value.str, &parts, error, sizeof error) && parts.count == 0);
     assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameParticleEmitter) == 0);
     assert(
         game_prototype_read_field(prototype, "GameParticleEmitter", "rate", &value) == 0 &&
@@ -1247,8 +1249,8 @@ static void instance_checks()
     assert(graph_connect_data(a->graph, tint, 0, surface(a), 0) == 0);
     publish(a);
     fixture f = fixture_new();
-    ecs_entity left = actor(&f, a->name, (CF_V3){ -60, 0, 0 }, GAME_PRIMITIVE_BOX, 70, "(array)Tint 1 0 0; \n");
-    actor(&f, a->name, (CF_V3){ 60, 0, 0 }, GAME_PRIMITIVE_BOX, 70, "(array)Tint 0 0 1; \n");
+    ecs_entity left = actor(&f, a->name, (CF_V3){ -60, 0, 0 }, GAME_PRIMITIVE_BOX, 70, "(array)Tint 1 0 0\n");
+    actor(&f, a->name, (CF_V3){ 60, 0, 0 }, GAME_PRIMITIVE_BOX, 70, "(array)Tint 0 0 1\n");
     CF_Pixel before[PIXELS], after[PIXELS];
     draw(&f, NULL, 0, before);
     assert(f.stats.instances == 2 && f.stats.commands == 1);
@@ -1283,12 +1285,12 @@ static void boolean_checks()
     shader_sample_context sample = { 0 };
     shader_error error = { 0 };
     for (int unlit = 0; unlit < 2; unlit++) {
-        render_shader_parameters(id, NULL, (ecs_entity){ 0 }, unlit ? "Unlit #true; \n" : "Unlit #false; \n", values);
+        render_shader_parameters(id, NULL, (ecs_entity){ 0 }, unlit ? "Unlit #true\n" : "Unlit #false\n", values);
         assert(render_shader_sample(id, &sample, values, result, &error));
         assert(result[6][0] == unlit);
     }
     fixture f = fixture_new();
-    ecs_entity entity = actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_SPHERE, 100, "Unlit #true; \n");
+    ecs_entity entity = actor(&f, a->name, (CF_V3){ 0 }, GAME_PRIMITIVE_SPHERE, 100, "Unlit #true\n");
     CF_Pixel unlit[PIXELS], lit[PIXELS], direct[PIXELS];
     draw(&f, NULL, 0, unlit);
     write_parameter(f.world, entity, "Unlit", (pin_value){ .type = PIN_BOOL, .b = false });
@@ -1429,7 +1431,7 @@ static void opacity_checks()
     publish(green);
     f = fixture_new();
     actor(&f, blue->name, (CF_V3){ 0 }, GAME_PRIMITIVE_BOX, 80, "");
-    actor(&f, green->name, (CF_V3){ 0, 0, 100 }, GAME_PRIMITIVE_BOX, 80, "Opacity 1; \n");
+    actor(&f, green->name, (CF_V3){ 0, 0, 100 }, GAME_PRIMITIVE_BOX, 80, "Opacity 1\n");
     draw(&f, NULL, 0, first);
     p = first[SIDE / 2 * SIDE + SIDE / 2];
     assert(p.r < 2 && abs(p.g - 188) <= 2 && p.b < 2);
@@ -1494,10 +1496,10 @@ static void mixed_mesh_instances()
         CF_V3 position;
         const char *parameters;
     } instances[] = {
-        { GAME_PRIMITIVE_BOX, 0, { -65, 60, 0 }, "(array)Tint 1 0 0; \n" },
-        { GAME_PRIMITIVE_TRIANGLE_PRISM, 1, { 65, 60, 0 }, "(array)Accent 0 1 0; \n" },
-        { GAME_PRIMITIVE_BOX, 1, { -65, -60, 0 }, "(array)Accent 0 0 1; \n" },
-        { GAME_PRIMITIVE_TRIANGLE_PRISM, 0, { 65, -60, 0 }, "(array)Tint 1 1 0; \n" },
+        { GAME_PRIMITIVE_BOX, 0, { -65, 60, 0 }, "(array)Tint 1 0 0\n" },
+        { GAME_PRIMITIVE_TRIANGLE_PRISM, 1, { 65, 60, 0 }, "(array)Accent 0 1 0\n" },
+        { GAME_PRIMITIVE_BOX, 1, { -65, -60, 0 }, "(array)Accent 0 0 1\n" },
+        { GAME_PRIMITIVE_TRIANGLE_PRISM, 0, { 65, -60, 0 }, "(array)Tint 1 1 0\n" },
     };
     ecs_entity entities[4];
     for (int i = 0; i < 4; i++) {
@@ -1700,7 +1702,7 @@ static void image_batches(const char *directory)
                 position,
                 j < 3 ? GAME_PRIMITIVE_BOX : GAME_PRIMITIVE_TRIANGLE_PRISM,
                 16,
-                j == 0 ? "(array)Tint 1 0.5 0.25; \n" : ""
+                j == 0 ? "(array)Tint 1 0.5 0.25\n" : ""
             );
             if (!i && !j) {
                 first = entity;

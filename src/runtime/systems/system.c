@@ -4,10 +4,14 @@
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/compiler/program.h"
 #include "graph/document/events.h"
+#include "graph/document/serialize.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/component_nodes.h"
 #include "graph/nodes/math_nodes.h"
+#include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
+#include "runtime/behaviors/reactive.h"
 #include "runtime/generated.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -15,6 +19,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -94,11 +99,20 @@ typedef struct
     arena arena;
 } system_program;
 
+typedef struct
+{
+    ecs_entity entity;
+    behavior_instance *instance;
+    flow_run *run;
+    bool matched, expired;
+} system_entity;
+
 struct game_system
 {
     ecs_world *world;
     behavior_asset *definition;
     behavior_instance *instance;
+    behavior_asset *instance_definition;
     system_program *program;
     compile_report compile;
     ecs_component_id *query;
@@ -107,6 +121,12 @@ struct game_system
     node *tick;
     int match_count;
     ecs_entity *snapshot;
+    system_entity *entities; /* Dense retained matches, independent of world capacity. */
+    int *entity_index, entity_capacity;
+    bool retained;
+    eval_component_reader component_reader;
+    service_binding *services;
+    game_reactive *reactive;
 };
 
 static void set_error(flow_error *error, int code, const node *origin, const char *message)
@@ -137,16 +157,100 @@ static int query_has(const game_system *system, ecs_component_id component)
     return 0;
 }
 
+static bool optional_component(const game_system *system, ecs_component_id id)
+{
+    const ecs_component_desc *component = NULL;
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        if (GAME_REGISTRY_COMPONENTS[i]->id == id) {
+            component = GAME_REGISTRY_COMPONENTS[i];
+            break;
+        }
+    }
+    if (!component) {
+        return false;
+    }
+    bool optional = false;
+    for (int i = 0; i < acount(system->definition->component_parameters); i++) {
+        const behavior_component_parameter *parameter = &system->definition->component_parameters[i];
+        if (strcmp(parameter->key, component->key)) {
+            continue;
+        }
+        if (!parameter->optional) {
+            return false;
+        }
+        optional = true;
+    }
+    return optional;
+}
+
 static void add_query_component(game_system *system, ecs_component_id component)
 {
-    if (!query_has(system, component)) {
+    if (!optional_component(system, component) && !query_has(system, component)) {
         apush(system->query, component);
     }
 }
 
-static void add_access_components(game_system *system, const node_access *access)
+static void add_parameter_components(game_system *system)
 {
-    if (!access) {
+    for (int i = 0; i < acount(system->definition->component_parameters); i++) {
+        const behavior_component_parameter *parameter = &system->definition->component_parameters[i];
+        if (parameter->optional) {
+            continue;
+        }
+        for (int j = 0; j < GAME_REGISTRY_COMPONENT_COUNT; j++) {
+            const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[j];
+            if (!strcmp(component->key, parameter->key)) {
+                add_query_component(system, component->id);
+                break;
+            }
+        }
+    }
+}
+
+/* Explicit entity accesses may be guarded or address another row. Only an
+ * implicit owner access proves a component required for query membership. */
+static bool default_self_input(const graph *g, const node *n, int input)
+{
+    const pin_spec *pin = &n->input_pins[input];
+    node *source = NULL;
+    int output = -1;
+    return (pin->flags & PIN_FLAG_DEFAULT_SELF) && !pin->binding &&
+           !pin->default_value.u64 &&
+           !graph_input_source(g, n, input, &source, &output);
+}
+
+static void add_access_components(game_system *system, const graph *g, const node *n)
+{
+    const node_desc *desc = component_node_target(g, n);
+    if (!desc) {
+        return;
+    }
+    component_node_kind family = component_node_kind_of(n->desc);
+    if (family == COMPONENT_NODE_GET || family == COMPONENT_NODE_SET) {
+        if (component_node_self(g, n) && desc->component) {
+            add_query_component(system, desc->component->id);
+        }
+        return;
+    }
+    switch (desc->component_kind) {
+        case NODE_COMPONENT_GET_SELF:
+        case NODE_COMPONENT_SET_SELF:
+            add_query_component(system, desc->component->id);
+            return;
+        case NODE_COMPONENT_SET_FIELD:
+            if (default_self_input(g, n, 2)) {
+                add_query_component(system, desc->component->id);
+            }
+            return;
+        case NODE_COMPONENT_NONE: break;
+        default: return;
+    }
+    const node_access *access = desc->access;
+    if (!access || !(access->flags & NODE_EFFECT_ENTITY_SCOPED) ||
+        (access->flags & (NODE_EFFECT_STRUCTURAL | NODE_EFFECT_WORLD_READ))) {
+        return;
+    }
+    if (access->target_input && !default_self_input(g, n, access->target_input - 1)) {
         return;
     }
     for (int i = 0; i < access->read_count; i++) {
@@ -162,6 +266,7 @@ static void add_access_components(game_system *system, const node_access *access
 
 static void build_query(game_system *system)
 {
+    add_parameter_components(system);
     graph *graph = system->definition->graph;
     for (int i = 0; i < acount(graph->nodes); i++) {
         node *current = graph->nodes[i];
@@ -173,7 +278,7 @@ static void build_query(game_system *system)
                 system->tick = current;
             }
         }
-        add_access_components(system, current->desc ? current->desc->access : NULL);
+        add_access_components(system, graph, current);
     }
 }
 
@@ -520,9 +625,30 @@ static int compile_input(system_program *program, const node *target, int input)
         if (link->conversion) {
             const node_desc *conversion = link->conversion;
             int converted = new_register(program, &conversion->outputs[0]);
-            system_instruction *instruction = add_instruction(program, SYSTEM_OP_CALL, target);
-            instruction->fn = conversion->fn;
-            instruction->output = converted;
+            const type_desc *type = conversion->input_count == 1 &&
+                                            conversion->inputs[0].type == PIN_STRUCT
+                                      ? registry_type_by_name(
+                                            conversion->inputs[0].type_name
+                                        )
+                                      : NULL;
+            bool unwrap = conversion->jit_kind == NODE_JIT_UNWRAP && type &&
+                          type->field_count == 1 && conversion->output_count == 1 &&
+                          conversion->inputs[0].container == PIN_CONTAINER_SINGLE &&
+                          slot_matches_pin(&program->slots[value], &conversion->inputs[0]) &&
+                          pin_matches_field(&conversion->outputs[0], &type->fields[0]);
+            system_instruction *instruction = add_instruction(
+                program,
+                unwrap ? SYSTEM_OP_BREAK : SYSTEM_OP_CALL,
+                target
+            );
+            if (unwrap) {
+                instruction->type = type;
+                instruction->output_count = 1;
+                instruction->outputs[0] = converted;
+            } else {
+                instruction->fn = conversion->fn;
+                instruction->output = converted;
+            }
             instruction->input_count = 1;
             instruction->inputs[0] = value;
             value = converted;
@@ -539,6 +665,9 @@ static int compile_input(system_program *program, const node *target, int input)
             value = converted;
         }
         return value;
+    }
+    if (pin->binding) {
+        return -1; /* The instance path resolves bindings against its live owner. */
     }
     int result = new_register(program, pin);
     system_instruction *instruction = add_instruction(program, SYSTEM_OP_CONST, target);
@@ -1699,24 +1828,105 @@ static int program_run_typed(system_program *program, ecs_entity entity, double 
     return FLOW_OK;
 }
 
+static void bind_instance(game_system *system, behavior_instance *instance)
+{
+    behavior_instance_bind_service(instance, "ecs.world", system->world);
+    behavior_instance_bind_service(
+        instance,
+        EVAL_COMPONENT_READER_SERVICE,
+        &system->component_reader
+    );
+    for (int i = 0; i < acount(system->services); i++) {
+        behavior_instance_bind_service(
+            instance,
+            system->services[i].type_name,
+            system->services[i].value
+        );
+    }
+}
+
+static behavior_asset *runtime_definition(game_system *system)
+{
+    behavior_asset *definition = system->instance_definition
+                                   ? system->instance_definition
+                                   : system->definition;
+    if (behavior_asset_has_component_nodes(definition)) {
+        char error[CMPL_MESSAGE_MAX] = "";
+        definition = behavior_asset_clone(definition);
+        if (!definition ||
+            behavior_asset_lower_component_nodes(definition, error, sizeof error)) {
+            compile_diagnostic diagnostic = { .severity = CMPL_ERROR,
+                                              .rule = CMPL_RULE_BACKEND };
+            snprintf(
+                diagnostic.message,
+                sizeof diagnostic.message,
+                "%s",
+                definition ? error : graph_last_error()
+            );
+            apush(system->compile.items, diagnostic);
+            system->compile.error_count++;
+            behavior_asset_free(definition);
+            return NULL;
+        }
+        system->instance_definition = definition;
+    }
+    return definition;
+}
+
 static behavior_instance *make_instance(game_system *system)
 {
-    behavior_instance *instance = behavior_instance_create(system->definition, NULL, NULL, NULL);
+    behavior_asset *definition = runtime_definition(system);
+    if (!definition) {
+        return NULL;
+    }
+    behavior_instance *instance = behavior_instance_create(definition, NULL, NULL, NULL);
     if (!instance) {
         return NULL;
     }
     behavior_instance_set_activation_pool(instance, 1);
     behavior_instance_set_trace_enabled(instance, 0);
-    behavior_instance_bind_service(instance, "ecs.world", system->world);
+    bind_instance(system, instance);
     return instance;
+}
+
+static void clear_entities(game_system *system)
+{
+    for (int i = 0; i < acount(system->entities); i++) {
+        behavior_instance_destroy(system->entities[i].instance);
+    }
+    afree(system->entities);
+    free(system->entity_index);
+    system->entity_index = NULL;
+    system->entity_capacity = 0;
+}
+
+static bool needs_retention(const behavior_asset *asset)
+{
+    if (acount(asset->variables) || acount(asset->reactives)) {
+        return true;
+    }
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *g = asset->graphs[i];
+        for (int j = 0; j < acount(g->nodes); j++) {
+            if (g->nodes[j]->desc->latent) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 static int rebuild(game_system *system)
 {
     program_free(system->program);
     system->program = NULL;
+    clear_entities(system);
+    game_reactive_free(system->reactive);
+    system->reactive = NULL;
     behavior_instance_destroy(system->instance);
     system->instance = NULL;
+    behavior_asset_free(system->instance_definition);
+    system->instance_definition = NULL;
     compile_report_free(&system->compile);
     compile_report_init(&system->compile);
     behavior_asset_compile_for_system(system->definition, &system->compile);
@@ -1729,7 +1939,18 @@ static int rebuild(game_system *system)
     if (compile_report_blocked(&system->compile) || !system->tick) {
         return -1;
     }
-    system->program = program_new(system->definition, system->tick);
+    if (acount(system->definition->reactives)) {
+        system->reactive = game_reactive_new(system->world);
+    }
+    system->retained = needs_retention(system->definition);
+    if (!system->retained) {
+        behavior_asset *definition = runtime_definition(system);
+        if (!definition) {
+            return -1;
+        }
+        node *tick = graph_node_by_id(definition->graph, system->tick->id);
+        system->program = program_new(definition, tick);
+    }
     if (system->program && program_bind_world(system->program, system->world) == 0) {
         afree(system->query);
         for (int i = 0; i < acount(system->program->instructions); i++) {
@@ -1739,6 +1960,7 @@ static int rebuild(game_system *system)
                 add_query_component(system, component->id);
             }
         }
+        add_parameter_components(system);
         ecs_query_expr *query = ecs_query_expr_new(ECS_QUERY_ALL);
         if (system->query_expression) {
             int added = ecs_query_expr_add(query, ecs_query_expr_clone(system->query_expression));
@@ -1784,6 +2006,7 @@ game_system *game_system_new(ecs_world *world, behavior_asset *definition)
     game_system *system = (game_system *)xcalloc(1, sizeof *system);
     system->world = world;
     system->definition = definition;
+    ecs_eval_component_reader_init(&system->component_reader, world);
     compile_report_init(&system->compile);
     rebuild(system);
     return system;
@@ -1795,14 +2018,43 @@ void game_system_free(game_system *system)
         return;
     }
     program_free(system->program);
+    clear_entities(system);
+    game_reactive_free(system->reactive);
     behavior_instance_destroy(system->instance);
+    behavior_asset_free(system->instance_definition);
     ecs_query_expr_free(system->query_expression);
     ecs_query_expr_free(system->compiled_query_expression);
     compile_report_free(&system->compile);
     afree(system->query);
     afree(system->snapshot);
+    for (int i = 0; i < acount(system->services); i++) {
+        free((char *)system->services[i].type_name);
+    }
+    afree(system->services);
     behavior_asset_free(system->definition);
     free(system);
+}
+
+int game_system_bind_service(game_system *system, const char *type_name, void *value)
+{
+    assert(system && type_name && *type_name);
+    int index = 0;
+    while (index < acount(system->services) &&
+           strcmp(system->services[index].type_name, type_name)) {
+        index++;
+    }
+    if (index == acount(system->services)) {
+        apush(system->services, ((service_binding){ xstrdup(type_name), value }));
+    } else {
+        system->services[index].value = value;
+    }
+    if (system->instance) {
+        bind_instance(system, system->instance);
+    }
+    for (int i = 0; i < acount(system->entities); i++) {
+        bind_instance(system, system->entities[i].instance);
+    }
+    return 0;
 }
 
 int game_system_set_query(game_system *system, const ecs_query_expr *expression)
@@ -1816,8 +2068,231 @@ int game_system_set_query(game_system *system, const ecs_query_expr *expression)
     return rebuild(system);
 }
 
+static void shared_values(game_system *system, behavior_instance *instance, bool publish)
+{
+    behavior_instance *from = publish ? instance : system->instance;
+    behavior_instance *to = publish ? system->instance : instance;
+    for (int i = 0; i < acount(system->definition->variables); i++) {
+        const behavior_variable *v = &system->definition->variables[i];
+        if (!v->shared) {
+            continue;
+        }
+        pin_value value;
+        int result = behavior_instance_get_variable(from, v->id, &value);
+        assert(!result);
+        result = behavior_instance_set_variable(to, v->id, &value);
+        assert(!result);
+        (void)result;
+    }
+}
+
+static unsigned entity_hash(ecs_entity entity)
+{
+    uint64_t key = ecs_entity_to_u64(entity);
+    key ^= key >> 33;
+    key *= UINT64_C(0xff51afd7ed558ccd);
+    key ^= key >> 33;
+    return (unsigned)key;
+}
+
+static int entity_find(const game_system *system, ecs_entity entity)
+{
+    if (!system->entity_capacity) {
+        return -1;
+    }
+    unsigned slot = entity_hash(entity) & (unsigned)(system->entity_capacity - 1);
+    while (system->entity_index[slot]) {
+        int index = system->entity_index[slot] - 1;
+        ecs_entity found = system->entities[index].entity;
+        if (found.slot == entity.slot && found.generation == entity.generation) {
+            return index;
+        }
+        slot = (slot + 1) & (unsigned)(system->entity_capacity - 1);
+    }
+    return -1;
+}
+
+static void entity_insert(game_system *system, int index)
+{
+    unsigned slot = entity_hash(system->entities[index].entity) &
+                    (unsigned)(system->entity_capacity - 1);
+    while (system->entity_index[slot]) {
+        slot = (slot + 1) & (unsigned)(system->entity_capacity - 1);
+    }
+    system->entity_index[slot] = index + 1;
+}
+
+static void entity_reindex(game_system *system, int count)
+{
+    int capacity = 8;
+    while (capacity < count * 2) {
+        capacity *= 2;
+    }
+    free(system->entity_index);
+    system->entity_capacity = capacity;
+    system->entity_index = xcalloc((size_t)capacity, sizeof *system->entity_index);
+    for (int i = 0; i < acount(system->entities); i++) {
+        entity_insert(system, i);
+    }
+}
+
+static bool query_matches(const game_system *system, const ecs_query_expr *query, ecs_entity entity)
+{
+    switch (ecs_query_expr_get_kind(query)) {
+        case ECS_QUERY_HAS:
+            return ecs_component_has(system->world, entity, ecs_query_expr_get_component(query));
+        case ECS_QUERY_NOT:
+            return !query_matches(system, ecs_query_expr_child(query, 0), entity);
+        case ECS_QUERY_ANY:
+            for (int i = 0; i < ecs_query_expr_child_count(query); i++) {
+                if (query_matches(system, ecs_query_expr_child(query, i), entity)) {
+                    return true;
+                }
+            }
+            return false;
+        case ECS_QUERY_ALL:
+            for (int i = 0; i < ecs_query_expr_child_count(query); i++) {
+                if (!query_matches(system, ecs_query_expr_child(query, i), entity)) {
+                    return false;
+                }
+            }
+            return true;
+    }
+    return false;
+}
+
+static bool system_matches(const game_system *system, ecs_entity entity)
+{
+    return ecs_entity_is_alive(system->world, entity) &&
+           !ecs_entity_is_retiring(system->world, entity) &&
+           query_matches(system, system->compiled_query_expression, entity);
+}
+
+static bool entity_activation_valid(behavior_instance *instance)
+{
+    game_system *system = instance->activation_user;
+    ecs_entity entity = ecs_entity_from_u64(instance->owner.u64);
+    int index = entity_find(system, entity);
+    assert(index >= 0);
+    if (!system_matches(system, entity)) {
+        system->entities[index].expired = true;
+        return false;
+    }
+    return !system->entities[index].expired;
+}
+
+static bool entity_activation_enter(behavior_instance *instance)
+{
+    if (!entity_activation_valid(instance)) {
+        return false;
+    }
+    shared_values(instance->activation_user, instance, false);
+    return true;
+}
+
+static void entity_activation_leave(behavior_instance *instance)
+{
+    shared_values(instance->activation_user, instance, true);
+}
+
+static system_entity *entity_instance(game_system *system, ecs_entity entity)
+{
+    int index = entity_find(system, entity);
+    if (index >= 0) {
+        return &system->entities[index];
+    }
+    behavior_asset *definition = system->instance_definition
+                                   ? system->instance_definition
+                                   : system->definition;
+    pin_value owner = { .type = PIN_HANDLE,
+                        .u64 = ecs_entity_to_u64(entity),
+                        .type_name = "ecs.entity" };
+    behavior_instance *instance = behavior_instance_create(definition, &owner, NULL, NULL);
+    assert(instance);
+    behavior_instance_set_activation_pool(instance, 1);
+    behavior_instance_set_trace_enabled(instance, 0);
+    bind_instance(system, instance);
+    behavior_instance_set_backend(instance, system->instance->backend);
+    instance->activation_valid = entity_activation_valid;
+    instance->activation_enter = entity_activation_enter;
+    instance->activation_leave = entity_activation_leave;
+    instance->activation_user = system;
+    index = acount(system->entities);
+    if ((index + 1) * 2 > system->entity_capacity) {
+        entity_reindex(system, index + 1);
+    }
+    apush(system->entities, ((system_entity){ .entity = entity, .instance = instance }));
+    entity_insert(system, index);
+    return &system->entities[index];
+}
+
+static void prune_entities(game_system *system)
+{
+    for (int i = 0; i < acount(system->entities); i++) {
+        system->entities[i].matched = false;
+    }
+    for (int i = 0; i < acount(system->snapshot); i++) {
+        int index = entity_find(system, system->snapshot[i]);
+        if (index >= 0) {
+            system->entities[index].matched = true;
+        }
+    }
+    int count = 0, previous = acount(system->entities);
+    for (int i = 0; i < previous; i++) {
+        system_entity state = system->entities[i];
+        if (!state.matched || state.expired ||
+            !ecs_entity_is_alive(system->world, state.entity)) {
+            behavior_instance_destroy(state.instance);
+            continue;
+        }
+        system->entities[count++] = state;
+    }
+    if (count != previous) {
+        asetlen(system->entities, count);
+        entity_reindex(system, count);
+    }
+}
+
+static int run_retained(game_system *system, ecs_entity entity, double now, double delta, flow_error *error)
+{
+    system_entity *state = entity_instance(system, entity);
+    behavior_instance *instance = state->instance;
+    instance->local_clock.current_time = now;
+    instance->local_clock.delta_seconds = delta;
+    if (!state->run) {
+        pin_value tick_delta = { .type = PIN_F32,
+                                 .f = (float)delta,
+                                 .type_name = pin_type_name(PIN_F32) };
+        flow_inputs inputs = { &tick_delta, 1, NULL };
+        node *tick = graph_node_by_id(instance->asset->graph, system->tick->id);
+        assert(tick);
+        state->run = behavior_instance_enqueue(instance, tick, inputs, error);
+        if (!state->run) {
+            return error && error->code ? error->code : FLOW_ERR_STATE;
+        }
+    }
+    int result = behavior_instance_tick(instance, now);
+    flow_state status = flow_run_status(state->run);
+    if (result < 0 || status == FLOW_FAILED) {
+        if (error && flow_run_error(state->run)) {
+            *error = *flow_run_error(state->run);
+        }
+        behavior_instance_release_activation(instance, state->run);
+        state->run = NULL;
+        return result < 0 ? result : FLOW_ERR_NODE;
+    }
+    if (status == FLOW_COMPLETED) {
+        behavior_instance_release_activation(instance, state->run);
+        state->run = NULL;
+    }
+    return FLOW_OK;
+}
+
 static int run_interpreted(game_system *system, ecs_entity entity, double now, double delta, flow_error *error)
 {
+    if (system->retained) {
+        return run_retained(system, entity, now, delta, error);
+    }
     pin_value owner = {
         .type = PIN_HANDLE,
         .u64 = ecs_entity_to_u64(entity),
@@ -1833,7 +2308,13 @@ static int run_interpreted(game_system *system, ecs_entity entity, double now, d
         set_error(error, FLOW_ERR_STATE, NULL, "system instance is busy");
         return FLOW_ERR_STATE;
     }
-    flow_run *run = behavior_instance_enqueue(system->instance, system->tick, inputs, error);
+    node *tick = system->instance_definition ? graph_node_by_id(
+                                                   system->instance_definition->graph,
+                                                   system->tick->id
+                                               )
+                                             : system->tick;
+    assert(tick);
+    flow_run *run = behavior_instance_enqueue(system->instance, tick, inputs, error);
     if (!run) {
         return error && error->code ? error->code : FLOW_ERR_STATE;
     }
@@ -2007,7 +2488,7 @@ int game_system_tick_mode(
         set_error(error, FLOW_ERR_STATE, NULL, "System has no Tick event");
         return FLOW_ERR_STATE;
     }
-    if (mode == GAME_SYSTEM_EXEC_AUTO) {
+    if (mode == GAME_SYSTEM_EXEC_AUTO && system->program) {
         mode = system->program && system->program->sljit ? GAME_SYSTEM_EXEC_SJLIT
              : system->program && system->program->typed
                  ? GAME_SYSTEM_EXEC_TYPED_BYTECODE
@@ -2036,6 +2517,12 @@ int game_system_tick_mode(
         (!system->program || !system->program->sljit)) {
         set_error(error, FLOW_ERR_STATE, system->tick, "SLJIT System code is unavailable");
         return FLOW_ERR_STATE;
+    }
+    if (system->retained) {
+        int prepared = game_system_prepare_snapshot(system, error);
+        return prepared < 0
+                 ? prepared
+                 : game_system_run_snapshot(system, monotonic_time, delta_seconds, error);
     }
     if (system->program && program_bind_world(system->program, system->world) != 0) {
         set_error(error, FLOW_ERR_STATE, system->tick, "System query component is not registered");
@@ -2140,11 +2627,47 @@ const graph_program *game_system_program(const game_system *system)
     return system && system->program ? &system->program->shared : NULL;
 }
 
+int game_system_entity_variable(const game_system *system, ecs_entity entity, uint64_t id, pin_value *out)
+{
+    const behavior_variable *v = behavior_asset_find_variable_by_id(system->definition, id);
+    int index = entity_find(system, entity);
+    if (!v || v->shared || index < 0 || system->entities[index].expired ||
+        !system_matches(system, entity)) {
+        return -1;
+    }
+    const system_entity *state = &system->entities[index];
+    return behavior_instance_get_variable(state->instance, id, out);
+}
+
+int game_system_shared_variable(const game_system *system, uint64_t id, pin_value *out)
+{
+    const behavior_variable *v = behavior_asset_find_variable_by_id(system->definition, id);
+    if (!v || !v->shared || !system->instance) {
+        return -1;
+    }
+    return behavior_instance_get_variable(system->instance, id, out);
+}
+
+int game_system_retained_count(const game_system *system)
+{
+    return acount(system->entities);
+}
+
+int game_system_suspended_count(const game_system *system)
+{
+    int count = 0;
+    for (int i = 0; i < acount(system->entities); i++) {
+        const system_entity *state = &system->entities[i];
+        count += state->run && flow_run_status(state->run) == FLOW_SUSPENDED;
+    }
+    return count;
+}
+
 int game_system_prepare_snapshot(game_system *system, flow_error *error)
 {
     aclear(system->snapshot);
-    if (system->compile.error_count || !system->program ||
-        program_bind_world(system->program, system->world) != 0) {
+    if (system->compile.error_count || (!system->program && !system->instance) ||
+        (system->program && program_bind_world(system->program, system->world) != 0)) {
         set_error(error, FLOW_ERR_COMPILE, NULL, "System has no valid compiled program or registered columns");
         return FLOW_ERR_COMPILE;
     }
@@ -2169,10 +2692,139 @@ int game_system_prepare_snapshot(game_system *system, flow_error *error)
     return FLOW_OK;
 }
 
+static int release_finished(system_entity *state, flow_error *error)
+{
+    if (!state->run) {
+        return FLOW_OK;
+    }
+    flow_state status = flow_run_status(state->run);
+    if (status != FLOW_COMPLETED && status != FLOW_FAILED && status != FLOW_IDLE) {
+        return FLOW_OK;
+    }
+    if (status == FLOW_FAILED && error && flow_run_error(state->run)) {
+        *error = *flow_run_error(state->run);
+    }
+    behavior_instance_release_activation(state->instance, state->run);
+    state->run = NULL;
+    return status == FLOW_FAILED ? FLOW_ERR_NODE : FLOW_OK;
+}
+
+static int maintain_snapshot(game_system *system, double time, double delta, flow_error *error)
+{
+    if (!system->reactive) {
+        return FLOW_OK;
+    }
+    game_reactive_begin(system->reactive);
+    int result = FLOW_OK;
+    for (int i = 0; i < acount(system->snapshot); i++) {
+        ecs_entity entity = system->snapshot[i];
+        if (!system_matches(system, entity)) {
+            continue;
+        }
+        system_entity *state = entity_instance(system, entity);
+        result = release_finished(state, error);
+        if (result < 0) {
+            break;
+        }
+        behavior_instance *instance = state->instance;
+        instance->local_clock.current_time = time;
+        instance->local_clock.delta_seconds = delta;
+        if (!entity_activation_enter(instance)) {
+            continue;
+        }
+        instance->activation_depth++;
+        result = state->run || acount(instance->activations)
+                   ? game_reactive_apply_quiet(system->reactive, instance, error)
+                   : game_reactive_apply(system->reactive, instance, error);
+        instance->activation_depth--;
+        entity_activation_leave(instance);
+        if (!state->run && acount(instance->activations)) {
+            assert(acount(instance->activations) == 1);
+            state->run = instance->activations[0];
+        }
+        if (result < 0) {
+            break;
+        }
+    }
+    game_reactive_end(system->reactive);
+    return result;
+}
+
+int game_system_maintain(game_system *system, double time, double delta, flow_error *error)
+{
+    if (!system->retained) {
+        return FLOW_OK;
+    }
+    int result = game_system_prepare_snapshot(system, error);
+    if (result < 0) {
+        return result;
+    }
+    prune_entities(system);
+    return maintain_snapshot(system, time, delta, error);
+}
+
+int game_system_field_changed(
+    game_system *system,
+    ecs_entity entity,
+    ecs_component_id component,
+    size_t offset,
+    pin_value value,
+    flow_error *error
+)
+{
+    if (!system->reactive) {
+        return FLOW_OK;
+    }
+    for (int i = 0; i < acount(system->entities); i++) {
+        system_entity *state = &system->entities[i];
+        int finished = release_finished(state, error);
+        if (finished < 0) {
+            return finished;
+        }
+        behavior_instance *instance = state->instance;
+        if (!entity_activation_enter(instance)) {
+            continue;
+        }
+        instance->activation_depth++;
+        int result = game_reactive_changed(system->reactive, instance, entity, component, offset, value, error);
+        instance->activation_depth--;
+        entity_activation_leave(instance);
+        if (!state->run && acount(instance->activations)) {
+            assert(acount(instance->activations) == 1);
+            state->run = instance->activations[0];
+        }
+        if (result < 0) {
+            return result;
+        }
+    }
+    return FLOW_OK;
+}
+
 int game_system_run_snapshot(game_system *system, double time, double delta, flow_error *error)
 {
     system_program *p = system->program;
     system->match_count = 0;
+    if (!p) {
+        if (system->retained) {
+            prune_entities(system);
+        }
+        int maintained = maintain_snapshot(system, time, delta, error);
+        if (maintained < 0) {
+            return maintained;
+        }
+        for (int i = 0; i < acount(system->snapshot); i++) {
+            ecs_entity entity = system->snapshot[i];
+            if (!ecs_entity_is_alive(system->world, entity)) {
+                continue;
+            }
+            int result = run_interpreted(system, entity, time, delta, error);
+            if (result < 0) {
+                return result;
+            }
+            system->match_count++;
+        }
+        return FLOW_OK;
+    }
     if (p->sljit) {
         system_jit_user user = { p, error };
         graph_jit_host host = { .user = &user, .error = system_jit_error };

@@ -29,5 +29,5 @@ description "Conservative ellipsoid distance for a smooth continuous height cano
             - from="42.Result" to="1.Distance"
         }
     }
-    - id=5 kind="function" math_expression="(length(position / vec3(110, 28, 65)) - 1) * 28" entry_id=6
+    - id=5 kind="function" math_expression="(length(position / vec3(110, 28, 65)) - 1) * 28" expression_mode=1 entry_id=6
 }

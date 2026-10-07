@@ -123,7 +123,7 @@ static void controller()
     assert(mkdtemp(root));
     snprintf(content, sizeof content, "%s/content", root);
     snprintf(behaviors, sizeof behaviors, "%s/behaviors", content);
-    snprintf(path, sizeof path, "%s/Gate.kdl", behaviors);
+    snprintf(path, sizeof path, "%s/Gate.code", behaviors);
     assert(!mkdir(content, 0755) && !mkdir(behaviors, 0755));
     behavior_asset *asset = behavior_asset_new("Gate");
     assert(graph_add_node(asset->graph, registry_node_by_name("Scene Info")));

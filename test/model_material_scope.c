@@ -25,8 +25,9 @@ void test_model_material_scope()
     shader_error error = { 0 };
     assert(render_shader_upsert(material, &error));
     int id = render_shader_find(material->name);
-    const char *text = "\"shape.Radius\" 9; \"material.ImageSlot.Roughness\" "
-                       "0.35; \"MirrorSlot.Roughness\" 0.65;";
+    const char *text = "shape.Radius 9\n"
+                       "material.ImageSlot.Roughness 0.35\n"
+                       "MirrorSlot.Roughness 0.65\n";
     render_shader_parameter_cache *cache = NULL;
     float values[32][4] = { { 0 } };
     for (int i = 0; i < 4; i++) {
@@ -55,10 +56,11 @@ void test_model_material_scope()
     }
     float before[32][4];
     memcpy(before, values, sizeof values);
-    const char *invalid[] = { "\"material.MirrorSlot.Roughness\" \"bad\";",
-                              "\"MirrorSlot.Roughness\" (array)- 0.2 0.3;",
-                              "\"MirrorSlot.Unknown\" 0.2;",
-                              "Roughness 0.2; \"MirrorSlot.Roughness\" 0.3;",
+    const char *invalid[] = { "material.MirrorSlot.Roughness \"bad\"\n",
+                              "(array)MirrorSlot.Roughness 0.2 0.3\n",
+                              "MirrorSlot.Unknown 0.2\n",
+                              "Roughness 0.2\n"
+                              "MirrorSlot.Roughness 0.3\n",
                               "malformed {" };
     for (int i = 0; i < 5; i++) {
         assert(!render_shader_material_parameters_scoped_cached(
@@ -88,7 +90,7 @@ void test_model_material_scope()
         id,
         NULL,
         (ecs_entity){ 0 },
-        "Roughness 0.4;",
+        "Roughness 0.4\n",
         "ImageSlot",
         values,
         &cache,
@@ -99,7 +101,7 @@ void test_model_material_scope()
         id,
         NULL,
         (ecs_entity){ 0 },
-        "\"material.Roughness\" 0.45;",
+        "material.Roughness 0.45\n",
         "ImageSlot",
         values,
         &cache,

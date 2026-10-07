@@ -12,6 +12,7 @@
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 
 #include <assert.h>
@@ -34,7 +35,7 @@ static behavior_asset *load(const char *path)
     assert(fread(json, 1, (size_t)size, file) == (size_t)size);
     json[size] = 0;
     fclose(file);
-    behavior_asset *asset = behavior_asset_load(json);
+    behavior_asset *asset = test_project_asset(path, json);
     if (asset) {
         asset = link_test_libraries(asset);
     }
@@ -47,31 +48,42 @@ static behavior_asset *load(const char *path)
     return asset;
 }
 
-static float evaluate(const char *source, float x, float y)
+static float evaluate(behavior_asset *asset, graph *g, node *call, float x, float y)
 {
-    behavior_asset *asset = behavior_asset_new("Math boundary");
-    behavior_expression_error error;
-    node *call = behavior_expression_add(asset, asset->graph, source, &error);
-    assert(call);
+    assert(call->desc == &NODE_CallPureFunction);
+    int argument = 0;
     for (int i = 0; i < call->input_count; i++) {
-        pin_value value = { .type = PIN_F64, .d = i ? y : x };
-        assert(graph_set_pin_default(asset->graph, call, 0, i, &value) == 0);
+        if (call->input_pins[i].kind != PIN_DATA) {
+            continue;
+        }
+        pin_type original_type = call->input_pins[i].type;
+        node *source = NULL;
+        int output = -1;
+        if (graph_input_source(g, call, i, &source, &output)) {
+            assert(graph_remove_edge(g, source, output, call, i) == 0);
+        }
+        assert(graph_set_pin_binding(g, call, false, i, NULL) == 0);
+        assert(original_type == PIN_F32 || original_type == PIN_F64);
+        float number = argument++ ? y : x;
+        pin_value value = { .type = original_type };
+        if (value.type == PIN_F32) {
+            value.f = number;
+        } else {
+            value.d = number;
+        }
+        assert(graph_set_pin_default(g, call, false, i, &value) == 0);
     }
-    /* The authored consumers use fixed float pins. Exercise that real graph
-     * boundary instead of comparing only a C cast of the expression result. */
-    node *sink = graph_add_node(asset->graph, registry_node_by_name("Add"));
+    assert(argument >= 1 && argument <= 2);
+    /* Mirror the authored consumer's fixed float boundary. */
+    node *sink = graph_add_node(g, registry_node_by_name("Add"));
     assert(sink);
     for (int i = 0; i < 2; i++) {
-        assert(graph_set_pin_type(asset->graph, sink, 0, i, PIN_F32, "float") == 0);
+        assert(graph_set_pin_type(g, sink, false, i, PIN_F32, "float") == 0);
         sink->input_pins[i].flags &= ~PIN_FLAG_WILDCARD;
     }
-    assert(graph_set_pin_type(asset->graph, sink, 1, 0, PIN_F32, "float") == 0);
+    assert(graph_set_pin_type(g, sink, true, 0, PIN_F32, "float") == 0);
     sink->output_pins[0].flags &= ~PIN_FLAG_WILDCARD;
-    assert(graph_connect_data(asset->graph, call, 0, sink, 0) == 0);
-    compile_report report;
-    compile_report_init(&report);
-    assert(behavior_asset_compile(asset, &report) == 0);
-    compile_report_free(&report);
+    assert(graph_connect_data(g, call, 0, sink, 0) == 0);
     behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
     assert(instance);
     eval_context context;
@@ -80,19 +92,19 @@ static float evaluate(const char *source, float x, float y)
     arena memory;
     arena_init(&memory, 4096);
     pin_value result;
-    assert(graph_eval_output(asset->graph, sink, 0, &memory, &result, &context) == 0);
+    assert(graph_eval_output(g, sink, 0, &memory, &result, &context) == 0);
     assert(result.type == PIN_F32);
     float value = result.f;
     eval_context_free(&context);
     arena_free(&memory);
     behavior_instance_destroy(instance);
-    behavior_asset_free(asset);
+    assert(graph_remove_node(g, sink) == 0);
     return value;
 }
 
 static void health_damage()
 {
-    behavior_asset *asset = load("content/behaviors/HealthBehavior.kdl");
+    behavior_asset *asset = load("content/behaviors/HealthBehavior.code");
     node *setter = NULL;
     graph *setter_graph = NULL;
     node *expression = NULL;
@@ -104,15 +116,13 @@ static void health_damage()
                 setter = n;
                 setter_graph = g;
             }
-            const char *source = behavior_expression_source(asset, n);
-            if (source && strcmp(source, "clamp(current - clamp(amount, 0, current), 0, maximum)") ==
-                              0) {
-                expression = n;
-            }
         }
     }
-    assert(expression);
     assert(setter && setter->input_pins[1].type == PIN_I32);
+    int expression_output = -1;
+    assert(graph_input_source(setter_graph, setter, 1, &expression, &expression_output));
+    assert(expression && expression->desc == &NODE_BehaviorExpression);
+    assert(expression_output >= 0 && expression->output_pins[expression_output].type == PIN_F64);
     const node_desc *conversion = graph_input_conversion(setter_graph, setter, 1);
     assert(conversion && conversion == conversion_for(PIN_F64, PIN_I32));
     ecs_world *world = ecs_world_new();
@@ -392,16 +402,18 @@ void test_behavior_math()
     angle_helpers();
     easing_helpers();
     health_damage();
-    behavior_asset *projectile = load("test/fixtures/content/behaviors/ProjectileBehavior.kdl");
-    behavior_asset *trail = load("test/fixtures/content/behaviors/MovementTrailBehavior.kdl");
+    behavior_asset *projectile = load("test/fixtures/content/behaviors/ProjectileBehavior.code");
+    behavior_asset *trail = load("test/fixtures/content/behaviors/MovementTrailBehavior.code");
     graph *direction = projectile->graphs[1];
     graph *emission = trail->graphs[1];
     node *magnitude = graph_node_by_id(direction, 150);
     node *rate = graph_node_by_id(emission, 153);
     assert(magnitude && rate);
-    const char *magnitude_source = behavior_expression_source(projectile, magnitude);
-    const char *rate_source = behavior_expression_source(trail, rate);
-    assert(magnitude_source && rate_source);
+    assert(
+        magnitude->desc == &NODE_CallPureFunction &&
+        !strcmp(magnitude->reference_name, "Direction Magnitude")
+    );
+    assert(rate->desc == &NODE_CallPureFunction && !strcmp(rate->reference_name, "Emission Budget"));
     assert(
         !graph_node_by_id(direction, 95) && !graph_node_by_id(direction, 98) &&
         !graph_node_by_id(direction, 102)
@@ -415,16 +427,19 @@ void test_behavior_math()
     for (int i = 0; i < (int)(sizeof values / sizeof *values); i++) {
         for (int j = 0; j < (int)(sizeof values / sizeof *values); j++) {
             float expected = fabsf(values[i]) + fabsf(values[j]);
-            assert(evaluate(magnitude_source, values[i], values[j]) == expected);
+            assert(evaluate(projectile, direction, magnitude, values[i], values[j]) == expected);
         }
         float bounded = fminf(fmaxf(values[i], 0), 0.1f);
-        assert(evaluate(rate_source, values[i], 0) == bounded * 64.0f);
+        assert(evaluate(trail, emission, rate, values[i], 0) == bounded * 64.0f);
     }
     float boundary[] = { nextafterf(0.1f, 0), 0.1f, nextafterf(0.1f, 1) };
     for (int i = 0; i < 3; i++) {
-        assert(evaluate(rate_source, boundary[i], 0) == fminf(boundary[i], 0.1f) * 64.0f);
+        assert(
+            evaluate(trail, emission, rate, boundary[i], 0) ==
+            fminf(boundary[i], 0.1f) * 64.0f
+        );
     }
     behavior_asset_free(projectile);
     behavior_asset_free(trail);
-    puts("PASS: authored Behavior Expressions preserve projectile and trail float boundaries");
+    puts("PASS: authored functions preserve projectile and trail float boundaries");
 }

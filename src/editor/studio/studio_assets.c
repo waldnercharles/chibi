@@ -344,7 +344,10 @@ static void move_selection(studio *s, int step)
 static void open_asset(studio *s, int asset)
 {
     finish_transform_edit(s->scene, false);
-    app_scene_authoring_open_asset(s->scene, asset);
+    if (app_scene_authoring_open_asset(s->scene, asset) == 0 &&
+        s->scene->active_tab >= 0 && s->scene->tabs[s->scene->active_tab].source_only) {
+        studio_behavior_show(s, 1);
+    }
 }
 
 static bool open_selection(studio *s)
@@ -461,11 +464,11 @@ static bool named(studio *s, const char *name)
     return false;
 }
 
-static char *kdl_path(const char *folder, const char *name, char *error, size_t size)
+static char *asset_path(const char *folder, const char *name, const char *extension, char *error, size_t size)
 {
-    size_t length = strlen(folder) + strlen(name) + sizeof "/" ASSET_EXTENSION;
+    size_t length = strlen(folder) + strlen(name) + strlen(extension) + 2;
     char *path = xmalloc(length);
-    snprintf(path, length, "%s/%s" ASSET_EXTENSION, folder, name);
+    snprintf(path, length, "%s/%s%s", folder, name, extension);
     struct stat info;
     if (stat(path, &info) != 0) {
         return path;
@@ -475,7 +478,7 @@ static char *kdl_path(const char *folder, const char *name, char *error, size_t 
     return NULL;
 }
 
-/* The new asset's file: a .kdl in its kind's folder, a ui asset's .rml or a
+/* The new asset's file uses its kind's extension, a ui asset's .rml or a
    stylesheet's .rcss; NULL with why in `error` when the name is invalid or
    taken. */
 static char *new_path(studio *s, int kind, const char *name, char *error, size_t size)
@@ -492,7 +495,7 @@ static char *new_path(studio *s, int kind, const char *name, char *error, size_t
     char *folder = content_path_join(s->scene->content_root, folder_name);
     char *path = is_ui(kind)
                    ? ui_buffer_new_path(folder, (ui_new_kind)(kind - NEW_ASSET_KIND_COUNT), name, error, size)
-                   : kdl_path(folder, name, error, size);
+                   : asset_path(folder, name, new_asset_extension((new_asset_kind)kind), error, size);
     free(folder);
     return path;
 }
@@ -550,13 +553,10 @@ static bool write_ui(ui_new_kind kind, const char *path)
 
 /* The asset as its model writes it (assets/new_asset.h), which loads back
    unchanged and is what --format writes. */
-static bool write_kdl(new_asset_kind kind, const char *name, const char *path)
+static bool write_code(new_asset_kind kind, const char *name, const char *path)
 {
-    char error[128];
     char *text = new_asset_text(kind, name);
-    char *disk = asset_text_to_disk(text, error, sizeof error);
-    bool written = disk && write_file_atomic(path, disk) == 0;
-    free(disk);
+    bool written = text && write_file_atomic(path, text) == 0;
     free(text);
     return written;
 }
@@ -597,7 +597,7 @@ static bool create(studio *s)
     free(folder);
     bool written = is_ui(n->kind)
                      ? write_ui((ui_new_kind)(n->kind - NEW_ASSET_KIND_COUNT), path)
-                     : write_kdl((new_asset_kind)n->kind, n->name, path);
+                     : write_code((new_asset_kind)n->kind, n->name, path);
     if (written) {
         open_new(s, n->kind, path);
     } else {

@@ -1,0 +1,29 @@
+behavior "TwinStickInputBehavior" {
+    owner "ecs.entity";
+    value movement_velocity = "MovementActions"."Movement Velocity"(direction: input.Direction, speed: &component("GAME.GameMovement"));
+    action set_gamevelocity = set_game_velocity(Value: movement_velocity);
+    value direction_orientation = "DirectionMath"."Direction Orientation"(X: &component("GAME.GameAim", "direction.x"), Y: &component("GAME.GameAim", "direction.y"));
+    action set_gameorientation = set_game_orientation(Value: direction_orientation);
+    value has_gamedash = has_game_dash();
+    value has_gamedash_2 = has_game_dash();
+    on Input as input(Direction: struct<"CF_V2"> = null) {
+        if (has_gamedash) {
+            if (cast<double>(&component("GAME.GameDash", "remaining")) > 0) {
+            } else {
+                set_gamevelocity();
+            }
+        } else {
+            set_gamevelocity();
+        }
+    }
+    on Tick as tick() {
+        if (has_gamedash_2) {
+            if (cast<double>(&component("GAME.GameDash", "remaining")) > 0) {
+            } else {
+                set_gameorientation();
+            }
+        } else {
+            set_gameorientation();
+        }
+    }
+}

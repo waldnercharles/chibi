@@ -1,4 +1,6 @@
+#include "assets/code_source.h"
 #include "graph/compiler/graph_jit_sljit.h"
+#include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "runtime/generated.h"
 #include "runtime/systems/system.h"
@@ -334,8 +336,117 @@ static void nonidentity_conversion(ecs_world *world, ecs_entity entity)
     game_system_free(system);
 }
 
+/* Independent ECS oracle for the reflected getter/unwrap ABI migration. */
+static void movement_source_oracle()
+{
+    const char
+        *text = "system \"Movement oracle\" { owner \"ecs.entity\"; dataflow; "
+                "on Tick as tick(DeltaSeconds: float = 0.0) { "
+                "set_game_transform(Value: add(A: struct<\"CF_V2\"> = "
+                "get_game_transform(), "
+                "B: struct<\"CF_V2\"> = multiply(A: struct<\"CF_V2\"> = "
+                "multiply(A: struct<\"CF_V2\"> = get_game_input(), B: "
+                "get_game_movement()), "
+                "B: tick.DeltaSeconds))); } }";
+    const double deltas[] = { 0, 1.0 / 60.0, 0.125, 1.0 / 1000.0, 0.75, 0.03125 };
+    const CF_V2 directions[] = { { 1, 0 }, { -0.75f, 0.5f }, { 0, -1 }, { 0.125f, -0.25f } };
+    const float speeds[] = { 0, 180, -12.5f, 0.03125f };
+    code_source *source = code_source_parse(text);
+    assert(source);
+    behavior_asset *definition = code_source_build_behavior(source);
+    assert(definition);
+    code_source_free(source);
+    for (int mode = GAME_SYSTEM_EXEC_GENERIC_BYTECODE; mode <= GAME_SYSTEM_EXEC_SJLIT;
+         mode++) {
+        ecs_world *world = ecs_world_new();
+        assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
+        assert(ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL) == ECS_OK);
+        assert(ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL) == ECS_OK);
+        game_system *system = game_system_new(world, behavior_asset_clone(definition));
+        assert(system && !compile_report_blocked(game_system_compile(system)));
+        assert(game_system_program(system) && game_system_uses_bytecode(system));
+        assert(game_system_uses_typed_bytecode(system));
+        assert(!graph_sljit_available() || game_system_uses_sljit(system));
+        if (unavailable(system, mode)) {
+            printf("Movement source oracle: backend %d unavailable\n", mode);
+            game_system_free(system);
+            ecs_world_free(world);
+            continue;
+        }
+        flow_error error = { 0 };
+        assert(game_system_tick_mode(system, 0, 0.125, &error, mode) == FLOW_OK);
+        assert(game_system_match_count(system) == 0);
+        ecs_entity entities[7];
+        GameTransform expected[7];
+        for (int i = 0; i < 7; i++) {
+            entities[i] = ecs_world_create_entity(world);
+            /* Four complete rows, followed by one row missing each component. */
+            if (i != 4) {
+                assert(GAME_GameTransform_add(world, entities[i], 0) == ECS_OK);
+            }
+            if (i != 5) {
+                assert(GAME_GameMovement_add(world, entities[i], 0) == ECS_OK);
+            }
+            if (i != 6) {
+                assert(GAME_GameInput_add(world, entities[i], 0) == ECS_OK);
+            }
+        }
+        assert(ecs_world_apply_commands(world) == ECS_OK);
+        for (int i = 0; i < 7; i++) {
+            expected[i] = (GameTransform){ (float)i * 7.25f, (float)i * -2.5f };
+            if (i != 4) {
+                *GAME_GameTransform_get(world, entities[i]) = expected[i];
+            }
+        }
+        double time = 0;
+        for (int tick = 0; tick < 24; tick++) {
+            double delta = deltas[tick % 6];
+            for (int i = 0; i < 7; i++) {
+                CF_V2 direction = directions[(i + tick) % 4];
+                float speed = speeds[(i + tick / 3) % 4];
+                if (i != 6) {
+                    GAME_GameInput_get(world, entities[i])->move = direction;
+                }
+                if (i != 5) {
+                    GAME_GameMovement_get(world, entities[i])->speed = speed;
+                }
+                if (i < 4) {
+                    expected[i].x += direction.x * speed * (float)delta;
+                    expected[i].y += direction.y * speed * (float)delta;
+                }
+            }
+            assert(game_system_tick_mode(system, time, delta, &error, mode) == FLOW_OK);
+            assert(game_system_match_count(system) == 4);
+            for (int i = 0; i < 7; i++) {
+                if (i != 4) {
+                    const GameTransform *actual = GAME_GameTransform_get_const(world, entities[i]);
+                    assert(!memcmp(actual, &expected[i], sizeof *actual));
+                }
+                if (i != 6) {
+                    CF_V2 direction = directions[(i + tick) % 4];
+                    assert(
+                        !memcmp(&GAME_GameInput_get_const(world, entities[i])->move, &direction, sizeof direction)
+                    );
+                }
+                if (i != 5) {
+                    assert(
+                        GAME_GameMovement_get_const(world, entities[i])->speed ==
+                        speeds[(i + tick / 3) % 4]
+                    );
+                }
+            }
+            time += delta;
+        }
+        printf("PASS: Movement source oracle backend %d, varied input and delta, missing components\n", mode);
+        game_system_free(system);
+        ecs_world_free(world);
+    }
+    behavior_asset_free(definition);
+}
+
 void test_system_arithmetic()
 {
+    movement_source_oracle();
     _Static_assert(sizeof(GameHealth) == sizeof(int64_t), "capture preserves 64-bit results");
     ecs_world *world = ecs_world_new();
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) == ECS_OK);

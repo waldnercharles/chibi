@@ -669,7 +669,10 @@ static bool test_sdf_batches(ecs_world *world)
         snprintf(
             parameters[i],
             sizeof parameters[i],
-            "Radius %g; (array)Tint %g %g %g; Glow %g; Roughness %g;",
+            "Radius %g\n"
+            "(array)Tint %g %g %g\n"
+            "Glow %g\n"
+            "Roughness %g\n",
             3.0f + group * .3f,
             .15f + group * .1f,
             .7f - group * .08f,
@@ -1379,8 +1382,8 @@ static bool model_bake_render()
     ecs_entity live = actor(world, true, model->name),
                mesh = actor(world, false, NULL);
     GameMeshAsset source = { .source = path };
-    const char *qualified = "\"material.ImageSlot.Roughness\" 0.35;\n"
-                            "\"material.MirrorSlot.Roughness\" 0.65;\n";
+    const char *qualified = "material.ImageSlot.Roughness 0.35\n"
+                            "material.MirrorSlot.Roughness 0.65\n";
     GAME_GameShader_get(world, live)->parameters = qualified;
     GameShader mesh_binding = { .parameters = qualified };
     assert(

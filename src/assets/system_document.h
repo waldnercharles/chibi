@@ -1,6 +1,7 @@
 #ifndef CHIBI_GAME_SYSTEM_DOCUMENT_H
 #define CHIBI_GAME_SYSTEM_DOCUMENT_H
 
+#include "assets/code_source_context.h"
 #include "runtime/systems/query.h"
 #include "runtime/systems/system.h"
 
@@ -11,6 +12,14 @@ typedef struct game_system_document game_system_document;
 
 game_system_document *game_system_document_load(
     const char *text,
+    game_query_component_resolver resolve,
+    void *user,
+    char *error,
+    size_t error_size
+);
+game_system_document *game_system_document_load_context(
+    const char *text,
+    const code_source_context *context,
     game_query_component_resolver resolve,
     void *user,
     char *error,
@@ -37,6 +46,13 @@ int game_system_document_replace_behavior_asset(game_system_document *document, 
 const ecs_query_expr *game_system_document_query(const game_system_document *document);
 int game_system_document_set_query(game_system_document *document, const ecs_query_expr *expression);
 unsigned game_system_document_revision(const game_system_document *document);
+char *game_system_document_save_with_metadata(
+    const game_system_document *document,
+    char **metadata,
+    game_query_component_resolver resolve,
+    game_query_component_name_resolver name,
+    void *user
+);
 char *game_system_document_save(
     const game_system_document *document,
     game_query_component_resolver resolve,

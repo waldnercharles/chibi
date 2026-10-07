@@ -44,7 +44,7 @@ const assetSelectorProperties = {
   },
   name: {
     type: "string",
-    description: "Asset name without the .kdl suffix.",
+    description: "Asset name without its storage extension.",
   },
 };
 

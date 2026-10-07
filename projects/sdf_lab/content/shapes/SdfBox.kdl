@@ -41,6 +41,6 @@ description "Exact box for a matched comparison with the engine's triangle box."
             - from="69.Result" to="1.Distance"
         }
     }
-    - id=7 kind="function" math_expression="abs(p) - vec3(30, 22, 30)" entry_id=8
-    - id=35 kind="function" math_expression="length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0)" entry_id=73
+    - id=7 kind="function" math_expression="abs(p) - vec3(30, 22, 30)" expression_mode=1 entry_id=8
+    - id=35 kind="function" math_expression="length(max(offset, 0)) + min(max(max(offset.x, offset.y), offset.z), 0)" expression_mode=1 entry_id=73
 }

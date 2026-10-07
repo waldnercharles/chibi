@@ -343,7 +343,7 @@ static void text_editor_chrome()
     fixture_free(&f);
 }
 
-/* An asset's KDL source in the Text Editor: its header names the asset,
+/* An asset's code source in the Text Editor: its header names the asset,
    with Save and the apply mode. */
 static void asset_source_header()
 {
@@ -356,7 +356,7 @@ static void asset_source_header()
     bool named = shows_text(in_panel(s, "CodeHeader", "span.code-file"), "Vault") &&
                  in_panel(s, "CodeHeader", "[data-tip='Save source']");
     bool live = s->prefs.code_apply_live;
-    rml_element *mode = in_panel(s, "CodeHeader", ".code-head > .segmented .seg:last-child");
+    rml_element *mode = in_panel(s, "CodeHeader", "[data-tip='Apply edits'] .seg:last-child");
     if (mode) {
         press(s, mode);
     }

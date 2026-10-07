@@ -348,7 +348,7 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Asset filename without the .kdl suffix.",
+        description: "Asset name without its storage extension.",
       },
     },
     required: ["kind", "name"],
@@ -366,7 +366,7 @@ function buildToolDefinitions() {
         },
         required: ["line", "column"],
         additionalProperties: false,
-        description: "Return KDL completions, hover, and source diagnostics at this position, including for incomplete source.",
+        description: "Return code completions, hover, and source diagnostics at this position, including for incomplete source.",
       },
     },
   };
@@ -662,7 +662,7 @@ function buildToolDefinitions() {
       },
       name: {
         type: "string",
-        description: "Behavior or system asset name without the .kdl suffix.",
+        description: "Behavior or system asset name without the .code suffix.",
       },
     },
     required: ["kind", "name"],
@@ -911,7 +911,7 @@ function buildToolDefinitions() {
     {
       name: "listAssets",
       operation: "list_assets",
-      description: "List authored KDL assets with stable paths, sizes, and content hashes.",
+      description: "List authored code assets with stable paths, sizes, and content hashes.",
       inputSchema: {
         type: "object",
         properties: { limit: pageProperties.limit, cursor: pageProperties.cursor },
@@ -1037,9 +1037,54 @@ function buildToolDefinitions() {
       outputSchema,
     },
     {
+      name: "buildCode",
+      operation: "build_code",
+      description: "Validate source through the native frontend and publish atomically. Failed compilation retains the current asset; replacements require expected_hash from readAsset.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          ...assetArguments.properties,
+          source: { type: "string" },
+          expected_hash: { type: "string", description: "Current source hash from readAsset." },
+          create: { type: "boolean" },
+          dry_run: { type: "boolean" },
+        },
+        required: ["kind", "name", "source"],
+        additionalProperties: false,
+      },
+      outputSchema,
+    },
+    {
+      name: "analyzeCode",
+      operation: "analyze_code",
+      description: "Compile unsaved behavior source through the shared native frontend; return diagnostics, highlighting, canonical code and the direct graph.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project_root: { type: "string", description: "Optional project directory supplying library and event signatures; defaults to the controller root." },
+          source: { type: "string", description: "Unsaved canonical behavior code." },
+          offset: { type: "integer", minimum: 0, description: "Byte offset for typed completion, hover, definitions, references and call hierarchy." },
+          rename: { type: "string", description: "With offset, propose a scope-safe symbol rename and return validated renamed_source without publishing." },
+          location: {
+            type: "object",
+            properties: {
+              graph_id: { type: "integer", minimum: 0 },
+              node_id: { type: "integer", minimum: 0 },
+              pin_id: { type: "integer", minimum: 0 },
+            },
+            required: ["graph_id", "node_id"],
+            additionalProperties: false,
+          },
+        },
+        required: ["source"],
+        additionalProperties: false,
+      },
+      outputSchema,
+    },
+    {
       name: "readAsset",
       operation: "read_asset",
-      description: "Read authored KDL source and parsed content, with optional completion, hover, and diagnostics.",
+      description: "Read authored code source and parsed content, with optional completion, hover, and diagnostics.",
       inputSchema: readAssetArguments,
       outputSchema,
     },

@@ -210,18 +210,18 @@ static behavior_asset *presentation_asset(node **modes)
     return asset;
 }
 
-static bool kdl_has(const char *kdl, const char *text)
+static bool code_has(const char *code, const char *text)
 {
-    return kdl && strstr(kdl, text);
+    return code && strstr(code, text);
 }
 
-static char *kdl_replace(const char *kdl, const char *from, const char *to)
+static char *code_replace(const char *code, const char *from, const char *to)
 {
-    const char *at = strstr(kdl, from);
+    const char *at = strstr(code, from);
     assert(at);
-    size_t head = (size_t)(at - kdl);
-    char *out = xmalloc(strlen(kdl) - strlen(from) + strlen(to) + 1);
-    memcpy(out, kdl, head);
+    size_t head = (size_t)(at - code);
+    char *out = xmalloc(strlen(code) - strlen(from) + strlen(to) + 1);
+    memcpy(out, code, head);
     strcpy(out + head, to);
     strcat(out, at + strlen(from));
     return out;
@@ -231,19 +231,21 @@ static void serialization()
 {
     node *modes[3];
     behavior_asset *asset = presentation_asset(modes);
+    for (int i = 0; i < 3; i++) {
+        modes[i]->placed = i != 2;
+        modes[i]->x = (float)(i + 1) * 72;
+        modes[i]->y = (float)(i + 1) * 96;
+    }
     uint64_t ids[3] = { modes[0]->id, modes[1]->id, modes[2]->id };
     char *json = behavior_asset_save(asset);
-    char error[256] = { 0 };
-    char *kdl = json ? asset_text_to_disk(json, error, sizeof error) : NULL;
+    char *code = json ? strdup(json) : NULL;
     test_check(
-        kdl_has(kdl, "presentation=\"inline\"") &&
-            (kdl_has(kdl, "presentation=\"expanded\"") ||
-             kdl_has(kdl, "presentation \"expanded\"")) &&
-            !kdl_has(kdl, "presentation=\"auto\"") &&
-            !kdl_has(kdl, "presentation \"auto\"") && !kdl_has(kdl, "inline_source"),
-        "KDL spells explicit presentations and omits auto"
+        code_has(code, "\"presentation\":1") && code_has(code, "\"presentation\":2") &&
+            !code_has(code, "\"presentation\":0") && !code_has(code, "inline_source"),
+        "Code preserves explicit presentations in authoring metadata and omits "
+        "auto"
     );
-    behavior_asset *copy = kdl ? behavior_asset_load(kdl) : NULL;
+    behavior_asset *copy = code ? behavior_asset_load(code) : NULL;
     bool preserved = copy != NULL;
     for (int i = 0; preserved && i < 3; i++) {
         node *n = graph_node_by_id(copy->graph, ids[i]);
@@ -251,21 +253,34 @@ static void serialization()
                     graph_node_is_inline(copy->graph, n) ==
                         graph_node_is_inline(asset->graph, modes[i]);
     }
-    test_check(preserved, "presentations round-trip through KDL");
-    test_check(
-        copy && !graph_node_by_id(copy->graph, ids[0])->placed &&
-            graph_node_by_id(copy->graph, ids[1])->placed,
-        "inline nodes are saved without a position"
-    );
+    test_check(preserved, "presentations round-trip through code");
+    behavior_asset *snapshot = behavior_asset_clone(asset);
+    bool placement = copy && snapshot;
+    for (int i = 0; placement && i < 3; i++) {
+        node *saved = graph_node_by_id(copy->graph, ids[i]);
+        node *cloned = graph_node_by_id(snapshot->graph, ids[i]);
+        placement = saved && cloned && saved->placed == modes[i]->placed &&
+                    cloned->placed == modes[i]->placed &&
+                    saved->x == modes[i]->x && saved->y == modes[i]->y &&
+                    cloned->x == modes[i]->x && cloned->y == modes[i]->y;
+    }
+    test_check(placement, "inline and expanded nodes retain authored placement and automatic positions through code and history snapshots");
+    behavior_asset_free(snapshot);
     behavior_asset_free(copy);
 
-    char *invalid = kdl_replace(kdl, "presentation=\"inline\"", "presentation=\"sideways\"");
+    if (!code_has(code, "\"presentation\":1")) {
+        free(code);
+        free(json);
+        behavior_asset_free(asset);
+        return;
+    }
+    char *invalid = code_replace(code, "\"presentation\":1", "\"presentation\":9999");
     test_check(
         !behavior_asset_load(invalid) && strstr(graph_last_error(), "presentation"),
         "unknown presentations are rejected"
     );
     free(invalid);
-    free(kdl);
+    free(code);
     free(json);
     behavior_asset_free(asset);
 }

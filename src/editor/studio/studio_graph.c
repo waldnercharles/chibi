@@ -10,6 +10,7 @@
 #include "graph/authoring/expand.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/document/extract.h"
+#include "graph/model/reactive_presentation.h"
 #include "graph/nodes/behavior_expression.h"
 #include "platform/cute.h"
 #include "support/array.h"
@@ -137,19 +138,21 @@ graph *sg_active_graph(const studio *s)
 bool sg_graph_readonly(const studio *s)
 {
     const graph *g = sg_active_graph(s);
-    return !g || g->math_expression ||
+    return !g || g->math_expression || studio_code_graph_readonly(s) ||
            !behavior_asset_mutable(sg_graph_editor(s)->asset);
 }
 
 bool sg_node_visible(const graph *g, const node *n)
 {
-    return n && n->desc && !graph_node_is_inline(g, n);
+    return n && n->desc && behavior_reactive_authored_node(g, n) == n &&
+           !graph_node_is_inline(g, n);
 }
 
 node *sg_node_by_id(const studio *s, uint64_t id)
 {
     graph *gr = sg_active_graph(s);
-    return gr && id ? graph_node_by_id(gr, id) : NULL;
+    node *n = gr && id ? graph_node_by_id(gr, id) : NULL;
+    return n ? (node *)behavior_reactive_authored_node(gr, n) : NULL;
 }
 
 graph_comment_box *sg_comment_by_id(const studio *s, uint64_t id)
@@ -334,24 +337,24 @@ void sg_node_menu(studio *s, sg_menu *m, node *n)
         editor_open_graph_call(e, n->id);
         return;
     }
-    if (!ed_is_graph_call(n) && studio_node_definable(n) &&
+    if (!ed_is_graph_call(n) && studio_node_definable(s, n) &&
         sg_menu_item(m, "definition", "Go to Definition", KIT_ICON_EXTERNAL, definition, false)) {
         studio_go_to_definition(s, n);
         return;
     }
-    if (studio_node_referable(n) &&
+    if (studio_node_referable(s, n) &&
         sg_menu_item(m, "refs", "Find References", KIT_ICON_REFERENCES, studio_chord(s, "Shift+Alt+F"), false)) {
         studio_find_node_references(s, n);
         return;
     }
-    if (studio_node_traceable(n) &&
+    if (studio_node_traceable(s, n) &&
         sg_menu_item(m, "calls", "Call Hierarchy", KIT_ICON_CALLERS, studio_chord(s, "Shift+Alt+H"), false)) {
         studio_calls_node(s, n);
         return;
     }
-    if (studio_event_renameable(n) &&
+    if (studio_event_renameable(s, n) &&
         sg_menu_item(m, "rename-event", "Rename Event", KIT_ICON_EDIT, "F2", readonly)) {
-        studio_refactor_rename_event(s, studio_event_renameable(n));
+        studio_refactor_rename_event(s, studio_event_renameable(s, n));
         return;
     }
     graph_pin_run run;
@@ -550,6 +553,23 @@ void studio_graph_frame(studio *s, double delta_seconds)
         sg_calculations_invalidate(s);
     }
     sg_replay(s);
+    /* Source/debug navigation may select a maintenance node. Present its
+       semantic Set before gestures or mutation commands consume selection. */
+    int selected = 0;
+    for (int i = 0; i < acount(e->selected); i++) {
+        node *n = (node *)behavior_reactive_authored_node(e->active_graph, e->selected[i]);
+        bool duplicate = false;
+        for (int k = 0; k < selected; k++) {
+            duplicate |= e->selected[k] == n;
+        }
+        if (!duplicate) {
+            e->selected[selected++] = n;
+        }
+    }
+    asetlen(e->selected, selected);
+    if (e->front_node) {
+        e->front_node = (node *)behavior_reactive_authored_node(e->active_graph, e->front_node);
+    }
     sg_pointer(s);
     sg_shortcuts(s);
     sg_nav_keys(s);
@@ -669,6 +689,10 @@ const char *studio_graph_cursor(const studio *s)
 
 bool studio_graph_can_replay(studio *s, bool redo)
 {
+    if (s->scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR ||
+        s->scene->graph_document_kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        return studio_code_history(s, redo, false);
+    }
     const editor *e = sg_graph_editor(s);
     return studio_graph_active(s) &&
            (redo ? editor_can_redo(e) : editor_can_undo(e));
@@ -678,6 +702,11 @@ void studio_graph_history(studio *s, bool redo)
 {
     editor *e = sg_graph_editor(s);
     sg_cancel_gesture(s);
+    if (s->scene->graph_document_kind == APP_EDITOR_DOCUMENT_BEHAVIOR ||
+        s->scene->graph_document_kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        studio_code_history(s, redo, true);
+        return;
+    }
     if (redo) {
         editor_redo(e);
     } else {

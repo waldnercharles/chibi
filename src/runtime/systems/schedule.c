@@ -304,6 +304,49 @@ static void run_batch(int start, int end, uint32_t, void *user)
                             );
     }
 }
+int system_schedule_maintain(system_schedule *s, double time, double delta, flow_error *error)
+{
+    if (!system_schedule_build(s)) {
+        return FLOW_ERR_COMPILE;
+    }
+    for (int i = 0; i < acount(s->order); i++) {
+        game_system *system = s->entries[s->order[i]].desc.graph;
+        if (!system) {
+            continue;
+        }
+        int result = game_system_maintain(system, time, delta, error);
+        if (result < 0) {
+            return result;
+        }
+    }
+    return FLOW_OK;
+}
+
+int system_schedule_field_changed(
+    system_schedule *s,
+    ecs_entity entity,
+    ecs_component_id component,
+    size_t offset,
+    pin_value value,
+    flow_error *error
+)
+{
+    if (!system_schedule_build(s)) {
+        return FLOW_ERR_COMPILE;
+    }
+    for (int i = 0; i < acount(s->order); i++) {
+        game_system *system = s->entries[s->order[i]].desc.graph;
+        if (!system) {
+            continue;
+        }
+        int result = game_system_field_changed(system, entity, component, offset, value, error);
+        if (result < 0) {
+            return result;
+        }
+    }
+    return FLOW_OK;
+}
+
 int system_schedule_run(system_schedule *s, system_phase phase, double time, double delta)
 {
     if (!system_schedule_build(s)) {

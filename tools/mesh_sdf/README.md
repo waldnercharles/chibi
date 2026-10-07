@@ -28,7 +28,7 @@ identical output bytes; elapsed time is reported on stdout, outside provenance.
 To author the converted directory as a project through public MCP:
 
 ```sh
-printf 'version 5\nname "Local box"\ncontent "content"\n' > /tmp/local-box/project.kdl
+printf 'version 7\nname "Local box"\ncontent "content"\n' > /tmp/local-box/project.kdl
 python3 tools/mesh_sdf/author.py /tmp/local-box --controller "$PWD/build/chibi_ctl" --name Box
 build/chibi_ctl --project-root /tmp/local-box --format
 ```

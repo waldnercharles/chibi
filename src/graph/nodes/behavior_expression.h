@@ -19,6 +19,31 @@ node *behavior_expression_add(
     const char *source,
     behavior_expression_error *error
 );
+/* VALUE requests a lazy result before its consumers have been connected.
+ * BRANCH requests boolean execution outcomes; NONE uses the graph context.
+ * Assignments always retain ACTION semantics. */
+node *behavior_expression_add_mode(
+    behavior_asset *asset,
+    graph *caller,
+    const char *source,
+    graph_expression_mode mode,
+    behavior_expression_error *error
+);
+/* Explicitly reselects the execution shape: NONE reinfers from current graph
+ * connections, VALUE keeps a lazy result, BRANCH requests execution outcomes. */
+int behavior_expression_refresh_mode(
+    behavior_asset *asset,
+    node *call,
+    graph_expression_mode mode,
+    behavior_expression_error *error
+);
+/* Source lowering calls this after feeding a fresh assignment's writable
+ * operand. Existing native graphs keep their explicitly authored Result. */
+int behavior_expression_infer_assignment_result(
+    behavior_asset *asset,
+    node *call,
+    behavior_expression_error *error
+);
 int behavior_expression_set(
     behavior_asset *asset,
     node *call,
@@ -38,6 +63,9 @@ int behavior_expression_rename_input(
 char **behavior_expression_fed_inputs(const graph *g, const node *call);
 void behavior_expression_keep_unfed(const graph *g, const node *call, char ***names);
 void behavior_expression_free_names(char **names);
+/* Regenerates the established contract; a VALUE remains lazy even before its
+ * consumers are connected. Graph edits requesting reinference use refresh_mode
+ * with NONE. Source edits also preserve VALUE until explicitly reinferred. */
 int behavior_expression_refresh(behavior_asset *asset, node *call, behavior_expression_error *error);
 int behavior_expression_repair(behavior_asset *asset, node *call);
 /* An expression function's body is derived from its source and first call.

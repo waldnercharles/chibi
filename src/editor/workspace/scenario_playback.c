@@ -20,7 +20,13 @@
 
 static void scenario_path(const app_scene_authoring *scene, const char *name, char *out, size_t size)
 {
-    snprintf(out, size, "%s/" SCENARIO_FOLDER "/%s" ASSET_EXTENSION, scene->content_root, name);
+    snprintf(
+        out,
+        size,
+        "%s/" SCENARIO_FOLDER "/%s" DECLARATIVE_ASSET_EXTENSION,
+        scene->content_root,
+        name
+    );
 }
 
 /* The open scene's asset name: its file name without the extension. */
@@ -29,7 +35,7 @@ static void scene_name(const app_scene_authoring *scene, char *out, size_t size)
     const char *path = scene->scene_path ? scene->scene_path : "Scene";
     const char *slash = strrchr(path, '/');
     snprintf(out, size, "%s", slash ? slash + 1 : path);
-    char *extension = strstr(out, ASSET_EXTENSION);
+    char *extension = strstr(out, DECLARATIVE_ASSET_EXTENSION);
     if (extension) {
         *extension = 0;
     }
@@ -197,9 +203,10 @@ char **app_scenario_names(const app_scene_authoring *scene)
     DIR *dir = opendir(folder);
     struct dirent *entry;
     while (dir && (entry = readdir(dir))) {
-        size_t length = strlen(entry->d_name), extension = strlen(ASSET_EXTENSION);
+        size_t length = strlen(entry->d_name),
+               extension = strlen(DECLARATIVE_ASSET_EXTENSION);
         if (entry->d_name[0] == '.' || length <= extension ||
-            strcmp(entry->d_name + length - extension, ASSET_EXTENSION)) {
+            strcmp(entry->d_name + length - extension, DECLARATIVE_ASSET_EXTENSION)) {
             continue;
         }
         char *name = xstrdup(entry->d_name);

@@ -410,7 +410,7 @@ void run_component_read_checks()
     test_check(
         read && read->input_count == 0 && read->output_count == 1 &&
             read->output_pins[0].kind == PIN_DATA,
-        "KDL roundtrips component readers as pure data nodes"
+        "code roundtrips component readers as pure data nodes"
     );
     if (loaded) {
         GAME_GameHealth_get(world, entity)->current = 12;

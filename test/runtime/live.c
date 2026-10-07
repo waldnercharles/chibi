@@ -1,3 +1,4 @@
+#include "graph/document/events.h"
 #include "test/suite_internal.h"
 
 behavior_asset *make_live_behavior_asset(void)
@@ -25,9 +26,12 @@ behavior_asset *make_live_behavior_asset(void)
         graph_set_event_name(asset->graph, begin, "Begin") != 0 ||
         graph_set_event_name(asset->graph, tick, "Tick") != 0 ||
         graph_set_event_name(asset->graph, input, "Input") != 0 ||
+        graph_host_event_apply(asset->graph, begin) != 0 ||
+        graph_host_event_apply(asset->graph, tick) != 0 ||
+        graph_host_event_apply(asset->graph, input) != 0 ||
         graph_set_pin_default(asset->graph, set, 0, 1, &one) != 0 ||
         graph_connect_exec(asset->graph, begin, 0, set, 0, 0) != 0 ||
-        graph_connect_exec(asset->graph, tick, 0, set, 0, 1) != 0) {
+        graph_connect_exec(asset->graph, tick, 0, set, 0, 0) != 0) {
         behavior_asset_free(asset);
         return NULL;
     }
@@ -214,9 +218,7 @@ void run_prototype_live_checks()
     char message[256];
     game_prototype *prototype = game_prototype_load(
         "name \"LivePreview\"\n"
-        "(array)behaviors {\n"
-        "    - \"live\"\n"
-        "}\n",
+        "(array)behaviors \"live\"\n",
         &registry,
         message,
         sizeof message

@@ -45,7 +45,7 @@ function node(ref, type, inputs = {}, metadata = {}) {
 }
 const input = (pin, value) => ({ op: "set_input", node: "output", pin, value });
 function graph(kind, name, description, operations) {
-  if (!existsSync(resolve(project, `content/${kind}s/${name}.kdl`)))
+  if (!existsSync(resolve(project, `content/${kind}s/${name}.${["behavior", "library", "system"].includes(kind) ? "code" : "kdl"}`)))
     call("buildGraph", { kind, name, create: true, description, operations });
   else if (kind === "material" && name.startsWith("DetailPolaroid") && process.argv.includes("--refresh-new-materials")) {
     const current = call("readAsset", { kind, name });

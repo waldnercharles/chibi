@@ -1,4 +1,5 @@
 /* Typed value and source editors shared by graph nodes and Properties. */
+#include "assets/code_source.h"
 #include "ecs/ecs.h"
 #include "editor/collab/actions_internal.h"
 #include "editor/collab/collab.h"
@@ -846,7 +847,7 @@ static void add_sources(
             }
             char title[128], pin_label[96], label[256];
             ed_node_title(e, candidate, title, sizeof title);
-            ed_pin_label(candidate, spec, pin_label, sizeof pin_label);
+            studio_code_pin_label(s, candidate, spec, pin_label, sizeof pin_label);
             snprintf(label, sizeof label, "%s \xE2\x80\xBA %s", title, pin_label);
             add_choice(
                 choices,
@@ -1324,15 +1325,15 @@ static void save_inline_anchor(studio *s, kit *k, const node *target, uint64_t p
 
 void sg_begin_expression_edit(studio *s, kit *k, node *expression, uint64_t owner_pin)
 {
-    editor *e = sg_graph_editor(s);
     studio_graph *state = &s->graph;
-    const char *source = behavior_expression_source(e->asset, expression);
+    char *source = studio_code_expression(s, expression);
     state->input_edit_node = expression->id;
     state->input_edit_pin = owner_pin;
     state->input_edit_kit = k;
     snprintf(state->input_edit_source, sizeof state->input_edit_source, "%s", source ? source : "");
     snprintf(state->input_edit, sizeof state->input_edit, "%s", source ? source : "");
     state->input_edit_focus = true;
+    free(source);
 }
 
 bool sg_expression_editing(const studio *s, const kit *k, const node *expression, uint64_t owner_pin)
@@ -1345,7 +1346,6 @@ bool sg_expression_editing(const studio *s, const kit *k, const node *expression
 
 void sg_emit_expression_editor(studio *s, kit *k, node *expression, uint64_t owner_pin)
 {
-    editor *e = sg_graph_editor(s);
     studio_graph *state = &s->graph;
     if (state->input_edit_kit != k || state->input_edit_pin != owner_pin) {
         return;
@@ -1358,11 +1358,12 @@ void sg_emit_expression_editor(studio *s, kit *k, node *expression, uint64_t own
         state->input_edit_focus = false;
         return;
     }
-    const char *source = behavior_expression_source(e->asset, expression);
+    char *source = studio_code_expression(s, expression);
     if (strncmp(state->input_edit_source, source ? source : "", sizeof state->input_edit_source)) {
         snprintf(state->input_edit_source, sizeof state->input_edit_source, "%s", source ? source : "");
         snprintf(state->input_edit, sizeof state->input_edit, "%s", source ? source : "");
     }
+    free(source);
     kit_push(k, "expression-editor", NULL, KIT_CX(k, "graph-expression-editor", { "standalone", !owner_pin }));
     char width[32];
     float room = owner_pin ? 260 : sg_layout_of(s, expression)->w - 16;
@@ -1373,6 +1374,10 @@ void sg_emit_expression_editor(studio *s, kit *k, node *expression, uint64_t own
         fminf(room, fminf(260, fmaxf(128, sg_text_width(s, state->input_edit, 11, 400) + 24)))
     );
     kit_style(k, "width", width);
+    if (!owner_pin) {
+        snprintf(width, sizeof width, "%.0fdp", sg_code_height(sg_layout_of(s, expression)) - 4);
+        kit_style(k, "height", width);
+    }
     if (kit_text_field(
             k,
             "expression",
@@ -1481,7 +1486,7 @@ static void emit_inline_values_popup(studio *s, kit *k, node *target, int pin)
             }
             char row[24], label[128];
             snprintf(row, sizeof row, "input-%d", input);
-            ed_pin_label(part, spec, label, sizeof label);
+            studio_code_pin_label(s, part, spec, label, sizeof label);
             kit_push(k, row, NULL, "graph-inline-row");
             kit_label(k, "label", "graph-inline-label", label);
             sg_emit_graph_input(s, k, part, input);
@@ -1495,7 +1500,7 @@ static void emit_inline_values_popup(studio *s, kit *k, node *target, int pin)
             }
             char row[24], label[128];
             snprintf(row, sizeof row, "output-%d", output);
-            ed_pin_label(part, spec, label, sizeof label);
+            studio_code_pin_label(s, part, spec, label, sizeof label);
             kit_push(k, row, NULL, "graph-inline-row");
             kit_label(k, "label", "graph-inline-label", label);
             sg_emit_value_in(s, k, part, 1, output);
@@ -1544,7 +1549,7 @@ static bool private_expression_source(
 }
 
 static void graph_input_display(
-    editor *e,
+    studio *s,
     const pin_spec *spec,
     const pin_parts *parts,
     node *source,
@@ -1555,6 +1560,7 @@ static void graph_input_display(
     size_t size
 )
 {
+    editor *e = sg_graph_editor(s);
     if (binding && (binding->kind == PIN_BINDING_COMPONENT ||
                     binding->kind == PIN_BINDING_COMPONENT_FIELD)) {
         const ecs_component_desc *component = ed_component_by_key(binding->component_key);
@@ -1580,7 +1586,9 @@ static void graph_input_display(
         return;
     }
     if (expression_source) {
-        snprintf(out, size, "%s", behavior_expression_source(e->asset, source));
+        char *readable = studio_code_expression(s, source);
+        snprintf(out, size, "%s", readable ? readable : "");
+        free(readable);
         return;
     }
     if (parts->value == VALUE_CHIP && parts->chip[0] &&
@@ -1609,6 +1617,7 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
     if (!e || !gr || !n || p < 0 || p >= n->input_count) {
         return;
     }
+    uint64_t node_id = n->id;
     const pin_spec *spec = &n->input_pins[p];
     if (spec->kind != PIN_DATA) {
         kit_label(k, "value-kind", "dim", "Execution");
@@ -1639,7 +1648,7 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
         sg_emit_expression_editor(s, k, expression, spec->id);
     } else if (autocomplete) {
         char displayed[256];
-        graph_input_display(e, spec, &parts, source, source_pin, expression_source, binding, displayed, sizeof displayed);
+        graph_input_display(s, spec, &parts, source, source_pin, expression_source, binding, displayed, sizeof displayed);
         const char *query = kit_autocomplete_query(k, "source-edit");
         source_choice *choices = NULL;
         kit_command_item *items = NULL;
@@ -1681,11 +1690,17 @@ void sg_emit_graph_input(studio *s, kit *k, node *n, int p)
         sg_emit_value_in(s, k, n, 0, p);
     } else if (source) {
         char label[256];
-        graph_input_display(e, spec, &parts, source, source_pin, expression_source, binding, label, sizeof label);
+        graph_input_display(s, spec, &parts, source, source_pin, expression_source, binding, label, sizeof label);
         kit_label(k, "source-context", "chip graph-source-context", label);
     } else if (ed_pin_editable(gr, n, ED_PIN_INPUT, p) && !(spec->flags & PIN_FLAG_SETTING)) {
         sg_emit_value_in(s, k, n, 0, p);
     }
+
+    /* Expression edits publish a replacement asset. Rebind the consuming
+     * node before emitting anchors and popups that follow the field. */
+    n = graph_node_by_id(sg_active_graph(s), node_id);
+    assert(n && p < n->input_count);
+    spec = &n->input_pins[p];
 
     if (parts.inline_source && autocomplete) {
         save_inline_anchor(s, k, n, spec->id);
@@ -1724,7 +1739,7 @@ sg_input_kind sg_input_view(studio *s, node *n, int p, char *text, size_t size)
                             (parts.value == VALUE_VECTOR || parts.value == VALUE_COLOR ||
                              parts.value == VALUE_COMPOUND);
     if (can_choose_source && !compound_literal) {
-        graph_input_display(e, spec, &parts, source, source_pin, expression, binding, text, size);
+        graph_input_display(s, spec, &parts, source, source_pin, expression, binding, text, size);
         return SG_INPUT_SOURCE;
     }
     if (parts.value == VALUE_CHIP) {
@@ -1735,7 +1750,7 @@ sg_input_kind sg_input_view(studio *s, node *n, int p, char *text, size_t size)
         return SG_INPUT_VALUE;
     }
     if (source) {
-        graph_input_display(e, spec, &parts, source, source_pin, expression, binding, text, size);
+        graph_input_display(s, spec, &parts, source, source_pin, expression, binding, text, size);
         return SG_INPUT_CHIP;
     }
     bool editable = ed_pin_editable(gr, n, ED_PIN_INPUT, p) &&

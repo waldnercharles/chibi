@@ -1,3 +1,4 @@
+#include "assets/code_source.h"
 #include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
 #include "graph/nodes/behavior_expression.h"
@@ -396,9 +397,9 @@ static void write_node(av_doc *doc, av_value *arr, const graph *g, const node *n
     av_obj_set(doc, o, "type", av_str(doc, n->desc->name));
     av_obj_set(doc, o, "x", av_float(doc, n->x));
     av_obj_set(doc, o, "y", av_float(doc, n->y));
-    /* Inline nodes have no box, so their positions are never authored. n may
-     * be a copy, so the predicate reads the graph's node. */
-    if (!n->placed || graph_node_is_inline(g, graph_node_by_id(g, n->id))) {
+    /* A folded node can become visible again after an edit. Snapshots retain
+     * its placement just as they retain the positions of visible nodes. */
+    if (!n->placed) {
         av_obj_set(doc, o, "placed", av_bool(doc, false));
     }
     if (n->reference_id) {
@@ -708,25 +709,15 @@ static void write_variable(av_doc *doc, av_value *arr, const behavior_variable *
     if (v->category) {
         av_obj_set(doc, o, "category", av_str(doc, v->category));
     }
+    if (v->shared) {
+        av_obj_set(doc, o, "shared", av_bool(doc, true));
+    }
     /* Matches the zero default a variable receives when none is serialized. */
     pin_value zero = serialize_zero_value(v->type, v->container, v->type_name);
     if (!serialize_same_value(&v->default_value, &zero)) {
         serialize_write_value(doc, o, "default", v->type, v->type_name, &v->default_value);
     }
     av_arr_append(arr, o);
-}
-
-/* Expression bodies are read-only; the editor arranges them. */
-static void drop_positions(av_value *obj)
-{
-    size_t i, count;
-    av_value *n;
-    av_arr_foreach(av_obj_get(obj, "nodes"), i, count, n)
-    {
-        av_obj_remove_key(n, "x");
-        av_obj_remove_key(n, "y");
-        av_obj_remove_key(n, "placed");
-    }
 }
 
 /* An expression function omits a body that rebuilding from its source
@@ -743,8 +734,6 @@ static bool derived_body(const graph *g)
     av_value *written = av_obj(doc), *rebuilt = av_obj(doc);
     write_graph_body(doc, written, g, NULL, 0);
     write_graph_body(doc, rebuilt, body, NULL, 0);
-    drop_positions(written);
-    drop_positions(rebuilt);
     bool same = body->entry_id == g->entry_id && body->return_id == g->return_id &&
                 body->expression_mode == g->expression_mode &&
                 body->call_depth_limit == g->call_depth_limit &&
@@ -777,7 +766,7 @@ static void write_behavior_asset_graph(av_doc *doc, av_value *graphs, const grap
     if (g->math_expression) {
         av_obj_set(doc, obj, "math_expression", av_str(doc, g->math_expression));
     }
-    if (g->math_expression && !derived) {
+    if (g->math_expression) {
         av_obj_set(doc, obj, "expression_mode", av_sint(doc, g->expression_mode));
     }
     if (g->entry_id) {
@@ -855,6 +844,16 @@ av_value *behavior_asset_to_value(av_doc *doc, const behavior_asset *asset)
     if (asset->owner_type_name) {
         av_obj_set(doc, root, "owner_type", av_str(doc, asset->owner_type_name));
     }
+    if (acount(asset->component_parameters)) {
+        av_value *parameters = av_obj_add_arr(doc, root, "component_parameters");
+        for (int i = 0; i < acount(asset->component_parameters); i++) {
+            const behavior_component_parameter *p = &asset->component_parameters[i];
+            av_value *item = av_arr_add_obj(doc, parameters);
+            av_obj_add_str(doc, item, "name", p->name);
+            av_obj_add_str(doc, item, "key", p->key);
+            av_obj_add_bool(doc, item, "optional", p->optional);
+        }
+    }
     if (acount(asset->variables)) {
         av_value *vars = av_arr(doc);
         av_obj_set(doc, root, "variables", vars);
@@ -863,6 +862,23 @@ av_value *behavior_asset_to_value(av_doc *doc, const behavior_asset *asset)
         }
     }
     av_value *graphs = av_arr(doc);
+    if (acount(asset->reactives)) {
+        av_value *reactives = av_arr(doc);
+        av_obj_set(doc, root, "reactives", reactives);
+        for (int i = 0; i < acount(asset->reactives); i++) {
+            const behavior_reactive *r = &asset->reactives[i];
+            av_value *value = av_obj(doc);
+            av_arr_add_val(reactives, value);
+            av_obj_set(doc, value, "kind", av_uint(doc, r->kind));
+            av_obj_set(doc, value, "graph_id", av_uint(doc, r->graph_id));
+            av_obj_set(doc, value, "event_id", av_uint(doc, r->event_id));
+            av_obj_set(doc, value, "source_node_id", av_uint(doc, r->source_node_id));
+            av_obj_set(doc, value, "source_pin_id", av_uint(doc, r->source_pin_id));
+            av_obj_set(doc, value, "statement_node_id", av_uint(doc, r->statement_node_id));
+            av_obj_set(doc, value, "value_node_id", av_uint(doc, r->value_node_id));
+            av_obj_set(doc, value, "value_pin_id", av_uint(doc, r->value_pin_id));
+        }
+    }
     av_obj_set(doc, root, "graphs", graphs);
     for (int i = 0; i < acount(asset->graphs); i++) {
         const graph *g = asset->graphs[i];
@@ -953,6 +969,10 @@ av_value *behavior_asset_to_disk_value(av_doc *doc, const behavior_asset *asset)
 
 char *behavior_asset_save(const behavior_asset *asset)
 {
+    if (asset->domain == BEHAVIOR_DOMAIN_EVENT ||
+        asset->domain == BEHAVIOR_DOMAIN_LIBRARY) {
+        return code_source_format(asset);
+    }
     av_doc *doc = av_doc_new();
     av_value *value = behavior_asset_to_disk_value(doc, asset);
     av_doc_set_root(doc, value);

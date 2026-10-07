@@ -16,8 +16,12 @@ from urllib.parse import parse_qs, urlsplit
 
 import kdl_asset
 
-TEXT_EXTENSIONS = {'.kdl', '.rml', '.rcss'}
+TEXT_EXTENSIONS = {'.kdl', '.code', '.rml', '.rcss'}
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
+
+
+def supported_text(path):
+    return path.suffix.lower() in TEXT_EXTENSIONS or path.name.lower().endswith('.code.meta')
 
 
 class LaunchScripts(HTMLParser):
@@ -86,7 +90,7 @@ def workspace_files(workspace, studio=None):
         files[str(prefix / 'project.kdl')] = project / 'project.kdl'
         content = content_directory(project)
         for path in content.rglob('*'):
-            if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS | IMAGE_EXTENSIONS and path.resolve().is_relative_to(content.resolve()):
+            if path.is_file() and (supported_text(path) or path.suffix.lower() in IMAGE_EXTENSIONS) and path.resolve().is_relative_to(content.resolve()):
                 files[str(prefix / path.relative_to(project))] = path
     return files
 
@@ -228,20 +232,27 @@ def save_asset(workspace, request, studio=None):
     # Settings rewrites the selected project's manifest, which is never removed.
     manifest = text is not None and path == project / 'project.kdl'
     image_delete = text is None and path.suffix.lower() in IMAGE_EXTENSIONS
-    if not manifest and ((path.suffix.lower() not in TEXT_EXTENSIONS and not image_delete) or
+    if not manifest and ((not supported_text(path) and not image_delete) or
                          not path.is_relative_to(content)):
-        raise ValueError('Saves must be project manifests, or KDL assets, RML or RCSS inside a project content directory')
+        raise ValueError('Saves must be project manifests, KDL/code assets, code metadata, RML or RCSS inside a project content directory')
     if text is None:
         path.unlink(missing_ok=True)
         return
-    # The engine writes asset documents as KDL mappings; a save must reload.
-    if path.suffix == '.kdl':
+    # Manifests and declarative assets use KDL; executable code uses the native frontend.
+    if manifest or path.suffix == '.kdl':
         try:
             document = kdl_asset.loads(text)
         except kdl_asset.Error as error:
             raise ValueError(f'Saves must be KDL asset documents: {error}') from error
         if not isinstance(document, dict):
             raise ValueError('Saves must be KDL asset documents')
+    if path.name.lower().endswith('.code.meta'):
+        try:
+            metadata = json.loads(text)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise ValueError(f'Saves must be JSON code metadata: {error}') from error
+        if not isinstance(metadata, dict):
+            raise ValueError('Saves must be JSON code metadata')
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode='w', dir=path.parent, delete=False) as file:
         temporary = Path(file.name)

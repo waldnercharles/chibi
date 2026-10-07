@@ -44,6 +44,6 @@ description "The field's radius changes with simulation time; it is not a rigid 
             - from="53.Result" to="1.Distance"
         }
     }
-    - id=7 kind="function" math_expression="27 + 8 * sin(time * 1.5)" entry_id=8
-    - id=38 kind="function" math_expression="length(p) - radius" entry_id=39
+    - id=7 kind="function" math_expression="27 + 8 * sin(time * 1.5)" expression_mode=1 entry_id=8
+    - id=38 kind="function" math_expression="length(p) - radius" expression_mode=1 entry_id=39
 }

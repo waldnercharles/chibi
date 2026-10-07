@@ -1,0 +1,9 @@
+behavior ProjectileLifecycle {
+  on Tick(GameProjectile projectile) {
+    projectile.age += event.dt;
+    // The graph editor can change this comparison; it comes back as code.
+    if (projectile.age >= projectile.lifetime) {
+      destroy(self);
+    }
+  }
+}

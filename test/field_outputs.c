@@ -1,3 +1,4 @@
+#include "assets/code_source.h"
 #include "graph/compiler/compile.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/document/serialize.h"
@@ -466,6 +467,91 @@ static void break_fields()
     behavior_asset_free(asset);
 }
 
+static void projection_presentation()
+{
+    behavior_asset *asset = behavior_asset_new("Projection presentation");
+    node *aggregate = add(asset->graph, "Make_GameInput");
+    int move = graph_expose_output_field(asset->graph, aggregate, 0, "move");
+    assert(move >= 0);
+    int x = graph_expose_output_field(asset->graph, aggregate, move, "x");
+    assert(x >= 0);
+    uint64_t x_id = aggregate->output_pins[x].id;
+    char *text = behavior_asset_save(asset);
+    assert(text);
+    code_source *source = code_source_parse(text);
+    assert(source->asset && behavior_asset_equal(asset, source->asset));
+    node *copy = graph_node_by_id(source->asset->graph, aggregate->id);
+    move = field(copy, copy->output_pins[0].id, "move");
+    assert(
+        move >= 0 &&
+        copy->output_pins[field(copy, copy->output_pins[move].id, "x")].id == x_id
+    );
+    int start, finish;
+    assert(code_source_metadata_range(text, &start, &finish));
+    char *bare = strdup(text);
+    bare[start] = 0;
+    code_source *collapsed = code_source_parse(bare);
+    assert(collapsed->asset);
+    node *plain = graph_node_by_id(collapsed->asset->graph, aggregate->id);
+    assert(plain && plain->output_count == 1);
+    eval_context context;
+    eval_context_init(&context);
+    arena memory = { 0 };
+    pin_value before, after;
+    assert(!graph_eval_output(asset->graph, aggregate, 0, &memory, &before, &context));
+    eval_context_reset(&context);
+    assert(!graph_eval_output(collapsed->asset->graph, plain, 0, &memory, &after, &context));
+    assert(before.type == after.type && !strcmp(before.type_name, after.type_name));
+    assert(!memcmp(before.ptr, after.ptr, sizeof(GameInput)));
+    const char *hint = strstr(text + start, "\"field\":\"x\"");
+    assert(hint);
+    const char *replacement = "\"field\":\"missing\"";
+    size_t prefix = (size_t)(hint - text), length = strlen("\"field\":\"x\"");
+    char *forged = malloc(strlen(text) + strlen(replacement) + 1);
+    assert(forged);
+    memcpy(forged, text, prefix);
+    strcpy(forged + prefix, replacement);
+    strcpy(forged + prefix + strlen(replacement), hint + length);
+    code_source *invalid = code_source_parse(forged);
+    assert(!invalid->asset && acount(invalid->diagnostics));
+    code_source_free(invalid);
+    free(forged);
+    char saved_path[160], wrong_path[160];
+    snprintf(
+        saved_path,
+        sizeof saved_path,
+        "\"parents\":[\"%s\",\"move\"]",
+        aggregate->output_pins[0].name
+    );
+    snprintf(
+        wrong_path,
+        sizeof wrong_path,
+        "\"parents\":[\"%s\",\"missing\"]",
+        aggregate->output_pins[0].name
+    );
+    hint = strstr(text + start, saved_path);
+    assert(hint);
+    replacement = wrong_path;
+    prefix = (size_t)(hint - text);
+    length = strlen(saved_path);
+    forged = malloc(strlen(text) + strlen(replacement) + 1);
+    assert(forged);
+    memcpy(forged, text, prefix);
+    strcpy(forged + prefix, replacement);
+    strcpy(forged + prefix + strlen(replacement), hint + length);
+    invalid = code_source_parse(forged);
+    assert(!invalid->asset && acount(invalid->diagnostics));
+    code_source_free(invalid);
+    free(forged);
+    arena_free(&memory);
+    eval_context_free(&context);
+    code_source_free(collapsed);
+    free(bare);
+    code_source_free(source);
+    free(text);
+    behavior_asset_free(asset);
+}
+
 void test_field_outputs()
 {
     ecs_world *world = ecs_world_new();
@@ -474,6 +560,7 @@ void test_field_outputs()
     assert(GAME_GameTransform_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameTransform_get(world, entity) = (GameTransform){ 17, -4 };
+    projection_presentation();
     exposed_reads(world, entity);
     set_snapshots(world, entity);
     system_fields(world, entity);

@@ -1000,7 +1000,7 @@ void sg_pointer(studio *s)
 static node *event_hover(studio *s)
 {
     node *n = sg_node_by_id(s, s->graph.hover_node);
-    return studio_event_renameable(n) && !sg_graph_readonly(s) ? n : NULL;
+    return studio_event_renameable(s, n) && !sg_graph_readonly(s) ? n : NULL;
 }
 
 /* The expression input under the pointer, which F2 renames. */
@@ -1046,16 +1046,16 @@ void sg_shortcuts(studio *s)
         if (!mod && (key == SDLK_DELETE || key == SDLK_BACKSPACE || key == SDLK_X)) {
             sg_delete_selection(s);
         } else if (shift && alt && key == SDLK_F) {
-            if (acount(e->selected) && studio_node_referable(e->selected[0])) {
+            if (acount(e->selected) && studio_node_referable(s, e->selected[0])) {
                 studio_find_node_references(s, e->selected[0]);
             }
         } else if (shift && alt && key == SDLK_H) {
-            if (acount(e->selected) && studio_node_traceable(e->selected[0])) {
+            if (acount(e->selected) && studio_node_traceable(s, e->selected[0])) {
                 studio_calls_node(s, e->selected[0]);
             }
         } else if (alt && !mod && !shift && key == SDLK_G) {
             /* Unreal's Go to Definition. */
-            if (acount(e->selected) && studio_node_definable(e->selected[0])) {
+            if (acount(e->selected) && studio_node_definable(s, e->selected[0])) {
                 studio_go_to_definition(s, e->selected[0]);
             }
         } else if (!mod && !shift && key == SDLK_F) {
@@ -1063,7 +1063,7 @@ void sg_shortcuts(studio *s)
         } else if (!mod && key == SDLK_F2 && renameable_hover(s)) {
             sg_rename_pin(s, renameable_hover(s), g->hover_pin);
         } else if (!mod && key == SDLK_F2 && event_hover(s)) {
-            studio_refactor_rename_event(s, studio_event_renameable(event_hover(s)));
+            studio_refactor_rename_event(s, studio_event_renameable(s, event_hover(s)));
         } else if (!mod && !shift && key == SDLK_Q) {
             sg_straighten(s);
         } else if (!mod && key == SDLK_HOME) {

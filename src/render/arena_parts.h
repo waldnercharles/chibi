@@ -27,10 +27,10 @@ typedef struct
     int count;
 } arena_parts;
 
-/* KDL array payload of parts with primitive, size, position, rotation and material.
+/* code array payload of parts with primitive, size, position, rotation and material.
  * Empty text means no override. Dimensions are required and positive; transforms default zero. */
 bool render_arena_parts_parse(const char *text, arena_parts *parts, char *error, size_t size);
-/* malloc-owned canonical KDL payload, or NULL for invalid parts. */
+/* malloc-owned canonical code payload, or NULL for invalid parts. */
 char *render_arena_parts_write(const arena_parts *parts);
 
 #endif

@@ -1,5 +1,5 @@
-/* The Text Editor area (Blender's): KDL asset source, a UI document's RML
- * and RCSS, or a stylesheet's RCSS. KDL follows the active asset; UI editing
+/* The Text Editor area (Blender's): code asset source, a UI document's RML
+ * and RCSS, or a stylesheet's RCSS. Code follows the active asset; UI editing
  * keeps its per-part language service and history. Focusing its text
  * makes it active again, so Save and Undo follow it. Edits apply across Studio
  * as they are typed (the code_apply_live preference), or when saved.
@@ -19,11 +19,16 @@
  * cursor keeps its place; after an undo it lands on the change. Each open
  * document part keeps its own code editor, with its cursor, scroll and Vim
  * state. */
+#include "assets/code_source.h"
+#include "assets/code_source_intelligence.h"
 #include "editor/collab/actions_internal.h"
 #include "editor/collab/collab.h"
-#include "editor/studio/studio_internal.h"
+#include "editor/studio/studio_graph_internal.h"
+#include "editor/workspace/editor_internal.h"
+#include "graph/document/serialize.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/text_file.h"
 #include "support/text_overlay.h"
 #include "support/xalloc.h"
 
@@ -57,8 +62,11 @@ static scene_document_tab *active_asset(studio *s)
     if (tab->kind == APP_EDITOR_DOCUMENT_UI || !tab->path) {
         return NULL;
     }
-    size_t n = strlen(tab->path), ext = strlen(ASSET_EXTENSION);
-    return n >= ext && !strcmp(tab->path + n - ext, ASSET_EXTENSION) ? tab : NULL;
+    const char *extension = strrchr(tab->path, '.');
+    return extension && (!strcmp(extension, CODE_ASSET_EXTENSION) ||
+                         !strcmp(extension, DECLARATIVE_ASSET_EXTENSION))
+             ? tab
+             : NULL;
 }
 
 static void capture_asset(studio *s, asset_code *code)
@@ -74,6 +82,70 @@ static void capture_asset(studio *s, asset_code *code)
     }
 }
 
+bool studio_code_replace(studio *s, const char *path, const char *before, const char *text, const char *metadata)
+{
+    bool open = false;
+    for (int i = 0; i < acount(s->scene->tabs); i++) {
+        open |= s->scene->tabs[i].path && !strcmp(s->scene->tabs[i].path, path);
+    }
+    if (!open) {
+        return false;
+    }
+    for (int i = 0; i < acount(s->code.assets); i++) {
+        asset_code *code = s->code.assets[i];
+        if (!strcmp(asset_code_path(code), path) &&
+            asset_code_replace_with_metadata(code, before, text, metadata)) {
+            capture_asset(s, code);
+            asset_index_invalidate(s->scene);
+            return true;
+        }
+    }
+    return false;
+}
+
+static asset_code *asset_context(studio *s, asset_code *code)
+{
+    editor *e = s->scene->graph_editor;
+    code_reference *references = NULL;
+    code_prototype *prototypes = NULL;
+    const char **owners = NULL;
+    const code_source *source = asset_code_source(code);
+    char name[256];
+    const char *path = asset_code_path(code), *base = strrchr(path, '/');
+    snprintf(name, sizeof name, "%s", base ? base + 1 : path);
+    char *extension = strrchr(name, '.');
+    if (extension) {
+        *extension = 0;
+    }
+    const char *behavior = source->asset ? source->asset->name : name;
+    for (int i = 0; i < acount(s->scene->prototypes); i++) {
+        const game_prototype *prototype = s->scene->prototypes[i].prototype;
+        const char **components = NULL;
+        for (int j = 0; j < acount(prototype->components); j++) {
+            apush(components, prototype->components[j].desc->name);
+        }
+        apush(prototypes, ((code_prototype){ prototype->name, components, acount(components) }));
+        if (game_prototype_has_graph(prototype, behavior)) {
+            apush(owners, prototype->name);
+        }
+        apush(
+            references,
+            ((code_reference){ CODE_REFERENCE_PROTOTYPE,
+                               s->scene->prototypes[i].prototype->name })
+        );
+    }
+    asset_code_set_references(code, references, acount(references));
+    asset_code_set_prototypes(code, prototypes, acount(prototypes), owners, acount(owners));
+    for (int i = 0; i < acount(prototypes); i++) {
+        afree(prototypes[i].components);
+    }
+    afree(prototypes);
+    afree(owners);
+    afree(references);
+    asset_code_set_catalog(code, e->asset_catalog, acount(e->asset_catalog));
+    return code;
+}
+
 static asset_code *asset_editor(studio *s, scene_document_tab *tab)
 {
     for (int i = 0; i < acount(s->code.assets); i++) {
@@ -85,38 +157,151 @@ static asset_code *asset_editor(studio *s, scene_document_tab *tab)
             asset_code
                 *restored = asset_code_restore(tab->source_state, &s->scene->registry);
             if (!restored) {
-                studio_report(s, "Could not restore KDL source draft");
+                studio_report(s, "Could not restore code source draft");
                 return NULL;
             }
             asset_code_free(code);
             s->code.assets[i] = restored;
-            return restored;
+            return asset_context(s, restored);
         }
-        return code;
+        return asset_context(s, code);
     }
     char error[256];
     asset_code *code = tab->source_state
                          ? asset_code_restore(tab->source_state, &s->scene->registry)
                          : asset_code_open(tab->path, error, sizeof error);
     if (!code) {
-        studio_report(s, tab->source_state ? "Could not restore KDL source draft" : error);
+        studio_report(s, tab->source_state ? "Could not restore code source draft" : error);
         return NULL;
     }
     asset_code_set_registry(code, &s->scene->registry);
     apush(s->code.assets, code);
+    asset_context(s, code);
     capture_asset(s, code);
     return code;
 }
 
+/* A retained source session belongs to its document, not a temporary graph
+   opened in the same editor (for example a material preview). */
+static bool source_graph_active(const studio *s)
+{
+    const behavior_asset *asset = editor_behavior_asset(s->scene->graph_editor);
+    return asset && s->scene->graph_document_id &&
+           !strcmp(asset->name, s->scene->graph_document_id);
+}
+
+static bool sync_asset_graph(studio *s, asset_code *code)
+{
+    scene_document_tab *tab = active_asset(s);
+    if ((tab && tab->source_only) || !source_graph_active(s)) {
+        return false;
+    }
+    bool pending = asset_code_pending(code);
+    bool changed = s->scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM &&
+                           s->scene->system_document
+                     ? asset_code_sync_system(
+                           code,
+                           s->scene->graph_editor,
+                           s->scene->system_document,
+                           s->prefs.code_apply_live
+                       )
+                     : asset_code_sync_graph(
+                           code,
+                           s->scene->graph_editor,
+                           s->prefs.code_apply_live
+                       );
+    bool settled = pending && !asset_code_pending(code) &&
+                   !asset_code_error(code)[0];
+    if (settled || changed) {
+        asset_code_hold_runtime(code, !s->prefs.code_apply_live && asset_code_dirty(code));
+    }
+    snprintf(
+        s->scene->source_preview_hold,
+        sizeof s->scene->source_preview_hold,
+        "%s",
+        asset_code_runtime_held(code) && !s->prefs.code_apply_live
+            ? asset_code_path(code)
+            : ""
+    );
+    return changed;
+}
+
 static void save_asset(studio *s, asset_code *code)
 {
+    scene_document_tab *saving = active_asset(s);
+    if (saving && saving->source_only) {
+        asset_code_time(code, s->time + 0.2);
+        asset_code_validate(code, s->scene->graph_editor);
+    }
+    game_live_definition *definition = s->scene->definition;
+    if (definition && game_live_definition_path(definition) &&
+        !strcmp(asset_code_path(code), game_live_definition_path(definition))) {
+        asset_code_time(code, s->time + 0.2);
+        sync_asset_graph(s, code);
+    }
+    if (s->scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM && s->scene->system_path &&
+        !strcmp(asset_code_path(code), s->scene->system_path)) {
+        asset_code_time(code, s->time + 0.2);
+        sync_asset_graph(s, code);
+    }
     char error[256];
     if (!asset_code_save(code, error, sizeof error)) {
         studio_error(s, "Could not save", error);
         return;
     }
     capture_asset(s, code);
-    kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_SUCCESS, .title = "Saved KDL source" });
+    scene_document_tab *tab = active_asset(s);
+    if (tab && tab->source_only) {
+        int result;
+        if (tab->kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+            result = open_system_asset(s->scene, tab->path);
+        } else {
+            const code_source *source = asset_code_source(code);
+            const char *name = tab->key + strlen("behavior:");
+            game_live_definition *target = game_live_find_definition(s->scene->live, name);
+            if (!target) {
+                target = game_live_definition_new(
+                    name,
+                    behavior_asset_clone(source->asset)
+                );
+                game_live_definition_set_path(target, tab->path);
+                if (game_live_add_definition(s->scene->live, target) != 0) {
+                    game_live_definition_free(target);
+                    studio_error(s, "Could not open repaired graph", "The repaired source could not register its runtime definition");
+                    return;
+                }
+                refresh_asset_catalog(s->scene);
+            }
+            result = open_behavior_asset(s->scene, name);
+        }
+        if (result != 0) {
+            studio_error(s, "Could not open repaired graph", app_scene_authoring_message(s->scene));
+            return;
+        }
+        tab = active_asset(s);
+        tab->source_only = false;
+        scene_tabs_mark_document_saved(s->scene, tab->kind, s->scene->document.id);
+        asset_index_invalidate(s->scene);
+        studio_behavior_show(s, 2);
+    }
+    if (s->scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM) {
+        s->scene->source_preview_hold[0] = 0;
+        scene_tabs_sync_current(s->scene);
+        scene_tabs_mark_document_saved(
+            s->scene,
+            APP_EDITOR_DOCUMENT_SYSTEM,
+            s->scene->document.id
+        );
+    }
+    if (definition && game_live_definition_path(definition) &&
+        !strcmp(asset_code_path(code), game_live_definition_path(definition))) {
+        definition->unsaved = false;
+        s->scene->source_preview_hold[0] = 0;
+        editor *e = s->scene->graph_editor;
+        av_value_free(e->saved_snapshot);
+        e->saved_snapshot = ed_value_snapshot(e->asset);
+    }
+    kit_toast(s->kit, 0, &(kit_toast_desc){ .type = KIT_TOAST_SUCCESS, .title = "Saved source" });
 }
 
 static scene_document_tab *active_ui(studio *s)
@@ -457,6 +642,36 @@ static void follow_active(studio *s, const scene_document_tab *active)
 
 void studio_code_frame(studio *s)
 {
+    scene_document_tab *tab = active_asset(s);
+    bool behavior = tab && tab->kind == APP_EDITOR_DOCUMENT_BEHAVIOR &&
+                    s->scene->definition &&
+                    game_live_definition_path(s->scene->definition) &&
+                    !strcmp(tab->path, game_live_definition_path(s->scene->definition));
+    bool system = tab && tab->kind == APP_EDITOR_DOCUMENT_SYSTEM &&
+                  s->scene->system_document && s->scene->system_path &&
+                  !strcmp(tab->path, s->scene->system_path);
+    if (behavior || system || (tab && tab->source_only)) {
+        asset_code *code = asset_editor(s, tab);
+        if (code) {
+            asset_code_time(code, s->time);
+        }
+        if (code) {
+            bool pending = asset_code_pending(code);
+            bool changed = false;
+            if (tab->source_only) {
+                asset_code_validate(code, s->scene->graph_editor);
+            } else {
+                changed = sync_asset_graph(s, code);
+            }
+            if (changed || (pending && !asset_code_pending(code))) {
+                capture_asset(s, code);
+                asset_index_invalidate(s->scene);
+            }
+        }
+        if (code && asset_code_pending(code)) {
+            s->ui_schedule.wake = true;
+        }
+    }
     bool applied = false;
     for (int i = 0; i < acount(s->scene->tabs); i++) {
         scene_document_tab *tab = &s->scene->tabs[i];
@@ -478,6 +693,207 @@ void studio_code_frame(studio *s)
         studio_active_layout(s)->editors[over] == STUDIO_EDITOR_CODE) {
         studio_nav_step(s, s->nav_button);
         s->nav_button = 0;
+    }
+}
+
+bool studio_code_history(studio *s, bool redo, bool apply)
+{
+    scene_document_tab *tab = active_asset(s);
+    if (!tab || (tab->kind != APP_EDITOR_DOCUMENT_BEHAVIOR &&
+                 tab->kind != APP_EDITOR_DOCUMENT_SYSTEM)) {
+        return false;
+    }
+    asset_code *code = asset_editor(s, tab);
+    if (!code) {
+        return false;
+    }
+    sync_asset_graph(s, code);
+    if (!apply) {
+        return asset_code_can_replay(code, redo);
+    }
+    if (!asset_code_replay(code, redo, s->prefs.code_apply_live)) {
+        return false;
+    }
+    sync_asset_graph(s, code);
+    capture_asset(s, code);
+    return true;
+}
+
+static asset_code *graph_code(const studio *s)
+{
+    if (!source_graph_active(s)) {
+        return NULL;
+    }
+    const char *path = s->scene->document.kind == APP_EDITOR_DOCUMENT_SYSTEM
+                         ? s->scene->system_path
+                     : s->scene->definition
+                         ? game_live_definition_path(s->scene->definition)
+                         : NULL;
+    for (int i = 0; path && i < acount(s->code.assets); i++) {
+        asset_code *code = s->code.assets[i];
+        if (!strcmp(path, asset_code_path(code))) {
+            return code;
+        }
+    }
+    return NULL;
+}
+
+static const code_source *graph_source(const studio *s)
+{
+    const asset_code *code = graph_code(s);
+    return code ? asset_code_graph_source(code, sg_graph_editor(s)) : NULL;
+}
+
+bool studio_code_graph_readonly(const studio *s)
+{
+    const asset_code *code = graph_code(s);
+    return code && asset_code_graph_blocked(code);
+}
+
+char *studio_code_expression(const studio *s, const node *n)
+{
+    return code_source_expression(graph_source(s), sg_graph_editor(s)->asset, n);
+}
+
+void studio_code_pin_label(const studio *s, const node *n, const pin_spec *pin, char *out, size_t size)
+{
+    if (n->desc == &NODE_BehaviorExpression &&
+        (!pin->display_name || !pin->display_name[0])) {
+        for (int i = 0; i < n->input_count; i++) {
+            if (pin != &n->input_pins[i]) {
+                continue;
+            }
+            code_source_expression_input_name(
+                graph_source(s),
+                sg_graph_editor(s)->asset,
+                n,
+                i,
+                out,
+                size
+            );
+            return;
+        }
+    }
+    if (n->desc == &NODE_FunctionEntry &&
+        (!pin->display_name || !pin->display_name[0])) {
+        const behavior_asset *asset = sg_graph_editor(s)->asset;
+        for (int g = 0; g < acount(asset->graphs); g++) {
+            const graph *generated = asset->graphs[g];
+            if (!generated->math_expression || graph_node_by_id(generated, n->id) != n) {
+                continue;
+            }
+            for (int owner = 0; owner < acount(asset->graphs); owner++) {
+                const graph *caller = asset->graphs[owner];
+                for (int at = 0; at < acount(caller->nodes); at++) {
+                    const node *expression = caller->nodes[at];
+                    if (expression->desc != &NODE_BehaviorExpression ||
+                        expression->reference_asset ||
+                        expression->reference_id != generated->graph_id) {
+                        continue;
+                    }
+                    for (int input = 0; input < expression->input_count; input++) {
+                        if (expression->input_pins[input].declaration_id != pin->id) {
+                            continue;
+                        }
+                        code_source_expression_input_name(graph_source(s), asset, expression, input, out, size);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    ed_pin_label(n, pin, out, size);
+}
+
+void studio_code_graph_label(const studio *s, const graph *g, char *out, size_t size)
+{
+    const behavior_asset *asset = sg_graph_editor(s)->asset;
+    for (int i = 0; g->math_expression && i < acount(asset->graphs); i++) {
+        const graph *owner = asset->graphs[i];
+        for (int j = 0; j < acount(owner->nodes); j++) {
+            const node *n = owner->nodes[j];
+            if (n->reference_id != g->graph_id || n->reference_asset) {
+                continue;
+            }
+            char *expression = studio_code_expression(s, n);
+            if (expression) {
+                snprintf(out, size, "%s", expression);
+                free(expression);
+                return;
+            }
+        }
+    }
+    snprintf(out, size, "%s", g->name && g->name[0] ? g->name : "Event Graph");
+}
+
+char *studio_code_expression_resolve(const studio *s, const node *n, const char *text, char *error, size_t size)
+{
+    return code_source_resolve_expression(graph_source(s), sg_graph_editor(s)->asset, n, text, error, size);
+}
+
+int studio_behavior_view(const studio *s)
+{
+    const studio_layout *layout = &s->prefs.layouts[s->prefs.workspace];
+    if (s->maximized >= 0) {
+        return layout->editors[s->maximized] == STUDIO_EDITOR_CODE ? 1 : 0;
+    }
+    bool graph = false, code = false;
+    for (int i = STUDIO_AREA_TOP; i <= STUDIO_AREA_BOTTOM; i++) {
+        graph |= layout->editors[i] == STUDIO_EDITOR_BEHAVIOR;
+        code |= layout->editors[i] == STUDIO_EDITOR_CODE;
+    }
+    return graph && code ? 2 : code ? 1 : 0;
+}
+
+void studio_behavior_show(studio *s, int view)
+{
+    scene_document_tab *tab = active_asset(s);
+    if (tab && tab->source_only) {
+        view = 1;
+    }
+    studio_layout *layout = studio_active_layout(s);
+    int graph_area = -1, code_area = -1;
+    for (int i = STUDIO_AREA_TOP; i <= STUDIO_AREA_BOTTOM; i++) {
+        graph_area = layout->editors[i] == STUDIO_EDITOR_BEHAVIOR ? i : graph_area;
+        code_area = layout->editors[i] == STUDIO_EDITOR_CODE ? i : code_area;
+    }
+    if (view == 2) {
+        graph_area = graph_area >= 0              ? graph_area
+                   : code_area == STUDIO_AREA_TOP ? STUDIO_AREA_BOTTOM
+                                                  : STUDIO_AREA_TOP;
+        code_area = graph_area == STUDIO_AREA_TOP ? STUDIO_AREA_BOTTOM : STUDIO_AREA_TOP;
+        layout->editors[graph_area] = STUDIO_EDITOR_BEHAVIOR;
+        layout->editors[code_area] = STUDIO_EDITOR_CODE;
+        s->maximized = -1;
+        s->focus_area = code_area;
+    } else {
+        int area = view == 1 ? code_area : graph_area;
+        area = area >= 0 ? area : STUDIO_AREA_TOP;
+        layout->editors[area] = view == 1 ? STUDIO_EDITOR_CODE : STUDIO_EDITOR_BEHAVIOR;
+        s->maximized = area;
+        s->focus_area = area;
+    }
+    s->ui_schedule.wake = true;
+}
+
+void studio_code_reveal_node(studio *s, const studio_node_ref *at)
+{
+    scene_document_tab *tab = active_asset(s);
+    if (!tab || !s->scene->graph_document_id ||
+        strcmp(at->asset, s->scene->graph_document_id)) {
+        return;
+    }
+    bool visible = false;
+    for (int i = 0; i < STUDIO_AREA_COUNT; i++) {
+        visible |= studio_active_layout(s)->editors[i] == STUDIO_EDITOR_CODE;
+    }
+    if (!visible) {
+        return;
+    }
+    asset_code *code = asset_editor(s, tab);
+    int start, end;
+    if (code && asset_code_location(code, at->graph_id, at->node_id, &start, &end)) {
+        kit_code_set_cursor(asset_code_editor(code), start);
     }
 }
 
@@ -509,7 +925,34 @@ bool studio_open_ui_source(studio *s, const char *path, int line)
 
 bool studio_code_open_place(studio *s, const ui_code_place *place)
 {
-    if (!studio_open_ui_part(s, place->path, place->part, place->line)) {
+    bool authored = false;
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    for (int i = 0; index && i < reference_index_asset_count(index); i++) {
+        const reference_asset *asset = reference_index_asset_at(index, i);
+        if (asset->path && !strcmp(asset->path, place->path) &&
+            asset->kind != REFERENCE_ASSET_UI) {
+            authored = true;
+            if (app_scene_authoring_open_asset(s->scene, i)) {
+                return false;
+            }
+            break;
+        }
+    }
+    for (int i = 0; i < acount(s->scene->tabs); i++) {
+        scene_document_tab *tab = &s->scene->tabs[i];
+        if (tab->kind != APP_EDITOR_DOCUMENT_UI && tab->path &&
+            !strcmp(tab->path, place->path)) {
+            scene_tabs_activate(s->scene, i);
+            asset_code *code = asset_editor(s, tab);
+            if (!code) {
+                return false;
+            }
+            kit_code_set_cursor(asset_code_editor(code), place->offset);
+            studio_show_editor(s, STUDIO_EDITOR_CODE);
+            return true;
+        }
+    }
+    if (authored || !studio_open_ui_part(s, place->path, place->part, place->line)) {
         return false;
     }
     s->code.reveal_offset = place->offset;
@@ -553,6 +996,21 @@ static void add_problems(
 const studio_ui_problem *studio_code_problems(studio *s)
 {
     studio_code *c = &s->code;
+    scene_document_tab *asset = active_asset(s);
+    if (asset) {
+        asetlen(c->problems.rows, 0);
+        asset_code *code = asset_editor(s, asset);
+        const kit_code_marker *markers = code ? asset_code_markers(code) : NULL;
+        for (int i = 0; i < acount(markers); i++) {
+            const kit_code_marker *m = &markers[i];
+            studio_ui_problem row = { .at = { .offset = m->start, .line = m->line },
+                                      .error = m->severity == KIT_CODE_ERROR };
+            snprintf(row.at.path, sizeof row.at.path, "%s", asset->path);
+            snprintf(row.message, sizeof row.message, "%s", m->message);
+            apush(c->problems.rows, row);
+        }
+        return c->problems.rows;
+    }
     scene_document_tab *tab = shown(s);
     if (!tab) {
         asetlen(c->problems.rows, 0);
@@ -677,19 +1135,22 @@ static void next_problem(studio *s, ui_buffer *b)
 enum
 {
     HEADER_EMPTY,
-    HEADER_ASSET, /* an asset's KDL source */
+    HEADER_ASSET, /* an asset's code source */
     HEADER_DOCUMENT,
 };
 
 void studio_code_header_add(yyjson_mut_doc *doc)
 {
-    static const char *const TEXTS[] = { "title", "backKbd",     "forwardKbd",
-                                         "icon",  "name",        "path",
-                                         "vim",   "problemsTip", "error",
-                                         NULL };
-    static const char *const FLAGS[] = { "dirty", "live", "back", "forward",
-                                         "parts", "find", NULL };
-    static const char *const NUMBERS[] = { "mode", "part", "problems", "errors", NULL };
+    static const char *const TEXTS[] = {
+        "title", "backKbd",     "forwardKbd", "icon",    "name",         "path",
+        "vim",   "problemsTip", "error",      "runtime", "runtimeLabel", NULL
+    };
+    static const char *const FLAGS[] = { "dirty",      "live",   "back",
+                                         "forward",    "parts",  "find",
+                                         "behavior",   "rename", "calls",
+                                         "sourceOnly", NULL };
+    static const char *const NUMBERS[] = { "mode",   "part", "problems",
+                                           "errors", "view", NULL };
     yyjson_mut_val *h = yyjson_mut_obj_add_obj(doc, yyjson_mut_doc_get_root(doc), "code_header");
     for (const char *const *text = TEXTS; *text; text++) {
         yyjson_mut_obj_add_strcpy(doc, h, *text, "");
@@ -759,28 +1220,114 @@ static bool show_document(studio *s, yyjson_mut_doc *doc, yyjson_mut_val *h, con
 bool studio_code_header_sync(studio *s, const studio_panel_sync *at)
 {
     yyjson_mut_val *h = at->variable;
+    bool view_changed = ui_data_put_int(h, "view", studio_behavior_view(s));
     scene_document_tab *asset = active_asset(s);
+    view_changed |= ui_data_put_bool(h, "sourceOnly", asset && asset->source_only);
     scene_document_tab *tab = asset ? NULL : shown(s);
     int mode = asset ? HEADER_ASSET : tab ? HEADER_DOCUMENT : HEADER_EMPTY;
-    bool changed = ui_data_put_int(h, "mode", mode);
+    bool changed = ui_data_put_int(h, "mode", mode) || view_changed;
     changed |= ui_data_put_bool(h, "live", s->prefs.code_apply_live);
     if (asset) {
         asset_code *code = asset_editor(s, asset);
         changed |= ui_data_put_text(at->doc, h, "title", asset->label);
+        const code_semantic_symbol *symbol = code
+                                               ? code_intelligence_symbol_at(
+                                                     asset_code_source(code),
+                                                     kit_code_cursor(asset_code_editor(code))
+                                                 )
+                                               : NULL;
+        changed |= ui_data_put_bool(h, "rename", symbol && symbol->renameable);
+        changed |= ui_data_put_bool(
+            h,
+            "calls",
+            symbol && (symbol->kind == CODE_SYMBOL_FUNCTION ||
+                       symbol->kind == CODE_SYMBOL_MACRO || symbol->kind == CODE_SYMBOL_EVENT)
+        );
+        changed |= ui_data_put_bool(
+            h,
+            "behavior",
+            asset->kind == APP_EDITOR_DOCUMENT_BEHAVIOR || asset->kind == APP_EDITOR_DOCUMENT_SYSTEM
+        );
+        changed |= ui_data_put_bool(h, "back", studio_nav_can_step(s, -1));
+        changed |= ui_data_put_bool(h, "forward", studio_nav_can_step(s, 1));
+        changed |= ui_data_put_text(at->doc, h, "backKbd", studio_chord(s, "Mod+["));
+        changed |= ui_data_put_text(at->doc, h, "forwardKbd", studio_chord(s, "Mod+]"));
+        changed |= ui_data_put_bool(h, "find", s->code.find.open);
+        const char *vim = code ? kit_code_mode(asset_code_editor(code)) : NULL;
+        changed |= ui_data_put_text(at->doc, h, "vim", vim ? vim : "");
+        changed |= ui_data_put_text(at->doc, h, "error", code ? asset_code_error(code) : "");
+        const char *runtime = "", *runtime_label = "";
+        if (code && (asset->source_only ||
+                     code_source_is_behavior(asset_code_source(code)))) {
+            if (asset->source_only) {
+                runtime_label = "Source only";
+                runtime = "Fix source errors and Save to open its graph. "
+                          "Existing scene runtime stays unchanged";
+            } else if (asset_code_error(code)[0]) {
+                runtime_label = "Last valid";
+                runtime = "Source errors retain the last valid graph and "
+                          "runtime";
+            } else if (asset_code_pending(code)) {
+                runtime_label = "Compiling";
+                runtime = "The current runtime stays active until this draft "
+                          "compiles";
+            } else if (asset_code_runtime_held(code)) {
+                runtime_label = "On Save";
+                runtime = "Valid source edits wait for Save before updating "
+                          "the runtime";
+            } else if (
+                s->scene->definition && s->scene->definition->dirty &&
+                game_live_definition_path(s->scene->definition) &&
+                !strcmp(asset->path, game_live_definition_path(s->scene->definition))
+            ) {
+                runtime_label = "Preview waiting";
+                runtime = s->scene->preview_message[0] ? s->scene->preview_message : "The current runtime stays active until the edited behavior can safely reload";
+            }
+        }
+        changed |= ui_data_put_text(at->doc, h, "runtime", runtime);
+        changed |= ui_data_put_text(at->doc, h, "runtimeLabel", runtime_label);
+        const kit_code_marker *markers = code ? asset_code_markers(code) : NULL;
+        int errors = 0, warnings = 0, notes = 0;
+        for (int i = 0; i < acount(markers); i++) {
+            errors += markers[i].severity == KIT_CODE_ERROR;
+            warnings += markers[i].severity == KIT_CODE_WARNING;
+            notes += markers[i].severity == KIT_CODE_INFO;
+        }
+        char tip[96];
+        snprintf(tip, sizeof tip, "%d errors, %d warnings, %d notes · Next problem", errors, warnings, notes);
+        changed |= ui_data_put_int(h, "problems", acount(markers));
+        changed |= ui_data_put_int(h, "errors", errors);
+        changed |= ui_data_put_text(at->doc, h, "problemsTip", tip);
         return ui_data_put_bool(h, "dirty", code && asset_code_dirty(code)) || changed;
     }
     return tab ? show_document(s, at->doc, h, tab) || changed : changed;
 }
 
 static void open_find(studio_code *c);
+static void asset_calls(studio *s, asset_code *code, int cursor);
 
 void studio_code_header_action(studio *s, const char *action, const ui_activation *a)
 {
     scene_document_tab *asset = active_asset(s);
     scene_document_tab *tab = asset ? NULL : shown(s);
     int value = a->argc ? atoi(a->args[0]) : 0;
-    if (!strcmp(action, "apply")) {
+    if (!strcmp(action, "view")) {
+        studio_behavior_show(s, value);
+    } else if (asset && (!strcmp(action, "rename") || !strcmp(action, "calls"))) {
+        asset_code *code = asset_editor(s, asset);
+        if (code) {
+            int offset = kit_code_cursor(asset_code_editor(code));
+            if (!strcmp(action, "rename")) {
+                studio_refactor_source(s, asset_code_path(code), offset);
+            } else {
+                asset_calls(s, code, offset);
+            }
+        }
+    } else if (!strcmp(action, "apply")) {
         s->prefs.code_apply_live = value == 0;
+        if (s->prefs.code_apply_live) {
+            s->scene->source_preview_hold[0] = 0;
+        }
     } else if (!strcmp(action, "save") && asset) {
         asset_code *code = asset_editor(s, asset);
         if (code) {
@@ -790,8 +1337,22 @@ void studio_code_header_action(studio *s, const char *action, const ui_activatio
         studio_nav_step(s, !strcmp(action, "back") ? -1 : 1);
     } else if (!strcmp(action, "part") && tab && !tab->ui->stylesheet) {
         tab->ui->part = value ? UI_PART_RCSS : UI_PART_RML;
-    } else if (!strcmp(action, "find") && tab) {
+    } else if (!strcmp(action, "find") && (tab || asset)) {
         open_find(&s->code);
+    } else if (!strcmp(action, "nextProblem") && asset) {
+        asset_code *code = asset_editor(s, asset);
+        const kit_code_marker *markers = code ? asset_code_markers(code) : NULL;
+        int cursor = code ? kit_code_cursor(asset_code_editor(code)) : 0;
+        int at = 0;
+        for (int i = 0; i < acount(markers); i++) {
+            if (markers[i].start > cursor) {
+                at = i;
+                break;
+            }
+        }
+        if (acount(markers)) {
+            kit_code_set_cursor(asset_code_editor(code), markers[at].start);
+        }
     } else if (!strcmp(action, "nextProblem") && tab && s->code.editor) {
         next_problem(s, tab->ui);
     }
@@ -1506,6 +2067,179 @@ static void empty_state(kit *k)
     kit_pop(k);
 }
 
+static ui_code_place asset_place(const asset_code *code, int offset)
+{
+    ui_code_place place = { .line = 1, .offset = offset };
+    snprintf(place.path, sizeof place.path, "%s", asset_code_path(code));
+    const char *text = kit_code_text(asset_code_editor((asset_code *)code), NULL);
+    for (int i = 0; i < offset && text[i]; i++) {
+        place.line += text[i] == '\n';
+    }
+    return place;
+}
+
+static node *asset_cursor_node(studio *s, const asset_code *code, int cursor)
+{
+    uint64_t graph_id, node_id;
+    if (!asset_code_node_at(code, cursor, &graph_id, &node_id)) {
+        return NULL;
+    }
+    graph *g = behavior_asset_find_graph(s->scene->graph_editor->asset, graph_id);
+    return g ? graph_node_by_id(g, node_id) : NULL;
+}
+
+static void asset_calls(studio *s, asset_code *code, int cursor)
+{
+    const code_semantic_symbol *symbol = code_intelligence_symbol_at(asset_code_source(code), cursor);
+    if (symbol && symbol->asset_name) {
+        studio_calls_library(s, symbol->asset_name, symbol->graph_id, symbol->name);
+        return;
+    }
+    node *n = asset_cursor_node(s, code, cursor);
+    if (symbol && symbol->start < 0 && n && studio_node_traceable(s, n)) {
+        studio_calls_node(s, n);
+        return;
+    }
+    studio_calls_source(s, asset_code_path(code), cursor, false);
+}
+
+static bool asset_symbol_definition(studio *s, asset_code *code, int cursor)
+{
+    const reference_index *index = app_scene_authoring_asset_index(s->scene);
+    const code_semantic_symbol
+        *resolved = code_intelligence_symbol_at(asset_code_source(code), cursor);
+    reference_symbol symbol;
+    if (resolved && resolved->asset_name) {
+        symbol = (reference_symbol){
+            .kind = REFERENCE_SYMBOL_GRAPH,
+            .asset = reference_index_find_name(
+                index,
+                REFERENCE_ASSET_LIBRARY,
+                resolved->asset_name
+            ),
+            .id = resolved->graph_id,
+        };
+    } else {
+        node *n = asset_cursor_node(s, code, cursor);
+        if (!n) {
+            return false;
+        }
+        const char *title;
+        symbol = studio_node_symbol(s, n, &title);
+    }
+    const reference *definition = reference_index_definition(index, symbol);
+    int asset_id = definition ? definition->source : symbol.asset;
+    const reference_asset *asset = asset_id >= 0
+                                     ? reference_index_asset_at(index, asset_id)
+                                     : NULL;
+    if (!asset || !asset->path) {
+        return false;
+    }
+    char *text = text_file_read(asset->path);
+    if (!text) {
+        return false;
+    }
+    code_source
+        *source = code_source_parse_context(text, NULL, &asset_code_source(code)->context);
+    code_source_metadata_load(source, asset->path);
+    free(text);
+    ui_code_place from = asset_place(code, cursor), to = { .line = 1, .offset = 0 };
+    snprintf(to.path, sizeof to.path, "%s", asset->path);
+    int end;
+    if (code_source_location(
+            source,
+            definition ? definition->graph_id : symbol.id,
+            definition ? definition->node_id : 0,
+            definition ? definition->pin_id : 0,
+            &to.offset,
+            &end
+        )) {
+        int column;
+        code_source_position(source, to.offset, &to.line, &column);
+    }
+    code_source_free(source);
+    if (!studio_code_open_place(s, &to)) {
+        return false;
+    }
+    studio_nav_jump(s, &from, &to);
+    return true;
+}
+
+static void asset_requests(studio *s, asset_code *code, unsigned events)
+{
+    kit_code_editor *e = asset_code_editor(code);
+    int cursor = kit_code_cursor(e), definition;
+    if (events & KIT_CODE_RENAME) {
+        studio_refactor_source(s, asset_code_path(code), cursor);
+    }
+    if (events & KIT_CODE_CALLS) {
+        asset_calls(s, code, cursor);
+    }
+    if (events & KIT_CODE_DEFINITION) {
+        if (asset_code_definition(code, cursor, &definition)) {
+            ui_code_place from = asset_place(code, cursor),
+                          to = asset_place(code, definition);
+            kit_code_set_cursor(e, definition);
+            studio_nav_jump(s, &from, &to);
+        } else if (!asset_symbol_definition(s, code, cursor)) {
+            studio_report(s, "No definition at this position");
+        }
+    }
+    if (events & KIT_CODE_REFERENCES) {
+        const code_semantic_symbol
+            *symbol = code_intelligence_symbol_at(asset_code_source(code), cursor);
+        if (symbol && symbol->asset_name) {
+            const reference_index *index = app_scene_authoring_asset_index(s->scene);
+            reference_symbol target = {
+                .kind = REFERENCE_SYMBOL_GRAPH,
+                .asset = reference_index_find_name(
+                    index,
+                    REFERENCE_ASSET_LIBRARY,
+                    symbol->asset_name
+                ),
+                .id = symbol->graph_id,
+            };
+            studio_find_references(s, symbol->name, target);
+            return;
+        }
+        asset_source_span *places = asset_code_references(code, cursor);
+        node *n = asset_cursor_node(s, code, cursor);
+        if (!acount(places) && n) {
+            studio_find_node_references(s, n);
+            afree(places);
+            return;
+        }
+        asetlen(s->references, 0);
+        for (int i = 0; i < acount(places); i++) {
+            ui_code_place place = asset_place(code, places[i].start);
+            apush(s->references, place_row(&place));
+        }
+        afree(places);
+        snprintf(s->references_title, sizeof s->references_title, "Source references");
+        studio_output_find(s);
+    }
+    if ((events & KIT_CODE_BREAKPOINT) && !asset_code_error(code)[0] &&
+        !active_asset(s)->source_only) {
+        asset_code_time(code, s->time + 0.2);
+        sync_asset_graph(s, code);
+        if (asset_code_error(code)[0]) {
+            return;
+        }
+        uint64_t graph_id, node_id;
+        if (asset_code_breakpoint_at(code, cursor, &graph_id, &node_id)) {
+            editor *editor = s->scene->graph_editor;
+            graph *g = behavior_asset_find_graph(editor->asset, graph_id);
+            node *n = g ? graph_node_by_id(g, node_id) : NULL;
+            if (n && node_behavior_for(n) != NODE_BEHAVIOR_PURE) {
+                ed_snapshot_before(editor);
+                graph_set_breakpoint(g, n, !n->breakpoint);
+                sync_asset_graph(s, code);
+                capture_asset(s, code);
+            }
+        }
+    }
+}
+
 void studio_code_body(studio *s, int)
 {
     kit *k = s->kit;
@@ -1532,8 +2266,25 @@ void studio_code_body(studio *s, int)
         }
         asset_code_set_names(code, names, acount(names));
         afree(names);
+        s->code.editor = asset_code_editor(code);
+        snprintf(s->code.editor_path, sizeof s->code.editor_path, "%s", asset->path);
+        bool paused_here = s->pause.active && s->scene->graph_document_id &&
+                           !strcmp(s->pause.at.asset, s->scene->graph_document_id);
+        asset_code_execution(
+            code,
+            paused_here ? s->pause.at.graph_id : 0,
+            paused_here ? s->pause.at.node_id : 0
+        );
         kit_code_result
             r = asset_code_draw(code, k, "text", &preferences, s->prefs.code_apply_live);
+        if (s->code.find.refocus) {
+            kit_focus(k);
+            s->code.find.refocus = false;
+        }
+        asset_requests(s, code, r.events);
+        if (s->code.find.open) {
+            find_widget(s);
+        }
         if (r.events &
             (KIT_CODE_CHANGED | KIT_CODE_UNDO | KIT_CODE_REDO | KIT_CODE_CURSOR)) {
             capture_asset(s, code);
@@ -1547,6 +2298,10 @@ void studio_code_body(studio *s, int)
             kit_push(k, "status", NULL, "code-status");
             kit_icon(k, "icon", NULL, KIT_ICON_ERROR);
             kit_label(k, "message", "message", asset_code_error(code));
+            kit_pop(k);
+        } else if (asset_code_pending(code)) {
+            kit_push(k, "status", NULL, "code-status");
+            kit_label(k, "message", "message", "Checking source…");
             kit_pop(k);
         }
         kit_pop(k);

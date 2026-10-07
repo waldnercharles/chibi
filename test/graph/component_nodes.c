@@ -10,6 +10,7 @@
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 
 #include <assert.h>
 #include <glob.h>
@@ -18,26 +19,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The asset file text: KDL without the positions of unplaced nodes. */
+/* The asset file text: code without the positions of unplaced nodes. */
 static char *disk_text(const behavior_asset *asset)
 {
     char *json = behavior_asset_save(asset);
-    char error[256];
-    char *kdl = asset_text_to_disk(json, error, sizeof error);
-    assert(kdl);
+    char *code = json ? strdup(json) : NULL;
+    assert(code);
     free(json);
-    return kdl;
+    return code;
 }
 
 static behavior_asset *reload(const behavior_asset *asset)
 {
-    char *kdl = disk_text(asset);
-    behavior_asset *copy = behavior_asset_load(kdl);
+    char *code = disk_text(asset);
+    behavior_asset *copy = behavior_asset_load(code);
     if (!copy) {
-        fprintf(stderr, "%s\n%s\n", graph_last_error(), kdl);
+        fprintf(stderr, "%s\n%s\n", graph_last_error(), code);
     }
     assert(copy);
-    free(kdl);
+    free(code);
     return copy;
 }
 
@@ -80,11 +80,11 @@ static int compile_errors(const behavior_asset *asset)
 static void project_equivalence()
 {
     static const char *const patterns[] = {
-        "projects/*/content/behaviors/*.kdl",
-        "projects/*/content/libraries/*.kdl",
-        "content/behaviors/*.kdl",
-        "content/libraries/*.kdl",
-        "test/fixtures/content/behaviors/*.kdl",
+        "projects/*/content/behaviors/*.code",
+        "projects/*/content/libraries/*.code",
+        "content/behaviors/*.code",
+        "content/libraries/*.code",
+        "test/fixtures/content/behaviors/*.code",
     };
     int files = 0, raised = 0;
     for (size_t p = 0; p < sizeof patterns / sizeof *patterns; p++) {
@@ -94,8 +94,8 @@ static void project_equivalence()
         }
         for (size_t i = 0; i < paths.gl_pathc; i++) {
             char *text = text_file_read(paths.gl_pathv[i]);
-            behavior_asset *original = behavior_asset_load(text);
-            behavior_asset *authored = behavior_asset_load(text);
+            behavior_asset *original = test_project_asset(paths.gl_pathv[i], text);
+            behavior_asset *authored = test_project_asset(paths.gl_pathv[i], text);
             free(text);
             if (!original) {
                 fprintf(stderr, "%s: %s\n", paths.gl_pathv[i], graph_last_error());
@@ -104,8 +104,9 @@ static void project_equivalence()
             files++;
             int count = raise_all(authored);
             raised += count;
-            behavior_asset *loaded = reload(authored);
             char *saved = disk_text(authored);
+            behavior_asset *loaded = test_project_asset(paths.gl_pathv[i], saved);
+            assert(loaded);
             char *resaved = disk_text(loaded);
             if (strcmp(saved, resaved)) {
                 fprintf(stderr, "%s does not round-trip:\n%s\n%s\n", paths.gl_pathv[i], saved, resaved);
@@ -509,7 +510,18 @@ static void authoring()
     node *get = unset[0];
     pin_value transform = { .type = PIN_NAME, .str = "GameTransform" };
     assert(graph_set_pin_default(f.g, get, 0, 0, &transform) == 0);
-    pin_binding target = { .kind = PIN_BINDING_VARIABLE, .variable_id = 1 };
+    behavior_variable *target_variable = behavior_asset_add_variable(
+        f.asset,
+        "Target",
+        PIN_HANDLE,
+        "ecs.entity",
+        PIN_CONTAINER_SINGLE,
+        &(pin_value){ .type = PIN_HANDLE, .type_name = "ecs.entity" },
+        NULL
+    );
+    assert(target_variable);
+    pin_binding target = { .kind = PIN_BINDING_VARIABLE,
+                           .variable_id = target_variable->id };
     assert(graph_set_pin_binding(f.g, get, 0, 1, &target) == 0);
     assert(!component_node_self(f.g, get) && !component_node_getter(f.g, get));
     pin_value aim = { .type = PIN_NAME, .str = "GameAim" };
@@ -520,7 +532,9 @@ static void authoring()
     node *lowered = graph_node_by_id(copy->graph, get_id);
     assert(lowered->desc == registry_node_by_name("GetEntity_GameTransform"));
     assert(
-        lowered->input_pins[0].binding && lowered->input_pins[0].binding->kind == PIN_BINDING_VARIABLE
+        lowered->input_pins[0].binding &&
+        lowered->input_pins[0].binding->kind == PIN_BINDING_VARIABLE &&
+        lowered->input_pins[0].binding->variable_id == target.variable_id
     );
     behavior_asset_free(copy);
 
@@ -549,81 +563,20 @@ static void authoring()
     assert(graph_node_by_id(f.g, get_id)->desc == registry_node_by_name("GetEntity_GameTransform"));
     behavior_asset_free(f.asset);
 
-    assert(!behavior_asset_load(
-        "version 3\n"
-        "name \"Unknown\"\n"
-        "id_counter 10\n"
-        "(array)graphs {\n"
-        "    - {\n"
-        "        kind \"event\"\n"
-        "        name \"\"\n"
-        "        (array)nodes {\n"
-        "            - {\n"
-        "                id 1\n"
-        "                type \"Get Component\"\n"
-        "                inputs Component=\"GameNothing\"\n"
-        "            }\n"
-        "        }\n"
-        "    }\n"
-        "}\n"
-    ));
-    assert(strstr(graph_last_error(), "unknown Component"));
-    assert(!behavior_asset_load(
-        "version 3\n"
-        "name \"Unknown field\"\n"
-        "id_counter 10\n"
-        "(array)graphs {\n"
-        "    - {\n"
-        "        kind \"event\"\n"
-        "        name \"\"\n"
-        "        (array)nodes {\n"
-        "            - {\n"
-        "                id 1\n"
-        "                type \"Set Component\"\n"
-        "                inputs Component=\"GameHealth\" bogus=1\n"
-        "            }\n"
-        "        }\n"
-        "    }\n"
-        "}\n"
-    ));
-    assert(strstr(graph_last_error(), "has no pin bogus"));
-    assert(!behavior_asset_load(
-        "version 3\n"
-        "name \"Enum overflow\"\n"
-        "id_counter 10\n"
-        "(array)graphs {\n"
-        "    - {\n"
-        "        kind \"event\"\n"
-        "        name \"\"\n"
-        "        (array)nodes {\n"
-        "            - {\n"
-        "                id 1\n"
-        "                type \"Set Component\"\n"
-        "                inputs Component=\"GameAppearance\" shape=2147483648\n"
-        "            }\n"
-        "        }\n"
-        "    }\n"
-        "}\n"
-    ));
-    /* A document may name the component and write only field inputs. */
-    behavior_asset *named = behavior_asset_load(
-        "version 3\n"
-        "name \"Named\"\n"
-        "id_counter 10\n"
-        "(array)graphs {\n"
-        "    - {\n"
-        "        kind \"event\"\n"
-        "        name \"\"\n"
-        "        (array)nodes {\n"
-        "            - {\n"
-        "                id 1\n"
-        "                type \"Set Component\"\n"
-        "                inputs Component=\"GameHealth\" current=4\n"
-        "            }\n"
-        "        }\n"
-        "    }\n"
-        "}\n"
+    assert(
+        !behavior_asset_load("behavior \"Unknown\" { value v = get_component(Component: \"GameNothing\"); }\n")
     );
+    assert(strstr(graph_last_error(), "Unknown component 'GameNothing'"));
+    assert(
+        !behavior_asset_load("behavior \"Unknown field\" { action v = set_component(Component: \"GAME.GameHealth\", Value.bogus: int = 1); }\n")
+    );
+    assert(strstr(graph_last_error(), "Unknown component field 'bogus'"));
+    assert(
+        !behavior_asset_load("behavior \"Enum overflow\" { action v = set_component(Component: \"GAME.GameAppearance\", Value.shape: int = 2147483648); }\n")
+    );
+    assert(strstr(graph_last_error(), "Integer literal is outside int storage range"));
+    /* A document may name the component and write only field inputs. */
+    behavior_asset *named = behavior_asset_load("behavior \"Named\" { action v = set_component(Component: \"GAME.GameHealth\", Value.current: int = 4); }\n");
     assert(named);
     node *written = named->graph->nodes[0];
     assert(!strcmp(component_node_key(written), "GAME.GameHealth"));
@@ -677,10 +630,20 @@ static void authored_value_roundtrip()
     set_default(&f, set, color_pin, color);
 
     node *get = component(&f, &NODE_GetComponent, "GameAppearance");
-    pin_binding binding = { .kind = PIN_BINDING_VARIABLE, .variable_id = 42 };
     pin_value entity = { .type = PIN_HANDLE,
                          .type_name = get->input_pins[1].type_name,
                          .u64 = UINT64_C(0xfedcba9876543210) };
+    behavior_variable *target = behavior_asset_add_variable(
+        f.asset,
+        "Target",
+        PIN_HANDLE,
+        "ecs.entity",
+        PIN_CONTAINER_SINGLE,
+        &entity,
+        NULL
+    );
+    assert(target);
+    pin_binding binding = { .kind = PIN_BINDING_VARIABLE, .variable_id = target->id };
     assert(graph_set_pin_binding(f.g, get, 0, 1, &binding) == 0);
     assert(graph_set_pin_default(f.g, get, 0, 1, &entity) == 0);
     uint64_t set_id = set->id, get_id = get->id;
@@ -696,7 +659,7 @@ static void authored_value_roundtrip()
     assert(
         get->input_pins[1].binding &&
         get->input_pins[1].binding->kind == PIN_BINDING_VARIABLE &&
-        get->input_pins[1].binding->variable_id == 42
+        get->input_pins[1].binding->variable_id == binding.variable_id
     );
     behavior_asset_free(loaded);
     behavior_asset_free(f.asset);
@@ -749,45 +712,13 @@ static void struct_authoring()
     behavior_asset_free(loaded);
     behavior_asset_free(f.asset);
 
-    behavior_asset *named = behavior_asset_load(
-        "version 3\n"
-        "name \"Named\"\n"
-        "id_counter 10\n"
-        "(array)graphs {\n"
-        "    - {\n"
-        "        kind \"event\"\n"
-        "        name \"\"\n"
-        "        (array)nodes {\n"
-        "            - {\n"
-        "                id 1\n"
-        "                type \"Break Struct\"\n"
-        "                inputs Type=\"CF_V2\"\n"
-        "            }\n"
-        "        }\n"
-        "    }\n"
-        "}\n"
-    );
+    behavior_asset *named = behavior_asset_load("behavior \"Named\" { value v = break_struct(Type: name = \"CF_V2\"); }\n");
     assert(named && named->graph->nodes[0]->output_count == 2);
     behavior_asset_free(named);
-    assert(!behavior_asset_load(
-        "version 3\n"
-        "name \"Unknown\"\n"
-        "id_counter 10\n"
-        "(array)graphs {\n"
-        "    - {\n"
-        "        kind \"event\"\n"
-        "        name \"\"\n"
-        "        (array)nodes {\n"
-        "            - {\n"
-        "                id 1\n"
-        "                type \"Make Struct\"\n"
-        "                inputs Type=\"GameNothing\"\n"
-        "            }\n"
-        "        }\n"
-        "    }\n"
-        "}\n"
-    ));
-    assert(strstr(graph_last_error(), "unknown Type"));
+    assert(
+        !behavior_asset_load("behavior \"Unknown\" { value v = make_struct(Type: name = \"GameNothing\"); }\n")
+    );
+    assert(strstr(graph_last_error(), "Unknown struct type 'GameNothing'"));
     puts("component node structs: Make and Break reshape by type; Add and Remove keep their wires");
 }
 

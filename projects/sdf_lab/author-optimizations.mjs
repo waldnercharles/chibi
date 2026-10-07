@@ -14,7 +14,7 @@ mkdirSync(evidence, { recursive: true });
 function files(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = resolve(directory, entry.name);
-    return entry.isDirectory() ? files(path) : path.endsWith(".kdl") ? [path] : [];
+    return entry.isDirectory() ? files(path) : (path.endsWith(".kdl") || path.endsWith(".code")) ? [path] : [];
   });
 }
 function digest(path) { return createHash("sha256").update(readFileSync(path)).digest("hex"); }
@@ -99,7 +99,7 @@ shape("SdfHorizonCanopy", "Conservative ellipsoid distance for a smooth continuo
 prototype("SdfQualityThinRing", "SdfQualityThinRing", { width: 64, height: 12, depth: 64 });
 prototype("SdfQualityNarrowCut", "SdfQualityNarrowCut", { width: 64, height: 64, depth: 64 });
 prototype("SdfHorizonCanopy", "SdfHorizonCanopy", { width: 224, height: 60, depth: 134 });
-if (!existsSync(resolve(project, "content/behaviors/SdfQualityScaleSweep.kdl"))) {
+if (!existsSync(resolve(project, "content/behaviors/SdfQualityScaleSweep.code"))) {
   call("buildGraph", { kind: "behavior", name: "SdfQualityScaleSweep", create: true, owner_type: "ecs.entity",
     description: "Changes projected bounds across a graph LOD cutoff; geometry remains deterministic.", operations: [
       { op: "add_variable", ref: "elapsed", name: "elapsed", type: "float", default: 0 },
@@ -184,4 +184,4 @@ for (const flags of [["--format"], ["--format", "--check"]]) {
 for (const [path, hash] of Object.entries(baseline)) {
   if (digest(path) !== hash) throw Error(`Existing asset changed: ${path}`);
 }
-console.log(`Preserved ${Object.keys(baseline).length} existing KDL assets.`);
+console.log(`Preserved ${Object.keys(baseline).length} existing code assets.`);

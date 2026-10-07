@@ -117,10 +117,7 @@ static void preview_clocks()
     game_prototype *prototype = game_prototype_load(
         "name \"Motion\"\n"
         "components {\n"
-        "    GameSdfMotion {\n"
-        "        time 2\n"
-        "        pluck_age 3\n"
-        "    }\n"
+        "    GameSdfMotion time=2 pluck_age=3\n"
         "}\n",
         &registry,
         error,

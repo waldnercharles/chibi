@@ -583,6 +583,27 @@ static void one_history(scratch *s)
         strstr(ui_buffer_text(b, UI_PART_RML), "<use ui=\"Di") && ui_buffer_dirty(b),
         "Vim's Control+R redoes from the same history"
     );
+    type(&f, "gd");
+    frame(&f);
+    test_check(f.events & KIT_CODE_DEFINITION, "Vim gd asks the shared language service for a definition");
+    type(&f, "gr");
+    frame(&f);
+    test_check(f.events & KIT_CODE_REFERENCES, "Vim gr asks for source references");
+    type(&f, "gR");
+    frame(&f);
+    test_check(f.events & KIT_CODE_RENAME, "Vim gR requests semantic rename");
+    type(&f, "gc");
+    frame(&f);
+    test_check(f.events & KIT_CODE_CALLS, "Vim gc requests callable hierarchy");
+    press(&f, RML_KEY_O, RML_KM_CTRL);
+    frame(&f);
+    test_check(f.events & KIT_CODE_CHORD, "Vim Control+O delegates navigation history to Studio");
+    press(&f, RML_KEY_I, RML_KM_CTRL);
+    frame(&f);
+    test_check(f.events & KIT_CODE_CHORD, "Vim Control+I delegates forward navigation to Studio");
+    press(&f, RML_KEY_F9, 0);
+    frame(&f);
+    test_check(f.events & KIT_CODE_BREAKPOINT, "F9 requests a breakpoint at the source cursor");
     ui_buffer_undo(b);
     step(&f, b);
     test_check(!strcmp(kit_code_text(f.e, NULL), before), "Studio's Undo, stepping the buffer, reaches the editor");

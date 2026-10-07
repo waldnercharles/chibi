@@ -12,6 +12,7 @@ typedef struct yyjson_val yyjson_val;
 
 /* Apply a bounded semantic edit batch to a behavior or shader asset clone.
  *
+ * source_metadata is optional presentation/identity JSON for executable source.
  * The request is an object whose optional graph_id/graph_name selects the
  * graph, and whose operations array contains semantic operations. Node
  * selectors are numeric node IDs or string refs returned by add_node. Pin
@@ -22,6 +23,7 @@ typedef struct yyjson_val yyjson_val;
  */
 int automation_graph_edit(
     const char *source_text,
+    const char *source_metadata,
     const char *kind,
     const char *name,
     const behavior_asset *const *libraries,

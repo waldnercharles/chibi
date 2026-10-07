@@ -50,7 +50,8 @@ static bool rule_of(const node_desc *d, run_rule *rule)
         *rule = (run_rule){ 0, 1, 0 };
         return true;
     }
-    if (d == &NODE_SwitchInt || d == &NODE_SwitchString || d == &NODE_SwitchName) {
+    if (d == &NODE_SwitchInt || d == &NODE_SwitchString ||
+        d == &NODE_SwitchName || d == &NODE_SwitchEnum) {
         *rule = (run_rule){ 1, 0, 1 };
         return true;
     }

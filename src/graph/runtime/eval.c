@@ -4,6 +4,7 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/nodes.h"
+#include "graph/nodes/snapshot_nodes.h"
 #include "graph/runtime/behavior_data.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
@@ -450,6 +451,11 @@ static int eval_node(graph *g, node *n, arena *a, eval_context *ctx)
     if (runtime_node_computed(state)) {
         return 0;
     }
+    /* Reading a captured local must not reevaluate its original expression.
+     * In particular its source component may have gone away during a wait. */
+    if (n->desc == &NODE_Snapshot) {
+        return eval_prepared_node(n, a, ctx);
+    }
     if (runtime_node_visiting(state)) {
         return fail(ctx, n, -1, -2, "cycle detected");
     }
@@ -567,6 +573,14 @@ int eval_prepared_node(node *n, arena *a, eval_context *ctx)
             outputs[0] = behavior_instance_owner(ctx->instance);
             break;
         case NODE_PURE_FUNCTION:
+            if (n->desc == &NODE_BehaviorExpression && ctx->instance) {
+                graph *target = behavior_asset_find_graph(ctx->instance->asset, n->reference_id);
+                if (target && target->expression_mode == GRAPH_EXPRESSION_ACTION) {
+                    /* Exec publishes this result. Pulling it must retain that
+                       value, rather than evaluate the action as a pure call. */
+                    break;
+                }
+            }
             if (ctx->program
                     ? behavior_data_call(n, a, ctx)
                     : eval_pure_function(runtime_store_graph(ctx->runtime), n, a, ctx)) {

@@ -53,6 +53,11 @@ static bool ui_listed(const char *path)
 
 static reference_asset_kind content_asset_kind(const app_scene_authoring *scene, const char *path)
 {
+    size_t length = strlen(path), suffix = strlen(CODE_ASSET_METADATA_EXTENSION);
+    if (length >= suffix &&
+        !strcmp(path + length - suffix, CODE_ASSET_METADATA_EXTENSION)) {
+        return REFERENCE_ASSET_KIND_COUNT;
+    }
     static const struct
     {
         const char *folder;
@@ -87,7 +92,8 @@ static const char *content_asset_name(const char *path)
     static char name[256];
     snprintf(name, sizeof name, "%s", base);
     char *extension = strrchr(name, '.');
-    if (extension && (!strcmp(extension, ASSET_EXTENSION) ||
+    if (extension && (!strcmp(extension, DECLARATIVE_ASSET_EXTENSION) ||
+                      !strcmp(extension, CODE_ASSET_EXTENSION) ||
                       !strcmp(extension, UI_MARKUP_EXTENSION))) {
         *extension = '\0';
     }
@@ -415,13 +421,37 @@ int app_scene_authoring_open_asset(app_scene_authoring *scene, int position)
     const reference_asset *asset = scene && scene->asset_index
                                      ? reference_index_asset_at(scene->asset_index, position)
                                      : NULL;
-    if (!asset || asset->unresolved) {
+    if (!asset) {
+        return -1;
+    }
+    bool executable = asset->kind == REFERENCE_ASSET_BEHAVIOR ||
+                      asset->kind == REFERENCE_ASSET_LIBRARY ||
+                      asset->kind == REFERENCE_ASSET_SYSTEM;
+    if (asset->unresolved && executable && asset->path) {
+        return scene_tabs_open_source(
+            scene,
+            asset->kind == REFERENCE_ASSET_SYSTEM ? APP_EDITOR_DOCUMENT_SYSTEM
+                                                  : APP_EDITOR_DOCUMENT_BEHAVIOR,
+            asset->name,
+            asset->path
+        );
+    }
+    if (asset->unresolved) {
         return -1;
     }
     switch (asset->kind) {
         case REFERENCE_ASSET_SCENE:
-        case REFERENCE_ASSET_SYSTEM:
             return open_tab_asset(scene, asset, position);
+        case REFERENCE_ASSET_SYSTEM: {
+            int result = open_tab_asset(scene, asset, position);
+            return result == 0 || !asset->path ? result
+                                               : scene_tabs_open_source(
+                                                     scene,
+                                                     APP_EDITOR_DOCUMENT_SYSTEM,
+                                                     asset->name,
+                                                     asset->path
+                                                 );
+        }
         case REFERENCE_ASSET_PROTOTYPE:
             return app_scene_authoring_open_prototype(scene, asset->name);
         case REFERENCE_ASSET_BEHAVIOR:
@@ -429,8 +459,17 @@ int app_scene_authoring_open_asset(app_scene_authoring *scene, int position)
         case REFERENCE_ASSET_MATERIAL:
         case REFERENCE_ASSET_SHAPE:
         case REFERENCE_ASSET_FIELD:
-        case REFERENCE_ASSET_LIBRARY:
-            return app_scene_authoring_open_behavior(scene, asset->name);
+        case REFERENCE_ASSET_LIBRARY: {
+            int result = app_scene_authoring_open_behavior(scene, asset->name);
+            return result == 0 || !executable || !asset->path
+                     ? result
+                     : scene_tabs_open_source(
+                           scene,
+                           APP_EDITOR_DOCUMENT_BEHAVIOR,
+                           asset->name,
+                           asset->path
+                       );
+        }
         case REFERENCE_ASSET_UI:
             return asset->path ? scene_tabs_open_ui(scene, asset->path) : -1;
         case REFERENCE_ASSET_KIND_COUNT: break;

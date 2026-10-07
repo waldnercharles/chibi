@@ -70,8 +70,12 @@ static char *tab_label(app_editor_document_kind kind, const char *id, const char
     }
     char *label = xstrdup(value);
     size_t length = strlen(label);
-    const char *extension = kind == APP_EDITOR_DOCUMENT_UI ? UI_MARKUP_EXTENSION
-                                                           : ASSET_EXTENSION;
+    const char *extension = strrchr(label, '.');
+    if (!extension || (strcmp(extension, UI_MARKUP_EXTENSION) &&
+                       strcmp(extension, CODE_ASSET_EXTENSION) &&
+                       strcmp(extension, DECLARATIVE_ASSET_EXTENSION))) {
+        return label;
+    }
     size_t extension_length = strlen(extension);
     if (length > extension_length &&
         !strcmp(label + length - extension_length, extension)) {
@@ -275,6 +279,9 @@ static void restore_scene_tab_view(app_scene_authoring *scene, const scene_docum
 
 static void capture_asset_baseline(app_scene_authoring *scene, scene_document_tab *tab)
 {
+    if (tab->source_only) {
+        return;
+    }
     if (tab->kind == APP_EDITOR_DOCUMENT_PROTOTYPE && !tab->asset_saved) {
         scene_prototype_asset *asset = find_prototype(scene, tab->key + strlen("prototype:"));
         if (asset && asset->prototype) {
@@ -308,7 +315,7 @@ static void capture_asset_baseline(app_scene_authoring *scene, scene_document_ta
 void scene_tabs_sync_current(app_scene_authoring *scene)
 {
     scene_document_tab *tab = active_tab(scene);
-    if (!tab) {
+    if (!tab || tab->source_only) {
         return;
     }
     int current_scene = scene_tab_for_current_document(scene);
@@ -526,6 +533,29 @@ void scene_tabs_document_selected(
     }
 }
 
+int scene_tabs_open_source(
+    app_scene_authoring *scene,
+    app_editor_document_kind kind,
+    const char *name,
+    const char *path
+)
+{
+    assert(kind == APP_EDITOR_DOCUMENT_BEHAVIOR || kind == APP_EDITOR_DOCUMENT_SYSTEM);
+    scene_tabs_sync_current(scene);
+    scene_document_tab *tab = add_tab(scene, kind, name, path);
+    if (!tab) {
+        return -1;
+    }
+    tab->source_only = true;
+    scene->active_tab = (int)(tab - scene->tabs);
+    scene_authoring_select_document(scene, kind, kind == APP_EDITOR_DOCUMENT_SYSTEM ? path : name);
+    free(scene->graph_document_id);
+    scene->graph_document_id = NULL;
+    scene->definition = NULL;
+    scene->behavior_apply_pending = false;
+    return 0;
+}
+
 static int restore_scene_tab_contents(app_scene_authoring *scene, scene_document_tab *tab)
 {
     assert(tab->kind == APP_EDITOR_DOCUMENT_SCENE && tab->scene_value);
@@ -612,7 +642,18 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
     scene->active_tab = index;
     scene_document_tab *target = &scene->tabs[index];
     int result = 0;
-    if (target->kind == APP_EDITOR_DOCUMENT_SCENE) {
+    if (target->source_only) {
+        scene_authoring_select_document(
+            scene,
+            target->kind,
+            target->kind == APP_EDITOR_DOCUMENT_SYSTEM ? target->path
+                                                       : target->key + strlen("behavior:")
+        );
+        free(scene->graph_document_id);
+        scene->graph_document_id = NULL;
+        scene->definition = NULL;
+        scene->behavior_apply_pending = false;
+    } else if (target->kind == APP_EDITOR_DOCUMENT_SCENE) {
         /* Returning from an asset tab keeps the current scene session. */
         if (index != previous_scene) {
             if (target->scene_value) {
@@ -659,7 +700,15 @@ int scene_tabs_activate(app_scene_authoring *scene, int index)
             }
             scene->active_tab = previous;
             scene_document_tab *prior = &scene->tabs[previous];
-            if (prior->kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
+            if (prior->source_only) {
+                scene_authoring_select_document(
+                    scene,
+                    prior->kind,
+                    prior->kind == APP_EDITOR_DOCUMENT_SYSTEM
+                        ? prior->path
+                        : prior->key + strlen("behavior:")
+                );
+            } else if (prior->kind == APP_EDITOR_DOCUMENT_PROTOTYPE) {
                 app_scene_authoring_open_prototype(scene, prior->key + strlen("prototype:"));
             } else if (prior->kind == APP_EDITOR_DOCUMENT_BEHAVIOR) {
                 open_behavior_asset(scene, prior->key + strlen("behavior:"));
@@ -805,8 +854,8 @@ static bool authored_values_equal(av_value *a, av_value *b)
 
 bool scene_tabs_dirty(app_scene_authoring *scene, const scene_document_tab *tab)
 {
-    if (tab->source_dirty) {
-        return true;
+    if (tab->source_only || tab->source_dirty) {
+        return tab->source_dirty;
     }
     if (tab->kind == APP_EDITOR_DOCUMENT_SCENE) {
         int current = scene_tab_for_current_document(scene);
@@ -928,6 +977,9 @@ static int discard_system(app_scene_authoring *scene, scene_document_tab *tab)
 static int discard_tab(app_scene_authoring *scene, int index)
 {
     scene_document_tab *tab = &scene->tabs[index];
+    if (tab->source_only) {
+        return 0;
+    }
     switch (tab->kind) {
         case APP_EDITOR_DOCUMENT_SCENE: return 0;
         case APP_EDITOR_DOCUMENT_PROTOTYPE:
@@ -1102,7 +1154,7 @@ int scene_tabs_discard(app_scene_authoring *scene, int index)
         return -1;
     }
     scene_document_tab *tab = &scene->tabs[index];
-    bool background = tab->kind != APP_EDITOR_DOCUMENT_SCENE &&
+    bool background = !tab->source_only && tab->kind != APP_EDITOR_DOCUMENT_SCENE &&
                       index != scene->active_tab;
     char *previous = background ? xstrdup(scene->tabs[scene->active_tab].key) : NULL;
     int result = background ? scene_tabs_activate(scene, index) : 0;

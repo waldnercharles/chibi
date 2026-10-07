@@ -971,8 +971,31 @@ instance_update_status behavior_instance_can_update(const behavior_instance *bi,
 {
     assert(bi && bi->alive && next);
     if (!same_type_name(bi->asset->owner_type_name, next->owner_type_name) ||
-        acount(bi->asset->variables) != acount(next->variables)) {
+        acount(bi->asset->variables) != acount(next->variables) ||
+        acount(bi->asset->component_parameters) != acount(next->component_parameters)) {
         return INSTANCE_UPDATE_RESTART;
+    }
+    for (int i = 0; i < acount(next->component_parameters); i++) {
+        const behavior_component_parameter *a = &bi->asset->component_parameters[i],
+                                           *b = &next->component_parameters[i];
+        if (a->optional != b->optional || strcmp(a->name, b->name) ||
+            strcmp(a->key, b->key)) {
+            return INSTANCE_UPDATE_RESTART;
+        }
+    }
+    if (acount(bi->asset->reactives) != acount(next->reactives)) {
+        return INSTANCE_UPDATE_RESTART;
+    }
+    for (int i = 0; i < acount(next->reactives); i++) {
+        const behavior_reactive *a = &bi->asset->reactives[i],
+                                *b = &next->reactives[i];
+        if (a->kind != b->kind || a->graph_id != b->graph_id ||
+            a->event_id != b->event_id || a->source_node_id != b->source_node_id ||
+            a->source_pin_id != b->source_pin_id ||
+            a->statement_node_id != b->statement_node_id ||
+            a->value_node_id != b->value_node_id || a->value_pin_id != b->value_pin_id) {
+            return INSTANCE_UPDATE_RESTART;
+        }
     }
     for (int i = 0; i < acount(next->variables); i++) {
         const behavior_variable *v = &next->variables[i];
@@ -981,7 +1004,8 @@ instance_update_status behavior_instance_can_update(const behavior_instance *bi,
             return INSTANCE_UPDATE_RESTART;
         }
         const behavior_variable *previous = &bi->asset->variables[old];
-        if (v->type != previous->type || v->container != previous->container ||
+        if (v->shared != previous->shared || v->type != previous->type ||
+            v->container != previous->container ||
             !same_type_name(v->type_name, previous->type_name) ||
             (bi->variable_storage[old].layout &&
              bi->variable_storage[old].layout !=

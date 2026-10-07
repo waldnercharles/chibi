@@ -33,17 +33,18 @@ uint64_t behavior_batch_dispatches()
     return batch_dispatches;
 }
 
-bool behavior_instance_dispatch_batch(
+static bool dispatch_batch(
     behavior_instance *bi,
     const char *name,
     behavior_batch **batch,
-    flow_run **failed
+    flow_run **failed,
+    bool maintenance
 )
 {
     *failed = NULL;
     if (!name || !name[0] || !bi->alive ||
         (bi->backend != BEHAVIOR_SLJIT && bi->backend != BEHAVIOR_BYTECODE) ||
-        bi->trace_enabled || acount(bi->activations)) {
+        (!maintenance && (bi->trace_enabled || acount(bi->activations)))) {
         return false;
     }
     const behavior_program *program = bi->asset->program;
@@ -124,4 +125,24 @@ bool behavior_instance_dispatch_batch(
         bi->profile(name, elapsed, elapsed + scope.children, BEHAVIOR_PROFILE_START, bi->profile_user);
     }
     return true;
+}
+
+bool behavior_instance_dispatch_batch(
+    behavior_instance *bi,
+    const char *name,
+    behavior_batch **batch,
+    flow_run **failed
+)
+{
+    return dispatch_batch(bi, name, batch, failed, false);
+}
+
+bool behavior_instance_maintain_batch(
+    behavior_instance *bi,
+    const char *name,
+    behavior_batch **batch,
+    flow_run **failed
+)
+{
+    return dispatch_batch(bi, name, batch, failed, true);
 }

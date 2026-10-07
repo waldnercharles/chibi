@@ -24,19 +24,11 @@ void test_system_host_wait()
 
     game_system *system = game_system_new(world, asset);
     const compile_report *report = game_system_compile(system);
-    const compile_diagnostic *diagnostic = NULL;
-    for (int i = 0; i < acount(report->items); i++) {
-        if (report->items[i].rule == CMPL_RULE_SYSTEM_HOST_WAIT) {
-            diagnostic = &report->items[i];
-        }
-    }
-    assert(diagnostic && diagnostic->severity == CMPL_ERROR);
-    assert(diagnostic->graph_id == asset->graph->graph_id);
-    assert(diagnostic->node_id == spawn->id);
-    assert(strstr(diagnostic->message, "entity Behavior"));
+    assert(!compile_report_blocked(report));
     flow_error error;
-    assert(game_system_tick_mode(system, 0, 0.016, &error, GAME_SYSTEM_EXEC_AUTO) == FLOW_ERR_COMPILE);
+    assert(game_system_tick_mode(system, 0, 0.016, &error, GAME_SYSTEM_EXEC_AUTO) == FLOW_ERR_NODE);
     assert(error.node == spawn);
+    assert(strstr(error.message, "game world"));
     game_system_free(system);
 
     asset = behavior_asset_new("OrdinarySystemDelay");

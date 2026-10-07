@@ -58,7 +58,7 @@ static const struct
 
 #define NAMED_FIELD_COUNT ((int)(sizeof NAMED_FIELDS / sizeof *NAMED_FIELDS))
 
-/* GameMeshParts.parts holds KDL parts, each naming its material. */
+/* GameMeshParts.parts holds code parts, each naming its material. */
 #define MESH_PARTS "GameMeshParts"
 
 static char *copy(const char *text)

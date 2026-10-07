@@ -1,8 +1,11 @@
 /* Studio graph values are edited through the controls in their node rows. */
+#include "assets/code_source.h"
 #include "editor/studio/studio_graph_internal.h"
 #include "editor/workspace/editor_internal.h"
 #include "editor/workspace/input.h"
 #include "graph/model/registry.h"
+#include "graph/runtime/eval.h"
+#include "graph/runtime/instance.h"
 #include "graph/runtime/value_array.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
@@ -746,6 +749,155 @@ static void bound_input_can_be_changed_and_edited()
     fixture_free(&f);
 }
 
+static bool expression_value(editor *e, uint64_t id, double expected)
+{
+    node *expression = graph_node_by_id(e->active_graph, id);
+    if (!expression) {
+        return false;
+    }
+    behavior_instance *instance = behavior_instance_create(e->asset, NULL, NULL, NULL);
+    if (!instance) {
+        return false;
+    }
+    arena memory = { 0 };
+    eval_context context;
+    eval_context_init(&context);
+    context.instance = instance;
+    pin_value value = { 0 };
+    bool valid = !graph_eval_output(e->active_graph, expression, 0, &memory, &value, &context) &&
+                 value.type == PIN_F64 && value.d == expected;
+    eval_context_free(&context);
+    arena_free(&memory);
+    behavior_instance_destroy(instance);
+    return valid;
+}
+
+/* Native named captures remain editable after source synchronization, including
+ * when their current value is just an unconnected default. */
+static void expressions_survive_source_reconciliation()
+{
+    code_source *base = code_source_parse("behavior Editable {}");
+    editor *e = editor_new(code_source_build_behavior(base));
+    behavior_expression_error why = { 0 };
+    node *expression = editor_add_behavior_expression(e, "a + 2", 100, 100, &why);
+    assert(expression);
+    uint64_t id = expression->id;
+    char error[256] = { 0 };
+    char *text = code_source_reconcile(base, e->asset, error, sizeof error);
+    code_source *reopened = text ? code_source_parse(text) : NULL;
+    bool same = reopened && reopened->asset &&
+                behavior_asset_equal(reopened->asset, e->asset);
+    bool unfed = same && expression_value(e, id, 2);
+    int footer_start, footer_end;
+    char *bare = text ? strdup(text) : NULL;
+    if (bare && code_source_metadata_range(bare, &footer_start, &footer_end)) {
+        bare[footer_start] = 0;
+    }
+    code_source *without_metadata = bare ? code_source_parse(bare) : NULL;
+    node *bare_expression = without_metadata && without_metadata->asset
+                              ? graph_node_by_id(without_metadata->asset->graph, id)
+                              : NULL;
+    bool independent = bare_expression && bare_expression->input_count == 1 &&
+                       !strcmp(bare_expression->input_pins[0].name, "a") &&
+                       bare_expression->input_pins[0].type == PIN_F64 &&
+                       bare_expression->input_pins[0].default_value.d == 0 &&
+                       !strcmp(behavior_expression_source(without_metadata->asset, bare_expression), "a + 2");
+    node *two = editor_spawn(e, registry_node_by_name("Real"), 20, 200);
+    node *consumer = editor_spawn(e, registry_node_by_name("Sine"), 400, 100);
+    pin_value value = { .type = PIN_F64, .d = 2 };
+    assert(two && consumer && !graph_set_pin_default(e->active_graph, two, false, 0, &value));
+    expression = graph_node_by_id(e->active_graph, id);
+    assert(!graph_connect_data(e->active_graph, two, 0, expression, 0));
+    assert(!graph_connect_data(e->active_graph, expression, 0, consumer, 0));
+    uint64_t two_id = two->id, consumer_id = consumer->id;
+    bool changed = !editor_set_behavior_expression(e, expression, "a + 5", &why) &&
+                   expression_value(e, id, 7) &&
+                   fed_by(e->active_graph, id, two_id) &&
+                   fed_by(e->active_graph, consumer_id, id);
+    editor_undo(e);
+    expression = graph_node_by_id(e->active_graph, id);
+    bool undo = expression &&
+                !strcmp(behavior_expression_source(e->asset, expression), "a + 2") &&
+                expression_value(e, id, 4) && fed_by(e->active_graph, id, two_id) &&
+                fed_by(e->active_graph, consumer_id, id);
+    editor_redo(e);
+    expression = graph_node_by_id(e->active_graph, id);
+    bool redo = expression &&
+                !strcmp(behavior_expression_source(e->asset, expression), "a + 5") &&
+                expression_value(e, id, 7) && fed_by(e->active_graph, id, two_id) &&
+                fed_by(e->active_graph, consumer_id, id);
+    if (!(same && unfed && independent && changed && undo && redo)) {
+        printf(
+            "  named capture: same %d unfed %d bare %d edit %d undo %d redo %d "
+            "error '%s'\n",
+            same,
+            unfed,
+            independent,
+            changed,
+            undo,
+            redo,
+            error
+        );
+    }
+    test_check(same && unfed && independent && changed && undo && redo, "Named default expression captures reconcile to executable source and retain edits, wires and Undo/Redo");
+    ed_clear_selection(e);
+    ed_add_selected(e, expression);
+    uint64_t body_id = expression->reference_id;
+    ed_duplicate_selected(e);
+    node *copy = e->selected[0];
+    uint64_t copy_id = copy->id;
+    graph *body = behavior_asset_find_graph(e->asset, body_id);
+    expression = graph_node_by_id(e->active_graph, id);
+    bool promoted = body && !body->math_expression &&
+                    expression->desc == registry_node_by_name("Call Pure Function") &&
+                    copy->desc == expression->desc && copy->reference_id == body_id &&
+                    expression_value(e, id, 7) && expression_value(e, copy_id, 7) &&
+                    fed_by(e->active_graph, id, two_id) &&
+                    fed_by(e->active_graph, consumer_id, id);
+    char *shared_text = code_source_reconcile(reopened, e->asset, error, sizeof error);
+    code_source *shared_source = shared_text ? code_source_parse(shared_text) : NULL;
+    bool shared_source_equal = shared_source && shared_source->asset &&
+                               behavior_asset_equal(shared_source->asset, e->asset);
+    editor_undo(e);
+    expression = graph_node_by_id(e->active_graph, id);
+    bool duplication_undo = expression &&
+                            !strcmp(behavior_expression_source(e->asset, expression), "a + 5") &&
+                            !graph_node_by_id(e->active_graph, copy_id) &&
+                            expression_value(e, id, 7) &&
+                            fed_by(e->active_graph, consumer_id, id);
+    editor_redo(e);
+    expression = graph_node_by_id(e->active_graph, id);
+    copy = graph_node_by_id(e->active_graph, copy_id);
+    bool duplication_redo = expression && copy &&
+                            expression->reference_id == body_id &&
+                            copy->reference_id == body_id &&
+                            expression->desc ==
+                                registry_node_by_name("Call Pure Function") &&
+                            copy->desc == expression->desc &&
+                            expression_value(e, id, 7) &&
+                            expression_value(e, copy_id, 7) &&
+                            fed_by(e->active_graph, consumer_id, id);
+    if (!(promoted && shared_source_equal && duplication_undo && duplication_redo)) {
+        printf(
+            "  duplication: promoted %d source %d undo %d redo %d error '%s'\n",
+            promoted,
+            shared_source_equal,
+            duplication_undo,
+            duplication_redo,
+            error
+        );
+    }
+    test_check(promoted && shared_source_equal && duplication_undo && duplication_redo, "Duplicating an expression promotes one shared callable without losing values, wires or Undo/Redo");
+    code_source_free(shared_source);
+    free(shared_text);
+    code_source_free(without_metadata);
+    free(bare);
+    code_source_free(reopened);
+    free(text);
+    editor_free(e);
+    code_source_free(base);
+}
+
 static void expressions_are_directly_editable()
 {
     graph_input_fixture f = fixture_open();
@@ -956,8 +1108,15 @@ static void expressions_are_directly_editable()
     consumer = graph_node_by_id(gr, consumer_id);
     other = graph_node_by_id(gr, other_id);
     bool duplicate_preserved = expression && duplicate && consumer && other &&
-                               !strcmp(behavior_expression_source(f.graph->asset, expression), "a * 3") &&
-                               !strcmp(behavior_expression_source(f.graph->asset, duplicate), "a * 3") &&
+                               expression->desc ==
+                                   registry_node_by_name("Call Pure Function") &&
+                               duplicate->desc == expression->desc &&
+                               duplicate->reference_id == expression->reference_id &&
+                               !behavior_asset_find_graph(
+                                    f.graph->asset,
+                                    expression->reference_id
+                               )
+                                    ->math_expression &&
                                acount(f.graph->undo) == duplicate_history &&
                                graph_input_source(gr, consumer, 0, &result, &result_pin) &&
                                result->id == id &&
@@ -975,7 +1134,7 @@ static void expressions_are_directly_editable()
             duplicate_history
         );
     }
-    test_check(duplicate_label && duplicate_preserved, "duplicated expression calls with separate consumers keep their shared formula and wires unchanged when a consumer submits a formula draft");
+    test_check(duplicate_label && duplicate_preserved, "duplicated expressions become shared pure-function calls and preserve both consumer wires when a consumer submits a formula draft");
     fixture_free(&f);
 }
 
@@ -1102,6 +1261,13 @@ static void shader_values_and_collections_are_editable()
     behavior_asset_free(material);
     f.scene_frame = false;
     frames(&f, 3);
+
+    test_check(
+        !sg_graph_readonly(f.studio) && !strcmp(f.scene->definition->name, "Teller") &&
+            !strcmp(editor_behavior_asset(f.graph)->name, "Graph Input Material"),
+        "a temporary material graph remains editable without adopting the "
+        "retained behavior source"
+    );
 
     char number[128];
     snprintf(number, sizeof number, "world/stage/n%llu/b/o0/v", (unsigned long long)scalar_id);
@@ -1386,6 +1552,7 @@ int studio_graph_inputs_run(const char *program)
     app_scene_renderer_initialize();
     app_input_initialize();
     bound_input_can_be_changed_and_edited();
+    expressions_survive_source_reconciliation();
     expressions_are_directly_editable();
     folded_inputs_are_editable_in_place();
     shader_values_and_collections_are_editable();

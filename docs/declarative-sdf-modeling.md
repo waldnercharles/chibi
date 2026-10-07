@@ -102,7 +102,7 @@ alone does not make every combination of radii or offsets valid.
 The shared `Set Shape Parameter` behavior node updates one entity's shape/model
 parameter. It validates the proposed parameter snapshot and derived bounds
 before accepting the change. Public uniform changes reuse geometry code;
-structural edits recompile. `GameShader.parameters` is a KDL object document in
+structural edits recompile. `GameShader.parameters` is a KDL object value in
 a reflected string field. `shape.<name>` and `material.<name>` disambiguate the
 two binding namespaces. Read the public parameter names returned by
 `inspectGraph` rather than inventing flattened instance names.
@@ -253,7 +253,7 @@ the packaged `bin/chibi` with an absolute disposable `--project-root`, `--play`,
 `--scene`, and a fixed `--frames` capture. Engine assembly or canonical checking
 alone does not prove successful model validation or packaged rendering.
 `make web` and `tools/web_serve.py` do not invoke the registered-game installer.
-Web workspace delivery includes KDL/image files recursively; actual browser
+Web workspace delivery includes KDL/code/image files recursively; actual browser
 authoring, export, shader compilation, and rendering need separate acceptance.
 
 The isolated native Release distribution build and assembly passed, followed by

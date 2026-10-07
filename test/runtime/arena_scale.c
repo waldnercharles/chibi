@@ -7,6 +7,7 @@
 #include "runtime/generated.h"
 #include "support/array.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 
 #include <assert.h>
 #include <glob.h>
@@ -37,7 +38,7 @@ static void load_definition(game_live_world *live, const char *path)
 {
     char *json = text_file_read(path);
     assert(json);
-    behavior_asset *asset = behavior_asset_load(json);
+    behavior_asset *asset = test_project_asset(path, json);
     free(json);
     assert(asset);
     game_live_definition *definition = game_live_definition_new(asset->name, asset);
@@ -74,7 +75,7 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
     }
     game_live_world *live = game_live_world_new(world);
     load_catalog(live, "content/events/*.kdl");
-    load_catalog(live, "content/libraries/*.kdl");
+    load_catalog(live, "content/libraries/*.code");
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char *json = text_file_read("content/prototypes/ArenaEnemy.kdl"), error[256];
@@ -84,7 +85,7 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
     assert(prototype);
     for (int i = 0; i < acount(prototype->graphs); i++) {
         char path[256];
-        snprintf(path, sizeof path, "content/behaviors/%s.kdl", prototype->graphs[i]);
+        snprintf(path, sizeof path, "content/behaviors/%s.code", prototype->graphs[i]);
         load_definition(live, path);
     }
     game_behavior_set_profiling(live->behaviors, profile);
@@ -334,7 +335,7 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
         assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
     }
     game_live_world *live = game_live_world_new(world);
-    load_definition(live, "projects/arena2d/content/behaviors/Pursuit.kdl");
+    load_definition(live, "projects/arena2d/content/behaviors/Pursuit.code");
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char *json = text_file_read("projects/arena2d/content/prototypes/Swarmer.kdl"),

@@ -315,10 +315,11 @@ static void local_validation()
     assert(graph_create_local(g, a, 0, "Sum"));
     char *valid = behavior_asset_save(asset);
     g->locals[0].source_id = 999999;
-    char *invalid = behavior_asset_save(asset);
-    behavior_asset *loaded = behavior_asset_load(invalid);
+    av_doc *invalid = av_doc_new();
+    av_value *invalid_value = behavior_asset_to_value(invalid, asset);
+    behavior_asset *loaded = behavior_asset_from_value(invalid_value);
     test_check(!loaded && strstr(graph_last_error(), "local"), "missing local sources fail loading with a local diagnostic");
-    free(invalid);
+    av_doc_free(invalid);
     behavior_asset_free(asset);
     asset = behavior_asset_load(valid);
     g = asset->graph;

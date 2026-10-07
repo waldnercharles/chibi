@@ -14,7 +14,7 @@ const node = (ref, type, inputs = {}, metadata = {}) => [
   ...Object.entries(inputs).map(([pin, value]) => ({ op: "set_input", node: ref, pin, value })),
 ];
 function graph(kind, name, description, operations) {
-  if (!existsSync(resolve(project, `content/${kind}s/${name}.kdl`)))
+  if (!existsSync(resolve(project, `content/${kind}s/${name}.${["behavior", "library", "system"].includes(kind) ? "code" : "kdl"}`)))
     call("buildGraph", { kind, name, create: true, description, operations });
   call("validateAsset", { kind, name });
 }

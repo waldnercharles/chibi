@@ -7,6 +7,8 @@
 #include "graph/model/registry.h"
 #include "graph/modeling/model_compile.h"
 #include "graph/shader/shader_graph.h"
+#include "support/asset_text.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -39,6 +41,17 @@ const char *new_asset_folder(new_asset_kind kind)
     return FOLDERS[kind];
 }
 
+const char *new_asset_extension(new_asset_kind kind)
+{
+    assert(kind >= 0 && kind < NEW_ASSET_KIND_COUNT);
+    switch (kind) {
+        case NEW_ASSET_BEHAVIOR:
+        case NEW_ASSET_LIBRARY:
+        case NEW_ASSET_SYSTEM: return CODE_ASSET_EXTENSION;
+        default: return DECLARATIVE_ASSET_EXTENSION;
+    }
+}
+
 bool new_asset_name_valid(const char *name, char *error, size_t size)
 {
     bool valid = isalpha((unsigned char)name[0]) && strlen(name) <= NAME_MAX_LENGTH;
@@ -67,6 +80,7 @@ behavior_asset *new_asset_graph(behavior_domain domain, const char *name)
         case BEHAVIOR_DOMAIN_MODEL: {
             output = model_graph_add_output(asset->graph);
             node *sphere = graph_add_node(asset->graph, &NODE_ModelSphere);
+            sphere->placed = false;
             int connected = graph_connect_data(asset->graph, sphere, 0, output, 0);
             assert(connected == 0);
             (void)connected;

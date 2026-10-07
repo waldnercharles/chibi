@@ -185,6 +185,7 @@ struct kit_code_editor
     long cursor;
     bool focused;
     bool vim, mac;
+    bool vim_go;
     /* The face at the size and pixel ratio last shown, and the font
        generation it is from (rml_font_generation). */
     int font_pixels;
@@ -1161,8 +1162,31 @@ static void block_hover(kit_code_editor *e)
 static bool host_request(kit_code_editor *e, rml_key key, keys m)
 {
     unsigned event = 0;
-    if (key == RML_KEY_F12 && !m.primary && !m.alt) {
+    if (e->vim && m.ctrl && !m.shift && !m.alt &&
+        zep_current_mode(e->zep) == ZEP_MODE_NORMAL &&
+        (key == RML_KEY_O || key == RML_KEY_I)) {
+        e->result.events |= KIT_CODE_CHORD;
+        snprintf(e->result.chord, sizeof e->result.chord, "%s", key == RML_KEY_O ? "Mod+[" : "Mod+]");
+        return true;
+    }
+    if (key == RML_KEY_F2 && !m.primary && !m.alt && !m.shift) {
+        event = KIT_CODE_RENAME;
+    } else if (key == RML_KEY_H && m.shift && m.alt && !m.primary) {
+        event = KIT_CODE_CALLS;
+    } else if (key == RML_KEY_F12 && !m.primary && !m.alt) {
         event = m.shift ? KIT_CODE_REFERENCES : KIT_CODE_DEFINITION;
+    } else if (key == RML_KEY_F9 && !m.primary && !m.alt && !m.shift) {
+        event = KIT_CODE_BREAKPOINT;
+    } else if ((key == RML_KEY_F5 || key == RML_KEY_F10 || key == RML_KEY_F11) && !m.primary && !m.alt) {
+        e->result.events |= KIT_CODE_CHORD;
+        snprintf(
+            e->result.chord,
+            sizeof e->result.chord,
+            "%sF%d",
+            m.shift ? "Shift+" : "",
+            (int)(key - RML_KEY_F1) + 1
+        );
+        return true;
     } else if (key == RML_KEY_SPACE && m.ctrl && !m.shift && !m.alt) {
         event = KIT_CODE_SUGGEST;
     }
@@ -1170,10 +1194,175 @@ static bool host_request(kit_code_editor *e, rml_key key, keys m)
     return event != 0;
 }
 
+/* Newlines inherit the current line's whitespace. Only code braces change
+   nesting; quoted strings and comments must not affect indentation. */
+static bool indent_space(char c)
+{
+    return c == ' ' || c == '\t';
+}
+
+static char indent_last(const char *text, int end)
+{
+    char quote = 0, last = 0;
+    bool line = false, block = false;
+    for (int i = 0; i < end; i++) {
+        char c = text[i], next = text[i + 1];
+        if (line) {
+            if (c == '\n') {
+                line = false;
+                last = 0;
+            }
+            continue;
+        }
+        if (block) {
+            if (c == '*' && next == '/') {
+                block = false;
+                i++;
+            }
+            continue;
+        }
+        if (quote) {
+            if (c == '\\') {
+                i++;
+            } else if (c == quote) {
+                quote = 0;
+            }
+            continue;
+        }
+        if (c == '/' && (next == '/' || next == '*')) {
+            line = next == '/';
+            block = next == '*';
+            i++;
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            quote = c;
+            last = c;
+            continue;
+        }
+        if (c == '\n') {
+            last = 0;
+        } else if (!isspace((unsigned char)c)) {
+            last = c;
+        }
+    }
+    return quote || block ? 0 : last;
+}
+
+static char *line_indent(const char *text, int at, bool above, int *base)
+{
+    int begin = at;
+    while (begin > 0 && text[begin - 1] != '\n') {
+        begin--;
+    }
+    int end = begin;
+    while (indent_space(text[end])) {
+        end++;
+    }
+    *base = end - begin;
+    char *indent = xmalloc((size_t)*base + 5);
+    memcpy(indent, text + begin, (size_t)*base);
+    int count = *base;
+    if (!above && indent_last(text, at) == '{') {
+        if (count && indent[count - 1] == '\t') {
+            indent[count++] = '\t';
+        } else {
+            memcpy(indent + count, "    ", 4);
+            count += 4;
+        }
+    }
+    indent[count] = '\0';
+    return indent;
+}
+
+static void typed_indent(kit_code_editor *e, const char *indent)
+{
+    if (!indent[0]) {
+        return;
+    }
+    if (!e->vim) {
+        long at = zep_cursor(e->zep);
+        zep_insert(e->zep, at, indent);
+        zep_set_cursor(e->zep, at + (long)strlen(indent));
+        return;
+    }
+    for (const char *c = indent; *c; c++) {
+        if (*c == '\t') {
+            long at = zep_cursor(e->zep);
+            zep_insert(e->zep, at, "\t");
+            zep_set_cursor(e->zep, at + 1);
+        } else {
+            zep_press_key(e->zep, ' ', 0);
+        }
+    }
+}
+
+static void newline(kit_code_editor *e)
+{
+    size_t length;
+    const char *text = kit_code_text(e, &length);
+    long start = zep_cursor(e->zep), end = start;
+    bool selected = zep_selection(e->zep, &start, &end);
+    int base;
+    char *indent = line_indent(text, (int)start, false, &base);
+    int right = (int)end;
+    while ((size_t)right < length && indent_space(text[right])) {
+        right++;
+    }
+    bool pair = indent_last(text, (int)start) == '{' && text[right] == '}';
+    int count = (int)strlen(indent);
+    if (!pair && text[right] == '}' && count == base) {
+        count -= count && indent[count - 1] == '\t' ? 1 : count < 4 ? count : 4;
+        indent[count] = '\0';
+    }
+    if (selected || pair) {
+        char *insert = xmalloc((size_t)count + (size_t)base + 3);
+        insert[0] = '\n';
+        memcpy(insert + 1, indent, (size_t)count);
+        int total = count + 1;
+        if (pair) {
+            insert[total++] = '\n';
+            memcpy(insert + total, indent, (size_t)base);
+            total += base;
+            end = right;
+        }
+        insert[total] = '\0';
+        apply(e, &(text_edit){ (int)start, (int)end, insert }, 1, start + count + 1);
+        zep_select(e->zep, start + count + 1, start + count + 1);
+        free(insert);
+    } else {
+        zep_press_key(e->zep, ZEP_KEY_RETURN, 0);
+        typed_indent(e, indent);
+    }
+    free(indent);
+}
+
+static void open_line(kit_code_editor *e, uint32_t key)
+{
+    size_t length;
+    const char *text = kit_code_text(e, &length);
+    int at = (int)zep_cursor(e->zep);
+    if (key == 'o') {
+        while ((size_t)at < length && text[at] != '\n') {
+            at++;
+        }
+    }
+    int base;
+    char *indent = line_indent(text, at, key == 'O', &base);
+    zep_press_key(e->zep, key, 0);
+    if (zep_current_mode(e->zep) == ZEP_MODE_INSERT) {
+        typed_indent(e, indent);
+    }
+    free(indent);
+}
+
 static void key_down(kit_code_editor *e, const rml_event *event)
 {
     keys m = read_keys(e, event->modifiers);
     rml_key key = event->key;
+    if (key == RML_KEY_ESCAPE) {
+        e->vim_go = false;
+    }
     if (modifier_key(key)) {
         return;
     }
@@ -1215,6 +1404,11 @@ static void key_down(kit_code_editor *e, const rml_event *event)
     }
     uint32_t special = mac_motion(e, key, &m);
     if (special != NO_KEY) {
+        if (special == ZEP_KEY_RETURN && !m.primary && !m.alt && !m.ctrl &&
+            (!e->vim || zep_current_mode(e->zep) == ZEP_MODE_INSERT)) {
+            newline(e);
+            return;
+        }
         zep_press_key(e->zep, special, zep_modifiers(e, m));
         return;
     }
@@ -1241,8 +1435,34 @@ static void text_input(kit_code_editor *e, const char *text)
     for (const char *c = text; *c;) {
         unsigned char lead = (unsigned char)*c;
         int length = utf8_length(lead);
+        if (e->vim && zep_current_mode(e->zep) == ZEP_MODE_NORMAL) {
+            if (e->vim_go) {
+                e->vim_go = false;
+                if (lead == 'd' || lead == 'r' || lead == 'R' || lead == 'c') {
+                    zep_press_key(e->zep, ZEP_KEY_ESCAPE, 0);
+                    e->result.events |= lead == 'd' ? KIT_CODE_DEFINITION
+                                      : lead == 'r' ? KIT_CODE_REFERENCES
+                                      : lead == 'R' ? KIT_CODE_RENAME
+                                                    : KIT_CODE_CALLS;
+                    c += length;
+                    continue;
+                }
+                zep_press_key(e->zep, 'g', 0);
+            } else if (lead == 'g') {
+                e->vim_go = true;
+                c += length;
+                continue;
+            }
+        } else {
+            e->vim_go = false;
+        }
         if (lead >= 0x20 && lead < 0x7f) {
-            zep_press_key(e->zep, lead, 0);
+            if (e->vim && zep_current_mode(e->zep) == ZEP_MODE_NORMAL &&
+                (lead == 'o' || lead == 'O')) {
+                open_line(e, lead);
+            } else {
+                zep_press_key(e->zep, lead, 0);
+            }
         } else if (lead >= 0x80 && zep_current_mode(e->zep) == ZEP_MODE_INSERT) {
             char glyph[5] = { 0 };
             memcpy(glyph, c, (size_t)length);
@@ -1882,6 +2102,7 @@ static uint64_t markers_hash(const kit_code_desc *d)
         h = h * 31 + cf_fnv1a(&m->start, sizeof m->start);
         h = h * 31 + cf_fnv1a(&m->end, sizeof m->end);
         h = h * 31 + (uint64_t)m->severity;
+        h = h * 31 + (uint64_t)m->indicator_only;
         h = h * 31 + (m->message ? str_hash(m->message) : 0);
     }
     return h;
@@ -1930,7 +2151,7 @@ static void diagnose(kit_code_editor *e, const kit_code_desc *d)
             e->zep,
             start,
             end,
-            ZEP_MARK_UNDERLINE | ZEP_MARK_INDICATOR,
+            ZEP_MARK_INDICATOR | (m->indicator_only ? 0 : ZEP_MARK_UNDERLINE),
             severity_role(m->severity),
             m->message ? m->message : ""
         );

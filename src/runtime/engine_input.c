@@ -3,11 +3,13 @@
 #include "graph/document/events.h"
 #include "runtime/generated.h"
 #include "runtime/scenes/gameplay.h"
+#include "runtime/systems/schedule.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,11 +19,17 @@ typedef struct
     bool pressed;
 } input_transition;
 typedef input_transition input_button;
+typedef struct
+{
+    ecs_entity entity;
+    bool pressed;
+} binding_change;
 
 struct engine_input
 {
     ecs_world *world;
     game_behavior_world *behaviors;
+    system_schedule *systems;
     CF_V2 movement;
     bool movement_sampled;
     CF_V2 aim;
@@ -31,13 +39,17 @@ struct engine_input
     input_transition *transitions;
     ecs_entity *controlled;
     ecs_entity *released;
+    binding_change *changes;
+    flow_error error;
+    char message[256];
 };
 
-engine_input *engine_input_new(ecs_world *world, game_behavior_world *behaviors)
+engine_input *engine_input_new(ecs_world *world, game_behavior_world *behaviors, system_schedule *systems)
 {
     engine_input *input = xcalloc(1, sizeof *input);
     input->world = world;
     input->behaviors = behaviors;
+    input->systems = systems;
     return input;
 }
 
@@ -53,6 +65,7 @@ void engine_input_free(engine_input *input)
     afree(input->buttons);
     afree(input->controlled);
     afree(input->released);
+    afree(input->changes);
     free(input);
 }
 
@@ -466,18 +479,78 @@ static void apply_action_state(engine_input *input)
     while (ecs_query_next(&query, &entity)) {
         GameActionBinding *binding = GAME_GameActionBinding_get(input->world, entity);
         int index = binding->action ? button_index(input, binding->action) : -1;
-        binding->pressed = !binding->disabled && index >= 0 &&
-                           input->buttons[index].pressed;
+        bool pressed = !binding->disabled && index >= 0 && input->buttons[index].pressed;
+        if (binding->pressed != pressed) {
+            binding->pressed = pressed;
+            apush(input->changes, ((binding_change){ entity, pressed }));
+        }
     }
     ecs_query_end(&query);
 }
 
 int engine_input_apply(engine_input *input)
 {
+    input->error = (flow_error){ 0 };
+    input->message[0] = 0;
     apply_action_state(input);
     int result = apply_aim_sample(input);
     if (result >= 0) {
         result = apply_movement_sample(input);
     }
-    return result < 0 ? result : dispatch_actions(input);
+    if (result >= 0) {
+        result = dispatch_actions(input);
+    }
+    /* Gameplay runs after releasing the component query. Focus/transport
+     * clears enqueue their release here and deliver it when simulation resumes. */
+    binding_change *changes = input->changes;
+    input->changes = NULL;
+    for (int i = 0; result >= 0 && i < acount(changes); i++) {
+        if (!ecs_entity_is_alive(input->world, changes[i].entity) ||
+            !GAME_GameActionBinding_has(input->world, changes[i].entity)) {
+            continue;
+        }
+        pin_value pressed = { .type = PIN_BOOL, .b = changes[i].pressed };
+        result = game_behavior_dispatch(
+            input->behaviors,
+            changes[i].entity,
+            graph_host_event_name(GRAPH_HOST_EVENT_PRESSED_CHANGED),
+            (flow_inputs){ &pressed, 1, NULL },
+            &input->error
+        );
+        if (result >= 0) {
+            result = game_behavior_field_changed(
+                input->behaviors,
+                changes[i].entity,
+                GAME_COMPONENT_GameActionBinding.id,
+                offsetof(GameActionBinding, pressed),
+                pressed,
+                &input->error
+            );
+        }
+        if (result >= 0) {
+            result = system_schedule_field_changed(
+                input->systems,
+                changes[i].entity,
+                GAME_COMPONENT_GameActionBinding.id,
+                offsetof(GameActionBinding, pressed),
+                pressed,
+                &input->error
+            );
+        }
+    }
+    afree(changes);
+    if (result < 0) {
+        snprintf(
+            input->message,
+            sizeof input->message,
+            "%s",
+            input->error.message ? input->error.message : "Input action failed"
+        );
+    }
+    return result < 0 ? result : FLOW_OK;
+}
+
+const char *engine_input_error(const engine_input *input)
+{
+    return input->message;
 }

@@ -1,5 +1,7 @@
 #include "graph/model/registry.h"
+#include "graph/nodes/snapshot_nodes.h"
 #include "graph/runtime/flow.h"
+#include "graph/runtime/value_array.h"
 
 static pin_spec data_reroute_inputs[] = {
     { "In", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
@@ -54,7 +56,49 @@ node_desc NODE_RerouteExec = {
     .description = "Continues at once, to route an execution wire.",
 };
 
-static node_desc *const REROUTE_NODES[] = { &NODE_RerouteData, &NODE_RerouteExec };
+static pin_spec snapshot_inputs[] = {
+    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
+    { "Value", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
+};
+static pin_spec snapshot_outputs[] = {
+    { "Then", PIN_FLOW, NULL, PIN_EXEC },
+    { "Value", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
+};
+static const node_access snapshot_access = { 0 };
+
+static int snapshot_value(node *n, flow_context *ctx)
+{
+    (void)n;
+    pin_value value;
+    int result = flow_context_eval_data(ctx, 1, &value);
+    if (result) {
+        return result;
+    }
+    if (pin_value_snapshot_to_arena(flow_context_scratch(ctx), flow_context_output_value(ctx, 1), &value)) {
+        return flow_context_fail(ctx, FLOW_ERR_NODE, "Cannot retain local value");
+    }
+    return flow_context_continue(ctx, 0);
+}
+
+node_desc NODE_Snapshot = {
+    .name = "Snapshot",
+    .input_count = 2,
+    .output_count = 2,
+    .inputs = snapshot_inputs,
+    .outputs = snapshot_outputs,
+    .flow_kind = NODE_FLOW_CUSTOM,
+    .flow = snapshot_value,
+    .lower = behavior_lower_snapshot,
+    .access = &snapshot_access,
+    .display_class = NODE_DISPLAY_FUNCTION,
+    .category = "Variables",
+    .keywords = "local value capture snapshot",
+    .description = "Evaluates and retains a local value for this invocation.",
+};
+
+static node_desc *const REROUTE_NODES[] = { &NODE_RerouteData,
+                                            &NODE_RerouteExec,
+                                            &NODE_Snapshot };
 
 const registry_pack CORE_REROUTE_PACK = {
     .name = "core.reroute",

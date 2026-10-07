@@ -703,9 +703,15 @@ bool test_mesh_material()
        emission nor coverage. Reverse authored part order to exercise depth. */
     GAME_GameMeshParts_get(world, entity)
         ->parts = "(array)- {\n"
-                  "    - primitive=0 { (array)size 12 2 10; (array)position 0 "
-                  "-6 0; }\n"
-                  "    - primitive=0 { (array)size 20 4 16; }\n"
+                  "    - {\n"
+                  "        primitive 0\n"
+                  "        (array)size 12 2 10\n"
+                  "        (array)position 0 -6 0\n"
+                  "    }\n"
+                  "    - {\n"
+                  "        primitive 0\n"
+                  "        (array)size 20 4 16\n"
+                  "    }\n"
                   "}\n";
     float compound_coverage = 0, compound_emission = 0;
     if (ok) {
@@ -719,9 +725,15 @@ bool test_mesh_material()
        Both subpixel placements keep the step inside this output pixel. */
     GAME_GameMeshParts_get(world, entity)
         ->parts = "(array)- {\n"
-                  "    - primitive=0 { (array)size 20 4 16; }\n"
-                  "    - primitive=0 { (array)size 4 2 8; (array)position 2.5 "
-                  "8 0; }\n"
+                  "    - {\n"
+                  "        primitive 0\n"
+                  "        (array)size 20 4 16\n"
+                  "    }\n"
+                  "    - {\n"
+                  "        primitive 0\n"
+                  "        (array)size 4 2 8\n"
+                  "        (array)position 2.5 8 0\n"
+                  "    }\n"
                   "}\n";
     for (int negative = 0; negative < 2 && ok; negative++) {
         float elevation = negative ? -20 : 0;

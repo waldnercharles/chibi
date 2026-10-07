@@ -11,6 +11,7 @@
 #include "support/cos_sin.h"
 #include "support/exponential.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 
 #include <assert.h>
 #include <float.h>
@@ -321,9 +322,9 @@ static void noise_and_composition()
     assert(json);
     a = behavior_asset_load(json);
     free(json);
-    json = text_file_read("projects/arena2d/content/libraries/FieldShapes.kdl");
+    json = text_file_read("projects/arena2d/content/libraries/FieldShapes.code");
     assert(json);
-    behavior_asset *library = behavior_asset_load(json);
+    behavior_asset *library = test_project_asset("projects/arena2d/content/libraries/FieldShapes.code", json);
     free(json);
     const behavior_asset *catalog[] = { library };
     behavior_asset *linked = behavior_asset_link_libraries(a, catalog, 1, error, sizeof error);
@@ -610,13 +611,13 @@ static void library_hot_apply()
     }
     game_live_world *live = game_live_world_new(world);
     const char *paths[] = {
-        "projects/arena2d/content/libraries/FieldShapes.kdl",
+        "projects/arena2d/content/libraries/FieldShapes.code",
         "projects/arena2d/content/fields/MaterialIslands.kdl"
     };
     for (int i = 0; i < 2; i++) {
         char *json = text_file_read(paths[i]);
         assert(json);
-        behavior_asset *asset = behavior_asset_load(json);
+        behavior_asset *asset = test_project_asset(paths[i], json);
         free(json);
         assert(asset);
         assert(!game_live_add_definition(live, game_live_definition_new(asset->name, asset)));
@@ -1054,7 +1055,8 @@ int bench_fields()
 
 int bench_field_slices()
 {
-    const char *parameters = "Radius 225.0\nRoughness 100.0\n";
+    const char *parameters = "Radius 225.0\n"
+                             "Roughness 100.0\n";
     char *json = text_file_read("projects/arena2d/content/fields/CaveField.kdl");
     assert(json);
     behavior_asset *asset = behavior_asset_load(json);

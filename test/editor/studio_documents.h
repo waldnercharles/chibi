@@ -100,6 +100,7 @@ int tab_named(const app_scene_authoring *scene, const char *label);
 /* ---------- Surfaces ---------- */
 
 void studio_documents_graph_checks();
+void studio_documents_expression_geometry_checks();
 void studio_documents_shell_checks();
 void studio_documents_panel_checks();
 void studio_documents_outliner_checks();

@@ -7,6 +7,7 @@
 #include "support/array.h"
 #include "support/event_fixture.h"
 #include "support/xalloc.h"
+#include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 #include "test/support/simulation_fixture.h"
 
@@ -329,9 +330,9 @@ static game_prototype *read_prototype(const char *path, const game_prototype_reg
 static behavior_asset *read_behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.kdl", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.code", name);
     char *text = read_content(path);
-    behavior_asset *asset = behavior_asset_load(text);
+    behavior_asset *asset = test_project_asset(path, text);
     if (asset) {
         asset = link_test_libraries(asset);
     }

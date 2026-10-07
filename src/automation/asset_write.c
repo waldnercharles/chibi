@@ -207,7 +207,7 @@ typedef struct
     char *target; /* where the new text goes; NULL when deleted */
     char temporary[96];
     char backup[96]; /* the original, moved aside */
-    bool moved, placed;
+    bool moved, placed, create;
 } batch_file;
 
 struct automation_asset_batch
@@ -293,7 +293,8 @@ static int check_files(automation_asset_batch *batch, const automation_asset_cha
     for (int i = 0; i < acount(batch->files); i++) {
         const batch_file *file = &batch->files[i];
         int fd = batch->folder_fds[file->folder];
-        int status = matches(fd, file->filename, changes[i].expected_hash, false, &modes[i]);
+        modes[i] = 0644;
+        int status = matches(fd, file->filename, changes[i].expected_hash, file->create, &modes[i]);
         struct stat info;
         if (status == CHIBI_AUTOMATION_OK && changes[i].rename_to &&
             fstatat(fd, changes[i].rename_to, &info, AT_SYMLINK_NOFOLLOW) != -1) {
@@ -337,17 +338,19 @@ static int place_files(automation_asset_batch *batch, bool *restored)
     for (int i = 0; i < acount(batch->files); i++) {
         batch_file *file = &batch->files[i];
         int fd = batch->folder_fds[file->folder];
-        snprintf(
-            file->backup,
-            sizeof file->backup,
-            ".authoring-%ld-%u.bak",
-            (long)getpid(),
-            atomic_fetch_add(&sequence, 1)
-        );
-        file->moved = !renameat(fd, file->filename, fd, file->backup);
-        file->placed = file->moved && file->target &&
+        if (!file->create) {
+            snprintf(
+                file->backup,
+                sizeof file->backup,
+                ".authoring-%ld-%u.bak",
+                (long)getpid(),
+                atomic_fetch_add(&sequence, 1)
+            );
+            file->moved = !renameat(fd, file->filename, fd, file->backup);
+        }
+        file->placed = (file->create || file->moved) && file->target &&
                        !linkat(fd, file->temporary, fd, file->target, 0);
-        if (!file->moved || (file->target && !file->placed)) {
+        if ((!file->create && !file->moved) || (file->target && !file->placed)) {
             int status = errno == EEXIST ? CHIBI_AUTOMATION_CONFLICT
                                          : CHIBI_AUTOMATION_IO_ERROR;
             *restored = undo_files(batch);
@@ -371,7 +374,8 @@ int automation_assets_publish(
     for (int i = 0; i < count; i++) {
         if (unsafe_name(changes[i].folder, changes[i].filename) ||
             (changes[i].rename_to && unsafe_name(changes[i].folder, changes[i].rename_to)) ||
-            !changes[i].expected_hash) {
+            (!changes[i].create && !changes[i].expected_hash) ||
+            (changes[i].create && (!changes[i].text || changes[i].rename_to))) {
             snprintf(error, error_size, "invalid asset destination");
             return CHIBI_AUTOMATION_INVALID_REQUEST;
         }
@@ -391,7 +395,8 @@ int automation_assets_publish(
             batch->files,
             ((batch_file){ .folder = folder_of(batch, changes[i].folder),
                            .filename = xstrdup(changes[i].filename),
-                           .target = changes[i].text ? xstrdup(target) : NULL })
+                           .target = changes[i].text ? xstrdup(target) : NULL,
+                           .create = changes[i].create })
         );
     }
     status = status == CHIBI_AUTOMATION_OK ? check_files(batch, changes, modes) : status;

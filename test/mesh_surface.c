@@ -75,13 +75,19 @@ void test_mesh_surface()
     close_value(normal.y, 0);
     close_value(normal.z, 1);
 
-    GameMeshParts parts = {
-        .parts = "(array)- {\n"
-                 "    - primitive=0 material=\"Hull\" { (array)size 8 4 6; }\n"
-                 "    - primitive=0 material=\"Engine\" { (array)size 2 2 2; "
-                 "(array)position 0 6 0; }\n"
-                 "}\n"
-    };
+    GameMeshParts parts = { .parts = "(array)- {\n"
+                                     "    - {\n"
+                                     "        primitive 0\n"
+                                     "        material \"Hull\"\n"
+                                     "        (array)size 8 4 6\n"
+                                     "    }\n"
+                                     "    - {\n"
+                                     "        primitive 0\n"
+                                     "        material \"Engine\"\n"
+                                     "        (array)size 2 2 2\n"
+                                     "        (array)position 0 6 0\n"
+                                     "    }\n"
+                                     "}\n" };
     transform = (GameVisualTransform){ .scale = 1 };
     set_component(world, entity, &GAME_COMPONENT_GameVisualTransform, &transform);
     set_component(world, entity, &GAME_COMPONENT_GameMeshParts, &parts);

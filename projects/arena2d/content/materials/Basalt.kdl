@@ -385,26 +385,26 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - id=17236 name="groove" from="16360.Result"
         }
     }
-    - id=16928 kind="function" math_expression="0.22 * halfWidth * (1 - across * across) - 2.5 * groove - 1.8 * joint + 0.35 * relief + 0.15 * crystal" entry_id=17159
-    - id=16873 kind="function" math_expression="mix(mix(0.68 + 0.12 * noise(vec3(column, 0, 12), 1), 0.95, joint), 0.1, crystal)" entry_id=17109
-    - id=16760 kind="function" math_expression="prism + reliefSlope + crystalTilt" entry_id=17092
-    - id=16663 kind="function" math_expression="vec3(mix(mix(cos(facet), -0.85, smoothstep(0.86, 1, -across)), 0.85, smoothstep(0.86, 1, across)), sin(facet), mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint))" entry_id=16783
-    - id=16422 kind="function" math_expression="mix((vec3(0.068, 0.073, 0.08) + streaks * vec3(0.037, 0.007, -0.016)) * tint, vec3(0.12, 0.12, 0.115), crystal) * shade" entry_id=17028
-    - id=16363 kind="function" math_expression="(1 - 0.7 * joint) * (1 - 0.45 * groove)" entry_id=16628
-    - id=16341 kind="function" math_expression="smoothstep(0.8, 1, abs(across))" entry_id=17009
-    - id=16273 kind="function" math_expression="(0.85 + 0.3 * noise(vec3(column, 0, 7), 1)) * (0.9 + 0.2 * noise(vec3(column, block, 8), 1))" entry_id=16564
-    - id=16056 kind="function" math_expression="smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))" entry_id=16493
-    - id=15734 kind="function" math_expression="saturate(max(below, above))" entry_id=15988
-    - id=15620 kind="function" math_expression="(1 - blockT) * spacing" entry_id=15717
-    - id=15590 kind="function" math_expression="block + 1" entry_id=15704
-    - id=15487 kind="function" math_expression="blockT * spacing" entry_id=15579
-    - id=15376 kind="function" math_expression="blockCoord - fract(blockCoord)" entry_id=16003
-    - id=15269 kind="function" math_expression="fract(blockCoord)" entry_id=16017
-    - id=14760 kind="function" math_expression="(along + 0.45 * spacing * sin(along / (0.9 * spacing) + 7 * phase) - spacing * phase - 0.2 * tilt * offset - 3 * bow * across * across) / spacing" entry_id=15394
-    - id=14713 kind="function" math_expression="sin(column * 0.83261 + 4.4)" entry_id=15154
-    - id=14666 kind="function" math_expression="sin(column * 3.30119 + 2.2)" entry_id=15038
-    - id=14595 kind="function" math_expression="0.5 + 0.5 * sin(column * 1.93716 + 1.1)" entry_id=15004
-    - id=14500 kind="function" math_expression="26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))" entry_id=15653
+    - id=16928 kind="function" math_expression="0.22 * halfWidth * (1 - across * across) - 2.5 * groove - 1.8 * joint + 0.35 * relief + 0.15 * crystal" expression_mode=1 entry_id=17159
+    - id=16873 kind="function" math_expression="mix(mix(0.68 + 0.12 * noise(vec3(column, 0, 12), 1), 0.95, joint), 0.1, crystal)" expression_mode=1 entry_id=17109
+    - id=16760 kind="function" math_expression="prism + reliefSlope + crystalTilt" expression_mode=1 entry_id=17092
+    - id=16663 kind="function" math_expression="vec3(mix(mix(cos(facet), -0.85, smoothstep(0.86, 1, -across)), 0.85, smoothstep(0.86, 1, across)), sin(facet), mix((blockT - 0.5) * 0.2, mix(-0.7, 0.7, step(0.5, blockT)), joint))" expression_mode=1 entry_id=16783
+    - id=16422 kind="function" math_expression="mix((vec3(0.068, 0.073, 0.08) + streaks * vec3(0.037, 0.007, -0.016)) * tint, vec3(0.12, 0.12, 0.115), crystal) * shade" expression_mode=1 entry_id=17028
+    - id=16363 kind="function" math_expression="(1 - 0.7 * joint) * (1 - 0.45 * groove)" expression_mode=1 entry_id=16628
+    - id=16341 kind="function" math_expression="smoothstep(0.8, 1, abs(across))" expression_mode=1 entry_id=17009
+    - id=16273 kind="function" math_expression="(0.85 + 0.3 * noise(vec3(column, 0, 7), 1)) * (0.9 + 0.2 * noise(vec3(column, block, 8), 1))" expression_mode=1 entry_id=16564
+    - id=16056 kind="function" math_expression="smoothstep(0.25, 0.55, noise(vec3(x * 0.16, z * 0.012, 3), 1) * noise(vec3(x * 0.02, z * 0.004, 4), 1))" expression_mode=1 entry_id=16493
+    - id=15734 kind="function" math_expression="saturate(max(below, above))" expression_mode=1 entry_id=15988
+    - id=15620 kind="function" math_expression="(1 - blockT) * spacing" expression_mode=1 entry_id=15717
+    - id=15590 kind="function" math_expression="block + 1" expression_mode=1 entry_id=15704
+    - id=15487 kind="function" math_expression="blockT * spacing" expression_mode=1 entry_id=15579
+    - id=15376 kind="function" math_expression="blockCoord - fract(blockCoord)" expression_mode=1 entry_id=16003
+    - id=15269 kind="function" math_expression="fract(blockCoord)" expression_mode=1 entry_id=16017
+    - id=14760 kind="function" math_expression="(along + 0.45 * spacing * sin(along / (0.9 * spacing) + 7 * phase) - spacing * phase - 0.2 * tilt * offset - 3 * bow * across * across) / spacing" expression_mode=1 entry_id=15394
+    - id=14713 kind="function" math_expression="sin(column * 0.83261 + 4.4)" expression_mode=1 entry_id=15154
+    - id=14666 kind="function" math_expression="sin(column * 3.30119 + 2.2)" expression_mode=1 entry_id=15038
+    - id=14595 kind="function" math_expression="0.5 + 0.5 * sin(column * 1.93716 + 1.1)" expression_mode=1 entry_id=15004
+    - id=14500 kind="function" math_expression="26 + 36 * (0.5 + 0.5 * sin(column * 2.3999631 + 0.3))" expression_mode=1 entry_id=15653
     - {
         id 14488
         kind "function"
@@ -679,11 +679,11 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - id=15765 name="block" from="15390.Result"
         }
     }
-    - id=14290 kind="function" math_expression="twist - pi / 6 + pi / 3 * (smoothstep(-softness, softness, cos(twist) - hexX) + smoothstep(-softness, softness, cos(twist + pi / 3) - hexX) + smoothstep(-softness, softness, cos(twist + 2 * pi / 3) - hexX))" entry_id=15859
-    - id=14236 kind="function" math_expression="across * reach" entry_id=14477
-    - id=14170 kind="function" math_expression="1.2 * reach / halfWidth" entry_id=14459
-    - id=14107 kind="function" math_expression="cos(min(twist, pi / 3 - twist))" entry_id=14265
-    - id=14036 kind="function" math_expression="pi / 3 * noise(vec3(column, 0, 1), 1)" entry_id=14425
+    - id=14290 kind="function" math_expression="twist - pi / 6 + pi / 3 * (smoothstep(-softness, softness, cos(twist) - hexX) + smoothstep(-softness, softness, cos(twist + pi / 3) - hexX) + smoothstep(-softness, softness, cos(twist + 2 * pi / 3) - hexX))" expression_mode=1 entry_id=15859
+    - id=14236 kind="function" math_expression="across * reach" expression_mode=1 entry_id=14477
+    - id=14170 kind="function" math_expression="1.2 * reach / halfWidth" expression_mode=1 entry_id=14459
+    - id=14107 kind="function" math_expression="cos(min(twist, pi / 3 - twist))" expression_mode=1 entry_id=14265
+    - id=14036 kind="function" math_expression="pi / 3 * noise(vec3(column, 0, 1), 1)" expression_mode=1 entry_id=14425
     - {
         id 14027
         kind "function"
@@ -781,15 +781,15 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - from="14419.Result" to="14030.Angle"
         }
     }
-    - id=13756 kind="function" math_expression="z - columnsPerZ / columnsPerX * offset" entry_id=15837
-    - id=13671 kind="function" math_expression="2 * fract(columnCoord) - 1" entry_id=15815
-    - id=13549 kind="function" math_expression="0.5 / columnsPerX" entry_id=15802
-    - id=13358 kind="function" math_expression="(fract(columnCoord) - 0.5) / columnsPerX" entry_id=15781
-    - id=13281 kind="function" math_expression="columnCoord - fract(columnCoord)" entry_id=15767
-    - id=13044 kind="function" math_expression="0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)" entry_id=13807
-    - id=12795 kind="function" math_expression="1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)" entry_id=13901
-    - id=12556 kind="function" math_expression="x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)" entry_id=13697
-    - id=12507 kind="function" math_expression="0.5 + 0.5 * sin(drift)" entry_id=13260
+    - id=13756 kind="function" math_expression="z - columnsPerZ / columnsPerX * offset" expression_mode=1 entry_id=15837
+    - id=13671 kind="function" math_expression="2 * fract(columnCoord) - 1" expression_mode=1 entry_id=15815
+    - id=13549 kind="function" math_expression="0.5 / columnsPerX" expression_mode=1 entry_id=15802
+    - id=13358 kind="function" math_expression="(fract(columnCoord) - 0.5) / columnsPerX" expression_mode=1 entry_id=15781
+    - id=13281 kind="function" math_expression="columnCoord - fract(columnCoord)" expression_mode=1 entry_id=15767
+    - id=13044 kind="function" math_expression="0.9 * cos(wobbleA) / 420 - 0.5 * cos(wobbleB) / 300 + 4.6 * (0.5 * cos(drift) / 2100 * sin(sway) + swayAmount * cos(sway) / 260)" expression_mode=1 entry_id=13807
+    - id=12795 kind="function" math_expression="1 / 26 + 0.9 * cos(wobbleA) / 180 + 0.5 * cos(wobbleB) / 95 + 4.6 * (0.5 * cos(drift) / 1300 * sin(sway) + swayAmount * cos(sway) / 900)" expression_mode=1 entry_id=13901
+    - id=12556 kind="function" math_expression="x / 26 + 0.9 * sin(wobbleA) + 0.5 * sin(wobbleB) + 4.6 * swayAmount * sin(sway)" expression_mode=1 entry_id=13697
+    - id=12507 kind="function" math_expression="0.5 + 0.5 * sin(drift)" expression_mode=1 entry_id=13260
     - {
         id 10926
         kind "function"
@@ -829,7 +829,7 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - from="10968.Result" to="10929.Value"
         }
     }
-    - id=10933 kind="function" math_expression="0.7 * noise(position, 0.08) + 0.3 * noise(position, 0.45)" entry_id=11909
+    - id=10933 kind="function" math_expression="0.7 * noise(position, 0.08) + 0.3 * noise(position, 0.45)" expression_mode=1 entry_id=11909
     - {
         id 11006
         kind "function"
@@ -965,10 +965,10 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - id=11905 name="ground" from="11028.Result"
         }
     }
-    - id=11014 kind="function" math_expression="vec3(position.x, 0, position.z)" entry_id=11170
-    - id=11074 kind="function" math_expression="ground + vec3(0.8, 0, 0)" entry_id=11123
-    - id=11144 kind="function" math_expression="ground + vec3(0, 0, 0.8)" entry_id=11193
-    - id=11214 kind="function" math_expression="vec3(east - height, 0, north - height) * 0.45" entry_id=11944
+    - id=11014 kind="function" math_expression="vec3(position.x, 0, position.z)" expression_mode=1 entry_id=11170
+    - id=11074 kind="function" math_expression="ground + vec3(0.8, 0, 0)" expression_mode=1 entry_id=11123
+    - id=11144 kind="function" math_expression="ground + vec3(0, 0, 0.8)" expression_mode=1 entry_id=11193
+    - id=11214 kind="function" math_expression="vec3(east - height, 0, north - height) * 0.45" expression_mode=1 entry_id=11944
     - {
         id 11249
         kind "function"
@@ -1038,9 +1038,9 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - from="11409.Result" to="11252.Depth"
         }
     }
-    - id=11258 kind="function" math_expression="noise(vec3(column, block, 11), 1)" entry_id=11358
-    - id=11325 kind="function" math_expression="step(0.64, open) * (0.6 + 1.4 * open)" entry_id=11414
-    - id=11378 kind="function" math_expression="width * (1 - smoothstep(0, width + 0.01, distance))" entry_id=11974
+    - id=11258 kind="function" math_expression="noise(vec3(column, block, 11), 1)" expression_mode=1 entry_id=11358
+    - id=11325 kind="function" math_expression="step(0.64, open) * (0.6 + 1.4 * open)" expression_mode=1 entry_id=11414
+    - id=11378 kind="function" math_expression="width * (1 - smoothstep(0, width + 0.01, distance))" expression_mode=1 entry_id=11974
     - {
         id 11473
         kind "function"
@@ -1155,11 +1155,11 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - id=11907 name="mask" from="11655.Result"
         }
     }
-    - id=11482 kind="function" math_expression="position.xz / 0.9" entry_id=11581
-    - id=11521 kind="function" math_expression="grain - fract(grain)" entry_id=11876
-    - id=11561 kind="function" math_expression="fract(grain) - 0.5" entry_id=11890
-    - id=11603 kind="function" math_expression="step(0.975, noise(vec3(cell.x, cell.y, 21), 1)) * step(dot(spot, spot), 0.1) * (1 - joint)" entry_id=12005
-    - id=11742 kind="function" math_expression="vec3(noise(vec3(cell.x, cell.y, 22), 1) - 0.5, 0, noise(vec3(cell.x, cell.y, 23), 1) - 0.5) * 0.6 * mask" entry_id=12063
+    - id=11482 kind="function" math_expression="position.xz / 0.9" expression_mode=1 entry_id=11581
+    - id=11521 kind="function" math_expression="grain - fract(grain)" expression_mode=1 entry_id=11876
+    - id=11561 kind="function" math_expression="fract(grain) - 0.5" expression_mode=1 entry_id=11890
+    - id=11603 kind="function" math_expression="step(0.975, noise(vec3(cell.x, cell.y, 21), 1)) * step(dot(spot, spot), 0.1) * (1 - joint)" expression_mode=1 entry_id=12005
+    - id=11742 kind="function" math_expression="vec3(noise(vec3(cell.x, cell.y, 22), 1) - 0.5, 0, noise(vec3(cell.x, cell.y, 23), 1) - 0.5) * 0.6 * mask" expression_mode=1 entry_id=12063
     - {
         id 12137
         kind "function"
@@ -1527,8 +1527,8 @@ description "Physically based basalt on the BasaltCave column grid: prisms with 
             - id=15761 name="columnsPerX" from="12901.Result"
         }
     }
-    - id=12149 kind="function" math_expression="x / 180 + z / 420 + 1.3" entry_id=13146
-    - id=12243 kind="function" math_expression="x / 95 - z / 300 + 0.4" entry_id=13176
-    - id=12337 kind="function" math_expression="x / 1300 + z / 2100" entry_id=13206
-    - id=12413 kind="function" math_expression="x / 900 + z / 260 + 2.2" entry_id=13230
+    - id=12149 kind="function" math_expression="x / 180 + z / 420 + 1.3" expression_mode=1 entry_id=13146
+    - id=12243 kind="function" math_expression="x / 95 - z / 300 + 0.4" expression_mode=1 entry_id=13176
+    - id=12337 kind="function" math_expression="x / 1300 + z / 2100" expression_mode=1 entry_id=13206
+    - id=12413 kind="function" math_expression="x / 900 + z / 260 + 2.2" expression_mode=1 entry_id=13230
 }

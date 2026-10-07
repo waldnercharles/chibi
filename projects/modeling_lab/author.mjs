@@ -36,7 +36,7 @@ export function call(name, args) {
 const status = call("getProjectStatus", {}).structuredContent.result;
 if (resolve(status.project_root) !== project) throw Error("Authoring project root does not match Modeling Lab");
 
-function exists(kind, name) { return existsSync(resolve(project, `content/${kind}/${name}.kdl`)); }
+function exists(kind, name) { return existsSync(resolve(project, `content/${kind}/${name}.${["behaviors", "libraries", "systems"].includes(kind) ? "code" : "kdl"}`)); }
 function graph(kind, name, description, operations) {
   if (!exists(`${kind}s`, name)) call("buildGraph", { kind, name, create: true, description, operations });
   call("validateAsset", { kind, name });

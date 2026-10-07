@@ -1,0 +1,20 @@
+behavior "ProjectilePulse" {
+    owner "ecs.entity";
+    state marks: int[] = [1, 2, 1];
+    state seen: set<int> = [];
+    value marks_2 = get_variable<"marks">();
+    value seen_2 = get_variable<"seen">();
+    action foreach_2 = for_each(Array: int[] = marks_2);
+    value set_contains = set_contains(Set: set<int> = seen_2, Item: int = foreach_2."Array Element");
+    value seen_4 = get_variable<"seen">();
+    on Tick as tick(DeltaSeconds: float = 0.0) {
+        foreach_2();
+    }
+    after foreach_2.Body {
+        if (set_contains) {
+            &component("GAME.GameProjectile", "age") += tick.DeltaSeconds;
+        } else {
+            set_variable<"seen">(Value: set<int> = set_add(Set: set<int> = seen_4, Item: int = foreach_2."Array Element"));
+        }
+    }
+}

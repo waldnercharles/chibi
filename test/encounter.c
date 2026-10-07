@@ -16,6 +16,7 @@
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
+#include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 #include "test/support/simulation_fixture.h"
 
@@ -30,7 +31,7 @@ static behavior_asset *read_asset(const char *path)
 {
     char *json = text_file_read(path);
     assert(json);
-    behavior_asset *asset = behavior_asset_load(json);
+    behavior_asset *asset = test_project_asset(path, json);
     if (!asset) {
         fprintf(stderr, "%s: %s\n", path, graph_last_error());
     }
@@ -42,7 +43,7 @@ static behavior_asset *read_asset(const char *path)
 static behavior_asset *behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.kdl", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.code", name);
     behavior_asset *asset = link_test_libraries(read_asset(path));
     compile_report report;
     compile_report_init(&report);
@@ -1097,6 +1098,19 @@ static float feedback_parameter(encounter_host *h, int material, const char *nam
     return 0;
 }
 
+/* Tick's reflected host event carries the simulation delta as its payload. */
+static int dispatch_tick(encounter_host *h, ecs_entity entity, float delta)
+{
+    pin_value seconds = { .type = PIN_F32, .f = delta };
+    return game_behavior_dispatch(
+        h->live->behaviors,
+        entity,
+        "Tick",
+        (flow_inputs){ .values = &seconds, .count = 1 },
+        NULL
+    );
+}
+
 static void combat_feedback_gates()
 {
     encounter_host h = create(false);
@@ -1114,11 +1128,9 @@ static void combat_feedback_gates()
         ) == 0
     );
     assert(game_behavior_attach(h.live->behaviors, h.player, "CombatFeedback") == 0);
-    GAME_GameShader_get(h.world, h.player)->parameters = "\"Hit Flash\" 0.7; ";
+    GAME_GameShader_get(h.world, h.player)->parameters = "\"Hit Flash\" 0.7\n";
     game_behavior_set_delta_seconds(h.live->behaviors, .07f);
-    assert(
-        game_behavior_dispatch(h.live->behaviors, h.player, "Tick", (flow_inputs){ 0 }, NULL) >= 0
-    );
+    assert(dispatch_tick(&h, h.player, .07f) >= 0);
     assert(fabsf(feedback_parameter(&h, id, "Hit Flash") - .7f) < .00001f);
     pin_value damage[] = { { .type = PIN_I32, .type_name = "int", .i = 1 },
                            { .type = PIN_HANDLE, .type_name = "ecs.entity" } };
@@ -1126,36 +1138,26 @@ static void combat_feedback_gates()
         game_behavior_dispatch(h.live->behaviors, h.player, "Damaged", (flow_inputs){ damage, 2 }, NULL) >= 0
     );
     assert(feedback_parameter(&h, id, "Hit Flash") == 2);
-    assert(
-        game_behavior_dispatch(h.live->behaviors, h.player, "Tick", (flow_inputs){ 0 }, NULL) >= 0
-    );
+    assert(dispatch_tick(&h, h.player, .07f) >= 0);
     assert(fabsf(feedback_parameter(&h, id, "Hit Flash") - 1) < .00001f);
     game_behavior_set_delta_seconds(h.live->behaviors, .2f);
-    assert(
-        game_behavior_dispatch(h.live->behaviors, h.player, "Tick", (flow_inputs){ 0 }, NULL) >= 0
-    );
+    assert(dispatch_tick(&h, h.player, .2f) >= 0);
     assert(feedback_parameter(&h, id, "Hit Flash") == 0);
     assert(GAME_GameDash_add(h.world, h.player, 0) == ECS_OK);
     assert(ecs_world_apply_commands(h.world) == ECS_OK);
     GameDash *dash = GAME_GameDash_get(h.world, h.player);
     dash->remaining = .1f;
     dash->duration = .2f;
-    assert(
-        game_behavior_dispatch(h.live->behaviors, h.player, "Tick", (flow_inputs){ 0 }, NULL) >= 0
-    );
+    assert(dispatch_tick(&h, h.player, .2f) >= 0);
     assert(fabsf(feedback_parameter(&h, id, "Dash Glow") - .9f) < .00001f);
     dash->remaining = 0;
-    assert(
-        game_behavior_dispatch(h.live->behaviors, h.player, "Tick", (flow_inputs){ 0 }, NULL) >= 0
-    );
+    assert(dispatch_tick(&h, h.player, .2f) >= 0);
     assert(feedback_parameter(&h, id, "Dash Glow") == 0);
     assert(GAME_GameDash_remove(h.world, h.player, 0) == ECS_OK);
     assert(GAME_GameShader_remove(h.world, h.player, 0) == ECS_OK);
     assert(ecs_world_apply_commands(h.world) == ECS_OK);
     /* No idle material write or absent-dash helper may run after completion. */
-    assert(
-        game_behavior_dispatch(h.live->behaviors, h.player, "Tick", (flow_inputs){ 0 }, NULL) >= 0
-    );
+    assert(dispatch_tick(&h, h.player, .2f) >= 0);
     render_shader_clear_world(h.world);
     destroy_host(&h);
 }
@@ -1274,7 +1276,7 @@ static void authored_parts_at_birth(bool moving)
     *GAME_GameOrientation_get(h.world, snapshot) = heading;
     *GAME_GameShader_get(h.world, snapshot) = (GameShader){
         .material = "ArenaEnemy",
-        .parameters = "HitFlash 0.3; "
+        .parameters = "HitFlash 0.3\n"
     };
     GAME_GamePickup_get(h.world, snapshot)->state = 3;
     game_behavior_set_delta_seconds(h.live->behaviors, 0);
@@ -1330,7 +1332,7 @@ static void authored_parts_at_birth(bool moving)
         const GameShader *material = GAME_GameShader_get_const(h.world, entity);
         assert(
             !strcmp(material->material, "ArenaEnemy") &&
-            !strcmp(material->parameters, "HitFlash 0.3; ")
+            !strcmp(material->parameters, "HitFlash 0.3\n")
         );
         assert(count < 12);
         pieces[count++] = entity;
@@ -1340,9 +1342,7 @@ static void authored_parts_at_birth(bool moving)
     /* Lifecycle shrink must begin from the source's scale, including a scaled source. */
     game_behavior_set_delta_seconds(h.live->behaviors, .001f);
     for (int i = 0; i < count; i++) {
-        assert(
-            game_behavior_dispatch(h.live->behaviors, pieces[i], "Tick", (flow_inputs){ 0 }, NULL) >= 0
-        );
+        assert(dispatch_tick(&h, pieces[i], .001f) >= 0);
         float scale = GAME_GameVisualTransform_get_const(h.world, pieces[i])->scale;
         assert(scale > .69f && scale < visual.scale);
     }
@@ -1427,9 +1427,7 @@ static void ship_ticks(encounter_host *h, int count, float delta)
     game_behavior_set_delta_seconds(h->live->behaviors, delta);
     for (int i = 0; i < count; i++) {
         float previous = GAME_GameVisualTransform_get_const(h->world, h->player)->roll;
-        assert(
-            game_behavior_dispatch(h->live->behaviors, h->player, "Tick", (flow_inputs){ 0 }, NULL) >= 0
-        );
+        assert(dispatch_tick(h, h->player, delta) >= 0);
         const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(h->world, h->player);
         assert(isfinite(visual->roll) && isfinite(visual->pitch));
         assert(fabsf(visual->roll - previous) < .04f && fabsf(visual->pitch) < .1f);

@@ -26,7 +26,7 @@ function parameter(ref, name, initial, low, high, type) {
     ops.push({ op: "set_input", node: ref, pin, value, type });
 }
 function build(kind, name, description, operations) {
-  if (!existsSync(resolve(project, `content/${kind}s/${name}.kdl`)))
+  if (!existsSync(resolve(project, `content/${kind}s/${name}.${["behavior", "library", "system"].includes(kind) ? "code" : "kdl"}`)))
     call("buildGraph", { kind, name, create: true, description, operations });
   call("validateAsset", { kind, name });
 }

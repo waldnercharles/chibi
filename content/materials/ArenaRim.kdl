@@ -97,5 +97,5 @@ description "A metallic cyan boundary with a slow, restrained pulse in its emiss
             - from="67.Result" to="1.Emission"
         }
     }
-    - id=38 kind="function" math_expression="base_color * ((pulse * 0.12 + 0.88) * glow)" entry_id=189
+    - id=38 kind="function" math_expression="base_color * ((pulse * 0.12 + 0.88) * glow)" expression_mode=1 entry_id=189
 }

@@ -72,12 +72,12 @@ void run_graph_document_checks()
         }
 
         char *json = graph_save(&g2);
-        test_check(json != NULL, "roundtrip: serialize to KDL");
+        test_check(json != NULL, "roundtrip: serialize to code");
         if (json) {
             printf("\n--- serialized graph ---\n%s--- end ---\n", json);
 
             graph *g3 = graph_load(json);
-            test_check(g3 != NULL, "roundtrip: load from KDL");
+            test_check(g3 != NULL, "roundtrip: load from code");
             if (g3) {
                 test_check(acount(g3->nodes) == 3, "roundtrip: node count survives");
                 test_check(acount(g3->edges) == 2, "roundtrip: edge count survives");
@@ -460,19 +460,31 @@ void run_graph_document_checks()
     {
         const char *bad[] = {
             "{ not json",
-            "(array)\"nodes\" { }; ",
-            "\"version\" 3; \"id_counter\" 1; \"name\" \"\"; \"description\" "
-            "\"\"; (array)\"nodes\" { \"-\" { \"type\" \"nope\"; }; }; "
-            "(array)\"edges\" { }; ",
-            "\"version\" 3; (array)\"nodes\" { \"-\" { \"type\" \"Add\"; }; }; "
-            "(array)\"edges\" { }; ",
+            "(array)nodes\n",
+            "version 3\n"
+            "id_counter 1\n"
+            "name \"\"\n"
+            "description \"\"\n"
+            "(array)nodes {\n"
+            "    - type=\"nope\"\n"
+            "}\n"
+            "(array)edges\n",
+            "version 3\n"
+            "(array)nodes {\n"
+            "    - type=\"Add\"\n"
+            "}\n"
+            "(array)edges\n",
         };
         test_check(graph_load(bad[0]) == NULL && graph_last_error()[0] != '\0', "malformed JSON rejected");
         test_check(graph_load(bad[1]) == NULL && graph_last_error()[0] != '\0', "missing edges array rejected");
         test_check(graph_load(bad[2]) == NULL && strstr(graph_last_error(), "unknown"), "unknown node type rejected");
         test_check(graph_load(bad[3]) == NULL, "malformed pin list rejected");
         test_check(
-            graph_load("\"version\" 2; (array)\"nodes\" { }; (array)\"edges\" { }; ") == NULL &&
+            graph_load(
+                "version 2\n"
+                "(array)nodes\n"
+                "(array)edges\n"
+            ) == NULL &&
                 strstr(graph_last_error(), "version"),
             "unsupported schema version rejected"
         );

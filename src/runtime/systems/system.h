@@ -9,7 +9,8 @@
 
 /* A System owns one graph definition and applies its Tick event to each Entity
  * matching the definition's declared component effects. The graph stays the
- * source of truth; the reusable instance is only an execution scratchpad. */
+ * source of truth. Synchronous stateless work uses compiled batches; stateful
+ * or suspended work retains one invocation per matched entity generation. */
 typedef struct game_system game_system;
 
 /* Whether the System compiler turns a node into bytecode: the Event node,
@@ -22,6 +23,8 @@ bool game_system_node_supported(const node_desc *desc);
 
 game_system *game_system_new(ecs_world *world, behavior_asset *definition);
 void game_system_free(game_system *system);
+/* Host pointers are borrowed for this registration and its retained entities. */
+int game_system_bind_service(game_system *, const char *type_name, void *value);
 /* The authored filter is combined with the graph's inferred component access
  * terms. The expression is copied and may be freed by the caller. */
 int game_system_set_query(game_system *system, const ecs_query_expr *expression);
@@ -56,9 +59,19 @@ int game_system_uses_sljit_registers(const game_system *system);
 int game_system_uses_sljit_simd(const game_system *system);
 const graph_program *game_system_program(const game_system *system);
 
+/* Runtime inspection. Entity-private state exists only while query membership
+ * is retained; shared state belongs to this registration. Values are borrowed. */
+int game_system_entity_variable(const game_system *, ecs_entity, uint64_t id, pin_value *out);
+int game_system_shared_variable(const game_system *, uint64_t id, pin_value *out);
+int game_system_suspended_count(const game_system *);
+int game_system_retained_count(const game_system *);
+
 /* Scheduler preparation runs on the host thread before disjoint systems run.
  * It binds columns and snapshots query membership without concurrent ECS queries. */
 int game_system_prepare_snapshot(game_system *system, flow_error *error);
+/* Refresh query membership, bindings and event subscriptions without Tick. */
+int game_system_maintain(game_system *, double time, double delta, flow_error *error);
+int game_system_field_changed(game_system *, ecs_entity, ecs_component_id, size_t, pin_value, flow_error *);
 int game_system_run_snapshot(game_system *system, double time, double delta, flow_error *error);
 
 #endif

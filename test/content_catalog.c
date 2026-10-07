@@ -100,7 +100,7 @@ static const char *version_error(const char *version, char *error, size_t error_
     snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
     FILE *file = fopen(manifest, "w");
     assert(file);
-    fprintf(file, "%scontent \"content\"\n", version);
+    fprintf(file, "%s\ncontent \"content\"\n", version);
     fclose(file);
     chibi_project project = { 0 };
     error[0] = '\0';
@@ -114,8 +114,8 @@ static const char *version_error(const char *version, char *error, size_t error_
 static void check_project_versions()
 {
     char older[32], newer[32], error[256];
-    snprintf(older, sizeof older, "version %d\n", CHIBI_PROJECT_VERSION - 1);
-    snprintf(newer, sizeof newer, "version %d\n", CHIBI_PROJECT_VERSION + 1);
+    snprintf(older, sizeof older, "version %d", CHIBI_PROJECT_VERSION - 1);
+    snprintf(newer, sizeof newer, "version %d", CHIBI_PROJECT_VERSION + 1);
     bool valid = strstr(version_error(older, error, sizeof error), "needs an older build") &&
                  strstr(version_error(newer, error, sizeof error), "needs a newer build") &&
                  strstr(version_error("", error, sizeof error), "needs an integer version");
@@ -160,43 +160,41 @@ void run_content_catalog_checks()
     check_project_versions();
     check_project_creation();
     static const char *const behaviors[] = {
-        "ArenaDropBehavior.kdl",
-        "ArenaEnemyVisualBehavior.kdl",
-        "ArenaImpactFeedback.kdl",
-        "ArenaPickupBehavior.kdl",
-        "ArenaProjectileVisualBehavior.kdl",
-        "ArenaShardBehavior.kdl",
-        "ArenaShipMotionBehavior.kdl",
-        "ArenaWaveBehavior.kdl",
-        "BloomCircuitGoal.kdl",
-        "CombatFeedback.kdl",
-        "ContactRegistry.kdl",
-        "EnemyBehavior.kdl",
-        "HealthBehavior.kdl",
-        "OrbitLaunch.kdl",
-        "OrbitFlipperMotion.kdl",
-        "PhaseWardenBehavior.kdl",
-        "PlayerContactBehavior.kdl",
+        "ArenaDropBehavior.code",
+        "ArenaEnemyVisualBehavior.code",
+        "ArenaImpactFeedback.code",
+        "ArenaPickupBehavior.code",
+        "ArenaProjectileVisualBehavior.code",
+        "ArenaShardBehavior.code",
+        "ArenaShipMotionBehavior.code",
+        "ArenaWaveBehavior.code",
+        "BloomCircuitGoal.code",
+        "CombatFeedback.code",
+        "ContactRegistry.code",
+        "EnemyBehavior.code",
+        "HealthBehavior.code",
+        "OrbitLaunch.code",
+        "OrbitFlipperMotion.code",
+        "PhaseWardenBehavior.code",
+        "PlayerContactBehavior.code",
+        "ProjectileBehavior.code",
         "ProjectileLifecycle.code",
-        "ProjectileLifecycle.code.map.json",
-        "ProjectileBehavior.kdl",
-        "ProjectileLifecycle.kdl",
-        "ProjectileHitBehavior.kdl",
-        "ProjectilePulse.kdl",
-        "SpawnTelegraphBehavior.kdl",
-        "SurfacePulseBehavior.kdl",
-        "TwinStickInputBehavior.kdl",
-        "TwinStickWeaponBehavior.kdl",
-        "WavePulseBehavior.kdl",
+        "ProjectileHitBehavior.code",
+        "ProjectilePulse.code",
+        "SpawnTelegraphBehavior.code",
+        "SurfacePulseBehavior.code",
+        "TwinStickInputBehavior.code",
+        "TwinStickWeaponBehavior.code",
+        "WavePulseBehavior.code",
     };
     static const char *const events[] = {
         "CollectExperience.kdl", "Damage.kdl", "Damaged.kdl", "Died.kdl",
         "RefreshEncounter.kdl",
     };
     static const char *const libraries[] = {
-        "DirectionMath.kdl",
-        "MovementActions.kdl",
-        "WeaponActions.kdl",
+        "DirectionMath.code",
+        "MovementActions.code",
+        "WeaponActions.code",
     };
     static const char *const materials[] = {
         "ImportedFoldedCard.kdl",
@@ -268,27 +266,27 @@ void run_content_catalog_checks()
     test_check(valid, "Arena3D project catalog contains only its shipped assets");
 
     static const char *const arena2d_behaviors[] = {
-        "MaterialShowcaseBreach.kdl",
-        "MaterialShowcaseExplosionIgnition.kdl",
-        "MaterialShowcaseFracture.kdl",
-        "MaterialShowcaseRelease.kdl",
+        "MaterialShowcaseBreach.code",
+        "MaterialShowcaseExplosionIgnition.code",
+        "MaterialShowcaseFracture.code",
+        "MaterialShowcaseRelease.code",
 
-        "BoostEmitter.kdl",
-        "CameraFollow.kdl",
-        "CutMaterial.kdl",
-        "HudDisplay.kdl",
-        "HullDamage.kdl",
-        "MaterialImpactHealth.kdl",
-        "Movement.kdl",
-        "MovementEmitter.kdl",
-        "PlayerEffects.kdl",
-        "ProjectileEffects.kdl",
-        "ProjectileHit.kdl",
-        "Pursuit.kdl",
-        "SwarmerEffects.kdl",
-        "ThermalStudyBreach.kdl",
-        "Weapon.kdl",
-        "ProjectileLifecycle.kdl",
+        "BoostEmitter.code",
+        "CameraFollow.code",
+        "CutMaterial.code",
+        "HudDisplay.code",
+        "HullDamage.code",
+        "MaterialImpactHealth.code",
+        "Movement.code",
+        "MovementEmitter.code",
+        "PlayerEffects.code",
+        "ProjectileEffects.code",
+        "ProjectileHit.code",
+        "Pursuit.code",
+        "SwarmerEffects.code",
+        "ThermalStudyBreach.code",
+        "Weapon.code",
+        "ProjectileLifecycle.code",
     };
     static const char *const arena2d_materials[] = {
         "Basalt.kdl",
@@ -365,13 +363,13 @@ void run_content_catalog_checks()
         "ThermalStudy.kdl",
         "ThermalStudyClosed.kdl",
     };
-    static const char *const arena2d_libraries[] = { "DirectionMath.kdl",
-                                                     "FieldShapes.kdl",
-                                                     "WeaponActions.kdl" };
+    static const char *const arena2d_libraries[] = { "DirectionMath.code",
+                                                     "FieldShapes.code",
+                                                     "WeaponActions.code" };
     static const char *const arena2d_fields[] = { "BasaltCave.kdl",
                                                   "CaveField.kdl",
                                                   "MaterialIslands.kdl" };
-    static const char *const arena2d_systems[] = { "FreeMotion.kdl" };
+    static const char *const arena2d_systems[] = { "FreeMotion.code" };
     const char *arena2d_root = "projects/arena2d/content";
     valid = folder_isolated(
         arena2d_root,

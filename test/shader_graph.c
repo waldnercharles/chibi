@@ -119,7 +119,9 @@ static void examples()
     behavior_asset_free(shape);
     shader_graph_free(&ir);
 
-    behavior_asset *flash = load_example("test/fixtures/content/behaviors/DamageFlashBehavior.kdl");
+    behavior_asset *flash = load_example(
+        "test/fixtures/content/behaviors/DamageFlashBehavior.code"
+    );
     compile_report report;
     compile_report_init(&report);
     assert(behavior_asset_compile(flash, &report) == 0);
@@ -148,12 +150,17 @@ static void preview_parameter_validation()
     assert(render_shader_upsert(asset, &error));
     int shader = render_shader_find(asset->name);
     assert(shader);
-    assert(render_shader_parameters_validate(shader, "(array)Tint 1 -2 0.5; Opacity 4; \n", &error));
-    assert(!render_shader_parameters_validate(shader, "(array)Tint 1; \n", &error));
+    assert(render_shader_parameters_validate(
+        shader,
+        "(array)Tint 1 -2 0.5\n"
+        "Opacity 4\n",
+        &error
+    ));
+    assert(!render_shader_parameters_validate(shader, "(array)Tint 1\n", &error));
     assert(strstr(error.message, "array of 3"));
-    assert(!render_shader_parameters_validate(shader, "(array)Opacity 4; \n", &error));
+    assert(!render_shader_parameters_validate(shader, "(array)Opacity 4\n", &error));
     assert(strstr(error.message, "finite number or boolean"));
-    assert(!render_shader_parameters_validate(shader, "Missing 1; \n", &error));
+    assert(!render_shader_parameters_validate(shader, "Missing 1\n", &error));
     assert(strstr(error.message, "Unknown shader preview parameter"));
     behavior_asset_free(asset);
     render_shader_catalog_clear();
@@ -1025,6 +1032,7 @@ void test_shader_graph()
     pin_read_field(&component, &field, &read);
     assert(read.container == PIN_CONTAINER_SINGLE && read.f == component);
     behavior_asset *asset = behavior_asset_new("Shader test");
+    asset->domain = BEHAVIOR_DOMAIN_SHAPE;
     graph *g = asset->graph;
     node *root = shader_graph_add_output(g, true);
     node *position = add(g, "Shader Position");

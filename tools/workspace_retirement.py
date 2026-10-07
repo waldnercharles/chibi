@@ -19,6 +19,10 @@ MARKER = '.chibi-managed-build.json'
 SUFFIXES = {'.o', '.obj', '.a', '.so', '.dylib', '.dll', '.exe', '.wasm', '.js'}
 
 
+class UnsupportedGenerator(ValueError):
+    pass
+
+
 def home():
     return Path(os.environ.get('CHIBI_WORKSPACE_HOME',
                               '~/.local/share/chibi-workspaces')).expanduser().resolve()
@@ -168,6 +172,8 @@ def inspect_build(record, entry, foreign_references=False):
             values[line.split(':', 1)[0]] = line.split('=', 1)[1]
     if Path(values.get('CMAKE_HOME_DIRECTORY', '')).resolve() != root:
         raise ValueError('foreign CMake source directory')
+    if values.get('CMAKE_GENERATOR') != 'Ninja':
+        raise UnsupportedGenerator('generated-output retirement requires Ninja')
     cache_home = Path(os.environ.get('XDG_CACHE_HOME', '~/.cache')).expanduser()
     cache_roots = [Path(os.environ.get(variable, str(cache_home / name))).expanduser().resolve()
                    for variable, name in [('CHIBI_DEPENDENCY_PACKAGE_CACHE_DIR', 'chibi-dependency-packages'),
@@ -271,6 +277,8 @@ def capture_workspace(path, lock_fd=None):
                         and (current['device'], current['inode']) == (record['device'], record['inode'])):
                     current.update(outputs=record['outputs'], last_used=record['last_used'])
                     total += count
+        except UnsupportedGenerator:
+            continue
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             print(f'Build retirement capture skipped: {error}', file=sys.stderr)
     return total

@@ -134,8 +134,8 @@ a failed activation restores the previous runtimes and metadata. Runtime
 delivery creates no symlinks or hardlinks to external packages. New game and
 MCP launches use the update; restart existing sessions after delivery.
 
-For registered games, `make publish-web` also builds a native package from the
-same isolated `origin/main` checkout. It delivers that package after the live
+For registered games, `make publish-web PUBLISH_GAME_RUNTIME=1` also builds a
+native package from the same isolated `origin/main` checkout. It delivers that package after the live
 web bundle passes verification. Game workspaces need only their local binary
 interface and MCP catalog.
 

@@ -58,12 +58,18 @@ jobs:
           cmake -S tools/reflect -B build-reflect -DCMAKE_BUILD_TYPE=Release
           cmake --build build-reflect --parallel 4
 
+      - name: Cache dependency sources
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/chibi-fetchcontent
+          key: web-deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'tools/fetchcontent_cache.py') }}
+
       - name: Build web app
         env:
           CCACHE_COMPILERCHECK: content
           CHIBI_COLLAB_URL: ${{ vars.CHIBI_COLLAB_URL }}
         run: |
-          emcmake cmake -S . -B build-web \
+          sh tools/configure_web.sh build-web \
             -DCMAKE_BUILD_TYPE=Release \
             -DCHIBI_ENABLE_WARNINGS=OFF \
             -DCHIBI_ENABLE_CCACHE=ON \
@@ -75,7 +81,7 @@ jobs:
       - name: Build optional threaded app
         if: inputs.web_threads == true
         run: |
-          emcmake cmake -S . -B build-web-threads \
+          sh tools/configure_web.sh build-web-threads \
             -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_WARNINGS=OFF \
             -DCHIBI_ENABLE_CCACHE=ON -DCHIBI_WEB_THREADS=ON \
             -DCHIBI_COLLAB_URL="${{ vars.CHIBI_COLLAB_URL }}" \

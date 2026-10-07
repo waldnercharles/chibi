@@ -149,29 +149,19 @@ answer a specific visual question; it does not satisfy a test selector. GPU MCP
 smoke suites require full opt-in even though they consist of individual previews.
 There is deliberately no cross-process scheduler or global frame quota.
 
-## Full gate and truthful handoff
+## Reviewed checks and truthful handoff
 
-```sh
-CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1 make test test-render
-```
+`make test` runs the fast C execution-policy unit checks. `make test-tools`
+runs all retained C tooling and process integrations under one 60-second
+deadline. Use admitted native selectors for the affected runtime contracts.
+`make test-full` and `make test-render` remain quarantined and do not pass.
 
-`make test` still means the complete tooling/native gate; `test-render` adds the
-existing render coverage. Neither silently becomes a focused test. The same
-opt-in applies to full/mixed native selectors invoked directly. Keep required
-backend, strict-sanitizer and representative-load checks on suitable hardware.
-A successful focused result reports `full_verification:false`, skipped full
-checks, and the next full-gate command. A blocked budget or unknown selector exits
-nonzero. Do not describe partial coverage, timeouts or blocked checks as a green
-merge gate.
-
-[CUT62 batch validation](testing.md#batch-validation-cut62) allows those focused
-results for reviewed PR admission, followed by full required checks on one frozen
-combined commit/tree before any batch change lands. The integration owner retains
-all current-head/server checks and records pending matrix, web and release gates.
-`python3 tools/agent.py validation-plan --base origin/main` lists Git identity and
-outstanding work without probing graphics or claiming execution. `--tools` or
-`--tool=native-tools` selects the minimal C tooling command; former script test
-choices are retired.
+Choose publication checks through independent review of the affected contracts
+and their interactions. Preserve each selected check's backend, sanitizer and
+hardware requirements. Report the command, candidate identity, configuration,
+result and unexecuted coverage. Local evidence supports landing when CI is
+disabled unless actual server rules require it. Explicit holds and approvals
+remain binding. See [publication validation](testing.md#batch-validation-cut62).
 
 ## Bounded artifact validation (2026-10-05)
 

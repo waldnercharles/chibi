@@ -10,7 +10,7 @@ target_compile_features(policy_worker PRIVATE c_std_11)
 target_compile_options(policy_worker PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c fixture.c execution_policy.c package.c collab.c studio_selectors.c
-    test_policy.c validation_plan.c
+    test_policy.c validation_plan.c publish.c
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
     "${CHIBI_TOOL_ROOT}/src/support/xalloc.c"

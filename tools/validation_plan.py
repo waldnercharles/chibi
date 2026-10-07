@@ -1,4 +1,4 @@
-"""CUT62: reviewable plans and Git identity checks, never gate certification."""
+"""Reviewed affected-contract checks and frozen Git identity; plans are not passes."""
 import json
 from pathlib import Path
 import subprocess
@@ -47,8 +47,9 @@ def make_plan(args, root, cpu, gpu):
             raise ValueError(f'unclassified selector: {selector}')
         if not admitted([selector]) or selector not in cpu:
             raise ValueError(f'selector is quarantined for agent-test: {selector}')
-    if args.scope == 'focused' and (not args.review_note.strip() or not (selectors or args.tools or args.tool)):
-        raise ValueError('focused scope requires a review note and admitted selectors or tooling')
+    reviewed = args.scope in ('focused', 'mixed')
+    if reviewed and (not args.review_note.strip() or not (selectors or args.tools or args.tool)):
+        raise ValueError('reviewed scope requires a review note and admitted selectors or tooling')
     base, head = commit(root, args.base), commit(root, args.head)
     if head != commit(root, 'HEAD') or git(root, 'status', '--porcelain', '--untracked-files=normal'):
         raise ValueError('check out the planned head with a clean worktree; save plans/logs outside the worktree')
@@ -58,28 +59,27 @@ def make_plan(args, root, cpu, gpu):
     for selector in selectors:
         focused.append(f'make agent-test AGENT_SELECTOR={selector}')
     return dict(
-        schema=3, full_verification=False,
+        schema=4, full_verification=False,
         identity=dict(base_ref=args.base, base=base, head_ref=args.head, head=head,
                       tree=git(root, 'rev-parse', head + '^{tree}'),
                       sources={ref: commit(root, ref) for ref in sorted(set(args.source))}),
         scope=args.scope, review_note=args.review_note, changes=changes,
         member_eligibility='operator-confirmed; not independently verified' if args.source else 'not-declared',
         classification='Reviewer declaration; paths/extensions do not prove impact or coverage.',
-        iteration_commands=focused if args.scope == 'focused' else INTEGRATION,
+        iteration_commands=focused if reviewed else INTEGRATION,
+        validation_basis='reviewed affected contracts' if reviewed else 'scope review required',
+        execution_evidence='Local or CI results on this candidate; CI is required only by applicable server rules.',
         integration_commands=INTEGRATION,
         quarantined_commands=QUARANTINED,
         scope_specific_commands={'web/UI': 'make web'},
         pending=[
-            'Recheck every member PR/ticket hold and required approval before admission/landing; confirmation grants no merge authority',
-            'Independent source review of each pinned source and combined diff/conflict resolutions',
-            'Full native/render DISABLED by temporary 60-second quarantine, NOT PASSED; server-required checks still block landing',
-            'Formatting on the immutable combined tree',
-            'CI build matrix: Debug + ASan/UBSan + SLJIT; RelWithDebInfo + SLJIT; scaling; no-SLJIT; linked development app; native host checks DISABLED by quarantine, NOT PASSED',
-            'Required web build and release validation when applicable; UI/backend/parity/load execution gates remain pending where quarantined, DISABLED and NOT PASSED',
-            'Owner records actual commands, flags, dependencies, device, exit codes, timings and logs; configured CI is not execution',
-            'Fresh main/source identity check and current-head server requirements before one atomic landing',
-        ],
-        requirements='docs/testing.md#batch-validation-cut62; .github/workflows/ci.yml; .github/workflows/deploy-web.yml',
+            'Independent review confirms the selected checks cover all affected contracts and combined interactions',
+            'Run selected checks and formatting on this clean candidate; record configuration, exit codes and logs',
+            'Build and verify affected native/web/release configurations where applicable',
+            'Recheck source identity, explicit holds, required approvals and actual server protections before atomic landing',
+        ] + ([] if reviewed else ['Resolve unknown scope and choose checks before landing']),
+        unavailable_coverage='Full native/render DISABLED by the 60-second quarantine, NOT PASSED; unavailable affected coverage needs a reviewed admitted replacement or remains a blocker.',
+        requirements='docs/testing.md#batch-validation-cut62; applicable server protections',
     )
 
 

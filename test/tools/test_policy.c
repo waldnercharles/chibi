@@ -58,10 +58,15 @@ static const char driver_source[] =
     "        os.environ['CHIBI_POLICY_FIXTURE'] = 'portable'\n"
     "        os.environ[policy.PROCESS_GROUP] = str(os.getpgrp())\n"
     "        sibling = subprocess.Popen([worker, 'sibling', root])\n"
+    "        ready = time.monotonic() + 4\n"
+    "        while not os.path.exists(root + '/sibling-ready'):\n"
+    "            if sibling.poll() is not None or time.monotonic() >= ready:\n"
+    "                raise RuntimeError('sibling readiness failed')\n"
+    "            time.sleep(.001)\n"
     "        result = policy.run_commands([[worker, 'descendant', root, '0', "
     "'0']], 2)\n"
+    "        open(root + '/sibling-release', 'w').close()\n"
     "        sibling.wait(timeout=4)\n"
-    "        time.sleep(3.1)\n"
     "    elif action == 'nested':\n"
     "        deadline = time.monotonic() + 2\n"
     "        open(root + '/deadline', 'w').write(str(deadline))\n"
@@ -79,6 +84,9 @@ static const char driver_source[] =
     "        orphan = '1' if action == 'orphan' else '0'\n"
     "        result = policy.run_commands([[worker, 'descendant', root, "
     "detached, orphan]], 2)\n"
+    "    if action in ('portable', 'descendant', 'nested', 'missing-proc', "
+    "'orphan'):\n"
+    "        subprocess.run([worker, 'cleanup-probe', root], check=True)\n"
     "    sys.exit(result)\n"
     "except (policy.TerminationRequested, KeyboardInterrupt):\n"
     "    sys.exit(130)\n"
@@ -97,13 +105,6 @@ static bool exists(const char *name)
     char filename[PATH_MAX];
     path(filename, name);
     return !access(filename, F_OK);
-}
-
-static void observe_cleanup()
-{
-    struct timespec delay = { .tv_sec = 3, .tv_nsec = 100000000 };
-    while (nanosleep(&delay, &delay)) {
-    }
 }
 
 static int run(const char *action, const char *argument)
@@ -141,8 +142,10 @@ static int run(const char *action, const char *argument)
 
 static void reset_markers()
 {
-    const char *names[] = { "started",      "escaped",  "sibling",
-                            "last-command", "deadline", "cleanup-entered" };
+    const char *names[] = { "started",       "escaped",
+                            "sibling",       "last-command",
+                            "deadline",      "cleanup-entered",
+                            "sibling-ready", "sibling-release" };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         char filename[PATH_MAX];
         path(filename, names[i]);
@@ -166,7 +169,6 @@ TEST_CASE(descendant_cleanup)
     reset_markers();
     REQUIRE(run("descendant", NULL) == 124);
     REQUIRE(exists("started"));
-    observe_cleanup();
     REQUIRE(!exists("escaped"));
     return true;
 }
@@ -216,7 +218,6 @@ TEST_CASE(nested_setsid_inherits_deadline)
     free(expected);
     free(record);
     REQUIRE(same_deadline);
-    observe_cleanup();
     REQUIRE(!exists("escaped"));
     return true;
 }
@@ -226,7 +227,6 @@ TEST_CASE(orphan_setsid_cleanup)
     reset_markers();
     REQUIRE(run("orphan", NULL) == 0);
     REQUIRE(exists("started"));
-    observe_cleanup();
     REQUIRE(!exists("escaped"));
     return true;
 }
@@ -236,7 +236,6 @@ TEST_CASE(missing_proc_uses_portable_discovery)
     reset_markers();
     REQUIRE(run("missing-proc", NULL) == 124);
     REQUIRE(exists("started"));
-    observe_cleanup();
     REQUIRE(!exists("escaped"));
     return true;
 }

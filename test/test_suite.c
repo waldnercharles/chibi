@@ -200,6 +200,7 @@ void test_kit_empty_documents();
 void test_iframe_contracts();
 /* ---------- Native controls (workstream F2) ---------- */
 void test_ui_controls();
+void test_ui_tab_list();
 /* ---------- Popovers (workstream F3) ---------- */
 void test_ui_popovers();
 
@@ -589,10 +590,9 @@ int main(int argc, char **argv)
             fputs(
                 "{\"ok\":false,\"status\":\"blocked\",\"reason\":\"selector_"
                 "requires_hardware_or_classification\","
-                "\"full_verification\":false,\"required_checks_outstanding\":["
+                "\"full_verification\":false,\"quarantined_checks\":["
                 "\"full-native\",\"render\"],"
-                "\"next_command\":\"CHIBI_EXECUTION_PROFILE=hardware "
-                "CHIBI_ALLOW_FULL_GPU=1 make test test-render\"}\n",
+                "\"next_command\":\"make agent-list\"}\n",
                 stderr
             );
             return 2;
@@ -601,7 +601,7 @@ int main(int argc, char **argv)
             signal(SIGALRM, agent_timeout);
             alarm(60);
         }
-        fputs("{\"coverage\":\"focused\",\"full_verification\":false,\"required_checks_outstanding\":[\"full-native\",\"render\"]}\n", stderr);
+        fputs("{\"coverage\":\"focused\",\"full_verification\":false,\"quarantined_checks\":[\"full-native\",\"render\"]}\n", stderr);
     }
     isolate_test_preferences();
     if (argc == 2 && !strcmp(argv[1], "--collab")) {
@@ -1690,6 +1690,10 @@ int main(int argc, char **argv)
         return fails ? 1 : 0;
     }
     /* ---------- Native controls (workstream F2) ---------- */
+    if (argc > 1 && !strcmp(argv[1], "--ui-tab-list")) {
+        test_ui_tab_list();
+        return fails ? 1 : 0;
+    }
     if (argc > 1 && !strcmp(argv[1], "--ui-controls")) {
         test_ui_controls();
         return fails ? 1 : 0;

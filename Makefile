@@ -55,6 +55,8 @@ TRACY_BUILD_DIR ?= build-tracy
 WEB_BUILD_DIR ?= build-web
 WEB_PROFILE_BUILD_DIR ?= build-web-profile
 WEB_THREADS_BUILD_DIR ?= build-web-threads
+WEB_THREADS ?= 0
+PUBLISH_GAME_RUNTIME ?= 0
 WEB_WORKERS ?= 4
 WEB_CMAKE_FLAGS ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
@@ -111,13 +113,13 @@ help:
 		'make agent-list     List CPU selectors and bounded GPU capabilities' \
 		'make agent-test AGENT_SELECTOR=--graph-optimize  CPU iteration' \
 		'make agent-gpu-test Quarantined: unmeasured GPU agent command' \
-		'make test           Run essential C regressions under one 60-second deadline' \
-		'make test-short     Run essential C regressions under one deadline' \
+		'make test           Run instant C execution-policy unit checks' \
+		'make test-short     Alias for C execution-policy unit checks' \
 		'make test-studio-selectors  Validate native selector discovery in C' \
 		'make test-policy-inventory  Report temporary test admission policy' \
 		'make test-fast TEST_ARGS=--graph-optimize  Run one focused native selector' \
 		'make test-list      Report exact admitted commands and quarantined coverage' \
-		'make test-tools     Alias for the bounded essential C regressions' \
+		'make test-tools     Run all C tooling and process integration regressions' \
 		'make tools-build    Build native tooling tests and benchmark_trials' \
 		'make test-slow      Quarantined: complete native suite and function audit' \
 		'make test-full      Quarantined: full tooling and native gate' \
@@ -128,7 +130,7 @@ help:
 		'make mcp            Run the MCP server over stdio' \
 		'make mcp-controller Build only the chibi_ctl MCP controller' \
 		'make mcp-setup      Generate local Codex MCP configuration' \
-		'make web            Build paired serial and worker browser applications' \
+		'make web            Build the serial browser app; WEB_THREADS=1 adds workers' \
 		'make publish-web    Publish the latest origin/main commit to GitHub Pages' \
 		'make web-serve      Serve the browser application for PROJECT on WEB_PORT' \
 		'make web-profile    Serve a web build named for the browser profiler' \
@@ -225,14 +227,16 @@ web-configure:
 	@$(QUIET) configure-web -- sh tools/web_env.sh env CHIBI_NATIVE_BUILD_DIR="$(BUILD_DIR)" sh tools/configure_web.sh "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect -DCMAKE_C_COMPILER_LAUNCHER=$(CURDIR)/tools/web_compiler.sh -DCMAKE_CXX_COMPILER_LAUNCHER=$(CURDIR)/tools/web_compiler.sh $(WEB_CMAKE_FLAGS)
 
 web: web-serial
+ifeq ($(WEB_THREADS),1)
 	@$(MAKE) web-threads
-	@$(QUIET) package_web.py -- python3 tools/package_web.py --serial "$(WEB_BUILD_DIR)" --threads "$(WEB_THREADS_BUILD_DIR)" --output "$(WEB_BUILD_DIR)"
+endif
+	@$(QUIET) package_web.py -- python3 tools/package_web.py --serial "$(WEB_BUILD_DIR)" $(if $(filter 1,$(WEB_THREADS)),--threads "$(WEB_THREADS_BUILD_DIR)",) --output "$(WEB_BUILD_DIR)"
 
 web-serial: web-configure
 	@$(QUIET) build -- cmake --build "$(WEB_BUILD_DIR)" --target chibi --parallel $(JOBS)
 
 publish-web:
-	python3 tools/publish_web.py --jobs "$(JOBS)" --collab-url "$(CHIBI_COLLAB_URL)"
+	python3 tools/publish_web.py --jobs "$(JOBS)" --collab-url "$(CHIBI_COLLAB_URL)" $(if $(filter 1,$(WEB_THREADS)),--threads,) $(if $(filter 1,$(PUBLISH_GAME_RUNTIME)),--update-game-runtime,)
 
 web-serve: web
 	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT)
@@ -245,7 +249,8 @@ web-profile:
 web-threads:
 	@$(MAKE) web-serial WEB_BUILD_DIR="$(WEB_THREADS_BUILD_DIR)" WEB_CMAKE_FLAGS="-DCHIBI_WEB_THREADS=ON -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) $(WEB_CMAKE_FLAGS)"
 
-web-threads-serve: web
+web-threads-serve:
+	@$(MAKE) web WEB_THREADS=1
 	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT) --isolated
 
 format:
@@ -276,9 +281,10 @@ tools-build:
 	@cmake --build "$(TOOLS_BUILD_DIR)" --parallel $(JOBS)
 
 test-short: tools-build
-	@python3 tools/test_policy.py short "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
+	@python3 tools/test_policy.py unit "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
 
-test-tools: test-short
+test-tools: tools-build
+	@python3 tools/test_policy.py short "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
 
 test-studio-selectors: tools-build
 	@$(MAKE) build BUILD_TARGET=test_suite

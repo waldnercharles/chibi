@@ -711,7 +711,7 @@ static void tab_clicked(void *user, const rml_event *e)
     rml_element_set_attribute(events->last, "aria-selected", e->target == events->last ? "true" : "false");
 }
 
-static void tab_checks()
+void test_ui_tab_list()
 {
     controls_fixture f = { 0 };
     f.backend = rml_backend_create(640, 480, 1);
@@ -795,5 +795,5 @@ void test_ui_controls()
     chart_checks(&f);
     close_fixture(&f);
     widget_checks();
-    tab_checks();
+    test_ui_tab_list();
 }

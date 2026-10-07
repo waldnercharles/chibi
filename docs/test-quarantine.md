@@ -3,11 +3,14 @@
 ## Enforcement boundary
 
 Managed Make and agent test commands use `tools/test_policy.py`, the retained
-production deadline/quarantine supervisor. `make test`, `make test-short` and
-`make test-tools` run the same minimal C pico_unit suite under one shared
-60-second deadline. There are no Python or Node unit/integration test suites.
-The C suite invokes retained packaging utilities and the room service as external
-programs and includes minimal supervisor and validation-planner regressions.
+production deadline/quarantine supervisor. `make test` and `make test-short`
+run six pure C execution-policy cases. `make test-tools` retains the complete
+C tooling/process integration group, including package/configure, room service,
+publication, supervisor and planner contracts. CI and the planner's `--tools`
+select that complete group. Each mode has one shared 60-second deadline.
+The default unit result covers only execution-policy decisions, not the external
+process contracts. There are no Python or Node unit/integration test suites;
+C owns the assertions while invoking retained external implementations.
 
 Timeout returns failure, never a pass or skip. Nested managed wrappers inherit
 one absolute monotonic deadline and process group. The owner cleans up remaining
@@ -44,17 +47,17 @@ the former coverage.
 
 ## Retained short coverage
 
-Build standalone tools with `make tools-build`; the default C regression group
-is bounded as one execution. Its earlier minimal-suite measurement was about
-0.2 seconds before adding supervisor/planner cases. That is historical evidence,
-not a timing or pass for the final expanded suite. Record fresh execution results
-on the reviewed source before claiming validation.
+Build standalone tools with `make tools-build`; report compilation separately.
+The default pure C mode and complete tooling group have separate coverage and
+execution results. Historical timings do not certify either current mode.
+Record fresh results on the reviewed source before claiming validation.
 
 The exact native admission table is:
 
 | Exact native arguments | Existing execution evidence |
 | --- | --- |
 | `--graph-optimize` | 0.5s |
+| `--ui-tab-list` | 1.743s initial supervised Debug ASan+UBSan admission, all 10 input/layout checks, no window or rendering. |
 | `--iframe-updates` | 2.379s for the targeted CUT61 command, Debug ASan+UBSan; 3 pico cases/385 assertions plus 12 existing checks. No profile loop. |
 | `--kit-documents` | 0.469–0.551s at CUT61 `7b0389ea`, Debug ASan+UBSan, all 10 checks and 49 frames. |
 | `--compiled-behaviors` | 47.2s |
@@ -93,16 +96,20 @@ against a separately built native `test_suite`; it does not render Studio.
 The original 3.71-second script measurement does not certify the new C driver.
 
 The planner accepts `--tools` or `--tool=native-tools` for `make test-tools`.
-Other former tool choices are retired. Quarantined full integration requirements
-remain pending metadata; the plan never satisfies them or grants merge authority.
+Other former tool choices are retired. The plan records unavailable coverage
+without imposing a blanket full-suite landing requirement. Independently reviewed
+affected-contract checks determine publication requirements; see
+[reviewed validation](testing.md#batch-validation-cut62). Plans grant no merge authority.
 
 ## CI and restoration
 
 CI labels partial coverage and runs only admitted bounded commands alongside
 retained build/configure/format jobs. Their configuration is not execution
 proof. Required server checks, independent review, PR/ticket holds and existing
-approval rules remain binding. Short passes do not certify the full native,
-render, backend, web or release gates.
+approval rules remain binding. Local evidence is sufficient when CI is disabled
+unless actual server rules require CI. Short passes certify only their affected
+contracts; full native/render coverage remains disabled and not passed. An
+unaffected quarantined suite does not block publication.
 
 Restore admission only with exact source/command identity, complete execution
 logs below 60 seconds, configuration/backend/sanitizer details and the enforced

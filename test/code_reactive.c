@@ -499,6 +499,80 @@ static void competing_managers()
     }
 }
 
+static void direct_binding_chain()
+{
+    const char *
+        original = "behavior BoostEmitter { bind self.ParticleEmitter.Active = "
+                   "self.ParticleEmitter.Parent.ActionBinding.Pressed; }";
+    code_source *source = code_source_parse(original);
+    test_check(source->asset != NULL, "direct BoostEmitter binding chain parses");
+    if (!source->asset) {
+        code_source_free(source);
+        return;
+    }
+    char *metadata = NULL;
+    char *text = code_source_format_with_metadata(source->asset, &metadata);
+    test_check(
+        text && strstr(text, "bind self.ParticleEmitter.Active = self.ParticleEmitter.Parent.ActionBinding.Pressed;") &&
+            !strstr(text, "value get_component"),
+        "native BoostEmitter format retains a direct binding chain without "
+        "getter declarations"
+    );
+    code_source *reopened = text ? code_source_parse(text) : NULL;
+    test_check(
+        reopened && reopened->asset && metadata &&
+            code_source_metadata_restore(reopened, metadata) &&
+            behavior_asset_equal(source->asset, reopened->asset),
+        "direct binding chain roundtrip preserves the complete native graph "
+        "and identities"
+    );
+    code_source_free(reopened);
+    free(text);
+    free(metadata);
+    behavior_asset *edited = behavior_asset_clone(source->asset);
+    graph *g = edited->graph;
+    const behavior_reactive *record = &edited->reactives[0];
+    node *getter = graph_node_by_id(g, record->value_node_id);
+    node *statement = graph_node_by_id(g, record->statement_node_id);
+    int value = -1;
+    for (int i = 0; i < statement->input_count; i++) {
+        if (statement->input_pins[i].type == PIN_BOOL) {
+            value = i;
+        }
+    }
+    int disabled = getter ? graph_expose_output_field(g, getter, 0, "disabled") : -1;
+    test_check(
+        disabled >= 0 && value >= 0 &&
+            !graph_connect_data(g, getter, disabled, statement, value),
+        "Graph edit rewires the direct binding to another reflected field"
+    );
+    char error[256] = { 0 };
+    metadata = NULL;
+    text = code_source_reconcile_with_metadata(source, edited, &metadata, error, sizeof error);
+    if (!text) {
+        fprintf(stderr, "Direct binding chain reconcile: %s\n", error);
+    }
+    test_check(
+        text && strstr(text, "bind self.ParticleEmitter.Active = self.ParticleEmitter.Parent.ActionBinding.Disabled;") &&
+            !strstr(text, "value get_component"),
+        "Graph regeneration retains a direct declaration-free component chain"
+    );
+    reopened = text ? code_source_parse(text) : NULL;
+    test_check(behavior_reactive_refresh(edited, error, sizeof error), "edited direct binding refreshes its generated guard");
+    test_check(
+        reopened && reopened->asset && metadata &&
+            code_source_metadata_restore(reopened, metadata) &&
+            behavior_asset_equal(edited, reopened->asset),
+        "regenerated direct binding preserves complete native graph identity "
+        "and sharing"
+    );
+    code_source_free(reopened);
+    free(text);
+    free(metadata);
+    behavior_asset_free(edited);
+    code_source_free(source);
+}
+
 static void graph_binding_edits()
 {
     code_source *source = code_source_parse(
@@ -753,6 +827,7 @@ void test_code_reactive()
     dependency_order();
     maintained_vector();
     competing_managers();
+    direct_binding_chain();
     graph_binding_edits();
     graph_shared_read_retarget();
 }

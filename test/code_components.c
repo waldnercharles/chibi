@@ -2,9 +2,11 @@
 
 #include "assets/code_source.h"
 #include "graph/document/library.h"
+#include "graph/document/serialize.h"
 #include "graph/runtime/instance.h"
 #include "runtime/generated.h"
 #include "support/array.h"
+#include "support/text_file.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,8 +77,72 @@ static void component_paths(const char *text)
     code_source_free(source);
 }
 
+static void camera_follow_source()
+{
+    char *text = text_file_read("projects/arena2d/content/behaviors/CameraFollow.code");
+    code_source *source = text ? code_source_parse(text) : NULL;
+    test_check(source && source->asset, "Readable CameraFollow ECS paths and Tick payload infer their native types");
+    if (!source || !source->asset) {
+        code_source_free(source);
+        free(text);
+        return;
+    }
+    char *saved = code_source_persist(source);
+    char *metadata = code_source_metadata_export_source(source);
+    code_source *reopened = code_source_parse(saved);
+    test_check(
+        !strcmp(saved, text) && reopened->asset &&
+            code_source_metadata_restore(reopened, metadata) &&
+            behavior_asset_equal(source->asset, reopened->asset),
+        "Readable CameraFollow source stays authored and reopens with the "
+        "exact native model"
+    );
+    char *printed_metadata = NULL;
+    char *printed = code_source_format_with_metadata(source->asset, &printed_metadata);
+    code_source *printed_source = printed ? code_source_parse(printed) : NULL;
+    bool restored = printed_source && printed_source->asset &&
+                    code_source_metadata_restore(printed_source, printed_metadata);
+    bool equal = restored &&
+                 behavior_asset_equal(source->asset, printed_source->asset);
+    bool readable = printed && strstr(printed, "self.Transform") &&
+                    !strstr(printed, "&component(") && !strstr(printed, "cast<") &&
+                    !strstr(printed, "get_entity_game_transform") &&
+                    !strstr(printed, "_code_input") &&
+                    !strstr(printed, "get_component") &&
+                    strstr(printed, "exp(-6 * dt)");
+    test_check(readable && equal, "CameraFollow graph publication preserves readable ECS paths without generated bindings or casts");
+    if (!readable || !equal) {
+        fprintf(
+            stderr,
+            "CameraFollow graph publication: parsed=%d restored=%d equal=%d "
+            "readable=%d\n%s\n",
+            printed_source && printed_source->asset,
+            restored,
+            equal,
+            readable,
+            printed ? printed : "NULL"
+        );
+        for (int i = 0; printed_source && i < acount(printed_source->diagnostics); i++) {
+            fprintf(
+                stderr,
+                "CameraFollow print diagnostic: %s\n",
+                printed_source->diagnostics[i].message
+            );
+        }
+    }
+    code_source_free(printed_source);
+    free(printed_metadata);
+    free(printed);
+    code_source_free(reopened);
+    code_source_free(source);
+    free(metadata);
+    free(saved);
+    free(text);
+}
+
 void run_code_components_checks()
 {
+    camera_follow_source();
     bool ambiguous;
     const ecs_component_desc *component = code_component_named("ParticleEmitter", &ambiguous);
     test_check(

@@ -28,6 +28,7 @@
 
 static void advance(parser *p)
 {
+    p->previous = p->token;
     p->token = code_lex_next(&p->lexer);
 }
 static bool is(parser *p, const char *word)
@@ -55,9 +56,39 @@ static void error(parser *p, const char *message)
         message
     );
 }
+bool code_program_statement_end(const parser *p)
+{
+    if (p->token.kind == CODE_TOKEN_END || p->token.punctuation == ';' ||
+        p->token.punctuation == '}') {
+        return true;
+    }
+    bool complete = p->previous.kind == CODE_TOKEN_NAME ||
+                    p->previous.kind == CODE_TOKEN_NUMBER ||
+                    p->previous.kind == CODE_TOKEN_STRING ||
+                    p->previous.punctuation == ')' ||
+                    p->previous.punctuation == ']' || p->previous.punctuation == '}';
+    bool continues = p->token.kind == CODE_TOKEN_PUNCTUATION &&
+                     strchr("+-*/%&|^!<>=.,?:([", p->token.punctuation);
+    if (p->token.kind == CODE_TOKEN_NUMBER) {
+        char first = p->lexer.text[p->token.start];
+        continues |= first == '+' || first == '-';
+    }
+    if (!complete || continues) {
+        return false;
+    }
+    for (size_t i = p->previous.end; i < p->token.start; i++) {
+        if (p->lexer.text[i] == '\n' || p->lexer.text[i] == '\r') {
+            return true;
+        }
+    }
+    return false;
+}
 static bool expect(parser *p, const char *word)
 {
     if (take(p, word)) {
+        return true;
+    }
+    if (!strcmp(word, ";") && code_program_statement_end(p)) {
         return true;
     }
     char message[160];
@@ -214,7 +245,7 @@ static code_call_port type(parser *p)
     return port;
 }
 /* Capture one expression without reparsing its trivia or losing byte ranges. */
-static char *expression_text(parser *p, int *start, int *end)
+static char *capture_expression(parser *p, int *start, int *end, bool statement)
 {
     *start = (int)p->token.start;
     *end = *start;
@@ -222,7 +253,8 @@ static char *expression_text(parser *p, int *start, int *end)
     while (p->token.kind != CODE_TOKEN_END) {
         code_program_complete_cast(p);
         if (!round && !square && !brace &&
-            (is(p, ",") || is(p, ")") || is(p, ";") || is(p, "}"))) {
+            (is(p, ",") || is(p, ")") || is(p, ";") || is(p, "}") ||
+             (statement && *end != *start && code_program_statement_end(p)))) {
             break;
         }
         if (is(p, "(")) {
@@ -251,6 +283,10 @@ static char *expression_text(parser *p, int *start, int *end)
         return NULL;
     }
     return slice(p, *start, *end);
+}
+static char *expression_text(parser *p, int *start, int *end)
+{
+    return capture_expression(p, start, end, false);
 }
 static bool type_token(parser *p)
 {
@@ -619,7 +655,7 @@ static void declaration_parse(parser *p, bool disabled, bool event, bool lazy)
                 return;
             }
             int start, end;
-            char *text = expression_text(p, &start, &end);
+            char *text = capture_expression(p, &start, &end, true);
             result.has_default = literal(
                 p,
                 p->scope->native,
@@ -670,7 +706,7 @@ static void declaration_parse(parser *p, bool disabled, bool event, bool lazy)
     if (!event &&
         ((lazy && declaration_expression(p)) || is(p, "(") || is(p, "cast"))) {
         int end;
-        d->expression = expression_text(p, &d->expression_start, &end);
+        d->expression = capture_expression(p, &d->expression_start, &end, true);
         expression_group(p, &d->expression, &d->expression_start, end);
         d->call.name = "BehaviorExpression";
         expect(p, ";");
@@ -1014,7 +1050,7 @@ static void state_parse(parser *p, bool shared)
         return;
     }
     int start, end;
-    char *text = expression_text(p, &start, &end);
+    char *text = capture_expression(p, &start, &end, true);
     expect(p, ";");
     if (text && inferred && !infer_state_type(text, &t)) {
         code_source_error(p->source, start, end, "Cannot infer this state default; supply a type for empty collections and nominal values");
@@ -1468,7 +1504,7 @@ static void scope_parse(parser *p)
             t.name = a.port.name;
             a.port = t;
             expect(p, "=");
-            a.text = expression_text(p, &a.start, &a.end);
+            a.text = capture_expression(p, &a.start, &a.end, true);
             expect(p, ";");
             apush(p->scope->returns, a);
             continue;
@@ -1521,13 +1557,18 @@ static void scope_parse(parser *p)
             p->program->query_start = (int)p->token.start;
             advance(p);
             char message[256];
+            code_lexer query_lexer = p->lexer;
+            code_token query_token = p->token;
             av_value *explicit_query = code_query_parse(
                 p->program->values,
-                &p->lexer,
-                &p->token,
+                &query_lexer,
+                &query_token,
                 message,
                 sizeof message
             );
+            while (p->token.start < query_token.start) {
+                advance(p);
+            }
             if (explicit_query && p->program->query) {
                 av_value *combined = av_obj(p->program->values);
                 av_obj_add_str(p->program->values, combined, "op", "all");
@@ -3625,6 +3666,10 @@ char *code_program_reference_name(parser *p)
 char *code_program_capture(parser *p, int *start, int *end)
 {
     return expression_text(p, start, end);
+}
+char *code_program_capture_statement(parser *p, int *start, int *end)
+{
+    return capture_expression(p, start, end, true);
 }
 bool code_program_type_token(parser *p)
 {

@@ -1,6 +1,7 @@
 #include "assets/code_source.h"
 #include "assets/system_document.h"
 #include "graph/compiler/graph_jit_sljit.h"
+#include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/runtime/instance.h"
@@ -13,6 +14,7 @@
 #include "support/text_file.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -443,8 +445,107 @@ static void synchronous_batch_path()
     ecs_world_free(world);
 }
 
+static void camera_follow_runtime()
+{
+    const char
+        *legacy = "behavior CameraFollow { owner \"ecs.entity\"; "
+                  "value get_global_variable: handle<\"ecs.entity\"> = "
+                  "get_global_variable(Name: \"Player\"); "
+                  "on Tick as tick(DeltaSeconds: float = 0.0) { "
+                  "&component(\"GAME.GameTransform\") += "
+                  "(get_entity_game_transform(Entity: get_global_variable) - "
+                  "&component(\"GAME.GameTransform\")) * "
+                  "(1 - exp(-6.0 * cast<double>(&delta))); } }";
+    char *text = text_file_read("projects/arena2d/content/behaviors/CameraFollow.code");
+    assert(text);
+    code_source *sources[] = { code_source_parse(legacy), code_source_parse(text) };
+    free(text);
+    ecs_world *worlds[2];
+    game_entities *entities[2];
+    behavior_asset *assets[2];
+    behavior_instance *instances[2];
+    eval_component_reader readers[2];
+    ecs_entity cameras[2], players[2][2];
+    for (int i = 0; i < 2; i++) {
+        assert(sources[i]->asset);
+        char link_error[256];
+        assets[i] = behavior_asset_link_libraries(sources[i]->asset, NULL, 0, link_error, sizeof link_error);
+        assert(assets[i]);
+        worlds[i] = ecs_world_new();
+        assert(!ecs_world_register_component(worlds[i], &GAME_COMPONENT_GameTransform, NULL));
+        entities[i] = game_entities_new(worlds[i], NULL);
+        cameras[i] = ecs_world_create_entity(worlds[i]);
+        assert(!GAME_GameTransform_add(worlds[i], cameras[i], 0));
+        for (int j = 0; j < 2; j++) {
+            players[i][j] = ecs_world_create_entity(worlds[i]);
+            assert(!GAME_GameTransform_add(worlds[i], players[i][j], 0));
+        }
+        assert(!ecs_world_apply_commands(worlds[i]));
+        pin_value owner = { .type = PIN_HANDLE,
+                            .type_name = "ecs.entity",
+                            .u64 = ecs_entity_to_u64(cameras[i]) };
+        instances[i] = behavior_instance_create(assets[i], &owner, NULL, NULL);
+        assert(instances[i]);
+        assert(!behavior_instance_bind_service(instances[i], "ecs.world", worlds[i]));
+        ecs_eval_component_reader_init(&readers[i], worlds[i]);
+        assert(
+            !behavior_instance_bind_service(instances[i], EVAL_COMPONENT_READER_SERVICE, &readers[i])
+        );
+        assert(!behavior_instance_bind_service(instances[i], "game.entities", entities[i]));
+    }
+    const float deltas[] = { 0, 1.0f / 60, .1f, .025f };
+    double x = 0, y = 0;
+    for (int step = 0; step < 4; step++) {
+        GameTransform target = { .x = step < 2 ? 20 : -7, .y = 3 + step * 2 };
+        double weight = 1 - exp(-6 * (double)deltas[step]);
+        x += (target.x - x) * weight;
+        y += (target.y - y) * weight;
+        for (int i = 0; i < 2; i++) {
+            ecs_entity player = players[i][step < 2 ? 0 : 1];
+            *GAME_GameTransform_get(worlds[i], player) = target;
+            pin_value value = { .type = PIN_HANDLE,
+                                .type_name = "ecs.entity",
+                                .u64 = ecs_entity_to_u64(player) };
+            assert(!game_entities_set_global_value(entities[i], "Player", &value));
+            pin_value delta = { .type = PIN_F32, .f = deltas[step] };
+            flow_error error = { 0 };
+            flow_run *run = behavior_instance_dispatch(
+                instances[i],
+                "Tick",
+                (flow_inputs){ .values = &delta, .count = 1 },
+                &error
+            );
+            if (!run || flow_run_status(run) != FLOW_COMPLETED) {
+                fprintf(
+                    stderr,
+                    "CameraFollow runtime variant=%d step=%d: %s\n",
+                    i,
+                    step,
+                    error.message ? error.message
+                    : run         ? flow_run_error(run)->message
+                                  : "no activation"
+                );
+            }
+            assert(run && flow_run_status(run) == FLOW_COMPLETED);
+            const GameTransform *actual = GAME_GameTransform_get_const(worlds[i], cameras[i]);
+            assert(fabs(actual->x - x) < .00001 && fabs(actual->y - y) < .00001);
+        }
+        const GameTransform *old = GAME_GameTransform_get_const(worlds[0], cameras[0]);
+        const GameTransform *readable = GAME_GameTransform_get_const(worlds[1], cameras[1]);
+        assert(fabs(old->x - readable->x) < .00001 && fabs(old->y - readable->y) < .00001);
+    }
+    for (int i = 0; i < 2; i++) {
+        behavior_instance_destroy(instances[i]);
+        behavior_asset_free(assets[i]);
+        game_entities_free(entities[i]);
+        ecs_world_free(worlds[i]);
+        code_source_free(sources[i]);
+    }
+}
+
 void test_code_system_runtime()
 {
+    camera_follow_runtime();
     persistent_wait_membership();
     host_spawn_resume();
     live_component_resume();

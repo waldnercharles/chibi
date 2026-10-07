@@ -23,20 +23,13 @@ static char *keep(parser *p, const char *text, int length)
     return copy;
 }
 
-static char *capture(parser *p, const char *stop, int *start)
+static char *capture_target(parser *p, int *start)
 {
-    int first = (int)p->token.start, end = first, depth = 0, line = p->token.line;
-    bool previous_operator = false;
+    int first = (int)p->token.start, end = first, depth = 0;
     *start = first + p->base;
     while (p->token.kind != CODE_TOKEN_END) {
-        if (!depth && (code_token_is(&p->lexer, p->token, stop) ||
+        if (!depth && (code_token_is(&p->lexer, p->token, "=") ||
                        code_token_is(&p->lexer, p->token, "}"))) {
-            break;
-        }
-        bool operator = p->token.kind == CODE_TOKEN_PUNCTUATION &&
-                        strchr("+-*/%&|^!<>=.,", p->token.punctuation);
-        if (!strcmp(stop, ";") && !depth && end != first &&
-            p->token.line > line && !previous_operator && !operator) {
             break;
         }
         depth += code_token_is(&p->lexer, p->token, "(") ||
@@ -44,8 +37,6 @@ static char *capture(parser *p, const char *stop, int *start)
         depth -= code_token_is(&p->lexer, p->token, ")") ||
                  code_token_is(&p->lexer, p->token, "]");
         end = (int)p->token.end;
-        line = p->token.line;
-        previous_operator = operator;
         code_program_next(p);
     }
     return keep(p, p->lexer.text + first, end - first);
@@ -204,14 +195,17 @@ static node *different(parser *p, code_call_argument a, code_call_argument b, co
 bool code_reactive_parse_bind(parser *p)
 {
     int start;
-    char *target = capture(p, "=", &start);
+    char *target = capture_target(p, &start);
     code_program_complete_ecs_path(p, p->scope, target, start);
     if (!code_program_expect(p, "=")) {
         return true;
     }
-    int expression_start;
-    char *expression = capture(p, ";", &expression_start);
-    code_program_take(p, ";");
+    int expression_start, expression_end;
+    char *expression = code_program_capture_statement(p, &expression_start, &expression_end);
+    expression_start += p->base;
+    if (!expression || !code_program_expect(p, ";")) {
+        return true;
+    }
     code_call_argument destination = { 0 };
     if (!path(p, target, start, PIN_FLOW, &destination)) {
         return true;

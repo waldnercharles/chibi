@@ -46,6 +46,19 @@ payloads are declarative configuration, not executable behavior source.
 
 ## Executable source
 
+Semicolons are optional at the end of a line and before a closing brace.
+Separate multiple statements on one line with semicolons. Parenthesized calls,
+arrays and struct literals may span lines. An operator at the end or beginning
+of a line continues the expression. Source saving preserves the author's choice.
+
+```code
+system FreeMotion(position: Transform, velocity: Velocity)
+    without Collider, Body
+{
+    position += velocity * dt
+}
+```
+
 A behavior, library or system is a readable program. Its declarations and
 statements construct the native behavior model used by the existing compiler,
 JIT and runtime. Source does not require graph node, pin or connection records.

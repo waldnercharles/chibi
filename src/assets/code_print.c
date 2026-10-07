@@ -547,6 +547,12 @@ static bool ordinary_expression(const behavior_asset *asset, const graph *target
                     pins[j].type > PIN_F64 || pins[j].type == width) {
                     continue;
                 }
+                /* A float capture may participate in double arithmetic without
+                   changing its capture type or the generated operation types. */
+                if (!side && !float_result && width == PIN_F64 &&
+                    pins[j].type == PIN_F32) {
+                    continue;
+                }
                 /* Named integer captures promote to a double literal without
                    changing the editable interface or the generated body. */
                 if (named_capture && !float_result &&
@@ -1134,7 +1140,8 @@ static void symbols(printer *p)
                     node_behavior_for(p->symbols[j].node) == NODE_BEHAVIOR_PURE) {
                     const ecs_component_desc *component = component_node_component(n);
                     if (component &&
-                        component != component_node_component(p->symbols[j].node)) {
+                        (component != component_node_component(p->symbols[j].node) ||
+                         (data_uses(p->graph, n) == 1 && !p->symbols[i].declared))) {
                         continue;
                     }
                     p->symbols[i].declared = true;
@@ -1786,8 +1793,29 @@ static bool component_write(printer *p, const node *n)
         }
         field_path(p, component->type, component->type->fields[field].name);
     }
-    write_text(p, " = ");
-    input(p, n, value);
+    node *operation = NULL, *target = NULL;
+    int result = -1, target_port = -1;
+    bool compound = !split && n->desc->component_kind != NODE_COMPONENT_SET_FIELD &&
+                    !n->input_pins[value].binding &&
+                    !graph_input_conversion(p->graph, n, value) &&
+                    graph_input_source(p->graph, n, value, &operation, &result) &&
+                    (operation->desc == &NODE_Add || operation->desc == &NODE_Subtract) &&
+                    !node_symbol(p, operation)->declared &&
+                    operation->input_count == 2 && result == 0 &&
+                    !operation->input_pins[0].binding &&
+                    !graph_input_conversion(p->graph, operation, 0) &&
+                    graph_input_source(p->graph, operation, 0, &target, &target_port) &&
+                    component_node_component(target) == component &&
+                    !node_symbol(p, target)->declared && target_port == 0 &&
+                    component_node_self(p->graph, target) &&
+                    component_node_self(p->graph, n);
+    if (compound) {
+        write_text(p, operation->desc == &NODE_Add ? " += " : " -= ");
+        input(p, operation, 1);
+    } else {
+        write_text(p, " = ");
+        input(p, n, value);
+    }
     write_text(p, ";\n");
     return true;
 }
@@ -2606,6 +2634,38 @@ static void suppress_reactive_guard(printer *p, const behavior_reactive *reactiv
         }
         if (!external) {
             node_symbol(p, values[i])->declared = false;
+        }
+    }
+    const node *value = graph_node_by_id(p->graph, reactive->value_node_id);
+    bool component_get = value && component_node_component(value) &&
+                         (component_node_kind_of(value->desc) == COMPONENT_NODE_GET ||
+                          component_generated_kind(value->desc) == COMPONENT_NODE_GET);
+    if (component_get && value->id != reactive->source_node_id &&
+        !value->disabled && !value->comment && !value->breakpoint &&
+        !value->reference_name && !value->desc->instance_state &&
+        value->presentation == NODE_PRESENTATION_AUTO) {
+        bool named = false;
+        for (int i = 0; i < acount(p->graph->locals); i++) {
+            named |= p->graph->locals[i].source_id == value->id;
+        }
+        int uses = 0;
+        bool assignment_only = true;
+        for (int i = 0; i < acount(p->graph->edges); i++) {
+            const edge *wire = &p->graph->edges[i];
+            if (wire->kind != GRAPH_EDGE_DATA || wire->from_id != value->id) {
+                continue;
+            }
+            bool guard = wire->to_id == branch->id;
+            for (int j = 0; j < acount(values); j++) {
+                guard |= wire->to_id == values[j]->id;
+            }
+            if (!guard) {
+                uses++;
+                assignment_only &= wire->to_id == reactive->statement_node_id;
+            }
+        }
+        if (!named && uses == 1 && assignment_only) {
+            node_symbol(p, value)->declared = false;
         }
     }
     afree(values);

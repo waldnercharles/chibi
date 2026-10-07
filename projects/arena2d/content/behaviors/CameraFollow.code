@@ -1,7 +1,6 @@
-behavior "CameraFollow" {
-    owner "ecs.entity";
-    value get_global_variable: handle<"ecs.entity"> = get_global_variable(Name: "Player");
-    on Tick as tick(DeltaSeconds: float = 0.0) {
-        &component("GAME.GameTransform") += (get_entity_game_transform(Entity: get_global_variable) - &component("GAME.GameTransform")) * (1 - exp(-6.0 * cast<double>(&delta)));
+behavior CameraFollow {
+    value player: handle<"ecs.entity"> = get_global_variable(Name: "Player");
+    on Tick(dt) {
+        self.Transform += (player.Transform - self.Transform) * (1 - exp(-6 * dt));
     }
 }

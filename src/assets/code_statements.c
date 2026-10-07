@@ -39,7 +39,9 @@ static char *capture(parser *p, const char *stop, int *offset)
     int start = (int)p->token.start, end = start, round = 0, square = 0, curly = 0;
     *offset = p->base + start;
     while (p->token.kind != CODE_TOKEN_END) {
-        if (!round && !square && !curly && (is(p, stop) || is(p, "}"))) {
+        if (!round && !square && !curly &&
+            (is(p, stop) || is(p, "}") ||
+             (!strcmp(stop, ";") && end != start && code_program_statement_end(p)))) {
             break;
         }
         if (is(p, "(")) {
@@ -122,7 +124,7 @@ static bool starts_call(parser *p)
             code_program_next(&look);
             /* A projected result, assignment or operator belongs to the
              * expression grammar, even when its first atom is a call. */
-            return is(&look, ";");
+            return code_program_statement_end(&look);
         }
         code_program_next(&look);
     }
@@ -448,10 +450,12 @@ static statement parse_statement(parser *p)
         if (code_program_take(p, ".")) {
             s.method = code_program_name(p);
         }
-        if (is(p, "(")) {
-            s.arguments = code_program_arguments(p, false);
-        } else if (!is(p, ";")) {
-            s.text = capture(p, ";", &s.value_start);
+        if (!code_program_statement_end(p)) {
+            if (is(p, "(")) {
+                s.arguments = code_program_arguments(p, false);
+            } else {
+                s.text = capture(p, ";", &s.value_start);
+            }
         }
         code_program_expect(p, ";");
     } else if (code_program_take(p, "goto")) {
@@ -1487,7 +1491,7 @@ void code_statement_parse_local(parser *p)
     local.end = p->base + (int)p->token.start;
     code_program_expect(p, "=");
     int end;
-    local.text = code_program_capture(p, &local.value_start, &end);
+    local.text = code_program_capture_statement(p, &local.value_start, &end);
     local.value_start += p->base;
     code_program_expect(p, ";");
     apush(p->scope->locals, local);

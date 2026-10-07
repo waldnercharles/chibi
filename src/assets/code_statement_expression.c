@@ -923,6 +923,27 @@ static void contextual_operations(
     }
 }
 
+/* The math frontend consumes expressions without code comments. Keep byte
+ * positions stable so its diagnostics still map to the authored source. */
+static void strip_comments(char *text)
+{
+    code_lexer lexer;
+    code_lex_init(&lexer, text);
+    size_t end = 0;
+    for (;;) {
+        code_token token = code_lex_next(&lexer);
+        for (size_t i = end; i < token.start; i++) {
+            if (text[i] != '\n' && text[i] != '\r') {
+                text[i] = ' ';
+            }
+        }
+        if (token.kind == CODE_TOKEN_END) {
+            return;
+        }
+        end = token.end;
+    }
+}
+
 bool code_statement_expression(
     parser *p,
     scope *s,
@@ -1165,6 +1186,7 @@ bool code_statement_expression(
     }
     append(&source, &origins, text, copied, (int)strlen(text));
     apush(source, '\0');
+    strip_comments(source);
     behavior_expression_error error;
     node *call = behavior_expression_add_mode(p->asset, s->native, source, p->expression_mode, &error);
     if (!call) {

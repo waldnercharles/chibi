@@ -52,16 +52,39 @@ static bool ignored(const char *name)
            !strcmp(name, ".chibi") || !strcmp(name, ".git");
 }
 
+/* A directory on the current walk path, to stop at symlink cycles. */
+typedef struct visit
+{
+    dev_t device;
+    ino_t inode;
+    const struct visit *parent;
+} visit;
+
+static bool visiting(const visit *path, const struct stat *info)
+{
+    for (; path; path = path->parent) {
+        if (path->device == info->st_dev && path->inode == info->st_ino) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Whether `directory` or anything under it, except ignored entries, changed
  * after `since`. A directory's own modification time covers entries added,
  * removed or renamed in it, and an entry that cannot be stated, such as a
- * dangling symlink, counts as changed. Symlinked directories are compared by
- * their target's own time rather than walked, so link cycles terminate. */
-static bool changed_since(const char *directory, int64_t since)
+ * dangling symlink, counts as changed. Symlinked directories are walked, and
+ * a link back to a directory already on the path is not entered again. */
+static bool walk_changed(const char *directory, int64_t since, const visit *parent)
 {
-    if (modified(directory) > since) {
+    struct stat info;
+    if (stat(directory, &info) != 0 || modified(directory) > since) {
         return true;
     }
+    if (visiting(parent, &info)) {
+        return false;
+    }
+    visit self = { info.st_dev, info.st_ino, parent };
     DIR *dir = opendir(directory);
     if (!dir) {
         return true;
@@ -73,9 +96,9 @@ static bool changed_since(const char *directory, int64_t since)
             continue;
         }
         char *path = join(directory, entry->d_name);
-        struct stat info;
-        if (lstat(path, &info) == 0 && S_ISDIR(info.st_mode)) {
-            changed = changed_since(path, since);
+        struct stat child;
+        if (stat(path, &child) == 0 && S_ISDIR(child.st_mode)) {
+            changed = walk_changed(path, since, &self);
         } else {
             int64_t time = modified(path);
             changed = time < 0 || time > since;
@@ -84,6 +107,11 @@ static bool changed_since(const char *directory, int64_t since)
     }
     closedir(dir);
     return changed;
+}
+
+static bool changed_since(const char *directory, int64_t since)
+{
+    return walk_changed(directory, since, NULL);
 }
 
 static int run(char *const *argv)

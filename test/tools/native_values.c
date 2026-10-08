@@ -136,6 +136,11 @@ TEST_CASE(native_values_preserve_numeric_contracts_and_owned_results)
     REQUIRE(call("To String", &text, 1, &string) == NULL);
     REQUIRE(call("To Name", &text, 1, &name) == NULL);
     REQUIRE(string.str != text.str && name.str != text.str);
+    const char *long_text = "a name longer than the sixty-four byte display "
+                            "buffer keeps every byte";
+    pin_value long_name = { .type = PIN_NAME, .str = own(long_text) }, long_string;
+    REQUIRE(strlen(long_text) >= 64);
+    REQUIRE(call("To String", &long_name, 1, &long_string) == NULL);
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     number.d = 4.5;
     pin_value vector;
@@ -148,6 +153,7 @@ TEST_CASE(native_values_preserve_numeric_contracts_and_owned_results)
     capabilities = NULL;
     REQUIRE(string.type == PIN_STR && !strcmp(string.str, "retained"));
     REQUIRE(name.type == PIN_NAME && !strcmp(name.str, "retained"));
+    REQUIRE(long_string.type == PIN_STR && !strcmp(long_string.str, long_text));
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     const float *coordinates = vector.ptr;
     REQUIRE(coordinates[0] == 4.5f && coordinates[1] == 4.5f);

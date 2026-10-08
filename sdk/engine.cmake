@@ -37,12 +37,20 @@ if(COMMAND chibi_enable_tracy)
 endif()
 list(APPEND CHIBI_SDK_TARGETS chibi_engine)
 
+# The component types a project declares, shared by the player and authoring.
+add_library(chibi_declared_components STATIC "${CHIBI_SDK_ROOT}/src/runtime/declared_components.c")
+add_library(Chibi::declared_components ALIAS chibi_declared_components)
+set_target_properties(chibi_declared_components PROPERTIES EXPORT_NAME declared_components)
+chibi_sdk_headers(chibi_declared_components PUBLIC runtime/declared_components.h)
+target_link_libraries(chibi_declared_components PUBLIC chibi_native_types chibi_capabilities
+    chibi_execution chibi_types PRIVATE chibi_support)
+list(APPEND CHIBI_SDK_TARGETS chibi_declared_components)
+
 add_library(chibi_player STATIC "${CHIBI_SDK_ROOT}/src/runtime/player.c"
-    "${CHIBI_SDK_ROOT}/src/runtime/player_prepared.c"
-    "${CHIBI_SDK_ROOT}/src/runtime/declared_components.c")
+    "${CHIBI_SDK_ROOT}/src/runtime/player_prepared.c")
 add_library(Chibi::player ALIAS chibi_player)
 set_target_properties(chibi_player PROPERTIES EXPORT_NAME player)
-chibi_sdk_headers(chibi_player PUBLIC runtime/declared_components.h runtime/player.h
-    runtime/player_prepared.h)
-target_link_libraries(chibi_player PUBLIC chibi_engine chibi_behavior_runtime chibi_scene_runtime chibi_field_catalog)
+chibi_sdk_headers(chibi_player PUBLIC runtime/player.h runtime/player_prepared.h)
+target_link_libraries(chibi_player PUBLIC chibi_engine chibi_behavior_runtime chibi_scene_runtime
+    chibi_field_catalog chibi_declared_components)
 list(APPEND CHIBI_SDK_TARGETS chibi_player)

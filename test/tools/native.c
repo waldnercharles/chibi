@@ -705,10 +705,15 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(type->fields[4].offset == offsetof(charge, drift));
     ecs_component_catalog components = declared_components_ecs(declared);
     REQUIRE(components.component_count == 1 && components.components[0]->type == type);
+    ecs_component_catalog project = project_components();
+    REQUIRE(script_catalog_project() == declared_components_catalog(declared));
+    REQUIRE(project.component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
+    REQUIRE(project.components[GAME_REGISTRY_COMPONENT_COUNT] == components.components[0]);
     const script_catalog_type *script = &declared_components_catalog(declared)->types[0];
     REQUIRE(
         script->component && script->component_id == components.components[0]->id
     );
+    ecs_component_id charge_id = script->component_id;
     REQUIRE(
         script->fields[4].type.storage == PIN_STRUCT &&
         script->fields[4].type.nominal == script_catalog_id("type", "CF_V2")
@@ -730,7 +735,8 @@ TEST_CASE(native_player_reads_declared_components)
     game_scene_free(scene);
     scene = NULL;
     declared_components_free(declared);
-    REQUIRE(!type_catalog_find("Charge"));
+    REQUIRE(!type_catalog_find("Charge") && !script_catalog_project());
+    REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT);
     game_player_host player_host_context = {
         .components = { .components = GAME_REGISTRY_COMPONENTS,
                         .component_count = GAME_REGISTRY_COMPONENT_COUNT }
@@ -750,9 +756,10 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(type_catalog_find("Charge"));
     ecs_world *ecs = game_world_ecs(game_player_world(player));
     ecs_entity cell = game_scene_instance_entity(game_player_scene(player), 0);
-    const charge *read = ecs_component_data_const(ecs, cell, script->component_id);
+    const charge *read = ecs_component_data_const(ecs, cell, charge_id);
     REQUIRE(read && read->level == 1.25f && read->cycles == 2 && read->full);
     REQUIRE(read->drift.x == 1 && read->drift.y == -1);
+    REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
     game_player_free(player);
     player = NULL;
     REQUIRE(!type_catalog_find("Charge"));

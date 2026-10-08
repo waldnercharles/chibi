@@ -1,8 +1,19 @@
 #include "capabilities/catalog.h"
 
+#include <assert.h>
 #include <ctype.h>
 #include <string.h>
 
+static const script_catalog *project;
+void script_catalog_set_project(const script_catalog *catalog)
+{
+    assert(!catalog != !project);
+    project = catalog;
+}
+const script_catalog *script_catalog_project()
+{
+    return project;
+}
 uint64_t script_catalog_id(const char *domain, const char *name)
 {
     uint64_t hash = UINT64_C(14695981039346656037);

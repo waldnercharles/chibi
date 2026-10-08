@@ -1,6 +1,8 @@
 #include "runtime/declared_components.h"
 
+#include "runtime/component_catalog.h"
 #include "support/arena.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
 
@@ -26,7 +28,10 @@ struct declared_components
     script_catalog catalog;
     /* Authored field type spellings, kept for the wire. */
     const char ***spellings;
+    /* The native registry followed by desc_list. */
+    const ecs_component_desc **project;
 };
+static const declared_components *live;
 static bool fail(char *error, size_t size, const char *name, const char *message)
 {
     if (size) {
@@ -234,6 +239,14 @@ declared_components *declared_components_new(
     c->catalog = (script_catalog){ .types = c->script_types, .type_count = count };
     type_catalog_set_project(&(type_catalog_pack){ .types = c->type_list,
                                                    .type_count = count });
+    script_catalog_set_project(&c->catalog);
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        apush(c->project, GAME_REGISTRY_COMPONENTS[i]);
+    }
+    for (int i = 0; i < count; i++) {
+        apush(c->project, c->desc_list[i]);
+    }
+    live = c;
     return c;
 }
 declared_components *declared_components_retain(declared_components *c)
@@ -249,7 +262,10 @@ void declared_components_free(declared_components *c)
     }
     if (c->catalog.types) {
         type_catalog_set_project(NULL);
+        script_catalog_set_project(NULL);
+        live = NULL;
     }
+    afree(c->project);
     free(c->types);
     free(c->type_list);
     free(c->descs);
@@ -268,6 +284,14 @@ const script_catalog *declared_components_catalog(const declared_components *c)
 {
     assert(c);
     return &c->catalog;
+}
+ecs_component_catalog project_components()
+{
+    if (!live) {
+        return (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS,
+                                        GAME_REGISTRY_COMPONENT_COUNT };
+    }
+    return (ecs_component_catalog){ live->project, acount(live->project) };
 }
 void declared_components_wire(execution_wire *wire, declared_components **out)
 {

@@ -159,6 +159,10 @@ typedef struct
 } script_catalog;
 
 uint64_t script_catalog_id(const char *domain, const char *name);
+/* The loaded project's declared script types. The owner sets the slot while no
+ * project is loaded and clears it (NULL) before freeing them. */
+void script_catalog_set_project(const script_catalog *);
+const script_catalog *script_catalog_project();
 bool script_name_matches(const char *a, const char *b);
 /* -1 is missing; -2 is ambiguous. Exact names precede normalized aliases. */
 int script_catalog_find_type(const script_catalog *, const char *name);

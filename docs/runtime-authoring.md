@@ -34,7 +34,8 @@ description "Stored energy that refills over time."
 Prototypes, scenes, behaviors and systems then use `Charge` like an engine
 component. A name may not reuse an engine type. The compiler stores the
 declarations in the prepared artifact, so the player needs no source.
-`chibi_ctl` and Studio do not read declarations yet.
+`chibi_ctl` formats, validates, describes and runs them like engine components.
+Studio does not read declarations yet.
 
 ## Edit and verify
 

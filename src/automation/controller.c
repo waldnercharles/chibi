@@ -12,6 +12,7 @@
 #include "assets/ui_events.h"
 #include "authoring/application_catalog.h"
 #include "authoring/behavior_loader.h"
+#include "authoring/component_declarations.h"
 #include "authoring/component_presentation.h"
 #include "authoring/graph_expression.h"
 #include "authoring/image_prepare.h"
@@ -795,13 +796,21 @@ static int load_asset(
     size_t error_size
 );
 
+static game_prototype_registry project_registry()
+{
+    ecs_component_catalog catalog = project_components();
+    return (game_prototype_registry){ .components = catalog.components,
+                                      .component_count = catalog.component_count };
+}
+
 static const ecs_component_desc *automation_query_component(const char *name, void *)
 {
     if (!name) {
         return NULL;
     }
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+    ecs_component_catalog catalog = project_components();
+    for (int i = 0; i < catalog.component_count; i++) {
+        const ecs_component_desc *component = catalog.components[i];
         if ((component->name && !strcmp(component->name, name)) ||
             (component->key && !strcmp(component->key, name))) {
             return component;
@@ -1348,10 +1357,7 @@ static int load_behavior_family_assets(
 /* Editor assets hold Studio's component presentation. */
 static bool read_editor_asset(const char *json, char *error, size_t error_size)
 {
-    ecs_component_catalog registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    ecs_component_catalog registry = project_components();
     component_presentation presentation = { 0 };
     bool ok = component_presentation_read(json, registry, &presentation, error, error_size);
     component_presentation_free(&presentation);
@@ -1446,6 +1452,31 @@ static authoring_language_catalog *source_native_catalog(const char *root, char 
     authoring_language_catalog *catalog = authoring_language_catalog_new(&input, error, size);
     native_capabilities_free(table);
     return catalog;
+}
+
+/* Installs the components the project declares in content/components until
+ * *out is freed; *out stays NULL when it declares none. */
+static bool load_declared(const char *root, declared_components **out, char *error, size_t size)
+{
+    *out = NULL;
+    native_capabilities
+        *table = authoring_application_catalog_new(studio_project_is(root), error, size);
+    if (!table) {
+        return false;
+    }
+    size_t length = strlen(root) + sizeof "/content";
+    char *content = xmalloc(length);
+    snprintf(content, length, "%s/content", root);
+    bool loaded = authoring_component_declarations_load(
+        content,
+        native_capabilities_catalog(table),
+        out,
+        error,
+        size
+    );
+    free(content);
+    native_capabilities_free(table);
+    return loaded;
 }
 
 static void load_catalog_links(const char *root, const asset_entry *entries, catalog_links *links)
@@ -1570,10 +1601,7 @@ static void catalog_validate_asset(
         }
         behavior_asset_free(behavior);
     } else if (family->loader == ASSET_PROTOTYPE) {
-        game_prototype_registry registry = {
-            .components = GAME_REGISTRY_COMPONENTS,
-            .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-        };
+        game_prototype_registry registry = project_registry();
         char error[256] = { 0 };
         game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
         if (!prototype) {
@@ -1692,10 +1720,7 @@ static void catalog_add_content(
         return;
     }
     char error[256];
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    game_prototype_registry registry = project_registry();
     switch (asset->asset.family->loader) {
         case ASSET_GRAPH: {
             behavior_asset *graph = behavior_asset_load(text);
@@ -2834,7 +2859,7 @@ static void add_registry(yyjson_mut_doc *doc, yyjson_mut_val *object)
     yyjson_mut_obj_add_int(doc, object, "nodes", registry_node_count());
     yyjson_mut_obj_add_int(doc, object, "types", type_catalog_count());
     yyjson_mut_obj_add_int(doc, object, "services", registry_service_count());
-    yyjson_mut_obj_add_int(doc, object, "components", GAME_REGISTRY_COMPONENT_COUNT);
+    yyjson_mut_obj_add_int(doc, object, "components", project_components().component_count);
 }
 
 static int handle_describe_contract(response *result)
@@ -5285,10 +5310,7 @@ static char *canonical_asset(
         case ASSET_SYSTEM:
             return canonical_source(json, path, metadata, error, error_size);
         case ASSET_PROTOTYPE: {
-            game_prototype_registry registry = {
-                .components = GAME_REGISTRY_COMPONENTS,
-                .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-            };
+            game_prototype_registry registry = project_registry();
             game_prototype *prototype = game_prototype_load(json, &registry, error, error_size);
             if (!prototype) {
                 return NULL;
@@ -5302,10 +5324,7 @@ static char *canonical_asset(
             if (!scene) {
                 return NULL;
             }
-            char *text = game_scene_document_save(
-                scene,
-                (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
-            );
+            char *text = game_scene_document_save(scene, project_components());
             game_scene_document_free(scene);
             return text;
         }
@@ -5326,9 +5345,12 @@ static char *canonical_asset(
 int chibi_automation_format_assets(const char *root, bool check)
 {
     asset_entry *entries = NULL;
+    declared_components *declared = NULL;
     char error[256] = { 0 };
-    if (enumerate_assets(root, &entries, error, sizeof error)) {
+    if (!load_declared(root, &declared, error, sizeof error) ||
+        enumerate_assets(root, &entries, error, sizeof error)) {
         fprintf(stderr, "chibi_ctl --format: %s\n", error);
+        declared_components_free(declared);
         return -1;
     }
     int differing = 0;
@@ -5387,6 +5409,7 @@ int chibi_automation_format_assets(const char *root, bool check)
         free(path);
     }
     free_asset_entries(entries);
+    declared_components_free(declared);
     return differing;
 }
 
@@ -5763,10 +5786,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             behavior_asset_free(asset);
         }
     } else if (ref.family->loader == ASSET_PROTOTYPE) {
-        game_prototype_registry registry = {
-            .components = GAME_REGISTRY_COMPONENTS,
-            .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-        };
+        game_prototype_registry registry = project_registry();
         char load_error[256] = { 0 };
         game_prototype *prototype = game_prototype_load(json, &registry, load_error, sizeof load_error);
         if (!prototype) {
@@ -6439,10 +6459,7 @@ static int prepare_scenario(
         return status;
     }
 
-    context->registry = (game_prototype_registry){
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    context->registry = project_registry();
     char *scenario_json = scenario_prototype_text(prototype_json, context->prototype_hash);
     context->prototype = scenario_json
                            ? game_prototype_load(scenario_json, &context->registry, error, error_size)
@@ -6529,10 +6546,7 @@ static int prepare_scene_scenario(
         set_error(error, error_size, "scene has no entities");
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    context->registry = (game_prototype_registry){
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    context->registry = project_registry();
     context->preview = game_prototype_preview_new(&context->registry);
     if (!context->preview) {
         scenario_context_free(context);
@@ -9551,10 +9565,7 @@ static int handle_describe_components(yyjson_val *request, response *result, int
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     yyjson_mut_val *components = yyjson_mut_obj_add_arr(result->doc, value, "components");
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    game_prototype_registry registry = project_registry();
     if (names) {
         yyjson_arr_iter iterator = yyjson_arr_iter_with(names);
         yyjson_val *name;
@@ -9675,8 +9686,9 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
     }
     if (registry_section(sections, "components")) {
         yyjson_mut_val *components = yyjson_mut_obj_add_arr(doc, value, "components");
-        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-            const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
+        ecs_component_catalog catalog = project_components();
+        for (int i = 0; i < catalog.component_count; i++) {
+            const ecs_component_desc *component = catalog.components[i];
             yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, components);
             yyjson_mut_obj_add_strcpy(doc, object, "key", component->key);
             yyjson_mut_obj_add_strcpy(doc, object, "name", component->name);
@@ -10729,10 +10741,7 @@ static int validate_shader_binding(const char *root, const GameShader *binding, 
 
 static int validate_prototype_shader(const char *root, const char *text, char *error, size_t error_size)
 {
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    game_prototype_registry registry = project_registry();
     game_prototype *prototype = game_prototype_load(text, &registry, error, error_size);
     if (!prototype) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
@@ -10847,10 +10856,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
     if (!scene) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    game_prototype_registry registry = project_registry();
     int status = CHIBI_AUTOMATION_OK;
     for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
         game_scene_entity *entity = &scene->entities[i];
@@ -10987,6 +10993,9 @@ static int handle_inspect_ui(const char *root, yyjson_val *request, response *re
 static int operation_requires_root(const char *operation)
 {
     return !strcmp(operation, "execution_status") ||
+           !strcmp(operation, "describe_components") ||
+           !strcmp(operation, "describe_registry") ||
+           !strcmp(operation, "analyze_code") ||
            !strcmp(operation, "profile_scenario") || !strcmp(operation, "status") ||
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
            !strcmp(operation, "validate_asset") ||
@@ -11048,6 +11057,16 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
             return response_finish(&result);
         }
     }
+    declared_components *declared = NULL;
+    if (root) {
+        char error[256] = { 0 };
+        if (!load_declared(root, &declared, error, sizeof error)) {
+            response_error(&result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+            free(root);
+            yyjson_doc_free(document);
+            return response_finish(&result);
+        }
+    }
     scenario_context image_context = { 0 };
     bool needs_images = root && (!strcmp(operation, "validate_asset") ||
                                  !strcmp(operation, "inspect_graph") ||
@@ -11058,6 +11077,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         if (status != CHIBI_AUTOMATION_OK) {
             response_error(&result, exit_code, status, error);
             scenario_context_free(&image_context);
+            declared_components_free(declared);
             free(root);
             yyjson_doc_free(document);
             return response_finish(&result);
@@ -11136,5 +11156,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     scenario_context_free(&image_context);
     free(root);
     yyjson_doc_free(document);
-    return response_finish(&result);
+    /* The response borrows declared component names. */
+    char *text = response_finish(&result);
+    declared_components_free(declared);
+    return text;
 }

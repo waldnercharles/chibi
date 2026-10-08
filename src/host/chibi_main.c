@@ -44,8 +44,15 @@ static int64_t modified(const char *path)
     return (int64_t)time.tv_sec * 1000000000 + time.tv_nsec;
 }
 
-/* Whether `directory` or anything under it, skipping dot entries such as
- * .chibi and .git, changed after `since`. A directory's own modification time
+/* Generated and version-control entries that never feed preparation. */
+static bool ignored(const char *name)
+{
+    return !strcmp(name, ".") || !strcmp(name, "..") ||
+           !strcmp(name, ".chibi") || !strcmp(name, ".git");
+}
+
+/* Whether `directory` or anything under it, except ignored entries, changed
+ * after `since`. A directory's own modification time
  * covers entries added, removed or renamed in it. */
 static bool changed_since(const char *directory, int64_t since)
 {
@@ -59,7 +66,7 @@ static bool changed_since(const char *directory, int64_t since)
     bool changed = false;
     struct dirent *entry;
     while (!changed && (entry = readdir(dir))) {
-        if (entry->d_name[0] == '.') {
+        if (ignored(entry->d_name)) {
             continue;
         }
         char *path = join(directory, entry->d_name);

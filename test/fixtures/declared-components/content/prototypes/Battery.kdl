@@ -1,0 +1,5 @@
+name "Battery"
+components {
+    Charge rate=2.0 capacity=3.0
+    (object)GAME.GameTransform
+}

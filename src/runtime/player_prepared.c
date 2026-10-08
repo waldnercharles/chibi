@@ -157,6 +157,8 @@ bool game_player_prepared_write(
     header(&wire);
     uint64_t flags = spec->world.modules;
     execution_wire_u64(&wire, &flags);
+    declared_components *declared = spec->declared;
+    declared_components_wire(&wire, &declared);
     scene_write(&wire, spec->scene, error, size);
     unsigned char *fields = NULL;
     size_t field_length = 0;
@@ -270,11 +272,29 @@ game_player *game_player_prepared_read(
     if (!wire.error && (flags & ~(uint64_t)GAME_WORLD_MODULES_ALL)) {
         wire.error = "Prepared player module selection is invalid";
     }
+    /* Declared components precede everything that stores their rows. */
+    declared_components *declared = NULL;
+    declared_components_wire(&wire, &declared);
+    const ecs_component_desc **components = NULL;
+    for (int i = 0; i < host->components.component_count; i++) {
+        apush(components, host->components.components[i]);
+    }
+    ecs_component_catalog extra = declared ? declared_components_ecs(declared)
+                                           : (ecs_component_catalog){ 0 };
+    for (int i = 0; i < extra.component_count; i++) {
+        apush(components, extra.components[i]);
+    }
+    ecs_component_catalog catalog = { components, acount(components) };
+    declared_components_linking linking = { declared, host->linker };
+    execution_prepared_linker linker = host->linker
+                                         ? declared_components_linker(&linking)
+                                         : (execution_prepared_linker){ 0 };
     game_player_spec spec = { .world = { .modules = (unsigned)flags,
-                                         .components = host->components,
+                                         .components = catalog,
                                          .log = host->log,
                                          .sdf_motion = host->sdf_motion },
-                              .linker = host->linker,
+                              .declared = declared,
+                              .linker = host->linker ? &linker : NULL,
                               .backend = backend };
     game_player *player = NULL;
     game_package_module *modules = NULL;
@@ -284,7 +304,7 @@ game_player *game_player_prepared_read(
     size_t decoded_budget = host->decoded_budget ? host->decoded_budget
                                                  : GAME_PLAYER_PREPARED_MAX_BYTES;
     spec.decoded_remaining = &decoded_budget;
-    spec.scene = scene_read(&wire, host->components, &decoded_budget, error, size);
+    spec.scene = scene_read(&wire, catalog, &decoded_budget, error, size);
     size_t field_length = 0;
     const void *fields = blob(&wire, NULL, &field_length);
     if (!wire.error && field_length) {
@@ -305,7 +325,7 @@ game_player *game_player_prepared_read(
         spec.world.events = game_event_catalog_read_budget(
             events,
             event_length,
-            host->linker,
+            spec.linker,
             &decoded_budget,
             error,
             size
@@ -329,7 +349,7 @@ game_player *game_player_prepared_read(
     for (int i = 0; i < spec.prototype_count && !wire.error; i++) {
         game_player_prototype p = { 0 };
         wire_name(&wire, &p.name);
-        p.scene = scene_read(&wire, host->components, &decoded_budget, error, size);
+        p.scene = scene_read(&wire, catalog, &decoded_budget, error, size);
         if (p.scene) {
             apush(prototypes, p);
         }
@@ -356,6 +376,8 @@ game_player *game_player_prepared_read(
         material_fields_free(spec.world.fields);
     }
     game_event_catalog_free(spec.world.events);
+    afree(components);
+    declared_components_free(declared);
     arena_free(&storage);
     return player;
 }

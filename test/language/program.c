@@ -1858,6 +1858,15 @@ TEST_CASE(program_version_11_references_migrate_to_values)
     bound = chibi_migrate_references("x := fallback((&speed), default: 0)");
     REQUIRE(bound && !strcmp(bound, "x := fallback(binding: (speed), default: 0)"));
     free(bound);
+    bound = chibi_migrate_references("x := fallback(driver, &speed, default: 0)");
+    REQUIRE(bound && !strcmp(bound, "x := fallback(driver, binding: speed, default: 0)"));
+    free(bound);
+    bound = chibi_migrate_references("x := fallback(get(a, b), ((&speed)), default: (0))");
+    REQUIRE(bound && !strcmp(bound, "x := fallback(get(a, b), binding: ((speed)), default: (0))"));
+    free(bound);
+    bound = chibi_migrate_references("x := fallback(binding: &speed, default: f(&n))");
+    REQUIRE(bound && !strcmp(bound, "x := fallback(binding: speed, default: f(n))"));
+    free(bound);
     bound = chibi_migrate_references("f(Value: ref int split &count, Other: true & ok)");
     REQUIRE(bound && !strcmp(bound, "f(Value: ref int split count, Other: true & ok)"));
     free(bound);

@@ -175,6 +175,7 @@ typedef struct
     script_range range;
     unsigned effects;
     bool pure, disabled;
+    bool inferred; /* No `->`: its returns give the results. */
 } script_function;
 typedef enum
 {

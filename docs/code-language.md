@@ -286,8 +286,13 @@ use the function name directly. Qualification selects an external library:
 `"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`; a call passes any writable value to them directly, such as `nudge(self.Velocity)`, and the function writes through it. There is no address-of operator. Other parameters are the function's own copies, so it may assign them without changing the caller's value.
 Type parameters preserve generic relationships, for example
 `function Identity<T: float>(item: T) -> (output: T) { ... }`. A function
-without results omits `->`. A function gives its results with `return x`, or `return(a, b)` in
-signature order. A bare `return` gives each result's current value.
+gives its results with `return x`, or `return(a, b)` in signature order. A bare `return` gives
+each result's current value.
+
+A function without `->` infers its results from its first `return`: `return x` gives one
+result named `Result` with the type of `x`, and `return(Hit: h, Distance: d)` gives one result
+per label. Later returns must match. A function that never returns a value has no results.
+Recursive functions, and functions that call each other in a cycle, declare their results.
 
 When several graph calls share a pure generated expression body, formatting
 emits one ordinary pure function and calls it from each original site. Typed

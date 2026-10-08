@@ -207,6 +207,38 @@ void script_analyzer_task_hints(analyzer *a, TSNode body)
 {
     task_hints(a, body);
 }
+/* The first `return` of an inferred function declares its results: one
+ * `Result`, or the labels of `return(Hit: h, Distance: d)`. */
+static void infer_results(analyzer *a, script_function *function, TSNode values)
+{
+    bool list = script_analyzer_is(values, "argument_list");
+    uint32_t count = list ? script_analyzer_named_count(values) : 1;
+    int old_scope = a->scope;
+    a->scope = function->scope;
+    for (uint32_t i = 0; i < count; i++) {
+        TSNode child = list ? ts_node_named_child(values, i) : values;
+        if (ts_node_is_extra(child)) {
+            continue;
+        }
+        TSNode name = list ? script_analyzer_field(child, "name") : (TSNode){ 0 };
+        if (ts_node_is_null(name) && count > 1) {
+            script_analyzer_diagnostic(a, child, "Name each result, as in return(Hit: h, Distance: d)");
+            break;
+        }
+        script_type untyped = { .flags = SCRIPT_TYPE_UNTYPED };
+        int symbol = ts_node_is_null(name)
+                       ? script_analyzer_result_new(a, child, "Result", untyped)
+                       : script_analyzer_symbol_new(a, name, SCRIPT_RESULT, untyped, true);
+        apush(function->results, symbol);
+    }
+    a->scope = old_scope;
+}
+static void infer_type(analyzer *a, int symbol, int expression)
+{
+    script_type type = script_analyzer_expr_type(a, expression);
+    type.flags &= ~SCRIPT_TYPE_REFERENCE;
+    a->out->symbols[symbol].type = type;
+}
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
 {
     if (script_analyzer_is(node, "block")) {
@@ -554,6 +586,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 script_analyzer_diagnostic(a, outcome, "Unknown macro exit");
             }
         }
+        if (function->inferred && !acount(function->results) &&
+            !ts_node_is_null(values)) {
+            infer_results(a, function, values);
+        }
         /* `return x` returns the single result like `return(x)`. */
         bool single = !ts_node_is_null(values) &&
                       !script_analyzer_is(values, "argument_list") &&
@@ -589,6 +625,9 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                              : script_analyzer_bad_type();
                 int expr = script_analyzer_expression(a, value, type);
                 script_analyzer_require(a, value, type, script_analyzer_expr_type(a, expr));
+                if (type.flags & SCRIPT_TYPE_UNTYPED) {
+                    infer_type(a, function->results[parameter], expr);
+                }
                 script_statement assign = {
                     .kind = SCRIPT_STMT_ASSIGN,
                     .scope = a->scope,

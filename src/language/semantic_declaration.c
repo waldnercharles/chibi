@@ -94,6 +94,32 @@ void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bo
         }
     }
 }
+static bool returns_value(TSNode node)
+{
+    if (script_analyzer_is(node, "return_statement")) {
+        return !ts_node_is_null(script_analyzer_field(node, "value"));
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (!script_analyzer_is(child, "function_declaration") &&
+            !script_analyzer_is(child, "macro_declaration") && returns_value(child)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* A callable's value is its single result, a struct of several, or flow. */
+void script_analyzer_function_type(analyzer *a, int function)
+{
+    int symbol = a->out->functions[function].symbol;
+    int count = acount(a->out->functions[function].results);
+    a->out->symbols[symbol]
+        .type = count == 1
+                  ? a->out->symbols[a->out->functions[function].results[0]].type
+                  : (script_type){ .storage = count ? PIN_STRUCT : PIN_FLOW,
+                                   .nominal = count ? a->out->symbols[symbol].id : 0,
+                                   .flags = count ? SCRIPT_TYPE_RESULTS : 0 };
+}
 void script_analyzer_declare_function(analyzer *a, TSNode node)
 {
     bool macro = script_analyzer_is(node, "macro_declaration");
@@ -145,14 +171,12 @@ void script_analyzer_declare_function(analyzer *a, TSNode node)
             .function = function,
             .declaration = { .start = -1, .end = -1 } })
     );
-    int count = acount(a->out->functions[function].results);
-    a->out->symbols[symbol]
-        .type = count == 1
-                  ? a->out->symbols[a->out->functions[function].results[0]].type
-                  : (script_type){ .storage = count ? PIN_STRUCT : PIN_FLOW,
-                                   .nominal = count ? a->out->symbols[symbol].id : 0,
-                                   .flags = count ? SCRIPT_TYPE_RESULTS : 0 };
-    apush(a->bodies, ((function_body){ function, script_analyzer_field(node, "body") }));
+    a->out->functions[function]
+        .inferred = !macro &&
+                    ts_node_is_null(script_analyzer_field(node, "results")) &&
+                    returns_value(script_analyzer_field(node, "body"));
+    script_analyzer_function_type(a, function);
+    apush(a->bodies, ((function_body){ function, script_analyzer_field(node, "body"), BODY_PENDING }));
     TSNode body = script_analyzer_field(node, "body");
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode declaration = ts_node_named_child(body, i);

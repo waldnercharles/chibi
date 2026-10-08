@@ -1789,6 +1789,12 @@ TEST_CASE(program_version_11_references_migrate_to_values)
     char *bound = chibi_migrate_references("x := fallback(&speed, default: 0)");
     REQUIRE(bound && !strcmp(bound, "x := fallback(binding: speed, default: 0)"));
     free(bound);
+    bound = chibi_migrate_references("x := fallback((&speed), default: 0)");
+    REQUIRE(bound && !strcmp(bound, "x := fallback(binding: (speed), default: 0)"));
+    free(bound);
+    bound = chibi_migrate_references("f(Value: ref int split &count, Other: true & ok)");
+    REQUIRE(bound && !strcmp(bound, "f(Value: ref int split count, Other: true & ok)"));
+    free(bound);
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();

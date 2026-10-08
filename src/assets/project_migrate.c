@@ -246,8 +246,20 @@ static bool after_operand(const char *source, const char *last)
     while (word > source && word_char(word[-1])) {
         word--;
     }
-    static const char *keywords[] = { "return", "await", "if",    "while",
-                                      "in",     "from",  "yield", "else" };
+    /* Every version 11 keyword but the literals introduces an expression. */
+    static const char *keywords[] = {
+        "behavior", "library",     "system",   "without",     "state",
+        "shared",   "action",      "value",    "local",       "event",
+        "disabled", "on",          "after",    "as",          "bind",
+        "events",   "pure",        "function", "macro",       "entry",
+        "exit",     "result",      "owner",    "description", "domain",
+        "dataflow", "depth_limit", "query",    "if",          "else",
+        "while",    "for",         "foreach",  "in",          "match",
+        "case",     "default",     "sequence", "branch",      "return",
+        "goto",     "break",       "continue", "await",       "yield",
+        "cancel",   "engine",      "cast",     "plain",       "ref",
+        "service",  "setting",     "wildcard", "from",        "split"
+    };
     for (size_t i = 0; i < sizeof keywords / sizeof *keywords; i++) {
         size_t n = strlen(keywords[i]);
         if ((size_t)(last - word + 1) == n && !strncmp(word, keywords[i], n)) {
@@ -256,18 +268,26 @@ static bool after_operand(const char *source, const char *last)
     }
     return true;
 }
-/* `fallback(&x, ...)` bound its first argument through the reference. */
-static bool fallback_binding(const char *source, const char *last)
+/* `fallback(&x, ...)` and `fallback((&x), ...)` bound their first argument
+ * through the reference. Returns where `binding: ` goes, or NULL. */
+static const char *fallback_binding(const char *source, const char *last)
 {
-    if (!last || *last != '(') {
-        return false;
+    const char *open = NULL;
+    while (last && *last == '(') {
+        open = last;
+        do {
+            last = last > source ? last - 1 : NULL;
+        } while (last && isspace((unsigned char)*last));
     }
-    const char *end = last;
-    while (end > source && isspace((unsigned char)end[-1])) {
-        end--;
+    if (!open || !last || last - source < 7) {
+        return NULL;
     }
-    return end - source >= 8 && !strncmp(end - 8, "fallback", 8) &&
-           (end - source == 8 || !word_char(end[-9]));
+    const char *word = last - 7;
+    if (strncmp(word, "fallback", 8) || (word > source && word_char(word[-1]))) {
+        return NULL;
+    }
+    const char *after = strchr(word, '(') + 1;
+    return after;
 }
 char *chibi_migrate_references(const char *source)
 {
@@ -288,8 +308,9 @@ char *chibi_migrate_references(const char *source)
             continue;
         }
         if (*p == '&' && !after_operand(source, last)) {
-            if (fallback_binding(source, last)) {
-                apush(inserts, ((insertion){ (int)(p - source), acount(inserts), "binding: " }));
+            const char *binding = fallback_binding(source, last);
+            if (binding) {
+                apush(inserts, ((insertion){ (int)(binding - source), acount(inserts), "binding: " }));
             }
             apush(inserts, ((insertion){ (int)(p - source), -1, NULL }));
             removed++;

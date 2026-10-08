@@ -3,50 +3,43 @@
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/behaviors/entity_query.h"
 
-#define PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
-    { .name = NAME,                                                                                 \
-      .kind = KIND,                                                                                 \
-      .storage = STORAGE,                                                                           \
-      .type_name = TYPE_NAME,                                                                       \
-      .container = CONTAINER,                                                                       \
-      .type_flags = TYPE_FLAGS,                                                                     \
-      .generic_group = GROUP,                                                                       \
-      .reference_kind = REFERENCE,                                                                  \
-      .default_owner = OWNER,                                                                       \
-      .has_default = true,                                                                          \
-      .default_value = VALUE },
-
 static const native_parameter_definition GLOBAL_NAME[] = {
-    GAME_ENTITY_GLOBAL_NAME_PORTS(PORT)
+    GAME_ENTITY_GLOBAL_NAME_PORTS(NATIVE_PORT)
 };
 static const native_parameter_definition GLOBAL_VALUE[] = {
-    GAME_ENTITY_GLOBAL_VALUE_PORTS(PORT)
+    GAME_ENTITY_GLOBAL_VALUE_PORTS(NATIVE_PORT)
 };
 static const native_parameter_definition SET_GLOBAL_IN[] = {
-    GAME_ENTITY_SET_GLOBAL_INPUTS(PORT)
+    GAME_ENTITY_SET_GLOBAL_INPUTS(NATIVE_PORT)
 };
 static const native_parameter_definition SET_GLOBAL_OUT[] = {
-    GAME_ENTITY_SET_GLOBAL_OUTPUTS(PORT)
+    GAME_ENTITY_SET_GLOBAL_OUTPUTS(NATIVE_PORT)
 };
-static const native_parameter_definition COMPONENT[] = { GAME_ENTITY_COMPONENT_PORTS(PORT) };
-static const native_parameter_definition FOUND[] = { GAME_ENTITY_FOUND_PORTS(PORT) };
-static const native_parameter_definition FIND_OUT[] = { GAME_ENTITY_FIND_OUTPUTS(PORT) };
-static const native_parameter_definition COUNT_IN[] = { GAME_ENTITY_COUNT_INPUTS(PORT) };
-static const native_parameter_definition COUNT_OUT[] = { GAME_ENTITY_COUNT_OUTPUTS(PORT) };
-static const native_parameter_definition NEAREST_IN[] = { GAME_ENTITY_NEAREST_INPUTS(PORT) };
+static const native_parameter_definition COMPONENT[] = {
+    GAME_ENTITY_COMPONENT_PORTS(NATIVE_PORT)
+};
+static const native_parameter_definition FOUND[] = { GAME_ENTITY_FOUND_PORTS(NATIVE_PORT) };
+static const native_parameter_definition FIND_OUT[] = { GAME_ENTITY_FIND_OUTPUTS(NATIVE_PORT) };
+static const native_parameter_definition COUNT_IN[] = { GAME_ENTITY_COUNT_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition COUNT_OUT[] = {
+    GAME_ENTITY_COUNT_OUTPUTS(NATIVE_PORT)
+};
+static const native_parameter_definition NEAREST_IN[] = {
+    GAME_ENTITY_NEAREST_INPUTS(NATIVE_PORT)
+};
 static const native_parameter_definition NEAREST_OUT[] = {
-    GAME_ENTITY_NEAREST_OUTPUTS(PORT)
+    GAME_ENTITY_NEAREST_OUTPUTS(NATIVE_PORT)
 };
-static const native_parameter_definition SPAWN_IN[] = { GAME_ENTITY_SPAWN_INPUTS(PORT) };
-static const native_parameter_definition SPAWN_OUT[] = { GAME_ENTITY_SPAWN_OUTPUTS(PORT) };
-static const native_parameter_definition TARGET[] = { GAME_ENTITY_TARGET_INPUTS(PORT) };
-static const native_parameter_definition THEN[] = { GAME_ENTITY_THEN_PORTS(PORT) };
-#undef PORT
+static const native_parameter_definition SPAWN_IN[] = { GAME_ENTITY_SPAWN_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition SPAWN_OUT[] = {
+    GAME_ENTITY_SPAWN_OUTPUTS(NATIVE_PORT)
+};
+static const native_parameter_definition TARGET[] = { GAME_ENTITY_TARGET_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition THEN[] = { GAME_ENTITY_THEN_PORTS(NATIVE_PORT) };
 
-#define COUNT(ARRAY) ((int)(sizeof ARRAY / sizeof *ARRAY))
 #define SIGNATURE(IN, OUT)                                                     \
-    .inputs = IN, .input_count = COUNT(IN), .outputs = OUT,                    \
-    .output_count = COUNT(OUT)
+    .inputs = IN, .input_count = NATIVE_COUNT(IN), .outputs = OUT,             \
+    .output_count = NATIVE_COUNT(OUT)
 static const native_capability_definition DEFINITIONS[] = {
     { .canonical_name = GAME_ENTITY_GET_GLOBAL_NAME,
       GAME_ENTITY_GET_GLOBAL_PRESENTATION,
@@ -144,8 +137,7 @@ static const native_definition_binding BINDINGS[] = {
 };
 const native_definition_pack GAME_ENTITY_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
-    .definition_count = COUNT(DEFINITIONS),
+    .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,
-    .binding_count = COUNT(BINDINGS),
+    .binding_count = NATIVE_COUNT(BINDINGS),
 };
-#undef COUNT

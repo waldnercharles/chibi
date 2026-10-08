@@ -31,7 +31,15 @@ struct declared_components
     /* The native registry followed by desc_list. */
     const ecs_component_desc **project;
 };
-static const declared_components *live;
+/* Sets alive now, oldest first; the newest one is the project's. */
+static const declared_components **alive;
+static void publish(const declared_components *c)
+{
+    type_catalog_set_project(
+        c ? &(type_catalog_pack){ .types = c->type_list, .type_count = c->count } : NULL
+    );
+    script_catalog_set_project(c ? &c->catalog : NULL);
+}
 static bool fail(char *error, size_t size, const char *name, const char *message)
 {
     if (size) {
@@ -237,16 +245,17 @@ declared_components *declared_components_new(
         }
     }
     c->catalog = (script_catalog){ .types = c->script_types, .type_count = count };
-    type_catalog_set_project(&(type_catalog_pack){ .types = c->type_list,
-                                                   .type_count = count });
-    script_catalog_set_project(&c->catalog);
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         apush(c->project, GAME_REGISTRY_COMPONENTS[i]);
     }
     for (int i = 0; i < count; i++) {
         apush(c->project, c->desc_list[i]);
     }
-    live = c;
+    if (acount(alive)) {
+        publish(NULL);
+    }
+    apush(alive, c);
+    publish(c);
     return c;
 }
 declared_components *declared_components_retain(declared_components *c)
@@ -260,10 +269,23 @@ void declared_components_free(declared_components *c)
     if (!c || --c->references) {
         return;
     }
-    if (c->catalog.types) {
-        type_catalog_set_project(NULL);
-        script_catalog_set_project(NULL);
-        live = NULL;
+    for (int i = 0; i < acount(alive); i++) {
+        if (alive[i] != c) {
+            continue;
+        }
+        bool newest = i == acount(alive) - 1;
+        if (newest) {
+            publish(NULL);
+        }
+        memmove(&alive[i], &alive[i + 1], (size_t)(acount(alive) - i - 1) * sizeof *alive);
+        asetlen(alive, acount(alive) - 1);
+        if (newest && acount(alive)) {
+            publish(alast(alive));
+        }
+        if (!acount(alive)) {
+            afree(alive);
+        }
+        break;
     }
     afree(c->project);
     free(c->types);
@@ -287,11 +309,12 @@ const script_catalog *declared_components_catalog(const declared_components *c)
 }
 ecs_component_catalog project_components()
 {
-    if (!live) {
+    if (!acount(alive)) {
         return (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS,
                                         GAME_REGISTRY_COMPONENT_COUNT };
     }
-    return (ecs_component_catalog){ live->project, acount(live->project) };
+    const declared_components *c = alast(alive);
+    return (ecs_component_catalog){ c->project, acount(c->project) };
 }
 void declared_components_wire(execution_wire *wire, declared_components **out)
 {

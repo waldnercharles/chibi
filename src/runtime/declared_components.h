@@ -21,8 +21,9 @@ typedef struct declared_components declared_components;
 
 /* Lays out each component's fields in order with natural alignment and builds
  * its type descriptor, ECS descriptor and script type. Inputs are copied.
- * While the set is alive its types are the process type catalog's project
- * pack, so only one set may exist at a time. Rows start zeroed. */
+ * The newest set alive is the loaded project's: its types are the process
+ * type and script catalogs' project slots, and freeing it restores the next
+ * newest. Rows start zeroed. */
 declared_components *declared_components_new(const declared_component *, int count, char *error, size_t size);
 declared_components *declared_components_retain(declared_components *);
 void declared_components_free(declared_components *);

@@ -695,8 +695,13 @@ TEST_CASE(native_player_reads_declared_components)
     declared_component twice[] = { component, component };
     REQUIRE(!declared_components_new(twice, 2, error, sizeof error));
     REQUIRE(strstr(error, "declared twice"));
+    declared_field level = { .name = "level", .type = "float" };
+    declared_component other = { .name = "Battery", .fields = &level, .field_count = 1 };
+    declared_components *older = declared_components_new(&other, 1, error, sizeof error);
+    REQUIRE(older && type_catalog_find("Battery"));
     declared_components *declared = declared_components_new(&component, 1, error, sizeof error);
     REQUIRE(declared);
+    REQUIRE(!type_catalog_find("Battery"));
     const type_desc *type = type_catalog_find("Charge");
     REQUIRE(type && type->size == sizeof(charge));
     REQUIRE(type->fields[1].offset == offsetof(charge, cycles));
@@ -735,7 +740,10 @@ TEST_CASE(native_player_reads_declared_components)
     game_scene_free(scene);
     scene = NULL;
     declared_components_free(declared);
-    REQUIRE(!type_catalog_find("Charge") && !script_catalog_project());
+    REQUIRE(!type_catalog_find("Charge") && type_catalog_find("Battery"));
+    REQUIRE(script_catalog_project() == declared_components_catalog(older));
+    declared_components_free(older);
+    REQUIRE(!type_catalog_find("Battery") && !script_catalog_project());
     REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT);
     game_player_host player_host_context = {
         .components = { .components = GAME_REGISTRY_COMPONENTS,

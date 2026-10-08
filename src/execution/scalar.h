@@ -91,8 +91,21 @@ static inline const char *behavior_scalar_c_type(pin_type type)
         default: assert(false); return NULL;
     }
 }
+/* The numeric casts every backend implements. Lowering builds any other
+ * conversion it needs from these and BF_CONVERT. */
+static inline bool behavior_scalar_cast_supported(pin_type from, pin_type to)
+{
+    if (to == PIN_F64) {
+        return from >= PIN_BOOL && from <= PIN_I64;
+    }
+    if (from == PIN_F32 || from == PIN_F64) {
+        return to == PIN_U8 || to == PIN_I32 || to == PIN_I64;
+    }
+    return from == PIN_I32 && (to == PIN_U32 || to == PIN_U64 || to == PIN_I64);
+}
 static inline pin_value behavior_scalar_cast(pin_value a, pin_type type)
 {
+    assert(behavior_scalar_cast_supported(a.type, type));
     pin_value out = { .type = type };
     if (a.type == PIN_I32 && (type == PIN_U32 || type == PIN_U64)) {
         if (type == PIN_U32) {

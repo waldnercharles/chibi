@@ -292,11 +292,35 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
     }
     bool float_conversion = (from.storage == PIN_F32 && to.storage == PIN_F64) ||
                             (from.storage == PIN_F64 && to.storage == PIN_F32);
+    if (float_conversion) {
+        return value_op(
+            l,
+            (behavior_function_instruction){ .op = BF_CONVERT,
+                                             .type = to.storage,
+                                             .left = slot },
+            range
+        );
+    }
+    /* Integers reach float through double, which holds every int32 exactly. */
+    if (to.storage == PIN_F32 && behavior_scalar_cast_supported(from.storage, PIN_F64)) {
+        script_type wide = { .storage = PIN_F64 };
+        return convert(l, convert(l, slot, from, wide, range), wide, to, range);
+    }
+    if (!behavior_scalar_cast_supported(slot_type(from), slot_type(to))) {
+        char message[128];
+        snprintf(
+            message,
+            sizeof message,
+            "Cannot convert %s to %s",
+            script_scalar_name(from.storage),
+            script_scalar_name(to.storage)
+        );
+        error(l, range, message);
+        return -1;
+    }
     return value_op(
         l,
-        (behavior_function_instruction){ .op = float_conversion ? BF_CONVERT : BF_CAST,
-                                         .type = slot_type(to),
-                                         .left = slot },
+        (behavior_function_instruction){ .op = BF_CAST, .type = slot_type(to), .left = slot },
         range
     );
 }

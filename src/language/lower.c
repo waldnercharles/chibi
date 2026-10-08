@@ -1051,6 +1051,23 @@ static const script_catalog_parameter *call_parameter(const script_catalog_capab
     assert(index >= 0 && cap->parameter_count > 0);
     return &cap->parameters[index < cap->parameter_count ? index : cap->parameter_count - 1];
 }
+/* A wildcard parameter takes its argument's type, except that the scalar
+ * operands of a numeric aggregate such as clamp share the call's unified type. */
+static script_type wildcard_type(
+    lower *l,
+    const script_expression *e,
+    const script_catalog_capability *cap,
+    int value
+)
+{
+    script_type type = l->a->expressions[value].type;
+    if (cap->numeric_aggregate && type.storage != PIN_STRUCT &&
+        e->type.storage != PIN_STRUCT && script_type_numeric(type) &&
+        script_type_numeric(e->type)) {
+        type.storage = e->type.storage;
+    }
+    return type;
+}
 static pin_value *argument_defaults(lower *l, const script_expression *e, const script_catalog_capability *cap)
 {
     pin_value *values = NULL;
@@ -1062,7 +1079,7 @@ static pin_value *argument_defaults(lower *l, const script_expression *e, const 
         if (wildcard) {
             for (int j = 0; j < e->argument_count; j++) {
                 if (e->arguments[j].parameter == i) {
-                    type = l->a->expressions[e->arguments[j].value].type;
+                    type = wildcard_type(l, e, cap, e->arguments[j].value);
                 }
             }
         }
@@ -1083,7 +1100,7 @@ static void command_arguments(lower *l, int first, const script_expression *e, c
         }
         script_type expected = call_parameter(cap, arg->parameter)->type;
         if (expected.storage == PIN_FLOW || (expected.flags & SCRIPT_TYPE_UNTYPED)) {
-            expected = l->a->expressions[arg->value].type;
+            expected = wildcard_type(l, e, cap, arg->value);
         }
         int value = expression(l, arg->value);
         value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);
@@ -2336,7 +2353,7 @@ static int call(lower *l, const script_expression *e)
         }
         script_type expected = call_parameter(cap, arg->parameter)->type;
         if (expected.storage == PIN_FLOW || (expected.flags & SCRIPT_TYPE_UNTYPED)) {
-            expected = l->a->expressions[arg->value].type;
+            expected = wildcard_type(l, e, cap, arg->value);
         }
         int value = expression(l, arg->value);
         value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);

@@ -2312,6 +2312,29 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     }
     return true;
 }
+TEST_CASE(program_contextual_words_name_values)
+{
+    const char *source = "behavior V { n: double = 0\n"
+                         "function Approach(value: double, from: double) -> "
+                         "(r: double) { return value - from }\n"
+                         "on Impulse(amount, enabled) { split := 1.0\n"
+                         "value := amount\n"
+                         "n = Approach(value, split) } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 5 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 4));
+    }
+    return true;
+}
 TEST_CASE(program_task_shares_boxed_locals)
 {
     const char *source = "behavior B { seen: double = 0; kept: double = 0;"
@@ -2413,6 +2436,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
+    RUN_TEST_CASE(program_contextual_words_name_values);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
     pu_clear_setup();

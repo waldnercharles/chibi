@@ -62,6 +62,8 @@ const K = Object.fromEntries(
   ].map((word) => [word, word]),
 );
 
+const CONTEXTUAL = ["value", "from", "split"];
+
 const P = {
   or: 1,
   and: 2,
@@ -86,7 +88,14 @@ module.exports = grammar({
   extras: ($) => [/\s/, $.comment],
   externals: ($) => [$._automatic_terminator],
   word: ($) => $.identifier,
-  reserved: { global: ($) => Object.values(K), member: ($) => [] },
+  // Contextual words stay usable as names wherever a name fits.
+  reserved: {
+    global: ($) =>
+      Object.entries(K)
+        .filter(([word]) => !CONTEXTUAL.includes(word))
+        .map(([, rule]) => rule),
+    member: ($) => [],
+  },
   conflicts: ($) => [
     [$._expression, $._name],
     [$.argument_list, $.parenthesized_expression],

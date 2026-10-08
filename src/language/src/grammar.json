@@ -3922,10 +3922,6 @@
       },
       {
         "type": "STRING",
-        "value": "value"
-      },
-      {
-        "type": "STRING",
         "value": "local"
       },
       {
@@ -4115,14 +4111,6 @@
       {
         "type": "STRING",
         "value": "wildcard"
-      },
-      {
-        "type": "STRING",
-        "value": "from"
-      },
-      {
-        "type": "STRING",
-        "value": "split"
       }
     ],
     "member": []

@@ -1,5 +1,12 @@
 #include "assets/prototype.h"
+#include "authoring/engine_preview.h"
+#include "authoring/native_prototype.h"
+#include "authoring/parts_prepare.h"
+#include "authoring/render_preview.h"
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
 #include "graph/shader/shader_graph.h"
@@ -12,8 +19,8 @@
 #include "render/arena_visual.h"
 #include "render/shader_catalog.h"
 #include "render/shader_images.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
 #include "runtime/particle_emitters.h"
 #include "runtime/rhythm.h"
 #include "runtime/visual_motion.h"
@@ -137,14 +144,14 @@ static void parts_and_trails()
                                 .position = { -6, 1, 8 },
                                 .material = "Fin" },
                           } };
-    char *json = render_arena_parts_write(&parts);
+    char *json = authoring_parts_write(&parts);
     assert(json);
     arena_parts copy;
     char error[128];
-    assert(render_arena_parts_parse(json, &copy, error, sizeof error));
+    assert(authoring_parts_parse(json, &copy, error, sizeof error));
     assert(copy.count == 2 && !memcmp(&parts.parts, &copy.parts, sizeof parts.parts));
     free(json);
-    assert(!render_arena_parts_parse(
+    assert(!authoring_parts_parse(
         "(array)- {\n"
         "    - {\n"
         "        primitive 0\n"
@@ -156,7 +163,7 @@ static void parts_and_trails()
         sizeof error
     ));
     assert(strstr(error, "part 1"));
-    assert(!render_arena_parts_parse(
+    assert(!authoring_parts_parse(
         "(array)- {\n"
         "    - {\n"
         "        primitive 4294967296\n"
@@ -167,8 +174,8 @@ static void parts_and_trails()
         error,
         sizeof error
     ));
-    assert(!render_arena_parts_parse("{broken", &copy, error, sizeof error));
-    assert(render_arena_parts_parse("", &copy, error, sizeof error) && copy.count == 0);
+    assert(!authoring_parts_parse("{broken", &copy, error, sizeof error));
+    assert(authoring_parts_parse("", &copy, error, sizeof error) && copy.count == 0);
 
     ecs_world *world = ecs_world_new();
     assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
@@ -348,7 +355,7 @@ static int emitter_trajectory(int hz, game_particle out[128])
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     game_live_world *live = game_live_world_new(world);
-    engine *runtime = engine_new(world, live);
+    engine *runtime = authoring_engine_new(world, live);
     ecs_entity entity = ecs_world_create_entity(world);
     GameTransform position = { 0 };
     GameVelocity velocity = { 480, 0 };
@@ -723,7 +730,7 @@ static void visual_motion_defaults()
     );
     assert(
         prototype &&
-        game_prototype_add_component(prototype, &GAME_COMPONENT_GameVisualMotion) == 0
+        game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameVisualMotion) == 0
     );
     CF_V3 velocity = { 1, 0, 0 };
     assert(
@@ -766,7 +773,7 @@ static void visual_motion_defaults()
         ) == 0
     );
     assert(game_prototype_detach_component(prototype, "GameVisualMotion") == 0);
-    assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameVisualMotion) == 0);
+    assert(game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameVisualMotion) == 0);
     pin_value value;
     assert(
         game_prototype_read_field(prototype, "GameVisualMotion", "speed", &value) == 0 &&
@@ -794,7 +801,7 @@ static void rhythm_and_defaults()
     behavior_asset *asset = behavior_asset_new("Rhythm reader");
     node *read = add(asset->graph, "Scene Rhythm");
     behavior_clock time = { .current_time = .05 };
-    behavior_instance instance = { .asset = asset, .clock = &time };
+    behavior_instance instance = { .asset = asset, .execution = { .clock = &time } };
     service_binding *services = NULL;
     apush(services, ((service_binding){ "ecs.world", world }));
     eval_context eval;
@@ -841,24 +848,24 @@ static void rhythm_and_defaults()
         sizeof error
     );
     assert(prototype);
-    assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameVisualTransform) == 0);
+    assert(game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameVisualTransform) == 0);
     assert(
         game_prototype_read_field(prototype, "GameVisualTransform", "scale", &value) == 0 &&
         value.f == 1
     );
-    assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameRhythm) == 0);
+    assert(game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameRhythm) == 0);
     assert(
         game_prototype_read_field(prototype, "GameRhythm", "bpm", &value) == 0 &&
         value.f == 120
     );
-    assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameMeshParts) == 0);
+    assert(game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameMeshParts) == 0);
     assert(
         game_prototype_read_field(prototype, "GameMeshParts", "parts", &value) == 0 &&
         !strcmp(value.str, "(array)-\n")
     );
     arena_parts parts;
-    assert(render_arena_parts_parse(value.str, &parts, error, sizeof error) && parts.count == 0);
-    assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameParticleEmitter) == 0);
+    assert(authoring_parts_parse(value.str, &parts, error, sizeof error) && parts.count == 0);
+    assert(game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameParticleEmitter) == 0);
     assert(
         game_prototype_read_field(prototype, "GameParticleEmitter", "rate", &value) == 0 &&
         value.f > 0
@@ -879,7 +886,7 @@ static void rhythm_and_defaults()
         ) == 0
     );
     assert(game_prototype_detach_component(prototype, "GameVisualTransform") == 0);
-    assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameVisualTransform) == 0);
+    assert(game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameVisualTransform) == 0);
     assert(
         game_prototype_read_field(prototype, "GameVisualTransform", "scale", &value) == 0 &&
         value.f == 2
@@ -907,7 +914,7 @@ static void annular_influence()
 
 static void authored_floor()
 {
-    FILE *file = fopen("content/materials/ArenaFloor.kdl", "rb");
+    FILE *file = fopen("test/fixtures/material-contracts/content/materials/ArenaFloor.kdl", "rb");
     assert(file && fseek(file, 0, SEEK_END) == 0);
     long size = ftell(file);
     assert(size >= 0);
@@ -1100,17 +1107,23 @@ static void draw(fixture *f, const behavior_asset *preview, float time, CF_Pixel
 {
     cf_draw3d_stats();
     cf_app_update(NULL);
-    bool ok = preview
-                ? render_arena_preview(f->renderer, preview, &f->camera, NULL, time, &(render_arena_activity){ 0 })
-                : render_arena_draw(
-                      f->renderer,
-                      f->world,
-                      f->particles,
-                      &f->camera,
-                      time,
-                      NULL,
-                      (render_skip){ 0 }
-                  );
+    bool ok = preview ? authoring_render_arena_preview(
+                            f->renderer,
+                            preview,
+                            &f->camera,
+                            NULL,
+                            time,
+                            &(render_arena_activity){ 0 }
+                        )
+                      : render_arena_draw(
+                            f->renderer,
+                            f->world,
+                            f->particles,
+                            &f->camera,
+                            time,
+                            NULL,
+                            (render_skip){ 0 }
+                        );
     if (!ok) {
         fprintf(stderr, "Surface draw: %s\n", render_arena_error(f->renderer));
     }
@@ -2150,7 +2163,7 @@ int test_surface_gpu()
     rendered_trail();
     trail_particle_crossing();
     particle_appearance();
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     puts("surface GPU PASS: sample contexts, material inputs, instance batching, transparency, images, bounded point lighting, particle appearance, preview parity and last-valid diagnostics");
     return 0;
 }

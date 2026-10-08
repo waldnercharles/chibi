@@ -6,6 +6,7 @@
 #include "render/material_raster.h"
 #include "render/shader_fragment.h"
 #include "render/shader_program.h"
+#include "render/shader_values.h"
 #include "support/xalloc.h"
 
 #include <math.h>
@@ -156,7 +157,7 @@ static render_shader_preview *preview_new(
 }
 
 render_shader_preview *render_shader_preview_new(
-    const behavior_asset *asset,
+    const char *name,
     int width,
     int height,
     const render_shader_preview_options *options,
@@ -166,15 +167,12 @@ render_shader_preview *render_shader_preview_new(
     if (error) {
         *error = (shader_error){ 0 };
     }
-    if (!asset || (asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
-                   asset->domain != BEHAVIOR_DOMAIN_SHAPE)) {
-        set_error(error, "Shader previews require a material or shape asset.");
+    int id = render_shader_find(name);
+    if (!id) {
+        set_error(error, "The shader asset was not registered.");
         return NULL;
     }
-    if (!render_shader_upsert(asset, error)) {
-        return NULL;
-    }
-    return preview_new(asset->name, asset->domain == BEHAVIOR_DOMAIN_MATERIAL, width, height, options, error);
+    return preview_new(name, !render_shader_is_shape(id), width, height, options, error);
 }
 
 render_shader_preview *render_shader_preview_find(const char *name, int width, int height, shader_error *error)
@@ -199,7 +197,9 @@ bool render_shader_preview_draw(render_shader_preview *preview, float time, cons
     preview->error[0] = 0;
     int shader = render_shader_find(preview->name);
     shader_error parameter_error = { 0 };
-    if (!render_shader_parameters_validate(shader, parameters_json, &parameter_error)) {
+    float prepared_parameters[32][4];
+    if (parameters_json && *parameters_json &&
+        !shader_values_plain(shader, parameters_json, prepared_parameters, &parameter_error)) {
         set_preview_error(preview, parameter_error.message);
         return false;
     }

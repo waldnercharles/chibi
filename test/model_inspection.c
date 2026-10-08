@@ -1,5 +1,6 @@
-#include "graph/modeling/model_inspection.h"
+#include "runtime/models/model_inspection.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/modeling/model_authoring.h"

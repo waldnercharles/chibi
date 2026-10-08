@@ -1,3 +1,5 @@
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/fullscreen.h"
@@ -5,7 +7,7 @@
 #include "render/mesh_material.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/xalloc.h"
 
 #include <assert.h>

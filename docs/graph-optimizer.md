@@ -59,28 +59,24 @@ math descriptors with literal inputs and finite results. Contextual reads,
 randomness, images, and function calls are excluded. System and shader graphs
 use aliases without gaining unsupported behavior bindings.
 
-## Automation
+## Authoring
 
-`optimize_graph` uses the same optimizer and report. It defaults to `dry_run: true`,
-accepts `graph_name` or `graph_id`, and allows `fanout_threshold` from 2 through
-64. Applying requires the current `expected_hash`. A request is bounded to 512
-nodes and 4096 edges. Apply publishes the proposal atomically after the hash check;
-no-op apply preserves the original bytes. MCP editing is outside editor Undo.
+Studio's graph menu (⋯) offers Optimize and Math to Expressions. These actions
+use editor document history. The former `optimize_graph` agent mutation request
+is retired; agents edit saved `.chibi`/KDL source and use native inspection and
+validation as described in the [asset workflow](runtime-authoring.md).
 
-`math_expressions: true` first replaces each tree of three or more math nodes with
-one expression (`behavior_expression_collapse_math`), then optimizes, so a value
-used three or more times becomes a local. A tree grows through nodes whose only
-use is a plain wire into more math, breadth first, up to about a line of formula;
-a deeper operand becomes its own expression. Computed inputs get placeholder
-letters (`a`, `b`, ...) for the author to rename; named sources keep their names.
-Output is bit-identical: Basalt drops from 298 to 90 nodes and CaveField from 51
-to 16. The report adds `created_expressions`. Studio's graph menu (⋯) offers
-Optimize and Math to Expressions.
+The optimizer report includes `folded_inputs`, `removed_nodes`,
+`created_aliases`, `changed_edges`, and `skipped` entries with node/pin IDs and
+stable reasons. Math to Expressions first collapses eligible math trees before
+optimizing; computed inputs receive placeholder letters for the author to rename.
 
-The report includes `folded_inputs`, `removed_nodes`, `created_aliases`,
-`changed_edges`, and `skipped` entries with node/pin IDs and stable reasons.
+## Historical validation
 
-## Validation
+The results and commands below describe the earlier implementation revision.
+The MCP transport and its mutation checks are retired; current checks must be
+admitted under the [60-second policy](testing.md#temporary-60-second-policy).
+
 
 Focused model and runtime regressions cover multi-consumer component fields and
 unwrapping, Variable/Delta Time/Self, unsafe group rejection, serialization and

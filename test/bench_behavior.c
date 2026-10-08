@@ -1,3 +1,6 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
 /* Release comparison of the same scalar DAG and behavior dispatch. */
 #include "bench_integer.h"
 #include "graph/compiler/behavior_program.h"
@@ -35,7 +38,7 @@ __attribute__((noinline)) static double native(double x)
 static int native_flow(node *, flow_context *ctx)
 {
     behavior_instance *instance = flow_context_instance(ctx);
-    instance->variables[0].d = native(instance->variables[0].d);
+    instance->execution.variables[0].d = native(instance->execution.variables[0].d);
     return flow_context_continue(ctx, 0);
 }
 static pin_spec exec_pin = { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC };
@@ -89,7 +92,8 @@ static void measure(behavior_asset *a, node *sink, behavior_backend backend, int
     assert(behavior_instance_set_activation_pool(instance, 1) == 0);
     eval_context ctx = { .instance = instance,
                          .runtime = runtime_store_create(a->graph) };
-    const behavior_graph_program *program = behavior_program_graph(a->program, a->graph);
+    const behavior_graph_program
+        *program = behavior_program_graph(behavior_program_cached(a), a->graph);
     arena storage = { 0 };
     node *source = NULL;
     int source_pin = -1;
@@ -102,13 +106,13 @@ static void measure(behavior_asset *a, node *sink, behavior_backend backend, int
             start = seconds();
         }
         double input = (i & 1023) * .001;
-        instance->variables[0].d = input;
+        instance->execution.variables[0].d = input;
         pin_value value;
         if (dispatch) {
             flow_error error = { 0 };
             flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, &error);
             assert(run && flow_run_status(run) == FLOW_COMPLETED);
-            value = instance->variables[0];
+            value = instance->execution.variables[0];
             assert(behavior_instance_release_activation(instance, run) == 0);
         } else {
             runtime_store_reset_memo(ctx.runtime);
@@ -172,7 +176,10 @@ static const behavior_function *whole_entry(behavior_asset *a)
     for (int i = 0; i < acount(a->graph->nodes); i++) {
         node *n = a->graph->nodes[i];
         if (n->desc == &NODE_Event) {
-            return behavior_program_function(behavior_program_graph(a->program, a->graph), n);
+            return behavior_program_function(
+                behavior_program_graph(behavior_program_cached(a), a->graph),
+                n
+            );
         }
     }
     return NULL;
@@ -269,7 +276,7 @@ static const behavior_function *arguments_entry(behavior_asset *a)
     behavior_program_publish(a);
     graph *g = a->graphs[1];
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, g),
+        behavior_program_graph(behavior_program_cached(a), g),
         graph_node_by_id(g, g->entry_id)
     );
     assert(f);
@@ -372,7 +379,7 @@ static const behavior_function *pure_entry(behavior_asset *a)
     behavior_program_publish(a);
     graph *g = a->graphs[2];
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, g),
+        behavior_program_graph(behavior_program_cached(a), g),
         graph_node_by_id(g, g->entry_id)
     );
     assert(f);
@@ -457,7 +464,7 @@ static void measure_pure(behavior_backend backend, int count)
     behavior_instance_set_trace_enabled(instance, 0);
     eval_context ctx = { .instance = instance,
                          .runtime = runtime_store_create(a->graph) };
-    const behavior_graph_program *p = behavior_program_graph(a->program, a->graph);
+    const behavior_graph_program *p = behavior_program_graph(behavior_program_cached(a), a->graph);
     arena storage = { 0 };
     double start = 0, checksum = 0, expected = 0;
     uint64_t allocations = 0, oracle = eval_oracle_calls();
@@ -467,7 +474,7 @@ static void measure_pure(behavior_backend backend, int count)
             allocations = runtime_store_creations();
         }
         double x = (i & 1023) * .001;
-        instance->variables[0].d = x;
+        instance->execution.variables[0].d = x;
         runtime_store_reset_memo(ctx.runtime);
         pin_value value;
         int result = backend == BEHAVIOR_ORACLE
@@ -585,6 +592,7 @@ void compare_aggregate_c(void *library, int count, int rotation);
 
 int main(int argc, char **argv)
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     setvbuf(stdout, NULL, _IOLBF, 0);
     bool export_c = argc > 1 && !strcmp(argv[1], "--emit-c");
     int count = !export_c && argc > 1 ? atoi(argv[1]) : 1000000;
@@ -594,7 +602,7 @@ int main(int argc, char **argv)
     double publication = seconds();
     behavior_program_publish(asset);
     printf("publication_ms=%.3f\n", (seconds() - publication) * 1000);
-    assert(behavior_program_backend(asset->program) == BEHAVIOR_SLJIT);
+    assert(behavior_program_backend(behavior_program_cached(asset)) == BEHAVIOR_SLJIT);
     node *event = asset->graph->nodes[0];
     for (int i = 0; i < acount(asset->graph->nodes); i++) {
         if (asset->graph->nodes[i]->desc == &NODE_Event) {
@@ -602,7 +610,7 @@ int main(int argc, char **argv)
         }
     }
     const behavior_function *function = behavior_program_function(
-        behavior_program_graph(asset->program, asset->graph),
+        behavior_program_graph(behavior_program_cached(asset), asset->graph),
         event
     );
     assert(function && behavior_function_entry(function));

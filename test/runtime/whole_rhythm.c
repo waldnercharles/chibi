@@ -112,14 +112,15 @@ static void parity(bool waits, int scenario, int control, int budget, void *libr
     graph *apply = a->graphs[2];
     assert(!graph_set_breakpoint(apply, apply->nodes[1], control == 3));
     behavior_function *f = entry(a);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     test_flow_snapshot *expected = NULL;
     for (int mode = 0; mode < (library ? 4 : 3); mode++) {
         if (mode == 3) {
-            f->code = dlsym(library, waits ? "generated_rhythm_wait" : "generated_rhythm");
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, waits ? "generated_rhythm_wait" : "generated_rhythm");
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         ecs_entity clock = { 0 };
         ecs_world *world = new_world(scenario, &clock);
@@ -159,8 +160,8 @@ static void parity(bool waits, int scenario, int control, int budget, void *libr
             if (status == FLOW_COMPLETED || status == FLOW_FAILED) {
                 if (scenario == VALID && budget == 100) {
                     assert(
-                        status == FLOW_COMPLETED &&
-                        bi->variables[0].d == .125 && bi->variables[1].d == .25
+                        status == FLOW_COMPLETED && bi->execution.variables[0].d == .125 &&
+                        bi->execution.variables[1].d == .25
                     );
                 }
                 break;
@@ -194,9 +195,9 @@ static void parity(bool waits, int scenario, int control, int budget, void *libr
         test_flow_snapshot_free(&expected[i]);
     }
     afree(expected);
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 static void prepared_clocks()
@@ -216,13 +217,10 @@ static void prepared_clocks()
         behavior_instance_set_trace_enabled(bi, false);
         assert(!behavior_instance_bind_service(bi, "ecs.world", world));
         bi->local_clock.current_time = .125 + .5 * i;
-        behavior_update_binding
+        execution_update_binding
             *binding = behavior_update_prepare(&bindings, bi, f, a->graph->nodes[0]);
         assert(binding);
-        rows[i] = (behavior_update_row){ .instance = bi,
-                                         .binding = binding,
-                                         .services_revision = bi->services_revision,
-                                         .entity = self.u64 };
+        rows[i] = behavior_update_row_make(bi, binding, self.u64, 0);
     }
     assert(acount(bindings) == 1);
     behavior_update_refresh(bindings);
@@ -235,11 +233,11 @@ static void prepared_clocks()
         !result
     );
     assert(
-        rows[0].instance->variables[0].d == .125 &&
-        rows[1].instance->variables[0].d == .625
+        behavior_update_instance(&rows[0])->execution.variables[0].d == .125 &&
+        behavior_update_instance(&rows[1])->execution.variables[0].d == .625
     );
     for (int i = 0; i < 2; i++) {
-        behavior_instance_destroy(rows[i].instance);
+        behavior_instance_destroy(behavior_update_instance(&rows[i]));
     }
     behavior_update_free_code(code);
     behavior_update_free_bindings(bindings);
@@ -388,15 +386,16 @@ int bench_rhythm(const char *path, int count, int rotation)
                 vm == behavior_function_vm_allocations()
             );
             assert(
-                bi->variables[0].d == .125 && bi->variables[1].d == .25 &&
-                bi->variables[2].d == 1 && bi->variables[3].d == .25
+                bi->execution.variables[0].d == .125 &&
+                bi->execution.variables[1].d == .25 &&
+                bi->execution.variables[2].d == 1 && bi->execution.variables[3].d == .25
             );
             printf(
                 "%s rhythm_%s ns=%.3f checksum=%.3f\n",
                 (const char *[]){ "SLJIT", "BYTECODE", "GENERATED_C" }[mode],
                 bound ? "bound" : "lookup",
                 elapsed * 1e9 / count,
-                bi->variables[1].d
+                bi->execution.variables[1].d
             );
             behavior_function_activation_free(&activation);
             behavior_instance_destroy(bi);

@@ -1,3 +1,4 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/runtime/runtime.h"
 #include "test/suite_internal.h"
 

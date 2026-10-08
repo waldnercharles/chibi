@@ -222,6 +222,7 @@ void material_obstacle_index_build(
 )
 {
     assert(index && body_count >= 0 && count >= 0 && isfinite(size) && size > 0);
+    (void)body_count;
     index->bodies = bodies;
     index->obstacles = obstacles;
     index->count = count;
@@ -232,6 +233,7 @@ void material_obstacle_index_build(
     size_t references = 0;
     for (int i = 0; i < count; i++) {
         assert(obstacles[i].body >= 0 && obstacles[i].body < body_count);
+        (void)body_count;
         index->bounds[i] = tight_bounds(&bodies[obstacles[i].body], obstacles[i]);
         int cells[4];
         if (cell_range(index->bounds[i], size, OBSTACLE_CELL_LIMIT, cells)) {

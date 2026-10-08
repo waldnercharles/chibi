@@ -1,5 +1,6 @@
 #include "graph/authoring/find.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "graph/nodes/behavior_expression.h"
 #include "test/suite_internal.h"
 

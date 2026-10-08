@@ -1,8 +1,8 @@
 /* A scene's page in the reference index: the scene's own ui:, or the
  * project's default, and what rename makes of each. */
 #include "assets/refactor.h"
-#include "assets/reference_index.h"
-#include "runtime/generated.h"
+#include "authoring/reference_index.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "test/suite_internal.h"
 

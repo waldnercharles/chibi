@@ -1,12 +1,11 @@
 #include "assets/scene_document.h"
 
 #include "assets/physics_settings.h"
-#include "graph/model/registry.h"
-#include "runtime/generated.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
+#include "types/catalog.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -286,18 +285,6 @@ int game_scene_document_set_entity_retained(game_scene_document *document, int i
     return set_object_value(&document->entities[index].retained, value);
 }
 
-static const type_desc *component_type(const char *key)
-{
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
-        if ((component->key && !strcmp(component->key, key)) ||
-            !strcmp(component->name, key)) {
-            return component->type;
-        }
-    }
-    return NULL;
-}
-
 static bool enum_integer(av_value *value, int *out)
 {
     if (av_is_sint(value)) {
@@ -325,7 +312,7 @@ static void format_fields(av_doc *doc, av_value *object, const type_desc *type)
         const type_field *field = &type->fields[i];
         av_value *value = av_obj_get(object, field->name);
         if (field->type == PIN_STRUCT && av_is_obj(value)) {
-            format_fields(doc, value, registry_type_by_name(field->type_name));
+            format_fields(doc, value, type_catalog_find(field->type_name));
             continue;
         }
         if (field->type == PIN_F32 && av_is_num(value)) {
@@ -338,7 +325,7 @@ static void format_fields(av_doc *doc, av_value *object, const type_desc *type)
         }
         int enum_value;
         const char *label = field->type == PIN_ENUM && enum_integer(value, &enum_value)
-                              ? registry_enum_label(field->type_name, enum_value)
+                              ? type_catalog_enum_label(field->type_name, enum_value)
                               : NULL;
         if (label) {
             av_obj_set(doc, object, field->name, av_str(doc, label));
@@ -348,7 +335,7 @@ static void format_fields(av_doc *doc, av_value *object, const type_desc *type)
 
 /* Format only known reflected fields; unknown overrides remain available for
  * validation. The runtime loads float fields at their declared precision. */
-static av_value *components_value(av_doc *doc, av_value *components)
+static av_value *components_value(av_doc *doc, av_value *components, ecs_component_catalog catalog)
 {
     av_value *copy = av_clone(doc, components);
     size_t i, count;
@@ -356,13 +343,15 @@ static av_value *components_value(av_doc *doc, av_value *components)
     av_obj_foreach(copy, i, count, key, value)
     {
         if (av_is_obj(value)) {
-            format_fields(doc, value, component_type(av_get_str(key)));
+            const ecs_component_desc
+                *component = ecs_component_catalog_find(catalog, av_get_str(key));
+            format_fields(doc, value, component ? component->type : NULL);
         }
     }
     return copy;
 }
 
-av_value *game_scene_document_to_value(const game_scene_document *document)
+av_value *game_scene_document_to_value(const game_scene_document *document, ecs_component_catalog components)
 {
     av_doc *json = av_doc_new();
     av_value *root = av_obj(json);
@@ -390,7 +379,7 @@ av_value *game_scene_document_to_value(const game_scene_document *document)
                 json,
                 value,
                 "components",
-                components_value(json, entity->components)
+                components_value(json, entity->components, components)
             );
         }
         if (av_obj_size(entity->retained)) {
@@ -398,7 +387,7 @@ av_value *game_scene_document_to_value(const game_scene_document *document)
                 json,
                 value,
                 "retained_components",
-                components_value(json, entity->retained)
+                components_value(json, entity->retained, components)
             );
         }
         if (acount(entity->behaviors)) {
@@ -415,9 +404,9 @@ av_value *game_scene_document_to_value(const game_scene_document *document)
     return result;
 }
 
-char *game_scene_document_save(const game_scene_document *document)
+char *game_scene_document_save(const game_scene_document *document, ecs_component_catalog components)
 {
-    av_value *value = game_scene_document_to_value(document);
+    av_value *value = game_scene_document_to_value(document, components);
     char *text = asset_text_write(value);
     av_value_free(value);
     return text;

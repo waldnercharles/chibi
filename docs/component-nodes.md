@@ -49,7 +49,7 @@ Field setters are chained in field order:
 A Set with one field is exactly the old field setter. With several fields, the setters after the first have new node IDs. Breakpoints and incoming wires map to the first setter, and outputs belong to the last. Watches find a pin by its ID when its node moved, so a multi-field Set's output watches still show.
 
 Lowering runs where authored assets become runnable:
-- At the end of `behavior_asset_link_libraries`. Game loads, scene apply and preview, MCP previews and the editor's compile command all go through it.
+- At the end of `behavior_asset_link_libraries`. Game loads, scene apply, native previews and the editor's compile command all go through it.
 - In editor dispatch previews, on the preview copy.
 - In `eval_view`, which links an asset that holds component nodes. The graph's event status icons read the program `eval_view_graph` returns.
 
@@ -65,7 +65,7 @@ A library accepts a component node when it accepts the node it lowers to. Get, S
 ## Existing assets: rendered, not migrated
 
 Old graphs keep their generated nodes, and the editor presents them in the new vocabulary. Loading doesn't migrate them. The reasons:
-- A generated node is exactly what the corresponding component node lowers to, so it's valid and runs unchanged. Migrating on load would have pushed every loaded asset, test fixture and MCP-built graph through lowering for no runtime difference.
+- A generated node is exactly what the corresponding component node lowers to, so it's valid and runs unchanged. Migrating on load would have pushed every loaded asset, test fixture and authored graph through lowering for no runtime difference.
 - Migration would have rewritten 53 assets and every test that builds a generated node.
 - The presentation is shared. `ed_node_title` names both forms `Get Transform`, `Set Velocity` or `Has Health`. A generated field setter labels its Value and Target pins with the field name and `Entity`, which is how Set Component shows a field.
 - Search only creates component nodes, and so does "Convert to getter" on a binding: Get Component showing that field, instead of `Get_<C>` plus `Break_<C>`.
@@ -121,7 +121,7 @@ Loading prepares a component node from its key and field names before it applies
 - Set for each settable field, such as `Set Velocity X`.
 - Make and Break for each reflected struct, such as `Make Transform`.
 
-A preset spawns the component node already configured. Its `ed_search_match.setting` and `.field` carry the preset, and wire compatibility uses the configured pin types. `component_node_presets` lists them for the editor and for MCP `searchNodes`, which returns each as `add_node`'s `type` and `inputs`.
+A preset spawns the component node already configured. Its `ed_search_match.setting` and `.field` carry the preset, and wire compatibility uses the configured pin types. `component_node_presets` lists them for the editor and native `search_nodes` inspection, which reports their reflected types and configured inputs.
 
 Browsing the catalog of a behavior graph owned by an entity, measured by `test_suite --editor-graph`:
 
@@ -141,10 +141,9 @@ This is the test registry, which adds a few test-only nodes to the application's
   - It renders component nodes through `ed_search_matches`, `ed_spawn_match_at`, `ed_node_title` and the graph model.
   - Its Properties panel can offer the Component or Type setting through `ed_pin_choices`. The choices are a name catalog, so the selected item compares `editor_choice.name` with the pin's string, and the choice commits with `graph_set_pin_default`.
   - Write toggles call `component_node_show_field` and `component_node_split_value`.
-- **MCP:**
-  - `add_node` with `type: "Get Component"` and `inputs: {"Component": "GameHealth"}` configures a node; Make and Break Struct take `inputs: {"Type": "GameTransform"}`.
-  - Naming a settable field as a Set Component input, in `inputs` or `connect`, shows that field, and `remove_pin` on a field input hides it.
-  - `split_pin` and `recombine_pin` switch between the fields and Value.
-  - Other pin edits (`add_pin`, `set_pin`, `remove_pin` on fixed pins) are refused, because the setting determines the pins.
+- **Saved source:** edit component access in `.chibi` behavior/system source,
+  or declarative KDL where the asset uses a graph. Format and validate the saved
+  asset through the [native controller](runtime-authoring.md). The former MCP
+  `add_node`, `split_pin`, and `remove_pin` transport is retired.
 
 Inline vector constructors in the editor still create `Make_CF_V2` and its relatives directly, as does Behavior Expression lowering; both render like Make Struct.

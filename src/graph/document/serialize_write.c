@@ -1,12 +1,14 @@
-#include "assets/code_source.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/state_nodes.h"
-#include "graph/runtime/value_array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
+#include "types/array.h"
+#include "types/value_document.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -192,7 +194,7 @@ static void write_pin_fields(av_doc *doc, av_value *o, const graph *g, const pin
                           ? serialize_zero_value(p->type, p->container, p->type_name)
                           : graph_pin_initial_default(base);
     if (!serialize_same_value(&p->default_value, &initial)) {
-        serialize_write_value(doc, o, "default", p->type, p->type_name, &p->default_value);
+        pin_value_write_document(doc, o, "default", p->type, p->type_name, &p->default_value);
         if (p->type == PIN_U32 && p->container == PIN_CONTAINER_SINGLE &&
             (p->flags & PIN_FLAG_COLOR)) {
             av_obj_set(doc, o, "default", av_color(doc, p->default_value.u));
@@ -715,7 +717,7 @@ static void write_variable(av_doc *doc, av_value *arr, const behavior_variable *
     /* Matches the zero default a variable receives when none is serialized. */
     pin_value zero = serialize_zero_value(v->type, v->container, v->type_name);
     if (!serialize_same_value(&v->default_value, &zero)) {
-        serialize_write_value(doc, o, "default", v->type, v->type_name, &v->default_value);
+        pin_value_write_document(doc, o, "default", v->type, v->type_name, &v->default_value);
     }
     av_arr_append(arr, o);
 }
@@ -971,7 +973,8 @@ char *behavior_asset_save(const behavior_asset *asset)
 {
     if (asset->domain == BEHAVIOR_DOMAIN_EVENT ||
         asset->domain == BEHAVIOR_DOMAIN_LIBRARY) {
-        return code_source_format(asset);
+        serialize_error_set("Executable source is saved through the canonical source document");
+        return NULL;
     }
     av_doc *doc = av_doc_new();
     av_value *value = behavior_asset_to_disk_value(doc, asset);

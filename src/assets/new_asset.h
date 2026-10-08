@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 /* An empty asset of each kind a project's content holds, the form
- * Studio's New menu and the MCP's create requests start from. Each is built
+ * Studio's New menu starts from. Each is built
  * as its in-memory model and written by that model's serializer. */
 typedef enum
 {
@@ -27,7 +27,7 @@ typedef enum
 
 /* The folder under the content directory that holds the kind's files. */
 const char *new_asset_folder(new_asset_kind kind);
-/* Executable definitions use .code; declarative documents use .kdl. */
+/* Executable definitions use .chibi; declarative documents use .kdl. */
 const char *new_asset_extension(new_asset_kind kind);
 /* Whether `name` can name a new asset's file: a letter, then letters,
  * digits, - and _; false with why in `error`. */

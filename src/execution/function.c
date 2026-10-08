@@ -1,0 +1,594 @@
+#include "execution/definition.h"
+#include "execution/service.h"
+#include "support/array.h"
+#include "support/xalloc.h"
+#include "types/catalog.h"
+
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+
+void behavior_jit_free(void *code);
+
+bool behavior_function_static_name(const char **name)
+{
+    if (!*name) {
+        return true;
+    }
+    const type_desc *type = type_catalog_find(*name);
+    if (type) {
+        *name = type->name;
+        return true;
+    }
+    static const char *const names[] = {
+        "bool",  "byte",           "char",      "unsigned char",
+        "short", "unsigned short", "int",       "unsigned int",
+        "int64", "int64_t",        "uint64",    "uint64_t",
+        "float", "double",         "ecs.entity"
+    };
+    for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
+        if (!strcmp(*name, names[i])) {
+            *name = names[i];
+            return true;
+        }
+    }
+    return false;
+}
+static const char *own_string(arena *a, const char *text)
+{
+    if (!text) {
+        return NULL;
+    }
+    size_t size = strlen(text) + 1;
+    char *copy = arena_alloc(a, size);
+    memcpy(copy, text, size);
+    return copy;
+}
+static void own_value(arena *a, pin_value *value)
+{
+    pin_value copy;
+    int result = pin_value_snapshot_to_arena(a, &copy, value);
+    assert(result == 0);
+    (void)result;
+    behavior_function_static_name(&copy.type_name);
+    *value = copy;
+}
+static void own_instructions(arena *a, behavior_function_instruction *instructions)
+{
+    for (int i = 0; i < acount(instructions); i++) {
+        behavior_function_instruction *op = &instructions[i];
+        op->message = own_string(a, op->message);
+        /* Header selectors carry a type discriminator and its name in value,
+         * rather than a struct instance. Aggregate locals retain that metadata. */
+        if (op->op == BF_TYPE_NAME ||
+            (op->op == BF_LOCAL && op->type == BF_POINTER_TYPE &&
+             op->value.type == PIN_STRUCT && !op->value.type_name)) {
+            if (!behavior_function_static_name(&op->value.str)) {
+                op->value.str = own_string(a, op->value.str);
+            }
+        } else if (op->value.type != PIN_FLOW) {
+            own_value(a, &op->value);
+        }
+    }
+}
+static node_access *own_access(arena *a, const node_access *source)
+{
+    if (!source) {
+        return NULL;
+    }
+    node_access *copy = arena_alloc(a, sizeof *copy);
+    *copy = *source;
+    uint64_t *reads = arena_alloc(a, (size_t)source->read_count * sizeof *reads);
+    uint64_t *writes = arena_alloc(a, (size_t)source->write_count * sizeof *writes);
+    if (source->read_count) {
+        memcpy(reads, source->reads, (size_t)source->read_count * sizeof *reads);
+    }
+    if (source->write_count) {
+        memcpy(writes, source->writes, (size_t)source->write_count * sizeof *writes);
+    }
+    copy->reads = reads;
+    copy->writes = writes;
+    if (source->read_refs) {
+        int count = 0;
+        while (source->read_refs[count]) {
+            count++;
+        }
+        const uint64_t **refs = arena_alloc(a, (size_t)(count + 1) * sizeof *refs);
+        uint64_t *ids = arena_alloc(a, (size_t)count * sizeof *ids);
+        for (int i = 0; i < count; i++) {
+            ids[i] = *source->read_refs[i];
+            refs[i] = &ids[i];
+        }
+        refs[count] = NULL;
+        copy->read_refs = refs;
+    }
+    return copy;
+}
+void behavior_function_own(behavior_function *f)
+{
+    if (f->frozen) {
+        return;
+    }
+    arena *a = &f->owned;
+    for (int i = 0; i < acount(f->argument_defaults); i++) {
+        own_value(a, &f->argument_defaults[i]);
+    }
+    for (int i = 0; i < acount(f->result_defaults); i++) {
+        own_value(a, &f->result_defaults[i]);
+    }
+    for (int i = 0; i < acount(f->variable_defaults); i++) {
+        own_value(a, &f->variable_defaults[i]);
+    }
+    own_instructions(a, f->instructions);
+    own_instructions(a, f->runtime_instructions);
+    own_instructions(a, f->runtime_body);
+    for (int i = 0; i < acount(f->locals); i++) {
+        behavior_function_local *local = &f->locals[i];
+        if (local->offset == SIZE_MAX - 1) {
+            local->initial.str = own_string(a, local->initial.str);
+        } else {
+            own_value(a, &local->initial);
+        }
+    }
+    for (int i = 0; i < acount(f->parameters); i++) {
+        own_value(a, &f->parameters[i].initial);
+    }
+    for (int i = 0; i < acount(f->frames); i++) {
+        f->frames[i].source.asset_name = own_string(a, f->frames[i].source.asset_name);
+    }
+    for (int i = 0; i < acount(f->sources); i++) {
+        f->sources[i].asset_name = own_string(a, f->sources[i].asset_name);
+    }
+    for (int i = 0; i < acount(f->stacks); i++) {
+        f->stacks[i].asset_name = own_string(a, f->stacks[i].asset_name);
+    }
+    for (int i = 0; i < acount(f->watches); i++) {
+        own_value(a, &f->watches[i].initial);
+    }
+    for (int i = 0; i < acount(f->source_watches); i++) {
+        own_value(a, &f->source_watches[i].initial);
+    }
+    for (int i = 0; i < acount(f->data_values); i++) {
+        own_value(a, &f->data_values[i].initial);
+    }
+    for (int i = 0; i < acount(f->command_arguments); i++) {
+        own_value(a, &f->command_arguments[i]);
+    }
+    for (int i = 0; i < acount(f->command_results); i++) {
+        own_value(a, &f->command_results[i]);
+    }
+    for (int i = 0; i < acount(f->queries); i++) {
+        f->queries[i].service = own_string(a, f->queries[i].service);
+        f->queries[i].key = own_string(a, f->queries[i].key);
+    }
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        behavior_function_host_call *host = &f->host_calls[i];
+        node_host_call *copy = arena_alloc(a, sizeof *copy);
+        *copy = *host->call;
+        copy->service = own_string(a, copy->service);
+        copy->missing_service = own_string(a, copy->missing_service);
+        host->call = copy;
+        host->access = own_access(a, host->access);
+        if (host->outcome_count) {
+            uint64_t *ids = arena_alloc(a, (size_t)host->outcome_count * sizeof *ids);
+            memcpy(ids, host->outcomes, (size_t)host->outcome_count * sizeof *ids);
+            host->outcomes = ids;
+        }
+    }
+    for (int i = 0; i < acount(f->commands); i++) {
+        behavior_function_command *command = &f->commands[i];
+        node_command *copy = arena_alloc(a, sizeof *copy);
+        *copy = *command->command;
+        copy->service = own_string(a, copy->service);
+        copy->missing_service = own_string(a, copy->missing_service);
+        copy->missing_reference = own_string(a, copy->missing_reference);
+        copy->failure_message = own_string(a, copy->failure_message);
+        command->command = copy;
+        command->reference = own_string(a, command->reference);
+        if (command->result_pins) {
+            int *pins = arena_alloc(a, (size_t)command->result_count * sizeof *pins);
+            memcpy(pins, command->result_pins, (size_t)command->result_count * sizeof *pins);
+            command->result_pins = pins;
+        }
+    }
+    for (int i = 0; i < acount(f->definitions); i++) {
+        behavior_function_own(f->definitions[i]);
+    }
+    if (f->fast) {
+        behavior_function_own(f->fast);
+    }
+    f->frozen = true;
+}
+
+static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)
+{
+    for (int i = 0; i < count; i++) {
+        for (int j = 0; j < acount(f->component_writes); j++) {
+            if (f->component_writes[j] == components[i]) {
+                return false;
+            }
+        }
+    }
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        const node_access *a = f->host_calls[i].access;
+        if (!a || (a->flags & NODE_EFFECT_STRUCTURAL)) {
+            return false;
+        }
+        for (int j = 0; j < a->write_count; j++) {
+            for (int k = 0; k < count; k++) {
+                if (a->writes[j] == components[k]) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+bool behavior_function_preserves_components(const behavior_function *f, const uint64_t *components, int count)
+{
+    if (!f || !f->batchable) {
+        return false;
+    }
+    for (int i = 0; i < acount(f->component_proofs); i++) {
+        const behavior_component_proof *proof = &f->component_proofs[i];
+        if (acount(proof->components) != count) {
+            continue;
+        }
+        bool same = true;
+        for (int j = 0; j < count; j++) {
+            if (proof->components[j] != components[j]) {
+                same = false;
+                break;
+            }
+        }
+        if (same) {
+            return proof->result;
+        }
+    }
+    /* Published functions are immutable. Keep the proof cache mutable so
+     * repeated query-scope checks do not rescan a function generation. */
+    behavior_component_proof proof = {
+        .result = preserves_components_uncached(f, components, count)
+    };
+    for (int i = 0; i < count; i++) {
+        apush(proof.components, components[i]);
+    }
+    apush(((behavior_function *)f)->component_proofs, proof);
+    return proof.result;
+}
+bool behavior_function_batchable(const behavior_function *f)
+{
+    return f && f->batchable;
+}
+bool behavior_function_uses_storage(const behavior_function *f)
+{
+    return f->uses_storage;
+}
+void behavior_function_compile_wasm_regions(behavior_function *function)
+{
+    if (!function) {
+        return;
+    }
+    const behavior_function_instruction *source = function->runtime_instructions
+                                                    ? function->runtime_instructions
+                                                    : function->instructions;
+    int instruction_count = acount(source);
+    behavior_expression_wasm_instruction
+        *instructions = xcalloc((size_t)instruction_count, sizeof *instructions);
+    for (int pc = 0; pc < instruction_count; pc++) {
+        const behavior_function_instruction *instruction = &source[pc];
+        behavior_expression_wasm_op op = BEHAVIOR_WASM_NONE;
+        if (instruction->type == PIN_F32 || instruction->type == PIN_F64) {
+            switch (instruction->op) {
+                case BF_ADD: op = BEHAVIOR_WASM_ADD; break;
+                case BF_SUB: op = BEHAVIOR_WASM_SUB; break;
+                case BF_MUL: op = BEHAVIOR_WASM_MUL; break;
+                case BF_DIV: op = BEHAVIOR_WASM_DIV; break;
+                default: break;
+            }
+        }
+        instructions[pc] = (behavior_expression_wasm_instruction){
+            .op = op,
+            .type = instruction->type,
+            .output = instruction->output,
+            .left = instruction->left,
+            .right = instruction->right,
+            .third = instruction->target,
+            .left_slot = instruction->left_slot,
+            .right_slot = instruction->right_slot,
+            .third_slot = behavior_function_third_slot(instruction->op),
+            .control_target = instruction->target,
+            .control_transfer = instruction->op == BF_BRANCH || instruction->op == BF_JUMP,
+        };
+    }
+    int region_count = 0;
+    function->artifact->wasm = behavior_expression_wasm_compile_linear(
+        instructions,
+        instruction_count,
+        acount(function->slots),
+        function->slots,
+        &function->artifact->wasm_regions,
+        &region_count
+    );
+    assert(region_count == acount(function->artifact->wasm_regions));
+    free(instructions);
+}
+
+behavior_value_kind behavior_function_kind(const behavior_function *f, behavior_value_bank bank, int index)
+{
+    assert(index >= 0);
+    const behavior_value_kind *values = NULL;
+    switch (bank) {
+        case BEHAVIOR_BANK_SLOT: values = f->slot_kinds; break;
+        case BEHAVIOR_BANK_ARGUMENT: values = f->argument_kinds; break;
+        case BEHAVIOR_BANK_RESULT: values = f->result_kinds; break;
+        case BEHAVIOR_BANK_COMMAND_ARGUMENT:
+            values = f->command_argument_kinds;
+            break;
+        case BEHAVIOR_BANK_COMMAND_RESULT:
+            values = f->command_result_kinds;
+            break;
+        case BEHAVIOR_BANK_LOCAL:
+            assert(index < acount(f->locals));
+            return f->locals[index].kind;
+        case BEHAVIOR_BANK_DATA:
+            assert(index < acount(f->data_values));
+            return f->data_values[index].kind;
+        default: assert(false);
+    }
+    assert(index < acount(values));
+    return values[index];
+}
+bool behavior_function_observed(const behavior_function *function)
+{
+    return function->edges || function->watches || function->source_watches;
+}
+
+bool behavior_function_has_invocations(const behavior_function *function)
+{
+    return function->calls != NULL;
+}
+void behavior_function_free(behavior_function *f)
+{
+    if (!f) {
+        return;
+    }
+    for (int i = 0; i < acount(f->definitions); i++) {
+        behavior_function_free(f->definitions[i]);
+    }
+    afree(f->definitions);
+    afree(f->reductions);
+    afree(f->query_diagnostics);
+    execution_artifact_free(f->artifact);
+    afree(f->points);
+    afree(f->watches);
+    afree(f->source_points);
+    afree(f->source_watches);
+    afree(f->edges);
+    behavior_function_free(f->fast);
+    for (int i = 0; i < acount(f->suspensions); i++) {
+        afree(f->suspensions[i].values);
+    }
+    afree(f->suspensions);
+    afree(f->instructions);
+    afree(f->runtime_instructions);
+    afree(f->runtime_body);
+    free(f->runtime_map);
+    afree(f->slots);
+    afree(f->slot_kinds);
+    afree(f->argument_kinds);
+    afree(f->result_kinds);
+    afree(f->command_argument_kinds);
+    afree(f->command_result_kinds);
+    afree(f->locals);
+    afree(f->parameters);
+    afree(f->argument_defaults);
+    afree(f->result_defaults);
+    afree(f->variable_defaults);
+    afree(f->frames);
+    afree(f->sources);
+    afree(f->stacks);
+    afree(f->results);
+    afree(f->queries);
+    afree(f->host_calls);
+    afree(f->state_selections);
+    afree(f->calls);
+    afree(f->component_writes);
+    for (int i = 0; i < acount(f->component_proofs); i++) {
+        afree(f->component_proofs[i].components);
+    }
+    afree(f->component_proofs);
+    afree(f->parallel_reads);
+    afree(f->components);
+    afree(f->data_values);
+    afree(f->commands);
+    afree(f->command_arguments);
+    afree(f->command_results);
+    arena_free(&f->owned);
+    free(f);
+}
+bool behavior_function_compile_system(behavior_function *f)
+{
+    assert(f && f->batchable && f->artifact->code && !f->artifact->system_code);
+    f->artifact->system_code = behavior_function_jit_system(f);
+    return f->artifact->system_code != NULL;
+}
+void *behavior_function_system_entry(const behavior_function *f)
+{
+    return f->artifact->system_code;
+}
+static bool compile_artifact(behavior_function *f)
+{
+    for (int i = 0; i < acount(f->definitions); i++) {
+        if (!behavior_function_compile(f->definitions[i])) {
+            return false;
+        }
+    }
+    if (acount(f->suspensions)) {
+        assert(!f->artifact->resume_addresses);
+        f->artifact->resume_addresses = xcalloc(
+            (size_t)acount(f->instructions),
+            sizeof *f->artifact->resume_addresses
+        );
+    }
+    f->artifact->code = behavior_function_jit(f, false);
+    if (f->artifact->code && (acount(f->points) || acount(f->source_points))) {
+        f->artifact->inspection_addresses = xcalloc(
+            (size_t)acount(f->instructions),
+            sizeof *f->artifact->inspection_addresses
+        );
+        f->artifact->inspection_code = behavior_function_jit(f, true);
+        if (!f->artifact->inspection_code) {
+            return false;
+        }
+    }
+    if (!f->artifact->code || !f->fast) {
+        return f->artifact->code != NULL;
+    }
+    if (!behavior_function_compile(f->fast)) {
+        return false;
+    }
+    f->artifact->dispatch = behavior_function_guard(f);
+    return f->artifact->dispatch != NULL;
+}
+bool behavior_function_compile(behavior_function *f)
+{
+    if (f->artifact->compilation_attempted) {
+        return f->artifact->compiled;
+    }
+    f->artifact->compilation_attempted = true;
+    f->artifact->compiled = compile_artifact(f);
+    return f->artifact->compiled;
+}
+void *behavior_function_entry(const behavior_function *f)
+{
+    return f ? (f->artifact->dispatch ? f->artifact->dispatch : f->artifact->code)
+             : NULL;
+}
+bool behavior_function_pure_depth(const behavior_function *f, unsigned depth)
+{
+    return !f->pure_depth_limit || depth < f->pure_depth_limit;
+}
+int behavior_function_source_count(const behavior_function *f)
+{
+    return acount(f->sources);
+}
+pin_type behavior_function_slot_type(const behavior_function *f, int slot)
+{
+    assert(f && slot >= 0 && slot < acount(f->slots));
+    return f->slots[slot];
+}
+const behavior_function_source *behavior_function_instruction_source(const behavior_function *f, int pc)
+{
+    assert(f);
+    if (pc < 0 || pc >= acount(f->instructions)) {
+        return NULL;
+    }
+    int source = f->instructions[pc].source;
+    return source >= 0 && source < acount(f->sources) ? &f->sources[source] : NULL;
+}
+const behavior_function_source *behavior_function_source_at(const behavior_function *f, int source)
+{
+    return &f->sources[source];
+}
+
+static const char *copy_string(void *storage, const char *text)
+{
+    if (!text) {
+        return NULL;
+    }
+    size_t size = strlen(text) + 1;
+    char *copy = arena_alloc(storage, size);
+    memcpy(copy, text, size);
+    return copy;
+}
+static pin_array *copy_array(void *storage, const pin_array *array)
+{
+    pin_array *copy = pin_array_snapshot_to_arena(storage, array);
+    assert(!array || copy);
+    return copy;
+}
+void behavior_function_bind_storage(behavior_function_context *ctx, arena *storage)
+{
+    ctx->value_storage = storage;
+    ctx->copy_string = copy_string;
+    ctx->copy_array = copy_array;
+}
+
+void behavior_function_prepare_results(const behavior_function *f, pin_value *results, arena *storage)
+{
+    for (int i = 0; i < acount(f->results); i++) {
+        behavior_function_result r = f->results[i];
+        void *data = arena_alloc(storage, r.type->size);
+        memset(data, 0, r.type->size);
+        results[r.index] = (pin_value){ .type = PIN_STRUCT,
+                                        .type_name = r.type->name,
+                                        .ptr = data };
+    }
+}
+
+const behavior_function_source *behavior_function_stack_at(const behavior_function *f, int stack)
+{
+    return &f->stacks[stack];
+}
+
+size_t behavior_function_watch_size(const behavior_function *f)
+{
+    return f->watch_size;
+}
+
+static void read_component(uint64_t **ids, uint64_t id)
+{
+    for (int i = 0; i < acount(*ids); i++) {
+        if ((*ids)[i] == id) {
+            return;
+        }
+    }
+    apush(*ids, id);
+}
+static void read_components(const behavior_function *f, const behavior_function ***seen, uint64_t **ids)
+{
+    for (int i = 0; i < acount(*seen); i++) {
+        if ((*seen)[i] == f) {
+            return;
+        }
+    }
+    apush(*seen, f);
+    for (int i = 0; i < acount(f->components); i++) {
+        read_component(ids, f->components[i].id);
+    }
+    if (acount(f->queries)) {
+        read_component(ids, 0);
+    }
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        const node_access *access = f->host_calls[i].access;
+        if (!access) {
+            read_component(ids, 0);
+            continue;
+        }
+        for (int j = 0; j < access->read_count; j++) {
+            read_component(ids, access->reads[j]);
+        }
+        for (int j = 0; access->read_refs && access->read_refs[j]; j++) {
+            read_component(ids, *access->read_refs[j]);
+        }
+    }
+    for (int i = 0; i < acount(f->calls); i++) {
+        read_components(f->calls[i].function, seen, ids);
+    }
+}
+int behavior_function_component_reads(const behavior_function *f, uint64_t *out, int capacity)
+{
+    assert(f && capacity >= 0 && (!capacity || out));
+    const behavior_function **seen = NULL;
+    uint64_t *ids = NULL;
+    read_components(f, &seen, &ids);
+    int count = acount(ids);
+    for (int i = 0; i < count && i < capacity; i++) {
+        out[i] = ids[i];
+    }
+    afree(seen);
+    afree(ids);
+    return count;
+}

@@ -1,4 +1,0 @@
-name "Members"
-components {
-    GAME.GameUi document="Members" hidden=#true
-}

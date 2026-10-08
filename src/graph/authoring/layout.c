@@ -1,6 +1,7 @@
 #include "graph/authoring/layout.h"
 
 #include "graph/authoring/arrange.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/events.h"
 #include "support/array.h"
 #include "support/math.h"
@@ -56,13 +57,13 @@ int graph_layout_band(const node *n)
         return LAYOUT_BAND_OTHER;
     }
     const char *name = graph_event_name(n);
-    if (graph_host_event_is(name, GRAPH_HOST_EVENT_BEGIN)) {
+    if (game_host_event_is(name, GAME_HOST_EVENT_BEGIN)) {
         return LAYOUT_BAND_BEGIN;
     }
-    if (graph_host_event_is(name, GRAPH_HOST_EVENT_TICK)) {
+    if (game_host_event_is(name, GAME_HOST_EVENT_TICK)) {
         return LAYOUT_BAND_TICK;
     }
-    return graph_event_host_name(name) ? LAYOUT_BAND_HOST : LAYOUT_BAND_CUSTOM;
+    return game_host_event_reserved(name) ? LAYOUT_BAND_HOST : LAYOUT_BAND_CUSTOM;
 }
 
 bool graph_pin_visible(const graph *g, const node *n, bool output, int pin)

@@ -1,43 +1,9 @@
 #ifndef CHIBI_MODEL_INTERNAL_H
 #define CHIBI_MODEL_INTERNAL_H
 #include "graph/modeling/model_expand.h"
-#define MODEL_DEPTH_MAX 128
-#define MODEL_BOUND_WORK_MAX (SHADER_NODE_MAX * 8)
+#include "runtime/models/model_bounds.h"
+#include "runtime/models/model_program_internal.h"
 
-typedef enum
-{
-    MODEL_SPHERE,
-    MODEL_BOX,
-    MODEL_ROUNDED_BOX,
-    MODEL_CYLINDER,
-    MODEL_CAPSULE,
-    MODEL_TORUS,
-    MODEL_TRANSLATE,
-    MODEL_ROTATE,
-    MODEL_SCALE,
-    MODEL_REFLECT,
-    MODEL_UNION,
-    MODEL_INTERSECTION,
-    MODEL_DIFFERENCE,
-    MODEL_SMOOTH_UNION,
-    MODEL_OUTPUT,
-    MODEL_PART,
-    MODEL_PROFILE_CIRCLE,
-    MODEL_PROFILE_RECTANGLE,
-    MODEL_PROFILE_POLYGON,
-    MODEL_EXTRUDE,
-    MODEL_REVOLVE,
-    MODEL_PROFILE_OFFSET,
-    MODEL_PROFILE_UNION,
-    MODEL_PROFILE_INTERSECTION,
-    MODEL_PROFILE_DIFFERENCE,
-    MODEL_ROUNDED_EXTRUDE,
-    MODEL_BEVELED_EXTRUDE,
-    MODEL_OFFSET,
-    MODEL_SHELL,
-    MODEL_TUBE_SWEEP,
-    MODEL_SAMPLED_SDF
-} model_op;
 typedef struct
 {
     double min[3], max[3];
@@ -62,28 +28,6 @@ typedef struct
     int cache_count;
 } compiler;
 
-typedef struct
-{
-    uint64_t node;
-    int expression, slot;
-} model_rotation_uniform;
-typedef struct
-{
-    uint64_t node;
-    int distance, position;
-} model_hit_node;
-struct model_bounds_program
-{
-    behavior_asset *asset;
-    model_numeric numeric;
-    model_numeric_input *inputs;
-    model_source *sources;
-    model_rotation_uniform *rotations;
-    shader_graph proof, hit_proof;
-    shader_graph *part_frames;
-    model_hit_node *hit_nodes;
-    int root_position, hit_numeric_count;
-};
 bool model_build_frames(model_program *program, shader_error *error);
 int model_operation(const node *n);
 bool model_fail(shader_error *error, uint64_t id, const char *message);
@@ -98,7 +42,6 @@ void model_implemented_rotation(
     float *factor
 );
 bool model_enter(compiler *c, const node *n);
-bool model_bounds_visit(compiler *c, const node *n, double threshold, bound *out);
 bool model_finite_program(
     const shader_graph *g,
     const model_bounds *bounds,
@@ -114,16 +57,16 @@ bool model_snapshot_bounds(
     model_bounds *out,
     shader_error *error
 );
-bool model_build_hit(model_program *program, shader_error *error);
+bool model_build_hit(model_program *program, const graph *, shader_error *error);
+bool model_build_part_shaders(model_program *, const graph *, shader_error *);
+model_bounds_plan *model_prepare_bounds(const graph *, const model_numeric_input *, int, shader_error *);
 void model_material_slot_free(model_material_slot *slot);
 bool model_profile_operation(int op);
 bool model_constructive_validate(const node *n, shader_error *error);
-bool model_constructive_bounds(compiler *c, const node *n, double threshold, bound *out);
 int model_lower_extrusion(compiler *c, const node *n, int p);
 int model_lower_constructive(compiler *c, const node *n, int p);
 int model_lower(compiler *c, const node *n, int p);
 bool model_profile_validate(const node *n, shader_error *error);
-bool model_profile_bounds(compiler *c, const node *n, double threshold, bound *out);
 int model_lower_profile(compiler *c, const node *n, int p, bool revolve);
 int model_emit(compiler *c, const node *n, shader_op op, int width, int a, int b, int d);
 int model_constant(compiler *c, const node *n, int width, const float *values);

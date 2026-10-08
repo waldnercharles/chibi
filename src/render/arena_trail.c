@@ -1,8 +1,8 @@
 #include "render/arena_trail.h"
 
 #include "render/shader_program.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
 #include "support/xalloc.h"
 
 #include <assert.h>

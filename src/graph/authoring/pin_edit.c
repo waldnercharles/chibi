@@ -1,6 +1,8 @@
 #include "graph/authoring/pin_edit.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/state_nodes.h"
 
 #include <ctype.h>

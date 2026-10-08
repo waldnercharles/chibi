@@ -1,5 +1,7 @@
+#include "assets/code_source.h"
 #include "assets/project.h"
 #include "automation/controller.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
 #include "runtime/systems/system.h"
 #include "suite_internal.h"
@@ -293,6 +295,28 @@ static void system_offers()
     free(health);
 }
 
+static void start_scene_fixture(const char *root)
+{
+    char path[256];
+    snprintf(path, sizeof path, "%s/content/scenes", root);
+    assert(!mkdir(path, 0755));
+    snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", root);
+    FILE *file = fopen(path, "w");
+    assert(
+        file && fputs("version 1\nname \"Start\"\n(array)entities\n", file) >= 0 &&
+        !fclose(file)
+    );
+}
+
+static void remove_start_scene_fixture(const char *root)
+{
+    char path[256];
+    snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", root);
+    assert(!unlink(path));
+    snprintf(path, sizeof path, "%s/content/scenes", root);
+    assert(!rmdir(path));
+}
+
 /* inspectGraph lists each node's pins with the types wildcards resolved to,
  * which the serialized nodes omit. */
 static void inspected_pins()
@@ -303,33 +327,45 @@ static void inspected_pins()
     snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
     snprintf(content, sizeof content, "%s/content", root);
     snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
-    snprintf(asset, sizeof asset, "%s/Pins.code", behaviors);
+    snprintf(asset, sizeof asset, "%s/Pins.chibi", behaviors);
     FILE *file = fopen(manifest, "w");
     assert(file);
     fprintf(
         file,
         "version %d\n"
-        "content \"content\"\n",
+        "content \"content\"\n"
+        "start_scene \"scenes/Start.kdl\"\n",
         CHIBI_PROJECT_VERSION
     );
     fclose(file);
     assert(!mkdir(content, 0755) && !mkdir(behaviors, 0755));
+    start_scene_fixture(root);
     char request[1024];
-    snprintf(
-        request,
-        sizeof request,
-        "{\"contract\":1,\"operation\":\"edit_graph\",\"project_root\":\"%s\","
-        "\"kind\":\"behavior\",\"name\":\"Pins\",\"create\":true,"
-        "\"operations\":["
-        "{\"op\":\"add_node\",\"ref\":\"two\",\"type\":\"Real\",\"inputs\":{"
-        "\"Value\":2}},"
-        "{\"op\":\"add_node\",\"ref\":\"sum\",\"type\":\"Add\"},"
-        "{\"op\":\"connect\",\"from\":\"two\",\"from_pin\":\"Value\",\"to\":"
-        "\"sum\",\"to_pin\":\"A\"}]}",
-        root
+    behavior_asset *fixture = behavior_asset_new("Pins");
+    node *two = graph_add_node(fixture->graph, registry_node_by_name("Real"));
+    node *sum = graph_add_node(fixture->graph, registry_node_by_name("Add"));
+    assert(two && sum);
+    assert(
+        !graph_set_pin_default(fixture->graph, two, false, 0, &(pin_value){ .type = PIN_F64, .d = 2 })
     );
+    assert(!graph_connect_data(fixture->graph, two, 0, sum, 0));
+    char *metadata = NULL;
+    char *source = code_source_format_with_metadata(fixture, &metadata);
+    assert(source && metadata);
+    char *bound_metadata = code_source_metadata_bind(metadata, source);
+    free(metadata);
+    metadata = bound_metadata;
+    assert(metadata);
+    file = fopen(asset, "w");
+    assert(file && fputs(source, file) >= 0 && !fclose(file));
+    char sidecar[192];
+    snprintf(sidecar, sizeof sidecar, "%s.meta", asset);
+    file = fopen(sidecar, "w");
+    assert(file && fputs(metadata, file) >= 0 && !fclose(file));
+    free(source);
+    free(metadata);
+    behavior_asset_free(fixture);
     int exit_code = 0;
-    char *edited = chibi_automation_handle(request, ".", &exit_code);
     snprintf(
         request,
         sizeof request,
@@ -340,15 +376,15 @@ static void inspected_pins()
     );
     char *inspected = chibi_automation_handle(request, ".", &exit_code);
     test_check(
-        edited && strstr(edited, "\"ok\":true") && inspected &&
-            strstr(inspected, "\"type\":\"Add\"") &&
+        inspected && strstr(inspected, "\"type\":\"Add\"") &&
             strstr(inspected, "\"in\":[\"A: double\",") &&
             strstr(inspected, "\"out\":[\"Result: double\"]"),
         "inspectGraph lists each node's pins with their resolved types"
     );
-    free(edited);
     free(inspected);
     unlink(asset);
+    unlink(sidecar);
+    remove_start_scene_fixture(root);
     rmdir(behaviors);
     rmdir(content);
     unlink(manifest);
@@ -377,12 +413,14 @@ static void ui_events()
     snprintf(hud, sizeof hud, "%s/Hud.rml", ui);
     snprintf(pause, sizeof pause, "%s/PauseMenu.rml", ui);
     assert(!mkdir(content, 0755) && !mkdir(ui, 0755));
-    char version[64];
+    start_scene_fixture(root);
+    char version[128];
     snprintf(
         version,
         sizeof version,
         "version %d\n"
-        "content \"content\"\n",
+        "content \"content\"\n"
+        "start_scene \"scenes/Start.kdl\"\n",
         CHIBI_PROJECT_VERSION
     );
     write_text(manifest, version);
@@ -415,9 +453,8 @@ static void ui_events()
     char *button = search_in(root, "\"query\":\"button\",\"limit\":3", &bytes);
     char *resume = search_in(root, "\"query\":\"resume\"", &bytes);
     test_check(
-        outline &&
-            strstr(outline, "\"Contact Begin\",\"Go\",\"Volume\",\"Choose\"]") && go &&
-            strstr(go, "\"type\":\"Event\",\"event_name\":\"Go\",\"description\":\"Sent when the player clicks #go in Hud.\"") &&
+        outline && strstr(outline, "\"Contact Begin\",\"PressedChanged\",\"Go\",\"Volume\",\"Choose\"]") &&
+            go && strstr(go, "\"type\":\"Event\",\"event_name\":\"Go\",\"description\":\"Sent when the player clicks #go in Hud.\"") &&
             volume &&
             strstr(volume, "\"description\":\"Sent when the player changes #volume in Hud.\"") &&
             choose &&
@@ -435,6 +472,7 @@ static void ui_events()
     unlink(hud);
     unlink(pause);
     rmdir(ui);
+    remove_start_scene_fixture(root);
     rmdir(content);
     unlink(manifest);
     rmdir(root);
@@ -449,7 +487,8 @@ static void behavior_ui_events()
     static const char *const FOLDERS[] = { "content",
                                            "content/ui",
                                            "content/prototypes",
-                                           "content/behaviors" };
+                                           "content/behaviors",
+                                           "content/scenes" };
     static const char *const FILES[][2] = {
         { "content/ui/Hud.rml", "<div data-event-click=\"emit('Go')\">Go</div>\n" },
         { "content/ui/Shop.rml", "<div data-event-click=\"emit('Buy')\">Buy</div>\n" },
@@ -459,15 +498,17 @@ static void behavior_ui_events()
           "    GAME.GameUi document=\"Hud\"\n"
           "}\n"
           "(array)behaviors \"Player\"\n" },
-        { "content/behaviors/Player.code", "behavior Player {}\n" },
+        { "content/behaviors/Player.chibi", "behavior Player {}\n" },
+        { "content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n" },
     };
-    char path[256], version[64];
+    char path[256], version[128];
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     snprintf(
         version,
         sizeof version,
         "version %d\n"
-        "content \"content\"\n",
+        "content \"content\"\n"
+        "start_scene \"scenes/Start.kdl\"\n",
         CHIBI_PROJECT_VERSION
     );
     write_text(path, version);
@@ -602,7 +643,7 @@ static void text_search_scores()
     assert(text_search_score("playar", "Player", NULL) >= 0);
     assert(text_search_score("plsyr", "Player", NULL) < 0);
     assert(
-        text_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.code") <
+        text_search_score("player arena", "PlayerContactBehavior", "content/behaviors/PlayerContactBehavior.chibi") <
         0
     );
     assert(text_search_score("cat", "Cast", NULL) >= 0);
@@ -642,7 +683,7 @@ static void asset_source_assistance()
     char content[160], behaviors[160], source[192];
     snprintf(content, sizeof content, "%s/content", root);
     snprintf(behaviors, sizeof behaviors, "%s/content/behaviors", root);
-    snprintf(source, sizeof source, "%s/Draft.code", behaviors);
+    snprintf(source, sizeof source, "%s/Draft.chibi", behaviors);
     assert(!mkdir(content, 0755) && !mkdir(behaviors, 0755));
     const char *draft = "behavior Draft { state score: int = 0; on Tick() { "
                         "score = sco";

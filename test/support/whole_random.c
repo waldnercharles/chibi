@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/math_nodes.h"
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/flow_internal.h"
@@ -100,7 +103,7 @@ static void smoke_case(int kind, double first, double last)
         assert(run && flow_run_status(run) == FLOW_COMPLETED);
         if (!mode) {
             for (int i = 0; i < 3; i++) {
-                expected[i] = bi->variables[i];
+                expected[i] = bi->execution.variables[i];
                 if (expected[i].type == PIN_STRUCT) {
                     memcpy(vector[i], expected[i].ptr, sizeof vector[i]);
                     expected[i].ptr = vector[i];
@@ -111,7 +114,7 @@ static void smoke_case(int kind, double first, double last)
             assert(run->whole_function_executed && rand() == next);
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
             for (int i = 0; i < 3; i++) {
-                pin_value actual = bi->variables[i];
+                pin_value actual = bi->execution.variables[i];
                 assert(actual.type == expected[i].type);
                 if (actual.type == PIN_STRUCT) {
                     assert(!memcmp(actual.ptr, expected[i].ptr, sizeof vector[0]));

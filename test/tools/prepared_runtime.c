@@ -1,0 +1,952 @@
+#include "execution/inspection.h"
+#include "execution/log.h"
+#include "execution/prepared.h"
+#include "execution/status.h"
+#include "runtime/behaviors/package.h"
+#include "support/array.h"
+#include "test/prepared_fixture.h"
+#include "third_party/pico_headers/pico_unit.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+enum
+{
+    MISSING_HOST = 1,
+    HOST_ABI,
+    MISSING_TYPE,
+    TYPE_LAYOUT,
+    TYPE_STORAGE,
+    MISSING_IMPORT,
+    WRONG_IMPORT,
+    EMPTY_SERVICE
+};
+static const char *directory;
+static unsigned char *bytes, *library_bytes, *wrong_bytes, *mutation;
+static size_t length, library_length, wrong_length;
+static uint64_t host_abi, state_id;
+static int mismatch, log_count;
+static bool log_text;
+static execution_log_service logger;
+static execution_module *module, *library, *wrong_library;
+static execution_program *program;
+static execution_inspector *debugger;
+static game_source_registry *registry;
+static ecs_world *world;
+static struct
+{
+    unsigned char *data;
+    size_t length;
+} closure_bytes[11];
+static execution_module *closure_leaves[4], *closure_middles[4];
+static bool closure_mode;
+static int selected_leaf, event_checks;
+static uint64_t declared_event_ids[3], declared_event_abis[3];
+
+static void cleanup()
+{
+    if (registry) {
+        game_source_registry_free(registry);
+    }
+    registry = NULL;
+    execution_program_free(program);
+    execution_inspector_free(debugger);
+    debugger = NULL;
+    execution_module_free(module);
+    execution_module_free(library);
+    execution_module_free(wrong_library);
+    ecs_world_free(world);
+    free(bytes);
+    free(library_bytes);
+    free(wrong_bytes);
+    free(mutation);
+    module = library = wrong_library = NULL;
+    program = NULL;
+    world = NULL;
+    bytes = library_bytes = wrong_bytes = mutation = NULL;
+    for (int i = 0; i < 4; i++) {
+        execution_module_free(closure_middles[i]);
+        execution_module_free(closure_leaves[i]);
+        closure_middles[i] = closure_leaves[i] = NULL;
+    }
+    for (int i = 0; i < 11; i++) {
+        free(closure_bytes[i].data);
+        closure_bytes[i].data = NULL;
+        closure_bytes[i].length = 0;
+    }
+    closure_mode = false;
+    selected_leaf = event_checks = 0;
+    mismatch = log_count = 0;
+    log_text = true;
+}
+static bool read_file(const char *name, unsigned char **out, size_t *size)
+{
+    char path[PREPARED_TEST_MAX_PATH];
+    int n = snprintf(path, sizeof path, "%s/%s", directory, name);
+    REQUIRE(n > 0 && n < (int)sizeof path);
+    FILE *file = fopen(path, "rb");
+    REQUIRE(file);
+    bool valid = !fseek(file, 0, SEEK_END);
+    long end = valid ? ftell(file) : -1;
+    valid = end > 0 && end <= PREPARED_TEST_MAX_BYTES && !fseek(file, 0, SEEK_SET);
+    if (!valid) {
+        fclose(file);
+        return false;
+    }
+    *size = (size_t)end;
+    *out = malloc(*size + 1);
+    if (!*out) {
+        fclose(file);
+        return false;
+    }
+    valid = fread(*out, 1, *size, file) == *size && fgetc(file) == EOF &&
+            !ferror(file);
+    return fclose(file) == 0 && valid;
+}
+static bool inputs()
+{
+    REQUIRE(read_file("main.prepared", &bytes, &length));
+    REQUIRE(read_file("library.prepared", &library_bytes, &library_length));
+    REQUIRE(read_file("wrong-library.prepared", &wrong_bytes, &wrong_length));
+    unsigned char *metadata = NULL;
+    size_t size = 0;
+    bool read = read_file("host-abi.txt", &metadata, &size);
+    if (!read || size > 96) {
+        free(metadata);
+        return false;
+    }
+    metadata[size] = 0;
+    unsigned long long abi = 0, identity = 0;
+    char tail;
+    int count = sscanf((char *)metadata, "%llu %llu %c", &abi, &identity, &tail);
+    free(metadata);
+    REQUIRE(count == 2 && abi && identity);
+    host_abi = abi;
+    state_id = identity;
+    REQUIRE(length > 32);
+    return true;
+}
+static bool resolve_type(void *, uint64_t id, execution_prepared_type *out)
+{
+    if (mismatch == MISSING_TYPE) {
+        return false;
+    }
+    if (id == 700) {
+        *out = (execution_prepared_type){ .name = "ecs.entity",
+                                          .storage = PIN_HANDLE,
+                                          .size = sizeof(uint64_t) };
+        return true;
+    }
+    if (id != 101) {
+        return false;
+    }
+    *out = (execution_prepared_type){ .name = prepared_counter_type.name,
+                                      .type = &prepared_counter_type,
+                                      .storage = PIN_STRUCT,
+                                      .size = prepared_counter_type.size,
+                                      .layout = type_layout_hash(&prepared_counter_type) };
+    if (mismatch == TYPE_LAYOUT) {
+        out->layout ^= 1;
+    }
+    if (mismatch == TYPE_STORAGE) {
+        out->storage = PIN_F64;
+    }
+    return true;
+}
+static bool resolve_host(void *, uint64_t id, execution_prepared_host *out)
+{
+    if (id != 13 || mismatch == MISSING_HOST) {
+        return false;
+    }
+    static const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+    *out = (execution_prepared_host){ .call = &EXECUTION_PrintString,
+                                      .access = &access,
+                                      .abi = mismatch == HOST_ABI ? host_abi ^ 1
+                                                                  : host_abi };
+    if (mismatch == EMPTY_SERVICE) {
+        static node_host_call invalid;
+        invalid = EXECUTION_PrintString;
+        invalid.service = "";
+        out->call = &invalid;
+    }
+    return true;
+}
+static execution_module *resolve_import(void *, uint64_t id, uint64_t)
+{
+    if (closure_mode) {
+        for (int i = 0; i < 4; i++) {
+            if (closure_middles[i] && execution_module_id(closure_middles[i]) == id) {
+                execution_module_retain(closure_middles[i]);
+                return closure_middles[i];
+            }
+        }
+        execution_module *leaf = closure_leaves[selected_leaf];
+        if (leaf && execution_module_id(leaf) == id) {
+            execution_module_retain(leaf);
+            return leaf;
+        }
+        return NULL;
+    }
+    execution_module *selected = mismatch == WRONG_IMPORT ? wrong_library : library;
+    if (mismatch == MISSING_IMPORT || !selected || execution_module_id(selected) != id) {
+        return NULL;
+    }
+    execution_module_retain(selected);
+    return selected;
+}
+static execution_prepared_linker linker()
+{
+    return (execution_prepared_linker){ .type = resolve_type,
+                                        .host = resolve_host,
+                                        .import = resolve_import };
+}
+static bool dependencies(behavior_backend backend)
+{
+    char error[192];
+    execution_prepared_linker link = linker();
+    library = execution_prepared_read(library_bytes, library_length, &link, backend, error, sizeof error);
+    if (!library) {
+        fprintf(stderr, "prepared library: %s\n", error);
+    }
+    REQUIRE(library);
+    wrong_library = execution_prepared_read(wrong_bytes, wrong_length, &link, backend, error, sizeof error);
+    REQUIRE(wrong_library);
+    return true;
+}
+static void log_message(void *, const execution_log_message *message)
+{
+    log_count++;
+    log_text &= !strcmp(message->text, "persistent");
+}
+static bool count_is(execution_instance *instance, ecs_entity entity, int expected)
+{
+    const pin_value *value = execution_instance_state(instance, state_id);
+    const prepared_counter *
+        component = ecs_component_data(world, entity, prepared_counter_component.id);
+    return value && value->type == PIN_I32 && value->i == expected &&
+           component && component->value == expected;
+}
+TEST_CASE(prepared_runtime_state_events_bindings_and_imports)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(inputs());
+        REQUIRE(dependencies(backends[b]));
+        execution_prepared_linker link = linker();
+        char error[192];
+        module = execution_prepared_read(bytes, length, &link, backends[b], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "prepared main: %s\n", error);
+        }
+        REQUIRE(module && execution_module_import_count(module) == 1);
+        free(bytes);
+        free(library_bytes);
+        free(wrong_bytes);
+        bytes = library_bytes = wrong_bytes = NULL;
+        world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(world, &prepared_counter_component, NULL) == ECS_OK);
+        ecs_entity entity = ecs_world_create_entity(world);
+        REQUIRE(
+            ecs_world_record_add(world, entity, prepared_counter_component.id, NULL, 0) == ECS_OK
+        );
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        logger = (execution_log_service){ .emit = log_message };
+        service_binding *services = NULL;
+        apush(services, ((service_binding){ EXECUTION_LOG_SERVICE, &logger }));
+        program = execution_program_new(module, world, services);
+        afree(services);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(entity));
+        REQUIRE(instance);
+        REQUIRE(
+            execution_instance_dispatch(instance, execution_module_event(module, "Begin"), NULL, 0, 0, 0, 1000) ==
+            FLOW_OK
+        );
+        REQUIRE(execution_program_bindings(program, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(count_is(instance, entity, 1));
+        REQUIRE(
+            execution_instance_dispatch(instance, execution_module_event(module, "Tick"), NULL, 0, 1, .25, 1000) ==
+            FLOW_OK
+        );
+        REQUIRE(execution_program_bindings(program, 1, .25, 1000) == FLOW_OK);
+        REQUIRE(count_is(instance, entity, 3) && log_count == 1 && log_text);
+        pin_value amount = { .type = PIN_I32, .i = 5 };
+        const int expected[] = { 19, 36 };
+        for (int call = 0; call < 2; call++) {
+            REQUIRE(
+                execution_instance_dispatch(
+                    instance,
+                    execution_module_event(module, "Add"),
+                    &amount,
+                    1,
+                    call + 2,
+                    0,
+                    1000
+                ) == FLOW_OK
+            );
+            REQUIRE(execution_program_pump(program, call + 2, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_bindings(program, call + 2, 0, 1000) == FLOW_OK);
+            REQUIRE(count_is(instance, entity, expected[call]));
+        }
+    }
+    return true;
+}
+TEST_CASE(prepared_runtime_rejects_missing_or_incompatible_linkage)
+{
+    REQUIRE(inputs());
+    REQUIRE(dependencies(BEHAVIOR_BYTECODE));
+    execution_prepared_linker link = linker();
+    for (int failure = MISSING_HOST; failure <= EMPTY_SERVICE; failure++) {
+        mismatch = failure;
+        char error[192] = { 0 };
+        module = execution_prepared_read(bytes, length, &link, BEHAVIOR_BYTECODE, error, sizeof error);
+        REQUIRE(!module && error[0]);
+    }
+    return true;
+}
+TEST_CASE(prepared_runtime_rejects_malformed_wire)
+{
+    REQUIRE(inputs());
+    REQUIRE(dependencies(BEHAVIOR_BYTECODE));
+    execution_prepared_linker link = linker();
+    const size_t sizes[] = { 0, 1, 8, 16, 31, length / 2, length - 1 };
+    for (int i = 0; i < 7; i++) {
+        char error[192] = { 0 };
+        module = execution_prepared_read(bytes, sizes[i], &link, BEHAVIOR_BYTECODE, error, sizeof error);
+        REQUIRE(!module && error[0]);
+    }
+    mutation = malloc(length + 1);
+    REQUIRE(mutation);
+    for (int i = 0; i < 4; i++) {
+        memcpy(mutation, bytes, length);
+        size_t size = length;
+        if (i == 2) {
+            mutation[length] = 0;
+            size++;
+        } else if (i == 3) {
+            memset(mutation + 8, 0, 8);
+            mutation[8] = 1; /* Version 1 cannot represent event declarations. */
+        } else {
+            mutation[i == 0 ? 0 : 8] ^= 0xff; /* Canonical magic and version u64 fields. */
+        }
+        char error[192] = { 0 };
+        module = execution_prepared_read(mutation, size, &link, BEHAVIOR_BYTECODE, error, sizeof error);
+        REQUIRE(!module && error[0]);
+    }
+    return true;
+}
+TEST_CASE(prepared_runtime_shared_storage_budget_charges_only_success)
+{
+    REQUIRE(inputs());
+    REQUIRE(dependencies(BEHAVIOR_BYTECODE));
+    execution_prepared_linker link = linker();
+    char error[192] = { 0 };
+    size_t remaining = 0;
+    module = execution_prepared_read_budget(bytes, length, &link, BEHAVIOR_BYTECODE, &remaining, error, sizeof error);
+    REQUIRE(!module && error[0] && remaining == 0);
+    const size_t budget = 64 * 1024 * 1024;
+    remaining = budget;
+    module = execution_prepared_read_budget(bytes, length, &link, BEHAVIOR_BYTECODE, &remaining, error, sizeof error);
+    REQUIRE(module);
+    size_t retained = execution_module_storage_bytes(module);
+    REQUIRE(retained > 0 && retained < budget);
+    REQUIRE(remaining == budget - retained);
+    execution_module_free(module);
+    module = NULL;
+    remaining = retained - 1;
+    size_t before = remaining;
+    module = execution_prepared_read_budget(bytes, length, &link, BEHAVIOR_BYTECODE, &remaining, error, sizeof error);
+    REQUIRE(!module && error[0] && remaining == before);
+    remaining = budget;
+    module = execution_prepared_read_budget(
+        bytes,
+        length - 1,
+        &link,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    REQUIRE(!module && error[0] && remaining == budget);
+    return true;
+}
+TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(inputs());
+        REQUIRE(dependencies(backends[b]));
+        execution_prepared_linker link = linker();
+        char error[192];
+        module = execution_prepared_read(bytes, length, &link, backends[b], error, sizeof error);
+        REQUIRE(module);
+        game_package_module records[] = {
+            { .name = "Persist", .id = execution_module_id(module), .data = bytes, .length = length },
+            { .name = "Depot",
+              .id = execution_module_id(library),
+              .data = library_bytes,
+              .length = library_length },
+        };
+        const size_t collection_budget = 64 * 1024 * 1024;
+        size_t collection_remaining = collection_budget;
+        game_package_collection *collection = game_package_read_budget(
+            records,
+            2,
+            &link,
+            NULL,
+            backends[b],
+            &collection_remaining,
+            error,
+            sizeof error
+        );
+        REQUIRE(collection);
+        bool named = game_package_collection_count(collection) == 2 &&
+                     !strcmp(game_package_collection_name(collection, 0), "Persist") &&
+                     !strcmp(game_package_collection_name(collection, 1), "Depot");
+        size_t modules_bytes = named
+                                 ? execution_module_storage_bytes(
+                                       game_package_collection_module(collection, 0)
+                                   ) +
+                                       execution_module_storage_bytes(
+                                           game_package_collection_module(collection, 1)
+                                       )
+                                 : 0;
+        size_t collection_bytes = collection_budget - collection_remaining;
+        if (collection) {
+            game_package_collection_free(collection);
+        }
+        REQUIRE(named);
+        REQUIRE(collection_bytes > modules_bytes && collection_bytes - modules_bytes < 4096);
+        collection_remaining = collection_budget;
+        collection = game_package_read_budget(
+            records,
+            2,
+            &link,
+            NULL,
+            backends[b],
+            &collection_remaining,
+            error,
+            sizeof error
+        );
+        bool repeated = collection && collection_remaining ==
+                                          collection_budget - collection_bytes;
+        if (collection) {
+            game_package_collection_free(collection);
+        }
+        REQUIRE(repeated);
+        collection_remaining = collection_bytes - 1;
+        collection = game_package_read_budget(
+            records,
+            2,
+            &link,
+            NULL,
+            backends[b],
+            &collection_remaining,
+            error,
+            sizeof error
+        );
+        bool rejected = !collection && error[0] &&
+                        collection_remaining == collection_bytes - 1;
+        if (collection) {
+            game_package_collection_free(collection);
+        }
+        REQUIRE(rejected);
+        collection_remaining = 0;
+        collection = game_package_read_budget(
+            records,
+            2,
+            &link,
+            NULL,
+            backends[b],
+            &collection_remaining,
+            error,
+            sizeof error
+        );
+        rejected = !collection && error[0] && collection_remaining == 0;
+        if (collection) {
+            game_package_collection_free(collection);
+        }
+        REQUIRE(rejected);
+        world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(world, &prepared_counter_component, NULL) == ECS_OK);
+        logger = (execution_log_service){ .emit = log_message };
+        service_binding *services = NULL;
+        apush(services, ((service_binding){ EXECUTION_LOG_SERVICE, &logger }));
+        registry = game_source_registry_new(world);
+        size_t budget = 64 * 1024 * 1024, remaining = budget;
+        game_source_staging *stage = game_package_stage_budget(
+            registry,
+            records,
+            2,
+            &link,
+            services,
+            backends[b],
+            &remaining,
+            error,
+            sizeof error
+        );
+        REQUIRE(stage);
+        game_source_commit(stage);
+        REQUIRE(
+            remaining == budget - execution_module_storage_bytes(module) -
+                             execution_module_storage_bytes(library)
+        );
+        afree(services);
+        REQUIRE(registry);
+        REQUIRE(
+            game_source_registered(registry, "Persist") &&
+            game_source_registered(registry, "Depot")
+        );
+        ecs_entity entity = ecs_world_create_entity(world);
+        REQUIRE(
+            ecs_world_record_add(world, entity, prepared_counter_component.id, NULL, 0) == ECS_OK
+        );
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(game_source_attach(registry, entity, "Persist", false, 0, 0) == FLOW_OK);
+        REQUIRE(game_source_step(registry, 0, 0) == FLOW_OK);
+        const prepared_counter *counter = ecs_component_data(
+            world,
+            entity,
+            prepared_counter_component.id
+        );
+        REQUIRE(counter && counter->value == 1);
+        game_source_registry_free(registry);
+        registry = NULL;
+        for (int failure = 0; failure < 3; failure++) {
+            game_package_module invalid[] = { records[0], records[1] };
+            if (failure == 0) {
+                invalid[1].id = invalid[0].id;
+            } else if (failure == 1) {
+                invalid[1].name = invalid[0].name;
+            } else {
+                invalid[1].length--;
+            }
+            error[0] = 0;
+            apush(services, ((service_binding){ EXECUTION_LOG_SERVICE, &logger }));
+            registry = game_package_load(world, invalid, 2, &link, services, backends[b], error, sizeof error);
+            afree(services);
+            REQUIRE(!registry && error[0]);
+        }
+    }
+    return true;
+}
+static bool resolve_event(void *, uint64_t id, uint64_t abi)
+{
+    event_checks++;
+    for (int i = 0; i < 3; i++) {
+        if (declared_event_ids[i] == id) {
+            return declared_event_abis[i] == abi;
+        }
+    }
+    return false;
+}
+TEST_CASE(prepared_declared_event_linker_policy)
+{
+    REQUIRE(inputs());
+    REQUIRE(dependencies(BEHAVIOR_BYTECODE));
+    execution_prepared_linker link = linker();
+    char error[192];
+    module = execution_prepared_read(bytes, length, &link, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(module && event_checks == 0); /* Owned declarations need no callback. */
+    int declarations = execution_module_event_count(module);
+    REQUIRE(declarations == 3);
+    bool found = false;
+    for (int i = 0; i < declarations; i++) {
+        execution_module_event_info e = execution_module_event_at(module, i);
+        declared_event_ids[i] = e.id;
+        declared_event_abis[i] = e.abi;
+        if (!strcmp(e.name, "Add")) {
+            REQUIRE(e.id == 12 && e.abi && e.field_count == 1);
+            execution_module_event_field_info f = execution_module_event_field_at(module, i, 0);
+            REQUIRE(!strcmp(f.name, "amount") && f.initial.type == PIN_I32 && !f.nominal);
+            REQUIRE(!f.has_default && !f.default_owner);
+            found = true;
+        }
+    }
+    REQUIRE(found);
+    execution_module_free(module);
+    module = NULL;
+    link.event = resolve_event;
+    module = execution_prepared_read(bytes, length, &link, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(module && event_checks == declarations);
+    execution_module_free(module);
+    module = NULL;
+    declared_event_abis[0] ^= 1;
+    event_checks = 0;
+    error[0] = 0;
+    module = execution_prepared_read(bytes, length, &link, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(!module && event_checks > 0 && strstr(error, "event"));
+    return true;
+}
+TEST_CASE(prepared_package_validates_complete_external_closure)
+{
+    const char *files[] = {
+        "leaf.prepared",          "changed-leaf.prepared",
+        "event-leaf.prepared",    "middle.prepared",
+        "good-middle.prepared",   "bad-middle.prepared",
+        "event-middle.prepared",  "closure.prepared",
+        "good-closure.prepared",  "bad-closure.prepared",
+        "event-closure.prepared",
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        closure_mode = true;
+        for (int i = 0; i < 11; i++) {
+            REQUIRE(
+                read_file(files[i], &closure_bytes[i].data, &closure_bytes[i].length)
+            );
+        }
+        execution_prepared_linker link = linker();
+        char error[192];
+        for (int i = 0; i < 4; i++) {
+            int file = i < 2 ? 0 : i - 1;
+            closure_leaves[i] = execution_prepared_read(
+                closure_bytes[file].data,
+                closure_bytes[file].length,
+                &link,
+                backends[b],
+                error,
+                sizeof error
+            );
+            REQUIRE(closure_leaves[i]);
+        }
+        REQUIRE(closure_leaves[0] != closure_leaves[1]);
+        REQUIRE(
+            execution_module_id(closure_leaves[0]) ==
+            execution_module_id(closure_leaves[1])
+        );
+        REQUIRE(
+            execution_module_id(closure_leaves[0]) ==
+            execution_module_id(closure_leaves[2])
+        );
+        REQUIRE(execution_module_event_count(closure_leaves[0]) == 1);
+        REQUIRE(execution_module_event_count(closure_leaves[3]) == 1);
+        execution_module_event_info normal = execution_module_event_at(closure_leaves[0], 0);
+        execution_module_event_info conflict = execution_module_event_at(closure_leaves[3], 0);
+        REQUIRE(normal.id == 12 && conflict.id == 12 && normal.abi != conflict.abi);
+        REQUIRE(execution_module_event_field_at(closure_leaves[0], 0, 0).initial.type == PIN_I32);
+        REQUIRE(execution_module_event_field_at(closure_leaves[3], 0, 0).initial.type == PIN_BOOL);
+        for (int i = 0; i < 4; i++) {
+            selected_leaf = i;
+            closure_middles[i] = execution_prepared_read(
+                closure_bytes[3 + i].data,
+                closure_bytes[3 + i].length,
+                &link,
+                backends[b],
+                error,
+                sizeof error
+            );
+            REQUIRE(
+                closure_middles[i] &&
+                execution_module_import_count(closure_middles[i]) == 1
+            );
+            REQUIRE(execution_module_import_at(closure_middles[i], 0) == closure_leaves[i]);
+        }
+        game_package_module records[4];
+        const char *names[] = { "Closure", "GoodClosure", "BadClosure", "EventClosure" };
+        for (int i = 0; i < 4; i++) {
+            module = execution_prepared_read(
+                closure_bytes[7 + i].data,
+                closure_bytes[7 + i].length,
+                &link,
+                backends[b],
+                error,
+                sizeof error
+            );
+            REQUIRE(module && execution_module_import_count(module) == 1);
+            records[i] = (game_package_module){
+                .name = names[i],
+                .id = execution_module_id(module),
+                .data = closure_bytes[7 + i].data,
+                .length = closure_bytes[7 + i].length,
+            };
+            execution_module_free(module);
+            module = NULL;
+        }
+        world = ecs_world_new();
+        registry = game_package_load(world, records, 2, &link, NULL, backends[b], error, sizeof error);
+        REQUIRE(
+            registry && game_source_registered(registry, "Closure") &&
+            game_source_registered(registry, "GoodClosure")
+        );
+        game_source_registry_free(registry);
+        registry = NULL;
+        for (int i = 2; i < 4; i++) {
+            game_package_module conflicting[] = { records[0], records[i] };
+            error[0] = 0;
+            registry = game_package_load(world, conflicting, 2, &link, NULL, backends[b], error, sizeof error);
+            REQUIRE(!registry);
+            REQUIRE(strstr(error, i == 2 ? "conflicting generations" : "conflicting declarations"));
+        }
+    }
+    return true;
+}
+
+TEST_CASE(prepared_runtime_state_action_banks_survive_wire_and_replacement)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(read_file("state-actions.prepared", &bytes, &length));
+        unsigned char *metadata = NULL;
+        size_t size = 0;
+        REQUIRE(read_file("state-action-id.txt", &metadata, &size));
+        if (size > 32) {
+            free(metadata);
+            REQUIRE(false);
+        }
+        metadata[size] = 0;
+        unsigned long long identity = 0;
+        char tail;
+        int fields = sscanf((char *)metadata, "%llu %c", &identity, &tail);
+        free(metadata);
+        REQUIRE(fields == 1 && identity);
+        execution_prepared_linker link = linker();
+        char error[256];
+        module = execution_prepared_read(bytes, length, &link, backends[b], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "prepared state actions: %s\n", error);
+        }
+        REQUIRE(module);
+        free(bytes);
+        bytes = NULL;
+        world = ecs_world_new();
+        ecs_entity owner = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        const int expected[] = { 1110, 11111, 11121 };
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(execution_instance_dispatch(instance, 11, NULL, 0, i, 0, 1000) == FLOW_OK);
+            const pin_value *value = execution_instance_state(instance, identity);
+            REQUIRE(value && value->type == PIN_I32 && value->i == expected[i]);
+        }
+        REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+        instance = execution_program_instance(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        REQUIRE(execution_instance_dispatch(instance, 11, NULL, 0, 3, 0, 1000) == FLOW_OK);
+        const pin_value *value = execution_instance_state(instance, identity);
+        REQUIRE(value && value->type == PIN_I32 && value->i == 11122);
+        REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+        instance = execution_program_instance(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        REQUIRE(execution_instance_dispatch(instance, 11, NULL, 0, 4, 0, 1000) == FLOW_OK);
+        value = execution_instance_state(instance, identity);
+        REQUIRE(value && value->type == PIN_I32 && value->i == 1110);
+        const pin_value amount = { .type = PIN_I32, .i = 1 };
+        REQUIRE(execution_instance_dispatch(instance, 12, &amount, 1, 5, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_dispatch(instance, 12, &amount, 1, 6, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_pump(program, 8, 0, 1000) == FLOW_OK);
+        value = execution_instance_state(instance, identity);
+        REQUIRE(value && value->type == PIN_I32 && value->i == 1110);
+        REQUIRE(execution_program_pump(program, 9, 0, 1000) == FLOW_OK);
+        value = execution_instance_state(instance, identity);
+        REQUIRE(value && value->type == PIN_I32 && value->i == 101110);
+    }
+    return true;
+}
+
+TEST_CASE(prepared_runtime_field_observer_baseline_edges_and_retarget)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(read_file("field-observer.prepared", &bytes, &length));
+        unsigned char *metadata = NULL;
+        size_t size = 0;
+        REQUIRE(read_file("field-observer-ids.txt", &metadata, &size));
+        if (size > 64) {
+            free(metadata);
+            REQUIRE(false);
+        }
+        metadata[size] = 0;
+        unsigned long long count_id = 0, target_id = 0;
+        char tail;
+        int fields = sscanf((char *)metadata, "%llu %llu %c", &count_id, &target_id, &tail);
+        free(metadata);
+        REQUIRE(fields == 2 && count_id && target_id);
+        execution_prepared_linker link = linker();
+        char error[256];
+        module = execution_prepared_read(bytes, length, &link, backends[b], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "prepared field observer: %s\n", error);
+        }
+        REQUIRE(module);
+        free(bytes);
+        bytes = NULL;
+        world = ecs_world_new();
+        REQUIRE(!ecs_world_register_component(world, &prepared_counter_component, NULL));
+        ecs_entity entities[] = { ecs_world_create_entity(world),
+                                  ecs_world_create_entity(world) };
+        const prepared_counter initial[] = { { 1 }, { 20 } };
+        for (int i = 0; i < 2; i++) {
+            REQUIRE(!ecs_world_record_add(
+                world,
+                entities[i],
+                prepared_counter_component.id,
+                &initial[i],
+                0
+            ));
+        }
+        REQUIRE(!ecs_world_apply_commands(world));
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(entities[0])
+        );
+        REQUIRE(instance);
+        pin_value destination = { .type = PIN_HANDLE,
+                                  .type_name = "ecs.entity",
+                                  .u64 = ecs_entity_to_u64(entities[0]) };
+        REQUIRE(execution_instance_dispatch(instance, 81, &destination, 1, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        const pin_value *count = execution_instance_state(instance, count_id);
+        REQUIRE(count && count->type == PIN_I32 && count->i == 0);
+        prepared_counter *first = ecs_component_data(
+            world,
+            entities[0],
+            prepared_counter_component.id
+        );
+        first->value = 5;
+        REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+        count = execution_instance_state(instance, count_id);
+        REQUIRE(count && count->type == PIN_I32 && count->i == 5);
+        destination.u64 = ecs_entity_to_u64(entities[1]);
+        REQUIRE(execution_instance_dispatch(instance, 81, &destination, 1, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_step(program, 2, 0, 1000) == FLOW_OK);
+        count = execution_instance_state(instance, count_id);
+        REQUIRE(count && count->type == PIN_I32 && count->i == 5);
+        const pin_value *target = execution_instance_state(instance, target_id);
+        REQUIRE(
+            target && target->type == PIN_HANDLE && target->u64 == destination.u64
+        );
+        first = ecs_component_data(
+            world,
+            entities[0],
+            prepared_counter_component.id
+        );
+        first->value = 100;
+        REQUIRE(execution_program_step(program, 3, 0, 1000) == FLOW_OK);
+        count = execution_instance_state(instance, count_id);
+        REQUIRE(count && count->type == PIN_I32 && count->i == 5);
+        prepared_counter *second = ecs_component_data(
+            world,
+            entities[1],
+            prepared_counter_component.id
+        );
+        second->value = 9;
+        REQUIRE(execution_program_step(program, 4, 0, 1000) == FLOW_OK);
+        count = execution_instance_state(instance, count_id);
+        REQUIRE(count && count->type == PIN_I32 && count->i == 14);
+        REQUIRE(execution_program_step(program, 5, 0, 1000) == FLOW_OK);
+        count = execution_instance_state(instance, count_id);
+        REQUIRE(count && count->type == PIN_I32 && count->i == 14);
+    }
+    return true;
+}
+
+TEST_CASE(prepared_runtime_debugger_uses_decoded_occurrences_without_compiler)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(read_file("source-debug.prepared", &bytes, &length));
+        unsigned char *metadata;
+        size_t size;
+        REQUIRE(read_file("source-debug-state.txt", &metadata, &size));
+        metadata[size] = 0;
+        unsigned long long identity = 0;
+        char tail;
+        int fields = sscanf((char *)metadata, "%llu %c", &identity, &tail);
+        free(metadata);
+        REQUIRE(fields == 1 && identity);
+        execution_prepared_linker link = linker();
+        char error[256];
+        module = execution_prepared_read(bytes, length, &link, backends[b], error, sizeof error);
+        REQUIRE(module);
+        free(bytes);
+        bytes = NULL;
+        world = ecs_world_new();
+        ecs_entity entity = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        uint64_t owner = ecs_entity_to_u64(entity);
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(program, owner);
+        REQUIRE(instance);
+        uint64_t work = 0, handler = 0, occurrence = 0;
+        const behavior_function *body = NULL;
+        for (int n = 0; n < execution_module_function_count(module); n++) {
+            execution_module_function_info f = execution_module_function_at(module, n);
+            if (f.kind == EXECUTION_FUNCTION_AUTHORED) {
+                work = f.id;
+            }
+            if (f.event == 11) {
+                handler = f.id;
+                body = f.body;
+            }
+        }
+        REQUIRE(work && handler && body);
+        for (int n = 0; n < behavior_function_source_point_count(body); n++) {
+            behavior_source_point p = behavior_function_source_point_at(body, n);
+            if (p.meaning == work && !p.completion) {
+                occurrence = p.occurrence;
+            }
+        }
+        REQUIRE(occurrence);
+        debugger = execution_program_inspector(program);
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), handler, occurrence, true)
+        );
+        REQUIRE(execution_instance_dispatch(instance, 11, NULL, 0, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_paused(program));
+        REQUIRE(execution_inspector_cursor(debugger).status == FLOW_PAUSED_RESULT);
+        const pin_value *count = execution_instance_state(instance, identity);
+        REQUIRE(count && count->type == PIN_I32 && count->i == 0);
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), handler, occurrence, false)
+        );
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_INTO) == FLOW_PAUSED_RESULT);
+        REQUIRE(execution_inspector_cursor(debugger).depth == 1);
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_OUT) == FLOW_PAUSED_RESULT);
+        count = execution_instance_state(instance, identity);
+        REQUIRE(count && count->i == 1);
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_OK);
+        REQUIRE(!execution_program_paused(program));
+        count = execution_instance_state(instance, identity);
+        REQUIRE(count && count->i == 2);
+        REQUIRE(execution_inspector_watch_count(debugger) > 0);
+        execution_program_free(program);
+        program = NULL;
+        execution_module_free(module);
+        module = NULL;
+        REQUIRE(execution_inspector_cursor(debugger).retired);
+        REQUIRE(execution_inspector_watch_count(debugger) > 0);
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_ERR_STATE);
+    }
+    return true;
+}
+
+void test_tool_prepared_runtime(const char *path)
+{
+    directory = path;
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(prepared_runtime_state_events_bindings_and_imports);
+    RUN_TEST_CASE(prepared_runtime_rejects_missing_or_incompatible_linkage);
+    RUN_TEST_CASE(prepared_runtime_rejects_malformed_wire);
+    RUN_TEST_CASE(prepared_runtime_shared_storage_budget_charges_only_success);
+    RUN_TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically);
+    RUN_TEST_CASE(prepared_declared_event_linker_policy);
+    RUN_TEST_CASE(prepared_package_validates_complete_external_closure);
+    RUN_TEST_CASE(prepared_runtime_state_action_banks_survive_wire_and_replacement);
+    RUN_TEST_CASE(prepared_runtime_field_observer_baseline_edges_and_retarget);
+    RUN_TEST_CASE(prepared_runtime_debugger_uses_decoded_occurrences_without_compiler);
+    pu_clear_setup();
+}

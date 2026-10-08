@@ -1,7 +1,7 @@
 #include "runtime/particle_emitters.h"
 
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
 #include "runtime/visual_transform.h"
 #include "support/cos_sin.h"
 #include "support/xalloc.h"

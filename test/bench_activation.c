@@ -1,3 +1,6 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
 /* test/bench_activation.c -- headless per-instance activation benchmark. */
 #include "graph/compiler/compile.h"
 #include "graph/model/behavior_asset.h"
@@ -267,6 +270,7 @@ static uint64_t run_variant(behavior_asset *asset, int instance_count, int frame
 
 int main(int argc, char **argv)
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     int instance_count = DEFAULT_INSTANCE_COUNT;
     int frame_count = DEFAULT_FRAME_COUNT;
     if (argc > 3 || (argc > 1 && parse_count(argv[1], &instance_count) != 0) ||

@@ -1,6 +1,7 @@
 #ifndef CHIBI_GAME_SCENE_DOCUMENT_H
 #define CHIBI_GAME_SCENE_DOCUMENT_H
 
+#include "ecs/component_catalog.h"
 #include "runtime/scenes/physics_settings.h"
 #include "support/asset_value.h"
 
@@ -57,9 +58,13 @@ int game_scene_document_set_entity_behaviors(
     int behavior_count
 );
 int game_scene_document_set_entity_components(game_scene_document *document, int index, av_value *components);
-av_value *game_scene_document_to_value(const game_scene_document *document);
+/* Serialization borrows the supplied component descriptions for precision,
+ * color and enum formatting. Unknown components retain their authored values;
+ * an empty catalog preserves all component values without reflected formatting.
+ * Returned values/text own their storage and outlive the catalog/document. */
+av_value *game_scene_document_to_value(const game_scene_document *document, ecs_component_catalog components);
 game_scene_document *game_scene_document_load_value(av_value *value, char *error, size_t error_size);
-char *game_scene_document_save(const game_scene_document *document);
+char *game_scene_document_save(const game_scene_document *document, ecs_component_catalog components);
 int game_scene_document_set_entity_retained(game_scene_document *document, int index, av_value *value);
 game_scene_document *game_scene_document_load(const char *json, char *error, size_t error_size);
 

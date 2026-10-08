@@ -1,6 +1,6 @@
 #include "test/flow_snapshot.h"
 
-#include "graph/compiler/behavior_scalar.h"
+#include "execution/scalar.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
 
@@ -33,7 +33,11 @@ test_flow_snapshot test_flow_snapshot_take(flow_run *run, const behavior_instanc
     }
     for (int i = 0; i < acount(instance->asset->variables); i++) {
         pin_value value;
-        assert(!pin_value_snapshot_to_arena(&s.storage, &value, &instance->variables[i]));
+        assert(!pin_value_snapshot_to_arena(
+            &s.storage,
+            &value,
+            &instance->execution.variables[i]
+        ));
         apush(s.variables, value);
     }
     int count;
@@ -122,7 +126,7 @@ static bool value_equal(pin_value a, pin_value b)
         if (!a.ptr || !b.ptr) {
             return a.ptr == b.ptr;
         }
-        const type_desc *type = registry_type_by_name(a.type_name);
+        const type_desc *type = type_catalog_find(a.type_name);
         assert(type);
         for (int i = 0; i < type->field_count; i++) {
             pin_value x = { 0 }, y = { 0 };

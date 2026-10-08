@@ -1,5 +1,8 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "test/whole_motion_fixture.h"
@@ -80,11 +83,14 @@ void whole_motion_smoke()
         );
         assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
         if (kind == WHOLE_MOTION_SPRING) {
-            assert(instance->variables[0].f > 0 && instance->variables[0].f < 1);
-            assert(instance->variables[1].f > 0);
+            assert(
+                instance->execution.variables[0].f > 0 &&
+                instance->execution.variables[0].f < 1
+            );
+            assert(instance->execution.variables[1].f > 0);
         }
         if (kind == WHOLE_MOTION_SMOOTH) {
-            assert(instance->variables[0].d == .5);
+            assert(instance->execution.variables[0].d == .5);
         }
         behavior_instance_destroy(instance);
         behavior_asset_free(asset);

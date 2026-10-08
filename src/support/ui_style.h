@@ -1,7 +1,7 @@
 #ifndef CHIBI_UI_STYLE_H
 #define CHIBI_UI_STYLE_H
 
-#include "support/rcss.h"
+#include "support/rcss_map.h"
 
 #include <stdbool.h>
 #include <stddef.h>

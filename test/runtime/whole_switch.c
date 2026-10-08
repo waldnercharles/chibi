@@ -93,8 +93,10 @@ static void check(int kind, int sample, int control, int budget, void *library)
         ));
         behavior_instance_set_trace_enabled(bi, control != 0);
         behavior_instance_set_breakpoints_enabled(bi, control == 4);
-        behavior_function *f = (behavior_function *)
-            behavior_program_function(behavior_program_graph(asset->program, g), g->nodes[0]);
+        behavior_function *f = (behavior_function *)behavior_program_function(
+            behavior_program_graph(behavior_program_cached(asset), g),
+            g->nodes[0]
+        );
         if (mode && !f) {
             behavior_function_diagnostic diagnostic;
             behavior_function *lowered = behavior_function_lower(asset, g, g->nodes[0], &diagnostic);
@@ -107,14 +109,15 @@ static void check(int kind, int sample, int control, int budget, void *library)
             behavior_function_free(lowered);
             assert(f);
         }
-        void *code = f ? f->code : NULL, *inspection = f ? f->inspection_code : NULL,
-             *dispatch = f ? f->dispatch : NULL;
+        void *code = f ? f->artifact->code : NULL,
+             *inspection = f ? f->artifact->inspection_code : NULL,
+             *dispatch = f ? f->artifact->dispatch : NULL;
         if (mode == 3) {
             char name[64];
             snprintf(name, sizeof name, "whole_switch_%d", kind);
-            f->code = f->inspection_code = dlsym(library, name);
-            f->dispatch = NULL;
-            assert(f->code);
+            f->artifact->code = f->artifact->inspection_code = dlsym(library, name);
+            f->artifact->dispatch = NULL;
+            assert(f->artifact->code);
         }
         pin_value argument = whole_switch_argument(kind, sample);
         flow_options options = { .instance = bi, .step_budget = (unsigned)budget };
@@ -168,8 +171,8 @@ static void check(int kind, int sample, int control, int budget, void *library)
             }
         }
         if (!result) {
-            assert(bi->variables[0].i == whole_switch_expected(kind, sample));
-            assert(bi->variables[1].i == (kind & WHOLE_SWITCH_LOOP ? 3 : 1));
+            assert(bi->execution.variables[0].i == whole_switch_expected(kind, sample));
+            assert(bi->execution.variables[1].i == (kind & WHOLE_SWITCH_LOOP ? 3 : 1));
             if (control == 4 && !(kind & WHOLE_SWITCH_CALL)) {
                 assert(breakpoint_stops == (kind & WHOLE_SWITCH_LOOP ? 3 : 1));
             }
@@ -183,9 +186,9 @@ static void check(int kind, int sample, int control, int budget, void *library)
         flow_run_free(run);
         behavior_instance_destroy(bi);
         if (mode == 3) {
-            f->code = code;
-            f->inspection_code = inspection;
-            f->dispatch = dispatch;
+            f->artifact->code = code;
+            f->artifact->inspection_code = inspection;
+            f->artifact->dispatch = dispatch;
         }
     }
     for (int i = 0; i < acount(expected); i++) {

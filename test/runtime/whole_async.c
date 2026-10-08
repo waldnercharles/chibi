@@ -63,15 +63,16 @@ static void parity(bool trace, int stepping, int failure, bool no_output, void *
         }
     }
     behavior_function *f = entry(asset);
-    void *code = f->code, *inspection_code = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection_code = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     test_flow_snapshot *expected = NULL;
     for (int mode = 0; mode < (library ? 4 : 3); mode++) {
         if (mode == 3) {
             /* Compare emitted C through the same activation and host lifecycle.
              * Only this fresh test-owned program has its entry replaced. */
-            f->code = dlsym(library, "generated_async");
-            assert(f->code);
-            f->inspection_code = f->dispatch = NULL;
+            f->artifact->code = dlsym(library, "generated_async");
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->dispatch = NULL;
         }
         behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
         assert(entry(asset) == f);
@@ -159,7 +160,7 @@ static void parity(bool trace, int stepping, int failure, bool no_output, void *
         }
         assert(at == acount(expected));
         assert(flow_run_status(run) == (failure ? FLOW_FAILED : FLOW_COMPLETED));
-        assert(instance->variables[1].i == !failure);
+        assert(instance->execution.variables[1].i == !failure);
         assert(capture.calls == (failure == -1 ? 0 : failure ? failure : 3));
         if (mode) {
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
@@ -175,9 +176,9 @@ static void parity(bool trace, int stepping, int failure, bool no_output, void *
         whole_async_clear(&capture);
         behavior_instance_destroy(instance);
     }
-    f->code = code;
-    f->inspection_code = inspection_code;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection_code;
+    f->artifact->dispatch = dispatch;
     for (int i = 0; i < acount(expected); i++) {
         test_flow_snapshot_free(&expected[i]);
     }
@@ -259,7 +260,10 @@ static void lifecycle(behavior_backend backend)
             assert(!behavior_instance_stop_activation(instance, run));
             assert(!flow_host_complete(request, -1, (pin_value){ 0 }));
         }
-        assert(instance->variables[0].u64 == 0 && instance->variables[1].i == 0);
+        assert(
+            instance->execution.variables[0].u64 == 0 &&
+            instance->execution.variables[1].i == 0
+        );
         whole_async_clear(&capture);
         assert(!behavior_instance_release_activation(instance, run));
         pooled = run;
@@ -319,11 +323,12 @@ int bench_async(const char *path, int count, int rotation)
         int mode = (order + rotation) % 4;
         behavior_asset *asset = whole_async_fixture();
         behavior_function *f = entry(asset);
-        void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+        void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+             *dispatch = f->artifact->dispatch;
         if (mode == 2) {
-            f->code = dlsym(library, "generated_async");
-            assert(f->code);
-            f->inspection_code = f->dispatch = NULL;
+            f->artifact->code = dlsym(library, "generated_async");
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->dispatch = NULL;
         }
         behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
         assert(entry(asset) == f);
@@ -367,9 +372,12 @@ int bench_async(const char *path, int count, int rotation)
                 assert(++resumes <= 9);
             }
             assert(flow_run_status(run) == FLOW_COMPLETED && resumes == 9 && capture.calls == 3);
-            assert(instance->variables[0].u64 == 102 && instance->variables[1].i == 1);
+            assert(
+                instance->execution.variables[0].u64 == 102 &&
+                instance->execution.variables[1].i == 1
+            );
             if (iteration >= 0) {
-                checksum += instance->variables[0].u64;
+                checksum += instance->execution.variables[0].u64;
             }
             whole_async_clear(&capture);
             assert(!behavior_instance_release_activation(instance, run));
@@ -388,9 +396,9 @@ int bench_async(const char *path, int count, int rotation)
             (unsigned long long)stores
         );
         behavior_instance_destroy(instance);
-        f->code = code;
-        f->inspection_code = inspection;
-        f->dispatch = dispatch;
+        f->artifact->code = code;
+        f->artifact->inspection_code = inspection;
+        f->artifact->dispatch = dispatch;
         behavior_asset_free(asset);
     }
     assert(!dlclose(library));

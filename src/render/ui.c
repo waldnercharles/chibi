@@ -1,11 +1,9 @@
 #include "render/ui.h"
 
-#include "assets/ui_document.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
+#include "runtime/ui/documents.h"
 #include "support/array.h"
-#include "support/file_watch.h"
-#include "support/rcss.h"
-#include "support/text_file.h"
+#include "support/rcss_map.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
@@ -35,8 +33,10 @@ struct ui_mount
 {
     char *content_root;
     char *name;
-    file_watch watch;
-    file_watch *uses;     /* the widgets and stylesheets its asset uses */
+    render_ui_loader loader;
+    void *source;
+    uint64_t prepared_revision;
+    bool prepared_only, prepared_loaded;
     char *markup, *style; /* from the last valid asset */
     rcss_map map;         /* where each line of style came from */
     char error[256];
@@ -86,7 +86,9 @@ void ui_mount_free(ui_mount *m)
     if (!m) {
         return;
     }
-    afree(m->uses);
+    if (m->source) {
+        m->loader.close(m->source);
+    }
     for (int i = 0; i < acount(m->pending); i++) {
         rml_element_ref_destroy(m->pending[i].anchor);
     }
@@ -117,96 +119,77 @@ const char *ui_mount_error(const ui_mount *m)
     return m->error;
 }
 
-static void ui_folder(const char *content_root, char *directory, size_t size)
+static bool same_loader(render_ui_loader a, render_ui_loader b)
 {
-    snprintf(directory, size, "%s/ui", content_root);
+    return a.open == b.open && a.read == b.read && a.close == b.close;
 }
-
-/* Records RCSS a host will install as `kind` `path`, so the host finds where
- * its lines came from (ui_style_map). */
-static void record_style(const char *kind, const char *path, const char *rcss, const rcss_map *map)
+void ui_mount_set_loader(ui_mount *m, const render_ui_loader *loader)
 {
-    char sheet[1100];
-    snprintf(sheet, sizeof sheet, "%s %s", kind, path);
-    ui_style_set(sheet, rcss, map);
-}
-
-/* Whether any watched file changed; polls every one. */
-static bool files_changed(file_watch *watches, double time)
-{
-    bool any = false;
-    for (int i = 0; i < acount(watches); i++) {
-        any |= file_watch_changed(&watches[i], watches[i].path, time);
+    render_ui_loader next = loader ? *loader : (render_ui_loader){ 0 };
+    assert((!next.open && !next.read && !next.close) || (next.open && next.read && next.close));
+    if (same_loader(m->loader, next)) {
+        return;
     }
-    return any;
-}
-
-/* Watches `paths` from now instead, taking them. */
-static void watch_paths(file_watch **watches, char **paths, double time)
-{
-    asetlen(*watches, 0);
-    for (int i = 0; i < acount(paths); i++) {
-        file_watch w = { 0 };
-        file_watch_changed(&w, paths[i], time);
-        apush(*watches, w);
-        free(paths[i]);
+    if (m->source) {
+        m->loader.close(m->source);
     }
-    afree(paths);
+    m->loader = next;
+    m->source = next.open ? next.open(m->content_root, m->name, false) : NULL;
+    m->prepared_loaded = false;
 }
-
-/* The asset's styles, its widgets' files, then the stylesheets, taking both
- * lists. A file is watched while missing, so adding it counts. */
-static char **used_files(const char *directory, const char *name, char **widgets, char **imports)
-{
-    apush(imports, ui_document_path(directory, name, true));
-    for (int i = 0; i < acount(widgets); i++) {
-        apush(imports, ui_document_path(directory, widgets[i], false));
-        apush(imports, ui_document_path(directory, widgets[i], true));
-        free(widgets[i]);
-    }
-    afree(widgets);
-    return imports;
-}
-
 /* Reads the asset and its widgets when one changed; returns true when it
  * replaced the markup and RCSS. An invalid edit keeps the last valid ones. */
 static bool read_asset(ui_mount *m, double time)
 {
-    char directory[1024];
-    ui_folder(m->content_root, directory, sizeof directory);
-    char *path = ui_document_path(directory, m->name, false);
-    bool asset = file_watch_changed(&m->watch, path, time);
-    if (!files_changed(m->uses, time) && !asset) {
-        free(path);
+    if (m->prepared_only || !m->loader.open || game_ui_documents_active()) {
+        uint64_t generation = game_ui_documents_revision();
+        if (m->prepared_loaded && m->prepared_revision == generation) {
+            return false;
+        }
+        const game_ui_document
+            *record = game_ui_documents_active()
+                        ? game_ui_documents_find(game_ui_documents_current(), m->name)
+                        : NULL;
+        if (!record || record->body) {
+            snprintf(
+                m->error,
+                sizeof m->error,
+                "Prepared UI widget is missing or has page attributes: %.120s",
+                m->name
+            );
+            return false;
+        }
+        free(m->markup);
+        free(m->style);
+        rcss_map_free(&m->map);
+        m->markup = xstrdup(record->markup);
+        m->style = xstrdup(record->style);
+        m->error[0] = 0;
+        m->installed = false;
+        m->prepared_revision = generation;
+        m->prepared_loaded = true;
+        return true;
+    }
+    if (m->prepared_loaded) {
+        if (m->source) {
+            m->loader.close(m->source);
+        }
+        m->source = m->loader.open(m->content_root, m->name, false);
+        m->prepared_loaded = false;
+    }
+    ui_document next = { 0 };
+    int status = m->loader.read(m->source, time, &next, m->error, sizeof m->error);
+    if (status <= 0) {
         return false;
     }
-    char error[200], **imports = NULL, **widgets = NULL;
-    ui_document source = { 0 };
-    bool read = ui_document_load(directory, m->name, &imports, &source, error, sizeof error);
-    if (read && source.body) {
-        snprintf(error, sizeof error, "has a <body>, which only a scene's root document has");
-        read = false;
-    }
-    if (read) {
-        read = ui_document_expand(&source, m->name, directory, true, &widgets, error, sizeof error);
-    }
-    watch_paths(&m->uses, used_files(directory, m->name, widgets, imports), time);
-    if (!read) {
-        ui_document_free(&source);
-        snprintf(m->error, sizeof m->error, "ui/%s" UI_MARKUP_EXTENSION " %s", m->name, error);
-        free(path);
-        return false;
-    }
-    m->error[0] = '\0';
     free(m->markup);
     free(m->style);
     rcss_map_free(&m->map);
-    m->markup = source.rml;
-    m->style = source.rcss;
-    m->map = source.map;
+    m->markup = next.rml;
+    m->style = next.rcss;
+    m->map = next.map;
+    free(next.body);
     m->installed = false;
-    record_style("mount", path, m->style, &m->map);
-    free(path);
     return true;
 }
 
@@ -235,7 +218,15 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         rml_element_set_inner_rml(root, m->markup);
         const char *warning = rml_backend_take_warning();
         if (warning[0]) {
-            snprintf(m->error, sizeof m->error, "ui/%s" UI_MARKUP_EXTENSION " %s", m->name, warning);
+            snprintf(
+                m->error,
+                sizeof m->error,
+                "ui/%s"
+                ".rml"
+                " %s",
+                m->name,
+                warning
+            );
         }
         m->installed = true;
         m->applied = 0;
@@ -461,7 +452,7 @@ static bool argument_value(const char *text, pin_value *value)
    one emit's arguments give. */
 static bool event_value(
     const ui_activation *a,
-    const behavior_variable *v,
+    const render_ui_event_field *v,
     unsigned primary,
     float pointer[2],
     pin_value *value
@@ -472,7 +463,8 @@ static bool event_value(
         const char *name;
         unsigned bits;
     } MODIFIERS[] = { { "Shift", RML_KM_SHIFT }, { "Alt", RML_KM_ALT }, { "Mod", 0 } };
-    for (size_t i = 0; v->type == PIN_BOOL && i < sizeof MODIFIERS / sizeof *MODIFIERS;
+    for (size_t i = 0;
+         v->type.type == PIN_BOOL && i < sizeof MODIFIERS / sizeof *MODIFIERS;
          i++) {
         if (!strcmp(v->name, MODIFIERS[i].name)) {
             value->b = (a->modifiers &
@@ -480,8 +472,8 @@ static bool event_value(
             return true;
         }
     }
-    if (v->type == PIN_STRUCT && v->type_name &&
-        !strcmp(v->type_name, "CF_V2") && !strcmp(v->name, "Pointer")) {
+    if (v->type.type == PIN_STRUCT && v->type.type_name &&
+        !strcmp(v->type.type_name, "CF_V2") && !strcmp(v->name, "Pointer")) {
         pointer[0] = a->x;
         pointer[1] = a->y;
         value->ptr = pointer;
@@ -499,21 +491,22 @@ static bool event_value(
  * more than `capacity`. */
 static int ui_activation_payload(
     const ui_activation *a,
-    const behavior_asset *event,
+    const render_ui_event_field *fields,
+    int count,
     unsigned primary,
     float pointer[2],
     pin_value *out,
     int capacity
 )
 {
-    int count = event ? acount(event->variables) : 0, argument = 0;
+    int argument = 0;
     if (count > capacity) {
         return -1;
     }
     for (int i = 0; i < count; i++) {
-        const behavior_variable *v = &event->variables[i];
-        out[i] = (pin_value){ .type = v->type, .type_name = v->type_name };
-        if (v->container != PIN_CONTAINER_SINGLE) {
+        const render_ui_event_field *v = &fields[i];
+        out[i] = v->type;
+        if (v->type.container != PIN_CONTAINER_SINGLE) {
             return -1;
         }
         if (event_value(a, v, primary, pointer, &out[i])) {
@@ -528,34 +521,30 @@ static int ui_activation_payload(
     return count;
 }
 
-/* The event asset `live` holds under `name`, or NULL when it declares none:
- * a local event without a payload. */
-static const behavior_asset *declared_event(game_live_world *live, const char *name)
-{
-    game_live_definition *event = game_live_find_definition(live, name);
-    return event && event->working->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION
-             ? event->working
-             : NULL;
-}
-
 /* Values an event's payload may hold; a UI event declares a few. */
 #define PAYLOAD_MAX 16
 
-bool ui_activation_send(game_live_world *live, ecs_entity entity, const ui_activation *a, unsigned primary)
+bool ui_activation_send(const render_ui_host *host, ecs_entity entity, const ui_activation *a, unsigned primary)
 {
-    pin_value values[PAYLOAD_MAX];
-    float pointer[2];
-    int count = ui_activation_payload(a, declared_event(live, a->event), primary, pointer, values, PAYLOAD_MAX);
-    if (count < 0) {
+    if (!host || !host->dispatch) {
+        return true;
+    }
+    render_ui_event_field fields[PAYLOAD_MAX];
+    int count = host->payload
+                  ? host->payload(host->context, a->event, fields, PAYLOAD_MAX)
+                  : 0;
+    if (count < 0 || count > PAYLOAD_MAX) {
         return false;
     }
-    flow_inputs inputs = { .values = values, .count = count };
-    if (entity.slot) {
-        game_behavior_dispatch(live->behaviors, entity, a->event, inputs, NULL);
-    } else {
-        game_behavior_dispatch_all(live->behaviors, a->event, inputs, NULL);
-    }
-    return true;
+    pin_value values[PAYLOAD_MAX];
+    float pointer[2];
+    count = ui_activation_payload(a, fields, count, primary, pointer, values, PAYLOAD_MAX);
+    return count >= 0 && host->dispatch(
+                             host->context,
+                             ecs_entity_to_u64(entity),
+                             a->event,
+                             (execution_arguments){ .values = values, .count = count }
+                         ) >= 0;
 }
 
 static void escape_text(char *out, size_t size, const char *text)
@@ -565,6 +554,7 @@ static void escape_text(char *out, size_t size, const char *text)
         const char *entity = *c == '<' ? "&lt;"
                            : *c == '>' ? "&gt;"
                            : *c == '&' ? "&amp;"
+                           : *c == '"' ? "&quot;"
                                        : NULL;
         if (entity) {
             n += (size_t)snprintf(out + n, size - n, "%s", entity);
@@ -1132,51 +1122,86 @@ void ui_data_free(ui_data *d)
 
 bool ui_page_sync(ui_page *p, const char *content_root, const char *name, double time)
 {
-    bool renamed = strcmp(p->name, name) != 0;
+    bool renamed = strcmp(p->name, name) != 0 || !p->content_root ||
+                   strcmp(p->content_root, content_root);
     if (renamed) {
+        bool prepared_only = p->prepared_only;
+        render_ui_loader loader = p->loader;
         ui_page_free(p);
+        p->prepared_only = prepared_only;
+        p->loader = loader;
         snprintf(p->name, sizeof p->name, "%s", name);
+        p->content_root = xstrdup(content_root);
     }
     if (!name[0]) {
         return renamed;
     }
-    char directory[1024];
-    ui_folder(content_root, directory, sizeof directory);
-    char *path = ui_document_path(directory, name, false);
-    bool changed = file_watch_changed(&p->asset, path, time);
-    if (!files_changed(p->imports, time) && !changed && !renamed) {
-        free(path);
-        return false;
+    if (p->prepared_only || !p->loader.open || game_ui_documents_active()) {
+        uint64_t generation = game_ui_documents_revision();
+        if (p->prepared_loaded && p->prepared_revision == generation && !renamed) {
+            return false;
+        }
+        const game_ui_document *record = game_ui_documents_active()
+                                           ? game_ui_documents_find(game_ui_documents_current(), name)
+                                           : NULL;
+        if (!record) {
+            snprintf(p->error, sizeof p->error, "Prepared UI page is missing: %.120s", name);
+            return renamed;
+        }
+        ui_document next = { .rml = xstrdup(record->markup),
+                             .rcss = xstrdup(record->style),
+                             .body = record->body ? xstrdup(record->body) : NULL,
+                             .rml_line = 1 };
+        ui_document_free(&p->document);
+        p->document = next;
+        p->error[0] = 0;
+        p->prepared_revision = generation;
+        p->prepared_loaded = true;
+        return true;
     }
-    char error[200], **imports = NULL;
+    if (p->prepared_loaded) {
+        if (p->source) {
+            p->loader.close(p->source);
+        }
+        p->source = NULL;
+        p->prepared_loaded = false;
+    }
+    if (!p->source) {
+        p->source = p->loader.open(content_root, name, true);
+    }
     ui_document next = { 0 };
-    bool read = ui_document_load(directory, name, &imports, &next, error, sizeof error);
-    /* Its styles and every file they reached, so adding the styles or
-       fixing a broken import retries. */
-    apush(imports, ui_document_path(directory, name, true));
-    watch_paths(&p->imports, imports, time);
-    if (!read) {
-        ui_document_free(&next);
-        snprintf(p->error, sizeof p->error, "ui/%s" UI_MARKUP_EXTENSION " %s", name, error);
-        free(path);
+    int status = p->loader.read(p->source, time, &next, p->error, sizeof p->error);
+    if (status <= 0) {
         return renamed;
     }
-    char *styles = ui_document_path(directory, name, true);
-    rcss_map_own(&next.map, styles);
-    free(styles);
     ui_document_free(&p->document);
     p->document = next;
-    p->error[0] = '\0';
-    record_style("page", path, p->document.rcss, &p->document.map);
-    free(path);
     return true;
 }
 
 void ui_page_free(ui_page *p)
 {
-    afree(p->imports);
+    if (p->source) {
+        p->loader.close(p->source);
+    }
     ui_document_free(&p->document);
+    free(p->content_root);
     *p = (ui_page){ 0 };
+}
+
+void ui_page_set_loader(ui_page *p, const render_ui_loader *loader)
+{
+    render_ui_loader next = loader ? *loader : (render_ui_loader){ 0 };
+    assert((!next.open && !next.read && !next.close) || (next.open && next.read && next.close));
+    if (same_loader(p->loader, next)) {
+        return;
+    }
+    if (p->source) {
+        p->loader.close(p->source);
+    }
+    p->source = NULL;
+    p->loader = next;
+    p->prepared_loaded = false;
 }
 
 /* ---------- Game host ---------- */
@@ -1234,6 +1259,8 @@ struct render_ui
     rml_element *slot; /* where the world's documents show on it */
     rml_listener *listener;
     char *content_root;
+    bool prepared_only;
+    render_ui_loader loader;
     ui_page page;
     ui_data data;
     ui_view *views;
@@ -1268,12 +1295,19 @@ static void close_view(render_ui *ui, ui_view *view)
 }
 
 /* The page body's attributes: the data model, then the page's own. */
-static char *frame_body(const char *attributes)
+static char *frame_body(const char *attributes, const char *page)
 {
     const char *model = "data-model=\"" UI_DATA_MODEL "\"";
-    size_t size = strlen(model) + (attributes ? strlen(attributes) + 1 : 0) + 1;
+    char scoped[1024] = "";
+    if (page) {
+        char escaped[768];
+        escape_text(escaped, sizeof escaped, page);
+        snprintf(scoped, sizeof scoped, " data-ui=\"%s\"", escaped);
+    }
+    size_t size = strlen(model) + strlen(scoped) +
+                  (attributes ? strlen(attributes) + 1 : 0) + 1;
     char *body = xmalloc(size);
-    snprintf(body, size, "%s%s%s", model, attributes ? " " : "", attributes ? attributes : "");
+    snprintf(body, size, "%s%s%s%s", model, scoped, attributes ? " " : "", attributes ? attributes : "");
     return body;
 }
 
@@ -1283,15 +1317,18 @@ static char *frame_body(const char *attributes)
 static char *page_text(const ui_page *page)
 {
     const ui_document *d = &page->document;
-    char *marked = d->rml ? ui_document_sources(d->rml, page->name, d->rml_line) : NULL;
     ui_document body = {
-        .rml = marked ? marked : "",
+        .rml = d->rml ? d->rml : "",
         .rcss = "",
-        .body = frame_body(d->body),
+        .body = frame_body(
+            d->body,
+            (page->prepared_only || !page->loader.open || game_ui_documents_active())
+                ? page->name
+                : NULL
+        ),
     };
     char *text = ui_document_compose(&body, "");
     free(body.body);
-    free(marked);
     return text;
 }
 
@@ -1317,7 +1354,9 @@ static void load_page(render_ui *ui)
         snprintf(
             ui->page.error,
             sizeof ui->page.error,
-            "ui/%s" UI_MARKUP_EXTENSION " %s",
+            "ui/%s"
+            ".rml"
+            " %s",
             ui->page.name,
             warning
         );
@@ -1329,19 +1368,49 @@ static void load_page(render_ui *ui)
     ui->restyle = true;
 }
 
-render_ui *render_ui_new(const char *content_root, yyjson_mut_doc *data)
+static render_ui *new_ui(const char *content_root, yyjson_mut_doc *data, bool prepared_only)
 {
     static int hosts;
     render_ui *ui = xcalloc(1, sizeof *ui);
     snprintf(ui->sheet, sizeof ui->sheet, "game-ui-%d", ++hosts);
     ui->content_root = xstrdup(content_root);
+    ui->prepared_only = prepared_only;
+    ui->page.prepared_only = prepared_only;
     ui->backend = rml_backend_create(1, 1, 1);
+    if (ui->backend) {
+        rml_backend_require_resident_images(
+            ui->backend,
+            prepared_only || !ui->loader.open || game_ui_documents_active()
+        );
+    }
     ui->listener = rml_listener_create(on_event, ui);
     ui->scale = 1;
     ui->reference = UI_REFERENCE_HEIGHT;
     ui_data_init(&ui->data, rml_backend_context(ui->backend), data, on_emit, ui);
     load_page(ui);
     return ui;
+}
+
+render_ui *render_ui_new(const char *content_root, yyjson_mut_doc *data)
+{
+    return new_ui(content_root, data, false);
+}
+render_ui *render_ui_new_prepared(yyjson_mut_doc *data)
+{
+    return new_ui("", data, true);
+}
+
+void render_ui_set_loader(render_ui *ui, const render_ui_loader *loader)
+{
+    assert(ui && !ui->prepared_only);
+    ui->loader = loader ? *loader : (render_ui_loader){ 0 };
+    ui_page_set_loader(&ui->page, loader);
+    for (int i = 0; i < acount(ui->views); i++) {
+        if (ui->views[i].mount) {
+            ui_mount_set_loader(ui->views[i].mount, loader);
+        }
+    }
+    rml_backend_require_resident_images(ui->backend, !ui->loader.open || game_ui_documents_active());
 }
 
 void render_ui_free(render_ui *ui)
@@ -1386,6 +1455,8 @@ static void open_view(render_ui *ui, ui_view *view, const char *name, const char
         { "width", "100%" },        { "height", "100%" },
     };
     view->mount = ui_mount_new(ui->content_root, name);
+    view->mount->prepared_only = ui->prepared_only;
+    ui_mount_set_loader(view->mount, &ui->loader);
     view->root = rml_element_create_child(ui->slot, "div", NULL);
     ui_data_bind_self(&ui->data, view->root, view->entity);
     for (size_t i = 0; i < sizeof LAYOUT / sizeof *LAYOUT; i++) {
@@ -1503,7 +1574,7 @@ bool render_ui_wants_text(const render_ui *ui)
 static void send_activations(render_ui *ui, const ui_world *world)
 {
     game_ui *model = world->model;
-    game_live_world *live = world->live;
+    const render_ui_host *host = &world->host;
     ui->failure[0] = '\0';
     for (int i = 0; i < acount(ui->views); i++) {
         ui_view *view = &ui->views[i];
@@ -1511,15 +1582,16 @@ static void send_activations(render_ui *ui, const ui_world *world)
         if (view->mount && model) {
             ui_mount_measure(view->mount, model, view->entity);
         }
-        while (view->mount && !(live && game_entities_initializing(live->entities)) &&
+        while (view->mount &&
+               !(host->initializing && host->initializing(host->context)) &&
                ui_mount_take(view->mount, &a)) {
             if (model && a.has_value && a.id[0]) {
                 char selector[160];
                 snprintf(selector, sizeof selector, "#%s", a.id);
                 game_ui_set_value(model, view->entity, selector, a.value);
             }
-            if (live &&
-                !ui_activation_send(live, ecs_entity_from_u64(view->entity), &a, GAME_PRIMARY)) {
+            if (host->dispatch &&
+                !ui_activation_send(host, ecs_entity_from_u64(view->entity), &a, GAME_PRIMARY)) {
                 snprintf(
                     ui->failure,
                     sizeof ui->failure,
@@ -1645,6 +1717,10 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
     ecs_world *world = w->ecs;
     ui->time += dt;
     send_activations(ui, w);
+    rml_backend_require_resident_images(
+        ui->backend,
+        ui->prepared_only || !ui->loader.open || game_ui_documents_active()
+    );
     if (ui_page_sync(&ui->page, ui->content_root, w->page ? w->page : "", ui->time)) {
         load_page(ui);
     }

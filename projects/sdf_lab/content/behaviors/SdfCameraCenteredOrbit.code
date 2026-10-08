@@ -1,8 +1,0 @@
-behavior "SdfCameraCenteredOrbit" {
-    owner "ecs.entity";
-    state elapsed: float = 0.0;
-    on Tick as tick(DeltaSeconds: float = 0.0) {
-        &state.elapsed += cast<double>(&delta);
-        &component("GAME.GameCamera", "pitch") = cast<double>(&state.elapsed) * (2 * pi / 16);
-    }
-}

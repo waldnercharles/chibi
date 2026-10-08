@@ -1,6 +1,6 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "runtime/systems/system.h"
 #include "support/text_file.h"
 
@@ -133,6 +133,7 @@ static void run_native(ecs_entity *entities, int entity_count, int frame_count, 
 
 int main(int argc, char **argv)
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     int entity_count = argc > 1 ? atoi(argv[1]) : DEFAULT_ENTITIES;
     int frame_count = argc > 2 ? atoi(argv[2]) : DEFAULT_FRAMES;
     if (entity_count <= 0 || frame_count <= 0) {
@@ -140,7 +141,7 @@ int main(int argc, char **argv)
         return 1;
     }
     registry_validate();
-    char *json = text_file_read("test/fixtures/systems/MovementSystem.code");
+    char *json = text_file_read("test/fixtures/systems/MovementSystem.chibi");
     behavior_asset *definition = json ? behavior_asset_load(json) : NULL;
     free(json);
     ecs_world *world = ecs_world_new();

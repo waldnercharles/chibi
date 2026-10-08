@@ -1,6 +1,0 @@
-name "OrbitCabinet"
-components {
-    GAME.GameAppearance border_color=0x69bfbfff border_width=3.0 color=0x112d39ff height=750.0 width=430.0
-    GAME.GameCamera height=850.0 width=500.0
-    GAME.GameTransform y=-340.0
-}

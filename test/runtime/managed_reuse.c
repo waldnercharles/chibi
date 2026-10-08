@@ -1,4 +1,3 @@
-#include "assets/code_source.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/suite_internal.h"
 #include "test/whole_array_op_fixture.h"
@@ -20,22 +19,23 @@ static void aliases(int kind)
         const void *owned = borrowed.ptr;
         arena current = bi->variable_arenas[0];
         assert(!behavior_instance_set_variable(bi, source_id, &borrowed));
-        assert(bi->variables[0].ptr == owned);
+        assert(bi->execution.variables[0].ptr == owned);
         assert(
             bi->variable_arenas[0].first == current.first &&
             bi->variable_arenas[0].current == current.current
         );
-        assert(pin_value_equal(&bi->variables[0], &snapshot));
+        assert(pin_value_equal(&bi->execution.variables[0], &snapshot));
     }
     /* A slice borrows the current value's items while replacing that value. */
-    pin_array tail = *(pin_array *)bi->variables[0].ptr;
+    pin_array tail = *(pin_array *)bi->execution.variables[0].ptr;
     tail.items++;
     tail.count--;
     tail.capacity = tail.count;
-    pin_value value = bi->variables[0];
+    pin_value value = bi->execution.variables[0];
     value.ptr = &tail;
     assert(!behavior_instance_set_variable(bi, source_id, &value));
-    const pin_array *array = bi->variables[0].ptr, *original = snapshot.ptr;
+    const pin_array *array = bi->execution.variables[0].ptr,
+                    *original = snapshot.ptr;
     assert(array->count == 2 && original->count == 3);
     assert(pin_value_equal(&array->items[0], &original->items[1]));
     assert(pin_value_equal(&array->items[1], &original->items[2]));
@@ -46,7 +46,7 @@ static void aliases(int kind)
         bad.items = items;
         value.ptr = &bad;
         assert(behavior_instance_set_variable(bi, source_id, &value) < 0);
-        assert(bi->variables[0].ptr == array && array->count == 2);
+        assert(bi->execution.variables[0].ptr == array && array->count == 2);
         assert(pin_value_equal(&array->items[0], &original->items[1]));
     }
     char text[8192];
@@ -59,7 +59,7 @@ static void aliases(int kind)
         assert(!behavior_instance_get_variable(bi, text_id, &borrowed));
         borrowed.str += 1;
         assert(!behavior_instance_set_variable(bi, text_id, &borrowed));
-        assert(strlen(bi->variables[4].str) == sizeof text - 2 - (size_t)i);
+        assert(strlen(bi->execution.variables[4].str) == sizeof text - 2 - (size_t)i);
     }
     /* The borrowed substrings were smaller. Warm both arenas at the restored
      * size before requiring allocation-free steady-state writes. */
@@ -68,25 +68,12 @@ static void aliases(int kind)
     uint64_t allocations = arena_block_allocations();
     for (int i = 0; i < 16; i++) {
         assert(!behavior_instance_set_variable(bi, text_id, &value));
-        assert(!strcmp(bi->variables[4].str, text));
+        assert(!strcmp(bi->execution.variables[4].str, text));
     }
     assert(allocations == arena_block_allocations());
     /* Reordering variables must move both arenas with their stable identity. */
-    char *json = behavior_asset_save(a);
-    behavior_asset *next = behavior_asset_load(json);
-    if (!next) {
-        fprintf(stderr, "Managed reuse save/load failed:\n%s\n", json ? json : "NULL");
-        if (json) {
-            code_source *source = code_source_parse(json);
-            for (int i = 0; i < acount(source->diagnostics); i++) {
-                const code_source_diagnostic *d = &source->diagnostics[i];
-                fprintf(stderr, "%d..%d: %s\n", d->start, d->end, d->message);
-            }
-            code_source_free(source);
-        }
-    }
-    free(json);
-    assert(next);
+    behavior_asset *next = behavior_asset_clone(a);
+    assert(next && behavior_asset_equal(a, next));
     behavior_variable swap = next->variables[0];
     next->variables[0] = next->variables[4];
     next->variables[4] = swap;
@@ -158,7 +145,7 @@ static void nested_snapshot()
     memset(text, 'y', sizeof text - 1);
     source.nested.weight = 99;
     source.count = -1;
-    const whole_managed *owned = bi->variables[0].ptr;
+    const whole_managed *owned = bi->execution.variables[0].ptr;
     assert(!strcmp(owned->label, "snapshot label"));
     assert(!strcmp(owned->nested.text, "snapshot nested text"));
     assert(owned->nested.weight == 2.5f && owned->count == 19);

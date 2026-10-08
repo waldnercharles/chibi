@@ -1,5 +1,5 @@
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "authoring/preview.h"
+#include "runtime/component_catalog.h"
 #include "runtime/material_fluid.h"
 #include "runtime/particle_emitters.h"
 #include "runtime/task_pool.h"
@@ -320,13 +320,13 @@ static void add_component(
     assert(ecs_world_record_add(world, entity, type->id, value, 0) == ECS_OK);
 }
 
-static game_live_world *thermal_world(ecs_world **world)
+static game_preview_world *thermal_world(ecs_world **world)
 {
     *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(*world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(*world);
+    game_preview_world *live = game_preview_world_new(*world);
     ecs_entity config = ecs_world_create_entity(*world);
     MaterialFluidWorld settings = { .chunk_size = 64,
                                     .buffer = 32,
@@ -357,37 +357,40 @@ static ecs_entity add_volume(ecs_world *world, float x, float heat, MaterialTher
 static void authored_volumes()
 {
     ecs_world *world;
-    game_live_world *live = thermal_world(&world);
+    game_preview_world *live = thermal_world(&world);
     ecs_entity hot = add_volume(world, -2, 10, (MaterialThermal){ 2, 1000 });
     add_volume(world, 2, 0, (MaterialThermal){ 4, 1000 });
-    assert(!game_materials_prepare(live->materials));
+    assert(!game_materials_prepare(live->runtime->materials));
     int count;
-    const fluid_particle *p = material_fluid_particles(game_materials_fluid(live->materials), &count);
+    const fluid_particle *p = material_fluid_particles(
+        game_materials_fluid(live->runtime->materials),
+        &count
+    );
     assert(count == 2 && p[0].thermal.capacity == 2 && p[1].thermal.capacity == 4);
     assert(p[0].thermal.conductivity == 1000 && p[1].thermal.conductivity == 1000);
     /* A moving inspection body activates the volume without combustion or a camera. */
     fluid_body body = { .velocity = { 2, 0 } };
-    game_materials_tick(live->materials, 1.f / 60, &body, 1, NULL, 0);
-    p = material_fluid_particles(game_materials_fluid(live->materials), &count);
+    game_materials_tick(live->runtime->materials, 1.f / 60, &body, 1, NULL, 0);
+    p = material_fluid_particles(game_materials_fluid(live->runtime->materials), &count);
     assert(p[0].heat < 10 && p[1].heat > 0 && fabs(energy(p, count) - 20) < .0001);
-    uint64_t hash = game_materials_inspect(live->materials).hash;
+    uint64_t hash = game_materials_inspect(live->runtime->materials).hash;
     GAME_MaterialThermal_get(world, hot)->capacity = 0;
-    assert(game_materials_prepare(live->materials));
-    assert(game_materials_inspect(live->materials).hash == hash);
+    assert(game_materials_prepare(live->runtime->materials));
+    assert(game_materials_inspect(live->runtime->materials).hash == hash);
     GAME_MaterialThermal_get(world, hot)->capacity = 2;
     GAME_MaterialThermal_get(world, hot)->conductivity = -1;
-    assert(game_materials_prepare(live->materials));
+    assert(game_materials_prepare(live->runtime->materials));
     GAME_MaterialThermal_get(world, hot)->conductivity = 0;
-    assert(!game_materials_prepare(live->materials));
-    game_live_world_free(live);
+    assert(!game_materials_prepare(live->runtime->materials));
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
 static void authored_emitter()
 {
     ecs_world *world;
-    game_live_world *live = thermal_world(&world);
-    assert(!game_materials_prepare(live->materials));
+    game_preview_world *live = thermal_world(&world);
+    assert(!game_materials_prepare(live->runtime->materials));
     ecs_entity entity = ecs_world_create_entity(world);
     GameParticleEmitter style = game_particle_emitter_defaults();
     style.fluid = true;
@@ -400,35 +403,38 @@ static void authored_emitter()
     add_component(world, entity, &GAME_COMPONENT_MaterialThermal, &(MaterialThermal){ 7, 12 });
     assert(ecs_world_apply_commands(world) == ECS_OK);
     game_particle_emitters *emitters = game_particle_emitters_new(NULL);
-    game_particle_emitters_bind_materials(emitters, live->materials);
+    game_particle_emitters_bind_materials(emitters, live->runtime->materials);
     char error[256];
     assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof error));
     int count;
-    const fluid_particle *p = material_fluid_particles(game_materials_fluid(live->materials), &count);
+    const fluid_particle *p = material_fluid_particles(
+        game_materials_fluid(live->runtime->materials),
+        &count
+    );
     assert(
         count == 1 && p[0].mass == 3 && p[0].thermal.capacity == 7 &&
         p[0].thermal.conductivity == 12
     );
     GAME_MaterialThermal_get(world, entity)->capacity = 0;
     assert(!game_particle_emitters_collect(emitters, world, NULL, .1, error, sizeof error));
-    material_fluid_particles(game_materials_fluid(live->materials), &count);
+    material_fluid_particles(game_materials_fluid(live->runtime->materials), &count);
     assert(count == 1);
     game_particle_emitters_free(emitters);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
 static uint64_t thermal_hash(fluid_thermal thermal)
 {
     ecs_world *world;
-    game_live_world *live = thermal_world(&world);
-    assert(!game_materials_prepare(live->materials));
+    game_preview_world *live = thermal_world(&world);
+    assert(!game_materials_prepare(live->runtime->materials));
     fluid_particle p = parcel(0, 0, 2, 1, 1);
     p.thermal = thermal;
-    assert(game_materials_emit(live->materials, p));
-    uint64_t hash = game_materials_inspect(live->materials).hash;
-    assert(game_materials_inspect(live->materials).hash == hash);
-    game_live_world_free(live);
+    assert(game_materials_emit(live->runtime->materials, p));
+    uint64_t hash = game_materials_inspect(live->runtime->materials).hash;
+    assert(game_materials_inspect(live->runtime->materials).hash == hash);
+    game_preview_world_free(live);
     ecs_world_free(world);
     return hash;
 }

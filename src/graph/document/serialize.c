@@ -1,4 +1,4 @@
-#include "assets/code_source.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/document/serialize_internal.h"
 #include "graph/model/behavior_asset.h"
@@ -8,10 +8,11 @@
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
-#include "graph/runtime/value_array.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/asset_text.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -273,7 +274,9 @@ static int apply_pin(graph *g, node *n, int output, int i, av_value *v, load_ref
             av_value *event_pin_id = av_obj_get(binding_value, "event_pin_id");
             if (av_is_str(from)) {
                 /* The event node may follow this one; resolve after loading nodes. */
-                pending = (pin_ref_binding){ n, i, av_get_str(from) };
+                pending = (pin_ref_binding){ .node = n,
+                                             .index = i,
+                                             .ref = av_get_str(from) };
             } else if (!av_is_uint(event_node_id) || !av_get_uint(event_node_id) || !av_is_uint(event_pin_id) || !av_get_uint(event_pin_id)) {
                 serialize_error_set("event output binding is incomplete");
                 return -1;
@@ -1057,7 +1060,7 @@ graph *graph_load(const char *text)
     char error[160];
     av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
     if (!doc) {
-        serialize_error_set("%s", text ? error : "null code input");
+        serialize_error_set("%s", text ? error : "null graph input");
         return NULL;
     }
     graph *result = graph_from_value(av_doc_root(doc));
@@ -1470,22 +1473,10 @@ static int serialize_repair_math_calls(behavior_asset *asset)
 
 behavior_asset *behavior_asset_load(const char *text)
 {
-    if (text && code_source_is_structured(text)) {
-        code_source *source = code_source_parse(text);
-        behavior_asset *asset = code_source_build_behavior(source);
-        if (!asset) {
-            serialize_error_set(
-                "%s",
-                acount(source->diagnostics) ? source->diagnostics[0].message : "invalid behavior source"
-            );
-        }
-        code_source_free(source);
-        return asset;
-    }
     char error[160];
     av_doc *doc = text ? av_doc_read(text, error, sizeof error) : NULL;
     if (!doc) {
-        serialize_error_set("%s", text ? error : "null code input");
+        serialize_error_set("%s", text ? error : "null graph input");
         return NULL;
     }
     behavior_asset *result = behavior_asset_from_value(av_doc_root(doc));
@@ -1493,7 +1484,7 @@ behavior_asset *behavior_asset_load(const char *text)
     if (result && (result->domain == BEHAVIOR_DOMAIN_EVENT ||
                    result->domain == BEHAVIOR_DOMAIN_LIBRARY)) {
         behavior_asset_free(result);
-        serialize_error_set("Executable behaviors require readable .code source");
+        serialize_error_set("Executable behaviors require readable .chibi source");
         return NULL;
     }
     return result;

@@ -1,10 +1,10 @@
 #include "assets/scenario_document.h"
 
-#include "graph/model/registry.h"
 #include "runtime/components.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
+#include "types/catalog.h"
 
 #include <float.h>
 #include <math.h>
@@ -47,7 +47,7 @@ static bool read_controls(av_value *value, uint64_t *out)
     {
         int control;
         if (!av_is_str(label) ||
-            !registry_enum_value(CONTROL_ENUM, av_get_str(label), &control) ||
+            !type_catalog_enum_value(CONTROL_ENUM, av_get_str(label), &control) ||
             control <= GAME_CONTROL_NONE || control >= GAME_CONTROL_COUNT) {
             return false;
         }
@@ -210,7 +210,7 @@ static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
     av_value *controls = av_obj_add_arr(doc, value, "controls");
     for (int control = GAME_CONTROL_NONE + 1; control < GAME_CONTROL_COUNT; control++) {
         if (key->controls & (UINT64_C(1) << control)) {
-            av_arr_add_str(doc, controls, registry_enum_label(CONTROL_ENUM, control));
+            av_arr_add_str(doc, controls, type_catalog_enum_label(CONTROL_ENUM, control));
         }
     }
 }

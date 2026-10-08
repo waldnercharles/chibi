@@ -1,0 +1,1629 @@
+#include "ecs/ecs.h"
+#include "execution/delay.h"
+#include "execution/inspection.h"
+#include "execution/module.h"
+#include "execution/status.h"
+#include "language/identity.h"
+#include "language/lower.h"
+#include "runtime/native_definitions.h"
+#include "runtime/state_definition.h"
+#include "support/array.h"
+#include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
+#include "types/catalog.h"
+
+#include <assert.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
+
+/* SDK fixture catalog: Position{x,y:double}, Velocity{x:double},
+ * Impulse(amount:double,enabled:bool), Tick(dt:double), Delay(Duration:double),
+ * self:entity and dt:double. These examples require this embedding catalog.
+ * Run: make language-build && make test-language-program (selector --program).
+ * Semantic type IDs intentionally differ from authoritative ECS component IDs. */
+#define EXAMPLE_SOURCE_CAPACITY 1024
+#define MEMORY_TEXT_MIN 512
+#define MEMORY_TEXT_STEP 32
+#define MEMORY_TEXT_MAX 4096
+#define MEMORY_PLATEAU_SLACK 4096
+
+typedef struct
+{
+    double x, y;
+} program_position;
+typedef struct
+{
+    double x;
+} program_velocity;
+static const type_field position_fields[] = {
+    { .name = "x", .type = PIN_F64, .size = sizeof(double), .type_name = "double" },
+    { .name = "y",
+      .type = PIN_F64,
+      .offset = offsetof(program_position, y),
+      .size = sizeof(double),
+      .type_name = "double" },
+};
+static const type_field velocity_field = {
+    .name = "x",
+    .type = PIN_F64,
+    .size = sizeof(double),
+    .type_name = "double",
+};
+static const type_desc position_type = {
+    .name = "Position",
+    .size = sizeof(program_position),
+    .fields = position_fields,
+    .field_count = 2,
+};
+static const type_desc velocity_type = {
+    .name = "Velocity",
+    .size = sizeof(program_velocity),
+    .fields = &velocity_field,
+    .field_count = 1,
+};
+static const type_desc *const reflected_types[] = { &position_type, &velocity_type };
+type_catalog_pack test_program_types()
+{
+    return (type_catalog_pack){ .types = reflected_types, .type_count = 2 };
+}
+static const ecs_component_desc position_component = {
+    .id = 501,
+    .key = "program.position",
+    .name = "Position",
+    .element_size = sizeof(program_position),
+    .type = &position_type,
+};
+static const ecs_component_desc velocity_component = {
+    .id = 502,
+    .key = "program.velocity",
+    .name = "Velocity",
+    .element_size = sizeof(program_velocity),
+    .type = &velocity_type,
+};
+static const script_catalog_field script_position_fields[] = {
+    {
+        .id = 1011,
+        .name = "x",
+        .type = { .storage = PIN_F64 },
+        .writable = true,
+    },
+    { .id = 1012,
+      .name = "y",
+      .type = { .storage = PIN_F64 },
+      .writable = true,
+      .offset = offsetof(program_position, y) },
+};
+static const script_catalog_field script_velocity_field = {
+    .id = 1021,
+    .name = "x",
+    .type = { .storage = PIN_F64 },
+    .writable = true,
+};
+static script_catalog_type script_types[] = {
+    { .id = 101,
+      .name = "Position",
+      .type = { .storage = PIN_STRUCT, .nominal = 101 },
+      .fields = script_position_fields,
+      .field_count = 2,
+      .size = sizeof(program_position),
+      .component = true,
+      .component_id = 501 },
+    { .id = 102,
+      .name = "Velocity",
+      .type = { .storage = PIN_STRUCT, .nominal = 102 },
+      .fields = &script_velocity_field,
+      .field_count = 1,
+      .size = sizeof(program_velocity),
+      .component = true,
+      .component_id = 502 },
+};
+static const script_catalog_parameter tick_parameter = {
+    .name = "dt",
+    .type = { .storage = PIN_F64 },
+};
+static const script_catalog_parameter impulse_parameters[] = {
+    { .name = "amount", .type = { .storage = PIN_F64 } },
+    { .name = "enabled", .type = { .storage = PIN_BOOL } },
+};
+static const script_catalog_parameter delay_parameter = {
+    .name = "Duration",
+    .type = { .storage = PIN_F64 },
+};
+static const char *const completed[] = { "Completed" };
+static const script_catalog_parameter library_results[] = {
+    { .name = "local_count", .type = { .storage = PIN_F64 } },
+    { .name = "position_x", .type = { .storage = PIN_F64 } },
+};
+static const script_catalog_parameter failed_result = { .name = "Result",
+                                                        .type = { .storage = PIN_F64 } };
+static const script_catalog_parameter managed_result = { .name = "Result",
+                                                         .type = { .storage = PIN_STR } };
+static const script_catalog_capability capabilities[] = {
+    { .id = 10,
+      .name = "Tick",
+      .kind = SCRIPT_CAPABILITY_EVENT,
+      .parameters = &tick_parameter,
+      .parameter_count = 1 },
+    { .id = 11,
+      .name = "Impulse",
+      .kind = SCRIPT_CAPABILITY_EVENT,
+      .parameters = impulse_parameters,
+      .parameter_count = 2 },
+    { .id = 20,
+      .name = "Delay",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .parameters = &delay_parameter,
+      .parameter_count = 1,
+      .outcomes = completed,
+      .outcome_count = 1,
+      .completion_outcome = 0,
+      .effects = SCRIPT_EFFECT_SUSPEND },
+    { .id = 40,
+      .name = "library_work",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .results = library_results,
+      .result_count = 2,
+      .outcomes = completed,
+      .outcome_count = 1,
+      .completion_outcome = 0,
+      .effects = SCRIPT_EFFECT_READ | SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_SUSPEND },
+    { .id = 21,
+      .name = "timer",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .parameters = &delay_parameter,
+      .parameter_count = 1,
+      .outcomes = completed,
+      .outcome_count = 1,
+      .completion_outcome = 0,
+      .effects = SCRIPT_EFFECT_SUSPEND },
+    { .id = 50,
+      .name = "fail_native",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .results = &failed_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_HOST },
+    { .id = 60,
+      .name = "managed_text",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .results = &managed_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_HOST },
+};
+static const script_catalog_global globals[] = {
+    { .id = 30, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = 700 } },
+    { .id = 31, .name = "dt", .type = { .storage = PIN_F64 } },
+};
+static const script_catalog catalog = {
+    .types = script_types,
+    .type_count = 2,
+    .capabilities = capabilities,
+    .capability_count = 7,
+    .globals = globals,
+    .global_count = 2,
+    .entity_type = 700,
+    .tick_event = 10,
+};
+static ecs_world *world;
+static script_syntax *syntax;
+static script_analysis *analysis;
+static execution_module *module;
+static execution_module_plan *owned_plan;
+static execution_program *program;
+static execution_module *imported;
+static execution_module *prior_module;
+static execution_program *other_program;
+static native_capabilities *state_native;
+static execution_inspector *debugger;
+
+static void cleanup()
+{
+    execution_program_free(other_program);
+    execution_program_free(program);
+    execution_inspector_free(debugger);
+    debugger = NULL;
+    execution_module_free(module);
+    execution_module_free(prior_module);
+    execution_module_plan_free(owned_plan);
+    execution_module_free(imported);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    ecs_world_free(world);
+    native_capabilities_free(state_native);
+    state_native = NULL;
+    program = NULL;
+    module = NULL;
+    owned_plan = NULL;
+    analysis = NULL;
+    syntax = NULL;
+    world = NULL;
+    imported = NULL;
+    prior_module = NULL;
+    other_program = NULL;
+}
+static void prepare()
+{
+    cleanup();
+    world = ecs_world_new();
+    assert(ecs_world_register_component(world, &position_component, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &velocity_component, NULL) == ECS_OK);
+    script_types[0].layout = type_layout_hash(&position_type);
+    script_types[1].layout = type_layout_hash(&velocity_type);
+}
+static bool global(void *, uint64_t id, behavior_function_instruction *out)
+{
+    if (id == 30) {
+        *out = (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE };
+        return true;
+    }
+    if (id == 31) {
+        *out = (behavior_function_instruction){
+            .op = BF_CONTEXT,
+            .type = PIN_F64,
+            .offset = offsetof(behavior_function_context, delta_seconds),
+        };
+        return true;
+    }
+    return false;
+}
+static char failure_message[64];
+static const char *fail_native(arena *, const pin_value *, int, pin_value *)
+{
+    return failure_message;
+}
+static const node_host_call failing_call = { .value = fail_native };
+static int managed_text_calls;
+static const char *managed_text(arena *storage, const pin_value *, int count, pin_value *out)
+{
+    assert(count == 0);
+    static char text[MEMORY_TEXT_MAX + 1];
+    int index = managed_text_calls++;
+    int size = MEMORY_TEXT_MIN + index * MEMORY_TEXT_STEP;
+    assert(size <= MEMORY_TEXT_MAX);
+    memset(text, 'x', (size_t)size);
+    text[0] = (char)('A' + index % 26);
+    text[size] = 0;
+    const pin_value value = { .type = PIN_STR, .str = text };
+    return pin_value_snapshot_to_arena(storage, out, &value)
+             ? "managed text snapshot failed"
+             : NULL;
+}
+static const node_host_call managed_call = { .value = managed_text };
+static bool host(void *, uint64_t id, script_lower_host *out)
+{
+    if (id == 60) {
+        *out = (script_lower_host){ .call = &managed_call };
+        return true;
+    }
+    if (id == 21) {
+        *out = (script_lower_host){ .command = &EXECUTION_Delay };
+        return true;
+    }
+    if (id == 50) {
+        *out = (script_lower_host){ .call = &failing_call };
+        return true;
+    }
+    if (id == 40 && imported) {
+        for (int i = 0; i < execution_module_function_count(imported); i++) {
+            execution_module_function_info function = execution_module_function_at(imported, i);
+            if (function.kind == EXECUTION_FUNCTION_AUTHORED) {
+                *out = (script_lower_host){ .function = function.body,
+                                            .module = imported };
+                return true;
+            }
+        }
+        return false;
+    }
+    if (id != 20) {
+        return false;
+    }
+    *out = (script_lower_host){ .intrinsic = BF_DELAY };
+    return true;
+}
+static bool compile_catalog(const char *source, behavior_backend backend, const script_catalog *active)
+{
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, active);
+    if (!analysis->valid) {
+        for (int i = 0; i < analysis->diagnostic_count; i++) {
+            fprintf(stderr, "program semantic: %s\n", analysis->diagnostics[i].message);
+        }
+        return false;
+    }
+    const script_lower_bindings bindings = { .global = global, .host = host };
+    execution_module_plan *plan = script_lower(analysis, active, &bindings);
+    if (!plan || !plan->valid) {
+        for (int i = 0; plan && i < plan->diagnostic_count; i++) {
+            fprintf(
+                stderr,
+                "program lower %d:%d: %s\n",
+                plan->diagnostics[i].range.line,
+                plan->diagnostics[i].range.column,
+                plan->diagnostics[i].message
+            );
+        }
+        execution_module_plan_free(plan);
+        return false;
+    }
+    char error[256];
+    module = execution_module_finish(&plan, backend, error, sizeof error);
+    execution_module_plan_free(plan);
+    int status = module ? FLOW_OK : FLOW_ERR_COMPILE;
+    if (status != FLOW_OK) {
+        fprintf(stderr, "program publish: %s\n", error);
+    }
+    if (status != FLOW_OK) {
+        return false;
+    }
+    return true;
+}
+static bool compile_module(const char *source, behavior_backend backend)
+{
+    return compile_catalog(source, backend, &catalog);
+}
+static bool compile_state(const char *source, behavior_backend backend)
+{
+    const native_capability_pack base = {
+        .catalog = &catalog,
+        .layouts = reflected_types,
+        .layout_count = 2,
+    };
+    char error[256];
+    state_native = native_capabilities_from_definition_packs(
+        &base,
+        1,
+        &NATIVE_STATE_DEFINITION_PACK,
+        1,
+        error,
+        sizeof error
+    );
+    if (!state_native) {
+        fprintf(stderr, "state catalog: %s\n", error);
+        return false;
+    }
+    if (!compile_catalog(source, backend, native_capabilities_catalog(state_native))) {
+        return false;
+    }
+    program = execution_program_new(module, world, NULL);
+    return program != NULL;
+}
+static bool compile(const char *source, behavior_backend backend)
+{
+    if (!compile_module(source, backend)) {
+        return false;
+    }
+    program = execution_program_new(module, world, NULL);
+    return program != NULL;
+}
+static bool read_example(const char *path, char source[EXAMPLE_SOURCE_CAPACITY])
+{
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        fprintf(stderr, "program example cannot open: %s\n", path);
+        return false;
+    }
+    size_t count = fread(source, 1, EXAMPLE_SOURCE_CAPACITY, file);
+    bool valid = count < EXAMPLE_SOURCE_CAPACITY && !ferror(file);
+    if (fclose(file)) {
+        valid = false;
+    }
+    if (!valid) {
+        fprintf(stderr, "program example read failed or exceeded source limit: %s\n", path);
+        return false;
+    }
+    source[count] = '\0';
+    return true;
+}
+static uint64_t state_id(const char *name)
+{
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        if ((analysis->symbols[i].kind == SCRIPT_STATE ||
+             analysis->symbols[i].kind == SCRIPT_SHARED_STATE) &&
+            !strcmp(analysis->symbols[i].name, name)) {
+            return analysis->symbols[i].id;
+        }
+    }
+    return 0;
+}
+static ecs_entity positioned(double x, bool moving)
+{
+    ecs_entity entity = ecs_world_create_entity(world);
+    program_position position = { .x = x };
+    assert(ecs_world_record_add(world, entity, 501, &position, 0) == ECS_OK);
+    if (moving) {
+        program_velocity velocity = { .x = 4 };
+        assert(ecs_world_record_add(world, entity, 502, &velocity, 0) == ECS_OK);
+    }
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return entity;
+}
+
+TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
+{
+    char source[EXAMPLE_SOURCE_CAPACITY];
+    REQUIRE(read_example(CHIBI_LANGUAGE_EXAMPLE_DIR "/accumulator.chibi", source));
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        prepare();
+        REQUIRE(compile(source, backends[i]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        uint64_t handle = ecs_entity_to_u64(owner);
+        execution_instance *instance = execution_program_attach(program, handle);
+        REQUIRE(instance != NULL && state_id("total") != 0);
+        pin_value payload[] = { { .type = PIN_F64, .d = 7 },
+                                { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_program_emit(program, 11, handle, payload, 2) == FLOW_OK);
+        payload[0].d = 99;
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        const pin_value *total = execution_instance_state(instance, state_id("total"));
+        const pin_value *seen = execution_instance_state(instance, state_id("seen"));
+        REQUIRE(total && total->type == PIN_F64 && total->d == 7);
+        REQUIRE(seen && seen->type == PIN_BOOL && seen->b);
+        payload[0].d = 3;
+        payload[1].b = false;
+        REQUIRE(execution_instance_dispatch(instance, 11, payload, 2, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_state(instance, state_id("total"))->d == 7);
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+
+TEST_CASE(program_system_membership_exit_cancels_pending_work)
+{
+    char source[EXAMPLE_SOURCE_CAPACITY];
+    REQUIRE(read_example(CHIBI_LANGUAGE_EXAMPLE_DIR "/motion.chibi", source));
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        prepare();
+        ecs_entity moving = positioned(1, true), stationary = positioned(10, false);
+        REQUIRE(compile(source, backends[i]));
+        REQUIRE(execution_program_step(program, 0, 0.5, 1000) == FLOW_OK);
+        const program_position *position = ecs_component_data_const(world, moving, 501);
+        REQUIRE(position && position->x == 3 && position->y == 0);
+        REQUIRE(
+            ((const program_position *)ecs_component_data_const(world, stationary, 501))
+                ->x == 10
+        );
+        execution_instance *instance = execution_program_instance(program, ecs_entity_to_u64(moving));
+        REQUIRE(instance && execution_instance_pending(instance) == 1);
+        REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(stationary)));
+        REQUIRE(ecs_world_record_remove(world, moving, 502, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 20, 0, 1000) == FLOW_OK);
+        REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(moving)));
+        REQUIRE(
+            ((const program_position *)ecs_component_data_const(world, moving, 501))
+                ->y == 0
+        );
+    }
+    return true;
+}
+
+TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected)
+{
+    char source[EXAMPLE_SOURCE_CAPACITY];
+    REQUIRE(read_example(CHIBI_LANGUAGE_EXAMPLE_DIR "/binding.chibi", source));
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        prepare();
+        ecs_entity entity = positioned(6, false);
+        REQUIRE(compile(source, backends[i]));
+        REQUIRE(execution_program_attach(program, ecs_entity_to_u64(entity)) != NULL);
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        const program_position *position = ecs_component_data_const(world, entity, 501);
+        REQUIRE(position && position->x == 6 && position->y == 12);
+        REQUIRE(
+            ecs_component_write_field(world, entity, 501, 0, (pin_value){ .type = PIN_F64, .d = 9 }) == ECS_OK
+        );
+        REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            ((const program_position *)ecs_component_data_const(world, entity, 501))
+                ->y == 18
+        );
+    }
+    prepare();
+    syntax = script_parse("behavior Cycle { bind self.Position.x = self.Position.y; bind self.Position.y = self.Position.x; }");
+    analysis = script_analyze(syntax, &catalog);
+    REQUIRE(!analysis->valid && analysis->diagnostic_count > 0);
+    REQUIRE(module == NULL && program == NULL);
+    return true;
+}
+static bool number_state(execution_instance *instance, const char *name, double expected)
+{
+    const pin_value *value = execution_instance_state(instance, state_id(name));
+    return value && value->type == PIN_F64 && value->d == expected;
+}
+TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace)
+{
+    const char *library_source = "library Store { count: double = 10;"
+                                 "function Work() -> (local_count: double, "
+                                 "position_x: double) {"
+                                 "count += 1; await Delay(1); return(count, "
+                                 "self.Position.x); } }";
+    const char
+        *owner_source = "behavior Owner { count: double = 0; local_count: "
+                        "double = 0; position_x: double = 0;"
+                        "on Impulse(amount, enabled) { count += amount; values "
+                        ":= await library_work();"
+                        "local_count = values.local_count; position_x = "
+                        "values.position_x; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_module(library_source, backends[b]));
+        imported = module;
+        module = NULL;
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        REQUIRE(compile(owner_source, backends[b]));
+        REQUIRE(execution_module_import_count(module) == 1);
+        ecs_entity owners[] = { positioned(6, false), positioned(9, false) };
+        execution_instance *instances[] = {
+            execution_program_attach(program, ecs_entity_to_u64(owners[0])),
+            execution_program_attach(program, ecs_entity_to_u64(owners[1])),
+        };
+        REQUIRE(instances[0] && instances[1]);
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        for (int i = 0; i < 2; i++) {
+            REQUIRE(execution_instance_dispatch(instances[i], 11, args, 2, i, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_pending(instances[i]) == 1);
+            REQUIRE(number_state(instances[i], "count", 1));
+            REQUIRE(number_state(instances[i], "local_count", 0));
+            REQUIRE(execution_program_pump(program, i + 1, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_pending(instances[i]) == 0);
+            REQUIRE(number_state(instances[i], "local_count", 11));
+            REQUIRE(number_state(instances[i], "position_x", i ? 9 : 6));
+        }
+        prior_module = module;
+        module = NULL;
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        REQUIRE(compile_module(owner_source, backends[b]));
+        REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+        execution_module_free(prior_module);
+        prior_module = NULL;
+        instances[0] = execution_program_instance(program, ecs_entity_to_u64(owners[0]));
+        instances[1] = execution_program_instance(program, ecs_entity_to_u64(owners[1]));
+        REQUIRE(instances[0] && instances[1]);
+        REQUIRE(
+            ecs_component_write_field(world, owners[0], 501, 0, (pin_value){ .type = PIN_F64, .d = 13 }) ==
+            ECS_OK
+        );
+        REQUIRE(execution_instance_dispatch(instances[0], 11, args, 2, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_pump(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instances[0], "count", 2));
+        REQUIRE(number_state(instances[0], "local_count", 12));
+        REQUIRE(number_state(instances[0], "position_x", 13));
+        REQUIRE(number_state(instances[1], "count", 1));
+        REQUIRE(execution_instance_dispatch(instances[0], 11, args, 2, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instances[0]) == 1);
+        execution_program_detach(program, ecs_entity_to_u64(owners[0]));
+        REQUIRE(execution_program_instance(program, ecs_entity_to_u64(owners[0])) == NULL);
+        REQUIRE(execution_program_pump(program, 4, 0, 1000) == FLOW_OK);
+        instances[0] = execution_program_attach(program, ecs_entity_to_u64(owners[0]));
+        REQUIRE(instances[0] != NULL && number_state(instances[0], "count", 0));
+        REQUIRE(execution_instance_dispatch(instances[0], 11, args, 2, 4, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_pump(program, 5, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instances[0], "local_count", 11));
+        REQUIRE(number_state(instances[0], "position_x", 13));
+        other_program = execution_program_new(module, world, NULL);
+        REQUIRE(other_program != NULL);
+        execution_instance *other = execution_program_attach(
+            other_program,
+            ecs_entity_to_u64(owners[0])
+        );
+        REQUIRE(other != NULL);
+        REQUIRE(execution_instance_dispatch(other, 11, args, 2, 10, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_pump(other_program, 11, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(other, "count", 1));
+        REQUIRE(number_state(other, "local_count", 11));
+        REQUIRE(number_state(other, "position_x", 13));
+        REQUIRE(number_state(instances[1], "local_count", 11));
+    }
+    return true;
+}
+TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned)
+{
+    const char *source = "system Shared(position: Position) { shared total: "
+                         "double = 0; state local_count: double = 0;"
+                         "total += 1; local_count += 1; position.y = total; }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owners[] = { positioned(1, false), positioned(2, false) };
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        execution_instance *
+            first = execution_program_instance(program, ecs_entity_to_u64(owners[0]));
+        execution_instance *
+            second = execution_program_instance(program, ecs_entity_to_u64(owners[1]));
+        REQUIRE(first && second);
+        REQUIRE(number_state(first, "total", 2) && number_state(second, "total", 2));
+        REQUIRE(number_state(first, "local_count", 1) && number_state(second, "local_count", 1));
+        REQUIRE(ecs_world_record_remove(world, owners[0], 501, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_instance(program, ecs_entity_to_u64(owners[0])) == NULL);
+        REQUIRE(number_state(second, "total", 3) && number_state(second, "local_count", 2));
+        REQUIRE(
+            ((const program_position *)ecs_component_data_const(world, owners[1], 501))
+                ->y == 3
+        );
+        program_position row = { .x = 1 };
+        REQUIRE(ecs_world_record_add(world, owners[0], 501, &row, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 2, 0, 1000) == FLOW_OK);
+        first = execution_program_instance(program, ecs_entity_to_u64(owners[0]));
+        REQUIRE(
+            first && number_state(first, "total", 5) &&
+            number_state(first, "local_count", 1)
+        );
+        REQUIRE(number_state(second, "local_count", 3));
+        other_program = execution_program_new(module, world, NULL);
+        REQUIRE(other_program != NULL);
+        REQUIRE(execution_program_step(other_program, 3, 0, 1000) == FLOW_OK);
+        execution_instance *other = execution_program_instance(
+            other_program,
+            ecs_entity_to_u64(owners[0])
+        );
+        REQUIRE(
+            other && number_state(other, "total", 2) &&
+            number_state(other, "local_count", 1)
+        );
+        REQUIRE(number_state(first, "total", 5));
+    }
+    return true;
+}
+static bool string_state(execution_instance *instance, const char *name, const char *expected)
+{
+    const pin_value *value = execution_instance_state(instance, state_id(name));
+    return value && value->type == PIN_STR && !strcmp(value->str, expected);
+}
+TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes)
+{
+    const char
+        *source = "behavior Managed { count: double = 0; text: string = "
+                  "\"initial\"; observed: string = \"\";"
+                  "on Impulse(amount, enabled) { count += amount; saved := "
+                  "text;"
+                  "text = \"changed\"; await Delay(1); observed = saved; saved "
+                  "= text;"
+                  "text = \"final\"; await Delay(1); observed = saved; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        for (int round = 0; round < 2; round++) {
+            double now = round * 3;
+            char initial[] = "before";
+            REQUIRE(
+                execution_instance_set_state(
+                    instance,
+                    state_id("text"),
+                    (pin_value){ .type = PIN_STR, .str = initial }
+                ) == FLOW_OK
+            );
+            initial[0] = 'X';
+            REQUIRE(string_state(instance, "text", "before"));
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, now, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_pending(instance) == 1);
+            REQUIRE(string_state(instance, "text", "changed"));
+            REQUIRE(execution_instance_state(instance, state_id("count"))->d == round + 1);
+            char replacement[] = "between";
+            REQUIRE(
+                execution_instance_set_state(
+                    instance,
+                    state_id("text"),
+                    (pin_value){ .type = PIN_STR, .str = replacement }
+                ) == FLOW_OK
+            );
+            replacement[0] = 'X';
+            REQUIRE(execution_program_pump(program, now + 1, 0, 1000) == FLOW_OK);
+            REQUIRE(string_state(instance, "observed", "before"));
+            REQUIRE(string_state(instance, "text", "final"));
+            REQUIRE(execution_instance_pending(instance) == 1);
+            REQUIRE(execution_instance_state(instance, state_id("count"))->d == round + 1);
+            REQUIRE(execution_program_pump(program, now + 2, 0, 1000) == FLOW_OK);
+            REQUIRE(string_state(instance, "observed", "between"));
+            REQUIRE(execution_instance_pending(instance) == 0);
+            REQUIRE(
+                execution_instance_set_state(
+                    instance,
+                    state_id("text"),
+                    (pin_value){ .type = PIN_STR, .str = "after" }
+                ) == FLOW_OK
+            );
+            REQUIRE(string_state(instance, "observed", "between"));
+        }
+        execution_program_detach(program, ecs_entity_to_u64(owner));
+        REQUIRE(execution_program_instance(program, ecs_entity_to_u64(owner)) == NULL);
+    }
+    return true;
+}
+TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume)
+{
+    const char *
+        source = "behavior TupleCopies { first: double = 0; second: double = 0;"
+                 "before_text: string = \"\"; after_text: string = \"\";"
+                 "function Pair(n: double, t: string) -> (total: double, "
+                 "message: string) {"
+                 "return(n, t); }"
+                 "on Impulse(amount, enabled) { i: double = 0; while i < 2 {"
+                 "current := Pair(i, \"before\"); saved := current;"
+                 "current.total = 99; current.message = \"mutated\";"
+                 "current = Pair(100, \"replacement\"); await Delay(1);"
+                 "first += saved.total; before_text = saved.message;"
+                 "saved = current; await Delay(1);"
+                 "second += saved.total; after_text = saved.message; i += 1; } "
+                 "} }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        for (int round = 0; round < 2; round++) {
+            REQUIRE(execution_instance_pending(instance) == 1);
+            REQUIRE(execution_program_pump(program, round * 2 + 1, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "first", round));
+            REQUIRE(string_state(instance, "before_text", "before"));
+            REQUIRE(execution_instance_pending(instance) == 1);
+            REQUIRE(execution_program_pump(program, round * 2 + 2, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "second", (round + 1) * 100));
+            REQUIRE(string_state(instance, "after_text", "replacement"));
+        }
+        REQUIRE(execution_instance_pending(instance) == 0);
+        execution_program_detach(program, ecs_entity_to_u64(owner));
+        REQUIRE(execution_program_instance(program, ecs_entity_to_u64(owner)) == NULL);
+    }
+    return true;
+}
+static bool memory_text_state(execution_instance *instance, const char *name, int produced)
+{
+    const pin_value *value = execution_instance_state(instance, state_id(name));
+    int size = MEMORY_TEXT_MIN + produced * MEMORY_TEXT_STEP;
+    return value && value->type == PIN_STR && value->str[0] == 'A' + produced % 26 &&
+           strlen(value->str) == (size_t)size && value->str[size - 1] == 'x';
+}
+TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes)
+{
+    const char *body = "saved := managed_text(); i: double = 0; while i < 64 {"
+                       "current := Pair(i, managed_text()); copied := current;"
+                       "current.message = \"discarded\"; text = "
+                       "copied.message; observed = saved;"
+                       "if i == 3 { saved = text; } await Delay(1); count += "
+                       "1; i += 1; }";
+    const char *starts[] = { "on Impulse(amount, enabled) {", "function Run() -> () {" };
+    const char *ends[] = { "}", "} on Impulse(amount, enabled) { await Run(); }" };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int outlined = 0; outlined < 2; outlined++) {
+        char source[2048];
+        int size = snprintf(
+            source,
+            sizeof source,
+            "behavior Retained { count: double = 0; text: string = \"\";"
+            "observed: string = \"\";"
+            "function Pair(n: double, t: string) -> (total: double, message: "
+            "string) {"
+            "return(n, t); } %s %s %s }",
+            starts[outlined],
+            body,
+            ends[outlined]
+        );
+        REQUIRE(size > 0 && (size_t)size < sizeof source);
+        for (int b = 0; b < 2; b++) {
+            prepare();
+            managed_text_calls = 0;
+            REQUIRE(compile(source, backends[b]));
+            ecs_entity owner = ecs_world_create_entity(world);
+            execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+            REQUIRE(instance != NULL);
+            const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                       { .type = PIN_BOOL, .b = true } };
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_pending(instance) == 1);
+            REQUIRE(memory_text_state(instance, "observed", 0));
+            execution_memory_usage warm = { 0 };
+            for (int step = 1; step <= 64; step++) {
+                REQUIRE(execution_program_pump(program, step, 0, 1000) == FLOW_OK);
+                REQUIRE(number_state(instance, "count", step));
+                REQUIRE(memory_text_state(instance, "observed", step <= 3 ? 0 : 4));
+                REQUIRE(execution_instance_pending(instance) == (step < 64));
+                if (step == 8) {
+                    warm = execution_program_memory_usage(program);
+                    REQUIRE(warm.payload_bytes >= MEMORY_TEXT_MIN);
+                    REQUIRE(warm.payload_capacity >= warm.payload_bytes);
+                    REQUIRE(warm.payload_capacity <= warm.payload_bytes * 2 + MEMORY_PLATEAU_SLACK);
+                }
+                if (step == 40) {
+                    execution_memory_usage steady = execution_program_memory_usage(program);
+                    /* Payloads grow by 32 bytes per native call. Live bytes can
+                     * grow with them; capacity must stay within one live wave
+                     * plus 4KiB, rather than retaining every smaller dead slot. */
+                    REQUIRE(steady.payload_bytes >= warm.payload_bytes);
+                    REQUIRE(steady.payload_bytes <= warm.payload_bytes * 3 + MEMORY_PLATEAU_SLACK);
+                    REQUIRE(steady.payload_capacity <= steady.payload_bytes * 2 + MEMORY_PLATEAU_SLACK);
+                }
+            }
+            REQUIRE(managed_text_calls == 65);
+            REQUIRE(memory_text_state(instance, "text", 64));
+            execution_memory_usage complete = execution_program_memory_usage(program);
+            REQUIRE(complete.payload_bytes == 0 && complete.payload_capacity == 0);
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 100, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_pending(instance) == 1);
+            REQUIRE(execution_program_memory_usage(program).payload_bytes > 0);
+            execution_program_detach(program, ecs_entity_to_u64(owner));
+            execution_memory_usage detached = execution_program_memory_usage(program);
+            REQUIRE(detached.payload_bytes == 0 && detached.payload_capacity == 0);
+        }
+    }
+    return true;
+}
+TEST_CASE(program_lazy_tuple_initializes_once_and_preserves_group_writes)
+{
+    const char *consumers[] = {
+        "on Impulse(amount, enabled) { first = pair.total; await Delay(1);"
+        "pair.total = 77; second = pair.total; text = pair.message; }",
+        "on Impulse(amount, enabled) { pair.total = 77; first = pair.total;"
+        "second = pair.total; text = pair.message; }",
+        "on Impulse(amount, enabled) { pair = Pair(); first = pair.total;"
+        "second = pair.total; text = pair.message; }",
+        "action pending = timer(1);"
+        "on Impulse(amount, enabled) { first = pair.total; pending(); }"
+        "after pending.Completed { second = pair.total; text = pair.message; }",
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int c = 0; c < 4; c++) {
+        char source[EXAMPLE_SOURCE_CAPACITY];
+        int length = snprintf(
+            source,
+            sizeof source,
+            "behavior LazyTuple { calls: double = 0; first: double = 0;"
+            "second: double = 0; text: string = \"\";"
+            "function Pair() -> (total: double, message: string) {"
+            "calls += 1; return(calls, \"captured\"); }"
+            "local pair = Pair(); %s }",
+            consumers[c]
+        );
+        REQUIRE(length > 0 && (size_t)length < sizeof source);
+        for (int b = 0; b < 2; b++) {
+            prepare();
+            REQUIRE(compile(source, backends[b]));
+            ecs_entity owner = ecs_world_create_entity(world);
+            uint64_t entity = ecs_entity_to_u64(owner);
+            execution_instance *instance = execution_program_attach(program, entity);
+            REQUIRE(instance);
+            const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                       { .type = PIN_BOOL, .b = true } };
+            for (int round = 0; round < 2; round++) {
+                double now = round * 2;
+                REQUIRE(
+                    execution_instance_dispatch(instance, 11, args, 2, now, 0, 1000) == FLOW_OK
+                );
+                REQUIRE(number_state(instance, "calls", round + 1));
+                REQUIRE(number_state(instance, "first", c == 1 ? 77 : round + 1));
+                REQUIRE(execution_program_pump(program, now + 1, 0, 1000) == FLOW_OK);
+                REQUIRE(number_state(instance, "calls", round + 1));
+                REQUIRE(number_state(instance, "second", c < 2 ? 77 : round + 1));
+                REQUIRE(string_state(instance, "text", "captured"));
+                REQUIRE(execution_instance_pending(instance) == 0);
+            }
+            execution_program_detach(program, entity);
+            execution_memory_usage usage = execution_program_memory_usage(program);
+            REQUIRE(usage.payload_bytes == 0 && usage.payload_capacity == 0);
+        }
+    }
+    return true;
+}
+TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach)
+{
+    const char *source = "behavior Timers { early_count: double = 0; "
+                         "late_count: double = 0;"
+                         "action early = timer(1); action late = timer(3);"
+                         "on Impulse(amount, enabled) { early(); late(); }"
+                         "after early.Completed { early_count += 1; }"
+                         "after late.Completed { late_count += 1; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "early_count", 0) &&
+            number_state(instance, "late_count", 0)
+        );
+        REQUIRE(execution_program_pump(program, 0.5, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "early_count", 0) &&
+            number_state(instance, "late_count", 0)
+        );
+        REQUIRE(execution_program_pump(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "early_count", 1) &&
+            number_state(instance, "late_count", 0)
+        );
+        REQUIRE(execution_program_pump(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "early_count", 1) &&
+            number_state(instance, "late_count", 0)
+        );
+        REQUIRE(execution_program_pump(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "early_count", 1) &&
+            number_state(instance, "late_count", 1)
+        );
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 4, 0, 1000) == FLOW_OK);
+        execution_program_detach(program, ecs_entity_to_u64(owner));
+        REQUIRE(execution_program_instance(program, ecs_entity_to_u64(owner)) == NULL);
+        instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        REQUIRE(execution_program_pump(program, 10, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "early_count", 0) &&
+            number_state(instance, "late_count", 0)
+        );
+    }
+    return true;
+}
+TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics)
+{
+    const char
+        *source = "behavior Failure {\n"
+                  "  function Outline() -> (Result: double) {\n"
+                  "    return fail_native();\n"
+                  "  }\n"
+                  "  on Impulse(amount, enabled) { output := Outline(); }\n"
+                  "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_program_set_name(program, "owned diagnostic fixture");
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        strcpy(failure_message, "first native failure");
+        int status = execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000);
+        REQUIRE(status < 0);
+        const execution_program_failure *failure = execution_program_error(program);
+        REQUIRE(failure != NULL);
+        execution_program_failure copy = *failure;
+        REQUIRE(copy.status == status && copy.kind == BEHAVIOR_FUNCTION_HOST_DATA);
+        REQUIRE(copy.module_id == execution_module_id(module));
+        REQUIRE(copy.owner == ecs_entity_to_u64(owner) && copy.node_id != 0);
+        uint64_t outlined = 0;
+        for (int i = 0; i < execution_module_function_count(module); i++) {
+            execution_module_function_info f = execution_module_function_at(module, i);
+            if (f.kind == EXECUTION_FUNCTION_AUTHORED) {
+                outlined = f.id;
+            }
+        }
+        REQUIRE(outlined != 0 && copy.function_id == outlined);
+        int start = (int)(strstr(source, "fail_native()") - source);
+        REQUIRE(copy.start == start && copy.end == start + (int)strlen("fail_native()"));
+        REQUIRE(copy.line == 3 && copy.column == 12);
+        REQUIRE(
+            !strcmp(copy.message, "first native failure") &&
+            !strcmp(copy.asset_name, "Failure")
+        );
+        strcpy(failure_message, "second native failure");
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
+        REQUIRE(!strcmp(execution_program_error(program)->message, "first native failure"));
+        execution_program_clear_error(program);
+        REQUIRE(execution_program_error(program) == NULL);
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 2, 0, 1000) < 0);
+        REQUIRE(!strcmp(execution_program_error(program)->message, "second native failure"));
+        execution_program_free(program);
+        program = NULL;
+        REQUIRE(
+            !strcmp(copy.message, "first native failure") && copy.line == 3 &&
+            copy.start == start
+        );
+    }
+    return true;
+}
+TEST_CASE(program_module_finish_preserves_failure_and_consumes_success)
+{
+    char initial[] = "producer text";
+    owned_plan = execution_module_plan_new();
+    owned_plan->id = 123;
+    owned_plan->valid = true;
+    apush(
+        owned_plan->states,
+        ((execution_module_state){
+            .id = 456,
+            .initial = { .type = PIN_STR, .str = initial },
+        })
+    );
+    execution_module_plan *before = owned_plan;
+    char error[192];
+    module = execution_module_finish(&owned_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(!module);
+    REQUIRE(owned_plan == before && error[0]);
+    owned_plan->state_count = 1;
+    module = execution_module_finish(&owned_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(module && !owned_plan);
+    REQUIRE(execution_module_id(module) == 123);
+    initial[0] = 'X';
+    program = execution_program_new(module, NULL, NULL);
+    REQUIRE(program);
+    execution_instance *instance = execution_program_attach(program, 1);
+    REQUIRE(instance);
+    const pin_value *value = execution_instance_state(instance, 456);
+    REQUIRE(value && value->type == PIN_STR && !strcmp(value->str, "producer text"));
+    return true;
+}
+TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits)
+{
+    const char *
+        source = "behavior Exact { low:int64=0; high:int64=0; "
+                 "unsigned_max:uint64=0; "
+                 "precise:uint64=0; mode:Mode=1; on Tick { "
+                 "low=-9223372036854775808; high=9223372036854775807; "
+                 "unsigned_max=18446744073709551615; precise=9007199254740993; "
+                 "mode=2147483647; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const char *const names[] = { "low", "high", "unsigned_max", "precise", "mode" };
+    script_catalog_type types[3];
+    script_catalog exact_catalog = catalog;
+    exact_catalog.types = types;
+    exact_catalog.type_count = 3;
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        memcpy(types, script_types, sizeof script_types);
+        types[2] = (script_catalog_type){ .id = 103,
+                                          .name = "Mode",
+                                          .size = sizeof(int32_t),
+                                          .type = { .storage = PIN_ENUM,
+                                                    .nominal = 103 } };
+        syntax = script_parse(source);
+        analysis = script_analyze(syntax, &exact_catalog);
+        for (int i = 0; i < analysis->diagnostic_count; i++) {
+            fprintf(
+                stderr,
+                "exact literal semantic: %s\n",
+                analysis->diagnostics[i].message
+            );
+        }
+        REQUIRE(analysis->valid && !syntax->diagnostic_count);
+        uint64_t ids[5];
+        for (int i = 0; i < 5; i++) {
+            ids[i] = state_id(names[i]);
+            REQUIRE(ids[i] != 0);
+        }
+        const script_lower_bindings bindings = { .global = global, .host = host };
+        owned_plan = script_lower(analysis, &exact_catalog, &bindings);
+        REQUIRE(owned_plan && owned_plan->valid);
+        char error[256];
+        module = execution_module_finish(&owned_plan, backends[b], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "exact literal publication: %s\n", error);
+        }
+        REQUIRE(module && !owned_plan);
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        ecs_entity entity = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(entity));
+        REQUIRE(instance);
+        const pin_value *mode = execution_instance_state(instance, ids[4]);
+        REQUIRE(
+            mode && mode->type == PIN_ENUM && mode->e == 1 && mode->type_name &&
+            !strcmp(mode->type_name, "Mode")
+        );
+        const pin_value delta = { .type = PIN_F64 };
+        REQUIRE(execution_instance_dispatch(instance, 10, &delta, 1, 0, 0, 1000) == FLOW_OK);
+        const pin_value *low = execution_instance_state(instance, ids[0]),
+                        *high = execution_instance_state(instance, ids[1]),
+                        *unsigned_max = execution_instance_state(instance, ids[2]),
+                        *precise = execution_instance_state(instance, ids[3]);
+        mode = execution_instance_state(instance, ids[4]);
+        REQUIRE(low && low->type == PIN_I64 && low->i64 == INT64_MIN);
+        REQUIRE(high && high->type == PIN_I64 && high->i64 == INT64_MAX);
+        REQUIRE(unsigned_max && unsigned_max->type == PIN_U64 && unsigned_max->u64 == UINT64_MAX);
+        REQUIRE(precise && precise->type == PIN_U64 && precise->u64 == UINT64_C(9007199254740993));
+        REQUIRE(
+            mode && mode->type == PIN_ENUM && mode->e == INT32_MAX &&
+            mode->type_name && !strcmp(mode->type_name, "Mode")
+        );
+    }
+    const char *const invalid[] = {
+        "behavior Bad { amount:int64=9223372036854775808; }",
+        "behavior Bad { amount:int64=-9223372036854775809; }",
+        "behavior Bad { amount:uint64=18446744073709551616; }",
+        "behavior Bad { amount:uint64=-1; }",
+        "behavior Bad { amount:Mode=2147483648; }",
+    };
+    for (int i = 0; i < 5; i++) {
+        prepare();
+        syntax = script_parse(invalid[i]);
+        analysis = script_analyze(syntax, &exact_catalog);
+        REQUIRE(!syntax->diagnostic_count);
+        REQUIRE(!analysis->valid && analysis->diagnostic_count > 0);
+        REQUIRE(!module && !program);
+    }
+    return true;
+}
+
+TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage)
+{
+    const char
+        *source = "behavior Copies { source_byte:byte=255; copied_byte:byte=0; "
+                  "source_name:name=\"token\"; copied_name:name=\"\"; "
+                  "source_handle:Entity=0; copied_handle:Entity=0; "
+                  "source_big:uint64=9007199254740993; copied_big:uint64=0; "
+                  "count:int=0; "
+                  "on Tick { copied_byte=source_byte; copied_name=source_name; "
+                  "copied_handle=source_handle; copied_big=source_big; "
+                  "count+=1; "
+                  "count+=1; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const char *names[] = { "copied_byte", "copied_name", "copied_handle", "copied_big", "count" };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        script_catalog_type types[3];
+        memcpy(types, script_types, sizeof script_types);
+        types[2] = (script_catalog_type){ .id = 700,
+                                          .name = "ecs.entity",
+                                          .source_name = "Entity",
+                                          .size = sizeof(uint64_t),
+                                          .type = { .storage = PIN_HANDLE,
+                                                    .nominal = 700 } };
+        script_catalog concrete = catalog;
+        concrete.types = types;
+        concrete.type_count = 3;
+        syntax = script_parse(source);
+        analysis = script_analyze(syntax, &concrete);
+        for (int i = 0; i < analysis->diagnostic_count; i++) {
+            fprintf(
+                stderr,
+                "concrete copy semantic: %s\n",
+                analysis->diagnostics[i].message
+            );
+        }
+        REQUIRE(analysis->valid && !syntax->diagnostic_count);
+        uint64_t ids[5];
+        uint64_t source_handle = state_id("source_handle");
+        REQUIRE(source_handle);
+        for (int i = 0; i < 5; i++) {
+            ids[i] = state_id(names[i]);
+            REQUIRE(ids[i]);
+        }
+        const script_lower_bindings bindings = { .global = global, .host = host };
+        owned_plan = script_lower(analysis, &concrete, &bindings);
+        REQUIRE(owned_plan && owned_plan->valid);
+        char error[192];
+        module = execution_module_finish(&owned_plan, backends[b], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "concrete copy publication: %s\n", error);
+        }
+        REQUIRE(module && !owned_plan);
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        ecs_entity owner = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        uint64_t handle = ecs_entity_to_u64(owner);
+        REQUIRE(handle != 0);
+        execution_instance *instance = execution_program_attach(program, handle);
+        REQUIRE(instance);
+        REQUIRE(
+            execution_instance_set_state(
+                instance,
+                source_handle,
+                (pin_value){ .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = UINT64_MAX }
+            ) == FLOW_OK
+        );
+        const pin_value dt = { .type = PIN_F64 };
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000) == FLOW_OK);
+        const pin_value *byte = execution_instance_state(instance, ids[0]),
+                        *name = execution_instance_state(instance, ids[1]),
+                        *entity = execution_instance_state(instance, ids[2]),
+                        *big = execution_instance_state(instance, ids[3]);
+        REQUIRE(byte && byte->type == PIN_U8 && byte->u8 == UINT8_MAX);
+        REQUIRE(name && name->type == PIN_NAME && name->str && !strcmp(name->str, "token"));
+        REQUIRE(
+            entity && entity->type == PIN_HANDLE && entity->u64 == UINT64_MAX &&
+            entity->type_name && !strcmp(entity->type_name, "ecs.entity")
+        );
+        REQUIRE(big && big->type == PIN_U64 && big->u64 == UINT64_C(9007199254740993));
+        const pin_value *count = execution_instance_state(instance, ids[4]);
+        REQUIRE(count && count->type == PIN_I32 && count->i == 2);
+    }
+    return true;
+}
+
+static const char *native_float(arena *, const pin_value *, int count, pin_value *out)
+{
+    assert(count == 0);
+    *out = (pin_value){ .type = PIN_F32, .f = 3.25f };
+    return NULL;
+}
+static bool float_host(void *user, uint64_t id, script_lower_host *out)
+{
+    static const node_host_call call = { .value = native_float };
+    if (id != 70) {
+        return host(user, id, out);
+    }
+    *out = (script_lower_host){ .call = &call };
+    return true;
+}
+TEST_CASE(program_source_float_width_conversion_preserves_native_input)
+{
+    const char
+        *source = "behavior Widths { widened:double=0; narrowed:float=0; "
+                  "on Tick { widened=cast<double>(NativeFloat()); "
+                  "narrowed=cast<float>(widened+0.25); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    static const script_catalog_parameter result = { .name = "amount",
+                                                     .type = { .storage = PIN_F32 } };
+    script_catalog_capability caps[8];
+    memcpy(caps, capabilities, sizeof capabilities);
+    caps[7] = (script_catalog_capability){ .id = 70,
+                                           .name = "NativeFloat",
+                                           .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                           .results = &result,
+                                           .result_count = 1,
+                                           .completion_outcome = -1,
+                                           .effects = SCRIPT_EFFECT_HOST };
+    script_catalog floats = catalog;
+    floats.capabilities = caps;
+    floats.capability_count = 8;
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        syntax = script_parse(source);
+        analysis = script_analyze(syntax, &floats);
+        for (int i = 0; i < analysis->diagnostic_count; i++) {
+            fprintf(
+                stderr,
+                "float conversion semantic: %s\n",
+                analysis->diagnostics[i].message
+            );
+        }
+        REQUIRE(analysis->valid && !syntax->diagnostic_count);
+        uint64_t widened_id = state_id("widened"), narrowed_id = state_id("narrowed");
+        REQUIRE(widened_id && narrowed_id);
+        const script_lower_bindings bindings = { .global = global, .host = float_host };
+        owned_plan = script_lower(analysis, &floats, &bindings);
+        REQUIRE(owned_plan && owned_plan->valid);
+        char error[192];
+        module = execution_module_finish(&owned_plan, backends[b], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "float conversion publication: %s\n", error);
+        }
+        REQUIRE(module && !owned_plan);
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        ecs_entity owner = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        const pin_value dt = { .type = PIN_F64 };
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000) == FLOW_OK);
+        const pin_value *widened = execution_instance_state(instance, widened_id),
+                        *narrowed = execution_instance_state(instance, narrowed_id);
+        REQUIRE(widened && widened->type == PIN_F64 && widened->d == 3.25);
+        REQUIRE(narrowed && narrowed->type == PIN_F32 && narrowed->f == 3.5f);
+    }
+    return true;
+}
+
+TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state)
+{
+    const char *source =
+        "behavior StateMachines {"
+        " evaluated:double=0; order:double=0; once_hits:double=0; "
+        "count_hits:double=0;"
+        " flips_a:double=0; flips_b:double=0; gate_hits:double=0;"
+        " multi_a:double=0; multi_b:double=0; counter:double=-1;"
+        " function Closed()->(Value:bool){evaluated+=1;return(false);}"
+        " function Limit()->(Value:int){evaluated+=10;return(2);}"
+        " function Start()->(Value:int){order=order*10+3;return(0);}"
+        " function Random()->(Value:bool){order=order*10+2;return(false);}"
+        " function Loop()->(Value:bool){order=order*10+1;return(false);}"
+        " action once=do_once(\"Start Closed\":Closed());"
+        " action count=do_n(N:Limit()); action flip=flip_flop();"
+        " action door=gate(\"Start Closed\":Closed());"
+        " action multi=multi_gate(Loop:Loop(),Random:Random(),\"Start "
+        "Index\":Start());"
+        " on Impulse(amount,enabled){"
+        "  if enabled "
+        "{once();count();counter=count.Counter;flip();door();order=0;multi();}"
+        "  else {once.Reset();count.Reset();door.Close();multi.Reset();}"
+        " }"
+        " after once.Completed{once_hits+=1;} after count.Exit{count_hits+=1;}"
+        " after flip.A{flips_a+=1;} after flip.B{flips_b+=1;}"
+        " after door.Exit{gate_hits+=1;}"
+        " after multi.Out0{multi_a+=1;} after multi.Out1{multi_b+=1;}"
+        "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_state(source, backends[b]));
+        ecs_entity owners[] = { ecs_world_create_entity(world),
+                                ecs_world_create_entity(world) };
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        execution_instance
+            *first = execution_program_attach(program, ecs_entity_to_u64(owners[0]));
+        execution_instance *
+            second = execution_program_attach(program, ecs_entity_to_u64(owners[1]));
+        REQUIRE(first && second);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL, .b = true } };
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(execution_instance_dispatch(first, 11, args, 2, i, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(first, "evaluated", 12 + i * 10));
+            REQUIRE(number_state(first, "order", 321));
+        }
+        REQUIRE(number_state(first, "once_hits", 1));
+        REQUIRE(number_state(first, "count_hits", 2) && number_state(first, "counter", 2));
+        REQUIRE(number_state(first, "flips_a", 2) && number_state(first, "flips_b", 1));
+        REQUIRE(number_state(first, "gate_hits", 3));
+        REQUIRE(number_state(first, "multi_a", 1) && number_state(first, "multi_b", 1));
+        REQUIRE(execution_instance_dispatch(second, 11, args, 2, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(second, "evaluated", 12) && number_state(second, "multi_a", 1));
+        REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+        first = execution_program_instance(program, ecs_entity_to_u64(owners[0]));
+        REQUIRE(first);
+        REQUIRE(execution_instance_dispatch(first, 11, args, 2, 4, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(first, "evaluated", 42) && number_state(first, "once_hits", 1));
+        REQUIRE(number_state(first, "count_hits", 2) && number_state(first, "flips_b", 2));
+        REQUIRE(number_state(first, "multi_a", 1) && number_state(first, "multi_b", 1));
+        args[1].b = false;
+        REQUIRE(execution_instance_dispatch(first, 11, args, 2, 5, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(first, "evaluated", 42) && number_state(first, "order", 321));
+        args[1].b = true;
+        REQUIRE(execution_instance_dispatch(first, 11, args, 2, 6, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(first, "evaluated", 52) && number_state(first, "once_hits", 2));
+        REQUIRE(number_state(first, "count_hits", 3) && number_state(first, "counter", 0));
+        REQUIRE(number_state(first, "gate_hits", 4));
+        REQUIRE(number_state(first, "multi_a", 2) && number_state(first, "multi_b", 1));
+        REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+        first = execution_program_instance(program, ecs_entity_to_u64(owners[0]));
+        REQUIRE(first);
+        REQUIRE(execution_instance_dispatch(first, 11, args, 2, 7, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(first, "evaluated", 12) && number_state(first, "once_hits", 1));
+        REQUIRE(number_state(first, "count_hits", 1) && number_state(first, "flips_a", 1));
+        REQUIRE(number_state(first, "multi_a", 1) && number_state(first, "multi_b", 0));
+    }
+    return true;
+}
+TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration_once)
+{
+    const char *source =
+        "behavior Retriggers { evaluations:double=0; completions:double=0; "
+        "captured:double=0;"
+        " function Duration()->(seconds:double){evaluations+=1;return(3);}"
+        " action pending=retriggerable_delay(Duration:Duration());"
+        " value original=signal.amount;"
+        " on Impulse as signal(amount,enabled){pending();}"
+        " after pending.Completed{completions+=1;captured=original;} }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_state(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        args[0].d = 2;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "evaluations", 2));
+        REQUIRE(execution_program_pump(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "completions", 0));
+        REQUIRE(execution_program_pump(program, 3.5, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "completions", 0));
+        REQUIRE(execution_program_pump(program, 4, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "completions", 1) &&
+            number_state(instance, "captured", 1)
+        );
+        args[0].d = 7;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 5, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "evaluations", 3));
+        execution_program_detach(program, ecs_entity_to_u64(owner));
+        instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        REQUIRE(execution_program_pump(program, 9, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "completions", 0) &&
+            number_state(instance, "evaluations", 0)
+        );
+    }
+    return true;
+}
+
+TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
+{
+    const char *source = "behavior Debugger { calls:double=0; "
+                         "observed:double=0; text:string=\"unset\"; "
+                         "function "
+                         "Work()->(Value:double,Text:string){calls+=1;return("
+                         "calls,\"snapshot\");} "
+                         "on Tick { values:=Work(); observed=values.Value; "
+                         "text=values.Text; "
+                         "await Delay(1); observed+=10; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(compile_module(source, backends[b]));
+        world = ecs_world_new();
+        REQUIRE(world);
+        ecs_entity entity = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        uint64_t owner = ecs_entity_to_u64(entity);
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(program, owner);
+        REQUIRE(instance);
+        debugger = execution_program_inspector(program);
+        REQUIRE(debugger);
+        REQUIRE(execution_inspector_select_owner(debugger, owner));
+        REQUIRE(execution_inspector_owner_count(debugger) == 1);
+        REQUIRE(execution_inspector_owner_at(debugger, 0) == owner);
+        uint64_t handler = 0, call = 0;
+        for (int n = 0; n < execution_module_function_count(module); n++) {
+            execution_module_function_info f = execution_module_function_at(module, n);
+            if (f.event == 10) {
+                handler = f.id;
+            }
+        }
+        for (int n = 0; n < analysis->expression_count; n++) {
+            const script_expression *e = &analysis->expressions[n];
+            if (e->kind == SCRIPT_EXPR_CALL && e->right >= 0) {
+                call = script_record_id(analysis, SCRIPT_RECORD_EXPRESSION, n);
+            }
+        }
+        REQUIRE(handler && call);
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), handler, call, true)
+        );
+        pin_value tick = { .type = PIN_F64 };
+        REQUIRE(execution_instance_dispatch(instance, 10, &tick, 1, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_paused(program));
+        execution_debug_cursor first = execution_inspector_cursor(debugger);
+        REQUIRE(first.status == FLOW_PAUSED_RESULT);
+        REQUIRE(first.owner == owner && first.point.occurrence == call && first.depth == 0);
+        REQUIRE(number_state(instance, "calls", 0));
+        REQUIRE(execution_program_pump(program, 0.5, 0, 1000) >= FLOW_OK);
+        REQUIRE(number_state(instance, "calls", 0));
+        REQUIRE(
+            execution_inspector_breakpoint(debugger, execution_module_id(module), handler, call, false)
+        );
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_INTO) == FLOW_PAUSED_RESULT);
+        execution_debug_cursor child = execution_inspector_cursor(debugger);
+        REQUIRE(child.run == first.run && child.step > first.step && child.depth == 1);
+        REQUIRE(execution_inspector_frame_count(debugger) == 2);
+        REQUIRE(number_state(instance, "calls", 0));
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_OUT) == FLOW_PAUSED_RESULT);
+        REQUIRE(execution_inspector_cursor(debugger).depth == 0);
+        REQUIRE(number_state(instance, "calls", 1));
+        REQUIRE(number_state(instance, "observed", 0));
+        for (int n = 0; n < 16 && !number_state(instance, "observed", 1); n++) {
+            REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_OVER) == FLOW_PAUSED_RESULT);
+            REQUIRE(number_state(instance, "calls", 1));
+        }
+        REQUIRE(number_state(instance, "observed", 1));
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_SUSPENDED_RESULT);
+        REQUIRE(number_state(instance, "calls", 1));
+        REQUIRE(execution_program_pump(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "observed", 11));
+        REQUIRE(execution_inspector_pause(debugger, owner));
+        REQUIRE(execution_instance_dispatch(instance, 10, &tick, 1, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "calls", 1));
+        REQUIRE(execution_program_paused(program));
+        REQUIRE(execution_inspector_cursor(debugger).status == FLOW_PAUSED_RESULT);
+        REQUIRE(execution_inspector_cursor(debugger).run > first.run);
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_SUSPENDED_RESULT);
+        REQUIRE(number_state(instance, "calls", 2));
+        REQUIRE(execution_program_pump(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "observed", 12));
+        int saved = -1;
+        for (int n = 0; n < execution_inspector_watch_count(debugger); n++) {
+            const execution_debug_watch *w = execution_inspector_watch_at(debugger, n);
+            if (w->availability == EXECUTION_WATCH_AVAILABLE && w->value.type == PIN_STR &&
+                w->value.str && !strcmp(w->value.str, "snapshot")) {
+                saved = n;
+            }
+        }
+        REQUIRE(saved >= 0);
+        REQUIRE(execution_inspector_activity_count(debugger) > 0);
+        REQUIRE(execution_inspector_activity_dropped(debugger) == 0);
+        execution_debug_cursor selected;
+        REQUIRE(execution_inspector_owner_cursor(debugger, owner, &selected));
+        int stack_count = execution_inspector_owner_frame_count(debugger, owner);
+        REQUIRE(stack_count > 0);
+        execution_debug_frame frame = execution_inspector_owner_frame_at(debugger, owner, 0);
+        execution_program_detach(program, owner);
+        REQUIRE(execution_inspector_owner_cursor(debugger, owner, &selected));
+        REQUIRE(selected.retired);
+        uint64_t selected_step = selected.step;
+        ecs_entity sibling = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        uint64_t sibling_owner = ecs_entity_to_u64(sibling);
+        execution_instance *other = execution_program_attach(program, sibling_owner);
+        REQUIRE(other);
+        REQUIRE(execution_instance_dispatch(other, 10, &tick, 1, 4, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(other) > 0);
+        REQUIRE(execution_program_pump(program, 5, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(other, "observed", 11));
+        REQUIRE(execution_inspector_cursor(debugger).owner == sibling_owner);
+        REQUIRE(execution_inspector_owner_cursor(debugger, owner, &selected));
+        REQUIRE(selected.retired && selected.step == selected_step);
+        REQUIRE(execution_inspector_owner_frame_count(debugger, owner) == stack_count);
+        REQUIRE(
+            execution_inspector_owner_frame_at(debugger, owner, 0).function ==
+            frame.function
+        );
+        execution_program_free(program);
+        program = NULL;
+        execution_module_free(module);
+        module = NULL;
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        REQUIRE(execution_inspector_cursor(debugger).retired);
+        REQUIRE(!strcmp(execution_inspector_watch_at(debugger, saved)->value.str, "snapshot"));
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_ERR_STATE);
+        REQUIRE(!execution_inspector_pause(debugger, owner));
+    }
+    return true;
+}
+
+void test_language_program()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
+    RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
+    RUN_TEST_CASE(program_system_membership_exit_cancels_pending_work);
+    RUN_TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected);
+    RUN_TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace);
+    RUN_TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned);
+    RUN_TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes);
+    RUN_TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume);
+    RUN_TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes);
+    RUN_TEST_CASE(program_lazy_tuple_initializes_once_and_preserves_group_writes);
+    RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
+    RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
+    RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);
+    RUN_TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage);
+    RUN_TEST_CASE(program_source_float_width_conversion_preserves_native_input);
+    RUN_TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state);
+    RUN_TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration_once);
+    RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
+    pu_clear_setup();
+}

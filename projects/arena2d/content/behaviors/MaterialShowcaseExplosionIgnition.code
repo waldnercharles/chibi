@@ -1,7 +1,0 @@
-behavior "MaterialShowcaseExplosionIgnition" {
-    owner "ecs.entity";
-    on Begin as begin() {
-        await delay(Duration: 1.0);
-        set_component(Component: "GAME.GameIgniter", Entity: 0, Value.heat: float = 2.0);
-    }
-}

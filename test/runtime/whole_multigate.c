@@ -38,7 +38,8 @@ static void check(int outputs, int kind, int control, void *library)
     graph *g = whole_multigate_root(a);
     assert(!graph_set_breakpoint(a->graphs[1], a->graphs[1]->nodes[2], control == 3));
     behavior_function *f = function(a);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     test_flow_snapshot *expected = NULL;
     enum
     {
@@ -51,9 +52,9 @@ static void check(int outputs, int kind, int control, void *library)
         if (mode == 3) {
             char name[64];
             symbol(name, sizeof name, outputs, kind, true);
-            f->code = f->inspection_code = dlsym(library, name);
-            f->dispatch = NULL;
-            assert(f->code);
+            f->artifact->code = f->artifact->inspection_code = dlsym(library, name);
+            f->artifact->dispatch = NULL;
+            assert(f->artifact->code);
         }
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         assert(!behavior_instance_set_backend(
@@ -112,7 +113,7 @@ static void check(int outputs, int kind, int control, void *library)
                            : flow_run_step(run);
             }
             int draw = rand();
-            const pin_value *state = &bi->node_states[0];
+            const pin_value *state = &bi->execution.node_states[0];
             if (!mode) {
                 masks[round] = state->type == PIN_STR ? strdup(state->str) : NULL;
                 draws[round] = draw;
@@ -167,9 +168,9 @@ static void check(int outputs, int kind, int control, void *library)
     for (int i = 0; i < ROUNDS; i++) {
         free(masks[i]);
     }
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 static void ownership()
@@ -181,15 +182,16 @@ static void ownership()
     behavior_instance_bind_values(bi, &ctx);
     for (int i = 0; i < 2; i++) {
         assert(ctx.select_state(bi, &(behavior_state_selection){ i, 2 }, 0, 0) == 0);
-        assert(!strcmp(bi->node_states[i].str, "10"));
+        assert(!strcmp(bi->execution.node_states[i].str, "10"));
     }
     /* Interned names must not borrow a mutable selection mask. */
     const char *name = ctx.own_type_name(bi, "10");
-    assert(name != bi->node_states[0].str && name != bi->node_states[1].str);
-    char *json = behavior_asset_save(a);
-    behavior_asset *next = behavior_asset_load(json);
-    free(json);
-    assert(next);
+    assert(
+        name != bi->execution.node_states[0].str &&
+        name != bi->execution.node_states[1].str
+    );
+    behavior_asset *next = behavior_asset_clone(a);
+    assert(next && behavior_asset_equal(a, next));
     graph *g = next->graphs[1];
     int last = acount(g->nodes) - 1;
     node *first = g->nodes[2];
@@ -198,24 +200,26 @@ static void ownership()
     assert(behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_READY);
     behavior_instance_update(bi, next);
     behavior_asset_free(a);
-    assert(bi->node_states[0].str != bi->node_states[1].str);
+    assert(bi->execution.node_states[0].str != bi->execution.node_states[1].str);
     assert(ctx.select_state(bi, &(behavior_state_selection){ 0, 2 }, 0, BEHAVIOR_STATE_RESET) == -1);
-    assert(!strcmp(bi->node_states[0].str, "00"));
-    assert(!strcmp(bi->node_states[1].str, "10") && !strcmp(name, "10"));
+    assert(!strcmp(bi->execution.node_states[0].str, "00"));
+    assert(!strcmp(bi->execution.node_states[1].str, "10") && !strcmp(name, "10"));
     flow_run *run = behavior_instance_dispatch(bi, "Tick", (flow_inputs){ 0 }, NULL);
     assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
-    assert(bi->variables[0].i == 1 && !strcmp(bi->node_states[1].str, "11"));
+    assert(
+        bi->execution.variables[0].i == 1 &&
+        !strcmp(bi->execution.node_states[1].str, "11")
+    );
     flow_run_free(run);
-    json = behavior_asset_save(next);
-    behavior_asset *changed = behavior_asset_load(json);
-    free(json);
+    behavior_asset *changed = behavior_asset_clone(next);
+    assert(changed && behavior_asset_equal(next, changed));
     pin_spec extra = { .name = "Out2", .type = PIN_FLOW, .kind = PIN_EXEC };
     assert(graph_add_pin(changed->graphs[1], changed->graphs[1]->nodes[2], true, &extra) == 2);
     assert(behavior_instance_can_update(bi, changed) == INSTANCE_UPDATE_RESTART);
     behavior_asset_free(changed);
     assert(!behavior_instance_pool_release(bi));
     assert(behavior_instance_pool_reuse(bi, next, NULL, NULL, NULL) == bi);
-    assert(!bi->node_states[0].type && !bi->node_states[1].type);
+    assert(!bi->execution.node_states[0].type && !bi->execution.node_states[1].type);
     for (int i = 0; i < acount(bi->strings); i++) {
         assert(strcmp(bi->strings[i], "10") && strcmp(bi->strings[i], "00"));
     }
@@ -251,7 +255,7 @@ static void boundaries()
         flow_options options = { .instance = bi };
         flow_run *run = flow_run_start(g, g->nodes[0], (flow_inputs){ args, 4 }, &options, NULL);
         assert(run && !flow_run_resume(run) && run->whole_function_executed);
-        assert(bi->variables[0].i == 2 && rand() == next_draw);
+        assert(bi->execution.variables[0].i == 2 && rand() == next_draw);
         flow_run_free(run);
         behavior_instance_destroy(bi);
     }
@@ -385,8 +389,8 @@ int bench_multigate(const char *path, int count, int rotation)
                     assert(!status);
                 }
                 if (i >= 0) {
-                    sum += (unsigned)bi->variables[0].i +
-                           (unsigned)bi->variables[1].i;
+                    sum += (unsigned)bi->execution.variables[0].i +
+                           (unsigned)bi->execution.variables[1].i;
                 }
             }
             double elapsed = seconds() - start;

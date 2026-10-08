@@ -10,7 +10,7 @@ static const behavior_function *body(behavior_asset *a, int kind)
     behavior_program_publish(a);
     graph *g = a->graphs[3];
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, g),
+        behavior_program_graph(behavior_program_cached(a), g),
         g->nodes[0]
     );
     assert(f && behavior_function_entry(f));
@@ -53,7 +53,7 @@ static void compare(
     pin_value results[7] = { 0 }, expected[7] = { 0 };
     arena storage = { 0 };
     behavior_function_prepare_results(f, expected, &storage);
-    bi->variables[2].d = 0;
+    bi->execution.variables[2].d = 0;
     behavior_function_context reference = { .arguments = args,
                                             .argument_count = 2,
                                             .results = expected,
@@ -66,8 +66,8 @@ static void compare(
     }
     reference.activation = &reference_activation;
     int status = behavior_function_run(f, &reference, false);
-    double sum = bi->variables[2].d;
-    bi->variables[2].d = 0;
+    double sum = bi->execution.variables[2].d;
+    bi->execution.variables[2].d = 0;
     behavior_function_prepare_results(f, results, &storage);
     behavior_function_context actual = { .arguments = args,
                                          .argument_count = 2,
@@ -82,7 +82,7 @@ static void compare(
     actual.activation = &actual_activation;
     assert(
         entry(&actual) == status && actual.steps == reference.steps &&
-        bi->variables[2].d == sum
+        bi->execution.variables[2].d == sum
     );
     if (status) {
         assert(
@@ -194,7 +194,7 @@ int bench_array(const char *path, int count, int rotation)
                         start = seconds();
                     }
                     items[0].d = i & 7;
-                    bi->variables[2].d = 0;
+                    bi->execution.variables[2].d = 0;
                     ctx.steps = 0;
                     int status = mode < 2 ? entries[mode](&ctx)
                                           : behavior_function_run(f, &ctx, false);

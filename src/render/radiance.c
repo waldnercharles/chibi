@@ -2082,6 +2082,7 @@ void render_radiance_frame_time(render_radiance *hrc, double gpu_ms)
     hrc->settle = HRC_ADAPT_SETTLE;
     bool applied = s_apply_rung(hrc);
     assert(applied);
+    (void)applied;
 }
 
 void render_radiance_frame_interval(render_radiance *hrc, double ms)

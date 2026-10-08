@@ -1,7 +1,7 @@
 /* What a place in a ui asset names, as an editor's hover describes it: the
  * symbol, where the project defines it and how often it is used
- * (ui_source.h). Studio's Text Editor shows it in its hover card and the MCP
- * returns it with a symbol's references. */
+ * (ui_source.h). Studio's Text Editor shows it in its hover card; native
+ * inspection returns it with a symbol's references. */
 #include "assets/ui_source.h"
 #include "support/array.h"
 #include "support/text_file.h"

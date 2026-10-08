@@ -1,0 +1,157 @@
+#include "assets/prototype.h"
+
+#include "support/array.h"
+#include "third_party/pico_headers/pico_unit.h"
+
+#include <stddef.h>
+#include <string.h>
+
+typedef struct
+{
+    const char *label;
+} nested_default;
+typedef struct
+{
+    int count;
+    nested_default nested;
+} component_default;
+static const type_field nested_fields[] = {
+    { .name = "label", .type = PIN_STR, .size = sizeof(char *), .type_name = "const char *" },
+};
+static const type_desc nested_type = {
+    .name = "DefaultNested",
+    .size = sizeof(nested_default),
+    .fields = nested_fields,
+    .field_count = 1,
+};
+static const type_field component_fields[] = {
+    { .name = "count",
+      .type = PIN_I32,
+      .offset = offsetof(component_default, count),
+      .size = sizeof(int) },
+    { .name = "nested",
+      .type = PIN_STRUCT,
+      .offset = offsetof(component_default, nested),
+      .size = sizeof(nested_default),
+      .type_name = "DefaultNested" },
+};
+static const type_desc component_type = {
+    .name = "DefaultRow",
+    .size = sizeof(component_default),
+    .fields = component_fields,
+    .field_count = 2,
+};
+static const ecs_component_desc component = {
+    .id = 9001,
+    .key = "test.DefaultRow",
+    .name = "DefaultRow",
+    .element_size = sizeof(component_default),
+    .type = &component_type,
+};
+static const ecs_component_desc nested = {
+    .id = 9002,
+    .key = "test.DefaultNested",
+    .name = "DefaultNested",
+    .element_size = sizeof(nested_default),
+    .type = &nested_type,
+};
+static const ecs_component_desc *const components[] = { &component, &nested };
+static game_prototype *prototype, *loaded;
+static av_value *before, *after, *values, *rebased;
+
+static void cleanup()
+{
+    game_prototype_free(prototype);
+    game_prototype_free(loaded);
+    prototype = loaded = NULL;
+    av_value_free(before);
+    av_value_free(after);
+    av_value_free(values);
+    av_value_free(rebased);
+    before = after = values = rebased = NULL;
+}
+
+TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence)
+{
+    char label[] = "initial";
+    component_default data = { 9, { label } };
+    game_prototype_default initial = { component.id, &data, sizeof data };
+    game_prototype_registry registry = {
+        .components = components,
+        .component_count = 2,
+        .defaults = &initial,
+        .default_count = 1,
+    };
+    prototype = game_prototype_new("DefaultOwner");
+    prototype->registry_storage = registry;
+    REQUIRE(game_prototype_add_component(prototype, &component) == 0);
+    label[0] = 'X';
+    data.count = 41;
+    const component_default *copy = prototype->components[0].data;
+    REQUIRE(copy->count == 9 && !strcmp(copy->nested.label, "initial"));
+    REQUIRE(game_prototype_detach_component(prototype, component.name) == 0);
+    REQUIRE(game_prototype_add_component(prototype, &component) == 0);
+    copy = prototype->components[0].data;
+    REQUIRE(copy->count == 9 && !strcmp(copy->nested.label, "initial"));
+
+    data = (component_default){ 9, { "baseline" } };
+    before = game_prototype_component_defaults_value(&registry, &component);
+    values = game_prototype_component_value(prototype, component.name);
+    REQUIRE(before && values);
+    data = (component_default){ 12, { "updated" } };
+    after = game_prototype_component_defaults_value(&registry, &component);
+    REQUIRE(after != NULL);
+    rebased = game_prototype_rebase_component_value(values, before, after);
+    REQUIRE(rebased != NULL);
+    av_value_free(values);
+    values = NULL;
+    av_value_free(before);
+    before = NULL;
+    av_value_free(after);
+    after = NULL;
+    const av_value *row = av_obj_get(rebased, component.key);
+    REQUIRE(av_get_int(av_obj_get(row, "count")) == 12);
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_obj_get(row, "nested"), "label")), "initial"));
+
+    char error[192];
+    loaded = game_prototype_load(
+        "name \"Partial\"\ncomponents { test.DefaultRow { nested "
+        "label=\"document\"; }; }\n",
+        &registry,
+        error,
+        sizeof error
+    );
+    REQUIRE(loaded != NULL);
+    copy = loaded->components[0].data;
+    REQUIRE(copy->count == 0 && !strcmp(copy->nested.label, "document"));
+    REQUIRE(game_prototype_remove_component(loaded, component.name) == 0);
+    initial.size--;
+    REQUIRE(game_prototype_add_component(loaded, &component) == -1);
+    REQUIRE(acount(loaded->components) == 0);
+    initial.size++;
+    type_desc malformed = component_type;
+    ecs_component_desc invalid = component;
+    invalid.type = &malformed;
+    malformed.size++;
+    REQUIRE(game_prototype_add_component(loaded, &invalid) == -1);
+    REQUIRE(acount(loaded->components) == 0);
+    malformed.size = component_type.size;
+    type_field fields[2];
+    memcpy(fields, component_fields, sizeof fields);
+    malformed.fields = fields;
+    fields[0].offset = malformed.size;
+    REQUIRE(game_prototype_add_component(loaded, &invalid) == -1);
+    REQUIRE(acount(loaded->components) == 0);
+    fields[0] = component_fields[0];
+    fields[0].size = 1;
+    REQUIRE(game_prototype_add_component(loaded, &invalid) == -1);
+    REQUIRE(acount(loaded->components) == 0);
+    return true;
+}
+
+void test_prototype_document()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence);
+    pu_clear_setup();
+}

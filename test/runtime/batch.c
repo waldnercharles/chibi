@@ -1,3 +1,6 @@
+#include "graph/authoring/graph_edit.h"
+#include "graph/document/library.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/update_internal.h"
 #include "support/text_file.h"
@@ -48,7 +51,7 @@ static void world_parity(behavior_backend backend, bool batch, bool components, 
         game_behavior_attachment_info info;
         assert(!game_behavior_attachment_info_at(world, entities[i], 0, &info));
         instances[i] = info.instance;
-        assert(instances[i]->variables[0].d == 10.);
+        assert(instances[i]->execution.variables[0].d == 10.);
         if (components) {
             pin_value target = { .type = PIN_HANDLE,
                                  .type_name = "ecs.entity",
@@ -71,7 +74,7 @@ static void world_parity(behavior_backend backend, bool batch, bool components, 
         }
         int eligible = 0;
         for (int i = 0; i < COUNT; i++) {
-            eligible += !instances[i]->trace_enabled &&
+            eligible += !instances[i]->execution.trace_enabled &&
                         !acount(instances[i]->activations);
         }
         double delta = frame % 2 ? .125 : .25;
@@ -90,7 +93,7 @@ static void world_parity(behavior_backend backend, bool batch, bool components, 
         );
         for (int i = 0; i < COUNT; i++) {
             assert(
-                instances[i]->variables[0].d ==
+                instances[i]->execution.variables[0].d ==
                 10. + (frame / 2 + 1) * .25 + ((frame + 1) / 2) * .125
             );
             if (components) {
@@ -140,7 +143,7 @@ static void world_parity(behavior_backend backend, bool batch, bool components, 
         (uint64_t)(batch && backend != BEHAVIOR_ORACLE ? COUNT : 0)
     );
     for (int i = 0; i < COUNT; i++) {
-        assert(instances[i]->variables[0].d == 14.75);
+        assert(instances[i]->execution.variables[0].d == 14.75);
         if (components) {
             weights[(i + 1) % COUNT] = weights[i] + .25;
         }
@@ -158,7 +161,7 @@ static void world_parity(behavior_backend backend, bool batch, bool components, 
         assert(run_tick(world, update) == COUNT);
         game_behavior_attachment_info info;
         assert(!game_behavior_attachment_info_at(world, entities[0], 0, &info));
-        assert(info.instance->variables[0].d == 10.25);
+        assert(info.instance->execution.variables[0].d == 10.25);
     }
     if (backend != BEHAVIOR_ORACLE) {
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
@@ -211,9 +214,10 @@ static void failure_parity(behavior_backend backend, bool components, bool loop)
         assert(call && graph_add_pin(asset->graph, call, 1, &result) >= 0);
     }
     node *entry = tick_entry(asset);
-    assert(behavior_function_batchable(
-        behavior_program_function(behavior_program_graph(asset->program, asset->graph), entry)
-    ));
+    assert(behavior_function_batchable(behavior_program_function(
+        behavior_program_graph(behavior_program_cached(asset), asset->graph),
+        entry
+    )));
     behavior_instance *ordinary = behavior_instance_create(asset, NULL, NULL, NULL);
     behavior_instance *batched = behavior_instance_create(asset, NULL, NULL, NULL);
     assert(!behavior_instance_set_backend(ordinary, backend));
@@ -233,12 +237,17 @@ static void failure_parity(behavior_backend backend, bool components, bool loop)
     behavior_instance_set_trace_enabled(prepared, false);
     behavior_instance_set_delta_seconds(prepared, .125);
     behavior_update_binding **bindings = NULL;
-    const behavior_function *function = behavior_program_batch_event(asset->program, "Tick", &entry);
-    behavior_update_row rows[2] = {
-        { .instance = prepared,
-          .binding = behavior_update_prepare(&bindings, prepared, function, entry),
-          .entity = ecs_entity_to_u64(entity) }
-    };
+    const behavior_function *function = behavior_program_batch_event(
+        behavior_program_cached(asset),
+        "Tick",
+        &entry
+    );
+    behavior_update_row rows[2] = { behavior_update_row_make(
+        prepared,
+        behavior_update_prepare(&bindings, prepared, function, entry),
+        ecs_entity_to_u64(entity),
+        0
+    ) };
     rows[1] = rows[0];
     behavior_update_row *row = rows;
     assert(row->binding);
@@ -263,7 +272,9 @@ static void failure_parity(behavior_backend backend, bool components, bool loop)
         expected_error->steps == prepared_error->steps &&
         !strcmp(expected_error->message, prepared_error->message)
     );
-    assert(prepared->variables[0].d == ordinary->variables[0].d);
+    assert(
+        prepared->execution.variables[0].d == ordinary->execution.variables[0].d
+    );
     uint64_t failed_node = prepared_error->node->id;
     assert(!behavior_instance_release_activation(prepared, prepared_failure));
     const behavior_instance_failure *saved = behavior_instance_last_failure(prepared);
@@ -291,8 +302,8 @@ static void failure_parity(behavior_backend backend, bool components, bool loop)
         assert(x[i].node_id == y[i].node_id && x[i].graph_id == y[i].graph_id);
     }
     assert(
-        ordinary->variables[0].d == batched->variables[0].d &&
-        batched->variables[0].d > 0.
+        ordinary->execution.variables[0].d == batched->execution.variables[0].d &&
+        batched->execution.variables[0].d > 0.
     );
     behavior_batch_free(batch);
     behavior_instance_destroy(ordinary);
@@ -318,11 +329,11 @@ static void queued_wait(behavior_backend backend)
     flow_run *wait = behavior_instance_dispatch(instance, "Sleep", (flow_inputs){ 0 }, NULL);
     assert(wait && flow_run_status(wait) == FLOW_SUSPENDED);
     assert(!behavior_instance_dispatch_batch(instance, "Tick", &batch, &failed));
-    assert(instance->variables[0].d == 0.);
+    assert(instance->execution.variables[0].d == 0.);
     assert(!behavior_instance_stop_activation(instance, wait));
     assert(!behavior_instance_release_activation(instance, wait));
     assert(behavior_instance_dispatch_batch(instance, "Tick", &batch, &failed) && !failed);
-    assert(instance->variables[0].d == .125);
+    assert(instance->execution.variables[0].d == .125);
     behavior_batch_free(batch);
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
@@ -362,7 +373,7 @@ static void exclusions(behavior_backend backend)
         assert(!behavior_instance_set_backend(instance, backend));
         behavior_instance_set_trace_enabled(instance, false);
         const behavior_function *function = behavior_program_function(
-            behavior_program_graph(asset->program, g),
+            behavior_program_graph(behavior_program_cached(asset), g),
             entry
         );
         assert(kind == 3 ? !function : function && !behavior_function_batchable(function));
@@ -370,7 +381,7 @@ static void exclusions(behavior_backend backend)
         flow_run *failed;
         uint64_t dispatched = behavior_batch_dispatches();
         assert(!behavior_instance_dispatch_batch(instance, "Tick", &batch, &failed));
-        assert(!failed && !batch && !instance->variables[0].d);
+        assert(!failed && !batch && !instance->execution.variables[0].d);
         assert(dispatched == behavior_batch_dispatches());
         behavior_instance_destroy(instance);
         behavior_asset_free(asset);
@@ -391,21 +402,30 @@ static void unread_event_output(behavior_backend backend)
     behavior_batch *batch = NULL;
     flow_run *failed;
     assert(behavior_instance_dispatch_batch(instance, "Tick", &batch, &failed) && !failed);
-    assert(instance->variables[0].d == .125);
+    assert(instance->execution.variables[0].d == .125);
     behavior_batch_free(batch);
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
 }
 
-/* Pursuit's Tick declares DeltaSeconds, which only its debugger watches read. */
+/* The event declares DeltaSeconds, which only its debugger watches read. */
 static void watched_event_output()
 {
-    char *text = text_file_read("projects/arena2d/content/behaviors/Pursuit.code");
-    behavior_asset *asset = test_project_asset("projects/arena2d/content/behaviors/Pursuit.code", text);
+    char *text = text_file_read("test/fixtures/language/content/behaviors/WatchedPayload.chibi");
+    behavior_asset *asset = test_project_asset(
+        "test/fixtures/language/content/behaviors/WatchedPayload.chibi",
+        text
+    );
     free(text);
+    char error[256];
+    behavior_asset *prepared = behavior_asset_link_libraries(asset, NULL, 0, error, sizeof error);
+    assert(prepared);
+    behavior_asset_free(asset);
+    asset = prepared;
+    behavior_program_publish(asset);
     node *entry = tick_entry(asset);
     assert(entry->output_count == 2);
-    assert(behavior_program_batch_event(asset->program, "Tick", &entry));
+    assert(behavior_program_batch_event(behavior_program_cached(asset), "Tick", &entry));
     behavior_asset_free(asset);
 }
 
@@ -437,7 +457,7 @@ static void indexed_events(behavior_backend backend)
         }
         bool ran = behavior_instance_dispatch_batch(instance, version ? "Advance" : "Tick", &batch, &failed);
         assert(ran == (version != 2) && !failed);
-        assert(instance->variables[0].d == (ran ? .125 : 0.));
+        assert(instance->execution.variables[0].d == (ran ? .125 : 0.));
         behavior_instance_destroy(instance);
     }
     behavior_batch_free(batch);
@@ -456,7 +476,7 @@ static void observed_profile()
     game_behavior_attachment_info info;
     assert(!game_behavior_attachment_info_at(world, entity, 0, &info));
     int callbacks = 0;
-    info.instance->profile = external_profile;
+    info.instance->execution.profile = external_profile;
     info.instance->profile_user = &callbacks;
     uint64_t dispatched = behavior_batch_dispatches();
     assert(game_behavior_update(world, NULL) == 1);
@@ -537,8 +557,11 @@ static void update_guards(behavior_backend backend)
     ecs_entity reused = ecs_world_create_entity(ecs);
     assert(reused.slot == entities[1].slot && reused.generation != entities[1].generation);
     assert(game_behavior_update(world, NULL) == 2);
-    assert(instances[1]->variables[0].d == 10.5);
-    assert(instances[0]->variables[0].d == 10.625 && instances[2]->variables[0].d == 10.625);
+    assert(instances[1]->execution.variables[0].d == 10.5);
+    assert(
+        instances[0]->execution.variables[0].d == 10.625 &&
+        instances[2]->execution.variables[0].d == 10.625
+    );
     game_behavior_world_free(world);
     behavior_asset_free(asset);
     ecs_world_free(ecs);
@@ -560,10 +583,11 @@ static void system_failure(bool interleaved)
     behavior_update_row rows[3];
     behavior_update_binding **bindings = NULL;
     node *entry = tick_entry(asset);
-    const behavior_function *f = behavior_program_batch_event(asset->program, "Tick", &entry);
+    const behavior_function
+        *f = behavior_program_batch_event(behavior_program_cached(asset), "Tick", &entry);
     const behavior_function *functions[2] = { f, NULL };
     node *other_entry = interleaved ? tick_entry(other) : entry;
-    functions[1] = behavior_program_batch_event(other->program, "Tick", &other_entry);
+    functions[1] = behavior_program_batch_event(behavior_program_cached(other), "Tick", &other_entry);
     for (int i = 0; i < 3; i++) {
         ecs_entity entity = ecs_world_create_entity(ecs);
         whole_record record = { .weight = i };
@@ -580,15 +604,12 @@ static void system_failure(bool interleaved)
             target.u64 = 0;
         }
         assert(!behavior_instance_set_variable(instances[i], asset->variables[1].id, &target));
-        rows[i] = (behavior_update_row){ .instance = instances[i],
-                                         .binding = behavior_update_prepare(
-                                             &bindings,
-                                             instances[i],
-                                             functions[i % 2],
-                                             i == 1 ? other_entry : entry
-                                         ),
-                                         .services_revision = instances[i]->services_revision,
-                                         .entity = owner.u64 };
+        rows[i] = behavior_update_row_make(
+            instances[i],
+            behavior_update_prepare(&bindings, instances[i], functions[i % 2], i == 1 ? other_entry : entry),
+            owner.u64,
+            0
+        );
         assert(rows[i].binding);
     }
     assert(!ecs_world_apply_commands(ecs));
@@ -601,7 +622,8 @@ static void system_failure(bool interleaved)
             behavior_update_fn
         )code)(rows + 1, rows + 3, (const ecs_execution_view *)ecs, &result);
         assert(
-            wrong == rows + 1 && result == FLOW_OK && instances[1]->variables[0].d == 0.
+            wrong == rows + 1 && result == FLOW_OK &&
+            instances[1]->execution.variables[0].d == 0.
         );
     }
     behavior_update_row *stopped = ((
@@ -609,8 +631,9 @@ static void system_failure(bool interleaved)
     )code)(rows, rows + 3, (const ecs_execution_view *)ecs, &result);
     assert(stopped == rows + 1 && result < 0);
     assert(
-        instances[0]->variables[0].d == .125 &&
-        instances[1]->variables[0].d == .125 && instances[2]->variables[0].d == 0
+        instances[0]->execution.variables[0].d == .125 &&
+        instances[1]->execution.variables[0].d == .125 &&
+        instances[2]->execution.variables[0].d == 0
     );
     flow_run *failed = behavior_update_failure(stopped, result);
     assert(flow_run_status(failed) == FLOW_FAILED && flow_run_error(failed)->node);
@@ -621,7 +644,7 @@ static void system_failure(bool interleaved)
         )code)(rows + 2, rows + 3, (const ecs_execution_view *)ecs, &result);
         assert(
             stopped == rows + 3 && result == FLOW_OK &&
-            instances[2]->variables[0].d == .125
+            instances[2]->execution.variables[0].d == .125
         );
     }
     /* Budget rejection, in either the kernel or its checked fallback, must
@@ -631,7 +654,7 @@ static void system_failure(bool interleaved)
         behavior_update_fn
     )code)(rows, rows + 3, (const ecs_execution_view *)ecs, &result);
     assert(stopped == rows && result == FLOW_ERR_STEP_BUDGET);
-    assert(instances[0]->variables[0].d == .125);
+    assert(instances[0]->execution.variables[0].d == .125);
     if (interleaved) {
         behavior_update_free_code(code);
     }

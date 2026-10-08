@@ -1,64 +1,75 @@
 #include "automation/controller.h"
 
 #include "assets/asset_source.h"
-#include "assets/code_catalog.h"
-#include "assets/code_source.h"
 #include "assets/model_export.h"
 #include "assets/new_asset.h"
 #include "assets/project.h"
 #include "assets/prototype.h"
-#include "assets/refactor.h"
-#include "assets/reference_index.h"
+#include "assets/reference_adapters.h"
 #include "assets/scenario_document.h"
 #include "assets/scene_document.h"
-#include "assets/system_document.h"
 #include "assets/ui_document.h"
 #include "assets/ui_events.h"
-#include "automation/asset_write.h"
-#include "automation/code_edit.h"
+#include "authoring/application_catalog.h"
+#include "authoring/behavior_loader.h"
+#include "authoring/component_presentation.h"
+#include "authoring/graph_expression.h"
+#include "authoring/image_prepare.h"
+#include "authoring/language_catalog.h"
+#include "authoring/mesh_prepare.h"
+#include "authoring/native_prototype.h"
+#include "authoring/preview_source.h"
+#include "authoring/prototype_preview.h"
+#include "authoring/reference_index.h"
+#include "authoring/shader_prepare.h"
+#include "authoring/source_collection.h"
+#include "authoring/source_format.h"
+#include "authoring/source_intelligence.h"
+#include "authoring/source_metadata.h"
+#include "authoring/source_presentation.h"
+#include "authoring/source_references.h"
+#include "authoring/source_rename.h"
+#include "authoring/studio_project.h"
+#include "authoring/studio_schema.h"
+#include "automation/content_hash.h"
 #include "automation/field_preview.h"
-#include "automation/graph_edit.h"
-#include "automation/graph_optimize.h"
 #include "automation/navigation.h"
-#include "automation/prototype_edit.h"
-#include "automation/prototype_instance.h"
-#include "automation/scene_edit.h"
-#include "automation/ui_edit.h"
+#include "automation/ui_inspect.h"
 #include "ecs/ecs.h"
-#include "editor/documents/component_presentation.h"
-#include "editor/studio/studio_nodes.h"
+#include "execution/backend.h"
+#include "execution/function.h"
 #include "graph/authoring/describe.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/authoring/layout.h"
-#include "graph/compiler/behavior_program.h"
-#include "graph/compiler/compile.h"
-#include "graph/compiler/graph_jit_sljit.h"
+#include "graph/compiler/validation.h"
 #include "graph/document/events.h"
 #include "graph/document/graph_signature.h"
 #include "graph/document/library.h"
 #include "graph/document/problems.h"
 #include "graph/document/serialize.h"
-#include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/modeling/model_compile.h"
-#include "graph/modeling/model_inspection.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
-#include "graph/runtime/instance.h"
+#include "graph/nodes/core_nodes.h"
+#include "graph/nodes/studio_nodes.h"
+#include "graph/shader/shader_graph.h"
+#include "host/native_default.h"
 #include "render/shader_catalog.h"
 #include "render/shader_images.h"
-#include "runtime/generated.h"
-#include "runtime/scenes/prototype_preview.h"
-#include "runtime/systems/system.h"
+#include "runtime/behaviors/source.h"
+#include "runtime/component_catalog.h"
+#include "runtime/models/model_inspection.h"
 #include "runtime/ui.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/asset_text.h"
+#include "support/file_io.h"
 #include "support/text_file.h"
 #include "support/text_search.h"
 #include "support/xalloc.h"
-#include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -75,40 +86,21 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <yyjson.h>
 
-static behavior_asset *load_project_behavior(const char *root, const char *text)
+static behavior_asset *load_project_behavior(const char *, const char *text)
 {
-    code_catalog *catalog = code_catalog_load_project(root);
-    char error[256];
-    behavior_asset *asset = code_catalog_load_behavior(catalog, text, error, sizeof error);
-    code_catalog_free(catalog);
-    if (!asset) {
-        serialize_error_set("%s", error);
-    }
-    return asset;
+    return behavior_asset_load(text);
 }
 
-static game_system_document *load_project_system(
-    const char *root,
-    const char *text,
-    game_query_component_resolver resolve,
-    void *user,
+static int inspect_source_presentation(
+    yyjson_val *request,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    const authoring_source_presentation *presentation,
     char *error,
     size_t size
-)
-{
-    code_catalog *catalog = code_catalog_load_project(root);
-    game_system_document *document = game_system_document_load_context(
-        text,
-        code_catalog_context(catalog),
-        resolve,
-        user,
-        error,
-        size
-    );
-    code_catalog_free(catalog);
-    return document;
-}
+);
 
 static int analyze_project_source(
     const char *root,
@@ -297,15 +289,6 @@ static const contract_field CONTRACT_BAKE_MODEL[] = {
     { "options", "object", false, "Bounded cell_size, max_axis_cells, max_triangles, max_samples, max_work and edge_iterations." },
     { "overrides", "array", false, "Checked parameter snapshot keyed by asset, scope and parameter_id, with value components." },
 };
-static const contract_field CONTRACT_BUILD_CODE[] = {
-    { "project_root", "string", false, "Project directory; defaults to the controller root." },
-    { "kind", "string", true, "Graph asset family." },
-    { "name", "string", true, "Asset filename without suffix." },
-    { "source", "string", true, "Source candidate to validate and publish atomically." },
-    { "expected_hash", "string", false, "Required current source hash when replacing an asset." },
-    { "create", "bool", false, "Create a new asset; existing destination is rejected." },
-    { "dry_run", "bool", false, "Validate and return candidate without publication." },
-};
 static const contract_field CONTRACT_ANALYZE_CODE[] = {
     { "project_root", "string", false, "Optional project directory supplying library/event signatures; defaults to the controller root." },
     { "rename", "string", false, "Propose a source-local rename at offset, without publishing." },
@@ -428,43 +411,6 @@ static const contract_field CONTRACT_SEARCH_NODES[] = {
 static const contract_field CONTRACT_DESCRIBE_COMPONENTS[] = {
     { "names", "string[]", false, "Optional component names or stable keys; omit to describe every reflected component." },
 };
-static const contract_field CONTRACT_EDIT_GRAPH[] = {
-    { "project_root", "string", false, "Project directory." },
-    { "path", "string", false, "Graph asset path below content, or use kind/name." },
-    { "kind", "string", false, "Graph asset family." },
-    { "name", "string", false, "Graph asset name." },
-    { "create", "boolean", false, "Create a new asset without replacing existing content." },
-    { "expected_hash", "string", false, "Required current asset hash when editing." },
-    { "dry_run", "boolean", false, "Validate and return results without writing." },
-    { "graph_id", "uint64", false, "Stable graph ID." },
-    { "graph_name", "string", false, "Unique graph name." },
-    { "description", "string", false, "Top-level asset description; empty clears it." },
-    { "owner_type", "string", false, "Optional owner handle type for behavior and library assets." },
-    { "query", "object|null", false, "System query; null clears the filter." },
-    { "graph_description", "string", false, "Description for the selected graph; empty clears it." },
-    { "operations", "array", true, "Atomic semantic edit batch, at most 128 operations." },
-};
-static const contract_field CONTRACT_EDIT_PROTOTYPE[] = {
-    { "project_root", "string", false, "Project directory." },
-    { "path", "string", false, "Prototype asset path below content, or use kind/name." },
-    { "kind", "string", false, "Prototype asset family." },
-    { "name", "string", false, "Prototype asset name." },
-    { "create", "boolean", false, "Create a new asset without replacing existing content." },
-    { "expected_hash", "string", false, "Required current asset hash when editing." },
-    { "dry_run", "boolean", false, "Validate and return results without writing." },
-    { "source_instance", "object", false, "A scene entity {scene, entity, fields?}: with create, the new prototype starts as a copy of it; otherwise the fields it overrides, or the fields named, are applied to this prototype, the one it is an instance of." },
-    { "operations", "array", true, "Atomic semantic component, field, and behavior edit batch, at most 128 operations." },
-};
-static const contract_field CONTRACT_EDIT_SCENE[] = {
-    { "project_root", "string", false, "Project directory." },
-    { "path", "string", false, "Scene asset path below content, or use kind/name." },
-    { "kind", "string", false, "Scene asset family." },
-    { "name", "string", false, "Scene asset name." },
-    { "create", "boolean", false, "Create a new scene without replacing existing content." },
-    { "expected_hash", "string", false, "Required current asset hash when editing." },
-    { "dry_run", "boolean", false, "Validate and serialize the proposed edit without publishing it." },
-    { "operations", "array", true, "Atomic semantic scene edit batch, at most 128 operations." },
-};
 static const contract_field CONTRACT_PROFILE_SCENARIO[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "scenario", "string", false, "Named scenario asset; supplies the target and replay input. Omit kind, name, inputs and input_timeline." },
@@ -481,23 +427,6 @@ static const contract_field CONTRACT_EXECUTION_STATUS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "kind", "string", true, "Behavior or system." },
     { "name", "string", true, "Asset name." },
-};
-static const contract_field CONTRACT_OPTIMIZE_GRAPH[] = {
-    { "project_root", "string", false, "Project directory." },
-    { "path", "string", false, "Graph asset path below content, or use kind/name." },
-    { "kind", "string", false, "Graph asset family." },
-    { "name", "string", false, "Graph asset name." },
-    { "expected_hash", "string", false, "Required current asset hash when applying an optimization." },
-    { "dry_run", "boolean", false, "Report safe optimizations without publishing them; defaults to true." },
-    { "graph_id", "uint64", false, "Stable graph ID." },
-    { "graph_name", "string", false, "Unique graph name." },
-    { "fanout_threshold", "integer", false, "Minimum compatible fanout for local alias creation; 2 through 64." },
-    { "preserve_debug", "boolean", false, "Keep watched, disabled, and breakpoint graph state intact; defaults to true." },
-    { "local_aliases", "boolean", false, "Create local aliases for safe high-fanout values; defaults to true." },
-    { "math_expressions",
-      "boolean",
-      false,
-      "First replace math node trees with expressions; defaults to false." },
 };
 static const contract_field CONTRACT_PREVIEW_FIELD[] = {
     { "project_root", "string", false, "Project directory." },
@@ -555,36 +484,6 @@ static const contract_field CONTRACT_CALL_HIERARCHY[] = {
     { "direction", "string", false, "incoming (callers), outgoing (callees) or both; defaults to both." },
     { "depth", "integer", false, "Levels below the root, 1 to 6; defaults to 2." },
 };
-static const contract_field CONTRACT_RENAME_SYMBOL[] = {
-    { "project_root", "string", false, "Project directory; defaults to the controller root." },
-    { "asset", "object", false, "Asset {kind, name}; with graph or graph_id, its function or macro; with variable, parameter or local, that member." },
-    { "graph", "string", false, "Function or macro name in asset: the selected graph, a parameter's function, or where a local is." },
-    { "graph_id", "uint64", false, "Function or macro ID in asset, as inspectGraph lists it." },
-    { "variable", "string", false, "Variable name in asset." },
-    { "parameter", "string", false, "Input or output name of the function graph names." },
-    { "local", "string", false, "Named value (local) in asset." },
-    { "event", "string", false, "Event name; its definition, when it has one, goes with it." },
-    { "component", "string", false, "Component name or key; refused, since C reflection names it." },
-    { "field", "string", false, "Field path of component; refused." },
-    { "dry_run", "boolean", false, "List every asset and change without publishing; defaults to true." },
-    { "expected_hashes", "object", false, "The dry run's path-to-hash map; required to publish." },
-    { "new_name", "string", true, "The symbol's new name." },
-};
-static const contract_field CONTRACT_DELETE_SYMBOL[] = {
-    { "project_root", "string", false, "Project directory; defaults to the controller root." },
-    { "asset", "object", false, "Asset {kind, name}; with graph or graph_id, its function or macro; with variable, parameter or local, that member." },
-    { "graph", "string", false, "Function or macro name in asset: the selected graph, a parameter's function, or where a local is." },
-    { "graph_id", "uint64", false, "Function or macro ID in asset, as inspectGraph lists it." },
-    { "variable", "string", false, "Variable name in asset." },
-    { "parameter", "string", false, "Input or output name of the function graph names." },
-    { "local", "string", false, "Named value (local) in asset." },
-    { "event", "string", false, "Event name; its definition, when it has one, goes with it." },
-    { "component", "string", false, "Component name or key; refused, since C reflection names it." },
-    { "field", "string", false, "Field path of component; refused." },
-    { "dry_run", "boolean", false, "List every asset and change without publishing; defaults to true." },
-    { "expected_hashes", "object", false, "The dry run's path-to-hash map; required to publish." },
-    { "force", "boolean", false, "Delete while references remain, and list them as dangling." },
-};
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
     { "search_nodes",
@@ -605,43 +504,6 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
       true,
       true,
       false },
-    { "edit_graph",
-      "Create or edit a graph asset with one atomic semantic batch; validate "
-      "before saving.",
-      CONTRACT_EDIT_GRAPH,
-      CONTRACT_FIELD_COUNT(CONTRACT_EDIT_GRAPH),
-      1,
-      false,
-      false,
-      true },
-    { "edit_prototype",
-      "Create or edit a prototype with semantic component, field, and behavior "
-      "operations; validate "
-      "before saving.",
-      CONTRACT_EDIT_PROTOTYPE,
-      CONTRACT_FIELD_COUNT(CONTRACT_EDIT_PROTOTYPE),
-      1,
-      false,
-      false,
-      true },
-    { "edit_scene",
-      "Create or edit a scene with semantic entity composition, overrides, and "
-      "behavior operations; validate before saving.",
-      CONTRACT_EDIT_SCENE,
-      CONTRACT_FIELD_COUNT(CONTRACT_EDIT_SCENE),
-      1,
-      false,
-      false,
-      true },
-    { "optimize_graph",
-      "Apply safe graph folds, local aliases, and cleanup passes and report "
-      "skipped opportunities.",
-      CONTRACT_OPTIMIZE_GRAPH,
-      CONTRACT_FIELD_COUNT(CONTRACT_OPTIMIZE_GRAPH),
-      1,
-      false,
-      false,
-      true },
     { "execution_status",
       "Report the actual execution backend available for a behavior or system "
       "asset.",
@@ -706,17 +568,6 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         true,
         true,
         false,
-    },
-    {
-        "build_code",
-        "Validate source and atomically publish a graph asset with a checked "
-        "hash.",
-        CONTRACT_BUILD_CODE,
-        CONTRACT_FIELD_COUNT(CONTRACT_BUILD_CODE),
-        1,
-        false,
-        false,
-        true,
     },
     {
         "analyze_code",
@@ -899,28 +750,6 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         false,
     },
     {
-        "rename_symbol",
-        "Rename a symbol and every reference to it across assets, as one "
-        "hash-checked change.",
-        CONTRACT_RENAME_SYMBOL,
-        CONTRACT_FIELD_COUNT(CONTRACT_RENAME_SYMBOL),
-        1,
-        false,
-        false,
-        true,
-    },
-    {
-        "delete_symbol",
-        "Delete an asset, event definition, function or variable that nothing "
-        "references, as one hash-checked change.",
-        CONTRACT_DELETE_SYMBOL,
-        CONTRACT_FIELD_COUNT(CONTRACT_DELETE_SYMBOL),
-        1,
-        false,
-        false,
-        true,
-    },
-    {
         "inspect_ui",
         "Inspect a ui asset's outline, props, events, slots, widgets, tokens "
         "and syntax errors, and complete at a position.",
@@ -941,9 +770,6 @@ static const char *const CONTRACT_ERROR_CATEGORIES[] = {
 static int handle_describe_registry(yyjson_val *request, response *result, int *exit_code);
 static int handle_describe_contract(response *result);
 static int handle_describe_components(yyjson_val *request, response *result, int *exit_code);
-static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code);
-static int handle_edit_scene(const char *root, yyjson_val *request, response *result, int *exit_code);
-static int handle_optimize_graph(const char *root, yyjson_val *request, response *result, int *exit_code);
 static int handle_execution_status(const char *root, yyjson_val *request, response *result, int *exit_code);
 static int handle_profile_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
 static int handle_scene_runtime_snapshot(
@@ -979,17 +805,6 @@ static const ecs_component_desc *automation_query_component(const char *name, vo
         if ((component->name && !strcmp(component->name, name)) ||
             (component->key && !strcmp(component->key, name))) {
             return component;
-        }
-    }
-    return NULL;
-}
-
-static const char *automation_query_component_name(ecs_component_id id, void *)
-{
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
-        if (component->id == id) {
-            return component->key ? component->key : component->name;
         }
     }
     return NULL;
@@ -1306,8 +1121,8 @@ static char *asset_full_path(const char *root, const asset_ref *ref)
 }
 
 /* Asset paths are rooted at a real project directory. Do not follow a
- * symlink at either content level: a local MCP client must not be able to
- * turn a project-relative asset path into an arbitrary filesystem read. */
+ * symlink at either content level: a local automation caller must not be able
+ * to turn a project-relative asset path into an arbitrary filesystem read. */
 static int verify_asset_directory(const char *root, const asset_family *family, char *error, size_t error_size)
 {
     size_t content_size = strlen(root) + strlen("/content") + 1;
@@ -1533,12 +1348,12 @@ static int load_behavior_family_assets(
 /* Editor assets hold Studio's component presentation. */
 static bool read_editor_asset(const char *json, char *error, size_t error_size)
 {
-    game_prototype_registry registry = {
+    ecs_component_catalog registry = {
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
     component_presentation presentation = { 0 };
-    bool ok = component_presentation_read(json, &registry, &presentation, error, error_size);
+    bool ok = component_presentation_read(json, registry, &presentation, error, error_size);
     component_presentation_free(&presentation);
     return ok;
 }
@@ -1607,33 +1422,11 @@ static int validate_ui(
 typedef struct
 {
     behavior_asset **assets;
-    code_catalog *source_catalog;
+    authoring_language_catalog *native;
+    authoring_sources *sources;
     char error[256];
     bool studio; /* the project is Studio's, whose world runs its editor nodes */
 } catalog_links;
-
-static int compile_system_catalog(
-    const behavior_asset *asset,
-    const behavior_asset *const *catalog,
-    int count,
-    compile_report *report
-)
-{
-    char error[256];
-    behavior_asset *linked = behavior_asset_link_libraries(asset, catalog, count, error, sizeof error);
-    if (!linked) {
-        compile_diagnostic diagnostic = { .severity = CMPL_ERROR,
-                                          .rule = CMPL_RULE_MISSING_REFERENCE,
-                                          .graph_id = asset->graph->graph_id };
-        snprintf(diagnostic.message, sizeof diagnostic.message, "%s", error);
-        apush(report->items, diagnostic);
-        report->error_count++;
-        return report->error_count;
-    }
-    int errors = behavior_asset_compile_for_system(linked, report);
-    behavior_asset_free(linked);
-    return errors;
-}
 
 static bool links_family(const asset_family *family)
 {
@@ -1642,38 +1435,57 @@ static bool links_family(const asset_family *family)
            !strcmp(family->kind, "event") || !strcmp(family->kind, "model");
 }
 
+static authoring_language_catalog *source_native_catalog(const char *root, char *error, size_t size)
+{
+    native_capabilities
+        *table = authoring_application_catalog_new(studio_project_is(root), error, size);
+    if (!table) {
+        return NULL;
+    }
+    const authoring_language_catalog_input input = { .native = table };
+    authoring_language_catalog *catalog = authoring_language_catalog_new(&input, error, size);
+    native_capabilities_free(table);
+    return catalog;
+}
+
 static void load_catalog_links(const char *root, const asset_entry *entries, catalog_links *links)
 {
-    links->source_catalog = code_catalog_load_project(root);
+    links->native = source_native_catalog(root, links->error, sizeof links->error);
+    if (!links->native) {
+        return;
+    }
+    size_t length = strlen(root) + sizeof "/content";
+    char *content = xmalloc(length);
+    snprintf(content, length, "%s/content", root);
+    script_lower_bindings bindings = authoring_language_bindings(links->native);
+    links->sources = authoring_sources_prepare(
+        content,
+        authoring_language_catalog_view(links->native),
+        &bindings,
+        BEHAVIOR_BYTECODE
+    );
+    free(content);
     for (int i = 0; i < acount(entries) && !links->error[0]; i++) {
-        if (!links_family(entries[i].family)) {
+        if (!links_family(entries[i].family) ||
+            !strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
             continue;
         }
-        size_t path_size = strlen(root) + strlen(entries[i].relative) + 2;
-        char *path = xmalloc(path_size);
-        snprintf(path, path_size, "%s/%s", root, entries[i].relative);
-        char *json = read_file(path, NULL, NULL, links->error, sizeof links->error);
-        behavior_asset *asset = json ? code_catalog_load_path(
-                                           links->source_catalog,
-                                           json,
-                                           path,
-                                           links->error,
-                                           sizeof links->error
-                                       )
-                                     : NULL;
-        if (json && !asset) {
-            char detail[256];
-            snprintf(detail, sizeof detail, "%s", links->error);
+        size_t length = strlen(root) + strlen(entries[i].relative) + 2;
+        char *path = xmalloc(length);
+        snprintf(path, length, "%s/%s", root, entries[i].relative);
+        char *text = read_file(path, NULL, NULL, links->error, sizeof links->error);
+        behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
+        if (text && !asset) {
             snprintf(
                 links->error,
                 sizeof links->error,
                 "could not load %s: %s",
                 entries[i].relative,
-                detail
+                graph_last_error()
             );
         }
         free(path);
-        free(json);
+        free(text);
         if (asset) {
             apush(links->assets, asset);
         }
@@ -1704,12 +1516,43 @@ static void catalog_validate_asset(
 )
 {
     const asset_family *family = asset->asset.family;
+    if (!strcmp(family->extension, CODE_ASSET_EXTENSION)) {
+        const authoring_source *source = NULL;
+        for (int i = 0; links->sources && i < authoring_sources_count(links->sources);
+             i++) {
+            const authoring_source *candidate = authoring_sources_at(links->sources, i);
+            if (!strcmp(candidate->path, path)) {
+                source = candidate;
+                break;
+            }
+        }
+        asset->errors = source ? source->diagnostic_count : 1;
+        asset->valid = source && source->valid;
+        if (!source) {
+            catalog_add_diagnostic(
+                asset,
+                "error",
+                0,
+                "SOURCE",
+                links->error[0] ? links->error : "Source missing from project snapshot"
+            );
+        }
+        for (int i = 0; source && i < source->diagnostic_count; i++) {
+            catalog_add_diagnostic(
+                asset,
+                "error",
+                0,
+                "SOURCE",
+                source->diagnostics[i].message
+            );
+        }
+        return;
+    }
     if (family->loader == ASSET_GRAPH) {
-        char error[256];
-        behavior_asset *behavior = code_catalog_load_path(links->source_catalog, json, path, error, sizeof error);
+        behavior_asset *behavior = behavior_asset_load(json);
         if (!behavior || links->error[0]) {
             asset->errors = 1;
-            catalog_add_diagnostic(asset, "error", 0, "LOAD", behavior ? links->error : error);
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", behavior ? links->error : graph_last_error());
         } else {
             compile_report report;
             compile_report_init(&report);
@@ -1726,32 +1569,6 @@ static void catalog_validate_asset(
             compile_report_free(&report);
         }
         behavior_asset_free(behavior);
-    } else if (family->loader == ASSET_SYSTEM) {
-        char error[256] = { 0 };
-        game_system_document *document = game_system_document_load_context(
-            json,
-            code_catalog_context(links->source_catalog),
-            automation_query_component,
-            NULL,
-            error,
-            sizeof error
-        );
-        if (!document) {
-            asset->errors = 1;
-            catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
-        } else {
-            compile_report report;
-            compile_report_init(&report);
-            compile_system_catalog(
-                game_system_document_behavior_asset(document),
-                (const behavior_asset *const *)links->assets,
-                acount(links->assets),
-                &report
-            );
-            catalog_add_report(asset, &report);
-            compile_report_free(&report);
-            game_system_document_free(document);
-        }
     } else if (family->loader == ASSET_PROTOTYPE) {
         game_prototype_registry registry = {
             .components = GAME_REGISTRY_COMPONENTS,
@@ -1864,13 +1681,16 @@ static char *manifest_string(const char *root, const char *key)
 /* Adds what an asset holds to the index, with `page` the project's default
  * page. An asset its loader rejects holds nothing; its diagnostics say why. */
 static void catalog_add_content(
-    const char *root,
+    const char *,
     reference_index *index,
     const catalog_asset *asset,
     const char *text,
     const char *page
 )
 {
+    if (!strcmp(asset->asset.family->extension, CODE_ASSET_EXTENSION)) {
+        return;
+    }
     char error[256];
     game_prototype_registry registry = {
         .components = GAME_REGISTRY_COMPONENTS,
@@ -1878,34 +1698,15 @@ static void catalog_add_content(
     };
     switch (asset->asset.family->loader) {
         case ASSET_GRAPH: {
-            code_catalog *catalog = code_catalog_load_project(root);
-            size_t path_size = strlen(root) + strlen(asset->asset.relative) + 2;
-            char *path = xmalloc(path_size);
-            snprintf(path, path_size, "%s/%s", root, asset->asset.relative);
-            behavior_asset *graph = code_catalog_load_path(catalog, text, path, error, sizeof error);
-            free(path);
-            code_catalog_free(catalog);
+            behavior_asset *graph = behavior_asset_load(text);
             if (graph) {
                 reference_index_add_graphs(index, asset->reference, graph);
             }
             behavior_asset_free(graph);
             return;
         }
-        case ASSET_SYSTEM: {
-            game_system_document *system = load_project_system(
-                root,
-                text,
-                automation_query_component,
-                NULL,
-                error,
-                sizeof error
-            );
-            if (system) {
-                reference_index_add_graphs(index, asset->reference, game_system_document_behavior_asset(system));
-                game_system_document_free(system);
-            }
-            return;
-        }
+        case ASSET_SYSTEM:
+            return; /* Executable declarations were indexed through canonical facts. */
         case ASSET_PROTOTYPE: {
             game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
             if (prototype) {
@@ -2011,6 +1812,7 @@ static char *catalog_path(const char *root, const catalog_asset *asset)
 static int catalog_index_references(
     const char *root,
     catalog_asset *assets,
+    const authoring_sources *sources,
     reference_index **out,
     char *error,
     size_t error_size
@@ -2043,6 +1845,28 @@ static int catalog_index_references(
         free(text);
     }
     free(page);
+    authoring_document *documents = NULL;
+    for (int i = 0; sources && i < authoring_sources_count(sources); i++) {
+        const authoring_source *source = authoring_sources_at(sources, i);
+        apush(
+            documents,
+            ((authoring_document){ source->path, source->syntax, source->analysis })
+        );
+    }
+    if (sources) {
+        authoring_navigation *navigation = authoring_navigation_new_project(
+            documents,
+            acount(documents),
+            authoring_sources_catalog(sources),
+            authoring_sources_definitions(sources),
+            authoring_sources_definition_count(sources),
+            authoring_sources_references(sources),
+            authoring_sources_reference_count(sources)
+        );
+        authoring_source_references_add(index, navigation);
+        authoring_navigation_free(navigation);
+    }
+    afree(documents);
     catalog_link_references(assets, index);
     *out = index;
     return 0;
@@ -2051,50 +1875,176 @@ static int catalog_index_references(
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size);
 
 /* Inspect KDL documents or executable source through native asset values. */
-static yyjson_doc *parse_asset_text_context(const char *text, const code_source_context *context)
+static yyjson_doc *parse_project_asset_text(const char *, const char *text)
 {
     char error[160];
-    bool executable = code_source_is_structured(text);
-    av_doc *native = executable ? NULL : av_doc_read(text, error, sizeof error);
-    code_source *code = executable ? code_source_parse_context(text, NULL, context)
-                                   : NULL;
-    const av_doc *values = native ? native : code ? code->document : NULL;
-    char *json = values ? av_json_write(av_doc_root(values)) : NULL;
+    av_doc *native = av_doc_read(text, error, sizeof error);
+    char *json = native ? av_json_write(av_doc_root(native)) : NULL;
     yyjson_doc *document = json ? yyjson_read(json, strlen(json), 0) : NULL;
     free(json);
     av_doc_free(native);
-    code_source_free(code);
-    return document;
-}
-
-/* A ui asset's markup and styles, which are not code, load as a GameUi
- * shows them. */
-static yyjson_doc *parse_project_asset_text(const char *root, const char *text)
-{
-    code_catalog *catalog = code_catalog_load_project(root);
-    yyjson_doc *document = parse_asset_text_context(text, code_catalog_context(catalog));
-    code_catalog_free(catalog);
     return document;
 }
 
 static yyjson_doc *parse_project_asset_path(const char *root, const char *relative, const char *text)
 {
-    if (!code_source_is_structured(text)) {
+    const char *extension = strrchr(relative, '.');
+    if (!extension || strcmp(extension, CODE_ASSET_EXTENSION)) {
         return parse_project_asset_text(root, text);
     }
-    code_catalog *catalog = code_catalog_load_project(root);
-    code_source *source = code_source_parse_context(text, NULL, code_catalog_context(catalog));
-    size_t path_size = strlen(root) + strlen(relative) + 2;
-    char *path = xmalloc(path_size);
-    snprintf(path, path_size, "%s/%s", root, relative);
-    code_source_metadata_load(source, path);
-    char *json = source->document ? av_json_write(av_doc_root(source->document)) : NULL;
-    yyjson_doc *document = json ? yyjson_read(json, strlen(json), 0) : NULL;
-    free(json);
-    free(path);
-    code_source_free(source);
-    code_catalog_free(catalog);
-    return document;
+    yyjson_mut_doc *request = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *value = yyjson_mut_obj(request);
+    yyjson_mut_doc_set_root(request, value);
+    yyjson_mut_obj_add_str(request, value, "source", text);
+    yyjson_mut_obj_add_str(request, value, "path", relative);
+    yyjson_doc *input = yyjson_mut_doc_imut_copy(request, NULL);
+    yyjson_mut_doc *output = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *result = yyjson_mut_obj(output);
+    yyjson_mut_doc_set_root(output, result);
+    char error[256] = "";
+    int status = analyze_project_source(root, yyjson_doc_get_root(input), false, output, result, error, sizeof error);
+    yyjson_mut_val *document = yyjson_mut_obj_get(result, "document");
+    yyjson_mut_doc *copy = status == CHIBI_AUTOMATION_OK && document
+                             ? yyjson_mut_doc_new(NULL)
+                             : NULL;
+    if (copy) {
+        yyjson_mut_doc_set_root(copy, yyjson_mut_val_mut_copy(copy, document));
+    }
+    yyjson_doc *parsed = copy ? yyjson_mut_doc_imut_copy(copy, NULL) : NULL;
+    yyjson_mut_doc_free(copy);
+    yyjson_mut_doc_free(output);
+    yyjson_doc_free(input);
+    yyjson_mut_doc_free(request);
+    return parsed;
+}
+
+static void source_range_json(yyjson_mut_doc *doc, yyjson_mut_val *value, script_range range)
+{
+    yyjson_mut_obj_add_int(doc, value, "start", range.start);
+    yyjson_mut_obj_add_int(doc, value, "end", range.end);
+    yyjson_mut_obj_add_int(doc, value, "line", range.line);
+    yyjson_mut_obj_add_int(doc, value, "column", range.column);
+}
+
+static void source_location_json(
+    const authoring_navigation *navigation,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *value,
+    authoring_location location
+)
+{
+    const authoring_document
+        *document = authoring_navigation_document_at(navigation, location.document);
+    yyjson_mut_obj_add_strcpy(doc, value, "path", document->path);
+    source_range_json(doc, value, location.range);
+}
+
+static void source_rename_proposal(
+    const char *content,
+    const script_catalog *native,
+    const authoring_navigation *navigation,
+    int selected,
+    int offset,
+    const char *name,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result
+)
+{
+    char error[256] = "";
+    const authoring_reference *reference = authoring_navigation_at(navigation, selected, offset);
+    authoring_rename_plan
+        *plan = reference
+                  ? authoring_source_rename(navigation, reference->target, name, error, sizeof error)
+                  : NULL;
+    if (!plan) {
+        yyjson_mut_obj_add_strcpy(doc, result, "rename_error", error[0] ? error : "No resolved symbol at offset");
+        return;
+    }
+    source_catalog_edit *edits = NULL;
+    int *documents = NULL;
+    for (int i = 0; i < plan->count; i++) {
+        int document = plan->edits[i].document;
+        bool included = false;
+        for (int j = 0; j < acount(documents); j++) {
+            included |= documents[j] == document;
+        }
+        if (included) {
+            continue;
+        }
+        const authoring_document *source = authoring_navigation_document_at(navigation, document);
+        char *text = authoring_rename_document(
+            plan,
+            document,
+            authoring_navigation_document_text(navigation, document),
+            error,
+            sizeof error
+        );
+        if (!text) {
+            break;
+        }
+        apush(edits, ((source_catalog_edit){ .path = source->path, .text = text }));
+        apush(documents, document);
+    }
+    source_catalog *candidate = !error[0]
+                                  ? source_catalog_edited(content, native, edits, acount(edits))
+                                  : NULL;
+    if (candidate && source_catalog_diagnostic_count(candidate)) {
+        snprintf(
+            error,
+            sizeof error,
+            "%s",
+            source_catalog_diagnostic_at(candidate, 0)->message
+        );
+    }
+    for (int i = 0;
+         candidate && !error[0] && i < source_catalog_source_count(candidate);
+         i++) {
+        const source_catalog_source *source = source_catalog_source_at(candidate, i);
+        script_analysis *analysis = script_analyze_document(
+            source->syntax,
+            source_catalog_view(candidate),
+            source->identity
+        );
+        if (!analysis->valid) {
+            snprintf(
+                error,
+                sizeof error,
+                "%s",
+                analysis->diagnostic_count ? analysis->diagnostics[0].message : "Rename candidate is invalid"
+            );
+        }
+        script_analysis_free(analysis);
+    }
+    if (error[0]) {
+        yyjson_mut_obj_add_strcpy(doc, result, "rename_error", error);
+    } else {
+        yyjson_mut_val *proposal = yyjson_mut_obj_add_arr(doc, result, "rename_edits");
+        for (int i = 0; i < plan->count; i++) {
+            const authoring_rename_edit *edit = &plan->edits[i];
+            yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, proposal);
+            yyjson_mut_obj_add_strcpy(doc, item, "path", edit->path);
+            source_range_json(doc, item, edit->range);
+            yyjson_mut_obj_add_strcpy(doc, item, "expected", edit->expected);
+            yyjson_mut_obj_add_strcpy(doc, item, "replacement", edit->replacement);
+        }
+        for (int i = 0; i < acount(edits); i++) {
+            if (documents[i] == selected) {
+                yyjson_mut_obj_add_strcpy(
+                    doc,
+                    result,
+                    "renamed_source",
+                    edits[i].text
+                );
+            }
+        }
+    }
+    source_catalog_free(candidate);
+    for (int i = 0; i < acount(edits); i++) {
+        free((char *)edits[i].text);
+    }
+    afree(edits);
+    afree(documents);
+    authoring_rename_plan_free(plan);
 }
 
 static int analyze_project_source(
@@ -2107,44 +2057,323 @@ static int analyze_project_source(
     size_t size
 )
 {
-    code_catalog *catalog = code_catalog_load_project(root);
-    yyjson_mut_doc *bound = NULL;
-    yyjson_doc *immutable = NULL;
+    yyjson_val *source_value = yyjson_obj_get(request, "source");
+    const char *text = yyjson_get_str(source_value);
+    yyjson_val *position = yyjson_obj_get(request, "offset");
+    if (!text || strlen(text) != yyjson_get_len(source_value) ||
+        strlen(text) > 512 * 1024) {
+        set_error(error, size, "source must be a NUL-free string of at most 512 KiB");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if (position &&
+        (!yyjson_is_uint(position) || yyjson_get_uint(position) > strlen(text))) {
+        set_error(error, size, "offset must be a byte position within source");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    yyjson_val *rename = yyjson_obj_get(request, "rename");
+    if (rename && (!position || !yyjson_is_str(rename) ||
+                   strlen(yyjson_get_str(rename)) != yyjson_get_len(rename))) {
+        set_error(error, size, "rename requires offset and a NUL-free name");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    yyjson_val *location = yyjson_obj_get(request, "location");
+    if (location && (!yyjson_is_obj(location) ||
+                     !yyjson_is_uint(yyjson_obj_get(location, "graph_id")) ||
+                     !yyjson_is_uint(yyjson_obj_get(location, "node_id")) ||
+                     (yyjson_obj_get(location, "pin_id") &&
+                      !yyjson_is_uint(yyjson_obj_get(location, "pin_id"))))) {
+        set_error(error, size, "location requires unsigned graph_id, node_id and optional pin_id");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    authoring_language_catalog *native = source_native_catalog(root, error, size);
+    if (!native) {
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    size_t length = strlen(root) + 128;
+    char *content = xmalloc(length), *path = xmalloc(length);
+    snprintf(content, length, "%s/content", root);
     asset_ref ref = { 0 };
-    const char *text = request_string(request, "source");
     char ignored[256] = "";
-    if (text && !yyjson_obj_get(request, "metadata") &&
-        !resolve_asset_ref(request, &ref, ignored, sizeof ignored) &&
-        !strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
-        char *path = asset_full_path(root, &ref);
-        code_source *source = code_source_parse_context(text, NULL, code_catalog_context(catalog));
-        if (code_source_metadata_load(source, path)) {
-            char *metadata = code_source_metadata_export_source(source);
-            if (metadata) {
-                bound = yyjson_mut_doc_new(NULL);
-                yyjson_mut_val *value = yyjson_val_mut_copy(bound, request);
-                yyjson_mut_doc_set_root(bound, value);
-                yyjson_mut_obj_add_strcpy(bound, value, "metadata", metadata);
-                immutable = yyjson_mut_doc_imut_copy(bound, NULL);
-                free(metadata);
+    bool bound = !resolve_asset_ref(request, &ref, ignored, sizeof ignored) &&
+                 !strcmp(ref.family->extension, CODE_ASSET_EXTENSION);
+    if (bound) {
+        free(path);
+        path = asset_full_path(root, &ref);
+    } else {
+        snprintf(path, length, "%s/behaviors/__draft.chibi", content);
+    }
+    source_catalog_edit edit = { .path = path, .text = text };
+    source_catalog *catalog = source_catalog_edited(
+        content,
+        authoring_language_catalog_view(native),
+        &edit,
+        1
+    );
+    const script_catalog *view = source_catalog_view(catalog);
+    authoring_document *documents = NULL;
+    script_analysis **analyses = NULL;
+    int selected = -1;
+    for (int i = 0; i < source_catalog_source_count(catalog); i++) {
+        const source_catalog_source *source = source_catalog_source_at(catalog, i);
+        script_analysis
+            *analysis = script_analyze_document(source->syntax, view, source->identity);
+        apush(analyses, analysis);
+        apush(documents, ((authoring_document){ source->path, source->syntax, analysis }));
+        if (!strcmp(path, source->path)) {
+            selected = i;
+        }
+    }
+    if (selected < 0) {
+        set_error(error, size, "source was not accepted into the bounded project snapshot");
+        for (int i = 0; i < acount(analyses); i++) {
+            script_analysis_free(analyses[i]);
+        }
+        afree(analyses);
+        afree(documents);
+        source_catalog_free(catalog);
+        authoring_language_catalog_free(native);
+        free(content);
+        free(path);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    authoring_navigation *navigation = authoring_navigation_new_project(
+        documents,
+        acount(documents),
+        view,
+        source_catalog_definitions(catalog),
+        source_catalog_definition_count(catalog),
+        source_catalog_references(catalog),
+        source_catalog_reference_count(catalog)
+    );
+    const script_analysis *analysis = analyses[selected];
+    const script_syntax *syntax = documents[selected].syntax;
+    yyjson_mut_obj_add_bool(doc, result, "valid", analysis->valid);
+    if (analysis->name) {
+        yyjson_mut_obj_add_strcpy(doc, result, "name", analysis->name);
+    }
+    const char *kinds[] = { "behavior", "library", "system" };
+    yyjson_mut_obj_add_strcpy(doc, result, "kind", kinds[analysis->kind]);
+    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, result, "diagnostics");
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
+        source_range_json(doc, item, analysis->diagnostics[i].range);
+        yyjson_mut_obj_add_strcpy(doc, item, "message", analysis->diagnostics[i].message);
+        yyjson_mut_obj_add_int(doc, item, "severity", 1);
+    }
+    if (compile && analysis->valid) {
+        script_lower_bindings bindings = authoring_language_bindings(native);
+        authoring_sources *prepared = authoring_sources_prepare_catalog(
+            source_catalog_edited(content, authoring_language_catalog_view(native), &edit, 1),
+            &bindings,
+            BEHAVIOR_BYTECODE
+        );
+        for (int i = 0; i < authoring_sources_count(prepared); i++) {
+            const authoring_source *source = authoring_sources_at(prepared, i);
+            if (strcmp(source->path, path)) {
+                continue;
+            }
+            yyjson_mut_obj_put(
+                result,
+                yyjson_mut_str(doc, "valid"),
+                yyjson_mut_bool(doc, source->valid)
+            );
+            for (int j = 0; j < source->diagnostic_count; j++) {
+                yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
+                source_range_json(doc, item, source->diagnostics[j].range);
+                yyjson_mut_obj_add_strcpy(
+                    doc,
+                    item,
+                    "message",
+                    source->diagnostics[j].message
+                );
+                yyjson_mut_obj_add_int(doc, item, "severity", 1);
             }
         }
-        code_source_free(source);
-        free(path);
+        authoring_sources_free(prepared);
     }
-    int status = automation_code_analyze(
-        immutable ? yyjson_doc_get_root(immutable) : request,
-        compile,
-        code_catalog_context(catalog),
-        doc,
-        result,
-        error,
-        size
-    );
-    yyjson_doc_free(immutable);
-    yyjson_mut_doc_free(bound);
-    code_catalog_free(catalog);
-    return status;
+    yyjson_mut_val *queries = yyjson_mut_obj_add_arr(doc, result, "queries");
+    yyjson_mut_obj_add_int(doc, result, "query", analysis->query);
+    for (int i = 0; i < analysis->query_count; i++) {
+        const script_query *query = &analysis->queries[i];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, queries);
+        yyjson_mut_obj_add_int(doc, item, "kind", query->kind);
+        yyjson_mut_obj_add_uint(doc, item, "component", query->component);
+        source_range_json(doc, item, query->range);
+        yyjson_mut_val *children = yyjson_mut_obj_add_arr(doc, item, "children");
+        for (int j = 0; j < query->child_count; j++) {
+            yyjson_mut_arr_add_int(doc, children, query->children[j]);
+        }
+    }
+    int highlight_count = 0;
+    authoring_highlight *highlights = authoring_source_highlights(navigation, selected, &highlight_count);
+    const char *span_fields[] = { "spans", "semantic_spans" };
+    for (int field = 0; field < 2; field++) {
+        yyjson_mut_val *spans = yyjson_mut_obj_add_arr(doc, result, span_fields[field]);
+        for (int i = 0; i < highlight_count; i++) {
+            yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, spans);
+            source_range_json(doc, item, highlights[i].range);
+            yyjson_mut_obj_add_strcpy(doc, item, "class", highlights[i].cls);
+        }
+    }
+    free(highlights);
+    int inspection_status = CHIBI_AUTOMATION_OK;
+    authoring_source_presentation
+        *presentation = authoring_source_presentation_new(analysis, view, NULL);
+    if (presentation) {
+        const char *metadata = request_string(request, "metadata");
+        if (metadata) {
+            authoring_source_presentation_restore(presentation, metadata);
+        }
+        av_doc *values = av_doc_new();
+        yyjson_mut_obj_add_val(
+            doc,
+            result,
+            "document",
+            av_to_json(doc, behavior_asset_to_value(values, authoring_source_presentation_view(presentation)))
+        );
+        av_doc_free(values);
+        if (yyjson_get_bool(yyjson_obj_get(request, "inspect_source_graph"))) {
+            inspection_status = inspect_source_presentation(request, doc, result, presentation, error, size);
+        }
+        yyjson_mut_val *origins = yyjson_mut_obj_add_arr(doc, result, "origins");
+        for (int i = 0; i < authoring_source_presentation_origin_count(presentation);
+             i++) {
+            const source_presentation_origin
+                *origin = authoring_source_presentation_origin_at(presentation, i);
+            yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, origins);
+            yyjson_mut_obj_add_uint(doc, item, "identity", origin->identity);
+            yyjson_mut_obj_add_uint(doc, item, "semantic", origin->semantic);
+            yyjson_mut_obj_add_uint(doc, item, "graph_id", origin->graph);
+            yyjson_mut_obj_add_uint(doc, item, "node_id", origin->node);
+            yyjson_mut_obj_add_uint(doc, item, "pin_id", origin->pin);
+            source_range_json(doc, item, origin->range);
+        }
+        char *sidecar = authoring_source_presentation_metadata(presentation);
+        yyjson_mut_obj_add_strcpy(doc, result, "metadata", sidecar);
+        free(sidecar);
+        if (location) {
+            const source_presentation_origin *origin = authoring_source_presentation_origin(
+                presentation,
+                yyjson_get_uint(yyjson_obj_get(location, "graph_id")),
+                yyjson_get_uint(yyjson_obj_get(location, "node_id")),
+                yyjson_get_uint(yyjson_obj_get(location, "pin_id"))
+            );
+            if (origin) {
+                source_range_json(
+                    doc,
+                    yyjson_mut_obj_add_obj(doc, result, "location"),
+                    origin->range
+                );
+            }
+        }
+    }
+    char formatting_error[192] = "";
+    char *formatted = authoring_source_format(syntax, formatting_error, sizeof formatting_error);
+    if (formatted) {
+        yyjson_mut_obj_add_strcpy(doc, result, "formatted", formatted);
+    }
+    free(formatted);
+    if (position) {
+        int offset = (int)yyjson_get_uint(position);
+        authoring_completions completions = { 0 };
+        authoring_source_complete(navigation, selected, offset, &completions);
+        yyjson_mut_val *items = yyjson_mut_obj_add_arr(doc, result, "completions");
+        const char *completion_kinds[] = { "variable", "function", "event",
+                                           "type",     "field",    "keyword" };
+        for (int i = 0; i < completions.count; i++) {
+            authoring_completion *completion = &completions.items[i];
+            yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, items);
+            yyjson_mut_obj_add_strcpy(doc, item, "label", completion->label);
+            yyjson_mut_obj_add_strcpy(
+                doc,
+                item,
+                "kind",
+                completion_kinds[completion->kind]
+            );
+            yyjson_mut_obj_add_strcpy(doc, item, "detail", completion->detail);
+            yyjson_mut_obj_add_strcpy(doc, item, "insert", completion->insert);
+            source_range_json(doc, item, completions.range);
+        }
+        authoring_completions_free(&completions);
+        char *hover = authoring_source_hover(navigation, selected, offset);
+        if (hover) {
+            yyjson_mut_obj_add_strcpy(doc, result, "hover", hover);
+        }
+        free(hover);
+        if (rename) {
+            source_rename_proposal(
+                content,
+                authoring_language_catalog_view(native),
+                navigation,
+                selected,
+                offset,
+                yyjson_get_str(rename),
+                doc,
+                result
+            );
+        }
+        const authoring_reference *picked = authoring_navigation_at(navigation, selected, offset);
+        const authoring_reference
+            *definition = picked
+                            ? authoring_navigation_definition(navigation, picked->target)
+                            : NULL;
+        if (definition) {
+            source_location_json(
+                navigation,
+                doc,
+                yyjson_mut_obj_add_obj(doc, result, "definition"),
+                definition->location
+            );
+        }
+        yyjson_mut_val *references = yyjson_mut_obj_add_arr(doc, result, "references");
+        for (int i = 0; picked && i < authoring_navigation_reference_count(navigation);
+             i++) {
+            const authoring_reference *reference = authoring_navigation_reference_at(navigation, i);
+            if (authoring_target_equal(picked->target, reference->target)) {
+                source_location_json(
+                    navigation,
+                    doc,
+                    yyjson_mut_arr_add_obj(doc, references),
+                    reference->location
+                );
+            }
+        }
+        yyjson_mut_val *calls = yyjson_mut_obj_add_arr(doc, result, "calls");
+        authoring_target
+            target = picked ? authoring_navigation_callable(navigation, picked->target)
+                            : (authoring_target){ 0 };
+        for (int i = 0; target.id && i < authoring_navigation_call_count(navigation);
+             i++) {
+            const authoring_call *call = authoring_navigation_call_at(navigation, i);
+            authoring_target caller = authoring_navigation_caller(navigation, call);
+            bool incoming = authoring_target_equal(target, call->callee);
+            bool outgoing = authoring_target_equal(target, caller);
+            if (!incoming && !outgoing) {
+                continue;
+            }
+            yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, calls);
+            yyjson_mut_obj_add_str(doc, item, "direction", incoming ? "caller" : "callee");
+            yyjson_mut_obj_add_uint(doc, item, "caller_id", caller.id);
+            yyjson_mut_obj_add_uint(doc, item, "target_id", call->callee.id);
+            source_location_json(navigation, doc, item, call->location);
+            const char *name = authoring_navigation_name(navigation, call->callee);
+            if (name) {
+                yyjson_mut_obj_add_strcpy(doc, item, "target", name);
+            }
+        }
+    }
+    authoring_source_presentation_free(presentation);
+    authoring_navigation_free(navigation);
+    for (int i = 0; i < acount(analyses); i++) {
+        script_analysis_free(analyses[i]);
+    }
+    afree(analyses);
+    afree(documents);
+    source_catalog_free(catalog);
+    authoring_language_catalog_free(native);
+    free(content);
+    free(path);
+    return inspection_status;
 }
 
 static void catalog_validate_ui(const char *root, catalog_asset *asset)
@@ -2193,7 +2422,34 @@ static int load_catalog_asset(
         free(json);
         return 0;
     }
-    yyjson_doc *document = parse_project_asset_path(root, asset->asset.relative, json);
+    yyjson_doc *document = NULL;
+    if (!strcmp(entry->family->extension, CODE_ASSET_EXTENSION)) {
+        for (int i = 0; links->sources && i < authoring_sources_count(links->sources);
+             i++) {
+            const authoring_source *source = authoring_sources_at(links->sources, i);
+            if (strcmp(source->path, path)) {
+                continue;
+            }
+            authoring_source_presentation *presentation = authoring_source_presentation_new(
+                source->analysis,
+                authoring_sources_catalog(links->sources),
+                NULL
+            );
+            if (presentation) {
+                av_doc *values = av_doc_new();
+                char *text = av_json_write(
+                    behavior_asset_to_value(values, authoring_source_presentation_view(presentation))
+                );
+                document = text ? yyjson_read(text, strlen(text), 0) : NULL;
+                free(text);
+                av_doc_free(values);
+                authoring_source_presentation_free(presentation);
+            }
+            break;
+        }
+    } else {
+        document = parse_project_asset_text(root, json);
+    }
     if (!document) {
         asset->valid = false;
         asset->errors = 1;
@@ -2288,7 +2544,7 @@ static int build_catalog_from_entries(
     catalog_asset *assets = NULL;
     bool graphs_cached = previous && catalog_links_unchanged(previous, entries);
     catalog_links links = { .studio = studio_project_is(root) };
-    bool linked = false;
+    load_catalog_links(root, entries, &links);
     int status = 0;
     for (int i = 0; i < acount(entries) && !status; i++) {
         bool graph = entries[i].family->loader == ASSET_GRAPH ||
@@ -2303,23 +2559,19 @@ static int build_catalog_from_entries(
             apush(assets, asset);
             continue;
         }
-        if (graph && !linked) {
-            load_catalog_links(root, entries, &links);
-            linked = true;
-        }
         catalog_asset asset = { 0 };
         status = load_catalog_asset(root, &links, &entries[i], &asset, error, error_size);
         if (!status) {
             apush(assets, asset);
         }
     }
-    free_behavior_assets(links.assets);
-    code_catalog_free(links.source_catalog);
-    if (status) {
-        free_catalog_assets(assets);
-        return -1;
+    if (!status) {
+        status = catalog_index_references(root, assets, links.sources, references, error, error_size);
     }
-    if (catalog_index_references(root, assets, references, error, error_size) != 0) {
+    free_behavior_assets(links.assets);
+    authoring_sources_free(links.sources);
+    authoring_language_catalog_free(links.native);
+    if (status) {
         free_catalog_assets(assets);
         return -1;
     }
@@ -2578,9 +2830,9 @@ static void add_type(yyjson_mut_doc *doc, yyjson_mut_val *array, const type_desc
 
 static void add_registry(yyjson_mut_doc *doc, yyjson_mut_val *object)
 {
-    yyjson_mut_obj_add_int(doc, object, "packs", REGISTRY_PACK_COUNT);
+    yyjson_mut_obj_add_int(doc, object, "packs", registry_pack_count());
     yyjson_mut_obj_add_int(doc, object, "nodes", registry_node_count());
-    yyjson_mut_obj_add_int(doc, object, "types", registry_type_count());
+    yyjson_mut_obj_add_int(doc, object, "types", type_catalog_count());
     yyjson_mut_obj_add_int(doc, object, "services", registry_service_count());
     yyjson_mut_obj_add_int(doc, object, "components", GAME_REGISTRY_COMPONENT_COUNT);
 }
@@ -3356,7 +3608,6 @@ static void inspect_add_calls(
     yyjson_mut_doc *doc,
     yyjson_mut_val *object,
     const behavior_asset *asset,
-    const code_source *code,
     const graph *source,
     const compile_report *report
 )
@@ -3398,7 +3649,7 @@ static void inspect_add_calls(
             yyjson_mut_obj_add_strcpy(doc, target, "kind", "local");
             yyjson_mut_obj_add_uint(doc, target, "graph_id", call->reference_id);
             char *expression = call->desc == &NODE_BehaviorExpression
-                                 ? code_source_expression(code, asset, call)
+                                 ? graph_expression_display(asset, call)
                                  : NULL;
             if (expression || (target_graph && target_graph->name)) {
                 yyjson_mut_obj_add_strcpy(
@@ -3512,6 +3763,108 @@ static void inspect_add_pins(yyjson_mut_doc *doc, yyjson_mut_val *nodes, const g
     }
 }
 
+static int inspect_source_presentation(
+    yyjson_val *request,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *result,
+    const authoring_source_presentation *presentation,
+    char *error,
+    size_t size
+)
+{
+    const char *flags[] = { "include_layout", "include_pins", "include_uses" };
+    for (int i = 0; i < 3; i++) {
+        yyjson_val *value = yyjson_obj_get(request, flags[i]);
+        if (value && !yyjson_is_bool(value)) {
+            snprintf(error, size, "%s must be a boolean", flags[i]);
+            return CHIBI_AUTOMATION_INVALID_REQUEST;
+        }
+    }
+    uint64_t id = 0;
+    bool has_id = yyjson_obj_get(request, "graph_id") != NULL;
+    if (has_id && !request_uint(request, "graph_id", &id)) {
+        set_error(error, size, "graph_id must be an unsigned integer");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    yyjson_val *name_value = yyjson_obj_get(request, "graph_name");
+    if (name_value && !yyjson_is_str(name_value)) {
+        set_error(error, size, "graph_name must be a string");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    const char *name = yyjson_get_str(name_value);
+    bool layout = yyjson_get_bool(yyjson_obj_get(request, "include_layout"));
+    yyjson_val *pins_value = yyjson_obj_get(request, "include_pins");
+    bool pins = !pins_value || yyjson_get_bool(pins_value);
+    const behavior_asset *asset = authoring_source_presentation_view(presentation);
+    const graph *selected = NULL;
+    yyjson_mut_val *summaries = yyjson_mut_obj_add_arr(doc, result, "graphs");
+    for (int i = 0; i < acount(asset->graphs); i++) {
+        const graph *g = asset->graphs[i];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, summaries);
+        yyjson_mut_obj_add_uint(doc, item, "id", g->graph_id);
+        yyjson_mut_obj_add_strcpy(doc, item, "name", g->name ? g->name : "");
+        yyjson_mut_obj_add_strcpy(doc, item, "kind", graph_kind_name(g->kind));
+        yyjson_mut_obj_add_int(doc, item, "node_count", acount(g->nodes));
+        yyjson_mut_obj_add_int(doc, item, "edge_count", acount(g->edges));
+        if (!selected && (!has_id || id == g->graph_id) &&
+            (!name || !strcmp(name, g->name ? g->name : ""))) {
+            selected = g;
+        }
+    }
+    if (!selected && (has_id || name)) {
+        set_error(error, size, "graph not found in canonical source presentation");
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if (!selected) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    /* Serialization only copies the authoring view; no graph is parsed or compiled. */
+    yyjson_mut_doc *copy = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(copy, yyjson_mut_val_mut_copy(copy, yyjson_mut_obj_get(result, "document")));
+    yyjson_doc *serialized = yyjson_mut_doc_imut_copy(copy, NULL);
+    yyjson_val *graphs = yyjson_obj_get(yyjson_doc_get_root(serialized), "graphs");
+    yyjson_val *source = NULL;
+    size_t index, maximum;
+    yyjson_val *item;
+    yyjson_arr_foreach(graphs, index, maximum, item)
+    {
+        if (yyjson_get_uint(yyjson_obj_get(item, "id")) == selected->graph_id) {
+            source = item;
+            break;
+        }
+    }
+    assert(source);
+    yyjson_mut_val *output = yyjson_val_mut_copy(doc, source);
+    yyjson_mut_obj_remove_key(output, "nodes");
+    yyjson_mut_obj_remove_key(output, "edges");
+    yyjson_mut_obj_add_uint(doc, output, "id", selected->graph_id);
+    inspect_add_sorted_array(doc, output, "nodes", yyjson_obj_get(source, "nodes"), false, layout);
+    inspect_add_sorted_array(doc, output, "edges", yyjson_obj_get(source, "edges"), true, layout);
+    yyjson_mut_val *nodes = yyjson_mut_obj_get(output, "nodes");
+    if (pins) {
+        inspect_add_pins(doc, nodes, selected);
+    }
+    yyjson_mut_val *node_value;
+    yyjson_mut_arr_foreach(nodes, index, maximum, node_value)
+    {
+        uint64_t node_id = yyjson_mut_get_uint(yyjson_mut_obj_get(node_value, "id"));
+        for (int i = 0; i < authoring_source_presentation_origin_count(presentation);
+             i++) {
+            const source_presentation_origin
+                *origin = authoring_source_presentation_origin_at(presentation, i);
+            if (origin->graph == selected->graph_id &&
+                origin->node == node_id && !origin->pin) {
+                source_range_json(doc, node_value, origin->range);
+                break;
+            }
+        }
+    }
+    yyjson_mut_obj_add_val(doc, result, "graph", output);
+    yyjson_doc_free(serialized);
+    yyjson_mut_doc_free(copy);
+    return CHIBI_AUTOMATION_OK;
+}
+
 static const node *inspect_expression_caller(const behavior_asset *asset, const graph *generated)
 {
     if (!generated->math_expression) {
@@ -3532,7 +3885,6 @@ static const node *inspect_expression_caller(const behavior_asset *asset, const 
 static yyjson_mut_val *inspect_graph_value(
     yyjson_mut_doc *doc,
     const behavior_asset *asset,
-    const code_source *code,
     const graph *source,
     const compile_report *report,
     bool include_layout,
@@ -3557,7 +3909,7 @@ static yyjson_mut_val *inspect_graph_value(
     yyjson_mut_obj_add_uint(doc, object, "id", source->graph_id);
     yyjson_mut_obj_add_strcpy(doc, object, "kind", graph_kind_name(source->kind));
     const node *caller = inspect_expression_caller(asset, source);
-    char *formula = caller ? code_source_expression(code, asset, caller) : NULL;
+    char *formula = caller ? graph_expression_display(asset, caller) : NULL;
     yyjson_mut_obj_add_strcpy(
         doc,
         object,
@@ -3607,7 +3959,7 @@ static yyjson_mut_val *inspect_graph_value(
         uint64_t id = yyjson_mut_get_uint(yyjson_mut_obj_get(item, "id"));
         const node *n = graph_node_by_id(source, id);
         if (n->desc == &NODE_BehaviorExpression) {
-            char *expression = code_source_expression(code, asset, n);
+            char *expression = graph_expression_display(asset, n);
             if (expression) {
                 yyjson_mut_obj_add_strcpy(doc, item, "expression", expression);
                 yyjson_mut_obj_remove_key(item, "reference_name");
@@ -3621,12 +3973,12 @@ static yyjson_mut_val *inspect_graph_value(
                     const pin_spec *pin = &n->input_pins[input];
                     char name[80];
                     if (pin->kind == PIN_DATA) {
-                        code_source_expression_input_name(code, asset, n, input, name, sizeof name);
+                        graph_expression_input_name(asset, n, input, name, sizeof name);
                         yyjson_mut_val *label = yyjson_mut_obj(doc);
                         yyjson_mut_obj_add_uint(doc, label, "id", pin->id);
                         yyjson_mut_obj_add_strcpy(doc, label, "name", name);
                         yyjson_mut_obj_add_strcpy(doc, label, "display_name", name);
-                        const char *value = code_source_expression_input_label_at(code, asset, n, input);
+                        const char *value = graph_expression_input_label(asset, n, input);
                         if (value && strncmp(value, "_code_input_", 12)) {
                             yyjson_mut_obj_add_strcpy(doc, label, "source", value);
                         }
@@ -3654,7 +4006,7 @@ static yyjson_mut_val *inspect_graph_value(
         }
     }
     inspect_add_sorted_array(doc, object, "edges", yyjson_obj_get(serialized_root, "edges"), true, include_layout);
-    inspect_add_calls(doc, object, asset, code, source, report);
+    inspect_add_calls(doc, object, asset, source, report);
     if (document) {
         yyjson_doc_free(document);
     }
@@ -3716,7 +4068,6 @@ static behavior_asset *link_project_libraries(
 );
 
 static int compile_project_graph(const char *, const behavior_asset *, compile_report *);
-static int compile_project_system(const char *, const behavior_asset *, compile_report *);
 static int load_model_catalog(const char *, behavior_asset ***, char *, size_t);
 
 static void model_parameter_values(
@@ -4149,6 +4500,89 @@ static int handle_bake_model(const char *root, yyjson_val *request, response *re
     return 0;
 }
 
+/* Executable inspection consumes canonical facts and an optional presentation;
+ * presentation nodes never enter the native graph compiler. */
+static int inspect_source_asset(
+    const char *root,
+    yyjson_val *request,
+    response *result,
+    int *exit_code,
+    const asset_ref *ref,
+    const char *text,
+    size_t bytes,
+    uint64_t hash
+)
+{
+    yyjson_mut_doc *bound = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *input = yyjson_val_mut_copy(bound, request);
+    yyjson_mut_doc_set_root(bound, input);
+    yyjson_mut_obj_put(input, yyjson_mut_str(bound, "source"), yyjson_mut_strcpy(bound, text));
+    yyjson_mut_obj_put(input, yyjson_mut_str(bound, "path"), yyjson_mut_strcpy(bound, ref->relative));
+    yyjson_mut_obj_put(input, yyjson_mut_str(bound, "inspect_source_graph"), yyjson_mut_bool(bound, true));
+    char *path = asset_full_path(root, ref);
+    size_t sidecar_size = strlen(path) + 6;
+    char *sidecar = xmalloc(sidecar_size);
+    snprintf(sidecar, sidecar_size, "%s.meta", path);
+    struct stat metadata_info;
+    char *metadata = stat(sidecar, &metadata_info) == 0 &&
+                             metadata_info.st_size >= 0 &&
+                             metadata_info.st_size <= 512 * 1024
+                       ? file_read_text(sidecar)
+                       : NULL;
+    if (metadata && authoring_source_metadata_matches(metadata, text)) {
+        yyjson_mut_obj_put(input, yyjson_mut_str(bound, "metadata"), yyjson_mut_strcpy(bound, metadata));
+    }
+    free(metadata);
+    free(sidecar);
+    free(path);
+    yyjson_doc *immutable = yyjson_mut_doc_imut_copy(bound, NULL);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, ref, bytes, hash);
+    char error[256] = "";
+    int status = analyze_project_source(
+        root,
+        yyjson_doc_get_root(immutable),
+        true,
+        result->doc,
+        value,
+        error,
+        sizeof error
+    );
+    yyjson_doc_free(immutable);
+    yyjson_mut_doc_free(bound);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    yyjson_mut_val *document = yyjson_mut_obj_get(value, "document");
+    const char *fields[] = { "variables", "domain", "version" };
+    for (int i = 0; i < 3; i++) {
+        yyjson_mut_val *field = document ? yyjson_mut_obj_get(document, fields[i])
+                                         : NULL;
+        if (field) {
+            yyjson_mut_obj_add_val(
+                result->doc,
+                value,
+                fields[i],
+                yyjson_mut_val_mut_copy(result->doc, field)
+            );
+        }
+    }
+    yyjson_mut_obj_remove_key(value, "document");
+    if (!yyjson_get_bool(yyjson_obj_get(request, "include_layout"))) {
+        yyjson_mut_obj_remove_key(value, "metadata");
+    }
+    if (yyjson_get_bool(yyjson_obj_get(request, "include_uses"))) {
+        add_graph_use_counts(root, ref, result->doc, value);
+    }
+    yyjson_mut_val *valid = yyjson_mut_obj_get(value, "valid");
+    if (!valid || !yyjson_mut_get_bool(valid)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "source inspection has diagnostics");
+        return -1;
+    }
+    return 0;
+}
+
 static int handle_inspect_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
@@ -4183,12 +4617,13 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "asset does not contain graphs");
         return -1;
     }
+    if (!strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
+        int inspected = inspect_source_asset(root, request, result, exit_code, &ref, json, bytes, hash);
+        free(json);
+        return inspected;
+    }
     yyjson_doc *source_document = parse_project_asset_path(root, ref.relative, json);
-    code_catalog *read_catalog = code_catalog_load_project(root);
-    char *read_path = asset_full_path(root, &ref);
-    behavior_asset *asset = code_catalog_load_path(read_catalog, json, read_path, error, sizeof error);
-    free(read_path);
-    code_catalog_free(read_catalog);
+    behavior_asset *asset = behavior_asset_load(json);
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
     yyjson_mut_obj_add_bool(result->doc, value, "layout_included", include_layout);
@@ -4271,7 +4706,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         yyjson_mut_val *summary = yyjson_mut_arr_add_obj(result->doc, graphs);
         yyjson_mut_obj_add_uint(result->doc, summary, "id", source->graph_id);
         const node *caller = inspect_expression_caller(asset, source);
-        char *formula = caller ? code_source_expression(NULL, asset, caller) : NULL;
+        char *formula = caller ? graph_expression_display(asset, caller) : NULL;
         yyjson_mut_obj_add_strcpy(
             result->doc,
             summary,
@@ -4293,19 +4728,12 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         add_graph_use_counts(root, &ref, result->doc, value);
     }
     if (selected >= 0) {
-        code_catalog *catalog = code_catalog_load_project(root);
-        code_source *code = code_source_parse_context(json, NULL, code_catalog_context(catalog));
-        char *path = asset_full_path(root, &ref);
-        code_source_metadata_load(code, path);
-        free(path);
         yyjson_mut_obj_add_val(
             result->doc,
             value,
             "graph",
-            inspect_graph_value(result->doc, asset, code, asset->graphs[selected], &report, include_layout, include_pins)
+            inspect_graph_value(result->doc, asset, asset->graphs[selected], &report, include_layout, include_pins)
         );
-        code_source_free(code);
-        code_catalog_free(catalog);
     }
     inspect_add_validation(result->doc, value, asset, &report);
     int errors = report.error_count;
@@ -4320,108 +4748,26 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     return 0;
 }
 
-static void inspect_add_system_graphs(yyjson_mut_doc *doc, yyjson_mut_val *object, const behavior_asset *asset)
-{
-    yyjson_mut_val *graphs = yyjson_mut_obj_add_arr(doc, object, "graphs");
-    for (int i = 0; i < acount(asset->graphs); i++) {
-        const graph *graph_value = asset->graphs[i];
-        yyjson_mut_val *summary = yyjson_mut_arr_add_obj(doc, graphs);
-        yyjson_mut_obj_add_uint(doc, summary, "id", graph_value->graph_id);
-        yyjson_mut_obj_add_strcpy(
-            doc,
-            summary,
-            "kind",
-            graph_kind_name(graph_value->kind)
-        );
-        yyjson_mut_obj_add_strcpy(
-            doc,
-            summary,
-            "name",
-            graph_value->name ? graph_value->name : ""
-        );
-        yyjson_mut_obj_add_int(doc, summary, "nodes", acount(graph_value->nodes));
-        yyjson_mut_obj_add_int(doc, summary, "edges", acount(graph_value->edges));
-        yyjson_mut_obj_add_bool(doc, summary, "dataflow", graph_value->dataflow != 0);
-        yyjson_mut_obj_add_uint(doc, summary, "topology_revision", graph_value->topology_revision);
-    }
-}
-
 static int handle_inspect_system(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     asset_ref ref = { 0 };
-    char *json = NULL;
+    char *text = NULL;
     size_t bytes = 0;
     uint64_t hash = 0;
-    char error[256] = { 0 };
-    int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
+    char error[256] = "";
+    int status = load_asset(root, request, &ref, &text, &bytes, &hash, error, sizeof error);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
     if (ref.family->loader != ASSET_SYSTEM) {
-        free(json);
+        free(text);
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "asset is not a system");
         return -1;
     }
-
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &ref, bytes, hash);
-    game_system_document *document = load_project_system(
-        root,
-        json,
-        automation_query_component,
-        NULL,
-        error,
-        sizeof error
-    );
-    if (!document) {
-        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
-        add_load_diagnostic(result->doc, diagnostics, error);
-        yyjson_mut_obj_add_bool(result->doc, value, "valid", false);
-        free(json);
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "system inspection failed");
-        return -1;
-    }
-
-    char *query_json = game_query_save(
-        game_system_document_query(document),
-        automation_query_component,
-        automation_query_component_name,
-        NULL
-    );
-    if (query_json) {
-        yyjson_doc *query_document = parse_project_asset_text(root, query_json);
-        if (query_document) {
-            yyjson_mut_obj_add_val(
-                result->doc,
-                value,
-                "query",
-                yyjson_val_mut_copy(result->doc, yyjson_doc_get_root(query_document))
-            );
-            yyjson_doc_free(query_document);
-        } else {
-            yyjson_mut_obj_add_null(result->doc, value, "query");
-        }
-        free(query_json);
-    } else {
-        yyjson_mut_obj_add_null(result->doc, value, "query");
-    }
-
-    const behavior_asset *asset = game_system_document_behavior_asset(document);
-    inspect_add_system_graphs(result->doc, value, asset);
-    compile_report report;
-    compile_report_init(&report);
-    compile_project_system(root, asset, &report);
-    inspect_add_validation(result->doc, value, asset, &report);
-    int errors = report.error_count;
-    compile_report_free(&report);
-    game_system_document_free(document);
-    free(json);
-    if (errors) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "system validation failed");
-        return -1;
-    }
-    return 0;
+    int inspected = inspect_source_asset(root, request, result, exit_code, &ref, text, bytes, hash);
+    free(text);
+    return inspected;
 }
 
 static void add_execution_status(
@@ -4450,35 +4796,6 @@ typedef struct
     int instances, events, native_events;
     bool ready;
 } behavior_execution_status;
-
-/* Publication can compile individual blocks without producing a whole-event
- * body. Report that distinction, and respect each live instance's override. */
-static void collect_behavior_execution(
-    behavior_execution_status *status,
-    const behavior_asset *asset,
-    behavior_backend backend
-)
-{
-    status->instances++;
-    status->backends |= 1u << backend;
-    status->ready &= backend != BEHAVIOR_UNAVAILABLE;
-    for (int g = 0; g < acount(asset->graphs); g++) {
-        const graph *source = asset->graphs[g];
-        const behavior_graph_program *program = behavior_program_graph(asset->program, source);
-        for (int n = 0; n < acount(source->nodes); n++) {
-            const node *entry = source->nodes[n];
-            if (entry->desc->flow_kind != NODE_FLOW_EVENT) {
-                continue;
-            }
-            status->events++;
-            const behavior_function *function = program
-                                                  ? behavior_program_function(program, entry)
-                                                  : NULL;
-            status->native_events += backend == BEHAVIOR_SLJIT && function &&
-                                     behavior_function_entry(function);
-        }
-    }
-}
 
 static void add_behavior_execution_status(
     yyjson_mut_doc *doc,
@@ -4513,7 +4830,16 @@ static void add_behavior_execution_status(
                : status->backends == (1u << BEHAVIOR_ORACLE)
                    ? "behavior instances explicitly use the interpreter oracle"
                    : "live behavior instances use different execution backends";
-    add_execution_status(doc, object, backend, status->ready, graph_sljit_available() != 0, native, full, reason);
+    add_execution_status(
+        doc,
+        object,
+        backend,
+        status->ready,
+        behavior_backend_available(BEHAVIOR_SLJIT),
+        native,
+        full,
+        reason
+    );
     yyjson_mut_val *execution = yyjson_mut_obj_get(object, "execution");
     yyjson_mut_obj_add_str(doc, execution, "scope", "behavior_events");
     yyjson_mut_obj_add_int(doc, execution, "instances", status->instances);
@@ -4522,98 +4848,63 @@ static void add_behavior_execution_status(
     yyjson_mut_obj_add_bool(doc, execution, "custom_systems_unverified", custom_systems);
 }
 
-static bool system_has_tick(const behavior_asset *asset)
+static int collect_source_execution(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    game_preview_world *preview,
+    behavior_execution_status *status
+)
 {
-    if (!asset) {
-        return false;
-    }
-    for (int i = 0; i < acount(asset->graphs); i++) {
-        const graph *graph_value = asset->graphs[i];
-        for (int j = 0; j < acount(graph_value->nodes); j++) {
-            const node *node_value = graph_value->nodes[j];
-            if (node_value->desc && node_value->desc->flow_kind == NODE_FLOW_EVENT &&
-                graph_host_event_is(node_value->reference_name, GRAPH_HOST_EVENT_TICK)) {
-                return true;
+    const authoring_sources *sources = game_preview_sources_applied(preview);
+    yyjson_mut_val *modules = yyjson_mut_obj_add_arr(doc, object, "source_modules");
+    ecs_world *world = preview->runtime->ecs;
+    int count = 0;
+    for (int i = 0; sources && i < authoring_sources_count(sources); i++) {
+        const authoring_source *source = authoring_sources_at(sources, i);
+        if (source->analysis->kind != SCRIPT_PROGRAM_BEHAVIOR &&
+            source->analysis->kind != SCRIPT_PROGRAM_SYSTEM) {
+            continue;
+        }
+        execution_program *program = game_source_program(
+            preview->runtime->sources,
+            source->analysis->name
+        );
+        if (!program) {
+            continue;
+        }
+        count++;
+        int instances = 0;
+        for (uint32_t slot = 1; slot <= ecs_world_high_water_mark(world); slot++) {
+            ecs_entity entity = { slot, ecs_world_generation(world, slot) };
+            instances += ecs_entity_is_alive(world, entity) &&
+                         execution_program_instance(program, ecs_entity_to_u64(entity)) !=
+                             NULL;
+        }
+        behavior_backend backend = execution_module_backend(source->module);
+        yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, modules);
+        yyjson_mut_obj_add_strcpy(doc, entry, "name", source->analysis->name);
+        yyjson_mut_obj_add_uint(doc, entry, "id", execution_module_id(source->module));
+        yyjson_mut_obj_add_str(doc, entry, "backend", backend == BEHAVIOR_SLJIT ? "sljit" : "bytecode");
+        yyjson_mut_obj_add_int(doc, entry, "instances", instances);
+        if (!instances) {
+            continue;
+        }
+        status->instances += instances;
+        status->backends |= 1u << backend;
+        for (int f = 0; f < execution_module_function_count(source->module); f++) {
+            execution_module_function_info
+                function = execution_module_function_at(source->module, f);
+            if (function.kind != EXECUTION_FUNCTION_HANDLER &&
+                function.kind != EXECUTION_FUNCTION_SYSTEM) {
+                continue;
+            }
+            status->events += instances;
+            if (backend == BEHAVIOR_SLJIT && behavior_function_entry(function.body)) {
+                status->native_events += instances;
             }
         }
     }
-    return false;
-}
-
-static int add_system_execution_status(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *object,
-    game_system *system,
-    const behavior_asset *asset,
-    bool *ready
-)
-{
-    const bool jit_available = graph_sljit_available() != 0;
-    const bool has_tick = system_has_tick(asset);
-    const compile_report *report = game_system_compile(system);
-    const bool valid = report && !compile_report_blocked(report);
-    const graph_program *program = game_system_program(system);
-    const bool sljit = game_system_uses_sljit(system) != 0;
-    const bool typed = game_system_uses_typed_bytecode(system) != 0;
-    const bool bytecode = game_system_uses_bytecode(system) != 0;
-    const char *backend = "unavailable";
-    const char *reason = "the system has no runnable Tick execution path";
-    if (sljit) {
-        backend = "sljit";
-        reason = "the system is executing compiled SLJIT machine code";
-    } else if (typed) {
-        backend = "typed_bytecode";
-        reason = jit_available ? "typed bytecode is active; this graph was not "
-                                 "eligible for SLJIT"
-                               : "typed bytecode is active; the SLJIT backend "
-                                 "is unavailable";
-    } else if (bytecode) {
-        backend = "bytecode";
-        reason = "generic bytecode is active; typed storage or SLJIT was "
-                 "unavailable";
-    }
-    const bool interpreter = !bytecode && has_tick && asset && !asset->graph->dataflow;
-    if (interpreter) {
-        backend = "interpreter";
-        reason = "this system graph requires the flow interpreter";
-    }
-    bool runtime_ready = valid && has_tick && (bytecode || interpreter);
-    flow_error runtime_error = { 0 };
-    if (runtime_ready) {
-        runtime_ready = game_system_tick_mode(system, 0, SCENARIO_DEFAULT_FIXED_DT, &runtime_error, GAME_SYSTEM_EXEC_AUTO) ==
-                        FLOW_OK;
-        if (!runtime_ready) {
-            backend = "unavailable";
-            reason = runtime_error.message ? runtime_error.message
-                                           : "system execution failed";
-        }
-    }
-    add_execution_status(doc, object, backend, runtime_ready, jit_available, sljit, sljit, reason);
-    yyjson_mut_val *execution = yyjson_mut_obj_get(object, "execution");
-    yyjson_mut_obj_add_bool(doc, execution, "has_tick", has_tick);
-    yyjson_mut_obj_add_bool(doc, execution, "bytecode", bytecode);
-    yyjson_mut_obj_add_bool(doc, execution, "typed_bytecode", typed);
-    yyjson_mut_obj_add_int(doc, execution, "query_count", game_system_query_count(system));
-    yyjson_mut_obj_add_int(doc, execution, "match_count", game_system_match_count(system));
-    yyjson_mut_val *sljit_value = yyjson_mut_obj_add_obj(doc, execution, "sljit");
-    yyjson_mut_obj_add_bool(doc, sljit_value, "available", jit_available);
-    yyjson_mut_obj_add_bool(doc, sljit_value, "used", sljit);
-    yyjson_mut_obj_add_bool(doc, sljit_value, "batch", game_system_uses_sljit_batch(system) != 0);
-    yyjson_mut_obj_add_bool(doc, sljit_value, "registers", game_system_uses_sljit_registers(system) != 0);
-    yyjson_mut_obj_add_bool(doc, sljit_value, "simd", game_system_uses_sljit_simd(system) != 0);
-    yyjson_mut_obj_add_int(
-        doc,
-        sljit_value,
-        "column_count",
-        program && program->sljit ? graph_sljit_column_count(program->sljit) : 0
-    );
-    if (runtime_error.message) {
-        yyjson_mut_obj_add_strcpy(doc, execution, "runtime_error", runtime_error.message);
-    }
-    if (ready) {
-        *ready = runtime_ready;
-    }
-    return runtime_ready ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_EXECUTION_ERROR;
+    return count;
 }
 
 static int handle_execution_status(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -4626,163 +4917,115 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         return -1;
     }
     asset_ref ref = { 0 };
-    char *json = NULL;
+    char *text = NULL;
     size_t bytes = 0;
     uint64_t hash = 0;
     char error[256] = { 0 };
-    int status = load_asset(root, request, &ref, &json, &bytes, &hash, error, sizeof error);
+    int status = load_asset(root, request, &ref, &text, &bytes, &hash, error, sizeof error);
+    free(text);
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
     }
-    if ((strcmp(kind, "behavior") == 0 && (ref.family->loader != ASSET_GRAPH ||
-                                           strcmp(ref.family->kind, "behavior"))) ||
-        (strcmp(kind, "system") == 0 && (ref.family->loader != ASSET_SYSTEM ||
-                                         strcmp(ref.family->kind, "system")))) {
-        free(json);
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "execution_status kind does not match the asset");
+    if (strcmp(ref.family->kind, kind) ||
+        strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "execution_status kind does not match an executable source asset");
         return -1;
     }
+    authoring_language_catalog *native = source_native_catalog(root, error, sizeof error);
+    if (!native) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    size_t length = strlen(root) + sizeof "/content";
+    char *content = xmalloc(length);
+    snprintf(content, length, "%s/content", root);
+    script_lower_bindings bindings = authoring_language_bindings(native);
+    authoring_sources *sources = authoring_sources_prepare(
+        content,
+        authoring_language_catalog_view(native),
+        &bindings,
+        behavior_default_backend()
+    );
+    free(content);
+    const authoring_source *selected = NULL;
+    length = strlen(root) + strlen(ref.relative) + 2;
+    char *path = xmalloc(length);
+    snprintf(path, length, "%s/%s", root, ref.relative);
+    for (int i = 0; i < authoring_sources_count(sources); i++) {
+        const authoring_source *source = authoring_sources_at(sources, i);
+        if (!strcmp(source->path, path)) {
+            selected = source;
+            break;
+        }
+    }
+    free(path);
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
-    if (!strcmp(kind, "behavior")) {
-        behavior_asset *asset = load_project_behavior(root, json);
-        free(json);
-        if (!asset) {
-            yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
-            add_load_diagnostic(result->doc, diagnostics, graph_last_error());
-            add_execution_status(
+    yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
+    for (int i = 0; i < authoring_sources_catalog_diagnostic_count(sources); i++) {
+        const source_catalog_diagnostic
+            *diagnostic = authoring_sources_catalog_diagnostic_at(sources, i);
+        yyjson_mut_val *entry = yyjson_mut_arr_add_obj(result->doc, diagnostics);
+        yyjson_mut_obj_add_strcpy(result->doc, entry, "path", diagnostic->path);
+        yyjson_mut_obj_add_strcpy(result->doc, entry, "message", diagnostic->message);
+    }
+    for (int i = 0; i < authoring_sources_count(sources); i++) {
+        const authoring_source *source = authoring_sources_at(sources, i);
+        for (int j = 0; j < source->diagnostic_count; j++) {
+            const script_diagnostic *diagnostic = &source->diagnostics[j];
+            yyjson_mut_val *entry = yyjson_mut_arr_add_obj(result->doc, diagnostics);
+            yyjson_mut_obj_add_strcpy(result->doc, entry, "path", source->path);
+            yyjson_mut_obj_add_strcpy(result->doc, entry, "message", diagnostic->message);
+            yyjson_mut_obj_add_int(result->doc, entry, "line", diagnostic->range.line);
+            yyjson_mut_obj_add_int(
                 result->doc,
-                value,
-                "unavailable",
-                false,
-                graph_sljit_available() != 0,
-                false,
-                false,
-                "behavior asset could not be loaded"
+                entry,
+                "column",
+                diagnostic->range.column
             );
-            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "behavior execution status failed");
-            return -1;
         }
-        compile_report report;
-        compile_report_init(&report);
-        behavior_asset_compile(asset, &report);
-        inspect_add_validation(result->doc, value, asset, &report);
-        int errors = report.error_count;
-        compile_report_free(&report);
-        behavior_execution_status execution = { .ready = errors == 0 };
-        behavior_backend backend = BEHAVIOR_UNAVAILABLE;
-        if (!errors) {
-            if (behavior_asset_lower_component_nodes(asset, error, sizeof error) == 0) {
-                behavior_program_publish(asset);
-                behavior_backend selected = behavior_default_backend();
-                backend = selected == BEHAVIOR_ORACLE ||
-                                  behavior_program_backend(asset->program) != BEHAVIOR_UNAVAILABLE
-                            ? selected
-                            : BEHAVIOR_UNAVAILABLE;
-            }
-        }
-        collect_behavior_execution(&execution, asset, backend);
-        add_behavior_execution_status(result->doc, value, &execution, false);
-        behavior_asset_free(asset);
-        if (errors) {
-            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "behavior validation failed");
-            return -1;
-        }
-        return 0;
     }
-
-    game_system_document *document = load_project_system(
-        root,
-        json,
-        automation_query_component,
-        NULL,
-        error,
-        sizeof error
+    bool ready = authoring_sources_valid(sources) && selected &&
+                 selected->valid && selected->module;
+    behavior_backend backend = ready ? execution_module_backend(selected->module)
+                                     : BEHAVIOR_UNAVAILABLE;
+    bool jit = backend == BEHAVIOR_SLJIT;
+    add_execution_status(
+        result->doc,
+        value,
+        jit                            ? "sljit"
+        : backend == BEHAVIOR_BYTECODE ? "bytecode"
+                                       : "unavailable",
+        ready,
+        behavior_backend_available(BEHAVIOR_SLJIT),
+        jit,
+        jit,
+        ready ? "canonical source module published; runtime services are "
+                "checked when registered"
+              : "source preparation has diagnostics"
     );
-    if (!document) {
-        free(json);
-        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
-        add_load_diagnostic(result->doc, diagnostics, error);
-        add_execution_status(
-            result->doc,
-            value,
-            "unavailable",
-            false,
-            graph_sljit_available() != 0,
-            false,
-            false,
-            "system document could not be loaded"
-        );
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "system execution status failed");
-        return -1;
-    }
-    const behavior_asset *document_asset = game_system_document_behavior_asset(document);
-    behavior_asset *definition = behavior_asset_clone(document_asset);
-    free(json);
-    ecs_world *world = ecs_world_new();
-    for (int i = 0; definition && i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        if (ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) !=
-            ECS_OK) {
-            set_error(error, sizeof error, "could not register system components");
-            behavior_asset_free(definition);
-            definition = NULL;
+    yyjson_mut_val *execution = yyjson_mut_obj_get(value, "execution");
+    yyjson_mut_obj_add_bool(result->doc, value, "valid", ready);
+    yyjson_mut_obj_add_bool(result->doc, execution, "bytecode", backend == BEHAVIOR_BYTECODE);
+    yyjson_mut_obj_add_bool(result->doc, execution, "typed_bytecode", ready);
+    int events = 0, native_events = 0;
+    for (int i = 0; ready && i < execution_module_function_count(selected->module);
+         i++) {
+        execution_module_function_info
+            function = execution_module_function_at(selected->module, i);
+        if (function.kind == EXECUTION_FUNCTION_HANDLER ||
+            function.kind == EXECUTION_FUNCTION_SYSTEM) {
+            events++;
+            native_events += jit && behavior_function_entry(function.body) != NULL;
         }
     }
-    game_system *system = definition ? game_system_new(world, definition) : NULL;
-    bool query_failed = false;
-    if (system && game_system_document_query(document) &&
-        game_system_set_query(system, game_system_document_query(document)) != 0) {
-        set_error(error, sizeof error, "could not apply system query");
-        query_failed = true;
-    }
-    bool ready = false;
-    int execution_status = system && !query_failed
-                             ? add_system_execution_status(
-                                   result->doc,
-                                   value,
-                                   system,
-                                   game_system_behavior_asset(system),
-                                   &ready
-                               )
-                             : CHIBI_AUTOMATION_EXECUTION_ERROR;
-    if (!system) {
-        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
-        add_load_diagnostic(result->doc, diagnostics, error[0] ? error : "system could not be created");
-        add_execution_status(
-            result->doc,
-            value,
-            "unavailable",
-            false,
-            graph_sljit_available() != 0,
-            false,
-            false,
-            "system could not be created"
-        );
-    } else if (query_failed) {
-        add_execution_status(
-            result->doc,
-            value,
-            "unavailable",
-            false,
-            graph_sljit_available() != 0,
-            false,
-            false,
-            "system query could not be applied"
-        );
-        yyjson_mut_val *execution = yyjson_mut_obj_get(value, "execution");
-        yyjson_mut_obj_add_bool(result->doc, execution, "query_failed", true);
-        inspect_add_validation(result->doc, value, NULL, game_system_compile(system));
-    } else {
-        inspect_add_validation(result->doc, value, NULL, game_system_compile(system));
-    }
-    if (system) {
-        game_system_free(system);
-    }
-    game_system_document_free(document);
-    ecs_world_free(world);
-    if (execution_status != CHIBI_AUTOMATION_OK || !ready) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error[0] ? error : "system execution is unavailable");
+    yyjson_mut_obj_add_int(result->doc, execution, "events", events);
+    yyjson_mut_obj_add_int(result->doc, execution, "native_events", native_events);
+    authoring_sources_free(sources);
+    authoring_language_catalog_free(native);
+    if (!ready) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "source execution preparation failed");
         return -1;
     }
     return 0;
@@ -4947,148 +5190,68 @@ static int load_named_asset(
     return *json ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
 }
 
-/* Replaces an edited in-memory document with its asset file text. */
-static int to_disk_text(
-    const char *root,
-    const asset_ref *ref,
-    char **edited,
-    const char *source,
-    char **metadata,
-    char *error,
-    size_t error_size
-)
+static bool save_code_metadata(const char *path, const char *text, const char *metadata)
 {
-    if (metadata) {
-        *metadata = NULL;
-    }
-    if (!source && code_source_is_structured(*edited)) {
-        return 0;
-    }
-    if (source && code_source_is_structured(source)) {
-        code_catalog *catalog = code_catalog_load_project(root);
-        code_source *code = code_source_parse_context(source, NULL, code_catalog_context(catalog));
-        if (ref) {
-            char *path = asset_full_path(root, ref);
-            code_source_metadata_load(code, path);
-            free(path);
-        }
-        behavior_asset *asset = code_catalog_load_behavior(catalog, *edited, error, error_size);
-        char *text = asset
-                       ? code_source_reconcile_with_metadata(code, asset, metadata, error, error_size)
-                       : NULL;
-        behavior_asset_free(asset);
-        code_source_free(code);
-        code_catalog_free(catalog);
-        free(*edited);
-        *edited = text;
-        return text ? 0 : -1;
-    }
-    if (metadata && ref && !strcmp(ref->family->extension, CODE_ASSET_EXTENSION)) {
-        behavior_asset *asset = load_project_behavior(root, *edited);
-        char *text = asset ? code_source_format_with_metadata(asset, metadata) : NULL;
-        behavior_asset_free(asset);
-        free(*edited);
-        *edited = text;
-        return text ? 0 : -1;
-    }
-    char *text = asset_text_to_disk(*edited, error, error_size);
-    if (text && source) {
-        av_doc *document = av_doc_read(text, error, error_size);
-        char *reconciled = document
-                             ? asset_source_reconcile(source, av_doc_root(document), error, error_size)
-                             : NULL;
-        av_doc_free(document);
-        free(text);
-        text = reconciled;
-    }
-    free(*edited);
-    *edited = text;
-    return text ? 0 : -1;
-}
-
-static bool code_metadata_changed(const char *root, const asset_ref *ref, const char *text, const char *metadata)
-{
-    if (!metadata || !text || !code_source_is_structured(text)) {
+    char *bound = authoring_source_metadata_bind(metadata, text);
+    if (!bound) {
         return false;
     }
-    code_catalog *catalog = code_catalog_load_project(root);
-    code_source *source = code_source_parse_context(text, NULL, code_catalog_context(catalog));
-    char *path = asset_full_path(root, ref);
-    code_source_metadata_load(source, path);
-    char *previous = source->asset ? code_source_metadata_export(source->asset) : NULL;
-    bool restored = code_source_metadata_restore(source, metadata);
-    char *current = source->asset ? code_source_metadata_export(source->asset) : NULL;
-    bool changed = !restored || !previous || !current || strcmp(previous, current);
-    free(current);
-    free(previous);
-    free(path);
-    code_source_free(source);
-    code_catalog_free(catalog);
-    return changed;
-}
-
-static bool save_code_metadata(const char *root, const char *path, const char *text, const char *metadata)
-{
-    if (!code_source_is_structured(text)) {
-        return true;
+    size_t length = strlen(path) + sizeof ".meta.tmp";
+    char *target = xmalloc(length), *temporary = xmalloc(length);
+    snprintf(target, length, "%s.meta", path);
+    snprintf(temporary, length, "%s.meta.tmp", path);
+    FILE *file = fopen(temporary, "wb");
+    bool saved = file != NULL;
+    if (file) {
+        saved = fputs(bound, file) >= 0;
+        saved = fclose(file) == 0 && saved;
     }
-    code_catalog *catalog = code_catalog_load_project(root);
-    code_source *source = code_source_parse_context(text, NULL, code_catalog_context(catalog));
-    if (metadata) {
-        code_source_metadata_restore(source, metadata);
-    } else {
-        code_source_metadata_load(source, path);
+    if (saved) {
+        saved = rename(temporary, target) == 0;
     }
-    bool saved = source->asset && code_source_metadata_save(source, path);
-    code_source_free(source);
-    code_catalog_free(catalog);
+    if (!saved) {
+        remove(temporary);
+    }
+    free(target);
+    free(temporary);
+    free(bound);
     return saved;
 }
 
-/* Authored executable text is canonical independently of its generated graph. */
-static char *canonical_source(
-    const char *root,
-    const char *text,
-    const char *path,
-    char **metadata,
-    char *error,
-    size_t error_size
-)
+/* Formatting and optional identity remapping consume exact syntax snapshots. */
+#define CANONICAL_SOURCE_MAX_BYTES (8 * 1024 * 1024)
+static char *canonical_source(const char *text, const char *path, char **metadata, char *error, size_t error_size)
 {
-    code_catalog *catalog = code_catalog_load_project(root);
-    code_source *source = code_source_parse_context(text, NULL, code_catalog_context(catalog));
-    code_source_metadata_load(source, path);
-    char *saved = source->asset ? code_source_persist(source) : NULL;
-    char *inheritance = saved ? code_source_metadata_export_source(source) : NULL;
-    code_source *reopened = saved
-                              ? code_source_parse_context(saved, NULL, code_catalog_context(catalog))
-                              : NULL;
-    bool valid = reopened && reopened->asset && inheritance &&
-                 code_source_metadata_restore(reopened, inheritance) &&
-                 behavior_asset_equal(source->asset, reopened->asset);
-    if (!valid) {
-        free(saved);
-        saved = NULL;
-        const char *message = !source->asset && acount(source->diagnostics)
-                                ? source->diagnostics[0].message
-                                : "formatted source does not preserve the "
-                                  "complete native asset";
-        set_error(error, error_size, message);
-    } else {
-        *metadata = inheritance;
-        inheritance = NULL;
+    if (strlen(text) > CANONICAL_SOURCE_MAX_BYTES) {
+        set_error(error, error_size, "source exceeds formatter byte limit");
+        return NULL;
     }
-    free(inheritance);
-    code_source_free(reopened);
-    code_source_free(source);
-    code_catalog_free(catalog);
+    script_syntax *source = script_parse(text);
+    char *saved = authoring_source_format(source, error, error_size);
+    if (saved) {
+        size_t length = strlen(path) + sizeof ".meta";
+        char *sidecar_path = xmalloc(length);
+        snprintf(sidecar_path, length, "%s.meta", path);
+        struct stat info;
+        char *sidecar = stat(sidecar_path, &info) == 0 && info.st_size >= 0 &&
+                                (uintmax_t)info.st_size <= CANONICAL_SOURCE_MAX_BYTES
+                          ? file_read_text(sidecar_path)
+                          : NULL;
+        free(sidecar_path);
+        if (sidecar) {
+            script_syntax *formatted = script_parse(saved);
+            *metadata = authoring_source_metadata_remap(sidecar, source, formatted);
+            script_syntax_free(formatted);
+        }
+        free(sidecar);
+    }
+    script_syntax_free(source);
     return saved;
 }
 
 /* Owned canonical file text for one asset, produced by its native loader and
  * saver. */
 static char *canonical_asset(
-    const char *root,
     const asset_family *family,
     const char *json,
     const char *path,
@@ -5100,66 +5263,27 @@ static char *canonical_asset(
     *metadata = NULL;
     switch (family->loader) {
         case ASSET_GRAPH: {
-            bool executable = !strcmp(family->extension, CODE_ASSET_EXTENSION);
-            if (executable && code_source_is_structured(json)) {
-                return canonical_source(root, json, path, metadata, error, error_size);
+            if (!strcmp(family->extension, CODE_ASSET_EXTENSION)) {
+                return canonical_source(json, path, metadata, error, error_size);
             }
-            code_catalog *catalog = code_catalog_load_project(root);
-            behavior_asset *asset = code_catalog_load_behavior(catalog, json, error, error_size);
+            behavior_asset *asset = behavior_asset_load(json);
             if (!asset) {
-                code_catalog_free(catalog);
+                set_error(error, error_size, graph_last_error());
                 return NULL;
             }
-            char *text = executable
-                           ? code_source_format_with_metadata(asset, metadata)
-                           : behavior_asset_save(asset);
-            code_source *reopened_source = executable && text
-                                             ? code_source_parse_context(text, NULL, code_catalog_context(catalog))
-                                             : NULL;
-            if (reopened_source && *metadata) {
-                code_source_metadata_restore(reopened_source, *metadata);
-            }
-            behavior_asset *reopened = reopened_source
-                                         ? code_source_build_behavior(reopened_source)
-                                     : text
-                                         ? code_catalog_load_behavior(catalog, text, error, error_size)
-                                         : NULL;
+            char *text = behavior_asset_save(asset);
+            behavior_asset *reopened = text ? behavior_asset_load(text) : NULL;
             if (!reopened || !behavior_asset_equal(asset, reopened)) {
                 free(text);
                 text = NULL;
-                set_error(error, error_size, "formatted source does not preserve the complete native asset");
+                set_error(error, error_size, "formatted graph does not preserve the complete native asset");
             }
             behavior_asset_free(reopened);
-            code_source_free(reopened_source);
-            code_catalog_free(catalog);
             behavior_asset_free(asset);
             return text;
         }
-        case ASSET_SYSTEM: {
-            game_system_document *document = load_project_system(
-                root,
-                json,
-                automation_query_component,
-                NULL,
-                error,
-                error_size
-            );
-            if (!document) {
-                return NULL;
-            }
-            if (code_source_is_structured(json)) {
-                game_system_document_free(document);
-                return canonical_source(root, json, path, metadata, error, error_size);
-            }
-            char *text = game_system_document_save(
-                document,
-                automation_query_component,
-                automation_query_component_name,
-                NULL
-            );
-            game_system_document_free(document);
-            return text;
-        }
+        case ASSET_SYSTEM:
+            return canonical_source(json, path, metadata, error, error_size);
         case ASSET_PROTOTYPE: {
             game_prototype_registry registry = {
                 .components = GAME_REGISTRY_COMPONENTS,
@@ -5178,7 +5302,10 @@ static char *canonical_asset(
             if (!scene) {
                 return NULL;
             }
-            char *text = game_scene_document_save(scene);
+            char *text = game_scene_document_save(
+                scene,
+                (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+            );
             game_scene_document_free(scene);
             return text;
         }
@@ -5217,10 +5344,12 @@ int chibi_automation_format_assets(const char *root, bool check)
         char *json = read_file(path, &bytes, &hash, error, sizeof error);
         char *metadata = NULL;
         char *text = json
-                       ? canonical_asset(root, entries[i].family, json, path, &metadata, error, sizeof error)
+                       ? canonical_asset(entries[i].family, json, path, &metadata, error, sizeof error)
                        : NULL;
-        if (text && to_disk_text(root, NULL, &text, NULL, NULL, error, sizeof error)) {
-            text = NULL;
+        if (text && strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
+            char *disk = asset_text_to_disk(text, error, sizeof error);
+            free(text);
+            text = disk;
         }
         if (!text) {
             fprintf(stderr, "chibi_ctl --format: %s: %s\n", entries[i].relative, error);
@@ -5244,7 +5373,7 @@ int chibi_automation_format_assets(const char *root, bool check)
             }
         }
         if (!check && differing >= 0 && text && metadata &&
-            !save_code_metadata(root, path, text, metadata)) {
+            !save_code_metadata(path, text, metadata)) {
             fprintf(
                 stderr,
                 "chibi_ctl --format: could not save metadata for %s\n",
@@ -5318,6 +5447,7 @@ static int read_asset_complete(
         yyjson_mut_val *request_value = yyjson_mut_obj(candidate);
         yyjson_mut_doc_set_root(candidate, request_value);
         yyjson_mut_obj_add_str(candidate, request_value, "source", text);
+        yyjson_mut_obj_add_str(candidate, request_value, "path", ref->relative);
         yyjson_mut_obj_add_uint(candidate, request_value, "offset", offset);
         yyjson_doc *immutable = yyjson_mut_doc_imut_copy(candidate, NULL);
         yyjson_mut_val *analysis = yyjson_mut_obj(result->doc);
@@ -5441,19 +5571,20 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
     yyjson_mut_obj_add_strcpy(result->doc, value, "source", json);
-    if (code_source_is_structured(json)) {
-        code_catalog *catalog = code_catalog_load_project(root);
-        code_source *source = code_source_parse_context(json, NULL, code_catalog_context(catalog));
+    if (!strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
         char *path = asset_full_path(root, &ref);
-        code_source_metadata_load(source, path);
-        char *metadata = code_source_metadata_export_source(source);
+        size_t length = strlen(path) + 6;
+        char *sidecar = xmalloc(length);
+        snprintf(sidecar, length, "%s.meta", path);
+        char *metadata = text_file_read(sidecar);
         if (metadata) {
-            yyjson_mut_obj_add_strcpy(result->doc, value, "metadata", metadata);
+            if (authoring_source_metadata_matches(metadata, json)) {
+                yyjson_mut_obj_add_strcpy(result->doc, value, "metadata", metadata);
+            }
         }
         free(metadata);
+        free(sidecar);
         free(path);
-        code_source_free(source);
-        code_catalog_free(catalog);
     }
     yyjson_mut_obj_add_val(
         result->doc,
@@ -5489,21 +5620,16 @@ static behavior_asset *link_project_libraries(
 )
 {
     behavior_asset **libraries = NULL;
-    const char *family = asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
-                                 asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
-                                 asset->domain == BEHAVIOR_DOMAIN_MODEL ||
-                                 asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY
-                           ? "shader-library"
-                           : "library";
-    int loaded = load_behavior_family_assets(root, family_by_kind(family), &libraries, error, error_size);
-    behavior_asset **events = NULL;
-    if (loaded == CHIBI_AUTOMATION_OK && !strcmp(family, "library")) {
-        loaded = load_behavior_family_assets(root, family_by_kind("event"), &events, error, error_size);
-        for (int i = 0; i < acount(events); i++) {
-            apush(libraries, events[i]);
-        }
-        afree(events);
+    if (asset->domain == BEHAVIOR_DOMAIN_FIELD) {
+        return behavior_asset_clone(asset);
     }
+    if (asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
+        asset->domain != BEHAVIOR_DOMAIN_SHAPE && asset->domain != BEHAVIOR_DOMAIN_MODEL &&
+        asset->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        set_error(error, error_size, "Executable source cannot use graph library linking");
+        return NULL;
+    }
+    int loaded = load_behavior_family_assets(root, family_by_kind("shader-library"), &libraries, error, error_size);
     behavior_asset *linked = loaded == CHIBI_AUTOMATION_OK
                                ? behavior_asset_link_libraries(
                                      asset,
@@ -5536,27 +5662,10 @@ static int load_model_catalog(const char *root, behavior_asset ***out, char *err
     return status;
 }
 
-static int compile_project_system(const char *root, const behavior_asset *asset, compile_report *report)
-{
-    code_catalog *catalog = code_catalog_load_project(root);
-    const code_source_context *context = code_catalog_context(catalog);
-    const behavior_asset **models = NULL;
-    for (int i = 0; context && i < context->library_count; i++) {
-        apush(models, context->libraries[i]);
-    }
-    for (int i = 0; context && i < context->event_count; i++) {
-        apush(models, context->events[i]);
-    }
-    int errors = compile_system_catalog(asset, models, acount(models), report);
-    afree(models);
-    code_catalog_free(catalog);
-    return errors;
-}
-
 static int compile_project_graph(const char *root, const behavior_asset *asset, compile_report *report)
 {
     if (asset->domain != BEHAVIOR_DOMAIN_MODEL) {
-        return behavior_asset_compile(asset, report);
+        return graph_asset_compile(asset, report);
     }
     behavior_asset **models = NULL;
     char load_error[256] = { 0 };
@@ -5595,6 +5704,7 @@ static int compile_project_graph(const char *root, const behavior_asset *asset, 
 }
 
 static int validate_prototype_shader(const char *, const char *, char *, size_t);
+static int validate_scene_behavior(const char *, const char *, char *, size_t);
 static int validate_scene_dependencies(const char *, const char *, char *, size_t);
 
 static int handle_validate_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -5608,6 +5718,16 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     if (status != CHIBI_AUTOMATION_OK) {
         response_error(result, exit_code, status, error);
         return -1;
+    }
+    if (!strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
+        int validated = inspect_source_asset(root, request, result, exit_code, &ref, json, bytes, hash);
+        yyjson_mut_val *source_result = yyjson_mut_obj_get(result->root, "result");
+        yyjson_mut_val *source_diagnostics = yyjson_mut_obj_get(source_result, "diagnostics");
+        yyjson_mut_obj_add_uint(result->doc, source_result, "errors", yyjson_mut_arr_size(source_diagnostics));
+        yyjson_mut_obj_add_int(result->doc, source_result, "warnings", 0);
+        yyjson_mut_obj_add_int(result->doc, source_result, "notes", 0);
+        free(json);
+        return validated;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
@@ -5641,55 +5761,6 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             }
             compile_report_free(&report);
             behavior_asset_free(asset);
-        }
-    } else if (ref.family->loader == ASSET_SYSTEM) {
-        char load_error[256] = { 0 };
-        game_system_document *document = load_project_system(
-            root,
-            json,
-            automation_query_component,
-            NULL,
-            load_error,
-            sizeof load_error
-        );
-        if (!document) {
-            errors = 1;
-            add_load_diagnostic(result->doc, diagnostics, load_error);
-        } else {
-            char *query_json = game_query_save(
-                game_system_document_query(document),
-                automation_query_component,
-                automation_query_component_name,
-                NULL
-            );
-            if (query_json) {
-                yyjson_doc *query_document = parse_project_asset_text(root, query_json);
-                if (query_document) {
-                    yyjson_mut_obj_add_val(
-                        result->doc,
-                        value,
-                        "query",
-                        yyjson_val_mut_copy(result->doc, yyjson_doc_get_root(query_document))
-                    );
-                    yyjson_doc_free(query_document);
-                }
-                free(query_json);
-            }
-            compile_report report;
-            compile_report_init(&report);
-            compile_project_system(root, game_system_document_behavior_asset(document), &report);
-            errors = report.error_count;
-            warnings = report.warning_count;
-            for (int i = 0; i < acount(report.items); i++) {
-                add_diagnostic(
-                    result->doc,
-                    diagnostics,
-                    game_system_document_behavior_asset(document),
-                    &report.items[i]
-                );
-            }
-            compile_report_free(&report);
-            game_system_document_free(document);
         }
     } else if (ref.family->loader == ASSET_PROTOTYPE) {
         game_prototype_registry registry = {
@@ -5793,9 +5864,7 @@ static int load_behavior_family_assets(
             set_error(error, error_size, read_error);
             return CHIBI_AUTOMATION_IO_ERROR;
         }
-        code_catalog *catalog = code_catalog_load_project(root);
-        behavior_asset *asset = code_catalog_load_path(catalog, json, path, error, error_size);
-        code_catalog_free(catalog);
+        behavior_asset *asset = behavior_asset_load(json);
         free(path);
         free(json);
         if (!asset) {
@@ -5813,54 +5882,19 @@ static int load_behavior_family_assets(
     return CHIBI_AUTOMATION_OK;
 }
 
-static int register_preview_assets(
-    game_prototype_preview *preview,
-    behavior_asset **assets,
-    char *error,
-    size_t error_size
-)
-{
-    for (int i = 0; i < acount(assets); i++) {
-        const char *name = assets[i]->name;
-        if (game_prototype_preview_register_behavior(preview, name, assets[i]) != 0) {
-            snprintf(error, error_size, "could not register behavior %s: %s", name, graph_last_error());
-            return -1;
-        }
-    }
-    return 0;
-}
-
-/* What every scenario shares, as the game loads it: libraries and events,
-   then shader libraries and the materials and shapes behaviors write to. */
+/* Scenarios use the application's canonical declaration and source pipeline. */
 static int register_shared_assets(const char *root, game_prototype_preview *preview, char *error, size_t error_size)
 {
-    static const char *const FAMILIES[] = { "library",        "event",
-                                            "shader-library", "material",
-                                            "shape",          "model" };
-    int status = CHIBI_AUTOMATION_OK;
-    for (int f = 0; f < (int)(sizeof FAMILIES / sizeof *FAMILIES) &&
-                    status == CHIBI_AUTOMATION_OK;
-         f++) {
-        behavior_asset **assets = NULL;
-        status = load_behavior_family_assets(root, family_by_kind(FAMILIES[f]), &assets, error, error_size);
-        if (status == CHIBI_AUTOMATION_OK && !strcmp(FAMILIES[f], "model")) {
-            shader_error model_error = { 0 };
-            if (!render_shader_models_upsert(
-                    (const behavior_asset *const *)assets,
-                    acount(assets),
-                    &model_error
-                )) {
-                snprintf(error, error_size, "%s", model_error.message);
-                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-            }
-        }
-        if (status == CHIBI_AUTOMATION_OK &&
-            register_preview_assets(preview, assets, error, error_size) != 0) {
-            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
-        }
-        free_behavior_assets(assets);
+    size_t size = strlen(root) + sizeof "/content";
+    char *content = xmalloc(size);
+    snprintf(content, size, "%s/content", root);
+    int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), preview, content);
+    free(content);
+    if (loaded < 0) {
+        set_error(error, error_size, "project source or native asset preparation failed; see preparation diagnostics");
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    return status;
+    return CHIBI_AUTOMATION_OK;
 }
 
 static int add_scenario_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t frames, double fixed_dt)
@@ -5939,7 +5973,7 @@ static void scenario_hash_value(uint64_t *hash, pin_type type, const char *type_
             break;
         }
         case PIN_STRUCT: {
-            const type_desc *struct_type = registry_type_by_name(type_name);
+            const type_desc *struct_type = type_catalog_find(type_name);
             if (!struct_type || !value->ptr) {
                 break;
             }
@@ -6041,7 +6075,7 @@ static uint64_t scenario_state_hash(scenario_context *context)
 {
     uint64_t hash = scenario_world_hash(game_prototype_preview_world(context->preview));
     char *saved = game_save_export(
-        game_behavior_save(game_prototype_preview_behaviors(context->preview))
+        game_prototype_preview_live(context->preview)->runtime->save
     );
     hash = scenario_hash_bytes(hash, saved, strlen(saved));
     free(saved);
@@ -6083,7 +6117,7 @@ static scenario_hash_parts scenario_state_hash_parts(scenario_context *context)
         .visibility = seed
     };
     char *saved = game_save_export(
-        game_behavior_save(game_prototype_preview_behaviors(context->preview))
+        game_prototype_preview_live(context->preview)->runtime->save
     );
     parts.saved_state = scenario_hash_bytes(parts.saved_state, saved, strlen(saved));
     free(saved);
@@ -6106,7 +6140,7 @@ static scenario_hash_parts scenario_state_hash_parts(scenario_context *context)
     }
     parts.audio = game_audio_hash(engine_audio(runtime));
     game_physics_hashes physics = game_physics_hash(
-        game_prototype_preview_live(context->preview)->physics
+        game_prototype_preview_live(context->preview)->runtime->physics
     );
     parts.physics_bodies = physics.body_state;
     parts.physics_contacts = physics.contact_pairs;
@@ -6206,9 +6240,7 @@ static int scenario_saved_state(scenario_context *context, yyjson_val *request, 
                : context->scenario_saved_state
                    ? av_json_write(context->scenario_saved_state)
                    : xstrdup("{}");
-    game_save *save = game_behavior_save(
-        game_prototype_preview_behaviors(context->preview)
-    );
+    game_save *save = game_prototype_preview_live(context->preview)->runtime->save;
     bool valid = game_save_import(save, json);
     free(json);
     if (!valid) {
@@ -6223,7 +6255,7 @@ static int scenario_saved_state(scenario_context *context, yyjson_val *request, 
 static void add_saved_state(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
 {
     char *json = game_save_export(
-        game_behavior_save(game_prototype_preview_behaviors(context->preview))
+        game_prototype_preview_live(context->preview)->runtime->save
     );
     yyjson_doc *state = yyjson_read(json, strlen(json), 0);
     yyjson_mut_obj_add_val(doc, value, "saved_state", yyjson_val_mut_copy(doc, yyjson_doc_get_root(state)));
@@ -6264,7 +6296,7 @@ static void scenario_context_free(scenario_context *context)
     afree(context->scene_entities);
     game_scene_document_free(context->scene);
     if (context->owns_file_system) {
-        render_shader_catalog_clear();
+        authoring_shader_catalog_clear();
         cf_fs_destroy();
     }
     *context = (scenario_context){ 0 };
@@ -6281,57 +6313,30 @@ static int scenario_mount_content(const char *root, scenario_context *context, c
             return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
         context->owns_file_system = true;
-        render_shader_catalog_clear();
+        authoring_shader_catalog_clear();
     }
     size_t content_size = strlen(root) + sizeof "/content";
     char *content = xmalloc(content_size);
     snprintf(content, content_size, "%s/content", root);
-    bool mounted = render_image_mount_content(content, error, error_size);
+    bool mounted = render_image_mount_content(content, error, error_size) &&
+                   authoring_mesh_mount_content(content, error, error_size);
     free(content);
     return mounted ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_EXECUTION_ERROR;
 }
 
 static int register_preview_behavior_name(
-    const char *root,
+    const char *,
     game_prototype_preview *preview,
     const char *name,
     char *error,
     size_t error_size
 )
 {
-    if (game_behavior_asset_registered(game_prototype_preview_behaviors(preview), name)) {
+    if (game_source_registered(game_prototype_preview_sources(preview), name)) {
         return CHIBI_AUTOMATION_OK;
     }
-    asset_ref behavior_ref = { 0 };
-    char *behavior_json = NULL;
-    int status = load_named_asset(
-        root,
-        family_by_kind("behavior"),
-        name,
-        &behavior_ref,
-        &behavior_json,
-        NULL,
-        NULL,
-        error,
-        error_size
-    );
-    if (status != CHIBI_AUTOMATION_OK) {
-        free(behavior_json);
-        return status;
-    }
-    behavior_asset *behavior = load_project_behavior(root, behavior_json);
-    free(behavior_json);
-    if (!behavior) {
-        snprintf(error, error_size, "%s", graph_last_error());
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
-    }
-    int result = game_prototype_preview_register_behavior(preview, name, behavior);
-    behavior_asset_free(behavior);
-    if (result != 0) {
-        snprintf(error, error_size, "could not register behavior %s", name);
-        return CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    return CHIBI_AUTOMATION_OK;
+    snprintf(error, error_size, "prepared behavior module %s is not registered", name);
+    return CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
 
 static bool scenario_runtime_asset(const scenario_context *context, const asset_entry *entry)
@@ -6354,28 +6359,6 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
     for (int i = 0; i < acount(entries) && status == CHIBI_AUTOMATION_OK; i++) {
         const char *kind = entries[i].family->kind;
         if (!strcmp(kind, "field") || !strcmp(kind, "system")) {
-            char *name = asset_name_from_filename(entries[i].filename), *json = NULL;
-            asset_ref ref;
-            status = load_named_asset(root, entries[i].family, name, &ref, &json, NULL, NULL, error, error_size);
-            if (status == CHIBI_AUTOMATION_OK) {
-                if (!strcmp(kind, "system")) {
-                    if (game_prototype_preview_register_system(context->preview, name, json, error, error_size) !=
-                        0) {
-                        status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-                    }
-                } else {
-                    behavior_asset *asset = load_project_behavior(root, json);
-                    if (!asset ||
-                        game_prototype_preview_register_behavior(context->preview, name, asset) !=
-                            0) {
-                        snprintf(error, error_size, "Could not compile field %s", name);
-                        status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-                    }
-                    behavior_asset_free(asset);
-                }
-            }
-            free(name);
-            free(json);
             continue;
         }
         if (strcmp(entries[i].family->kind, "prototype")) {
@@ -6491,41 +6474,16 @@ static int prepare_scenario(
     }
 
     for (int i = 0; i < acount(context->prototype->graphs); i++) {
-        asset_ref behavior_ref = { 0 };
-        char *behavior_json = NULL;
-        status = load_named_asset(
+        status = register_preview_behavior_name(
             root,
-            family_by_kind("behavior"),
+            context->preview,
             context->prototype->graphs[i],
-            &behavior_ref,
-            &behavior_json,
-            NULL,
-            NULL,
             error,
             error_size
         );
         if (status != CHIBI_AUTOMATION_OK) {
-            free(behavior_json);
             scenario_context_free(context);
             return status;
-        }
-        behavior_asset *behavior = load_project_behavior(root, behavior_json);
-        free(behavior_json);
-        if (!behavior) {
-            set_error(error, error_size, graph_last_error());
-            scenario_context_free(context);
-            return CHIBI_AUTOMATION_VALIDATION_ERROR;
-        }
-        int registered = game_prototype_preview_register_behavior(
-            context->preview,
-            context->prototype->graphs[i],
-            behavior
-        );
-        behavior_asset_free(behavior);
-        if (registered != 0) {
-            set_error(error, error_size, "could not register prototype behavior");
-            scenario_context_free(context);
-            return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
     }
     status = register_scenario_prototypes(root, context, error, error_size);
@@ -6815,53 +6773,39 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
 
 /* Runs that stopped on an error, grouped by node and message, so a scenario
    that looks fine but aborts a Tick every frame says so. */
+/* Each program retains its first failure until explicitly cleared. */
 static void add_behavior_failures(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
 {
-    enum
-    {
-        FAILURES_MAX = 16
-    };
-    game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
+    game_preview_world *preview = game_prototype_preview_live(context->preview);
+    const authoring_sources *sources = game_preview_sources_applied(preview);
     yyjson_mut_val *failures = yyjson_mut_obj_add_arr(doc, value, "behavior_failures");
-    game_behavior_log_info seen[FAILURES_MAX];
-    int counts[FAILURES_MAX] = { 0 }, kinds = 0;
-    for (int i = 0; i < game_behavior_log_count(behaviors); i++) {
-        game_behavior_log_info info = { 0 };
-        if (game_behavior_log_info_at(behaviors, i, &info) != 0 || !info.failure) {
-            continue;
-        }
-        int k = 0;
-        while (k < kinds && (seen[k].origin != info.origin ||
-                             strcmp(seen[k].message, info.message))) {
-            k++;
-        }
-        if (k == FAILURES_MAX) {
-            continue;
-        }
-        if (k == kinds) {
-            seen[kinds++] = info;
-        }
-        counts[k]++;
-    }
-    for (int k = 0; k < kinds; k++) {
-        yyjson_mut_val *failure = yyjson_mut_arr_add_obj(doc, failures);
-        yyjson_mut_obj_add_strcpy(
-            doc,
-            failure,
-            "behavior",
-            seen[k].asset_name ? seen[k].asset_name : ""
+    int count = 0;
+    for (int i = 0; sources && i < authoring_sources_count(sources); i++) {
+        const authoring_source *source = authoring_sources_at(sources, i);
+        execution_program *program = game_source_program(
+            preview->runtime->sources,
+            source->analysis->name
         );
-        if (seen[k].origin) {
-            yyjson_mut_obj_add_uint(doc, failure, "node", seen[k].origin->id);
-            yyjson_mut_obj_add_strcpy(
-                doc,
-                failure,
-                "node_type",
-                seen[k].origin->desc->name
-            );
+        const execution_program_failure *error = program
+                                                   ? execution_program_error(program)
+                                                   : NULL;
+        if (!error) {
+            continue;
         }
-        yyjson_mut_obj_add_strcpy(doc, failure, "message", seen[k].message);
-        yyjson_mut_obj_add_int(doc, failure, "count", counts[k]);
+        if (count++ == 16) {
+            yyjson_mut_obj_add_bool(doc, value, "behavior_failures_truncated", true);
+            break;
+        }
+        yyjson_mut_val *failure = yyjson_mut_arr_add_obj(doc, failures);
+        yyjson_mut_obj_add_strcpy(doc, failure, "behavior", source->analysis->name);
+        yyjson_mut_obj_add_strcpy(doc, failure, "message", error->message);
+        yyjson_mut_obj_add_uint(doc, failure, "node", error->node_id);
+        yyjson_mut_obj_add_uint(doc, failure, "function", error->function_id);
+        yyjson_mut_obj_add_uint(doc, failure, "owner", error->owner);
+        yyjson_mut_obj_add_int(doc, failure, "status", error->status);
+        yyjson_mut_obj_add_int(doc, failure, "start", error->start);
+        yyjson_mut_obj_add_int(doc, failure, "end", error->end);
+        yyjson_mut_obj_add_str(doc, failure, "scope", "first retained program failure");
     }
 }
 
@@ -6942,19 +6886,8 @@ static int advance_scenario(
     return CHIBI_AUTOMATION_OK;
 }
 
-#define SCENARIO_PROFILE_MAX_ROWS 1024
 #define SCENARIO_PROFILE_MAX_TOTAL SCENARIO_RUN_MAX_FRAMES
 #define SCENARIO_PROFILE_WORST_FRAMES 5
-
-typedef struct
-{
-    const char *behavior;
-    const char *event;
-    uint64_t starts;
-    uint64_t resumes;
-    double inclusive_cpu_ms;
-    double cpu_ms;
-} scenario_profile_row;
 
 typedef struct
 {
@@ -7167,60 +7100,6 @@ static double frame_total_ms(const scenario_profile_frame *frame)
     return frame->behavior_ms + frame->physics_ms + frame->systems_ms + frame->rendering_ms;
 }
 
-static void profile_add_row(
-    scenario_profile_row **rows,
-    const game_behavior_profile_row *source,
-    bool *truncated
-)
-{
-    if (!source || (!source->starts && !source->resumes && source->cpu_ms == 0)) {
-        return;
-    }
-    for (int i = 0; i < acount(*rows); i++) {
-        scenario_profile_row *row = &(*rows)[i];
-        if (!strcmp(
-                row->behavior ? row->behavior : "",
-                source->behavior ? source->behavior : ""
-            ) &&
-            !strcmp(row->event ? row->event : "", source->event ? source->event : "")) {
-            row->starts += source->starts;
-            row->resumes += source->resumes;
-            row->inclusive_cpu_ms += source->inclusive_cpu_ms;
-            row->cpu_ms += source->cpu_ms;
-            return;
-        }
-    }
-    if (acount(*rows) >= SCENARIO_PROFILE_MAX_ROWS) {
-        *truncated = true;
-        return;
-    }
-    apush(
-        *rows,
-        ((scenario_profile_row){
-            .behavior = source->behavior,
-            .event = source->event,
-            .starts = source->starts,
-            .resumes = source->resumes,
-            .inclusive_cpu_ms = source->inclusive_cpu_ms,
-            .cpu_ms = source->cpu_ms,
-        })
-    );
-}
-
-static int scenario_profile_compare(const void *left, const void *right)
-{
-    const scenario_profile_row *a = left;
-    const scenario_profile_row *b = right;
-    if (a->cpu_ms != b->cpu_ms) {
-        return a->cpu_ms > b->cpu_ms ? -1 : 1;
-    }
-    int behavior = strcmp(a->behavior ? a->behavior : "", b->behavior ? b->behavior : "");
-    if (behavior) {
-        return behavior;
-    }
-    return strcmp(a->event ? a->event : "", b->event ? b->event : "");
-}
-
 static void profile_add_timing(
     scenario_profile_timing *total,
     scenario_profile_frame **frames,
@@ -7374,44 +7253,6 @@ static void add_profile_allocations(
     );
 }
 
-static void add_profile_rows(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *object,
-    scenario_profile_row *rows,
-    int row_count,
-    bool truncated
-)
-{
-    if (row_count > 1) {
-        qsort(rows, (size_t)row_count, sizeof *rows, scenario_profile_compare);
-    }
-    yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, object, "behaviors");
-    for (int i = 0; i < row_count; i++) {
-        const scenario_profile_row *row = &rows[i];
-        yyjson_mut_val *value = yyjson_mut_arr_add_obj(doc, array);
-        yyjson_mut_obj_add_strcpy(doc, value, "behavior", row->behavior ? row->behavior : "");
-        yyjson_mut_obj_add_strcpy(doc, value, "event", row->event ? row->event : "");
-        yyjson_mut_obj_add_uint(doc, value, "starts", row->starts);
-        yyjson_mut_obj_add_uint(doc, value, "resumes", row->resumes);
-        yyjson_mut_obj_add_real(doc, value, "inclusive_cpu_ms", row->inclusive_cpu_ms);
-        yyjson_mut_obj_add_real(doc, value, "cpu_ms", row->cpu_ms);
-        uint64_t activations = row->starts + row->resumes;
-        yyjson_mut_obj_add_real(
-            doc,
-            value,
-            "average_cpu_us",
-            activations ? row->cpu_ms * 1000.0 / (double)activations : 0
-        );
-        yyjson_mut_obj_add_real(
-            doc,
-            value,
-            "average_inclusive_cpu_us",
-            activations ? row->inclusive_cpu_ms * 1000.0 / (double)activations : 0
-        );
-    }
-    yyjson_mut_obj_add_bool(doc, object, "behaviors_truncated", truncated);
-}
-
 typedef struct
 {
     const char *name;
@@ -7460,10 +7301,51 @@ static int step_sequence(
     size_t error_size
 );
 
-static const char *const PROFILE_BEHAVIOR_WORK[] = {
-    "entries",   "prepared", "native_loop",   "system_loop",
-    "scheduled", "parallel", "parallel_tasks"
-};
+static void add_source_profile(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *value,
+    const game_source_registry *registry,
+    bool enabled,
+    bool registered
+)
+{
+    yyjson_mut_val *profile = yyjson_mut_obj_add_obj(doc, value, "source_profile");
+    yyjson_mut_obj_add_bool(doc, profile, "available", enabled);
+    yyjson_mut_obj_add_bool(doc, profile, "enabled", enabled);
+    yyjson_mut_obj_add_bool(doc, profile, "registered", registered);
+    yyjson_mut_obj_add_uint(doc, profile, "dropped_samples", game_source_profile_dropped(registry));
+    yyjson_mut_obj_add_int(doc, profile, "row_limit", GAME_SOURCE_PROFILE_ROWS_MAX);
+    yyjson_mut_obj_add_str(doc, profile, "scope", "actual function activation entries and resumes; wait polling excluded");
+    yyjson_mut_obj_add_str(doc, profile, "timing", "inclusive process CPU time; nested samples overlap and synchronous outlined calls remain in their parent sample");
+    yyjson_mut_val *rows = yyjson_mut_obj_add_arr(doc, profile, "rows");
+    for (int i = 0; i < game_source_profile_count(registry); i++) {
+        const game_source_profile_row *sample = game_source_profile_at(registry, i);
+        yyjson_mut_val *row = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_uint(doc, row, "module_id", sample->module_id);
+        yyjson_mut_obj_add_uint(doc, row, "function_id", sample->function_id);
+        yyjson_mut_obj_add_uint(doc, row, "owner", sample->owner);
+        yyjson_mut_obj_add_strcpy(doc, row, "name", sample->name);
+        yyjson_mut_obj_add_bool(doc, row, "internal", sample->internal);
+        if (!sample->internal) {
+            yyjson_mut_obj_add_int(doc, row, "kind", sample->kind);
+        }
+        if (sample->source) {
+            yyjson_mut_obj_add_strcpy(doc, row, "source", sample->source);
+            yyjson_mut_obj_add_int(doc, row, "start", sample->start);
+            yyjson_mut_obj_add_int(doc, row, "end", sample->end);
+            yyjson_mut_obj_add_int(doc, row, "line", sample->line);
+            yyjson_mut_obj_add_int(doc, row, "column", sample->column);
+        }
+        yyjson_mut_obj_add_uint(doc, row, "entries", sample->entries);
+        yyjson_mut_obj_add_uint(doc, row, "resumes", sample->resumes);
+        yyjson_mut_obj_add_int(doc, row, "last_status", sample->last_status);
+        yyjson_mut_obj_add_bool(doc, row, "cpu_available", sample->cpu_available);
+        if (sample->cpu_available) {
+            yyjson_mut_obj_add_real(doc, row, "cpu_seconds", sample->cpu_seconds);
+        }
+        yyjson_mut_arr_append(rows, row);
+    }
+}
 
 static int profile_scenario(
     const char *root,
@@ -7537,14 +7419,9 @@ static int profile_scenario(
         replay_scenario_input(&context, scenario);
         status = scenario_saved_state(&context, request, error, sizeof error);
     }
-    scenario_profile_row *rows = NULL;
     scenario_profile_timing timing = { 0 };
     scenario_profile_frame *samples = NULL;
     scenario_profile_allocations allocations = { 0 };
-    uint64_t behavior_work[sizeof PROFILE_BEHAVIOR_WORK / sizeof *PROFILE_BEHAVIOR_WORK] = { 0 };
-    uint64_t sampled_updates = 0;
-    int workers_max = 0;
-    bool rows_truncated = false;
     if (status == CHIBI_AUTOMATION_OK) {
         char launch_error[256] = { 0 };
         int launch = context.scene_target ? game_prototype_preview_launch_scene(
@@ -7567,7 +7444,11 @@ static int profile_scenario(
     }
     if (status == CHIBI_AUTOMATION_OK) {
         engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), behavior_details);
-        game_physics_set_profiling(game_prototype_preview_live(context.preview)->physics, true);
+        game_source_profile_enable(game_prototype_preview_sources(context.preview), behavior_details);
+        game_physics_set_profiling(
+            game_prototype_preview_live(context.preview)->runtime->physics,
+            true
+        );
     }
     if (status == CHIBI_AUTOMATION_OK &&
         game_prototype_preview_tick(context.preview, 0) != 0) {
@@ -7587,6 +7468,9 @@ static int profile_scenario(
         previous_dropped = initial->dropped_seconds;
         xalloc_stats_get(&previous_allocations);
         for (uint64_t frame = 0; frame < total_frames; frame++) {
+            if (behavior_details && frame == warmup) {
+                game_source_profile_reset(game_prototype_preview_sources(context.preview));
+            }
             int step_status = CHIBI_AUTOMATION_OK;
             if (sampled_inputs) {
                 step_status = step_sequence(&context, &sequence, fixed_dt, error, sizeof error);
@@ -7615,7 +7499,7 @@ static int profile_scenario(
                 &samples,
                 sample,
                 game_physics_last_profile(
-                    game_prototype_preview_live(context.preview)->physics
+                    game_prototype_preview_live(context.preview)->runtime->physics
                 ),
                 previous_steps,
                 previous_commands,
@@ -7623,39 +7507,13 @@ static int profile_scenario(
                 previous_allocations,
                 &allocations
             );
-            if (sample->simulation_steps > previous_steps) {
-                game_behavior_update_stats work = game_behavior_last_update(
-                    game_prototype_preview_behaviors(context.preview)
-                );
-                int counts[] = { work.entries,       work.prepared,
-                                 work.native_loop,   work.system_loop,
-                                 work.scheduled,     work.parallel,
-                                 work.parallel_tasks };
-                for (int i = 0; i < (int)(sizeof counts / sizeof *counts); i++) {
-                    behavior_work[i] += (uint64_t)counts[i];
-                }
-                sampled_updates++;
-                if (work.workers > workers_max) {
-                    workers_max = work.workers;
-                }
-            }
             previous_steps = sample->simulation_steps;
             previous_commands = sample->command_apply_count;
             previous_dropped = sample->dropped_seconds;
             xalloc_stats_get(&previous_allocations);
-            const game_behavior_profile_frame *profile = behavior_details
-                                                           ? engine_behavior_profile(runtime)
-                                                           : NULL;
-            if (profile) {
-                for (int row = 0; row < profile->count; row++) {
-                    profile_add_row(&rows, &profile->rows[row], &rows_truncated);
-                }
-                profile_add_row(&rows, &profile->overflow, &rows_truncated);
-            }
         }
     }
     if (status != CHIBI_AUTOMATION_OK) {
-        afree(rows);
         afree(samples);
         free_sequence(&sequence);
         scenario_context_free(&context);
@@ -7688,43 +7546,20 @@ static int profile_scenario(
         game_prototype_preview_entity_count(context.preview)
     );
     behavior_execution_status execution = { .ready = true };
-    ecs_world *world = game_prototype_preview_world(context.preview);
-    game_behavior_world *behaviors = game_prototype_preview_behaviors(context.preview);
-    for (uint32_t slot = 1; slot <= ecs_world_high_water_mark(world); slot++) {
-        ecs_entity entity = { slot, ecs_world_generation(world, slot) };
-        if (!ecs_entity_is_alive(world, entity)) {
-            continue;
-        }
-        int count = game_behavior_attachment_count_for_entity(behaviors, entity);
-        for (int i = 0; i < count; i++) {
-            game_behavior_attachment_info info = { 0 };
-            if (!game_behavior_attachment_info_at(behaviors, entity, i, &info)) {
-                collect_behavior_execution(
-                    &execution,
-                    info.instance->asset,
-                    behavior_instance_backend(info.instance)
-                );
-            }
-        }
-    }
-    bool custom_systems = false;
-    for (int i = 0; i < acount(context.runtime_assets); i++) {
-        custom_systems |= context.runtime_assets[i].family->loader == ASSET_SYSTEM;
-    }
-    add_behavior_execution_status(result->doc, value, &execution, custom_systems);
+    int source_modules = collect_source_execution(
+        result->doc,
+        value,
+        game_prototype_preview_live(context.preview),
+        &execution
+    );
+    add_behavior_execution_status(result->doc, value, &execution, false);
+    game_source_registry *source_registry = game_prototype_preview_sources(
+        context.preview
+    );
+    add_source_profile(result->doc, value, source_registry, behavior_details, source_modules > 0);
+    game_source_profile_enable(source_registry, false);
     add_profile_timing(result->doc, value, &timing, samples);
     add_profile_allocations(result->doc, value, &allocations, timing.frames);
-    yyjson_mut_val *work = yyjson_mut_obj_add_obj(result->doc, value, "behavior_work");
-    yyjson_mut_obj_add_str(result->doc, work, "scope", "last fixed-step update per sampled frame");
-    yyjson_mut_obj_add_uint(result->doc, work, "sampled_updates", sampled_updates);
-    yyjson_mut_obj_add_int(result->doc, work, "workers_max", workers_max);
-    for (int i = 0;
-         i < (int)(sizeof PROFILE_BEHAVIOR_WORK / sizeof *PROFILE_BEHAVIOR_WORK);
-         i++) {
-        yyjson_mut_obj_add_uint(result->doc, work, PROFILE_BEHAVIOR_WORK[i], behavior_work[i]);
-    }
-    add_profile_rows(result->doc, value, rows, acount(rows), rows_truncated);
-    afree(rows);
     afree(samples);
     free_sequence(&sequence);
     scenario_context_free(&context);
@@ -8146,11 +7981,12 @@ static int apply_scenario_input(
             game_prototype_preview_entities(context->preview),
             target,
             request_string(action, "event"),
-            (flow_inputs){ 0 }
+            (execution_arguments){ 0 }
         );
     }
-    game_behavior_world *behaviors = game_prototype_preview_behaviors(context->preview);
-    flow_error flow = { 0 };
+    game_preview_runtime *behaviors = game_prototype_preview_live(context->preview)
+                                          ->runtime;
+    engine_input_failure flow = { 0 };
     if (input->events) {
         size_t count = yyjson_arr_size(input->events);
         for (size_t i = 0; i < count; i++) {
@@ -8170,22 +8006,23 @@ static int apply_scenario_input(
                     return CHIBI_AUTOMATION_INVALID_REQUEST;
                 }
             }
-            flow = (flow_error){ 0 };
-            if (game_behavior_dispatch(
-                    behaviors,
+            if (game_source_dispatch(
+                    behaviors->sources,
                     entity,
                     name,
-                    (flow_inputs){ .values = payload, .count = value_count },
-                    &flow
+                    payload,
+                    value_count,
+                    behaviors->now,
+                    behaviors->delta
                 ) < 0) {
-                snprintf(error, error_size, "%s", flow.message ? flow.message : "scenario event failed");
+                snprintf(error, error_size, "%s", game_source_error(behaviors->sources));
                 return CHIBI_AUTOMATION_EXECUTION_ERROR;
             }
         }
     }
 
     for (int i = 0; i < input->action_count; i++) {
-        flow = (flow_error){ 0 };
+        flow = (engine_input_failure){ 0 };
         if (game_prototype_preview_input(
                 context->preview,
                 input->actions[i].name,
@@ -8814,75 +8651,49 @@ static void add_snapshot_component(
 static void add_snapshot_behavior(
     yyjson_mut_doc *doc,
     yyjson_mut_val *array,
-    game_behavior_world *behaviors,
-    ecs_entity entity,
+    game_preview_runtime *runtime,
     int index
 )
 {
-    game_behavior_attachment_info info = { 0 };
-    if (game_behavior_attachment_info_at(behaviors, entity, index, &info) != 0) {
-        return;
-    }
+    game_source_attachment_info info = game_source_attachment_at(runtime->sources, index);
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
-    yyjson_mut_obj_add_strcpy(doc, object, "asset", info.asset_name ? info.asset_name : "");
+    yyjson_mut_obj_add_strcpy(doc, object, "asset", info.name);
     yyjson_mut_obj_add_uint(doc, object, "sequence", info.sequence);
     yyjson_mut_obj_add_str(
         doc,
         object,
         "backend",
-        behavior_backend_name(behavior_instance_backend(info.instance))
+        behavior_backend_name(execution_module_backend(info.module))
     );
-    yyjson_mut_obj_add_bool(doc, object, "debug_hold", info.debug_hold != 0);
-    node *tick_entry = NULL;
-    const behavior_function *
-        tick = behavior_program_batch_event(info.instance->asset->program, "Tick", &tick_entry);
-    yyjson_mut_obj_add_bool(doc, object, "tick_system_compiled", tick && behavior_function_system_entry(tick));
-    yyjson_mut_obj_add_bool(doc, object, "tick_parallel_safe", behavior_function_parallel(tick));
-    const compile_report *report = behavior_program_report(info.instance->asset->program);
-    yyjson_mut_val *performance = yyjson_mut_obj_add_arr(doc, object, "performance_diagnostics");
-    for (int i = 0; report && i < acount(report->items); i++) {
-        const compile_diagnostic *d = &report->items[i];
-        if (d->rule == CMPL_RULE_QUERY_FUSION ||
-            d->rule == CMPL_RULE_QUERY_SCAN || d->rule == CMPL_RULE_CONTAINER) {
-            add_diagnostic(doc, performance, info.instance->asset, d);
-        }
-    }
-    const behavior_instance_failure *failure = behavior_instance_last_failure(info.instance);
+    const execution_program_failure *failure = execution_program_error(info.program);
     if (failure) {
         yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "last_failure");
-        yyjson_mut_obj_add_int(doc, value, "code", failure->code);
-        yyjson_mut_obj_add_int(doc, value, "pin", failure->pin);
-        yyjson_mut_obj_add_uint(doc, value, "steps", failure->steps);
-        yyjson_mut_obj_add_uint(doc, value, "graph_id", failure->graph_id);
+        yyjson_mut_obj_add_int(doc, value, "code", failure->status);
+        yyjson_mut_obj_add_uint(doc, value, "function", failure->function_id);
         yyjson_mut_obj_add_uint(doc, value, "node_id", failure->node_id);
-        yyjson_mut_obj_add_uint(doc, value, "program_revision", failure->program_revision);
-        yyjson_mut_obj_add_str(
-            doc,
-            value,
-            "backend",
-            behavior_backend_name(failure->backend)
-        );
-        yyjson_mut_obj_add_strcpy(doc, value, "event", failure->event_name);
-        yyjson_mut_obj_add_strcpy(doc, value, "graph", failure->graph_name);
+        yyjson_mut_obj_add_int(doc, value, "start", failure->start);
+        yyjson_mut_obj_add_int(doc, value, "end", failure->end);
         yyjson_mut_obj_add_strcpy(doc, value, "message", failure->message);
     } else {
         yyjson_mut_obj_add_null(doc, object, "last_failure");
     }
-    game_behavior_entity_state state = { 0 };
-    if (game_behavior_entity_state_at(behaviors, entity, info.asset_name, &state) == 0) {
-        yyjson_mut_val *state_value = yyjson_mut_obj_add_obj(doc, object, "state");
-        yyjson_mut_obj_add_bool(doc, state_value, "active", state.active != 0);
-        yyjson_mut_obj_add_bool(doc, state_value, "suspended", state.suspended != 0);
-        yyjson_mut_obj_add_real(doc, state_value, "wake_time", state.wake_time);
-    }
+    yyjson_mut_val *state = yyjson_mut_obj_add_obj(doc, object, "state");
+    yyjson_mut_obj_add_bool(doc, state, "active", info.instance != NULL);
+    yyjson_mut_obj_add_bool(
+        doc,
+        state,
+        "suspended",
+        info.instance && execution_instance_pending(info.instance) > 0
+    );
+    yyjson_mut_obj_add_int(doc, state, "begin", info.begin);
 }
 
 /* What behaviors set on GameUi documents, as a presenter would show it: each
  * entity's selectors with the text, value, visibility and classes set under
  * them. */
-static void add_snapshot_ui(yyjson_mut_doc *doc, yyjson_mut_val *object, game_behavior_world *behaviors)
+static void add_snapshot_ui(yyjson_mut_doc *doc, yyjson_mut_val *object, game_preview_runtime *behaviors)
 {
-    game_ui *ui = game_behavior_ui(behaviors);
+    game_ui *ui = behaviors->ui;
     yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, object, "ui");
     for (int i = 0; i < game_ui_element_count(ui); i++) {
         const game_ui_element *e = game_ui_element_at(ui, i);
@@ -8917,7 +8728,7 @@ static yyjson_mut_val *add_snapshot_entity(
     yyjson_mut_val *array,
     ecs_world *world,
     ecs_entity entity,
-    game_behavior_world *behaviors,
+    game_preview_runtime *behaviors,
     const game_prototype_registry *registry,
     yyjson_val *field_selectors,
     uint64_t component_limit,
@@ -8964,17 +8775,20 @@ static yyjson_mut_val *add_snapshot_entity(
     }
     yyjson_mut_obj_add_bool(doc, object, "components_truncated", present_components > emitted_components);
 
-    int behavior_count = game_behavior_attachment_count_for_entity(behaviors, entity);
-    yyjson_mut_obj_add_int(doc, object, "behavior_count", behavior_count);
+    int behavior_count = 0, emitted_behaviors = 0;
     yyjson_mut_val *attachments = yyjson_mut_obj_add_arr(doc, object, "behaviors");
-    int emitted_behaviors = 0;
-    for (int i = 0; i < behavior_count; i++) {
-        if ((uint64_t)emitted_behaviors >= behavior_limit) {
-            break;
+    for (int i = 0; i < game_source_attachment_count(behaviors->sources); i++) {
+        game_source_attachment_info info = game_source_attachment_at(behaviors->sources, i);
+        if (ecs_entity_to_u64(info.entity) != ecs_entity_to_u64(entity)) {
+            continue;
         }
-        add_snapshot_behavior(doc, attachments, behaviors, entity, i);
-        emitted_behaviors++;
+        behavior_count++;
+        if ((uint64_t)emitted_behaviors < behavior_limit) {
+            add_snapshot_behavior(doc, attachments, behaviors, i);
+            emitted_behaviors++;
+        }
     }
+    yyjson_mut_obj_add_int(doc, object, "behavior_count", behavior_count);
     yyjson_mut_obj_add_bool(doc, object, "behaviors_truncated", behavior_count > emitted_behaviors);
     free(present);
     return object;
@@ -9059,7 +8873,8 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
         return -1;
     }
     ecs_world *world = game_prototype_preview_world(context.preview);
-    game_behavior_world *behaviors = game_prototype_preview_behaviors(context.preview);
+    game_preview_runtime *behaviors = game_prototype_preview_live(context.preview)
+                                          ->runtime;
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(
         result->doc,
@@ -9124,22 +8939,16 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
     }
     yyjson_mut_obj_add_bool(result->doc, value, "entities_truncated", live_entities > emitted_entities);
     add_snapshot_ui(result->doc, value, behaviors);
-    int log_count = game_behavior_log_count(behaviors);
+    int log_count = game_preview_runtime_log_count(behaviors);
     yyjson_mut_obj_add_int(result->doc, value, "log_count", log_count);
     yyjson_mut_val *logs = yyjson_mut_obj_add_arr(result->doc, value, "logs");
     int emitted_logs = 0;
     for (int i = 0; i < log_count && emitted_logs < RUNTIME_SNAPSHOT_MAX_LOGS; i++) {
-        game_behavior_log_info info = { 0 };
-        if (game_behavior_log_info_at(behaviors, i, &info) != 0) {
-            continue;
-        }
+        const game_preview_log *info = game_preview_runtime_log_at(behaviors, i);
         yyjson_mut_val *log = yyjson_mut_arr_add_obj(result->doc, logs);
-        yyjson_mut_obj_add_uint(result->doc, log, "entity", ecs_entity_to_u64(info.entity));
-        yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info.asset_name ? info.asset_name : "");
-        yyjson_mut_obj_add_strcpy(result->doc, log, "message", info.message);
-        if (info.failure) {
-            yyjson_mut_obj_add_bool(result->doc, log, "failure", true);
-        }
+        yyjson_mut_obj_add_uint(result->doc, log, "entity", info->owner);
+        yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info->program ? info->program : "");
+        yyjson_mut_obj_add_strcpy(result->doc, log, "message", info->text);
         emitted_logs++;
     }
     yyjson_mut_obj_add_bool(result->doc, value, "logs_truncated", log_count > emitted_logs);
@@ -9246,7 +9055,8 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     }
 
     ecs_world *world = game_prototype_preview_world(context.preview);
-    game_behavior_world *behaviors = game_prototype_preview_behaviors(context.preview);
+    game_preview_runtime *behaviors = game_prototype_preview_live(context.preview)
+                                          ->runtime;
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(
         result->doc,
@@ -9296,31 +9106,19 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     }
     yyjson_mut_obj_add_bool(result->doc, value, "entities_truncated", live_entities > emitted_entities);
     add_snapshot_ui(result->doc, value, behaviors);
-    int log_count = game_behavior_log_count(behaviors);
+    int log_count = game_preview_runtime_log_count(behaviors);
     yyjson_mut_obj_add_int(result->doc, value, "log_count", log_count);
     yyjson_mut_val *logs = yyjson_mut_obj_add_arr(result->doc, value, "logs");
     int emitted_logs = 0;
     for (int i = 0; i < log_count && emitted_logs < RUNTIME_SNAPSHOT_MAX_LOGS; i++) {
-        game_behavior_log_info info = { 0 };
-        if (game_behavior_log_info_at(behaviors, i, &info) != 0) {
-            continue;
-        }
+        const game_preview_log *info = game_preview_runtime_log_at(behaviors, i);
         yyjson_mut_val *log = yyjson_mut_arr_add_obj(result->doc, logs);
-        yyjson_mut_obj_add_uint(result->doc, log, "entity", ecs_entity_to_u64(info.entity));
-        yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info.asset_name ? info.asset_name : "");
-        yyjson_mut_obj_add_strcpy(result->doc, log, "message", info.message);
-        if (info.failure) {
-            yyjson_mut_obj_add_bool(result->doc, log, "failure", true);
-        }
-        if (info.origin) {
+        yyjson_mut_obj_add_uint(result->doc, log, "entity", info->owner);
+        yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info->program ? info->program : "");
+        yyjson_mut_obj_add_strcpy(result->doc, log, "message", info->text);
+        if (info->node) {
             yyjson_mut_val *origin = yyjson_mut_obj_add_obj(result->doc, log, "origin");
-            yyjson_mut_obj_add_uint(result->doc, origin, "id", info.origin->id);
-            yyjson_mut_obj_add_strcpy(
-                result->doc,
-                origin,
-                "name",
-                info.origin->desc && info.origin->desc->name ? info.origin->desc->name : ""
-            );
+            yyjson_mut_obj_add_uint(result->doc, origin, "id", info->node);
         }
         emitted_logs++;
     }
@@ -9715,7 +9513,7 @@ static void add_component_schema(
             yyjson_mut_obj_add_str(result->doc, entry, "description", field->description);
         }
     }
-    av_value *defaults_value = game_prototype_component_defaults_value(registry, component);
+    av_value *defaults_value = game_prototype_native_defaults_value(registry, component);
     char *defaults_json = defaults_value ? av_json_write(defaults_value) : NULL;
     av_value_free(defaults_value);
     if (!defaults_json) {
@@ -9862,8 +9660,8 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
     }
     if (registry_section(sections, "types")) {
         yyjson_mut_val *types = yyjson_mut_obj_add_arr(doc, value, "types");
-        for (int i = 0; i < registry_type_count(); i++) {
-            add_type(doc, types, registry_type(i));
+        for (int i = 0; i < type_catalog_count(); i++) {
+            add_type(doc, types, type_catalog_at(i));
         }
     }
     if (registry_section(sections, "services")) {
@@ -9893,18 +9691,16 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
     return 0;
 }
 
-/* Behavior graphs author component nodes, which lower to the generated nodes
- * System graphs use directly; Systems offer the nodes their compiler turns
- * into bytecode. No domain offers every domain's authoring nodes, and only
- * the Studio project, whose world runs them, offers Studio's editor nodes
- * (category Studio). */
+/* Behaviors and systems share the canonical capability vocabulary. Declarative
+ * shader, field and model authoring retains its own node metadata. Studio
+ * capabilities are offered only to the Studio project. */
 static bool domain_offers(const char *domain, const node_desc *node, bool studio)
 {
     if (!studio && studio_node_is(node)) {
         return false;
     }
     if (domain && !strcmp(domain, "system")) {
-        return game_system_node_supported(node);
+        domain = "behavior";
     }
     bool shader = node->category && !strncmp(node->category, "Shader", 6);
     bool field = node->category && !strcmp(node->category, "Procedural Field");
@@ -9940,7 +9736,7 @@ static bool defined_event(const project_events *events, const char *name)
             return true;
         }
     }
-    return graph_event_host_name(name);
+    return game_host_event_reserved(name);
 }
 
 /* The names of the ui documents whose events reach `behavior`: the GameUi
@@ -10122,7 +9918,7 @@ typedef struct
 {
     const node_desc *desc;
     const component_node_preset *preset;
-    const graph_host_event_desc *host;
+    const game_host_event_desc *host;
     const behavior_asset *definition;
     const ui_event *ui;
     const ui_data_binding *binding; /* a Set UI Data that sets it */
@@ -10559,8 +10355,8 @@ static void add_node_outline(
         }
     } else {
         yyjson_mut_val *events = yyjson_mut_obj_add_arr(doc, value, "events");
-        for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
-            yyjson_mut_arr_add_str(doc, events, GRAPH_HOST_EVENTS[i].name);
+        for (int i = 0; i < GAME_HOST_EVENT_COUNT; i++) {
+            yyjson_mut_arr_add_str(doc, events, GAME_HOST_EVENTS[i].name);
         }
         for (int i = 0; i < acount(project->definitions); i++) {
             yyjson_mut_arr_add_strcpy(doc, events, project->definitions[i]->name);
@@ -10603,8 +10399,8 @@ static node_match *node_candidates(
     for (int i = 0; i < acount(presets); i++) {
         apush(matches, ((node_match){ .desc = presets[i].desc, .preset = &presets[i] }));
     }
-    for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
-        apush(matches, ((node_match){ .desc = &NODE_Event, .host = &GRAPH_HOST_EVENTS[i] }));
+    for (int i = 0; i < GAME_HOST_EVENT_COUNT; i++) {
+        apush(matches, ((node_match){ .desc = &NODE_Event, .host = &GAME_HOST_EVENTS[i] }));
     }
     const node_desc *send = registry_node_by_name("Send Event");
     for (int i = 0; i < acount(project->definitions); i++) {
@@ -10679,8 +10475,8 @@ static bool wire_pin(const char *text, pin_spec *out)
             }
         }
     }
-    const type_desc *type = registry_type_by_name(base);
-    const enum_desc *enumeration = registry_enum_by_name(base);
+    const type_desc *type = type_catalog_find(base);
+    const enum_desc *enumeration = type_catalog_enum_find(base);
     out->type = type ? PIN_STRUCT : PIN_ENUM;
     out->type_name = type ? type->name : enumeration ? enumeration->name : NULL;
     return out->type_name != NULL;
@@ -10854,267 +10650,20 @@ static int handle_preview_field(const char *root, yyjson_val *request, response 
     }
     behavior_asset *asset = load_project_behavior(root, json);
     free(json);
-    behavior_asset **libraries = NULL;
     if (!asset) {
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "Invalid field asset");
         return -1;
     }
-    status = load_behavior_family_assets(root, family_by_kind("library"), &libraries, error, sizeof error);
-    behavior_asset *linked = status == CHIBI_AUTOMATION_OK
-                               ? behavior_asset_link_libraries(
-                                     asset,
-                                     (const behavior_asset *const *)libraries,
-                                     acount(libraries),
-                                     error,
-                                     sizeof error
-                                 )
-                               : NULL;
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
-    bool valid = linked &&
-                 automation_field_preview(linked, request, result->doc, value, error, sizeof error);
+    bool valid = automation_field_preview(asset, request, result->doc, value, error, sizeof error);
     behavior_asset_free(asset);
-    behavior_asset_free(linked);
-    free_behavior_assets(libraries);
     if (!valid) {
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
         return -1;
     }
 
     return 0;
-}
-
-static int handle_edit_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
-{
-    yyjson_val *create_value = yyjson_obj_get(request, "create");
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    const char *expected = request_string(request, "expected_hash");
-    bool create = create_value && yyjson_get_bool(create_value);
-    bool dry = dry_value && yyjson_get_bool(dry_value);
-    if ((create_value && !yyjson_is_bool(create_value)) ||
-        (dry_value && !yyjson_is_bool(dry_value)) || yyjson_obj_get(request, "layout") ||
-        (!create && (!expected || strlen(expected) != 16))) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run; placement is automatic");
-        return -1;
-    }
-    asset_ref ref = { 0 };
-    char error[256] = { 0 };
-    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
-        (ref.family->loader != ASSET_GRAPH && ref.family->loader != ASSET_SYSTEM)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error[0] ? error : "edit_graph requires a graph asset");
-        return -1;
-    }
-    char *source = NULL;
-    size_t bytes = 0;
-    uint64_t before = 0;
-    int status = CHIBI_AUTOMATION_OK;
-    if (!create) {
-        status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
-    } else if (verify_asset_directory(root, ref.family, error, sizeof error) < 0) {
-        status = CHIBI_AUTOMATION_INVALID_REQUEST;
-    } else {
-        char *path = asset_full_path(root, &ref);
-        struct stat info;
-        if (!lstat(path, &info)) {
-            status = CHIBI_AUTOMATION_CONFLICT;
-            snprintf(error, sizeof error, "asset already exists");
-        } else if (errno != ENOENT) {
-            status = CHIBI_AUTOMATION_IO_ERROR;
-            snprintf(error, sizeof error, "cannot inspect asset destination");
-        }
-        free(path);
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        return -1;
-    }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &ref, bytes, before);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    add_hash_named(result->doc, value, "before_hash", before);
-    char actual[17];
-    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
-    if (!create && strcmp(expected, actual)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
-        free(source);
-        return -1;
-    }
-    char *name = asset_name_from_filename(ref.filename);
-    char *edited = NULL;
-    behavior_asset **libraries = NULL;
-    bool shader = !strcmp(ref.family->kind, "material") ||
-                  !strcmp(ref.family->kind, "shape") ||
-                  !strcmp(ref.family->kind, "model") ||
-                  !strcmp(ref.family->kind, "shader-library");
-    status = load_behavior_family_assets(
-        root,
-        family_by_kind(shader ? "shader-library" : "library"),
-        &libraries,
-        error,
-        sizeof error
-    );
-    if (status == CHIBI_AUTOMATION_OK && !strcmp(ref.family->kind, "model")) {
-        behavior_asset **models = NULL;
-        status = load_model_catalog(root, &models, error, sizeof error);
-        for (int i = 0; i < acount(models); i++) {
-            apush(libraries, models[i]);
-        }
-        afree(models);
-    }
-    if (status == CHIBI_AUTOMATION_OK && !shader) {
-        behavior_asset **events = NULL;
-        status = load_behavior_family_assets(root, family_by_kind("event"), &events, error, sizeof error);
-        for (int i = 0; i < acount(events); i++) {
-            apush(libraries, events[i]);
-        }
-        afree(events);
-    }
-    if (status == CHIBI_AUTOMATION_OK) {
-        code_catalog *catalog = code_catalog_load_project(root);
-        char *path = asset_full_path(root, &ref);
-        code_source *original = source
-                                  ? code_source_parse_context(source, NULL, code_catalog_context(catalog))
-                                  : NULL;
-        if (original) {
-            code_source_metadata_load(original, path);
-        }
-        char *metadata = original ? code_source_metadata_export_source(original) : NULL;
-        code_source_free(original);
-        free(path);
-        code_catalog_free(catalog);
-        status = automation_graph_edit(
-            source,
-            metadata,
-            ref.family->kind,
-            name,
-            (const behavior_asset *const *)libraries,
-            acount(libraries),
-            request,
-            result->doc,
-            value,
-            &edited,
-            error,
-            sizeof error
-        );
-        free(metadata);
-    }
-    if (status == CHIBI_AUTOMATION_OK && ref.family->loader == ASSET_SYSTEM) {
-        yyjson_doc *original = source ? parse_project_asset_text(root, source) : NULL;
-        yyjson_val *query = yyjson_obj_get(request, "query");
-        if (!query && original) {
-            query = yyjson_obj_get(yyjson_doc_get_root(original), "query");
-        }
-        game_system_document *document = load_project_system(
-            root,
-            edited,
-            automation_query_component,
-            NULL,
-            error,
-            sizeof error
-        );
-        av_doc *query_values = av_doc_new();
-        av_value *query_value = query ? av_from_json(query_values, query) : NULL;
-        ecs_query_expr *expression = query && !yyjson_is_null(query)
-                                       ? game_query_load_value(
-                                             query_value,
-                                             automation_query_component,
-                                             NULL,
-                                             error,
-                                             sizeof error
-                                         )
-                                       : NULL;
-        if (!document || (query && !yyjson_is_null(query) && !expression)) {
-            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-        }
-        if (status == CHIBI_AUTOMATION_OK) {
-            game_system_document_set_query(document, expression);
-            compile_report report;
-            compile_report_init(&report);
-            if (compile_project_system(root, game_system_document_behavior_asset(document), &report)) {
-                snprintf(
-                    error,
-                    sizeof error,
-                    "%s",
-                    compile_report_first_error(&report)->message
-                );
-                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-            }
-            compile_report_free(&report);
-        }
-        if (status == CHIBI_AUTOMATION_OK) {
-            char *saved = game_system_document_save(
-                document,
-                automation_query_component,
-                automation_query_component_name,
-                NULL
-            );
-            free(edited);
-            edited = saved;
-        }
-        ecs_query_expr_free(expression);
-        av_doc_free(query_values);
-        game_system_document_free(document);
-        yyjson_doc_free(original);
-    }
-    free_behavior_assets(libraries);
-    free(name);
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        free(edited);
-        return -1;
-    }
-    char *metadata = NULL;
-    if (to_disk_text(root, &ref, &edited, source, &metadata, error, sizeof error)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
-        free(source);
-        free(metadata);
-        return -1;
-    }
-    size_t after_bytes = strlen(edited);
-    uint64_t after = automation_content_hash(edited, after_bytes);
-    bool changed = !source || strcmp(source, edited) ||
-                   code_metadata_changed(root, &ref, source, metadata);
-    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-    add_hash_named(result->doc, value, "after_hash", after);
-    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
-    if (!dry && changed) {
-        status = automation_asset_publish(
-            root,
-            ref.family->folder,
-            ref.filename,
-            edited,
-            expected,
-            create,
-            error,
-            sizeof error
-        );
-        if (status == CHIBI_AUTOMATION_OK) {
-            char *path = asset_full_path(root, &ref);
-            if (!save_code_metadata(root, path, edited, metadata)) {
-                status = CHIBI_AUTOMATION_IO_ERROR;
-                snprintf(error, sizeof error, "could not save optional code presentation metadata");
-            }
-            free(path);
-        }
-        if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
-        }
-    }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
-        yyjson_mut_obj_remove_key(value, "published");
-        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
-        yyjson_mut_obj_remove_key(value, "hash");
-        add_hash(result->doc, value, after);
-        yyjson_mut_obj_remove_key(value, "bytes");
-        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
-    }
-    free(metadata);
-    free(edited);
-    free(source);
-    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
 }
 
 static int validate_shader_binding(const char *root, const GameShader *binding, char *error, size_t error_size)
@@ -11242,14 +10791,12 @@ static int validate_prototype_behaviors(const char *root, const char *json, char
             free(behavior_json);
             return status;
         }
-        behavior_asset *behavior = load_project_behavior(root, behavior_json);
         free(behavior_json);
-        if (!behavior) {
+        status = validate_scene_behavior(root, yyjson_get_str(name), error, error_size);
+        if (status != CHIBI_AUTOMATION_OK) {
             yyjson_doc_free(document);
-            snprintf(error, error_size, "%s", graph_last_error());
-            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+            return status;
         }
-        behavior_asset_free(behavior);
     }
     yyjson_doc_free(document);
     return CHIBI_AUTOMATION_OK;
@@ -11257,26 +10804,41 @@ static int validate_prototype_behaviors(const char *root, const char *json, char
 
 static int validate_scene_behavior(const char *root, const char *name, char *error, size_t error_size)
 {
-    asset_ref ref = { 0 };
-    char *json = NULL;
-    int status = load_named_asset(root, family_by_kind("behavior"), name, &ref, &json, NULL, NULL, error, error_size);
-    if (status != CHIBI_AUTOMATION_OK) {
-        free(json);
-        return status;
-    }
-    behavior_asset *behavior = load_project_behavior(root, json);
-    free(json);
-    if (!behavior) {
-        snprintf(error, error_size, "%s", graph_last_error());
+    authoring_language_catalog *native = source_native_catalog(root, error, error_size);
+    if (!native) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    if (behavior->owner_type_name && strcmp(behavior->owner_type_name, "ecs.entity")) {
-        snprintf(error, error_size, "behavior %s cannot attach to a scene entity", name);
-        behavior_asset_free(behavior);
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    size_t length = strlen(root) + sizeof "/content";
+    char *content = xmalloc(length);
+    snprintf(content, length, "%s/content", root);
+    script_lower_bindings bindings = authoring_language_bindings(native);
+    authoring_sources *sources = authoring_sources_prepare(
+        content,
+        authoring_language_catalog_view(native),
+        &bindings,
+        behavior_default_backend()
+    );
+    free(content);
+    bool found = false;
+    bool valid = authoring_sources_valid(sources);
+    for (int i = 0; i < authoring_sources_count(sources); i++) {
+        const authoring_source *source = authoring_sources_at(sources, i);
+        if (source->analysis && source->analysis->name &&
+            !strcmp(source->analysis->name, name)) {
+            found = source->analysis->kind == SCRIPT_PROGRAM_BEHAVIOR;
+            if (!source->valid && source->diagnostic_count) {
+                set_error(error, error_size, source->diagnostics[0].message);
+            }
+        }
     }
-    behavior_asset_free(behavior);
-    return CHIBI_AUTOMATION_OK;
+    if (!found) {
+        snprintf(error, error_size, "Unknown behavior source %s", name);
+    } else if (!valid && !error[0]) {
+        set_error(error, error_size, "Project source preparation failed");
+    }
+    authoring_sources_free(sources);
+    authoring_language_catalog_free(native);
+    return found && valid ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
 
 static int validate_scene_dependencies(const char *root, const char *json, char *error, size_t error_size)
@@ -11369,1078 +10931,6 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
     return status;
 }
 
-/* buildPrototype's source_instance (automation/prototype_instance.h): the
- * prototype text the edit starts from in `start`. */
-static int start_from_instance(
-    const char *root,
-    yyjson_val *instance,
-    const asset_ref *ref,
-    const char *source,
-    response *result,
-    yyjson_mut_val *value,
-    char **start,
-    char *error,
-    size_t size
-)
-{
-    const char *scene = request_string(instance, "scene");
-    const char *entity = request_string(instance, "entity");
-    yyjson_val *fields = yyjson_obj_get(instance, "fields");
-    bool create = !source;
-    if (!scene || !entity || (fields && (!yyjson_is_arr(fields) || create))) {
-        return set_error(error, size, "source_instance needs scene and entity names; fields apply to the prototype it is an instance of"),
-               CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    asset_ref scene_ref, prototype_ref;
-    char *scene_text = NULL, *prototype_text = NULL, prototype[256];
-    int status = load_named_asset(
-        root,
-        family_by_kind("scene"),
-        scene,
-        &scene_ref,
-        &scene_text,
-        NULL,
-        NULL,
-        error,
-        size
-    );
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = automation_instance_prototype(scene_text, entity, prototype, sizeof prototype, error, size);
-    }
-    char *name = asset_name_from_filename(ref->filename);
-    if (status == CHIBI_AUTOMATION_OK && create) {
-        status = load_named_asset(
-            root,
-            family_by_kind("prototype"),
-            prototype,
-            &prototype_ref,
-            &prototype_text,
-            NULL,
-            NULL,
-            error,
-            size
-        );
-    } else if (status == CHIBI_AUTOMATION_OK && strcmp(prototype, name)) {
-        snprintf(error, size, "%s is an instance of %s", entity, prototype);
-        status = CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    if (status == CHIBI_AUTOMATION_OK) {
-        game_prototype_registry registry = {
-            .components = GAME_REGISTRY_COMPONENTS,
-            .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-        };
-        automation_instance from = { scene_text,
-                                     entity,
-                                     create ? prototype_text : source,
-                                     create ? name : NULL,
-                                     fields };
-        status = automation_prototype_from_instance(&from, &registry, result->doc, value, start, error, size);
-    }
-    free(name);
-    free(prototype_text);
-    free(scene_text);
-    return status;
-}
-
-static int handle_edit_prototype(const char *root, yyjson_val *request, response *result, int *exit_code)
-{
-    yyjson_val *create_value = yyjson_obj_get(request, "create");
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    const char *expected = request_string(request, "expected_hash");
-    bool create = create_value && yyjson_get_bool(create_value);
-    bool dry = dry_value && yyjson_get_bool(dry_value);
-    if ((create_value && !yyjson_is_bool(create_value)) ||
-        (dry_value && !yyjson_is_bool(dry_value)) ||
-        (!create && (!expected || strlen(expected) != 16))) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run");
-        return -1;
-    }
-    asset_ref ref = { 0 };
-    char error[256] = { 0 };
-    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
-        ref.family->loader != ASSET_PROTOTYPE) {
-        response_error(
-            result,
-            exit_code,
-            CHIBI_AUTOMATION_INVALID_REQUEST,
-            error[0] ? error : "edit_prototype requires a prototype asset"
-        );
-        return -1;
-    }
-    char *source = NULL;
-    size_t bytes = 0;
-    uint64_t before = 0;
-    int status = CHIBI_AUTOMATION_OK;
-    if (!create) {
-        status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
-    } else if (verify_asset_directory(root, ref.family, error, sizeof error) < 0) {
-        status = CHIBI_AUTOMATION_INVALID_REQUEST;
-    } else {
-        char *path = asset_full_path(root, &ref);
-        struct stat info;
-        if (!lstat(path, &info)) {
-            status = CHIBI_AUTOMATION_CONFLICT;
-            snprintf(error, sizeof error, "asset already exists");
-        } else if (errno != ENOENT) {
-            status = CHIBI_AUTOMATION_IO_ERROR;
-            snprintf(error, sizeof error, "cannot inspect asset destination");
-        }
-        free(path);
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        return -1;
-    }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &ref, bytes, before);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    add_hash_named(result->doc, value, "before_hash", before);
-    char actual[17];
-    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
-    if (!create && strcmp(expected, actual)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
-        free(source);
-        return -1;
-    }
-    char *start = NULL;
-    yyjson_val *instance = yyjson_obj_get(request, "source_instance");
-    if (instance) {
-        status = start_from_instance(root, instance, &ref, source, result, value, &start, error, sizeof error);
-        if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
-            free(source);
-            return -1;
-        }
-    }
-    if (create) {
-        char *name = asset_name_from_filename(ref.filename);
-        source = new_asset_text(NEW_ASSET_PROTOTYPE, name);
-        free(name);
-    }
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
-    char *edited = NULL;
-    status = automation_prototype_edit(
-        start ? start : source,
-        &registry,
-        request,
-        result->doc,
-        value,
-        &edited,
-        error,
-        sizeof error
-    );
-    free(start);
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        free(edited);
-        return -1;
-    }
-    status = validate_prototype_behaviors(root, edited, error, sizeof error);
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = validate_prototype_shader(root, edited, error, sizeof error);
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        free(edited);
-        return -1;
-    }
-    if (to_disk_text(root, &ref, &edited, source, NULL, error, sizeof error)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
-        free(source);
-        return -1;
-    }
-    size_t after_bytes = strlen(edited);
-    uint64_t after = automation_content_hash(edited, after_bytes);
-    bool changed = !source || strcmp(source, edited);
-    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-    add_hash_named(result->doc, value, "after_hash", after);
-    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
-    if (!dry && changed) {
-        status = automation_asset_publish(
-            root,
-            ref.family->folder,
-            ref.filename,
-            edited,
-            expected,
-            create,
-            error,
-            sizeof error
-        );
-        if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
-        }
-    }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
-        yyjson_mut_obj_remove_key(value, "published");
-        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
-        yyjson_mut_obj_remove_key(value, "hash");
-        add_hash(result->doc, value, after);
-        yyjson_mut_obj_remove_key(value, "bytes");
-        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
-    }
-    free(edited);
-    free(source);
-    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
-}
-
-/* Resolve creation defaults before the IO-free scene edit transaction. An
- * explicit empty list still opts out of the prototype's attached behaviors. */
-static char *scene_request_defaults(const char *root, yyjson_val *request, char *error, size_t size)
-{
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *copy = yyjson_val_mut_copy(doc, request);
-    yyjson_mut_doc_set_root(doc, copy);
-    yyjson_mut_val *operations = yyjson_mut_obj_get(copy, "operations");
-    size_t index, count;
-    yyjson_mut_val *operation;
-    bool valid = true;
-    yyjson_mut_arr_foreach(operations, index, count, operation)
-    {
-        const char *op = yyjson_mut_get_str(yyjson_mut_obj_get(operation, "op"));
-        if (!op || strcmp(op, "add_entity") ||
-            yyjson_mut_obj_get(operation, "behaviors")) {
-            continue;
-        }
-        const char *name = yyjson_mut_get_str(yyjson_mut_obj_get(operation, "prototype"));
-        if (!name) {
-            continue;
-        }
-        asset_ref ref = { 0 };
-        char *json = NULL;
-        if (load_named_asset(root, family_by_kind("prototype"), name, &ref, &json, NULL, NULL, error, size) !=
-            CHIBI_AUTOMATION_OK) {
-            valid = false;
-            break;
-        }
-        yyjson_doc *prototype = parse_project_asset_text(root, json);
-        yyjson_val *behaviors = yyjson_obj_get(yyjson_doc_get_root(prototype), "behaviors");
-        yyjson_mut_obj_add_val(
-            doc,
-            operation,
-            "behaviors",
-            behaviors ? yyjson_val_mut_copy(doc, behaviors) : yyjson_mut_arr(doc)
-        );
-        yyjson_doc_free(prototype);
-        free(json);
-    }
-    char *json = valid ? yyjson_mut_write(doc, 0, NULL) : NULL;
-    yyjson_mut_doc_free(doc);
-    return json;
-}
-
-static void warn_studio_scene_rename(const char *root, yyjson_val *request, response *result, yyjson_mut_val *value)
-{
-    yyjson_arr_iter iterator = yyjson_arr_iter_with(yyjson_obj_get(request, "operations"));
-    yyjson_val *operation;
-    bool rename = false;
-    while ((operation = yyjson_arr_iter_next(&iterator))) {
-        const char *op = request_string(operation, "op");
-        if (op && !strcmp(op, "rename_entity")) {
-            rename = true;
-            break;
-        }
-    }
-    if (!rename) {
-        return;
-    }
-    char *name = manifest_string(root, "name");
-    if (name && !strcmp(name, "Studio")) {
-        yyjson_mut_val *warnings = yyjson_mut_obj_add_arr(result->doc, value, "warnings");
-        yyjson_mut_arr_add_strcpy(result->doc, warnings, "Studio looks up chrome objects such as TopBar, StatusBar and AreaHeader by name in C. Renaming them breaks the editor chrome; these lookups are not rewritten.");
-    }
-    free(name);
-}
-
-static int handle_edit_scene(const char *root, yyjson_val *request, response *result, int *exit_code)
-{
-    yyjson_val *create_value = yyjson_obj_get(request, "create");
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    const char *expected = request_string(request, "expected_hash");
-    bool create = create_value && yyjson_get_bool(create_value);
-    bool dry = dry_value && yyjson_get_bool(dry_value);
-    if ((create_value && !yyjson_is_bool(create_value)) ||
-        (dry_value && !yyjson_is_bool(dry_value)) ||
-        (!create && (!expected || strlen(expected) != 16))) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "editing requires expected_hash and boolean create/dry_run");
-        return -1;
-    }
-    asset_ref ref = { 0 };
-    char error[256] = { 0 };
-    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
-        ref.family->loader != ASSET_SCENE) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error[0] ? error : "edit_scene requires a scene asset");
-        return -1;
-    }
-    char *source = NULL;
-    size_t bytes = 0;
-    uint64_t before = 0;
-    int status = CHIBI_AUTOMATION_OK;
-    if (!create) {
-        status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
-    } else if (verify_asset_directory(root, ref.family, error, sizeof error) < 0) {
-        status = CHIBI_AUTOMATION_INVALID_REQUEST;
-    } else {
-        char *path = asset_full_path(root, &ref);
-        struct stat info;
-        if (!lstat(path, &info)) {
-            status = CHIBI_AUTOMATION_CONFLICT;
-            snprintf(error, sizeof error, "asset already exists");
-        } else if (errno != ENOENT) {
-            status = CHIBI_AUTOMATION_IO_ERROR;
-            snprintf(error, sizeof error, "cannot inspect asset destination");
-        }
-        free(path);
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        return -1;
-    }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &ref, bytes, before);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    add_hash_named(result->doc, value, "before_hash", before);
-    char actual[17];
-    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
-    if (!create && strcmp(expected, actual)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
-        free(source);
-        return -1;
-    }
-    if (create) {
-        char *name = asset_name_from_filename(ref.filename);
-        source = new_asset_text(NEW_ASSET_SCENE, name);
-        free(name);
-    }
-    char *edited = NULL;
-    char *defaulted = scene_request_defaults(root, request, error, sizeof error);
-    yyjson_doc *defaults = defaulted ? yyjson_read(defaulted, strlen(defaulted), 0)
-                                     : NULL;
-    status = defaults ? automation_scene_edit(
-                            source,
-                            yyjson_doc_get_root(defaults),
-                            result->doc,
-                            value,
-                            &edited,
-                            error,
-                            sizeof error
-                        )
-                      : CHIBI_AUTOMATION_VALIDATION_ERROR;
-    yyjson_doc_free(defaults);
-    free(defaulted);
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = validate_scene_dependencies(root, edited, error, sizeof error);
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        free(edited);
-        return -1;
-    }
-    if (to_disk_text(root, &ref, &edited, source, NULL, error, sizeof error)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
-        free(source);
-        return -1;
-    }
-    size_t after_bytes = strlen(edited);
-    uint64_t after = automation_content_hash(edited, after_bytes);
-    bool changed = !source || strcmp(source, edited);
-    warn_studio_scene_rename(root, request, result, value);
-    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-    add_hash_named(result->doc, value, "after_hash", after);
-    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
-    if (!dry && changed) {
-        status = automation_asset_publish(
-            root,
-            ref.family->folder,
-            ref.filename,
-            edited,
-            expected,
-            create,
-            error,
-            sizeof error
-        );
-        if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
-        }
-    }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
-        yyjson_mut_obj_remove_key(value, "published");
-        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
-        yyjson_mut_obj_remove_key(value, "hash");
-        add_hash(result->doc, value, after);
-        yyjson_mut_obj_remove_key(value, "bytes");
-        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
-    }
-    free(edited);
-    free(source);
-    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
-}
-
-static int handle_optimize_graph(const char *root, yyjson_val *request, response *result, int *exit_code)
-{
-    yyjson_val *create_value = yyjson_obj_get(request, "create");
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    const char *expected = request_string(request, "expected_hash");
-    bool dry = !dry_value || yyjson_get_bool(dry_value);
-    if ((create_value && !yyjson_is_bool(create_value)) ||
-        (create_value && yyjson_get_bool(create_value)) ||
-        (dry_value && !yyjson_is_bool(dry_value)) ||
-        (expected && strlen(expected) != 16) || (!dry && !expected)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "optimize_graph requires a graph asset, expected_hash unless dry_run, and boolean dry_run");
-        return -1;
-    }
-    asset_ref ref = { 0 };
-    char error[256] = { 0 };
-    if (resolve_asset_ref(request, &ref, error, sizeof error) ||
-        ref.family->loader != ASSET_GRAPH) {
-        response_error(
-            result,
-            exit_code,
-            CHIBI_AUTOMATION_INVALID_REQUEST,
-            error[0] ? error : "optimize_graph requires a graph asset"
-        );
-        return -1;
-    }
-    char *source = NULL;
-    size_t bytes = 0;
-    uint64_t before = 0;
-    int status = load_asset(root, request, &ref, &source, &bytes, &before, error, sizeof error);
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        return -1;
-    }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    add_asset_identity(result->doc, value, &ref, bytes, before);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    add_hash_named(result->doc, value, "before_hash", before);
-    char actual[17];
-    snprintf(actual, sizeof actual, "%016llx", (unsigned long long)before);
-    if (expected && strcmp(expected, actual)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, "asset changed; inspect its current hash and retry");
-        free(source);
-        return -1;
-    }
-    char *edited = NULL;
-    code_catalog *source_catalog = code_catalog_load_project(root);
-    code_source *source_code = code_source_is_structured(source)
-                                 ? code_source_parse_context(source, NULL, code_catalog_context(source_catalog))
-                                 : NULL;
-    char *native_text = NULL;
-    if (source_code) {
-        char *path = asset_full_path(root, &ref);
-        code_source_metadata_load(source_code, path);
-        free(path);
-        if (source_code->document) {
-            native_text = av_json_write(av_doc_root(source_code->document));
-        }
-    }
-    status = automation_graph_optimize_context(
-        native_text ? native_text : source,
-        code_catalog_context(source_catalog),
-        request,
-        result->doc,
-        value,
-        &edited,
-        error,
-        sizeof error
-    );
-    free(native_text);
-    code_source_free(source_code);
-    code_catalog_free(source_catalog);
-    if (status == CHIBI_AUTOMATION_OK) {
-        behavior_asset *asset = load_project_behavior(root, edited);
-        if (!asset) {
-            snprintf(error, sizeof error, "optimized graph asset could not be loaded: %s", graph_last_error());
-            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-        } else {
-            compile_report report;
-            compile_report_init(&report);
-            behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
-            if (linked) {
-                compile_project_graph(root, linked, &report);
-                inspect_add_validation(result->doc, value, linked, &report);
-            }
-            if (!linked || report.error_count) {
-                snprintf(error, sizeof error, "optimized graph asset failed validation");
-                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-            }
-            compile_report_free(&report);
-            behavior_asset_free(linked);
-            behavior_asset_free(asset);
-        }
-    }
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        free(source);
-        free(edited);
-        return -1;
-    }
-    char *metadata = NULL;
-    if (to_disk_text(root, &ref, &edited, source, &metadata, error, sizeof error)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
-        free(source);
-        free(metadata);
-        return -1;
-    }
-    size_t after_bytes = strlen(edited);
-    uint64_t after = automation_content_hash(edited, after_bytes);
-    bool changed = strcmp(source, edited) != 0 ||
-                   code_metadata_changed(root, &ref, source, metadata);
-    yyjson_mut_obj_add_bool(result->doc, value, "changed", changed);
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-    add_hash_named(result->doc, value, "after_hash", after);
-    yyjson_mut_obj_add_uint(result->doc, value, "after_bytes", after_bytes);
-    if (!dry && changed) {
-        status = automation_asset_publish(
-            root,
-            ref.family->folder,
-            ref.filename,
-            edited,
-            expected,
-            false,
-            error,
-            sizeof error
-        );
-        if (status == CHIBI_AUTOMATION_OK) {
-            char *path = asset_full_path(root, &ref);
-            if (!save_code_metadata(root, path, edited, metadata)) {
-                status = CHIBI_AUTOMATION_IO_ERROR;
-                snprintf(error, sizeof error, "could not save optional code presentation metadata");
-            }
-            free(path);
-        }
-        if (status != CHIBI_AUTOMATION_OK) {
-            response_error(result, exit_code, status, error);
-        }
-    }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
-        yyjson_mut_obj_remove_key(value, "published");
-        yyjson_mut_obj_add_bool(result->doc, value, "published", true);
-        yyjson_mut_obj_remove_key(value, "hash");
-        add_hash(result->doc, value, after);
-        yyjson_mut_obj_remove_key(value, "bytes");
-        yyjson_mut_obj_add_uint(result->doc, value, "bytes", after_bytes);
-    }
-    free(metadata);
-    free(edited);
-    free(source);
-    return status == CHIBI_AUTOMATION_OK ? 0 : -1;
-}
-
-/* ---------- Rename and safe delete ---------- */
-
-/* The project as refactor.h plans on it: the catalog's index, the names
-   navigation gives its assets, and each indexed asset's file text and hash. */
-typedef struct
-{
-    catalog_asset *assets;
-    navigation nav;
-    int count;    /* the index's assets */
-    char **texts; /* parallel to the index */
-    char **metadata;
-    uint64_t *hashes, *metadata_hashes;
-    int *catalog; /* the catalog asset at each index position, or -1 */
-} refactor_view;
-
-/* Publishing rebuilds the catalog, which frees the index and its assets. */
-static void refactor_view_free(refactor_view *view)
-{
-    for (int i = 0; i < view->count; i++) {
-        free(view->texts[i]);
-        free(view->metadata[i]);
-    }
-    free(view->texts);
-    free(view->metadata);
-    free(view->metadata_hashes);
-    free(view->hashes);
-    free(view->catalog);
-    free((navigation_asset *)view->nav.assets);
-}
-
-static int refactor_view_load(const char *root, refactor_view *view, char *error, size_t size)
-{
-    uint64_t revision, content_hash;
-    *view = (refactor_view){ 0 };
-    if (catalog_snapshot_get(root, &view->assets, &revision, &content_hash, error, size)) {
-        return CHIBI_AUTOMATION_IO_ERROR;
-    }
-    const reference_index *index = CATALOG_SNAPSHOT.references;
-    view->nav = (navigation){ index, navigation_assets(view->assets, index) };
-    view->count = reference_index_asset_count(index);
-    view->catalog = catalog_positions(view->assets, index);
-    view->texts = xcalloc((size_t)view->count + 1, sizeof *view->texts);
-    view->hashes = xcalloc((size_t)view->count + 1, sizeof *view->hashes);
-    view->metadata = xcalloc((size_t)view->count + 1, sizeof *view->metadata);
-    view->metadata_hashes = xcalloc((size_t)view->count + 1, sizeof *view->metadata_hashes);
-    for (int i = 0; i < view->count; i++) {
-        if (view->catalog[i] < 0) {
-            continue;
-        }
-        char *path = catalog_path(root, &view->assets[view->catalog[i]]);
-        view->texts[i] = read_file(path, NULL, &view->hashes[i], error, size);
-        if (!strcmp(view->assets[view->catalog[i]].asset.family->extension, CODE_ASSET_EXTENSION)) {
-            size_t metadata_size = strlen(path) + sizeof ".meta";
-            char *metadata_path = xmalloc(metadata_size);
-            snprintf(metadata_path, metadata_size, "%s.meta", path);
-            char ignored[160] = "";
-            view->metadata[i] = read_file(metadata_path, NULL, &view->metadata_hashes[i], ignored, sizeof ignored);
-            free(metadata_path);
-        }
-        free(path);
-        if (!view->texts[i]) {
-            return CHIBI_AUTOMATION_IO_ERROR;
-        }
-    }
-    return CHIBI_AUTOMATION_OK;
-}
-
-/* References elsewhere, each placed as find_references places a use. */
-static void add_refactor_uses(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *parent,
-    const char *key,
-    const refactor_view *view,
-    const reference *const *uses
-)
-{
-    yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, parent, key);
-    for (int i = 0; i < acount(uses); i++) {
-        automation_add_use(&view->nav, doc, yyjson_mut_arr_add_obj(doc, array), uses[i], true);
-    }
-}
-
-static void add_refactor_asset(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *object,
-    const refactor_view *view,
-    int position
-)
-{
-    const navigation_asset *asset = &view->nav.assets[position];
-    yyjson_mut_obj_add_strcpy(doc, object, "kind", asset->kind);
-    yyjson_mut_obj_add_strcpy(doc, object, "name", asset->name);
-    yyjson_mut_obj_add_strcpy(doc, object, "path", asset->path);
-}
-
-static void add_refactor_edit(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *item,
-    yyjson_mut_val *hashes,
-    const refactor_view *view,
-    const refactor_edit *edit
-)
-{
-    const catalog_asset *asset = &view->assets[view->catalog[edit->asset]];
-    char hash[17];
-    hash_text(view->hashes[edit->asset], hash);
-    add_refactor_asset(doc, item, view, edit->asset);
-    yyjson_mut_obj_add_strcpy(doc, item, "hash", hash);
-    yyjson_mut_obj_add(
-        hashes,
-        yyjson_mut_strcpy(doc, asset->asset.relative),
-        yyjson_mut_strcpy(doc, hash)
-    );
-    if (edit->metadata) {
-        yyjson_mut_obj_add_strcpy(doc, item, "metadata", edit->metadata);
-    }
-    if (view->metadata[edit->asset]) {
-        char path[768], metadata_hash[17];
-        snprintf(path, sizeof path, "%s.meta", asset->asset.relative);
-        hash_text(view->metadata_hashes[edit->asset], metadata_hash);
-        yyjson_mut_obj_add(hashes, yyjson_mut_strcpy(doc, path), yyjson_mut_strcpy(doc, metadata_hash));
-    }
-    if (edit->name) {
-        char path[512];
-        snprintf(
-            path,
-            sizeof path,
-            "content/%s/%s%s",
-            asset->asset.family->folder,
-            edit->name,
-            asset->asset.family->extension
-        );
-        yyjson_mut_obj_add_strcpy(doc, item, "new_name", edit->name);
-        yyjson_mut_obj_add_strcpy(doc, item, "new_path", path);
-    }
-    if (edit->text) {
-        add_hash_named(doc, item, "after_hash", automation_content_hash(edit->text, strlen(edit->text)));
-    } else {
-        yyjson_mut_obj_add_bool(doc, item, "deleted", true);
-    }
-    yyjson_mut_val *changes = yyjson_mut_obj_add_arr(doc, item, "changes");
-    for (int i = 0; i < acount(edit->references); i++) {
-        automation_add_use(&view->nav, doc, yyjson_mut_arr_add_obj(doc, changes), edit->references[i], false);
-    }
-}
-
-/* Every asset the plan changes, with its changes and hashes. */
-static void add_refactor_plan(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *value,
-    const refactor_view *view,
-    const refactor_plan *plan
-)
-{
-    yyjson_mut_val *assets = yyjson_mut_obj_add_arr(doc, value, "assets");
-    yyjson_mut_val *hashes = yyjson_mut_obj_add_obj(doc, value, "expected_hashes");
-    for (int i = 0; i < acount(plan->edits); i++) {
-        add_refactor_edit(doc, yyjson_mut_arr_add_obj(doc, assets), hashes, view, &plan->edits[i]);
-    }
-    yyjson_mut_val *mentions = yyjson_mut_obj_add_arr(doc, value, "mentions");
-    for (int i = 0; i < acount(plan->mentions); i++) {
-        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, mentions);
-        add_refactor_asset(doc, item, view, plan->mentions[i].asset);
-        yyjson_mut_obj_add_strcpy(doc, item, "value", plan->mentions[i].path);
-    }
-    add_refactor_uses(doc, value, "dangling", view, plan->dangling);
-}
-
-/* The dry run's hashes name exactly the assets the plan changes, as they
-   are now. */
-static int refactor_expected(
-    yyjson_val *request,
-    const refactor_view *view,
-    const refactor_plan *plan,
-    char *error,
-    size_t size
-)
-{
-    yyjson_val *expected = yyjson_obj_get(request, "expected_hashes");
-    if (!yyjson_is_obj(expected)) {
-        set_error(error, size, "publishing requires expected_hashes from the dry run");
-        return CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    int expected_count = acount(plan->edits);
-    for (int i = 0; i < acount(plan->edits); i++) {
-        expected_count += view->metadata[plan->edits[i].asset] != NULL;
-    }
-    bool same = yyjson_obj_size(expected) == (size_t)expected_count;
-    for (int i = 0; same && i < acount(plan->edits); i++) {
-        const refactor_edit *edit = &plan->edits[i];
-        char hash[17];
-        hash_text(view->hashes[edit->asset], hash);
-        const char *given = yyjson_get_str(
-            yyjson_obj_get(expected, view->nav.assets[edit->asset].path)
-        );
-        same = given && !strcmp(given, hash);
-        if (same && view->metadata[edit->asset]) {
-            char path[768];
-            snprintf(path, sizeof path, "%s.meta", view->nav.assets[edit->asset].path);
-            hash_text(view->metadata_hashes[edit->asset], hash);
-            given = yyjson_get_str(yyjson_obj_get(expected, path));
-            same = given && !strcmp(given, hash);
-        }
-    }
-    if (!same) {
-        set_error(error, size, "the assets changed since the dry run; run it again and pass its expected_hashes");
-        return CHIBI_AUTOMATION_CONFLICT;
-    }
-    return CHIBI_AUTOMATION_OK;
-}
-
-/* A published asset: its path after the change, and whether it validated
-   before. */
-typedef struct
-{
-    char path[512];
-    bool valid;
-    bool deleted;
-} refactor_published;
-
-/* Counts the assets that validated before the change and no longer do, and
-   lists their diagnostics; -1 when the catalog cannot be read. */
-static int refactor_invalid(
-    const char *root,
-    const refactor_published *published,
-    int count,
-    response *result,
-    yyjson_mut_val *value,
-    char *error,
-    size_t size
-)
-{
-    catalog_asset *assets = NULL;
-    uint64_t revision, content_hash;
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, size)) {
-        return -1;
-    }
-    yyjson_mut_val *invalid = yyjson_mut_obj_add_arr(result->doc, value, "invalid");
-    int failed = 0;
-    for (int i = 0; i < count; i++) {
-        for (int j = 0;
-             published[i].valid && !published[i].deleted && j < acount(assets);
-             j++) {
-            if (!strcmp(assets[j].asset.relative, published[i].path) &&
-                !assets[j].valid) {
-                yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, invalid);
-                yyjson_mut_obj_add_strcpy(
-                    result->doc,
-                    item,
-                    "path",
-                    assets[j].asset.relative
-                );
-                add_catalog_diagnostics(result->doc, item, &assets[j]);
-                failed++;
-            }
-        }
-    }
-    return failed;
-}
-
-/* A ui asset's styles, which follow its markup when a plan renames or
-   deletes it. */
-typedef struct
-{
-    char filename[256], rename[256], hash[17];
-    char *text;
-} refactor_styles;
-
-/* The styles of a ui asset `edit` renames or deletes, as its change; false
-   when it has none, or is no ui asset. */
-static bool styles_change(
-    const char *root,
-    const catalog_asset *asset,
-    const refactor_edit *edit,
-    refactor_styles *styles,
-    automation_asset_change *change
-)
-{
-    if (asset->asset.family->loader != ASSET_UI || (edit->text && !edit->name)) {
-        return false;
-    }
-    snprintf(
-        styles->filename,
-        sizeof styles->filename,
-        "%s" UI_STYLE_EXTENSION,
-        asset->name
-    );
-    char path[1024], error[160];
-    snprintf(
-        path,
-        sizeof path,
-        "%s/content/%s/%s",
-        root,
-        asset->asset.family->folder,
-        styles->filename
-    );
-    struct stat info;
-    if (lstat(path, &info) != 0) {
-        return false;
-    }
-    uint64_t hash = 0;
-    styles->text = read_file(path, NULL, &hash, error, sizeof error);
-    hash_text(hash, styles->hash);
-    snprintf(styles->rename, sizeof styles->rename, "%s" UI_STYLE_EXTENSION, edit->name ? edit->name : "");
-    *change = (automation_asset_change){ .folder = asset->asset.family->folder,
-                                         .filename = styles->filename,
-                                         .rename_to = edit->name ? styles->rename : NULL,
-                                         .text = edit->name ? styles->text : NULL,
-                                         .expected_hash = styles->hash };
-    return styles->text != NULL;
-}
-
-typedef struct
-{
-    char filename[512], rename[512], hash[17];
-    char *text;
-} refactor_metadata;
-
-static bool metadata_change(
-    const refactor_view *view,
-    const catalog_asset *asset,
-    const refactor_edit *edit,
-    refactor_metadata *metadata,
-    automation_asset_change *change
-)
-{
-    if (strcmp(asset->asset.family->extension, CODE_ASSET_EXTENSION) ||
-        (!view->metadata[edit->asset] && !edit->metadata)) {
-        return false;
-    }
-    bool create = !view->metadata[edit->asset];
-    const char *filename = create && edit->name ? edit->name : asset->name;
-    snprintf(metadata->filename, sizeof metadata->filename, "%s%s.meta", filename, CODE_ASSET_EXTENSION);
-    snprintf(metadata->rename, sizeof metadata->rename, "%s%s.meta", edit->name ? edit->name : "", CODE_ASSET_EXTENSION);
-    if (edit->text && edit->metadata) {
-        metadata->text = code_source_metadata_bind(edit->metadata, edit->text);
-    }
-    hash_text(view->metadata_hashes[edit->asset], metadata->hash);
-    *change = (automation_asset_change){
-        .folder = asset->asset.family->folder,
-        .filename = metadata->filename,
-        .rename_to = edit->name && !create ? metadata->rename : NULL,
-        .text = metadata->text,
-        .expected_hash = create ? NULL : metadata->hash,
-        .create = create
-    };
-    return !create || metadata->text != NULL;
-}
-
-/* Publishes a plan's edits as one batch, validates each asset it changed,
-   and puts every original back when one that validated no longer does. */
-static int refactor_publish(
-    const char *root,
-    const refactor_view *view,
-    const refactor_plan *plan,
-    bool revalidate,
-    response *result,
-    yyjson_mut_val *value,
-    char *error,
-    size_t size
-)
-{
-    int count = acount(plan->edits), total = count;
-    automation_asset_change *changes = xcalloc((size_t)count * 3, sizeof *changes);
-    refactor_styles *styles = xcalloc((size_t)count, sizeof *styles);
-    refactor_metadata *metadata = xcalloc((size_t)count, sizeof *metadata);
-    refactor_published *published = xcalloc((size_t)count, sizeof *published);
-    char (*hashes)[17] = xcalloc((size_t)count, sizeof *hashes);
-    char (*names)[256] = xcalloc((size_t)count, sizeof *names);
-    for (int i = 0; i < count; i++) {
-        const refactor_edit *edit = &plan->edits[i];
-        const catalog_asset *asset = &view->assets[view->catalog[edit->asset]];
-        hash_text(view->hashes[edit->asset], hashes[i]);
-        snprintf(
-            names[i],
-            sizeof names[i],
-            "%s%s",
-            edit->name ? edit->name : "",
-            asset->asset.family->extension
-        );
-        const char *filename = edit->name ? names[i] : asset->asset.filename;
-        changes[i] = (automation_asset_change){ .folder = asset->asset.family->folder,
-                                                .filename = asset->asset.filename,
-                                                .rename_to = edit->name ? names[i] : NULL,
-                                                .text = edit->text,
-                                                .expected_hash = hashes[i] };
-        snprintf(
-            published[i].path,
-            sizeof published[i].path,
-            "content/%s/%s",
-            asset->asset.family->folder,
-            filename
-        );
-        published[i].valid = asset->valid;
-        published[i].deleted = !edit->text;
-        total += styles_change(root, asset, edit, &styles[i], &changes[total]);
-        total += metadata_change(view, asset, edit, &metadata[i], &changes[total]);
-    }
-    automation_asset_batch *batch = NULL;
-    int status = automation_assets_publish(root, changes, total, &batch, error, size);
-    /* The catalog is rebuilt from here on; the view is stale. */
-    int invalid = status == CHIBI_AUTOMATION_OK && revalidate
-                    ? refactor_invalid(root, published, count, result, value, error, size)
-                    : 0;
-    if (status == CHIBI_AUTOMATION_OK && invalid) {
-        char why[256];
-        snprintf(why, sizeof why, "%s", invalid < 0 ? error : "a changed asset no longer validates; every asset is restored");
-        /* A failed rollback keeps its own error, which says where the
-           originals are. */
-        status = automation_assets_rollback(batch, error, size);
-        if (status == CHIBI_AUTOMATION_OK) {
-            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
-            set_error(error, size, why);
-        }
-    } else if (status == CHIBI_AUTOMATION_OK) {
-        automation_assets_commit(batch);
-    }
-    for (int i = 0; i < count; i++) {
-        free(styles[i].text);
-        free(metadata[i].text);
-    }
-    free(styles);
-    free(metadata);
-    free(changes);
-    free(published);
-    free(hashes);
-    free(names);
-    return status;
-}
-
-/* rename_symbol and delete_symbol: plan on the catalog's files, list the
-   plan, and publish it when the request brings the dry run's hashes. */
-static int handle_refactor(const char *root, yyjson_val *request, bool rename, response *result, int *exit_code)
-{
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    yyjson_val *force_value = yyjson_obj_get(request, "force");
-    const char *name = request_string(request, "new_name");
-    bool dry = !dry_value || yyjson_get_bool(dry_value);
-    bool force = yyjson_get_bool(force_value);
-    char error[256] = { 0 };
-    if ((dry_value && !yyjson_is_bool(dry_value)) ||
-        (force_value && !yyjson_is_bool(force_value)) || (rename && !name)) {
-        response_error(
-            result,
-            exit_code,
-            CHIBI_AUTOMATION_INVALID_REQUEST,
-            rename ? "rename_symbol requires new_name and a boolean dry_run"
-                   : "delete_symbol takes boolean dry_run and force"
-        );
-        return -1;
-    }
-    refactor_view view;
-    reference_symbol symbol = { 0 };
-    int status = refactor_view_load(root, &view, error, sizeof error);
-    status = status == CHIBI_AUTOMATION_OK
-               ? automation_select_symbol(&view.nav, request, &symbol, error, sizeof error)
-               : status;
-    game_prototype_registry registry = { .components = GAME_REGISTRY_COMPONENTS,
-                                         .component_count = GAME_REGISTRY_COMPONENT_COUNT };
-    refactor_project project = { .index = view.nav.index,
-                                 .texts = (const char *const *)view.texts,
-                                 .metadata = (const char *const *)view.metadata,
-                                 .registry = &registry };
-    refactor_plan plan = { 0 };
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    if (status == CHIBI_AUTOMATION_OK && !rename && !force) {
-        const reference **blockers = NULL;
-        refactor_blockers(view.nav.index, symbol, &blockers);
-        add_refactor_uses(result->doc, value, "references", &view, blockers);
-        afree(blockers);
-    }
-    if (status == CHIBI_AUTOMATION_OK &&
-        (rename ? refactor_rename(&project, symbol, name, &plan, error, sizeof error)
-                : refactor_delete(&project, symbol, force, &plan, error, sizeof error))) {
-        status = CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    /* Shared refactoring has already reconciled each file against the updated
-       catalog. Reparsing here against disk would resolve renamed signatures
-       against their old definitions before the atomic batch is published. */
-    if (status == CHIBI_AUTOMATION_OK) {
-        add_refactor_plan(result->doc, value, &view, &plan);
-    }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
-        status = refactor_expected(request, &view, &plan, error, sizeof error);
-    }
-    if (status == CHIBI_AUTOMATION_OK && !dry) {
-        status = refactor_publish(root, &view, &plan, rename || !force, result, value, error, sizeof error);
-        yyjson_mut_obj_remove_key(value, "published");
-        yyjson_mut_obj_add_bool(result->doc, value, "published", status == CHIBI_AUTOMATION_OK);
-    }
-    refactor_plan_free(&plan);
-    refactor_view_free(&view);
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        return -1;
-    }
-    return 0;
-}
-
-/* ---------- UI language service (workstream B) ---------- */
-
-/* Loads a ui asset; the loaded text is owned by the caller. */
 static int load_ui_source(
     const char *root,
     yyjson_val *request,
@@ -12494,197 +10984,9 @@ static int handle_inspect_ui(const char *root, yyjson_val *request, response *re
     return 0;
 }
 
-static void handle_build_code(const char *root, yyjson_val *request, response *result, int *exit_code)
-{
-    char error[256] = { 0 };
-    asset_ref ref = { 0 };
-    yyjson_val *create_value = yyjson_obj_get(request, "create");
-    yyjson_val *dry_value = yyjson_obj_get(request, "dry_run");
-    bool create = yyjson_get_bool(create_value);
-    bool dry = yyjson_get_bool(dry_value);
-    const char *expected = request_string(request, "expected_hash");
-    const char *text = request_string(request, "source");
-    if (!text || (create_value && !yyjson_is_bool(create_value)) ||
-        (dry_value && !yyjson_is_bool(dry_value)) || (!create && !dry && !expected) ||
-        resolve_asset_ref(request, &ref, error, sizeof error) ||
-        (ref.family->loader != ASSET_GRAPH && ref.family->loader != ASSET_SYSTEM) ||
-        strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
-        response_error(
-            result,
-            exit_code,
-            CHIBI_AUTOMATION_INVALID_REQUEST,
-            error[0] ? error : "build_code requires executable behavior, library or system asset, source, boolean create/dry_run and expected_hash for replacements"
-        );
-        return;
-    }
-    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-    int status = analyze_project_source(root, request, false, result->doc, value, error, sizeof error);
-    yyjson_mut_obj_add_bool(result->doc, value, "published", false);
-    yyjson_mut_obj_add_bool(result->doc, value, "dry_run", dry);
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        return;
-    }
-    if (!yyjson_mut_get_bool(yyjson_mut_obj_get(value, "valid"))) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "source candidate failed native validation; asset retained");
-        return;
-    }
-    const char *domain = yyjson_mut_get_str(yyjson_mut_obj_get(value, "kind"));
-    if (!domain || strcmp(domain, ref.family->kind)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "source domain does not match the requested asset family");
-        return;
-    }
-    const char *persisted = code_source_is_structured(text)
-                              ? yyjson_mut_get_str(yyjson_mut_obj_get(value, "formatted"))
-                              : text;
-    if (ref.family->loader == ASSET_SYSTEM) {
-        game_system_document *document = persisted ? load_project_system(
-                                                         root,
-                                                         persisted,
-                                                         automation_query_component,
-                                                         NULL,
-                                                         error,
-                                                         sizeof error
-                                                     )
-                                                   : NULL;
-        if (!document) {
-            response_error(
-                result,
-                exit_code,
-                CHIBI_AUTOMATION_VALIDATION_ERROR,
-                error[0] ? error : "Invalid system source or query"
-            );
-            return;
-        }
-        game_system_document *original = load_project_system(
-            root,
-            text,
-            automation_query_component,
-            NULL,
-            error,
-            sizeof error
-        );
-        const ecs_query_expr *before = original ? game_system_document_query(original)
-                                                : NULL;
-        const ecs_query_expr *after = game_system_document_query(document);
-        char *before_text = before
-                              ? game_query_save(before, automation_query_component, automation_query_component_name, NULL)
-                              : NULL;
-        char *after_text = after
-                             ? game_query_save(after, automation_query_component, automation_query_component_name, NULL)
-                             : NULL;
-        bool same_query = original && (before == NULL) == (after == NULL) &&
-                          (!before || (before_text && after_text &&
-                                       !strcmp(before_text, after_text)));
-        free(before_text);
-        free(after_text);
-        game_system_document_free(original);
-        game_system_document_free(document);
-        if (!same_query) {
-            response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "Persisted system source does not preserve its query");
-            return;
-        }
-    }
-    behavior_asset *asset = persisted ? load_project_behavior(root, persisted) : NULL;
-    behavior_asset *linked = asset
-                               ? link_project_libraries(root, asset, error, sizeof error)
-                               : NULL;
-    compile_report report;
-    compile_report_init(&report);
-    int errors = linked ? compile_project_graph(root, linked, &report) : 1;
-    if (linked && !studio_project_is(root)) {
-        errors += studio_nodes_check(asset, &report);
-    }
-    yyjson_mut_val *diagnostics = yyjson_mut_obj_get(value, "diagnostics");
-    if (!linked) {
-        add_load_diagnostic(result->doc, diagnostics, error[0] ? error : graph_last_error());
-    }
-    for (int i = 0; i < acount(report.items); i++) {
-        add_diagnostic(result->doc, diagnostics, asset, &report.items[i]);
-    }
-    compile_report_free(&report);
-    behavior_asset_free(linked);
-    behavior_asset_free(asset);
-    if (errors) {
-        yyjson_mut_obj_put(
-            value,
-            yyjson_mut_str(result->doc, "valid"),
-            yyjson_mut_bool(result->doc, false)
-        );
-        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "project candidate failed native validation; asset retained");
-        return;
-    }
-    size_t bytes = strlen(persisted);
-    add_asset_identity(result->doc, value, &ref, bytes, automation_content_hash(persisted, bytes));
-    yyjson_mut_obj_add_strcpy(result->doc, value, "source", persisted);
-    if (dry) {
-        return;
-    }
-    char *path = asset_full_path(root, &ref);
-    code_catalog *publication_catalog = code_catalog_load_project(root);
-    size_t previous_bytes = 0;
-    uint64_t previous_hash = 0;
-    char read_error[256] = "";
-    char *previous_text = create
-                            ? NULL
-                            : read_file(path, &previous_bytes, &previous_hash, read_error, sizeof read_error);
-    code_source *previous = previous_text
-                              ? code_source_parse_context(previous_text, NULL, code_catalog_context(publication_catalog))
-                              : NULL;
-    if (previous) {
-        code_source_metadata_load(previous, path);
-    }
-    code_source *publication = code_source_parse_context(
-        persisted,
-        previous,
-        code_catalog_context(publication_catalog)
-    );
-    const char *publication_metadata = yyjson_obj_get(request, "metadata")
-                                         ? yyjson_mut_get_str(
-                                               yyjson_mut_obj_get(value, "metadata")
-                                           )
-                                         : NULL;
-    if (publication_metadata) {
-        code_source_metadata_restore(publication, publication_metadata);
-    }
-    code_source_free(previous);
-    free(previous_text);
-    status = automation_asset_publish(
-        root,
-        ref.family->folder,
-        ref.filename,
-        persisted,
-        expected,
-        create,
-        error,
-        sizeof error
-    );
-    bool saved = status == CHIBI_AUTOMATION_OK && publication->asset &&
-                 code_source_metadata_save(publication, path);
-    code_source_free(publication);
-    code_catalog_free(publication_catalog);
-    free(path);
-    if (status != CHIBI_AUTOMATION_OK) {
-        response_error(result, exit_code, status, error);
-        return;
-    }
-    if (!saved) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, "could not save optional code presentation metadata");
-        return;
-    }
-    yyjson_mut_obj_put(
-        value,
-        yyjson_mut_str(result->doc, "published"),
-        yyjson_mut_bool(result->doc, true)
-    );
-}
-
 static int operation_requires_root(const char *operation)
 {
-    return !strcmp(operation, "build_code") || !strcmp(operation, "edit_graph") ||
-           !strcmp(operation, "edit_prototype") ||
-           !strcmp(operation, "edit_scene") || !strcmp(operation, "optimize_graph") ||
-           !strcmp(operation, "execution_status") ||
+    return !strcmp(operation, "execution_status") ||
            !strcmp(operation, "profile_scenario") || !strcmp(operation, "status") ||
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
            !strcmp(operation, "validate_asset") ||
@@ -12699,9 +11001,7 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "run_scenario") ||
            !strcmp(operation, "runtime_snapshot") ||
            !strcmp(operation, "record_scenario") ||
-           !strcmp(operation, "replay_scenario") ||
-           !strcmp(operation, "rename_symbol") ||
-           !strcmp(operation, "delete_symbol") || !strcmp(operation, "inspect_ui");
+           !strcmp(operation, "replay_scenario") || !strcmp(operation, "inspect_ui");
 }
 
 char *chibi_automation_handle(const char *request, const char *default_root, int *exit_code)
@@ -12749,14 +11049,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         }
     }
     scenario_context image_context = { 0 };
-    bool needs_images = root && (!strcmp(operation, "build_code") ||
-                                 !strcmp(operation, "edit_graph") ||
-                                 !strcmp(operation, "optimize_graph") ||
-                                 !strcmp(operation, "rename_symbol") ||
-                                 !strcmp(operation, "delete_symbol") ||
-                                 !strcmp(operation, "edit_prototype") ||
-                                 !strcmp(operation, "edit_scene") ||
-                                 !strcmp(operation, "validate_asset") ||
+    bool needs_images = root && (!strcmp(operation, "validate_asset") ||
                                  !strcmp(operation, "inspect_graph") ||
                                  !strcmp(operation, "bake_model"));
     if (needs_images) {
@@ -12770,15 +11063,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
             return response_finish(&result);
         }
     }
-    if (!strcmp(operation, "edit_graph")) {
-        handle_edit_graph(root, root_value, &result, exit_code);
-    } else if (!strcmp(operation, "edit_prototype")) {
-        handle_edit_prototype(root, root_value, &result, exit_code);
-    } else if (!strcmp(operation, "edit_scene")) {
-        handle_edit_scene(root, root_value, &result, exit_code);
-    } else if (!strcmp(operation, "optimize_graph")) {
-        handle_optimize_graph(root, root_value, &result, exit_code);
-    } else if (!strcmp(operation, "execution_status")) {
+    if (!strcmp(operation, "execution_status")) {
         handle_execution_status(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "profile_scenario")) {
         handle_profile_scenario(root, root_value, &result, exit_code);
@@ -12796,8 +11081,6 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_status(root, &result, exit_code);
     } else if (!strcmp(operation, "list_assets")) {
         handle_list_assets(root, root_value, &result, exit_code);
-    } else if (!strcmp(operation, "build_code")) {
-        handle_build_code(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "analyze_code")) {
         char error[256] = { 0 };
         yyjson_mut_val *value = yyjson_mut_obj_add_obj(result.doc, result.root, "result");
@@ -12845,8 +11128,6 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_replay_scenario(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "read_recording")) {
         handle_read_recording(root_value, &result, exit_code);
-    } else if (!strcmp(operation, "rename_symbol") || !strcmp(operation, "delete_symbol")) {
-        handle_refactor(root, root_value, !strcmp(operation, "rename_symbol"), &result, exit_code);
     } else if (!strcmp(operation, "inspect_ui")) {
         handle_inspect_ui(root, root_value, &result, exit_code);
     } else {

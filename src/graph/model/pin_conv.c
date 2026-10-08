@@ -1,6 +1,6 @@
 #include "graph/model/pin_conv.h"
 
-#include "graph/model/registry.h"
+#include "types/catalog.h"
 
 #include <string.h>
 
@@ -9,7 +9,7 @@
 static const char *type_root(const char *name)
 {
     for (int i = 0; i < PIN_TYPE_ALIAS_DEPTH; i++) {
-        const type_desc *type = registry_type_by_name(name);
+        const type_desc *type = type_catalog_find(name);
         if (!type || !type->alias_of || strcmp(type->alias_of, name) == 0) {
             return name;
         }

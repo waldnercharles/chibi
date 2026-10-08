@@ -1,4 +1,4 @@
-#include "assets/behavior_loader.h"
+#include "authoring/behavior_loader.h"
 
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
@@ -13,7 +13,7 @@
 static void write_asset(const char *directory, const char *name, const char *json)
 {
     char path[512];
-    snprintf(path, sizeof path, "%s/%s.code", directory, name);
+    snprintf(path, sizeof path, "%s/%s.chibi", directory, name);
     FILE *file = fopen(path, "wb");
     assert(file);
     assert(fputs(json, file) >= 0);
@@ -52,7 +52,7 @@ void run_behavior_loader_checks()
     write_asset(directory, "MissingLibrary", "behavior MissingLibrary { value missing = AbsentLibrary.Missing(); }\n");
 
     ecs_world *ecs = ecs_world_new();
-    game_live_world *world = game_live_world_new(ecs);
+    game_preview_world *world = game_preview_world_new(ecs);
     game_prototype_preview *preview = game_prototype_preview_new(
         &(game_prototype_registry){ 0 }
     );
@@ -78,26 +78,26 @@ void run_behavior_loader_checks()
     messages[count] = '\0';
     fclose(capture);
 
-    assert(loaded == 1 && game_live_find_definition(world, "Good"));
-    assert(!game_live_find_definition(world, "PreviewFailed"));
-    assert(strstr(messages, "Broken.code (deserialize): Expected )"));
-    assert(strstr(messages, "Unknown.code (deserialize):") && strstr(messages, "Missing"));
-    assert(strstr(messages, "Good.code (register): A definition with this name is already registered."));
-    assert(strstr(messages, "MissingLibrary.code (deserialize):") && strstr(messages, "Missing"));
+    assert(loaded == 1 && game_preview_find_definition(world, "Good"));
+    assert(!game_preview_find_definition(world, "PreviewFailed"));
+    assert(strstr(messages, "Broken.chibi (deserialize): Expected )"));
+    assert(strstr(messages, "Unknown.chibi (deserialize):") && strstr(messages, "Missing"));
+    assert(strstr(messages, "Good.chibi (register): A definition with this name is already registered."));
+    assert(strstr(messages, "MissingLibrary.chibi (deserialize):") && strstr(messages, "Missing"));
     assert(
         strstr(messages, "Could not register preview behavior PreviewFailed: A definition with this name")
     );
-    assert(strstr(messages, "PreviewFailed.code (preview):"));
+    assert(strstr(messages, "PreviewFailed.chibi (preview):"));
     assert(!strstr(messages, "AuthoringOnly.txt"));
     game_prototype_preview_free(preview);
-    game_live_world_free(world);
+    game_preview_world_free(world);
     ecs_world_free(ecs);
 
     const char *names[] = { "Good",    "Duplicate",      "Broken",
                             "Unknown", "MissingLibrary", "PreviewFailed" };
     for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
         char path[512];
-        snprintf(path, sizeof path, "%s/%s.code", directory, names[i]);
+        snprintf(path, sizeof path, "%s/%s.chibi", directory, names[i]);
         assert(unlink(path) == 0);
     }
     char path[512];

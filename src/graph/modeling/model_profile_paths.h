@@ -1,7 +1,7 @@
 #ifndef CHIBI_MODEL_PROFILE_PATHS_H
 #define CHIBI_MODEL_PROFILE_PATHS_H
-#include "graph/runtime/value_array.h"
 #include "graph/shader/shader_graph.h"
+#include "types/array.h"
 
 /* Cubic sampling produces a polygonal approximation. Closed controls contain
  * 3N points with implicit final P0; open controls contain 3N+1 points.

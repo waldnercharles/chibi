@@ -218,10 +218,9 @@ migrated directly to Surface Output; the old lighting-buffer output is removed.
 
 ## Arena development
 
-`Arena2D` and `Arena3D` are separate projects with separate authored Surface
-materials. Arena2D material graphs live under
-`projects/arena2d/content/materials`; Arena3D graphs remain under
-`content/materials`. Shared pulse/ring functions and the designer effect nodes
+Voidweaver and Arena3D are separate extracted repositories with separate
+Surface materials. Their graphs live in each repository's `content/materials`.
+The engine keeps focused regression fixtures rather than duplicate game assets. Shared pulse/ring functions and the designer effect nodes
 keep each project's example roots focused on their visible effects.
 
 The shared graph vocabulary now includes Vector3, Normalize, Clamp, Saturate,

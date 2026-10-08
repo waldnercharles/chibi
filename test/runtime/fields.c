@@ -1,8 +1,12 @@
+#include "assets/field_parameters.h"
+#include "authoring/preview.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/field_program.h"
+#include "graph/compiler/material_field.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "runtime/material_field.h"
 #include "runtime/material_stream.h"
 #include "runtime/material_terrain.h"
@@ -177,7 +181,17 @@ static void parameters_and_errors()
     assert(!field_program_compile(a, error, sizeof error));
     assert(!material_field_compile(catalog, a, error, sizeof error));
     assert(
-        material_field_bake(catalog, "parameters", "Radius 7\n", 0, (field_grid){ 1, 1, 1 }, &out, NULL, error, sizeof error) &&
+        material_field_bake_text(
+            catalog,
+            "parameters",
+            "Radius 7\n",
+            0,
+            (field_grid){ 1, 1, 1 },
+            &out,
+            NULL,
+            error,
+            sizeof error
+        ) &&
         out == 7
     );
     {
@@ -201,7 +215,7 @@ static void parameters_and_errors()
     }
     field_program_free(p);
     assert(material_field_revision(catalog, "parameters") == 1);
-    assert(!material_field_bake(
+    assert(!material_field_bake_text(
         catalog,
         "parameters",
         "Unknown 7\n",
@@ -318,13 +332,18 @@ static void noise_and_composition()
     assert(hash(values, 256) != hash(again, 256));
     field_program_free(p);
     behavior_asset_free(a);
-    char *json = text_file_read("projects/arena2d/content/fields/MaterialIslands.kdl");
+    char *json = text_file_read(
+        "test/fixtures/material-contracts/content/fields/MaterialIslands.kdl"
+    );
     assert(json);
     a = behavior_asset_load(json);
     free(json);
-    json = text_file_read("projects/arena2d/content/libraries/FieldShapes.code");
+    json = text_file_read("test/fixtures/material-contracts/content/libraries/FieldShapes.chibi");
     assert(json);
-    behavior_asset *library = test_project_asset("projects/arena2d/content/libraries/FieldShapes.code", json);
+    behavior_asset *library = test_project_asset(
+        "test/fixtures/material-contracts/content/libraries/FieldShapes.chibi",
+        json
+    );
     free(json);
     const behavior_asset *catalog[] = { library };
     behavior_asset *linked = behavior_asset_link_libraries(a, catalog, 1, error, sizeof error);
@@ -609,10 +628,10 @@ static void library_hot_apply()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     const char *paths[] = {
-        "projects/arena2d/content/libraries/FieldShapes.code",
-        "projects/arena2d/content/fields/MaterialIslands.kdl"
+        "test/fixtures/material-contracts/content/libraries/FieldShapes.chibi",
+        "test/fixtures/material-contracts/content/fields/MaterialIslands.kdl"
     };
     for (int i = 0; i < 2; i++) {
         char *json = text_file_read(paths[i]);
@@ -620,16 +639,18 @@ static void library_hot_apply()
         behavior_asset *asset = test_project_asset(paths[i], json);
         free(json);
         assert(asset);
-        assert(!game_live_add_definition(live, game_live_definition_new(asset->name, asset)));
+        assert(
+            !game_preview_add_definition(live, game_preview_definition_new(asset->name, asset))
+        );
     }
-    material_fields *fields = game_materials_fields(live->materials);
+    material_fields *fields = game_materials_fields(live->runtime->materials);
     char error[256];
     float before, after;
     field_grid grid = { 1, 1, 1, -90, 0 };
     assert(
-        material_field_bake(fields, "MaterialIslands", NULL, 1, grid, &before, NULL, error, sizeof error)
+        material_field_bake_text(fields, "MaterialIslands", NULL, 1, grid, &before, NULL, error, sizeof error)
     );
-    game_live_definition *library = game_live_find_definition(live, "FieldShapes");
+    game_preview_definition *library = game_preview_find_definition(live, "FieldShapes");
     graph *function = library->working->graphs[1];
     node *circle = NULL;
     for (int i = 0; i < acount(function->nodes); i++) {
@@ -642,23 +663,23 @@ static void library_hot_apply()
     assert(
         !graph_set_pin_default(function, circle, 0, 2, &(pin_value){ .type = PIN_F32, .f = 110 })
     );
-    assert(!game_live_mark_dirty(library));
-    assert(!game_live_apply(live, library, error, sizeof error));
+    assert(!game_preview_mark_dirty(library));
+    assert(!game_preview_apply(live, library, error, sizeof error));
     assert(material_field_revision(fields, "MaterialIslands") == 2);
     assert(
-        material_field_bake(fields, "MaterialIslands", NULL, 1, grid, &after, NULL, error, sizeof error)
+        material_field_bake_text(fields, "MaterialIslands", NULL, 1, grid, &after, NULL, error, sizeof error)
     );
     assert(after < before - 20);
     assert(graph_add_node(function, registry_node_by_name("Print String")));
-    assert(!game_live_mark_dirty(library));
-    assert(game_live_apply(live, library, error, sizeof error) < 0);
+    assert(!game_preview_mark_dirty(library));
+    assert(game_preview_apply(live, library, error, sizeof error) < 0);
     assert(material_field_revision(fields, "MaterialIslands") == 2);
     float retained;
     assert(
-        material_field_bake(fields, "MaterialIslands", NULL, 1, grid, &retained, NULL, error, sizeof error)
+        material_field_bake_text(fields, "MaterialIslands", NULL, 1, grid, &retained, NULL, error, sizeof error)
     );
     assert(retained == after);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -682,7 +703,7 @@ static void streaming_restore()
     assert(material_field_compile(fields, a, error, sizeof error));
     material_stream_desc desc = { .grid = { 4099, 513, 1 },
                                   .field = "stream-fixture",
-                                  .seed = 71 };
+                                  .context = { .seed = 71 } };
     material_stream_view view = { -1500, 0, 80 };
     material_fields *hot_fields = material_fields_new();
     assert(material_field_compile(hot_fields, a, error, sizeof error));
@@ -1000,7 +1021,7 @@ void test_fields()
 }
 int bench_fields()
 {
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.kdl");
+    char *json = text_file_read("test/fixtures/material-contracts/content/fields/CaveField.kdl");
     assert(json);
     behavior_asset *a = behavior_asset_load(json);
     free(json);
@@ -1057,18 +1078,22 @@ int bench_field_slices()
 {
     const char *parameters = "Radius 225.0\n"
                              "Roughness 100.0\n";
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.kdl");
+    char *json = text_file_read("test/fixtures/material-contracts/content/fields/CaveField.kdl");
     assert(json);
     behavior_asset *asset = behavior_asset_load(json);
     free(json);
     material_fields *fields = material_fields_new();
     char error[256] = { 0 };
     assert(material_field_compile(fields, asset, error, sizeof error));
+    assert(material_field_prepare_arguments(fields, asset->name, parameters, error, sizeof error));
+    field_context prepared;
+    assert(
+        material_field_context(fields, asset->name, parameters, 1729, &prepared, error, sizeof error)
+    );
     material_stream *stream = material_stream_new((material_stream_desc){
         .grid = { 0, 0, 2 },
         .field = asset->name,
-        .parameters = parameters,
-        .seed = 1729,
+        .context = prepared,
     });
     enum
     {
@@ -1083,7 +1108,7 @@ int bench_field_slices()
     );
     assert(expected);
     assert(
-        material_field_bake(fields, asset->name, parameters, 1729, expected_grid, expected, NULL, error, sizeof error)
+        material_field_bake_text(fields, asset->name, parameters, 1729, expected_grid, expected, NULL, error, sizeof error)
     );
     uint64_t expected_hash = hash(expected, expected_grid.width * expected_grid.height);
     free(expected);

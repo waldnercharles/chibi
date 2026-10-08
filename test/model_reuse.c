@@ -1,3 +1,5 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
 #include "support/xalloc.h"

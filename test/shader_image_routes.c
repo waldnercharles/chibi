@@ -1,3 +1,5 @@
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/material_raster.h"
@@ -431,7 +433,7 @@ int test_shader_image_routes()
     assert(fabsf(sampled[0][0] - colors[0].colors.r / 255.0f) < .0001f);
     save_image(keys[0], &colors[0], 1, 1);
     assert(render_image_reload(keys[0], message, sizeof message));
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     for (int i = 0; i < IMAGES; i++) {
         assert(!unlink(keys[i]));
     }

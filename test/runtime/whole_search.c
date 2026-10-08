@@ -1,3 +1,4 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/flow_snapshot.h"
@@ -155,7 +156,8 @@ static void parity(pin_type type, bool contains, bool waits, int scenario, int c
     graph *apply = a->graphs[2];
     assert(!graph_set_breakpoint(apply, apply->nodes[1], control == 3));
     behavior_function *f = entry(a, a->graph);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     if (type <= PIN_F64) {
         for (int pc = 0; pc < acount(f->instructions); pc++) {
             assert(!behavior_function_call(f->instructions[pc].op));
@@ -166,10 +168,10 @@ static void parity(pin_type type, bool contains, bool waits, int scenario, int c
         if (mode == 3) {
             char name[64];
             snprintf(name, sizeof name, "generated_search_%d_%d_%d", type, contains, waits);
-            f->code = dlsym(library, scenario == 10 ? "generated_search_loop" : name);
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, scenario == 10 ? "generated_search_loop" : name);
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         assert(!behavior_instance_set_backend(
@@ -274,8 +276,9 @@ static void parity(pin_type type, bool contains, bool waits, int scenario, int c
             if (state == FLOW_COMPLETED || state == FLOW_FAILED) {
                 if (budget == 100) {
                     assert(state == FLOW_COMPLETED);
-                    bool correct = contains ? bi->variables[0].b == (found >= 0)
-                                            : bi->variables[0].i == found;
+                    bool correct = contains
+                                     ? bi->execution.variables[0].b == (found >= 0)
+                                     : bi->execution.variables[0].i == found;
                     if (!correct) {
                         fprintf(
                             stderr,
@@ -288,7 +291,8 @@ static void parity(pin_type type, bool contains, bool waits, int scenario, int c
                             scenario,
                             control,
                             mode,
-                            contains ? bi->variables[0].b : bi->variables[0].i,
+                            contains ? bi->execution.variables[0].b
+                                     : bi->execution.variables[0].i,
                             contains ? found >= 0 : found
                         );
                     }
@@ -315,9 +319,9 @@ static void parity(pin_type type, bool contains, bool waits, int scenario, int c
         test_flow_snapshot_free(&expected[i]);
     }
     afree(expected);
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 void test_compiled_search(const char *path)

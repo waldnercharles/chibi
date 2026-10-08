@@ -1,11 +1,18 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/authoring/local_edit.h"
 /* findReferences, callHierarchy and inspectGraph's use counts over a small
  * project: an event definition, a behavior that sends and handles it, calls
  * its functions and reads its variable through a local, and a ui document
  * that sends the event too. */
 #include "assets/call_hierarchy.h"
+#include "assets/code_source.h"
 #include "assets/project.h"
+#include "assets/reference_adapters.h"
 #include "automation/controller.h"
 #include "automation/navigation.h"
+#include "graph/model/local.h"
+#include "graph/model/registry.h"
 #include "suite_internal.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -51,11 +58,6 @@ static yyjson_val *ask(project *p, const char *operation, const char *format, ..
 static yyjson_val *result_of(yyjson_val *response)
 {
     return yyjson_obj_get(response, "result");
-}
-
-static bool ok(yyjson_val *response)
-{
-    return yyjson_get_bool(yyjson_obj_get(response, "ok"));
 }
 
 static const char *error_code(yyjson_val *response)
@@ -107,74 +109,83 @@ static project project_new()
     assert(mkdtemp(p.root));
     char path[160];
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, p.root);
-    char manifest[64];
+    char manifest[128];
     snprintf(
         manifest,
         sizeof manifest,
         "version %d\n"
-        "content \"content\"\n",
+        "content \"content\"\n"
+        "start_scene \"scenes/Start.kdl\"\n",
         CHIBI_PROJECT_VERSION
     );
     write_file(path, manifest);
     static const char *const FOLDERS[] = { "content",
                                            "content/events",
                                            "content/behaviors",
-                                           "content/ui" };
-    for (int i = 0; i < 4; i++) {
+                                           "content/ui",
+                                           "content/scenes" };
+    for (int i = 0; i < 5; i++) {
         snprintf(path, sizeof path, "%s/%s", p.root, FOLDERS[i]);
         assert(!mkdir(path, 0755));
     }
+    snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", p.root);
+    write_file(path, "version 1\nname \"Start\"\n(array)entities\n");
     snprintf(path, sizeof path, "%s/content/ui/Panel.rml", p.root);
     write_file(path, "<div id=\"strike\" data-event-click=\"emit('Hit')\">Strike</div>\n");
-    assert(ok(
-        ask(&p, "edit_graph", "\"kind\":\"event\",\"name\":\"Hit\",\"create\":true,\"operations\":[{\"op\":\"add_variable\",\"name\":\"Amount\",\"type\":\"int\"}]")
-    ));
-    yyjson_val *target = ask(
-        &p,
-        "edit_graph",
-        "\"kind\":\"behavior\",\"name\":\"Target\",\"create\":true,"
-        "\"operations\":["
-        "{\"op\":\"add_variable\",\"name\":\"hp\",\"type\":\"int\"},"
-        "{\"op\":\"add_graph\",\"name\":\"Take\",\"kind\":\"function\",\"ref\":"
-        "\"take\"},"
-        "{\"op\":\"add_pin\",\"node\":\"take.entry\",\"side\":\"output\","
-        "\"name\":\"Amount\",\"type\":\"int\"},"
-        "{\"op\":\"add_variable_node\",\"ref\":\"store\",\"kind\":\"set\","
-        "\"variable\":\"hp\"},"
-        "{\"op\":\"connect\",\"from\":\"take.entry\",\"from_pin\":0,\"to\":"
-        "\"store\",\"to_pin\":0,\"kind\":\"exec\"},"
-        "{\"op\":\"connect\",\"from\":\"take.entry\",\"from_pin\":\"Amount\","
-        "\"to\":\"store\",\"to_pin\":1},"
-        "{\"op\":\"add_graph\",\"name\":\"Loop\",\"kind\":\"function\",\"ref\":"
-        "\"loop\"},"
-        "{\"op\":\"add_node\",\"ref\":\"again\",\"type\":\"Call "
-        "Function\",\"reference_name\":\"Loop\"},"
-        "{\"op\":\"connect\",\"from\":\"loop.entry\",\"from_pin\":0,\"to\":"
-        "\"again\",\"to_pin\":0,\"kind\":\"exec\"},"
-        "{\"op\":\"select_graph\",\"graph\":0},"
-        "{\"op\":\"add_node\",\"ref\":\"hit\",\"type\":\"Event\",\"event_"
-        "name\":\"Hit\"},"
-        "{\"op\":\"add_node\",\"ref\":\"call\",\"type\":\"Call "
-        "Function\",\"reference_name\":\"Take\"},"
-        "{\"op\":\"connect\",\"from\":\"hit\",\"from_pin\":0,\"to\":\"call\","
-        "\"to_pin\":0,\"kind\":\"exec\"},"
-        "{\"op\":\"add_variable_node\",\"ref\":\"read\",\"kind\":\"get\","
-        "\"variable\":\"hp\"},"
-        "{\"op\":\"connect\",\"from\":\"read\",\"from_pin\":0,\"to\":\"call\","
-        "\"to_pin\":\"Amount\"},"
-        "{\"op\":\"create_local\",\"node\":\"read\",\"pin\":0,\"name\":"
-        "\"life\"},"
-        "{\"op\":\"add_node\",\"ref\":\"tick\",\"type\":\"Event\",\"event_"
-        "name\":\"Tick\"},"
-        "{\"op\":\"add_node\",\"ref\":\"send\",\"type\":\"Send "
-        "Event\",\"reference_name\":\"Hit\"},"
-        "{\"op\":\"connect\",\"from\":\"tick\",\"from_pin\":0,\"to\":\"send\","
-        "\"to_pin\":0,\"kind\":\"exec\"}]"
+    snprintf(path, sizeof path, "%s/content/events/Hit.kdl", p.root);
+    write_file(
+        path,
+        "version 3\nname \"Hit\"\ndomain \"event\"\nid_counter 2\n"
+        "(array)variables { - id=1 name=\"Amount\" type=\"int\" "
+        "category=\"Payload\" }\n"
+        "(array)graphs { - kind=\"event\" name=\"\" }\n"
     );
-    if (!ok(target)) {
-        printf("  %s\n", yyjson_write(p.doc, 0, NULL));
-    }
-    assert(ok(target));
+    behavior_asset *asset = behavior_asset_new("Target");
+    behavior_variable *hp = behavior_asset_add_variable(asset, "hp", PIN_I32, "int", PIN_CONTAINER_SINGLE, NULL, NULL);
+    assert(hp);
+    graph *take = behavior_asset_add_function(asset, "Take", false);
+    node *entry = graph_node_by_id(take, take->entry_id);
+    pin_spec amount = { .name = "Amount", .type = PIN_I32, .type_name = "int" };
+    int parameter = graph_add_pin(take, entry, true, &amount);
+    assert(parameter >= 0);
+    node *store = behavior_asset_add_set_node_to_graph(asset, take, hp->id);
+    assert(!graph_connect_exec(take, entry, 0, store, 0, 0));
+    assert(!graph_connect_data(take, entry, parameter, store, 1));
+    graph *loop = behavior_asset_add_function(asset, "Loop", false);
+    node *again = behavior_asset_add_function_call_node_to_graph(asset, loop, loop);
+    assert(
+        again &&
+        !graph_connect_exec(loop, graph_node_by_id(loop, loop->entry_id), 0, again, 0, 0)
+    );
+    graph *body = asset->graph;
+    node *hit = graph_add_node(body, registry_node_by_name("Event"));
+    assert(!graph_set_event_name(body, hit, "Hit"));
+    assert(graph_add_pin(body, hit, true, &amount) >= 0);
+    node *call = behavior_asset_add_function_call_node(asset, take);
+    assert(!graph_connect_exec(body, hit, 0, call, 0, 0));
+    node *read = behavior_asset_add_get_node(asset, hp->id);
+    assert(!graph_connect_data(body, read, 0, call, 1));
+    assert(graph_create_local(body, read, 0, "life"));
+    node *tick = graph_add_node(body, registry_node_by_name("Event"));
+    assert(!graph_set_event_name(body, tick, "Tick"));
+    node *send = graph_add_node(body, registry_node_by_name("Send Event"));
+    assert(!graph_set_node_reference(body, send, 0, "Hit"));
+    assert(graph_add_pin(body, send, false, &amount) >= 0);
+    assert(!graph_connect_exec(body, tick, 0, send, 0, 0));
+    char *metadata = NULL;
+    char *source = code_source_format_with_metadata(asset, &metadata);
+    assert(source && metadata);
+    char *bound_metadata = code_source_metadata_bind(metadata, source);
+    free(metadata);
+    metadata = bound_metadata;
+    assert(metadata);
+    snprintf(path, sizeof path, "%s/content/behaviors/Target.chibi", p.root);
+    write_file(path, source);
+    snprintf(path, sizeof path, "%s/content/behaviors/Target.chibi.meta", p.root);
+    write_file(path, metadata);
+    free(source);
+    free(metadata);
+    behavior_asset_free(asset);
     return p;
 }
 
@@ -381,9 +392,9 @@ static void wide_hierarchy()
         assert(behavior_asset_add_function_call_node_to_graph(asset, caller, target));
     }
     reference_index *index = reference_index_new();
-    int wide = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Wide", "content/behaviors/Wide.code", NULL);
+    int wide = reference_index_add_asset(index, REFERENCE_ASSET_BEHAVIOR, "Wide", "content/behaviors/Wide.chibi", NULL);
     reference_index_add_graphs(index, wide, asset);
-    navigation_asset names[] = { { "behavior", "Wide", "content/behaviors/Wide.code" } };
+    navigation_asset names[] = { { "behavior", "Wide", "content/behaviors/Wide.chibi" } };
     assert(reference_index_asset_count(index) == 1);
     navigation nav = { index, names };
     const char
@@ -408,6 +419,74 @@ static void wide_hierarchy()
     behavior_asset_free(asset);
 }
 
+static void source_presentation_inspection(project *p)
+{
+    yyjson_val *response = ask(
+        p,
+        "inspect_graph",
+        "\"kind\":\"behavior\",\"name\":\"Target\",\"graph_name\":\"Take\","
+        "\"include_layout\":false,\"include_pins\":true"
+    );
+    yyjson_val *r = result_of(response);
+    yyjson_val *g = yyjson_obj_get(r, "graph");
+    uint64_t id = yyjson_get_uint(yyjson_obj_get(g, "id"));
+    bool typed = false, positioned = false, located = false;
+    size_t i, n;
+    yyjson_val *node;
+    yyjson_arr_foreach(yyjson_obj_get(g, "nodes"), i, n, node)
+    {
+        positioned |= yyjson_obj_get(node, "x") || yyjson_obj_get(node, "y");
+        located |= yyjson_is_int(yyjson_obj_get(node, "start"));
+        yyjson_val *pin;
+        size_t j, m;
+        yyjson_arr_foreach(yyjson_obj_get(node, "out"), j, m, pin)
+        {
+            const char *label = yyjson_get_str(pin);
+            typed |= label && !strcmp(label, "Amount: int");
+        }
+    }
+    int node_count = (int)yyjson_arr_size(yyjson_obj_get(g, "nodes"));
+    test_check(
+        yyjson_get_bool(yyjson_obj_get(response, "ok")) && named(g, "name", "Take") &&
+            id && node_count && typed && located && !positioned &&
+            !yyjson_obj_get(r, "metadata") && !yyjson_obj_get(r, "document"),
+        "canonical source inspection selects a function and preserves typed "
+        "ports and exact ranges without layout"
+    );
+    response = ask(
+        p,
+        "inspect_graph",
+        "\"kind\":\"behavior\",\"name\":\"Target\",\"graph_id\":%llu,"
+        "\"include_layout\":true,\"include_pins\":false",
+        (unsigned long long)id
+    );
+    g = yyjson_obj_get(result_of(response), "graph");
+    bool labels = false;
+    positioned = false;
+    yyjson_arr_foreach(yyjson_obj_get(g, "nodes"), i, n, node)
+    {
+        labels |= yyjson_obj_get(node, "in") || yyjson_obj_get(node, "out");
+        positioned |= yyjson_obj_get(node, "x") && yyjson_obj_get(node, "y");
+    }
+    test_check(
+        yyjson_get_bool(yyjson_obj_get(response, "ok")) && named(g, "name", "Take") &&
+            (int)yyjson_arr_size(yyjson_obj_get(g, "nodes")) == node_count &&
+            positioned && !labels,
+        "canonical graph ID selection agrees with name selection and honors "
+        "layout and pin flags"
+    );
+    response = ask(p, "inspect_graph", "\"kind\":\"behavior\",\"name\":\"Target\",\"graph_name\":\"Missing\"");
+    test_check(
+        error_code(response) && !strcmp(error_code(response), "invalid_request"),
+        "source graph selection rejects an unknown function"
+    );
+    response = ask(p, "inspect_graph", "\"kind\":\"behavior\",\"name\":\"Target\",\"graph_id\":\"Take\"");
+    test_check(
+        error_code(response) && !strcmp(error_code(response), "invalid_request"),
+        "source graph selection rejects a nonnumeric graph ID"
+    );
+}
+
 void test_automation_navigation()
 {
     project p = project_new();
@@ -415,6 +494,7 @@ void test_automation_navigation()
     selection_errors(&p);
     hierarchy(&p);
     use_counts(&p);
+    source_presentation_inspection(&p);
     project_free(&p);
     wide_hierarchy();
 }

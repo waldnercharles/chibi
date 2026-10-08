@@ -1,8 +1,8 @@
 #include "render/arena_influence.h"
 
 #include "platform/cute.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -200,7 +200,7 @@ void render_influences_preview(render_influences *influences, const float color[
 
 void render_influences_bind(render_influences *influences)
 {
-    CF_V4 count = { (float)influences->count };
+    CF_V4 count = { .x = (float)influences->count };
     cf_draw3d_set_uniform("arena_influence_count", &count, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("arena_influence_positions", influences->positions, CF_UNIFORM_TYPE_FLOAT4, INFLUENCE_LIMIT);
     cf_draw3d_set_uniform("arena_influence_colors", influences->colors, CF_UNIFORM_TYPE_FLOAT4, INFLUENCE_LIMIT);

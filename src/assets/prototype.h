@@ -8,12 +8,23 @@
 
 typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
 
+/* Borrowed typed rows matching the registered descriptor's native layout.
+ * Adding a component copies its fields and retains managed strings. */
+typedef struct
+{
+    ecs_component_id component;
+    const void *data;
+    size_t size;
+} game_prototype_default;
+
 typedef struct
 {
     const ecs_component_desc *const *components;
     int component_count;
     game_prototype_include_fn include;
     void *include_user;
+    const game_prototype_default *defaults;
+    int default_count;
 } game_prototype_registry;
 
 typedef int (*game_prototype_attach_fn)(
@@ -45,7 +56,8 @@ typedef struct game_prototype
 {
     char *name;
     char *identity;
-    /* Registry value is owned; descriptors and include context remain borrowed. */
+    /* Registry value is owned; descriptors, default rows and include context
+     * remain borrowed for subsequent authoring operations. */
     game_prototype_registry registry_storage;
     const game_prototype_registry *registry;
     game_prototype_tag tag;
@@ -154,6 +166,8 @@ int game_prototype_write_field_value(
     char *error,
     size_t error_size
 );
+/* Restores detached values, otherwise uses the first supplied typed default
+ * row for this component, or zero initialization when the registry omits it. */
 int game_prototype_add_component(game_prototype *prototype, const ecs_component_desc *desc);
 int game_prototype_remove_component(game_prototype *prototype, const char *component_name);
 /* Detach retains values for add_component to restore, including after save/load. */

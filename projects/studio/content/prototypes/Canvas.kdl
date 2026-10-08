@@ -1,4 +1,0 @@
-name "Canvas"
-components {
-    GAME.GameUi document="Canvas" hidden=#true
-}

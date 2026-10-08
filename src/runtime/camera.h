@@ -1,6 +1,7 @@
 #ifndef CHIBI_GAME_CAMERA_H
 #define CHIBI_GAME_CAMERA_H
 
+#include "render/view.h"
 #include "runtime/engine.h"
 
 /* Returns 1 for an authored camera, 0 if absent, -1 for invalid or competing

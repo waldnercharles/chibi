@@ -1,10 +1,12 @@
 #include "assets/model_export.h"
 
 #include "assets/project.h"
+#include "authoring/mesh_prepare.h"
 #include "automation/controller.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
-#include "support/text_file.h"
+#include "support/file_io.h"
 
 #include <assert.h>
 #include <math.h>
@@ -64,7 +66,7 @@ static void public_export(const char *root, const char *source)
     assert(doc && yyjson_get_bool(yyjson_obj_get(yyjson_doc_get_root(doc), "ok")));
     yyjson_doc_free(doc);
     free(reply);
-    char *retained = text_file_read_disk(path);
+    char *retained = file_read_text(path);
     assert(retained && !strcmp(retained, source));
     free(retained);
     reply = chibi_automation_handle(request, project, &code);
@@ -127,7 +129,7 @@ void test_model_export()
     assert(summary.triangles > 0 && summary.samples > 0);
     char path[512];
     snprintf(path, sizeof path, "%s/model.mesh.json", destination);
-    char *text = text_file_read_disk(path);
+    char *text = file_read_text(path);
     render_mesh_asset mesh = { 0 };
     assert(text && render_mesh_asset_parse(text, &mesh, error, sizeof error));
     for (int i = 0; i < acount(mesh.vertices); i++) {
@@ -136,11 +138,11 @@ void test_model_export()
     }
     free(text);
     snprintf(path, sizeof path, "%s/model.obj", destination);
-    text = text_file_read_disk(path);
+    text = file_read_text(path);
     assert(text && strstr(text, "mtllib model.mtl") && strstr(text, "usemtl material_0"));
     free(text);
     snprintf(path, sizeof path, "%s/model.mtl", destination);
-    text = text_file_read_disk(path);
+    text = file_read_text(path);
     assert(text && strstr(text, "newmtl material_0"));
     assert(strstr(text, "Neutral placeholders") && strstr(text, "Kd 0.7 0.7 0.7"));
     free(text);
@@ -168,20 +170,20 @@ void test_model_export()
     options.bake = model_bake_defaults();
     write_source(source, "malformed {");
     assert(!model_export_bundle(root, "Ball", second, &options, NULL, error, sizeof error));
-    text = text_file_read_disk(source);
+    text = file_read_text(source);
     assert(text && !strcmp(text, "malformed {"));
     free(text);
     write_source(source, saved);
     options.bake.cell_size = .25f;
     assert(model_export_bundle(root, "Ball", second, &options, NULL, error, sizeof error));
     snprintf(path, sizeof path, "%s/model.mesh.json", destination);
-    char *first_mesh = text_file_read_disk(path);
+    char *first_mesh = file_read_text(path);
     snprintf(path, sizeof path, "%s/model.mesh.json", second);
-    char *retry_mesh = text_file_read_disk(path);
+    char *retry_mesh = file_read_text(path);
     assert(first_mesh && retry_mesh && !strcmp(first_mesh, retry_mesh));
     free(first_mesh);
     free(retry_mesh);
-    text = text_file_read_disk(source);
+    text = file_read_text(source);
     assert(text && !strcmp(saved, text));
     free(text);
     remove_bundle(second);

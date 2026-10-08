@@ -1,0 +1,16 @@
+{
+  "grammars": [
+    {
+      "name": "chibi",
+      "camelcase": "Chibi",
+      "scope": "source.chibi",
+      "path": ".",
+      "file-types": ["chibi"]
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "description": "Chibi executable source grammar"
+  },
+  "bindings": { "c": true }
+}

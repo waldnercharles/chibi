@@ -1,9 +1,8 @@
 #include "runtime/rhythm.h"
 
 #include "ecs/execution.h"
-#include "graph/runtime/eval.h"
-#include "graph/runtime/instance.h"
-#include "runtime/generated.h"
+#include "execution/function.h"
+#include "runtime/component_catalog.h"
 
 #include <math.h>
 
@@ -33,41 +32,31 @@ bool game_rhythm_sample(ecs_world *world, double time, game_beat *beat)
     return true;
 }
 
-static const char *read_rhythm(const eval_context *ctx, const pin_value *, arena *, pin_value *out)
+static const char *sample_rhythm(
+    const behavior_function_context *context,
+    void *world,
+    const pin_value *,
+    pin_value *out
+)
 {
-    ecs_world *world = eval_context_service(ctx, "ecs.world");
-    if (!world || !ctx->instance) {
+    if (!context->instance_time) {
         return GAME_RHYTHM_NO_SCENE;
     }
     game_beat beat;
-    if (!game_rhythm_sample(world, ctx->instance->clock->current_time, &beat)) {
+    if (!game_rhythm_sample(world, *context->instance_time, &beat)) {
         return GAME_RHYTHM_INVALID;
     }
-    double values[] = { beat.phase, beat.pulse, beat.period, beat.duration };
-    for (int i = 0; i < 4; i++) {
-        out[i] = (pin_value){ .type = PIN_F64, .type_name = "double", .d = values[i] };
-    }
+    out[0].d = beat.phase;
+    out[1].d = beat.pulse;
+    out[2].d = beat.period;
+    out[3].d = beat.duration;
     return NULL;
 }
+const node_host_call GAME_RHYTHM_CALL = {
+    .service = "ecs.world",
+    .context = sample_rhythm,
+    .missing_service = GAME_RHYTHM_NO_SCENE,
+};
 
-static pin_spec outputs[] = {
-    { .name = "Phase", .type = PIN_F64, .type_name = "double" },
-    { .name = "Pulse", .type = PIN_F64, .type_name = "double" },
-    { .name = "Period", .type = PIN_F64, .type_name = "double" },
-    { .name = "Duration", .type = PIN_F64, .type_name = "double" },
-};
-static const node_access access = { .reads = &GAME_COMPONENT_GameRhythm.id,
-                                    .read_count = 1 };
-node_desc NODE_Scene_Rhythm = {
-    .name = "Scene Rhythm",
-    .output_count = 4,
-    .outputs = outputs,
-    .pure_kind = NODE_PURE_READ,
-    .read_inputs = read_rhythm,
-    .lower = game_rhythm_lower,
-    .category = "Time",
-    .keywords = "beat tempo phase pulse rhythm music",
-    .description = "Reads the scene rhythm clock, 120 BPM without one; Phase "
-                   "runs 0 to 1 per beat and Pulse fades from 1.",
-    .access = &access,
-};
+const node_access GAME_RHYTHM_ACCESS = { .reads = &GAME_COMPONENT_GameRhythm.id,
+                                         .read_count = 1 };

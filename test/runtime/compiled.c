@@ -1,7 +1,10 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/document/library.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/runtime.h"
 #include "test/instance_bank_fixture.h"
@@ -67,8 +70,10 @@ static void compiled_counter(behavior_backend backend)
     behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
     assert(behavior_instance_set_backend(instance, backend) == 0);
     if (backend != BEHAVIOR_ORACLE) {
-        const behavior_graph_program
-            *program = behavior_program_graph(asset->program, asset->graph);
+        const behavior_graph_program *program = behavior_program_graph(
+            behavior_program_cached(asset),
+            asset->graph
+        );
         node *event = NULL, *delay = NULL;
         for (int i = 0; i < acount(asset->graph->nodes); i++) {
             node *n = asset->graph->nodes[i];
@@ -79,7 +84,7 @@ static void compiled_counter(behavior_backend backend)
                 delay = n;
             }
         }
-        assert(event && delay && !behavior_program_diagnostic(asset->program));
+        assert(event && delay && !behavior_program_diagnostic(behavior_program_cached(asset)));
         const behavior_function_diagnostic *d = behavior_program_function_diagnostic(program, event);
         assert(!d && behavior_program_function(program, event));
     }
@@ -123,7 +128,7 @@ static void compiled_counter(behavior_backend backend)
     if (backend != BEHAVIOR_ORACLE) {
         assert(eval_oracle_calls() == eval_before && flow_oracle_calls() == flow_before);
         const graph_ir *ir = behavior_graph_ir(
-            behavior_program_graph(asset->program, asset->graph)
+            behavior_program_graph(behavior_program_cached(asset), asset->graph)
         );
         assert(acount(ir->blocks) && acount(ir->values) && acount(ir->control));
         for (int i = 0; i < acount(ir->blocks); i++) {
@@ -225,7 +230,7 @@ static void whole_function_set_watches(behavior_backend backend)
 
     behavior_program_publish(asset);
     const behavior_function *function = behavior_program_function(
-        behavior_program_graph(asset->program, g),
+        behavior_program_graph(behavior_program_cached(asset), g),
         event
     );
     assert(function);
@@ -281,7 +286,7 @@ static void whole_function_set_watches(behavior_backend backend)
     assert(watched.type == PIN_F64 && watched.container == PIN_CONTAINER_SET);
     assert(set_output && set_output->count == 2 && set_output->items[1].d == 7.5);
 
-    const pin_array *current = instance->variables[0].ptr;
+    const pin_array *current = instance->execution.variables[0].ptr;
     assert(
         current && current->count == 2 && current->items[0].d == 10.5 &&
         current->items[1].d == 7.5
@@ -466,7 +471,7 @@ static void whole_function_owned_set_add_traversals()
     assert(behavior_function_owned_set_add_candidate(fixture.asset, g, fixture.add));
     behavior_program_publish(fixture.asset);
     const behavior_function *function = behavior_program_function(
-        behavior_program_graph(fixture.asset->program, g),
+        behavior_program_graph(behavior_program_cached(fixture.asset), g),
         fixture.event
     );
     assert(function && function->pin_watches && whole_function_has_owned_set_add(function));
@@ -575,7 +580,10 @@ static void whole_function_owned_set_add_traversals()
     set_watch_fixture untraced = whole_function_set_watch_fixture();
     behavior_program_publish(untraced.asset);
     const behavior_function *untraced_function = behavior_program_function(
-        behavior_program_graph(untraced.asset->program, untraced.asset->graph),
+        behavior_program_graph(
+            behavior_program_cached(untraced.asset),
+            untraced.asset->graph
+        ),
         untraced.event
     );
     assert(untraced_function && whole_function_has_owned_set_add(untraced_function));
@@ -645,7 +653,7 @@ static void whole_function_set_watch_case(behavior_backend backend, set_watch_ca
     assert(behavior_function_owned_set_add_candidate(fixture.asset, g, fixture.add) == expected_owned);
     behavior_program_publish(fixture.asset);
     const behavior_function *function = behavior_program_function(
-        behavior_program_graph(fixture.asset->program, g),
+        behavior_program_graph(behavior_program_cached(fixture.asset), g),
         fixture.event
     );
     assert(function);
@@ -785,7 +793,7 @@ static void whole_function_scalar_watch_case(behavior_backend backend, bool watc
 
     behavior_program_publish(asset);
     const behavior_function *function = behavior_program_function(
-        behavior_program_graph(asset->program, g),
+        behavior_program_graph(behavior_program_cached(asset), g),
         event
     );
     assert(function && function->pin_watches && function->watches);
@@ -873,7 +881,7 @@ static void whole_function_managed_string_watch(behavior_backend backend)
 
     behavior_program_publish(asset);
     const behavior_function *function = behavior_program_function(
-        behavior_program_graph(asset->program, g),
+        behavior_program_graph(behavior_program_cached(asset), g),
         event
     );
     assert(function && function->pin_watches && whole_function_has_owned_set_add(function));
@@ -963,7 +971,7 @@ static void whole_function_scalar_watches(behavior_backend backend)
 
     behavior_program_publish(asset);
     const behavior_function *function = behavior_program_function(
-        behavior_program_graph(asset->program, g),
+        behavior_program_graph(behavior_program_cached(asset), g),
         event
     );
     assert(function);
@@ -1072,7 +1080,8 @@ static void numeric_regions(pin_type type)
     assert(graph_connect_data(a->graph, nodes[3], 0, sink, 1) == 0);
     behavior_instance *instance = behavior_instance_create(a, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(instance, 0);
-    const behavior_graph_program *program = behavior_program_graph(a->program, a->graph);
+    const behavior_graph_program
+        *program = behavior_program_graph(behavior_program_cached(a), a->graph);
     if (behavior_default_backend() == BEHAVIOR_SLJIT) {
         assert(behavior_program_input_is_direct(program, sink, 1));
     }
@@ -1163,11 +1172,15 @@ static void whole_function_control(behavior_backend backend)
         assert(flow_run_traversals(inspected, &count) && count > 0);
     }
     if (backend != BEHAVIOR_ORACLE) {
-        const behavior_function
-            *f = behavior_program_function(behavior_program_graph(a->program, g), event);
+        const behavior_function *f = behavior_program_function(
+            behavior_program_graph(behavior_program_cached(a), g),
+            event
+        );
         assert(
-            f &&
-            !behavior_program_function_diagnostic(behavior_program_graph(a->program, g), event)
+            f && !behavior_program_function_diagnostic(
+                     behavior_program_graph(behavior_program_cached(a), g),
+                     event
+                 )
         );
         pin_value variables[2] = { { .type = PIN_F32 }, { .type = PIN_F32 } };
         behavior_function_context ctx = { .variables = variables, .budget = 5 };
@@ -1254,7 +1267,7 @@ static void whole_function_library(behavior_backend backend, bool effectful)
         } else {
             node *linked_event = graph_node_by_id(linked->graph, event->id);
             assert(behavior_program_function(
-                behavior_program_graph(linked->program, linked->graph),
+                behavior_program_graph(behavior_program_cached(linked), linked->graph),
                 linked_event
             ));
         }
@@ -1268,7 +1281,10 @@ static void whole_function_library(behavior_backend backend, bool effectful)
         int status = backend == BEHAVIOR_ORACLE
                        ? graph_eval_output(linked->graph, linked_call, 0, &storage, &result, &ctx)
                        : behavior_program_output(
-                             behavior_program_graph(linked->program, linked->graph),
+                             behavior_program_graph(
+                                 behavior_program_cached(linked),
+                                 linked->graph
+                             ),
                              linked_call,
                              0,
                              &storage,
@@ -1330,9 +1346,9 @@ static void whole_function_arguments(behavior_backend backend)
                                                        : args[1].f;
             double wide = (double)args[1].f > args[0].d ? (double)args[1].f
                                                         : args[0].d;
-            assert_real(bi->variables[0].d, wide);
-            assert_real(bi->variables[1].f, small);
-            assert(bi->variables[2].b == args[2].b);
+            assert_real(bi->execution.variables[0].d, wide);
+            assert_real(bi->execution.variables[1].f, small);
+            assert(bi->execution.variables[2].b == args[2].b);
             if (backend == BEHAVIOR_ORACLE) {
                 flow_run *leaf = run->children[0]->children[0];
                 assert(flow_run_steps(leaf) == 3 && leaf->returned == ret);
@@ -1406,7 +1422,10 @@ static void whole_function_comparisons()
         assert(graph_connect_exec(a->graph, event, 0, set, 0, 0) == 0);
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         behavior_instance_set_trace_enabled(bi, 0);
-        assert(behavior_program_function(behavior_program_graph(a->program, a->graph), event));
+        assert(behavior_program_function(
+            behavior_program_graph(behavior_program_cached(a), a->graph),
+            event
+        ));
         for (int mode = 0; mode < 3; mode++) {
             assert(
                 behavior_instance_set_backend(
@@ -1444,11 +1463,11 @@ static void whole_function_scopes(behavior_backend backend)
     behavior_instance_set_trace_enabled(bi, 0);
     assert(behavior_instance_set_activation_pool(bi, 1) == 0);
     for (int i = 0; i < 32; i++) {
-        bi->variables[0].f = i;
+        bi->execution.variables[0].f = i;
         flow_error error = { 0 };
         flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
         assert(run && flow_run_status(run) == FLOW_COMPLETED);
-        assert(bi->variables[0].f == 99 && bi->variables[1].f == i + 101);
+        assert(bi->execution.variables[0].f == 99 && bi->execution.variables[1].f == i + 101);
         assert(flow_run_steps(run) == 4);
         if (backend != BEHAVIOR_ORACLE) {
             assert(run->whole_function_executed && !acount(run->children));
@@ -1464,8 +1483,8 @@ static void whole_function_scopes(behavior_backend backend)
     assert(event);
     graph *f = a->graphs[1];
     node *ret = graph_node_by_id(f, f->return_id);
-    bi->variables[0].f = 0;
-    bi->variables[1].f = 0;
+    bi->execution.variables[0].f = 0;
+    bi->execution.variables[1].f = 0;
     flow_options options = { .instance = bi, .step_budget = 3 };
     flow_error error = { 0 };
     flow_run *limited = flow_run_start(a->graph, event, (flow_inputs){ 0 }, &options, &error);
@@ -1473,18 +1492,18 @@ static void whole_function_scopes(behavior_backend backend)
     /* The first callee reaches its Return after using its own three steps. */
     assert(flow_run_steps(limited) == 2 && flow_run_error(limited)->steps == 3);
     assert(flow_run_error(limited)->node == ret && flow_run_current_node(limited) == ret);
-    assert(bi->variables[0].f == 99 && bi->variables[1].f == 0);
+    assert(bi->execution.variables[0].f == 99 && bi->execution.variables[1].f == 0);
     int count = 0;
     const flow_call_frame *frames = flow_run_call_stack(limited, &count);
     assert(count >= 2 && frames[count - 1].graph == f && frames[count - 1].node_id == ret->id);
     assert(frames[count - 2].graph == a->graph);
     flow_run_free(limited);
     options.call_depth = 64;
-    bi->variables[0].f = 0;
+    bi->execution.variables[0].f = 0;
     limited = flow_run_start(a->graph, event, (flow_inputs){ 0 }, &options, &error);
     assert(limited && flow_run_resume(limited) == FLOW_ERR_STEP_BUDGET);
     assert(strstr(flow_run_error(limited)->message, "call depth"));
-    assert(bi->variables[0].f == 0 && flow_run_steps(limited) == 2);
+    assert(bi->execution.variables[0].f == 0 && flow_run_steps(limited) == 2);
     flow_run_free(limited);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
@@ -1522,10 +1541,14 @@ static void pure_unused_return(behavior_backend backend)
     assert(behavior_instance_set_backend(bi, backend) == 0);
     behavior_instance_set_trace_enabled(bi, 0);
     if (backend != BEHAVIOR_ORACLE) {
-        assert(behavior_program_function(behavior_program_graph(a->program, a->graph), event));
-        assert(
-            !behavior_program_function_diagnostic(behavior_program_graph(a->program, a->graph), event)
-        );
+        assert(behavior_program_function(
+            behavior_program_graph(behavior_program_cached(a), a->graph),
+            event
+        ));
+        assert(!behavior_program_function_diagnostic(
+            behavior_program_graph(behavior_program_cached(a), a->graph),
+            event
+        ));
     }
     srand(2718);
     (void)rand();
@@ -1535,7 +1558,7 @@ static void pure_unused_return(behavior_backend backend)
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, &error);
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
-    assert(bi->variables[0].d == 42 && rand() == expected_next);
+    assert(bi->execution.variables[0].d == 42 && rand() == expected_next);
     if (backend != BEHAVIOR_ORACLE) {
         assert(run->whole_function_executed);
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
@@ -1551,7 +1574,8 @@ static void whole_pure_calls(behavior_backend backend)
     assert(behavior_instance_set_backend(bi, backend) == 0);
     behavior_instance_set_trace_enabled(bi, 0);
     node *call = a->graph->nodes[0];
-    const behavior_graph_program *program = behavior_program_graph(a->program, a->graph);
+    const behavior_graph_program
+        *program = behavior_program_graph(behavior_program_cached(a), a->graph);
     graph *wrapper = a->graphs[2];
     node *inner = wrapper->nodes[2];
     assert(inner->desc->pure_kind == NODE_PURE_FUNCTION);
@@ -1559,7 +1583,7 @@ static void whole_pure_calls(behavior_backend backend)
         for (int i = 1; i <= 2; i++) {
             graph *f = a->graphs[i];
             assert(behavior_program_function(
-                behavior_program_graph(a->program, f),
+                behavior_program_graph(behavior_program_cached(a), f),
                 graph_node_by_id(f, f->entry_id)
             ));
         }
@@ -1578,7 +1602,7 @@ static void whole_pure_calls(behavior_backend backend)
             ctx.call_depth = (unsigned[]){ 0, 62, 63, 64 }[depth_case];
             for (int k = 0; k < 9; k++) {
                 runtime_store_reset_memo(ctx.runtime);
-                bi->variables[0].d = cases[k];
+                bi->execution.variables[0].d = cases[k];
                 uint64_t allocated = runtime_store_creations(),
                          oracle = eval_oracle_calls();
                 pin_value value;
@@ -1620,7 +1644,7 @@ static void dispatch_empty(behavior_instance *instance, const char *name)
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     flow_run *run = behavior_instance_dispatch(instance, name, (flow_inputs){ 0 }, &error);
     assert(run && !error.code && flow_run_status(run) == FLOW_COMPLETED);
-    if (instance->backend != BEHAVIOR_ORACLE) {
+    if (instance->execution.backend != BEHAVIOR_ORACLE) {
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     }
     assert(!behavior_instance_release_activation(instance, run));

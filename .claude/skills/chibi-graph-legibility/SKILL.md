@@ -3,45 +3,36 @@ name: chibi-graph-legibility
 description: Make Chibi behavior, shader and field graphs read like code. Use when authoring, reviewing or cleaning up a graph asset (behavior, event, library, material, shape, shader library, field, system), or when a graph is hard to follow.
 ---
 
-A legible graph reads like the code its author had in mind: formulas as
-expressions, named values, one exec spine, no wire that crosses the canvas to
-say something a name could. Work each graph through the passes below in order;
-each ends on a checkable state.
+A legible graph uses expressions for formulas, named values for shared reads,
+and explicit control flow. Executable behavior, library and system source lives
+in `.chibi`; declarative assets live in KDL. Edit these files directly. Optional
+graph layout and debug metadata never define execution.
 
 ## Passes
 
-1. **See it.** Screenshot the graph as the editor draws it:
-   `build/chibi --project-root <root> --open <Asset> [--graph "<Graph>"] --screenshot /tmp/<name>.png`,
-   then read the image (downscale past 2000 px first: `sips -Z 1920`). Also
-   `inspectGraph`. Done when you can state what the graph does in two
-   sentences and list what reads badly.
-2. **Record a baseline.** Before editing, capture evidence the change must
-   preserve: shaders `previewShader` with `sample_grid` (8×8) and a fixed
-   `time`, plus `beat_pulse` and `influence` for materials that read Beat or
-   Surface Influence; fields `previewField` `field_hash`; behaviors `runScenario`
-   `world_hash` over enough frames and inputs to exercise every branch.
-3. **Mechanical pass.** `optimizeGraph` with `dry_run: true`,
-   `math_expressions: true`. Review, then apply with the returned hash. It
-   folds getters into bindings, turns math trees into expressions and names
-   values used three or more times as locals. Done when the baseline matches
-   exactly.
-4. **Naming pass.** Replace every placeholder the mechanical pass left:
-   expression inputs `a`, `b`, … and locals `Value`, `Value2`, `X2`. Rename an
-   expression input with `set_pin` on that input and a new `name`; the source is
-   rewritten and the input keeps its wire. `set_expression` matches inputs by
-   name, so a name it drops loses its wire (reported as `unfed_inputs`) and a
-   name matching a local reads that local. Rename a local with `create_local`
-   on its source output. Name by meaning in the asset's
-   existing style (`crackMask`, `rim_glow`); single letters stay only as true
-   math variables (`t`, `x`). Rewrite noisy literals as the author meant them:
-   `x / 180`, not `0.0055555557 * x`, and accept baseline drift within float
-   rounding for these. Done when no placeholder or generic name remains.
+1. **Inspect.** Read the asset and its referenced declarations. Use the native
+   controller's read-only inspection when resolved graph facts are needed.
+   State what the asset does and which names or relationships are unclear.
+2. **Record a baseline.** Choose an admitted check that exercises the affected
+   behavior. For rendering or simulation, follow `docs/agent-execution.md` and
+   the temporary limits in `docs/testing.md`. Preserve inputs, timing and output
+   evidence so the same check can compare the edit. An unavailable check remains
+   unverified; do not launch Studio or reconstruct quarantined suites.
+3. **Simplify.** Edit source formulas, field bindings and named values directly.
+   Preserve evaluation count, side effects, suspension and event order. Reusing
+   a lazy expression does not guarantee that its producer runs only once.
+   Confirm the chosen baseline still matches.
+4. **Name.** Replace placeholder inputs and locals with names that describe their
+   meaning in the asset's existing style, such as `crackMask` or `rim_glow`.
+   Single letters remain useful for mathematical variables. Keep readable
+   formulas such as `x / 180`; document any accepted rounding difference.
 5. **Structure pass.** Apply every rule under Reference that the graph
    violates. Done when each rule is either satisfied or its exception is
    noted in the graph or asset description.
-6. **Prove it.** `validateAsset`; re-run the baseline; `build/chibi_ctl
-   --project-root <root> --format` after any hand edit; screenshot again and
-   compare with pass 1.
+6. **Verify.** After hand edits run `build/chibi_ctl --project-root <root>
+   --format`, inspect its result, and rerun the selected admitted check. For
+   layout changes, compare a rendered view when the permitted inspection path
+   supports it. Report checks run and any unverified behavior separately.
 
 ## Reference
 
@@ -52,21 +43,17 @@ each ends on a checkable state.
   `move * speed`, `aim.y`, not paired `x`/`y` inputs and
   `sqrt(x * x + y * y)`. One Set Component with the fields it writes, not a
   Set per field.
-- **Names over wires.** A value read in several places far apart becomes a
-  local (`create_local`); state that must survive a frame becomes a variable
-  (`promote_to_variable`). Locals are graph-only names and cost nothing at
-  runtime.
+- **Names over wires.** Name a value used in several places. Choose a lazy
+  expression, eager local or persistent state according to its evaluation and
+  lifetime requirements. These choices are executable language semantics.
 - **Functions for repeated or nameable stages.** The same subgraph twice, or
   a stage with a name ("Crack Mask", "Formation Position"), becomes a
-  function with named ports: `collapse_to_function` with its `nodes` and a
-  `name`, or `add_graph`.
+  function with named parameters and results in the owning asset.
 - **Switch, not branch chains.** Equality tests on one value choose with
   Switch on Int/Enum.
-- **Look nodes up.** `searchNodes` names the node for an intent ("wait",
-  "on hit", "set health current") with its pins, and its `expression` gives
-  the Behavior Expression spelling with arguments in order
-  (`smoothstep(Min, Max, Value)`). `wire_from`/`wire_to` with a pin's type
-  finds what connects to it.
+- **Inspect capabilities.** Use the language catalog and existing assets to find
+  supported operations, exact parameter types and effects. Confirm callable
+  names and argument order before editing source.
 - **Language table.** Functions, their argument order and which graph kind
   has each: `docs/math-expressions.md`. Shader and field expressions are
   values only; `e` and `pi` are constants, never input names.

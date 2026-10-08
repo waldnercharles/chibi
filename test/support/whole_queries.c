@@ -1,5 +1,8 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/array_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/array.h"
@@ -150,7 +153,7 @@ void whole_query_smoke()
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     flow_run *run = flow_run_start(g, g->nodes[0], (flow_inputs){ 0 }, &options, &error);
     assert(run && !flow_run_resume(run) && run->whole_function_executed);
-    assert(bi->variables[0].i == 9 && bi->variables[1].u64 == 125);
+    assert(bi->execution.variables[0].i == 9 && bi->execution.variables[1].u64 == 125);
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     flow_run_free(run);
     printf(

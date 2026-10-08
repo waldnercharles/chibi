@@ -1,5 +1,11 @@
 # chibi editor usability refactor
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 Tracking: https://github.com/waldnercharles/c-blueprints/issues/44
 
 Implement one ticket at a time through delegated work, primary integration, and rendered/runtime verification. Preserve the extensive preexisting uncommitted Arena3D changes. Issues remain open while implementation is local and uncommitted.

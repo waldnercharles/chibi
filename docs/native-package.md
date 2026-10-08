@@ -1,17 +1,111 @@
-# Native engine packages
+# Native product packages
+
+The installed SDK, Studio, and deployed player are separate products. The player
+package contains the native `chibi-player`, shaders, licenses, engine identity,
+and a manifest pinning its exact runtime SDK. It accepts prepared project
+artifacts and their declared resources.
+
+## SDK and application ownership
+
+The engine repository owns the language, compiler, execution, runtime, shared
+authoring services and native tools. Studio owns its application loop, editor
+UI, starter project and authored shell assets in the separate `chibi-studio`
+repository. Arena3D, SpaceCadet and Voidweaver have separate game repositories;
+the labs and sampled-model content live in `chibi-examples`. Engine tests retain
+focused fixtures. Product packaging does not discover or ship `projects/*`.
+
+Project format 10 uses `.chibi` as complete executable source for behaviors,
+callable libraries and systems. Declarative assets use KDL. The compiler resolves
+source against explicit capability tables and produces verified prepared modules
+and asset records. The player loads those records without syntax, compiler,
+graph authoring or Studio dependencies. There is no MCP product or setup step.
+
+```sh
+make package-sdk SDK_PREFIX=dist/sdk
+make package-runtime-sdk RUNTIME_SDK_PREFIX=dist/runtime-sdk
+make package-studio STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk
+```
+
+The compiler-enabled SDK supplies public headers, libraries, installed CMake
+targets and `chibi-compile`. The compiler-disabled runtime SDK supplies public
+runtime targets and the standalone player. It is an intermediate SDK for native
+hosts and player packaging, rather than a game deployment. The player package
+contains its executable and declared runtime resources; it excludes SDK headers
+and archives. Studio packages its own executable and resources against the exact
+SDK manifest captured when it was configured. The controller is a separate
+public-SDK consumer built with `make controller-build`.
+
+## Prepare and run a game
+
+Use the game repository directly; no engine-checkout mount is required.
+
+```sh
+/installed/sdk/bin/chibi-compile --project-root /absolute/game --output /absolute/output/game.chibip
+/installed/player/bin/chibi-player /absolute/output/game.chibip --resource-root /absolute/output
+make studio-run STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk PROJECT_ROOT=/absolute/game
+```
+
+Retain the artifact's resource manifest and declared resources. Studio receives
+an explicit project root; browser Studio receives an explicit sample list through
+`WEB_PROJECTS`. The extracted browser build and rendered product acceptance are
+tracked separately from package integrity and installed-consumer linking.
+
+## Deployment identity
+
+`share/chibi/package.json` inventories the deployed files and pins the source
+runtime SDK. The SDK manifest records configured target, format and compiled
+source evidence. The game's `.chibi-engine.json` identifies its copied player
+deployment. Use those records for capability requests; the controller's identity
+describes its own authoring distribution and is not the game's runtime pin.
+
+```sh
+make package-player PLAYER_OUTPUT=dist/game-runtime
+```
+
+This builds a native reflection tool and an optimized compiler-free desktop
+runtime SDK before deriving the player package. `RUNTIME_SDK_BUILD_DIR` and
+`RUNTIME_SDK_PREFIX` select the intermediate build and installed SDK.
+`SDK_REFLECT_BUILD_DIR` selects the host tool build. Packaging does not install
+into registered games.
+
+```sh
+COMPILER_SDK=/absolute/path/to/packaged/compiler-sdk
+python3 "$COMPILER_SDK/share/chibi/tools/install_game_runtime.py" \
+  --package /absolute/path/to/game-runtime \
+  --config /absolute/path/to/game-runtime.json
+```
+
+`make update-game-runtime` performs this refresh for the checkout registration
+when `UPDATE_GAME_RUNTIME=1`. Installation verifies complete package inventories,
+project format requirements, and the captured prior deployment. A valid formerly
+managed combined runtime can be replaced; unmanaged or modified directories are
+preserved. Restart running games after installation.
+
+Use a compiler-enabled installed SDK for `chibi-compile` and the separate Studio
+package for authoring. See [runtime authoring](runtime-authoring.md) for preparation,
+resource retention, and exact SDK pins. Packaging checks do not establish rendered
+game acceptance; runtime execution and GPU checks retain their admission limits.
+
+The workflow below records the retired combined product and its earlier evidence.
+Its commands and package layout do not describe the current deployment contract.
+
+## Historical combined package workflow
+
+All sections below preserve the earlier combined-checkout workflow. Its
+`projects/arena2d` shipping, mount discovery, `chibi_ctl --engine-info` example,
+launch-time deployment and publishing commands are historical and have no role
+in the current product interfaces above.
 
 `make package-native` builds an optimized static application, the automation
-controller, Studio resources, and the MCP adapter into `dist/chibi-darwin-arm64`
-on an Apple Silicon Mac. The directory name follows the build machine's OS and
-architecture. Set `PACKAGE_OUTPUT` to choose its location. A game author needs
-the package and Node.js 22 or newer for MCP; CMake, a C compiler, and the engine
+controller, and Studio resources into `dist/chibi-darwin-arm64` on an Apple
+Silicon Mac. The directory follows the build machine's OS and architecture;
+`PACKAGE_OUTPUT` selects another location. CMake, a C compiler, and the engine
 checkout are build-time dependencies only.
 
-The package contains two native executables, `bin/chibi` and `bin/chibi_ctl`,
-plus `bin/chibi-mcp`. Application libraries and fonts are linked into the
-executables. Shaders, Studio's authored assets, UI documents, and JavaScript
-MCP modules live in `share/chibi`. OS libraries still come from the host.
-Keep the whole package together when moving or distributing it.
+The package contains `bin/chibi` and `bin/chibi_ctl`. Application libraries and
+fonts are linked into the executables. Shaders, Studio's authored assets, and
+UI documents live in `share/chibi`. OS libraries come from the host. Keep the
+whole package together when moving or distributing it.
 
 ## Use a separate game workspace
 
@@ -19,7 +113,7 @@ A game repository contains `project.kdl` and its `content` directory. For
 example, `project.kdl` can select an empty starting scene:
 
 ```kdl
-version 7
+version 10
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -33,39 +127,18 @@ name "Main"
 (array)entities
 ```
 
-Then register the installed engine with that workspace:
+Open the project or run it with the installed application:
 
 ```sh
-/path/to/chibi/bin/chibi-mcp --setup /path/to/my-game
 /path/to/chibi/bin/chibi --project-root /path/to/my-game
-```
-
-Setup preserves other Codex settings and MCP servers. It writes the Chibi
-registration to `.codex/config.toml` and the engine identity to
-`.chibi-engine.json`. Commit the pin with the game; keep machine-specific Codex
-configuration local. The packaged MCP refuses a different engine identity
-until it is explicitly selected with:
-
-```sh
-/path/to/new-chibi/bin/chibi-mcp --setup /path/to/my-game --update-engine
-```
-
-An engine pin does not migrate assets between project format versions. The
-game's `project.kdl` must use the version accepted by the selected engine.
-
-Use MCP discovery and search before authoring. Change assets with the matching
-`build*` tool, validate, then preview or run a deterministic scenario. The
-installed [MCP guide](mcp.md) describes the tools and expected workflow. The
-native editor opens the same assets. Run the game with:
-
-```sh
 /path/to/chibi/bin/chibi --play --project-root /path/to/my-game
 ```
 
-The MCP process serves the compiled engine's catalog and invokes the packaged
-controller. It needs no npm install or engine build and never rebuilds a
-missing controller. It loads game assets from the selected workspace. Its
-JavaScript adapter is shipped separately from the native executable.
+Edit `.chibi` executable source and KDL declarative assets directly or through
+Studio. Format and validate saved content through `bin/chibi_ctl`, then inspect
+or run a bounded scenario. The [asset workflow](runtime-authoring.md) gives
+native request examples. A project must use the selected engine's project
+format version; selecting a package does not migrate authored assets.
 
 ## Request an engine capability
 
@@ -87,26 +160,24 @@ samples before this workflow can be used.
 
 ## Local external projects
 
-The tracked `projects/arena2d` sample keeps clean engine checkouts and CI
-self-contained. To author an external game in the engine's Studio or local
-browser editor, optionally mount it at the ignored `projects/local-game` path:
+Games now live in separate repositories. Engine regression inputs remain in
+`test/fixtures`; no game project is bundled by default. Select the external
+Studio repository and authored game explicitly:
 
 ```sh
-ln -s /absolute/path/to/game projects/local-game
-make run PROJECT=projects/local-game
-make web-serve PROJECT=projects/local-game
+make studio-run STUDIO_SOURCE=/absolute/path/to/chibi-studio PROJECT_ROOT=/absolute/path/to/game
+make web-serve STUDIO_SOURCE=/absolute/path/to/chibi-studio WEB_OUTPUT=/absolute/path/to/studio-web
 ```
 
-The external game owns its `project.kdl` and `content/`. Studio's project list
-and the local browser editor follow the mount; editor saves update the game's
-files. Select it explicitly for source MCP with `CHIBI_ROOT`, or use the
-copied runtime and MCP launcher directly from the game workspace.
+The external game owns its `project.kdl` and `content/`. Native Studio opens that
+project directly. The browser workspace owns its imported project files. Use
+`chibi_ctl --project-root` for native inspection and validation, or prepare an
+artifact with `chibi-compile` and run it with the installed `chibi-player`.
 
-Ignored mounts are local authoring conveniences and are excluded from clean
-CI and static web publishing. If a project link is tracked in a future engine
-commit, `make publish-web` requires its target Git checkout and archives only
-its committed `HEAD`; CI must also provide that project. `BUILD_SOURCES.json`
-records the selected engine and external project commits.
+Engine-owned web deployment is retired. `make publish-web` reports that no
+publication was performed; deployment belongs to the extracted Studio product.
+Engine CI compiles owned SDK/CLI targets and runs admitted C tooling checks.
+Historical browser publication fixtures do not establish current deployment.
 
 ## Deliver runtime updates to local games
 
@@ -119,42 +190,35 @@ Register game workspaces in the editor checkout's ignored
 }
 ```
 
-Launch commands such as `make run`, `make play`, and `make dev` build a
-distribution package and deliver it to registered games before starting.
-`make update-game-runtime` refreshes registered games explicitly, and
-`make package-native` delivers its package as well. Set `UPDATE_GAME_RUNTIME=0`
-to skip launch-time delivery. Ordinary build and test commands do not create
-a second packaging profile or update external game runtimes.
+`make update-game-runtime` explicitly packages the player and refreshes
+registered games. Ordinary build and test commands do not update external
+runtimes. Games are selected by absolute paths in the registration file;
+there is no implicit engine-owned game root.
 
 Delivery verifies the complete package and each game's project version, then
 stages a full copy inside each game's `.chibi` directory. It replaces
-`.chibi/runtime` with regular files, points MCP at the copied launcher, and
-refreshes `.chibi-engine.json`. A failed copy leaves the active runtime alone;
+`.chibi/runtime` with regular files and refreshes `.chibi-engine.json`.
+Codex configuration is preserved exactly. A failed copy leaves the active runtime alone;
 a failed activation restores the previous runtimes and metadata. Runtime
-delivery creates no symlinks or hardlinks to external packages. New game and
-MCP launches use the update; restart existing sessions after delivery.
+delivery creates no symlinks or hardlinks to external packages. New game launches use the update; restart existing sessions after delivery.
 
-For registered games, `make publish-web PUBLISH_GAME_RUNTIME=1` also builds a
-native package from the same isolated `origin/main` checkout. It delivers that package after the live
-web bundle passes verification. Game workspaces need only their local binary
-interface and MCP catalog.
+Browser publishing and runtime delivery are separate operations. Use the
+installed compiler/player packages for authored game preparation and playback.
 
 ## Build and verify
 
 ```sh
-make package-native
+make package-player
 make test-tools
-python3 tools/package_native.py --build build-package \
-  --output dist/chibi-darwin-arm64 --archive dist/chibi-darwin-arm64.tar.gz
 ```
 
 `make test-tools` runs C checks for package/install preservation and rejection of
-invalid build profiles. The former script-based relocation and MCP package tests
+invalid build profiles. The former script-based relocation tests
 are retired; the minimal suite does not establish their former coverage.
 
 `share/chibi/engine.json` records SHA-256 hashes of the payload, a build ID
 derived from those hashes, the project version, host platform, and source
-revision. The ID includes resources and the MCP adapter as well as binaries.
+revision. The ID includes resources as well as binaries.
 Distribution builds have no resource fallback to the engine checkout.
 `CHIBI_RESOURCE_DIR` can explicitly override the resource directory;
 `CHIBI_RENDER_SHADER_DIR` can override only the shaders. Development and web

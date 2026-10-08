@@ -1,3 +1,4 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"

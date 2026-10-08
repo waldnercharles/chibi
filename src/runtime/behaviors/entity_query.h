@@ -1,7 +1,7 @@
 #ifndef CHIBI_ENTITY_QUERY_H
 #define CHIBI_ENTITY_QUERY_H
 #include "ecs/ecs.h"
-#include "graph/model/node.h"
+#include "execution/host.h"
 #include "runtime/components.h"
 
 typedef enum
@@ -28,6 +28,7 @@ const char *entity_condition_resolve(
     const ecs_component_desc *component,
     entity_condition *out
 );
-int entity_query_lower(struct behavior_lower_builder *b, node *n, int pin);
-extern node_desc NODE_Count_Matching_Entities;
+const char *game_entity_count_matches(ecs_world *, const pin_value *, pin_value *);
+extern const node_host_call GAME_ENTITY_COUNT_MATCHING_CALL;
+extern const node_access GAME_ENTITY_COUNT_MATCHING_ACCESS;
 #endif

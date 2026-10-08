@@ -1,0 +1,1367 @@
+#include "language/semantic_internal.h"
+#include "support/array.h"
+#include "support/xalloc.h"
+#include "types/array.h"
+
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+char *script_analyzer_qualified_name(analyzer *a, TSNode node)
+{
+    if (script_analyzer_is(node, "argument_name")) {
+        char *name = xstrdup("");
+        for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+            TSNode child = ts_node_named_child(node, i);
+            if (ts_node_is_extra(child)) {
+                continue;
+            }
+            char *part = script_analyzer_name_copy(a, child);
+            size_t length = strlen(name), size = length + strlen(part) + 2;
+            name = xrealloc(name, size);
+            snprintf(name + length, size - length, "%s%s", length ? "." : "", part);
+            free(part);
+        }
+        return name;
+    }
+    if (script_analyzer_is(node, "engine_reference")) {
+        return script_analyzer_name_copy(a, script_analyzer_field(node, "name"));
+    }
+    if (!script_analyzer_is(node, "member_expression")) {
+        return script_analyzer_name_copy(a, node);
+    }
+    char *left = script_analyzer_qualified_name(a, script_analyzer_field(node, "object"));
+    char *right = script_analyzer_name_copy(a, script_analyzer_field(node, "member"));
+    size_t size = strlen(left) + strlen(right) + 2;
+    char *name = xmalloc(size);
+    snprintf(name, size, "%s.%s", left, right);
+    free(left);
+    free(right);
+    return name;
+}
+int script_analyzer_callable_symbol(const analyzer *a, const char *name)
+{
+    int symbol = script_analyzer_lookup_name(a, name);
+    if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION) {
+        return symbol;
+    }
+    for (int scope = a->scope; scope >= 0; scope = a->out->scopes[scope].parent) {
+        for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
+            const script_symbol *candidate = &a->out->symbols[i];
+            if (candidate->scope == scope &&
+                (candidate->kind == SCRIPT_FUNCTION || candidate->kind == SCRIPT_MACRO) &&
+                !strcmp(candidate->name, name)) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+int script_analyzer_parameter_index(const script_catalog_parameter *parameters, int count, const char *name)
+{
+    int found = -1;
+    for (int i = 0; i < count; i++) {
+        if (!strcmp(parameters[i].name, name)) {
+            return i;
+        }
+        if (script_name_matches(parameters[i].name, name)) {
+            found = found == -1 ? i : -2;
+        }
+    }
+    return found;
+}
+static int variadic_parameter(const script_catalog_capability *capability, const char *name, int argument_count)
+{
+    if (!capability->variadic || !capability->parameter_count) {
+        return -1;
+    }
+    const char *end = name + strlen(name), *digits = end;
+    while (digits > name && isdigit((unsigned char)digits[-1])) {
+        digits--;
+    }
+    if (digits == end) {
+        return -1;
+    }
+    int ordinal = 0;
+    for (const char *p = digits; p < end; p++) {
+        int digit = *p - '0';
+        if (ordinal > argument_count || digit > argument_count - ordinal * 10) {
+            return -1;
+        }
+        ordinal = ordinal * 10 + digit;
+    }
+    size_t size = (size_t)(digits - name);
+    char *first = xmalloc(size + 2);
+    memcpy(first, name, size);
+    memcpy(first + size, "0", 2);
+    bool matches = script_name_matches(
+        capability->parameters[capability->parameter_count - 1].name,
+        first
+    );
+    free(first);
+    return matches ? capability->parameter_count - 1 + ordinal : -1;
+}
+int script_analyzer_authored_parameter_index(
+    const analyzer *a,
+    const script_function *function,
+    const char *name
+)
+{
+    for (int i = 0; i < acount(function->parameters); i++) {
+        if (!strcmp(a->out->symbols[function->parameters[i]].name, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter)
+{
+    char *name = script_analyzer_name_copy(a, node);
+    uint64_t id = 0;
+    const char *canonical = name;
+    int index;
+    if (parameter->reference_kind == SCRIPT_REFERENCE_PROTOTYPE) {
+        index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_PROTOTYPE);
+        if (index >= 0) {
+            id = a->catalog->capabilities[index].id;
+            canonical = a->catalog->capabilities[index].name;
+        }
+    } else {
+        index = script_catalog_find_type(a->catalog, name);
+        if (index >= 0 && a->catalog->types[index].component) {
+            id = a->catalog->types[index].id;
+            canonical = a->catalog->types[index].key
+                          ? a->catalog->types[index].key
+                          : a->catalog->types[index].name;
+        }
+    }
+    if (!id) {
+        script_analyzer_diagnostic(
+            a,
+            node,
+            "%s %s reference '%s'",
+            index == -2 ? "Ambiguous" : "Unknown",
+            parameter->reference_kind == SCRIPT_REFERENCE_PROTOTYPE
+                ? "prototype"
+                : "component",
+            name
+        );
+    } else {
+        script_analyzer_use(
+            a,
+            node,
+            -1,
+            parameter->reference_kind == SCRIPT_REFERENCE_PROTOTYPE ? SCRIPT_HANDLE
+                                                                    : SCRIPT_TYPE_USE,
+            id
+        );
+    }
+    script_expression value = { .kind = SCRIPT_EXPR_CONSTANT,
+                                .type = parameter->type,
+                                .range = script_analyzer_range(node),
+                                .symbol = -1,
+                                .left = -1,
+                                .right = -1,
+                                .capability = id,
+                                .constant = { .type = parameter->type.storage,
+                                              .str = xstrdup(canonical) } };
+    free(name);
+    return script_analyzer_expr_add(a, value);
+}
+int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected)
+{
+    TSNode object = script_analyzer_field(node, "object"),
+           member = script_analyzer_field(node, "member");
+    char *name = script_analyzer_name_copy(a, member);
+    if (script_analyzer_is(object, "builtin_reference") &&
+        script_analyzer_text_is(a, object, "entry")) {
+        int payload = script_analyzer_lookup(a, object);
+        int function = payload >= 0 ? a->out->symbols[payload].function : -1;
+        int parameter = function >= 0
+                          ? script_analyzer_authored_parameter_index(a, &a->out->functions[function], name)
+                          : -1;
+        if (parameter >= 0) {
+            int symbol = a->out->functions[function].parameters[parameter];
+            script_symbol value = a->out->symbols[symbol];
+            script_analyzer_use(a, member, symbol, SCRIPT_READ, 0);
+            free(name);
+            return script_analyzer_expr_add(
+                a,
+                (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
+                                     .type = value.type,
+                                     .range = script_analyzer_range(node),
+                                     .symbol = symbol,
+                                     .left = -1,
+                                     .right = -1,
+                                     .writable = value.writable }
+            );
+        }
+    }
+    if (script_analyzer_is(object, "builtin_reference") &&
+        (script_analyzer_text_is(a, object, "state") ||
+         script_analyzer_text_is(a, object, "local"))) {
+        int symbol = script_analyzer_lookup_storage(
+            a,
+            member,
+            script_analyzer_text_is(a, object, "state") ? SCRIPT_STATE : SCRIPT_LOCAL
+        );
+        if (symbol < 0) {
+            script_analyzer_diagnostic(a, member, "Unknown declared value '%s'", name);
+            free(name);
+            return script_analyzer_expr_add(
+                a,
+                (script_expression){ .kind = SCRIPT_EXPR_ERROR,
+                                     .type = script_analyzer_bad_type(),
+                                     .range = script_analyzer_range(node),
+                                     .symbol = -1,
+                                     .left = -1,
+                                     .right = -1 }
+            );
+        }
+        script_analyzer_resolve_initializer(a, symbol);
+        script_analyzer_use(a, member, symbol, SCRIPT_READ, 0);
+        script_symbol value = a->out->symbols[symbol];
+        free(name);
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
+                                 .type = value.type,
+                                 .range = script_analyzer_range(node),
+                                 .symbol = symbol,
+                                 .left = -1,
+                                 .right = -1,
+                                 .capability = value.capability,
+                                 .writable = value.writable,
+                                 .effects = value.kind == SCRIPT_STATE || value.kind == SCRIPT_SHARED_STATE
+                                              ? SCRIPT_EFFECT_READ
+                                              : 0 }
+        );
+    }
+    int left = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+    script_expression receiver = a->out->expressions[left];
+    script_expression result = { .kind = SCRIPT_EXPR_MEMBER,
+                                 .range = script_analyzer_range(node),
+                                 .symbol = receiver.symbol,
+                                 .left = left,
+                                 .right = -1,
+                                 .type = script_analyzer_bad_type(),
+                                 .effects = receiver.effects };
+    const script_expression *initializer = script_analyzer_result_source(a, left);
+    int receiver_function = receiver.symbol >= 0
+                              ? a->out->symbols[receiver.symbol].function
+                              : -1;
+    if (receiver_function < 0 && initializer && initializer->kind == SCRIPT_EXPR_CALL) {
+        receiver_function = initializer->right;
+    }
+    const script_catalog_capability
+        *initializer_capability = initializer ? script_catalog_capability_by_id(
+                                                    a->catalog,
+                                                    initializer->capability
+                                                )
+                                              : NULL;
+    bool output_root = receiver.kind == SCRIPT_EXPR_SYMBOL ||
+                       receiver.kind == SCRIPT_EXPR_CALL;
+    bool named_output = output_root && initializer_capability &&
+                        script_analyzer_parameter_index(
+                            initializer_capability->results,
+                            initializer_capability->result_count,
+                            name
+                        ) >= 0;
+    if (output_root && receiver_function >= 0) {
+        const script_function *function = &a->out->functions[receiver_function];
+        for (int i = 0; i < acount(function->results); i++) {
+            named_output |= !strcmp(a->out->symbols[function->results[i]].name, name);
+        }
+    }
+    if ((receiver.type.flags & SCRIPT_TYPE_RESULTS) || named_output) {
+        const script_catalog_capability *capability = script_catalog_capability_by_id(
+            a->catalog,
+            named_output && initializer ? initializer->capability
+                                        : receiver.type.nominal
+        );
+        const script_catalog_parameter *parameters = NULL;
+        int count = 0;
+        if (capability) {
+            bool event = capability->kind == SCRIPT_CAPABILITY_EVENT;
+            parameters = event ? capability->parameters : capability->results;
+            count = event ? capability->parameter_count : capability->result_count;
+        }
+        int index = capability
+                      ? script_analyzer_parameter_index(parameters, count, name)
+                      : -1;
+        if (index >= 0) {
+            result.type = parameters[index].type;
+            const script_expression *resolved = initializer;
+            if (resolved && index < resolved->result_count) {
+                result.type = resolved->results[index];
+            }
+            result.member = script_catalog_id("port", name);
+            result.offset = (size_t)index;
+            result.writable = (result.type.flags & SCRIPT_TYPE_REFERENCE) != 0;
+        } else if (receiver_function >= 0) {
+            script_function *function = &a->out->functions[receiver_function];
+            bool payload = (receiver.symbol >= 0 &&
+                            !strcmp(a->out->symbols[receiver.symbol].name, "entry")) ||
+                           function->kind == SCRIPT_FUNCTION_HANDLER ||
+                           function->kind == SCRIPT_FUNCTION_CONTINUATION ||
+                           function->kind == SCRIPT_FUNCTION_MACRO_ENTRY;
+            int *members = payload ? function->parameters : function->results;
+            for (int i = 0; i < acount(members); i++) {
+                script_symbol *symbol = &a->out->symbols[members[i]];
+                if (!strcmp(symbol->name, name)) {
+                    result.type = initializer && i < initializer->result_count
+                                    ? initializer->results[i]
+                                    : symbol->type;
+                    result.member = symbol->id;
+                    result.offset = (size_t)i;
+                    break;
+                }
+            }
+        }
+        if (receiver.symbol >= 0) {
+            const script_symbol *symbol = &a->out->symbols[receiver.symbol];
+            result.writable |= symbol->kind == SCRIPT_LOCAL && receiver.writable;
+        }
+        if (result.type.flags & SCRIPT_TYPE_ERROR) {
+            script_analyzer_diagnostic(a, member, "Unknown result/payload '%s'", name);
+        }
+        free(name);
+        return script_analyzer_expr_add(a, result);
+    }
+    if (receiver.type.storage == PIN_HANDLE &&
+        receiver.type.nominal == a->out->owner_type) {
+        int index = script_catalog_find_type(a->catalog, name);
+        if (index >= 0 && a->catalog->types[index].component) {
+            const script_catalog_type *type = &a->catalog->types[index];
+            result.kind = SCRIPT_EXPR_COMPONENT;
+            result.type = type->type;
+            result.type.nominal = type->id;
+            result.capability = type->id;
+            result.member = type->id;
+            result.effects |= SCRIPT_EFFECT_READ;
+            result.writable = true;
+            free(name);
+            return script_analyzer_expr_add(a, result);
+        }
+        script_analyzer_diagnostic(a, member, "%s component '%s'", index == -2 ? "Ambiguous" : "Unknown", name);
+        free(name);
+        return script_analyzer_expr_add(a, result);
+    }
+    if ((receiver.type.flags & SCRIPT_TYPE_OPTIONAL) &&
+        !script_analyzer_present(a, receiver.symbol)) {
+        script_analyzer_diagnostic(a, member, "Optional component requires a presence guard before member access");
+    }
+    const script_catalog_type
+        *type = script_catalog_type_by_id(a->catalog, receiver.type.nominal);
+    int index = type ? script_catalog_find_field(type, name) : -1;
+    if (index >= 0) {
+        const script_catalog_field *f = &type->fields[index];
+        result.type = f->type;
+        result.member = f->id;
+        result.offset = f->offset;
+        result.read = f->read;
+        result.write = f->write;
+        result.writable = f->writable && receiver.writable;
+        result.effects |= type->component ? SCRIPT_EFFECT_READ : 0;
+        if (receiver.kind == SCRIPT_EXPR_MEMBER && receiver.read) {
+            result.writable = false;
+        }
+        script_analyzer_use(a, member, receiver.symbol, SCRIPT_READ, f->id);
+    } else {
+        script_analyzer_diagnostic(
+            a,
+            member,
+            "%s reflected member '%s'",
+            index == -2 ? "Ambiguous" : "Unknown",
+            name
+        );
+    }
+    (void)expected;
+    free(name);
+    return script_analyzer_expr_add(a, result);
+}
+static int component_reference(analyzer *a, TSNode node)
+{
+    TSNode arguments = script_analyzer_field(node, "arguments");
+    script_expression result = { .kind = SCRIPT_EXPR_COMPONENT,
+                                 .type = script_analyzer_bad_type(),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .range = script_analyzer_range(node),
+                                 .effects = SCRIPT_EFFECT_READ,
+                                 .writable = true };
+    TSNode argument = ts_node_named_child(arguments, 0);
+    char *name = script_analyzer_name_copy(a, argument);
+    int index = script_catalog_find_type(a->catalog, name);
+    if (index < 0 || !a->catalog->types[index].component ||
+        a->out->owner_symbol < 0 || script_analyzer_named_count(arguments) < 1 ||
+        script_analyzer_named_count(arguments) > 2) {
+        script_analyzer_diagnostic(a, node, "Component reference requires a registered component, optional field and an owner");
+    } else {
+        const script_catalog_type *type = &a->catalog->types[index];
+        result.type = type->type;
+        result.type.nominal = type->id;
+        result.capability = result.member = type->id;
+        int owner = a->out->owner_symbol;
+        result.left = script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
+                                 .symbol = owner,
+                                 .type = a->out->symbols[owner].type,
+                                 .left = -1,
+                                 .right = -1,
+                                 .range = script_analyzer_range(node) }
+        );
+    }
+    free(name);
+    int reference = script_analyzer_expr_add(a, result);
+    if (index >= 0 && script_analyzer_named_count(arguments) == 2) {
+        TSNode field_node = ts_node_named_child(arguments, 1);
+        char *field_name = script_analyzer_name_copy(a, field_node);
+        char *part = field_name;
+        while (*part) {
+            char *next = strchr(part, '.');
+            if (next) {
+                *next = 0;
+            }
+            script_expression receiver = a->out->expressions[reference];
+            const script_catalog_type
+                *type = script_catalog_type_by_id(a->catalog, receiver.type.nominal);
+            int field = type ? script_catalog_find_field(type, part) : -1;
+            if (field < 0) {
+                script_analyzer_diagnostic(a, field_node, "Unknown component field '%s'", part);
+                break;
+            }
+            const script_catalog_field *member = &type->fields[field];
+            reference = script_analyzer_expr_add(
+                a,
+                (script_expression){ .kind = SCRIPT_EXPR_MEMBER,
+                                     .range = script_analyzer_range(node),
+                                     .type = member->type,
+                                     .symbol = -1,
+                                     .left = reference,
+                                     .right = -1,
+                                     .member = member->id,
+                                     .offset = member->offset,
+                                     .read = member->read,
+                                     .write = member->write,
+                                     .writable = receiver.writable && member->writable,
+                                     .effects = SCRIPT_EFFECT_READ }
+            );
+            if (!next) {
+                break;
+            }
+            part = next + 1;
+            if (!*part) {
+                script_analyzer_diagnostic(a, field_node, "Component field path requires a member after '.'");
+            }
+        }
+        free(field_name);
+    }
+    return reference;
+}
+static int fallback_expression(analyzer *a, TSNode node, script_type expected)
+{
+    script_expression result = { .kind = SCRIPT_EXPR_FALLBACK,
+                                 .type = expected,
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .range = script_analyzer_range(node) };
+    TSNode arguments = script_analyzer_field(node, "arguments");
+    int values[] = { -1, -1, -1 };
+    for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
+        TSNode argument = ts_node_named_child(arguments, i);
+        if (ts_node_is_extra(argument)) {
+            continue;
+        }
+        TSNode name_node = script_analyzer_field(argument, "name");
+        TSNode value = script_analyzer_field(argument, "value");
+        int ordinal = 0;
+        if (!ts_node_is_null(name_node)) {
+            char *name = script_analyzer_name_copy(a, name_node);
+            ordinal = !strcmp(name, "binding") ? 1
+                    : !strcmp(name, "default") ? 2
+                                               : -1;
+            free(name);
+        } else {
+            value = argument;
+        }
+        if (ordinal < 0 || values[ordinal] >= 0) {
+            script_analyzer_diagnostic(a, argument, "Unknown or repeated fallback clause");
+            continue;
+        }
+        script_type context = expected;
+        context.flags &= ~SCRIPT_TYPE_REFERENCE;
+        int index = script_analyzer_expression(a, value, context);
+        script_type actual = script_analyzer_expr_type(a, index);
+        if (ordinal == 0 && actual.flags & SCRIPT_TYPE_REFERENCE) {
+            ordinal = 1;
+        }
+        if (values[ordinal] >= 0) {
+            script_analyzer_diagnostic(a, argument, "Repeated fallback binding");
+        }
+        values[ordinal] = index;
+        actual.flags &= ~SCRIPT_TYPE_REFERENCE;
+        if (result.type.flags & SCRIPT_TYPE_UNTYPED) {
+            result.type = actual;
+        }
+        script_analyzer_require(a, value, result.type, actual);
+        if (ordinal == 1 &&
+            !(script_analyzer_expr_type(a, index).flags & SCRIPT_TYPE_REFERENCE)) {
+            script_analyzer_diagnostic(a, value, "Fallback binding requires a reference");
+        }
+        if (ordinal == 2 &&
+            (script_analyzer_expr_effects(a, index) ||
+             (a->out->expressions[index].kind != SCRIPT_EXPR_CONSTANT &&
+              a->out->expressions[index].kind != SCRIPT_EXPR_STRUCT &&
+              a->out->expressions[index].kind != SCRIPT_EXPR_ARRAY))) {
+            script_analyzer_diagnostic(a, value, "Fallback default requires a compatible literal");
+        }
+        apush(
+            result.arguments,
+            ((script_argument){ index, ordinal, 0, script_analyzer_range(argument) })
+        );
+    }
+    if (values[1] < 0 && values[2] < 0) {
+        script_analyzer_diagnostic(a, node, "Fallback requires a binding or default");
+    }
+    result.left = values[0] >= 0 ? values[0]
+                : values[1] >= 0 ? values[1]
+                                 : values[2];
+    result.effects = script_analyzer_expr_effects(a, result.left);
+    return script_analyzer_expr_add(a, result);
+}
+
+static int state_access(analyzer *a, TSNode node, const script_catalog_capability *capability)
+{
+    TSNode types = script_analyzer_field(node, "type_arguments");
+    TSNode type = script_analyzer_named_count(types) ? ts_node_named_child(types, 0)
+                                                     : (TSNode){ 0 };
+    TSNode name_node = script_analyzer_field(type, "name");
+    int symbol = script_analyzer_lookup_storage(a, name_node, SCRIPT_STATE);
+    script_expression result = { .kind = SCRIPT_EXPR_ERROR,
+                                 .type = script_analyzer_bad_type(),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .range = script_analyzer_range(node) };
+    if (script_analyzer_named_count(types) != 1 || symbol < 0 ||
+        (a->out->symbols[symbol].kind != SCRIPT_STATE &&
+         a->out->symbols[symbol].kind != SCRIPT_SHARED_STATE)) {
+        script_analyzer_diagnostic(a, node, "State access requires one declared state name");
+        return script_analyzer_expr_add(a, result);
+    }
+    result = (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
+                                  .type = a->out->symbols[symbol].type,
+                                  .symbol = symbol,
+                                  .left = -1,
+                                  .right = -1,
+                                  .range = script_analyzer_range(node),
+                                  .effects = SCRIPT_EFFECT_READ,
+                                  .writable = true };
+    int target = script_analyzer_expr_add(a, result);
+    if (capability->state_access == SCRIPT_STATE_ACCESS_READ) {
+        script_analyzer_use(a, name_node, symbol, SCRIPT_READ, 0);
+        return target;
+    }
+    TSNode arguments = script_analyzer_field(node, "arguments");
+    if (script_analyzer_named_count(arguments) != 1) {
+        script_analyzer_diagnostic(a, arguments, "State write requires one value argument");
+    }
+    TSNode argument = script_analyzer_named_count(arguments)
+                        ? ts_node_named_child(arguments, 0)
+                        : (TSNode){ 0 };
+    TSNode value = script_analyzer_field(argument, "value");
+    if (ts_node_is_null(value)) {
+        value = argument;
+    }
+    TSNode annotation = script_analyzer_field(argument, "type");
+    script_type value_type = ts_node_is_null(annotation)
+                               ? result.type
+                               : script_analyzer_type_node(a, annotation);
+    script_analyzer_require(a, argument, result.type, value_type);
+    int right = script_analyzer_expression(a, value, value_type);
+    script_analyzer_require(a, value, result.type, script_analyzer_expr_type(a, right));
+    script_analyzer_use(a, name_node, symbol, SCRIPT_WRITE, 0);
+    script_expression store = { .kind = SCRIPT_EXPR_STORE,
+                                .type = result.type,
+                                .capability = capability->id,
+                                .symbol = symbol,
+                                .left = target,
+                                .right = right,
+                                .range = script_analyzer_range(node),
+                                .effects = SCRIPT_EFFECT_WRITE |
+                                           script_analyzer_expr_effects(a, right) };
+    apush(store.results, result.type);
+    store.result_count = 1;
+    return script_analyzer_expr_add(a, store);
+}
+static const script_catalog_type *component_argument(
+    const analyzer *a,
+    const script_catalog_capability *capability,
+    const script_expression *call
+)
+{
+    if (capability->component) {
+        return script_catalog_type_by_id(a->catalog, capability->component);
+    }
+    for (int i = 0; i < acount(call->arguments); i++) {
+        script_argument source = call->arguments[i];
+        if (source.parameter >= 0 && source.parameter < capability->parameter_count &&
+            capability->parameters[source.parameter].reference_kind ==
+                SCRIPT_REFERENCE_COMPONENT) {
+            return script_catalog_type_by_id(
+                a->catalog,
+                a->out->expressions[source.value].capability
+            );
+        }
+    }
+    return NULL;
+}
+
+static bool field_argument(
+    analyzer *a,
+    script_expression *call,
+    const script_catalog_capability *capability,
+    const script_function *function,
+    bool *seen,
+    char *name,
+    TSNode argument
+)
+{
+    char *dot = strchr(name, '.');
+    if (!dot) {
+        return false;
+    }
+    *dot = 0;
+    int parameter = capability ? script_analyzer_parameter_index(
+                                     capability->parameters,
+                                     capability->parameter_count,
+                                     name
+                                 )
+                  : function
+                      ? script_analyzer_authored_parameter_index(a, function, name)
+                      : -1;
+    *dot = '.';
+    if (parameter < 0) {
+        return false;
+    }
+    script_type type = capability
+                         ? capability->parameters[parameter].type
+                         : a->out->symbols[function->parameters[parameter]].type;
+    if ((type.flags & SCRIPT_TYPE_UNTYPED) ||
+        (type.storage == PIN_STRUCT && !type.nominal)) {
+        for (int i = 0; capability && i < acount(call->arguments); i++) {
+            script_argument source = call->arguments[i];
+            if (source.parameter < 0 || source.parameter >= capability->parameter_count) {
+                continue;
+            }
+            if (capability->parameters[source.parameter].reference_kind !=
+                SCRIPT_REFERENCE_COMPONENT) {
+                continue;
+            }
+            const script_catalog_type *component = script_catalog_type_by_id(
+                a->catalog,
+                a->out->expressions[source.value].capability
+            );
+            if (component) {
+                type = component->type;
+                type.nominal = component->id;
+            }
+        }
+    }
+    const script_catalog_type *record = script_catalog_type_by_id(a->catalog, type.nominal);
+    int field = record ? script_catalog_find_field(record, dot + 1) : -1;
+    if (field < 0) {
+        script_analyzer_diagnostic(a, argument, "Unknown structured argument '%s'", name);
+        return true;
+    }
+    int aggregate = -1;
+    for (int i = 0; i < acount(call->arguments); i++) {
+        if (call->arguments[i].parameter == parameter) {
+            aggregate = call->arguments[i].value;
+        }
+    }
+    if (aggregate < 0) {
+        aggregate = script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_STRUCT,
+                                 .partial = true,
+                                 .type = type,
+                                 .range = script_analyzer_range(argument),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 }
+        );
+        apush(
+            call->arguments,
+            ((script_argument){ aggregate, parameter, 0, script_analyzer_range(argument) })
+        );
+    }
+    if (a->out->expressions[aggregate].kind != SCRIPT_EXPR_STRUCT) {
+        script_analyzer_diagnostic(a, argument, "Whole and field arguments cannot be combined");
+        return true;
+    }
+    TSNode value = script_analyzer_field(argument, "value");
+    if (ts_node_is_null(value)) {
+        value = script_analyzer_field(argument, "source");
+    }
+    int expression = script_analyzer_expression(a, value, record->fields[field].type);
+    script_analyzer_require(a, value, record->fields[field].type, script_analyzer_expr_type(a, expression));
+    script_expression *structure = &a->out->expressions[aggregate];
+    for (int i = 0; i < acount(structure->arguments); i++) {
+        if (structure->arguments[i].member == record->fields[field].id) {
+            script_analyzer_diagnostic(a, argument, "Duplicate structured argument '%s'", name);
+        }
+    }
+    apush(
+        structure->arguments,
+        ((script_argument){ expression, field, record->fields[field].id, script_analyzer_range(argument) })
+    );
+    structure->argument_count = acount(structure->arguments);
+    structure->effects |= script_analyzer_expr_effects(a, expression);
+    call->effects |= structure->effects;
+    seen[parameter] = true;
+    return true;
+}
+
+static int overloaded_capability(analyzer *a, const char *name, TSNode arguments, int **values)
+{
+    int count = (int)script_analyzer_named_count(arguments);
+    *values = xmalloc((size_t)(count ? count : 1) * sizeof **values);
+    for (int i = 0; i < count; i++) {
+        (*values)[i] = -1;
+    }
+    int found = -1;
+    for (int c = 0; c < a->catalog->capability_count; c++) {
+        const script_catalog_capability *candidate = &a->catalog->capabilities[c];
+        const char *full = candidate->qualified_name ? candidate->qualified_name
+                                                     : candidate->name;
+        if (candidate->kind != SCRIPT_CAPABILITY_FUNCTION ||
+            (!script_name_matches(full, name) &&
+             !script_name_matches(candidate->name, name))) {
+            continue;
+        }
+        bool *seen = xcalloc(
+            (size_t)(candidate->parameter_count ? candidate->parameter_count : 1),
+            sizeof *seen
+        );
+        bool matches = true;
+        int ordinal = 0;
+        for (int i = 0; matches && i < count; i++) {
+            TSNode argument = ts_node_named_child(arguments, (uint32_t)i);
+            if (ts_node_is_extra(argument)) {
+                continue;
+            }
+            TSNode key = script_analyzer_field(argument, "name");
+            int parameter = ordinal++;
+            if (!ts_node_is_null(key)) {
+                char *argument_name = script_analyzer_name_copy(a, key);
+                parameter = script_analyzer_parameter_index(
+                    candidate->parameters,
+                    candidate->parameter_count,
+                    argument_name
+                );
+                free(argument_name);
+            }
+            if (parameter < 0 || parameter >= candidate->parameter_count ||
+                seen[parameter]) {
+                matches = false;
+                break;
+            }
+            seen[parameter] = true;
+            script_type wanted = candidate->parameters[parameter].type;
+            TSNode annotation = script_analyzer_field(argument, "type");
+            script_type actual;
+            if (!ts_node_is_null(annotation)) {
+                actual = script_analyzer_type_node(a, annotation);
+            } else if (candidate->parameters[parameter].reference_kind != SCRIPT_REFERENCE_NONE) {
+                continue;
+            } else {
+                if ((*values)[i] < 0) {
+                    TSNode value = ts_node_is_null(key)
+                                     ? argument
+                                     : script_analyzer_field(argument, "value");
+                    if (ts_node_is_null(value)) {
+                        value = script_analyzer_field(argument, "source");
+                    }
+                    (*values)[i] = script_analyzer_expression(
+                        a,
+                        value,
+                        (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
+                    );
+                }
+                actual = script_analyzer_expr_type(a, (*values)[i]);
+            }
+            matches = wanted.container == actual.container &&
+                      script_catalog_type_assignable(a->catalog, wanted, actual);
+        }
+        for (int i = 0; matches && i < candidate->parameter_count; i++) {
+            matches = seen[i] || candidate->parameters[i].has_default;
+        }
+        free(seen);
+        if (matches) {
+            found = found == -1 ? c : -2;
+        }
+    }
+    return found;
+}
+
+int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
+{
+    TSNode target = script_analyzer_field(node, "function"),
+           arguments = script_analyzer_field(node, "arguments");
+    char *name = script_analyzer_qualified_name(a, target);
+    if (!strcmp(name, "fallback")) {
+        free(name);
+        return fallback_expression(a, node, expected);
+    }
+    if (!strcmp(name, "component")) {
+        free(name);
+        return component_reference(a, node);
+    }
+    if (!strcmp(name, "convert")) {
+        TSNode types = script_analyzer_field(node, "type_arguments");
+        if (script_analyzer_named_count(types) != 1) {
+            script_analyzer_diagnostic(a, types, "Conversion requires one registered conversion name");
+        } else {
+            TSNode type = ts_node_named_child(types, 0);
+            free(name);
+            name = script_analyzer_name_copy(a, script_analyzer_field(type, "name"));
+        }
+    }
+    int symbol = script_analyzer_callable_symbol(a, name);
+    const script_catalog_capability *capability = NULL;
+    int function_index = symbol >= 0 ? a->out->symbols[symbol].function : -1;
+    int receiver = -1, entry_index = -1;
+    int *resolved_arguments = NULL;
+    if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION) {
+        script_analyzer_resolve_initializer(a, symbol);
+        capability = script_catalog_capability_by_id(
+            a->catalog,
+            a->out->symbols[symbol].capability
+        );
+        int initializer = a->out->symbols[symbol].initializer;
+        if (initializer >= 0 && a->out->expressions[initializer].kind == SCRIPT_EXPR_CALL &&
+            a->out->expressions[initializer].right >= 0) {
+            function_index = a->out->expressions[initializer].right;
+            capability = NULL;
+        }
+        if (initializer >= 0 &&
+            a->out->expressions[initializer].kind == SCRIPT_EXPR_STORE) {
+            script_expression store = a->out->expressions[initializer];
+            store.range = script_analyzer_range(node);
+            store.instance = a->out->symbols[symbol].id;
+            store.arguments = NULL;
+            store.argument_count = 0;
+            store.results = NULL;
+            store.result_count = 0;
+            if (script_analyzer_named_count(arguments) > 1) {
+                script_analyzer_diagnostic(a, arguments, "State write requires one value argument");
+            }
+            if (script_analyzer_named_count(arguments)) {
+                TSNode argument = ts_node_named_child(arguments, 0);
+                TSNode value = script_analyzer_field(argument, "value");
+                if (ts_node_is_null(value)) {
+                    value = argument;
+                }
+                store.right = script_analyzer_expression(a, value, store.type);
+                script_analyzer_require(
+                    a,
+                    value,
+                    store.type,
+                    script_analyzer_expr_type(a, store.right)
+                );
+                store.effects = SCRIPT_EFFECT_WRITE |
+                                script_analyzer_expr_effects(a, store.right);
+            }
+            apush(store.results, store.type);
+            store.result_count = 1;
+            script_analyzer_use(a, target, symbol, SCRIPT_CALL, store.instance);
+            free(name);
+            return script_analyzer_expr_add(a, store);
+        }
+    }
+    if (!capability && function_index < 0) {
+        int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+        if (index == -2) {
+            index = overloaded_capability(a, name, arguments, &resolved_arguments);
+        }
+        if (index == -1) {
+            index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_ACTION);
+        }
+        if (index >= 0) {
+            capability = &a->catalog->capabilities[index];
+        } else if (script_analyzer_is(target, "member_expression")) {
+            TSNode object = script_analyzer_field(target, "object");
+            int action = script_analyzer_lookup(a, object);
+            if (action >= 0 && a->out->symbols[action].kind == SCRIPT_ACTION) {
+                script_analyzer_resolve_initializer(a, action);
+                const script_catalog_capability *candidate = script_catalog_capability_by_id(
+                    a->catalog,
+                    a->out->symbols[action].capability
+                );
+                char *entry = script_analyzer_name_copy(a, script_analyzer_field(target, "member"));
+                for (int i = 0; candidate && i < candidate->entry_count; i++) {
+                    if (script_name_matches(candidate->entries[i], entry)) {
+                        capability = candidate;
+                        symbol = action;
+                        entry_index = i;
+                        break;
+                    }
+                }
+                int initializer = a->out->symbols[action].initializer;
+                int owner = initializer >= 0 &&
+                                    a->out->expressions[initializer].kind == SCRIPT_EXPR_CALL
+                              ? a->out->expressions[initializer].right
+                              : -1;
+                for (int i = 0; owner >= 0 && i < acount(a->out->functions); i++) {
+                    const script_function *child = &a->out->functions[i];
+                    if (child->kind == SCRIPT_FUNCTION_MACRO_ENTRY &&
+                        child->parent == owner && child->entry &&
+                        script_name_matches(child->entry, entry)) {
+                        symbol = action;
+                        capability = NULL;
+                        function_index = owner;
+                        entry_index = i;
+                        break;
+                    }
+                }
+                free(entry);
+            }
+            if (!capability && function_index < 0) {
+                receiver = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+                char *method = script_analyzer_name_copy(a, script_analyzer_field(target, "member"));
+                uint64_t receiver_type = script_analyzer_expr_type(a, receiver).nominal;
+                for (int i = 0; i < a->catalog->capability_count; i++) {
+                    const script_catalog_capability *candidate = &a->catalog->capabilities[i];
+                    if (script_catalog_canonical_type(
+                            a->catalog,
+                            (script_type){ .nominal = candidate->receiver }
+                        )
+                                .nominal ==
+                            script_catalog_canonical_type(a->catalog, (script_type){ .nominal = receiver_type })
+                                .nominal &&
+                        receiver_type && candidate->method_name &&
+                        script_name_matches(candidate->method_name, method)) {
+                        if (capability) {
+                            script_analyzer_diagnostic(a, target, "Ambiguous receiver method '%s'", method);
+                            capability = NULL;
+                            break;
+                        }
+                        capability = candidate;
+                    }
+                }
+                free(method);
+            }
+        }
+        if (!capability && function_index < 0) {
+            script_analyzer_diagnostic(a, target, "%s callable '%s'", index == -2 ? "Ambiguous" : "Unknown", name);
+        }
+    }
+    if (capability && capability->state_access != SCRIPT_STATE_ACCESS_NONE) {
+        free(name);
+        free(resolved_arguments);
+        return state_access(a, node, capability);
+    }
+    script_catalog_capability selected = { 0 };
+    script_catalog_parameter *selected_parameters = NULL;
+    uint64_t selected_event = 0;
+    if (capability && capability->event_sender) {
+        TSNode types = script_analyzer_field(node, "type_arguments");
+        if (script_analyzer_named_count(types) != 1) {
+            script_analyzer_diagnostic(a, types, "Event send requires one declared event name");
+        } else {
+            TSNode type = ts_node_named_child(types, 0);
+            char *event_name = script_analyzer_name_copy(a, script_analyzer_field(type, "name"));
+            int event = script_catalog_find_capability(a->catalog, event_name, SCRIPT_CAPABILITY_EVENT);
+            free(event_name);
+            if (event < 0) {
+                script_analyzer_diagnostic(a, type, "%s event declaration", event == -2 ? "Ambiguous" : "Unknown");
+            } else {
+                const script_catalog_capability *payload = &a->catalog->capabilities[event];
+                selected_event = payload->id;
+                script_analyzer_use(
+                    a,
+                    script_analyzer_field(type, "name"),
+                    -1,
+                    SCRIPT_HANDLE,
+                    payload->id
+                );
+                for (int i = 0; i < capability->parameter_count; i++) {
+                    apush(selected_parameters, capability->parameters[i]);
+                }
+                for (int i = 0; i < payload->parameter_count; i++) {
+                    apush(selected_parameters, payload->parameters[i]);
+                }
+                selected = *capability;
+                selected.parameters = selected_parameters;
+                selected.parameter_count = acount(selected_parameters);
+                capability = &selected;
+            }
+        }
+    }
+    const script_function *function = function_index >= 0
+                                        ? &a->out->functions[function_index]
+                                        : NULL;
+    int parameter_count = capability ? capability->parameter_count
+                        : function   ? acount(function->parameters)
+                                     : 0;
+    bool *seen = xcalloc((size_t)(parameter_count ? parameter_count : 1), sizeof *seen);
+    script_expression result = {
+        .kind = SCRIPT_EXPR_CALL,
+        .range = script_analyzer_range(node),
+        .symbol = symbol,
+        .left = receiver,
+        .right = function_index,
+        .entry = entry_index,
+        .type = script_analyzer_bad_type(),
+        .capability = capability ? capability->id
+                    : function && function->symbol >= 0
+                        ? a->out->symbols[function->symbol].id
+                    : symbol >= 0 ? a->out->symbols[symbol].id
+                                  : 0,
+        .member = selected_event,
+        .effects = capability ? capability->effects : 0
+    };
+    if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION &&
+        a->out->symbols[symbol].initializer >= 0) {
+        result.instance = a->out->symbols[symbol].id;
+    }
+    int ordinal = 0;
+    if (receiver >= 0 && capability && parameter_count) {
+        apush(result.arguments, ((script_argument){ receiver, 0, 0, script_analyzer_range(target) }));
+        seen[0] = true;
+        ordinal = 1;
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
+        TSNode argument = ts_node_named_child(arguments, i);
+        if (ts_node_is_extra(argument)) {
+            continue;
+        }
+        TSNode name_node = script_analyzer_field(argument, "name"),
+               value = script_analyzer_field(argument, "value");
+        int parameter = ordinal++;
+        if (!ts_node_is_null(name_node)) {
+            char *argument_name = script_analyzer_qualified_name(a, name_node);
+            if (script_analyzer_named_count(name_node) > 1 &&
+                field_argument(a, &result, capability, function, seen, argument_name, argument)) {
+                free(argument_name);
+                continue;
+            }
+            parameter = capability
+                          ? script_analyzer_parameter_index(capability->parameters, parameter_count, argument_name)
+                      : function
+                          ? script_analyzer_authored_parameter_index(a, function, argument_name)
+                          : -1;
+            if (parameter == -1 && capability) {
+                parameter = variadic_parameter(
+                    capability,
+                    argument_name,
+                    (int)script_analyzer_named_count(arguments)
+                );
+            }
+            if (parameter < 0) {
+                script_analyzer_diagnostic(
+                    a,
+                    name_node,
+                    "%s argument '%s'",
+                    parameter == -2 ? "Ambiguous" : "Unknown",
+                    argument_name
+                );
+            }
+            free(argument_name);
+        } else {
+            value = argument;
+        }
+        if (ts_node_is_null(value)) {
+            value = script_analyzer_field(argument, "source");
+        }
+        script_type
+            type = parameter >= 0 && parameter < parameter_count
+                     ? capability
+                         ? capability->parameters[parameter].type
+                         : a->out->symbols[function->parameters[parameter]].type
+                     : (script_type){ .flags = SCRIPT_TYPE_UNTYPED };
+        if (capability && capability->component_access == SCRIPT_COMPONENT_ACCESS_WRITE &&
+            type.storage == PIN_STRUCT && !type.nominal) {
+            const script_catalog_type *component = component_argument(a, capability, &result);
+            if (component) {
+                type = component->type;
+                type.nominal = component->id;
+            }
+        }
+        TSNode annotation = script_analyzer_field(argument, "type");
+        if (!ts_node_is_null(annotation)) {
+            script_type annotated = script_analyzer_type_node(a, annotation);
+            script_analyzer_require(a, annotation, type, annotated);
+            type = annotated;
+        }
+        bool reference = capability && parameter >= 0 && parameter < parameter_count &&
+                         capability->parameters[parameter].reference_kind !=
+                             SCRIPT_REFERENCE_NONE &&
+                         (script_analyzer_is(value, "identifier") ||
+                          script_analyzer_is(value, "string")) &&
+                         (script_analyzer_is(value, "string") ||
+                          script_analyzer_lookup(a, value) < 0);
+        int expression_index = !reference && resolved_arguments &&
+                                       resolved_arguments[i] >= 0
+                                 ? resolved_arguments[i]
+                             : reference
+                                 ? script_analyzer_reference_argument(
+                                       a,
+                                       value,
+                                       &capability->parameters[parameter]
+                                   )
+                                 : script_analyzer_expression(a, value, type);
+        if (capability && parameter >= 0 && parameter < parameter_count &&
+            capability->parameters[parameter].default_owner &&
+            a->out->owner_symbol >= 0) {
+            const script_expression *provided = &a->out->expressions[expression_index];
+            if (provided->kind == SCRIPT_EXPR_CONSTANT &&
+                provided->type.storage == PIN_HANDLE && !provided->constant.u64) {
+                int owner = a->out->owner_symbol;
+                expression_index = script_analyzer_expr_add(
+                    a,
+                    (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
+                                         .type = a->out->symbols[owner].type,
+                                         .symbol = owner,
+                                         .left = -1,
+                                         .right = -1,
+                                         .range = script_analyzer_range(value) }
+                );
+            }
+        }
+        if (parameter >= 0 && parameter < parameter_count) {
+            if (seen[parameter]) {
+                script_analyzer_diagnostic(a, argument, "Argument supplied more than once");
+            }
+            seen[parameter] = true;
+            script_analyzer_require(a, value, type, script_analyzer_expr_type(a, expression_index));
+            if ((type.flags & SCRIPT_TYPE_REFERENCE) &&
+                !a->out->expressions[expression_index].writable) {
+                script_analyzer_diagnostic(a, value, "Reference argument requires a writable value");
+            }
+        } else if (capability && !capability->variadic) {
+            script_analyzer_diagnostic(a, argument, "Too many arguments");
+        }
+        apush(
+            result.arguments,
+            ((script_argument){ expression_index,
+                                parameter,
+                                capability && parameter >= 0 && parameter < parameter_count
+                                    ? capability->parameters[parameter].member
+                                    : 0,
+                                script_analyzer_range(argument) })
+        );
+        result.effects |= script_analyzer_expr_effects(a, expression_index);
+        function = function_index >= 0 ? &a->out->functions[function_index] : NULL;
+    }
+    for (int i = 0; i < parameter_count; i++) {
+        if (!seen[i] && symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION &&
+            a->out->symbols[symbol].initializer >= 0) {
+            const script_expression
+                *configuration = &a->out->expressions[a->out->symbols[symbol].initializer];
+            for (int j = 0; j < configuration->argument_count; j++) {
+                if (configuration->arguments[j].parameter == i) {
+                    script_argument inherited = configuration->arguments[j];
+                    apush(result.arguments, inherited);
+                    result.effects |= script_analyzer_expr_effects(a, inherited.value);
+                    seen[i] = true;
+                    break;
+                }
+            }
+        }
+        int authored_default = -1;
+        if (!seen[i] && function) {
+            int parameter = function->parameters[i];
+            script_analyzer_resolve_initializer(a, parameter);
+            authored_default = a->out->symbols[parameter].initializer;
+            if (authored_default >= 0) {
+                apush(
+                    result.arguments,
+                    ((script_argument){ authored_default, i, 0, script_analyzer_range(arguments) })
+                );
+                result.effects |= script_analyzer_expr_effects(a, authored_default);
+            }
+        }
+        if (!seen[i] && authored_default < 0 &&
+            (!capability || !capability->parameters[i].has_default)) {
+            script_analyzer_diagnostic(
+                a,
+                arguments,
+                "Missing argument '%s'",
+                capability ? capability->parameters[i].name
+                           : a->out->symbols[function->parameters[i]].name
+            );
+        }
+        if (!seen[i] && capability && capability->parameters[i].default_owner &&
+            a->out->owner_symbol >= 0) {
+            int owner = a->out->owner_symbol;
+            int index = script_analyzer_expr_add(
+                a,
+                (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
+                                     .type = a->out->symbols[owner].type,
+                                     .symbol = owner,
+                                     .left = -1,
+                                     .right = -1,
+                                     .range = script_analyzer_range(arguments) }
+            );
+            apush(result.arguments, ((script_argument){ index, i, 0, script_analyzer_range(arguments) }));
+            seen[i] = true;
+        }
+        if (!seen[i] && capability && capability->parameters[i].has_default) {
+            pin_value value = { 0 };
+            if (pin_value_snapshot_to_arena(
+                    &a->out->constants,
+                    &value,
+                    &capability->parameters[i].default_value
+                )) {
+                script_analyzer_diagnostic(a, arguments, "Catalog default cannot be snapshotted");
+            }
+            int index = script_analyzer_expr_add(
+                a,
+                (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
+                                     .type = capability->parameters[i].type,
+                                     .constant = value,
+                                     .constant_snapshot = true,
+                                     .range = script_analyzer_range(arguments),
+                                     .symbol = -1,
+                                     .left = -1,
+                                     .right = -1 }
+            );
+            apush(result.arguments, ((script_argument){ index, i, 0, script_analyzer_range(arguments) }));
+        }
+    }
+    free(seen);
+    free(resolved_arguments);
+    int count = capability ? capability->result_count
+              : function   ? acount(function->results)
+                           : 0;
+    if (count == 1) {
+        result.type = capability ? capability->results[0].type
+                                 : a->out->symbols[function->results[0]].type;
+        /* Reflected setters can return the whole component after a field write.
+         * Only a generic result needs specialization from the selected type. */
+        if (capability && result.type.storage == PIN_STRUCT && !result.type.nominal &&
+            (capability->component_access == SCRIPT_COMPONENT_ACCESS_READ ||
+             capability->component_access == SCRIPT_COMPONENT_ACCESS_WRITE)) {
+            const script_catalog_type *component = component_argument(a, capability, &result);
+            if (component) {
+                unsigned flags = result.type.flags;
+                if (capability->component_field) {
+                    for (int i = 0; i < component->field_count; i++) {
+                        if (component->fields[i].id == capability->component_field) {
+                            result.type = component->fields[i].type;
+                            break;
+                        }
+                    }
+                } else {
+                    result.type = component->type;
+                    result.type.nominal = component->id;
+                }
+                result.type.flags |= flags & SCRIPT_TYPE_REFERENCE;
+            }
+        }
+        if (capability && result.type.parameter) {
+            uint64_t parameter = result.type.parameter;
+            for (int i = 0; i < acount(result.arguments); i++) {
+                script_argument argument = result.arguments[i];
+                if (argument.parameter < 0 ||
+                    argument.parameter >= capability->parameter_count ||
+                    capability->parameters[argument.parameter].type.parameter !=
+                        parameter) {
+                    continue;
+                }
+                script_type actual = script_analyzer_expr_type(a, argument.value);
+                actual.container = result.type.container;
+                actual.flags &= ~(SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_GENERIC | SCRIPT_TYPE_UNTYPED);
+                actual.flags |= result.type.flags &
+                                (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_OPTIONAL);
+                actual.parameter = 0;
+                if (!(result.type.flags & SCRIPT_TYPE_UNTYPED)) {
+                    script_analyzer_require(a, node, result.type, actual);
+                }
+                result.type = actual;
+            }
+            if (result.type.flags & SCRIPT_TYPE_UNTYPED) {
+                if (!(expected.flags & SCRIPT_TYPE_UNTYPED)) {
+                    result.type = expected;
+                } else {
+                    script_analyzer_diagnostic(a, node, "Native generic result has no concrete type");
+                }
+            }
+        }
+        if (capability && capability->numeric_aggregate) {
+            script_type specialized = expected;
+            bool first = true;
+            for (int i = 0; i < acount(result.arguments); i++) {
+                script_argument argument = result.arguments[i];
+                script_type actual = script_analyzer_expr_type(a, argument.value);
+                actual.flags &= ~SCRIPT_TYPE_REFERENCE;
+                if (!script_analyzer_numeric_aggregate(a->catalog, actual, 0)) {
+                    script_analyzer_diagnostic(a, node, "Numeric capability requires numeric operands");
+                    continue;
+                }
+                specialized = first || actual.storage == PIN_STRUCT ? actual
+                            : specialized.storage == PIN_STRUCT
+                                ? specialized
+                                : script_analyzer_arithmetic_type(specialized, actual);
+                first = false;
+            }
+            result.type = specialized;
+        }
+    } else if (count > 1) {
+        result.type = (script_type){ .storage = PIN_STRUCT,
+                                     .nominal = result.capability,
+                                     .flags = SCRIPT_TYPE_RESULTS };
+    } else if (capability || function) {
+        result.type = (script_type){ .storage = PIN_FLOW };
+    }
+    for (int i = 0; i < count; i++) {
+        script_type type = capability ? capability->results[i].type
+                                      : a->out->symbols[function->results[i]].type;
+        if (count == 1) {
+            type = result.type;
+        }
+        if (capability && type.parameter && (type.flags & SCRIPT_TYPE_UNTYPED)) {
+            for (int j = 0; j < acount(result.arguments); j++) {
+                script_argument argument = result.arguments[j];
+                if (argument.parameter < 0 ||
+                    argument.parameter >= capability->parameter_count ||
+                    capability->parameters[argument.parameter].type.parameter !=
+                        type.parameter) {
+                    continue;
+                }
+                script_type actual = script_analyzer_expr_type(a, argument.value);
+                actual.container = type.container;
+                actual.flags &= ~(SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC);
+                actual.flags |= type.flags &
+                                (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_OPTIONAL);
+                type = actual;
+                break;
+            }
+            if (type.flags & SCRIPT_TYPE_UNTYPED) {
+                script_analyzer_diagnostic(a, node, "Native generic result has no concrete type");
+            }
+        }
+        apush(result.results, type);
+    }
+    result.result_count = acount(result.results);
+    result.writable = (result.type.flags & SCRIPT_TYPE_REFERENCE) != 0;
+    if (symbol >= 0) {
+        script_analyzer_use(a, target, symbol, SCRIPT_CALL, result.capability);
+    }
+    if (capability && capability->pure &&
+        capability->effects & (SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
+                               SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND)) {
+        script_analyzer_diagnostic(a, target, "Catalog marks an effectful capability pure");
+    }
+    (void)expected;
+    free(name);
+    afree(selected_parameters);
+    return script_analyzer_expr_add(a, result);
+}

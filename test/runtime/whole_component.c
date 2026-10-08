@@ -1,3 +1,7 @@
+#include "execution/ecs_reader.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/authoring/local_edit.h"
 #include "graph/model/local.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/flow_internal.h"
@@ -291,7 +295,7 @@ static void reads()
                                           behavior_default_backend() }[mode]
                 ));
                 eval_component_reader reader;
-                ecs_eval_component_reader_init(&reader, world);
+                ecs_component_reader_init(&reader, world);
                 if (scenario != 4) {
                     assert(!behavior_instance_bind_service(
                         bi,
@@ -367,7 +371,7 @@ static void layout_guard()
     behavior_asset *a = read_fixture(0);
     behavior_program_publish(a);
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, a->graphs[1]),
+        behavior_program_graph(behavior_program_cached(a), a->graphs[1]),
         a->graphs[1]->nodes[0]
     );
     assert(f);
@@ -463,10 +467,10 @@ static void authoring_bindings()
                          .type_name = "ecs.entity",
                          .u64 = ecs_entity_to_u64(owner) };
     eval_component_reader reader;
-    ecs_eval_component_reader_init(&reader, world);
+    ecs_component_reader_init(&reader, world);
     behavior_program_publish(asset);
     const behavior_function *function = behavior_program_function(
-        behavior_program_graph(asset->program, g),
+        behavior_program_graph(behavior_program_cached(asset), g),
         entry
     );
     assert(function);

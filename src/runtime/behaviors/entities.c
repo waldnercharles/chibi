@@ -1,20 +1,15 @@
 #include "runtime/behaviors/entities.h"
 
-#include "graph/model/pin_conv.h"
-#include "graph/model/registry.h"
-#include "graph/nodes/particle_nodes.h"
-#include "graph/nodes/vector_nodes.h"
-#include "graph/runtime/eval.h"
-#include "graph/runtime/value_array.h"
-#include "runtime/behaviors/entity_query.h"
-#include "runtime/generated.h"
-#include "runtime/materials.h"
-#include "runtime/rhythm.h"
-#include "runtime/scenes/physics.h"
-#include "runtime/visual_motion.h"
+#include "execution/function.h"
+#include "execution/request.h"
+#include "execution/status.h"
+#include "runtime/behaviors/entities_native.h"
+#include "runtime/component_catalog.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
+#include "types/catalog.h"
 
 #include <assert.h>
 #include <math.h>
@@ -28,23 +23,9 @@ enum
     EVENT_BATCH_MAX = 64
 };
 
-/* A registered prototype, shared with the spawns waiting on it, so a reload
- * that replaces its record cannot free it under them. */
 typedef struct
 {
-    game_prototype *prototype;
-    int references;
-} shared_prototype;
-
-typedef struct
-{
-    shared_prototype *shared;
-    av_value *value;
-} prototype_record;
-
-typedef struct
-{
-    shared_prototype *prototype;
+    game_scene *prototype;
     flow_host_request *wait;
     ecs_entity entity;
 } spawn_request;
@@ -88,9 +69,9 @@ typedef struct
 struct game_entities
 {
     ecs_world *world;
-    game_behavior_world *behaviors;
+    game_entity_host host;
     game_materials *materials;
-    prototype_record *prototypes;
+    game_prototypes *prototypes;
     ecs_entity *owned;
     spawn_request *spawns;
     ecs_entity *destroy;
@@ -105,11 +86,20 @@ struct game_entities
     game_entity_query_profile query_profile;
 };
 
-game_entities *game_entities_new(ecs_world *world, game_behavior_world *behaviors)
+ecs_world *game_entities_world(const game_entities *entities)
+{
+    return entities->world;
+}
+
+game_entities *game_entities_new(ecs_world *world, const game_entity_host *host)
 {
     game_entities *entities = xcalloc(1, sizeof *entities);
     entities->world = world;
-    entities->behaviors = behaviors;
+    if (host) {
+        assert(host->destroy && host->attach && host->dispatch);
+        entities->host = *host;
+    }
+    entities->prototypes = game_prototypes_new();
     return entities;
 }
 
@@ -197,25 +187,10 @@ game_entity_query_profile game_entities_query_profile(const game_entities *entit
     return entities->query_profile;
 }
 
-static shared_prototype *share(shared_prototype *shared)
-{
-    shared->references++;
-    return shared;
-}
-
-static void unshare(shared_prototype *shared)
-{
-    if (--shared->references) {
-        return;
-    }
-    game_prototype_free(shared->prototype);
-    free(shared);
-}
-
 static void release_request(spawn_request *request)
 {
     flow_host_release(request->wait);
-    unshare(request->prototype);
+    game_scene_free(request->prototype);
 }
 
 void game_entities_copy_live(const game_entities *entities, ecs_entity **out)
@@ -462,7 +437,7 @@ int game_entities_set_global_value(game_entities *entities, const char *name, co
 {
     if (!entities || !name || !name[0] || !value || value->type == PIN_FLOW ||
         (value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE &&
-         value->ptr && !registry_type_by_name(value->type_name))) {
+         value->ptr && !type_catalog_find(value->type_name))) {
         return -1;
     }
     const global_binding *binding = find_global_binding_const(entities, name);
@@ -473,14 +448,14 @@ int game_entities_set_global_value(game_entities *entities, const char *name, co
     /* Float and double are one Real: a global keeps the width it was first
        written with. */
     pin_value coerced = *value;
-    if (stored) {
-        pin_coerce(
-            &coerced,
-            &(pin_spec){ .type = stored->value.type,
-                         .type_name = stored->value.type_name,
-                         .container = stored->value.container,
-                         .kind = PIN_DATA }
-        );
+    if (stored && coerced.type == PIN_F32 && stored->value.type == PIN_F64) {
+        coerced.d = (double)coerced.f;
+        coerced.type = PIN_F64;
+        coerced.type_name = stored->value.type_name;
+    } else if (stored && coerced.type == PIN_F64 && stored->value.type == PIN_F32) {
+        coerced.f = (float)coerced.d;
+        coerced.type = PIN_F32;
+        coerced.type_name = stored->value.type_name;
     }
     if (stored && !global_value_type_matches(&stored->value, &coerced)) {
         return -1;
@@ -522,8 +497,9 @@ void game_entities_reset(game_entities *entities)
     }
     aclear(entities->spawns);
     if (acount(entities->owned)) {
-        int result = game_behavior_destroy_entities(
-            entities->behaviors,
+        assert(entities->host.destroy);
+        int result = entities->host.destroy(
+            entities->host.context,
             entities->owned,
             acount(entities->owned)
         );
@@ -537,11 +513,7 @@ void game_entities_reset(game_entities *entities)
 void game_entities_free(game_entities *entities)
 {
     game_entities_reset(entities);
-    for (int i = 0; i < acount(entities->prototypes); i++) {
-        unshare(entities->prototypes[i].shared);
-        av_value_free(entities->prototypes[i].value);
-    }
-    afree(entities->prototypes);
+    game_prototypes_free(entities->prototypes);
     afree(entities->spawns);
     afree(entities->owned);
     afree(entities->destroy);
@@ -557,72 +529,23 @@ void game_entities_free(game_entities *entities)
     free(entities);
 }
 
-int game_entities_register(game_entities *entities, const game_prototype *prototype)
+int game_entities_register_prepared(game_entities *entities, const char *identity, game_scene *prototype)
 {
-    av_value *value = game_prototype_to_value(prototype);
-    if (!value) {
-        return -1;
-    }
-    int existing = -1;
-    for (int i = 0; i < acount(entities->prototypes); i++) {
-        prototype_record *record = &entities->prototypes[i];
-        if (strcmp(record->shared->prototype->identity, prototype->identity) != 0) {
-            continue;
-        }
-        if (av_equals(record->value, value)) {
-            av_value_free(value);
-            return 0;
-        }
-        existing = i;
-        break;
-    }
     char error[256];
-    game_prototype *copy = game_prototype_load_value(value, prototype->registry, error, sizeof error);
-    if (!copy) {
-        av_value_free(value);
-        return -1;
-    }
-    shared_prototype *shared = xmalloc(sizeof *shared);
-    *shared = (shared_prototype){ copy, 1 };
-    prototype_record replacement = { .shared = shared, .value = value };
-    if (existing >= 0) {
-        unshare(entities->prototypes[existing].shared);
-        av_value_free(entities->prototypes[existing].value);
-        entities->prototypes[existing] = replacement;
-        return 0;
-    }
-    apush(entities->prototypes, replacement);
-    return 0;
+    return game_prototypes_register(entities->prototypes, identity, prototype, error, sizeof error);
 }
-
-static shared_prototype *prepare_spawn(game_entities *entities, const char *identity, const char **message)
+game_scene *game_entities_prepare_spawn(game_entities *entities, const char *identity, const char **message)
 {
-    for (int i = 0; identity && i < acount(entities->prototypes); i++) {
-        const game_prototype *prototype = entities->prototypes[i].shared->prototype;
-        if (strcmp(prototype->identity, identity) == 0 ||
-            strcmp(prototype->name, identity) == 0) {
-            return share(entities->prototypes[i].shared);
+    for (int i = 0; identity && i < game_prototypes_count(entities->prototypes); i++) {
+        const char *name = game_prototypes_name(entities->prototypes, i);
+        game_scene *prototype = (game_scene *)game_prototypes_find(entities->prototypes, name);
+        if (!strcmp(name, identity) || !strcmp(game_scene_name(prototype), identity)) {
+            game_scene_retain(prototype);
+            return prototype;
         }
     }
     *message = "Spawn Prototype: unknown prototype";
     return NULL;
-}
-
-static int game_entities_request_spawn(game_entities *entities, flow_context *ctx, const char *identity)
-{
-    const char *message = NULL;
-    shared_prototype *prototype = prepare_spawn(entities, identity, &message);
-    if (!prototype) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, message);
-    }
-    int result = flow_context_continue(ctx, 0);
-    flow_host_request *wait = result < 0 ? NULL : flow_context_host_wait(ctx);
-    if (!wait) {
-        unshare(prototype);
-        return result < 0 ? result : FLOW_ERR_STATE;
-    }
-    apush(entities->spawns, ((spawn_request){ .prototype = prototype, .wait = wait }));
-    return FLOW_OK;
 }
 
 void game_entities_request_destroy(game_entities *entities, ecs_entity entity)
@@ -651,10 +574,9 @@ int game_entities_pending_events(const game_entities *entities)
     return acount(entities->events);
 }
 
-int game_entities_request_event(game_entities *entities, ecs_entity target, const char *name, flow_inputs inputs)
+int game_entities_request_event(game_entities *entities, ecs_entity target, const char *name, execution_arguments inputs)
 {
-    if (!name || !name[0] || inputs.count < 0 || inputs.user_data ||
-        (inputs.count && !inputs.values)) {
+    if (!name || !name[0] || inputs.count < 0 || (inputs.count && !inputs.values)) {
         return FLOW_ERR_ARGUMENT;
     }
     for (int i = 0; i < inputs.count; i++) {
@@ -692,12 +614,13 @@ int game_entities_dispatch_events(game_entities *entities)
         }
         if (ecs_entity_is_alive(entities->world, event->target) &&
             !game_entities_is_retiring(entities, event->target)) {
-            int result = game_behavior_dispatch(
-                entities->behaviors,
+            assert(entities->host.dispatch);
+            int result = entities->host.dispatch(
+                entities->host.context,
                 event->target,
                 event->name,
-                (flow_inputs){ .values = event->values, .count = acount(event->values) },
-                NULL
+                (execution_arguments){ .values = event->values,
+                                       .count = acount(event->values) }
             );
             if (result < 0 && error == FLOW_OK) {
                 error = result;
@@ -726,35 +649,36 @@ bool game_entities_initializing(const game_entities *entities)
 
 static int tick_initializers(game_entities *entities, double monotonic_time)
 {
-    flow_run **roots = NULL;
+    flow_host_request **roots = NULL;
     for (int i = 0; i < acount(entities->spawns); i++) {
         spawn_request *request = &entities->spawns[i];
-        if (!request->entity.slot) {
-            continue;
-        }
-        flow_run *run = flow_host_run(request->wait);
-        if (!run) {
+        const void *owner = execution_request_owner(request->wait);
+        if (!request->entity.slot || !owner) {
             continue;
         }
         bool found = false;
         for (int j = 0; j < acount(roots); j++) {
-            found |= roots[j] == run;
+            found |= execution_request_owner(roots[j]) == owner;
         }
         if (!found) {
-            apush(roots, run);
+            execution_request_retain(request->wait);
+            apush(roots, request->wait);
         }
     }
     int result = FLOW_OK;
     for (int i = 0; i < acount(roots); i++) {
-        flow_run *run = roots[i];
-        if (flow_run_status(run) == FLOW_PAUSED ||
-            !flow_run_ready(run, monotonic_time)) {
+        flow_host_request *request = roots[i];
+        if (execution_request_state(request) == EXECUTION_OWNER_PAUSED ||
+            !execution_request_ready(request, monotonic_time)) {
             continue;
         }
-        int tick = flow_run_tick_at(run, monotonic_time);
+        int tick = execution_request_tick(request, monotonic_time);
         if (tick < 0 && result == FLOW_OK) {
             result = tick;
         }
+    }
+    for (int i = 0; i < acount(roots); i++) {
+        flow_host_release(roots[i]);
     }
     afree(roots);
     return result;
@@ -762,26 +686,32 @@ static int tick_initializers(game_entities *entities, double monotonic_time)
 
 static int finish_spawn(game_entities *entities, spawn_request *request)
 {
-    flow_run *run = flow_host_run(request->wait);
-    if (!run) {
+    if (!execution_request_owner(request->wait)) {
         return -1;
     }
-    if (flow_run_status(run) != FLOW_COMPLETED && !flow_run_owner_valid(run)) {
-        flow_run_stop(run);
+    if (execution_request_state(request->wait) != EXECUTION_OWNER_COMPLETED &&
+        !execution_request_owner_valid(request->wait)) {
+        flow_host_cancel(request->wait);
         return -1;
     }
     if (!request->entity.slot) {
         char error[256];
-        if (game_prototype_spawn_components(
-                request->prototype->prototype,
-                entities->world,
-                &request->entity,
-                error,
-                sizeof error
-            ) != ECS_OK) {
+        if (ecs_world_apply_commands(entities->world) ||
+            game_scene_register_components(request->prototype, entities->world, error, sizeof error)) {
             flow_host_cancel(request->wait);
             return -1;
         }
+        game_scene_instance *instance = game_scene_instantiate_components(
+            request->prototype,
+            entities->world,
+            error,
+            sizeof error
+        );
+        if (!instance) {
+            flow_host_cancel(request->wait);
+            return -1;
+        }
+        request->entity = game_scene_instance_take_entity(instance);
         apush(entities->owned, request->entity);
         if (game_entities_rebuild_global_bindings(entities) != 0) {
             flow_host_cancel(request->wait);
@@ -795,8 +725,9 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
             return -1;
         }
     }
-    run = flow_host_run(request->wait);
-    if (!run || flow_run_status(run) == FLOW_FAILED || flow_run_status(run) == FLOW_IDLE) {
+    execution_owner_state state = execution_request_state(request->wait);
+    if (!execution_request_owner(request->wait) ||
+        state == EXECUTION_OWNER_FAILED || state == EXECUTION_OWNER_IDLE) {
         return -1;
     }
     if (!ecs_entity_is_alive(entities->world, request->entity) ||
@@ -804,15 +735,16 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
         flow_host_cancel(request->wait);
         return -1;
     }
-    if (flow_run_status(run) == FLOW_PAUSED || flow_run_status(run) == FLOW_RUNNING ||
-        flow_run_status(run) == FLOW_SUSPENDED) {
+    if (state == EXECUTION_OWNER_PAUSED || state == EXECUTION_OWNER_RUNNING ||
+        state == EXECUTION_OWNER_SUSPENDED) {
         return 1;
     }
-    for (int i = 0; i < acount(request->prototype->prototype->graphs); i++) {
-        if (game_behavior_attach(
-                entities->behaviors,
+    assert(entities->host.attach);
+    for (int i = 0; i < game_scene_object_behavior_count(request->prototype, 0); i++) {
+        if (entities->host.attach(
+                entities->host.context,
                 request->entity,
-                request->prototype->prototype->graphs[i]
+                game_scene_object_behavior(request->prototype, 0, i)
             ) != 0) {
             return -1;
         }
@@ -846,7 +778,7 @@ int game_entities_flush(game_entities *entities)
         }
         if (result < 0 && request->entity.slot &&
             ecs_entity_is_alive(entities->world, request->entity)) {
-            game_behavior_destroy_entity(entities->behaviors, request->entity);
+            entities->host.destroy(entities->host.context, &request->entity, 1);
         }
         release_request(request);
     }
@@ -863,21 +795,22 @@ int game_entities_flush(game_entities *entities)
     for (int i = acount(entities->spawns) - 1; i >= 0; i--) {
         /* Begin can append spawns and reallocate the queue. */
         spawn_request request = entities->spawns[i];
-        flow_run *run = flow_host_run(request.wait);
-        if (!request.entity.slot || !run || flow_run_status(run) != FLOW_COMPLETED) {
+        if (!request.entity.slot || !execution_request_owner(request.wait) ||
+            execution_request_state(request.wait) != EXECUTION_OWNER_COMPLETED) {
             continue;
         }
         int result = finish_spawn(entities, &request);
         assert(result <= 0);
         if (result < 0 && ecs_entity_is_alive(entities->world, request.entity)) {
-            game_behavior_destroy_entity(entities->behaviors, request.entity);
+            entities->host.destroy(entities->host.context, &request.entity, 1);
         }
         release_request(&request);
         adel(entities->spawns, i);
     }
     if (acount(entities->destroy)) {
-        int result = game_behavior_destroy_entities(
-            entities->behaviors,
+        assert(entities->host.destroy);
+        int result = entities->host.destroy(
+            entities->host.context,
             entities->destroy,
             acount(entities->destroy)
         );
@@ -900,15 +833,15 @@ static bool initializer_ready(const game_entities *entities, double now)
 {
     for (int i = 0; i < acount(entities->spawns); i++) {
         const spawn_request *request = &entities->spawns[i];
-        flow_run *run = flow_host_run(request->wait);
-        if (!request->entity.slot || !run ||
+        if (!request->entity.slot || !execution_request_owner(request->wait) ||
             !ecs_entity_is_alive(entities->world, request->entity) ||
             destroy_requested(entities, request->entity)) {
             return true;
         }
-        flow_state state = flow_run_status(run);
-        if (state == FLOW_COMPLETED || state == FLOW_FAILED ||
-            state == FLOW_IDLE || flow_run_ready(run, now)) {
+        execution_owner_state state = execution_request_state(request->wait);
+        if (state == EXECUTION_OWNER_COMPLETED ||
+            state == EXECUTION_OWNER_FAILED || state == EXECUTION_OWNER_IDLE ||
+            execution_request_ready(request->wait, now)) {
             return true;
         }
     }
@@ -933,18 +866,6 @@ int game_entities_flush_initializers(game_entities *entities, double now)
     return FLOW_ERR_STEP_BUDGET;
 }
 
-static int spawn_node(node *, flow_context *ctx)
-{
-    game_entities *entities = flow_context_service(ctx, "game.entities");
-    pin_value prototype;
-    if (!entities) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Spawn Prototype requires a game world");
-    }
-    int result = flow_context_eval_data(ctx, 1, &prototype);
-    return result < 0 ? result
-                      : game_entities_request_spawn(entities, ctx, prototype.str);
-}
-
 static int destroy_command(void *service, const char *, const pin_value *arguments, int count)
 {
     assert(count == 1);
@@ -965,15 +886,15 @@ static int spawn_command(
     assert(count == 1);
     (void)count;
     game_entities *entities = service;
-    shared_prototype *prototype = prepare_spawn(entities, arguments[0].str, message);
+    game_scene *prototype = game_entities_prepare_spawn(entities, arguments[0].str, message);
     if (!prototype) {
         return FLOW_ERR_NODE;
     }
-    apush(entities->spawns, ((spawn_request){ .prototype = prototype, .wait = request }));
+    game_entities_submit_spawn(entities, prototype, request);
     return FLOW_OK;
 }
 
-static const node_command SPAWN_COMMAND = {
+const node_command GAME_ENTITY_SPAWN_COMMAND = {
     .service = "game.entities",
     .missing_service = "Spawn Prototype requires a game world",
     .begin = spawn_command
@@ -985,59 +906,21 @@ static int send_command(void *service, const char *reference, const pin_value *a
         service,
         ecs_entity_from_u64(arguments[0].u64),
         reference,
-        (flow_inputs){ .values = arguments + 1, .count = count - 1 }
+        (execution_arguments){ .values = arguments + 1, .count = count - 1 }
     );
 }
-static const node_command DESTROY_COMMAND = {
+const node_command GAME_ENTITY_DESTROY_COMMAND = {
     .service = "game.entities",
     .missing_service = "Destroy Entity requires a game world",
     .invoke = destroy_command
 };
-static const node_command SEND_COMMAND = {
+const node_command GAME_ENTITY_SEND_COMMAND = {
     .service = "game.entities",
     .missing_service = "Send Event requires a game world",
     .missing_reference = "Choose an event definition",
     .failure_message = "Could not queue event payload",
     .invoke = send_command
 };
-
-static int destroy_node(node *, flow_context *ctx)
-{
-    game_entities *entities = flow_context_service(ctx, "game.entities");
-    pin_value entity;
-    if (!entities) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Destroy Entity requires a game world");
-    }
-    int result = flow_context_eval_data(ctx, 1, &entity);
-    if (result < 0) {
-        return result;
-    }
-    destroy_command(entities, NULL, &entity, 1);
-    return flow_context_continue(ctx, 0);
-}
-
-static int send_event_node(node *n, flow_context *ctx)
-{
-    game_entities *entities = flow_context_service(ctx, "game.entities");
-    if (!entities) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Send Event requires a game world");
-    }
-    if (!n->reference_name || !n->reference_name[0]) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Choose an event definition");
-    }
-    int count = n->input_count - 1;
-    pin_value *values = flow_context_scratch_alloc(ctx, sizeof *values * (size_t)count);
-    for (int i = 0; i < count; i++) {
-        int result = flow_context_eval_data(ctx, i + 1, &values[i]);
-        if (result < 0) {
-            return result;
-        }
-    }
-    int result = send_command(entities, n->reference_name, values, count);
-    return result < 0
-             ? flow_context_fail(ctx, result, "Could not queue event payload")
-             : flow_context_continue(ctx, 0);
-}
 
 static void nearest_position(nearest_target target, const pin_value *inputs, pin_value *out, double *best)
 {
@@ -1164,125 +1047,88 @@ static const char *nearest_entity_data(void *service, const pin_value *inputs, p
     return NULL;
 }
 
-static const char *nearest_entity(const eval_context *ctx, const pin_value *inputs, arena *a, pin_value *out)
-{
-    game_entities *entities = eval_context_service(ctx, "game.entities");
-    if (!entities) {
-        return "Find Nearest Entity requires a game world";
-    }
-    out[0] = (pin_value){ .type = PIN_BOOL, .type_name = "bool" };
-    out[1] = (pin_value){ .type = PIN_HANDLE, .type_name = "ecs.entity" };
-    out[2] = (pin_value){ .type = PIN_STRUCT,
-                          .type_name = "CF_V2",
-                          .ptr = arena_alloc(a, sizeof(CF_V2)) };
-    out[3] = (pin_value){ .type = PIN_F32, .type_name = "float" };
-    return nearest_entity_data(entities, inputs, out);
-}
-static const node_host_call NEAREST_CALL = { .service = "game.entities",
-                                             .invoke = nearest_entity_data,
-                                             .reusable = true };
+const node_host_call GAME_ENTITY_NEAREST_CALL = { .service = "game.entities",
+                                                  .invoke = nearest_entity_data,
+                                                  .reusable = true };
 
 unsigned game_entities_query_categories(const behavior_function *function)
 {
-    return behavior_function_host_mask(function, &NEAREST_CALL, 2);
+    return behavior_function_host_mask(function, &GAME_ENTITY_NEAREST_CALL, 2);
 }
 
-static const node_access NEAREST_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_access GAME_ENTITY_QUERY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 static const uint64_t *const nearest_reads[] = { &GAME_COMPONENT_GameTransform.id,
                                                  &GAME_COMPONENT_GameCollider.id,
                                                  NULL };
-static const node_access NEAREST_PARALLEL_ACCESS = { .read_refs = nearest_reads,
-                                                     .flags = NODE_EFFECT_WORLD_READ |
-                                                              NODE_EFFECT_PARALLEL };
+const node_access GAME_ENTITY_NEAREST_ACCESS = { .read_refs = nearest_reads,
+                                                 .flags = NODE_EFFECT_WORLD_READ |
+                                                          NODE_EFFECT_PARALLEL };
 
-static const char *get_global_variable(
-    const eval_context *ctx,
-    const pin_value *inputs,
-    arena *storage,
+/* Result headers and struct backing belong to the invocation. Global payloads
+ * are snapshotted so another host write cannot invalidate a suspended reader. */
+static const char *global_result(pin_value *out, pin_value value)
+{
+    if (out->container == PIN_CONTAINER_SINGLE &&
+        value.container == PIN_CONTAINER_SINGLE) {
+        if (out->type == PIN_F64 && value.type == PIN_F32) {
+            value.d = value.f;
+            value.type = PIN_F64;
+        } else if (out->type == PIN_F32 && value.type == PIN_F64) {
+            value.f = (float)value.d;
+            value.type = PIN_F32;
+        }
+    }
+    if (!global_value_type_matches(out, &value)) {
+        return "Global Variable result differs from its declared type";
+    }
+    if (out->type == PIN_STRUCT && out->container == PIN_CONTAINER_SINGLE) {
+        if (!value.ptr) {
+            return "Global Variable has no struct payload for its declared "
+                   "result";
+        }
+        const type_desc *type = type_catalog_find(out->type_name);
+        assert(type && out->ptr);
+        memcpy(out->ptr, value.ptr, type->size);
+        return NULL;
+    }
+    value.type_name = out->type_name;
+    *out = value;
+    return NULL;
+}
+static const char *get_global_host(
+    const behavior_function_context *context,
+    void *service,
+    const pin_value *arguments,
     pin_value *out
 )
 {
-    game_entities *entities = eval_context_service(ctx, "game.entities");
-    if (!entities) {
-        return "Get Global Variable requires a game world";
-    }
-    if (game_entities_get_global_value(entities, inputs[0].str, storage, out) != 0) {
+    assert(context->value_storage);
+    pin_value value;
+    if (game_entities_get_global_value(service, arguments[0].str, context->value_storage, &value)) {
         return "Get Global Variable references an unknown value";
     }
-    return NULL;
+    return global_result(out, value);
 }
-
-static int set_global_variable_node(node *, flow_context *ctx)
+static const char *set_global_host(void *service, const pin_value *arguments, pin_value *out)
 {
-    game_entities *entities = flow_context_service(ctx, "game.entities");
-    if (!entities) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Set Global Variable requires a game world");
+    if (game_entities_set_global_value(service, arguments[0].str, &arguments[1])) {
+        return "Set Global Variable received an invalid value";
     }
-    pin_value name, value;
-    int result = flow_context_eval_data(ctx, 1, &name);
-    if (result < 0) {
-        return result;
-    }
-    result = flow_context_eval_data(ctx, 2, &value);
-    if (result < 0) {
-        return result;
-    }
-    if (game_entities_set_global_value(entities, name.str, &value) != 0) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Set Global Variable received an invalid value");
-    }
-    *flow_context_output_value(ctx, 1) = value;
-    return flow_context_continue(ctx, 0);
+    return global_result(out, arguments[1]);
 }
-
-static const node_access GLOBAL_VARIABLE_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
-static const node_access GLOBAL_VARIABLE_WRITE_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
-static pin_spec GET_GLOBAL_VARIABLE_IN[] = {
-    { .name = "Name", .type = PIN_NAME, .type_name = "name" }
+const node_host_call GAME_ENTITY_GET_GLOBAL_CALL = {
+    .service = "game.entities",
+    .context = get_global_host,
+    .missing_service = "Get Global Variable requires a game world",
 };
-static pin_spec GET_GLOBAL_VARIABLE_OUT[] = { { .name = "Value",
-                                                .type = PIN_FLOW,
-                                                .kind = PIN_DATA,
-                                                .flags = PIN_FLAG_WILDCARD,
-                                                .group = 1 } };
-static node_desc GET_GLOBAL_VARIABLE_NODE = {
-    .name = "Get Global Variable",
-    .input_count = 1,
-    .inputs = GET_GLOBAL_VARIABLE_IN,
-    .output_count = 1,
-    .outputs = GET_GLOBAL_VARIABLE_OUT,
-    .pure_kind = NODE_PURE_READ,
-    .read_inputs = get_global_variable,
-    .category = "Global",
-    .keywords = "global shared variable binding reference entity value",
-    .description = "Reads the value set under Name, or the entity bound to it; "
-                   "dead or dying entities read as none.",
-    .access = &GLOBAL_VARIABLE_READ_ACCESS,
-};
-static pin_spec SET_GLOBAL_VARIABLE_IN[] = {
-    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
-    { .name = "Name", .type = PIN_NAME, .type_name = "name" },
-    { .name = "Value", .type = PIN_FLOW, .kind = PIN_DATA, .flags = PIN_FLAG_WILDCARD, .group = 1 },
-};
-static pin_spec SET_GLOBAL_VARIABLE_OUT[] = {
-    { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
-    { .name = "Value", .type = PIN_FLOW, .kind = PIN_DATA, .flags = PIN_FLAG_WILDCARD, .group = 1 },
-};
-static node_desc SET_GLOBAL_VARIABLE_NODE = {
-    .name = "Set Global Variable",
-    .input_count = 3,
-    .inputs = SET_GLOBAL_VARIABLE_IN,
-    .output_count = 2,
-    .outputs = SET_GLOBAL_VARIABLE_OUT,
-    .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = set_global_variable_node,
-    .display_class = NODE_DISPLAY_VARIABLE,
-    .category = "Global",
-    .keywords = "global shared variable binding reference entity value publish",
-    .description = "Stores Value under Name for all behaviors; later writes "
-                   "must keep the type of the first.",
-    .access = &GLOBAL_VARIABLE_WRITE_ACCESS,
+const node_host_call GAME_ENTITY_SET_GLOBAL_CALL = {
+    .service = "game.entities",
+    .invoke = set_global_host,
+    .missing_service = "Set Global Variable requires a game world",
 };
 
+const node_access GAME_ENTITY_GLOBAL_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_access GAME_ENTITY_GLOBAL_WRITE_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
 static const ecs_component_desc *query_component(game_entities *entities, const char *key)
 {
     for (int i = 0; key && i < ecs_world_component_count(entities->world); i++) {
@@ -1294,14 +1140,9 @@ static const ecs_component_desc *query_component(game_entities *entities, const 
     return NULL;
 }
 
-static const char *has_entities_with_component(
-    const eval_context *ctx,
-    const pin_value *inputs,
-    arena *,
-    pin_value *out
-)
+static const char *has_component_host(void *service, const pin_value *inputs, pin_value *out)
 {
-    game_entities *entities = eval_context_service(ctx, "game.entities");
+    game_entities *entities = service;
     if (!entities) {
         return "Has Entities With Component requires a game world";
     }
@@ -1313,20 +1154,21 @@ static const char *has_entities_with_component(
     if (!component) {
         return "Selected component is not registered in this world";
     }
-    *out = (pin_value){
-        .type = PIN_BOOL,
-        .type_name = "bool",
-        .b = ecs_component_has_entities(
-            entities->world,
-            component->id,
-            entities->destroy,
-            acount(entities->destroy)
-        ),
-    };
+    out->b = ecs_component_has_entities(
+        entities->world,
+        component->id,
+        entities->destroy,
+        acount(entities->destroy)
+    );
     return NULL;
 }
 
-static const char *find_entity_snapshot(void *service, const char *key, pin_array *out)
+const node_host_call GAME_ENTITY_HAS_COMPONENT_CALL = {
+    .service = "game.entities",
+    .invoke = has_component_host
+};
+
+const char *game_entities_find_snapshot(void *service, const char *key, pin_array *out)
 {
     game_entities *entities = service;
     out->count = 0;
@@ -1359,191 +1201,11 @@ static const char *find_entity_snapshot(void *service, const char *key, pin_arra
     ecs_query_end(&query);
     return NULL;
 }
-static const char *find_entities_with_component(
-    const eval_context *ctx,
-    const pin_value *inputs,
-    arena *storage,
-    pin_value *out
-)
+
+const node_access GAME_ENTITY_STRUCTURAL_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
+
+void game_entities_submit_spawn(game_entities *entities, game_scene *prototype, flow_host_request *request)
 {
-    pin_array snapshot = { .element_type = PIN_HANDLE, .type_name = "ecs.entity" };
-    const char *error = find_entity_snapshot(
-        eval_context_service(ctx, "game.entities"),
-        inputs[0].str,
-        &snapshot
-    );
-    if (!error) {
-        *out = (pin_value){ .type = PIN_HANDLE,
-                            .type_name = "ecs.entity",
-                            .container = PIN_CONTAINER_ARRAY,
-                            .ptr = pin_array_clone_to_arena(storage, &snapshot) };
-    }
-    free(snapshot.items);
-    return error;
+    assert(prototype && request && entities->host.attach && entities->host.destroy);
+    apush(entities->spawns, ((spawn_request){ .prototype = prototype, .wait = request }));
 }
-
-static pin_spec HAS_ENTITIES_IN[] = { { .name = "Component", .type = PIN_NAME } };
-static pin_spec HAS_ENTITIES_OUT[] = {
-    { .name = "Found", .type = PIN_BOOL, .type_name = "bool" }
-};
-static node_desc HAS_ENTITIES_NODE = {
-    .name = "Has Entities With Component",
-    .input_count = 1,
-    .inputs = HAS_ENTITIES_IN,
-    .output_count = 1,
-    .outputs = HAS_ENTITIES_OUT,
-    .pure_kind = NODE_PURE_READ,
-    .read_inputs = has_entities_with_component,
-    .category = "Entities",
-    .keywords = "query has any exists find component present alive",
-    .description = "Whether any entity has Component, ignoring entities queued "
-                   "for destruction.",
-    .access = &NEAREST_ACCESS,
-};
-static pin_spec FIND_ENTITIES_OUT[] = { { .name = "Entities",
-                                          .type = PIN_HANDLE,
-                                          .type_name = "ecs.entity",
-                                          .container = PIN_CONTAINER_ARRAY } };
-static node_desc FIND_ENTITIES_NODE = {
-    .name = "Find Entities With Component",
-    .input_count = 1,
-    .inputs = HAS_ENTITIES_IN,
-    .output_count = 1,
-    .outputs = FIND_ENTITIES_OUT,
-    .pure_kind = NODE_PURE_READ,
-    .read_inputs = find_entities_with_component,
-    .query_service = "game.entities",
-    .query = find_entity_snapshot,
-    .work = NODE_WORK_WORLD_QUERY,
-    .category = "Entities",
-    .keywords = "query find component entities array snapshot",
-    .description = "Lists every entity that has Component, skipping entities "
-                   "being destroyed.",
-    .access = &NEAREST_ACCESS,
-};
-static pin_spec NEAREST_IN[] = {
-    { .name = "Position", .type = PIN_STRUCT, .type_name = "CF_V2" },
-    { .name = "Radius", .type = PIN_F32, .type_name = "float" },
-    { .name = "Categories", .type = PIN_U32, .type_name = "unsigned int" },
-    { .name = "Exclude", .type = PIN_HANDLE, .type_name = "ecs.entity" },
-};
-static pin_spec NEAREST_OUT[] = {
-    { .name = "Found", .type = PIN_BOOL, .type_name = "bool" },
-    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" },
-    { .name = "Position", .type = PIN_STRUCT, .type_name = "CF_V2" },
-    { .name = "Distance", .type = PIN_F32, .type_name = "float" },
-};
-static node_desc NEAREST_NODE = {
-    .name = "Find Nearest Entity",
-    .input_count = 4,
-    .inputs = NEAREST_IN,
-    .output_count = 4,
-    .outputs = NEAREST_OUT,
-    .pure_kind = NODE_PURE_READ,
-    .read_inputs = nearest_entity,
-    .host_call = &NEAREST_CALL,
-    .work = NODE_WORK_WORLD_QUERY,
-    .category = "Entities",
-    .keywords = "nearest closest find search entity enemy position radius "
-                "category target",
-    .description = "Finds the closest entity with a collider in Categories "
-                   "within Radius of Position, skipping Exclude.",
-    .access = &NEAREST_PARALLEL_ACCESS,
-};
-
-static const node_access STRUCTURAL_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
-static pin_spec SPAWN_IN[] = { { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
-                               { .name = "Prototype", .type = PIN_NAME } };
-static pin_spec SPAWN_OUT[] = {
-    { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
-    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" }
-};
-static pin_spec DESTROY_IN[] = {
-    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
-    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" }
-};
-static pin_spec DESTROY_OUT[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC } };
-static node_desc SPAWN_NODE = {
-    .name = "Spawn Prototype",
-    .keywords = "instantiate create entity prefab",
-    .description = "Spawns Prototype at the end of the step and resumes at "
-                   "Then with Entity; its behaviors start when this flow ends.",
-    .input_count = 2,
-    .output_count = 2,
-    .inputs = SPAWN_IN,
-    .outputs = SPAWN_OUT,
-    .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = spawn_node,
-    .command = &SPAWN_COMMAND,
-    .latent = 1,
-    .display_class = NODE_DISPLAY_FLOW,
-    .category = "Entities",
-    .access = &STRUCTURAL_ACCESS
-};
-static node_desc DESTROY_NODE = {
-    .name = "Destroy Entity",
-    .keywords = "kill despawn remove delete",
-    .description = "Destroys Entity at the end of the step; queries skip it "
-                   "meanwhile and dead entities are ignored.",
-    .input_count = 2,
-    .output_count = 1,
-    .inputs = DESTROY_IN,
-    .outputs = DESTROY_OUT,
-    .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = destroy_node,
-    .command = &DESTROY_COMMAND,
-    .display_class = NODE_DISPLAY_FLOW,
-    .category = "Entities",
-    .access = &STRUCTURAL_ACCESS
-};
-static pin_spec DAMAGE_IN[] = {
-    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
-    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" },
-};
-static node_desc DAMAGE_NODE = {
-    .name = "Send Event",
-    .input_count = 2,
-    .output_count = 1,
-    .inputs = DAMAGE_IN,
-    .outputs = DESTROY_OUT,
-    .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = send_event_node,
-    .command = &SEND_COMMAND,
-    .display_class = NODE_DISPLAY_EVENT,
-    .category = "Events",
-    .keywords = "send entity custom event message",
-    .description = "Queues the chosen event and its payload for Entity after "
-                   "the current behaviors run; dropped if Entity is gone.",
-    .access = &STRUCTURAL_ACCESS,
-};
-static node_desc *const ENTITY_NODES[] = { &SPAWN_NODE,
-                                           &DESTROY_NODE,
-                                           &DAMAGE_NODE,
-                                           &NEAREST_NODE,
-                                           &GET_GLOBAL_VARIABLE_NODE,
-                                           &SET_GLOBAL_VARIABLE_NODE,
-                                           &HAS_ENTITIES_NODE,
-                                           &NODE_Normalize_Vector_2,
-                                           &NODE_Vector_Length,
-                                           &NODE_Vector_Dot,
-                                           &NODE_Vector_Distance,
-                                           &FIND_ENTITIES_NODE,
-                                           &NODE_Count_Matching_Entities,
-                                           &GAME_NODE_GetContactEntities,
-                                           &GAME_NODE_Raycast,
-                                           &NODE_Direction_To,
-                                           &NODE_Direction_From_Angle,
-                                           &NODE_Random_Range_Vector,
-                                           &NODE_Set_Visual_Reaction,
-                                           &NODE_Emit_Particles,
-                                           &NODE_Emit_Directed_Particles,
-                                           &NODE_Scene_Rhythm };
-static const type_desc ENTITY_TYPE = { .name = "ecs.entity", .size = sizeof(uint64_t) };
-static const type_desc *const ENTITY_TYPES[] = { &ENTITY_TYPE };
-const registry_pack GAME_ENTITY_PACK = {
-    .name = "game.entities",
-    .nodes = ENTITY_NODES,
-    .node_count = (int)(sizeof ENTITY_NODES / sizeof ENTITY_NODES[0]),
-    .types = ENTITY_TYPES,
-    .type_count = 1
-};

@@ -1,6 +1,9 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/set_map_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
@@ -288,14 +291,15 @@ static void owned_tick_arrays()
         }
         assert(allocations == arena_block_allocations());
         node *entry;
-        const behavior_function *f = behavior_program_batch_event(a->program, "Tick", &entry);
+        const behavior_function
+            *f = behavior_program_batch_event(behavior_program_cached(a), "Tick", &entry);
         behavior_update_binding **bindings = NULL;
-        behavior_update_row row = {
-            .instance = bi,
-            .binding = behavior_update_prepare(&bindings, bi, f, entry),
-            .entity = ecs_entity_to_u64(entity),
-            .services_revision = bi->services_revision
-        };
+        behavior_update_row row = behavior_update_row_make(
+            bi,
+            behavior_update_prepare(&bindings, bi, f, entry),
+            ecs_entity_to_u64(entity),
+            0
+        );
         assert(row.binding);
         for (int i = 0; i < 16; i++) {
             if (i == 8) {
@@ -320,10 +324,13 @@ static void owned_tick_arrays()
         }
         assert(allocations == arena_block_allocations());
         assert(
-            bi->variables[3].i == 32 &&
-            ((pin_array *)bi->variables[2].ptr)->count == (set ? 4 : 5)
+            bi->execution.variables[3].i == 32 &&
+            ((pin_array *)bi->execution.variables[2].ptr)->count == (set ? 4 : 5)
         );
-        assert(bi->variables[2].container == (set ? PIN_CONTAINER_SET : PIN_CONTAINER_ARRAY));
+        assert(
+            bi->execution.variables[2].container ==
+            (set ? PIN_CONTAINER_SET : PIN_CONTAINER_ARRAY)
+        );
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
         assert(stores == runtime_store_creations() && !acount(bi->activations));
         behavior_update_free_bindings(bindings);
@@ -359,11 +366,11 @@ static void owned_tick()
     behavior_batch *batch = NULL;
     flow_run *failed = NULL;
     assert(behavior_instance_dispatch_batch(bi, "Tick", &batch, &failed));
-    assert(batch && !failed && bi->variables[0].i == 1);
+    assert(batch && !failed && bi->execution.variables[0].i == 1);
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     flow_run *run = behavior_instance_dispatch(bi, "Tick", (flow_inputs){ 0 }, NULL);
     assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
-    assert(bi->variables[0].i == 1);
+    assert(bi->execution.variables[0].i == 1);
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_batch_free(batch);
     behavior_instance_destroy(bi);
@@ -548,8 +555,11 @@ static void set_remove_flow()
     behavior_instance_set_trace_enabled(instance, false);
     flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
-    const pin_array *result = instance->variables[0].ptr;
-    assert(instance->variables[0].container == PIN_CONTAINER_SET && result && result->count == 2);
+    const pin_array *result = instance->execution.variables[0].ptr;
+    assert(
+        instance->execution.variables[0].container == PIN_CONTAINER_SET &&
+        result && result->count == 2
+    );
     assert(result->items[0].i == 1 && result->items[1].i == 3);
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
@@ -632,7 +642,7 @@ static void owned_set_mutation()
     );
     flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
     assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
-    const pin_array *current = instance->variables[0].ptr;
+    const pin_array *current = instance->execution.variables[0].ptr;
     const pin_array *old = snapshot.ptr;
     assert(current && current->count == INITIAL + 1 && old && old->count == INITIAL);
     for (int i = 0; i < INITIAL; i++) {
@@ -641,7 +651,7 @@ static void owned_set_mutation()
     assert(current->items[INITIAL].i == INITIAL);
     run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
     assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
-    assert(((const pin_array *)instance->variables[0].ptr)->count == INITIAL + 1);
+    assert(((const pin_array *)instance->execution.variables[0].ptr)->count == INITIAL + 1);
     arena_free(&snapshot_storage);
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
@@ -708,7 +718,7 @@ static void owned_struct_set_mutation()
         behavior_instance_set_trace_enabled(instance, false);
         flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
         assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
-        const pin_array *records = instance->variables[0].ptr;
+        const pin_array *records = instance->execution.variables[0].ptr;
         assert(records && records->count == 1 && records->items[0].type == PIN_STRUCT);
         const whole_managed *actual = records->items[0].ptr;
         assert(
@@ -776,7 +786,7 @@ static void disabled_owned_set_nodes_use_general_lowering(bool disable_source)
         behavior_instance_set_trace_enabled(instance, false);
         flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
         assert(run && flow_run_status(run) == FLOW_COMPLETED);
-        const pin_array *after = instance->variables[0].ptr;
+        const pin_array *after = instance->execution.variables[0].ptr;
         assert(
             after && after->count == 2 && after->items[0].i == 101 &&
             after->items[1].i == 5
@@ -850,7 +860,7 @@ static void owned_entity_set_mutation()
             flow_run *run = behavior_instance_dispatch(instance, "Tick", (flow_inputs){ 0 }, NULL);
             assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
         }
-        const pin_array *contacts = instance->variables[0].ptr;
+        const pin_array *contacts = instance->execution.variables[0].ptr;
         assert(contacts && contacts->count == 1 && contacts->items[0].u64 == 41);
         assert(!strcmp(contacts->items[0].type_name, "ecs.entity"));
         const pin_array *old = snapshot.ptr;
@@ -859,7 +869,7 @@ static void owned_entity_set_mutation()
         assert(
             behavior_instance_add_set_variable(instance, asset->variables[0].id, &wrong_type) < 0
         );
-        assert(((const pin_array *)instance->variables[0].ptr)->count == 1);
+        assert(((const pin_array *)instance->execution.variables[0].ptr)->count == 1);
 
         arena_free(&snapshot_storage);
         behavior_instance_destroy(instance);

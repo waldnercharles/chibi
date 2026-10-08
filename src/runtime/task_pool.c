@@ -99,10 +99,13 @@ static void *enqueue(game_task_range *run, int count, int minimum, void *context
 {
     game_task_pool *pool = user;
     assert(pool->open && count > 0 && minimum > 0);
+    (void)pool;
+    (void)minimum;
 #ifdef CHIBI_HAS_ENKITS
     if (pool->parallel) {
         start_workers(pool);
         assert(enkiGetThreadNum(pool->scheduler) == 0);
+        (void)pool;
         for (int i = 0; i < TASK_CAPACITY; i++) {
             pool_task *task = &pool->slots[i];
             if (task->active) {
@@ -127,12 +130,14 @@ static void finish(void *handle, void *user)
 {
     game_task_pool *pool = user;
     assert(pool->open);
+    (void)pool;
     if (!handle) {
         return;
     }
 #ifdef CHIBI_HAS_ENKITS
     pool_task *task = handle;
     assert(task->active && pool->pending > 0);
+    (void)pool;
     CHIBI_TRACE_ZONE_BEGIN(zone, "Task wait");
     enkiWaitForTaskSet(pool->scheduler, task->set);
     CHIBI_TRACE_ZONE_END(zone);
@@ -151,6 +156,7 @@ game_task_pool *game_task_pool_acquire()
 game_task_pool *game_task_pool_acquire_workers(int requested)
 {
     assert(requested >= 0 && requested <= GAME_TASK_WORKER_MAX);
+    (void)requested;
     int workers = 1;
 #ifdef CHIBI_HAS_ENKITS
     enkiTaskScheduler *scheduler = enkiNewTaskScheduler();
@@ -192,6 +198,7 @@ void game_task_pool_release(game_task_pool *pool)
 {
     int workers = pool->tasks.workers;
     assert(pool == shared[workers] && pool->references > 0 && !pool->open && !pool->pending);
+    (void)pool;
     if (--pool->references) {
         return;
     }
@@ -220,6 +227,7 @@ bool game_task_pool_started(const game_task_pool *pool)
 void game_task_pool_begin(game_task_pool *pool, bool parallel)
 {
     assert(!pool->open && !pool->pending);
+    (void)pool;
     pool->open = true;
     pool->parallel = parallel && pool->tasks.workers > 1;
 }
@@ -227,6 +235,7 @@ void game_task_pool_begin(game_task_pool *pool, bool parallel)
 void game_task_pool_end(game_task_pool *pool)
 {
     assert(pool->open && !pool->pending);
+    (void)pool;
     pool->open = false;
     pool->parallel = false;
 }

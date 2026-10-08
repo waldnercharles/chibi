@@ -1,17 +1,31 @@
 #ifndef CHIBI_RENDER_UI_H
 #define CHIBI_RENDER_UI_H
 
-#include "assets/ui_document.h"
 #include "ecs/ecs.h"
-#include "graph/model/behavior_asset.h"
+#include "execution/arguments.h"
 #include "platform/cute.h"
 #include "render/skip.h"
-#include "runtime/behaviors/live.h"
+#include "render/ui_loader.h"
 #include "runtime/save.h"
 #include "runtime/ui.h"
-#include "support/file_watch.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
+
+/* Event hooks are copied with each world view. Context and names returned by
+ * payload remain borrowed through that invocation. A negative payload count
+ * rejects an unsupported declaration before dispatch. */
+typedef struct
+{
+    const char *name;
+    pin_value type;
+} render_ui_event_field;
+typedef struct
+{
+    void *context;
+    int (*payload)(void *, const char *, render_ui_event_field *, int capacity);
+    int (*dispatch)(void *, uint64_t entity, const char *, execution_arguments);
+    bool (*initializing)(void *);
+} render_ui_host;
 
 /* What shown documents read and act on. Only `ecs` is required: without
  * `page` documents show on a bare page, without `model` as authored, without
@@ -25,7 +39,7 @@ typedef struct ui_world
     ecs_world *ecs;
     const char *page; /* the scene's root ui document (ui_page) */
     game_ui *model;
-    game_live_world *live; /* the behaviors activations reach, and their events */
+    render_ui_host host; /* typed event delivery; an empty record disables it */
     game_save *save;
     bool preview;
     uint64_t revealed; /* an entity (ecs_entity_to_u64), or 0 for none */
@@ -85,9 +99,9 @@ void ui_data_free(ui_data *data);
 
 /* ---------- Mounts ---------- */
 
-/* One ui asset shown inside a host element: content/ui/<name>.rml expanded
- * with its widgets, re-read within a second of an edit to either, keeping the
- * last valid version. The host element gets data-ui="<name>" and binds the
+/* One expanded UI record shown inside a host element. Resident prepared
+ * records are the default. An explicitly installed loader may refresh authored
+ * records, keeping the last valid version on failure. The host element gets data-ui="<name>" and binds the
  * context's UI_DATA_MODEL, and the mount's RCSS is scoped to it; the host
  * installs that RCSS in the element's document. Games and the editor host
  * mounts the same way. Each element carries data-src="<asset>:<line>"
@@ -130,9 +144,10 @@ typedef struct ui_activation
  * web handler reads event.shiftKey and event.clientX; each other value is
  * emit's next argument read as its type (text, a number or a flag). False,
  * running nothing, for a payload a UI event cannot carry. */
-bool ui_activation_send(game_live_world *live, ecs_entity entity, const ui_activation *a, unsigned primary);
+bool ui_activation_send(const render_ui_host *host, ecs_entity entity, const ui_activation *a, unsigned primary);
 ui_mount *ui_mount_new(const char *content_root, const char *name);
 void ui_mount_free(ui_mount *mount);
+void ui_mount_set_loader(ui_mount *, const render_ui_loader *);
 const char *ui_mount_name(const ui_mount *mount);
 /* Shows the asset in `root`, moving it there when the root changes, and
  * reloads it when it or a widget changed. `listener` hears the root's keys
@@ -197,13 +212,16 @@ void ui_mount_measure(ui_mount *mount, game_ui *model, uint64_t entity);
  * theme's tokens, say), styles the whole page unscoped; its markup is the
  * page body, which it may wrap in <body ...> to set the body's attributes;
  * and the scene's documents show in its <slot/>, or after its markup.
- * Re-read within a second of an edit to it or an import, keeping the last
- * valid version. Zero-initialize. */
+ * Resident prepared records are the default; an explicit loader owns authored
+ * refresh and dependency tracking. Zero-initialize. */
 typedef struct ui_page
 {
     char name[128]; /* the ui asset shown; "" for none */
-    file_watch asset;
-    file_watch *imports;  /* its .rcss and the stylesheets that imports */
+    char *content_root;
+    render_ui_loader loader;
+    void *source;
+    uint64_t prepared_revision;
+    bool prepared_only, prepared_loaded;
     ui_document document; /* its last valid version, RCSS unscoped */
     char error[256]; /* why the asset is not the version shown; "" when it is */
 } ui_page;
@@ -212,6 +230,7 @@ typedef struct ui_page
  * changed; true when `document` changed. */
 bool ui_page_sync(ui_page *page, const char *content_root, const char *name, double time);
 void ui_page_free(ui_page *page);
+void ui_page_set_loader(ui_page *, const render_ui_loader *);
 
 /* ---------- Game host ---------- */
 
@@ -224,11 +243,14 @@ void ui_page_free(ui_page *page);
  * pointer-events: auto. RCSS dp units scale with the canvas height, 720
  * pixels being 1. */
 typedef struct render_ui render_ui;
+void render_ui_set_loader(render_ui *, const render_ui_loader *);
 
 /* `data`, NULL for none, gives the documents its root's members as
  * variables beside `save` and `system` (ui_data_init), so a caller can show
  * them its own state; the new host takes it. */
 render_ui *render_ui_new(const char *content_root, yyjson_mut_doc *data);
+/* Resident catalog only. Missing records never load project files. */
+render_ui *render_ui_new_prepared(yyjson_mut_doc *data);
 void render_ui_free(render_ui *ui);
 /* The documents' data model, in which the host shows the variables it gave
  * render_ui_new. */

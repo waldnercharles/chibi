@@ -1,5 +1,7 @@
-#include "graph/modeling/model_bake.h"
+#include "runtime/models/model_bake.h"
 
+#include "authoring/mesh_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "support/array.h"
 
 #include <assert.h>

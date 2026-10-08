@@ -38,7 +38,7 @@ behavior_asset *behavior_asset_validate(
             }
             model_program_free(&program);
         } else {
-            behavior_asset_compile(linked, report);
+            graph_asset_compile(linked, report);
         }
         return linked;
     }

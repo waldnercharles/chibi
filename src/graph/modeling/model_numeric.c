@@ -14,30 +14,6 @@ static int failure(shader_error *error, uint64_t node, const char *message)
     }
     return -1;
 }
-void model_parameter_free(model_parameter *p)
-{
-    free(p->asset);
-    free(p->name);
-    free(p->type_name);
-    free(p->scope);
-}
-void model_numeric_init(model_numeric *n)
-{
-    *n = (model_numeric){ 0 };
-    shader_graph_init(&n->graph);
-}
-void model_numeric_free(model_numeric *n)
-{
-    shader_graph_free(&n->graph);
-    for (int i = 0; i < acount(n->parameters); i++) {
-        model_parameter_free(&n->parameters[i]);
-    }
-    afree(n->parameters);
-    for (int i = 0; i < acount(n->constraints); i++) {
-        free(n->constraints[i].asset);
-    }
-    afree(n->constraints);
-}
 int model_numeric_operation(
     model_numeric *n,
     shader_op op,

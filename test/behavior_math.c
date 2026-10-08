@@ -1,14 +1,16 @@
+#include "authoring/preview.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/math_nodes.h"
 #include "graph/nodes/vector_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -104,7 +106,7 @@ static float evaluate(behavior_asset *asset, graph *g, node *call, float x, floa
 
 static void health_damage()
 {
-    behavior_asset *asset = load("content/behaviors/HealthBehavior.code");
+    behavior_asset *asset = load("test/fixtures/language/content/behaviors/HealthBehavior.chibi");
     node *setter = NULL;
     graph *setter_graph = NULL;
     node *expression = NULL;
@@ -129,9 +131,11 @@ static void health_damage()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     register_damage_event(live);
-    assert(game_live_add_definition(live, game_live_definition_new("HealthBehavior", asset)) == 0);
+    assert(
+        game_preview_add_definition(live, game_preview_definition_new("HealthBehavior", asset)) == 0
+    );
     const struct
     {
         int current, maximum, amount, expected;
@@ -157,8 +161,8 @@ static void health_damage()
         assert(ecs_world_apply_commands(world) == ECS_OK);
         *GAME_GameHealth_get(world, entity) = (GameHealth){ cases[i].current,
                                                             cases[i].maximum };
-        assert(game_behavior_attach(live->behaviors, entity, "HealthBehavior") == 0);
-        behavior_instance *instance = game_behavior_instance(live->behaviors, entity, "HealthBehavior");
+        assert(game_behavior_attach(live->runtime->behaviors, entity, "HealthBehavior") == 0);
+        behavior_instance *instance = game_behavior_instance(live->runtime->behaviors, entity, "HealthBehavior");
         assert(instance);
         pin_value values[] = {
             { .type = PIN_I32, .type_name = "int", .i = cases[i].amount },
@@ -169,12 +173,12 @@ static void health_damage()
         assert(run && flow_run_status(run) == FLOW_COMPLETED);
         assert(GAME_GameHealth_get(world, entity)->current == cases[i].expected);
         assert(GAME_GameHealth_get(world, entity)->maximum == cases[i].maximum);
-        assert(game_entities_dispatch_events(live->entities) >= 0);
-        assert(game_entities_flush(live->entities) >= 0);
+        assert(game_entities_dispatch_events(live->runtime->entities) >= 0);
+        assert(game_entities_flush(live->runtime->entities) >= 0);
         assert(ecs_world_apply_commands(world) == ECS_OK);
         assert(ecs_entity_is_alive(world, entity) == !cases[i].destroyed);
     }
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
     puts("PASS: Health expression preserves integer limits, rejects nonpositive damage, and delivers death before destruction");
 }
@@ -402,8 +406,8 @@ void test_behavior_math()
     angle_helpers();
     easing_helpers();
     health_damage();
-    behavior_asset *projectile = load("test/fixtures/content/behaviors/ProjectileBehavior.code");
-    behavior_asset *trail = load("test/fixtures/content/behaviors/MovementTrailBehavior.code");
+    behavior_asset *projectile = load("test/fixtures/content/behaviors/ProjectileBehavior.chibi");
+    behavior_asset *trail = load("test/fixtures/content/behaviors/MovementTrailBehavior.chibi");
     graph *direction = projectile->graphs[1];
     graph *emission = trail->graphs[1];
     node *magnitude = graph_node_by_id(direction, 150);

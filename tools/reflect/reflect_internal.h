@@ -1,8 +1,8 @@
 #ifndef CHIBI_REFLECT_INTERNAL_H
 #define CHIBI_REFLECT_INTERNAL_H
 
-#include "graph/model/pin.h"
 #include "support/array.h"
+#include "types/value.h"
 
 #include <clang-c/Index.h>
 #include <stdint.h>
@@ -35,6 +35,7 @@ typedef struct
     int component;
     int dense;
     char *alias_of;
+    char *constructor_name;
 } struct_info;
 
 typedef struct
@@ -101,25 +102,39 @@ void dispose_component_manifest();
 uint64_t hash_bytes(uint64_t hash, const void *data, size_t size);
 uint64_t hash_string(uint64_t hash, const char *text);
 const char *pin_member(const char *pin);
-void emit_pin_spec_flags(FILE *out, const char *name, const char *pin, const char *spelling, unsigned flags);
-void emit_pin_spec(FILE *out, const char *name, const char *pin, const char *spelling);
-void emit_fn(FILE *out, const fn_info *f);
-void emit_read_fn(FILE *out, const fn_info *f);
-void emit_struct_nodes(FILE *out, const struct_info *s);
-void emit_exec_fn(FILE *out, const fn_info *f);
-void emit_exec_node(FILE *out, const fn_info *f);
-void emit_fn_node(FILE *out, const fn_info *f);
-void emit_read_node(FILE *out, const fn_info *f);
+void emit_string(FILE *, const char *);
+#define REFLECT_DESC_MAKE "Builds a %s from its fields."
+#define REFLECT_DESC_BREAK "Splits a %s into its fields."
+#define REFLECT_DESC_UNWRAP "Returns the %s a %s wraps."
+#define REFLECT_DESC_FIELD "Writes %s's %s on Target, which defaults to Self."
+#define REFLECT_DESC_GET_ENTITY "Reads %s from Entity."
+#define REFLECT_DESC_HAS_ENTITY "Whether Entity is alive and has %s."
+#define REFLECT_DESC_SET_ENTITY "Writes %s on Entity."
+#define REFLECT_DESC_GET_SELF "Reads %s from Self."
+#define REFLECT_DESC_SET_SELF "Writes %s on Self."
+#define REFLECT_DESC_HAS_SELF "Whether Self has %s."
+#define REFLECT_DESC_ADD                                                       \
+    "Adds %s with default values to Self; Value is whether it was added."
+#define REFLECT_DESC_REMOVE                                                    \
+    "Removes %s from Self; Value is whether it was there."
+void emit_function_presentation(FILE *, const fn_info *);
+void emit_struct_presentation(
+    FILE *,
+    const struct_info *,
+    const field_info *,
+    const char *format,
+    const char *category,
+    bool field
+);
 bool component_unwrap(const struct_info *s);
-void emit_component_unwrap(FILE *out, const struct_info *s);
-void emit_component_nodes(FILE *out, const struct_info *s);
-void emit_component_entity_nodes(FILE *out, const struct_info *s);
+void emit_execution_unwrap(FILE *out, const struct_info *s);
 bool component_field_settable(const field_info *field);
-void emit_component_field_nodes(FILE *out, const struct_info *s);
-void emit_component_entity_nodes_desc(FILE *out, const struct_info *s);
-void emit_component_nodes_desc(FILE *out, const struct_info *s);
 void emit_component_accessors(FILE *out, const struct_info *s);
-void emit(FILE *out, const collect_ctx *ctx);
+void emit_runtime(FILE *out, const collect_ctx *ctx);
+void emit_types(FILE *out, const collect_ctx *ctx);
+void emit_native_catalog(FILE *out, const collect_ctx *ctx);
+void emit_execution_host(FILE *out, const fn_info *, bool external);
+void emit_execution_result(FILE *out, const char *pin, const char *expression, const char *type, int index);
 
 void reflect_collect(CXTranslationUnit tu, collect_ctx *ctx);
 void reflect_dispose(collect_ctx *ctx);

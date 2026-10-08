@@ -1,3 +1,6 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
 #include "test/suite_internal.h"
 
 void run_runtime_instance_checks()

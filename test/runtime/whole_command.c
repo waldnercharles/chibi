@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/suite_internal.h"
 #include "test/whole_command_fixture.h"
@@ -90,7 +93,7 @@ static void parity(int kind, int scenario, unsigned budget, bool subnormal)
                 memcpy(frames, stack, (size_t)count * sizeof *frames);
             }
             for (int i = 0; i < 4; i++) {
-                variables[i] = copy(&storage, bi->variables[i]);
+                variables[i] = copy(&storage, bi->execution.variables[i]);
                 if (!result) {
                     returned[i] = copy(&storage, *flow_run_input_value(run, g->nodes[1], i + 1));
                 }
@@ -107,7 +110,7 @@ static void parity(int kind, int scenario, unsigned budget, bool subnormal)
                 same(actual.values[i], expected.values[i]);
             }
             for (int i = 0; i < 4; i++) {
-                same(bi->variables[i], variables[i]);
+                same(bi->execution.variables[i], variables[i]);
                 if (!result) {
                     same(*flow_run_input_value(run, g->nodes[1], i + 1), returned[i]);
                 }
@@ -146,7 +149,7 @@ static void parity(int kind, int scenario, unsigned budget, bool subnormal)
         /* Stored scalar names must survive release of activation input storage. */
         if (mode) {
             for (int i = 0; i < 4; i++) {
-                same(bi->variables[i], variables[i]);
+                same(bi->execution.variables[i], variables[i]);
             }
         }
         behavior_instance_destroy(bi);
@@ -237,22 +240,24 @@ static void scalar_generation_ownership(behavior_backend backend)
     }
     flow_run_free(run);
     assert(
-        bi->variables[0].d == 7.5 &&
-        !strcmp(bi->variables[0].type_name, "graph owned scalar name")
+        bi->execution.variables[0].d == 7.5 &&
+        !strcmp(bi->execution.variables[0].type_name, "graph owned scalar name")
     );
-    char *json = behavior_asset_save(a);
-    behavior_asset *replacement = behavior_asset_load(json);
-    free(json);
-    assert(replacement && behavior_instance_can_update(bi, replacement) == INSTANCE_UPDATE_READY);
+    behavior_asset *replacement = behavior_asset_clone(a);
+    assert(replacement && behavior_asset_equal(a, replacement));
+    assert(behavior_instance_can_update(bi, replacement) == INSTANCE_UPDATE_READY);
     behavior_instance_update(bi, replacement);
     behavior_asset_free(a);
     assert(
-        bi->variables[0].d == 7.5 &&
-        !strcmp(bi->variables[0].type_name, "graph owned scalar name")
+        bi->execution.variables[0].d == 7.5 &&
+        !strcmp(bi->execution.variables[0].type_name, "graph owned scalar name")
     );
     assert(!behavior_instance_pool_release(bi));
     assert(behavior_instance_pool_reuse(bi, replacement, NULL, NULL, NULL) == bi);
-    assert(bi->variables[0].d == 0 && !strcmp(bi->variables[0].type_name, "double"));
+    assert(
+        bi->execution.variables[0].d == 0 &&
+        !strcmp(bi->execution.variables[0].type_name, "double")
+    );
     behavior_instance_destroy(bi);
     behavior_asset_free(replacement);
 }

@@ -1,6 +1,0 @@
-name "Light"
-components {
-    GAME.GameAppearance antialias=1.0 color=0xffffffff height=4.0 shape="Circle" width=4.0
-    GAME.GameMaterial albedo=0xffffffff emission_color=0xffffffff emission_intensity=1.2 emission_multiplier=1.0 scene=0xffffffff
-    (object)GAME.GameTransform
-}

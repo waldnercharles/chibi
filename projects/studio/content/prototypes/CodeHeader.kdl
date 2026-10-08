@@ -1,4 +1,0 @@
-name "CodeHeader"
-components {
-    GAME.GameUi document="CodeHeader" hidden=#true
-}

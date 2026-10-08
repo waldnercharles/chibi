@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
 #include "support/array.h"
 
@@ -84,7 +87,7 @@ static void tick_calls(int count, behavior_backend backend, int extra_nodes)
         assert(behavior_instance_set_backend(instance, backend) == 0);
         behavior_instance_set_trace_enabled(instance, 0);
         assert(behavior_instance_set_activation_pool(instance, 1) == 0);
-        instance->variables[0].d = i;
+        instance->execution.variables[0].d = i;
         apush(instances, instance);
     }
     double start = 0;
@@ -109,7 +112,7 @@ static void tick_calls(int count, behavior_backend backend, int extra_nodes)
         (seconds() - start) * 1e9 / (128 * count)
     );
     for (int i = 0; i < count; i++) {
-        assert(instances[i]->variables[0].d == i + 136 * .125);
+        assert(instances[i]->execution.variables[0].d == i + 136 * .125);
         behavior_instance_destroy(instances[i]);
     }
     afree(instances);
@@ -118,6 +121,7 @@ static void tick_calls(int count, behavior_backend backend, int extra_nodes)
 
 int main(int argc, char **argv)
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     int extra_nodes = 0;
     if (argc == 3 && !strcmp(argv[1], "--tick")) {
         extra_nodes = atoi(argv[2]);

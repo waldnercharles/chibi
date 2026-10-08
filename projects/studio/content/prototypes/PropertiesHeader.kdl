@@ -1,4 +1,0 @@
-name "PropertiesHeader"
-components {
-    GAME.GameUi document="PropertiesHeader" hidden=#true
-}

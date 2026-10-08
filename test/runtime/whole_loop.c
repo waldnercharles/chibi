@@ -184,8 +184,8 @@ void test_compiled_loops()
                     const flow_call_frame *stack = flow_run_call_stack(run, &count);
                     if (!mode) {
                         status = result;
-                        expected_count = bi->variables[0].i;
-                        expected_limit = bi->variables[1].i;
+                        expected_count = bi->execution.variables[0].i;
+                        expected_limit = bi->execution.variables[1].i;
                         steps = flow_run_steps(run);
                         expected_error = *flow_run_error(run);
                         frame_count = count;
@@ -200,8 +200,8 @@ void test_compiled_loops()
                         assert(run->whole_function_executed && !acount(run->children));
                         assert(result == status && steps == flow_run_steps(run));
                         assert(
-                            bi->variables[0].i == expected_count &&
-                            bi->variables[1].i == expected_limit
+                            bi->execution.variables[0].i == expected_count &&
+                            bi->execution.variables[1].i == expected_limit
                         );
                         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
                         const flow_error *actual = flow_run_error(run);

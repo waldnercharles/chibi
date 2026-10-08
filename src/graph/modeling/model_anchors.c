@@ -1,5 +1,7 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/modeling/model_expand_internal.h"
 #include "graph/modeling/model_internal.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/xalloc.h"
 
 #include <stdlib.h>
@@ -256,32 +258,4 @@ node *model_expand_attach(expander *e, const scope *s, const node *n)
         child = transform(e, s, n, child, &NODE_ModelRotate, &to.angles);
     }
     return child ? transform(e, s, n, child, &NODE_ModelTranslate, &to.position) : NULL;
-}
-bool model_program_anchor(
-    const model_program *p,
-    int index,
-    const float prepared[SHADER_PARAMETER_MAX][4],
-    float position[3],
-    float angles[3],
-    shader_error *error
-)
-{
-    if (index < 0 || index >= acount(p->anchors)) {
-        return model_fail(error, 0, "Anchor index is invalid");
-    }
-    float payload[SHADER_PARAMETER_MAX][4];
-    model_bounds bounds;
-    if (!model_program_prepare(p, prepared, payload, &bounds, error)) {
-        return false;
-    }
-    const shader_graph *g = &p->bounds_program->numeric.graph;
-    float (*values)[4] = xcalloc(acount(g->nodes), sizeof *values);
-    shader_sample_context sample = { 0 };
-    bool valid = shader_graph_eval_values(g, &sample, payload, values, error);
-    if (valid) {
-        memcpy(position, values[p->anchors[index].position], 3 * sizeof(float));
-        memcpy(angles, values[p->anchors[index].angles], 3 * sizeof(float));
-    }
-    free(values);
-    return valid;
 }

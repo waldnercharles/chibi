@@ -1,13 +1,17 @@
+#include "authoring/image_prepare.h"
+#include "authoring/mesh_prepare.h"
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/material_raster.h"
-#include "render/mesh_asset.h"
 #include "render/mesh_projection.h"
 #include "render/mesh_surface.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/shader_images.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
+#include "runtime/geometry/mesh_asset.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -551,15 +555,15 @@ static bool imported_meshes(render_material_raster *raster, ecs_world *world, ec
     cf_free(png);
     char error[256];
     assert(render_image_mount_content(root, error, sizeof error));
-    const render_mesh_asset *first = render_mesh_asset_load("content/a.mesh.json", error, sizeof error);
+    const render_mesh_asset *first = authoring_mesh_prepare("content/a.mesh.json", error, sizeof error);
     assert(first);
     uint64_t first_identity = first->identity;
-    const render_mesh_asset *second = render_mesh_asset_load("content/b.mesh.json", error, sizeof error);
+    const render_mesh_asset *second = authoring_mesh_prepare("content/b.mesh.json", error, sizeof error);
     assert(second && second->identity != first_identity);
     assert(
-        render_mesh_asset_load("content/a.mesh.json", error, sizeof error)->identity == first_identity
+        authoring_mesh_prepare("content/a.mesh.json", error, sizeof error)->identity == first_identity
     );
-    assert(!render_mesh_asset_load("content/../a.mesh.json", error, sizeof error));
+    assert(!authoring_mesh_prepare("content/../a.mesh.json", error, sizeof error));
     behavior_asset *asset = behavior_asset_new("Imported mesh UV regression");
     asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
     node *out = shader_graph_add_output(asset->graph, false);

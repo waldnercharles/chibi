@@ -1,5 +1,9 @@
 # Editor UI references
 
+Studio source and shell assets are owned by the extracted `chibi-studio`
+repository. Paths under `src/editor/` and `projects/studio/` in this guide are
+relative to that repository. The engine supplies the shared SDK interfaces.
+
 The editor UI is RmlUi driven from C through the Studio kit (`src/editor/ui/kit.h`,
 `src/editor/rmlui/kit*.c`). None of the libraries below can be linked into it: they
 are React/DOM code. Each one solves a problem the editor has too, so the kit carries
@@ -106,8 +110,8 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 - Ranking is `text_rank` (`src/support/text_rank.h`) over `text_search_score`
   (`src/support/text_search.h`), the search the
-  graph's Add menu uses and, in its whole-word form, the MCP's `searchNodes` and
-  `searchAssets`. Every query word must match: a word start in the label ranks
+  graph's Add menu uses and, in its whole-word form, native `search_nodes` and
+  `search_assets` inspection. Every query word must match: a word start in the label ranks
   above a match inside a word, then initials, then letters in order, and the
   keywords score half. An item's `boost` adds to its score; Studio gives recently
   and often chosen items up to 300, as Raycast's frecency does.

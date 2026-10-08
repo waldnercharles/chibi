@@ -1,22 +1,29 @@
 #include "graph/shader/shader_graph.h"
 
+#include "authoring/preview.h"
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
-#include "graph/model/type.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "platform/cute.h"
 #include "render/shader_catalog.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "render/shader_values.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
+#include "types/type.h"
 
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+void test_shader_parameters_prepared();
 
 static node *add(graph *g, const char *name)
 {
@@ -120,7 +127,7 @@ static void examples()
     shader_graph_free(&ir);
 
     behavior_asset *flash = load_example(
-        "test/fixtures/content/behaviors/DamageFlashBehavior.code"
+        "test/fixtures/content/behaviors/DamageFlashBehavior.chibi"
     );
     compile_report report;
     compile_report_init(&report);
@@ -129,66 +136,29 @@ static void examples()
     behavior_asset_free(flash);
 }
 
-static void preview_parameter_validation()
-{
-    behavior_asset *asset = behavior_asset_new("Preview parameters");
-    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
-    graph *g = asset->graph;
-    node *output = shader_graph_add_output(g, false);
-    node *color = add(g, "Shader Parameter");
-    node *opacity = add(g, "Shader Parameter");
-    assert(graph_set_node_reference(g, color, 0, "Tint") == 0);
-    assert(graph_set_node_reference(g, opacity, 1, "Opacity") == 0);
-    assert(graph_set_pin_type(g, color, 1, 0, PIN_STRUCT, "ShaderVec3") == 0);
-    float tint[3] = { 1, 1, 1 };
-    pin_value color_default = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = tint };
-    assert(graph_set_pin_default(g, color, 1, 0, &color_default) == 0);
-    scalar(g, opacity, 1, 0, 1);
-    assert(graph_connect_data(g, color, 0, output, 0) == 0);
-    assert(graph_connect_data(g, opacity, 0, output, 5) == 0);
-    shader_error error = { 0 };
-    assert(render_shader_upsert(asset, &error));
-    int shader = render_shader_find(asset->name);
-    assert(shader);
-    assert(render_shader_parameters_validate(
-        shader,
-        "(array)Tint 1 -2 0.5\n"
-        "Opacity 4\n",
-        &error
-    ));
-    assert(!render_shader_parameters_validate(shader, "(array)Tint 1\n", &error));
-    assert(strstr(error.message, "array of 3"));
-    assert(!render_shader_parameters_validate(shader, "(array)Opacity 4\n", &error));
-    assert(strstr(error.message, "finite number or boolean"));
-    assert(!render_shader_parameters_validate(shader, "Missing 1\n", &error));
-    assert(strstr(error.message, "Unknown shader preview parameter"));
-    behavior_asset_free(asset);
-    render_shader_catalog_clear();
-}
-
 static void live_shader_library()
 {
     ecs_world *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
-    game_live_definition *library = game_live_definition_new(
+    game_preview_world *live = game_preview_world_new(world);
+    game_preview_definition *library = game_preview_definition_new(
         "ShaderMath",
         load_example("test/fixtures/content/shader-libraries/ShaderMath.kdl")
     );
-    game_live_definition *ring = game_live_definition_new(
+    game_preview_definition *ring = game_preview_definition_new(
         "PulseRing",
         load_example("test/fixtures/content/materials/PulseRing.kdl")
     );
-    game_live_definition *gradient = game_live_definition_new(
+    game_preview_definition *gradient = game_preview_definition_new(
         "OutlineGradient",
         load_example("test/fixtures/content/materials/OutlineGradient.kdl")
     );
     assert(library && ring && gradient);
-    assert(game_live_add_definition(live, library) == 0);
-    assert(game_live_add_definition(live, ring) == 0);
-    assert(game_live_add_definition(live, gradient) == 0);
+    assert(game_preview_add_definition(live, library) == 0);
+    assert(game_preview_add_definition(live, ring) == 0);
+    assert(game_preview_add_definition(live, gradient) == 0);
     behavior_asset *old_ring = ring->applied, *old_gradient = gradient->applied;
     graph *pulse = behavior_asset_find_graph_by_name(library->working, "Pulse");
     assert(pulse);
@@ -202,9 +172,9 @@ static void live_shader_library()
     }
     assert(half);
     scalar(pulse, half, 0, 1, .25f);
-    assert(game_live_mark_dirty(library) == 0);
+    assert(game_preview_mark_dirty(library) == 0);
     char message[256];
-    assert(game_live_preview(live, library, message, sizeof message) == 0);
+    assert(game_preview_update(live, library, message, sizeof message) == 0);
     assert(ring->applied != old_ring && gradient->applied != old_gradient);
     shader_graph ir;
     shader_graph_init(&ir);
@@ -219,13 +189,13 @@ static void live_shader_library()
     old_gradient = gradient->applied;
     unsigned revision = render_shader_revision();
     graph_add_node(pulse, &NODE_Delay);
-    assert(game_live_mark_dirty(library) == 0);
-    assert(game_live_preview(live, library, message, sizeof message) < 0);
+    assert(game_preview_mark_dirty(library) == 0);
+    assert(game_preview_update(live, library, message, sizeof message) < 0);
     assert(ring->applied == old_ring && gradient->applied == old_gradient);
     assert(render_shader_revision() == revision);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
 }
 
 static void math_program(shader_graph *ir)
@@ -1021,7 +991,7 @@ void test_shader_graph()
     gradient_codegen();
     vector_inline_sources();
     parameter_slots();
-    preview_parameter_validation();
+    test_shader_parameters_prepared();
     /* Reflected scalar reads must clear a previous array tag before serialization. */
     float component = 0.6f;
     type_field field = { .name = "x",

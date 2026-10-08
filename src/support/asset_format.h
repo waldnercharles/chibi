@@ -1,0 +1,6 @@
+#ifndef CHIBI_ASSET_FORMAT_H
+#define CHIBI_ASSET_FORMAT_H
+#define DECLARATIVE_ASSET_EXTENSION ".kdl"
+#define CODE_ASSET_EXTENSION ".chibi"
+#define CODE_ASSET_METADATA_EXTENSION ".chibi.meta"
+#endif

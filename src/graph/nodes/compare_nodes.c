@@ -1,208 +1,37 @@
 #include "graph/nodes/compare_nodes.h"
 
-#include "graph/runtime/value_array.h"
-
-#include <assert.h>
-
-static pin_spec real_inputs[] = {
-    { .name = "A", .type = PIN_F32, .type_name = "float" },
-    { .name = "B", .type = PIN_F32, .type_name = "float" },
-};
-static pin_spec integer_inputs[] = {
-    { .name = "A", .type = PIN_I32, .type_name = "int" },
-    { .name = "B", .type = PIN_I32, .type_name = "int" },
-};
-static pin_spec compare_outputs[] = {
-    { .name = "Result", .type = PIN_BOOL, .type_name = "bool" },
-};
-static const node_access pure = { .flags = NODE_EFFECT_PURE };
-
-#define REAL_COMPARE(NAME, LABEL, OP, KEYWORDS, DESCRIPTION)                         \
-    static pin_value NAME##_value(const pin_value *inputs, int count, arena *)       \
-    {                                                                                \
-        assert(count == 2);                                                          \
-        if ((&NODE_##NAME == &NODE_Equal || &NODE_##NAME == &NODE_Not_Equal) &&      \
-            inputs[0].type != PIN_F32 && inputs[0].type != PIN_F64) {                \
-            assert(inputs[0].type == inputs[1].type);                                \
-            bool equal = pin_value_equal(&inputs[0], &inputs[1]);                    \
-            return (pin_value){ .type = PIN_BOOL,                                    \
-                                .b = &NODE_##NAME == &NODE_Equal ? equal : !equal }; \
-        }                                                                            \
-        assert(                                                                      \
-            (inputs[0].type == PIN_F32 || inputs[0].type == PIN_F64) &&              \
-            (inputs[1].type == PIN_F32 || inputs[1].type == PIN_F64)                 \
-        );                                                                           \
-        assert(inputs[0].container == PIN_CONTAINER_SINGLE);                         \
-        assert(inputs[1].container == PIN_CONTAINER_SINGLE);                         \
-        double left = inputs[0].type == PIN_F64 ? inputs[0].d : inputs[0].f;         \
-        double right = inputs[1].type == PIN_F64 ? inputs[1].d : inputs[1].f;        \
-        return (pin_value){ .type = PIN_BOOL, .b = left OP right };                  \
-    }                                                                                \
-    node_desc NODE_##NAME = {                                                        \
-        .name = LABEL,                                                               \
-        .input_count = 2,                                                            \
-        .output_count = 1,                                                           \
-        .inputs = real_inputs,                                                       \
-        .outputs = compare_outputs,                                                  \
-        .pure_kind = NODE_PURE_CALL,                                                 \
-        .fn = NAME##_value,                                                          \
-        .display_class = NODE_DISPLAY_PURE,                                          \
-        .category = "Math/Comparison",                                               \
-        .keywords = KEYWORDS,                                                        \
-        .description = DESCRIPTION,                                                  \
-        .access = &pure,                                                             \
-    };
-
-#define INTEGER_COMPARE(NAME, LABEL, OP, KEYWORDS, DESCRIPTION)                  \
-    static pin_value NAME##_value(const pin_value *inputs, int count, arena *)   \
-    {                                                                            \
-        assert(count == 2);                                                      \
-        assert(inputs[0].type == PIN_I32 && inputs[1].type == PIN_I32);          \
-        assert(inputs[0].container == PIN_CONTAINER_SINGLE);                     \
-        assert(inputs[1].container == PIN_CONTAINER_SINGLE);                     \
-        return (pin_value){ .type = PIN_BOOL, .b = inputs[0].i OP inputs[1].i }; \
-    }                                                                            \
-    node_desc NODE_##NAME = {                                                    \
-        .name = LABEL,                                                           \
-        .input_count = 2,                                                        \
-        .output_count = 1,                                                       \
-        .inputs = integer_inputs,                                                \
-        .outputs = compare_outputs,                                              \
-        .pure_kind = NODE_PURE_CALL,                                             \
-        .fn = NAME##_value,                                                      \
-        .display_class = NODE_DISPLAY_PURE,                                      \
-        .category = "Math/Comparison",                                           \
-        .keywords = KEYWORDS,                                                    \
-        .description = DESCRIPTION,                                              \
-        .access = &pure,                                                         \
-    };
-
-REAL_COMPARE(Less, "Less", <, "compare less below <", "Whether A is less than B, compared as reals.")
-INTEGER_COMPARE(Integer_Less, "Integer Less", <, "compare less below integer <", "Whether A is less than B, compared as 32-bit integers.")
-REAL_COMPARE(Less_Or_Equal, "Less Or Equal", <=, "compare less equal at most <= ≤", "Whether A is less than or equal to B, compared as reals.")
-INTEGER_COMPARE(
-    Integer_Less_Or_Equal,
-    "Integer Less Or Equal",
-    <=,
-    "compare less equal at most integer <= ≤",
-    "Whether A is less than or equal to B, compared as 32-bit integers."
-)
-REAL_COMPARE(Greater, "Greater", >, "compare greater above >", "Whether A is greater than B, compared as reals.")
-INTEGER_COMPARE(Integer_Greater, "Integer Greater", >, "compare greater above integer >", "Whether A is greater than B, compared as 32-bit integers.")
-REAL_COMPARE(Greater_Or_Equal, "Greater Or Equal", >=, "compare greater equal at least >= ≥", "Whether A is greater than or equal to B, compared as reals.")
-INTEGER_COMPARE(
-    Integer_Greater_Or_Equal,
-    "Integer Greater Or Equal",
-    >=,
-    "compare greater equal at least integer >= ≥",
-    "Whether A is greater than or equal to B, compared as 32-bit integers."
-)
-REAL_COMPARE(Equal, "Equal", ==, "compare equal equality == =", "Whether A exactly equals B as reals, with no tolerance; NaN never matches.")
-INTEGER_COMPARE(Integer_Equal, "Integer Equal", ==, "compare equal equality integer == =", "Whether A equals B, compared as 32-bit integers.")
-REAL_COMPARE(Not_Equal, "Not Equal", !=, "compare not equal inequality != ≠", "Whether A differs from B as reals, compared exactly; NaN always differs.")
-INTEGER_COMPARE(
-    Integer_Not_Equal,
-    "Integer Not Equal",
-    !=,
-    "compare not equal inequality integer != ≠",
-    "Whether A differs from B, compared as 32-bit integers."
-)
-
-#undef REAL_COMPARE
-#undef INTEGER_COMPARE
-
-static pin_value has_any_flags(const pin_value *inputs, int count, arena *)
-{
-    assert(count == 2);
-    assert(inputs[0].type == PIN_U32 && inputs[1].type == PIN_U32);
-    assert(inputs[0].container == PIN_CONTAINER_SINGLE && inputs[1].container == PIN_CONTAINER_SINGLE);
-    return (pin_value){ .type = PIN_BOOL, .b = (inputs[0].u & inputs[1].u) != 0 };
-}
-
-static pin_spec flag_inputs[] = {
-    { .name = "Value", .type = PIN_U32, .type_name = "unsigned int" },
-    { .name = "Flags", .type = PIN_U32, .type_name = "unsigned int" },
-};
-
-node_desc NODE_Has_Any_Flags = {
-    .name = "Has Any Flags",
-    .input_count = 2,
-    .output_count = 1,
-    .inputs = flag_inputs,
-    .outputs = compare_outputs,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = has_any_flags,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Logic/Flags",
-    .keywords = "bits mask contains any category",
-    .description = "Whether Value and Flags share at least one set bit.",
-    .access = &pure,
-};
-
-static pin_spec bool_inputs[] = {
-    { .name = "A", .type = PIN_BOOL, .type_name = "bool" },
-    { .name = "B", .type = PIN_BOOL, .type_name = "bool" },
-};
-static pin_spec unary_bool_inputs[] = {
-    { .name = "Value", .type = PIN_BOOL, .type_name = "bool" },
-};
-static pin_spec bool_output = { .name = "Result", .type = PIN_BOOL, .type_name = "bool" };
-
-static pin_value and_value(const pin_value *inputs, int count, arena *)
-{
-    assert(count == 2 && inputs[0].type == PIN_BOOL && inputs[1].type == PIN_BOOL);
-    return (pin_value){ .type = PIN_BOOL, .b = inputs[0].b && inputs[1].b };
-}
-static pin_value or_value(const pin_value *inputs, int count, arena *)
-{
-    assert(count == 2 && inputs[0].type == PIN_BOOL && inputs[1].type == PIN_BOOL);
-    return (pin_value){ .type = PIN_BOOL, .b = inputs[0].b || inputs[1].b };
-}
-static pin_value not_value(const pin_value *inputs, int count, arena *)
-{
-    assert(count == 1 && inputs[0].type == PIN_BOOL);
-    return (pin_value){ .type = PIN_BOOL, .b = !inputs[0].b };
-}
-
-node_desc NODE_And = {
-    .name = "And",
-    .input_count = 2,
-    .output_count = 1,
-    .inputs = bool_inputs,
-    .outputs = &bool_output,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = and_value,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Logic",
-    .keywords = "and &&",
-    .description = "Whether A and B are both true.",
-    .access = &pure,
-};
-node_desc NODE_Or = {
-    .name = "Or",
-    .input_count = 2,
-    .output_count = 1,
-    .inputs = bool_inputs,
-    .outputs = &bool_output,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = or_value,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Logic",
-    .keywords = "or ||",
-    .description = "Whether A, B or both are true.",
-    .access = &pure,
-};
-node_desc NODE_Not = {
-    .name = "Not",
-    .input_count = 1,
-    .output_count = 1,
-    .inputs = unary_bool_inputs,
-    .outputs = &bool_output,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = not_value,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Logic",
-    .keywords = "not !",
-    .description = "Whether Value is false.",
-    .access = &pure,
-};
+#include "graph/model/native_definition.h"
+#include "runtime/comparisons.h"
+static pin_spec real_inputs[] = { NATIVE_COMPARE_REAL_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec integer_inputs[] = { NATIVE_COMPARE_INTEGER_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec outputs[] = { NATIVE_COMPARE_OUTPUTS(GRAPH_NATIVE_PORT) };
+#define VALUE(KEY, NAME, SOURCE, INPUTS, CATEGORY, KEYWORDS, DESCRIPTION)      \
+    static pin_spec KEY##_inputs[] = { INPUTS(GRAPH_NATIVE_PORT) };
+NATIVE_COMPARE_VALUES(VALUE)
+#undef VALUE
+#define COUNT(A) (sizeof(A) / sizeof *(A))
+#define NODE(KEY, NAME, SOURCE, OP, INPUTS, CATEGORY, KEYWORDS, DESCRIPTION)   \
+    node_desc NODE_##KEY = { .name = NAME,                                     \
+                             .source_name = SOURCE,                            \
+                             .operator_name = OP,                              \
+                             .input_count = COUNT(INPUTS),                     \
+                             .output_count = COUNT(outputs),                   \
+                             .inputs = INPUTS,                                 \
+                             .outputs = outputs,                               \
+                             .pure_kind = NODE_PURE_CALL,                      \
+                             .fn = native_compare_##KEY,                       \
+                             .execution_call = &NATIVE_COMPARE_##KEY##_CALL,   \
+                             .display_class = NODE_DISPLAY_PURE,               \
+                             .category = CATEGORY,                             \
+                             .keywords = KEYWORDS,                             \
+                             .description = DESCRIPTION,                       \
+                             .access = &NATIVE_COMPARE_ACCESS };
+#define REAL(KEY, NAME, SOURCE, OP, EQUALITY, NEGATE, KEYWORDS, DESCRIPTION)   \
+    NODE(KEY, NAME, SOURCE, #OP, real_inputs, "Math/Comparison", KEYWORDS, DESCRIPTION)
+#define INTEGER(KEY, NAME, SOURCE, OP, KEYWORDS, DESCRIPTION)                  \
+    NODE(KEY, NAME, SOURCE, #OP, integer_inputs, "Math/Comparison", KEYWORDS, DESCRIPTION)
+#define VALUE(KEY, NAME, SOURCE, INPUTS, CATEGORY, KEYWORDS, DESCRIPTION)      \
+    NODE(KEY, NAME, SOURCE, NULL, KEY##_inputs, CATEGORY, KEYWORDS, DESCRIPTION)
+NATIVE_COMPARE_REALS(REAL)
+NATIVE_COMPARE_INTEGERS(INTEGER)
+NATIVE_COMPARE_VALUES(VALUE)

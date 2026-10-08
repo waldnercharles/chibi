@@ -1,5 +1,8 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/flow_snapshot.h"
 #include "test/suite_internal.h"
@@ -187,11 +190,14 @@ static void lifecycle(behavior_backend backend)
         if (iteration % 2 == 0) {
             assert(!behavior_instance_stop_activation(bi, run));
             assert(!behavior_instance_tick(bi, .5 + iteration));
-            assert(bi->variables[0].i == 0);
+            assert(bi->execution.variables[0].i == 0);
             assert(!behavior_instance_release_activation(bi, run));
         } else {
             assert(!behavior_instance_tick(bi, flow_run_wake_time(run)));
-            assert(flow_run_status(run) == FLOW_COMPLETED && bi->variables[0].i == 7);
+            assert(
+                flow_run_status(run) == FLOW_COMPLETED &&
+                bi->execution.variables[0].i == 7
+            );
             assert(!behavior_instance_release_activation(bi, run));
             assert(!behavior_instance_set_variable(
                 bi,
@@ -232,9 +238,12 @@ static void breakpoints()
         assert(run && flow_run_resume(run) == FLOW_SUSPENDED_RESULT);
         assert(!mode || run->whole_function_executed);
         assert(flow_run_tick_at(run, .5) == FLOW_PAUSED_RESULT);
-        assert(flow_run_current_node(run) == set && bi->variables[0].i == 0);
+        assert(flow_run_current_node(run) == set && bi->execution.variables[0].i == 0);
         assert(flow_run_steps(run) == 2);
-        assert(flow_run_step(run) == FLOW_PAUSED_RESULT && bi->variables[0].i == 7);
+        assert(
+            flow_run_step(run) == FLOW_PAUSED_RESULT &&
+            bi->execution.variables[0].i == 7
+        );
         assert(!flow_run_current_node(run));
         assert(!flow_run_resume(run) && flow_run_status(run) == FLOW_COMPLETED);
         flow_run_free(run);
@@ -258,18 +267,21 @@ static void durations()
             assert(run);
             if (d < 2) {
                 assert(
-                    flow_run_status(run) == FLOW_COMPLETED && bi->variables[0].i == 7
+                    flow_run_status(run) == FLOW_COMPLETED &&
+                    bi->execution.variables[0].i == 7
                 );
                 assert(flow_run_wake_time(run) == 0.);
             } else {
                 assert(
-                    flow_run_status(run) == FLOW_SUSPENDED && bi->variables[0].i == 0
+                    flow_run_status(run) == FLOW_SUSPENDED &&
+                    bi->execution.variables[0].i == 0
                 );
                 double wake = flow_run_wake_time(run);
                 assert(d == 4 ? isnan(wake) : wake == durations[d]);
                 assert(!flow_run_tick_at(run, d == 3 ? INFINITY : 1.));
                 assert(
-                    flow_run_status(run) == FLOW_COMPLETED && bi->variables[0].i == 7
+                    flow_run_status(run) == FLOW_COMPLETED &&
+                    bi->execution.variables[0].i == 7
                 );
             }
             behavior_instance_destroy(bi);

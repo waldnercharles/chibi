@@ -1,3 +1,4 @@
+#include "graph/authoring/graph_edit.h"
 #include "test/suite_internal.h"
 
 /* Vendor test helper: render one fmt format into a stream and compare. The

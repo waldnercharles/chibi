@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 /* A language service for ui files, as a language server serves an editor:
- * Studio's Text Editor and designer and the MCP read and change ui assets
+ * Studio's Text Editor and designer edit ui assets; SDK consumers inspect them
  * through it. tree-sitter parses markup (.rml) with the HTML grammar and
  * styles (.rcss) with the CSS grammar.
  *
@@ -139,6 +139,29 @@ char *ui_source_attribute_value(const ui_source *source, int element, const char
  * data-value and data-event-click do. */
 bool ui_source_is_binding(const char *name, int length);
 
+/* Static packaged resource closure from the owning RML/CSS syntax trees.
+ * Input texts each <=8 MiB, depth64, one million nodes,1024 distinct resources.
+ * Unresolved dynamic/escaped resource expressions reject; output is unchanged
+ * on failure. Returned array and copied strings belong to caller. */
+typedef enum
+{
+    UI_SOURCE_RESOURCE_IMAGE_URL,
+    UI_SOURCE_RESOURCE_FONT_FAMILY
+} ui_source_resource_kind;
+typedef struct
+{
+    ui_source_resource_kind kind;
+    char *text;
+} ui_source_resource;
+bool ui_source_resources(
+    const char *markup,
+    const char *style,
+    ui_source_resource **out,
+    char *error,
+    size_t
+);
+void ui_source_resources_free(ui_source_resource *);
+
 /* ---------- Project knowledge ---------- */
 
 /* A file completion, definitions and references look through. */
@@ -150,7 +173,7 @@ typedef struct ui_source_file
 
 /* What the project around a document offers it. ui_source_project_scan
  * fills everything but `properties`, which the caller adds from RmlUi
- * (ui_check_property_names in render/ui_check.h). Lists are sorted and
+ * (ui_check_property_names in authoring/ui_check.h). Lists are sorted and
  * unique. */
 typedef struct ui_source_project
 {

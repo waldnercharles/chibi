@@ -2,7 +2,7 @@
 
 Material algorithms operate on native grids and masks. Authored fields define
 geometry; reflected components define tuning; behaviors decide gameplay outcomes.
-`projects/arena2d/content/scenes/MaterialStudy.kdl` exercises this boundary with
+`content/scenes/MaterialStudy.kdl` in the extracted Voidweaver repository exercises this boundary with
 two procedural specimens, a cut operation, and a moving marker. It has no fluid
 world, health, projectile, encounter, or combat configuration.
 
@@ -154,25 +154,25 @@ bytecode for its vector expression.
 
 ## Authoring and checks
 
-Use `buildGraph`, `inspectGraph`, `inspectSystem`, `validateAsset`
-and `previewField` through Chibi MCP. Field previews return a deterministic CPU
-PNG, range and hash without a graphics context. Graph edits remain atomic,
-hash-checked and automatically arranged. The editor lists fields, filters their
-palette, exposes pure scalar library calls, and provides seed/cell-size controls
-and a field preview in Details.
+Edit field KDL and system/library `.chibi` files directly, or use Studio. Use
+native `inspect_graph`, `inspect_system` and `validate_asset` requests for saved
+content; request examples are in the [asset workflow](runtime-authoring.md).
+Native `preview_field` produces a deterministic CPU PNG, range and hash without
+a graphics context. For example:
 
+```sh
+printf '%s\n' '{"contract":1,"operation":"preview_field","kind":"field","name":"MaterialIslands","width":256,"height":256}' | \
+  build/bin/chibi_ctl --project-root /absolute/path/to/chibi-voidweaver
+```
+
+The editor lists fields, filters their palette, exposes pure scalar library
+calls, and provides seed/cell-size controls and a field preview in Details.
 Run the noncombat scene with `make play SCENE=scenes/MaterialStudy.kdl`.
 
-Useful checks:
-
-```text
-CCACHE_DISABLE=1 make build
-CCACHE_DISABLE=1 make test
-build/test_suite --materials
-build/test_suite --material-engine
-build-release/test_suite --bench-fields
-build-release/test_suite --bench-system-schedule
-```
+Build with `make build`. Select admitted checks using `make agent-list` and
+`make agent-test AGENT_SELECTOR=--<selector>`; see the
+[60-second policy](testing.md#temporary-60-second-policy). Historical benchmark
+commands in the validation report do not establish current admission.
 
 See [validation results](material-engine-validation.md) for measured parity,
 runtime evidence and the performance tradeoff of the reusable evaluator.

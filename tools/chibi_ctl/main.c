@@ -1,6 +1,10 @@
 #include "automation/controller.h"
 #include "automation/execution_policy.h"
 #include "automation/render_preview.h"
+#include "prepare.h"
+#ifdef CHIBI_CTL_STANDALONE
+#include "registry.h"
+#endif
 #include "support/resources.h"
 
 #include <SDL3/SDL_video.h>
@@ -18,6 +22,8 @@ static void usage(const char *program)
         "       %s --project-root PATH --render-request FILE\n"
         "       %s --project-root PATH --format [--check]\n"
         "       %s --engine-info\n"
+        "       %s --project-root PATH --prepare-project OUTPUT [--scene "
+        "PATH]\n"
         "Read newline-delimited JSON automation requests from stdin.\n"
         "Each non-empty line produces exactly one JSON response on stdout.\n"
         "With --render, read one preview request and produce one response.\n"
@@ -28,6 +34,7 @@ static void usage(const char *program)
         "CHIBI_ALLOW_FULL_GPU=1.\n"
         "With --format, rewrite authored assets in canonical form; --check\n"
         "only lists assets that differ and fails when any do.\n",
+        program,
         program,
         program,
         program,
@@ -104,10 +111,11 @@ static int render_request(const char *project_root, const char *path)
     return exit_code;
 }
 
-int main(int argc, char **argv)
+static int run(int argc, char **argv)
 {
     const char *project_root = ".";
     const char *request_path = NULL;
+    const char *prepared_path = NULL, *scene = NULL;
     int render = 0;
     bool format = false, check = false;
     for (int i = 1; i < argc; i++) {
@@ -142,9 +150,24 @@ int main(int argc, char **argv)
             project_root = argv[++i];
             continue;
         }
+        if (!strcmp(argv[i], "--prepare-project") && i + 1 < argc) {
+            prepared_path = argv[++i];
+            continue;
+        }
+        if (!strcmp(argv[i], "--scene") && i + 1 < argc) {
+            scene = argv[++i];
+            continue;
+        }
         fprintf(stderr, "Unknown argument: %s\n", argv[i]);
         usage(argv[0]);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if (prepared_path) {
+        if (render || format) {
+            fprintf(stderr, "Project preparation cannot be combined with rendering or formatting\n");
+            return CHIBI_AUTOMATION_INVALID_REQUEST;
+        }
+        return chibi_prepare_project(project_root, scene, prepared_path);
     }
     if (render) {
         chibi_render_deadline();
@@ -187,5 +210,17 @@ int main(int argc, char **argv)
         }
     }
     free(line);
+    return result;
+}
+
+int main(int argc, char **argv)
+{
+#ifdef CHIBI_CTL_STANDALONE
+    if (!chibi_ctl_registry_init()) return 1;
+#endif
+    int result = run(argc, argv);
+#ifdef CHIBI_CTL_STANDALONE
+    chibi_ctl_registry_free();
+#endif
     return result;
 }

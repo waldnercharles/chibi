@@ -1,13 +1,11 @@
 #include "runtime/scenes/physics.h"
 
 #include "diagnostics/tracy.h"
-#include "graph/runtime/eval.h"
-#include "graph/runtime/value_array.h"
+#include "execution/status.h"
 #include "runtime/behaviors/entities.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "runtime/materials.h"
 #include "runtime/task_pool.h"
-#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -100,6 +98,7 @@ static double clock_ms()
     struct timespec now;
     int result = clock_gettime(CLOCK_MONOTONIC, &now);
     assert(!result);
+    (void)result;
     return now.tv_sec * 1000.0 + now.tv_nsec * 1e-6;
 }
 
@@ -1145,76 +1144,6 @@ int game_physics_raycast(
     return result;
 }
 
-static const char *raycast_node(
-    const eval_context *ctx,
-    const pin_value *inputs,
-    arena *storage,
-    pin_value *out
-)
-{
-    ecs_world *world = eval_context_service(ctx, "ecs.world");
-    game_entities *entities = eval_context_service(ctx, "game.entities");
-    if (!world || !entities || !inputs[0].ptr || !inputs[1].ptr) {
-        return "Raycast requires a game world and Start and End vectors";
-    }
-    game_ray_hit hit;
-    if (game_physics_raycast(
-            world,
-            entities,
-            *(CF_V2 *)inputs[0].ptr,
-            *(CF_V2 *)inputs[1].ptr,
-            inputs[2].u,
-            ecs_entity_from_u64(inputs[3].u64),
-            inputs[4].b,
-            &hit
-        ) < 0) {
-        return "Raycast requires finite coordinates and valid colliders";
-    }
-    CF_V2 *point = arena_alloc(storage, sizeof *point);
-    CF_V2 *normal = arena_alloc(storage, sizeof *normal);
-    *point = hit.point;
-    *normal = hit.normal;
-    out[0] = (pin_value){ .type = PIN_BOOL, .b = hit.found };
-    out[1] = (pin_value){ .type = PIN_HANDLE,
-                          .type_name = "ecs.entity",
-                          .u64 = ecs_entity_to_u64(hit.entity) };
-    out[2] = (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = point };
-    out[3] = (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = normal };
-    out[4] = (pin_value){ .type = PIN_F32, .f = hit.distance };
-    return NULL;
-}
-
-static pin_spec RAY_IN[] = {
-    { .name = "Start", .type = PIN_STRUCT, .type_name = "CF_V2" },
-    { .name = "End", .type = PIN_STRUCT, .type_name = "CF_V2" },
-    { .name = "Categories", .type = PIN_U32, .type_name = "unsigned int" },
-    { .name = "Exclude", .type = PIN_HANDLE, .type_name = "ecs.entity" },
-    { .name = "Include Sensors", .type = PIN_BOOL },
-};
-static pin_spec RAY_OUT[] = {
-    { .name = "Found", .type = PIN_BOOL },
-    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" },
-    { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" },
-    { .name = "Normal", .type = PIN_STRUCT, .type_name = "CF_V2" },
-    { .name = "Distance", .type = PIN_F32 },
-};
-static const node_access RAY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
-node_desc GAME_NODE_Raycast = {
-    .name = "Raycast",
-    .input_count = 5,
-    .inputs = RAY_IN,
-    .output_count = 5,
-    .outputs = RAY_OUT,
-    .pure_kind = NODE_PURE_READ,
-    .read_inputs = raycast_node,
-    .category = "Physics",
-    .keywords = "ray segment visibility line sight wall occlusion ricochet "
-                "normal",
-    .description = "Casts from Start to End and reports the first collider hit "
-                   "in Categories; sensors count only with Include Sensors.",
-    .access = &RAY_ACCESS,
-};
-
 int game_physics_contact_entities(
     ecs_world *world,
     game_entities *entities,
@@ -1272,75 +1201,6 @@ int game_physics_contact_entities(
     }
     return result;
 }
-
-static const char *contact_entities(
-    const eval_context *ctx,
-    const pin_value *inputs,
-    arena *a,
-    pin_value *out
-)
-{
-    ecs_world *world = eval_context_service(ctx, "ecs.world");
-    game_entities *entities = eval_context_service(ctx, "game.entities");
-    if (!world || !entities) {
-        return "Get Contact Entities requires a game world";
-    }
-    ecs_entity *handles = NULL;
-    int result = game_physics_contact_entities(
-        world,
-        entities,
-        ecs_entity_from_u64(inputs[0].u64),
-        inputs[1].u,
-        &handles
-    );
-    if (result < 0) {
-        afree(handles);
-        return "Get Contact Entities requires valid Collider and Transform "
-               "components";
-    }
-    pin_array *array = arena_alloc(a, sizeof *array);
-    *array = (pin_array){ .element_type = PIN_HANDLE,
-                          .type_name = "ecs.entity",
-                          .count = acount(handles),
-                          .capacity = acount(handles) };
-    if (array->count) {
-        array->items = arena_alloc(a, (size_t)array->count * sizeof *array->items);
-        for (int i = 0; i < array->count; i++) {
-            array->items[i] = (pin_value){ .type = PIN_HANDLE,
-                                           .type_name = "ecs.entity",
-                                           .u64 = ecs_entity_to_u64(handles[i]) };
-        }
-    }
-    afree(handles);
-    *out = (pin_value){ .type = PIN_HANDLE,
-                        .type_name = "ecs.entity",
-                        .container = PIN_CONTAINER_ARRAY,
-                        .ptr = array };
-    return NULL;
-}
-
-static pin_spec CONTACT_IN[] = {
-    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity" },
-    { .name = "Categories", .type = PIN_U32, .type_name = "unsigned int" },
-};
-static pin_spec CONTACT_OUT[] = {
-    { .name = "Entities", .type = PIN_HANDLE, .type_name = "ecs.entity", .container = PIN_CONTAINER_ARRAY },
-};
-static const node_access CONTACT_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
-node_desc GAME_NODE_GetContactEntities = {
-    .name = "Get Contact Entities",
-    .input_count = 2,
-    .inputs = CONTACT_IN,
-    .output_count = 1,
-    .outputs = CONTACT_OUT,
-    .pure_kind = NODE_PURE_READ,
-    .read_inputs = contact_entities,
-    .category = "Physics",
-    .keywords = "contact overlap touching collider entities query categories",
-    .description = "Lists colliding entities in Categories touching Entity "
-                   "right now; empty if Entity is dead or being destroyed.",
-    .access = &CONTACT_ACCESS,
-};
 
 typedef struct
 {
@@ -1596,7 +1456,7 @@ static int queue_contact(game_physics *physics, uint64_t target, uint64_t other,
         physics->entities,
         ecs_entity_from_u64(target),
         "Contact Begin",
-        (flow_inputs){ .values = values, .count = 2 }
+        (execution_arguments){ .values = values, .count = 2 }
     );
 }
 

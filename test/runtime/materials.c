@@ -1,7 +1,10 @@
+#include "assets/field_parameters.h"
+#include "authoring/engine_preview.h"
+#include "authoring/preview.h"
+#include "graph/compiler/material_field.h"
 #include "graph/document/serialize.h"
-#include "runtime/behaviors/live.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
 #include "runtime/material_terrain.h"
 #include "support/text_file.h"
 #include "test/support/code_fixture.h"
@@ -190,7 +193,7 @@ static void contours()
 
 static behavior_asset *cave_asset()
 {
-    char *json = text_file_read("projects/arena2d/content/fields/CaveField.kdl");
+    char *json = text_file_read("test/fixtures/material-contracts/content/fields/CaveField.kdl");
     assert(json);
     behavior_asset *asset = behavior_asset_load(json);
     free(json);
@@ -881,7 +884,7 @@ static void physical_destruction()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity settings = ecs_world_create_entity(world);
     component(world, settings, &GAME_COMPONENT_MaterialDestructionWorld, &(MaterialDestructionWorld){ 8 });
     assert(ecs_world_apply_commands(world) == ECS_OK);
@@ -902,12 +905,12 @@ static void physical_destruction()
         &(GameDestructible){ .cell_size = 2, .min_fragment_cells = 4 }
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(game_physics_tick(live->physics, 0) == 0);
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
     game_ray_hit hit;
     assert(
         game_physics_raycast(
             world,
-            live->entities,
+            live->runtime->entities,
             (CF_V2){ 0, -30 },
             (CF_V2){ 0, 30 },
             8,
@@ -917,13 +920,13 @@ static void physical_destruction()
         ) == 0
     );
     assert(hit.found);
-    game_materials_damage(live->materials, slab, (fluid_vec){ 0, 0 }, 11, 1, 0, (material_impact){ 0 });
-    assert(game_physics_tick(live->physics, 0) == 0);
+    game_materials_damage(live->runtime->materials, slab, (fluid_vec){ 0, 0 }, 11, 1, 0, (material_impact){ 0 });
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
     assert(ecs_world_live_count(world) == 3); /* settings, core, detached body */
     assert(
         game_physics_raycast(
             world,
-            live->entities,
+            live->runtime->entities,
             (CF_V2){ 0, -30 },
             (CF_V2){ 0, 30 },
             8,
@@ -936,7 +939,7 @@ static void physical_destruction()
     assert(
         game_physics_raycast(
             world,
-            live->entities,
+            live->runtime->entities,
             (CF_V2){ 24, -30 },
             (CF_V2){ 24, 30 },
             8,
@@ -963,40 +966,40 @@ static void physical_destruction()
         &(GameCollider){ .radius = 1, .category = 1, .mask = 8, .sensor = true }
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     assert(GAME_GameTransform_get_const(world, probe)->y > 20);
     *GAME_GameTransform_get(world, probe) = (GameTransform){ 24, -24 };
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     assert(GAME_GameTransform_get_const(world, probe)->y < -7);
     /* Ordinary overlap callbacks must find individual compound pieces, keep
      * the carved opening empty, and deduplicate multiple pieces per body. */
     GAME_GameBody_get(world, probe)->continuous = false;
     *GAME_GameVelocity_get(world, probe) = (GameVelocity){ 0 };
     *GAME_GameTransform_get(world, probe) = (GameTransform){ 24, 0 };
-    game_physics_set_profiling(live->physics, true);
-    assert(game_physics_tick(live->physics, 0) == 0);
-    assert(game_physics_last_profile(live->physics)->pairs == 1);
+    game_physics_set_profiling(live->runtime->physics, true);
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
+    assert(game_physics_last_profile(live->runtime->physics)->pairs == 1);
     *GAME_GameTransform_get(world, probe) = (GameTransform){ 0 };
-    assert(game_physics_tick(live->physics, 0) == 0);
-    assert(game_physics_last_profile(live->physics)->pairs == 0);
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
+    assert(game_physics_last_profile(live->runtime->physics)->pairs == 0);
     GameCollider *bar = GAME_GameCollider_get(world, probe);
     bar->shape = GAME_COLLIDER_BOX;
     bar->width = 60;
     bar->height = 2;
-    assert(game_physics_tick(live->physics, 0) == 0);
-    assert(game_physics_last_profile(live->physics)->pairs == 2);
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
+    assert(game_physics_last_profile(live->runtime->physics)->pairs == 2);
     /* Destruction and fragment masks survive fluid sleep, without catch-up. */
-    const material_mask *mask = game_materials_mask(live->materials, slab);
+    const material_mask *mask = game_materials_mask(live->runtime->materials, slab);
     int cells = mask->count;
     for (int i = 0; i < 30; i++) {
-        assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+        assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     }
     assert(mask->count == cells);
-    game_physics_reset(live->physics);
-    game_materials_reset(live->materials);
-    assert(!game_materials_mask(live->materials, slab));
+    game_physics_reset(live->runtime->physics);
+    game_materials_reset(live->runtime->materials);
+    assert(!game_materials_mask(live->runtime->materials, slab));
     assert(ecs_world_live_count(world) == 3); /* detached fragment was removed */
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -1006,13 +1009,20 @@ static void terrain_boundary_cut()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     behavior_asset *field = cave_asset();
     char field_error[256];
     assert(
-        material_field_compile(game_materials_fields(live->materials), field, field_error, sizeof field_error)
+        material_field_compile(game_materials_fields(live->runtime->materials), field, field_error, sizeof field_error)
     );
     behavior_asset_free(field);
+    assert(material_field_prepare_arguments(
+        game_materials_fields(live->runtime->materials),
+        "CaveField",
+        "Radius 72\nRoughness 30\n",
+        field_error,
+        sizeof field_error
+    ));
     ecs_entity settings = ecs_world_create_entity(world);
     component(world, settings, &GAME_COMPONENT_MaterialDestructionWorld, &(MaterialDestructionWorld){ 8 });
     component(
@@ -1041,7 +1051,7 @@ static void terrain_boundary_cut()
                             .min_fragment_cells = 4 }
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
+    assert(!game_materials_prepare(live->runtime->materials));
     ecs_entity target = { 0 };
     ecs_query query;
     ecs_component_id id = GAME_COMPONENT_GameDestructible.id;
@@ -1050,7 +1060,7 @@ static void terrain_boundary_cut()
     int before = 0;
     while (ecs_query_next(&query, &entity)) {
         const GameTransform *p = GAME_GameTransform_get_const(world, entity);
-        const material_mask *mask = game_materials_mask(live->materials, entity);
+        const material_mask *mask = game_materials_mask(live->runtime->materials, entity);
         before += mask->count;
         if (p->x < 0 && p->y > 0) {
             target = entity;
@@ -1058,14 +1068,22 @@ static void terrain_boundary_cut()
     }
     ecs_query_end(&query);
     assert(ecs_entity_to_u64(target));
-    game_material_state initial = game_materials_inspect(live->materials);
-    game_materials_damage(live->materials, target, (fluid_vec){ 0, 220 }, 12, 1, 0, (material_impact){ 0 });
-    assert(!game_materials_prepare(live->materials));
+    game_material_state initial = game_materials_inspect(live->runtime->materials);
+    game_materials_damage(
+        live->runtime->materials,
+        target,
+        (fluid_vec){ 0, 220 },
+        12,
+        1,
+        0,
+        (material_impact){ 0 }
+    );
+    assert(!game_materials_prepare(live->runtime->materials));
     int after = 0, opened = 0;
     assert(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
         const GameTransform *p = GAME_GameTransform_get_const(world, entity);
-        const material_mask *mask = game_materials_mask(live->materials, entity);
+        const material_mask *mask = game_materials_mask(live->runtime->materials, entity);
         after += mask->count;
         if (p->y > 0) {
             float x = p->x < 0 ? -1 : 1;
@@ -1075,38 +1093,60 @@ static void terrain_boundary_cut()
     }
     ecs_query_end(&query);
     assert(opened == 2 && before - after > 100);
-    game_material_state damaged = game_materials_inspect(live->materials);
+    game_material_state damaged = game_materials_inspect(live->runtime->materials);
     assert(initial.hash != damaged.hash);
-    assert(!game_materials_prepare(live->materials));
-    assert(game_materials_inspect(live->materials).hash == damaged.hash);
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(game_materials_inspect(live->runtime->materials).hash == damaged.hash);
     field = cave_asset();
     assert(
-        material_field_compile(game_materials_fields(live->materials), field, field_error, sizeof field_error)
+        material_field_compile(game_materials_fields(live->runtime->materials), field, field_error, sizeof field_error)
     );
     behavior_asset_free(field);
-    assert(!game_materials_prepare(live->materials));
-    assert(game_materials_inspect(live->materials).cells == initial.cells);
+    assert(material_field_prepare_arguments(
+        game_materials_fields(live->runtime->materials),
+        "CaveField",
+        "Radius 72\nRoughness 30\n",
+        field_error,
+        sizeof field_error
+    ));
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(game_materials_inspect(live->runtime->materials).cells == initial.cells);
     assert(!ecs_entity_is_alive(world, target));
     MaterialTerrain *terrain = GAME_MaterialTerrain_get(world, source);
     const char *original_parameters = terrain->parameters;
     terrain->parameters = "Radius 96\n"
                           "Roughness 30\n";
-    assert(!game_materials_prepare(live->materials));
-    assert(game_materials_inspect(live->materials).cells < initial.cells);
+    assert(material_field_prepare_arguments(
+        game_materials_fields(live->runtime->materials),
+        terrain->field,
+        terrain->parameters,
+        field_error,
+        sizeof field_error
+    ));
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(game_materials_inspect(live->runtime->materials).cells < initial.cells);
     terrain = GAME_MaterialTerrain_get(world, source);
     terrain->parameters = original_parameters;
-    assert(!game_materials_prepare(live->materials));
-    assert(game_materials_inspect(live->materials).cells == initial.cells);
-    game_materials_reset(live->materials);
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(game_materials_inspect(live->runtime->materials).cells == initial.cells);
+    game_materials_reset(live->runtime->materials);
     assert(ecs_world_live_count(world) == 2);
-    game_materials_damage(live->materials, source, (fluid_vec){ 0, 220 }, 12, 1, 0, (material_impact){ 0 });
-    assert(!game_materials_prepare(live->materials));
-    assert(game_materials_inspect(live->materials).cells == damaged.cells);
+    game_materials_damage(
+        live->runtime->materials,
+        source,
+        (fluid_vec){ 0, 220 },
+        12,
+        1,
+        0,
+        (material_impact){ 0 }
+    );
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(game_materials_inspect(live->runtime->materials).cells == damaged.cells);
     assert(ecs_world_live_count(world) > 2);
     assert(ecs_world_destroy_entity(world, source) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
+    assert(!game_materials_prepare(live->runtime->materials));
     assert(ecs_world_live_count(world) == 1);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -1116,13 +1156,20 @@ static void terrain_stream_restore()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     behavior_asset *field = cave_asset();
     char error[256];
     assert(
-        material_field_compile(game_materials_fields(live->materials), field, error, sizeof error)
+        material_field_compile(game_materials_fields(live->runtime->materials), field, error, sizeof error)
     );
     behavior_asset_free(field);
+    assert(material_field_prepare_arguments(
+        game_materials_fields(live->runtime->materials),
+        "CaveField",
+        "Radius 72\nRoughness 30\n",
+        error,
+        sizeof error
+    ));
     ecs_entity camera = ecs_world_create_entity(world);
     component(world, camera, &GAME_COMPONENT_GameCamera, &(GameCamera){ .width = 128, .height = 128 });
     component(world, camera, &GAME_COMPONENT_GameTransform, &(GameTransform){ -1500, 0 });
@@ -1146,8 +1193,8 @@ static void terrain_stream_restore()
                             .stream_budget = 64 }
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
-    game_material_state pristine = game_materials_inspect(live->materials);
+    assert(!game_materials_prepare(live->runtime->materials));
+    game_material_state pristine = game_materials_inspect(live->runtime->materials);
     assert(pristine.streaming.resident > 0 && pristine.cells > 0);
     ecs_component_id id = GAME_COMPONENT_GameDestructible.id;
     ecs_query query;
@@ -1156,7 +1203,7 @@ static void terrain_stream_restore()
     fluid_vec point = { 0 };
     assert(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
-        const material_mask *mask = game_materials_mask(live->materials, entity);
+        const material_mask *mask = game_materials_mask(live->runtime->materials, entity);
         for (int y = 16; y < mask->height - 16 && !ecs_entity_to_u64(target); y++) {
             for (int x = 16; x < mask->width - 16; x++) {
                 if (!mask->cells[y * mask->width + x]) {
@@ -1174,27 +1221,27 @@ static void terrain_stream_restore()
     }
     ecs_query_end(&query);
     assert(ecs_entity_to_u64(target));
-    game_materials_damage(live->materials, target, point, 10, 1, 0, (material_impact){ 0 });
-    assert(!game_materials_prepare(live->materials));
-    assert(game_materials_inspect(live->materials).cells < pristine.cells);
+    game_materials_damage(live->runtime->materials, target, point, 10, 1, 0, (material_impact){ 0 });
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(game_materials_inspect(live->runtime->materials).cells < pristine.cells);
     assert(!material_mask_contains(
-        game_materials_mask(live->materials, target),
+        game_materials_mask(live->runtime->materials, target),
         point.x - position.x,
         point.y - position.y
     ));
     GAME_GameTransform_get(world, camera)->x = 1500;
-    assert(!game_materials_prepare(live->materials));
+    assert(!game_materials_prepare(live->runtime->materials));
     assert(!ecs_entity_is_alive(world, target));
-    assert(game_materials_inspect(live->materials).streaming.unloaded > 0);
+    assert(game_materials_inspect(live->runtime->materials).streaming.unloaded > 0);
     GAME_GameTransform_get(world, camera)->x = -1500;
-    assert(!game_materials_prepare(live->materials));
+    assert(!game_materials_prepare(live->runtime->materials));
     bool restored = false;
     assert(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
         const GameTransform *p = GAME_GameTransform_get_const(world, entity);
         if (p->x == position.x && p->y == position.y) {
             assert(!material_mask_contains(
-                game_materials_mask(live->materials, entity),
+                game_materials_mask(live->runtime->materials, entity),
                 point.x - p->x,
                 point.y - p->y
             ));
@@ -1203,27 +1250,27 @@ static void terrain_stream_restore()
     }
     ecs_query_end(&query);
     assert(restored);
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
-    game_physics_reset(live->physics);
-    game_materials_reset(live->materials);
-    assert(!game_materials_prepare(live->materials));
-    assert(game_materials_inspect(live->materials).cells == pristine.cells);
-    assert(!game_materials_inspect(live->materials).streaming.stored);
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    game_physics_reset(live->runtime->physics);
+    game_materials_reset(live->runtime->materials);
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(game_materials_inspect(live->runtime->materials).cells == pristine.cells);
+    assert(!game_materials_inspect(live->runtime->materials).streaming.stored);
     MaterialTerrain authored = *GAME_MaterialTerrain_get_const(world, source);
     assert(ecs_world_record_remove(world, source, GAME_COMPONENT_MaterialTerrain.id, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
-    assert(!game_materials_inspect(live->materials).streaming.resident);
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(!game_materials_inspect(live->runtime->materials).streaming.resident);
     assert(ecs_world_live_count(world) == 2);
     component(world, source, &GAME_COMPONENT_MaterialTerrain, &authored);
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
-    assert(game_materials_inspect(live->materials).cells == pristine.cells);
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(game_materials_inspect(live->runtime->materials).cells == pristine.cells);
     assert(ecs_world_destroy_entity(world, source) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
-    assert(!game_materials_inspect(live->materials).streaming.resident);
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(!game_materials_inspect(live->runtime->materials).streaming.resident);
     assert(ecs_world_live_count(world) == 1);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -1235,13 +1282,20 @@ static void terrain_host_views()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     behavior_asset *field = cave_asset();
     char error[256];
     assert(
-        material_field_compile(game_materials_fields(live->materials), field, error, sizeof error)
+        material_field_compile(game_materials_fields(live->runtime->materials), field, error, sizeof error)
     );
     behavior_asset_free(field);
+    assert(material_field_prepare_arguments(
+        game_materials_fields(live->runtime->materials),
+        "CaveField",
+        "Radius 72\nRoughness 30\n",
+        error,
+        sizeof error
+    ));
     ecs_entity camera = ecs_world_create_entity(world);
     component(world, camera, &GAME_COMPONENT_GameCamera, &(GameCamera){ .width = 128, .height = 128 });
     component(world, camera, &GAME_COMPONENT_GameTransform, &(GameTransform){ -1500, 0 });
@@ -1265,26 +1319,27 @@ static void terrain_host_views()
                             .stream_budget = 64 }
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
-    int cameras = game_materials_inspect(live->materials).streaming.resident;
+    assert(!game_materials_prepare(live->runtime->materials));
+    int cameras = game_materials_inspect(live->runtime->materials).streaming.resident;
     material_stream_view view = { 1500, 0, 900, 0 };
-    game_materials_set_stream_views(live->materials, &view, 1);
-    assert(!game_materials_prepare(live->materials));
-    bool waited = game_materials_streaming(live->materials);
-    for (int i = 0; i < 64 && game_materials_streaming(live->materials); i++) {
-        assert(!game_materials_prepare(live->materials));
+    game_materials_set_stream_views(live->runtime->materials, &view, 1);
+    assert(!game_materials_prepare(live->runtime->materials));
+    bool waited = game_materials_streaming(live->runtime->materials);
+    for (int i = 0; i < 64 && game_materials_streaming(live->runtime->materials); i++) {
+        assert(!game_materials_prepare(live->runtime->materials));
     }
-    int resident = game_materials_inspect(live->materials).streaming.resident;
+    int resident = game_materials_inspect(live->runtime->materials).streaming.resident;
     uint32_t entities = ecs_world_live_count(world);
-    game_materials_reset_except_terrain(live->materials);
-    assert(!game_materials_prepare(live->materials));
+    game_materials_reset_except_terrain(live->runtime->materials);
+    assert(!game_materials_prepare(live->runtime->materials));
     bool kept = ecs_world_live_count(world) == entities &&
-                game_materials_inspect(live->materials).streaming.resident == resident;
-    game_materials_reset(live->materials);
+                game_materials_inspect(live->runtime->materials).streaming.resident ==
+                    resident;
+    game_materials_reset(live->runtime->materials);
     bool cleared = ecs_world_live_count(world) == 2;
-    assert(waited && !game_materials_streaming(live->materials) && resident > cameras);
+    assert(waited && !game_materials_streaming(live->runtime->materials) && resident > cameras);
     assert(kept && cleared);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -1292,7 +1347,7 @@ static void terrain_host_views()
 static void terrain_preparation_scratch()
 {
     ecs_world *worlds[2];
-    game_live_world *lives[2];
+    game_preview_world *lives[2];
     ecs_entity sources[2][2];
     ecs_entity cameras[2][2];
     for (int owner = 0; owner < 2; owner++) {
@@ -1302,13 +1357,20 @@ static void terrain_preparation_scratch()
                 ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
             );
         }
-        game_live_world *live = lives[owner] = game_live_world_new(world);
+        game_preview_world *live = lives[owner] = game_preview_world_new(world);
         behavior_asset *field = cave_asset();
         char error[256];
         assert(
-            material_field_compile(game_materials_fields(live->materials), field, error, sizeof error)
+            material_field_compile(game_materials_fields(live->runtime->materials), field, error, sizeof error)
         );
         behavior_asset_free(field);
+        assert(material_field_prepare_arguments(
+            game_materials_fields(live->runtime->materials),
+            "CaveField",
+            "Radius 72\nRoughness 30\n",
+            error,
+            sizeof error
+        ));
         for (int origin = 0; origin < 2; origin++) {
             float x = (origin + 1) * 1024.f;
             ecs_entity camera = cameras[owner][origin] = ecs_world_create_entity(world);
@@ -1344,9 +1406,9 @@ static void terrain_preparation_scratch()
         component(world, moving, &GAME_COMPONENT_GameTransform, &(GameTransform){ 2048, 0 });
         component(world, moving, &GAME_COMPONENT_GameVelocity, &(GameVelocity){ 2, 0 });
         assert(ecs_world_apply_commands(world) == ECS_OK);
-        assert(!game_materials_prepare(live->materials));
-        assert(!game_materials_prepare(live->materials));
-        game_materials *materials = live->materials;
+        assert(!game_materials_prepare(live->runtime->materials));
+        assert(!game_materials_prepare(live->runtime->materials));
+        game_materials *materials = live->runtime->materials;
         assert(materials->terrain_views && !acount(materials->terrain_views));
         int cells = game_materials_inspect(materials).cells;
         for (int origin = 0; origin < 2; origin++) {
@@ -1390,11 +1452,14 @@ static void terrain_preparation_scratch()
         assert(!game_materials_prepare(materials));
         assert(game_materials_inspect(materials).cells == cells);
     }
-    assert(lives[0]->materials->terrain_views != lives[1]->materials->terrain_views);
-    game_live_world_free(lives[0]);
+    assert(
+        lives[0]->runtime->materials->terrain_views !=
+        lives[1]->runtime->materials->terrain_views
+    );
+    game_preview_world_free(lives[0]);
     ecs_world_free(worlds[0]);
-    assert(!game_materials_prepare(lives[1]->materials));
-    game_live_world_free(lives[1]);
+    assert(!game_materials_prepare(lives[1]->runtime->materials));
+    game_preview_world_free(lives[1]);
     ecs_world_free(worlds[1]);
 }
 
@@ -1404,7 +1469,7 @@ static void finite_drive()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity entity = ecs_world_create_entity(world);
     component(world, entity, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
     component(world, entity, &GAME_COMPONENT_GameVelocity, &(GameVelocity){ 0 });
@@ -1417,17 +1482,17 @@ static void finite_drive()
         &(GameDrive){ .target = { 120, 0 }, .acceleration = 600 }
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     float speed = GAME_GameVelocity_get_const(world, entity)->x;
     assert(speed > 9.9f && speed < 10.1f);
     for (int i = 0; i < 14; i++) {
-        assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+        assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     }
     assert(fabsf(GAME_GameVelocity_get_const(world, entity)->x - 120) < .1f);
     GAME_GameDrive_get(world, entity)->target.x = 0;
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     assert(fabsf(GAME_GameVelocity_get_const(world, entity)->x - 110) < .1f);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -1511,7 +1576,7 @@ static void resistance_and_chips()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world),
                slab = ecs_world_create_entity(world);
     component(world, config, &GAME_COMPONENT_MaterialDestructionWorld, &(MaterialDestructionWorld){ 8 });
@@ -1546,9 +1611,9 @@ static void resistance_and_chips()
         &(GameReflection){ .strength = .8f, .roughness = .2f, .angle = 1.2f }
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(game_physics_tick(live->physics, 0) == 0);
-    game_materials_damage(live->materials, slab, (fluid_vec){ 8, 0 }, 3, 1, 0, (material_impact){ 0 });
-    assert(game_physics_tick(live->physics, 0) == 0);
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
+    game_materials_damage(live->runtime->materials, slab, (fluid_vec){ 8, 0 }, 3, 1, 0, (material_impact){ 0 });
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
     ecs_query query;
     ecs_entity entity;
     int pieces = 0;
@@ -1559,14 +1624,14 @@ static void resistance_and_chips()
         assert(v && hypotf(v->x, v->y) > 20);
         assert(GAME_GameSubstance_get_const(world, entity)->blast_multiplier == 3);
         assert(GAME_GameReflection_get_const(world, entity)->strength == .8f);
-        assert(game_materials_mask(live->materials, entity)->count >= 3);
+        assert(game_materials_mask(live->runtime->materials, entity)->count >= 3);
         assert(GAME_GameMaterial_get_const(world, entity)->emission_multiplier == .5f);
         pieces++;
     }
     ecs_query_end(&query);
     assert(pieces > 0);
     for (int step = 0; step < 30; step++) {
-        assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+        assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     }
     assert(ecs_query_begin(world, &query, &body, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
@@ -1577,31 +1642,31 @@ static void resistance_and_chips()
     }
     ecs_query_end(&query);
     for (int step = 0; step < 35; step++) {
-        assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+        assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     }
     assert(ecs_query_begin(world, &query, &body, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
         assert(GAME_GameMaterial_get_const(world, entity)->emission_multiplier == 0);
-        assert(game_materials_mask(live->materials, entity)->count >= 3);
+        assert(game_materials_mask(live->runtime->materials, entity)->count >= 3);
     }
     ecs_query_end(&query);
     /* Losing power must not remove material or require combat components. */
     assert(GAME_GameMaterial_get_const(world, slab)->emission_multiplier == .5f);
-    int cells = game_materials_mask(live->materials, slab)->count;
-    game_materials_release(live->materials, slab);
-    assert(game_physics_tick(live->physics, 0) == 0);
-    assert(!game_materials_mask(live->materials, slab));
+    int cells = game_materials_mask(live->runtime->materials, slab)->count;
+    game_materials_release(live->runtime->materials, slab);
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
+    assert(!game_materials_mask(live->runtime->materials, slab));
     int largest = 0;
     assert(ecs_query_begin(world, &query, &body, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
-        const material_mask *hull = game_materials_mask(live->materials, entity);
+        const material_mask *hull = game_materials_mask(live->runtime->materials, entity);
         if (hull && hull->count > largest) {
             largest = hull->count;
         }
     }
     ecs_query_end(&query);
     assert(largest == cells);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -2005,7 +2070,7 @@ static void small_hull_release()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world),
                slab = ecs_world_create_entity(world);
     component(world, config, &GAME_COMPONENT_MaterialDestructionWorld, &(MaterialDestructionWorld){ 8 });
@@ -2033,22 +2098,30 @@ static void small_hull_release()
     component(world, slab, &GAME_COMPONENT_GameHealth, &(GameHealth){ 3, 3 });
     component(world, slab, &GAME_COMPONENT_GameProjectile, &(GameProjectile){ 0 });
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(game_physics_tick(live->physics, 0) == 0);
-    assert(game_materials_mask(live->materials, slab)->count == 400);
-    game_materials_damage(live->materials, slab, (fluid_vec){ 10, 0 }, 9, 1, 0, (material_impact){ 0 });
-    assert(game_physics_tick(live->physics, 0) == 0);
-    assert(game_materials_mask(live->materials, slab)->count > 240);
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
+    assert(game_materials_mask(live->runtime->materials, slab)->count == 400);
+    game_materials_damage(live->runtime->materials, slab, (fluid_vec){ 10, 0 }, 9, 1, 0, (material_impact){ 0 });
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
+    assert(game_materials_mask(live->runtime->materials, slab)->count > 240);
     assert(GAME_GameHealth_get_const(world, slab)->current == 3);
-    game_materials_damage(live->materials, slab, (fluid_vec){ -10, 0 }, 12, 1, 0, (material_impact){ 0 });
-    assert(game_physics_tick(live->physics, 0) == 0);
-    assert(!game_materials_mask(live->materials, slab));
+    game_materials_damage(
+        live->runtime->materials,
+        slab,
+        (fluid_vec){ -10, 0 },
+        12,
+        1,
+        0,
+        (material_impact){ 0 }
+    );
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
+    assert(!game_materials_mask(live->runtime->materials, slab));
     ecs_query query;
     ecs_entity entity;
     ecs_component_id body = GAME_COMPONENT_GameBody.id;
     int fragments = 0;
     assert(ecs_query_begin(world, &query, &body, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
-        assert(game_materials_is_fragment(live->materials, entity));
+        assert(game_materials_is_fragment(live->runtime->materials, entity));
         assert(!GAME_GameHealth_get_const(world, entity));
         assert(!GAME_GameProjectile_get_const(world, entity));
         assert(GAME_GameDestructible_get_const(world, entity)->release_fraction == 0);
@@ -2056,7 +2129,7 @@ static void small_hull_release()
     }
     ecs_query_end(&query);
     assert(fragments > 0);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -2071,7 +2144,7 @@ static void fragment_material_frame()
                 ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
             );
         }
-        game_live_world *live = game_live_world_new(world);
+        game_preview_world *live = game_preview_world_new(world);
         ecs_entity config = ecs_world_create_entity(world),
                    slab = ecs_world_create_entity(world);
         component(world, config, &GAME_COMPONENT_MaterialDestructionWorld, &(MaterialDestructionWorld){ 8 });
@@ -2106,11 +2179,27 @@ static void fragment_material_frame()
             component(world, slab, &GAME_COMPONENT_GameMaterialFrame, &expected);
         }
         assert(ecs_world_apply_commands(world) == ECS_OK);
-        assert(game_physics_tick(live->physics, 0) == 0);
-        game_materials_damage(live->materials, slab, (fluid_vec){ 40, -12 }, 9, 1, 0, (material_impact){ 0 });
-        assert(game_physics_tick(live->physics, 0) == 0);
-        game_materials_damage(live->materials, slab, (fluid_vec){ 20, -12 }, 12, 1, 0, (material_impact){ 0 });
-        assert(game_physics_tick(live->physics, 0) == 0);
+        assert(game_physics_tick(live->runtime->physics, 0) == 0);
+        game_materials_damage(
+            live->runtime->materials,
+            slab,
+            (fluid_vec){ 40, -12 },
+            9,
+            1,
+            0,
+            (material_impact){ 0 }
+        );
+        assert(game_physics_tick(live->runtime->physics, 0) == 0);
+        game_materials_damage(
+            live->runtime->materials,
+            slab,
+            (fluid_vec){ 20, -12 },
+            12,
+            1,
+            0,
+            (material_impact){ 0 }
+        );
+        assert(game_physics_tick(live->runtime->physics, 0) == 0);
         ecs_query query;
         ecs_entity entity;
         ecs_component_id body = GAME_COMPONENT_GameBody.id;
@@ -2126,7 +2215,7 @@ static void fragment_material_frame()
         }
         ecs_query_end(&query);
         assert(fragments > 0);
-        game_live_world_free(live);
+        game_preview_world_free(live);
         ecs_world_free(world);
     }
 }
@@ -2161,7 +2250,7 @@ static void fragment_penetration()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world);
     component(world, config, &GAME_COMPONENT_MaterialDestructionWorld, &(MaterialDestructionWorld){ 8 });
     component(
@@ -2193,7 +2282,7 @@ static void fragment_penetration()
         );
         assert(ecs_world_apply_commands(world) == ECS_OK);
         /* Releasing before mask initialization must preserve the request. */
-        game_materials_release(live->materials, slab);
+        game_materials_release(live->runtime->materials, slab);
     }
     ecs_entity wall = ecs_world_create_entity(world),
                shot = ecs_world_create_entity(world);
@@ -2221,32 +2310,32 @@ static void fragment_penetration()
         &(GameCollider){ .radius = 2, .category = 4, .mask = 8, .sensor = true }
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    game_physics_set_profiling(live->physics, true);
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
-    assert(game_materials_inspect(live->materials).fragments == 2);
+    game_physics_set_profiling(live->runtime->physics, true);
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    assert(game_materials_inspect(live->runtime->materials).fragments == 2);
     assert(GAME_GameTransform_get_const(world, shot)->x < 20);
-    assert(game_physics_last_profile(live->physics)->pairs == 1);
+    assert(game_physics_last_profile(live->runtime->physics)->pairs == 1);
 
-    game_physics_reset(live->physics);
+    game_physics_reset(live->runtime->physics);
     GAME_GameTransform_get(world, shot)->x = 0;
     GAME_GameCollider_get(world, shot)->pierce_fragments = true;
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     float x = GAME_GameTransform_get_const(world, shot)->x;
     assert(x > 43 && x < 45);
     /* The wall clips both travel and events: the far fragment is untouched. */
-    assert(game_physics_last_profile(live->physics)->pairs == 2);
+    assert(game_physics_last_profile(live->runtime->physics)->pairs == 2);
 
     assert(GAME_GameCollider_remove(world, wall, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    game_physics_reset(live->physics);
+    game_physics_reset(live->runtime->physics);
     GAME_GameTransform_get(world, shot)->x = 0;
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     assert(
         GAME_GameTransform_get_const(world, shot)->x > 73 &&
         GAME_GameTransform_get_const(world, shot)->x < 77
     );
-    assert(game_physics_last_profile(live->physics)->pairs == 2);
-    game_live_world_free(live);
+    assert(game_physics_last_profile(live->runtime->physics)->pairs == 2);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -2256,7 +2345,7 @@ static void swept_ignition()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world),
                wall = ecs_world_create_entity(world),
                shot = ecs_world_create_entity(world);
@@ -2304,18 +2393,18 @@ static void swept_ignition()
     component(world, shot, &GAME_COMPONENT_GameProjectile, &(GameProjectile){ 0 });
     component(world, shot, &GAME_COMPONENT_GameIgniter, &(GameIgniter){ 2 });
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(game_physics_tick(live->physics, 0) == 0);
+    assert(game_physics_tick(live->runtime->physics, 0) == 0);
     fluid_particle fuel = particle(8, 0, FLUID_GAS);
     fuel.fuel = 1;
-    assert(game_materials_emit(live->materials, fuel));
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
+    assert(game_materials_emit(live->runtime->materials, fuel));
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     assert(GAME_GameTransform_get_const(world, shot)->x < 0);
-    assert(!game_materials_inspect(live->materials).burning_particles);
-    game_materials_damage(live->materials, wall, (fluid_vec){ 0 }, 10, 1, 0, (material_impact){ 0 });
+    assert(!game_materials_inspect(live->runtime->materials).burning_particles);
+    game_materials_damage(live->runtime->materials, wall, (fluid_vec){ 0 }, 10, 1, 0, (material_impact){ 0 });
     *GAME_GameTransform_get(world, shot) = (GameTransform){ -20, 0 };
-    assert(game_physics_tick(live->physics, 1.f / 60) == 0);
-    assert(game_materials_inspect(live->materials).burning_particles == 1);
-    game_live_world_free(live);
+    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    assert(game_materials_inspect(live->runtime->materials).burning_particles == 1);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -2325,10 +2414,11 @@ static void blast_policy()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     const char *paths[] = {
-        "projects/arena2d/content/events/Material Impact.kdl",
-        "projects/arena2d/content/behaviors/MaterialImpactHealth.code"
+        "test/fixtures/material-contracts/content/events/Material Impact.kdl",
+        "test/fixtures/material-contracts/content/behaviors/"
+        "MaterialImpactHealth.chibi"
     };
     for (int i = 0; i < 2; i++) {
         char *json = text_file_read(paths[i]);
@@ -2336,7 +2426,9 @@ static void blast_policy()
         behavior_asset *asset = test_project_asset(paths[i], json);
         free(json);
         assert(asset);
-        assert(!game_live_add_definition(live, game_live_definition_new(asset->name, asset)));
+        assert(
+            !game_preview_add_definition(live, game_preview_definition_new(asset->name, asset))
+        );
     }
     ecs_entity config = ecs_world_create_entity(world), bodies[3];
     component(
@@ -2370,20 +2462,20 @@ static void blast_policy()
         component(world, bodies[i], &GAME_COMPONENT_GameHealth, &(GameHealth){ i == 2 ? 1 : 50, 50 });
     }
     assert(!ecs_world_apply_commands(world));
-    assert(!game_behavior_attach(live->behaviors, bodies[0], "MaterialImpactHealth"));
-    assert(!game_behavior_attach(live->behaviors, bodies[2], "MaterialImpactHealth"));
-    engine *runtime = engine_new(world, live);
+    assert(!game_behavior_attach(live->runtime->behaviors, bodies[0], "MaterialImpactHealth"));
+    assert(!game_behavior_attach(live->runtime->behaviors, bodies[2], "MaterialImpactHealth"));
+    engine *runtime = authoring_engine_new(world, live->runtime);
     assert(!engine_frame(runtime, 0));
-    assert(!game_physics_tick(live->physics, 0));
+    assert(!game_physics_tick(live->runtime->physics, 0));
     for (int i = 0; i < 8; i++) {
         fluid_particle fuel = particle((i % 4) * 2 - 3, (i / 4) * 2 - 1, FLUID_GAS);
         fuel.fuel = 1;
         fuel.heat = 2;
-        assert(game_materials_emit(live->materials, fuel));
+        assert(game_materials_emit(live->runtime->materials, fuel));
     }
-    assert(!game_physics_tick(live->physics, 1.f / 60));
+    assert(!game_physics_tick(live->runtime->physics, 1.f / 60));
     int blast_count;
-    material_fluid_blasts(game_materials_fluid(live->materials), &blast_count);
+    material_fluid_blasts(game_materials_fluid(live->runtime->materials), &blast_count);
     assert(blast_count > 0);
     assert(GAME_GameHealth_get_const(world, bodies[0])->current == 50);
     assert(GAME_GameHealth_get_const(world, bodies[1])->current == 50);
@@ -2397,7 +2489,7 @@ static void blast_policy()
     assert(GAME_GameHealth_get_const(world, bodies[1])->current == 50);
     assert(!ecs_entity_is_alive(world, bodies[2]));
     engine_free(runtime);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 

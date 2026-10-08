@@ -1,8 +1,8 @@
 #ifndef CHIBI_RENDER_MESH_SURFACE_H
 #define CHIBI_RENDER_MESH_SURFACE_H
-#include "graph/modeling/model_compile.h"
 #include "render/arena_visual.h"
-#include "render/mesh_asset.h"
+#include "runtime/geometry/mesh_asset.h"
+#include "runtime/models/model_program.h"
 
 typedef struct
 {

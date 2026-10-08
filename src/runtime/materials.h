@@ -2,7 +2,6 @@
 #define CHIBI_GAME_MATERIALS_H
 
 #include "ecs/ecs.h"
-#include "graph/model/node.h"
 #include "runtime/material_debris.h"
 #include "runtime/material_destruction.h"
 #include "runtime/material_field.h"
@@ -38,6 +37,14 @@ game_materials *game_materials_new(
     ecs_world *world,
     struct game_entities *entities,
     struct game_particles *particles
+);
+/* Takes ownership of an already decoded field/argument catalog; NULL creates
+ * an empty catalog. No source parsing or text resolver is installed. */
+game_materials *game_materials_new_prepared(
+    ecs_world *,
+    struct game_entities *,
+    struct game_particles *,
+    material_fields *
 );
 void game_materials_free(game_materials *materials);
 void game_materials_reset(game_materials *materials);
@@ -111,10 +118,5 @@ bool game_materials_emit(game_materials *materials, fluid_particle particle);
 
 material_fields *game_materials_fields(game_materials *materials);
 int game_materials_dispatch_events(game_materials *materials);
-
-extern node_desc GAME_NODE_DamageMaterial;
-extern node_desc GAME_NODE_ReleaseMaterial;
-extern node_desc GAME_NODE_IsMaterialFragment;
-extern node_desc GAME_NODE_IsPierceableMaterialFragment;
 
 #endif

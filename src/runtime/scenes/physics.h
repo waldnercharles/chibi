@@ -2,7 +2,6 @@
 #define CHIBI_GAME_PHYSICS_H
 
 #include "ecs/ecs.h"
-#include "graph/model/node.h"
 #include "runtime/components.h"
 #include "runtime/material_fluid.h"
 #include "runtime/scenes/physics_settings.h"
@@ -95,7 +94,6 @@ int game_physics_contact_entities(
     unsigned categories,
     ecs_entity **out
 );
-extern node_desc GAME_NODE_GetContactEntities;
 
 typedef struct
 {
@@ -134,6 +132,5 @@ int game_ray_scene_cast(
     bool sensors,
     game_ray_hit *out
 );
-extern node_desc GAME_NODE_Raycast;
 
 #endif

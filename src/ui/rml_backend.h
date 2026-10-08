@@ -1,6 +1,8 @@
 #ifndef CHIBI_UI_RML_BACKEND_H
 #define CHIBI_UI_RML_BACKEND_H
 
+#include "runtime/ui/font.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -11,6 +13,19 @@ extern "C"
 #endif
 
     typedef struct rml_backend rml_backend;
+    /* Borrowed straight RGBA8 bytes, valid for the synchronous load call.
+     * Prepared backends reject absent resources without filesystem fallback. */
+    typedef bool (*rml_image_provider)(void *, const char *, const unsigned char **, int *, int *);
+    void rml_backend_set_image_provider(rml_image_provider, void *);
+    void rml_backend_require_resident_images(rml_backend *, bool);
+    /* Initializes only RmlUi/font/native-element state, without a GPU backend.
+     * Release is a host shutdown operation and requires no live backends. */
+    bool rml_backend_prepare_fonts();
+    void rml_backend_release_prepared_fonts();
+    /* Successful faces remain owned until the final backend shuts RmlUi down.
+     * Existing face identities only accept identical bytes and fallback policy. */
+    bool rml_backend_install_font(const game_ui_font *, char *error, size_t);
+    bool rml_backend_install_font_budget(const game_ui_font *, size_t *remaining, char *error, size_t);
 
     typedef struct rml_backend_stats
     {

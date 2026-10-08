@@ -1,5 +1,11 @@
 # Declarative SDF modeling validation
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 Implementation lives in the isolated `cwaldner/declarative-sdf-modeling` worktree.
 The primary checkout and the active SDF optimization worktree were not edited.
 The imported SDF prerequisite snapshot and staged compiler snapshots are retained
@@ -20,8 +26,7 @@ profiles, and the film slot is subtracted geometry. Procedural materials supply
 the rainbow and lens grooves. Only the two small printed nameplates sample the
 photograph. Hidden surfaces are inferred.
 
-[The public authoring script](../projects/modeling_lab/author-polaroid.mjs)
-reproduces the asset from an empty project using 419 graph operations split at
+The former `projects/modeling_lab/author-polaroid.mjs` recipe reproduced the asset from an empty project using 419 graph operations split at
 complete-part boundaries under the existing 128-operation request limit.
 The final independent reproduction produced byte-identical model KDL. All 17
 camera-family assets matched semantically; four differed only in scene component

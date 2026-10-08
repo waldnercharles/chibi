@@ -2,7 +2,7 @@
 #define CHIBI_PARTICLE_EMITTERS_H
 
 #include "ecs/ecs.h"
-#include "render/particles.h"
+#include "runtime/particles.h"
 
 struct engine;
 typedef struct game_particle_emitters game_particle_emitters;

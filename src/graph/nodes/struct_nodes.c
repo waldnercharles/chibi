@@ -1,28 +1,18 @@
 #include "graph/model/registry.h"
-#include "graph/runtime/flow.h"
+#include "graph/nodes/core_nodes.h"
 
 static pin_spec set_members_inputs[] = {
-    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-    { "Struct",
-      PIN_STRUCT,
-      NULL,
-      PIN_DATA,
-      0,
-      PIN_CONTAINER_SINGLE,
-      { .type = PIN_STRUCT },
-      0,
-      PIN_FLAG_REFERENCE | PIN_FLAG_WILDCARD,
-      0 },
+    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
+    { .name = "Struct",
+      .type = PIN_STRUCT,
+      .kind = PIN_DATA,
+      .container = PIN_CONTAINER_SINGLE,
+      .default_value = { .type = PIN_STRUCT },
+      .flags = PIN_FLAG_REFERENCE | PIN_FLAG_WILDCARD },
 };
 static pin_spec set_members_outputs[] = {
-    { "Then", PIN_FLOW, NULL, PIN_EXEC },
+    { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
 };
-
-static int flow_set_members(node *n, flow_context *ctx)
-{
-    (void)n;
-    return flow_context_continue(ctx, 0);
-}
 
 node_desc NODE_SetMembers = {
     .name = "Set Members in Struct",
@@ -31,7 +21,6 @@ node_desc NODE_SetMembers = {
     .inputs = set_members_inputs,
     .outputs = set_members_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = flow_set_members,
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Struct",
     .keywords = "struct set members split reference",

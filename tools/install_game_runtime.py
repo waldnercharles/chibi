@@ -1,51 +1,46 @@
 #!/usr/bin/env python3
-"""Refresh registered game runtimes from an already built native package."""
+"""Install a verified standalone player package into registered games."""
 import argparse
-import hashlib
 import json
 import os
 import shutil
-import subprocess
 import tempfile
+import sys
 from contextlib import ExitStack
-from pathlib import Path, PurePosixPath
+from pathlib import Path
+
+# Installed helpers must leave the checksum-pinned package unchanged.
+sys.dont_write_bytecode = True
 
 import kdl_asset
+from package_player import validate_package, verify_files, valid_path
+from package_sdk import canonical_digest, staging_directory
 
-ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = Path('share/chibi/engine.json')
+MANIFEST = Path('share/chibi/package.json')
 
 
-def validate_package(package):
-    manifest = json.loads((package / MANIFEST).read_text())
-    files = manifest.get('files')
-    if (manifest.get('format') != 1 or not isinstance(files, dict) or not files
-            or type(manifest.get('project_version')) is not int):
-        raise ValueError('Invalid runtime package manifest')
-    identity = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-    if manifest.get('build_id') != identity:
-        raise ValueError('Runtime package build ID does not match its file manifest')
-    paths = list(package.rglob('*'))
-    if any(path.is_symlink() for path in paths):
-        raise ValueError('Runtime package must contain regular files, not symlinks')
-    actual = {path.relative_to(package).as_posix() for path in paths if path.is_file()}
-    if actual != set(files) | {MANIFEST.as_posix()}:
-        raise ValueError('Runtime package file list does not match its manifest')
-    for name, expected in files.items():
-        relative = PurePosixPath(name)
-        if relative.is_absolute() or '..' in relative.parts:
-            raise ValueError(f'Invalid runtime package path: {name}')
-        if hashlib.sha256((package / name).read_bytes()).hexdigest() != expected:
-            raise ValueError(f'Runtime package checksum mismatch: {name}')
-    for name in ('chibi', 'chibi_ctl', 'chibi-mcp'):
+def validate_previous(package):
+    if (package / MANIFEST).is_file():
+        return validate_package(package)
+    # Only the exact formerly managed package may be retired during migration.
+    # It is never accepted as a new player deployment input.
+    previous = Path('share/chibi/engine.json')
+    legacy = json.loads((package / previous).read_text())
+    files = legacy.get('files')
+    if (legacy.get('format') != 1 or not isinstance(files, dict) or not files
+            or type(legacy.get('project_version')) is not int
+            or legacy.get('build_id') != canonical_digest(files)):
+        raise ValueError('Existing runtime is not a verified managed package')
+    for name in files:
+        valid_path(name)
+    records = {name: {'sha256': checksum, 'bytes': (package / name).stat().st_size}
+               for name, checksum in files.items()}
+    verify_files(package, records, previous)
+    for name in ('chibi', 'chibi_ctl'):
         binary = package / 'bin' / name
-        if not binary.is_file() or not os.access(binary, os.X_OK):
-            raise ValueError(f'Missing native runtime executable: {name}')
-        if not binary.stat().st_size or binary.read_bytes().startswith(b'\0asm'):
-            raise ValueError(f'Invalid native runtime executable: {name}')
-    if not (package / 'share/chibi/mcp/setup-codex.mjs').is_file():
-        raise ValueError('Missing packaged MCP setup module')
-    return manifest
+        if not binary.is_file() or not os.access(binary, os.X_OK) or not binary.stat().st_size:
+            raise ValueError('Existing runtime is not the formerly managed native package')
+    return legacy
 
 
 def absolute_path(value):
@@ -66,64 +61,58 @@ def atomic_write(path, text):
         staged.unlink(missing_ok=True)
 
 
-def game_config(game, setup):
-    path = game / '.codex/config.toml'
-    config = path.read_text() if path.exists() else ''
-    registration = '\n'.join((
-        '[mcp_servers.chibi]', 'command = "sh"',
-        f'args = [{json.dumps(str(game / ".chibi/runtime/bin/chibi-mcp"))}, {json.dumps(str(game))}]',
-        f'cwd = {json.dumps(str(game))}', 'enabled = true',
-        'startup_timeout_sec = 120', 'tool_timeout_sec = 120'))
-    script = ('import {registerChibi} from ' + json.dumps(setup.as_uri()) + ';'
-              'import {readFileSync} from "node:fs";'
-              'const value=JSON.parse(readFileSync(0,"utf8"));'
-              'process.stdout.write(registerChibi(value.config,value.registration));')
-    return subprocess.run(['node', '--input-type=module', '-e', script],
-                          input=json.dumps({'config': config, 'registration': registration}),
-                          text=True, capture_output=True, check=True).stdout
-
-
 def install(package, config):
     if not config.is_file():
-        return None
+        raise ValueError(f'Runtime registration file is missing: {config}')
     registration = json.loads(config.read_text())
     games = [absolute_path(value) for value in registration['games']]
+    if len({game.resolve() for game in games}) != len(games):
+        raise ValueError('Runtime registration contains duplicate game directories')
     manifest = validate_package(package)
     prepared = []
     for game in games:
         project = kdl_asset.loads((game / 'project.kdl').read_text())
         if (not isinstance(project, dict) or type(project.get('version')) is not int
-                or project['version'] != manifest['project_version']):
+                or project['version'] != manifest['requirements']['project_format']):
             raise ValueError(f'Project version mismatch: {game}')
         runtime = game / '.chibi/runtime'
-        for path in (game / '.chibi', runtime, game / '.codex', game / '.codex/config.toml',
-                     game / '.chibi-engine.json'):
+        for path in (game / '.chibi', runtime, game / '.chibi-engine.json'):
             if path.is_symlink():
                 raise ValueError(f'Runtime paths must stay inside the game: {path}')
-        if runtime.exists():
-            if not (runtime / MANIFEST).is_file():
-                raise ValueError(f'Existing runtime directory is not an engine package: {runtime}')
-            validate_package(runtime)
+        previous_identity = validate_previous(runtime) if runtime.exists() else None
         originals = {path: path.read_bytes() if path.exists() else None
-                     for path in (game / '.codex/config.toml', game / '.chibi-engine.json')}
-        prepared.append((game, game_config(game, package / 'share/chibi/mcp/setup-codex.mjs'), originals))
-    pin = json.dumps({'format': 1, 'build_id': manifest['build_id'],
-                      'project_version': manifest['project_version']}, indent=2) + '\n'
+                     for path in (game / '.chibi-engine.json',)}
+        prepared.append((game, originals, previous_identity))
+    pin = json.dumps({'format': 2, 'kind': 'player', 'build_id': manifest['build_id'],
+                      'engine_build_id': manifest['engine']['build_id'],
+                      'sdk_build_id': manifest['sdk']['build_id'],
+                      'package_version': manifest['package_version'],
+                      'requirements': manifest['requirements']}, indent=2) + '\n'
     with ExitStack() as copies:
         staged_games = []
-        for game, codex, originals in prepared:
+        for game, originals, previous_identity in prepared:
             (game / '.chibi').mkdir(exist_ok=True)
-            directory = Path(copies.enter_context(tempfile.TemporaryDirectory(
+            directory = Path(copies.enter_context(staging_directory(
                 prefix='.runtime-stage-', dir=game / '.chibi')))
             staged = directory / 'package'
             shutil.copytree(package, staged)
-            validate_package(staged)
-            staged_games.append((game, staged, codex, originals))
+            if validate_package(staged) != manifest:
+                raise ValueError('Player package changed while it was copied')
+            staged_games.append((game, staged, originals, previous_identity))
         activated = []
         try:
-            for game, staged, codex, originals in staged_games:
+            for game, staged, originals, previous_identity in staged_games:
                 runtime = game / '.chibi/runtime'
                 previous = staged.parent / 'previous'
+                if (game / '.chibi').is_symlink() or runtime.is_symlink():
+                    raise ValueError(f'Runtime directory changed to a symlink: {runtime}')
+                current_identity = validate_previous(runtime) if runtime.exists() else None
+                if current_identity != previous_identity:
+                    raise ValueError(f'Existing runtime changed during staging: {runtime}')
+                for path, value in originals.items():
+                    current = path.read_bytes() if path.exists() else None
+                    if path.is_symlink() or current != value:
+                        raise ValueError(f'Runtime pin changed during staging: {path}')
                 if runtime.exists():
                     runtime.rename(previous)
                 try:
@@ -133,9 +122,8 @@ def install(package, config):
                         previous.rename(runtime)
                     raise
                 activated.append((runtime, previous, originals))
-                atomic_write(game / '.codex/config.toml', codex)
                 atomic_write(game / '.chibi-engine.json', pin)
-        except OSError:
+        except (OSError, ValueError):
             for runtime, previous, originals in reversed(activated):
                 shutil.rmtree(runtime)
                 if previous.exists():
@@ -152,11 +140,11 @@ def install(package, config):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--package', type=Path, required=True)
-    parser.add_argument('--config', type=Path, default=ROOT / '.chibi/game-runtime.json')
+    parser.add_argument('--config', type=Path, required=True)
     args = parser.parse_args()
     try:
         manifest = install(args.package.resolve(), args.config)
-    except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as error:
+    except (ValueError, KeyError, TypeError, OSError) as error:
         parser.exit(1, f'install-game-runtime: {error}\n')
     if manifest:
         print(f'Installed game runtime {manifest["build_id"]}')

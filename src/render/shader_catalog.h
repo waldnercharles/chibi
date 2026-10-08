@@ -1,22 +1,18 @@
 #ifndef CHIBI_SHADER_CATALOG_H
 #define CHIBI_SHADER_CATALOG_H
-#include "ecs/ecs.h"
-#include "graph/model/behavior_asset.h"
-#include "graph/model/registry.h"
-#include "graph/modeling/model_compile.h"
-#include "graph/modeling/model_inspection.h"
-#include "graph/shader/shader_graph.h"
-#include "graph/shader/shader_inspection.h"
-#include "runtime/components.h"
 
-bool render_shader_upsert(const behavior_asset *asset, shader_error *error);
+#define SHADER_VALUES_PREPARED_VERSION 1
+#include "ecs/ecs.h"
+#include "runtime/components.h"
+#include "runtime/models/model_inspection.h"
+#include "runtime/models/model_program.h"
+#include "runtime/shaders/inspection.h"
+#include "runtime/shaders/program.h"
+
 /* Validate and publish a complete proposed model dependency generation. */
-bool render_shader_models_upsert(const behavior_asset *const *sources, int count, shader_error *error);
+
 float render_shader_distance_lipschitz(int index);
-bool render_shader_model_remove(const char *name, shader_error *error);
-bool render_shader_model_rename(const char *from, const char *to, shader_error *error);
-bool render_shader_material_remove(const char *name, shader_error *error);
-bool render_shader_material_rename(const char *from, const char *to, shader_error *error);
+
 int render_shader_find(const char *name);
 const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
@@ -74,19 +70,12 @@ bool render_shader_model_hit(
     model_hit *out,
     shader_error *error
 );
-bool render_shader_parameters_validate(int index, const char *text, shader_error *error);
 bool render_shader_binding_parameters_validate(
     const GameShader *binding,
     const char *text,
     shader_error *error
 );
-bool render_shader_binding_sources_validate(
-    const GameShader *binding,
-    const char *text,
-    const behavior_asset *const *sources,
-    int count,
-    shader_error *error
-);
+
 typedef struct
 {
     /* Successful CPU source lowerings published. Runtime setters do not compile. */
@@ -191,7 +180,7 @@ void render_shader_clear_world(ecs_world *world);
    identity, hashed for scenario state inspection. */
 uint64_t render_shader_overrides_hash(const ecs_world *world);
 void render_shader_catalog_clear();
-extern const registry_pack SHADER_BINDING_PACK;
+
 #endif
 
 /* Caller-owned cache. Catalog and overrides remain immutable during collection. */

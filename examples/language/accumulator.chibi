@@ -1,0 +1,11 @@
+behavior Accumulator {
+    total: double = 0;
+    seen: bool = false;
+
+    on Impulse(amount, enabled) {
+        if (enabled) {
+            total += amount;
+            seen = true;
+        }
+    }
+}

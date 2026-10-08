@@ -1,3 +1,4 @@
+#include "graph/authoring/graph_edit.h"
 #include "test/suite_internal.h"
 
 #include <stdatomic.h>
@@ -363,7 +364,7 @@ static void invalid_exec_index()
 
 void run_graph_model_checks()
 {
-    g_watch_desc.type = registry_type_by_name("CF_V3");
+    g_watch_desc.type = type_catalog_find("CF_V3");
     input_index_edits();
     concurrent_input_readers();
     pasted_edge_indexes();

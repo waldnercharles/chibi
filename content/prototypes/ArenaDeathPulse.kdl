@@ -1,6 +1,0 @@
-name "ArenaDeathPulse"
-components {
-    GAME.GameSurfaceInfluence color=0xff487cff linger=0.22 radius=64.0 strength=1.4
-    (object)GAME.GameTransform
-}
-(array)behaviors "SurfacePulseBehavior"

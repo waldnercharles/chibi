@@ -5,7 +5,8 @@ asset domain is `model`. The compiler derives a distance program, conservative
 local bounds, parameters, dependencies, and named part identities. The authored
 graph remains the source; no generated shape KDL is saved beside it.
 
-Stages 1–6 have passed their native build, focused modeling, public authoring,
+The validation sections below record earlier implementation revisions and do not
+verify the current checkout. Stages 1–6 passed their native build, focused modeling, public authoring,
 and inspected scene gates. Stage 5 includes independent mesh controls. Stage 7
 passed actual native and Web authoring/orbit workflows; the final viewport
 boundary regression passed its native, Web, and actual browser gates. Packaged launch and
@@ -14,12 +15,13 @@ does not establish backend readiness or target performance.
 
 ## Authoring and binding
 
-Use the existing generic Chibi tools: `searchAssets`, `searchNodes` with the model
-domain, `buildGraph` with `kind: "model"`, `inspectGraph`, and `validateAsset`.
-Compose a scene with `buildPrototype` and `buildScene`, then render it with
-`previewScene`. Models require a 3D scene preview; the flat `previewShader` view
-does not represent model surfaces. Graph layout follows the existing automatic
-layout rules.
+Edit saved model, material, prototype and scene KDL in the project, or use
+Studio. Inspect the native capability catalog before choosing nodes; the
+controller's `inspect_graph` and `validate_asset` operations inspect and compile
+saved construction. See the [saved-file workflow](runtime-authoring.md) for
+request syntax. Models need a 3D scene preview; a flat material preview cannot
+represent model surfaces. Use the bounded native scene capture route in
+[agent execution](agent-execution.md).
 
 Geometry wires carry the compiler-only nominal type `Geometry3D`. They describe
 geometry that can be evaluated at another position. They do not carry a sampled
@@ -33,7 +35,7 @@ computed bounds are authoritative. `GameGeometry3D` dimensions continue to bound
 raw shapes but do not resize a model. Change model dimensions through its
 parameters, and change instance scale through the visual transform.
 
-Projects use `CHIBI_PROJECT_VERSION` 5. The graph document's own serialized
+Projects use `CHIBI_PROJECT_VERSION` 10. The graph document's own serialized
 `version` is a separate format field; do not replace it with the project version.
 After hand-editing assets, canonicalize and check:
 
@@ -42,7 +44,7 @@ build/chibi_ctl --project-root projects/modeling_lab --format
 build/chibi_ctl --project-root projects/modeling_lab --format --check
 ```
 
-The check verifies canonical serialization. Use `validateAsset` to compile and
+The check verifies canonical serialization. Use native `validate_asset` to compile and
 validate current construction and dependencies.
 
 ## Coordinates and operations
@@ -105,7 +107,7 @@ before accepting the change. Public uniform changes reuse geometry code;
 structural edits recompile. `GameShader.parameters` is a KDL object value in
 a reflected string field. `shape.<name>` and `material.<name>` disambiguate the
 two binding namespaces. Read the public parameter names returned by
-`inspectGraph` rather than inventing flattened instance names.
+`inspect_graph` rather than inventing flattened instance names.
 
 `Model Linear Array` places copies at `i * Step`, beginning at index zero.
 `Model Radial Array` rotates copies by `i * Angle Step` around the selected axis
@@ -192,26 +194,16 @@ them. Its presence is not a claim that Web export acceptance has passed.
 
 ## Scenes, inspection, and evidence
 
-Authoring scripts under `projects/modeling_lab` use the public graph tools:
-
-| Script | Scene gate |
-| --- | --- |
-| `author.mjs` | ModelPrimitiveStudy and analytical sphere controls |
-| `author-solids.mjs` | ModelBooleanStudy, ModelTransformStudy, relief control |
-| `author-reuse.mjs` | ModelReuseStudy, shared engines and shelving |
-| `author-bounds.mjs` | ModelBoundsStudy, animated parameters and mesh control |
-| `author-profiles.mjs` | ModelProfileStudy, extrusion/revolution and mesh control |
-| `author-ship.mjs` | ModelShipStudy, editable hull/wings and reused engines; prepared for the Studio gate |
-| `author-materials.mjs` | ModelMaterialStudy, cut/smooth ownership and component slot overrides |
-| `author-cost.mjs` | Isolated program sharing, variants, complex construction, and hit-resolution controls |
-
-Pass `--preview` to capture fixed scene views. Scripted public authoring, material
-and override checks are retired. See the lab README and retained
-`build/model-evidence` results for historical gate evidence. The local HRC relief
+Saved studies under `projects/modeling_lab/content/scenes` cover primitives,
+Boolean operations, transforms, reuse, bounds, profiles, ships, materials and
+construction costs. The former `author*.mjs` recipes and their `--preview` flags
+are retired. Their generated assets remain editable, but reconstruction from an
+empty project is no longer supplied by a script. See the lab README and retained
+`build/model-evidence` results for historical evidence. The local HRC relief
 approximation still shows aliasing at sharp creases; the relief-disabled control
-isolates that from model geometry. No new GI transport is introduced here.
+isolates that from model geometry.
 
-`inspectGraph` provides `model_parameters`, `model_material_slots`, and `model_compilation`
+`inspect_graph` provides `model_parameters`, `model_material_slots`, and `model_compilation`
 report with original source node count across authored graphs, expanded shader
 node count, public/private parameter slots, parts, dependencies, and local bounds.
 `compile_ms` times one compiler call after dependencies are loaded. Inspection
@@ -230,31 +222,27 @@ or whole-frame time; report those separately with matched workloads. The
 
 ## Isolated package validation
 
-The native package contains the engine, Studio resources, shaders, and MCP.
-The external project's model KDL and dependencies remain in its project content
-directory. Build and assemble an isolated engine package with:
+Prepare authored model/material/scene assets with a pinned installed compiler SDK.
+Deploy its prepared artifact and declared resources alongside a separate verified
+player package:
 
 ```text
-make build BUILD_DIR=build-package \
-  LOCAL_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_DISTRIBUTION=ON' \
-  BUILD_TARGET='chibi chibi_ctl' UPDATE_GAME_RUNTIME=0
-python3 tools/package_native.py --build build-package \
-  --output build/model-evidence/package
+make package-player PLAYER_OUTPUT=build/model-evidence/player
+/installed/sdk/bin/chibi-compile --project-root /absolute/project \
+  --output /absolute/output/game.chibip
+build/model-evidence/player/bin/chibi-player /absolute/output/game.chibip \
+  --resource-root /absolute/output
 ```
 
-`make package-native` unconditionally invokes the registered-game runtime
-installer after assembly, even when `UPDATE_GAME_RUNTIME=0`. Use the explicit
-commands above when unrelated registered games must remain untouched. If testing
-runtime installation, pass `install_game_runtime.py --config` a new registration
-containing only disposable copied projects.
+Packaging leaves registered games untouched. If validating installation, pass
+`install_game_runtime.py --config` a registration containing only disposable
+copied projects. Compiler preparation and package integrity do not establish
+successful rendered model behavior; use admitted bounded runtime/GPU checks.
+See [native packages](native-package.md) for product boundaries and exact pins.
 
-Validate saved model/material/scene sources through the packaged MCP, then launch
-the packaged `bin/chibi` with an absolute disposable `--project-root`, `--play`,
-`--scene`, and a fixed `--frames` capture. Engine assembly or canonical checking
-alone does not prove successful model validation or packaged rendering.
-`make web` and `tools/web_serve.py` do not invoke the registered-game installer.
-Web workspace delivery includes KDL/code/image files recursively; actual browser
-authoring, export, shader compilation, and rendering need separate acceptance.
+The evidence below predates the separate SDK/compiler/player contract and
+records the retired combined package. It is historical, rather than acceptance
+of the current packaged runtime.
 
 The isolated native Release distribution build and assembly passed, followed by
 11 native package integration tests. Final runtime logs are retained as
@@ -343,18 +331,21 @@ format audit is `final-check-format-complete.log`.
 
 ## Saved-source mesh baking
 
-`bakeModel` uses the same saved-project backend as Studio's Bake bundle action.
+`bake_model` uses the same saved-project backend as Studio's Bake bundle action.
 Save the model first. The service reads a fresh deterministic catalog, checks
 model/material bindings, prepares one parameter snapshot and extracts a bounded
 triangle approximation. It never replaces a model graph or changes a scene's
 rendering choice. Studio includes checked applied public parameter values;
 public callers can pass `overrides` keyed by `asset`, `scope`, `parameter_id`
-and a component `value` array from `inspectGraph`.
+and a component `value` array from `inspect_graph`.
 
-For example, call the public tool with:
+For example, send this native request as one JSON line to
+`build/chibi_ctl --project-root projects/modeling_lab`:
 
 ```json
 {
+  "contract": 1,
+  "operation": "bake_model",
   "model": "PolaroidOneStep",
   "destination": "/absolute/existing-parent/new-camera-bundle",
   "options": { "cell_size": 0.2, "max_triangles": 200000, "max_samples": 8000000, "max_work": 10000000000 }
@@ -450,7 +441,8 @@ under concurrent CPU load. This includes startup, saved-source validation,
 compilation, extraction and export; it is not a quiet extraction benchmark or
 runtime frame-time claim.
 
-Matched native engine views use public-MCP-authored disposable scenes with the
+The historical matched native engine views used disposable scenes authored
+through the former MCP transport, with the
 same ModelPropStudy camera, lighting, HRC, pose and 120 fixed frames at 3840×2160.
 The failed cell-size-0.4 control has large apron gaps and misses the thin roller.
 Cell size 0.2 fills those gaps and retains every nonempty source part, labels and
@@ -471,7 +463,9 @@ controller SHA256 and scope are recorded in
 `sdf-material-integration.log`. Full delivery and current native/Web UI gates
 are recorded separately in the authoring validation document.
 
-The synchronous offline bake can exceed the MCP 300-second default, particularly
-in a debug/ASan build or with concurrent CPU tasks. Set `CHIBI_CTL_TIMEOUT_MS`
-explicitly for dense models. Quality and resource budgets remain explicit; no
-failed bake silently lowers resolution or replaces editable source.
+Synchronous offline baking can be expensive, especially in a debug/ASan build
+or with concurrent CPU tasks. The retired MCP timeout settings do not apply to
+the native controller. Keep bake resource options explicit. Test/probe execution
+remains subject to the [60-second policy](testing.md#temporary-60-second-policy);
+unmeasured or slower checks remain quarantined. A failed bake does not lower
+resolution or replace editable source.

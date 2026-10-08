@@ -1,17 +1,15 @@
-#include "assets/code_source.h"
-#include "assets/system_document.h"
-#include "graph/compiler/graph_jit_sljit.h"
-#include "graph/document/library.h"
-#include "graph/document/serialize.h"
-#include "graph/nodes/component_nodes.h"
-#include "graph/runtime/instance.h"
-#include "runtime/behaviors/entities.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/engine.h"
-#include "runtime/generated.h"
-#include "runtime/systems/system.h"
+#include "authoring/language_catalog.h"
+#include "authoring/preview_runtime.h"
+#include "authoring/source_format.h"
+#include "authoring/source_prepare.h"
+#include "execution/status.h"
+#include "host/native_default.h"
+#include "runtime/component_catalog.h"
+#include "runtime/source_input.h"
+#include "runtime/systems/scheduler.h"
 #include "support/array.h"
 #include "support/text_file.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -20,536 +18,608 @@
 #include <stdlib.h>
 #include <string.h>
 
-static double private_value(game_system *system, ecs_entity entity, uint64_t id)
+typedef struct
 {
-    pin_value value;
-    assert(!game_system_entity_variable(system, entity, id, &value));
-    assert(value.type == PIN_F64);
-    return value.d;
-}
+    ecs_world *world;
+    game_preview_runtime *live;
+    authoring_language_catalog *catalog;
+    authoring_source *source;
+    execution_program *program;
+} system_fixture;
 
-static double shared_value(game_system *system, uint64_t id)
-{
-    pin_value value;
-    assert(!game_system_shared_variable(system, id, &value));
-    assert(value.type == PIN_F64);
-    return value.d;
-}
+static system_fixture active;
+static char *formatted;
+static ecs_world *input_world;
+static game_source_registry *input_sources;
+static game_schedule *input_schedule;
+static engine_input *source_input;
+static authoring_language_catalog *input_catalog;
+static authoring_source *input_source;
 
-static void tick(game_system *system, double now)
+static system_fixture fixture_new()
 {
-    flow_error error = { 0 };
-    int result = game_system_tick_mode(system, now, 0.1, &error, GAME_SYSTEM_EXEC_AUTO);
+    system_fixture f = { .world = ecs_world_new() };
+    const ecs_component_desc *components[] = {
+        &GAME_COMPONENT_GameHealth,   &GAME_COMPONENT_GameActionBinding,
+        &GAME_COMPONENT_GameCollider, &GAME_COMPONENT_GameTransform,
+        &GAME_COMPONENT_GameMovement, &GAME_COMPONENT_GameInput
+    };
+    for (int i = 0; i < 6; i++) {
+        assert(!ecs_world_register_component(f.world, components[i], NULL));
+    }
+    f.live = game_preview_runtime_new(f.world);
+    const script_catalog_capability child = { .id = 100001,
+                                              .name = "Child",
+                                              .kind = SCRIPT_CAPABILITY_PROTOTYPE,
+                                              .completion_outcome = -1 };
+    const script_catalog project = { .capabilities = &child, .capability_count = 1 };
+    char error[256];
+    native_capabilities *table = host_native_default_catalog_new(NULL, 0, NULL, 0, error, sizeof error);
+    assert(table);
+    const authoring_language_catalog_input input = { .native = table,
+                                                     .project = &project };
+    f.catalog = authoring_language_catalog_new(&input, error, sizeof error);
+    native_capabilities_free(table);
+    if (!f.catalog) {
+        fprintf(stderr, "system catalog: %s\n", error);
+    }
+    assert(f.catalog);
+    active = f;
+    return f;
+}
+static bool prepare(system_fixture *f, const char *text, behavior_backend backend)
+{
+    script_lower_bindings bindings = authoring_language_bindings(f->catalog);
+    f->source = authoring_source_prepare_document(
+        "System.chibi",
+        "systems/System.chibi",
+        text,
+        authoring_language_catalog_view(f->catalog),
+        &bindings,
+        backend
+    );
+    active = *f;
+    for (int i = 0; i < f->source->analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "system semantic: %s\n",
+            f->source->analysis->diagnostics[i].message
+        );
+    }
+    for (int i = 0; i < f->source->diagnostic_count; i++) {
+        fprintf(stderr, "system preparation: %s\n", f->source->diagnostics[i].message);
+    }
+    if (!f->source->valid) {
+        return false;
+    }
+    service_binding *services = NULL;
+    apush(services, ((service_binding){ "game.entities", f->live->entities }));
+    apush(services, ((service_binding){ "ecs.world", f->world }));
+    int result = game_source_register(f->live->sources, "System", f->source->module, services);
+    afree(services);
+    if (result) {
+        fprintf(stderr, "system publication: %s\n", game_source_error(f->live->sources));
+        fprintf(stderr, "system registry: %s\n", game_source_error(f->live->sources));
+        int count = 0;
+        const char *const *services = execution_module_services(f->source->module, &count);
+        for (int i = 0; i < count; i++) {
+            fprintf(stderr, "system required service: %s\n", services[i]);
+        }
+    }
+    if (result) {
+        return false;
+    }
+    const char *selected[] = { "System" };
+    result = game_source_is_system(f->live->sources, "System")
+               ? game_source_select_systems(f->live->sources, selected, 1)
+               : 0;
     if (result < 0) {
-        fprintf(stderr, "System runtime: %s\n", error.message);
+        fprintf(stderr, "system selection: %s\n", game_source_error(f->live->sources));
+        return false;
     }
-    assert(result == FLOW_OK);
+    f->program = game_source_program(f->live->sources, "System");
+    return f->program != NULL;
+}
+static void fixture_free(system_fixture *f)
+{
+    game_preview_runtime_free(f->live);
+    authoring_source_free(f->source);
+    authoring_language_catalog_free(f->catalog);
+    ecs_world_free(f->world);
+    active = (system_fixture){ 0 };
+}
+static bool tick(system_fixture *f, double now)
+{
+    int result = execution_program_step(f->program, now, .1, 10000);
+    if (result < 0) {
+        const execution_program_failure *error = execution_program_error(f->program);
+        fprintf(stderr, "system execution: %s\n", error ? error->message : "unknown failure");
+    }
+    return result >= 0;
+}
+static execution_instance *instance(system_fixture *f, ecs_entity owner)
+{
+    return execution_program_instance(f->program, ecs_entity_to_u64(owner));
+}
+static double state(system_fixture *f, ecs_entity owner, const char *name)
+{
+    uint64_t id = 0;
+    for (int i = 0; i < f->source->analysis->symbol_count; i++) {
+        const script_symbol *symbol = &f->source->analysis->symbols[i];
+        if ((symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE) &&
+            !strcmp(symbol->name, name)) {
+            id = symbol->id;
+            break;
+        }
+    }
+    if (!id || !instance(f, owner)) {
+        fprintf(
+            stderr,
+            "system state '%s': missing declared state or query owner %llu\n",
+            name,
+            (unsigned long long)ecs_entity_to_u64(owner)
+        );
+        return NAN;
+    }
+    const pin_value *value = execution_instance_state(instance(f, owner), id);
+    assert(value && value->type == PIN_F64);
+    return value->d;
+}
+static ecs_entity health(system_fixture *f)
+{
+    ecs_entity owner = ecs_world_create_entity(f->world);
+    assert(!GAME_GameHealth_add(f->world, owner, 0));
+    assert(!ecs_world_apply_commands(f->world));
+    GAME_GameHealth_get(f->world, owner)->current = 0;
+    return owner;
 }
 
-static void persistent_wait_membership()
+static bool persistent_wait_membership(behavior_backend backend)
 {
-    ecs_world *world = ecs_world_new();
-    assert(!ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL));
+    system_fixture f = fixture_new();
     for (int i = 0; i < 256; i++) {
-        ecs_world_create_entity(world);
+        ecs_world_create_entity(f.world);
     }
-    ecs_entity a = ecs_world_create_entity(world), b = ecs_world_create_entity(world);
-    assert(!GAME_GameHealth_add(world, a, 0));
-    assert(!GAME_GameHealth_add(world, b, 0));
-    assert(!ecs_world_apply_commands(world));
-    code_source *source = code_source_parse(
-        "system Counters { owner \"ecs.entity\"; state count := 0; shared "
-        "total := 0; "
-        "on Tick() { count += 1; total += 1; await delay(Duration: 1); "
-        "count += 10; total += 10; } }"
-    );
-    if (!source->asset) {
-        for (int i = 0; i < acount(source->diagnostics); i++) {
-            fprintf(
-                stderr,
-                "System fixture %d:%d: %s\n",
-                source->diagnostics[i].line,
-                source->diagnostics[i].column,
-                source->diagnostics[i].message
-            );
-        }
-    }
-    assert(source->asset);
-    behavior_asset *definition = code_source_build_behavior(source);
-    assert(definition);
-    uint64_t count = behavior_asset_find_variable_by_name(definition, "count")->id;
-    uint64_t total = behavior_asset_find_variable_by_name(definition, "total")->id;
-    assert(behavior_asset_find_variable_by_id(definition, total)->shared);
-    assert(!behavior_asset_find_variable_by_id(definition, count)->shared);
-    behavior_asset *copy = behavior_asset_clone(definition);
-    assert(behavior_asset_equal(copy, definition));
-    behavior_instance *probe = behavior_instance_create(copy, NULL, NULL, NULL);
-    assert(probe);
-    behavior_asset *changed = behavior_asset_clone(definition);
-    behavior_asset_find_variable_by_id(changed, total)->shared = false;
-    assert(behavior_instance_can_update(probe, changed) == INSTANCE_UPDATE_RESTART);
-    behavior_instance_destroy(probe);
-    behavior_asset_free(copy);
-    behavior_asset_free(changed);
-    game_system *system = game_system_new(world, definition);
-    assert(!compile_report_blocked(game_system_compile(system)));
-    ecs_query_expr *query = ecs_query_expr_has(GAME_COMPONENT_GameHealth.id);
-    assert(!game_system_set_query(system, query));
-    ecs_query_expr_free(query);
-    tick(system, 0);
-    assert(game_system_retained_count(system) == 2);
-    assert(game_system_suspended_count(system) == 2);
-    assert(private_value(system, a, count) == 1 && private_value(system, b, count) == 1);
-    assert(shared_value(system, total) == 2);
-    tick(system, 0.25);
-    assert(shared_value(system, total) == 2);
-    assert(!GAME_GameHealth_remove(world, a, 0));
-    assert(!ecs_world_apply_commands(world));
-    tick(system, 0.5);
-    pin_value value;
-    assert(game_system_entity_variable(system, a, count, &value) < 0);
-    assert(game_system_retained_count(system) == 1);
-    assert(!GAME_GameHealth_add(world, a, 0));
-    assert(!ecs_world_apply_commands(world));
-    tick(system, 0.75);
-    assert(private_value(system, a, count) == 1);
-    assert(shared_value(system, total) == 3);
-    tick(system, 1.1);
-    assert(private_value(system, b, count) == 11);
-    assert(shared_value(system, total) == 13);
-    tick(system, 1.2);
-    assert(private_value(system, b, count) == 12);
-    assert(game_system_suspended_count(system) == 2);
-    assert(!ecs_world_destroy_entity(world, a));
-    ecs_entity replacement = ecs_world_create_entity(world);
-    assert(replacement.slot == a.slot && replacement.generation != a.generation);
-    assert(!GAME_GameHealth_add(world, replacement, 0));
-    assert(!ecs_world_apply_commands(world));
-    tick(system, 1.3);
-    assert(game_system_entity_variable(system, a, count, &value) < 0);
-    assert(private_value(system, replacement, count) == 1);
-    assert(game_system_retained_count(system) == 2);
-    game_system_free(system);
-    code_source_free(source);
-    ecs_world_free(world);
+    ecs_entity a = health(&f), b = health(&f);
+    REQUIRE(prepare(
+        &f,
+        "system Counters(health:Health) { state count:double=0; shared "
+        "total:double=0; "
+        "count+=1; total+=1; await delay(Duration:1); count+=10; total+=10; }",
+        backend
+    ));
+    REQUIRE(tick(&f, 0));
+    REQUIRE(instance(&f, a) && instance(&f, b));
+    REQUIRE(execution_instance_pending(instance(&f, a)) == 1);
+    REQUIRE(state(&f, a, "count") == 1 && state(&f, b, "count") == 1);
+    REQUIRE(state(&f, b, "total") == 2);
+    REQUIRE(tick(&f, .25));
+    REQUIRE(state(&f, b, "total") == 2);
+    REQUIRE(!GAME_GameHealth_remove(f.world, a, 0));
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    REQUIRE(tick(&f, .5));
+    REQUIRE(!instance(&f, a));
+    REQUIRE(!GAME_GameHealth_add(f.world, a, 0));
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    REQUIRE(tick(&f, .75));
+    REQUIRE(state(&f, a, "count") == 1 && state(&f, b, "total") == 3);
+    REQUIRE(execution_program_pump(f.program, 1.1, .1, 10000) >= 0);
+    REQUIRE(state(&f, b, "count") == 11 && state(&f, b, "total") == 13);
+    REQUIRE(tick(&f, 1.2));
+    REQUIRE(state(&f, b, "count") == 12);
+    REQUIRE(!ecs_world_destroy_entity(f.world, a));
+    ecs_entity replacement = health(&f);
+    REQUIRE(replacement.slot == a.slot && replacement.generation != a.generation);
+    REQUIRE(tick(&f, 1.3));
+    REQUIRE(!instance(&f, a) && state(&f, replacement, "count") == 1);
+    fixture_free(&f);
+    return true;
 }
-
-static void host_spawn_resume()
+static bool host_spawn_resume(behavior_backend backend)
 {
-    ecs_world *world = ecs_world_new();
-    assert(!ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL));
-    game_live_world *live = game_live_world_new(world);
-    game_prototype *prototype = game_prototype_new("Child");
-    assert(!game_entities_register(live->entities, prototype));
-    game_prototype_free(prototype);
-    ecs_entity owner = ecs_world_create_entity(world);
-    assert(!GAME_GameHealth_add(world, owner, 0));
-    assert(!ecs_world_apply_commands(world));
-    code_source *source = code_source_parse(
-        "system Spawner { owner \"ecs.entity\"; state completed := 0; shared "
-        "total := 0; "
-        "on Tick() { await spawn(Prototype: \"Child\"); completed += "
-        "1; total += 1; } }"
+    system_fixture f = fixture_new();
+    char error[256];
+    const game_scene_object object = { .name = "Child" };
+    game_scene *child = game_scene_prepare(
+        &(game_scene_spec){ .name = "Child",
+                            .physics = game_physics_defaults(),
+                            .objects = &object,
+                            .object_count = 1 },
+        error,
+        sizeof error
     );
-    if (!source->asset) {
-        for (int i = 0; i < acount(source->diagnostics); i++) {
-            fprintf(
-                stderr,
-                "System fixture %d:%d: %s\n",
-                source->diagnostics[i].line,
-                source->diagnostics[i].column,
-                source->diagnostics[i].message
-            );
-        }
+    if (!child) {
+        fprintf(stderr, "system prototype preparation: %s\n", error);
     }
-    assert(source->asset);
-    behavior_asset *definition = code_source_build_behavior(source);
-    uint64_t completed = behavior_asset_find_variable_by_name(definition, "completed")
-                             ->id;
-    uint64_t total = behavior_asset_find_variable_by_name(definition, "total")->id;
-    game_system *system = game_system_new(world, definition);
-    assert(!compile_report_blocked(game_system_compile(system)));
-    ecs_query_expr *query = ecs_query_expr_has(GAME_COMPONENT_GameHealth.id);
-    assert(!game_system_set_query(system, query));
-    ecs_query_expr_free(query);
-    engine *engine = engine_new(world, live);
-    engine_system_desc desc = { .name = "Spawner", .graph = system };
-    assert(!engine_register_system(engine, &desc));
-    tick(system, 0);
-    assert(game_system_suspended_count(system) == 1);
-    assert(private_value(system, owner, completed) == 0);
-    assert(game_entities_flush(live->entities) >= 0);
-    assert(game_entities_flush_initializers(live->entities, 0) >= 0);
-    assert(shared_value(system, total) == 1);
-    tick(system, 0.1);
-    assert(private_value(system, owner, completed) == 1);
-    assert(game_system_suspended_count(system) == 0);
-    assert(shared_value(system, total) == 1);
-    tick(system, 0.2);
-    assert(game_system_suspended_count(system) == 1);
-    assert(!GAME_GameHealth_remove(world, owner, 0));
-    assert(!ecs_world_apply_commands(world));
-    /* The host safepoint validates current query membership before it can
-     * create the second child or resume shared-state writes. */
-    assert(game_entities_flush(live->entities) >= 0);
-    assert(shared_value(system, total) == 1);
+    bool registered = child &&
+                      !game_entities_register_prepared(f.live->entities, "Child", child);
+    game_scene_free(child);
+    REQUIRE(registered);
+    ecs_entity owner = health(&f);
+    REQUIRE(prepare(
+        &f,
+        "system Spawner(health:Health) { state completed:double=0; shared "
+        "total:double=0; "
+        "await spawn(Prototype:\"Child\"); completed+=1; total+=1; }",
+        backend
+    ));
+    REQUIRE(tick(&f, 0));
+    REQUIRE(execution_instance_pending(instance(&f, owner)) == 1);
+    REQUIRE(state(&f, owner, "completed") == 0);
+    REQUIRE(game_entities_flush(f.live->entities) >= 0);
+    REQUIRE(game_entities_flush_initializers(f.live->entities, 0) >= 0);
+    REQUIRE(execution_program_pump(f.program, .1, .1, 10000) >= 0);
+    REQUIRE(state(&f, owner, "completed") == 1 && state(&f, owner, "total") == 1);
+    REQUIRE(tick(&f, .2));
+    REQUIRE(execution_instance_pending(instance(&f, owner)) == 1);
+    REQUIRE(!GAME_GameHealth_remove(f.world, owner, 0));
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    REQUIRE(tick(&f, .3));
+    REQUIRE(!instance(&f, owner));
+    REQUIRE(game_entities_flush(f.live->entities) >= 0);
     ecs_entity *children = NULL;
-    game_entities_copy_live(live->entities, &children);
-    assert(acount(children) == 1);
+    game_entities_copy_live(f.live->entities, &children);
+    int child_count = acount(children);
     afree(children);
-    tick(system, 0.3);
-    assert(game_system_retained_count(system) == 0);
-    engine_free(engine);
-    game_system_free(system);
-    code_source_free(source);
-    game_live_world_free(live);
-    ecs_world_free(world);
+    REQUIRE(child_count == 1);
+    fixture_free(&f);
+    return true;
 }
-
-static void live_component_resume()
+static bool live_component_resume(behavior_backend backend)
 {
-    ecs_world *world = ecs_world_new();
-    assert(!ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL));
-    ecs_entity owner = ecs_world_create_entity(world);
-    assert(!GAME_GameHealth_add(world, owner, 0));
-    assert(!ecs_world_apply_commands(world));
-    GAME_GameHealth_get(world, owner)->current = 2;
-    code_source *source = code_source_parse(
-        "system ReadHealth(health: GameHealth) { state observed := 0; "
-        "await delay(Duration: 1); observed = health.current; }"
-    );
-    if (!source->asset) {
-        for (int i = 0; i < acount(source->diagnostics); i++) {
-            fprintf(
-                stderr,
-                "System fixture %d:%d: %s\n",
-                source->diagnostics[i].line,
-                source->diagnostics[i].column,
-                source->diagnostics[i].message
-            );
-        }
-    }
-    assert(source->asset);
-    behavior_asset *definition = code_source_build_behavior(source);
-    uint64_t observed = behavior_asset_find_variable_by_name(definition, "observed")
-                            ->id;
-    game_system *system = game_system_new(world, definition);
-    assert(!compile_report_blocked(game_system_compile(system)));
-    tick(system, 0);
-    GAME_GameHealth_get(world, owner)->current = 7;
-    tick(system, 1.1);
-    assert(private_value(system, owner, observed) == 7);
-    game_system_free(system);
-    code_source_free(source);
-    ecs_world_free(world);
+    system_fixture f = fixture_new();
+    ecs_entity owner = health(&f);
+    GAME_GameHealth_get(f.world, owner)->current = 2;
+    REQUIRE(prepare(
+        &f,
+        "system ReadHealth(health:Health) { state observed:double=0; "
+        "await delay(Duration:1); observed=health.Current; }",
+        backend
+    ));
+    REQUIRE(tick(&f, 0));
+    GAME_GameHealth_get(f.world, owner)->current = 7;
+    REQUIRE(tick(&f, 1.1));
+    REQUIRE(state(&f, owner, "observed") == 7);
+    fixture_free(&f);
+    return true;
 }
-
-static const ecs_component_desc *query_component(const char *name, void *)
-{
-    return component_by_key(name);
-}
-
-static const char *query_name(ecs_component_id id, void *)
-{
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        const ecs_component_desc *component = GAME_REGISTRY_COMPONENTS[i];
-        if (component->id == id) {
-            return component->key;
-        }
-    }
-    return NULL;
-}
-
-static void optional_membership_roundtrip()
+static bool optional_membership_roundtrip(behavior_backend backend)
 {
     const char
-        *text = "system Optional(health: Health, trigger: ActionBinding?) "
-                "without Collider { if trigger { if trigger.Pressed { "
-                "health.Current += 7; } } else { health.Current += 2; } }";
+        *text = "system Optional(health:Health, trigger:ActionBinding?) "
+                "without Collider { "
+                "if trigger { if trigger.Pressed { health.Current+=7; } } "
+                "else { health.Current+=2; } }";
+    script_syntax *syntax = script_parse(text);
     char error[256];
-    game_system_document
-        *document = game_system_document_load(text, query_component, NULL, error, sizeof error);
-    if (!document) {
-        fprintf(stderr, "System optional source: %s\n%s\n", error, text);
-    }
-    assert(document);
-    char *saved = game_system_document_save(document, query_component, query_name, NULL);
-    assert(saved && !strstr(saved, "on Tick"));
+    char *saved = authoring_source_format(syntax, error, sizeof error);
+    formatted = saved;
+    script_syntax_free(syntax);
+    REQUIRE(saved);
     for (int pass = 0; pass < 2; pass++) {
-        ecs_world *world = ecs_world_new();
-        const ecs_component_desc *components[] = { &GAME_COMPONENT_GameHealth,
-                                                   &GAME_COMPONENT_GameActionBinding,
-                                                   &GAME_COMPONENT_GameCollider };
-        for (int i = 0; i < 3; i++) {
-            assert(!ecs_world_register_component(world, components[i], NULL));
-        }
-        ecs_entity present = ecs_world_create_entity(world),
-                   absent = ecs_world_create_entity(world),
-                   excluded = ecs_world_create_entity(world);
-        assert(!GAME_GameHealth_add(world, present, 0));
-        assert(!GAME_GameHealth_add(world, absent, 0));
-        assert(!GAME_GameHealth_add(world, excluded, 0));
-        assert(!GAME_GameActionBinding_add(world, present, 0));
-        assert(!GAME_GameCollider_add(world, excluded, 0));
-        assert(!ecs_world_apply_commands(world));
-        GAME_GameHealth_get(world, present)->current = 0;
-        GAME_GameHealth_get(world, absent)->current = 0;
-        GAME_GameHealth_get(world, excluded)->current = 0;
-        GAME_GameActionBinding_get(world, present)->pressed = true;
-        behavior_asset *definition = behavior_asset_clone(
-            game_system_document_behavior_asset(document)
-        );
-        game_system *system = game_system_new(world, definition);
-        assert(!compile_report_blocked(game_system_compile(system)));
-        assert(!game_system_set_query(system, game_system_document_query(document)));
-        tick(system, 0);
-        if (game_system_match_count(system) != 2) {
-            fprintf(
-                stderr,
-                "Optional pass %d: matches=%d required=%d\n%s\n",
-                pass,
-                game_system_match_count(system),
-                game_system_query_count(system),
-                pass ? saved : text
-            );
-        }
-        assert(game_system_match_count(system) == 2);
-        assert(GAME_GameHealth_get_const(world, present)->current == 7);
-        assert(GAME_GameHealth_get_const(world, absent)->current == 2);
-        assert(GAME_GameHealth_get_const(world, excluded)->current == 0);
-        assert(!GAME_GameActionBinding_remove(world, present, 0));
-        assert(!ecs_world_apply_commands(world));
-        tick(system, 0.1);
-        if (game_system_match_count(system) != 2) {
-            fprintf(
-                stderr,
-                "Optional pass %d: matches=%d required=%d\n%s\n",
-                pass,
-                game_system_match_count(system),
-                game_system_query_count(system),
-                pass ? saved : text
-            );
-        }
-        assert(game_system_match_count(system) == 2);
-        assert(GAME_GameHealth_get_const(world, present)->current == 9);
-        assert(GAME_GameHealth_get_const(world, absent)->current == 4);
-        assert(GAME_GameHealth_get_const(world, excluded)->current == 0);
-        game_system_free(system);
-        ecs_world_free(world);
-        game_system_document_free(document);
-        document = pass == 0
-                     ? game_system_document_load(saved, query_component, NULL, error, sizeof error)
-                     : NULL;
-        if (pass == 0 && !document) {
-            fprintf(stderr, "System optional reload: %s\n%s\n", error, saved);
-        }
-        assert(pass != 0 || document);
+        system_fixture f = fixture_new();
+        ecs_entity present = health(&f), absent = health(&f), excluded = health(&f);
+        REQUIRE(!GAME_GameActionBinding_add(f.world, present, 0));
+        REQUIRE(!GAME_GameCollider_add(f.world, excluded, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        GAME_GameActionBinding_get(f.world, present)->pressed = true;
+        REQUIRE(prepare(&f, pass ? saved : text, backend));
+        REQUIRE(tick(&f, 0));
+        REQUIRE(instance(&f, present) && instance(&f, absent) && !instance(&f, excluded));
+        REQUIRE(GAME_GameHealth_get_const(f.world, present)->current == 7);
+        REQUIRE(GAME_GameHealth_get_const(f.world, absent)->current == 2);
+        REQUIRE(GAME_GameHealth_get_const(f.world, excluded)->current == 0);
+        REQUIRE(!GAME_GameActionBinding_remove(f.world, present, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(tick(&f, .1));
+        REQUIRE(GAME_GameHealth_get_const(f.world, present)->current == 9);
+        REQUIRE(GAME_GameHealth_get_const(f.world, absent)->current == 4);
+        REQUIRE(GAME_GameHealth_get_const(f.world, excluded)->current == 0);
+        fixture_free(&f);
     }
     free(saved);
+    formatted = NULL;
+    return true;
 }
-
-static void reactive_checkpoint()
+static bool reactive_checkpoint(behavior_backend backend)
 {
-    ecs_world *world = ecs_world_new();
-    assert(!ecs_world_register_component(world, &GAME_COMPONENT_GameActionBinding, NULL));
-    ecs_entity owner = ecs_world_create_entity(world);
-    assert(!GAME_GameActionBinding_add(world, owner, 0));
-    assert(!ecs_world_apply_commands(world));
-    code_source *source = code_source_parse(
-        "system Watch { state changes := 0; "
-        "bind self.ActionBinding.Disabled = !self.ActionBinding.Pressed; "
-        "on self.ActionBinding.PressedChanged(pressed) { "
-        "changes += 1; await delay(Duration: 1); changes += 10; } on Tick() {} "
-        "}"
-    );
-    assert(source->asset);
-    uint64_t changes = source->asset->variables[0].id;
-    game_system *system = game_system_new(world, code_source_build_behavior(source));
-    assert(!compile_report_blocked(game_system_compile(system)));
-    ecs_query_expr *query = ecs_query_expr_has(GAME_COMPONENT_GameActionBinding.id);
-    assert(!game_system_set_query(system, query));
-    ecs_query_expr_free(query);
-    flow_error error = { 0 };
-    assert(!game_system_maintain(system, 0, 0.1, &error));
-    assert(GAME_GameActionBinding_get(world, owner)->disabled);
-    assert(private_value(system, owner, changes) == 0);
-    GameActionBinding *binding = GAME_GameActionBinding_get(world, owner);
-    binding->pressed = true;
-    pin_value value = { .type = PIN_BOOL, .type_name = "bool", .b = true };
-    assert(!game_system_field_changed(
-        system,
-        owner,
-        GAME_COMPONENT_GameActionBinding.id,
-        offsetof(GameActionBinding, pressed),
-        value,
-        &error
+    system_fixture f = fixture_new();
+    ecs_entity owner = ecs_world_create_entity(f.world);
+    REQUIRE(!GAME_GameActionBinding_add(f.world, owner, 0));
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    REQUIRE(prepare(
+        &f,
+        "system Watch(binding:ActionBinding) { state changes:double=0; "
+        "bind binding.Disabled=!binding.Pressed; "
+        "on binding.PressedChanged(pressed) { changes+=1; "
+        "await delay(Duration:1); changes+=10; } }",
+        backend
     ));
-    assert(private_value(system, owner, changes) == 1);
-    assert(game_system_suspended_count(system) == 1);
-    binding->pressed = false;
-    value.b = false;
-    assert(!game_system_field_changed(
-        system,
-        owner,
-        GAME_COMPONENT_GameActionBinding.id,
-        offsetof(GameActionBinding, pressed),
-        value,
-        &error
-    ));
-    assert(!game_system_maintain(system, 0.2, 0.1, &error));
-    assert(binding->disabled && private_value(system, owner, changes) == 1);
-    tick(system, 1.1);
-    assert(private_value(system, owner, changes) == 11);
-    assert(!game_system_suspended_count(system));
-    assert(!game_system_maintain(system, 1.2, 0.1, &error));
-    assert(private_value(system, owner, changes) == 11);
-    binding->pressed = true;
-    value.b = true;
-    assert(!game_system_field_changed(
-        system,
-        owner,
-        GAME_COMPONENT_GameActionBinding.id,
-        offsetof(GameActionBinding, pressed),
-        value,
-        &error
-    ));
-    assert(private_value(system, owner, changes) == 12);
-    assert(!GAME_GameActionBinding_remove(world, owner, 0));
-    assert(!ecs_world_apply_commands(world));
-    assert(!game_system_maintain(system, 1.3, 0.1, &error));
-    assert(!game_system_retained_count(system));
-    game_system_free(system);
-    code_source_free(source);
-    ecs_world_free(world);
+    REQUIRE(tick(&f, 0));
+    REQUIRE(GAME_GameActionBinding_get(f.world, owner)->disabled);
+    REQUIRE(state(&f, owner, "changes") == 0);
+    GAME_GameActionBinding_get(f.world, owner)->pressed = true;
+    REQUIRE(tick(&f, .1));
+    REQUIRE(state(&f, owner, "changes") == 1);
+    REQUIRE(execution_instance_pending(instance(&f, owner)) == 1);
+    GAME_GameActionBinding_get(f.world, owner)->pressed = false;
+    REQUIRE(tick(&f, .2));
+    REQUIRE(GAME_GameActionBinding_get(f.world, owner)->disabled);
+    REQUIRE(state(&f, owner, "changes") == 1);
+    REQUIRE(tick(&f, 1.2));
+    REQUIRE(state(&f, owner, "changes") == 11);
+    GAME_GameActionBinding_get(f.world, owner)->pressed = true;
+    REQUIRE(tick(&f, 1.3));
+    REQUIRE(state(&f, owner, "changes") == 12);
+    REQUIRE(!GAME_GameActionBinding_remove(f.world, owner, 0));
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    REQUIRE(tick(&f, 1.4));
+    REQUIRE(!instance(&f, owner));
+    fixture_free(&f);
+    return true;
 }
-
-static void synchronous_batch_path()
+static bool synchronous_batch_path(behavior_backend backend)
 {
-    char *text = text_file_read("test/fixtures/systems/MovementSystem.code");
-    assert(text);
-    code_source *source = code_source_parse(text);
+    system_fixture f = fixture_new();
+    ecs_entity owner = ecs_world_create_entity(f.world);
+    REQUIRE(!GAME_GameTransform_add(f.world, owner, 0));
+    REQUIRE(!GAME_GameMovement_add(f.world, owner, 0));
+    REQUIRE(!GAME_GameInput_add(f.world, owner, 0));
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    REQUIRE(prepare(
+        &f,
+        "system Movement(position:Transform, movement:Movement, input:Input) { "
+        "position.X+=input.Move.X*movement.Speed*dt; }",
+        backend
+    ));
+    GAME_GameInput_get(f.world, owner)->move.x = 2;
+    GAME_GameMovement_get(f.world, owner)->speed = 3;
+    REQUIRE(tick(&f, 0));
+    REQUIRE(fabs(GAME_GameTransform_get_const(f.world, owner)->x - .6) < .00001);
+    fixture_free(&f);
+    return true;
+}
+static bool camera_follow_runtime(behavior_backend backend)
+{
+    system_fixture f = fixture_new();
+    char *text = text_file_read("test/fixtures/language/content/behaviors/CameraFollow.chibi");
+    REQUIRE(text);
+    bool prepared = prepare(&f, text, backend);
     free(text);
-    assert(source->asset);
-    ecs_world *world = ecs_world_new();
-    assert(!ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL));
-    assert(!ecs_world_register_component(world, &GAME_COMPONENT_GameMovement, NULL));
-    assert(!ecs_world_register_component(world, &GAME_COMPONENT_GameInput, NULL));
-    game_system *system = game_system_new(world, code_source_build_behavior(source));
-    assert(!compile_report_blocked(game_system_compile(system)));
-    assert(game_system_uses_bytecode(system));
-    assert(!graph_sljit_available() || game_system_uses_sljit_batch(system));
-    tick(system, 0);
-    assert(game_system_retained_count(system) == 0);
-    game_system_free(system);
-    code_source_free(source);
-    ecs_world_free(world);
-}
-
-static void camera_follow_runtime()
-{
-    const char
-        *legacy = "behavior CameraFollow { owner \"ecs.entity\"; "
-                  "value get_global_variable: handle<\"ecs.entity\"> = "
-                  "get_global_variable(Name: \"Player\"); "
-                  "on Tick as tick(DeltaSeconds: float = 0.0) { "
-                  "&component(\"GAME.GameTransform\") += "
-                  "(get_entity_game_transform(Entity: get_global_variable) - "
-                  "&component(\"GAME.GameTransform\")) * "
-                  "(1 - exp(-6.0 * cast<double>(&delta))); } }";
-    char *text = text_file_read("projects/arena2d/content/behaviors/CameraFollow.code");
-    assert(text);
-    code_source *sources[] = { code_source_parse(legacy), code_source_parse(text) };
-    free(text);
-    ecs_world *worlds[2];
-    game_entities *entities[2];
-    behavior_asset *assets[2];
-    behavior_instance *instances[2];
-    eval_component_reader readers[2];
-    ecs_entity cameras[2], players[2][2];
+    REQUIRE(prepared);
+    ecs_entity camera = ecs_world_create_entity(f.world), players[2];
+    REQUIRE(!GAME_GameTransform_add(f.world, camera, 0));
     for (int i = 0; i < 2; i++) {
-        assert(sources[i]->asset);
-        char link_error[256];
-        assets[i] = behavior_asset_link_libraries(sources[i]->asset, NULL, 0, link_error, sizeof link_error);
-        assert(assets[i]);
-        worlds[i] = ecs_world_new();
-        assert(!ecs_world_register_component(worlds[i], &GAME_COMPONENT_GameTransform, NULL));
-        entities[i] = game_entities_new(worlds[i], NULL);
-        cameras[i] = ecs_world_create_entity(worlds[i]);
-        assert(!GAME_GameTransform_add(worlds[i], cameras[i], 0));
-        for (int j = 0; j < 2; j++) {
-            players[i][j] = ecs_world_create_entity(worlds[i]);
-            assert(!GAME_GameTransform_add(worlds[i], players[i][j], 0));
-        }
-        assert(!ecs_world_apply_commands(worlds[i]));
-        pin_value owner = { .type = PIN_HANDLE,
-                            .type_name = "ecs.entity",
-                            .u64 = ecs_entity_to_u64(cameras[i]) };
-        instances[i] = behavior_instance_create(assets[i], &owner, NULL, NULL);
-        assert(instances[i]);
-        assert(!behavior_instance_bind_service(instances[i], "ecs.world", worlds[i]));
-        ecs_eval_component_reader_init(&readers[i], worlds[i]);
-        assert(
-            !behavior_instance_bind_service(instances[i], EVAL_COMPONENT_READER_SERVICE, &readers[i])
-        );
-        assert(!behavior_instance_bind_service(instances[i], "game.entities", entities[i]));
+        players[i] = ecs_world_create_entity(f.world);
+        REQUIRE(!GAME_GameTransform_add(f.world, players[i], 0));
     }
-    const float deltas[] = { 0, 1.0f / 60, .1f, .025f };
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    game_source_registry *registry = f.live->sources;
+    REQUIRE(!game_source_attach(registry, camera, "System", false, 0, 0));
+    const float deltas[] = { 0, 1.f / 60, .1f, .025f };
     double x = 0, y = 0;
     for (int step = 0; step < 4; step++) {
+        ecs_entity player = players[step < 2 ? 0 : 1];
         GameTransform target = { .x = step < 2 ? 20 : -7, .y = 3 + step * 2 };
+        *GAME_GameTransform_get(f.world, player) = target;
+        pin_value value = { .type = PIN_HANDLE,
+                            .type_name = "ecs.entity",
+                            .u64 = ecs_entity_to_u64(player) };
+        REQUIRE(!game_entities_set_global_value(f.live->entities, "Player", &value));
+        pin_value delta = { .type = PIN_F32, .f = deltas[step] };
+        int dispatched = game_source_dispatch(
+            registry,
+            camera,
+            "Tick",
+            &delta,
+            1,
+            step,
+            delta.f
+        );
+        if (dispatched < 0) {
+            fprintf(stderr, "CameraFollow dispatch: %d %s\n", dispatched, game_source_error(registry));
+        }
+        REQUIRE(dispatched == 1);
         double weight = 1 - exp(-6 * (double)deltas[step]);
         x += (target.x - x) * weight;
         y += (target.y - y) * weight;
-        for (int i = 0; i < 2; i++) {
-            ecs_entity player = players[i][step < 2 ? 0 : 1];
-            *GAME_GameTransform_get(worlds[i], player) = target;
-            pin_value value = { .type = PIN_HANDLE,
-                                .type_name = "ecs.entity",
-                                .u64 = ecs_entity_to_u64(player) };
-            assert(!game_entities_set_global_value(entities[i], "Player", &value));
-            pin_value delta = { .type = PIN_F32, .f = deltas[step] };
-            flow_error error = { 0 };
-            flow_run *run = behavior_instance_dispatch(
-                instances[i],
-                "Tick",
-                (flow_inputs){ .values = &delta, .count = 1 },
-                &error
-            );
-            if (!run || flow_run_status(run) != FLOW_COMPLETED) {
-                fprintf(
-                    stderr,
-                    "CameraFollow runtime variant=%d step=%d: %s\n",
-                    i,
-                    step,
-                    error.message ? error.message
-                    : run         ? flow_run_error(run)->message
-                                  : "no activation"
-                );
-            }
-            assert(run && flow_run_status(run) == FLOW_COMPLETED);
-            const GameTransform *actual = GAME_GameTransform_get_const(worlds[i], cameras[i]);
-            assert(fabs(actual->x - x) < .00001 && fabs(actual->y - y) < .00001);
-        }
-        const GameTransform *old = GAME_GameTransform_get_const(worlds[0], cameras[0]);
-        const GameTransform *readable = GAME_GameTransform_get_const(worlds[1], cameras[1]);
-        assert(fabs(old->x - readable->x) < .00001 && fabs(old->y - readable->y) < .00001);
+        const GameTransform *actual = GAME_GameTransform_get_const(f.world, camera);
+        REQUIRE(fabs(actual->x - x) < .00001 && fabs(actual->y - y) < .00001);
     }
+    fixture_free(&f);
+    return true;
+}
+static void cleanup()
+{
+    if (source_input) {
+        engine_input_free(source_input);
+    }
+    source_input = NULL;
+    if (input_schedule) {
+        game_schedule_free(input_schedule);
+    }
+    input_schedule = NULL;
+    if (input_sources) {
+        game_source_registry_free(input_sources);
+    }
+    input_sources = NULL;
+    authoring_source_free(input_source);
+    input_source = NULL;
+    authoring_language_catalog_free(input_catalog);
+    input_catalog = NULL;
+    ecs_world_free(input_world);
+    input_world = NULL;
+    if (active.world) {
+        fixture_free(&active);
+    }
+    free(formatted);
+    formatted = NULL;
+}
+TEST_CASE(source_system_persistent_wait_membership)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int i = 0; i < 2; i++) {
-        behavior_instance_destroy(instances[i]);
-        behavior_asset_free(assets[i]);
-        game_entities_free(entities[i]);
-        ecs_world_free(worlds[i]);
-        code_source_free(sources[i]);
+        REQUIRE(persistent_wait_membership(backends[i]));
     }
+    return true;
+}
+TEST_CASE(source_system_host_spawn_resume)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(host_spawn_resume(backends[i]));
+    }
+    return true;
+}
+TEST_CASE(source_system_live_component_resume)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(live_component_resume(backends[i]));
+    }
+    return true;
+}
+TEST_CASE(source_system_optional_membership_roundtrip)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(optional_membership_roundtrip(backends[i]));
+    }
+    return true;
+}
+TEST_CASE(source_system_reactive_checkpoint)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(reactive_checkpoint(backends[i]));
+    }
+    return true;
+}
+TEST_CASE(source_system_synchronous_batch_path)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(synchronous_batch_path(backends[i]));
+    }
+    return true;
+}
+TEST_CASE(source_system_camera_follow_runtime)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(camera_follow_runtime(backends[i]));
+    }
+    return true;
+}
+
+TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        input_world = ecs_world_new();
+        REQUIRE(!ecs_world_register_component(input_world, &GAME_COMPONENT_GameActionBinding, NULL));
+        REQUIRE(!ecs_world_register_component(input_world, &GAME_COMPONENT_GameInput, NULL));
+        ecs_entity owner = ecs_world_create_entity(input_world);
+        REQUIRE(!GAME_GameActionBinding_add(input_world, owner, 0));
+        REQUIRE(!GAME_GameInput_add(input_world, owner, 0));
+        REQUIRE(!ecs_world_apply_commands(input_world));
+        GAME_GameActionBinding_get(input_world, owner)->action = "Pulse";
+        const script_catalog_capability pulse = {
+            .id = script_catalog_id("event", "Pulse"),
+            .name = "Pulse",
+            .kind = SCRIPT_CAPABILITY_EVENT,
+            .completion_outcome = -1,
+        };
+        const script_catalog project = { .capabilities = &pulse,
+                                         .capability_count = 1 };
+        char error[256];
+        native_capabilities *table = host_native_default_catalog_new(NULL, 0, NULL, 0, error, sizeof error);
+        REQUIRE(table);
+        const authoring_language_catalog_input catalog_input = { .native = table,
+                                                                 .project = &project };
+        input_catalog = authoring_language_catalog_new(&catalog_input, error, sizeof error);
+        native_capabilities_free(table);
+        REQUIRE(input_catalog);
+        const script_lower_bindings bindings = authoring_language_bindings(input_catalog);
+        input_source = authoring_source_prepare_document(
+            "Input.chibi",
+            "systems/Input.chibi",
+            "system InputWatch(binding:ActionBinding){ state changes:double=0;"
+            " state pulses:double=0; state down:bool=false;"
+            " on Pulse{pulses+=1;}"
+            " on binding.PressedChanged(pressed){changes+=1;down=pressed;} }",
+            authoring_language_catalog_view(input_catalog),
+            &bindings,
+            backends[b]
+        );
+        for (int i = 0; i < input_source->diagnostic_count; i++) {
+            fprintf(stderr, "input source: %s\n", input_source->diagnostics[i].message);
+        }
+        REQUIRE(input_source->valid);
+        input_sources = game_source_registry_new(input_world);
+        REQUIRE(
+            game_source_register(input_sources, "InputWatch", input_source->module, NULL) == FLOW_OK
+        );
+        REQUIRE(game_source_step(input_sources, 0, .1) == FLOW_OK);
+        system_fixture f = { .world = input_world,
+                             .source = input_source,
+                             .program = game_source_program(input_sources, "InputWatch") };
+        REQUIRE(f.program && state(&f, owner, "changes") == 0);
+        uint64_t down_id = 0;
+        for (int i = 0; i < input_source->analysis->symbol_count; i++) {
+            const script_symbol *symbol = &input_source->analysis->symbols[i];
+            if (symbol->kind == SCRIPT_STATE && !strcmp(symbol->name, "down")) {
+                down_id = symbol->id;
+            }
+        }
+        REQUIRE(down_id);
+        game_source_input bridge = { .sources = input_sources, .now = .1, .delta = .1 };
+        const engine_input_host host = game_source_input_host(&bridge);
+        input_schedule = game_schedule_new(input_world, NULL);
+        source_input = engine_input_new(input_world, &host, input_schedule);
+        REQUIRE(engine_input_action(source_input, "Missing", true) == FLOW_ERR_UNKNOWN_EVENT);
+        REQUIRE(engine_input_action(source_input, "Pulse", true) == 1);
+        REQUIRE(engine_input_apply(source_input) == FLOW_OK);
+        fprintf(
+            stderr,
+            "input first edge backend=%d changes=%g pulses=%g error=%s\n",
+            backends[b],
+            state(&f, owner, "changes"),
+            state(&f, owner, "pulses"),
+            game_source_error(input_sources)
+        );
+        REQUIRE(state(&f, owner, "changes") == 1 && state(&f, owner, "pulses") == 1);
+        const pin_value *down = execution_instance_state(instance(&f, owner), down_id);
+        REQUIRE(down && down->type == PIN_BOOL && down->b);
+        REQUIRE(game_source_step(input_sources, .2, .1) == FLOW_OK);
+        REQUIRE(state(&f, owner, "changes") == 1);
+        bridge.now = .3;
+        REQUIRE(engine_input_action(source_input, "Pulse", true) == 0);
+        REQUIRE(engine_input_apply(source_input) == FLOW_OK);
+        REQUIRE(state(&f, owner, "changes") == 1 && state(&f, owner, "pulses") == 1);
+        bridge.now = .4;
+        REQUIRE(engine_input_action(source_input, "Pulse", false) == 1);
+        REQUIRE(engine_input_apply(source_input) == FLOW_OK);
+        REQUIRE(state(&f, owner, "changes") == 2 && state(&f, owner, "pulses") == 1);
+        down = execution_instance_state(instance(&f, owner), down_id);
+        REQUIRE(down && down->type == PIN_BOOL && !down->b);
+        REQUIRE(game_source_step(input_sources, .5, .1) == FLOW_OK);
+        REQUIRE(state(&f, owner, "changes") == 2);
+    }
+    return true;
 }
 
 void test_code_system_runtime()
 {
-    camera_follow_runtime();
-    persistent_wait_membership();
-    host_spawn_resume();
-    live_component_resume();
-    synchronous_batch_path();
-    optional_membership_roundtrip();
-    reactive_checkpoint();
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_system_persistent_wait_membership);
+    RUN_TEST_CASE(source_system_host_spawn_resume);
+    RUN_TEST_CASE(source_system_live_component_resume);
+    RUN_TEST_CASE(source_system_optional_membership_roundtrip);
+    RUN_TEST_CASE(source_system_reactive_checkpoint);
+    RUN_TEST_CASE(source_system_synchronous_batch_path);
+    RUN_TEST_CASE(source_system_camera_follow_runtime);
+    RUN_TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects);
+    pu_clear_setup();
 }

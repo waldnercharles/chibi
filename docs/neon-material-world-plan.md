@@ -1,5 +1,11 @@
 # NeonSwarm material world
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 ## Agreed outcome
 
 Build a playable NeonSwarm cave spanning several screens. Fly through an HRC-lit

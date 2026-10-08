@@ -1,5 +1,8 @@
 #include "ecs/ecs.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
@@ -485,7 +488,7 @@ void whole_read_branch_check(behavior_asset *a, int kind, bool observed)
         }
         service.bias = 13;
         assert(!flow_run_resume(run) && flow_run_status(run) == FLOW_COMPLETED);
-        assert(service.calls == 2 && bi->variables[1].d == 18);
+        assert(service.calls == 2 && bi->execution.variables[1].d == 18);
         flow_run_free(run);
     }
     behavior_batch_free(batch);
@@ -516,13 +519,13 @@ void whole_data_smoke()
     for (int i = 0; i < 3; i++) {
         flow_run *run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, NULL);
         assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_COMPLETED);
-        const whole_record *r = bi->variables[0].ptr,
-                           *previous = bi->variables[3].ptr;
+        const whole_record *r = bi->execution.variables[0].ptr,
+                           *previous = bi->execution.variables[3].ptr;
         assert(r && previous && r->weight == 12.75 && previous->weight == 6.25);
         assert(r->position.x == 1.5f && r->stamp == INT64_MIN + 3);
         assert(
-            bi->variables[1].b && bi->variables[2].u64 == 77 &&
-            service.calls == 2 * (i + 1)
+            bi->execution.variables[1].b &&
+            bi->execution.variables[2].u64 == 77 && service.calls == 2 * (i + 1)
         );
         assert(!behavior_instance_release_activation(bi, run));
         if (!i) {
@@ -538,7 +541,7 @@ void whole_data_smoke()
             allocations = behavior_function_data_allocations();
         }
         assert(allocations == behavior_function_data_allocations());
-        assert(((const whole_record *)bi->variables[0].ptr)->weight == 12.75);
+        assert(((const whole_record *)bi->execution.variables[0].ptr)->weight == 12.75);
     }
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_batch_free(batch);

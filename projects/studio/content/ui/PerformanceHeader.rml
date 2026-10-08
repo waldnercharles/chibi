@@ -1,3 +1,0 @@
-<span class="perf-title">Performance</span>
-<div class="spacer"></div>
-<live-text class="perf-readout" data-attr-value="performance.readout"></live-text>

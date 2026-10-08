@@ -1,5 +1,11 @@
 # Studio in RML and RCSS
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 > Script test and benchmark runners referenced below are retired. Their commands
 > are historical records, not current workflows. Measurements and source hashes
 > describe the recorded revisions; see [testing](testing.md) for current C tooling.
@@ -87,9 +93,15 @@ reorder/reparent (needs scene hierarchy first).
 - [ ] The graph's two-finger scroll: zoom or pan.
 - [ ] Terrain material LOD threshold (recommendation: keep 1 px).
 
-**Process**
-- [x] The development server mounts `projects/studio` from the checkout
-  containing `tools/web_serve.py`, even with a separate `--workspace`.
+**Historical process**
+
+The engine development server has been retired. Current browser products use
+the extracted Studio repository's `tools/serve_web.py` through `make web-serve`.
+The workspace mirroring and validation described below record the earlier
+implementation; they do not establish current browser acceptance.
+
+- [x] The former development server mounted `projects/studio` from the checkout
+  containing the former server, even with a separate `--workspace`.
   Initial reads, watcher updates and Studio saves use that same mount;
   game projects still use their workspace paths. On page load the bridge removes
   mirrored Studio assets absent from the checkout snapshot, including stale
@@ -123,7 +135,7 @@ changes CUT-50's native test selectors or production performance paths.
 | Graph bodies/literals, Zep surface, geometry, toasts, tooltip controller, Outliner reorder/reparent | Explicitly postponed; retain the Postponed table's reasons and dependencies. |
 | Open questions 1, 2, 4, 6, 7; graph zoom/pan; terrain LOD | User decisions remain unresolved. No parity tolerance, native-surface permanence, widget ownership, layout policy or terrain threshold chosen here. |
 | Physical macOS trackpad | Owned separately by CUT-57; not completed by this work. |
-| Active-checkout web Studio assets | Implemented in `tools/web_serve.py`. Regression fixture reproduces the old stale read, then checks checkout override with/without a workspace Studio copy, repeated save/reload, external edits/additions/removals, manifest writes, ignored stale edits, path containment and the reserved Studio project name. `test/web_serve_test.py` also checks the actual launch mount; `test/web_workspace_test.mjs` covers browser mirroring, launch arguments and preloaded Studio read/save/delete/rename/reload reconciliation. |
+| Historical active-checkout web Studio assets | Implemented by the retired engine development server. Regression fixture reproduces the old stale read, then checks checkout override with/without a workspace Studio copy, repeated save/reload, external edits/additions/removals, manifest writes, ignored stale edits, path containment and the reserved Studio project name. `test/web_serve_test.py` also checks the actual launch mount; `test/web_workspace_test.mjs` covers browser mirroring, launch arguments and preloaded Studio read/save/delete/rename/reload reconciliation. |
 
 Historical validation for this process slice passed 45 Python web-server checks
 and the Node workspace checks on Linux without graphics. Those script suites and

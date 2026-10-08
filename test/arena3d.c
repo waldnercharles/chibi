@@ -1,11 +1,13 @@
 #include "render/arena3d.h"
 
+#include "authoring/engine_preview.h"
+#include "authoring/parts_prepare.h"
 #include "platform/cute.h"
 #include "render/arena_geometry.h"
 #include "render/arena_parts.h"
 #include "render/arena_post.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
 #include "runtime/visual_parts.h"
 #include "runtime/visual_transform.h"
 #include "test/support/code_fixture.h"
@@ -348,20 +350,22 @@ static bool prism_checks(CF_Pixel *pixels)
         ecs_world_record_add(world, entity, GAME_COMPONENT_GameOrientation.id, &orientation, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    game_live_world *live = game_live_world_new(world);
-    char *json = text_file_read("content/behaviors/TwinStickInputBehavior.code");
+    game_preview_world *live = game_preview_world_new(world);
+    char *json = text_file_read("content/behaviors/TwinStickInputBehavior.chibi");
     assert(json);
-    behavior_asset *asset = test_project_asset("content/behaviors/TwinStickInputBehavior.code", json);
+    behavior_asset *asset = test_project_asset("content/behaviors/TwinStickInputBehavior.chibi", json);
     free(json);
     assert(asset);
     asset = link_test_libraries(asset);
-    assert(game_live_add_definition(live, game_live_definition_new(asset->name, asset)) == 0);
-    assert(game_behavior_attach(live->behaviors, entity, "TwinStickInputBehavior") == 0);
+    assert(
+        game_preview_add_definition(live, game_preview_definition_new(asset->name, asset)) == 0
+    );
+    assert(game_behavior_attach(live->runtime->behaviors, entity, "TwinStickInputBehavior") == 0);
     GameAim aim = { 0 };
     assert(ecs_world_record_add(world, entity, GAME_COMPONENT_GameAim.id, &aim, 0) == ECS_OK);
     assert(GAME_GameVelocity_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    engine *runtime = engine_new(world, live);
+    engine *runtime = authoring_engine_new(world, live->runtime);
     render_arena_camera camera = front_camera();
     camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
     /* Wide at the back and narrow at the +X tip; both empty samples are in its box bounds. */
@@ -425,7 +429,7 @@ static bool prism_checks(CF_Pixel *pixels)
     }
     ok &= underside > 40;
     engine_free(runtime);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
     return ok;
 }
@@ -533,7 +537,7 @@ static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
                           y < 0 ? 3.1415926536f : 0 }
         };
     }
-    char *json = render_arena_parts_write(&parts);
+    char *json = authoring_parts_write(&parts);
     GameMeshParts mesh = { .parts = json };
     assert(
         ecs_world_record_add(world, entity, GAME_COMPONENT_GameMeshParts.id, &mesh, 0) == ECS_OK

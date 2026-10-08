@@ -285,6 +285,7 @@ void material_debris_tick(
 )
 {
     assert(delta > 0 && body_count >= 0);
+    (void)body_count;
     float drag = deterministic_expf(-DRAG * delta),
           spin_drag = deterministic_expf(-SPIN_DRAG * delta);
     float cooling = deterministic_expf(-COOLING * delta);

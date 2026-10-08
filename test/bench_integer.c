@@ -15,7 +15,7 @@ static const behavior_function *entry(behavior_asset *a, bool pure)
     behavior_program_publish(a);
     graph *g = pure ? a->graphs[1] : a->graph;
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, g),
+        behavior_program_graph(behavior_program_cached(a), g),
         g->nodes[0]
     );
     assert(f);

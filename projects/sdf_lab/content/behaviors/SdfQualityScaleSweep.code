@@ -1,8 +1,0 @@
-behavior "SdfQualityScaleSweep" {
-    owner "ecs.entity";
-    state elapsed: float = 0.0;
-    on Tick as tick(DeltaSeconds: float = 0.0) {
-        &state.elapsed += cast<double>(&delta);
-        &component("GAME.GameVisualTransform", "scale") = 0.23 + 0.2 * sin(cast<double>(&state.elapsed) * 1.4);
-    }
-}

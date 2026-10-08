@@ -1,6 +1,9 @@
+#include "authoring/prototype_preview.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/library.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/runtime.h"
-#include "runtime/scenes/prototype_preview.h"
 #include "support/asset_text.h"
 #include "test/suite_internal.h"
 
@@ -128,19 +131,19 @@ static void library_contract_checks()
     test_check(behavior_asset_validate_library(library) != NULL, "library functions require an explicit owner parameter");
     graph_remove_node(function, owner);
     ecs_world *ecs = ecs_world_new();
-    game_live_world *world = game_live_world_new(ecs);
-    game_live_definition *shared = game_live_definition_new(library->name, library);
-    game_live_definition *forwarding = game_live_definition_new(wrapper->name, wrapper);
-    game_live_definition *consumer = game_live_definition_new(asset->name, asset);
+    game_preview_world *world = game_preview_world_new(ecs);
+    game_preview_definition *shared = game_preview_definition_new(library->name, library);
+    game_preview_definition *forwarding = game_preview_definition_new(wrapper->name, wrapper);
+    game_preview_definition *consumer = game_preview_definition_new(asset->name, asset);
     test_check(
-        game_live_add_definition(world, shared) == 0 &&
-            game_live_add_definition(world, forwarding) == 0 &&
-            game_live_add_definition(world, consumer) == 0,
+        game_preview_add_definition(world, shared) == 0 &&
+            game_preview_add_definition(world, forwarding) == 0 &&
+            game_preview_add_definition(world, consumer) == 0,
         "live catalog registers libraries before their linked consumers"
     );
     ecs_entity entity = ecs_world_create_entity(ecs);
     test_check(
-        game_behavior_attach(world->behaviors, entity, consumer->name) == 0,
+        game_behavior_attach(world->runtime->behaviors, entity, consumer->name) == 0,
         "a live entity can execute a shared library consumer"
     );
     game_prototype_registry registry = { 0 };
@@ -174,15 +177,18 @@ static void library_contract_checks()
     );
     behavior_asset *previous = consumer->applied;
     graph_set_pin_default(forward, inner, 0, 0, &(pin_value){ .type = PIN_I32, .i = 43 });
-    game_live_mark_dirty(forwarding);
+    game_preview_mark_dirty(forwarding);
     test_check(
-        game_live_preview(world, forwarding, error, sizeof error) == 0 &&
+        game_preview_update(world, forwarding, error, sizeof error) == 0 &&
             consumer->applied != previous,
         "editing a shared library updates its dependent behavior snapshot"
     );
-    game_behavior_dispatch(world->behaviors, entity, "Test", (flow_inputs){ 0 }, &flow_error);
-    behavior_instance
-        *instance = game_behavior_instance(world->behaviors, entity, consumer->name);
+    game_behavior_dispatch(world->runtime->behaviors, entity, "Test", (flow_inputs){ 0 }, &flow_error);
+    behavior_instance *instance = game_behavior_instance(
+        world->runtime->behaviors,
+        entity,
+        consumer->name
+    );
     behavior_instance_get_variable(instance, result_id, &result_value);
     test_check(result_value.i == 43, "existing instances execute the updated library calculation");
     test_check(
@@ -212,13 +218,13 @@ static void library_contract_checks()
     game_prototype_free(prototype);
     previous = consumer->applied;
     graph_add_node(forward, registry_node_by_name("Delay"));
-    game_live_mark_dirty(forwarding);
+    game_preview_mark_dirty(forwarding);
     test_check(
-        game_live_preview(world, forwarding, error, sizeof error) < 0 &&
+        game_preview_update(world, forwarding, error, sizeof error) < 0 &&
             consumer->applied == previous,
         "an invalid library edit preserves every applied dependent snapshot"
     );
-    game_live_world_free(world);
+    game_preview_world_free(world);
     ecs_world_free(ecs);
 }
 

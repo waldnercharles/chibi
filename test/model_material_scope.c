@@ -1,6 +1,8 @@
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "render/shader_catalog.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 
 #include <assert.h>
 #include <math.h>
@@ -12,7 +14,7 @@ static void near_value(float actual, float expected)
 }
 void test_model_material_scope()
 {
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     behavior_asset *material = behavior_asset_new("ScopePaint");
     material->domain = BEHAVIOR_DOMAIN_MATERIAL;
     graph *g = material->graph;
@@ -152,5 +154,5 @@ void test_model_material_scope()
     ecs_world_free(world);
     render_shader_parameter_cache_free(cache);
     behavior_asset_free(material);
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
 }

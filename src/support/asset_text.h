@@ -1,11 +1,8 @@
 #ifndef CHIBI_ASSET_TEXT_H
 #define CHIBI_ASSET_TEXT_H
 
+#include "support/asset_format.h"
 #include "support/asset_value.h"
-
-#define DECLARATIVE_ASSET_EXTENSION ".kdl"
-#define CODE_ASSET_EXTENSION ".code"
-#define CODE_ASSET_METADATA_EXTENSION ".code.meta"
 
 /* KDL 2 source decodes directly into native asset values. The root is an
  * implicit object whose keys are the document's top-level node names. */

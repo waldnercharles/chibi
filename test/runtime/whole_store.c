@@ -1,24 +1,11 @@
-#include "assets/code_source.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/suite_internal.h"
 #include "test/whole_store_fixture.h"
 
-static behavior_asset *reload(const behavior_asset *asset)
+static behavior_asset *generation(const behavior_asset *asset)
 {
-    char *text = behavior_asset_save(asset);
-    behavior_asset *next = behavior_asset_load(text);
-    if (!next) {
-        fprintf(stderr, "Whole store save/load failed:\n%s\n", text ? text : "NULL");
-        if (text) {
-            code_source *source = code_source_parse(text);
-            for (int i = 0; i < acount(source->diagnostics); i++) {
-                const code_source_diagnostic *d = &source->diagnostics[i];
-                fprintf(stderr, "%d..%d: %s\n", d->start, d->end, d->message);
-            }
-            code_source_free(source);
-        }
-    }
-    free(text);
+    behavior_asset *next = behavior_asset_clone(asset);
+    assert(next && behavior_asset_equal(asset, next));
     return next;
 }
 
@@ -72,7 +59,7 @@ static void parity(behavior_asset *a, bool missing, unsigned budget)
                                   BEHAVIOR_BYTECODE,
                                   behavior_default_backend() }[mode]
         ));
-        void *backing = bi->variable_storage[0].data;
+        void *backing = bi->execution.variable_storage[0].data;
         flow_options options = { .instance = bi, .step_budget = budget };
         flow_error error = { 0 };
         flow_run *run = flow_run_start(g, g->nodes[0], (flow_inputs){ &arg, 1 }, &options, &error);
@@ -84,7 +71,7 @@ static void parity(behavior_asset *a, bool missing, unsigned budget)
             status = result;
             steps = flow_run_steps(run);
             expected_error = *flow_run_error(run);
-            expected_value = snapshot(&storage, bi->variables[0]);
+            expected_value = snapshot(&storage, bi->execution.variables[0]);
             count = actual_count;
             assert(count <= 8);
             if (count) {
@@ -99,7 +86,7 @@ static void parity(behavior_asset *a, bool missing, unsigned budget)
                 flow_run_steps(run) == steps
             );
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-            same(bi->variables[0], expected_value);
+            same(bi->execution.variables[0], expected_value);
             if (!result) {
                 same(*flow_run_input_value(run, g->nodes[1], 1), expected_result);
             } else {
@@ -119,7 +106,8 @@ static void parity(behavior_asset *a, bool missing, unsigned budget)
             }
         }
         assert(
-            bi->variable_storage[0].data == backing && !bi->variable_arenas[0].first
+            bi->execution.variable_storage[0].data == backing &&
+            !bi->variable_arenas[0].first
         );
         flow_run_free(run);
         behavior_instance_destroy(bi);
@@ -133,7 +121,7 @@ static void lifecycle(behavior_backend backend)
     behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
     assert(!behavior_instance_set_backend(bi, backend));
     behavior_instance_set_trace_enabled(bi, false);
-    void *backing = bi->variable_storage[0].data;
+    void *backing = bi->execution.variable_storage[0].data;
     whole_record input = { .tag = 255,
                            .position = { 3, -4 },
                            .weight = 2.75,
@@ -147,7 +135,7 @@ static void lifecycle(behavior_backend backend)
     char *name = strdup("null nominal value");
     pin_value empty = { .type = PIN_STRUCT, .type_name = name };
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, a->graphs[3]),
+        behavior_program_graph(behavior_program_cached(a), a->graphs[3]),
         a->graphs[3]->nodes[0]
     );
     assert(f);
@@ -161,11 +149,17 @@ static void lifecycle(behavior_backend backend)
     assert(!behavior_function_run(f, &ctx, behavior_instance_backend(bi) == BEHAVIOR_SLJIT));
     memset(name, 'x', strlen(name));
     free(name);
-    assert(!bi->variables[0].ptr && !strcmp(bi->variables[0].type_name, "null nominal value"));
-    assert(bi->variable_storage[0].data == backing);
+    assert(
+        !bi->execution.variables[0].ptr &&
+        !strcmp(bi->execution.variables[0].type_name, "null nominal value")
+    );
+    assert(bi->execution.variable_storage[0].data == backing);
     same(retained, v);
-    assert(!behavior_instance_set_variable(bi, id, &v) && bi->variables[0].ptr == backing);
-    behavior_asset *next = reload(a);
+    assert(
+        !behavior_instance_set_variable(bi, id, &v) &&
+        bi->execution.variables[0].ptr == backing
+    );
+    behavior_asset *next = generation(a);
     assert(next);
     /* Stable IDs remap backing storage together with values. */
     behavior_variable swap = next->variables[0];
@@ -177,7 +171,7 @@ static void lifecycle(behavior_backend backend)
     pin_value actual;
     assert(!behavior_instance_get_variable(bi, id, &actual));
     same(actual, v);
-    assert(bi->variable_storage[1].data == backing && actual.ptr == backing);
+    assert(bi->execution.variable_storage[1].data == backing && actual.ptr == backing);
     input.position.x = 11;
     graph *g = next->graphs[4];
     flow_options options = { .instance = bi };
@@ -186,18 +180,21 @@ static void lifecycle(behavior_backend backend)
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     assert(run && !flow_run_resume(run) && run->whole_function_executed);
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-    same(bi->variables[1], v);
+    same(bi->execution.variables[1], v);
     assert(
-        bi->variables[1].ptr == backing &&
+        bi->execution.variables[1].ptr == backing &&
         ((whole_record *)retained.ptr)->position.x == 3
     );
     flow_run_free(run);
     assert(!behavior_instance_pool_release(bi));
     assert(behavior_instance_pool_reuse(bi, next, NULL, NULL, NULL) == bi);
-    assert(bi->variable_storage[1].data == backing && !bi->variables[1].ptr);
+    assert(
+        bi->execution.variable_storage[1].data == backing &&
+        !bi->execution.variables[1].ptr
+    );
     input.position.x = 3;
     assert(!behavior_instance_set_variable(bi, id, &v));
-    same(bi->variables[1], retained);
+    same(bi->execution.variables[1], retained);
     arena_free(&storage);
     behavior_instance_destroy(bi);
     behavior_asset_free(next);
@@ -208,21 +205,21 @@ static void managed_storage()
     uint64_t id = behavior_asset_add_variable(a, "Parts", PIN_STRUCT, "GameMeshParts", PIN_CONTAINER_SINGLE, NULL, "")
                       ->id;
     behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
-    assert(!bi->variable_storage[0].data);
+    assert(!bi->execution.variable_storage[0].data);
     char text[] = "owned parts";
     GameMeshParts parts = { .parts = text };
     pin_value value = { .type = PIN_STRUCT, .type_name = "GameMeshParts", .ptr = &parts };
     assert(!behavior_instance_set_variable(bi, id, &value));
     text[0] = 'x';
-    assert(!strcmp(((GameMeshParts *)bi->variables[0].ptr)->parts, "owned parts"));
+    assert(!strcmp(((GameMeshParts *)bi->execution.variables[0].ptr)->parts, "owned parts"));
     arena storage = { 0 };
     pin_value retained;
     assert(!behavior_instance_copy_variable(bi, id, &storage, &retained));
-    behavior_asset *next = reload(a);
+    behavior_asset *next = generation(a);
     assert(next && behavior_instance_can_update(bi, next) == INSTANCE_UPDATE_READY);
     behavior_instance_update(bi, next);
     behavior_asset_free(a);
-    assert(!strcmp(((GameMeshParts *)bi->variables[0].ptr)->parts, "owned parts"));
+    assert(!strcmp(((GameMeshParts *)bi->execution.variables[0].ptr)->parts, "owned parts"));
     behavior_instance_destroy(bi);
     behavior_asset_free(next);
     assert(!strcmp(retained.type_name, "GameMeshParts"));

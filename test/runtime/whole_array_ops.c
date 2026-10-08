@@ -43,7 +43,7 @@ void emit_array_ops_c(const char *path)
                 if (op >= ARRAY_OP_MAKE_SET && !waits) {
                     graph *g = a->graphs[1];
                     const behavior_function *f = behavior_program_function(
-                        behavior_program_graph(a->program, g),
+                        behavior_program_graph(behavior_program_cached(a), g),
                         g->nodes[0]
                     );
                     assert(f);
@@ -293,16 +293,17 @@ static void parity(int kind, int op, bool waits, int scenario, int control, int 
     graph *child = a->graphs[1];
     assert(!graph_set_breakpoint(child, child->nodes[1], control == 3));
     behavior_function *f = body(a);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     test_flow_snapshot *expected = NULL;
     for (int mode = 0; mode < (library ? 4 : 3); mode++) {
         if (mode == 3) {
             char name[64];
             snprintf(name, sizeof name, "generated_array_op_%d_%d_%d", kind, op, waits);
-            f->code = dlsym(library, name);
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, name);
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         assert(!behavior_instance_set_backend(
@@ -355,23 +356,26 @@ static void parity(int kind, int op, bool waits, int scenario, int control, int 
             if (state == FLOW_COMPLETED || state == FLOW_FAILED) {
                 if (!scenario && budget == 100) {
                     assert(state == FLOW_COMPLETED);
-                    expected_default(&bi->variables[2], op);
+                    expected_default(&bi->execution.variables[2], op);
                 }
                 if (scenario == 3 && op == ARRAY_OP_RESIZE && budget == 100) {
                     assert(state == FLOW_COMPLETED);
-                    expected_growth(&bi->variables[2]);
+                    expected_growth(&bi->execution.variables[2]);
                 }
                 if (op == ARRAY_OP_SET_ADD && budget == 100 &&
                     (scenario == 4 || scenario == 5 || scenario == 6)) {
-                    const pin_array *set = bi->variables[2].ptr;
-                    assert(state == FLOW_COMPLETED && bi->variables[2].container == PIN_CONTAINER_SET);
+                    const pin_array *set = bi->execution.variables[2].ptr;
+                    assert(
+                        state == FLOW_COMPLETED &&
+                        bi->execution.variables[2].container == PIN_CONTAINER_SET
+                    );
                     assert(set && set->count == (scenario == 6 ? 4 : 1));
                     assert(item_id(&set->items[set->count - 1]) == (scenario == 6 ? 4 : 2));
                 }
                 break;
             }
             if (state == FLOW_SUSPENDED) {
-                pin_value replacement = bi->variables[0];
+                pin_value replacement = bi->execution.variables[0];
                 replacement.ptr = NULL;
                 assert(!behavior_instance_set_variable(bi, a->variables[0].id, &replacement));
                 if (control == 2) {
@@ -394,9 +398,9 @@ static void parity(int kind, int op, bool waits, int scenario, int control, int 
         test_flow_snapshot_free(&expected[i]);
     }
     afree(expected);
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 static void set_returns(int kind, int op, void *library)
@@ -547,7 +551,7 @@ int bench_array_ops(const char *path, int count, int rotation)
                     vm == behavior_function_vm_allocations()
                 );
                 assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-                expected_default(&bi->variables[2], op);
+                expected_default(&bi->execution.variables[2], op);
                 printf(
                     "%s array_op_%d_%d ns=%.3f checksum=%d\n",
                     (const char *[]){ "SLJIT", "BYTECODE", "GENERATED_C" }[mode],

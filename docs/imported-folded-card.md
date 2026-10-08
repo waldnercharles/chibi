@@ -1,5 +1,11 @@
 # Imported mesh capability fixture
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 `ImportedFoldedCard` is an independent two-panel mesh with a four-color image, a banked pose, and no ship, combat, or particle behavior. Its mesh source is `content/meshes/ImportedFoldedCard.mesh.json`. Material, prototype, camera and scene were authored and validated through Chibi MCP.
 
 The native Metal preview in `imported-folded-card.png` uses a 640 × 400 output and fixed half-resolution HRC (320 × 200). The texture also supplies emission so its four regions remain visible without external lights. This is a correctness fixture, not a performance benchmark.

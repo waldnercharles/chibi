@@ -1,10 +1,10 @@
 #include "assets/prototype_instance.h"
 
-#include "graph/model/registry.h"
-#include "graph/model/type.h"
-#include "graph/runtime/value_array.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
+#include "types/array.h"
+#include "types/catalog.h"
+#include "types/type.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +27,7 @@ static bool plain(const type_field *field)
         case PIN_STR:
         case PIN_NAME: return true;
         case PIN_STRUCT: {
-            const type_desc *type = registry_type_by_name(field->type_name);
+            const type_desc *type = type_catalog_find(field->type_name);
             return type && type_is_plain(type);
         }
         default: return false;

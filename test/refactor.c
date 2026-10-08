@@ -2,6 +2,7 @@
 
 #include "assets/code_catalog.h"
 #include "assets/prototype.h"
+#include "assets/reference_adapters.h"
 #include "assets/scene_document.h"
 #include "assets/ui_document.h"
 #include "graph/compiler/compile.h"
@@ -9,7 +10,7 @@
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/runtime/instance.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
@@ -24,7 +25,8 @@
 
 void test_check(int ok, const char *message);
 
-#define ARENA "projects/arena2d/content"
+#define REFACTOR_REFERENCES "test/fixtures/refactor/references"
+#define REFACTOR_VALUES "test/fixtures/refactor/values"
 
 static const struct
 {
@@ -185,7 +187,7 @@ static test_project project_load(const char *content)
                               : kind == REFERENCE_ASSET_BEHAVIOR ||
                                         kind == REFERENCE_ASSET_SYSTEM ||
                                         !strcmp(FOLDERS[f].folder, "libraries")
-                                  ? ".code"
+                                  ? ".chibi"
                                   : ".kdl";
         size_t suffix = strlen(extension);
         while (directory && (item = readdir(directory))) {
@@ -371,7 +373,7 @@ static reference_symbol asset_symbol(const test_project *p, reference_asset_kind
  * senders; the definition's variables rename the payload pins with them. */
 static void events()
 {
-    test_project p = project_load(ARENA);
+    test_project p = project_load(REFACTOR_REFERENCES);
     int uses = event_uses(&p, "Damage");
     refactor_plan plan;
     reference_symbol damage = { .kind = REFERENCE_SYMBOL_EVENT,
@@ -507,7 +509,7 @@ static const asset_case ASSET_CASES[] = {
  * attachments, placements, spawns, component fields, widgets and calls. */
 static void assets()
 {
-    test_project p = project_load(ARENA);
+    test_project p = project_load(REFACTOR_REFERENCES);
     int renamed = 0;
     for (size_t i = 0; i < sizeof ASSET_CASES / sizeof *ASSET_CASES; i++) {
         const asset_case *c = &ASSET_CASES[i];
@@ -579,7 +581,7 @@ static void assets()
  * data-keys bindings. */
 static void values()
 {
-    test_project p = project_load("content");
+    test_project p = project_load(REFACTOR_VALUES);
     int uses = asset_uses(&p, REFERENCE_ASSET_MATERIAL, "ArenaExperience");
     refactor_plan plan;
     bool planned = rename_to(
@@ -622,7 +624,7 @@ static void values()
     project_free(&p);
 
     /* Two parts of one mesh and an object's override name one material. */
-    p = project_load(ARENA);
+    p = project_load(REFACTOR_REFERENCES);
     apush(
         p.assets,
         ((test_asset){ REFERENCE_ASSET_PROTOTYPE,
@@ -643,7 +645,10 @@ static void values()
     assert(game_scene_document_set_entity_components(scene, 0, overrides) == 0);
     av_value_free(overrides);
     free(sandbox->text);
-    char *json = game_scene_document_save(scene);
+    char *json = game_scene_document_save(
+        scene,
+        (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+    );
     sandbox->text = asset_text_to_disk(json, error, sizeof error);
     free(json);
     game_scene_document_free(scene);
@@ -680,7 +685,7 @@ static uint64_t graph_named(const test_project *p, int asset, const char *name)
  * parameters' names. */
 static void library_functions()
 {
-    test_project p = project_load(ARENA);
+    test_project p = project_load(REFACTOR_REFERENCES);
     int library = asset_named(&p, REFERENCE_ASSET_LIBRARY, "WeaponActions");
     reference_symbol spawn = { .kind = REFERENCE_SYMBOL_GRAPH,
                                .asset = library,
@@ -727,7 +732,7 @@ static void library_functions()
 /* A variable or named value stays in its asset. */
 static void asset_members()
 {
-    test_project p = project_load(ARENA);
+    test_project p = project_load(REFACTOR_REFERENCES);
     int weapon = asset_named(&p, REFERENCE_ASSET_BEHAVIOR, "Weapon");
     behavior_asset *graphs = project_graph(&p, p.texts[weapon]);
     assert(acount(graphs->variables));
@@ -761,7 +766,7 @@ static void asset_members()
 /* A rename that cannot rewrite every reference plans nothing. */
 static void refused()
 {
-    test_project p = project_load(ARENA);
+    test_project p = project_load(REFACTOR_REFERENCES);
     int sandbox = asset_named(&p, REFERENCE_ASSET_SCENE, "Sandbox");
     const char *text = p.texts[sandbox];
     p.texts[sandbox] = NULL; /* as an unsaved asset has none */
@@ -789,7 +794,7 @@ static void refused()
 
 static void deletes()
 {
-    test_project p = project_load(ARENA);
+    test_project p = project_load(REFACTOR_REFERENCES);
     refactor_plan plan;
     char error[256];
     refactor_project project = view(&p);

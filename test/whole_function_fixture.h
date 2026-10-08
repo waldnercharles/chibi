@@ -1,6 +1,8 @@
 #ifndef TEST_WHOLE_FUNCTION_FIXTURE_H
 #define TEST_WHOLE_FUNCTION_FIXTURE_H
+
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 
 #include <assert.h>
 

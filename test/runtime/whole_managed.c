@@ -124,17 +124,18 @@ static void parity(bool waits, bool components, int scenario, int control, int b
     graph *hold = a->graphs[2];
     assert(!graph_set_breakpoint(hold, hold->nodes[1], control == 3));
     behavior_function *f = entry(a);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     test_flow_snapshot *expected = NULL;
     pin_value *states = NULL;
     for (int mode = 0; mode < (library ? 4 : 3); mode++) {
         if (mode == 3) {
             char name[64];
             snprintf(name, sizeof name, "generated_managed_%d_%d", waits, components);
-            f->code = dlsym(library, name);
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, name);
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         ecs_world *world = ecs_world_new();
         assert(!ecs_world_register_component(world, &WHOLE_MANAGED_COMPONENT, NULL));
@@ -215,7 +216,7 @@ static void parity(bool waits, bool components, int scenario, int control, int b
             if (state == FLOW_COMPLETED || state == FLOW_FAILED) {
                 if (scenario < 3 && budget == 100) {
                     assert(state == FLOW_COMPLETED);
-                    assert(((whole_managed *)bi->variables[1].ptr)->count == 7);
+                    assert(((whole_managed *)bi->execution.variables[1].ptr)->count == 7);
                 }
                 break;
             }
@@ -255,9 +256,9 @@ static void parity(bool waits, bool components, int scenario, int control, int b
     }
     afree(states);
     afree(expected);
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 void test_compiled_managed(const char *path)
@@ -354,8 +355,8 @@ int bench_managed(const char *path, int count, int rotation)
                 vm == behavior_function_vm_allocations()
             );
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-            same_record(bi->variables[1].ptr, &record);
-            assert(!strcmp(bi->variables[2].str, record.label));
+            same_record(bi->execution.variables[1].ptr, &record);
+            assert(!strcmp(bi->execution.variables[2].str, record.label));
             if (components) {
                 same_record(
                     ecs_component_data_const(
@@ -371,7 +372,7 @@ int bench_managed(const char *path, int count, int rotation)
                 (const char *[]){ "SLJIT", "BYTECODE", "GENERATED_C" }[mode],
                 components ? "component" : "records",
                 elapsed * 1e9 / count,
-                ((whole_managed *)bi->variables[1].ptr)->count
+                ((whole_managed *)bi->execution.variables[1].ptr)->count
             );
             behavior_function_release_host(&ctx);
             behavior_function_activation_free(&activation);

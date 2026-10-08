@@ -45,28 +45,36 @@ endif
 ifeq ($(CHIBI_WORKSPACE_INNER),1)
 # Convenience wrapper around CMake. `make` configures and builds.
 BUILD_DIR ?= build
+SDK_BUILD_DIR ?= build-sdk
+SDK_PREFIX ?= dist/sdk
+SDK_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF
+RUNTIME_SDK_BUILD_DIR ?= build-runtime-sdk
+RUNTIME_SDK_PREFIX ?= dist/runtime-sdk
 DEBUG_BUILD_DIR ?= build-debug
-BENCHMARK_BUILD_DIR ?= build-benchmark
 RELEASE_BUILD_DIR ?= build-release
-PACKAGE_BUILD_DIR ?= build-package
-PACKAGE_OUTPUT ?= dist/chibi-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
+SDK_REFLECT_BUILD_DIR ?= build-sdk-reflect
+PLAYER_OUTPUT ?= dist/chibi-player-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 UPDATE_GAME_RUNTIME ?= 1
-TRACY_BUILD_DIR ?= build-tracy
-WEB_BUILD_DIR ?= build-web
-WEB_PROFILE_BUILD_DIR ?= build-web-profile
-WEB_THREADS_BUILD_DIR ?= build-web-threads
 WEB_THREADS ?= 0
-PUBLISH_GAME_RUNTIME ?= 0
 WEB_WORKERS ?= 4
+WEB_SUFFIX = $(if $(filter 1,$(WEB_THREADS)),-threads,)
+WEB_SDK_BUILD_DIR ?= build-web-sdk$(WEB_SUFFIX)
+WEB_SDK_PREFIX ?= dist/web-sdk$(WEB_SUFFIX)
+WEB_BUILD_DIR ?= build-studio-web$(WEB_SUFFIX)
+WEB_OUTPUT ?= dist/studio-web$(WEB_SUFFIX)
+WEB_SDK_CMAKE_FLAGS ?=
 WEB_CMAKE_FLAGS ?=
+WEB_PROJECTS ?=
+WEB_PORT ?= 8099
+CHIBI_COLLAB_URL ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
-BUILD_TARGET ?= chibi chibi_ctl
+BUILD_TARGET ?= chibi-compile chibi-player chibi_ctl
 VERBOSE ?= 0
 export VERBOSE TEST_ARGS AGENT_SELECTOR
 MAKEFLAGS += --no-print-directory
 QUIET = python3 tools/quiet.py
-AGENT_SELECTOR ?= --graph-optimize
+AGENT_SELECTOR ?=
 TEST_ARGS ?=
 TEST_TIMINGS ?= 0
 ifneq ($(strip $(TEST_ARGS)),)
@@ -78,8 +86,6 @@ endif
 NATIVE_TOOLCHAIN_FLAGS ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++)
 DEBUG_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 RELEASE_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
-BENCHMARK_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
-TRACY_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_TRACY=ON -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 SANITIZERS ?= address,undefined
 SANITIZER_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=ON -DCHIBI_SANITIZERS=$(SANITIZERS) -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
 LOCAL_CMAKE_FLAGS ?= $(SANITIZER_CMAKE_FLAGS)
@@ -89,169 +95,173 @@ FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-tracy mcp mcp-controller mcp-setup run debug debug-san play build-release run-tracy benchmark web publish-web web-serial web-configure web-serve web-profile web-threads web-threads-serve format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render clean
+.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve publish-web format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
 all: build
 
-.PHONY: package-native update-game-runtime
-
 help:
 	@printf '%s\n' \
-		'make all            Alias for make build' \
-		'make help           Show this target summary' \
-		'make build          Build Debug app/controller; VERBOSE=1 streams logs' \
-		'make build-debug    Build the plain Debug profile' \
-		'make run            Run the optimized editor on PROJECT=projects/<name> [SCENE=scenes/<file>]' \
-		'make debug          Run the plain Debug editor' \
-		'make debug-san      Run Debug with ASan+UBSan; use SANITIZERS=thread for TSan' \
-		'make play           Run the optimized Arena2D game' \
-		'make build-release  Build the fully optimized native profile' \
-		'make package-native Build a relocatable engine, Studio, and MCP package' \
-		'make update-game-runtime Refresh registered games explicitly' \
-		'make build-tracy    Build native RelWithDebInfo with Tracy enabled' \
-		'make run-tracy      Run the native Tracy profile' \
-		'make agent-list     List CPU selectors and bounded GPU capabilities' \
-		'make agent-test AGENT_SELECTOR=--graph-optimize  CPU iteration' \
-		'make agent-gpu-test Quarantined: unmeasured GPU agent command' \
-		'make test           Run instant C execution-policy unit checks' \
-		'make test-short     Alias for C execution-policy unit checks' \
-		'make test-studio-selectors  Validate native selector discovery in C' \
-		'make test-policy-inventory  Report temporary test admission policy' \
-		'make test-fast TEST_ARGS=--graph-optimize  Run one focused native selector' \
-		'make test-list      Report exact admitted commands and quarantined coverage' \
-		'make test-tools     Run all C tooling and process integration regressions' \
-		'make tools-build    Build native tooling tests and benchmark_trials' \
-		'make test-slow      Quarantined: complete native suite and function audit' \
-		'make test-full      Quarantined: full tooling and native gate' \
-		'make test-compiler-parity  Quarantined: unmeasured compiler parity checks' \
-		'make test-render    Quarantined: full GPU and window checks' \
-		'make benchmark      Quarantined: unmeasured benchmark aggregate' \
-		'make dev            Build and run RelWithDebInfo with a saved workspace' \
-		'make mcp            Run the MCP server over stdio' \
-		'make mcp-controller Build only the chibi_ctl MCP controller' \
-		'make mcp-setup      Generate local Codex MCP configuration' \
-		'make web            Build the serial browser app; WEB_THREADS=1 adds workers' \
-		'make publish-web    Publish the latest origin/main commit to GitHub Pages' \
-		'make web-serve      Serve the browser application for PROJECT on WEB_PORT' \
-		'make web-profile    Serve a web build named for the browser profiler' \
-		'make web-serial     Build only the serial browser application' \
-		'make web-threads    Build only the worker browser application' \
-		'make web-threads-serve Serve the threaded application with isolation headers' \
-		'make format         Rewrite project C sources with clang-format' \
-		'make check-format   Check project C source formatting' \
-		'make clean          Remove the default build directories'
+		'make build          Build compiler, player, and controller products' \
+		'make build-debug    Build products in plain Debug' \
+		'make build-release  Build products in Release' \
+		'make package-sdk    Package native compiler and desktop authoring SDK' \
+		'make package-player Package the separate deployed player' \
+		'make prepare-project PROJECT_ROOT=/game ARTIFACT=/output/game.chibip' \
+		'make player-run ARTIFACT=/output/game.chibip [RESOURCE_ROOT=/resources]' \
+		'make studio-build STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/installed/sdk' \
+		'make studio-run PROJECT_ROOT=/game  Run the external Studio consumer' \
+		'make studio-dev PROJECT_ROOT=/game  Run Studio with checkpoint recovery' \
+		'make package-studio Package the external Studio distribution' \
+		'make controller-build / controller-run PROJECT_ROOT=/game' \
+		'make update-game-runtime Explicitly refresh registered deployments' \
+		'make agent-list     List runnable classified selectors and admission status' \
+		'make agent-test AGENT_SELECTOR=--source-edit' \
+		'make agent-gpu-test AGENT_SELECTOR=--player-space-cadet-vm' \
+		'make test / test-short  Six C execution-policy checks, one 60s deadline' \
+		'make test-tools     C tooling integrations, one shared 60s deadline' \
+		'make language-build Build the public language C consumer' \
+		'make test-language-{semantic,execution,program,headless,prepared,format}' \
+		'make test-list      Report admitted checks and quarantined coverage' \
+		'make web STUDIO_SOURCE=/studio  Build external browser Studio and installed web SDK' \
+		'make web-threads    Build the separate worker SDK/browser profile' \
+		'make publish-web    Disabled: extracted browser publishing is not integrated' \
+		'make format / check-format  Format or check project C sources' \
+		'make clean          Remove default engine build outputs'
 
 build:
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
 	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET),) --parallel $(JOBS)
-# The MCP controller cache keys on sources alone: publish only default-profile
-# builds that refreshed chibi_ctl.
-ifeq ($(origin NATIVE_TOOLCHAIN_FLAGS) $(origin LOCAL_CMAKE_FLAGS) $(origin SANITIZER_CMAKE_FLAGS) $(origin SANITIZERS),file file file file)
-ifneq ($(filter chibi_ctl,$(BUILD_TARGET))$(if $(strip $(BUILD_TARGET)),,all),)
-	@sh tools/mcp/controller-cache.sh publish "$(BUILD_DIR)/chibi_ctl" || true
-endif
-endif
 
 build-debug:
 	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
 
-mcp-controller:
-	@$(QUIET) mcp-build -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	@$(QUIET) mcp-build -- cmake --build "$(BUILD_DIR)" --target chibi_ctl --parallel $(JOBS)
+.PHONY: sdk-reflect-build sdk-build sdk-install package-sdk runtime-sdk-build package-runtime-sdk
+sdk-reflect-build:
+	@$(QUIET) configure-sdk-reflect -- cmake -S tools/reflect -B "$(SDK_REFLECT_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_NATIVE=OFF -DCHIBI_SDK_BUILD_DESKTOP=OFF $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+	@$(QUIET) build-sdk-reflect -- cmake --build "$(SDK_REFLECT_BUILD_DIR)" --target reflect --parallel $(JOBS)
 
-mcp: mcp-controller
-	@printf '%s\n' 'MCP server running on stdio. Paste one JSON-RPC request per line, or press Ctrl-D to stop.' >&2
-	@sh tools/mcp/launch.sh
+sdk-build: sdk-reflect-build
+	@$(QUIET) configure-sdk -- sh tools/configure.sh sdk-native "$(SDK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) build-sdk -- cmake --build "$(SDK_BUILD_DIR)" --parallel $(JOBS)
 
-mcp-setup:
-	node tools/mcp/setup-codex.mjs "$(CURDIR)"
+sdk-install: sdk-build
+	@cmake --install "$(SDK_BUILD_DIR)" --prefix "$(abspath $(SDK_PREFIX))"
 
-# PROJECT picks the project a run or web-serve opens; SCENE, when set, opens a
-# scene other than the project's start scene.
-PROJECT ?= projects/arena2d
+package-sdk: sdk-build
+	@python3 tools/package_sdk.py --build "$(SDK_BUILD_DIR)" --output "$(SDK_PREFIX)" --kind sdk
+
+runtime-sdk-build: sdk-reflect-build
+	@$(QUIET) configure-runtime-sdk -- sh tools/configure.sh sdk-native "$(RUNTIME_SDK_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(SDK_CMAKE_FLAGS) -DCHIBI_SDK_BUILD_COMPILER=OFF -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) build-runtime-sdk -- cmake --build "$(RUNTIME_SDK_BUILD_DIR)" --parallel $(JOBS)
+
+package-runtime-sdk: runtime-sdk-build
+	@python3 tools/package_sdk.py --build "$(RUNTIME_SDK_BUILD_DIR)" --output "$(RUNTIME_SDK_PREFIX)" --kind runtime
+
+controller-build:
+	@$(MAKE) build BUILD_TARGET=chibi_ctl
+
+PROJECT_ROOT ?=
+ARTIFACT ?=
+RESOURCE_ROOT ?= $(dir $(abspath $(ARTIFACT)))
 SCENE ?=
 SCENE_ARG = $(if $(SCENE),--scene "$(SCENE)")
-WEB_PORT ?= 8099
-CHIBI_COLLAB_URL ?=
+STUDIO_SOURCE ?=
+STUDIO_SDK_PREFIX ?= $(SDK_PREFIX)
+STUDIO_BUILD_DIR ?= build-studio
+STUDIO_PACKAGE_BUILD_DIR ?= build-studio-package
+STUDIO_OUTPUT ?= dist/chibi-studio-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
+STUDIO_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug
+STUDIO_CHECKPOINT ?= $(STUDIO_BUILD_DIR)/workspace.json
 
-run:
-	@$(MAKE) build-release BUILD_TARGET=chibi
-	@$(MAKE) update-game-runtime
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+controller-run:
+	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
+	@$(MAKE) controller-build
+	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/bin/chibi_ctl" --project-root "$(abspath $(PROJECT_ROOT))" $(ARGS)
 
-debug:
-	@$(MAKE) build-debug BUILD_TARGET=chibi
-	@$(MAKE) update-game-runtime
-	env $(NATIVE_RUNTIME_ENV) "$(DEBUG_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+prepare-project:
+	@test -n "$(PROJECT_ROOT)" -a -n "$(ARTIFACT)" || { printf '%s\n' 'Set PROJECT_ROOT and ARTIFACT' >&2; exit 2; }
+	@$(MAKE) package-sdk
+	"$(SDK_PREFIX)/bin/chibi-compile" --project-root "$(abspath $(PROJECT_ROOT))" --output "$(abspath $(ARTIFACT))" $(SCENE_ARG) $(ARGS)
 
-debug-san:
-	@$(MAKE) build BUILD_TARGET=chibi
-	@$(MAKE) update-game-runtime
-	env $(NATIVE_RUNTIME_ENV) "$(BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+player-run:
+	@test -n "$(ARTIFACT)" && test -f "$(ARTIFACT)" || { printf '%s\n' 'Set ARTIFACT to an existing prepared project' >&2; exit 2; }
+	@$(MAKE) package-player
+	env $(NATIVE_RUNTIME_ENV) "$(PLAYER_OUTPUT)/bin/chibi-player" "$(abspath $(ARTIFACT))" --resource-root "$(abspath $(RESOURCE_ROOT))" $(ARGS)
 
-play:
-	@$(MAKE) build-release BUILD_TARGET=chibi
-	@$(MAKE) update-game-runtime
-	env $(NATIVE_RUNTIME_ENV) "$(RELEASE_BUILD_DIR)/chibi" --play --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+studio-build:
+	@test -n "$(STUDIO_SOURCE)" && test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'Set STUDIO_SOURCE to the separate Studio repository' >&2; exit 2; }
+	@test -f "$(STUDIO_SDK_PREFIX)/share/chibi/package.json" || { printf '%s\n' 'Set STUDIO_SDK_PREFIX to a packaged compiler/desktop SDK' >&2; exit 2; }
+	@$(QUIET) configure-studio -- cmake -S "$(STUDIO_SOURCE)" -B "$(STUDIO_BUILD_DIR)" -G Ninja $(NATIVE_TOOLCHAIN_FLAGS) $(STUDIO_CMAKE_FLAGS) -DChibi_DIR="$(abspath $(STUDIO_SDK_PREFIX))/lib/cmake/Chibi"
+	@$(QUIET) build-studio -- cmake --build "$(STUDIO_BUILD_DIR)" --target chibi-studio --parallel $(JOBS)
 
-# User-facing release builds use the compiler's full Release optimization.
+studio-run:
+	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
+	@$(MAKE) studio-build
+	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-studio" --project-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
+
+studio-dev:
+	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
+	@$(MAKE) studio-build
+	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-studio" --checkpoint "$(abspath $(STUDIO_CHECKPOINT))" --project-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
+
+package-studio:
+	@$(MAKE) studio-build STUDIO_BUILD_DIR="$(STUDIO_PACKAGE_BUILD_DIR)" STUDIO_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_STUDIO_DISTRIBUTION=ON"
+	@$(QUIET) package-studio -- python3 "$(STUDIO_SDK_PREFIX)/share/chibi/tools/package_studio.py" --build "$(STUDIO_PACKAGE_BUILD_DIR)" --sdk "$(STUDIO_SDK_PREFIX)" --output "$(STUDIO_OUTPUT)"
+
 build-release:
 	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
 
 update-game-runtime:
 ifneq ($(wildcard .chibi/game-runtime.json),)
 ifeq ($(UPDATE_GAME_RUNTIME),1)
-	@$(MAKE) package-native UPDATE_GAME_RUNTIME=0
+	@$(MAKE) package-player UPDATE_GAME_RUNTIME=0
+	@$(QUIET) install_game_runtime.py -- python3 tools/install_game_runtime.py --package "$(PLAYER_OUTPUT)" --config .chibi/game-runtime.json
 endif
 endif
 
-package-native:
-	@$(MAKE) build BUILD_DIR="$(PACKAGE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS) -DCHIBI_DISTRIBUTION=ON" BUILD_TARGET="chibi chibi_ctl" UPDATE_GAME_RUNTIME=0
-	@$(QUIET) package_native.py -- python3 tools/package_native.py --build "$(PACKAGE_BUILD_DIR)" --output "$(PACKAGE_OUTPUT)"
-	@$(QUIET) install_game_runtime.py -- python3 tools/install_game_runtime.py --package "$(PACKAGE_OUTPUT)"
-
-build-tracy:
-	@$(MAKE) build BUILD_DIR="$(TRACY_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(TRACY_CMAKE_FLAGS)" BUILD_TARGET="chibi chibi_ctl"
-
-run-tracy: build-tracy
-	@$(MAKE) update-game-runtime
-	env $(NATIVE_RUNTIME_ENV) "$(TRACY_BUILD_DIR)/chibi" --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+package-player:
+	@$(MAKE) package-runtime-sdk SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
+	@$(QUIET) package_player.py -- python3 tools/package_player.py --sdk "$(RUNTIME_SDK_PREFIX)" --output "$(PLAYER_OUTPUT)"
 
 benchmark:
 	@python3 tools/test_policy.py disabled benchmark
 
-# Web builds generate reflection with the native tool.
+# Browser Studio consumes a separately packaged Emscripten SDK generation.
+.PHONY: web-sdk-build package-web-sdk
+web-sdk-build: sdk-reflect-build
+	@$(QUIET) configure-web-sdk -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_SDK_BUILD_DIR)" -G Ninja $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_WEB_THREADS=$(if $(filter 1,$(WEB_THREADS)),ON,OFF) -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) build-web-sdk -- cmake --build "$(WEB_SDK_BUILD_DIR)" --parallel $(JOBS)
+
+package-web-sdk: web-sdk-build
+	@python3 tools/package_sdk.py --build "$(WEB_SDK_BUILD_DIR)" --output "$(WEB_SDK_PREFIX)" --kind sdk
+
 web-configure:
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	@$(QUIET) build-reflect -- cmake --build "$(BUILD_DIR)" --target reflect --parallel $(JOBS)
-	@$(QUIET) configure-web -- sh tools/web_env.sh env CHIBI_NATIVE_BUILD_DIR="$(BUILD_DIR)" sh tools/configure_web.sh "$(WEB_BUILD_DIR)" -DCMAKE_BUILD_TYPE=Release -DCHIBI_COLLAB_URL="$(CHIBI_COLLAB_URL)" -DCHIBI_REFLECT_EXECUTABLE=$(CURDIR)/$(BUILD_DIR)/reflect -DCMAKE_C_COMPILER_LAUNCHER=$(CURDIR)/tools/web_compiler.sh -DCMAKE_CXX_COMPILER_LAUNCHER=$(CURDIR)/tools/web_compiler.sh $(WEB_CMAKE_FLAGS)
+	@test -n "$(STUDIO_SOURCE)" && test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'Set STUDIO_SOURCE to the separate Studio repository' >&2; exit 2; }
+	@$(MAKE) package-web-sdk
+	@$(QUIET) configure-web-studio -- sh tools/web_env.sh emcmake cmake -S "$(STUDIO_SOURCE)" -B "$(WEB_BUILD_DIR)" -G Ninja $(WEB_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DChibi_DIR="$(abspath $(WEB_SDK_PREFIX))/lib/cmake/Chibi" -DCHIBI_STUDIO_WEB_PROJECTS="$(WEB_PROJECTS)" -DCHIBI_STUDIO_COLLAB_URL="$(CHIBI_COLLAB_URL)"
 
-web: web-serial
-ifeq ($(WEB_THREADS),1)
-	@$(MAKE) web-threads
-endif
-	@$(QUIET) package_web.py -- python3 tools/package_web.py --serial "$(WEB_BUILD_DIR)" $(if $(filter 1,$(WEB_THREADS)),--threads "$(WEB_THREADS_BUILD_DIR)",) --output "$(WEB_BUILD_DIR)"
+web: web-configure
+	@$(QUIET) build-web-studio -- cmake --build "$(WEB_BUILD_DIR)" --target chibi-studio --parallel $(JOBS)
+	@$(QUIET) install-web-studio -- cmake --install "$(WEB_BUILD_DIR)" --prefix "$(abspath $(WEB_OUTPUT))"
 
-web-serial: web-configure
-	@$(QUIET) build -- cmake --build "$(WEB_BUILD_DIR)" --target chibi --parallel $(JOBS)
-
-publish-web:
-	python3 tools/publish_web.py --jobs "$(JOBS)" --collab-url "$(CHIBI_COLLAB_URL)" $(if $(filter 1,$(WEB_THREADS)),--threads,) $(if $(filter 1,$(PUBLISH_GAME_RUNTIME)),--update-game-runtime,)
-
-web-serve: web
-	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT)
-
-# Serve a web build whose WASM functions and trace zones are named in the
-# browser's Performance panel.
-web-profile:
-	@$(MAKE) web-serve WEB_BUILD_DIR="$(WEB_PROFILE_BUILD_DIR)" WEB_CMAKE_FLAGS=-DCHIBI_WEB_PROFILING=ON
+web-serial:
+	@$(MAKE) web WEB_THREADS=0
 
 web-threads:
-	@$(MAKE) web-serial WEB_BUILD_DIR="$(WEB_THREADS_BUILD_DIR)" WEB_CMAKE_FLAGS="-DCHIBI_WEB_THREADS=ON -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) $(WEB_CMAKE_FLAGS)"
+	@$(MAKE) web WEB_THREADS=1
+
+web-serve: web
+	python3 "$(STUDIO_SOURCE)/tools/serve_web.py" --directory "$(WEB_OUTPUT)" --port $(WEB_PORT)
 
 web-threads-serve:
-	@$(MAKE) web WEB_THREADS=1
-	python3 tools/web_serve.py --build "$(WEB_BUILD_DIR)" --project "$(PROJECT)" --port $(WEB_PORT) --isolated
+	@$(MAKE) web-serve WEB_THREADS=1
+
+web-profile:
+	@$(MAKE) web-serve WEB_CMAKE_FLAGS="-DCHIBI_STUDIO_WEB_TRACE=ON $(WEB_CMAKE_FLAGS)"
+
+publish-web:
+	@printf '%s\n' 'Unavailable: extracted browser deployment has not been integrated. No publication was performed.' >&2
+	@exit 2
 
 format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh
@@ -265,17 +275,44 @@ agent-list:
 	@python3 tools/agent.py list
 
 agent-test:
-	@python3 tools/test_policy.py admit-env AGENT_SELECTOR
-	@$(MAKE) build BUILD_TARGET=test_suite
 	@python3 tools/test_policy.py agent-env "$(BUILD_DIR)" test
 
 agent-gpu-test:
-	@python3 tools/test_policy.py disabled agent-gpu-test
+	@python3 tools/test_policy.py agent-env "$(BUILD_DIR)" gpu-test
 
 test: test-short
 
 TOOLS_BUILD_DIR ?= build-tools
 TOOLS_C_COMPILER ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),/opt/homebrew/opt/llvm/bin/clang,$(CC))
+
+# Public SDK language checks configure independently of the engine and Studio.
+LANGUAGE_BUILD_DIR ?= build-language
+.PHONY: language-build test-language test-language-semantic test-language-execution test-language-program test-language-headless test-language-prepared test-language-format
+language-build:
+	@$(QUIET) configure-language -- cmake -S test/language -B "$(LANGUAGE_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) build-language -- cmake --build "$(LANGUAGE_BUILD_DIR)" --parallel $(JOBS)
+
+test-language:
+	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language
+
+test-language-semantic:
+	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-semantic
+
+test-language-execution:
+	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-execution
+
+test-language-program:
+	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-program
+
+test-language-headless:
+	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-headless
+
+test-language-format:
+	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-format
+
+test-language-prepared:
+	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" CHIBI_TOOLS_BUILD_DIR="$(TOOLS_BUILD_DIR)" python3 tools/test_policy.py tool language-prepared
+
 tools-build:
 	@cmake -S test/tools -B "$(TOOLS_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug
 	@cmake --build "$(TOOLS_BUILD_DIR)" --parallel $(JOBS)
@@ -286,18 +323,15 @@ test-short: tools-build
 test-tools: tools-build
 	@python3 tools/test_policy.py short "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
 
-test-studio-selectors: tools-build
-	@$(MAKE) build BUILD_TARGET=test_suite
-	@python3 tools/test_policy.py studio-selectors "$(abspath $(TOOLS_BUILD_DIR))/test_tools" "$(abspath $(BUILD_DIR))/test_suite"
+test-studio-selectors:
+	@python3 tools/test_policy.py disabled 'retired test_suite selector-discovery route'
 
 test-full test-slow test-render test-compiler-parity:
 	@python3 tools/test_policy.py disabled $@
 
 test-fast:
 	@python3 tools/test_policy.py admit-env TEST_ARGS
-	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(FAST_BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(FAST_CMAKE_FLAGS)
-	@$(QUIET) build -- cmake --build "$(FAST_BUILD_DIR)" --target test_suite --parallel $(JOBS)
-	@$(QUIET) test-suite -- env $(NATIVE_RUNTIME_ENV) CHIBI_TEST_TIMINGS=$(TEST_TIMINGS) python3 tools/test_policy.py native-env TEST_ARGS "$(FAST_BUILD_DIR)/test_suite"
+	@python3 tools/test_policy.py disabled 'retired native test_suite; use admitted test-language/tool selectors'
 
 test-list test-policy-inventory:
 	@python3 tools/test_policy.py inventory
@@ -309,17 +343,6 @@ clean:
 	else \
 		rm -rf "$(BUILD_DIR)"; \
 	fi
-	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(BENCHMARK_BUILD_DIR)" "$(TRACY_BUILD_DIR)" "$(TOOLS_BUILD_DIR)" "$(WEB_BUILD_DIR)" "$(WEB_PROFILE_BUILD_DIR)" "$(DEV_BUILD_DIR)"
-
-# Build explicitly and restore the workspace saved on the previous exit.
-.PHONY: dev
-DEV_BUILD_DIR ?= build-dev
-DEV_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
-
-dev:
-	@$(MAKE) build BUILD_DIR="$(DEV_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEV_CMAKE_FLAGS)" BUILD_TARGET="chibi"
-	@$(MAKE) update-game-runtime
-	@mkdir -p .chibi
-	env $(NATIVE_RUNTIME_ENV) "$(DEV_BUILD_DIR)/chibi" $(if $(filter --play --checkpoint,$(ARGS)),,--checkpoint "$(abspath .chibi/workspace.json)") --project-root "$(PROJECT)" $(SCENE_ARG) $(ARGS)
+	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(TOOLS_BUILD_DIR)" "$(WEB_BUILD_DIR)"
 
 endif # CHIBI_WORKSPACE_INNER

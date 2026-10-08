@@ -1,7 +1,9 @@
 #include "graph/authoring/expand.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/array.h"
 
 #include <assert.h>

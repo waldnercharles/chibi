@@ -1,5 +1,8 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "test/whole_name_fixture.h"
@@ -89,8 +92,8 @@ void whole_name_smoke()
             assert(!behavior_instance_set_variable(bi, a->variables[0].id, &input));
             assert(!behavior_instance_tick(bi, .125));
             assert(flow_run_status(run) == FLOW_COMPLETED);
-            assert(bi->variables[1].type == PIN_NAME);
-            assert(!strcmp(bi->variables[1].str, edge ? "" : "retained"));
+            assert(bi->execution.variables[1].type == PIN_NAME);
+            assert(!strcmp(bi->execution.variables[1].str, edge ? "" : "retained"));
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
             behavior_instance_destroy(bi);
             behavior_asset_free(a);

@@ -2,9 +2,10 @@
 #define CHIBI_APP_SCENE_RENDERER_H
 #include "render/arena3d.h"
 #include "render/material_raster.h"
-#include "render/particles.h"
 #include "render/radiance.h"
+#include "render/viewport.h"
 #include "runtime/engine.h"
+#include "runtime/particles.h"
 
 #include <stdbool.h>
 typedef struct app_scene_renderer app_scene_renderer;

@@ -1,865 +1,355 @@
 #include "graph/nodes/array_nodes.h"
 
+#include "graph/model/native_definition.h"
 #include "graph/model/registry.h"
-#include "graph/runtime/value_array.h"
-#include "support/arena.h"
+#include "graph/nodes/core_nodes.h"
+#include "runtime/arrays.h"
 
-#include <string.h>
-
-#define ARRAY_INPUT                                                            \
-    { "Array",                                                                 \
-      PIN_FLOW,                                                                \
-      NULL,                                                                    \
-      PIN_DATA,                                                                \
-      0,                                                                       \
-      PIN_CONTAINER_ARRAY,                                                     \
-      { .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY },                  \
-      0,                                                                       \
-      PIN_FLAG_WILDCARD,                                                       \
-      1 }
-#define ELEMENT_INPUT                                                          \
-    { "Item", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 }
-#define ARRAY_OUTPUT                                                           \
-    { "Array",                                                                 \
-      PIN_FLOW,                                                                \
-      NULL,                                                                    \
-      PIN_DATA,                                                                \
-      0,                                                                       \
-      PIN_CONTAINER_ARRAY,                                                     \
-      { .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY },                  \
-      0,                                                                       \
-      PIN_FLAG_WILDCARD,                                                       \
-      1 }
-#define ELEMENT_OUTPUT                                                         \
-    { "Item", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 }
-#define INDEX_INPUT { "Index", PIN_I32, "int", PIN_DATA }
-static pin_spec bool_output = { "Return Value", PIN_BOOL, "bool", PIN_DATA };
-static pin_spec int_output = { "Return Value", PIN_I32, "int", PIN_DATA };
-
-static pin_value scalar(pin_type type, int value)
-{
-    return (pin_value){ .type = type, .i = value };
-}
-
-static const pin_array *array_arg(const pin_value *inputs, int index)
-{
-    if (!inputs || inputs[index].container != PIN_CONTAINER_ARRAY ||
-        !inputs[index].ptr) {
-        return NULL;
-    }
-    return (const pin_array *)inputs[index].ptr;
-}
-
-static pin_value array_result(arena *a, const pin_array *src)
-{
-    pin_array *copy = pin_array_snapshot_to_arena(a, src);
-    return (pin_value){
-        .type = src ? src->element_type : PIN_FLOW,
-        .container = PIN_CONTAINER_ARRAY,
-        .type_name = copy ? copy->type_name : NULL,
-        .ptr = copy,
-    };
-}
-
-/* Fill the final array directly. Every retained payload remains deep owned;
- * no intermediate descriptor buffer needs to be copied into another array. */
-static int array_copy_items(arena *a, pin_value *out, const pin_value *items, int count)
-{
-    for (int i = 0; i < count; i++) {
-        if (pin_value_snapshot_to_arena(a, &out[i], &items[i])) {
-            return -1;
-        }
-    }
-    return 0;
-}
-static pin_value owned_array(const pin_array *source, pin_array *array)
-{
-    return (pin_value){ .type = source->element_type,
-                        .container = PIN_CONTAINER_ARRAY,
-                        .type_name = array ? array->type_name : NULL,
-                        .ptr = array };
-}
-/* Discarded values still need valid snapshot layouts, but their payloads need
- * no allocation. Retained values are validated by their actual deep copy. */
-static bool snapshot_type_valid(const type_desc *type)
-{
-    if (!type || !type->size) {
-        return false;
-    }
-    for (int i = 0; i < type->field_count; i++) {
-        const type_field *field = &type->fields[i];
-        if (field->type == PIN_STRUCT) {
-            const type_desc *nested = registry_type_by_name(field->type_name);
-            if (!nested || nested->size != field->size || !snapshot_type_valid(nested)) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-static bool snapshot_value_valid(const pin_value *value)
-{
-    if (value->container >= PIN_CONTAINER_ARRAY && value->ptr) {
-        const pin_array *array = value->ptr;
-        for (int i = 0; i < array->count; i++) {
-            if (!snapshot_value_valid(&array->items[i])) {
-                return false;
-            }
-        }
-        return true;
-    }
-    return value->type != PIN_STRUCT || !value->ptr ||
-           snapshot_type_valid(registry_type_by_name(value->type_name));
-}
-
-static pin_value array_make(const pin_value *inputs, int count, arena *a)
-{
-    if (count == 0) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    pin_array source = {
-        .element_type = inputs[0].type,
-        .type_name = inputs[0].type_name,
-        .count = count,
-        .capacity = count,
-        .items = (pin_value *)inputs,
-    };
-    return array_result(a, &source);
-}
-
-static pin_value array_get(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    const pin_array *array = array_arg(inputs, 0);
-    int index = inputs[1].i;
-    if (!array || index < 0 || index >= array->count) {
-        return (pin_value){ .type = PIN_FLOW };
-    }
-    pin_value value;
-    if (pin_value_snapshot_to_arena(a, &value, &array->items[index])) {
-        return (pin_value){ .type = PIN_FLOW };
-    }
-    return value;
-}
-
-static pin_value array_length(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    (void)a;
-    return scalar(PIN_I32, array_arg(inputs, 0) ? array_arg(inputs, 0)->count : 0);
-}
-
-static pin_value array_last_index(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    (void)a;
-    const pin_array *array = array_arg(inputs, 0);
-    return scalar(PIN_I32, array && array->count ? array->count - 1 : -1);
-}
-
-static pin_value array_empty(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    (void)a;
-    const pin_array *array = array_arg(inputs, 0);
-    return (pin_value){ .type = PIN_BOOL, .b = !array || array->count == 0 };
-}
-
-static pin_value array_not_empty(const pin_value *inputs, int count, arena *a)
-{
-    pin_value value = array_empty(inputs, count, a);
-    value.b = !value.b;
-    return value;
-}
-
-static pin_value array_valid_index(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    (void)a;
-    const pin_array *array = array_arg(inputs, 0);
-    return (pin_value){
-        .type = PIN_BOOL,
-        .b = array && inputs[1].i >= 0 && inputs[1].i < array->count,
-    };
-}
-
-static pin_value array_contains(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    (void)a;
-    const pin_array *array = array_arg(inputs, 0);
-    int found = 0;
-    if (array) {
-        for (int i = 0; i < array->count; i++) {
-            if (pin_value_equal(&array->items[i], &inputs[1])) {
-                found = 1;
-                break;
-            }
-        }
-    }
-    return (pin_value){ .type = PIN_BOOL, .b = found };
-}
-
-static pin_value array_find(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    (void)a;
-    const pin_array *array = array_arg(inputs, 0);
-    int found = -1;
-    if (array) {
-        for (int i = 0; i < array->count; i++) {
-            if (pin_value_equal(&array->items[i], &inputs[1])) {
-                found = i;
-                break;
-            }
-        }
-    }
-    return scalar(PIN_I32, found);
-}
-
-static pin_value array_identical(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    (void)a;
-    return (pin_value){
-        .type = PIN_BOOL,
-        .b = pin_array_equal(array_arg(inputs, 0), array_arg(inputs, 1)),
-    };
-}
-
-static pin_value array_add(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    const pin_array *source = array_arg(inputs, 0);
-    if (!source) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    pin_array *array = pin_array_snapshot_allocate(
-        a,
-        source->element_type,
-        source->type_name,
-        source->count + 1
-    );
-    if (array_copy_items(a, array->items, source->items, source->count) ||
-        pin_value_snapshot_to_arena(a, &array->items[source->count], &inputs[1])) {
-        return owned_array(source, NULL);
-    }
-    return owned_array(source, array);
-}
-
-static pin_value array_add_unique(const pin_value *inputs, int count, arena *a)
-{
-    const pin_array *source = array_arg(inputs, 0);
-    if (!source) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    for (int i = 0; i < source->count; i++) {
-        if (pin_value_equal(&source->items[i], &inputs[1])) {
-            return array_result(a, source);
-        }
-    }
-    return array_add(inputs, count, a);
-}
-
-static pin_value array_append(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    const pin_array *left = array_arg(inputs, 0);
-    const pin_array *right = array_arg(inputs, 1);
-    if (!left || !right) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    int total = left->count + right->count;
-    pin_array *array = pin_array_snapshot_allocate(a, left->element_type, left->type_name, total);
-    if (array_copy_items(a, array->items, left->items, left->count) ||
-        array_copy_items(a, array->items + left->count, right->items, right->count)) {
-        return owned_array(left, NULL);
-    }
-    return owned_array(left, array);
-}
-
-static pin_value array_set_elem(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    const pin_array *source = array_arg(inputs, 0);
-    if (!source) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    int index = inputs[1].i;
-    if (index < 0 || index >= source->count) {
-        return array_result(a, source);
-    }
-    if (!snapshot_value_valid(&source->items[index])) {
-        return (pin_value){ .type = PIN_FLOW };
-    }
-    pin_array *array = pin_array_snapshot_allocate(
-        a,
-        source->element_type,
-        source->type_name,
-        source->count
-    );
-    if (array_copy_items(a, array->items, source->items, index) ||
-        pin_value_snapshot_to_arena(a, &array->items[index], &inputs[2]) ||
-        array_copy_items(a, array->items + index + 1, source->items + index + 1, source->count - index - 1)) {
-        return (pin_value){ .type = PIN_FLOW };
-    }
-    return owned_array(source, array);
-}
-
-static pin_value array_insert(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    const pin_array *source = array_arg(inputs, 0);
-    if (!source) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    int index = inputs[1].i;
-    if (index < 0) {
-        index = 0;
-    }
-    if (index > source->count) {
-        index = source->count;
-    }
-    pin_array *array = pin_array_snapshot_allocate(
-        a,
-        source->element_type,
-        source->type_name,
-        source->count + 1
-    );
-    if (array_copy_items(a, array->items, source->items, index) ||
-        pin_value_snapshot_to_arena(a, &array->items[index], &inputs[2]) ||
-        array_copy_items(
-            a,
-            array->items + index + 1,
-            index < source->count ? source->items + index : NULL,
-            source->count - index
-        )) {
-        return (pin_value){ .type = PIN_FLOW };
-    }
-    return owned_array(source, array);
-}
-
-static pin_value array_remove_index(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    const pin_array *source = array_arg(inputs, 0);
-    if (!source) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    int index = inputs[1].i;
-    if (index < 0 || index >= source->count) {
-        return array_result(a, source);
-    }
-    if (!snapshot_value_valid(&source->items[index])) {
-        return (pin_value){ .type = PIN_FLOW };
-    }
-    pin_array *array = pin_array_snapshot_allocate(
-        a,
-        source->element_type,
-        source->type_name,
-        source->count - 1
-    );
-    if (array_copy_items(a, array->items, source->items, index) ||
-        array_copy_items(a, array->items + index, source->items + index + 1, source->count - index - 1)) {
-        return owned_array(source, NULL);
-    }
-    return owned_array(source, array);
-}
-
-static pin_value array_remove_item(const pin_value *inputs, int count, arena *a)
-{
-    pin_value index = array_find(inputs, count, a);
-    if (index.i < 0) {
-        return array_result(a, array_arg(inputs, 0));
-    }
-    pin_value args[] = { inputs[0], index };
-    return array_remove_index(args, 2, a);
-}
-
-static pin_value array_clear(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    const pin_array *source = array_arg(inputs, 0);
-    if (!source) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    pin_array empty = { .element_type = source->element_type,
-                        .type_name = source->type_name };
-    return array_result(a, &empty);
-}
-
-static pin_value array_reverse(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    pin_value result = array_result(a, array_arg(inputs, 0));
-    pin_array *array = (pin_array *)result.ptr;
-    if (array) {
-        for (int i = 0; i < array->count / 2; i++) {
-            pin_value temp = array->items[i];
-            array->items[i] = array->items[array->count - i - 1];
-            array->items[array->count - i - 1] = temp;
-        }
-    }
-    return result;
-}
-
-static pin_value array_swap(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    pin_value result = array_result(a, array_arg(inputs, 0));
-    pin_array *array = (pin_array *)result.ptr;
-    if (array && inputs[1].i >= 0 && inputs[2].i >= 0 &&
-        inputs[1].i < array->count && inputs[2].i < array->count) {
-        pin_value temp = array->items[inputs[1].i];
-        array->items[inputs[1].i] = array->items[inputs[2].i];
-        array->items[inputs[2].i] = temp;
-    }
-    return result;
-}
-
-/* An array input's items; an empty array may hold none, and keeps the
-   input's element type. */
-static pin_array array_or_empty(const pin_value *inputs, int index)
-{
-    const pin_array *array = array_arg(inputs, index);
-    return array ? *array
-                 : (pin_array){ .element_type = inputs[index].type,
-                                .type_name = inputs[index].type_name };
-}
-
-static pin_value array_resize(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    pin_array held = array_or_empty(inputs, 0);
-    const pin_array *source = &held;
-    if (source->element_type == PIN_FLOW) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    int size = inputs[1].i < 0 ? 0 : inputs[1].i;
-    pin_array *array = pin_array_allocate(a, source->element_type, source->type_name, size);
-    for (int i = 0; i < size && i < source->count; i++) {
-        if (pin_value_snapshot_to_arena(a, &array->items[i], &source->items[i])) {
-            return (pin_value){ .type = PIN_FLOW };
-        }
-    }
-    return (pin_value){ .type = source->element_type,
-                        .type_name = array->type_name,
-                        .container = PIN_CONTAINER_ARRAY,
-                        .ptr = array };
-}
-
-/* The Count elements from Start, clamped to the array, as JavaScript's
-   slice(start, start + count). */
-static pin_value array_slice(const pin_value *inputs, int count, arena *a)
-{
-    (void)count;
-    pin_array held = array_or_empty(inputs, 0);
-    const pin_array *source = &held;
-    if (source->element_type == PIN_FLOW) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    int start = inputs[1].i < 0             ? 0
-              : inputs[1].i > source->count ? source->count
-                                            : inputs[1].i;
-    int size = inputs[2].i < 0 ? 0 : inputs[2].i;
-    size = size > source->count - start ? source->count - start : size;
-    pin_array *array = pin_array_allocate(a, source->element_type, source->type_name, size);
-    for (int i = 0; i < size; i++) {
-        if (pin_value_snapshot_to_arena(a, &array->items[i], &source->items[start + i])) {
-            return (pin_value){ .type = PIN_FLOW };
-        }
-    }
-    return (pin_value){ .type = source->element_type,
-                        .type_name = array->type_name,
-                        .container = PIN_CONTAINER_ARRAY,
-                        .ptr = array };
-}
-
-/* Each adapter names a concrete native operation. It has no node descriptor,
- * graph traversal, runtime evaluator or retained borrowed arguments. */
-#define VALUE_CALL(operation)                                                                                  \
-    static const char *operation##_call(arena *storage, const pin_value *inputs, int count, pin_value *result) \
-    {                                                                                                          \
-        *result = operation(inputs, count, storage);                                                           \
-        if (result->type == PIN_FLOW)                                                                          \
-            return "data function produced an invalid result";                                                 \
-        if (result->type == PIN_STRUCT && !result->ptr)                                                        \
-            return "arena allocation failed";                                                                  \
-        return NULL;                                                                                           \
-    }
-VALUE_CALL(array_make)
-VALUE_CALL(array_identical)
-VALUE_CALL(array_add)
-VALUE_CALL(array_add_unique)
-VALUE_CALL(array_append)
-VALUE_CALL(array_set_elem)
-VALUE_CALL(array_insert)
-VALUE_CALL(array_remove_index)
-VALUE_CALL(array_remove_item)
-VALUE_CALL(array_clear)
-VALUE_CALL(array_reverse)
-VALUE_CALL(array_swap)
-VALUE_CALL(array_resize)
-VALUE_CALL(array_slice)
-VALUE_CALL(array_contains)
-VALUE_CALL(array_find)
-#undef VALUE_CALL
-static const node_access array_value_access = { .flags = NODE_EFFECT_PURE };
-
-static pin_spec make_inputs[] = { ELEMENT_INPUT };
-static pin_spec make_outputs[] = { ARRAY_OUTPUT };
-static pin_spec array_element_inputs[] = { ARRAY_INPUT, INDEX_INPUT };
-static pin_spec array_element_outputs[] = { ELEMENT_OUTPUT };
-static pin_spec array_only_inputs[] = { ARRAY_INPUT };
-static pin_spec array_only_outputs[] = { ARRAY_OUTPUT };
-static pin_spec array_bool_inputs[] = { ARRAY_INPUT, ELEMENT_INPUT };
-static pin_spec array_bool_index_inputs[] = { ARRAY_INPUT, INDEX_INPUT };
-static pin_spec array_array_item_inputs[] = { ARRAY_INPUT, ELEMENT_INPUT };
-static pin_spec array_two_inputs[] = { ARRAY_INPUT, ARRAY_INPUT };
-static pin_spec array_set_inputs[] = { ARRAY_INPUT, INDEX_INPUT, ELEMENT_INPUT };
-static pin_spec array_insert_inputs[] = { ARRAY_INPUT, INDEX_INPUT, ELEMENT_INPUT };
-static pin_spec array_swap_inputs[] = { ARRAY_INPUT, INDEX_INPUT, INDEX_INPUT };
-static pin_spec array_resize_inputs[] = { ARRAY_INPUT, INDEX_INPUT };
-static pin_spec array_slice_inputs[] = { ARRAY_INPUT,
-                                         { "Start", PIN_I32, "int", PIN_DATA },
-                                         { "Count", PIN_I32, "int", PIN_DATA } };
+#define COUNT(A) (sizeof(A) / sizeof *(A))
+static pin_spec make_inputs[] = { NATIVE_ARRAY_MAKE_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec make_outputs[] = { NATIVE_ARRAY_MAKE_OUTPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec array_element_inputs[] = {
+    NATIVE_ARRAY_ARRAY_ELEMENT_INPUTS(GRAPH_NATIVE_PORT)
+};
+static pin_spec array_element_outputs[] = {
+    NATIVE_ARRAY_ARRAY_ELEMENT_OUTPUTS(GRAPH_NATIVE_PORT)
+};
+static pin_spec array_only_inputs[] = { NATIVE_ARRAY_ARRAY_ONLY_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec array_only_outputs[] = { NATIVE_ARRAY_ARRAY_ONLY_OUTPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec array_bool_inputs[] = { NATIVE_ARRAY_ARRAY_BOOL_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec array_bool_index_inputs[] = {
+    NATIVE_ARRAY_ARRAY_BOOL_INDEX_INPUTS(GRAPH_NATIVE_PORT)
+};
+static pin_spec array_array_item_inputs[] = {
+    NATIVE_ARRAY_ARRAY_ARRAY_ITEM_INPUTS(GRAPH_NATIVE_PORT)
+};
+static pin_spec array_two_inputs[] = { NATIVE_ARRAY_ARRAY_TWO_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec array_set_inputs[] = { NATIVE_ARRAY_ARRAY_SET_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec array_insert_inputs[] = { NATIVE_ARRAY_ARRAY_INSERT_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec array_swap_inputs[] = { NATIVE_ARRAY_ARRAY_SWAP_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec array_resize_inputs[] = { NATIVE_ARRAY_ARRAY_RESIZE_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec array_slice_inputs[] = { NATIVE_ARRAY_ARRAY_SLICE_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec bool_output[] = { NATIVE_ARRAY_BOOL_OUTPUT(GRAPH_NATIVE_PORT) };
+static pin_spec int_output[] = { NATIVE_ARRAY_INT_OUTPUT(GRAPH_NATIVE_PORT) };
 
 node_desc NODE_MakeArray = {
-    .name = "Make Array",
-    .input_count = 1,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_MAKE_NAME,
+    .source_name = NATIVE_ARRAY_MAKE_SOURCE,
+    .input_count = COUNT(make_inputs),
+    .output_count = COUNT(make_outputs),
     .inputs = make_inputs,
     .outputs = make_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_make,
-    .host_call = &(const node_host_call){ .value = array_make_call, .variadic = true },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array make collection",
-    .description = "Builds an array from the Item inputs in pin order.",
+    .execution_call = &NATIVE_ARRAY_make_CALL,
+    .host_call = &NATIVE_ARRAY_make_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_make_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayGet = {
-    .name = "Get",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_GET_NAME,
+    .source_name = NATIVE_ARRAY_GET_SOURCE,
+    .input_count = COUNT(array_element_inputs),
+    .output_count = COUNT(array_element_outputs),
     .inputs = array_element_inputs,
     .outputs = array_element_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_get,
-    .lower = behavior_lower_array_get,
-    .category = "Array",
-    .keywords = "array get index",
-    .description = "Returns the element at zero-based Index; an out-of-range "
-                   "Index fails evaluation."
+    .execution_call = &NATIVE_ARRAY_get_CALL,
+    NATIVE_ARRAY_get_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayLength = {
-    .name = "Length",
-    .input_count = 1,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_LENGTH_NAME,
+    .source_name = NATIVE_ARRAY_LENGTH_SOURCE,
+    .input_count = COUNT(array_only_inputs),
+    .output_count = COUNT(int_output),
     .inputs = array_only_inputs,
-    .outputs = &int_output,
+    .outputs = int_output,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_length,
-    .category = "Array",
-    .keywords = "array length",
-    .description = "Returns the number of elements in Array."
+    .execution_call = &NATIVE_ARRAY_length_CALL,
+    NATIVE_ARRAY_length_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayLastIndex = {
-    .name = "Last Index",
-    .input_count = 1,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_LAST_INDEX_NAME,
+    .source_name = NATIVE_ARRAY_LAST_INDEX_SOURCE,
+    .input_count = COUNT(array_only_inputs),
+    .output_count = COUNT(int_output),
     .inputs = array_only_inputs,
-    .outputs = &int_output,
+    .outputs = int_output,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_last_index,
-    .category = "Array",
-    .keywords = "array last index",
-    .description = "Returns the index of the final element, or -1 when Array "
-                   "is empty."
+    .execution_call = &NATIVE_ARRAY_last_index_CALL,
+    NATIVE_ARRAY_last_index_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayIsEmpty = {
-    .name = "Is Empty",
-    .input_count = 1,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_EMPTY_NAME,
+    .source_name = NATIVE_ARRAY_EMPTY_SOURCE,
+    .input_count = COUNT(array_only_inputs),
+    .output_count = COUNT(bool_output),
     .inputs = array_only_inputs,
-    .outputs = &bool_output,
+    .outputs = bool_output,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_empty,
-    .category = "Array",
-    .keywords = "array empty",
-    .description = "Whether Array has no elements."
+    .execution_call = &NATIVE_ARRAY_empty_CALL,
+    NATIVE_ARRAY_empty_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayIsNotEmpty = {
-    .name = "Is Not Empty",
-    .input_count = 1,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_NOT_EMPTY_NAME,
+    .source_name = NATIVE_ARRAY_NOT_EMPTY_SOURCE,
+    .input_count = COUNT(array_only_inputs),
+    .output_count = COUNT(bool_output),
     .inputs = array_only_inputs,
-    .outputs = &bool_output,
+    .outputs = bool_output,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_not_empty,
-    .category = "Array",
-    .keywords = "array nonempty",
-    .description = "Whether Array has at least one element."
+    .execution_call = &NATIVE_ARRAY_not_empty_CALL,
+    NATIVE_ARRAY_not_empty_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayIsValidIndex = {
-    .name = "Is Valid Index",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_VALID_INDEX_NAME,
+    .source_name = NATIVE_ARRAY_VALID_INDEX_SOURCE,
+    .input_count = COUNT(array_bool_index_inputs),
+    .output_count = COUNT(bool_output),
     .inputs = array_bool_index_inputs,
-    .outputs = &bool_output,
+    .outputs = bool_output,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_valid_index,
-    .category = "Array",
-    .keywords = "array index valid",
-    .description = "Whether Index is at least 0 and less than the length of "
-                   "Array."
+    .execution_call = &NATIVE_ARRAY_valid_index_CALL,
+    NATIVE_ARRAY_valid_index_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayContains = {
     .work = NODE_WORK_LINEAR_SEARCH,
-    .name = "Contains",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_CONTAINS_NAME,
+    .source_name = NATIVE_ARRAY_CONTAINS_SOURCE,
+    .input_count = COUNT(array_bool_inputs),
+    .output_count = COUNT(bool_output),
     .inputs = array_bool_inputs,
-    .outputs = &bool_output,
+    .outputs = bool_output,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_contains,
-    .host_call = &(const node_host_call){ .value = array_contains_call },
-    .access = &array_value_access,
-    .lower = behavior_lower_array_search,
-    .category = "Array",
-    .keywords = "array contains",
-    .description = "Whether any element of Array equals Item.",
+    .execution_call = &NATIVE_ARRAY_contains_CALL,
+    .host_call = &NATIVE_ARRAY_contains_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_contains_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayFind = {
-    .name = "Find",
+    .name = NATIVE_ARRAY_FIND_NAME,
+    .source_name = NATIVE_ARRAY_FIND_SOURCE,
     .work = NODE_WORK_LINEAR_SEARCH,
-    .input_count = 2,
-    .output_count = 1,
+    .input_count = COUNT(array_bool_inputs),
+    .output_count = COUNT(int_output),
     .inputs = array_bool_inputs,
-    .outputs = &int_output,
+    .outputs = int_output,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_find,
-    .host_call = &(const node_host_call){ .value = array_find_call },
-    .access = &array_value_access,
-    .lower = behavior_lower_array_search,
-    .category = "Array",
-    .keywords = "array find",
-    .description = "Returns the zero-based index of the first element equal to "
-                   "Item, or -1 when none matches."
+    .execution_call = &NATIVE_ARRAY_find_CALL,
+    .host_call = &NATIVE_ARRAY_find_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_find_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayIdentical = {
-    .name = "Identical",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_IDENTICAL_NAME,
+    .source_name = NATIVE_ARRAY_IDENTICAL_SOURCE,
+    .input_count = COUNT(array_two_inputs),
+    .output_count = COUNT(bool_output),
     .inputs = array_two_inputs,
-    .outputs = &bool_output,
+    .outputs = bool_output,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_identical,
-    .host_call = &(const node_host_call){ .value = array_identical_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array identical equality",
-    .description = "Whether both arrays have the same element type, length and "
-                   "equal elements in order.",
+    .execution_call = &NATIVE_ARRAY_identical_CALL,
+    .host_call = &NATIVE_ARRAY_identical_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_identical_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayAdd = {
-    .name = "Array Add",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_ADD_NAME,
+    .source_name = NATIVE_ARRAY_ADD_SOURCE,
+    .input_count = COUNT(array_array_item_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_array_item_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_add,
-    .host_call = &(const node_host_call){ .value = array_add_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array add",
-    .description = "Returns a copy of Array with Item added at the end."
+    .execution_call = &NATIVE_ARRAY_add_CALL,
+    .host_call = &NATIVE_ARRAY_add_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_add_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayAddUnique = {
-    .name = "Add Unique",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_ADD_UNIQUE_NAME,
+    .source_name = NATIVE_ARRAY_ADD_UNIQUE_SOURCE,
+    .input_count = COUNT(array_array_item_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_array_item_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_add_unique,
-    .host_call = &(const node_host_call){ .value = array_add_unique_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array add unique",
-    .description = "Returns a copy of Array with Item added at the end unless "
-                   "an equal element exists.",
+    .execution_call = &NATIVE_ARRAY_add_unique_CALL,
+    .host_call = &NATIVE_ARRAY_add_unique_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_add_unique_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayAppend = {
-    .name = "Append",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_APPEND_NAME,
+    .source_name = NATIVE_ARRAY_APPEND_SOURCE,
+    .input_count = COUNT(array_two_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_two_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_append,
-    .host_call = &(const node_host_call){ .value = array_append_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array append",
-    .description = "Returns a new array with the second Array's elements after "
-                   "the first's."
+    .execution_call = &NATIVE_ARRAY_append_CALL,
+    .host_call = &NATIVE_ARRAY_append_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_append_PRESENTATION,
+
 };
 
 node_desc NODE_ArraySetElem = {
-    .name = "Set Array Elem",
-    .input_count = 3,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_SET_ELEM_NAME,
+    .source_name = NATIVE_ARRAY_SET_ELEM_SOURCE,
+    .input_count = COUNT(array_set_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_set_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_set_elem,
-    .host_call = &(const node_host_call){ .value = array_set_elem_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array set element",
-    .description = "Returns a copy of Array with Item at Index; an "
-                   "out-of-range Index leaves it unchanged.",
+    .execution_call = &NATIVE_ARRAY_set_elem_CALL,
+    .host_call = &NATIVE_ARRAY_set_elem_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_set_elem_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayInsert = {
-    .name = "Insert",
-    .input_count = 3,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_INSERT_NAME,
+    .source_name = NATIVE_ARRAY_INSERT_SOURCE,
+    .input_count = COUNT(array_insert_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_insert_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_insert,
-    .host_call = &(const node_host_call){ .value = array_insert_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array insert",
-    .description = "Returns a copy of Array with Item inserted at Index, which "
-                   "is clamped to 0 through the length."
+    .execution_call = &NATIVE_ARRAY_insert_CALL,
+    .host_call = &NATIVE_ARRAY_insert_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_insert_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayRemoveIndex = {
-    .name = "Remove Index",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_REMOVE_INDEX_NAME,
+    .source_name = NATIVE_ARRAY_REMOVE_INDEX_SOURCE,
+    .input_count = COUNT(array_bool_index_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_bool_index_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_remove_index,
-    .host_call = &(const node_host_call){ .value = array_remove_index_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array remove index",
-    .description = "Returns a copy of Array without the element at Index; an "
-                   "out-of-range Index changes nothing.",
+    .execution_call = &NATIVE_ARRAY_remove_index_CALL,
+    .host_call = &NATIVE_ARRAY_remove_index_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_remove_index_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayRemoveItem = {
-    .name = "Remove Item",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_REMOVE_ITEM_NAME,
+    .source_name = NATIVE_ARRAY_REMOVE_ITEM_SOURCE,
+    .input_count = COUNT(array_bool_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_bool_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_remove_item,
-    .host_call = &(const node_host_call){ .value = array_remove_item_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array remove item",
-    .description = "Returns a copy of Array without the first element equal to "
-                   "Item.",
+    .execution_call = &NATIVE_ARRAY_remove_item_CALL,
+    .host_call = &NATIVE_ARRAY_remove_item_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_remove_item_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayClear = {
-    .name = "Clear",
-    .input_count = 1,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_CLEAR_NAME,
+    .source_name = NATIVE_ARRAY_CLEAR_SOURCE,
+    .input_count = COUNT(array_only_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_only_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_clear,
-    .host_call = &(const node_host_call){ .value = array_clear_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array clear",
-    .description = "Returns an empty array with the same element type as Array."
+    .execution_call = &NATIVE_ARRAY_clear_CALL,
+    .host_call = &NATIVE_ARRAY_clear_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_clear_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayReverse = {
-    .name = "Reverse",
-    .input_count = 1,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_REVERSE_NAME,
+    .source_name = NATIVE_ARRAY_REVERSE_SOURCE,
+    .input_count = COUNT(array_only_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_only_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_reverse,
-    .host_call = &(const node_host_call){ .value = array_reverse_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array reverse",
-    .description = "Returns a copy of Array with its elements in reverse order."
+    .execution_call = &NATIVE_ARRAY_reverse_CALL,
+    .host_call = &NATIVE_ARRAY_reverse_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_reverse_PRESENTATION,
+
 };
 
 node_desc NODE_ArraySwap = {
-    .name = "Swap",
-    .input_count = 3,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_SWAP_NAME,
+    .source_name = NATIVE_ARRAY_SWAP_SOURCE,
+    .input_count = COUNT(array_swap_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_swap_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_swap,
-    .host_call = &(const node_host_call){ .value = array_swap_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array swap",
-    .description = "Returns a copy of Array with the elements at the two Index "
-                   "inputs exchanged; out-of-range leaves it unchanged."
+    .execution_call = &NATIVE_ARRAY_swap_CALL,
+    .host_call = &NATIVE_ARRAY_swap_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_swap_PRESENTATION,
+
 };
 
 node_desc NODE_ArrayResize = {
-    .name = "Resize",
-    .input_count = 2,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_RESIZE_NAME,
+    .source_name = NATIVE_ARRAY_RESIZE_SOURCE,
+    .input_count = COUNT(array_resize_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_resize_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_resize,
-    .host_call = &(const node_host_call){ .value = array_resize_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array resize",
-    .description = "Returns a copy of Array resized to Index elements, "
-                   "truncating or padding with zero values; below 0 gives "
-                   "empty."
+    .execution_call = &NATIVE_ARRAY_resize_CALL,
+    .host_call = &NATIVE_ARRAY_resize_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_resize_PRESENTATION,
+
 };
 
 node_desc NODE_ArraySlice = {
-    .name = "Slice",
-    .input_count = 3,
-    .output_count = 1,
+    .name = NATIVE_ARRAY_SLICE_NAME,
+    .source_name = NATIVE_ARRAY_SLICE_SOURCE,
+    .input_count = COUNT(array_slice_inputs),
+    .output_count = COUNT(array_only_outputs),
     .inputs = array_slice_inputs,
     .outputs = array_only_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = array_slice,
-    .host_call = &(const node_host_call){ .value = array_slice_call },
-    .access = &array_value_access,
-    .category = "Array",
-    .keywords = "array slice sub range window page subset part",
-    .description = "Returns the Count elements of Array from Start, clamped to "
-                   "the array, as a list shows one page of rows."
+    .execution_call = &NATIVE_ARRAY_slice_CALL,
+    .host_call = &NATIVE_ARRAY_slice_HOST,
+    .access = &NATIVE_ARRAY_ACCESS,
+    NATIVE_ARRAY_slice_PRESENTATION,
+
 };
 
 static node_desc *const ARRAY_NODES[] = {

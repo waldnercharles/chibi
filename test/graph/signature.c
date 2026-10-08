@@ -1,5 +1,8 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/graph_signature.h"
 #include "graph/document/library.h"
+#include "graph/nodes/core_nodes.h"
 #include "test/suite_internal.h"
 
 static int find_pin(const node *n, int output, const char *name)

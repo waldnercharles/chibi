@@ -1,77 +1,51 @@
-# Tracy profiling
+# Profiling explicit products
 
-Native builds can include optional Tracy instrumentation for investigating
-frame timing, worker overlap, and presentation waits. Normal, test, and web
-builds leave it disabled. The instrumentation is on demand, so a profiling
-binary does not collect trace data until a Tracy client connects.
+The separate Studio repository owns its native Tracy and browser User Timing
+options. Profiling must use the same installed SDK, project assets, worker budget,
+and scenario for both measurements. Instrumented timings are separate from
+normal performance measurements.
 
-## Web profile
+## Native Studio
 
-Browsers cannot run Tracy, so the web has its own profile. `make web-profile`
-serves a build (`CHIBI_WEB_PROFILING`) that names WASM functions for the
-browser's profiler and records each Tracy zone as a User Timing measure. In
-Chrome, record in the Performance panel: the Timings track shows the same zones
-as Tracy, such as Fixed step, Physics and Terrain required tiles, above the
-named WASM call stacks.
-
-Every web build also logs the last two minutes of frame timing: the interval
-since the previous frame, fixed steps run, simulation time dropped, and
-behavior, physics, systems and rendering milliseconds. In the page's console,
-`Module.chibiFrameSummary()` reports p50, p95, p99 and max for each timing,
-plus a fixed-step histogram, catch-up-frame count and dropped-time totals.
-`Module.chibiFrames()` returns correlated per-frame samples, and
-`Module.chibiDownloadFrames()` saves them as CSV. Add
-`?play&scenario=Firefight` to the URL to replay the same gameplay each time, so
-a summary before a change and one after it compare the same play on real
-hardware. Use the native controller's `profile_scenario` operation for headless
-measurements. A catch-up frame ran more than one fixed step;
-a dropped frame reports nonzero `dropped_ms`. `interval_ms` is the spacing
-between app log samples, which are recorded before presentation; it is not a
-GPU-completion time. Use the `Present / GPU wait` trace zone to investigate
-presentation stalls.
-
-## Threaded web build
-
-`make web-threads` builds a separate application in `build-web-threads`, with
-four total task workers by default (`WEB_WORKERS=2` through `8`). Emscripten
-prestarts the pthread pool, and the runtime shares one worker budget between
-worlds. `make web-threads-serve` sends COOP and COEP headers for local profiling.
-The serial `make web` build remains available for browsers without isolation.
-
-GitHub Pages does not send those headers. The optional bundle includes
-`chibi-isolation.js`, a service worker that adds them to same-origin responses
-within the bundle's directory. Its bootstrap registers the worker and reloads
-once before loading `chibi.js`. It requires HTTPS or localhost and service-worker
-support. It stores no assets in a cache. This follows the
-[static-host isolation approach](https://github.com/gzuidhof/coi-serviceworker);
-see Emscripten's [pthread requirements](https://emscripten.org/docs/porting/pthreads.html).
-
-Package the serial app at the site root and the optional bundle under `/threads/`:
+Use a packaged desktop SDK and a Tracy installation discoverable by
+`find_package(Tracy CONFIG)`. Configure the external Studio consumer explicitly:
 
 ```sh
-python3 tools/package_web.py --serial build-web --threads build-web-threads --output build-web-site
+make studio-build STUDIO_SOURCE=/path/to/chibi-studio \
+  STUDIO_SDK_PREFIX=/path/to/installed/sdk \
+  STUDIO_BUILD_DIR=build-studio-profile \
+  STUDIO_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_STUDIO_TRACY=ON'
+make studio-run STUDIO_SOURCE=/path/to/chibi-studio \
+  STUDIO_SDK_PREFIX=/path/to/installed/sdk PROJECT_ROOT=/path/to/game \
+  STUDIO_BUILD_DIR=build-studio-profile \
+  STUDIO_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DCHIBI_STUDIO_TRACY=ON'
 ```
 
-The Pages workflow's manual `web_threads` input includes that directory for
-that artifact. A later deployment must opt in again to retain `/threads/`.
-Test first-load isolation on a server without headers as well as the header-enabled
-development server; `crossOriginIsolated` must be true before pthread startup.
+This instruments Studio's compiled scopes. It does not enable instrumentation
+in previously installed SDK archives. Connect the Tracy profiler to the
+application to collect those scopes. The former root `build-tracy` and
+`run-tracy` products have been removed.
 
-## Behavior Wasm compilation
+## Browser Studio
 
-Web builds asynchronously compile bounded numeric behavior regions to small
-Wasm modules. Eligible regions contain 4 to 256 float or double arithmetic
-operations, use at most eight scalar inputs, and have no helpers or side effects.
-Execution uses bytecode while compilation is pending, when tracing is enabled,
-or if a region is ineligible or compilation fails. Graph replacement releases
-the old modules, including compilations that have not finished.
+```sh
+make web-profile STUDIO_SOURCE=/path/to/chibi-studio
+```
 
-Compilation currently runs on the browser main thread. Behavior jobs on pthread
-workers use bytecode: their task loop does not yield to the JavaScript microtasks
-that complete asynchronous compilation. Worker module handoff needs a separate
-implementation and measurement. The backend smoke test covers rounding,
-intermediate values, loop re-entry, tracing and graph replacement; its timings
-measure eligible arithmetic regions rather than a complete game frame.
+The external consumer enables `CHIBI_STUDIO_WEB_TRACE`, which records its
+scopes as browser User Timing measures. Use the browser Performance panel.
+The SDK has its own compilation identity; this option does not recompile SDK
+archives with instrumentation.
+
+`make web-threads` builds separate SDK and consumer directories. The installed
+SDK exports the thread mode and configured worker budget; `WEB_WORKERS=4` is
+the default. `make web-threads-serve` uses the external static server with
+COOP/COEP headers. Browser build and execution acceptance for this extraction
+remain pending. Publishing is not integrated into the current Make interface.
+
+The former graph behavior Wasm compiler and root browser bundle are retired.
+Historical frame-summary and graph-region profiling results do not validate
+the canonical source executor or the extracted browser product.
 
 ## GPU pass profiling
 
@@ -107,52 +81,3 @@ and benchmark outside the capture tool as well. The deterministic helper accepts
 Use `--mode live` to retain the original moving scenario, or `--mode frozen` for
 a stable endpoint. The default `both` mode compares both workloads. Capture only
 one case at a time and keep instrumented timings separate from benchmarks.
-
-## Native profile
-
-Build the profiling targets with symbols and sanitizers disabled:
-
-```sh
-make build-tracy
-```
-
-Run the editor or another authored project:
-
-```sh
-make run-tracy PROJECT=. SCENE=scenes/Arena3D.kdl
-```
-
-Use the [Tracy profiler](https://github.com/wolfpld/tracy/releases) and
-connect to the application on its local Tracy port. The first capture should
-use the same fixed assets, seed, worker budget, and scenario as the existing
-performance check. Capture names should include the build or commit and the
-scenario so before and after traces remain comparable.
-
-The first instrumentation slice covers application and scene preview frames,
-engine frames and fixed steps, behavior execution, physics, ECS systems,
-render submission, presentation, and native task pool workers. Behavior scopes
-also separate schedule repair, validation of parallel rows and its worker
-chunks, query preparation and worker execution. These zones describe timing
-and overlap; they do not replace deterministic scenario results or benchmark
-thresholds.
-
-Physics scopes separate ECS synchronization, the Box2D solve, swept-target
-maintenance, pair collection, transform writeback, and pair sorting/event
-queueing. `Contact events` measures the later event pump, including lifecycle
-flushes between batches. Correlate these scopes with their containing engine
-frame to distinguish steady costs from work concentrated in slow frames.
-Nested zones split pair sorting from contact comparison, and contact-batch
-dispatch from lifecycle processing. `Detach behavior attachments` isolates
-behavior removal within bulk entity destruction.
-
-GPU pass timing depends on the renderer backend exposing GPU timestamps. The
-existing preview measurement records GPU complete host time and the Tracy
-CPU zones identify the submission and presentation boundaries; a capture
-without GPU zones remains a CPU and wait diagnosis.
-
-For fixed-quality NeonSwarm comparisons, use
-`tools/benchmark_neon_materials.py` as described in
-[the material performance report](neon-material-performance.md). Fluid reaction,
-density, relaxation, collision, raster preparation and HRC submission zones are
-available in profiling builds. These renderer zones measure CPU submission;
-they are not GPU pass timestamps.

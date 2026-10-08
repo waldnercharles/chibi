@@ -21,6 +21,7 @@ int bench_field_slices();
 
 int main(int argc, char **argv)
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     if (argc > 1 && !strcmp(argv[1], "--bench-fields")) {
         return bench_fields();
     }

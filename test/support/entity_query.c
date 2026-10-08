@@ -1,12 +1,15 @@
 #include "runtime/behaviors/entity_query.h"
 
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
-#include "graph/runtime/value_array.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -231,7 +234,7 @@ static void fused_counts(ecs_world *world, pin_array *input, behavior_backend ba
     assert(bi && !behavior_instance_set_backend(bi, backend));
     assert(!behavior_instance_bind_service(bi, "ecs.world", world));
     const behavior_function *compiled = behavior_program_function(
-        behavior_program_graph(asset->program, g),
+        behavior_program_graph(behavior_program_cached(asset), g),
         g->nodes[0]
     );
     assert(compiled);
@@ -316,7 +319,9 @@ static void fused_counts(ecs_world *world, pin_array *input, behavior_backend ba
     assert(health->current == -4 && flow_run_input_value(run, g->nodes[1], 1)->i == 2);
     flow_run_free(run);
     health->current = before;
-    const compile_report *published = behavior_program_report(asset->program);
+    const compile_report *published = behavior_program_report(
+        behavior_program_cached(asset)
+    );
     assert(published->note_count == 4 && published->warning_count >= 1);
     behavior_instance_destroy(bi);
     behavior_asset_free(asset);
@@ -367,7 +372,7 @@ static void shared_predicate_rows(ecs_world *world, pin_array *input, behavior_b
         assert(flow_run_input_value(run, g->nodes[1], 2)->i == 3);
         flow_run_free(run);
     }
-    const compile_report *report = behavior_program_report(asset->program);
+    const compile_report *report = behavior_program_report(behavior_program_cached(asset));
     assert(report->note_count == 2 && !report->warning_count);
     behavior_instance_destroy(bi);
     behavior_asset_free(asset);
@@ -403,7 +408,7 @@ static void separate_snapshots(ecs_world *world, pin_array *input, behavior_back
     for (int i = 0; i < 4; i++) {
         assert(flow_run_input_value(run, g->nodes[1], i + 1)->i == expected[i]);
     }
-    const compile_report *report = behavior_program_report(a->program);
+    const compile_report *report = behavior_program_report(behavior_program_cached(a));
     assert(report->note_count == 4);
     for (int i = 0; i < acount(report->items); i++) {
         assert(strstr(report->items[i].message, "2 compatible"));
@@ -555,11 +560,13 @@ void test_entity_query(behavior_backend backend)
             assert(!behavior_instance_bind_service(bi, "ecs.world", world));
             graph *g = a->graphs[1];
             const behavior_function *f = behavior_program_function(
-                behavior_program_graph(a->program, g),
+                behavior_program_graph(behavior_program_cached(a), g),
                 g->nodes[0]
             );
             if (!f || acount(f->host_calls) != dynamic) {
-                const compile_diagnostic *d = behavior_program_diagnostic(a->program);
+                const compile_diagnostic *d = behavior_program_diagnostic(
+                    behavior_program_cached(a)
+                );
                 fprintf(
                     stderr,
                     "query test %d dynamic %d calls %d: %s\n",

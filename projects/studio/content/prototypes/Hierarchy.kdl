@@ -1,4 +1,0 @@
-name "Hierarchy"
-components {
-    GAME.GameUi document="Hierarchy" hidden=#true
-}

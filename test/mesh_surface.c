@@ -1,7 +1,7 @@
 #include "render/mesh_surface.h"
 
 #include "render/geometry_2d.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 
 #include <assert.h>

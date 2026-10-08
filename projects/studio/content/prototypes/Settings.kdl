@@ -1,5 +1,0 @@
-name "Settings"
-components {
-    GAME.GameUi document="Settings" hidden=#true
-}
-(array)behaviors "Dismiss" "NavKeys"

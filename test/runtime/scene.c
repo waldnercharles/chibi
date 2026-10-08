@@ -1,3 +1,7 @@
+#include "authoring/native_prototype.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "runtime/component_catalog.h"
 #include "test/asset_fixture.h"
 #include "test/suite_internal.h"
 
@@ -217,7 +221,7 @@ void run_prototype_checks(void)
     test_check(
         prototype && game_prototype_remove_component(prototype, "GameTransform") == 0 &&
             acount(prototype->components) == 1 &&
-            game_prototype_add_component(prototype, &GAME_COMPONENT_GameTransform) == 0 &&
+            game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameTransform) == 0 &&
             acount(prototype->components) == 2,
         "prototype component structure is editable"
     );
@@ -345,7 +349,10 @@ void run_scene_document_checks(void)
         char error[256];
         game_scene_document *scene = game_scene_document_load(source, error, sizeof error);
         assert(scene);
-        char *saved = game_scene_document_save(scene);
+        char *saved = game_scene_document_save(
+            scene,
+            (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+        );
         assert(
             saved && strstr(saved, "kind=\"Liquid\"") &&
             strstr(saved, "color=0x399fe8ff") &&
@@ -354,7 +361,10 @@ void run_scene_document_checks(void)
         );
         game_scene_document *loaded = game_scene_document_load(saved, error, sizeof error);
         assert(loaded);
-        char *again = game_scene_document_save(loaded);
+        char *again = game_scene_document_save(
+            loaded,
+            (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+        );
         assert(again && !strcmp(saved, again));
         av_value *before = av_obj_get(scene->entities[0].components, "GameTransform");
         av_value *after = av_obj_get(loaded->entities[0].components, "GameTransform");
@@ -384,7 +394,10 @@ void run_scene_document_checks(void)
     av_value_free(component_values);
     component_values = test_read_asset_value("GameAppearance shape=0\n");
     assert(game_scene_document_set_entity_components(document, 0, component_values) == 0);
-    char *enum_text = game_scene_document_save(document);
+    char *enum_text = game_scene_document_save(
+        document,
+        (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+    );
     char enum_error[256];
     av_doc *enum_saved = av_doc_read(enum_text, enum_error, sizeof enum_error);
     av_value *enum_entity = enum_saved
@@ -417,7 +430,10 @@ void run_scene_document_checks(void)
                                                  .force_drive = true,
                                                  .contact_hertz = 15,
                                                  .contact_damping = 1 };
-    char *saved = game_scene_document_save(document);
+    char *saved = game_scene_document_save(
+        document,
+        (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+    );
     char error[256];
     game_scene_document *loaded = game_scene_document_load(saved, error, sizeof error);
     test_check(saved && strstr(saved, "4294967296"), "scene save does not truncate an out-of-range enum while labeling it");
@@ -463,7 +479,10 @@ void run_scene_document_checks(void)
         "scene documents round-trip behavior attachment names and "
         "component overrides"
     );
-    char *resaved = game_scene_document_save(loaded);
+    char *resaved = game_scene_document_save(
+        loaded,
+        (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+    );
     test_check(saved && resaved && strcmp(saved, resaved) == 0, "scene document save output is deterministic");
     game_scene_document *duplicate = game_scene_document_new("Duplicate");
     test_check(

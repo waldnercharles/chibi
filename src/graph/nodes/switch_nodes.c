@@ -1,147 +1,76 @@
+#include "graph/model/native_definition.h"
 #include "graph/model/registry.h"
-#include "graph/runtime/flow.h"
+#include "graph/nodes/core_nodes.h"
+#include "runtime/selection.h"
+#include "runtime/selection_definition.h"
 
-#include <string.h>
-
-static pin_spec switch_int_inputs[] = {
-    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-    { "Selection", PIN_I32, "int", PIN_DATA },
-};
-static pin_spec switch_string_inputs[] = {
-    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-    { "Selection", PIN_STR, "const char *", PIN_DATA },
-};
-static pin_spec switch_name_inputs[] = {
-    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-    { "Selection", PIN_NAME, "name", PIN_DATA },
-};
-static pin_spec switch_outputs[] = {
-    { "Case0", PIN_FLOW, NULL, PIN_EXEC },
-    { "Case1", PIN_FLOW, NULL, PIN_EXEC },
-    { "Default", PIN_FLOW, NULL, PIN_EXEC },
-};
-static pin_spec select_inputs[] = {
-    { "Index", PIN_I32, "int", PIN_DATA },
-    { "Option0", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
-    { "Option1", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
-};
-static pin_spec select_outputs[] = {
-    { "Return Value", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
-};
-
-static int flow_switch_int(node *n, flow_context *ctx)
-{
-    pin_value selection;
-    int result = flow_context_eval_data(ctx, 1, &selection);
-    if (result) {
-        return result;
-    }
-    if (selection.type != PIN_I32) {
-        return flow_context_fail(ctx, FLOW_ERR_INVALID_GRAPH, "Switch selection is not int");
-    }
-    int cases = n->output_count - 1;
-    int output = selection.i >= 0 && selection.i < cases ? selection.i : cases;
-    return flow_context_continue(ctx, output);
-}
-
-static int flow_switch_text(node *n, flow_context *ctx)
-{
-    pin_value selection;
-    int result = flow_context_eval_data(ctx, 1, &selection);
-    if (result) {
-        return result;
-    }
-    const char *value = selection.str ? selection.str : "";
-    for (int i = 0; i + 1 < n->output_count; i++) {
-        const char *name = n->output_pins[i].name ? n->output_pins[i].name : "";
-        if (strncmp(name, "Case:", 5) == 0 && strcmp(name + 5, value) == 0) {
-            return flow_context_continue(ctx, i);
-        }
-    }
-    return flow_context_continue(ctx, n->output_count - 1);
-}
-
-static pin_value select_value(const pin_value *inputs, int count, arena *a)
-{
-    (void)a;
-    if (count < 2 || inputs[0].type != PIN_I32 || inputs[0].i < 0 ||
-        inputs[0].i + 1 >= count) {
-        return (pin_value){ .type = PIN_FLOW };
-    }
-    return inputs[inputs[0].i + 1];
-}
+static pin_spec switch_int_inputs[] = { NATIVE_SWITCH_INT_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec switch_string_inputs[] = { NATIVE_SWITCH_STRING_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec switch_name_inputs[] = { NATIVE_SWITCH_NAME_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec switch_outputs[] = { NATIVE_SWITCH_OUTPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec select_inputs[] = { NATIVE_SELECT_INPUTS(GRAPH_NATIVE_PORT) };
+static pin_spec select_outputs[] = { NATIVE_SELECT_OUTPUTS(GRAPH_NATIVE_PORT) };
 
 node_desc NODE_SwitchInt = {
-    .name = "Switch on Int",
+    .name = NATIVE_SWITCH_INT_NAME,
     .input_count = 2,
     .output_count = 3,
     .inputs = switch_int_inputs,
     .outputs = switch_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = flow_switch_int,
+    .host_call = &NATIVE_SWITCH_INT_CALL,
     .display_class = NODE_DISPLAY_FLOW,
-    .category = "Flow Control",
-    .keywords = "switch int cases default",
-    .description = "Fires the case output numbered Selection, counting from 0, "
-                   "or Default when out of range.",
+    NATIVE_SWITCH_Int_PRESENTATION,
+
 };
 node_desc NODE_SwitchString = {
-    .name = "Switch on String",
+    .name = NATIVE_SWITCH_STRING_NAME,
     .input_count = 2,
     .output_count = 3,
     .inputs = switch_string_inputs,
     .outputs = switch_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = flow_switch_text,
+    .host_call = &NATIVE_SWITCH_TEXT_CALL,
     .display_class = NODE_DISPLAY_FLOW,
-    .category = "Flow Control",
-    .keywords = "switch string cases default",
-    .description = "Fires the case whose label exactly matches Selection, or "
-                   "Default when none does.",
+    NATIVE_SWITCH_String_PRESENTATION,
+
 };
 node_desc NODE_SwitchName = {
-    .name = "Switch on Name",
+    .name = NATIVE_SWITCH_NAME_NAME,
     .input_count = 2,
     .output_count = 3,
     .inputs = switch_name_inputs,
     .outputs = switch_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = flow_switch_text,
+    .host_call = &NATIVE_SWITCH_TEXT_CALL,
     .display_class = NODE_DISPLAY_FLOW,
-    .category = "Flow Control",
-    .keywords = "switch name cases default",
-    .description = "Fires the case whose label matches the Selection name, or "
-                   "Default when none does.",
+    NATIVE_SWITCH_Name_PRESENTATION,
+
 };
 node_desc NODE_SwitchEnum = {
-    .name = "Switch on Enum",
+    .name = NATIVE_SWITCH_ENUM_NAME,
     .input_count = 2,
     .output_count = 3,
     .inputs = switch_int_inputs,
     .outputs = switch_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = flow_switch_int,
+    .host_call = &NATIVE_SWITCH_INT_CALL,
     .display_class = NODE_DISPLAY_FLOW,
-    .category = "Flow Control",
-    .keywords = "switch enum cases default",
-    .description = "Fires the case output at Selection's enum value, counting "
-                   "from 0, or Default when out of range.",
+    NATIVE_SWITCH_Enum_PRESENTATION,
+
 };
 node_desc NODE_Select = {
-    .name = "Select",
+    .name = NATIVE_SELECT_NAME,
     .input_count = 3,
     .output_count = 1,
     .inputs = select_inputs,
     .outputs = select_outputs,
     .pure_kind = NODE_PURE_CALL,
-    .fn = select_value,
+    .execution_call = &NATIVE_SELECT_CALL,
+    .access = &NATIVE_SELECTION_ACCESS,
     .display_class = NODE_DISPLAY_PURE,
-    .category = "Utilities",
-    .keywords = "select choose pick value ternary if else bool true false "
-                "option index",
-    .description = "Returns the Option input chosen by zero-based Index. "
-                   "A bool Index picks Option1 when true and Option0 when "
-                   "false. An out-of-range Index fails evaluation.",
+    NATIVE_SELECT_PRESENTATION,
+
 };
 
 static node_desc *const SWITCH_NODES[] = {

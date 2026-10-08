@@ -6,30 +6,25 @@ Normal detail changes shading. It does not move the SDF surface, its depth or
 its compiled bounds. The existing material Height input separately adds relief
 to the 2.5D height/shadow representation.
 
-The examples in `projects/modeling_lab/author-detail.mjs` use the public MCP
-stdio adapter and the same graph operations as Studio. The script verifies
-`getProjectStatus.project_root` before writing. It searches for the required
-nodes before generating images, then calls `buildGraph`, `buildPrototype`,
-`buildScene`, `validateAsset` and `inspectGraph`. Existing baseline assets are
-preserved. No saved camera or HRC baseline is edited.
+The saved examples live in `projects/modeling_lab/content`. Edit their model,
+material, prototype and scene KDL directly, or use Studio. The former
+`author-detail.mjs` recipe and MCP transport are retired; there is no replacement
+command that recreates the study or regenerates its images from an empty project.
 
-After building the native controller, reproduce the assets with:
+Format and validate saved assets with the native controller:
 
 ```sh
-node projects/modeling_lab/author-detail.mjs
+build/chibi_ctl --project-root projects/modeling_lab --format
+printf '%s\n' '{"contract":1,"operation":"validate_asset","kind":"model","name":"PolaroidSurfaceDetail"}' | \
+  build/chibi_ctl --project-root projects/modeling_lab
+printf '%s\n' '{"contract":1,"operation":"inspect_graph","kind":"model","name":"PolaroidSurfaceDetail"}' | \
+  build/chibi_ctl --project-root projects/modeling_lab
 ```
 
-Optional GPU previews require the native render backend and run serially:
-
-```sh
-node projects/modeling_lab/author-detail.mjs --preview
-```
-
-This writes PNGs and structured reports into `build/model-evidence`. The
-examples request 1200 by 760 pixels. Public `previewScene` accepts dimensions
-from 64 through 2048; `previewShader` accepts at most 512. Two rendered frames
-are a correctness capture, not a timing measurement. Use `render_frames` above
-two for the controller's separate complete-frame measurement workflow.
+Use the bounded hidden-window scene preview route in
+[agent execution](agent-execution.md) for visual evidence. Previewing a material
+alone cannot verify model geometry. The reports under `build/model-evidence`
+record earlier captures; they are not results of the current migration.
 
 ## Nodes and coordinates
 
@@ -128,9 +123,7 @@ lighting. Existing limits remain 1024 material IR nodes, 32 material uniform
 slots, eight image variants and 512 ramp vec4s. Geometry uses its separate
 32-slot parameter budget.
 
-The generated 64 by 64 RGBA8 maps are reproducible data, not edits to the
-reference photograph. `DetailHeight` and `DetailNormal` are linear data maps;
-`DetailChecker` and `DetailLabel` are color examples. The optional
-`--refresh-new-materials` authoring flag replaces only the new
-`DetailPolaroid*` material graphs through checked semantic edits. It never
-rewrites the original Polaroid materials.
+The saved 64 by 64 RGBA8 maps are example data. `DetailHeight` and `DetailNormal`
+are linear data maps; `DetailChecker` and `DetailLabel` are color examples. The
+former `--refresh-new-materials` recipe is retired. Edit the saved
+`DetailPolaroid*` material KDL and validate those assets to change their detail.

@@ -2,6 +2,7 @@
 
 #include "assets/project.h"
 #include "automation/controller.h"
+#include "graph/authoring/asset_edit.h"
 #include "support/asset_text.h"
 #include "test/suite_internal.h"
 
@@ -15,13 +16,13 @@ static bool problem_at(const catalog_problem *p, const behavior_asset *asset, ui
            p->node_id == node_id && p->severity == CMPL_WARNING;
 }
 
-/* Writes an asset's code to content/<folder>/<name>.code. */
+/* Writes an asset's code to content/<folder>/<name>.chibi. */
 static void write_asset(const char *root, const char *folder, const behavior_asset *asset)
 {
     char path[256];
     snprintf(path, sizeof path, "%s/content/%s", root, folder);
     mkdir(path, 0755);
-    snprintf(path, sizeof path, "%s/content/%s/%s.code", root, folder, asset->name);
+    snprintf(path, sizeof path, "%s/content/%s/%s.chibi", root, folder, asset->name);
     char *json = behavior_asset_save(asset);
     char *code = json ? strdup(json) : NULL;
     assert(code);
@@ -83,8 +84,8 @@ static void catalog_links_libraries(const behavior_asset *library, const behavio
     write_asset(root, "libraries", emptied);
     behavior_asset_free(emptied);
     test_check(linked == 0 && catalog_errors(root, "CheckedCaller") == 1, "problems: the asset catalog links libraries and rechecks callers when one changes");
-    const char *const files[] = { "content/libraries/CheckedMath.code",
-                                  "content/behaviors/CheckedCaller.code",
+    const char *const files[] = { "content/libraries/CheckedMath.chibi",
+                                  "content/behaviors/CheckedCaller.chibi",
                                   "content/libraries",
                                   "content/behaviors",
                                   "content",

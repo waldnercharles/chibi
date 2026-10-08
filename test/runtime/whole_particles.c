@@ -65,7 +65,8 @@ static void parity(bool directed, bool waits, int scenario, int control, int bud
     graph *g = a->graphs[1];
     assert(!graph_set_breakpoint(g, g->nodes[3], control == 3));
     behavior_function *f = entry(a);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     test_flow_snapshot *expected = NULL;
     game_particle **states = NULL;
     int next = 0;
@@ -73,10 +74,10 @@ static void parity(bool directed, bool waits, int scenario, int control, int bud
         if (mode == 3) {
             char name[64];
             snprintf(name, sizeof name, "generated_particles_%d_%d_1", directed, waits);
-            f->code = dlsym(library, name);
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, name);
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         game_particles *particles = game_particles_new();
         if (scenario == 8) {
@@ -189,9 +190,9 @@ static void parity(bool directed, bool waits, int scenario, int control, int bud
     }
     afree(states);
     afree(expected);
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 void test_compiled_particles(const char *path)

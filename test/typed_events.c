@@ -1,5 +1,8 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
 
 #include <assert.h>
@@ -9,9 +12,9 @@
 
 void test_typed_events()
 {
-    assert(graph_event_host_name("Begin"));
-    assert(graph_event_host_name("Tick"));
-    assert(!graph_event_host_name("Signal"));
+    assert(game_host_event_reserved("Begin"));
+    assert(game_host_event_reserved("Tick"));
+    assert(!game_host_event_reserved("Signal"));
     behavior_asset *reserved = behavior_asset_new("Begin");
     reserved->domain = BEHAVIOR_DOMAIN_EVENT_DEFINITION;
     node *reserved_event = graph_add_node(reserved->graph, &NODE_Event);

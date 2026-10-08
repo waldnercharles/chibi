@@ -1,3 +1,4 @@
+#include "graph/authoring/asset_edit.h"
 #include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
 #include "support/asset_text.h"

@@ -1,3 +1,5 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/runtime.h"
@@ -36,14 +38,17 @@ static void batch_failures()
                     ecs_entity entity = ecs_world_create_entity(world);
                     behavior_update_binding **bindings = NULL;
                     node *entry;
-                    const behavior_function *
-                        function = behavior_program_batch_event(a->program, "Run", &entry);
-                    behavior_update_row row = {
-                        .instance = bi,
-                        .binding = behavior_update_prepare(&bindings, bi, function, entry),
-                        .services_revision = bi->services_revision,
-                        .entity = ecs_entity_to_u64(entity)
-                    };
+                    const behavior_function *function = behavior_program_batch_event(
+                        behavior_program_cached(a),
+                        "Run",
+                        &entry
+                    );
+                    behavior_update_row row = behavior_update_row_make(
+                        bi,
+                        behavior_update_prepare(&bindings, bi, function, entry),
+                        ecs_entity_to_u64(entity),
+                        0
+                    );
                     assert(row.binding);
                     void *code = mode == 6 ? behavior_update_compile() : NULL;
                     assert(mode != 6 || code);
@@ -74,7 +79,7 @@ static void batch_failures()
                 }
                 if (!fail) {
                     assert(!run && service.calls == 2);
-                    assert(((whole_record *)bi->variables[0].ptr)->weight == 13.5);
+                    assert(((whole_record *)bi->execution.variables[0].ptr)->weight == 13.5);
                 }
             } else {
                 run = behavior_instance_dispatch(bi, "Run", (flow_inputs){ 0 }, NULL);
@@ -124,7 +129,7 @@ static void services_and_generation()
                 behavior_instance_dispatch_batch(instances[i], "Run", &batch, &failed) && !failed
             );
             assert(
-                ((whole_record *)instances[i]->variables[0].ptr)->weight ==
+                ((whole_record *)instances[i]->execution.variables[0].ptr)->weight ==
                 12 + 3 * services[i].bias
             );
             assert(services[i].calls == 2 * (pass + 1));
@@ -177,7 +182,7 @@ static void pure_calls()
             int result = !mode
                            ? graph_eval_output(a->graph, call, pin, &storage, &value, &ctx)
                            : behavior_program_output(
-                                 behavior_program_graph(a->program, a->graph),
+                                 behavior_program_graph(behavior_program_cached(a), a->graph),
                                  call,
                                  pin,
                                  &storage,
@@ -240,7 +245,8 @@ static void parity(bool waits, int fail_at, unsigned budget, bool step, bool abs
 {
     behavior_asset *a = fixture(waits);
     behavior_function *f = entry(a);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     whole_record record = { .tag = 255,
                             .position = { -0.f, 1.e-35f },
                             .weight = -2.5,
@@ -256,10 +262,10 @@ static void parity(bool waits, int fail_at, unsigned budget, bool step, bool abs
     int *calls = NULL;
     for (int mode = 0; mode < (library ? 4 : 3); mode++) {
         if (mode == 3) {
-            f->code = dlsym(library, waits ? "generated_data_wait" : "generated_data");
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, waits ? "generated_data_wait" : "generated_data");
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         assert(!behavior_instance_set_backend(
@@ -311,9 +317,9 @@ static void parity(bool waits, int fail_at, unsigned budget, bool step, bool abs
         flow_run_free(run);
         behavior_instance_destroy(bi);
     }
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     for (int i = 0; i < acount(expected); i++) {
         test_flow_snapshot_free(&expected[i]);
     }
@@ -345,25 +351,26 @@ void test_compiled_data(const char *path)
         for (int mode = 0; mode < (library ? 2 : 1); mode++) {
             behavior_asset *a = whole_read_branch_fixture(kind);
             behavior_function *f = entry(a);
-            void *code = f->code, *inspection = f->inspection_code,
-                 *dispatch = f->dispatch;
+            void *code = f->artifact->code,
+                 *inspection = f->artifact->inspection_code,
+                 *dispatch = f->artifact->dispatch;
             behavior_backend before = behavior_debug_backend(
                 mode ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE
             );
             if (mode) {
                 char name[64];
                 snprintf(name, sizeof name, "generated_read_branch%d", kind);
-                f->code = dlsym(library, name);
-                assert(f->code);
-                f->inspection_code = f->code;
-                f->dispatch = NULL;
+                f->artifact->code = dlsym(library, name);
+                assert(f->artifact->code);
+                f->artifact->inspection_code = f->artifact->code;
+                f->artifact->dispatch = NULL;
             }
             whole_read_branch_check(a, kind, false);
             whole_read_branch_check(a, kind, true);
             behavior_debug_backend(before);
-            f->code = code;
-            f->inspection_code = inspection;
-            f->dispatch = dispatch;
+            f->artifact->code = code;
+            f->artifact->inspection_code = inspection;
+            f->artifact->dispatch = dispatch;
             behavior_asset_free(a);
         }
     }

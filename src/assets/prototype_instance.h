@@ -4,11 +4,10 @@
 #include "assets/prototype.h"
 
 /* An instance's values against its prototype, shared by Studio's prototype
- * actions on a live object and the MCP's on a scene file's entity (composed
- * in a world of its own): which fields it overrides, copying them into the
- * prototype (Apply Overrides), and a prototype of it (Save as New). Where an
- * instance stands, its GameTransform, stays its own in each, as Unity applies
- * no root position. */
+ * actions and shared SDK consumers on a live object: which fields it overrides,
+ * copying them into the prototype (Apply Overrides), and a prototype of it
+ * (Save as New). Where an instance stands, its GameTransform, stays its own in
+ * each, as Unity applies no root position. */
 
 /* A field of one of a prototype's components. */
 typedef struct

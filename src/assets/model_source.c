@@ -5,7 +5,7 @@
 #include "graph/document/serialize.h"
 #include "support/array.h"
 #include "support/asset_text.h"
-#include "support/text_file.h"
+#include "support/file_io.h"
 
 #include <assert.h>
 #include <dirent.h>
@@ -61,7 +61,7 @@ static bool load_folder(
     bool valid = true;
     for (int i = 0; i < acount(paths); i++) {
         if (valid) {
-            char *text = text_file_read_disk(paths[i]);
+            char *text = file_read_text(paths[i]);
             behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
             if (!asset || asset->domain != domain) {
                 snprintf(

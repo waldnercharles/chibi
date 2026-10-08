@@ -1,11 +1,11 @@
 #include "runtime/material_fluid.h"
 
 #include "diagnostics/tracy.h"
-#include "render/particles.h"
 #include "runtime/material_flow.h"
 #include "runtime/material_mpm.h"
 #include "runtime/material_obstacle_index.h"
 #include "runtime/material_particle_index.h"
+#include "runtime/particles.h"
 #include "support/array.h"
 #include "support/cos_sin.h"
 #include "support/exponential.h"
@@ -474,6 +474,7 @@ static double profile_clock_ms()
     struct timespec now;
     int result = clock_gettime(CLOCK_MONOTONIC, &now);
     assert(!result);
+    (void)result;
     return now.tv_sec * 1000.0 + now.tv_nsec * 1e-6;
 }
 

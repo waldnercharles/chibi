@@ -1,3 +1,4 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/runtime/flow_internal.h"
 #include "runtime/behaviors/entities.h"
@@ -77,8 +78,8 @@ static void parity(behavior_asset *a, int count, int dense, int scenario, unsign
         const flow_call_frame *actual_stack = flow_run_call_stack(run, &frame_count);
         if (!mode) {
             status = result;
-            visits = bi->variables[0].i;
-            last = bi->variables[1].u64;
+            visits = bi->execution.variables[0].i;
+            last = bi->execution.variables[1].u64;
             steps = flow_run_steps(run);
             expected = *flow_run_error(run);
             frames = frame_count;
@@ -94,7 +95,10 @@ static void parity(behavior_asset *a, int count, int dense, int scenario, unsign
             assert(run->whole_function_executed);
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
             assert(result == status && flow_run_steps(run) == steps);
-            assert(bi->variables[0].i == visits && bi->variables[1].u64 == last);
+            assert(
+                bi->execution.variables[0].i == visits &&
+                bi->execution.variables[1].u64 == last
+            );
             if (!result) {
                 assert(
                     flow_run_input_value(run, g->nodes[1], 1)->i == returned[1].i
@@ -136,7 +140,7 @@ static const behavior_function *body(behavior_asset *a)
     behavior_program_publish(a);
     graph *g = a->graphs[1];
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, g),
+        behavior_program_graph(behavior_program_cached(a), g),
         g->nodes[0]
     );
     assert(f && acount(f->queries));

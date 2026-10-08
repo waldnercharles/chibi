@@ -1,4 +1,0 @@
-name "StatusBar"
-components {
-    GAME.GameUi document="StatusBar" hidden=#true
-}

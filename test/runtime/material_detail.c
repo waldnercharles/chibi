@@ -1,5 +1,5 @@
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "authoring/preview.h"
+#include "runtime/component_catalog.h"
 #include "runtime/material_fluid.h"
 #include "runtime/materials.h"
 
@@ -76,7 +76,7 @@ static void authored_detail()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world);
     MaterialFluidWorld settings = { .chunk_size = 64,
                                     .buffer = 32,
@@ -99,23 +99,26 @@ static void authored_detail()
         }
     }
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
+    assert(!game_materials_prepare(live->runtime->materials));
     int count;
-    const fluid_particle *p = material_fluid_particles(game_materials_fluid(live->materials), &count);
+    const fluid_particle *p = material_fluid_particles(
+        game_materials_fluid(live->runtime->materials),
+        &count
+    );
     assert(count == 2 && p[0].grain_radius == 0 && p[1].grain_radius == .25f);
     assert(p[0].radius == p[1].radius && p[0].mass == p[1].mass);
-    uint64_t before = game_materials_inspect(live->materials).hash;
+    uint64_t before = game_materials_inspect(live->runtime->materials).hash;
     GameFluidVolume
         *volume = ecs_component_data(world, fine, GAME_COMPONENT_GameFluidVolume.id);
     float invalid[] = { -1, NAN, INFINITY, 11 };
     for (int i = 0; i < 4; i++) {
         volume->grain_radius = invalid[i];
-        assert(game_materials_prepare(live->materials));
-        assert(game_materials_inspect(live->materials).hash == before);
+        assert(game_materials_prepare(live->runtime->materials));
+        assert(game_materials_inspect(live->runtime->materials).hash == before);
     }
     volume->grain_radius = .25f;
-    assert(!game_materials_prepare(live->materials));
-    game_live_world_free(live);
+    assert(!game_materials_prepare(live->runtime->materials));
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 

@@ -1,5 +1,5 @@
 /* ui_check: every RmlUi warning of a ui asset, at the line that wrote it. */
-#include "render/ui_check.h"
+#include "authoring/ui_check.h"
 
 #include "support/array.h"
 #include "test/suite_internal.h"

@@ -1,7 +1,6 @@
 #ifndef CHIBI_GAME_UI_H
 #define CHIBI_GAME_UI_H
 
-#include "graph/model/registry.h"
 #include "support/asset_value.h"
 
 #include <stdbool.h>
@@ -116,6 +115,7 @@ game_ui_element *game_ui_element_at(game_ui *ui, int index);
 int game_ui_data_count(const game_ui *ui);
 const game_ui_datum *game_ui_data_at(const game_ui *ui, int index);
 
-extern const registry_pack GAME_UI_PACK;
+/* Last measured scroll/view/content heights; outputs zero when unknown. */
+bool game_ui_scroll(const game_ui *, uint64_t entity, const char *selector, float values[3]);
 
 #endif

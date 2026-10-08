@@ -1,13 +1,11 @@
 # Neon Swarm material sandbox
 
-Neon Swarm lives in `projects/arena2d`. Its startup scene is
-`content/scenes/Sandbox.kdl`, selected by native launches and the Make targets.
-Run `make play`, or build an optimized native version:
+The authored sandbox is preserved in the extracted Voidweaver repository. Its
+startup scene is `content/scenes/Sandbox.kdl`. Open the external project with
+installed-SDK Studio:
 
 ```sh
-make build-release
-./build-release/chibi --project-root projects/arena2d \
-  --scene content/scenes/Sandbox.kdl --play
+make studio-run STUDIO_SOURCE=/absolute/path/to/chibi-studio PROJECT_ROOT=/absolute/path/to/chibi-voidweaver
 ```
 
 Move with WASD or the left stick, boost with Space, and aim/fire with the mouse
@@ -165,6 +163,7 @@ hardware. The new dense fluid renderer requires native compute; no GLES fluid
 fallback is implemented. Far fluid sleeps with a camera buffer, while far rigid
 bodies and behavior schedules are not yet a fully streamed world scheduler.
 
-Author assets through Chibi MCP with `CHIBI_ROOT` set to this checkout's
-`projects/arena2d` and `CHIBI_CTL` set to its built controller. Native runtime
+Edit the `.chibi` and KDL assets in that external repository, then format and
+validate them with `build/bin/chibi_ctl --project-root /absolute/path/to/chibi-voidweaver`; see the
+[saved-file workflow](runtime-authoring.md) for request examples. Native runtime
 changes require rebuilding and relaunching an already-open game/editor.

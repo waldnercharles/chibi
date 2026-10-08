@@ -1,6 +1,0 @@
-version 1
-name "LocalBox"
-(array)entities {
-    - name="Camera" prototype="Camera"
-    - name="LocalBox" prototype="LocalBox"
-}

@@ -1,9 +1,13 @@
-#include "automation/render_preview.h"
+#include "authoring/render_preview.h"
 
-#include "automation/asset_write.h"
+#include "authoring/image_prepare.h"
+#include "authoring/mesh_prepare.h"
+#include "authoring/shader_prepare.h"
+#include "automation/content_hash.h"
 #include "automation/controller.h"
 #include "automation/execution_policy.h"
-#include "graph/compiler/compile.h"
+#include "automation/render_preview.h"
+#include "graph/compiler/validation.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
@@ -18,7 +22,6 @@
 #include "support/asset_json.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
-#include "third_party/yyjson/yyjson.h"
 
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_video.h>
@@ -33,6 +36,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <yyjson.h>
 
 enum
 {
@@ -857,7 +861,8 @@ static bool render_asset(
         cf_backend_type_to_string(cf_query_backend())
     );
     char mount_error[PREVIEW_MAX_ERROR] = { 0 };
-    if (!render_image_mount_content("content", mount_error, sizeof mount_error)) {
+    if (!render_image_mount_content("content", mount_error, sizeof mount_error) ||
+        !authoring_mesh_mount_content("content", mount_error, sizeof mount_error)) {
         set_error(error, error_size, mount_error);
         cf_destroy_app();
         return false;
@@ -865,7 +870,8 @@ static bool render_asset(
     cf_fs_mount(render_shader_dir(), "/chibi-render", true);
     cf_shader_directory("/chibi-render");
     shader_error shader_error = { 0 };
-    render_shader_preview *renderer = render_shader_preview_new(asset, width, height, options, &shader_error);
+    render_shader_preview
+        *renderer = authoring_shader_preview_new(asset, width, height, options, &shader_error);
     if (!renderer) {
         set_error(error, error_size, shader_error.message[0] ? shader_error.message : "could not create shader preview");
         cf_destroy_app();
@@ -886,7 +892,7 @@ static bool render_asset(
             error_size
         )) {
         render_shader_preview_free(renderer);
-        render_shader_catalog_clear();
+        authoring_shader_catalog_clear();
         cf_destroy_app();
         return false;
     }
@@ -901,7 +907,7 @@ static bool render_asset(
         set_error(error, error_size, render_shader_preview_error(renderer));
     }
     render_shader_preview_free(renderer);
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     cf_destroy_app();
     return rendered;
 }
@@ -1193,7 +1199,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
     behavior_asset_free(asset);
     compile_report report;
     compile_report_init(&report);
-    behavior_asset_compile(linked, &report);
+    graph_asset_compile(linked, &report);
     add_compile_diagnostics(&response, &report);
     if (report.error_count) {
         yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);

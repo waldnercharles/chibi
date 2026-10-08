@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/math_nodes.h"
 #include "graph/nodes/particle_nodes.h"
 #include "graph/runtime/flow_internal.h"

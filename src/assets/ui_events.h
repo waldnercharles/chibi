@@ -5,7 +5,7 @@
 
 /* An event ui documents send the GameUi entity showing them, words to find
  * it by, and when, without the period: "Sent when the player clicks #go in
- * Hud". The MCP's searchNodes and Studio's Add menu offer these as Event
+ * Hud". Native search_nodes and Studio's Add menu offer these as Event
  * nodes. */
 typedef struct ui_event
 {

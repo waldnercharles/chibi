@@ -1,5 +1,6 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "runtime/systems/system.h"
 #include "suite_internal.h"
 

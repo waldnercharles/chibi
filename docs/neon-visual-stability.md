@@ -1,5 +1,11 @@
 # Sandbox lighting and material response
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 This implementation stabilizes the existing 2D renderer and adds bounded contact
 effects. It does not introduce MPM, a new BRDF, a coarse outer lighting field,
 or full object motion vectors.

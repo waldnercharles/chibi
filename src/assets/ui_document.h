@@ -2,6 +2,7 @@
 #define CHIBI_UI_DOCUMENT_H
 
 #include "support/rcss.h"
+#include "ui/document.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -11,18 +12,6 @@
  * any. Other .rcss files there are stylesheets RCSS @imports. */
 #define UI_MARKUP_EXTENSION ".rml"
 #define UI_STYLE_EXTENSION ".rcss"
-
-/* A ui asset: RML body markup and the RCSS that styles it. A scene's root
- * document may wrap its markup in <body ...>, as a web page's layout does,
- * to set the page body's attributes, such as a data-class-dark binding. */
-typedef struct ui_document
-{
-    char *rml;
-    char *rcss;   /* empty when the asset has none */
-    char *body;   /* the <body> attributes as written, or NULL */
-    int rml_line; /* the line of the .rml file `rml` starts on */
-    rcss_map map; /* where each rcss line came from; the .rcss file's own are -1 */
-} ui_document;
 
 /* Owned path of ui asset `name`'s markup in `ui_root`, or with `style` of
  * its styles. */
@@ -113,6 +102,13 @@ typedef struct ui_document_event
 /* Appends each event the markup names, in document order, to `events`. */
 void ui_document_events(const char *rml, ui_document_event **events);
 void ui_document_events_free(ui_document_event *events);
+typedef struct
+{
+    int start, end;
+} ui_document_event_range;
+/* Exact name bytes in emit calls and data-keys/data-area-keys bindings.
+ * Appends ranges to a support/array.h array; the caller owns the array. */
+void ui_document_event_ranges(const char *rml, ui_document_event_range **ranges);
 
 /* A value markup binds under self, which behaviors give its entity with Set
  * UI Data: its name, whether data-for repeats it, and for a list the fields
@@ -128,13 +124,8 @@ typedef struct ui_document_binding
 void ui_document_bindings(const char *rml, ui_document_binding **bindings);
 
 /* Owned markup with each name in it equal to `from` renamed `to`: widget
- * names (<use ui>), or with `event`, the events emit('Name') and data-keys
- * send. Sets *count to the names renamed. */
+ * names (<use ui>), or with `event`, the events emit('Name'), data-keys and
+ * data-area-keys send. Sets *count to the names renamed. */
 char *ui_document_rename(const char *rml, bool event, const char *from, const char *to, int *count);
-
-/* Owned RML document text: `base` then the asset's RCSS in the head, and its
- * markup in a body with its body attributes. */
-char *ui_document_compose(const ui_document *document, const char *base);
-void ui_document_free(ui_document *document);
 
 #endif

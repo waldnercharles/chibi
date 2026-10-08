@@ -1,8 +1,8 @@
-#include "render/particles.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "authoring/preview.h"
+#include "runtime/component_catalog.h"
 #include "runtime/material_fluid.h"
 #include "runtime/materials.h"
+#include "runtime/particles.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -237,7 +237,7 @@ static int ecs_contact_spray_count(int maximum)
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity settings = ecs_world_create_entity(world);
     MaterialFluidWorld config = { .chunk_size = 64,
                                   .buffer = 32,
@@ -251,25 +251,25 @@ static int ecs_contact_spray_count(int maximum)
         ecs_world_record_add(world, settings, GAME_COMPONENT_MaterialFluidWorld.id, &config, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
+    assert(!game_materials_prepare(live->runtime->materials));
     assert(game_materials_emit(
-        live->materials,
+        live->runtime->materials,
         (
             fluid_particle
         ){ .position = { 0, 9 }, .mass = .01f, .radius = 2, .color = 0x80c0ffff, .kind = FLUID_GAS }
     ));
     fluid_body body = { .velocity = { 0, 80 }, .owner = 48 };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 10, 10 } };
-    game_materials_tick(live->materials, 1.f / 60, &body, 1, &obstacle, 1);
-    game_material_state state = game_materials_inspect(live->materials);
+    game_materials_tick(live->runtime->materials, 1.f / 60, &body, 1, &obstacle, 1);
+    game_material_state state = game_materials_inspect(live->runtime->materials);
     assert(state.particles == 1 && state.active_particles == 1);
-    int emitted = game_particles_count(live->particles);
+    int emitted = game_particles_count(live->runtime->particles);
     if (maximum) {
         assert(emitted > 0 && emitted <= maximum);
     } else {
         assert(emitted == 0);
     }
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
     return emitted;
 }

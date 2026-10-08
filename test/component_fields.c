@@ -1,9 +1,11 @@
 #include "assets/prototype.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -270,9 +272,11 @@ static void reflected_color_fields()
     }
     assert(constructed);
     behavior_asset_free(asset);
-    assert(!strcmp(registry_enum_label("GameFluidKind", GAME_FLUID_LIQUID), "Liquid"));
-    assert(!strcmp(registry_enum_label("GameHRCToneMapping", GAME_HRC_TONE_AGX), "AgX"));
-    assert(!strcmp(registry_enum_label("GameHRCUpscale", GAME_HRC_UPSCALE_EDGE_AWARE), "Edge aware"));
+    assert(!strcmp(type_catalog_enum_label("GameFluidKind", GAME_FLUID_LIQUID), "Liquid"));
+    assert(!strcmp(type_catalog_enum_label("GameHRCToneMapping", GAME_HRC_TONE_AGX), "AgX"));
+    assert(
+        !strcmp(type_catalog_enum_label("GameHRCUpscale", GAME_HRC_UPSCALE_EDGE_AWARE), "Edge aware")
+    );
 }
 
 void test_component_fields()

@@ -1,6 +1,8 @@
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/modeling/model_compile.h"
 #include "render/shader_catalog.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 
 #include <assert.h>
 #include <math.h>

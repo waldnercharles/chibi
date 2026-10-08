@@ -1,3 +1,5 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/runtime.h"
 #include "test/suite_internal.h"
@@ -13,7 +15,7 @@ static void same(pin_value a, pin_value b)
         if (!a.ptr) {
             return;
         }
-        const type_desc *type = registry_type_by_name(a.type_name);
+        const type_desc *type = type_catalog_find(a.type_name);
         assert(type && !strcmp(a.type_name, b.type_name));
         for (int i = 0; i < type->field_count; i++) {
             pin_value x, y;
@@ -42,7 +44,10 @@ static void parity(behavior_asset *a, const pin_value *inputs)
     behavior_instance_set_trace_enabled(bi, 0);
     for (int i = 1; i < acount(a->graphs); i++) {
         graph *g = a->graphs[i];
-        assert(behavior_program_function(behavior_program_graph(a->program, g), g->nodes[0]));
+        assert(behavior_program_function(
+            behavior_program_graph(behavior_program_cached(a), g),
+            g->nodes[0]
+        ));
     }
     for (int i = 0; i < acount(a->variables); i++) {
         assert(!behavior_instance_set_variable(bi, a->variables[i].id, &inputs[i]));
@@ -66,7 +71,7 @@ static void parity(behavior_asset *a, const pin_value *inputs)
             pin_value actual;
             int status = mode
                            ? behavior_program_output(
-                                 behavior_program_graph(a->program, a->graph),
+                                 behavior_program_graph(behavior_program_cached(a), a->graph),
                                  call,
                                  i,
                                  &storage,

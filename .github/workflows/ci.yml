@@ -48,8 +48,6 @@ jobs:
             sljit: "ON"
     env:
       # Hardware opt-in still applies to admitted GPU commands; it cannot bypass quarantine.
-      CHIBI_EXECUTION_PROFILE: hardware
-      CHIBI_ALLOW_FULL_GPU: "1"
       NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
       LOCAL_CMAKE_FLAGS: >-
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -87,32 +85,12 @@ jobs:
           cat docs/test-quarantine.md >> "$GITHUB_STEP_SUMMARY"
       - name: Essential C regressions (60-second aggregate ceiling)
         run: make test-tools TOOLS_C_COMPILER=clang-18
-      - name: Configure and compile native suite (not test runtime)
-        run: make build BUILD_TARGET=test_suite
-      - name: Focused graph optimizer (60-second ceiling)
-        run: python3 tools/test_policy.py native build/test_suite --graph-optimize
-      - name: Verify parallel Arena scaling
-        if: matrix.build_type == 'RelWithDebInfo'
-        run: >-
-          xvfb-run -a env CBLUEPRINT_BENCH_COMBAT=1
-          CBLUEPRINT_BENCH_REQUIRE_PARALLEL=1
-          python3 tools/test_policy.py native build/test_suite --bench-arena-scene-scale 2048 240 0
-      - name: Compile no-SLJIT smoke binaries (execution quarantined)
-        if: matrix.build_type == 'Debug'
+      - name: Compile owned SDK and CLI products
+        run: make build
+      - name: Record retired suite ownership
         run: |
-          sh tools/configure_native.sh build-nojit -DCMAKE_BUILD_TYPE=Debug \
-            -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=ON \
-            -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
-            -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
-          cmake --build build-nojit --target behavior_backend_smoke runtime_backend_smoke --parallel 4
-      - name: Build development application (host execution quarantined)
-        if: matrix.build_type == 'Debug'
-        run: |
-          sh tools/configure_native.sh build-dev -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCHIBI_ENABLE_SANITIZERS=OFF \
-            -DCHIBI_ENABLE_SJLIT=ON -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
-            -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
-          cmake --build build-dev --target chibi test_host --parallel 4
+          printf '%s\n' 'The old test_suite, graph smoke executables and combined chibi app are retired.'
+          printf '%s\n' 'Held oracle sources are recorded in .chibi/architecture/executor-test-retirement.json; no coverage is implied.'
 
   format:
     name: clang-format

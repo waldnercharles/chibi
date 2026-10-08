@@ -1,6 +1,7 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/behavior_asset.h"
-#include "graph/runtime/value_array.h"
 #include "graph/shader/shader_graph.h"
+#include "types/array.h"
 
 #include <stddef.h>
 #include <stdio.h>

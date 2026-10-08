@@ -1,5 +1,8 @@
 #include "render/shader_program.h"
 
+#include "authoring/render_preview.h"
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/arena3d.h"
@@ -204,7 +207,9 @@ static void arena_frame(
 )
 {
     cf_app_update(NULL);
-    assert(render_arena_preview(arena, asset, camera, NULL, 0, &(render_arena_activity){ 0 }));
+    assert(
+        authoring_render_arena_preview(arena, asset, camera, NULL, 0, &(render_arena_activity){ 0 })
+    );
     cf_render_to(render_arena_post_target(post), true);
     assert(render_arena_post_process(post));
     cf_app_draw_onto_screen(false);
@@ -347,7 +352,7 @@ static void capacity_checks()
         { .8f, .2f, .1f, 1 }, { .8f, .2f, .1f, 1 }, { .8f, .2f, .1f, 1 },
         { .8f, .2f, .1f, 1 }
     };
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     behavior_asset *valid = make_ramp("Shader program capacity valid", 2, valid_colors, 0);
     int valid_id = publish(valid);
     render_material_raster *raster = render_material_raster_new();
@@ -436,12 +441,12 @@ static void indexed_sets_checks()
     for (int i = 0; i < COUNT; i++) {
         behavior_asset_free(shapes[i]);
     }
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
 }
 
 int test_shader_program_gpu()
 {
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     static const float colors[][4] = { { 1, 0, 0, 1 }, { 0, 0, 1, 1 } };
     behavior_asset *asset = make_ramp("Shader program transport", 2, colors, 0);
     publish(asset);
@@ -451,9 +456,9 @@ int test_shader_program_gpu()
     behavior_asset_free(asset);
     offsets_checks();
     capacity_checks();
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     indexed_sets_checks();
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     puts("shader program GPU PASS: Arena, fragment and compute ramp payloads, structural recompiles, program offsets, compile failure retention and ramp capacity");
     return 0;
 }

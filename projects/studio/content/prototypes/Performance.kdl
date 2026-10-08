@@ -1,4 +1,0 @@
-name "Performance"
-components {
-    GAME.GameUi document="Performance" hidden=#true
-}

@@ -1,6 +1,6 @@
-#include "render/particles.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "runtime/material_ecs.h"
+#include "runtime/particles.h"
 #include "support/array.h"
 
 #include <math.h>

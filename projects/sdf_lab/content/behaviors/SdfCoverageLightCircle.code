@@ -1,9 +1,0 @@
-behavior "SdfCoverageLightCircle" {
-    owner "ecs.entity";
-    state elapsed: float = 0.0;
-    on Tick as tick(DeltaSeconds: float = 0.0) {
-        &state.elapsed += cast<double>(&delta);
-        &component("GAME.GameTransform", "x") = 60 * cos(cast<double>(&state.elapsed) * (2 * pi / 8));
-        &component("GAME.GameTransform", "y") = 60 * sin(cast<double>(&state.elapsed) * (2 * pi / 8));
-    }
-}

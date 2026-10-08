@@ -1,7 +1,9 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/modeling/model_expand_internal.h"
 #include "graph/modeling/model_profile_paths.h"
-#include "graph/runtime/value_array.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 
 #include <math.h>
 #include <stdio.h>

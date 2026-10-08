@@ -1,7 +1,0 @@
-behavior "PolaroidOrbit" {
-    state elapsed: float = 0.0;
-    on Tick as tick(DeltaSeconds: float = 0.0) {
-        &state.elapsed += cast<double>(&delta);
-        &component("GAME.GameVisualTransform", "pitch") = 0.301598 + cast<double>(&state.elapsed) * 0.35;
-    }
-}

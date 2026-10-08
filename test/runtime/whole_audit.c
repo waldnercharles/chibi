@@ -2,6 +2,7 @@
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/array.h"
 #include "support/text_file.h"
 #include "test/support/code_fixture.h"
@@ -33,7 +34,7 @@ static behavior_asset **catalog(const char *pattern)
 
 static bool audit_entry(const behavior_asset *a, graph *g, node *entry, const char *kind)
 {
-    const behavior_graph_program *body = behavior_program_graph(a->program, g);
+    const behavior_graph_program *body = behavior_program_graph(behavior_program_cached(a), g);
     bool whole = behavior_program_function(body, entry) != NULL;
     const behavior_function_diagnostic *d = behavior_program_function_diagnostic(body, entry);
     assert(whole || d);
@@ -63,8 +64,8 @@ static bool audit_entry(const behavior_asset *a, graph *g, node *entry, const ch
  * Shader libraries and event declarations are supporting systems. */
 int whole_function_audit()
 {
-    behavior_asset **assets = catalog("content/behaviors/*.code");
-    behavior_asset **libraries = catalog("content/libraries/*.code");
+    behavior_asset **assets = catalog("content/behaviors/*.chibi");
+    behavior_asset **libraries = catalog("content/libraries/*.chibi");
     behavior_asset **events = catalog("content/events/*.kdl");
     for (int i = 0; i < acount(events); i++) {
         apush(libraries, events[i]);

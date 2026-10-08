@@ -1,3 +1,4 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/instance.h"

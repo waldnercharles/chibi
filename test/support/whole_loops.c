@@ -1,6 +1,9 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/compare_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "test/whole_loop_fixture.h"
@@ -165,7 +168,10 @@ void whole_loop_smoke()
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         behavior_instance_set_trace_enabled(bi, 0);
         graph *g = a->graphs[1];
-        assert(behavior_program_function(behavior_program_graph(a->program, g), g->nodes[0]));
+        assert(behavior_program_function(
+            behavior_program_graph(behavior_program_cached(a), g),
+            g->nodes[0]
+        ));
         pin_value args[] = { { .type = PIN_I32, .i = 3 }, { .type = PIN_I32, .i = 1 } };
         flow_options options = { .instance = bi };
         flow_error error = { 0 };
@@ -183,7 +189,7 @@ void whole_loop_smoke()
                              ? 3
                          : kind == WHOLE_LOOP_BREAK ? 1
                                                     : 0;
-            assert(bi->variables[0].i == expected);
+            assert(bi->execution.variables[0].i == expected);
         }
         flow_run_free(run);
         behavior_instance_destroy(bi);

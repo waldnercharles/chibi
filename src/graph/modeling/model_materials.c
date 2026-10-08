@@ -1,4 +1,3 @@
-#include "graph/document/serialize.h"
 #include "graph/modeling/model_internal.h"
 
 #include <stdio.h>
@@ -20,30 +19,6 @@ bool model_material_get(const node *n, model_material_decl *out, shader_error *e
     }
     *out = (model_material_decl){ n->id, n->reference_name, n->reference_asset };
     return true;
-}
-void model_material_slot_free(model_material_slot *s)
-{
-    free(s->asset);
-    free(s->name);
-    free(s->scope);
-    free(s->material);
-}
-void model_material_bindings_init(model_material_bindings *b)
-{
-    *b = (model_material_bindings){ 0 };
-}
-void model_material_bindings_free(model_material_bindings *b)
-{
-    for (int i = 0; i < acount(b->slots); i++) {
-        model_material_slot_free(&b->slots[i]);
-    }
-    afree(b->slots);
-    afree(b->part_slots);
-    for (int i = 0; i < acount(b->dependencies); i++) {
-        free(b->dependencies[i]);
-    }
-    afree(b->dependencies);
-    model_material_bindings_init(b);
 }
 static bool parameters_equal(const model_program *p, const model_numeric *n)
 {
@@ -119,10 +94,10 @@ static bool construction_equal(const model_program *p, const model_expansion *e)
             return false;
         }
     }
-    char *a = behavior_asset_save(old->asset), *b = behavior_asset_save(e->asset);
-    bool equal = a && b && !strcmp(a, b);
-    free(a);
-    free(b);
+    model_bounds_plan *
+        candidate = model_prepare_bounds(e->asset->graph, e->inputs, acount(e->inputs), NULL);
+    bool equal = model_bounds_plan_equal(old->plan, candidate);
+    model_bounds_plan_free(candidate);
     return equal;
 }
 model_bindings_result model_program_compile_bindings(

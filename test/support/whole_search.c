@@ -1,15 +1,18 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/array_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
-#include "graph/runtime/value_array.h"
+#include "test/support/reflected_types.h"
 #include "test/whole_search_fixture.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <stdio.h>
 
-static const type_desc kind = { .name = "SearchKind", .size = sizeof(int32_t) };
-static const type_desc *const search_types[] = { &kind };
+static const type_desc *const search_types[] = { &WHOLE_SEARCH_TYPE };
 const registry_pack WHOLE_SEARCH_PACK = { .name = "Array search fixture",
                                           .types = search_types,
                                           .type_count = 1 };
@@ -128,7 +131,9 @@ void whole_search_smoke()
         items[1] = items[2] = items[0];
         assert(!behavior_instance_tick(bi, .125));
         assert(flow_run_status(run) == FLOW_COMPLETED);
-        assert(contains ? bi->variables[0].b : bi->variables[0].i == 1);
+        assert(
+            contains ? bi->execution.variables[0].b : bi->execution.variables[0].i == 1
+        );
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
         behavior_instance_destroy(bi);
         behavior_asset_free(a);

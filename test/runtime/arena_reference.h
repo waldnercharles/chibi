@@ -1,7 +1,7 @@
 #pragma once
 
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "authoring/preview.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -27,29 +27,29 @@ typedef struct
     uint64_t handle;
 } arena_reference_target;
 
-static arena_reference_row *reference_rows(game_live_world *live, ecs_entity *enemies)
+static arena_reference_row *reference_rows(game_preview_world *live, ecs_entity *enemies)
 {
     arena_reference_row *rows = NULL;
     for (int i = 0; i < acount(enemies); i++) {
         ecs_entity entity = enemies[i];
         arena_reference_row row = {
-            .position = GAME_GameTransform_get_const(live->ecs, entity),
-            .movement = GAME_GameMovement_get_const(live->ecs, entity),
-            .velocity = GAME_GameVelocity_get(live->ecs, entity),
+            .position = GAME_GameTransform_get_const(live->runtime->ecs, entity),
+            .movement = GAME_GameMovement_get_const(live->runtime->ecs, entity),
+            .velocity = GAME_GameVelocity_get(live->runtime->ecs, entity),
             .entity = entity,
         };
-        assert(!GAME_GameDash_get_const(live->ecs, entity));
-        int count = game_behavior_attachment_count_for_entity(live->behaviors, entity);
+        assert(!GAME_GameDash_get_const(live->runtime->ecs, entity));
+        int count = game_behavior_attachment_count_for_entity(live->runtime->behaviors, entity);
         for (int j = 0; j < count; j++) {
             game_behavior_attachment_info info;
-            assert(!game_behavior_attachment_info_at(live->behaviors, entity, j, &info));
+            assert(!game_behavior_attachment_info_at(live->runtime->behaviors, entity, j, &info));
             behavior_instance *instance = info.instance;
             if (strcmp(instance->asset->name, "CombatFeedback")) {
                 continue;
             }
             for (int k = 0; k < acount(instance->asset->variables); k++) {
                 if (!strcmp(instance->asset->variables[k].name, "Hit Remaining")) {
-                    row.hit_remaining = &instance->variables[k];
+                    row.hit_remaining = &instance->execution.variables[k];
                 }
             }
         }

@@ -1,5 +1,9 @@
 # Studio edits itself: UI authoring
 
+Studio source and shell assets are owned by the extracted `chibi-studio`
+repository. Paths under `src/editor/` and `projects/studio/` in this guide are
+relative to that repository. The engine supplies the shared SDK interfaces.
+
 The goal: a user authors a UI widget from start to finish inside Studio, and every part of the editor can be inspected from the editor. Behavior-node internals written in C are the only exception. The measure is how much of the editor can be shown editing itself.
 
 ## References
@@ -47,8 +51,7 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
   own panels bind `self` to their Studio-scene entity the same way.
   - Studio reflects each document's `self` bindings
     (`ui_document_bindings`): the Add menu offers "Set items (Hud)" for the
-    documents on what attaches the behavior, Name offers their names, and the
-    MCP's searchNodes returns the same presets with the rows' fields.
+    documents on what attaches the behavior, and Name offers their names.
 - **VirtualList is an authored widget.** `<use ui="VirtualList" id="list">`
   wraps a row template (`data-for="row, i : self.rows"`, rows of one fixed
   height). The VirtualList behavior reads where the list is scrolled (Get UI
@@ -109,7 +112,7 @@ These are on `main` and used by more than one workstream.
 | Stylesheet check (Q) | `ui_check_stylesheet` in `src/render/ui_check.h` | A `.rcss` file's RmlUi warnings, its imports resolved beside it, at its lines or an import's; `ui_code_check` uses it for stylesheets |
 | UI problems (Q) | `studio_code_problems`, `studio_code_project_problems` in `studio_internal.h` | Output's Problems rows for the shown UI document, and in Project every ui asset and stylesheet with open documents' unsaved text; each opens its place (`ui_code_place`) |
 | Back and Forward (Q) | `studio_nav_jump`, `studio_nav_can_step`, `studio_nav_step` in `studio_internal.h` (`studio_graph_nav.c`) | One history over the graphs visited and the Text Editor's Go to Definition jumps: a jump records the place it leaves and the one it lands on |
-| UI completion in the MCP (Q) | `inspectUi`'s `complete` (`automation_ui_complete` in `src/automation/ui_edit.h`) | `ui_source_complete`'s items at a file line and column, as the Text Editor offers them |
+| UI completion in native inspection (Q) | `inspect_ui`'s `complete` (`automation_ui_complete` in `src/automation/ui_inspect.h`) | `ui_source_complete`'s items at a file line and column, as the Text Editor offers them |
 | Studio in Studio | `studio_guest_start`, `studio_guest_stop`, `studio_session` in `studio_internal.h` (`studio_host.c`) | Play in the Studio project (`own_project`) runs a guest `studio` in the Scene area over the same scene authoring: its own kit, backend and `studio_ui`, the host's preferences copied and never saved, input routed by the host (`to_guest`), drawn to the host's `kit:guest`. It has no Play, Stop or Open Project; the host names no `kit:viewport` while it runs |
 | Kit styles | `kit_theme` in `kit.h` | The theme is every kit document's only stylesheet: the workspace and the graph canvas are the Studio project's `theme/workspace.rcss` and `theme/graph.rcss`, scoped to `body.studio` and `body.graph-canvas` |
 | Panel RCSS and the page body (fx-classes) | `ui_document_scope` in `src/assets/ui_document.c`; `kit_set_body_class` | An asset's RCSS is scoped to its host (`[data-ui="Name"]`), where `body` names the host (`body.area-panel`, `body[data-drop-over]`). The classes right after `body` name the page body too, which the kit gives the density (`comfortable`), the theme (`dark` and `theme-<name>`) and `theme-switching` on every document, so a panel's own `body.comfortable .row { height: 24dp }`, `body.dark .tile` and `body:not(.dark) .viewport` follow them as they change, and the rules live in the panel's `.rcss`, not the shared theme. A rule matches when the host or the page body has the classes (`body.comfortable .row` scopes to `[data-ui="Out"].comfortable .row, body.comfortable [data-ui="Out"] .row`); a negated class (`body:not(.dark)`) asks the page body alone, and another qualifier or a `>`, `+` or `~` after the classes asks only the host. Reduced motion is the context's theme, so write `@media (theme: reduced-motion) { … }`, which scoping keeps. Widgets' RCSS scopes the same way. Per-density sizes can also come from the page's variables (`--h`, `--row`), which a host inherits |
@@ -143,7 +146,7 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
 | | Workstream | Owns |
 |---|---|---|
 | A | UI source maps | `support/rcss.c`, `assets/ui_document.c`, `render/ui.c` (not `render_ui_context`), `restyle` in `rmlui/kit.c` |
-| B | Language service and MCP | `assets/ui_source.*`, `cmake/tree_sitter.cmake`, `render/ui_check.*`, `automation/ui_edit.c`, the controller's UI hooks, `tools/mcp`, `docs/mcp.md` |
+| B | Shared language service and native inspection | `assets/ui_source.*`, `cmake/tree_sitter.cmake`, `render/ui_check.*`, `automation/ui_inspect.c`, the controller's UI hooks, [saved-file workflow](runtime-authoring.md) |
 | C | Text editor on Zep | `cmake/zep.cmake`, `editor/text/zep_bridge.*`, `rmlui/kit_code.c`, the JetBrains Mono embed, `theme/code.rcss` |
 | D | UI documents | `documents/ui_buffer.*`, the UI cases in `scene_tabs.c` and `studio_shell.c`, `studio_code.c`, Assets ▸ New |
 | E | UI Inspector | `studio/studio_inspect.c`, the Inspector section of `studio_sources.c`, `rmlui/kit_inspect.c`, and `projects/studio`'s Inspector assets and scene entity. Its tree is a `List` of TreeRows over a window of every element, with no row limit (I1) |
@@ -166,7 +169,7 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
 
 | | Workstream | Owns |
 |---|---|---|
-| Q | Designer and editor polish: the Hierarchy's keyboard sensor, Canvas drop lines, a rule's declarations and Extract to Class, typing that composes with designer edits, diagnostic ranges, stylesheet checks, UI problems in Output, Back after Go to Definition, MCP completion | `studio_designer*.c`, `ui_design.[ch]`, `studio_code.c`, `kit_code.c`'s markers, `ui_code.[ch]`, the UI parts of `studio_output.c` and `studio_find.c`, `inspectUi`'s completion |
+| Q | Designer and editor polish: the Hierarchy's keyboard sensor, Canvas drop lines, a rule's declarations and Extract to Class, typing that composes with designer edits, diagnostic ranges, stylesheet checks, UI problems in Output, Back after Go to Definition, native inspection completion | `studio_designer*.c`, `ui_design.[ch]`, `studio_code.c`, `kit_code.c`'s markers, `ui_code.[ch]`, the UI parts of `studio_output.c` and `studio_find.c`, `inspect_ui`'s completion |
 | X | arena2d end to end: the Sandbox HUD and its behavior, game UI keys and typed text in the standalone player and the Scene, game UI state in runtime snapshots | `projects/arena2d`'s `HUD`, `Meter` and `HudDisplay`, `game_presentation.c`'s input routing, `render_ui_wants_text`, `engine_viewport_ui_keys` and `engine_viewport_ui_typing`, `test/editor/arena_hud.c` |
 
 ## Rules for every workstream
@@ -179,7 +182,7 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
   - `make check-format`
   - `build/chibi_ctl --project-root <root> --format` after hand-editing assets
   - `make web`, then check it in the browser
-- Serve the web build on your own port and stop the server by that port. `pkill -f web_serve.py` also stops other sessions' servers.
+- Serve the extracted Studio product with `make web-serve STUDIO_SOURCE=<studio repository> WEB_PORT=<port>` and stop that server process explicitly.
 - In the hidden browser pane:
   - run `_emscripten_set_main_loop_timing(2, 1)` first;
   - move the pointer with `PointerEvent('pointermove')`;

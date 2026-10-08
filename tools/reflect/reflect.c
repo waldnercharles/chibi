@@ -132,19 +132,16 @@ static void set_prefix(const char *source)
 
 int main(int argc, char **argv)
 {
-    if (argc < 3) {
-        fprintf(stderr, "usage: reflect <input.c> <output_registry.c> [pack_prefix] [--manifest path] [--include path ...]\n");
+    if (argc < 6) {
+        fprintf(stderr, "usage: reflect <input.c> --types-output path --runtime-output path [--prefix name] [--manifest path] [--include path ...] [--sysroot path]\n");
         return 2;
     }
     const char *input = argv[1];
-    const char *output = argv[2];
-    int option = 3;
-    const char *prefix = output;
+    int option = 2;
+    const char *prefix = NULL;
     const char *manifest = NULL;
-    if (option < argc && strcmp(argv[option], "--include") != 0) {
-        prefix = argv[option++];
-    }
-    set_prefix(prefix);
+    const char *runtime_output = NULL;
+    const char *types_output = NULL;
 
     char srcdir[1024];
     char rootdir[1024];
@@ -153,15 +150,33 @@ int main(int argc, char **argv)
 
     CXIndex idx = clang_createIndex(0, 0);
 
-    const char *args[32] = { "-x", "c", "-fparse-all-comments", "-I", rootdir };
+    const char *args[34] = { "-x", "c", "-fparse-all-comments", "-I", rootdir };
     int nargs = 5;
     while (option < argc) {
         if (option + 1 >= argc || (strcmp(argv[option], "--include") != 0 &&
                                    strcmp(argv[option], "--sysroot") != 0 &&
-                                   strcmp(argv[option], "--manifest") != 0)) {
-            fprintf(stderr, "reflect: invalid include option\n");
+                                   strcmp(argv[option], "--manifest") != 0 &&
+                                   strcmp(argv[option], "--runtime-output") != 0 &&
+                                   strcmp(argv[option], "--types-output") != 0 &&
+                                   strcmp(argv[option], "--prefix") != 0)) {
+            fprintf(stderr, "reflect: invalid output/include option\n");
             clang_disposeIndex(idx);
             return 2;
+        }
+        if (strcmp(argv[option], "--prefix") == 0) {
+            prefix = argv[option + 1];
+            option += 2;
+            continue;
+        }
+        if (strcmp(argv[option], "--types-output") == 0) {
+            types_output = argv[option + 1];
+            option += 2;
+            continue;
+        }
+        if (strcmp(argv[option], "--runtime-output") == 0) {
+            runtime_output = argv[option + 1];
+            option += 2;
+            continue;
         }
         if (strcmp(argv[option], "--manifest") == 0) {
             manifest = argv[option + 1];
@@ -177,6 +192,23 @@ int main(int argc, char **argv)
         args[nargs++] = argv[option + 1];
         option += 2;
     }
+
+    /* User -I paths take precedence over this installation's builtin headers. */
+    if (nargs + 2 > (int)(sizeof args / sizeof *args)) {
+        fprintf(stderr, "reflect: too many include options\n");
+        clang_disposeIndex(idx);
+        return 2;
+    }
+    args[nargs++] = "-isystem";
+    args[nargs++] = CHIBI_REFLECT_RESOURCE_INCLUDE_DIR;
+
+    if (!types_output || !*types_output || !runtime_output || !*runtime_output ||
+        !strcmp(types_output, runtime_output) || (prefix && !*prefix)) {
+        fprintf(stderr, "reflect: distinct --types-output and --runtime-output paths are required\n");
+        clang_disposeIndex(idx);
+        return 2;
+    }
+    set_prefix(prefix ? prefix : types_output);
 
     CXTranslationUnit tu = clang_parseTranslationUnit(idx, input, args, nargs, NULL, 0, CXTranslationUnit_None);
     if (!tu) {
@@ -209,22 +241,38 @@ int main(int argc, char **argv)
         goto cleanup;
     }
 
-    char *temporary = NULL;
-    FILE *out = begin_generated(output, &temporary);
-    if (!out) {
-        perror("reflect: fopen");
+    char *types_temporary = NULL;
+    FILE *types = begin_generated(types_output, &types_temporary);
+    if (!types) {
         goto cleanup;
     }
-    emit(out, &ctx);
-    if (!ferror(out) && fflush(out) == 0) {
-        write_component_manifest();
+    char *runtime_temporary = NULL;
+    FILE *runtime = begin_generated(runtime_output, &runtime_temporary);
+    if (!runtime) {
+        fclose(types);
+        unlink(types_temporary);
+        free(types_temporary);
+        goto cleanup;
     }
-    publish_generated(out, temporary, output);
+    emit_types(types, &ctx);
+    emit_runtime(runtime, &ctx);
+    publish_generated(types, types_temporary, types_output);
+    publish_generated(runtime, runtime_temporary, runtime_output);
+    if (g_failed) {
+        goto cleanup;
+    }
+    write_component_manifest();
     if (g_failed) {
         goto cleanup;
     }
 
-    printf("reflect: %d struct(s), %d function(s) -> %s\n", acount(ctx.structs), acount(ctx.fns), output);
+    printf(
+        "reflect: %d struct(s), %d function(s) -> %s, %s\n",
+        acount(ctx.structs),
+        acount(ctx.fns),
+        types_output,
+        runtime_output
+    );
     for (int i = 0; i < acount(ctx.structs); i++) {
         printf(
             "reflect:   struct %s (%d fields)\n",

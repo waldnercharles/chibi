@@ -19,14 +19,11 @@ const graph_local *graph_input_local(const graph *g, const node *n, int pin);
 bool graph_edge_is_local(const graph *g, const edge *e);
 /* Declares a proven producer before consumers are wired. */
 uint64_t graph_declare_local(graph *g, node *source, int pin, const char *name);
-/* Names every existing consumer atomically. Refuses dormant bindings. */
-uint64_t graph_create_local(graph *g, node *source, int pin, const char *name);
+
 /* Names must stay unique within the graph. */
 int graph_rename_local(graph *g, uint64_t id, const char *name);
 int graph_expand_local(graph *g, uint64_t id);
-/* Wires the local's source into an input and names it there, as a use. */
-int graph_use_local(graph *g, uint64_t id, node *n, int pin);
+
 void graph_prune_locals(graph *g);
-const char *graph_validate_locals(const graph *g);
 
 #endif

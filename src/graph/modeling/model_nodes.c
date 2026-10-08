@@ -1,5 +1,5 @@
 #include "graph/modeling/model_compile.h"
-#include "graph/runtime/value_array.h"
+#include "types/array.h"
 
 #define FLOAT(label, number)                                                   \
     {                                                                          \

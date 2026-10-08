@@ -1,9 +1,11 @@
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
 #include "render/arena3d.h"
 #include "render/mesh_surface.h"
 #include "render/shader_catalog.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 
 #include <assert.h>
 #include <math.h>
@@ -370,7 +372,7 @@ static void perspective_model_selection()
     ecs_world_free(world);
     behavior_asset_free(empty);
     behavior_asset_free(asset);
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     puts("Perspective model bounds, surface picking, raw primitive and snapshot reuse: PASS");
 }
 
@@ -469,6 +471,6 @@ void test_model_surface()
     render_mesh_surface_free(&surface);
     ecs_world_free(world);
     behavior_asset_free(asset);
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     puts("Model surface authoritative/off-center bounds, transforms, empty intersection, catalog generations and collisions: PASS");
 }

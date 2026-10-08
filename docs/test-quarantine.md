@@ -62,7 +62,6 @@ The exact native admission table is:
 | `--kit-documents` | 0.469–0.551s at CUT61 `7b0389ea`, Debug ASan+UBSan, all 10 checks and 49 frames. |
 | `--compiled-behaviors` | 47.2s |
 | `--automation-search` | 17.2s |
-| `--automation-refactor` | 5.0s |
 | `--automation-profile-scenario-inputs` | 15.8s |
 | `--editor-commands` | 12.5s |
 | `--material-thermal` | 4.8s |

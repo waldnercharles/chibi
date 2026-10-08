@@ -1,3 +1,4 @@
+#include "authoring/ui_loader.h"
 /* Activations a mounted ui asset sends (render/ui.h): emit's arguments, the
  * pointer, button and modifier keys of the event that sent it, and its
  * sending element as a popover's anchor; and contextmenu, which the backend
@@ -45,7 +46,7 @@ static fixture open_fixture(const char *root, const char *name)
 {
     fixture f = { .backend = rml_backend_create(320, 240, 1) };
     rml_context *context = rml_backend_context(f.backend);
-    f.mount = ui_mount_new(root, name);
+    f.mount = authoring_ui_mount_new(root, name);
     f.listener = rml_listener_create(on_event, f.mount);
     ui_data_init(&f.data, context, NULL, on_emit, f.mount);
     f.doc = rml_context_load_document_from_memory(

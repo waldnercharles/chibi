@@ -27,9 +27,9 @@ static void observe_word(delay_observer *o, uint64_t word)
 static int pause_point(void *user, const behavior_function_point *point)
 {
     delay_observer *o = user;
-    assert(point->graph && (point->node || point->kind != BEHAVIOR_POINT_NODE));
+    assert(point->graph_id && (point->node_id || point->kind != BEHAVIOR_POINT_NODE));
     ++o->points;
-    observe_word(o, point->node ? point->node->id : 0);
+    observe_word(o, point->node_id);
     observe_word(o, point->kind);
     return FLOW_PAUSED_RESULT;
 }
@@ -37,7 +37,7 @@ static void observe_watch(void *user, const behavior_function_watch *source, con
 {
     delay_observer *o = user;
     o->watches++;
-    observe_word(o, source->node ? source->node->id : 0);
+    observe_word(o, source->node_id);
     observe_word(o, source->frame);
     observe_word(o, source->pending_frame);
     observe_word(o, source->pin);
@@ -247,7 +247,7 @@ static void bench_activation(behavior_asset *a, int count, int rotation)
             if (!iteration) {
                 start = seconds();
             }
-            instance->variables[0].i = 0;
+            instance->execution.variables[0].i = 0;
             args[1].i = 2 + (iteration & 3);
             run = run
                     ? flow_run_start_reuse(run, g, g->nodes[0], (flow_inputs){ args, 2 }, &options, NULL)
@@ -258,10 +258,10 @@ static void bench_activation(behavior_asset *a, int count, int rotation)
                 status = flow_run_tick_at(run, flow_run_wake_time(run));
                 entries++;
             }
-            assert(!status && instance->variables[0].i == args[1].i * 2);
+            assert(!status && instance->execution.variables[0].i == args[1].i * 2);
             assert(mode == 2 || (run->whole_function_executed && !acount(run->children)));
             if (iteration >= 0) {
-                checksum += instance->variables[0].i;
+                checksum += instance->execution.variables[0].i;
                 calls += entries;
             }
             assert(!flow_run_recycle(run));

@@ -1,0 +1,104 @@
+#define PICO_UNIT_IMPLEMENTATION
+#include "third_party/pico_headers/pico_unit.h"
+
+#include <stdio.h>
+#include <string.h>
+
+void test_language_syntax();
+void test_language_corpus(const char *manifest);
+void test_language_execution();
+void test_language_semantic();
+void test_language_program();
+void test_language_headless();
+void test_language_format();
+void test_language_navigation();
+void test_language_publication();
+void test_field_runtime();
+void test_prototype_document();
+void test_ui_authoring();
+void test_language_text_format();
+void test_graph_model();
+void test_graph_authoring();
+void test_model_runtime();
+void test_language_format_corpus(const char *manifest);
+void test_language_prepared_write(const char *directory);
+
+int main(int argc, char **argv)
+{
+    bool format = (argc == 2 || argc == 4) && !strcmp(argv[1], "--format");
+    bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
+    bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
+    bool semantic = argc == 2 && !strcmp(argv[1], "--semantic");
+    bool execution = argc == 2 && !strcmp(argv[1], "--execution");
+    bool program = argc == 2 && !strcmp(argv[1], "--program");
+    bool headless = argc == 2 && !strcmp(argv[1], "--headless");
+    bool navigation = argc == 2 && !strcmp(argv[1], "--navigation");
+    bool publication = argc == 2 && !strcmp(argv[1], "--publication");
+    bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
+    bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
+    bool model_runtime = argc == 2 && !strcmp(argv[1], "--model-runtime");
+    bool graph_authoring = argc == 2 && !strcmp(argv[1], "--graph-authoring");
+    bool graph_model = argc == 2 && !strcmp(argv[1], "--graph-model");
+    bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
+    bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
+    if ((format && argc == 4 && !corpus) ||
+        (!format && !prepared && !execution && !semantic && !program && !headless &&
+         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
+         !text_format && !graph_model && !graph_authoring && !model_runtime &&
+         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+        fprintf(
+            stderr,
+            "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
+            "| --program | --headless | --navigation | --publication | "
+            "--field-runtime | --prototype-document | --ui-authoring | "
+            "--text-format | --graph-model | --graph-authoring | "
+            "--model-runtime | "
+            "--format [--corpus manifest] | --prepared-write "
+            "directory\n",
+            argv[0]
+        );
+        return 2;
+    }
+    pu_display_time(true);
+    if (model_runtime) {
+        test_model_runtime();
+    } else if (graph_authoring) {
+        test_graph_authoring();
+    } else if (graph_model) {
+        test_graph_model();
+    } else if (text_format) {
+        test_language_text_format();
+    } else if (ui_authoring) {
+        test_ui_authoring();
+    } else if (prototype) {
+        test_prototype_document();
+    } else if (field_runtime) {
+        test_field_runtime();
+    } else if (navigation) {
+        test_language_navigation();
+    } else if (publication) {
+        test_language_publication();
+    } else if (format) {
+        test_language_format();
+        if (corpus) {
+            test_language_format_corpus(argv[3]);
+        }
+    } else if (prepared) {
+        test_language_prepared_write(argv[2]);
+    } else if (headless) {
+        test_language_headless();
+    } else if (program) {
+        test_language_program();
+    } else if (semantic) {
+        test_language_semantic();
+    } else if (execution) {
+        test_language_execution();
+    } else {
+        test_language_syntax();
+        if (corpus) {
+            test_language_corpus(argv[3]);
+        }
+    }
+    pu_print_stats();
+    return pu_test_failed() ? 1 : 0;
+}

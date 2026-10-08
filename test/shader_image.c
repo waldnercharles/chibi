@@ -1,7 +1,7 @@
-#include "graph/shader/shader_image.h"
-
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "platform/cute.h"
+#include "runtime/shaders/image.h"
 #include "support/array.h"
 
 #include <assert.h>

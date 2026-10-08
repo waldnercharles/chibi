@@ -1,9 +1,13 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/vector_nodes.h"
-#include "graph/runtime/eval.h"
+#include "runtime/arithmetic.h"
 #include "runtime/components.h"
+#include "runtime/vectors.h"
 #include "support/arena.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <float.h>
@@ -11,10 +15,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static void direction_to()
+static bool direction_to()
 {
     const node_desc *direction = registry_node_by_name("Direction To");
-    assert(direction == &NODE_Direction_To);
+    REQUIRE(direction == &NODE_Direction_To);
     const CF_V2 origins[] = { { 1, 2 }, { 3, 4 }, { -2, 5 }, { -FLT_MAX, 0 }, { 0, 0 } };
     const CF_V2 targets[] = { { 4, 6 },
                               { 3, 4 },
@@ -29,11 +33,11 @@ static void direction_to()
             { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = (void *)&targets[i] },
         };
         pin_value subtraction[] = { inputs[1], inputs[0] };
-        pin_value delta = NODE_Subtract.fn(subtraction, 2, &memory);
-        pin_value expected = NODE_Normalize_Vector_2.fn(&delta, 1, &memory);
-        pin_value actual = direction->fn(inputs, 2, &memory);
-        assert(((const CF_V2 *)actual.ptr)->x == ((const CF_V2 *)expected.ptr)->x);
-        assert(((const CF_V2 *)actual.ptr)->y == ((const CF_V2 *)expected.ptr)->y);
+        pin_value delta = native_arithmetic_subtract(subtraction, 2, &memory);
+        pin_value expected = native_normalize(&delta, 1, &memory);
+        pin_value actual = native_direction_to(inputs, 2, &memory);
+        REQUIRE(((const CF_V2 *)actual.ptr)->x == ((const CF_V2 *)expected.ptr)->x);
+        REQUIRE(((const CF_V2 *)actual.ptr)->y == ((const CF_V2 *)expected.ptr)->y);
         arena_reset(&memory);
     }
     graph g;
@@ -45,27 +49,26 @@ static void direction_to()
     pin_value target = { .type = PIN_STRUCT,
                          .type_name = "CF_V2",
                          .ptr = (void *)&targets[0] };
-    assert(graph_set_pin_default(&g, n, 0, 0, &origin) == 0);
-    assert(graph_set_pin_default(&g, n, 0, 1, &target) == 0);
+    REQUIRE(graph_set_pin_default(&g, n, 0, 0, &origin) == 0);
+    REQUIRE(graph_set_pin_default(&g, n, 0, 1, &target) == 0);
     char *json = graph_save(&g);
     graph *loaded = graph_load(json);
     free(json);
-    assert(loaded);
-    eval_context context;
-    eval_context_init(&context);
-    pin_value value;
-    assert(
-        graph_eval_output(loaded, graph_node_by_id(loaded, n->id), 0, &memory, &value, &context) == 0
-    );
-    assert(((const CF_V2 *)value.ptr)->x == 0.6f && ((const CF_V2 *)value.ptr)->y == 0.8f);
-    eval_context_free(&context);
+    REQUIRE(loaded);
+    node *restored = graph_node_by_id(loaded, n->id);
+    REQUIRE(restored && restored->desc == direction);
+    pin_value restored_inputs[] = { restored->input_pins[0].default_value,
+                                    restored->input_pins[1].default_value };
+    pin_value value = native_direction_to(restored_inputs, 2, &memory);
+    REQUIRE(((const CF_V2 *)value.ptr)->x == 0.6f && ((const CF_V2 *)value.ptr)->y == 0.8f);
     graph_free(loaded);
     free(loaded);
     graph_free(&g);
     arena_free(&memory);
+    return true;
 }
 
-static void test_zero_scale()
+static bool test_zero_scale()
 {
     arena memory;
     arena_init(&memory, 256);
@@ -74,30 +77,35 @@ static void test_zero_scale()
         { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &source },
         { .type = PIN_F32, .type_name = "float", .f = 0 },
     };
-    pin_value result = NODE_Multiply.fn(inputs, 2, &memory);
-    assert(result.type == PIN_STRUCT && result.ptr);
+    pin_value result = native_arithmetic_multiply(inputs, 2, &memory);
+    REQUIRE(result.type == PIN_STRUCT && result.ptr);
     CF_V2 *vector = result.ptr;
-    assert(vector->x == 0 && vector->y == 0);
+    REQUIRE(vector->x == 0 && vector->y == 0);
     graph graph = { 0 };
     node *make = graph_add_node(&graph, registry_node_by_name("Make_CF_V2"));
     pin_value x = { .type = PIN_F32, .f = 3 }, y = { .type = PIN_F32, .f = -4 };
-    assert(graph_set_pin_default(&graph, make, 0, 0, &x) == 0);
-    assert(graph_set_pin_default(&graph, make, 0, 1, &y) == 0);
+    REQUIRE(graph_set_pin_default(&graph, make, 0, 0, &x) == 0);
+    REQUIRE(graph_set_pin_default(&graph, make, 0, 1, &y) == 0);
     node *multiply = graph_add_node(&graph, &NODE_Multiply);
-    assert(graph_connect_data(&graph, make, 0, multiply, 0) == 0);
-    assert(graph_set_pin_default(&graph, multiply, 0, 1, &inputs[1]) == 0);
-    eval_context context;
-    eval_context_init(&context);
-    assert(graph_eval_output(&graph, multiply, 0, &memory, &result, &context) == 0);
-    assert(result.type == PIN_STRUCT && result.ptr);
+    REQUIRE(graph_connect_data(&graph, make, 0, multiply, 0) == 0);
+    REQUIRE(graph_set_pin_default(&graph, multiply, 0, 1, &inputs[1]) == 0);
+    REQUIRE(graph.edges && acount(graph.edges) == 1);
+    CF_V2 composed = { make->input_pins[0].default_value.f,
+                       make->input_pins[1].default_value.f };
+    pin_value composed_inputs[] = {
+        { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &composed },
+        multiply->input_pins[1].default_value
+    };
+    result = native_arithmetic_multiply(composed_inputs, 2, &memory);
+    REQUIRE(result.type == PIN_STRUCT && result.ptr);
     vector = result.ptr;
-    assert(vector->x == 0 && vector->y == 0);
-    eval_context_free(&context);
+    REQUIRE(vector->x == 0 && vector->y == 0);
     graph_free(&graph);
     arena_free(&memory);
+    return true;
 }
 
-void test_vector()
+TEST_CASE(vector_extremes_defaults_and_zero_scale)
 {
     const CF_V2 values[] = {
         { 0, 0 },
@@ -118,10 +126,10 @@ void test_vector()
         pin_value input = { .type = PIN_STRUCT,
                             .type_name = "CF_V2",
                             .ptr = (void *)&values[i] };
-        pin_value output = NODE_Normalize_Vector_2.fn(&input, 1, &memory);
+        pin_value output = native_normalize(&input, 1, &memory);
         const CF_V2 *result = output.ptr;
-        assert(fabsf(result->x - expected[i].x) < 0.00001f);
-        assert(fabsf(result->y - expected[i].y) < 0.00001f);
+        REQUIRE(fabsf(result->x - expected[i].x) < 0.00001f);
+        REQUIRE(fabsf(result->y - expected[i].y) < 0.00001f);
         arena_reset(&memory);
     }
     arena_free(&memory);
@@ -129,11 +137,15 @@ void test_vector()
     CF_V2 *stored = arena_alloc(&memory, sizeof *stored);
     *stored = (CF_V2){ 3, 4 };
     pin_value input = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = stored };
-    pin_value output = NODE_Normalize_Vector_2.fn(&input, 1, &memory);
+    pin_value output = native_normalize(&input, 1, &memory);
     const CF_V2 *result = output.ptr;
-    assert(fabsf(result->x - 0.6f) < 0.00001f && fabsf(result->y - 0.8f) < 0.00001f);
+    REQUIRE(fabsf(result->x - 0.6f) < 0.00001f && fabsf(result->y - 0.8f) < 0.00001f);
     arena_free(&memory);
-    test_zero_scale();
-    direction_to();
-    puts("[vector] normalization handles zero and extreme magnitudes; zero scaling preserves vector output");
+    REQUIRE(test_zero_scale());
+    REQUIRE(direction_to());
+    return true;
+}
+void test_vector()
+{
+    RUN_TEST_CASE(vector_extremes_defaults_and_zero_scale);
 }

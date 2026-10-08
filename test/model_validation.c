@@ -1,10 +1,11 @@
 #include "assets/model_validation.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
 #include "render/shader_catalog.h"
 #include "support/array.h"
-#include "support/text_file.h"
+#include "support/file_io.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -118,10 +119,10 @@ static void saved_material_failures()
     assert(render_shader_revision() == revision);
     behavior_asset *too_many = parameter_material("Right", 16);
     save(right_path, too_many);
-    char *before = text_file_read_disk(right_path);
+    char *before = file_read_text(right_path);
     assert(!model_content_validate(directory, error, sizeof error));
     assert(strstr(error, "32") && strstr(error, "Pair.kdl"));
-    char *after = text_file_read_disk(right_path);
+    char *after = file_read_text(right_path);
     assert(!strcmp(before, after));
     assert(render_shader_revision() == revision);
     free(before);
@@ -129,10 +130,10 @@ static void saved_material_failures()
     behavior_asset *invalid = behavior_asset_new("Right");
     invalid->domain = BEHAVIOR_DOMAIN_MATERIAL;
     save(right_path, invalid);
-    before = text_file_read_disk(right_path);
+    before = file_read_text(right_path);
     assert(!model_content_validate(directory, error, sizeof error));
     assert(strstr(error, "Pair.kdl"));
-    after = text_file_read_disk(right_path);
+    after = file_read_text(right_path);
     assert(!strcmp(before, after));
     assert(render_shader_revision() == revision);
     free(before);
@@ -143,10 +144,8 @@ static void saved_material_failures()
     snprintf(libraries, sizeof libraries, "%s/shader-libraries", directory);
     assert(!mkdir(libraries, 0700));
     snprintf(library_path, sizeof library_path, "%s/ShaderMath.kdl", libraries);
-    char *library_text = text_file_read_disk(
-        "test/fixtures/content/shader-libraries/ShaderMath.kdl"
-    );
-    char *material_text = text_file_read_disk("test/fixtures/content/materials/PulseRing.kdl");
+    char *library_text = file_read_text("test/fixtures/content/shader-libraries/ShaderMath.kdl");
+    char *material_text = file_read_text("test/fixtures/content/materials/PulseRing.kdl");
     assert(library_text && material_text);
     behavior_asset *library_material = behavior_asset_load(material_text);
     assert(library_material && !behavior_asset_set_name(library_material, "Right"));
@@ -200,10 +199,10 @@ void test_model_validation()
     pin_value radius = { .type = PIN_F32, .f = -1 };
     assert(!graph_set_pin_default(leaf->graph, sphere, false, 0, &radius));
     save(leaf_path, leaf);
-    char *before = text_file_read_disk(leaf_path);
+    char *before = file_read_text(leaf_path);
     assert(!model_content_validate(directory, error, sizeof error));
     assert(strstr(error, ".kdl") && strstr(error, "node"));
-    char *after = text_file_read_disk(leaf_path);
+    char *after = file_read_text(leaf_path);
     assert(!strcmp(before, after));
     free(before);
     free(after);

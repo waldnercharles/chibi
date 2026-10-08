@@ -1,12 +1,16 @@
 #include "runtime/behaviors/entities.h"
 
+#include "authoring/engine_preview.h"
+#include "authoring/preview.h"
+#include "authoring/prototype_prepare.h"
+#include "authoring/prototype_preview.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow_internal.h"
-#include "runtime/behaviors/live.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
-#include "runtime/scenes/prototype_preview.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/simulation_fixture.h"
@@ -145,7 +149,7 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
 {
     ecs_world *ecs = ecs_world_new();
     assert(ecs_world_register_component(ecs, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-    game_live_world *live = game_live_world_new(ecs);
+    game_preview_world *live = game_preview_world_new(ecs);
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
@@ -160,18 +164,29 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
         sizeof error
     );
     assert(prototype);
-    assert(game_entities_register(live->entities, prototype) == 0);
-    assert(game_live_add_definition(live, game_live_definition_new("child", child_asset())) == 0);
+    assert(game_entities_register(live->runtime->entities, prototype) == 0);
     assert(
-        game_live_add_definition(live, game_live_definition_new("parent", parent_asset(pause, destroy))) == 0
+        game_preview_add_definition(live, game_preview_definition_new("child", child_asset())) == 0
+    );
+    assert(
+        game_preview_add_definition(
+            live,
+            game_preview_definition_new("parent", parent_asset(pause, destroy))
+        ) == 0
     );
     ecs_entity owner = ecs_world_create_entity(ecs);
-    assert(game_behavior_attach(live->behaviors, owner, "parent") == 0);
-    behavior_instance *parent = game_behavior_instance(live->behaviors, owner, "parent");
+    assert(game_behavior_attach(live->runtime->behaviors, owner, "parent") == 0);
+    behavior_instance *parent = game_behavior_instance(live->runtime->behaviors, owner, "parent");
     behavior_instance_set_breakpoints_enabled(parent, pause);
     uint64_t eval_before = eval_oracle_calls(), flow_before = flow_oracle_calls();
     flow_error dispatch_error = { 0 };
-    int dispatched = game_behavior_dispatch(live->behaviors, owner, "Fire", (flow_inputs){ 0 }, &dispatch_error);
+    int dispatched = game_behavior_dispatch(
+        live->runtime->behaviors,
+        owner,
+        "Fire",
+        (flow_inputs){ 0 },
+        &dispatch_error
+    );
     if (dispatched != 1) {
         fprintf(
             stderr,
@@ -186,9 +201,12 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
     if (behavior_instance_backend(parent) != BEHAVIOR_ORACLE) {
         if (!run->whole_function_executed) {
             bool duplicate;
-            node *entry = behavior_program_event(parent->asset->program, "Fire", &duplicate);
+            node *entry = behavior_program_event(behavior_program_cached(parent->asset), "Fire", &duplicate);
             const behavior_function_diagnostic *d = behavior_program_function_diagnostic(
-                behavior_program_graph(parent->asset->program, parent->asset->graph),
+                behavior_program_graph(
+                    behavior_program_cached(parent->asset),
+                    parent->asset->graph
+                ),
                 entry
             );
             fprintf(
@@ -203,65 +221,65 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
     }
     assert(flow_run_waiting_for_host(run));
     assert(entity_count(ecs) == 1);
-    assert(game_behavior_attachment_count(live->behaviors) == 1);
+    assert(game_behavior_attachment_count(live->runtime->behaviors) == 1);
     if (cancel_before) {
         assert(behavior_instance_stop_activation(parent, run) == 0);
     }
-    int blocked = game_entities_flush(live->entities);
+    int blocked = game_entities_flush(live->runtime->entities);
     if (behavior_instance_backend(parent) != BEHAVIOR_ORACLE) {
         assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
     }
     if (cancel_before || destroy) {
         assert(blocked == 0);
         assert(entity_count(ecs) == 1);
-        assert(game_behavior_attachment_count(live->behaviors) == 1);
-        assert(game_behavior_log_count(live->behaviors) == 0);
+        assert(game_behavior_attachment_count(live->runtime->behaviors) == 1);
+        assert(game_behavior_log_count(live->runtime->behaviors) == 0);
     } else if (pause) {
-        assert(blocked > 0 && game_entities_initializing(live->entities));
+        assert(blocked > 0 && game_entities_initializing(live->runtime->entities));
         assert(entity_count(ecs) == 2);
         assert(flow_run_status(run) == FLOW_PAUSED);
-        assert(game_behavior_attachment_count(live->behaviors) == 1);
-        assert(game_behavior_log_count(live->behaviors) == 0);
+        assert(game_behavior_attachment_count(live->runtime->behaviors) == 1);
+        assert(game_behavior_log_count(live->runtime->behaviors) == 0);
         if (pause == 2) {
             assert(flow_run_resume(run) == FLOW_OK);
-            assert(game_entities_flush(live->entities) == 0);
-            assert(game_behavior_attachment_count(live->behaviors) == 2);
-            assert(game_behavior_log_count(live->behaviors) == 1);
-            game_entities_reset(live->entities);
+            assert(game_entities_flush(live->runtime->entities) == 0);
+            assert(game_behavior_attachment_count(live->runtime->behaviors) == 2);
+            assert(game_behavior_log_count(live->runtime->behaviors) == 1);
+            game_entities_reset(live->runtime->entities);
         } else if (pause == 3) {
-            game_entities_reset(live->entities);
+            game_entities_reset(live->runtime->entities);
         } else {
             assert(behavior_instance_stop_activation(parent, run) == 0);
         }
-        assert(game_entities_flush(live->entities) == 0);
+        assert(game_entities_flush(live->runtime->entities) == 0);
         assert(entity_count(ecs) == 1);
-        assert(game_behavior_attachment_count(live->behaviors) == 1);
-        assert(!game_entities_initializing(live->entities));
+        assert(game_behavior_attachment_count(live->runtime->behaviors) == 1);
+        assert(!game_entities_initializing(live->runtime->entities));
     } else {
         assert(blocked == 0 && entity_count(ecs) == 2);
         ecs_entity child = ecs_entity_from_u64(value(parent, "Spawned").u64);
         assert(ecs_entity_is_alive(ecs, child));
         ecs_entity *owned = NULL;
-        game_entities_copy_live(live->entities, &owned);
+        game_entities_copy_live(live->runtime->entities, &owned);
         assert(acount(owned) == 1 && ecs_entity_to_u64(owned[0]) == ecs_entity_to_u64(child));
-        assert(game_entities_owns(live->entities, child));
-        assert(!game_entities_owns(live->entities, owner));
-        behavior_instance *instance = game_behavior_instance(live->behaviors, child, "child");
+        assert(game_entities_owns(live->runtime->entities, child));
+        assert(!game_entities_owns(live->runtime->entities, owner));
+        behavior_instance *instance = game_behavior_instance(live->runtime->behaviors, child, "child");
         assert(instance && value(instance, "ObservedX").f == 73.0f);
         assert(value(parent, "ReadX").f == 73.0f);
         assert(GAME_GameTransform_get(ecs, child)->y == -4.0f);
-        assert(game_behavior_log_count(live->behaviors) == 1);
-        assert(game_entities_flush(live->entities) == 0);
-        assert(game_behavior_log_count(live->behaviors) == 1);
-        game_entities_request_destroy(live->entities, child);
+        assert(game_behavior_log_count(live->runtime->behaviors) == 1);
+        assert(game_entities_flush(live->runtime->entities) == 0);
+        assert(game_behavior_log_count(live->runtime->behaviors) == 1);
+        game_entities_request_destroy(live->runtime->entities, child);
         assert(ecs_entity_is_alive(ecs, child));
-        assert(game_behavior_attachment_count(live->behaviors) == 2);
-        assert(game_entities_flush(live->entities) == 0);
+        assert(game_behavior_attachment_count(live->runtime->behaviors) == 2);
+        assert(game_entities_flush(live->runtime->entities) == 0);
         assert(!ecs_entity_is_alive(ecs, child));
-        game_entities_copy_live(live->entities, &owned);
-        assert(acount(owned) == 0 && !game_entities_owns(live->entities, child));
+        game_entities_copy_live(live->runtime->entities, &owned);
+        assert(acount(owned) == 0 && !game_entities_owns(live->runtime->entities, child));
         afree(owned);
-        assert(game_behavior_attachment_count(live->behaviors) == 1);
+        assert(game_behavior_attachment_count(live->runtime->behaviors) == 1);
         graph g = { 0 };
         node *get = add(&g, "GetEntity_GameTransform");
         input(
@@ -316,50 +334,50 @@ static void run_spawn_case(bool cancel_before, int pause, bool destroy)
         eval_context_free(&ctx);
         arena_free(&a);
         graph_free(&g);
-        assert(game_entities_register(live->entities, prototype) == 0);
+        assert(game_entities_register(live->runtime->entities, prototype) == 0);
         for (int i = 0; i < 65; i++) {
             assert(
-                game_behavior_dispatch(live->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1
+                game_behavior_dispatch(live->runtime->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1
             );
         }
         assert(entity_count(ecs) == 1);
-        assert(game_entities_flush(live->entities) == 0);
+        assert(game_entities_flush(live->runtime->entities) == 0);
         assert(entity_count(ecs) == 65);
-        assert(game_entities_flush(live->entities) == 0);
+        assert(game_entities_flush(live->runtime->entities) == 0);
         assert(entity_count(ecs) == 66);
-        game_entities_reset(live->entities);
+        game_entities_reset(live->runtime->entities);
         assert(entity_count(ecs) == 1);
-        assert(game_behavior_attachment_count(live->behaviors) == 1);
+        assert(game_behavior_attachment_count(live->runtime->behaviors) == 1);
         assert(
-            game_behavior_dispatch(live->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1
+            game_behavior_dispatch(live->runtime->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1
         );
-        game_entities_reset(live->entities);
-        assert(game_entities_flush(live->entities) == 0 && entity_count(ecs) == 1);
+        game_entities_reset(live->runtime->entities);
+        assert(game_entities_flush(live->runtime->entities) == 0 && entity_count(ecs) == 1);
         assert(
-            game_behavior_dispatch(live->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1
+            game_behavior_dispatch(live->runtime->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1
         );
-        assert(game_entities_flush(live->entities) == 0 && entity_count(ecs) == 2);
+        assert(game_entities_flush(live->runtime->entities) == 0 && entity_count(ecs) == 2);
         owned = NULL;
-        game_entities_copy_live(live->entities, &owned);
+        game_entities_copy_live(live->runtime->entities, &owned);
         assert(acount(owned) == 1);
         ecs_entity retired = owned[0];
-        assert(game_behavior_destroy_entity(live->behaviors, retired) == ECS_OK);
+        assert(game_behavior_destroy_entity(live->runtime->behaviors, retired) == ECS_OK);
         ecs_entity replacement = ecs_world_create_entity(ecs);
         assert(
             replacement.slot == retired.slot &&
             replacement.generation != retired.generation
         );
-        assert(!game_entities_owns(live->entities, replacement));
-        game_entities_copy_live(live->entities, &owned);
+        assert(!game_entities_owns(live->runtime->entities, replacement));
+        game_entities_copy_live(live->runtime->entities, &owned);
         assert(acount(owned) == 0);
         afree(owned);
-        game_entities_reset(live->entities);
+        game_entities_reset(live->runtime->entities);
         assert(ecs_entity_is_alive(ecs, replacement));
-        assert(game_behavior_destroy_entity(live->behaviors, replacement) == ECS_OK);
+        assert(game_behavior_destroy_entity(live->runtime->behaviors, replacement) == ECS_OK);
         assert(entity_count(ecs) == 1);
     }
     game_prototype_free(prototype);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(ecs);
 }
 
@@ -397,7 +415,7 @@ static int observe_event(node *, flow_context *ctx)
                 observer->entities,
                 observer->target,
                 "Queued",
-                (flow_inputs){ .values = followup, .count = 3 }
+                (execution_arguments){ .values = followup, .count = 3 }
             ) == FLOW_OK
         );
     }
@@ -446,8 +464,12 @@ static void queue_owned_event(game_entities *entities, ecs_entity target, int se
         { .type = PIN_I32, .type_name = "int", .i = sequence },
     };
     assert(
-        game_entities_request_event(entities, target, name, (flow_inputs){ .values = values, .count = 3 }) ==
-        FLOW_OK
+        game_entities_request_event(
+            entities,
+            target,
+            name,
+            (execution_arguments){ .values = values, .count = 3 }
+        ) == FLOW_OK
     );
     memset(name, '?', strlen(name));
     memset(text, '?', strlen(text));
@@ -463,31 +485,31 @@ static void queue_owned_event(game_entities *entities, ecs_entity target, int se
 static void test_queued_events(bool pause)
 {
     ecs_world *ecs = ecs_world_new();
-    game_live_world *live = game_live_world_new(ecs);
+    game_preview_world *live = game_preview_world_new(ecs);
     behavior_asset *asset = event_asset(pause);
-    assert(game_behavior_register_asset(live->behaviors, "events", asset) == 0);
+    assert(game_behavior_register_asset(live->runtime->behaviors, "events", asset) == 0);
     ecs_entity target = ecs_world_create_entity(ecs);
-    assert(game_behavior_attach(live->behaviors, target, "events") == 0);
-    behavior_instance *instance = game_behavior_instance(live->behaviors, target, "events");
-    event_observer observer = { .entities = live->entities, .target = target };
+    assert(game_behavior_attach(live->runtime->behaviors, target, "events") == 0);
+    behavior_instance *instance = game_behavior_instance(live->runtime->behaviors, target, "events");
+    event_observer observer = { .entities = live->runtime->entities, .target = target };
     assert(behavior_instance_bind_service(instance, "test.event_observer", &observer) == 0);
     behavior_instance_set_breakpoints_enabled(instance, pause);
-    queue_owned_event(live->entities, target, 0);
+    queue_owned_event(live->runtime->entities, target, 0);
     assert(observer.count == 0);
-    assert(game_entities_dispatch_events(live->entities) == FLOW_OK);
+    assert(game_entities_dispatch_events(live->runtime->entities) == FLOW_OK);
     if (pause) {
         assert(observer.count == 0 && acount(instance->activations) == 1);
         flow_run *run = instance->activations[0];
         assert(flow_run_status(run) == FLOW_PAUSED);
         assert(strcmp(flow_run_event_name(run), "Queued") == 0);
         game_behavior_attachment_info paused;
-        assert(game_behavior_paused_run(live->behaviors, &paused) == run);
+        assert(game_behavior_paused_run(live->runtime->behaviors, &paused) == run);
         assert(paused.instance == instance && !strcmp(paused.asset_name, "events"));
         /* The queue has freed its request; activation inputs must own all metadata. */
         assert(flow_run_resume(run) == FLOW_OK);
         assert(observer.count == 1 && observer.sequence[0] == 0);
-        assert(!game_behavior_paused_run(live->behaviors, &paused));
-        game_live_world_free(live);
+        assert(!game_behavior_paused_run(live->runtime->behaviors, &paused));
+        game_preview_world_free(live);
         behavior_asset_free(asset);
         ecs_world_free(ecs);
         return;
@@ -496,28 +518,34 @@ static void test_queued_events(bool pause)
     observer.count = 0;
     observer.recurse = true;
     for (int i = 0; i < 65; i++) {
-        queue_owned_event(live->entities, target, i);
+        queue_owned_event(live->runtime->entities, target, i);
     }
-    assert(game_entities_dispatch_events(live->entities) == FLOW_OK);
+    assert(game_entities_dispatch_events(live->runtime->entities) == FLOW_OK);
     assert(observer.count == 64);
     for (int i = 0; i < 64; i++) {
         assert(observer.sequence[i] == i);
     }
-    assert(game_entities_dispatch_events(live->entities) == FLOW_OK);
+    assert(game_entities_dispatch_events(live->runtime->entities) == FLOW_OK);
     assert(observer.count == 66);
     assert(observer.sequence[64] == 64 && observer.sequence[65] == 99);
-    queue_owned_event(live->entities, target, 100);
-    game_entities_reset(live->entities);
-    assert(game_entities_dispatch_events(live->entities) == FLOW_OK && observer.count == 66);
-    queue_owned_event(live->entities, target, 101);
-    game_entities_request_destroy(live->entities, target);
-    assert(game_entities_dispatch_events(live->entities) == FLOW_OK);
+    queue_owned_event(live->runtime->entities, target, 100);
+    game_entities_reset(live->runtime->entities);
+    assert(
+        game_entities_dispatch_events(live->runtime->entities) == FLOW_OK &&
+        observer.count == 66
+    );
+    queue_owned_event(live->runtime->entities, target, 101);
+    game_entities_request_destroy(live->runtime->entities, target);
+    assert(game_entities_dispatch_events(live->runtime->entities) == FLOW_OK);
     assert(observer.count == 66);
-    assert(game_entities_flush(live->entities) == FLOW_OK);
+    assert(game_entities_flush(live->runtime->entities) == FLOW_OK);
     assert(!ecs_entity_is_alive(ecs, target));
-    queue_owned_event(live->entities, target, 102);
-    assert(game_entities_dispatch_events(live->entities) == FLOW_OK && observer.count == 66);
-    game_live_world_free(live);
+    queue_owned_event(live->runtime->entities, target, 102);
+    assert(
+        game_entities_dispatch_events(live->runtime->entities) == FLOW_OK &&
+        observer.count == 66
+    );
+    game_preview_world_free(live);
     behavior_asset_free(asset);
     ecs_world_free(ecs);
 }
@@ -590,7 +618,7 @@ static void delayed_spawn_case(bool isolated, int mode)
                                                : NULL;
     ecs_world *world = isolated ? game_prototype_preview_world(preview)
                                 : ecs_world_new();
-    game_live_world *live = NULL;
+    game_preview_world *live = NULL;
     engine *runtime = NULL;
     behavior_asset *parent_asset = delayed_spawn_parent();
     behavior_asset *child_behavior = child_asset();
@@ -605,18 +633,21 @@ static void delayed_spawn_case(bool isolated, int mode)
         owner = game_prototype_preview_entity(preview);
     } else {
         assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-        live = game_live_world_new(world);
-        runtime = engine_new(world, live);
-        assert(game_live_add_definition(live, game_live_definition_new("parent", parent_asset)) == 0);
+        live = game_preview_world_new(world);
+        runtime = authoring_engine_new(world, live->runtime);
         assert(
-            game_live_add_definition(live, game_live_definition_new("child", child_behavior)) == 0
+            game_preview_add_definition(live, game_preview_definition_new("parent", parent_asset)) == 0
         );
-        assert(game_entities_register(live->entities, child) == 0);
+        assert(
+            game_preview_add_definition(live, game_preview_definition_new("child", child_behavior)) == 0
+        );
+        assert(game_entities_register(live->runtime->entities, child) == 0);
         assert(
             game_prototype_spawn(
                 prototype,
                 world,
-                &(game_prototype_spawn_hooks){ attach_spawn_parent, live->behaviors },
+                &(game_prototype_spawn_hooks){ attach_spawn_parent,
+                                               live->runtime->behaviors },
                 &owner,
                 error,
                 sizeof error
@@ -626,7 +657,7 @@ static void delayed_spawn_case(bool isolated, int mode)
     }
     game_behavior_world *behaviors = isolated
                                        ? game_prototype_preview_behaviors(preview)
-                                       : live->behaviors;
+                                       : live->runtime->behaviors;
     behavior_instance *parent = game_behavior_instance(behaviors, owner, "parent");
     assert(parent);
     behavior_instance_set_breakpoints_enabled(parent, mode == 1);
@@ -706,7 +737,7 @@ static void delayed_spawn_case(bool isolated, int mode)
         game_prototype_preview_free(preview);
     } else {
         engine_free(runtime);
-        game_live_world_free(live);
+        game_preview_world_free(live);
         ecs_world_free(world);
     }
     game_prototype_free(child);
@@ -942,7 +973,7 @@ static void children_survive_source(bool descendants)
 {
     ecs_world *ecs = ecs_world_new();
     assert(ecs_world_register_component(ecs, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-    game_live_world *live = game_live_world_new(ecs);
+    game_preview_world *live = game_preview_world_new(ecs);
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
@@ -956,7 +987,7 @@ static void children_survive_source(bool descendants)
         error,
         sizeof error
     );
-    assert(prototype && game_entities_register(live->entities, prototype) == 0);
+    assert(prototype && game_entities_register(live->runtime->entities, prototype) == 0);
     behavior_asset *child = child_asset();
     game_prototype *leaf = NULL;
     if (descendants) {
@@ -969,7 +1000,7 @@ static void children_survive_source(bool descendants)
             error,
             sizeof error
         );
-        assert(leaf && !game_entities_register(live->entities, leaf));
+        assert(leaf && !game_entities_register(live->runtime->entities, leaf));
         graph *g = child->graph;
         node *tail = alast(g->nodes);
         node *sequence = add(g, "Sequence");
@@ -986,7 +1017,7 @@ static void children_survive_source(bool descendants)
             assert(!graph_connect_exec(g, sequence, i, spawn, 0, 0));
         }
     }
-    assert(game_live_add_definition(live, game_live_definition_new("child", child)) == 0);
+    assert(game_preview_add_definition(live, game_preview_definition_new("child", child)) == 0);
     behavior_asset *asset = parent_asset(false, false);
     graph *g = asset->graph;
     node *tail = g->nodes[acount(g->nodes) - 1];
@@ -997,19 +1028,22 @@ static void children_survive_source(bool descendants)
     next(g, tail, second);
     next(g, second, destroy);
     data(g, self, 0, destroy, 1);
-    assert(game_live_add_definition(live, game_live_definition_new("parent", asset)) == 0);
+    assert(game_preview_add_definition(live, game_preview_definition_new("parent", asset)) == 0);
     ecs_entity owner = ecs_world_create_entity(ecs);
-    assert(game_behavior_attach(live->behaviors, owner, "parent") == 0);
-    assert(game_behavior_dispatch(live->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1);
-    assert(game_entities_flush_initializers(live->entities, 1) == 0);
+    assert(game_behavior_attach(live->runtime->behaviors, owner, "parent") == 0);
+    assert(
+        game_behavior_dispatch(live->runtime->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL) == 1
+    );
+    assert(game_entities_flush_initializers(live->runtime->entities, 1) == 0);
     assert(!ecs_entity_is_alive(ecs, owner));
     ecs_entity *children = NULL;
-    game_entities_copy_live(live->entities, &children);
+    game_entities_copy_live(live->runtime->entities, &children);
     int expected = descendants ? 66 : 2;
     assert(acount(children) == expected && entity_count(ecs) == expected);
     int initialized = 0;
     for (int i = 0; i < acount(children); i++) {
-        behavior_instance *child = game_behavior_instance(live->behaviors, children[i], "child");
+        behavior_instance
+            *child = game_behavior_instance(live->runtime->behaviors, children[i], "child");
         if (!child) {
             continue;
         }
@@ -1023,7 +1057,7 @@ static void children_survive_source(bool descendants)
     if (leaf) {
         game_prototype_free(leaf);
     }
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(ecs);
 }
 
@@ -1083,7 +1117,7 @@ void bench_spawn(int count)
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(ecs, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(ecs);
+    game_preview_world *live = game_preview_world_new(ecs);
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char error[256];
@@ -1106,17 +1140,17 @@ void bench_spawn(int count)
         sizeof error
     );
     assert(shot);
-    assert(game_entities_register(live->entities, shot) == 0);
+    assert(game_entities_register(live->runtime->entities, shot) == 0);
     const char *behaviors[] = { "ShotEffects", "ShotHit", "ShotLifecycle", "Spawner" };
     for (int i = 0; i < 4; i++) {
         behavior_asset *asset = i < 3 ? shot_behavior(behaviors[i])
                                       : spawner_behavior();
         assert(
-            game_live_add_definition(live, game_live_definition_new(behaviors[i], asset)) == 0
+            game_preview_add_definition(live, game_preview_definition_new(behaviors[i], asset)) == 0
         );
     }
     ecs_entity owner = ecs_world_create_entity(ecs);
-    assert(game_behavior_attach(live->behaviors, owner, "Spawner") == 0);
+    assert(game_behavior_attach(live->runtime->behaviors, owner, "Spawner") == 0);
     for (int round = 0; round < 2; round++) {
         xalloc_stats before, after;
         xalloc_stats_get(&before);
@@ -1125,25 +1159,31 @@ void bench_spawn(int count)
         /* A busy tick's worth of shots at a time, as weapons fire them. */
         int fired = 0, flushed = 0;
         for (int i = 0; i < count; i++) {
-            fired += game_behavior_dispatch(live->behaviors, owner, "Fire", (flow_inputs){ 0 }, NULL);
+            fired += game_behavior_dispatch(
+                live->runtime->behaviors,
+                owner,
+                "Fire",
+                (flow_inputs){ 0 },
+                NULL
+            );
             if (i % SPAWN_BENCH_BATCH == SPAWN_BENCH_BATCH - 1 || i == count - 1) {
                 /* As a fixed step does: finish spawns, then reap the runs that waited on them. */
-                flushed |= game_entities_flush_initializers(live->entities, 0);
-                flushed |= game_behavior_pump(live->behaviors, 0);
+                flushed |= game_entities_flush_initializers(live->runtime->entities, 0);
+                flushed |= game_behavior_pump(live->runtime->behaviors, 0);
             }
         }
-        int updated = game_behavior_update(live->behaviors, NULL);
+        int updated = game_behavior_update(live->runtime->behaviors, NULL);
         clock_gettime(CLOCK_MONOTONIC, &spawned);
         assert(fired == count && flushed >= 0 && updated >= 0);
         xalloc_stats_get(&after);
         assert(ecs_world_live_count(ecs) == (uint32_t)count + 1);
         ecs_entity *shots = NULL;
-        game_entities_copy_live(live->entities, &shots);
+        game_entities_copy_live(live->runtime->entities, &shots);
         for (int i = 0; i < acount(shots); i++) {
-            game_entities_request_destroy(live->entities, shots[i]);
+            game_entities_request_destroy(live->runtime->entities, shots[i]);
         }
-        flushed = game_entities_flush(live->entities);
-        updated = game_behavior_update(live->behaviors, NULL);
+        flushed = game_entities_flush(live->runtime->entities);
+        updated = game_behavior_update(live->runtime->behaviors, NULL);
         clock_gettime(CLOCK_MONOTONIC, &destroyed);
         assert(flushed == 0 && updated >= 0);
         assert(ecs_world_live_count(ecs) == 1);
@@ -1160,7 +1200,7 @@ void bench_spawn(int count)
         );
     }
     game_prototype_free(shot);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(ecs);
 }
 

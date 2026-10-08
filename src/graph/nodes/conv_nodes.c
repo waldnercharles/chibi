@@ -1,271 +1,82 @@
-/* graph/nodes/conv_nodes.c -- CAT-26 explicit conversion descriptors, registered
- * as EXTRA_NODES. Scalar conversions remain available to the graph editor;
- * struct conversions are carried by data edges and evaluated at the edge.
- */
 #include "graph/nodes/conv_nodes.h"
 
+#include "graph/model/native_definition.h"
 #include "graph/model/pin_conv.h"
-#include "graph/model/pin_fmt.h"
 #include "graph/model/registry.h"
-#include "support/arena.h"
+#include "runtime/conversions.h"
 
-#include <assert.h>
-#include <limits.h>
-#include <math.h>
-#include <string.h>
-
-static pin_value conv_to_string(const pin_value *inputs, int input_count, arena *a)
-{
-    (void)input_count;
-    pin_value r = { .type = PIN_STR, .type_name = "const char *", .str = "" };
-    /* pin_value_to_string returns a static ring buffer: copy into the arena,
-     * never hand the ring out. */
-    const char *text = pin_value_to_string(&inputs[0]);
-    size_t len = strlen(text);
-    char *copy = arena_alloc(a, len + 1);
-    if (!copy) {
-        return r;
-    }
-    memcpy(copy, text, len + 1);
-    r.str = copy;
-    return r;
-}
-
-static pin_value conv_to_real(const pin_value *inputs, int input_count, arena *a)
-{
-    (void)input_count;
-    (void)a;
-    pin_value r = { .type = PIN_F64, .type_name = "double", .d = 0.0 };
-    switch (inputs[0].type) {
-        case PIN_BOOL: r.d = inputs[0].b ? 1.0 : 0.0; break;
-        case PIN_U8: r.d = (double)inputs[0].u8; break;
-        case PIN_I32: r.d = (double)inputs[0].i; break;
-        case PIN_I64: r.d = (double)inputs[0].i64; break;
-        default: break; /* input is retyped to one of these before use */
-    }
-    return r;
-}
-
-static pin_value conv_to_name(const pin_value *inputs, int count, arena *storage)
-{
-    assert(count == 1 && inputs[0].type == PIN_STR);
-    const char *text = inputs[0].str ? inputs[0].str : "";
-    size_t size = strlen(text) + 1;
-    char *copy = arena_alloc(storage, size);
-    memcpy(copy, text, size);
-    return (pin_value){ .type = PIN_NAME, .type_name = "name", .str = copy };
-}
-
-/* A bool reads as 1 or 0. */
-static double real_value(const pin_value *value)
-{
-    assert(value->type == PIN_BOOL || value->type == PIN_F32 || value->type == PIN_F64);
-    return value->type == PIN_BOOL ? value->b
-         : value->type == PIN_F32  ? value->f
-                                   : value->d;
-}
-
-/* Test bounds before casting: converting an out-of-range real is undefined.
- * In particular, INT64_MAX rounds up to 2^63 when represented as double. */
-static int64_t real_integer(double value, int64_t minimum, int64_t maximum)
-{
-    if (isnan(value)) {
-        return 0;
-    }
-    if (value <= (double)minimum) {
-        return minimum;
-    }
-    if (value >= (double)maximum) {
-        return maximum;
-    }
-    return (int64_t)value;
-}
-
-static pin_value conv_to_byte(const pin_value *inputs, int, arena *)
-{
-    return (pin_value){ .type = PIN_U8,
-                        .type_name = "byte",
-                        .u8 = (uint8_t)real_integer(real_value(inputs), 0, UINT8_MAX) };
-}
-
-static pin_value conv_to_integer(const pin_value *inputs, int, arena *)
-{
-    return (pin_value){ .type = PIN_I32,
-                        .type_name = "int",
-                        .i = (int32_t)real_integer(real_value(inputs), INT32_MIN, INT32_MAX) };
-}
-
-static pin_value conv_to_i64(const pin_value *inputs, int, arena *)
-{
-    int64_t value = inputs->type == PIN_I32
-                      ? inputs->i
-                      : real_integer(real_value(inputs), INT64_MIN, INT64_MAX);
-    return (pin_value){ .type = PIN_I64, .type_name = "int64", .i64 = value };
-}
-
-static pin_spec real_integer_inputs[] = {
-    { "Value", PIN_F64, "double", PIN_DATA },
-};
-static pin_spec to_byte_outputs[] = {
-    { "Byte", PIN_U8, "byte", PIN_DATA },
-};
-static pin_spec to_integer_outputs[] = {
-    { "Integer", PIN_I32, "int", PIN_DATA },
-};
-node_desc NODE_To_Byte = {
-    .name = "To Byte",
-    .input_count = 1,
-    .output_count = 1,
-    .inputs = real_integer_inputs,
-    .outputs = to_byte_outputs,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = conv_to_byte,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Conversion",
-    .keywords = "convert cast truncate saturate byte uint8 bool",
-    .description = "Truncates Value toward zero and clamps it to 0 to 255; NaN "
-                   "gives 0. A bool gives 1 or 0.",
-};
-node_desc NODE_To_Integer = {
-    .name = "To Integer",
-    .input_count = 1,
-    .output_count = 1,
-    .inputs = real_integer_inputs,
-    .outputs = to_integer_outputs,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = conv_to_integer,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Conversion",
-    .keywords = "convert cast truncate saturate integer int32 bool",
-    .description = "Truncates Value toward zero and clamps it to the 32-bit "
-                   "range; NaN gives 0. A bool gives 1 or 0.",
-};
-
-static pin_spec to_string_inputs[] = {
-    { "Value", PIN_STR, "const char *", PIN_DATA },
-};
-static pin_spec to_string_outputs[] = {
-    { "String", PIN_STR, "const char *", PIN_DATA },
-};
-node_desc NODE_To_String = {
-    .name = "To String",
-    .input_count = 1,
-    .output_count = 1,
-    .inputs = to_string_inputs,
-    .outputs = to_string_outputs,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = conv_to_string,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Conversion",
-    .keywords = "convert cast string text str",
-    .description = "Formats a bool, number or name Value as text.",
-};
-
-static pin_spec to_name_outputs[] = {
-    { "Name", PIN_NAME, "name", PIN_DATA },
-};
-node_desc NODE_To_Name = {
-    .name = "To Name",
-    .input_count = 1,
-    .output_count = 1,
-    .inputs = to_string_inputs,
-    .outputs = to_name_outputs,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = conv_to_name,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Conversion",
-    .keywords = "convert string name prototype asset",
-    .description = "Converts the text in Value to a name.",
-};
-
-static pin_spec to_real_inputs[] = {
-    { "Value", PIN_I32, "int", PIN_DATA },
-};
-static pin_spec to_real_outputs[] = {
-    { "Real", PIN_F64, "double", PIN_DATA },
-};
-node_desc NODE_To_Real = {
-    .name = "To Real",
-    .input_count = 1,
-    .output_count = 1,
-    .inputs = to_real_inputs,
-    .outputs = to_real_outputs,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = conv_to_real,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Conversion",
-    .keywords = "convert cast real float double bool",
-    .description = "Converts a byte, integer or bool Value to a real, where a "
-                   "bool gives 1 or 0; very large 64-bit values lose "
-                   "precision.",
-};
-
-static pin_spec to_i64_inputs[] = {
-    { "Value", PIN_F64, "double", PIN_DATA },
-};
-static pin_spec to_i64_outputs[] = {
-    { "Integer64", PIN_I64, "int64", PIN_DATA },
-};
-node_desc NODE_To_Integer64 = {
-    .name = "To Integer64",
-    .input_count = 1,
-    .output_count = 1,
-    .inputs = to_i64_inputs,
-    .outputs = to_i64_outputs,
-    .pure_kind = NODE_PURE_CALL,
-    .fn = conv_to_i64,
-    .display_class = NODE_DISPLAY_PURE,
-    .category = "Conversion",
-    .keywords = "convert cast integer int64 widen bool",
-    .description = "Widens a 32-bit integer, or truncates a real toward zero "
-                   "and clamps it to the 64-bit range. A bool gives 1 or 0.",
-};
-
-static pin_value vector_splat(const pin_value *input, arena *storage, const char *type, int width)
-{
-    float value = 0;
-    switch (input->type) {
-        case PIN_F32: value = input->f; break;
-        case PIN_F64: value = (float)input->d; break;
-        case PIN_U8: value = (float)input->u8; break;
-        case PIN_I32: value = (float)input->i; break;
-        case PIN_I64: value = (float)input->i64; break;
-        default: assert(false); break;
-    }
-    float *result = arena_alloc(storage, (size_t)width * sizeof *result);
-    for (int i = 0; i < width; i++) {
-        result[i] = value;
-    }
-    return (pin_value){ .type = PIN_STRUCT, .type_name = type, .ptr = result };
-}
-
-#define VECTOR_SPLAT(vector_type, width, summary)                                           \
-    static pin_value splat_##vector_type(const pin_value *input, int count, arena *storage) \
-    {                                                                                       \
-        assert(count == 1);                                                                 \
-        return vector_splat(input, storage, #vector_type, width);                           \
-    }                                                                                       \
-    static pin_spec splat_##vector_type##_out[] = {                                         \
-        { .name = "Vector", .type = PIN_STRUCT, .type_name = #vector_type }                 \
-    };                                                                                      \
-    node_desc NODE_Splat_##vector_type = { .name = "Scalar to " #vector_type,               \
-                                           .input_count = 1,                                \
-                                           .inputs = real_integer_inputs,                   \
-                                           .output_count = 1,                               \
-                                           .outputs = splat_##vector_type##_out,            \
-                                           .pure_kind = NODE_PURE_CALL,                     \
-                                           .fn = splat_##vector_type,                       \
-                                           .category = "Conversion",                        \
-                                           .description = summary,                          \
-                                           .display_class = NODE_DISPLAY_PURE,              \
-                                           .conversion_from = "double",                     \
-                                           .conversion_to = #vector_type };
-VECTOR_SPLAT(CF_V2, 2, "Builds a vector with x and y both set to Value, as floats.")
-VECTOR_SPLAT(CF_V3, 3, "Builds a vector with x, y and z all set to Value, as floats.")
-VECTOR_SPLAT(ShaderVec2, 2, "Builds a shader vector with x and y both set to Value.")
-VECTOR_SPLAT(ShaderVec3, 3, "Builds a shader vector with x, y and z all set to Value.")
-VECTOR_SPLAT(ShaderVec4, 4, "Builds a shader vector with x, y, z and w all set to Value.")
-#undef VECTOR_SPLAT
+#define CONVERSION_To_String_KEYWORDS "convert cast string text str"
+#define CONVERSION_To_String_DESCRIPTION                                       \
+    "Formats a bool, number or name Value as text."
+#define CONVERSION_To_Name_KEYWORDS "convert string name prototype asset"
+#define CONVERSION_To_Name_DESCRIPTION "Converts the text in Value to a name."
+#define CONVERSION_To_Real_KEYWORDS "convert cast real float double bool"
+#define CONVERSION_To_Real_DESCRIPTION                                         \
+    "Converts a byte, integer or bool Value to a real, where a "               \
+    "bool gives 1 or 0; very large 64-bit values lose "                        \
+    "precision."
+#define CONVERSION_To_Byte_KEYWORDS                                            \
+    "convert cast truncate saturate byte uint8 bool"
+#define CONVERSION_To_Byte_DESCRIPTION                                         \
+    "Truncates Value toward zero and clamps it to 0 to 255; NaN "              \
+    "gives 0. A bool gives 1 or 0."
+#define CONVERSION_To_Integer_KEYWORDS                                         \
+    "convert cast truncate saturate integer int32 bool"
+#define CONVERSION_To_Integer_DESCRIPTION                                      \
+    "Truncates Value toward zero and clamps it to the 32-bit "                 \
+    "range; NaN gives 0. A bool gives 1 or 0."
+#define CONVERSION_To_Integer64_KEYWORDS "convert cast integer int64 widen bool"
+#define CONVERSION_To_Integer64_DESCRIPTION                                    \
+    "Widens a 32-bit integer, or truncates a real toward zero "                \
+    "and clamps it to the 64-bit range. A bool gives 1 or 0."
+#define COUNT(A) (sizeof(A) / sizeof *(A))
+#define SCALAR(KEY, NAME, SOURCE, INPUT, INPUT_NAME, RESULT, OUTPUT, OUTPUT_NAME) \
+    static pin_spec KEY##_inputs[] = {                                            \
+        NATIVE_CONVERSION_PORT(GRAPH_NATIVE_PORT, "Value", INPUT, INPUT_NAME)     \
+    };                                                                            \
+    static pin_spec KEY##_outputs[] = {                                           \
+        NATIVE_CONVERSION_PORT(GRAPH_NATIVE_PORT, RESULT, OUTPUT, OUTPUT_NAME)    \
+    };                                                                            \
+    node_desc NODE_##KEY = { .name = NAME,                                        \
+                             .source_name = SOURCE,                               \
+                             .input_count = COUNT(KEY##_inputs),                  \
+                             .output_count = COUNT(KEY##_outputs),                \
+                             .inputs = KEY##_inputs,                              \
+                             .outputs = KEY##_outputs,                            \
+                             .pure_kind = NODE_PURE_CALL,                         \
+                             .fn = native_conversion_##KEY,                       \
+                             .execution_call = &NATIVE_CONVERSION_##KEY##_CALL,   \
+                             .display_class = NODE_DISPLAY_PURE,                  \
+                             .category = "Conversion",                            \
+                             .keywords = CONVERSION_##KEY##_KEYWORDS,             \
+                             .description = CONVERSION_##KEY##_DESCRIPTION };
+NATIVE_CONVERSION_SCALARS(SCALAR)
+#undef SCALAR
+#define VECTOR(TYPE, WIDTH, NAME, SOURCE, DESCRIPTION)                         \
+    static pin_spec Splat_##TYPE##_inputs[] = {                                \
+        NATIVE_CONVERSION_PORT(GRAPH_NATIVE_PORT, "Value", PIN_F64, "double")  \
+    };                                                                         \
+    static pin_spec Splat_##TYPE##_outputs[] = {                               \
+        NATIVE_CONVERSION_PORT(GRAPH_NATIVE_PORT, "Vector", PIN_STRUCT, #TYPE) \
+    };                                                                         \
+    node_desc NODE_Splat_##TYPE = {                                            \
+        .name = NAME,                                                          \
+        .source_name = SOURCE,                                                 \
+        .input_count = COUNT(Splat_##TYPE##_inputs),                           \
+        .output_count = COUNT(Splat_##TYPE##_outputs),                         \
+        .inputs = Splat_##TYPE##_inputs,                                       \
+        .outputs = Splat_##TYPE##_outputs,                                     \
+        .pure_kind = NODE_PURE_CALL,                                           \
+        .fn = native_conversion_Splat_##TYPE,                                  \
+        .execution_call = &NATIVE_CONVERSION_Splat_##TYPE##_CALL,              \
+        .category = "Conversion",                                              \
+        .description = DESCRIPTION,                                            \
+        .display_class = NODE_DISPLAY_PURE,                                    \
+        .conversion_from = "double",                                           \
+        .conversion_to = #TYPE                                                 \
+    };
+NATIVE_CONVERSION_VECTORS(VECTOR)
+#undef VECTOR
 
 static const node_desc *const vector_splats[] = {
     &NODE_Splat_CF_V2,      &NODE_Splat_CF_V3,      &NODE_Splat_ShaderVec2,

@@ -1,8 +1,8 @@
 #ifndef CHIBI_TEST_SIMULATION_FIXTURE_H
 #define CHIBI_TEST_SIMULATION_FIXTURE_H
 
+#include "authoring/prototype_preview.h"
 #include "runtime/engine.h"
-#include "runtime/scenes/prototype_preview.h"
 
 #include <assert.h>
 #include <math.h>
@@ -24,15 +24,9 @@ static inline simulation_fixture simulation_fixture_new(engine *runtime, game_pr
 static inline void simulation_frame(simulation_fixture *f, double time)
 {
     assert(time >= f->time);
-    uint64_t eval_before = eval_oracle_calls();
-    uint64_t flow_before = flow_oracle_calls();
     int result = f->preview ? game_prototype_preview_tick(f->preview, time)
                             : engine_frame(f->runtime, time);
     assert(result >= 0);
-    if (behavior_default_backend() != BEHAVIOR_ORACLE) {
-        assert(eval_before == eval_oracle_calls());
-        assert(flow_before == flow_oracle_calls());
-    }
     f->time = time;
 }
 

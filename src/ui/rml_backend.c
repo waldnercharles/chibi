@@ -8,6 +8,7 @@
 
 #include "diagnostics/tracy.h"
 #include "platform/cute.h"
+#include "runtime/ui/builtin_fonts.h"
 #include "support/array.h"
 #include "support/math.h"
 #include "support/xalloc.h"
@@ -30,40 +31,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-
-extern const unsigned char editor_ui_font[];
-extern const unsigned char editor_ui_medium_font[];
-extern const unsigned char editor_ui_semibold_font[];
-extern const unsigned char editor_ui_numeric_font[];
-extern const unsigned char editor_ui_bold_font[];
-extern const unsigned char editor_nerd_symbols_font[];
-extern const unsigned char editor_noto_sans_font[];
-extern const unsigned char editor_noto_sans_semibold_font[];
-extern const unsigned char editor_noto_sans_bold_font[];
-extern const unsigned char editor_inconsolata_font[];
-extern const size_t editor_ui_font_size;
-extern const size_t editor_ui_medium_font_size;
-extern const size_t editor_ui_semibold_font_size;
-extern const size_t editor_ui_numeric_font_size;
-extern const size_t editor_ui_bold_font_size;
-extern const size_t editor_nerd_symbols_font_size;
-extern const unsigned char studio_regular_font[];
-extern const size_t studio_regular_font_size;
-extern const unsigned char studio_medium_font[];
-extern const size_t studio_medium_font_size;
-extern const unsigned char studio_semibold_font[];
-extern const size_t studio_semibold_font_size;
-extern const unsigned char studio_bold_font[];
-extern const size_t studio_bold_font_size;
-extern const unsigned char studio_numeric_font[];
-extern const size_t studio_numeric_font_size;
-extern const size_t editor_noto_sans_font_size;
-extern const size_t editor_noto_sans_semibold_font_size;
-extern const size_t editor_noto_sans_bold_font_size;
-extern const size_t editor_inconsolata_font_size;
-/* Workstream C: the code editor's face. */
-extern const unsigned char editor_code_font[];
-extern const size_t editor_code_font_size;
 
 /* A texture RmlUi holds: one of ours, a saved layer's canvas, or the host
  * texture bound to the "kit:<name>" source at `external`, when not negative. */
@@ -160,6 +127,7 @@ struct rml_backend
     int physical_width;
     int physical_height;
     bool gpu_ready;
+    bool resident_images;
     bool changed; /* the last render drew what the one before it did not */
     bool output_invalid;
     bool frame_dirty;
@@ -611,7 +579,7 @@ static int external_index(rml_backend *backend, const char *name)
             return i;
         }
     }
-    apush(backend->externals, (external_texture){ xstrdup(name), { 0 } });
+    apush(backend->externals, (external_texture){ .name = xstrdup(name) });
     return acount(backend->externals) - 1;
 }
 
@@ -655,6 +623,17 @@ static char *image_path(const char *source, CF_Filter *filter)
     return path;
 }
 
+static rml_image_provider image_provider;
+static void *image_provider_user;
+void rml_backend_set_image_provider(rml_image_provider provider, void *user)
+{
+    image_provider = provider;
+    image_provider_user = user;
+}
+void rml_backend_require_resident_images(rml_backend *backend, bool required)
+{
+    backend->resident_images = required;
+}
 static uintptr_t load_texture(void *user, const char *source, int *width, int *height)
 {
     rml_backend *backend = user;
@@ -667,6 +646,32 @@ static uintptr_t load_texture(void *user, const char *source, int *width, int *h
     CF_Filter filter;
     char *path = image_path(source, &filter);
     CF_Image image = { 0 };
+    if (backend->resident_images) {
+        const unsigned char *pixels = NULL;
+        int w = 0, h = 0;
+        if (!image_provider ||
+            !image_provider(image_provider_user, path, &pixels, &w, &h) ||
+            !pixels || w <= 0 || h <= 0 || w > 16384 || h > 16384 ||
+            (size_t)w * (size_t)h > 16 * 1024 * 1024) {
+            free(path);
+            return 0;
+        }
+        size_t bytes = (size_t)w * (size_t)h * 4;
+        unsigned char *copy = xmalloc(bytes);
+        memcpy(copy, pixels, bytes);
+        for (size_t i = 0; i < bytes; i += 4) {
+            for (int channel = 0; channel < 3; channel++) {
+                copy[i + channel] = (unsigned)copy[i + channel] * copy[i + 3] / 255;
+            }
+        }
+        *width = w;
+        *height = h;
+        held_texture held = { .texture = texture_from_pixels(w, h, copy, filter),
+                              .external = -1 };
+        free(copy);
+        free(path);
+        return hold_texture(backend, held);
+    }
     if (!load_image(path, &image)) {
         free(path);
         return 0;
@@ -675,7 +680,8 @@ static uintptr_t load_texture(void *user, const char *source, int *width, int *h
     cf_image_premultiply(&image);
     *width = image.w;
     *height = image.h;
-    held_texture held = { texture_from_pixels(image.w, image.h, image.pix, filter), -1 };
+    held_texture held = { .texture = texture_from_pixels(image.w, image.h, image.pix, filter),
+                          .external = -1 };
     cf_image_free(&image);
     return hold_texture(backend, held);
 }
@@ -684,8 +690,8 @@ static uintptr_t generate_texture(void *user, const uint8_t *pixels, int width, 
 {
     rml_backend *backend = user;
     ensure_gpu(backend);
-    held_texture held = { texture_from_pixels(width, height, pixels, CF_FILTER_LINEAR),
-                          -1 };
+    held_texture held = { .texture = texture_from_pixels(width, height, pixels, CF_FILTER_LINEAR),
+                          .external = -1 };
     return hold_texture(backend, held);
 }
 
@@ -942,6 +948,86 @@ static void set_dimensions(rml_backend *backend)
     apply_dimensions(backend);
 }
 
+static game_ui_font *registered_fonts;
+static size_t registered_font_bytes;
+static bool fonts_ready;
+bool rml_backend_install_font_budget(const game_ui_font *f, size_t *remaining, char *error, size_t size)
+{
+    assert(remaining);
+    const char *failure = NULL;
+    if (!fonts_ready || !game_ui_font_valid(f)) {
+        failure = "Font engine unavailable or invalid font record";
+    }
+    if (!failure) {
+        for (int i = 0; i < acount(registered_fonts); i++) {
+            const game_ui_font *old = &registered_fonts[i];
+            if (old->style == f->style && old->weight == f->weight &&
+                !strcmp(old->family, f->family)) {
+                if (old->length == f->length && old->fallback == f->fallback &&
+                    !memcmp(old->data, f->data, f->length)) {
+                    return true;
+                }
+                failure = "Resident font face has different bytes or fallback "
+                          "policy";
+                break;
+            }
+        }
+    }
+    if (!failure && (acount(registered_fonts) >= 128 ||
+                     f->length > 64 * 1024 * 1024 - registered_font_bytes)) {
+        failure = "Resident font lifetime budget exceeded";
+    }
+    if (failure) {
+        if (size) {
+            snprintf(error, size, "%s", failure);
+        }
+        return false;
+    }
+    int cap = acap(registered_fonts), next = cap;
+    if (acount(registered_fonts) == cap) {
+        next = cap ? cap * 2 : 16;
+    }
+    size_t charge = f->length + strlen(f->key) + 1 + strlen(f->family) + 1 +
+                    (size_t)(next - cap) * sizeof(game_ui_font) +
+                    (cap ? 0 : sizeof(dyna_hdr));
+    if (*remaining < charge) {
+        if (size) {
+            snprintf(error, size, "Font retained capacity budget exceeded");
+        }
+        return false;
+    }
+    game_ui_font owned = *f;
+    owned.key = xstrdup(f->key);
+    owned.family = xstrdup(f->family);
+    unsigned char *bytes = xmalloc(f->length);
+    memcpy(bytes, f->data, f->length);
+    owned.data = bytes;
+    if (!rml_load_font_face(
+            owned.data,
+            owned.length,
+            owned.family,
+            owned.style,
+            owned.weight,
+            owned.fallback
+        )) {
+        game_ui_font_free(&owned);
+        if (size) {
+            snprintf(error, size, "RmlUi rejected font face");
+        }
+        return false;
+    }
+    *remaining -= charge;
+    registered_font_bytes += owned.length;
+    apush(registered_fonts, owned);
+    return true;
+}
+bool rml_backend_install_font(const game_ui_font *f, char *error, size_t size)
+{
+    size_t remaining = SIZE_MAX;
+    return rml_backend_install_font_budget(f, &remaining, error, size);
+}
+static void shut_down();
+
 /* The first backend initializes RmlUi and its fonts. */
 static bool initialize_rml()
 {
@@ -949,41 +1035,13 @@ static bool initialize_rml()
     if (!rml_initialize()) {
         return false;
     }
-    const struct
-    {
-        const unsigned char *data;
-        size_t size;
-        const char *family;
-        int weight;
-        bool fallback;
-    } faces[] = {
-        { editor_ui_font, editor_ui_font_size, "Inter", 400, true },
-        { editor_ui_medium_font, editor_ui_medium_font_size, "Inter", 500 },
-        { editor_ui_semibold_font, editor_ui_semibold_font_size, "Inter", 600 },
-        { editor_ui_bold_font, editor_ui_bold_font_size, "Inter", 700 },
-        { editor_noto_sans_font, editor_noto_sans_font_size, "Noto Sans", 400 },
-        { editor_noto_sans_semibold_font, editor_noto_sans_semibold_font_size, "Noto Sans", 600 },
-        { editor_noto_sans_bold_font, editor_noto_sans_bold_font_size, "Noto Sans", 700 },
-        { editor_ui_numeric_font, editor_ui_numeric_font_size, "InterNumeric", 400 },
-        { studio_regular_font, studio_regular_font_size, "Geist", 400 },
-        { studio_medium_font, studio_medium_font_size, "Geist", 500 },
-        { studio_semibold_font, studio_semibold_font_size, "Geist", 600 },
-        { studio_bold_font, studio_bold_font_size, "Geist", 700 },
-        { studio_numeric_font, studio_numeric_font_size, "GeistNumeric", 400 },
-        { editor_nerd_symbols_font, editor_nerd_symbols_font_size, "Symbols", 400 },
-        { editor_inconsolata_font, editor_inconsolata_font_size, "Inconsolata", 400 },
-        /* Workstream C: kit_code's face. */
-        { editor_code_font, editor_code_font_size, "JetBrains Mono", 400 },
-    };
-    for (size_t i = 0; i < sizeof faces / sizeof *faces; i++) {
-        rml_load_font_face(
-            faces[i].data,
-            faces[i].size,
-            faces[i].family,
-            RML_FONT_NORMAL,
-            faces[i].weight,
-            faces[i].fallback
-        );
+    fonts_ready = true;
+    for (int i = 0; i < game_ui_builtin_font_count(); i++) {
+        game_ui_font face = game_ui_builtin_font_at(i);
+        if (!rml_backend_install_font(&face, NULL, 0)) {
+            shut_down();
+            return false;
+        }
     }
     /* Workstream N: the native elements every document may use. */
     motion_register();
@@ -996,6 +1054,18 @@ static bool initialize_rml()
     /* Workstream P5: autofocus on elements built after their document shows. */
     autofocus_register();
     return true;
+}
+
+bool rml_backend_prepare_fonts()
+{
+    return fonts_ready || initialize_rml();
+}
+void rml_backend_release_prepared_fonts()
+{
+    assert(backend_count == 0);
+    if (fonts_ready) {
+        shut_down();
+    }
 }
 
 static void free_backend(rml_backend *backend)
@@ -1026,6 +1096,12 @@ static void free_backend(rml_backend *backend)
 static void shut_down()
 {
     rml_shutdown();
+    fonts_ready = false;
+    for (int i = 0; i < acount(registered_fonts); i++) {
+        game_ui_font_free(&registered_fonts[i]);
+    }
+    afree(registered_fonts);
+    registered_font_bytes = 0;
     elapsed_seconds = 0;
 }
 
@@ -1048,7 +1124,7 @@ rml_backend *rml_backend_create(int logical_width, int logical_height, float fra
 
     /* Later backends add a context with their own renderer and canvas, such
        as the graph editor's. */
-    if (backend_count == 0 && !initialize_rml()) {
+    if (backend_count == 0 && !rml_backend_prepare_fonts()) {
         free_backend(backend);
         return NULL;
     }
@@ -1461,6 +1537,7 @@ static void replay_push_layer(replay *r, const draw_command *command)
     flush(r);
     r->depth++;
     assert(command->layer == r->depth);
+    (void)command;
     /* A cleared canvas holds no mask yet. */
     rml_gpu_flush(&r->backend->gpu, surface(r, r->depth).canvas, true);
     *stencil_of(r, r->depth) = (stencil_state){ -1, -1 };

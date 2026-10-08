@@ -8,8 +8,8 @@
 #include "render/material.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
 #include "runtime/particle_emitters.h"
 #include "runtime/rhythm.h"
 #include "runtime/task_pool.h"
@@ -562,7 +562,7 @@ static bool submit(render_arena *arena, const render_arena_camera *camera, float
     CF_V4 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14], time };
     cf_draw3d_set_uniform("arena_camera_time", &eye, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("arena_rhythm", &arena->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
-    CF_V4 light_count = { (float)arena->light_count };
+    CF_V4 light_count = { .x = (float)arena->light_count };
     cf_draw3d_set_uniform("arena_light_count", &light_count, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("arena_light_positions", arena->light_positions, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
     cf_draw3d_set_uniform("arena_light_colors", arena->light_colors, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
@@ -801,29 +801,9 @@ bool render_arena_draw(
     return submit(arena, camera, time);
 }
 
-bool render_arena_preview(
-    render_arena *arena,
-    const behavior_asset *asset,
-    const render_arena_camera *camera,
-    const char *parameters_json,
-    float time,
-    const render_arena_activity *activity
-)
+void render_arena_set_error(render_arena *arena, const char *message)
 {
-    shader_error error = { 0 };
-    bool registered = render_shader_upsert(asset, &error);
-    bool drawn = render_arena_preview_material(
-        arena,
-        render_shader_find(asset->name),
-        camera,
-        parameters_json,
-        time,
-        activity
-    );
-    if (!registered) {
-        snprintf(arena->binding_error, sizeof arena->binding_error, "%s", error.message);
-    }
-    return drawn;
+    snprintf(arena->binding_error, sizeof arena->binding_error, "%s", message);
 }
 
 bool render_arena_preview_material(
@@ -841,7 +821,7 @@ bool render_arena_preview_material(
     aclear(arena->buffer.pixels);
     aclear(arena->buffer.draws);
     arena->light_count = 0;
-    arena->rhythm = (CF_V4){ activity->beat_phase, activity->beat_pulse };
+    arena->rhythm = (CF_V4){ .x = activity->beat_phase, .y = activity->beat_pulse };
     render_arena_reset(arena);
     render_influences_preview(arena->influences, activity->influence, RENDER_ARENA_PREVIEW_RADIUS);
     if (!material || render_shader_is_shape(material)) {

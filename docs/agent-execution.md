@@ -50,7 +50,7 @@ Installed hardware ICD files alone do not establish accessible hardware.
 Discovery is not a rendered-device guarantee: execution results separately report
 the actual native backend and device name from renderer logs when available,
 or explicitly leave the device unknown. They also include image dimensions,
-planned frame counts, elapsed wall time, and time/RSS budgets. MCP render results
+planned frame counts, elapsed wall time, and time/RSS budgets. Native render results
 carry the same execution metadata. Full checks remain explicitly pending.
 
 The default `CHIBI_EXECUTION_PROFILE=iteration` allows reviewed CPU selectors and
@@ -69,7 +69,7 @@ leak checks. Timeouts are failures/blocked results, never passes.
 
 ## One output image and explicit MP4
 
-Use existing MCP `previewScene` / `previewShader` or `chibi_ctl --render` requests.
+Use `chibi_ctl --render` requests for bounded scene and shader captures.
 For a scene, defaults are one output frame after one GPU warmup frame, 640x360,
 and a 30-second deadline. Shader previews draw one frame at their existing 256x256
 default. Set scene `gpu_warmup_frames` explicitly (0..32) when history needs it;
@@ -88,7 +88,7 @@ Both shader and scene previews use this selection. Headless rendering is not
 simulation-only: it still consumes graphics memory and GPU work (or software
 renderer CPU). Explicitly selected windowed backends may need a display context.
 The native response reports `window_hidden` and the actual SDL `video_driver`.
-The wrapper/MCP also report the native graphics backend and selected device from
+The wrapper and native controller also report the native graphics backend and selected device from
 renderer logs, not an assumption based on discovery. Software rendering keeps
 exactly the same conservative budgets; offscreen does not imply hardware GPU use.
 
@@ -136,16 +136,16 @@ encoding. Partial captures are temporary and are not published as success.
 Native fixed-reference performance runs retain their original 240 warmup frames
 and 16 excluded measurement frames under the full profile.
 
-The Linux agent wrapper and MCP adapter enforce a 2048 MiB renderer RSS limit.
+The Linux agent wrapper enforces a 2048 MiB renderer RSS limit.
 RSS is sampled, so this is a stop budget, not a reservation or an exact GPU-memory
 cap. Native render entry points independently enforce request/frame/byte/time
 budgets; direct `chibi_ctl` callers do not get the wrapper's RSS monitoring.
-The wrapper refuses bounded rendering on hosts without Linux `/proc`; use MCP
+The wrapper refuses bounded rendering on hosts without Linux `/proc`; use `chibi_ctl --render`
 with the native limits or explicitly opted-in hardware there. Sanitizer virtual
 address reservations are not capped as though they were physical memory.
 
 Do not reconstruct a GPU suite as repeated preview calls. Each preview should
-answer a specific visual question; it does not satisfy a test selector. GPU MCP
+answer a specific visual question; it does not satisfy a test selector. GPU
 smoke suites require full opt-in even though they consist of individual previews.
 There is deliberately no cross-process scheduler or global frame quota.
 
@@ -263,10 +263,40 @@ checks termination of its detached child and descendant. Descendant-liveness tes
 exercise a real SIGINT, a monitoring exception, and a parent that exits before
 its child; no GPU is used for these regressions.
 
-The MCP adapter handles stdin errors when the controller rejects before reading
-a request. It waits for the bounded child close to preserve the native refusal,
-settles once, and never accepts a success object after an input error. An 8 MiB
-request regression verifies this early-exit path. Execution metadata distinguishes
-offscreen, hidden-window, visible-window, and unreported window state rather than
-assuming all non-offscreen results are hidden. Hardware validation and required
-full/CI gates remain pending; these corrections required no hardware slot.
+The retired MCP adapter's transport regressions do not describe the current
+CLI. Native execution metadata distinguishes offscreen, hidden-window,
+visible-window, and unreported window state. Hardware validation remains
+separate from CPU policy evidence.
+
+### Installed SpaceCadet acceptance routes
+
+The installed routes require explicit absolute `CHIBI_SPACE_CADET_ROOT` and
+`CHIBI_COMPILER_SDK` paths. They verify package file checksums, the game's exact
+`.chibi-engine.json` pin against `.chibi/runtime/share/chibi/package.json`, and the
+reviewed project/content fingerprint before invocation. No development binary
+substitution is permitted.
+
+`make agent-test AGENT_SELECTOR=--compile-installed-space-cadet` uses that SDK's
+`bin/chibi-compile` and writes the game's `.chibi/prepared/project.chibip`. Its
+resource manifest must contain exactly HUD, PauseMenu, four Inter faces, and the
+reviewed empty parts/shader-values catalogs, with no external resources.
+
+`make agent-gpu-test AGENT_SELECTOR=--player-installed-space-cadet-vm` and the
+corresponding `--player-installed-space-cadet-sljit` route run the game's installed
+`.chibi/runtime/bin/chibi-player` against that artifact. Each requires exactly four
+hidden 1280×720 frames and exactly three simulation steps at fixed dt 0.0166667
+under the shared 60-second deadline.
+These are GPU checks. Configuration and packaging are separate from execution.
+The existing development SpaceCadet routes remain available. New installed-route
+execution evidence is pending independent admission and a supervised run.
+
+
+The `--studio-source-edit` GPU route accepts explicit absolute
+`CHIBI_STUDIO_SOURCE`, `CHIBI_STUDIO_BUILD`, and
+`CHIBI_STUDIO_ACCEPTANCE_EVIDENCE` paths. It verifies the compiled acceptance
+binary, recorded source files, SDK configuration and the exact three-file,
+212-byte fixture. It copies that fixture to disposable scratch, isolates
+preferences and thumbnail cache there, and removes scratch after execution.
+Four hidden 1920×1080 frames at fixed 1/60 dt must report exactly one accepted
+edit, undo and redo. UI initialization or runtime-frame diagnostics reject the
+run. The ordinary startup route remains separate.

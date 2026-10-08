@@ -1,19 +1,30 @@
 #include "graph/model/registry.h"
-#include "graph/nodes/snapshot_nodes.h"
-#include "graph/runtime/flow.h"
-#include "graph/runtime/value_array.h"
+#include "graph/nodes/core_nodes.h"
+#include "types/array.h"
 
 static pin_spec data_reroute_inputs[] = {
-    { "In", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
+    { .name = "In",
+      .type = PIN_FLOW,
+      .kind = PIN_DATA,
+      .container = PIN_CONTAINER_SINGLE,
+      .default_value = { .type = PIN_FLOW },
+      .flags = PIN_FLAG_WILDCARD,
+      .group = 1 },
 };
 static pin_spec data_reroute_outputs[] = {
-    { "Out", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
+    { .name = "Out",
+      .type = PIN_FLOW,
+      .kind = PIN_DATA,
+      .container = PIN_CONTAINER_SINGLE,
+      .default_value = { .type = PIN_FLOW },
+      .flags = PIN_FLAG_WILDCARD,
+      .group = 1 },
 };
 static pin_spec exec_reroute_inputs[] = {
-    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
+    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
 };
 static pin_spec exec_reroute_outputs[] = {
-    { "Then", PIN_FLOW, NULL, PIN_EXEC },
+    { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
 };
 
 static pin_value reroute_value(const pin_value *inputs, int count, arena *a)
@@ -21,12 +32,6 @@ static pin_value reroute_value(const pin_value *inputs, int count, arena *a)
     (void)count;
     (void)a;
     return inputs[0];
-}
-
-static int reroute_exec(node *n, flow_context *ctx)
-{
-    (void)n;
-    return flow_context_continue(ctx, 0);
 }
 
 node_desc NODE_RerouteData = {
@@ -49,7 +54,6 @@ node_desc NODE_RerouteExec = {
     .inputs = exec_reroute_inputs,
     .outputs = exec_reroute_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = reroute_exec,
     .display_class = NODE_DISPLAY_FLOW,
     .category = "Utilities",
     .keywords = "reroute wire exec",
@@ -57,28 +61,26 @@ node_desc NODE_RerouteExec = {
 };
 
 static pin_spec snapshot_inputs[] = {
-    { "Exec", PIN_FLOW, NULL, PIN_EXEC },
-    { "Value", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
+    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
+    { .name = "Value",
+      .type = PIN_FLOW,
+      .kind = PIN_DATA,
+      .container = PIN_CONTAINER_SINGLE,
+      .default_value = { .type = PIN_FLOW },
+      .flags = PIN_FLAG_WILDCARD,
+      .group = 1 },
 };
 static pin_spec snapshot_outputs[] = {
-    { "Then", PIN_FLOW, NULL, PIN_EXEC },
-    { "Value", PIN_FLOW, NULL, PIN_DATA, 0, PIN_CONTAINER_SINGLE, { .type = PIN_FLOW }, 0, PIN_FLAG_WILDCARD, 1 },
+    { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
+    { .name = "Value",
+      .type = PIN_FLOW,
+      .kind = PIN_DATA,
+      .container = PIN_CONTAINER_SINGLE,
+      .default_value = { .type = PIN_FLOW },
+      .flags = PIN_FLAG_WILDCARD,
+      .group = 1 },
 };
 static const node_access snapshot_access = { 0 };
-
-static int snapshot_value(node *n, flow_context *ctx)
-{
-    (void)n;
-    pin_value value;
-    int result = flow_context_eval_data(ctx, 1, &value);
-    if (result) {
-        return result;
-    }
-    if (pin_value_snapshot_to_arena(flow_context_scratch(ctx), flow_context_output_value(ctx, 1), &value)) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Cannot retain local value");
-    }
-    return flow_context_continue(ctx, 0);
-}
 
 node_desc NODE_Snapshot = {
     .name = "Snapshot",
@@ -87,8 +89,6 @@ node_desc NODE_Snapshot = {
     .inputs = snapshot_inputs,
     .outputs = snapshot_outputs,
     .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = snapshot_value,
-    .lower = behavior_lower_snapshot,
     .access = &snapshot_access,
     .display_class = NODE_DISPLAY_FUNCTION,
     .category = "Variables",

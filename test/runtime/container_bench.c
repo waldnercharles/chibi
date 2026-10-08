@@ -1,8 +1,10 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/set_map_nodes.h"
 #include "graph/runtime/flow_internal.h"
-#include "graph/runtime/value_array.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <dlfcn.h>
@@ -31,7 +33,7 @@ static const behavior_function *function(behavior_asset *a)
 {
     graph *g = a->graphs[1];
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, g),
+        behavior_program_graph(behavior_program_cached(a), g),
         g->nodes[0]
     );
     assert(f);

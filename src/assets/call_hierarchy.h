@@ -1,7 +1,7 @@
 #ifndef CHIBI_CALL_HIERARCHY_H
 #define CHIBI_CALL_HIERARCHY_H
 
-#include "assets/reference_index.h"
+#include "authoring/reference_index.h"
 
 /* A caller or callee tree over a reference index (VS Code's call hierarchy).
  *

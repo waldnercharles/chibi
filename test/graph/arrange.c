@@ -3,6 +3,7 @@
 #include "assets/code_catalog.h"
 #include "assets/code_source.h"
 #include "graph/authoring/arrange_score.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/authoring/layout.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
@@ -611,11 +612,16 @@ static arrange_score arrange_arena_score(
     };
     char **paths = NULL;
     if (sweep) {
-        apush(paths, strdup("test/fixtures/graph/MeshSurfaceSweep01.code"));
+        apush(paths, strdup("test/fixtures/graph/MeshSurfaceSweep01.chibi"));
     } else {
         for (int i = 0; i < (int)(sizeof canonical / sizeof *canonical); i++) {
             char path[256];
-            snprintf(path, sizeof path, "projects/arena2d/content/behaviors/%s.code", canonical[i]);
+            snprintf(
+                path,
+                sizeof path,
+                "test/fixtures/graph-routing/content/behaviors/%s.chibi",
+                canonical[i]
+            );
             apush(paths, strdup(path));
         }
     }
@@ -670,7 +676,7 @@ static void arrange_content_checks()
         [ARRANGE_ROUTE_STRAIGHT] = { 2, 10850 },
         [ARRANGE_ROUTE_SUBWAY] = { 1, 11150 },
     };
-    code_catalog *catalog = code_catalog_load_project("projects/arena2d");
+    code_catalog *catalog = code_catalog_load_project("test/fixtures/graph-routing");
     test_check(code_catalog_error_count(catalog) == 0, "arrange loads the complete arena2d authoring catalogue");
     for (int style = 0; style < ARRANGE_ROUTE_STYLE_COUNT; style++) {
         int graphs = 0;

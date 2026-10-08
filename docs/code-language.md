@@ -348,7 +348,8 @@ without declared membership use the runtime's inferred component query.
 ### State lifetime and live reload
 
 State belongs to a behavior instance and persists across event executions and
-suspension. A compatible live update preserves values by stable variable
+suspension. Task, entity and array state needs no default; it starts empty.
+A compatible live update preserves values by stable variable
 identity, type, container and reflected layout. A changed default applies to new
 instances; restarting applies it to an existing instance. Adding or removing
 state, changing its type or losing its identity requires a restart. Updates wait

@@ -186,9 +186,11 @@ void script_analyzer_require(analyzer *a, TSNode node, script_type expected, scr
         script_analyzer_diagnostic(
             a,
             node,
-            "Incompatible types: expected %s, got %s",
+            "Incompatible types: expected %s%s, got %s%s",
             script_scalar_name(expected.storage),
-            script_scalar_name(actual.storage)
+            expected.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "",
+            script_scalar_name(actual.storage),
+            actual.flags & SCRIPT_TYPE_OPTIONAL ? "?" : ""
         );
     }
 }
@@ -436,6 +438,12 @@ int script_analyzer_initializer_find(const analyzer *a, int symbol)
     }
     return -1;
 }
+/* Tasks, handles and arrays start empty without a written default. */
+static bool starts_empty(script_type type)
+{
+    return (type.flags & SCRIPT_TYPE_TASK) || type.storage == PIN_HANDLE ||
+           type.container != PIN_CONTAINER_SINGLE;
+}
 void script_analyzer_resolve_initializer(analyzer *a, int symbol)
 {
     script_symbol *record = &a->out->symbols[symbol];
@@ -459,13 +467,15 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
     script_type expected = record->type;
     TSNode node = a->initializers[index].value;
     int value;
-    if (ts_node_is_null(node) && (expected.flags & SCRIPT_TYPE_TASK)) {
-        /* A task state starts with no task. */
+    if (ts_node_is_null(node) && starts_empty(expected)) {
         value = script_analyzer_expr_add(
             a,
-            (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
+            (script_expression){ .kind = expected.container != PIN_CONTAINER_SINGLE
+                                           ? SCRIPT_EXPR_ARRAY
+                                           : SCRIPT_EXPR_CONSTANT,
                                  .type = expected,
-                                 .constant = { .type = PIN_U64 },
+                                 .constant = { .type = expected.storage,
+                                               .container = expected.container },
                                  .range = record->declaration,
                                  .symbol = -1,
                                  .left = -1,

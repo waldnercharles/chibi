@@ -503,11 +503,13 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         execution_module_free(module);
         module = NULL;
         GameTransform transform = { .x = 4 };
-        game_scene_component component = { &GAME_COMPONENT_GameTransform, &transform };
+        GameGlobalBinding binding = { .name = "Player" };
+        game_scene_component components[] = { { &GAME_COMPONENT_GameTransform, &transform },
+                                              { &GAME_COMPONENT_GameGlobalBinding, &binding } };
         const char *behavior = "Initial";
         game_scene_object object = { .name = "Initial",
-                                     .components = &component,
-                                     .component_count = 1,
+                                     .components = components,
+                                     .component_count = 2,
                                      .behaviors = &behavior,
                                      .behavior_count = 1 };
         game_scene_spec scene_spec = { .name = "Player",
@@ -600,6 +602,9 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         game_event_catalog_free(event_catalog);
         event_catalog = NULL;
         game_world *runtime_world = game_player_world(player);
+        game_entities *entities = game_world_entities(runtime_world);
+        REQUIRE(game_entities_global_name_count(entities) == 1);
+        REQUIRE(!strcmp(game_entities_global_name_at(entities, 0), "Player"));
         game_source_registry *sources = game_world_sources(runtime_world);
         execution_module_event_info event;
         execution_module_event_field_info saved_field;

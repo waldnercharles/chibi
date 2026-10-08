@@ -271,6 +271,10 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
     if (!p->scene) {
         goto reject;
     }
+    if (game_entities_rebuild_global_bindings(game_world_entities(p->world)) != 0) {
+        fail(error, size, "Prepared scene has conflicting global bindings");
+        goto reject;
+    }
     if (p->generation) {
         p->resources.commit(p->resources.context, p->generation, p->world);
         p->committed = true;

@@ -87,7 +87,7 @@ static bool validate_events(module_set_reader *r, const execution_module *const 
         }
     }
     if (acount(events) > 1) {
-        qsort(events, (size_t)acount(events), sizeof *events, event_id_compare);
+        asort(events, event_id_compare);
         for (int i = 1; i < acount(events); i++) {
             if (events[i - 1].info.id == events[i].info.id &&
                 !same_event(&events[i - 1], &events[i])) {
@@ -95,7 +95,7 @@ static bool validate_events(module_set_reader *r, const execution_module *const 
                 goto done;
             }
         }
-        qsort(events, (size_t)acount(events), sizeof *events, event_name_compare);
+        asort(events, event_name_compare);
         for (int i = 1; i < acount(events); i++) {
             if (!strcmp(events[i - 1].info.name, events[i].info.name) &&
                 events[i - 1].info.id != events[i].info.id) {

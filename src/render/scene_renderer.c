@@ -739,12 +739,7 @@ static void collect_order(app_scene_renderer *renderer, ecs_world *world)
     }
     ecs_query_end(&query);
     if (acount(renderer->actors) > 1) {
-        qsort(
-            renderer->actors,
-            (size_t)acount(renderer->actors),
-            sizeof *renderer->actors,
-            compare_actors
-        );
+        asort(renderer->actors, compare_actors);
     }
 }
 

@@ -1981,13 +1981,44 @@ TEST_CASE(program_task_keeps_state_and_component_references)
         pin_value x;
         REQUIRE(ecs_component_read_field(world, owner, 501, 0, &x) == ECS_OK && x.d == 7);
     }
-    prepare();
-    syntax = script_parse(
-        "behavior R { function Bump(x: ref double) -> () { yield; x += 1; }"
-        "on Impulse(amount, enabled) { v := 1.0; Bump(&v); } }"
-    );
-    analysis = script_analyze(syntax, &catalog);
-    REQUIRE(!analysis->valid && strstr(analysis->diagnostics[0].message, "reference to a local"));
+    return true;
+}
+TEST_CASE(program_task_shares_boxed_locals)
+{
+    const char *source = "behavior B { seen: double = 0; kept: double = 0;"
+                         "function Bump(x: ref double) -> () { yield; x += 1; "
+                         "yield; x += 10; }"
+                         "function Keep(x: ref double) -> () { yield; x += 1; "
+                         "yield; kept += x; }"
+                         "function Relay(x: ref double) -> () { Keep(x); }"
+                         "on Impulse(amount, enabled) {"
+                         "if amount == 0 { v := 1.0; t := Bump(&v); v += 100; "
+                         "await t; seen = v; }"
+                         "else if amount == 1 { w := 5.0; Keep(&w); }"
+                         "else if amount == 2 { i := 0.0; while i < 2 { u := "
+                         "i * 10; Keep(&u); i += 1; } }"
+                         "else { z := 2.0; Relay(&z); } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        for (int i = 0; i < 4; i++) {
+            const pin_value args[] = { { .type = PIN_F64, .d = i },
+                                       { .type = PIN_BOOL, .b = true } };
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        }
+        for (int i = 1; i <= 3; i++) {
+            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+        }
+        /* The caller and its task share v; each declaration of u is its own;
+         * w and z outlive their callers. */
+        REQUIRE(number_state(instance, "seen", 112));
+        REQUIRE(number_state(instance, "kept", 6 + 1 + 11 + 3));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
     return true;
 }
 
@@ -2022,5 +2053,6 @@ void test_language_program()
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
     RUN_TEST_CASE(program_library_call_starts_a_task);
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
+    RUN_TEST_CASE(program_task_shares_boxed_locals);
     pu_clear_setup();
 }

@@ -1076,6 +1076,8 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
             return count == 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
             return count >= 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_LOCAL_RELEASE:
+            return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_ACTION_READ:
         case EXECUTION_INTRINSIC_EVENT_READ:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
@@ -1122,9 +1124,10 @@ static bool context_address(size_t offset)
         FIELD(program_name)
         FIELD(instance_time)
         FIELD(inspection_user)
-        FIELD(points) FIELD(variables) FIELD(states) FIELD(arguments)
-            FIELD(results) FIELD(error_message) FIELD(services) FIELD(queries)
-                FIELD(commands) FIELD(command_arguments) FIELD(command_results)
+        FIELD(points)
+        FIELD(variables) FIELD(states) FIELD(arguments) FIELD(results)
+            FIELD(error_message) FIELD(services) FIELD(queries) FIELD(commands)
+                FIELD(command_arguments) FIELD(command_results)
                     FIELD(owner_type_name) FIELD(world) FIELD(binding_world)
                         FIELD(columns) FIELD(variable_storage) FIELD(value_owner)
                             FIELD(value_storage) FIELD(watches) FIELD(edges)
@@ -1411,6 +1414,7 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_REFERENCE_READ:
                 case EXECUTION_INTRINSIC_REFERENCE_WRITE:
                 case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
+                case EXECUTION_INTRINSIC_LOCAL_RELEASE:
                     expected = BEHAVIOR_REFERENCE;
                     break;
                 case EXECUTION_INTRINSIC_REFERENCE_MAKE:

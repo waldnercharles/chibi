@@ -229,6 +229,8 @@ typedef struct behavior_function_context
     /* Starts the active function's task invocation and stores its handle in
      * the invocation result. */
     int (*start_task)(struct behavior_function_context *context, int call);
+    /* Moves the tasks that keep this local by reference to their own box. */
+    void (*release_local)(struct behavior_function_context *context, pin_value *local);
     int error_status;
     uint64_t owner;
     const char *owner_type_name;

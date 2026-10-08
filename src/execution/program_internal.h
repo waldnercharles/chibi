@@ -3,6 +3,7 @@
 #include "ecs/ecs.h"
 #include "execution/component.h"
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/module_internal.h"
 #include "execution/request.h"
 typedef struct
@@ -53,6 +54,8 @@ struct execution_activation
     behavior_function_context *continuation_context;
     uint64_t origin_action;
     uint64_t task; /* Handle when this activation runs a task, else 0. */
+    execution_box **boxes; /* Boxes over this activation's locals. */
+    execution_box **held;  /* Boxes this task's references keep. */
     uint64_t debug_run;
     uint64_t debug_previous, debug_module, debug_function;
     bool debug_paused;
@@ -170,6 +173,10 @@ int program_task_command(
     flow_host_request *
 );
 void program_task_finished(execution_activation *, bool cancelled);
+/* Detaches the boxes over the locals of `context`, or of every frame of the
+ * activation when `context` is NULL. */
+void program_boxes_detach(execution_activation *, behavior_function_context *context);
+void program_boxes_free(execution_activation *);
 void program_tasks_free(execution_instance *);
 bool program_request_deliver(flow_host_request *, const pin_value *, int);
 int program_activation_run(execution_activation *, double, double, unsigned);

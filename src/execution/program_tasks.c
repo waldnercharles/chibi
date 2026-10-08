@@ -6,8 +6,10 @@
 #include "execution/status.h"
 #include "execution/task.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
+#include <stdlib.h>
 
 /* Finished slots keep their results for later awaits until this many have
  * accumulated; the oldest is then reused under a new generation. */
@@ -124,6 +126,93 @@ static void retire(execution_instance *instance, execution_task *t)
     instance->finished_count++;
 }
 
+static void box_release(execution_box *box)
+{
+    if (--box->holders) {
+        return;
+    }
+    arena_free(&box->storage);
+    free(box);
+}
+/* The caller's box over a local, made on the first task that keeps it. */
+static execution_box *box_for(behavior_function_context *owner, pin_value *slot)
+{
+    execution_activation *caller = owner->inspection_user;
+    for (int i = 0; i < acount(caller->boxes); i++) {
+        if (caller->boxes[i]->owner == owner && caller->boxes[i]->value == slot) {
+            return caller->boxes[i];
+        }
+    }
+    execution_box *box = xcalloc(1, sizeof *box);
+    *box = (execution_box){ .holders = 1, .owner = owner, .value = slot };
+    apush(caller->boxes, box);
+    return box;
+}
+/* The box keeps the local's value once its frame no longer does. */
+static void box_detach(execution_box *box)
+{
+    behavior_function_context *owner = box->owner;
+    if (owner->initialize_local) {
+        owner->initialize_local(owner, box->value, false);
+    }
+    int status = pin_value_snapshot_to_arena(&box->storage, &box->kept, box->value);
+    assert(!status);
+    (void)status;
+    box->detached = (behavior_function_context){ .value_storage = &box->storage };
+    box->owner = &box->detached;
+    box->value = &box->kept;
+    box_release(box);
+}
+static void detach_where(execution_activation *a, behavior_function_context *owner, pin_value *slot)
+{
+    for (int i = 0; i < acount(a->boxes);) {
+        execution_box *box = a->boxes[i];
+        if ((owner && box->owner != owner) || (slot && box->value != slot)) {
+            i++;
+            continue;
+        }
+        adel(a->boxes, i);
+        box_detach(box);
+    }
+}
+void program_boxes_detach(execution_activation *a, behavior_function_context *context)
+{
+    detach_where(a, context, NULL);
+}
+void program_boxes_free(execution_activation *a)
+{
+    detach_where(a, NULL, NULL);
+    afree(a->boxes);
+    for (int i = 0; i < acount(a->held); i++) {
+        box_release(a->held[i]);
+    }
+    afree(a->held);
+}
+static void release_local(behavior_function_context *ctx, pin_value *local)
+{
+    detach_where(ctx->inspection_user, ctx, local);
+}
+/* The activation owns its argument copies; references in them move to it,
+ * and a reference to a local shares the local through a box. */
+static void capture_references(execution_activation *a, const behavior_function_invocation *call)
+{
+    pin_value *arguments = (pin_value *)a->context.arguments;
+    for (int i = 0; i < call->count; i++) {
+        if (behavior_function_kind(call->function, BEHAVIOR_BANK_ARGUMENT, i) !=
+            BEHAVIOR_REFERENCE) {
+            continue;
+        }
+        behavior_function_context *owner;
+        pin_value *slot;
+        execution_box *box;
+        if (execution_reference_local(arguments[i], &owner, &slot, &box)) {
+            box = box ? box : box_for(owner, slot);
+            box->holders++;
+            apush(a->held, box);
+        }
+        execution_reference_capture(&a->payload, &a->context, &arguments[i], box);
+    }
+}
 static int start_task(behavior_function_context *ctx, int index)
 {
     execution_activation *caller = ctx->inspection_user;
@@ -144,20 +233,7 @@ static int start_task(behavior_function_context *ctx, int index)
         ctx->error_message = "task arguments do not match the function";
         return FLOW_ERR_ARGUMENT;
     }
-    /* The activation owns its argument copies; references in them move to it. */
-    pin_value *arguments = (pin_value *)a->context.arguments;
-    for (int i = 0; i < call->count; i++) {
-        if (behavior_function_kind(call->function, BEHAVIOR_BANK_ARGUMENT, i) !=
-            BEHAVIOR_REFERENCE) {
-            continue;
-        }
-        const char *error = execution_reference_capture(&a->payload, &a->context, &arguments[i]);
-        if (error) {
-            program_activation_free(a);
-            ctx->error_message = error;
-            return FLOW_ERR_ARGUMENT;
-        }
-    }
+    capture_references(a, call);
     execution_task *t = task_new(instance), *parent = find(instance, caller->task);
     t->activation = a;
     if (parent) {
@@ -177,6 +253,7 @@ static int start_task(behavior_function_context *ctx, int index)
 void program_bind_tasks(behavior_function_context *ctx)
 {
     ctx->start_task = start_task;
+    ctx->release_local = release_local;
 }
 
 void program_task_finished(execution_activation *a, bool cancelled)

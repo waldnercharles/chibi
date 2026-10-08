@@ -97,6 +97,7 @@ typedef struct
     size_t stride;
     const language_reference_path *path;
     int variable;
+    execution_box *box;
 } language_reference;
 static void reference_trace(const void *value, const void *shape, arena_marker mark, void *user)
 {
@@ -105,7 +106,7 @@ static void reference_trace(const void *value, const void *shape, arena_marker m
     pin_value_trace(&reference->root, mark, user);
     pin_value_trace(&reference->type, mark, user);
     mark(user, reference->path);
-    if (reference->kind == LANGUAGE_REFERENCE_VALUE) {
+    if (reference->kind == LANGUAGE_REFERENCE_VALUE && !reference->box) {
         mark(user, reference->value);
         pin_value_trace(reference->value, mark, user);
     }
@@ -171,20 +172,49 @@ static const language_reference_path *capture_path(arena *storage, const languag
     arena_set_trace(storage, copy, reference_path_trace, NULL);
     return copy;
 }
-const char *execution_reference_capture(arena *storage, behavior_function_context *owner, pin_value *value)
+bool execution_reference_local(
+    pin_value value,
+    behavior_function_context **owner,
+    pin_value **slot,
+    execution_box **box
+)
+{
+    const language_reference *ref = (const language_reference *)(uintptr_t)value.u64;
+    *owner = ref->owner;
+    *slot = ref->value;
+    *box = ref->box;
+    return ref->kind == LANGUAGE_REFERENCE_VALUE;
+}
+void execution_reference_capture(
+    arena *storage,
+    behavior_function_context *owner,
+    pin_value *value,
+    execution_box *box
+)
 {
     const language_reference *base = (const language_reference *)(uintptr_t)
                                          value->u64;
-    if (base->kind == LANGUAGE_REFERENCE_VALUE) {
-        return "A task cannot keep a reference to a local; await the call";
-    }
     language_reference *ref = arena_alloc(storage, sizeof *ref);
     *ref = *base;
     ref->owner = owner;
     ref->path = capture_path(storage, base->path);
+    if (box) {
+        ref->box = box;
+        ref->value = NULL;
+    }
     arena_set_trace(storage, ref, reference_trace, NULL);
     value->u64 = (uintptr_t)ref;
-    return NULL;
+}
+/* A boxed reference reaches the box's current frame and slot. */
+static language_reference *unbox(language_reference *ref, language_reference *view)
+{
+    if (!ref->box) {
+        return ref;
+    }
+    *view = *ref;
+    view->owner = ref->box->owner;
+    view->value = ref->box->value;
+    return view;
 }
 static const char *field_reference(arena *storage, const pin_value *args, int count, pin_value *out)
 {
@@ -302,7 +332,8 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
 {
     assert(count == 1);
     (void)count;
-    language_reference *ref = (language_reference *)(uintptr_t)args[0].u64;
+    language_reference view,
+        *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
     if (ref->kind == LANGUAGE_REFERENCE_VALUE && ref->owner->initialize_local &&
         ref->owner->initialize_local(ref->owner, ref->value, false) < 0) {
         return "Cannot initialize referenced local";
@@ -332,9 +363,8 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
     *out = retained;
     return NULL;
 }
-static const char *write_reference_value(arena *owner_storage, const pin_value *args)
+static const char *write_reference_value(arena *owner_storage, language_reference *ref, const pin_value *args)
 {
-    language_reference *ref = (language_reference *)(uintptr_t)args[0].u64;
     if (ref->path && ref->kind == LANGUAGE_REFERENCE_VALUE &&
         ref->owner->initialize_local &&
         ref->owner->initialize_local(ref->owner, ref->value, false) < 0) {
@@ -402,21 +432,34 @@ static const char *write_reference(arena *storage, const pin_value *args, int co
     (void)storage;
     assert(count == 2);
     (void)count;
-    const language_reference *ref = (const language_reference *)(uintptr_t)args[0]
-                                        .u64;
+    language_reference view,
+        *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
     const char *error;
     if (ref->kind == LANGUAGE_REFERENCE_VALUE) {
-        error = write_reference_value(ref->owner->value_storage, args);
+        error = write_reference_value(ref->owner->value_storage, ref, args);
     } else {
         arena temporary;
         arena_init(&temporary, 4096);
-        error = write_reference_value(&temporary, args);
+        error = write_reference_value(&temporary, ref, args);
         arena_free(&temporary);
     }
     *out = (pin_value){ .type = PIN_BOOL, .b = !error };
     return error;
 }
+/* A declaration starts a new local, so tasks keep the old one in its box. */
+static const char *release_local(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 1);
+    (void)count;
+    const language_reference *ref = (const language_reference *)(uintptr_t)args[0]
+                                        .u64;
+    ref->owner->release_local(ref->owner, ref->value);
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    return NULL;
+}
 const node_host_call EXECUTION_reference_make_call = { .value = make_reference };
+const node_host_call EXECUTION_local_release_call = { .value = release_local };
 const node_host_call EXECUTION_reference_field_call = { .value = field_reference };
 const node_host_call EXECUTION_reference_read_call = { .value = read_reference };
 const node_host_call EXECUTION_reference_write_call = { .value = write_reference };
@@ -535,7 +578,8 @@ static const char *local_group_store_value(arena *storage, const pin_value *args
 {
     (void)storage;
     assert(count >= 2);
-    language_reference *reference = (language_reference *)(uintptr_t)args[0].u64;
+    language_reference view,
+        *reference = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
     if (!reference || reference->kind != LANGUAGE_REFERENCE_VALUE || reference->path ||
         !reference->owner->store_local_group || !reference->owner->value_storage) {
         return "Local group replacement requires an owned value bank";
@@ -651,6 +695,8 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
         case EXECUTION_INTRINSIC_EVENT_READ: return &EXECUTION_event_read_call;
         case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
             return &EXECUTION_local_group_store_call;
+        case EXECUTION_INTRINSIC_LOCAL_RELEASE:
+            return &EXECUTION_local_release_call;
         default: return NULL;
     }
 }
@@ -706,6 +752,9 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     }
     if (call == &EXECUTION_local_group_store_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_LOCAL_GROUP_STORE;
+    }
+    if (call == &EXECUTION_local_release_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_LOCAL_RELEASE;
     }
     return 0;
 }

@@ -812,27 +812,25 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
     return found;
 }
 
-/* A task can outlive its caller's locals and parameters, so it can keep
- * references only to state and components. */
-static bool local_root(const analyzer *a, int expression)
+/* The local a reference argument names, or -1. A task can outlive the
+ * declaring frame, so the local moves to a box the task keeps. */
+static int local_root(const analyzer *a, int expression)
 {
     while (expression >= 0) {
         const script_expression *e = &a->out->expressions[expression];
         if (e->kind == SCRIPT_EXPR_SYMBOL) {
-            const script_symbol *symbol = e->symbol >= 0 ? &a->out->symbols[e->symbol]
-                                                         : NULL;
-            return symbol && (symbol->kind == SCRIPT_LOCAL ||
-                              (symbol->kind == SCRIPT_PARAMETER &&
-                               !(symbol->type.flags & SCRIPT_TYPE_REFERENCE)));
+            return e->symbol >= 0 && a->out->symbols[e->symbol].kind == SCRIPT_LOCAL
+                     ? e->symbol
+                     : -1;
         }
         bool path = (e->kind == SCRIPT_EXPR_UNARY && e->op == SCRIPT_OP_REFERENCE) ||
                     e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX;
         if (!path) {
-            return false;
+            return -1;
         }
         expression = e->left;
     }
-    return false;
+    return -1;
 }
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {
@@ -1290,9 +1288,11 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                              : library_task
                                  ? capability->parameters[p].type
                                  : a->out->symbols[function->parameters[p]].type;
-            if ((type.flags & SCRIPT_TYPE_REFERENCE) &&
-                local_root(a, result.arguments[i].value)) {
-                script_analyzer_diagnostic(a, node, "A task cannot keep a reference to a local; use state or a component, or await the call");
+            int local = type.flags & SCRIPT_TYPE_REFERENCE
+                          ? local_root(a, result.arguments[i].value)
+                          : -1;
+            if (local >= 0) {
+                a->out->symbols[local].boxed = true;
             }
         }
     }

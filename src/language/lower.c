@@ -461,6 +461,7 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_REFERENCE_READ:
                     case EXECUTION_INTRINSIC_REFERENCE_WRITE:
                     case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
+                    case EXECUTION_INTRINSIC_LOCAL_RELEASE:
                         kind = BEHAVIOR_REFERENCE;
                         break;
                     case EXECUTION_INTRINSIC_REFERENCE_MAKE:
@@ -3527,6 +3528,54 @@ static void store_tuple(lower *l, int symbol, int value, int source, script_rang
     afree(group_headers);
     afree(group_slots);
 }
+static int local_address(lower *l, int symbol)
+{
+    if (l->addresses[symbol] < 0) {
+        pin_value header = initial(l, l->a->symbols[symbol].type);
+        int host = linked_host(
+            l->builder,
+            &EXECUTION_snapshot_call,
+            &EXECUTION_value_access,
+            &header,
+            1,
+            &header,
+            1
+        );
+        l->addresses[symbol] = behavior_function_builder_host_first(l->builder, host);
+    }
+    return l->addresses[symbol];
+}
+/* Each declaration of a local that a task keeps starts a new one; the task
+ * keeps the old one in its box. */
+static void declare_symbol(lower *l, int symbol, int value, script_range range)
+{
+    const script_symbol *s = &l->a->symbols[symbol];
+    if (s->boxed && s->writable && l->variables[symbol] < 0 &&
+        l->parameters[symbol] < 0) {
+        local_address(l, symbol);
+        pin_value header = { .type = BF_POINTER_TYPE };
+        int descriptor = reference_expression(
+            l,
+            &(script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
+                                  .symbol = symbol,
+                                  .left = -1,
+                                  .right = -1,
+                                  .type = s->type,
+                                  .range = range }
+        );
+        primitive(
+            l,
+            &EXECUTION_local_release_call,
+            &EXECUTION_assignment_access,
+            &header,
+            &descriptor,
+            1,
+            (script_type){ .storage = PIN_BOOL },
+            range
+        );
+    }
+    store_symbol(l, symbol, value, range);
+}
 static void store_symbol(lower *l, int symbol, int value, script_range range)
 {
     if (symbol < 0 || symbol >= l->a->symbol_count) {
@@ -3610,20 +3659,7 @@ static void store_symbol(lower *l, int symbol, int value, script_range range)
         return;
     }
     if (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT)) {
-        if (l->addresses[symbol] < 0) {
-            pin_value header = initial(l, s->type);
-            int host = linked_host(
-                l->builder,
-                &EXECUTION_snapshot_call,
-                &EXECUTION_value_access,
-                &header,
-                1,
-                &header,
-                1
-            );
-            l->addresses[symbol] = behavior_function_builder_host_first(l->builder, host);
-        }
-        host_argument(l, l->addresses[symbol], value, s->type, range);
+        host_argument(l, local_address(l, symbol), value, s->type, range);
         return;
     }
     if (l->locals[symbol] < 0) {
@@ -3996,7 +4032,7 @@ static void statement(lower *l, int index)
             if (l->a->symbols[s->symbol].type.flags & SCRIPT_TYPE_RESULTS) {
                 store_tuple(l, s->symbol, value, s->expression, s->range);
             } else {
-                store_symbol(l, s->symbol, value, s->range);
+                declare_symbol(l, s->symbol, value, s->range);
             }
             return;
         }
@@ -4183,7 +4219,7 @@ static void statement(lower *l, int index)
             int end = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, s->range);
             behavior_function_builder_patch_target(l->builder, branch, l->pc);
             script_type element = l->a->symbols[s->symbol].type;
-            store_symbol(l, s->symbol, array_item(l, array, index, element, s->range), s->range);
+            declare_symbol(l, s->symbol, array_item(l, array, index, element, s->range), s->range);
             apush(l->loops, ((lower_loop){ 0 }));
             statement(l, s->body);
             int advance = l->pc;

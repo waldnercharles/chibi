@@ -151,6 +151,7 @@ static invocation_frame *frame_new(const behavior_function *function, behavior_f
         .source_capture = parent->source_capture,
         .begin_command = parent->begin_command,
         .start_task = parent->start_task,
+        .release_local = parent->release_local,
         .action_result = parent->action_result,
         .event_argument = parent->event_argument,
         .complete_action = parent->complete_action,

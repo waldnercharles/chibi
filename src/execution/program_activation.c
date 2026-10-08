@@ -59,6 +59,7 @@ void program_activation_cancel(execution_activation *a)
 void program_activation_free(execution_activation *activation)
 {
     program_task_finished(activation, true);
+    program_boxes_free(activation);
     program_inspection_release(activation);
     unlink_continuation(activation);
     behavior_function_visit_contexts(&activation->context, cancel_continuations);
@@ -80,6 +81,7 @@ static void leave_context(behavior_function_context *ctx, int result)
     execution_activation *a = ctx->inspection_user;
     program_commit_instance(ctx);
     cancel_continuations(ctx);
+    program_boxes_detach(a, ctx);
     for (int i = 0; i < acount(a->locals);) {
         if (a->locals[i].context == ctx) {
             adel(a->locals, i);
@@ -321,6 +323,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     program_commit_instance(&a->context);
     a->finished = a->status != FLOW_SUSPENDED_RESULT && a->status != FLOW_PAUSED_RESULT;
     if (a->finished) {
+        program_boxes_detach(a, NULL);
         program_task_finished(a, false);
     }
     program_inspection_finish(a);

@@ -219,9 +219,11 @@ behavior Turret {
 - Calls into a library start tasks the same way, such as `Store.Work()`.
 - Awaiting a task whose function has several results gives the same tuple as
   awaiting the call: `(await t).b`.
-- A task keeps references to state and components for as long as it runs, so
-  `Bump(&health)` works. A reference to a local is rejected, because the task
-  can outlive the local; await the call or keep the value in state.
+- A task keeps references to state, components and locals for as long as it
+  runs, so `Bump(&health)` works. A task shares a local with its caller like a
+  closure: each sees the other's writes while the caller runs, and the task
+  keeps the local after the caller returns. Each declaration makes a new local,
+  so tasks started in a loop each keep their own.
 
 The runtime retains call frames and captured locals across supported native waits
 and cancels owned invocations when their entity or system registration is

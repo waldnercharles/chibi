@@ -44,10 +44,14 @@ static int64_t modified(const char *path)
     return (int64_t)time.tv_sec * 1000000000 + time.tv_nsec;
 }
 
-/* Whether a file under `directory`, skipping dot entries such as .chibi and
- * .git, changed after `since`. */
+/* Whether `directory` or anything under it, skipping dot entries such as
+ * .chibi and .git, changed after `since`. A directory's own modification time
+ * covers entries added, removed or renamed in it. */
 static bool changed_since(const char *directory, int64_t since)
 {
+    if (modified(directory) > since) {
+        return true;
+    }
     DIR *dir = opendir(directory);
     if (!dir) {
         return true;
@@ -101,32 +105,41 @@ static int usage(const char *program)
     return 0;
 }
 
-static char *project_root(const char *requested)
+static bool open_project(chibi_project *project, const char *requested)
 {
     char *found = requested ? NULL : chibi_project_find(".");
     if (!requested && !found) {
         fprintf(stderr, "No project.kdl in this directory or any parent\n");
-        return NULL;
+        return false;
     }
-    chibi_project project = { 0 };
     char error[512];
-    if (chibi_project_open(&project, requested ? requested : found, error, sizeof error)) {
+    bool opened = !chibi_project_open(project, requested ? requested : found, error, sizeof error);
+    if (!opened) {
         fprintf(stderr, "%s\n", error);
-        free(found);
-        return NULL;
     }
-    char *root = xstrdup(project.root);
-    chibi_project_free(&project);
     free(found);
-    return root;
+    return opened;
 }
 
-static int prepare(const char *bin, const char *root, const char *artifact)
+/* Whether the project's sources changed after `since`, including a content
+ * directory that lives outside the project root. */
+static bool sources_changed(const chibi_project *project, int64_t since)
 {
+    size_t length = strlen(project->root);
+    bool inside = !strncmp(project->content, project->root, length) &&
+                  (project->content[length] == '/' || project->content[length] == '\0');
+    return changed_since(project->root, since) ||
+           (!inside && changed_since(project->content, since));
+}
+
+static int prepare(const char *bin, const chibi_project *project, const char *artifact)
+{
+    const char *root = project->root;
     char *compiler = join(bin, "chibi-compile");
     int64_t prepared = modified(artifact);
     int result = 0;
-    if (prepared < 0 || modified(compiler) > prepared || changed_since(root, prepared)) {
+    if (prepared < 0 || modified(compiler) > prepared ||
+        sources_changed(project, prepared)) {
         char *build = join(root, CHIBI_BUILD_DIR);
         char *dot = join(root, ".chibi");
         mkdir(dot, 0777);
@@ -147,13 +160,14 @@ int main(int argc, char **argv)
         return usage(argv[0]);
     }
     int first = argc > 1 && argv[1][0] != '-' ? 2 : 1;
-    char *root = project_root(first == 2 ? argv[1] : NULL);
-    if (!root) {
+    chibi_project project = { 0 };
+    if (!open_project(&project, first == 2 ? argv[1] : NULL)) {
         return 2;
     }
+    char *root = project.root;
     char *bin = file_executable_dir();
     char *artifact = join(root, CHIBI_ARTIFACT);
-    int prepared = prepare(bin, root, artifact);
+    int prepared = prepare(bin, &project, artifact);
     if (prepared) {
         return prepared;
     }

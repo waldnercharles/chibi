@@ -183,6 +183,15 @@ static const script_catalog_capability capabilities[] = {
       .outcome_count = 1,
       .completion_outcome = 0,
       .effects = SCRIPT_EFFECT_SUSPEND },
+    { .id = 22,
+      .name = "make_thing",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .results = &failed_result,
+      .result_count = 1,
+      .outcomes = completed,
+      .outcome_count = 1,
+      .completion_outcome = 0,
+      .effects = SCRIPT_EFFECT_SUSPEND },
     { .id = 50,
       .name = "fail_native",
       .kind = SCRIPT_CAPABILITY_FUNCTION,
@@ -204,7 +213,7 @@ static const script_catalog catalog = {
     .types = script_types,
     .type_count = 2,
     .capabilities = capabilities,
-    .capability_count = 7,
+    .capability_count = 8,
     .globals = globals,
     .global_count = 2,
     .entity_type = 700,
@@ -1769,6 +1778,10 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
          * state gives no result. */
         { "system S(p: Position) { shared worker: task }",
           "Shared state cannot hold a task" },
+        /* An unawaited action continues before its result exists. */
+        { "behavior B { n: double = 0; on Impulse(amount, enabled) { "
+          "x := make_thing(); n = x } }",
+          "Await this call before using its result" },
         { "behavior B { pulse: task; power: double = 0;"
           "function Charge(time: double) -> (power: double) { yield; return "
           "time }"

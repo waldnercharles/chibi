@@ -169,7 +169,9 @@ branches use `sequence { branch { ... } branch { ... } }` and run in their nativ
 order. Labels and `goto` express shared or irreducible control flow when structured
 blocks cannot describe it.
 
-An awaited call with one data result can declare a block-scoped result:
+An unawaited call continues before its native completes, so using its data
+result is an error. An awaited call with one data result can declare a
+block-scoped result:
 
 ```code
 on Begin {

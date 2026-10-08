@@ -1279,6 +1279,15 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     bool library_task = spawnable && capability &&
                         capability->kind == SCRIPT_CAPABILITY_FUNCTION &&
                         (capability->effects & SCRIPT_EFFECT_SUSPEND);
+    /* An unawaited action continues before its result exists. */
+    TSNode use = unparenthesized_parent(node);
+    if (!result.instance && entry_index < 0 && !ts_node_eq(node, a->awaited) &&
+        capability && capability->kind == SCRIPT_CAPABILITY_ACTION &&
+        (capability->effects & SCRIPT_EFFECT_SUSPEND) && capability->result_count &&
+        !script_analyzer_is(use, "expression_statement") &&
+        !script_analyzer_is(use, "action_declaration")) {
+        script_analyzer_diagnostic(a, node, "Await this call before using its result");
+    }
     if (authored_task || library_task) {
         result.task = true;
         result.effects &= ~SCRIPT_EFFECT_SUSPEND;

@@ -109,6 +109,8 @@ def product_targets(cache, system=None):
         products.add('chibi-player')
     if native and cache.get('CHIBI_SDK_BUILD_COMPILER') == 'ON':
         products.add('chibi-compile')
+    if products == {'chibi-player', 'chibi-compile'}:
+        products.add('chibi')
     return products
 
 
@@ -233,7 +235,7 @@ def build_identity(build, cache):
         if target_directory is None:
             raise ValueError(f'Cannot identify archive owner for {object_path.name}')
         target = target_directory.name.removesuffix('.dir')
-        if target in ('chibi-player', 'chibi-compile'):
+        if target in ('chibi', 'chibi-player', 'chibi-compile'):
             if target not in allowed_products:
                 raise ValueError(f'Executable {target} is outside the configured product contract')
             if target not in executables:

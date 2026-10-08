@@ -61,7 +61,7 @@ TOOLS = {
     'compile-installed-space-cadet': [sys.executable, str(ROOT / 'tools/agent.py'), 'test', '--', '--compile-installed-space-cadet'],
     'player-installed-space-cadet-vm': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-vm'],
     'player-installed-space-cadet-sljit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-sljit'],
-    'studio-starter-startup': [str(ROOT / 'build-verify/sdk-migration/external-studio-build/bin/chibi-studio'),
+    'studio-starter-startup': [str(ROOT / 'build-verify/sdk-migration/external-studio-build/bin/chibi-dev'),
                               '--project-root', '/Users/cwaldner/Personal/chibi-studio/projects/starter',
                               '--headless', '--frames', '2', '--fixed-dt', '0.0166667'],
     # Reviewed first GPU measurements: exact prepared SpaceCadet, four hidden frames each.

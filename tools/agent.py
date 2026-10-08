@@ -91,7 +91,7 @@ def studio_startup_preflight():
     if (evidence.get('build_exit') != 0 or evidence.get('configure_exit') != 0
             or evidence.get('source') != str(source)
             or evidence.get('private_engine_source_include') is not False
-            or checksum(build / 'bin/chibi-studio', 64 * 1024 * 1024) != evidence.get('binary_sha256')
+            or checksum(build / 'bin/chibi-dev', 64 * 1024 * 1024) != evidence.get('binary_sha256')
             or checksum(source / 'EXTRACTION.json', 1024 * 1024) != evidence.get('extraction_sha256')
             or checksum(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/lib/cmake/Chibi/ChibiConfig.cmake',
                         1024 * 1024) != evidence.get('sdk_config_sha256')):

@@ -319,6 +319,27 @@ void chibi_project_free(chibi_project *project)
     *project = (chibi_project){ 0 };
 }
 
+char *chibi_project_find(const char *start)
+{
+    char *directory = absolute_path(start);
+    while (directory) {
+        char *manifest = join_path(directory, CHIBI_PROJECT_MANIFEST);
+        bool found = is_file(manifest);
+        free(manifest);
+        if (found) {
+            return directory;
+        }
+        if (!strcmp(directory, "/")) {
+            break;
+        }
+        char *parent = parent_path(directory);
+        free(directory);
+        directory = parent;
+    }
+    free(directory);
+    return NULL;
+}
+
 int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
 {
     if (!project) {

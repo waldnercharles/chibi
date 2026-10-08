@@ -114,7 +114,7 @@ TEST_CASE(language_callable_types_entries_and_results)
         "Done; }\n"
         "macro Route(key: name) -> (Success: bool) { return.Success(true); }\n"
         "value converted = engine[\"To Real\"](Value: int = 3);\n"
-        "value chosen = Identity<int>(source: ref int from &state.count, "
+        "value chosen = Identity<int>(source: ref int from state.count, "
         "item: 2);\n"
         "}"
     );
@@ -187,7 +187,7 @@ TEST_CASE(language_expressions_precedence_and_continuation)
         "behavior Calls { on Begin {\n"
         "await set_variable<\"flash\">(Value: bool = true);\n"
         "consume(Owner: other, Position: target.Position, Label: \"text\");\n"
-        "consume(Value: convert<\"to_vec\">(&component(\"Transform\")));\n"
+        "consume(Value: convert<\"to_vec\">(component(\"Transform\")));\n"
         "} }"
     );
     REQUIRE(original->diagnostic_count == 0);
@@ -224,8 +224,9 @@ TEST_CASE(language_invalid_source_has_positioned_diagnostics)
         "behavior Broken { on Begin { value := ; } }",
         "behavior Broken { on Begin { if true { }",
         "library Broken { function MissingBody() -> () }",
+        "behavior Broken { on Begin { nudge(&speed) } }",
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         cleanup();
         original = script_parse(cases[i]);
         if (!original->diagnostic_count) {

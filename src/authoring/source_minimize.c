@@ -95,14 +95,6 @@ static bool same_symbol(const script_analysis *a, int i, const script_analysis *
            x->outcome == y->outcome && x->lazy_local == y->lazy_local &&
            ((payload(x) && payload(y)) || same_text(x->name, y->name));
 }
-static int unwrap(const script_analysis *a, int i)
-{
-    while (i >= 0 && a->expressions[i].kind == SCRIPT_EXPR_UNARY &&
-           a->expressions[i].op == SCRIPT_OP_REFERENCE) {
-        i = a->expressions[i].left;
-    }
-    return i;
-}
 static bool same_arguments(
     const script_expression *x,
     const script_analysis *a,
@@ -142,8 +134,6 @@ static bool component_path(const script_expression *e)
 }
 static bool same_expression(const script_analysis *a, int i, const script_analysis *b, int j)
 {
-    i = unwrap(a, i);
-    j = unwrap(b, j);
     if (i < 0 || j < 0) {
         return i == j;
     }
@@ -544,20 +534,15 @@ static void component_call(collector *c, TSNode node, TSNode call)
     }
     free(path);
 }
-/* `&state.x` and `&local.x` name their symbol directly. */
-static void reference(collector *c, TSNode node)
+/* `state.x` and `local.x` name their symbol directly. */
+static void storage_path(collector *c, TSNode node)
 {
-    TSNode operand = field(node, "operand");
-    TSNode object = field(operand, "object");
-    if (is(operand, "call_expression")) {
-        component_call(c, node, operand);
-    }
-    if (is(operand, "member_expression") && is(object, "builtin_reference") &&
+    TSNode object = field(node, "object");
+    if (is(object, "builtin_reference") &&
         (!strncmp(c->text + start(object), "state", 5) ||
          !strncmp(c->text + start(object), "local", 5))) {
-        unwrap_node(c, node, field(operand, "member"));
+        unwrap_node(c, node, field(node, "member"));
     }
-    unwrap_node(c, node, operand);
 }
 
 static void collect(collector *c, TSNode node, pass phase)
@@ -599,8 +584,8 @@ static void collect(collector *c, TSNode node, pass phase)
         unwrap_node(c, node, field(node, "value"));
     } else if (!strcmp(type, "parenthesized_expression")) {
         unwrap_node(c, node, field(node, "expression"));
-    } else if (!strcmp(type, "unary_expression") && !strncmp(c->text + start(field(node, "operator")), "&", 1)) {
-        reference(c, node);
+    } else if (!strcmp(type, "member_expression")) {
+        storage_path(c, node);
     } else if (!strcmp(type, "call_expression")) {
         component_call(c, node, node);
     }

@@ -166,13 +166,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         result.kind = SCRIPT_STMT_ASSIGN;
         TSNode target = script_analyzer_field(node, "target");
         result.expression = script_analyzer_expression(a, target, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
-        /* `&x = v` assigns x itself, with x's type and write effect. */
-        int addressed = result.expression;
-        while (a->out->expressions[addressed].kind == SCRIPT_EXPR_UNARY &&
-               a->out->expressions[addressed].op == SCRIPT_OP_REFERENCE) {
-            addressed = a->out->expressions[addressed].left;
-        }
-        script_expression address = a->out->expressions[addressed];
+        script_expression address = a->out->expressions[result.expression];
         if (!address.writable) {
             script_analyzer_diagnostic(a, target, "Assignment requires a writable value");
         }

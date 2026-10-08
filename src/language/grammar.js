@@ -498,7 +498,7 @@ module.exports = grammar({
       prec(
         P.unary,
         seq(
-          field("operator", choice("!", "-", "+", "~", "&")),
+          field("operator", choice("!", "-", "+", "~")),
           field("operand", $._expression),
         ),
       ),

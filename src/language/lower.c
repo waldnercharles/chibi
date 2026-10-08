@@ -2474,9 +2474,7 @@ static bool storage_alias(lower *l, int index, int depth)
             return true;
         }
         if (expression->kind == SCRIPT_EXPR_MEMBER ||
-            expression->kind == SCRIPT_EXPR_INDEX ||
-            (expression->kind == SCRIPT_EXPR_UNARY &&
-             expression->op == SCRIPT_OP_REFERENCE)) {
+            expression->kind == SCRIPT_EXPR_INDEX) {
             index = expression->left;
             continue;
         }
@@ -2774,9 +2772,6 @@ static int reference_expression(lower *l, const script_expression *e)
             }
             return component_reference(l, e, cap, type, entity, NULL);
         }
-    }
-    if (e->kind == SCRIPT_EXPR_UNARY && e->op == SCRIPT_OP_REFERENCE) {
-        return reference(l, e->left);
     }
     if (e->kind == SCRIPT_EXPR_MEMBER && e->left >= 0 &&
         (l->a->expressions[e->left].type.flags & SCRIPT_TYPE_RESULTS)) {
@@ -3182,7 +3177,7 @@ static int expression_value(lower *l, int index)
         case SCRIPT_EXPR_UNARY: {
             int left = e->op == SCRIPT_OP_NOT ? condition_value(l, e->left)
                                               : expression(l, e->left);
-            if (e->op == SCRIPT_OP_NONE || e->op == SCRIPT_OP_REFERENCE) {
+            if (e->op == SCRIPT_OP_NONE) {
                 return convert(l, left, l->a->expressions[e->left].type, e->type, e->range);
             }
             if (e->op == SCRIPT_OP_NEG) {
@@ -3684,12 +3679,7 @@ static void assign_value(lower *l, const script_statement *s, int value)
         store_symbol(l, symbol, value, s->range);
         return;
     }
-    int target_index = s->expression;
-    while (l->a->expressions[target_index].kind == SCRIPT_EXPR_UNARY &&
-           l->a->expressions[target_index].op == SCRIPT_OP_REFERENCE) {
-        target_index = l->a->expressions[target_index].left;
-    }
-    const script_expression *target = &l->a->expressions[target_index];
+    const script_expression *target = &l->a->expressions[s->expression];
     if (s->op != SCRIPT_OP_NONE) {
         value = convert(l, value, l->a->expressions[s->second].type, target->type, s->range);
         int left = expression(l, s->expression);
@@ -3698,7 +3688,7 @@ static void assign_value(lower *l, const script_statement *s, int value)
         value = convert(l, value, l->a->expressions[s->second].type, target->type, s->range);
     }
     if (target->kind == SCRIPT_EXPR_SYMBOL) {
-        if (l->target_cached && target_index == l->target_expression) {
+        if (l->target_cached && s->expression == l->target_expression) {
             l->result_sources[target->symbol] = -1;
             reference_write(l, l->target_reference, value, target->type, s->range);
             return;
@@ -3708,7 +3698,7 @@ static void assign_value(lower *l, const script_statement *s, int value)
     }
     if (target->kind == SCRIPT_EXPR_COMPONENT || target->kind == SCRIPT_EXPR_INDEX ||
         (target->kind == SCRIPT_EXPR_MEMBER && !target->write)) {
-        int parent = target_index;
+        int parent = s->expression;
         while (parent >= 0 && l->a->expressions[parent].kind == SCRIPT_EXPR_MEMBER) {
             parent = l->a->expressions[parent].left;
         }
@@ -3723,9 +3713,9 @@ static void assign_value(lower *l, const script_statement *s, int value)
         if (component_type) {
             behavior_function_builder_component(l->builder, component_type->component_id, false, true);
         }
-        int destination = l->target_cached && target_index == l->target_expression
+        int destination = l->target_cached && s->expression == l->target_expression
                             ? l->target_reference
-                            : reference(l, target_index);
+                            : reference(l, s->expression);
         reference_write(l, destination, value, target->type, s->range);
         return;
     }
@@ -3734,10 +3724,6 @@ static void assign_value(lower *l, const script_statement *s, int value)
 static void assign(lower *l, const script_statement *s)
 {
     int index = s->expression;
-    while (index >= 0 && l->a->expressions[index].kind == SCRIPT_EXPR_UNARY &&
-           l->a->expressions[index].op == SCRIPT_OP_REFERENCE) {
-        index = l->a->expressions[index].left;
-    }
     if (index < 0 || (l->a->expressions[index].kind == SCRIPT_EXPR_MEMBER &&
                       l->a->expressions[index].write)) {
         assign_value(l, s, expression(l, s->second));
@@ -4420,10 +4406,6 @@ static void dependency_expressions(lower *l, int index, bool *visited, int **out
 }
 static bool owner_expression(lower *l, int index)
 {
-    while (index >= 0 && l->a->expressions[index].kind == SCRIPT_EXPR_UNARY &&
-           l->a->expressions[index].op == SCRIPT_OP_REFERENCE) {
-        index = l->a->expressions[index].left;
-    }
     return index < 0 || (l->a->expressions[index].kind == SCRIPT_EXPR_SYMBOL &&
                          l->a->expressions[index].symbol == l->a->owner_symbol);
 }

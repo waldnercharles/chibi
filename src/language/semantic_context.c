@@ -203,10 +203,6 @@ const script_expression *script_analyzer_result_source(const analyzer *a, int in
             index = a->out->symbols[value->symbol].initializer;
             continue;
         }
-        if (value->kind == SCRIPT_EXPR_UNARY && value->op == SCRIPT_OP_REFERENCE) {
-            index = value->left;
-            continue;
-        }
         return value;
     }
     return NULL;

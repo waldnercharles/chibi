@@ -13,8 +13,8 @@ static const char *operator_name(script_operator op)
     static const char *names[] = { "Value", "+",  "-",  "*",  "/",  "%",
                                    "-",     "!",  "&&", "||", "==", "!=",
                                    "<",     "<=", ">",  ">=", "&",  "|",
-                                   "^",     "<<", ">>", "~",  "&" };
-    assert(op >= SCRIPT_OP_NONE && op <= SCRIPT_OP_REFERENCE);
+                                   "^",     "<<", ">>", "~" };
+    assert(op >= SCRIPT_OP_NONE && op <= SCRIPT_OP_BIT_NOT);
     return names[op];
 }
 static const char *expression_name(source_projection *p, const script_expression *e)

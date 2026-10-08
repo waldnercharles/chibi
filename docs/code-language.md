@@ -62,7 +62,7 @@ re-indented.
 
 Named call arguments use `Value: expression`. An explicit argument type includes
 its value or source, for example `Value: float = amount` or
-`Source: ref int from &count`. A bare identifier after `:` is a value expression.
+`Source: ref int from count`. A bare identifier after `:` is a value expression.
 
 ```code
 system FreeMotion(position: Transform, velocity: Velocity)
@@ -228,7 +228,7 @@ behavior Turret {
 - Awaiting a task whose function has several results gives the same tuple as
   awaiting the call: `(await t).b`.
 - A task keeps references to state, components and locals for as long as it
-  runs, so `Bump(&health)` works. A task shares a local with its caller like a
+  runs, so `Bump(health)` works. A task shares a local with its caller like a
   closure: each sees the other's writes while the caller runs, and the task
   keeps the local after the caller returns. Each declaration makes a new local,
   so tasks started in a loop each keep their own.
@@ -275,7 +275,7 @@ behavior SharedGate {
 Functions declare data parameters and results. Ordinary functions infer their
 execution continuation; `pure function` declares a data-only signature. Calls
 use the function name directly. Qualification selects an external library:
-`"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`.
+`"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`; a call passes any writable value to them directly, such as `nudge(self.Velocity)`, and the function writes through it. There is no address-of operator.
 Type parameters preserve generic relationships, for example
 `function Identity<T: float>(item: T) -> (output: T) { ... }`. A function
 without results omits `->`.
@@ -440,7 +440,7 @@ Vim editing preserve indentation on new lines and indent inside brace blocks.
 A connected input can retain a binding or literal for later disconnection:
 
 ```text
-reroute_data(In: fallback(driver, binding: &component("GameMovement"), default: {speed: 0}));
+reroute_data(In: fallback(driver, binding: component("GameMovement"), default: {speed: 0}));
 ```
 
-`fallback` preserves the input's authored precedence: the connected driver wins, then the binding, then the literal default. Removing the wire restores the binding; removing the binding restores the default. It does not test truthiness or catch runtime errors. The `binding` and `default` clauses are optional, but at least one must be present. A binding with a retained default can use `fallback(&state.speed, default: 0)`. Defaults must be compatible literals.
+`fallback` preserves the input's authored precedence: the connected driver wins, then the binding, then the literal default. Removing the wire restores the binding; removing the binding restores the default. It does not test truthiness or catch runtime errors. The `binding` and `default` clauses are optional, but at least one must be present. A binding with a retained default can use `fallback(binding: speed, default: 0)`; a binding must be writable. Defaults must be compatible literals.

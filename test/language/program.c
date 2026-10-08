@@ -1773,6 +1773,38 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
     return true;
 }
 
+TEST_CASE(program_version_11_references_migrate_to_values)
+{
+    const char *source = "behavior R { n: double = 1; m: int = 6;"
+                         "function Bump(ref double v) -> () { v += 2; }"
+                         "on Impulse(amount, enabled) { Bump(n); &n = n + 1;"
+                         " m = m & 3; m &= 7; s := \"a &b\"; /* &c */ } }";
+    const char *expected = "behavior R { n: double = 1; m: int = 6;"
+                           "function Bump(ref double v) -> () { v += 2; }"
+                           "on Impulse(amount, enabled) { Bump(n); n = n + 1;"
+                           " m = m & 3; m &= 7; s := \"a &b\"; /* &c */ } }";
+    char *migrated = chibi_migrate_references(source);
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    REQUIRE(!chibi_migrate_references(expected));
+    char *bound = chibi_migrate_references("x := fallback(&speed, default: 0)");
+    REQUIRE(bound && !strcmp(bound, "x := fallback(binding: speed, default: 0)"));
+    free(bound);
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(migrated, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 4));
+    }
+    free(migrated);
+    return true;
+}
 TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -1849,7 +1881,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "version 11\n", 11));
+    REQUIRE(!strncmp(text, "version 12\n", 11));
     unlink(path);
     snprintf(path, sizeof path, "%s/content/B.chibi", root);
     file = fopen(path, "rb");
@@ -1962,8 +1994,8 @@ TEST_CASE(program_task_keeps_state_and_component_references)
     const char *source = "behavior R { n: double = 0;"
                          "function Bump(x: ref double) -> () { yield; x += 1; "
                          "yield; x += 1; }"
-                         "on Impulse(amount, enabled) { Bump(&n); "
-                         "Bump(&self.Position.x); } }";
+                         "on Impulse(amount, enabled) { Bump(n); "
+                         "Bump(self.Position.x); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -1992,12 +2024,12 @@ TEST_CASE(program_task_shares_boxed_locals)
                          "yield; kept += x; }"
                          "function Relay(x: ref double) -> () { Keep(x); }"
                          "on Impulse(amount, enabled) {"
-                         "if amount == 0 { v := 1.0; t := Bump(&v); v += 100; "
+                         "if amount == 0 { v := 1.0; t := Bump(v); v += 100; "
                          "await t; seen = v; }"
-                         "else if amount == 1 { w := 5.0; Keep(&w); }"
+                         "else if amount == 1 { w := 5.0; Keep(w); }"
                          "else if amount == 2 { i := 0.0; while i < 2 { u := "
-                         "i * 10; Keep(&u); i += 1; } }"
-                         "else { z := 2.0; Relay(&z); } } }";
+                         "i * 10; Keep(u); i += 1; } }"
+                         "else { z := 2.0; Relay(z); } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2049,6 +2081,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
     RUN_TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits);
+    RUN_TEST_CASE(program_version_11_references_migrate_to_values);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
     RUN_TEST_CASE(program_library_call_starts_a_task);

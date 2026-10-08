@@ -11,5 +11,10 @@ int chibi_project_migrate_content(const char *content, int from, char *error, si
  * owned copy of each source that gains `await` before the calls that blocked
  * under version 10, or NULL for a source that does not change. */
 char **chibi_migrate_task_calls(const char *const *sources, int count);
+/* Version 12 removes the `&` reference operator: a writable value passes to a
+ * `ref` parameter directly. Returns an owned copy of `source` without its
+ * unary `&` operators, binding a `fallback` through a leading `&x` as
+ * `binding: x`, or NULL when the source does not change. */
+char *chibi_migrate_references(const char *source);
 
 #endif

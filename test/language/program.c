@@ -1647,9 +1647,11 @@ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
         *source = "behavior Cancel { inner: double = 0; outer: double = 0; "
                   "woke: double = 0;"
                   "worker: task;"
-                  "function Inner() -> () { await Delay(1); inner += 1; }"
-                  "function Outer() -> () { Inner(); await Delay(1); outer += "
-                  "1; }"
+                  "function Leaf() -> () { await Delay(1); inner += 1; }"
+                  "function Inner() -> () { Leaf(); Leaf(); await Delay(1); "
+                  "inner += 1; }"
+                  "function Outer() -> () { Inner(); Inner(); await Delay(1); "
+                  "outer += 1; }"
                   "function Watch() -> () { await worker; woke += 1; }"
                   "on Impulse(amount, enabled) { if enabled { worker = "
                   "Outer(); Watch(); } "
@@ -1670,6 +1672,44 @@ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
         REQUIRE(execution_program_pump(program, 2, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "woke", 1));
         REQUIRE(number_state(instance, "inner", 0) && number_state(instance, "outer", 0));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
+{
+    const char
+        *source = "behavior Many { done: double = 0; kept: double = 0; "
+                  "stale: double = 0; first: task;"
+                  "function Short() -> () { yield; done += 1; }"
+                  "function Long() -> () { await Delay(1); kept += 1; }"
+                  "on Impulse(amount, enabled) { if !enabled { cancel "
+                  "first; if first { stale += 1; } } "
+                  "else if amount == 0 { first = Short(); } "
+                  "else if amount == 1 { Short(); } else { Long(); } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                             { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        args[0].d = 1;
+        for (int i = 0; i < 40; i++) {
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        }
+        REQUIRE(execution_program_pump(program, 0.1, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "done", 41));
+        /* The oldest finished slot, the first task's, now runs Long. */
+        args[0].d = 2;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.2, 0, 1000) == FLOW_OK);
+        args[1].b = false;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_pump(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "kept", 1) && number_state(instance, "stale", 0));
         REQUIRE(execution_instance_pending(instance) == 0);
     }
     return true;
@@ -1974,6 +2014,7 @@ void test_language_program()
     RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
+    RUN_TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
     RUN_TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits);

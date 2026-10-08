@@ -76,12 +76,14 @@ typedef struct
 } observer_cache;
 /* A task slot keeps its results after the task finishes so a later await can
  * read them. Handles carry the slot generation, so a reused slot's old handles
- * neither wait nor cancel. */
+ * neither wait nor cancel. Links name slots as index + 1, 0 for none: a running
+ * task is in its running parent's child list, and a finished one is in the
+ * instance's queue of finished slots, oldest first. */
 typedef struct
 {
     uint32_t generation;
     execution_activation *activation; /* NULL once the task has finished. */
-    uint64_t parent;
+    int parent, child, next, previous;
     pin_value *results;
     int result_count;
     arena storage;
@@ -99,6 +101,7 @@ struct execution_instance
     observer_cache *observations;
     execution_activation **activations;
     execution_task *tasks;
+    int finished_first, finished_last, finished_count;
     arena selections;
     execution_activation *running;
     execution_activation **system_activations;

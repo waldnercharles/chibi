@@ -63,25 +63,65 @@ static execution_task *find(execution_instance *instance, uint64_t handle)
     }
     return &instance->tasks[slot];
 }
+static execution_task *slot(execution_instance *instance, int link)
+{
+    return link ? &instance->tasks[link - 1] : NULL;
+}
+static int link_of(const execution_instance *instance, const execution_task *t)
+{
+    return (int)(t - instance->tasks + 1);
+}
+/* Reuses the oldest finished slot once TASK_RETAINED have finished. */
 static execution_task *task_new(execution_instance *instance)
 {
-    int finished = 0, oldest = -1;
-    for (int i = 0; i < acount(instance->tasks); i++) {
-        execution_task *t = &instance->tasks[i];
-        if (!t->activation && !acount(t->waiters)) {
-            finished++;
-            oldest = oldest < 0 ? i : oldest;
-        }
+    if (instance->finished_count < TASK_RETAINED) {
+        apush(instance->tasks, ((execution_task){ .generation = 1 }));
+        return &instance->tasks[acount(instance->tasks) - 1];
     }
-    if (finished >= TASK_RETAINED) {
-        execution_task *t = &instance->tasks[oldest];
-        arena_free(&t->storage);
-        afree(t->waiters);
-        *t = (execution_task){ .generation = t->generation + 1 };
-        return t;
+    execution_task *t = slot(instance, instance->finished_first);
+    instance->finished_first = t->next;
+    instance->finished_last = t->next ? instance->finished_last : 0;
+    instance->finished_count--;
+    arena_free(&t->storage);
+    *t = (execution_task){ .generation = t->generation + 1 };
+    return t;
+}
+static void adopt(execution_instance *instance, execution_task *parent, execution_task *t)
+{
+    execution_task *first = slot(instance, parent->child);
+    t->parent = link_of(instance, parent);
+    t->next = parent->child;
+    if (first) {
+        first->previous = link_of(instance, t);
     }
-    apush(instance->tasks, ((execution_task){ .generation = 1 }));
-    return &instance->tasks[acount(instance->tasks) - 1];
+    parent->child = link_of(instance, t);
+}
+/* Leaves the parent's child list, orphans the children and joins the queue of
+ * finished slots. */
+static void retire(execution_instance *instance, execution_task *t)
+{
+    execution_task *previous = slot(instance, t->previous),
+                   *next = slot(instance, t->next);
+    if (previous) {
+        previous->next = t->next;
+    } else if (t->parent) {
+        slot(instance, t->parent)->child = t->next;
+    }
+    if (next) {
+        next->previous = t->previous;
+    }
+    for (execution_task *c = slot(instance, t->child); c; c = slot(instance, c->next)) {
+        c->parent = 0;
+    }
+    int link = link_of(instance, t);
+    *t = (execution_task){ .generation = t->generation, .storage = t->storage };
+    if (instance->finished_last) {
+        slot(instance, instance->finished_last)->next = link;
+    } else {
+        instance->finished_first = link;
+    }
+    instance->finished_last = link;
+    instance->finished_count++;
 }
 
 static int start_task(behavior_function_context *ctx, int index)
@@ -118,9 +158,11 @@ static int start_task(behavior_function_context *ctx, int index)
             return FLOW_ERR_ARGUMENT;
         }
     }
-    execution_task *t = task_new(instance);
+    execution_task *t = task_new(instance), *parent = find(instance, caller->task);
     t->activation = a;
-    t->parent = caller->task;
+    if (parent) {
+        adopt(instance, parent, t);
+    }
     a->task = handle_of(instance, t);
     ctx->data->values[call->result_first] = (pin_value){ .type = PIN_U64,
                                                          .u64 = a->task };
@@ -144,7 +186,8 @@ void program_task_finished(execution_activation *a, bool cancelled)
     if (!t || t->activation != a) {
         return;
     }
-    t->activation = NULL;
+    flow_host_request **waiters = t->waiters;
+    retire(instance, t);
     int count = acount(a->function->result_defaults);
     t->results = arena_alloc(&t->storage, (size_t)(count + 1) * sizeof *t->results);
     t->result_count = count;
@@ -156,8 +199,6 @@ void program_task_finished(execution_activation *a, bool cancelled)
         assert(!status);
         (void)status;
     }
-    flow_host_request **waiters = t->waiters;
-    t->waiters = NULL;
     for (int i = 0; i < acount(waiters); i++) {
         program_request_deliver(waiters[i], t->results, t->result_count);
         flow_host_release(waiters[i]);
@@ -174,12 +215,11 @@ static int cancel(execution_instance *instance, uint64_t handle)
     if (t->activation->running) {
         return FLOW_ERR_STATE;
     }
-    for (int i = 0; i < acount(instance->tasks); i++) {
-        if (instance->tasks[i].parent == handle && instance->tasks[i].activation) {
-            int status = cancel(instance, handle_of(instance, &instance->tasks[i]));
-            if (status < 0) {
-                return status;
-            }
+    /* Cancelling a child retires it from this list. */
+    for (execution_task *c = slot(instance, t->child); c; c = slot(instance, t->child)) {
+        int status = cancel(instance, handle_of(instance, c));
+        if (status < 0) {
+            return status;
         }
     }
     t = find(instance, handle);

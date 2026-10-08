@@ -120,7 +120,15 @@ static uint64_t task_function(analyzer *a, TSNode call)
                                                  : NULL;
     return library && (library->effects & SCRIPT_EFFECT_SUSPEND) ? library->id : 0;
 }
-/* Whether a local or parameter anywhere under `node` is named `name`. */
+/* Locals shadow a state only inside their own callable. */
+static bool callable(TSNode node)
+{
+    return script_analyzer_is(node, "function_declaration") ||
+           script_analyzer_is(node, "macro_declaration") ||
+           script_analyzer_is(node, "handler");
+}
+/* Whether a local or parameter of this callable, outside nested ones, is
+ * named `name`. */
 static bool declares(analyzer *a, TSNode node, const char *name)
 {
     if (script_analyzer_is(node, "local_declaration") ||
@@ -133,35 +141,54 @@ static bool declares(analyzer *a, TSNode node, const char *name)
         }
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        if (declares(a, ts_node_named_child(node, i), name)) {
+        TSNode child = ts_node_named_child(node, i);
+        if (!callable(child) && declares(a, child, name)) {
             return true;
         }
     }
     return false;
 }
-/* Locals shadow a state only inside their own callable. */
-static bool callable(TSNode node)
+/* Whether a callable around `node`, which nested functions can see into,
+ * declares `name`. */
+static bool shadowed(analyzer *a, TSNode node, const char *name)
 {
-    return script_analyzer_is(node, "function_declaration") ||
-           script_analyzer_is(node, "macro_declaration") ||
-           script_analyzer_is(node, "handler");
+    for (; !ts_node_is_null(node); node = ts_node_parent(node)) {
+        if (callable(node) && declares(a, node, name)) {
+            return true;
+        }
+    }
+    return false;
 }
-static void task_hints(analyzer *a, TSNode body, TSNode node)
+/* The task state an assignment targets: `name` unless a local shadows it, or
+ * `state.name`. */
+static int task_target(analyzer *a, TSNode node)
 {
-    body = callable(node) ? node : body;
-    if (script_analyzer_is(node, "assignment")) {
-        TSNode target = script_analyzer_field(node, "target");
+    TSNode target = script_analyzer_field(node, "target");
+    if (script_analyzer_is(target, "member_expression")) {
+        TSNode object = script_analyzer_field(target, "object");
+        return script_analyzer_is(object, "builtin_reference") &&
+                       script_analyzer_text_is(a, object, "state")
+                 ? script_analyzer_lookup_storage(a, script_analyzer_field(target, "member"), SCRIPT_STATE)
+                 : -1;
+    }
+    int symbol = script_analyzer_is(target, "identifier")
+                   ? script_analyzer_lookup(a, target)
+                   : -1;
+    return symbol >= 0 && !shadowed(a, node, a->out->symbols[symbol].name) ? symbol
+                                                                           : -1;
+}
+static void task_hints(analyzer *a, TSNode node)
+{
+    if (script_analyzer_is(node, "assignment") &&
+        script_analyzer_is(script_analyzer_field(node, "operator"), "=")) {
         TSNode value = script_analyzer_field(node, "value");
         while (script_analyzer_is(value, "parenthesized_expression")) {
             value = script_analyzer_field(value, "expression");
         }
-        int symbol = script_analyzer_is(target, "identifier")
-                       ? script_analyzer_lookup(a, target)
+        int symbol = script_analyzer_is(value, "call_expression")
+                       ? task_target(a, node)
                        : -1;
-        if (symbol >= 0 && (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_TASK) &&
-            script_analyzer_is(value, "call_expression") &&
-            script_analyzer_is(script_analyzer_field(node, "operator"), "=") &&
-            !declares(a, body, a->out->symbols[symbol].name)) {
+        if (symbol >= 0 && (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_TASK)) {
             script_type task = { .storage = PIN_U64,
                                  .nominal = task_function(a, value),
                                  .flags = SCRIPT_TYPE_TASK };
@@ -169,7 +196,7 @@ static void task_hints(analyzer *a, TSNode body, TSNode node)
         }
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        task_hints(a, body, ts_node_named_child(node, i));
+        task_hints(a, ts_node_named_child(node, i));
     }
 }
 /* Infers task states from every `state = Call()` before any body is analyzed,
@@ -178,7 +205,7 @@ static void task_hints(analyzer *a, TSNode body, TSNode node)
  * in-order inference, which resolves it in its own scope. */
 void script_analyzer_task_hints(analyzer *a, TSNode body)
 {
-    task_hints(a, body, body);
+    task_hints(a, body);
 }
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
 {

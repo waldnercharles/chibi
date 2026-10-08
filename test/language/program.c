@@ -2310,9 +2310,27 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                    "function Start(time: double) { pulse = (Charge(time)) }"
                    "function Charge(time: double) -> (power: double) { "
                    "yield; return(time * 2); } }";
-    const char *sources[] = { source, reordered, local, wrapped };
+    const char
+        *qualified = "behavior P { pulse: task; power: double = 0;"
+                     "on Impulse(amount, enabled) { Start(amount); "
+                     "power = await pulse }"
+                     "function Start(time: double) { state.pulse = "
+                     "Charge(time) }"
+                     "function Charge(time: double) -> (power: double) { "
+                     "yield; return(time * 2); } }";
+    /* A nested callable's own `pulse` does not shadow the outer one. */
+    const char
+        *nested = "behavior P { pulse: task; power: double = 0;"
+                  "on Impulse(amount, enabled) { Start(amount); "
+                  "power = await pulse }"
+                  "function Start(time: double) { "
+                  "function Other(pulse: double) { } pulse = Charge(time) }"
+                  "function Charge(time: double) -> (power: double) { "
+                  "yield; return(time * 2); } }";
+    const char *sources[] = { source,  reordered, local,
+                              wrapped, qualified, nested };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int b = 0; b < 8; b++) {
+    for (int b = 0; b < 12; b++) {
         prepare();
         REQUIRE(compile(sources[b / 2], backends[b % 2]));
         ecs_entity owner = ecs_world_create_entity(world);
@@ -2377,7 +2395,8 @@ TEST_CASE(program_task_shares_boxed_locals)
                          "else if amount == 1 { w := 5.0; Keep(w); }"
                          "else if amount == 2 { i := 0.0; while i < 2 { u := "
                          "i * 10; Keep(u); i += 1; } }"
-                         "else { z := 2.0; Relay(z); } } }";
+                         "else { j := 0.0; while j < 2 { z := j * 100 + 2; "
+                         "Relay(z); j += 1; } } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2393,10 +2412,10 @@ TEST_CASE(program_task_shares_boxed_locals)
         for (int i = 1; i <= 3; i++) {
             REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
-        /* The caller and its task share v; each declaration of u is its own;
-         * w and z outlive their callers. */
+        /* The caller and its task share v; each declaration of u, and of z
+         * through Relay, is its own; w and z outlive their callers. */
         REQUIRE(number_state(instance, "seen", 112));
-        REQUIRE(number_state(instance, "kept", 6 + 1 + 11 + 3));
+        REQUIRE(number_state(instance, "kept", 6 + 1 + 11 + 3 + 103));
         REQUIRE(execution_instance_pending(instance) == 0);
     }
     return true;

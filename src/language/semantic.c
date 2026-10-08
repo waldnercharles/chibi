@@ -142,6 +142,7 @@ static script_analysis *analyze(
             script_analyzer_resolve_initializer(&a, a.initializers[i].symbol);
         }
         script_analyzer_finish_effects(&a);
+        script_analyzer_finish_boxes(&a);
         script_analyzer_finish_bindings(&a);
     }
     for (int i = 0; i < acount(out->functions); i++) {

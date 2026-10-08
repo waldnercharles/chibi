@@ -821,14 +821,17 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
 
 /* The local a reference argument names, or -1. A task can outlive the
  * declaring frame, so the local moves to a box the task keeps. */
+/* The local or reference parameter a reference argument reaches. */
 static int local_root(const analyzer *a, int expression)
 {
     while (expression >= 0) {
         const script_expression *e = &a->out->expressions[expression];
         if (e->kind == SCRIPT_EXPR_SYMBOL) {
-            return e->symbol >= 0 && a->out->symbols[e->symbol].kind == SCRIPT_LOCAL
-                     ? e->symbol
-                     : -1;
+            const script_symbol *s = e->symbol >= 0 ? &a->out->symbols[e->symbol]
+                                                    : NULL;
+            bool forwarded = s && s->kind == SCRIPT_PARAMETER &&
+                             (s->type.flags & SCRIPT_TYPE_REFERENCE);
+            return s && (s->kind == SCRIPT_LOCAL || forwarded) ? e->symbol : -1;
         }
         bool path = e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX;
         if (!path) {
@@ -837,6 +840,33 @@ static int local_root(const analyzer *a, int expression)
         expression = e->left;
     }
     return -1;
+}
+/* A reference parameter that reaches a task boxes what its callers pass. */
+void script_analyzer_finish_boxes(analyzer *a)
+{
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (int i = 0; i < acount(a->out->expressions); i++) {
+            const script_expression *e = &a->out->expressions[i];
+            const script_function *f = e->kind == SCRIPT_EXPR_CALL &&
+                                               !e->task && e->right >= 0
+                                         ? &a->out->functions[e->right]
+                                         : NULL;
+            if (!f || f->kind != SCRIPT_FUNCTION_AUTHORED) {
+                continue;
+            }
+            for (int j = 0; j < acount(e->arguments); j++) {
+                int p = e->arguments[j].parameter;
+                int root = p >= 0 && p < acount(f->parameters) &&
+                                   a->out->symbols[f->parameters[p]].boxed
+                             ? local_root(a, e->arguments[j].value)
+                             : -1;
+                if (root >= 0 && !a->out->symbols[root].boxed) {
+                    a->out->symbols[root].boxed = changed = true;
+                }
+            }
+        }
+    }
 }
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {

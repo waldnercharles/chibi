@@ -110,16 +110,17 @@ static void parity(int kind, bool waits, int scenario, int control, int budget, 
     graph *g = a->graphs[1];
     assert(!graph_set_breakpoint(g, g->nodes[1], control == 3));
     behavior_function *f = entry(a);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     test_flow_snapshot *expected = NULL;
     for (int mode = 0; mode < (library ? 4 : 3); mode++) {
         if (mode == 3) {
             char name[64];
             snprintf(name, sizeof name, "generated_reflected_%d_%d", kind, waits);
-            f->code = dlsym(library, name);
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, name);
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         assert(!behavior_instance_set_backend(
@@ -189,9 +190,9 @@ static void parity(int kind, bool waits, int scenario, int control, int budget, 
         test_flow_snapshot_free(&expected[i]);
     }
     afree(expected);
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 void test_compiled_reflected(const char *path)
@@ -276,7 +277,8 @@ int bench_reflected(const char *path, int count, int rotation)
                 vm == behavior_function_vm_allocations() &&
                 data == behavior_function_data_allocations()
             );
-            double checksum = kind == 0 ? bi->variables[0].i : bi->variables[1].f;
+            double checksum = kind == 0 ? bi->execution.variables[0].i
+                                        : bi->execution.variables[1].f;
             assert(isfinite(checksum));
             printf(
                 "%s reflected_%d ns=%.3f checksum=%.6f\n",

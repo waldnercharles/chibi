@@ -1,5 +1,11 @@
 # Compact HRC radiance buffers
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 This log predates the 2026-09-28 field redesign. In its measurements, `scale`
 is the RGB grid. `luminance_scale` of 2, 4 or 8 times `scale` is now
 `resolution` with `color_resolution` Half, Quarter or Eighth, and

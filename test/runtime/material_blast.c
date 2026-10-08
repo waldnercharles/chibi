@@ -1,5 +1,5 @@
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "authoring/preview.h"
+#include "runtime/component_catalog.h"
 #include "runtime/material_fluid.h"
 #include "runtime/materials.h"
 
@@ -36,7 +36,7 @@ static void ignition_crater(bool retain)
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world);
     add(world,
         config,
@@ -69,28 +69,28 @@ static void ignition_crater(bool retain)
         ){ .kind = FLUID_GAS, .width = 6, .height = 6, .spacing = 1, .mass = .001f });
     add(world, fuel, &GAME_COMPONENT_GameFuel, &(GameFuel){ .amount = 1 });
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->materials));
-    int front_cells = game_materials_mask(live->materials, front)->count;
-    int rear_cells = game_materials_mask(live->materials, rear)->count;
-    game_material_state before = game_materials_inspect(live->materials);
+    assert(!game_materials_prepare(live->runtime->materials));
+    int front_cells = game_materials_mask(live->runtime->materials, front)->count;
+    int rear_cells = game_materials_mask(live->runtime->materials, rear)->count;
+    game_material_state before = game_materials_inspect(live->runtime->materials);
     /* The body ignites the fuel; no direct Damage Material call is used. */
     fluid_body igniter = { .velocity = { 2, 0 }, .heat = 2 };
-    game_materials_tick(live->materials, 1.f / 60, &igniter, 1, NULL, 0);
+    game_materials_tick(live->runtime->materials, 1.f / 60, &igniter, 1, NULL, 0);
     int blasts;
-    material_fluid_blasts(game_materials_fluid(live->materials), &blasts);
+    material_fluid_blasts(game_materials_fluid(live->runtime->materials), &blasts);
     assert(blasts > 0);
     /* Blast requests resolve at the next material preparation boundary. */
-    assert(!game_materials_prepare(live->materials));
-    assert(game_materials_mask(live->materials, front)->count < front_cells);
-    assert(game_materials_mask(live->materials, rear)->count == rear_cells);
-    game_material_state after = game_materials_inspect(live->materials);
+    assert(!game_materials_prepare(live->runtime->materials));
+    assert(game_materials_mask(live->runtime->materials, front)->count < front_cells);
+    assert(game_materials_mask(live->runtime->materials, rear)->count == rear_cells);
+    game_material_state after = game_materials_inspect(live->runtime->materials);
     if (retain) {
         assert(after.cells == before.cells);
         assert(after.fragments > before.fragments);
     } else {
         assert(after.cells < before.cells);
     }
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 

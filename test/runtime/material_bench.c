@@ -1,7 +1,9 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "test/suite_internal.h"
 #include "test/whole_material_fixture.h"
 
@@ -82,13 +84,14 @@ int bench_material(const char *path, int count, int rotation)
                 int mode = (order + rotation) % 6;
                 behavior_asset *a = fixture(kind);
                 behavior_function *f = entry(a);
-                void *code = f->code, *inspection = f->inspection_code,
-                     *dispatch = f->dispatch;
+                void *code = f->artifact->code,
+                     *inspection = f->artifact->inspection_code,
+                     *dispatch = f->artifact->dispatch;
                 if (mode % 3 == 2) {
-                    f->code = dlsym(library, vector ? "generated_material_vec3" : "generated_material_float");
-                    assert(f->code);
-                    f->inspection_code = f->code;
-                    f->dispatch = NULL;
+                    f->artifact->code = dlsym(library, vector ? "generated_material_vec3" : "generated_material_float");
+                    assert(f->artifact->code);
+                    f->artifact->inspection_code = f->artifact->code;
+                    f->artifact->dispatch = NULL;
                 }
                 behavior_instance *bi = behavior_instance_create(a, &owner, NULL, NULL);
                 assert(
@@ -143,9 +146,9 @@ int bench_material(const char *path, int count, int rotation)
                 );
                 behavior_batch_free(batch);
                 behavior_instance_destroy(bi);
-                f->code = code;
-                f->inspection_code = inspection;
-                f->dispatch = dispatch;
+                f->artifact->code = code;
+                f->artifact->inspection_code = inspection;
+                f->artifact->dispatch = dispatch;
                 behavior_asset_free(a);
             }
             render_shader_clear_world(world);

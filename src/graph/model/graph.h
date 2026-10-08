@@ -93,6 +93,7 @@ typedef struct graph
     graph_comment_box *comment_boxes;
     char **strings;
     void **blocks;
+    struct arena *value_storage; /* Deep value snapshots, retired with the graph. */
     uint64_t id_counter;
     uint64_t *shared_id_counter; /* Behavior Asset graphs share one ID namespace. */
     char *name;
@@ -114,16 +115,6 @@ const char *graph_kind_name(graph_kind kind);
 int graph_kind_from_name(const char *name, graph_kind *kind);
 node *graph_add_node(graph *g, const node_desc *desc);
 
-int graph_connect_data(graph *g, node *from, int from_pin, node *to, int to_pin);
-int graph_connect_data_conversion(
-    graph *g,
-    node *from,
-    int from_pin,
-    node *to,
-    int to_pin,
-    const node_desc *conversion
-);
-int graph_connect(graph *g, node *from, int from_pin, node *to, int to_pin);
 int graph_connect_exec(graph *g, node *from, int from_pin, node *to, int to_pin, int exec_order);
 int graph_connect_exec_ids(
     graph *g,
@@ -142,18 +133,11 @@ const char *graph_event_name(const node *event_node);
 void graph_flow_pause(graph *g);
 void graph_flow_resume(graph *g);
 int graph_remove_node(graph *g, node *n);
-/* Appends the IDs of n and the inline nodes drawn inside it to *ids
- * (support/array.h). */
-void graph_inline_tree(const graph *g, const node *n, uint64_t **ids);
-/* Removes n and the inline nodes drawn inside it. */
-int graph_remove_node_tree(graph *g, node *n);
+
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin);
 
 int graph_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin);
-/* Resolve a reference-capable data output to a stable writable binding. The
- * returned strings are borrowed from the graph or registry; a field path
- * assembled from nested projections is graph-owned. */
-int graph_resolve_reference(graph *g, const node *source, int source_pin, pin_binding *binding);
+
 /* Whether the editor folds n into its single downstream data consumer's pin
  * row instead of drawing a box. The node and edge remain ordinary graph data
  * that evaluation uses unchanged; the canvas, arrangement, extraction and
@@ -166,14 +150,9 @@ int graph_resolve_reference(graph *g, const node *source, int source_pin, pin_bi
  * without breakpoints, watches or comments, outside generated expression
  * graphs. */
 #define GRAPH_INLINE_AUTO_NODES 3
-bool graph_node_is_inline(const graph *g, const node *n);
-/* Whether n would be inline with the `inline` presentation. */
-bool graph_node_can_inline(const graph *g, const node *n);
+
 bool graph_node_is_vector_constructor(const node *n);
-const node_desc *graph_vector_constructor(const pin_spec *pin);
-/* The visible node that draws n: n itself unless n is inline. */
-node *graph_inline_owner(const graph *g, node *n);
-int graph_inline_source(const graph *g, const node *target, int pin, node **src, int *src_pin);
+
 const node_desc *graph_input_conversion(const graph *g, const node *n, int pin);
 int graph_exec_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin, int *order);
 int graph_exec_input_count(const graph *g, const node *n, int pin);
@@ -189,8 +168,7 @@ const pin_spec *graph_pin_by_id(const node *n, uint64_t id, int *is_output, int 
 const char *graph_node_name_literal(const graph *g, const node *n);
 void graph_reindex(graph *g); /* rebuild id_table from g->nodes */
 uint64_t graph_alloc_id(graph *g);
-/* Copies the value and owns its strings, arrays and registered struct data. */
-int graph_set_pin_default(graph *g, node *n, int output, int index, const pin_value *value);
+
 int graph_set_pin_name(graph *g, node *n, int output, int index, const char *name);
 /* Sets an editor-only pin label; NULL or an empty name uses the pin name. */
 int graph_set_pin_display_name(graph *g, node *n, int output, int index, const char *name);
@@ -203,8 +181,7 @@ int graph_set_node_disabled(graph *g, node *n, int disabled);
 int graph_set_node_presentation(graph *g, node *n, node_presentation presentation);
 /* The presentation spelled `name`, or -1. */
 int graph_presentation_by_name(const char *name);
-/* Folds n, persisting `inline` only when `auto` would draw its box. */
-int graph_inline_node(graph *g, node *n);
+
 int graph_set_breakpoint(graph *g, node *n, int enabled);
 /* Sets n's comment; NULL or "" removes it. */
 int graph_set_node_comment(graph *g, node *n, const char *comment, bool hidden);
@@ -218,19 +195,10 @@ int graph_set_node_reference_asset(graph *g, node *n, const char *asset_name);
 int graph_add_pin(graph *g, node *n, int output, const pin_spec *template_pin);
 /* The default value a new pin receives from its template. */
 pin_value graph_pin_initial_default(const pin_spec *template_pin);
-/* Exposed fields append outputs while retaining the aggregate pin. Hide keeps
- * connected projections. Struct outputs include event and local function
- * signatures and can expose nested struct fields. */
-const type_desc *graph_output_struct(const node *n, int output_index);
+
 /* The pin that exposes one field of the struct output at source_index. */
 pin_spec graph_field_pin(const node *n, int source_index, const type_field *field);
-/* Reveals one registered field without changing the aggregate or its wires. */
-int graph_expose_output_field(graph *g, node *n, int output_index, const char *field_name);
-int graph_expose_output_fields(graph *g, node *n, int output_index);
-int graph_hide_output_fields(graph *g, node *n, int output_index);
-const type_field *graph_output_field(const node *n, int output_index, int *source_index);
-int graph_split_pin(graph *g, node *n, int output, int index);
-int graph_recombine_pin(graph *g, node *n, int output, int index);
+
 int graph_remove_pin(graph *g, node *n, int output, int index);
 
 int pin_types_compatible(const pin_spec *a, const pin_spec *b);

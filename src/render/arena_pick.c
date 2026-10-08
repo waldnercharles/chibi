@@ -3,7 +3,8 @@
 #include "render/arena_visual.h"
 #include "render/mesh_surface.h"
 #include "render/shader_catalog.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
+#include "support/array.h"
 
 #include <float.h>
 #include <math.h>

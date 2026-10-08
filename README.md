@@ -1,234 +1,146 @@
 # Chibi
 
-A C23 visual programming editor for authored game behaviors, prototypes, and scenes.
+A C23 scripting/compiler/runtime SDK with a separate Studio authoring application.
 
-[Native engine packages](docs/native-package.md) let a separate game workspace
-author assets through Studio and MCP using prebuilt executables.
+The [architecture reference](docs/architecture.md) describes package boundaries,
+source authority, runtime lifetimes and deployment contracts.
 
-The tracked `projects/arena2d` sample is the default project. External games can
-use copied prebuilt executables in their ignored `.chibi/runtime` directory,
-and can optionally be mounted at the ignored `projects/local-game` path for
-Studio and browser authoring. Registered native builds and web publishes
-deliver runtime updates from the engine side.
-See [external game setup](docs/native-package.md#local-external-projects).
+[Native product packages](docs/native-package.md) provide an installed compiler
+SDK, a separate Studio application, and a deployed player. Game repositories own
+authored content; the player consumes prepared artifacts and their declared
+resources. See [runtime authoring](docs/runtime-authoring.md) for exact SDK pins
+and installation into registered game workspaces.
+
+```sh
+make package-sdk       # native compiler + desktop authoring SDK in dist/sdk
+make package-player    # compiler-free player deployment in dist/chibi-player-<os>-<arch>
+dist/sdk/bin/chibi-compile --project-root /absolute/game --output /absolute/output/game.chibip
+/installed/player/bin/chibi-player /absolute/output/game.chibip --resource-root /absolute/output
+```
+
+Both SDK product builds prepare a standalone host reflection tool. `SDK_PREFIX`,
+`RUNTIME_SDK_PREFIX`, and `PLAYER_OUTPUT` select their outputs. Packaging leaves
+registered games untouched; `make update-game-runtime` explicitly verifies and
+installs the player package. Studio is built and packaged separately against a
+pinned installed SDK.
 
 ## Development
 
+The engine checkout builds the compiler, player, controller and package-consumer
+checks. Studio builds in its separate repository against an installed SDK.
+
 ```sh
-make run          # optimized editor for normal interaction
-make play         # optimized standalone game
-make debug        # plain Debug editor
-make debug-san    # Debug editor with ASan and UBSan
-make build        # build sanitizer-enabled Debug app and controller
-make package-native # package native engine, Studio, and MCP for external games
-make test-tools   # run essential C tooling checks
-make build-tracy  # build native RelWithDebInfo with Tracy enabled
-make run-tracy    # run the native Tracy profile
-make test         # bounded C regressions; full coverage temporarily DISABLED
-make test-fast TEST_ARGS=--graph-optimize  # focused plain Debug check
-make mcp          # run the local MCP authoring server over stdio
-make mcp-setup    # generate local Codex MCP configuration
-make dev          # build and launch RelWithDebInfo editor with workspace recovery
-make format       # format project C sources with clang-format 22, as CI does
-make check-format
-make web          # static browser application; requires Emscripten
-make publish-web  # publish the latest origin/main commit to GitHub Pages
+make build             # sanitizer-enabled compiler/player/controller development build
+make build-debug       # plain Debug products
+make build-release     # Release products
+make package-sdk       # compiler/native/desktop SDK, including chibi-compile
+make package-player    # compiler-free deployment package
+make studio-build STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk
+make studio-run STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk PROJECT_ROOT=/absolute/game
+make studio-dev STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk PROJECT_ROOT=/absolute/game
+make package-studio STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk
+make prepare-project PROJECT_ROOT=/absolute/game ARTIFACT=/absolute/output/game.chibip
+make player-run ARTIFACT=/absolute/output/game.chibip RESOURCE_ROOT=/absolute/resources
+make controller-run PROJECT_ROOT=/absolute/game
 ```
 
-`make web` builds the serial app. Use `WEB_THREADS=1` to include the worker app.
-`make publish-web` fetches the latest `origin/main` commit into an isolated
-checkout, publishes the compiled files to `gh-pages`, and waits for
-the live deployment marker and matching asset hashes. It requires Emscripten,
-the native build tools, and an authenticated `gh` session with repository push and Pages access. Local
-engine edits are excluded, and `main` is never pushed. Project links tracked in the published engine commit are snapshotted from
-their game repository’s committed `HEAD`; local game edits and ignored mounts
-are excluded.
-`BUILD_SOURCES.json` records the engine and game commits. Set `JOBS` to control build
-parallelism and `CHIBI_COLLAB_URL` to configure the collaboration server.
-Verified bundles are cached under `.cache/publish-web`; an identical publication
-reuses its bundle and skips a redundant deployment. Compiler and dependency
-caches also serve successive commits. Native game delivery is explicit with
-`PUBLISH_GAME_RUNTIME=1`. If `main` advances during the build, rerun the command.
+`studio-build` uses Ninja and `STUDIO_CMAKE_FLAGS` (Debug by default).
+`studio-dev` restores `STUDIO_CHECKPOINT`, defaulting to the Studio build's
+`workspace.json`. Source edits remain owned by the game; native changes require
+rebuilding the owning SDK or Studio product and restarting. Studio's SDK is an
+explicit pin: its convenience build never adds the engine checkout to include
+paths or silently rebuilds that installed SDK. Package Studio in a separate
+Release build with the SDK manifest captured at configuration.
 
-`make run` and `make play` use the fully optimized `Release` profile. Their
-launch targets build only the application; `make build-release` still builds
-all native targets. `make debug` uses a plain `Debug` profile, while
-`make debug-san` uses
-ASan and UBSan by default. Use `make debug-san SANITIZERS=thread` when a TSan
-run is useful; TSan cannot be linked into the same binary as ASan, so the one
-target switches the sanitizer mode in the shared Debug build directory.
+`BUILD_TARGET` selects root CMake products. Defaults are `chibi-compile`,
+`chibi-player`, and `chibi_ctl`; the controller is in `build/bin`, compiler and
+player in `build/sdk`. `make controller-build` builds only the authoring tool.
+`make help` lists supported wrappers. The old combined `chibi` application and
+root Studio launch targets are retired.
 
-Native builds use Ninja for new build directories when available and run up to
-eight compile jobs by default. Set `JOBS` to tune this for your machine or
-concurrent worktrees. An unchanged configuration is reused; changed Make flags
-or CMake cache settings trigger configuration again.
+Native builds need CMake, Ninja for Studio, a C23 compiler, and libclang for
+reflection. CMake pins dependencies. `NATIVE_TOOLCHAIN_FLAGS`, `LIBCLANG_ROOT`,
+and `JOBS` select the toolchain, matching reflection installation, and compile
+parallelism. Builds print phase summaries with full logs in `.chibi/logs`;
+`VERBOSE=1` streams output. SDK product builds use a standalone reflection tool.
 
-`make test-fast TEST_ARGS=--graph-optimize` builds only the test executable in
-plain Debug and runs an exact admitted selector. `make test`, `make test-short`
-and `make test-tools` run the minimal C pico_unit tooling suite under one shared
-60-second production supervisor deadline. Native full/render and unmeasured
-commands remain quarantined; see [the policy](docs/testing.md#temporary-60-second-policy).
+## Browser Studio
 
-Neon Swarm is the default project for native launches, editor profiles, MCP,
-and `make web-serve`. Its manifest selects `scenes/Sandbox.kdl`.
-Use `make debug PROJECT=.` for the Arena3D reference, or
-`make debug PROJECT=. SCENE=scenes/OrbitPinball.kdl` for pinball.
-Add `ARGS=--play` to launch into Play. `PROJECT` works the same for
-`make web-serve`, and `SCENE` is optional everywhere: without it a project
-opens at its manifest's start scene. In the browser, add
-`?scene=scenes/<file>.kdl` to the editor URL to open another scene.
+Browser Studio uses an installed Emscripten SDK containing the same owning
+compiler/runtime/renderer packages. That SDK is library-only; native command
+line products are built separately.
 
-File > Open Project and the command palette switch between the repository's
-projects (`project.kdl` and `projects/*`) without relaunching. `make web-serve`
-mirrors all of them into the browser, so `?project-root=projects/<name>` also
-opens one there.
+```sh
+make web STUDIO_SOURCE=/absolute/chibi-studio
+make web-threads STUDIO_SOURCE=/absolute/chibi-studio WEB_WORKERS=4
+```
 
-The static `make web` build keeps projects in the browser's IndexedDB and
-reopens the last one, starting with Neon Swarm. Opening a sample the first time
-copies it into a project of your own. File > Open Project and the command
-palette list your projects and the samples not yet copied (Arena3D, Neon Swarm
-and Studio); `?project-root=projects/<sample>` opens a sample,
-`?project=<name>` one of your projects, and `?new` a fresh copy of the sample. File > Export Project downloads a zip, and Import Project opens a zip as
-a new project. A project that cannot open, such as one saved at another project
-version, offers Export Project and New Project. `make web-serve` saves to the
-local project instead.
+These recipes configure/package the web SDK, build the external `chibi-studio`
+consumer, and install its HTML/JS/WASM/data into `WEB_OUTPUT`. Serial and threaded
+profiles use separate default build and install directories. The threaded SDK
+exports its worker ABI; Studio consumes it rather than overriding it.
+`WEB_PROJECTS` supplies an explicit semicolon-separated list of sample folders;
+Studio owns its empty starter and authored UI. No engine repository games are
+implicitly shipped.
 
-Gameplay can be recorded and replayed as a `scenarios` asset. In Studio, Record
-Gameplay restarts the scene and records until Stop or Stop Recording, then
-saves `scenarios/<Scene> Recording.kdl`; the command palette lists each
-scenario to replay on a loop until Stop. Scenarios can also be written by hand
-(see [the MCP workflow](docs/mcp.md#scenario-assets)). `ARGS='--play --scenario
-Firefight'`, or `?play&scenario=Firefight` in the browser, replays one on a loop
-in the game. The native controller exposes `profile_scenario` for headless
-measurements; browser frame summaries provide web timing.
+The serial web SDK package and external Studio build/link passed. Browser
+execution remains unverified; those checks do not establish interactive acceptance.
+`make web-serve` and `make web-threads-serve` use the external static server with
+isolation headers. It serves the installed browser bundle without mounting game
+source from disk. Publication integration remains pending and rejects explicitly.
+Historical publishing scripts and measurements do not certify this new product.
+No publishing is part of the extraction work.
 
-Run `make help` for the complete target list and the purpose of each target.
+## Checks and authoring
 
-The [frame-time optimization roadmap](docs/research/frame-time-roadmap.md)
-records current Arena measurements, remaining performance options and the
-acceptance criteria for consistent 60 FPS and higher refresh rates.
-The [Tracy workflow](docs/tracy.md) explains the optional native timeline
-profile and its MCP analysis server.
+```sh
+make test              # six pure C execution-policy checks
+make test-tools        # C tooling/process cases under one shared deadline
+make language-build
+make test-language-execution
+make test-language-program
+make test-language-prepared
+make test-list
+make format
+make check-format
+```
 
-When available, Chibi MCP is the default interface for authoring shaders,
-behaviors, prototypes, and scenes. See [the MCP workflow](docs/mcp.md) for
-the public tools and validation sequence.
+Every test command has a hard 60-second deadline. Full/unmeasured suites remain
+quarantined; the retired `test_suite` wrappers reject rather than reconstructing
+old aggregates. Builds/configuration are timed separately. Public consumer checks
+and GPU routes run only with an admitted selector; use the policy inventory for
+current coverage. A passing package check establishes integrity, not rendered
+acceptance. See [testing policy](docs/testing.md#temporary-60-second-policy).
 
-To edit an asset directly in Studio, open it from Assets and switch the
-area to Text Editor. The code editor highlights syntax and offers reflected
-component, field, enum and asset completions as you type or with Control+Space.
-Diagnostics mark invalid source. Live preview keeps the last valid asset while
-you finish an edit. Saving writes the valid source exactly as typed, preserving
-comments and spacing.
-
-### Zed
-
-Open the repository root in Zed and run `Build (Debug)` from `task: spawn` once
-after cloning. The project settings use clangd and the checked-in
-`.clang-format`; the build creates the compilation database that powers
-completion, diagnostics, navigation, and formatting. `.zed/tasks.json` also
-provides editor, Arena3D, development, test, render-check, and release
-tasks. `.zed/debug.json` provides CodeLLDB launch profiles for the editor,
-Arena3D, and the test suite.
-
-Native builds require CMake, a C23 compiler, and libclang. Dependencies
-are pinned in CMake. On macOS, the Makefile uses Homebrew
-LLVM when installed. Set `NATIVE_TOOLCHAIN_FLAGS` for Make or
-`CC` and `CXX` for CMake to select another compiler.
-Fresh Linux Make builds prefer installed Clang, matching native CI; existing
-CMake caches and explicit compiler or toolchain selections are preserved.
-Native configuration preserves an explicitly selected SDK; otherwise it uses
-the selected compiler's SDK for both framework lookup and compilation.
-
-Native and web builds automatically build or reuse immutable dependency packages
-under `${XDG_CACHE_HOME:-$HOME/.cache}/chibi-dependency-packages`. Set
-`CHIBI_DEPENDENCY_PACKAGE_CACHE_DIR` to choose another location. All worktrees
-use this cache regardless of which app created them or where their folders live.
-Packages include Cute and its compiled dependencies, SDL, RmlUi, FreeType, Zep,
-enkiTS, SLJIT, tree-sitter, and bundled C libraries where enabled. Native, browser,
-threaded browser, and incompatible toolchain or sanitizer options use separate entries.
-Dependencies are always built as Release without precompiled headers, whatever the
-consumer's build type, so Debug, Release and RelWithDebInfo checkouts share one
-package and debug builds step into them without symbols. Dependency pins, patches,
-compiler and SDK identity, and other build flags determine reuse. A failed or
-concurrent first build cannot publish an incomplete package. Each configure marks
-its package as used; creating a package then removes ones beyond the newest six per
-profile that have been idle for a day (`CHIBI_DEPENDENCY_PACKAGE_KEEP` sets the
-count). Package builds go through ccache with a base directory at the package, so a
-changed patch or pin recompiles only the sources that differ.
-Application objects and generated files remain in each checkout's build directory.
-Native Tracy client libraries are shared; the former Python MCP bridge is
-retired. External source overrides retain private builds so local dependency
-edits remain in use. Set
-`CHIBI_DEPENDENCY_PACKAGES=0` to request a private dependency build explicitly.
-
-Dependency sources are seeded from pristine snapshots in
-`${XDG_CACHE_HOME:-$HOME/.cache}/chibi-fetchcontent`, configurable through
-`CHIBI_FETCHCONTENT_CACHE_DIR`. APFS clones or Linux reflinks share unchanged
-source storage while package builds apply their own patches independently.
-
-When ccache is installed, native builds and Release web builds also reuse matching
-application objects across worktrees. Native Debug and development builds normalize
-compilation paths so debug information resolves local sources. `ccache --show-stats`
-reports hits and evictions. On APFS, ccache's optional `file_clone` setting can share
-object storage across builds; it disables cache compression and benefits repeated
-objects most. Cache and worktree directories must be on a compatible filesystem.
-
-Build and test commands print phase summaries and save full output in `.chibi/logs`.
-Failures print bounded diagnostic excerpts and the full log path. Use `VERBOSE=1`
-to stream output. Old completed logs are limited to 20 files and 64 MiB; running
-logs and the current phase are retained. `make build BUILD_TARGET=chibi_ctl` builds
-only the controller; `BUILD_TARGET=` requests the default CMake target set.
-`make test` does not certify full coverage during the temporary quarantine. Ordinary builds do not create
-a separate runtime distribution; launch commands refresh registered games, or use
-`make update-game-runtime` explicitly.
-
-`make dev ARGS="--fps 60"` builds and launches the native RelWithDebInfo
-application with workspace recovery. Close Studio after editing native code,
-then run `make dev` again to rebuild and restart. Asset edits retain their live
-update workflow.
-
-New development directories use Ninja when it is installed. To switch an older
-Make directory, use a fresh directory: `make dev DEV_BUILD_DIR=build-dev/ninja`.
-Existing directories retain their generator.
-
-The workspace checkpoint preserves the open project, unsaved scene, prototype and graph edits,
-Undo/Redo, selection, graph navigation and native window geometry. Play restarts from the
-authored scene with its previous running or paused intent. Live simulation
-memory and in-progress pointer gestures are recreated. Checkpoints live in
-`.chibi/workspace.json`; source documents are saved only through editor Save.
-When a behavior source changed after the checkpoint was written, the editor
-keeps the checkpointed copy; File > Reload on that behavior replaces it with the
-source.
-
-The editor follows its project on disk, so edits from another program, MCP or
-version control appear as they are saved. Graph assets and systems apply at
-once, even while playing; prototypes and the open scene reload when the runtime
-stops, keeping the view and selection. A document with unsaved edits keeps them
-and offers Reload. `make web-serve` sends the same edits to the browser.
+Author behaviors, libraries, and systems in `.chibi`; declarative assets use KDL.
+Studio projections and optional layout metadata do not replace executable source.
+Shared navigation, refactoring and inspection ship in SDK authoring packages and
+are consumed by Studio and the controller. Format/validate authored content
+through the controller; see [runtime authoring](docs/runtime-authoring.md).
 
 ## Code map
 
 | Location | Responsibility |
 | --- | --- |
-| `include/chibi` | Application lifecycle declarations shared with the host |
-| `src/host` | Window lifetime, application launch and checkpoint files |
-| `src/editor` | Workspace, documents, graph editing and the RmlUi Studio |
-| `src/graph` | Graph model, node catalog, documents, compilation and execution |
-| `src/runtime` | ECS-backed behavior, system and scene execution |
-| `src/ecs` | Entity storage, component layout and queries |
-| `src/assets` | Authored asset formats and loading |
-| `src/render` | Scene rendering, materials, shapes and shaders |
-| `src/support` | Allocation, arrays, text and small shared utilities |
-| `src/platform` | Integration with the actual framework headers |
-| `tools/reflect` | Native reflection generator and identity manifest checks |
-| `cmake` | Build generation and dependency packaging |
-| `test` | Tests and fixture-only reflection packs, assets and helpers |
-| `content` | Assets shipped with the editor |
+| `sdk` | Independently built and installed target/header contracts |
+| `src/language` | Owned syntax snapshots, semantic analysis and direct source lowering |
+| `src/execution` | Executable IR, VM/SLJIT/C backends, prepared modules and instances |
+| `src/capabilities` | Shared typed native signatures, stable identities and effects |
+| `src/authoring` | Preparation, source navigation/refactoring and presentation adapters |
+| `src/runtime` | ECS-backed behavior, system, scene and optional native capabilities |
+| `src/ecs` | Entity storage, reflected component layout and queries |
+| `src/types` | Reflected values, catalogs, ownership and portable wire records |
+| `src/assets` | Authored declarative documents and preparation adapters |
+| `src/graph` | Authoring graph model, catalog and shader/model compilation |
+| `src/render` | Prepared scene/resource rendering and inspection |
+| `src/host` | Separate compiler and player entrypoints |
+| `tools/chibi_ctl` | Controller consuming public owning packages |
+| `tools/reflect` | Standalone native reflection generator |
+| `test` | Bounded package consumers and focused fixture content |
+| separate `chibi-studio` repository | Editor, application loop, UI, text bridge and browser host |
 
-Internal headers live beside their implementations. The `include` tree contains
-the application lifecycle declarations. `cmake/sources.cmake` records compilation
-ownership separately from the conceptual folder layout.
+Public headers are owned by their installed targets. Private headers stay with
+the owning implementation; consumers never add the engine `src` root.
 
-See [the implementation tracker](docs/refactor-plan.md) and
+See [the implementation tracker](PLAN.md) and
 [the native development workflow](docs/reload.md) for the acceptance checks and lifetime rules.

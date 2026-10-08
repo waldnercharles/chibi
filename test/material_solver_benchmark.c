@@ -1,3 +1,4 @@
+#include "graph/model/registry.h"
 #include "runtime/material_fluid.h"
 #include "runtime/task_pool.h"
 #include "support/xalloc.h"
@@ -241,6 +242,7 @@ static uint64_t run(int solver, int side, int frames, int workers, bool collisio
 
 int main(int argc, char **argv)
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     if (argc != 5 && argc != 6) {
         fprintf(stderr, "usage: %s ddr|mpm side frames workers [patch|collision]\n", argv[0]);
         return 2;

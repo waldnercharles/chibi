@@ -1,0 +1,24 @@
+#include "graph/model/value_copy.h"
+
+#include "graph/model/graph.h"
+#include "support/arena.h"
+#include "support/xalloc.h"
+
+static arena *storage(graph *g)
+{
+    if (!g->value_storage) {
+        g->value_storage = xcalloc(1, sizeof *g->value_storage);
+    }
+    return g->value_storage;
+}
+pin_array *pin_array_clone_to_graph(graph *g, const pin_array *src)
+{
+    return g && src ? pin_array_snapshot_to_arena(storage(g), src) : NULL;
+}
+int pin_value_copy_to_graph(graph *g, pin_value *dst, const pin_value *src)
+{
+    if (!g || !dst || !src) {
+        return -1;
+    }
+    return pin_value_snapshot_to_arena(storage(g), dst, src);
+}

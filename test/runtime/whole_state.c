@@ -40,23 +40,26 @@ static void check(int kind, int control, void *library)
             service.fail_at[1] = 2;
         }
         assert(!behavior_instance_bind_service(bi, "test.state", &service));
-        behavior_function *f = (behavior_function *)
-            behavior_program_function(behavior_program_graph(asset->program, g), g->nodes[0]);
+        behavior_function *f = (behavior_function *)behavior_program_function(
+            behavior_program_graph(behavior_program_cached(asset), g),
+            g->nodes[0]
+        );
         if (!f) {
             const behavior_function_diagnostic *d = behavior_program_function_diagnostic(
-                behavior_program_graph(asset->program, g),
+                behavior_program_graph(behavior_program_cached(asset), g),
                 g->nodes[0]
             );
             fprintf(stderr, "state kind=%d exclusion=%s\n", kind, d ? d->reason : "missing");
         }
         assert(f);
-        void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+        void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+             *dispatch = f->artifact->dispatch;
         if (mode == 3) {
             char name[64];
             snprintf(name, sizeof name, "whole_state_%d", kind);
-            f->code = f->inspection_code = dlsym(library, name);
-            f->dispatch = NULL;
-            assert(f->code);
+            f->artifact->code = f->artifact->inspection_code = dlsym(library, name);
+            f->artifact->dispatch = NULL;
+            assert(f->artifact->code);
         }
         int at = 0;
         const int actions[] = { 0, 0, 1, 0, 2, 0, 3, 0, 1, 0, -1 };
@@ -97,8 +100,8 @@ static void check(int kind, int control, void *library)
             }
             if (mode) {
                 assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-                assert(bi->node_states[0].type == states[round].type);
-                assert(bi->node_states[0].u64 == states[round].u64);
+                assert(bi->execution.node_states[0].type == states[round].type);
+                assert(bi->execution.node_states[0].u64 == states[round].u64);
                 if (service.calls[0] != calls[round][0] ||
                     service.calls[1] != calls[round][1]) {
                     fprintf(
@@ -112,7 +115,7 @@ static void check(int kind, int control, void *library)
                     assert(false);
                 }
             } else {
-                states[round] = bi->node_states[0];
+                states[round] = bi->execution.node_states[0];
                 calls[round][0] = service.calls[0];
                 calls[round][1] = service.calls[1];
             }
@@ -128,9 +131,9 @@ static void check(int kind, int control, void *library)
         }
         behavior_instance_destroy(bi);
         if (mode == 3) {
-            f->code = code;
-            f->inspection_code = inspection;
-            f->dispatch = dispatch;
+            f->artifact->code = code;
+            f->artifact->inspection_code = inspection;
+            f->artifact->dispatch = dispatch;
         }
     }
     for (int i = 0; i < acount(expected); i++) {
@@ -153,10 +156,10 @@ static void generations()
             expected.b = true;
         }
         *behavior_instance_scratch(bi, n->id) = expected;
-        char *json = behavior_asset_save(a);
-        behavior_asset *next = behavior_asset_load(json);
-        free(json);
-        assert(next);
+        /* Generation updates retain authored identity. Saving executable source
+         * without its metadata and reparsing creates a new authored definition. */
+        behavior_asset *next = behavior_asset_clone(a);
+        assert(next && behavior_asset_equal(a, next));
         node *extra = graph_add_node(next->graphs[1], &NODE_Gate);
         /* Insert an uninitialized slot before the live state to change its index. */
         graph *g = next->graphs[1];
@@ -166,25 +169,28 @@ static void generations()
         uint64_t id = n->id;
         behavior_instance_update(bi, next);
         behavior_asset_free(a);
-        assert(acount(bi->node_states) == 2 && !bi->node_states[0].type);
-        assert(behavior_instance_scratch(bi, id) == &bi->node_states[1]);
         assert(
-            bi->node_states[1].type == expected.type &&
-            bi->node_states[1].u64 == expected.u64
+            acount(bi->execution.node_states) == 2 &&
+            !bi->execution.node_states[0].type
+        );
+        assert(behavior_instance_scratch(bi, id) == &bi->execution.node_states[1]);
+        assert(
+            bi->execution.node_states[1].type == expected.type &&
+            bi->execution.node_states[1].u64 == expected.u64
         );
         for (int i = 0; i < 100; i++) {
             behavior_instance_scratch(bi, UINT64_C(1000000) + (unsigned)i)->i = i;
         }
-        assert(bi->node_states[1].u64 == expected.u64);
+        assert(bi->execution.node_states[1].u64 == expected.u64);
         flow_run *run = behavior_instance_dispatch(bi, "Tick", (flow_inputs){ 0 }, NULL);
         assert(run && flow_run_status(run) == FLOW_COMPLETED && run->whole_function_executed);
-        assert(bi->variables[0].i == (type < 2 ? 0 : 1));
+        assert(bi->execution.variables[0].i == (type < 2 ? 0 : 1));
         flow_run_free(run);
         assert(!behavior_instance_pool_release(bi));
         assert(behavior_instance_pool_reuse(bi, next, NULL, NULL, NULL) == bi);
         assert(
-            acount(bi->node_states) == 2 && !bi->node_states[0].type &&
-            !bi->node_states[1].type
+            acount(bi->execution.node_states) == 2 &&
+            !bi->execution.node_states[0].type && !bi->execution.node_states[1].type
         );
         behavior_instance_destroy(bi);
         behavior_asset_free(next);
@@ -330,7 +336,7 @@ int bench_state(const char *path, int count, int rotation)
         graph *g = whole_state_root(a);
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         const behavior_function *f = behavior_program_function(
-            behavior_program_graph(a->program, g),
+            behavior_program_graph(behavior_program_cached(a), g),
             g->nodes[0]
         );
         assert(f);
@@ -362,8 +368,8 @@ int bench_state(const char *path, int count, int rotation)
             double start = 0;
             const int actions[] = { 0, 0, 1, 0, 2, 0, 3, 0 };
             for (int pass = 0; pass < 2; pass++) {
-                bi->node_states[0] = (pin_value){ 0 };
-                bi->variables[0].i = 0;
+                bi->execution.node_states[0] = (pin_value){ 0 };
+                bi->execution.variables[0].i = 0;
                 checksum = 0;
                 start = seconds();
                 for (int i = 0; i < (pass ? count : 1024); i++) {
@@ -374,7 +380,7 @@ int bench_state(const char *path, int count, int rotation)
                     int status = mode < 2 ? entries[mode](&ctx)
                                           : behavior_function_run(f, &ctx, false);
                     assert(!status);
-                    checksum += (unsigned)bi->variables[0].i;
+                    checksum += (unsigned)bi->execution.variables[0].i;
                 }
             }
             double elapsed = seconds() - start;

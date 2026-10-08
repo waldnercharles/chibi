@@ -1,3 +1,4 @@
+#include "graph/model/registry.h"
 #include "runtime/material_fluid.h"
 #include "runtime/task_pool.h"
 
@@ -15,6 +16,7 @@ static double seconds()
 
 int main(int argc, char **argv)
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     assert(argc == 4);
     int side = atoi(argv[1]), frames = atoi(argv[2]), workers = atoi(argv[3]);
     assert(side >= 16 && side <= 256 && frames >= 10 && workers > 0);

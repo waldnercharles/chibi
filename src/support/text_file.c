@@ -1,38 +1,11 @@
 #include "support/text_file.h"
 
+#include "support/file_io.h"
 #include "support/text_overlay.h"
 #include "support/xalloc.h"
-
-#include <stdio.h>
-#include <stdlib.h>
 
 char *text_file_read(const char *path)
 {
     const char *overlay = text_overlay_text(path);
-    return overlay ? xstrdup(overlay) : text_file_read_disk(path);
-}
-
-char *text_file_read_disk(const char *path)
-{
-    FILE *file = fopen(path, "rb");
-    if (!file || fseek(file, 0, SEEK_END) != 0) {
-        if (file) {
-            fclose(file);
-        }
-        return NULL;
-    }
-    long length = ftell(file);
-    if (length < 0 || fseek(file, 0, SEEK_SET) != 0) {
-        fclose(file);
-        return NULL;
-    }
-    char *text = (char *)xmalloc((size_t)length + 1);
-    size_t read = fread(text, 1, (size_t)length, file);
-    int closed = fclose(file);
-    if (read != (size_t)length || closed != 0) {
-        free(text);
-        return NULL;
-    }
-    text[length] = '\0';
-    return text;
+    return overlay ? xstrdup(overlay) : file_read_text(path);
 }

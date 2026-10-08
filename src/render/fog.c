@@ -3,6 +3,7 @@
 #include "platform/cute.h"
 #include "render/draw_textures.h"
 #include "render/shader_program.h"
+#include "render/view.h"
 #include "support/xalloc.h"
 
 #include <stdlib.h>

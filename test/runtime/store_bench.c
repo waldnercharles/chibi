@@ -9,7 +9,7 @@ static const behavior_function *body(behavior_asset *a)
     behavior_program_publish(a);
     graph *g = a->graphs[3];
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, g),
+        behavior_program_graph(behavior_program_cached(a), g),
         g->nodes[0]
     );
     assert(f && behavior_function_entry(f));
@@ -84,11 +84,11 @@ int bench_store(const char *path, int count, int rotation)
                                                        .budget = budget };
                 behavior_instance_bind_values(bi, &expected);
                 int status = behavior_function_run(f, &expected, false);
-                bool stored = bi->variables[0].ptr != NULL,
+                bool stored = bi->execution.variables[0].ptr != NULL,
                      returned = !status && results[1].ptr;
                 whole_record expected_value = { 0 }, expected_result = { 0 };
                 if (stored) {
-                    expected_value = *(whole_record *)bi->variables[0].ptr;
+                    expected_value = *(whole_record *)bi->execution.variables[0].ptr;
                 }
                 if (returned) {
                     expected_result = *(whole_record *)results[1].ptr;
@@ -106,7 +106,7 @@ int bench_store(const char *path, int count, int rotation)
                         actual.steps == expected.steps &&
                         actual.returned_node_id == expected.returned_node_id
                     );
-                    same(bi->variables[0].ptr, stored ? &expected_value : NULL);
+                    same(bi->execution.variables[0].ptr, stored ? &expected_value : NULL);
                     if (status) {
                         assert(
                             actual.node_id == expected.node_id &&
@@ -147,7 +147,7 @@ int bench_store(const char *path, int count, int rotation)
                                     : entries[mode](&ctx))
                     );
                     if (i >= 0) {
-                        checksum += ((whole_record *)bi->variables[0].ptr)
+                        checksum += ((whole_record *)bi->execution.variables[0].ptr)
                                         ->position.x;
                         expected += (i & 1023) * .125f +
                                     (kind == WHOLE_STORE_MAKE ? .5f : 0);

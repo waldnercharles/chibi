@@ -2,6 +2,15 @@
  * fail closed until classified; the hardware suite retains every assertion. */
 CHIBI_CPU_SELECTOR("--asset-documents")
 CHIBI_CPU_SELECTOR("--code-source")
+CHIBI_CPU_SELECTOR("--automation-authoring-readonly")
+CHIBI_CPU_SELECTOR("--automation-search")
+CHIBI_CPU_SELECTOR("--authoring-preview-lifecycle")
+CHIBI_CPU_SELECTOR("--source-presentation")
+CHIBI_CPU_SELECTOR("--source-edit")
+CHIBI_CPU_SELECTOR("--source-systems")
+CHIBI_CPU_SELECTOR("--source-session")
+CHIBI_CPU_SELECTOR("--system-schedule")
+CHIBI_CPU_SELECTOR("--execution-request-lifecycle")
 CHIBI_CPU_SELECTOR("--code-intelligence")
 CHIBI_CPU_SELECTOR("--kit-code")
 CHIBI_CPU_SELECTOR("--rcss")
@@ -27,3 +36,14 @@ CHIBI_CPU_SELECTOR("--material-mpm")
 /* Explicit opt-in checks retain reference resolution and assertions. */
 CHIBI_GPU_SELECTOR("--model-sampled-gpu")
 CHIBI_GPU_SELECTOR("--shader-detail-gpu")
+/* Fixed prepared SpaceCadet artifact, UI/font-only manifest; four hidden
+ * 1280x720 frames per backend, each under the shared 60-second supervisor. */
+CHIBI_GPU_SELECTOR("--player-space-cadet-vm")
+CHIBI_GPU_SELECTOR("--player-space-cadet-sljit")
+CHIBI_GPU_SELECTOR("--studio-starter-startup")
+
+CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
+CHIBI_GPU_SELECTOR("--player-installed-space-cadet-vm")
+CHIBI_GPU_SELECTOR("--player-installed-space-cadet-sljit")
+
+CHIBI_GPU_SELECTOR("--studio-source-edit")

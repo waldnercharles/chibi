@@ -79,7 +79,8 @@ void test_automation_preview_registration()
         sizeof manifest,
         "version %d\n"
         "name \"Preview Test\"\n"
-        "content \"content\"\n",
+        "content \"content\"\n"
+        "start_scene \"scenes/PreviewScene.kdl\"\n",
         CHIBI_PROJECT_VERSION
     );
     preview_test_write(path, manifest);
@@ -132,7 +133,7 @@ void test_automation_preview_registration()
     behavior_asset *behavior = behavior_asset_new("ExecutionBehavior");
     char *json = behavior_asset_save(behavior);
     assert(json);
-    snprintf(path, sizeof path, "%s/ExecutionBehavior.code", behaviors);
+    snprintf(path, sizeof path, "%s/ExecutionBehavior.chibi", behaviors);
     preview_test_write(path, json);
     free(json);
     behavior_asset_free(behavior);
@@ -145,7 +146,7 @@ void test_automation_preview_registration()
     behavior = whole_batch_fixture(false);
     json = behavior_asset_save(behavior);
     assert(json);
-    snprintf(path, sizeof path, "%s/Counter Tick batch.code", behaviors);
+    snprintf(path, sizeof path, "%s/Counter Tick batch.chibi", behaviors);
     preview_test_write(path, json);
     free(json);
     behavior_asset_free(behavior);
@@ -216,7 +217,7 @@ void test_automation_preview_registration()
     yyjson_doc_free(detailed);
     yyjson_doc_free(ordinary);
     yyjson_doc_free(replay);
-    snprintf(path, sizeof path, "%s/Counter Tick batch.code", behaviors);
+    snprintf(path, sizeof path, "%s/Counter Tick batch.chibi", behaviors);
     assert(!unlink(path) && !rmdir(behaviors));
 
     const char *files[] = {

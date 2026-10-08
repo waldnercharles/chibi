@@ -1,6 +1,7 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
-#include "graph/runtime/value_array.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <math.h>

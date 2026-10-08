@@ -1,7 +1,10 @@
-#include "graph/compiler/behavior_function_jit_internal.h"
+#include "execution/jit_internal.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/compare_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/array.h"
@@ -29,6 +32,7 @@ static void emit(behavior_function *f, behavior_function_instruction i)
 static behavior_function *fixture(predicate_case c, int *comparison)
 {
     behavior_function *f = xcalloc(1, sizeof *f);
+    f->artifact = execution_artifact_new();
     for (int slot = 0; slot < 6; slot++) {
         apush(f->slots, slot < 2 ? c.type : PIN_BOOL);
     }
@@ -406,7 +410,7 @@ static const behavior_function *graph_body(behavior_asset *a)
     behavior_program_publish(a);
     graph *g = a->graphs[1];
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, g),
+        behavior_program_graph(behavior_program_cached(a), g),
         g->nodes[0]
     );
     assert(f);
@@ -433,15 +437,19 @@ static void graph_check(behavior_asset *a, predicate_case c, int (*generated)(be
                     int status = 0, error_pin = 0;
                     bool reference = false;
                     for (int mode = 0; mode < (generated ? 4 : 3); mode++) {
-                        bi->variables[0] = input(PIN_F64, left);
-                        bi->variables[1] = input(PIN_F64, right);
-                        bi->variables[2] = (pin_value){
+                        bi->execution.variables[0] = input(PIN_F64, left);
+                        bi->execution.variables[1] = input(PIN_F64, right);
+                        bi->execution.variables[2] = (pin_value){
                             .type = PIN_BOOL,
-                            .b = !expected(c, bi->variables[0], bi->variables[1])
+                            .b = !expected(
+                                c,
+                                bi->execution.variables[0],
+                                bi->execution.variables[1]
+                            )
                         };
                         if (mode == 3 || (inspected && mode)) {
                             behavior_function_context ctx = {
-                                .variables = bi->variables,
+                                .variables = bi->execution.variables,
                                 .budget = budgets[limit],
                                 .trace = inspected ? inspect_trace : NULL
                             };
@@ -449,7 +457,9 @@ static void graph_check(behavior_asset *a, predicate_case c, int (*generated)(be
                                            ? generated(&ctx)
                                            : behavior_function_run(graph_body(a), &ctx, mode == 2);
                             assert(actual == status);
-                            assert(ctx.steps == steps && bi->variables[2].b == reference);
+                            assert(
+                                ctx.steps == steps && bi->execution.variables[2].b == reference
+                            );
                             if (status) {
                                 assert(
                                     ctx.error_steps == error_steps &&
@@ -474,7 +484,7 @@ static void graph_check(behavior_asset *a, predicate_case c, int (*generated)(be
                         int actual = flow_run_resume(run);
                         if (!mode) {
                             status = actual;
-                            reference = bi->variables[2].b;
+                            reference = bi->execution.variables[2].b;
                             steps = flow_run_steps(run);
                             if (status) {
                                 const flow_error *failed = flow_run_error(run);
@@ -483,8 +493,11 @@ static void graph_check(behavior_asset *a, predicate_case c, int (*generated)(be
                                 error_node = failed->node->id;
                             } else {
                                 assert(
-                                    reference ==
-                                    expected(c, bi->variables[0], bi->variables[1])
+                                    reference == expected(
+                                                     c,
+                                                     bi->execution.variables[0],
+                                                     bi->execution.variables[1]
+                                                 )
                                 );
                             }
                         } else {
@@ -513,7 +526,7 @@ static void graph_check(behavior_asset *a, predicate_case c, int (*generated)(be
                                 run->whole_function_executed &&
                                 actual == status && flow_run_steps(run) == steps
                             );
-                            assert(bi->variables[2].b == reference);
+                            assert(bi->execution.variables[2].b == reference);
                             if (status) {
                                 const flow_error *failed = flow_run_error(run);
                                 assert(

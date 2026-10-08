@@ -1,11 +1,14 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/ui_nodes.h"
 #include "graph/runtime/instance.h"
-#include "graph/runtime/value_array.h"
 #include "runtime/ui.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "test/suite_internal.h"
+#include "types/array.h"
+#include "types/value_document.h"
 
 #include <assert.h>
 #include <math.h>
@@ -76,7 +79,7 @@ static bool data_is(const pin_value *value, const char *expected)
     av_doc *doc = av_doc_new();
     av_doc *wanted = av_doc_read(expected, error, sizeof error);
     assert(wanted);
-    bool same = av_equals(serialize_value(doc, value), av_obj_get(av_doc_root(wanted), "value"));
+    bool same = av_equals(pin_value_to_document(doc, value), av_obj_get(av_doc_root(wanted), "value"));
     av_doc_free(doc);
     av_doc_free(wanted);
     return same;

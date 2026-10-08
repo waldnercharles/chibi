@@ -3,12 +3,11 @@
 - Shared source implements components, nodes, functions, and systems reusable across games. Authored assets own scene composition, game rules, visual choices, and tuning.
 - Name shared modules for their capability. Turn game-specific geometry, camera choreography, and outcome handling into authored data and behaviors; add native capabilities when authoring exposes a concrete gap.
 - Keep reusable gameplay features optional so scenes can use rendering, physics, and input independently of combat, encounters, or rhythm.
-- Keep debugging UI, capture/scenario tooling, and MCP adapters in clearly named modules and separate build targets where practical. Tooling consumes explicit runtime inspection/control APIs; shared runtime code stays independent of tooling and editor UI.
-- MCP graph edits express nodes, values, and connections; automatically arrange affected graphs so agents never need to choose node positions.
-- When Chibi MCP is available, use it as the default authoring interface for shaders, behavior and event graphs, prototypes, scenes, and authored assets. Search or inspect first, then use the matching `build*` tool, validate, and preview or run as needed. See `docs/mcp.md` for the public catalog and workflow.
+- Keep debugging UI, capture/scenario tooling, in clearly named modules and separate build targets where practical. Tooling consumes explicit runtime inspection/control APIs; shared runtime code stays independent of tooling and editor UI.
+- Author assets by editing their KDL and `.chibi` files directly. Read existing sources and reflected capabilities first; format and validate changed assets through `chibi_ctl`, then inspect or run a bounded scenario. See `docs/runtime-authoring.md`.
 - Graph legibility: when authoring, reviewing, or cleaning up a behavior, shader, or field graph, follow `.claude/skills/chibi-graph-legibility/SKILL.md`.
-- Declarative assets use KDL. Behaviors, callable libraries, and systems use readable `.code` as their complete executable source; graph layout and debug metadata are optional. After hand-editing assets, run `build/chibi_ctl --project-root <root> --format`; asset canonicality validation is currently quarantined with the full gate, so do not claim `make test` checked it.
-- Navigation and refactoring (find references, rename, go to definition, call hierarchy, hover): build each once outside `src/editor/` and ship it in both Studio and the MCP. `docs/authoring-navigation.md` tracks each feature's status.
+- Declarative assets use KDL. Behaviors, callable libraries, and systems use readable `.chibi` as their complete executable source; graph layout and debug metadata are optional. After hand-editing assets, run `build/bin/chibi_ctl --project-root <root> --format`; asset canonicality validation is currently quarantined with the full gate, so do not claim `make test` checked it.
+- Navigation and refactoring (find references, rename, go to definition, call hierarchy, hover): implement each in shared SDK authoring modules and expose it through Studio. `docs/authoring-navigation.md` tracks each feature's status.
 - Validate engine generalizations with another scene or prototype that uses different content and omits the motivating game's mechanics.
 - For routine agent iteration, use `make agent-list` and `make agent-test AGENT_SELECTOR=--<selector>`. For a relevant GPU assertion, explicitly use `make agent-gpu-test` with a listed selector. Inspect actual capabilities with `python3 tools/agent.py doctor`; do not infer hardware from the host name. See `docs/agent-execution.md` for preview/MP4 budgets and truthful coverage reporting. Routine previews/captures use the native hidden-window controller and exit after saving; do not launch Studio. If a display context is required, use the bounded Xvfb command and report it as described there. Headless rendering still spends GPU resources. Do not reconstruct expensive suites through repeated one-frame previews.
 - One-off checks and probes go into one dispatching tool (for example a single `<task>-check <case>` executable or a `test_suite` selector), never one linked executable per probe. Keep scratch for a task in one directory, link scratch tools with `-Wl,-dead_strip` and without sanitizers unless the check needs them, copy projects with `cp -c` (APFS clone), and delete generated binaries and project copies once the check has passed. Report any scratch left behind.
@@ -26,7 +25,7 @@
 - Keep ownership/lifetimes explicit; mark file-private symbols `static`.
 - Prefer direct calls and `switch` statements to function pointers.
 - Write benchmarks, unit tests, and integration tests in C using pico_unit; use another third-party library when additional functionality is needed.
-- Write C, never C++. The only exceptions are pass-through shims to C++ APIs: `src/ui/rml.cpp` (RmlUi), `src/editor/text/zep_bridge.cpp` (Zep) and `test/draw_backend.cpp` (Cute's C++-linkage draw diagnostics). They only convert types and forward calls, so all logic stays in C.
+- Write C, never C++. The only exceptions are pass-through shims to C++ APIs: `src/ui/rml.cpp` (RmlUi), Studio's `src/editor/text/zep_bridge.cpp` (Zep) and `test/draw_backend.cpp` (Cute's C++-linkage draw diagnostics). They only convert types and forward calls, so all logic stays in C.
 - Follow existing names and clang-format; keep short names local; name constants and invariants with `#define`, `enum`, or `static const`.
 
 ## Editor UI
@@ -34,7 +33,8 @@
 For UI/UX design, interaction reviews, or editor usability work, follow the
 [UX laws skill](.agents/skills/ux-laws/SKILL.md).
 
-The editor UI is RmlUi, driven from C through the Studio kit (`src/editor/ui/kit.h`).
+Studio lives in the separate `chibi-studio` repository and consumes the installed
+engine SDK. Its UI is RmlUi, driven from C through its `src/editor/ui/kit.h`.
 Its design is in `docs/prototypes/studio/DESIGN.md`. Before building any UI mechanism
 in a panel, read `docs/editor-ui-references.md`. It maps each reference library to the
 kit primitive that solves the same problem:

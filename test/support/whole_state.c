@@ -1,5 +1,8 @@
 #include "ecs/ecs.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
@@ -186,9 +189,9 @@ void whole_state_smoke()
         }
         int executions = kind & WHOLE_STATE_LOOP ? 6 : 2;
         assert(
-            bi->variables[0].i == ((kind & 3) == 0   ? 1
-                                   : (kind & 3) == 1 ? 2
-                                                     : executions)
+            bi->execution.variables[0].i == ((kind & 3) == 0   ? 1
+                                             : (kind & 3) == 1 ? 2
+                                                               : executions)
         );
         if (!(kind & WHOLE_STATE_WAIT)) {
             assert(!behavior_instance_rebind(bi, NULL));
@@ -198,9 +201,9 @@ void whole_state_smoke()
                 assert(behavior_instance_dispatch_batch(bi, "Tick", &batch, &failed) && !failed);
             }
             assert(
-                bi->variables[0].i == ((kind & 3) == 0   ? 1
-                                       : (kind & 3) == 1 ? 2
-                                                         : executions)
+                bi->execution.variables[0].i == ((kind & 3) == 0   ? 1
+                                                 : (kind & 3) == 1 ? 2
+                                                                   : executions)
             );
             behavior_batch_free(batch);
             assert(!behavior_instance_rebind(bi, NULL));
@@ -209,17 +212,21 @@ void whole_state_smoke()
             ecs_world *ecs = ecs_world_new();
             behavior_update_binding **bindings = NULL;
             node *entry;
-            const behavior_function
-                *function = behavior_program_batch_event(a->program, "Tick", &entry);
+            const behavior_function *function = behavior_program_batch_event(
+                behavior_program_cached(a),
+                "Tick",
+                &entry
+            );
             assert(function);
             behavior_update_row rows[2];
             for (int row = 0; row < 2; row++) {
                 behavior_instance *instance = row ? other : bi;
-                rows[row] = (behavior_update_row){
-                    .instance = instance,
-                    .binding = behavior_update_prepare(&bindings, instance, function, entry),
-                    .entity = ecs_entity_to_u64(ecs_world_create_entity(ecs))
-                };
+                rows[row] = behavior_update_row_make(
+                    instance,
+                    behavior_update_prepare(&bindings, instance, function, entry),
+                    ecs_entity_to_u64(ecs_world_create_entity(ecs)),
+                    0
+                );
             }
             void *code = behavior_update_compile();
             bool native = behavior_default_backend() == BEHAVIOR_SLJIT;
@@ -243,11 +250,11 @@ void whole_state_smoke()
                 assert(end == rows + 2 && result == FLOW_OK);
             }
             assert(
-                bi->variables[0].i == ((kind & 3) == 0   ? 1
-                                       : (kind & 3) == 1 ? 2
-                                                         : executions)
+                bi->execution.variables[0].i == ((kind & 3) == 0   ? 1
+                                                 : (kind & 3) == 1 ? 2
+                                                                   : executions)
             );
-            assert(other->variables[0].i == bi->variables[0].i);
+            assert(other->execution.variables[0].i == bi->execution.variables[0].i);
             behavior_update_free_code(code);
             behavior_update_free_bindings(bindings);
             ecs_world_free(ecs);

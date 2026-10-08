@@ -1,5 +1,6 @@
 #include "ecs/ecs.h"
-#include "runtime/generated.h"
+#include "graph/model/registry.h"
+#include "runtime/component_catalog.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -62,6 +63,7 @@ static int run_expression(ecs_world *world, int expected)
 
 int main(void)
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     ecs_world *world = ecs_world_new();
     if (!world ||
         ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) != ECS_OK ||

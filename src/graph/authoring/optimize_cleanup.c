@@ -1,3 +1,5 @@
+#include "graph/authoring/constant.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/authoring/optimize_internal.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/local.h"
@@ -5,7 +7,6 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
-#include "graph/runtime/eval.h"
 #include "support/arena.h"
 
 #include <assert.h>
@@ -152,7 +153,7 @@ static bool transparent(graph *g, node *n, graph_optimize_report *report)
     if (component_projection && pin != 0) {
         int aggregate = -1;
         const type_field *field = graph_output_field(source, pin, &aggregate);
-        type = field && aggregate == 0 ? registry_type_by_name(field->type_name) : NULL;
+        type = field && aggregate == 0 ? type_catalog_find(field->type_name) : NULL;
     }
     if (projection && (!type || type != d->type || incoming ||
                        n->output_count != type->field_count)) {
@@ -187,7 +188,10 @@ static bool transparent(graph *g, node *n, graph_optimize_report *report)
             valid = false;
             break;
         }
-        replacement replacement_value = { target, input, output, conversion };
+        replacement replacement_value = { .target = target,
+                                          .input = input,
+                                          .output = output,
+                                          .conversion = conversion };
         if (component_projection &&
             (conversion || !append_field_path(
                                component_prefix,
@@ -352,10 +356,8 @@ static bool constant(graph *g, node *n, graph_optimize_report *report)
     }
     arena storage;
     arena_init(&storage, 4096);
-    eval_context ctx;
-    eval_context_init(&ctx);
     pin_value value = { 0 };
-    bool valid = graph_eval_output(g, n, 0, &storage, &value, &ctx) == 0;
+    bool valid = graph_constant_value(g, n, &storage, &value);
     // JSON cannot preserve non-finite numbers. Leave those calculations authored.
     valid &= value.type != PIN_FLOW && (value.type != PIN_F32 || isfinite(value.f)) &&
              (value.type != PIN_F64 || isfinite(value.d));
@@ -375,7 +377,6 @@ static bool constant(graph *g, node *n, graph_optimize_report *report)
         }
         report->removed_nodes++;
     }
-    eval_context_free(&ctx);
     arena_free(&storage);
     afree(replacements);
     return valid;

@@ -1,0 +1,3 @@
+behavior Binding {
+    bind self.Position.y = self.Position.x * 2;
+}

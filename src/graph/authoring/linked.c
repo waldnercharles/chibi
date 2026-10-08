@@ -1,5 +1,6 @@
 #include "graph/authoring/linked.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "support/array.h"
 
 #include <assert.h>

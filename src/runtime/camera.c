@@ -1,6 +1,7 @@
 #include "runtime/camera.h"
 
-#include "runtime/generated.h"
+#include "render/view.h"
+#include "runtime/component_catalog.h"
 
 #include <math.h>
 

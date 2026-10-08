@@ -11,7 +11,7 @@ static const behavior_function *body(behavior_asset *a)
     graph *g = a->graphs[acount(a->graphs) - 1];
     behavior_program_publish(a);
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, g),
+        behavior_program_graph(behavior_program_cached(a), g),
         g->nodes[0]
     );
     assert(f);

@@ -1,6 +1,7 @@
 #include "graph/authoring/describe.h"
 
 #include "graph/nodes/component_nodes.h"
+#include "graph/nodes/core_nodes.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -10,11 +11,11 @@ static bool sends(const node_desc *desc)
     return !strcmp(desc->name, "Send Event");
 }
 
-static const graph_host_event_desc *host_event(const char *name)
+static const game_host_event_desc *host_event(const char *name)
 {
-    for (int i = 0; name && i < GRAPH_HOST_EVENT_COUNT; i++) {
-        if (!strcmp(GRAPH_HOST_EVENTS[i].name, name)) {
-            return &GRAPH_HOST_EVENTS[i];
+    for (int i = 0; name && i < GAME_HOST_EVENT_COUNT; i++) {
+        if (!strcmp(GAME_HOST_EVENTS[i].name, name)) {
+            return &GAME_HOST_EVENTS[i];
         }
     }
     return NULL;

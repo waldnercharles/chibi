@@ -1,0 +1,77 @@
+#include "runtime/behaviors/entities_source.h"
+
+#include "execution/status.h"
+#include "support/xalloc.h"
+
+#include <assert.h>
+#include <math.h>
+#include <stdlib.h>
+
+struct game_source_entities
+{
+    game_source_registry *sources;
+    game_entities *entities;
+    double now, delta;
+    bool defer_begin;
+};
+
+static int destroy(void *context, const ecs_entity *entities, int count)
+{
+    game_source_entities *host = context;
+    ecs_world *world = game_source_world(host->sources);
+    for (int i = 0; i < count; i++) {
+        game_source_detach_entity(host->sources, entities[i]);
+    }
+    int status = ecs_world_apply_commands(world);
+    for (int i = 0; !status && i < count; i++) {
+        if (ecs_entity_is_alive(world, entities[i]) &&
+            !ecs_entity_is_retiring(world, entities[i])) {
+            status = ecs_world_record_destroy(world, entities[i], (uint64_t)i);
+        }
+    }
+    return status ? status : ecs_world_apply_commands(world);
+}
+static int attach(void *context, ecs_entity entity, const char *name)
+{
+    game_source_entities *host = context;
+    return game_source_attach(host->sources, entity, name, host->defer_begin, host->now, host->delta);
+}
+static int dispatch(void *context, ecs_entity entity, const char *name, execution_arguments arguments)
+{
+    game_source_entities *host = context;
+    return game_source_dispatch(
+        host->sources,
+        entity,
+        name,
+        arguments.values,
+        arguments.count,
+        host->now,
+        host->delta
+    );
+}
+game_source_entities *game_source_entities_new(game_source_registry *sources)
+{
+    assert(sources);
+    game_source_entities *host = xcalloc(1, sizeof *host);
+    host->sources = sources;
+    game_entity_host callbacks = { host, destroy, attach, dispatch };
+    host->entities = game_entities_new(game_source_world(sources), &callbacks);
+    return host;
+}
+void game_source_entities_free(game_source_entities *host)
+{
+    assert(host);
+    game_entities_free(host->entities);
+    free(host);
+}
+game_entities *game_source_entities_host(const game_source_entities *host)
+{
+    return host->entities;
+}
+void game_source_entities_time(game_source_entities *host, double now, double delta, bool defer_begin)
+{
+    assert(isfinite(now) && isfinite(delta) && delta >= 0);
+    host->now = now;
+    host->delta = delta;
+    host->defer_begin = defer_begin;
+}

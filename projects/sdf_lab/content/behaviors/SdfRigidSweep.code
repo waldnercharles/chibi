@@ -1,9 +1,0 @@
-behavior "SdfRigidSweep" {
-    owner "ecs.entity";
-    state elapsed: float = 0.0;
-    on Tick as tick(DeltaSeconds: float = 0.0) {
-        &state.elapsed += cast<double>(&delta);
-        &component("GAME.GameOrientation", "radians") = cast<double>(&state.elapsed) * 0.5;
-        &component("GAME.GameVisualTransform", "pitch") = 0.6 * sin(cast<double>(&state.elapsed) * 0.8);
-    }
-}

@@ -1,5 +1,8 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/xalloc.h"
@@ -10,7 +13,7 @@
 
 void whole_suspend_instrument(behavior_function *f, bool expressions)
 {
-    assert(!f->code && !f->suspensions);
+    assert(!f->artifact->code && !f->suspensions);
     behavior_function_free(f->fast);
     f->fast = NULL;
     int count = acount(f->instructions);
@@ -143,6 +146,7 @@ behavior_asset *whole_suspend_float_fixture(pin_type type)
 behavior_function *whole_suspend_float_ir(pin_type type)
 {
     behavior_function *f = xcalloc(1, sizeof *f);
+    f->artifact = execution_artifact_new();
     apush(f->frames, ((behavior_function_frame){ .source.parent = -1 }));
     for (int j = 0; j < 5; j++) {
         apush(f->slots, type);

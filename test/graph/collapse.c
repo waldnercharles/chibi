@@ -1,3 +1,6 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
 /* Collapse to Macro and Expand Node (Unreal): a macro's tunnels are the
    execution wires crossing the selection, and expanding a call puts the body
    it calls back in its place. Both keep what the behavior does. */
@@ -95,7 +98,7 @@ static bool round_trips(const behavior_asset *asset)
         char path[128];
         const char *texts[] = { first, second };
         for (int i = 0; i < 2; i++) {
-            snprintf(path, sizeof path, "build/requirements-collapse-%d-%s.code", failure, i ? "actual" : "expected");
+            snprintf(path, sizeof path, "build/requirements-collapse-%d-%s.chibi", failure, i ? "actual" : "expected");
             FILE *file = fopen(path, "w");
             if (file) {
                 fputs(texts[i] ? texts[i] : "<load failed>", file);

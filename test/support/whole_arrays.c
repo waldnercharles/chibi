@@ -1,10 +1,13 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/array_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/math_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
-#include "graph/runtime/value_array.h"
 #include "test/whole_array_fixture.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -161,7 +164,10 @@ void whole_array_smoke()
     flow_run *run = flow_run_start(g, g->nodes[0], (flow_inputs){ &input, 1 }, &options, &error);
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     assert(run && !flow_run_resume(run) && run->whole_function_executed);
-    assert(bi->variables[2].d == 3 && flow_run_input_value(run, g->nodes[1], 2)->i == 2);
+    assert(
+        bi->execution.variables[2].d == 3 &&
+        flow_run_input_value(run, g->nodes[1], 2)->i == 2
+    );
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     flow_run_free(run);
     behavior_instance_destroy(bi);

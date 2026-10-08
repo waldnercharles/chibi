@@ -1,4 +1,0 @@
-name "MaterialShowcaseEntity"
-components {
-    (object)GAME.GameTransform
-}

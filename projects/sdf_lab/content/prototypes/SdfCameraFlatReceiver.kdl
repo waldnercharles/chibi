@@ -1,6 +1,0 @@
-name "SdfCameraFlatReceiver"
-components {
-    GAME.GameAppearance antialias=1.0 color=0x7b8894ff height=24.0 width=120.0
-    GAME.GameMaterial albedo=0x7b8894ff scene=0x7b8894ff
-    (object)GAME.GameTransform
-}

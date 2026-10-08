@@ -1,3 +1,6 @@
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
+#include "graph/nodes/generated_components.h"
 #include "test/suite_internal.h"
 
 typedef struct

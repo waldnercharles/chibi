@@ -3,7 +3,7 @@
 
 #include "platform/cute.h"
 #include "render/view_2d.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 
 #include <stdbool.h>
 #include <stddef.h>

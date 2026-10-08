@@ -2,6 +2,7 @@
 
 #include "assets/project.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +21,9 @@
 
 static bool initialized;
 static bool packaged;
+#ifndef __EMSCRIPTEN__
+static char installed_root[RESOURCE_PATH_SIZE];
+#endif
 static char root[RESOURCE_PATH_SIZE];
 static char shaders[RESOURCE_PATH_SIZE];
 static char ui[RESOURCE_PATH_SIZE];
@@ -74,9 +78,36 @@ static void executable_resources()
         abort();
     }
     *slash = '\0';
-    join(root, executable, "/../share/chibi");
+    join(installed_root, executable, "/../share/chibi");
 }
 #endif
+
+const char *resource_install_root()
+{
+#ifdef __EMSCRIPTEN__
+    return NULL;
+#else
+    if (!installed_root[0]) {
+        executable_resources();
+    }
+    return installed_root;
+#endif
+}
+
+void resource_configure(const char *engine_path, const char *ui_path, const char *studio_path)
+{
+    assert(!initialized);
+    assert(engine_path && engine_path[0]);
+    assert(ui_path && ui_path[0]);
+    assert(studio_path && studio_path[0]);
+    join(root, engine_path, "");
+    join(shaders, engine_path, "/shaders");
+    join(ui, ui_path, "");
+    join(studio, studio_path, "");
+    join(studio_content, studio_path, "/content");
+    packaged = true;
+    initialized = true;
+}
 
 static void initialize()
 {
@@ -85,13 +116,16 @@ static void initialize()
     }
 #ifdef __EMSCRIPTEN__
     join(root, CHIBI_SOURCE_DIR, "");
+#ifdef CHIBI_DISTRIBUTION
+    packaged = true;
+#endif
 #else
     const char *override = getenv("CHIBI_RESOURCE_DIR");
     if (override && override[0]) {
         join(root, override, "");
         packaged = true;
     } else {
-        executable_resources();
+        join(root, resource_install_root(), "");
 #ifdef CHIBI_DISTRIBUTION
         packaged = true;
 #else

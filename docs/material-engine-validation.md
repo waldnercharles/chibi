@@ -1,5 +1,11 @@
 # Material engine validation
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 Validated in the shared checkout based on `1be98e1eb0ceaad6cc6dec6caa22a9994d341dc5`.
 Existing renderer, editor, expression and Arena naming changes were preserved.
 The [architecture and authoring guide](material-engine.md) describes the runtime
@@ -83,9 +89,8 @@ carved debris, excavation, finite fuel burnout, free travel and deterministic re
 
 Native tests use the macOS graphics and file-watching environment. Web checks run
 compiled WASM under Node; they are separate from browser or controller playtesting.
-The live MCP connection predates the new tool catalog; restart it to discover
-`buildGraph` and `previewField`. Fresh MCP server processes pass the
-public protocol checks against the current controller.
+The recorded protocol checks used fresh MCP server processes. That transport
+is now retired; the current native authoring workflow is documented separately.
 
 ## Repeated performance measurements
 

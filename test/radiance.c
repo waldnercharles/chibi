@@ -1,5 +1,8 @@
 #include "render/radiance.h"
 
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
 #include "platform/cute.h"
 #include "render/fluid_raster.h"
@@ -9,7 +12,7 @@
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/xalloc.h"
 
 #include <math.h>

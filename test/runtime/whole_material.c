@@ -40,7 +40,8 @@ static void parity(int kind, bool waits, int scenario, unsigned budget, bool ste
 {
     behavior_asset *a = whole_material_fixture(kind, waits, true);
     behavior_function *f = entry(a);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     int width = kind >= 3 && kind <= 5 ? kind - 1 : kind == 6 ? 2 : 1;
     int material = whole_material_publish(scenario == 7 ? (width == 1 ? 3 : 1) : width);
     test_flow_snapshot *expected = NULL;
@@ -49,10 +50,10 @@ static void parity(int kind, bool waits, int scenario, unsigned budget, bool ste
         if (mode == 3) {
             char symbol[64];
             snprintf(symbol, sizeof symbol, "generated_material_%d_%d", kind, waits);
-            f->code = dlsym(library, symbol);
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, symbol);
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         ecs_entity entity;
         ecs_world *world = whole_material_world(&entity);
@@ -146,9 +147,9 @@ static void parity(int kind, bool waits, int scenario, unsigned budget, bool ste
     }
     afree(expected);
     afree(expected_values);
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 void test_compiled_material(const char *path)

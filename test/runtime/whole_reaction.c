@@ -93,17 +93,18 @@ static void parity(bool waits, bool target, int scenario, int control, int budge
     graph *g = a->graphs[1];
     assert(!graph_set_breakpoint(g, g->nodes[2], control == 3));
     behavior_function *f = entry(a);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     test_flow_snapshot *expected = NULL;
     GameVisualMotion *states = NULL;
     for (int mode = 0; mode < (library ? 4 : 3); mode++) {
         if (mode == 3) {
             char name[64];
             snprintf(name, sizeof name, "generated_reaction_%d_%d", waits, target);
-            f->code = dlsym(library, name);
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, name);
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         ecs_world *world = world_new();
         ecs_entity owner = ecs_world_create_entity(world),
@@ -210,7 +211,9 @@ static void parity(bool waits, bool target, int scenario, int control, int budge
             if (status == FLOW_COMPLETED || status == FLOW_FAILED) {
                 if (budget == 100 && (scenario == VALID || scenario == ZERO_DURATION ||
                                       scenario == EXTREME_VALUES)) {
-                    assert(status == FLOW_COMPLETED && bi->variables[0].b);
+                    assert(
+                        status == FLOW_COMPLETED && bi->execution.variables[0].b
+                    );
                     assert(
                         observed[target].reaction_age == 0 &&
                         observed[target].reaction_lift == 2.5f
@@ -253,9 +256,9 @@ static void parity(bool waits, bool target, int scenario, int control, int budge
     }
     afree(expected);
     afree(states);
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 void test_compiled_reaction(const char *path)
@@ -369,7 +372,7 @@ int bench_reaction(const char *path, int count, int rotation)
             );
             assert(
                 actual.reaction_age == 0 && actual.reaction_lift == 2.5f &&
-                bi->variables[0].b
+                bi->execution.variables[0].b
             );
             printf(
                 "%s reaction_%s ns=%.3f checksum=%.3f\n",

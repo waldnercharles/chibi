@@ -1,5 +1,8 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/flow_internal.h"
@@ -39,16 +42,22 @@ static saved_code *generated_group(behavior_function *f, void *library, const ch
     saved_code *saved = NULL;
     for (int i = 0; i <= acount(f->definitions); i++) {
         behavior_function *part = i ? f->definitions[i - 1] : f;
-        apush(saved, ((saved_code){ part, part->code, part->inspection_code, part->dispatch }));
+        apush(
+            saved,
+            ((saved_code){ part,
+                           part->artifact->code,
+                           part->artifact->inspection_code,
+                           part->artifact->dispatch })
+        );
         char symbol[128];
         if (i) {
             snprintf(symbol, sizeof symbol, "%s_callee_%d", name, i);
         } else {
             snprintf(symbol, sizeof symbol, "%s", name);
         }
-        part->code = part->inspection_code = dlsym(library, symbol);
-        part->dispatch = NULL;
-        assert(part->code);
+        part->artifact->code = part->artifact->inspection_code = dlsym(library, symbol);
+        part->artifact->dispatch = NULL;
+        assert(part->artifact->code);
     }
     return saved;
 }
@@ -56,9 +65,9 @@ static saved_code *generated_group(behavior_function *f, void *library, const ch
 static void restore_group(saved_code *saved)
 {
     for (int i = 0; i < acount(saved); i++) {
-        saved[i].function->code = saved[i].code;
-        saved[i].function->inspection_code = saved[i].inspection;
-        saved[i].function->dispatch = saved[i].dispatch;
+        saved[i].function->artifact->code = saved[i].code;
+        saved[i].function->artifact->inspection_code = saved[i].inspection;
+        saved[i].function->artifact->dispatch = saved[i].dispatch;
     }
     afree(saved);
 }
@@ -126,7 +135,10 @@ static void graph_case(behavior_asset *asset, graph *g, behavior_function *f, in
             behavior_function_context *leaf = behavior_function_active_context(&context, &active);
             const behavior_function_source
                 *source = behavior_function_source_at(active, leaf->error_source);
-            assert(graph_node_by_id(source->graph, leaf->node_id) == expected[i].failed);
+            assert(
+                graph_node_by_id(behavior_asset_find_graph(asset, source->graph_id), leaf->node_id) ==
+                expected[i].failed
+            );
             assert(
                 leaf->error_pin == expected[i].error_pin &&
                 leaf->error_steps == expected[i].error_steps
@@ -195,7 +207,7 @@ static void runtime_graph(int kind, int control, int n, int budget, void *librar
             char symbol[64];
             snprintf(symbol, sizeof symbol, "authored_recursion_%d", kind);
             behavior_function *f = (behavior_function *)behavior_program_function(
-                behavior_program_graph(asset->program, g),
+                behavior_program_graph(behavior_program_cached(asset), g),
                 g->nodes[0]
             );
             assert(f);
@@ -330,7 +342,7 @@ static void runtime_host(int kind, int control, int fail_at, void *library)
             char symbol[64];
             snprintf(symbol, sizeof symbol, "runtime_recursive_host_%d", kind);
             behavior_function *f = (behavior_function *)behavior_program_function(
-                behavior_program_graph(asset->program, asset->graph),
+                behavior_program_graph(behavior_program_cached(asset), asset->graph),
                 asset->graph->nodes[0]
             );
             assert(f);
@@ -403,7 +415,7 @@ static void runtime_host(int kind, int control, int fail_at, void *library)
             result = flow_host_resume(request);
         }
         if (flow_run_status(run) == FLOW_COMPLETED) {
-            assert(bi->variables[0].i == 6 && capture.calls == 4);
+            assert(bi->execution.variables[0].i == 6 && capture.calls == 4);
         }
         if (mode) {
             assert(
@@ -450,16 +462,17 @@ static void graphs(void *library)
         if (library) {
             for (int i = 0; i <= acount(f->definitions); i++) {
                 behavior_function *definition = i ? f->definitions[i - 1] : f;
-                saved[i][0] = definition->code;
-                saved[i][1] = definition->inspection_code;
+                saved[i][0] = definition->artifact->code;
+                saved[i][1] = definition->artifact->inspection_code;
                 char name[64];
                 if (i) {
                     snprintf(name, sizeof name, "authored_recursion_%d_callee_%d", kind, i);
                 } else {
                     snprintf(name, sizeof name, "authored_recursion_%d", kind);
                 }
-                definition->code = definition->inspection_code = dlsym(library, name);
-                assert(definition->code);
+                definition->artifact->code = definition->artifact
+                                                 ->inspection_code = dlsym(library, name);
+                assert(definition->artifact->code);
             }
         }
         for (int mode = 0; mode < 3; mode++) {
@@ -479,8 +492,8 @@ static void graphs(void *library)
         if (library) {
             for (int i = 0; i <= acount(f->definitions); i++) {
                 behavior_function *definition = i ? f->definitions[i - 1] : f;
-                definition->code = saved[i][0];
-                definition->inspection_code = saved[i][1];
+                definition->artifact->code = saved[i][0];
+                definition->artifact->inspection_code = saved[i][1];
             }
         }
         behavior_function_free(f);
@@ -583,7 +596,7 @@ int whole_recursion_audit()
     bool compiled = lowered && run->whole_function_executed;
     if (!compiled) {
         const behavior_function_diagnostic *d = behavior_program_function_diagnostic(
-            behavior_program_graph(asset->program, root),
+            behavior_program_graph(behavior_program_cached(asset), root),
             event
         );
         assert(d);
@@ -614,11 +627,11 @@ void test_compiled_recursion(const char *library)
         behavior_function *f = whole_recursion_ir(waits, 4096),
                           *other = whole_recursion_ir(waits, 4096);
         assert(behavior_function_compile(f) && behavior_function_compile(other));
-        void *native = f->code, *other_native = other->code;
+        void *native = f->artifact->code, *other_native = other->artifact->code;
         if (handle) {
-            f->code = dlsym(handle, waits ? "recursive_wait" : "recursive_sync");
-            other->code = f->code;
-            assert(f->code);
+            f->artifact->code = dlsym(handle, waits ? "recursive_wait" : "recursive_sync");
+            other->artifact->code = f->artifact->code;
+            assert(f->artifact->code);
         }
         for (int mutual = 0; mutual < 2; mutual++) {
             f->calls[0].function = mutual ? other : f;
@@ -639,8 +652,8 @@ void test_compiled_recursion(const char *library)
             whole_recursion_case(f, 0, 2048, 10, 0, false);
             whole_recursion_case(f, 1, 2048, 10, 0, false);
         }
-        f->code = native;
-        other->code = other_native;
+        f->artifact->code = native;
+        other->artifact->code = other_native;
         behavior_function_free(f);
         behavior_function_free(other);
     }

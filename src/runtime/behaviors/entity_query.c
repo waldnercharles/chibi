@@ -1,8 +1,7 @@
 #include "runtime/behaviors/entity_query.h"
 
-#include "graph/runtime/eval.h"
-#include "graph/runtime/value_array.h"
 #include "support/array.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <string.h>
@@ -107,9 +106,8 @@ static const ecs_component_desc *component_named(ecs_world *world, const char *k
     }
     return NULL;
 }
-static const char *count_matches(void *service, const pin_value *inputs, pin_value *out)
+const char *game_entity_count_matches(ecs_world *world, const pin_value *inputs, pin_value *out)
 {
-    ecs_world *world = service;
     if (!world) {
         return "Count Matching Entities requires ecs.world";
     }
@@ -149,36 +147,10 @@ done:
     afree(plan);
     return error;
 }
-static const char *read_count(const eval_context *ctx, const pin_value *inputs, arena *, pin_value *out)
+static const char *count_matches(void *world, const pin_value *inputs, pin_value *out)
 {
-    *out = (pin_value){ .type = PIN_I32, .type_name = "int" };
-    return count_matches(eval_context_service(ctx, "ecs.world"), inputs, out);
+    return game_entity_count_matches(world, inputs, out);
 }
-static pin_spec INPUTS[] = { { .name = "Entities",
-                               .type = PIN_HANDLE,
-                               .type_name = "ecs.entity",
-                               .container = PIN_CONTAINER_ARRAY },
-                             { .name = "Conditions",
-                               .type = PIN_STRUCT,
-                               .type_name = "EntityCondition",
-                               .container = PIN_CONTAINER_ARRAY } };
-static pin_spec OUTPUTS[] = { { .name = "Count", .type = PIN_I32, .type_name = "int" } };
-static const node_access ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
-static const node_host_call CALL = { .service = "ecs.world", .invoke = count_matches };
-node_desc NODE_Count_Matching_Entities = {
-    .name = "Count Matching Entities",
-    .inputs = INPUTS,
-    .input_count = 2,
-    .outputs = OUTPUTS,
-    .output_count = 1,
-    .pure_kind = NODE_PURE_READ,
-    .read_inputs = read_count,
-    .host_call = &CALL,
-    .lower = entity_query_lower,
-    .work = NODE_WORK_ENTITY_REDUCTION,
-    .access = &ACCESS,
-    .category = "Entities",
-    .keywords = "query filter count reduce component conditions",
-    .description = "Counts live Entities that pass all Conditions, each a "
-                   "component presence test or scalar field comparison."
-};
+const node_access GAME_ENTITY_COUNT_MATCHING_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_host_call GAME_ENTITY_COUNT_MATCHING_CALL = { .service = "ecs.world",
+                                                         .invoke = count_matches };

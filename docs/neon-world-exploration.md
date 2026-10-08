@@ -263,10 +263,10 @@ operations, runtime state storage, and rendering. Authored assets own regional
 composition, rules, bosses, weapon effects, visual choices, and tuning. Keep
 quests, combat, and progression optional for scenes that do not use them.
 
-Use Chibi MCP for authored content after confirming its project root and target
-scene belong to the working copy being edited. Search and inspect first, then
-build, validate, and preview. Use Behavior Expressions for small calculations and
-explicit graph structure for larger sequencing and state.
+Edit `.chibi` behaviors and KDL scene/prototype assets in the working project.
+Inspect existing capabilities and dependencies, format the saved files, validate
+changed assets, then run a bounded native scenario or preview. See the
+[saved-file authoring workflow](runtime-authoring.md).
 
 Run `make build` and `make test` as appropriate to implementation changes. Add
 focused checks for meaningful contracts such as deterministic generation,
@@ -285,7 +285,7 @@ The design document alone does not establish any of those results.
 - [Current material sandbox](neon-swarm-sandbox.md)
 - [Material engine and authored fields](material-engine.md)
 - [Material simulation and HRC research](material-simulation-and-hrc-research.md)
-- [Chibi authoring workflow](mcp.md)
+- [Chibi authoring workflow](runtime-authoring.md)
 - [Wave Function Collapse](https://github.com/mxgmn/WaveFunctionCollapse)
 - [MLS-MPM and CPIC](https://yuanming.taichi.graphics/publication/2018-mlsmpm/)
 

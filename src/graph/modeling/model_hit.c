@@ -1,5 +1,5 @@
 #include "graph/modeling/model_internal.h"
-#include "graph/shader/shader_volume.h"
+#include "runtime/shaders/volume.h"
 #include "support/xalloc.h"
 
 #include <math.h>
@@ -142,10 +142,10 @@ static bool require_hit(hit_builder *b, const node *n, bool *used)
     }
     return false;
 }
-static bool build_hit(model_program *p, const node *root, shader_error *error)
+static bool build_hit(model_program *p, const graph *source, const node *root, shader_error *error)
 {
     struct model_bounds_program *bp = p->bounds_program;
-    hit_builder builder = { .compiler = { .source = bp->asset->graph,
+    hit_builder builder = { .compiler = { .source = source,
                                           .shader = &p->hit_shader,
                                           .program = p,
                                           .error = error } };
@@ -156,6 +156,11 @@ static bool build_hit(model_program *p, const node *root, shader_error *error)
         named |= p->parts[i].distance >= 0;
     }
     if (named) {
+        shader_graph owned;
+        shader_graph_init(&owned);
+        if (!shader_graph_clone(&p->shader, &owned, error)) {
+            return false;
+        }
         int count = acount(p->shader.nodes);
         bool *used = xcalloc(count, sizeof *used);
         builder.remap = xmalloc(count * sizeof *builder.remap);
@@ -169,7 +174,8 @@ static bool build_hit(model_program *p, const node *root, shader_error *error)
             if (!used[i]) {
                 continue;
             }
-            shader_node node = p->shader.nodes[i];
+            shader_node node = owned.nodes[i];
+            owned.nodes[i].ramp = NULL;
             for (int j = 0; j < shader_op_inputs(node.op); j++) {
                 node.input[j] = builder.remap[node.input[j]];
             }
@@ -177,6 +183,7 @@ static bool build_hit(model_program *p, const node *root, shader_error *error)
             apush(p->hit_shader.nodes, node);
         }
         free(used);
+        shader_graph_free(&owned);
         c->shader = &p->hit_shader;
         builder.root = builder.remap[bp->root_position];
     } else {
@@ -207,22 +214,22 @@ static bool build_hit(model_program *p, const node *root, shader_error *error)
     p->hit_shader.output[1] = value.point;
     return shader_graph_validate(&p->hit_shader, error);
 }
-bool model_build_hit(model_program *p, shader_error *error)
+bool model_build_hit(model_program *p, const graph *g, shader_error *error)
 {
     if (!model_build_frames(p, error)) {
         return false;
     }
-    const graph *g = p->bounds_program->asset->graph;
     const node *output = NULL;
     for (int i = 0; i < acount(g->nodes); i++) {
         if (model_operation(g->nodes[i]) == MODEL_OUTPUT) {
             output = g->nodes[i];
         }
     }
-    return build_hit(p, model_child(g, output, 0), error);
+    return build_hit(p, g, model_child(g, output, 0), error);
 }
-bool model_program_part_shaders(
+static bool prepare_part_shaders(
     const model_program *p,
+    const graph *g,
     int part,
     shader_graph *distance,
     shader_graph *hit,
@@ -233,7 +240,6 @@ bool model_program_part_shaders(
         return model_fail(error, 0, "Selected Part has no compiled geometry");
     }
     struct model_bounds_program bp = *p->bounds_program;
-    const graph *g = bp.asset->graph;
     const node *root = NULL;
     for (int i = 0; i < acount(g->nodes); i++) {
         if (model_operation(g->nodes[i]) == MODEL_PART &&
@@ -248,7 +254,13 @@ bool model_program_part_shaders(
                                 .parts = p->parts,
                                 .bounds_program = &bp };
     shader_graph_init(&temporary.hit_shader);
-    if (!build_hit(&temporary, root, error)) {
+    if (!build_hit(&temporary, g, root, error)) {
+        shader_graph_free(&temporary.hit_shader);
+        return false;
+    }
+    shader_graph owned;
+    shader_graph_init(&owned);
+    if (!shader_graph_clone(&bp.proof, &owned, error)) {
         shader_graph_free(&temporary.hit_shader);
         return false;
     }
@@ -263,13 +275,15 @@ bool model_program_part_shaders(
         if (!used[i]) {
             continue;
         }
-        shader_node n = bp.proof.nodes[i];
+        shader_node n = owned.nodes[i];
+        owned.nodes[i].ramp = NULL;
         for (int j = 0; j < shader_op_inputs(n.op); j++) {
             n.input[j] = remap[n.input[j]];
         }
         remap[i] = acount(selected.nodes);
         apush(selected.nodes, n);
     }
+    shader_graph_free(&owned);
     selected.output_count = 1;
     selected.output[0] = remap[p->parts[part].distance];
     free(used);
@@ -285,59 +299,21 @@ bool model_program_part_shaders(
     *hit = temporary.hit_shader;
     return true;
 }
-bool model_program_hit(
-    const model_program *program,
-    const float prepared[SHADER_PARAMETER_MAX][4],
-    const float object_position[3],
-    model_hit *hit,
-    shader_error *error
-)
+
+bool model_build_part_shaders(model_program *p, const graph *source, shader_error *error)
 {
-    const struct model_bounds_program *bp = program->bounds_program;
-    float defaults[SHADER_PARAMETER_MAX][4];
-    model_bounds bounds;
-    if (!prepared) {
-        if (!model_program_prepare(program, NULL, defaults, &bounds, error)) {
+    for (int part = 0; part < acount(p->parts); part++) {
+        shader_graph distance, hit;
+        shader_graph_init(&distance);
+        shader_graph_init(&hit);
+        if (p->parts[part].distance >= 0 &&
+            !prepare_part_shaders(p, source, part, &distance, &hit, error)) {
+            shader_graph_free(&distance);
+            shader_graph_free(&hit);
             return false;
         }
-        prepared = defaults;
+        apush(p->bounds_program->part_distance, distance);
+        apush(p->bounds_program->part_hit, hit);
     }
-    shader_sample_context sample = { .resolve_image = program->resolve_image,
-                                     .image_userdata = program->image_userdata };
-    memcpy(sample.object_position, object_position, sizeof sample.object_position);
-    for (int i = 0; i < 3; i++) {
-        if (!isfinite(object_position[i])) {
-            return model_fail(error, 0, "Model hit position must be finite");
-        }
-    }
-    const shader_graph *g = &bp->hit_proof;
-    float (*values)[4] = xcalloc(acount(g->nodes), sizeof *values);
-    bool valid = shader_graph_eval_values(g, &sample, prepared, values, error);
-    for (int i = 0; valid && i < acount(g->nodes); i++) {
-        for (int j = 0; j < g->nodes[i].width; j++) {
-            if (!isfinite(values[i][j])) {
-                valid = model_fail(error, g->nodes[i].source_id, "Model hit exceeds finite arithmetic");
-                break;
-            }
-        }
-    }
-    model_hit result = { .part = -1, .material = -1 };
-    if (valid) {
-        result.part = (int)values[g->output[0]][0];
-        memcpy(result.position, values[g->output[1]], sizeof result.position);
-        if (result.part < -1 || result.part >= acount(program->parts)) {
-            valid = model_fail(error, 0, "Model hit owner is outside the compiled part table");
-        } else if (result.part >= 0) {
-            result.material = program->parts[result.part].material;
-        }
-    }
-    free(values);
-    if (!valid) {
-        return false;
-    }
-    if (!model_program_frame(program, result.part, prepared, result.part_from_object, error)) {
-        return false;
-    }
-    *hit = result;
     return true;
 }

@@ -1,14 +1,19 @@
+#include "authoring/engine_preview.h"
+#include "authoring/preview.h"
+#include "authoring/prototype_prepare.h"
+#include "authoring/prototype_preview.h"
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/eval.h"
-#include "graph/runtime/value_array.h"
-#include "render/particles.h"
 #include "render/shader_catalog.h"
-#include "runtime/behaviors/live.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
-#include "runtime/scenes/prototype_preview.h"
+#include "runtime/particles.h"
 #include "runtime/visual_motion.h"
 #include "runtime/visual_parts.h"
 #include "runtime/visual_transform.h"
@@ -19,6 +24,7 @@
 #include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
 #include "test/support/simulation_fixture.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -43,7 +49,7 @@ static behavior_asset *read_asset(const char *path)
 static behavior_asset *behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.code", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.chibi", name);
     behavior_asset *asset = link_test_libraries(read_asset(path));
     compile_report report;
     compile_report_init(&report);
@@ -102,7 +108,7 @@ static void query_snapshot(ecs_index_kind index)
     ecs_component_desc component = GAME_COMPONENT_GameEncounterMember;
     component.index = index;
     assert(ecs_world_register_component(world, &component, NULL) == ECS_OK);
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     behavior_asset *asset = behavior_asset_new("Find members");
     node *query = graph_add_node(asset->graph, registry_node_by_name("Find Entities With Component"));
     assert(query);
@@ -118,7 +124,7 @@ static void query_snapshot(ecs_index_kind index)
     eval_context eval;
     eval_context_init(&eval);
     service_binding *services = NULL;
-    apush(services, ((service_binding){ "game.entities", live->entities }));
+    apush(services, ((service_binding){ "game.entities", live->runtime->entities }));
     eval.services = services;
     arena storage;
     arena_init(&storage, 4096);
@@ -130,14 +136,14 @@ static void query_snapshot(ecs_index_kind index)
     assert(ecs_world_apply_commands(world) == ECS_OK);
     pin_array *snapshot = query_entities(asset, query, &storage, &eval);
     assert(snapshot->count == 2 && contains(snapshot, first) && contains(snapshot, second));
-    game_entities_request_destroy(live->entities, first);
+    game_entities_request_destroy(live->runtime->entities, first);
     pin_array *current = query_entities(asset, query, &storage, &eval);
     assert(current->count == 1 && contains(current, second));
     assert(ecs_world_record_destroy(world, second, 0) == ECS_OK);
     assert(query_entities(asset, query, &storage, &eval)->count == 0);
     assert(snapshot->count == 2 && contains(snapshot, first) && contains(snapshot, second));
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(game_entities_flush(live->entities) == 0);
+    assert(game_entities_flush(live->runtime->entities) == 0);
     ecs_entity replacement = ecs_world_create_entity(world);
     assert(
         replacement.generation != first.generation || replacement.slot != first.slot
@@ -160,14 +166,14 @@ static void query_snapshot(ecs_index_kind index)
     afree(services);
     arena_free(&storage);
     behavior_asset_free(asset);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
 typedef struct
 {
     ecs_world *world;
-    game_live_world *live;
+    game_preview_world *live;
     engine *runtime;
     game_prototype_preview *preview;
     simulation_fixture clock;
@@ -181,7 +187,8 @@ static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 
 static game_behavior_world *behaviors(encounter_host *h)
 {
-    return h->preview ? game_prototype_preview_behaviors(h->preview) : h->live->behaviors;
+    return h->preview ? game_prototype_preview_behaviors(h->preview)
+                      : h->live->runtime->behaviors;
 }
 
 static ecs_entity spawn(encounter_host *h, const game_prototype *prototype)
@@ -226,9 +233,9 @@ static encounter_host create_with_delay(bool preview, float delay)
         for (int i = 0; i < registry.component_count; i++) {
             assert(ecs_world_register_component(h.world, registry.components[i], NULL) == ECS_OK);
         }
-        h.live = game_live_world_new(h.world);
+        h.live = game_preview_world_new(h.world);
         register_damage_event(h.live);
-        h.runtime = engine_new(h.world, h.live);
+        h.runtime = authoring_engine_new(h.world, h.live->runtime);
     }
     const char *names[] = { "HealthBehavior",
                             "ArenaWaveBehavior",
@@ -241,14 +248,14 @@ static encounter_host create_with_delay(bool preview, float delay)
             behavior_asset_free(asset);
         } else {
             assert(
-                game_live_add_definition(h.live, game_live_definition_new(names[i], asset)) == 0
+                game_preview_add_definition(h.live, game_preview_definition_new(names[i], asset)) == 0
             );
         }
     }
     game_prototype *pulse = prototype("ArenaWavePulse", &registry);
     assert(
         (h.preview ? game_prototype_preview_register_prototype(h.preview, pulse)
-                   : game_entities_register(h.live->entities, pulse)) == 0
+                   : game_entities_register(h.live->runtime->entities, pulse)) == 0
     );
     game_prototype_free(pulse);
     game_prototype *marker = prototype("ArenaSpawnMarker", &registry);
@@ -262,14 +269,14 @@ static encounter_host create_with_delay(bool preview, float delay)
     );
     assert(
         (h.preview ? game_prototype_preview_register_prototype(h.preview, marker)
-                   : game_entities_register(h.live->entities, marker)) == 0
+                   : game_entities_register(h.live->runtime->entities, marker)) == 0
     );
     game_prototype_free(marker);
     game_prototype *enemy = prototype("ArenaEnemy", &registry);
     keep_health(enemy);
     assert(
         (h.preview ? game_prototype_preview_register_prototype(h.preview, enemy)
-                   : game_entities_register(h.live->entities, enemy)) == 0
+                   : game_entities_register(h.live->runtime->entities, enemy)) == 0
     );
     game_prototype_free(enemy);
     game_prototype *player = prototype("ArenaPlayer", &registry);
@@ -330,7 +337,7 @@ static void destroy_host(encounter_host *h)
         return;
     }
     engine_free(h->runtime);
-    game_live_world_free(h->live);
+    game_preview_world_free(h->live);
     ecs_world_free(h->world);
 }
 
@@ -371,10 +378,10 @@ static void damage(encounter_host *h, ecs_entity target, int amount)
                            { .type = PIN_HANDLE,
                              .type_name = "ecs.entity",
                              .u64 = ecs_entity_to_u64(h->player) } };
-    game_entities *entities = h->preview ? NULL : h->live->entities;
+    game_entities *entities = h->preview ? NULL : h->live->runtime->entities;
     if (entities) {
         assert(
-            game_entities_request_event(entities, target, "Damage", (flow_inputs){ values, 2 }) == 0
+            game_entities_request_event(entities, target, "Damage", (execution_arguments){ values, 2 }) == 0
         );
         return;
     }
@@ -536,28 +543,28 @@ static void accepted_damage()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     register_damage_event(live);
     assert(
-        game_live_add_definition(
+        game_preview_add_definition(
             live,
-            game_live_definition_new("HealthBehavior", behavior("HealthBehavior"))
+            game_preview_definition_new("HealthBehavior", behavior("HealthBehavior"))
         ) == 0
     );
     assert(
-        game_live_add_definition(
+        game_preview_add_definition(
             live,
-            game_live_definition_new("Accepted damage probe", damage_probe())
+            game_preview_definition_new("Accepted damage probe", damage_probe())
         ) == 0
     );
-    engine *runtime = engine_new(world, live);
+    engine *runtime = authoring_engine_new(world, live->runtime);
     ecs_entity entity = ecs_world_create_entity(world);
     assert(GAME_GameHealth_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameHealth_get(world, entity) = (GameHealth){ 100, 100 };
-    assert(game_behavior_attach(live->behaviors, entity, "HealthBehavior") == 0);
-    assert(game_behavior_attach(live->behaviors, entity, "Accepted damage probe") == 0);
-    behavior_instance *probe = game_behavior_instance(live->behaviors, entity, "Accepted damage probe");
+    assert(game_behavior_attach(live->runtime->behaviors, entity, "HealthBehavior") == 0);
+    assert(game_behavior_attach(live->runtime->behaviors, entity, "Accepted damage probe") == 0);
+    behavior_instance *probe = game_behavior_instance(live->runtime->behaviors, entity, "Accepted damage probe");
     simulation_fixture clock = simulation_fixture_new(runtime, NULL);
     simulation_frame(&clock, 0);
     pin_value values[] = { { .type = PIN_I32, .type_name = "int" },
@@ -574,7 +581,12 @@ static void accepted_damage()
         }
         values[0].i = amounts[i];
         assert(
-            game_entities_request_event(live->entities, entity, "Damage", (flow_inputs){ values, 2 }) == 0
+            game_entities_request_event(
+                live->runtime->entities,
+                entity,
+                "Damage",
+                (execution_arguments){ values, 2 }
+            ) == 0
         );
         simulation_step(&clock);
         int expected = i < 2 ? 100 : i < 4 ? 95 : 88;
@@ -585,7 +597,12 @@ static void accepted_damage()
     *GAME_GameHealth_get(world, entity) = (GameHealth){ 16777217, 16777217 };
     values[0].i = 1;
     assert(
-        game_entities_request_event(live->entities, entity, "Damage", (flow_inputs){ values, 2 }) == 0
+        game_entities_request_event(
+            live->runtime->entities,
+            entity,
+            "Damage",
+            (execution_arguments){ values, 2 }
+        ) == 0
     );
     simulation_step(&clock);
     assert(GAME_GameHealth_get_const(world, entity)->current == 16777216);
@@ -593,21 +610,26 @@ static void accepted_damage()
     values[0].i = INT_MAX;
     for (int i = 0; i < 3; i++) {
         assert(
-            game_entities_request_event(live->entities, entity, "Damage", (flow_inputs){ values, 2 }) == 0
+            game_entities_request_event(
+                live->runtime->entities,
+                entity,
+                "Damage",
+                (execution_arguments){ values, 2 }
+            ) == 0
         );
     }
     simulation_step(&clock);
     assert(!ecs_entity_is_alive(world, entity));
-    assert(game_behavior_log_count(live->behaviors) == 5);
+    assert(game_behavior_log_count(live->runtime->behaviors) == 5);
     game_behavior_log_info hit, died;
-    assert(game_behavior_log_info_at(live->behaviors, 3, &hit) == 0);
-    assert(game_behavior_log_info_at(live->behaviors, 4, &died) == 0);
+    assert(game_behavior_log_info_at(live->runtime->behaviors, 3, &hit) == 0);
+    assert(game_behavior_log_info_at(live->runtime->behaviors, 4, &died) == 0);
     assert(!strcmp(hit.message, "16777216") && !strcmp(died.message, "died"));
     assert(ecs_entity_to_u64(hit.entity) == ecs_entity_to_u64(entity));
     assert(ecs_entity_to_u64(died.entity) == ecs_entity_to_u64(entity));
     /* No Encounter or Member component was needed for ordinary health. */
     engine_free(runtime);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -635,16 +657,16 @@ static void authored_feedback()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     register_damage_event(live);
     const char *behaviors[] = { "HealthBehavior",
                                 "SurfacePulseBehavior",
                                 "ArenaImpactFeedback" };
     for (int i = 0; i < 3; i++) {
         assert(
-            game_live_add_definition(
+            game_preview_add_definition(
                 live,
-                game_live_definition_new(behaviors[i], behavior(behaviors[i]))
+                game_preview_definition_new(behaviors[i], behavior(behaviors[i]))
             ) == 0
         );
     }
@@ -653,31 +675,41 @@ static void authored_feedback()
     const char *effects[] = { "ArenaHitPulse", "ArenaDeathPulse" };
     for (int i = 0; i < 2; i++) {
         game_prototype *effect = prototype(effects[i], &registry);
-        assert(game_entities_register(live->entities, effect) == 0);
+        assert(game_entities_register(live->runtime->entities, effect) == 0);
         game_prototype_free(effect);
     }
-    engine *runtime = engine_new(world, live);
+    engine *runtime = authoring_engine_new(world, live->runtime);
     ecs_entity target = ecs_world_create_entity(world);
     assert(GAME_GameTransform_add(world, target, 0) == ECS_OK);
     assert(GAME_GameHealth_add(world, target, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameTransform_get(world, target) = (GameTransform){ 127, -83 };
     *GAME_GameHealth_get(world, target) = (GameHealth){ 30, 30 };
-    assert(game_behavior_attach(live->behaviors, target, "HealthBehavior") == 0);
-    assert(game_behavior_attach(live->behaviors, target, "ArenaImpactFeedback") == 0);
+    assert(game_behavior_attach(live->runtime->behaviors, target, "HealthBehavior") == 0);
+    assert(game_behavior_attach(live->runtime->behaviors, target, "ArenaImpactFeedback") == 0);
     simulation_fixture clock = simulation_fixture_new(runtime, NULL);
     simulation_frame(&clock, 0);
     pin_value damage[] = { { .type = PIN_I32, .type_name = "int" },
                            { .type = PIN_HANDLE, .type_name = "ecs.entity" } };
     assert(
-        game_entities_request_event(live->entities, target, "Damage", (flow_inputs){ damage, 2 }) == 0
+        game_entities_request_event(
+            live->runtime->entities,
+            target,
+            "Damage",
+            (execution_arguments){ damage, 2 }
+        ) == 0
     );
     simulation_step(&clock);
     ecs_entity hit = { 0 }, death = { 0 };
     assert(feedback_pulses(world, 42, &hit) == 0);
     damage[0].i = 10;
     assert(
-        game_entities_request_event(live->entities, target, "Damage", (flow_inputs){ damage, 2 }) == 0
+        game_entities_request_event(
+            live->runtime->entities,
+            target,
+            "Damage",
+            (execution_arguments){ damage, 2 }
+        ) == 0
     );
     simulation_step(&clock);
     assert(GAME_GameHealth_get_const(world, target)->current == 20);
@@ -692,7 +724,12 @@ static void authored_feedback()
     damage[0].i = 30;
     for (int i = 0; i < 3; i++) {
         assert(
-            game_entities_request_event(live->entities, target, "Damage", (flow_inputs){ damage, 2 }) == 0
+            game_entities_request_event(
+                live->runtime->entities,
+                target,
+                "Damage",
+                (execution_arguments){ damage, 2 }
+            ) == 0
         );
     }
     simulation_step(&clock);
@@ -701,13 +738,13 @@ static void authored_feedback()
     assert(feedback_pulses(world, 64, &death) == 1);
     position = GAME_GameTransform_get_const(world, death);
     assert(position->x == 127 && position->y == -83);
-    assert(game_particles_count(live->particles) == 0);
+    assert(game_particles_count(live->runtime->particles) == 0);
     simulation_advance(&clock, clock.time + .5);
     assert(feedback_pulses(world, 42, &hit) == 0);
     assert(feedback_pulses(world, 64, &death) == 0);
-    assert(game_particles_count(live->particles) == 0);
+    assert(game_particles_count(live->runtime->particles) == 0);
     engine_free(runtime);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -720,9 +757,9 @@ static void register_pickup_content(encounter_host *h)
                             "SurfacePulseBehavior" };
     for (int i = 0; i < 5; i++) {
         assert(
-            game_live_add_definition(
+            game_preview_add_definition(
                 h->live,
-                game_live_definition_new(names[i], behavior(names[i]))
+                game_preview_definition_new(names[i], behavior(names[i]))
             ) == 0
         );
     }
@@ -735,7 +772,7 @@ static void register_pickup_content(encounter_host *h)
                                  "ArenaDeathPulse" };
     for (int i = 0; i < 4; i++) {
         game_prototype *value = prototype(prototypes[i], &registry);
-        assert(game_entities_register(h->live->entities, value) == 0);
+        assert(game_entities_register(h->live->runtime->entities, value) == 0);
         game_prototype_free(value);
     }
 }
@@ -764,7 +801,7 @@ static void pickup_lifecycle()
 {
     encounter_host h = create(false);
     register_pickup_content(&h);
-    assert(game_behavior_destroy_entity(h.live->behaviors, h.manager) == 0);
+    assert(game_behavior_destroy_entity(h.live->runtime->behaviors, h.manager) == 0);
     assert(ecs_world_apply_commands(h.world) == ECS_OK);
     if (!GAME_GameExperience_has(h.world, h.player)) {
         assert(GAME_GameExperience_add(h.world, h.player, 0) == ECS_OK);
@@ -805,7 +842,12 @@ static void pickup_lifecycle()
     assert(distance_to_player(&h, pickup) > initial);
     for (int i = 0; i < 4; i++) {
         assert(
-            game_entities_request_event(h.live->entities, pickup, "CollectExperience", (flow_inputs){ 0 }) == 0
+            game_entities_request_event(
+                h.live->runtime->entities,
+                pickup,
+                "CollectExperience",
+                (execution_arguments){ 0 }
+            ) == 0
         );
     }
     simulation_advance(&h.clock, started + .2);
@@ -827,7 +869,7 @@ static void pickup_lifecycle()
     assert(GAME_GamePickup_get_const(h.world, pickup)->state == 1);
     simulation_advance(&h.clock, h.clock.time + .05);
     assert(distance_to_player(&h, pickup) > 1);
-    game_entities_request_destroy(h.live->entities, h.player);
+    game_entities_request_destroy(h.live->runtime->entities, h.player);
     simulation_step(&h.clock);
     simulation_step(&h.clock);
     assert(!ecs_entity_is_alive(h.world, pickup));
@@ -917,9 +959,9 @@ static void native_visual_birth_pose()
 {
     encounter_host h = create_with_delay(false, .25f);
     assert(
-        game_live_add_definition(
+        game_preview_add_definition(
             h.live,
-            game_live_definition_new("ArenaEnemyVisualBehavior", behavior("ArenaEnemyVisualBehavior"))
+            game_preview_definition_new("ArenaEnemyVisualBehavior", behavior("ArenaEnemyVisualBehavior"))
         ) == 0
     );
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
@@ -941,7 +983,7 @@ static void native_visual_birth_pose()
             (pin_value){ .type = PIN_F32, .f = .05f }
         ) == 0
     );
-    assert(game_entities_register(h.live->entities, enemy) == 0);
+    assert(game_entities_register(h.live->runtime->entities, enemy) == 0);
     simulation_advance(&h.clock, .2);
     /* This fresh prototype has its own identity; the shared host also contains
      * a health-only ArenaEnemy. Direct the real telegraphs to this generation
@@ -1103,7 +1145,7 @@ static int dispatch_tick(encounter_host *h, ecs_entity entity, float delta)
 {
     pin_value seconds = { .type = PIN_F32, .f = delta };
     return game_behavior_dispatch(
-        h->live->behaviors,
+        h->live->runtime->behaviors,
         entity,
         "Tick",
         (flow_inputs){ .values = &seconds, .count = 1 },
@@ -1122,25 +1164,31 @@ static void combat_feedback_gates()
     int id = render_shader_find(material->name);
     behavior_asset_free(material);
     assert(
-        game_live_add_definition(
+        game_preview_add_definition(
             h.live,
-            game_live_definition_new("CombatFeedback", behavior("CombatFeedback"))
+            game_preview_definition_new("CombatFeedback", behavior("CombatFeedback"))
         ) == 0
     );
-    assert(game_behavior_attach(h.live->behaviors, h.player, "CombatFeedback") == 0);
+    assert(game_behavior_attach(h.live->runtime->behaviors, h.player, "CombatFeedback") == 0);
     GAME_GameShader_get(h.world, h.player)->parameters = "\"Hit Flash\" 0.7\n";
-    game_behavior_set_delta_seconds(h.live->behaviors, .07f);
+    game_behavior_set_delta_seconds(h.live->runtime->behaviors, .07f);
     assert(dispatch_tick(&h, h.player, .07f) >= 0);
     assert(fabsf(feedback_parameter(&h, id, "Hit Flash") - .7f) < .00001f);
     pin_value damage[] = { { .type = PIN_I32, .type_name = "int", .i = 1 },
                            { .type = PIN_HANDLE, .type_name = "ecs.entity" } };
     assert(
-        game_behavior_dispatch(h.live->behaviors, h.player, "Damaged", (flow_inputs){ damage, 2 }, NULL) >= 0
+        game_behavior_dispatch(
+            h.live->runtime->behaviors,
+            h.player,
+            "Damaged",
+            (flow_inputs){ damage, 2 },
+            NULL
+        ) >= 0
     );
     assert(feedback_parameter(&h, id, "Hit Flash") == 2);
     assert(dispatch_tick(&h, h.player, .07f) >= 0);
     assert(fabsf(feedback_parameter(&h, id, "Hit Flash") - 1) < .00001f);
-    game_behavior_set_delta_seconds(h.live->behaviors, .2f);
+    game_behavior_set_delta_seconds(h.live->runtime->behaviors, .2f);
     assert(dispatch_tick(&h, h.player, .2f) >= 0);
     assert(feedback_parameter(&h, id, "Hit Flash") == 0);
     assert(GAME_GameDash_add(h.world, h.player, 0) == ECS_OK);
@@ -1166,15 +1214,15 @@ static void enemy_contact_motion()
 {
     encounter_host h = create(false);
     assert(
-        game_live_add_definition(
+        game_preview_add_definition(
             h.live,
-            game_live_definition_new("EnemyBehavior", behavior("EnemyBehavior"))
+            game_preview_definition_new("EnemyBehavior", behavior("EnemyBehavior"))
         ) == 0
     );
     assert(
-        game_live_add_definition(
+        game_preview_add_definition(
             h.live,
-            game_live_definition_new("ArenaEnemyVisualBehavior", behavior("ArenaEnemyVisualBehavior"))
+            game_preview_definition_new("ArenaEnemyVisualBehavior", behavior("ArenaEnemyVisualBehavior"))
         ) == 0
     );
     GAME_GameBody_get(h.world, h.player)->type = GAME_BODY_STATIC;
@@ -1189,8 +1237,10 @@ static void enemy_contact_motion()
             center.x - 90 + 90 * i,
             center.y + 125
         };
-        assert(game_behavior_attach(h.live->behaviors, targets[i], "EnemyBehavior") == 0);
-        assert(game_behavior_attach(h.live->behaviors, targets[i], "ArenaEnemyVisualBehavior") == 0);
+        assert(game_behavior_attach(h.live->runtime->behaviors, targets[i], "EnemyBehavior") == 0);
+        assert(
+            game_behavior_attach(h.live->runtime->behaviors, targets[i], "ArenaEnemyVisualBehavior") == 0
+        );
     }
     simulation_step(&h.clock);
     GameVisualTransform initial = *GAME_GameVisualTransform_get_const(h.world, targets[0]);
@@ -1279,14 +1329,20 @@ static void authored_parts_at_birth(bool moving)
         .parameters = "HitFlash 0.3\n"
     };
     GAME_GamePickup_get(h.world, snapshot)->state = 3;
-    game_behavior_set_delta_seconds(h.live->behaviors, 0);
+    game_behavior_set_delta_seconds(h.live->runtime->behaviors, 0);
     /* Runtime Spawn Prototype initializes the snapshot before ordered Begin
      * handlers attach. ArenaDrop consumes it on Begin, before ordinary Tick. */
     for (int i = 0; i < acount(definition->graphs); i++) {
-        assert(game_behavior_attach(h.live->behaviors, snapshot, definition->graphs[i]) == 0);
+        assert(
+            game_behavior_attach(
+                h.live->runtime->behaviors,
+                snapshot,
+                definition->graphs[i]
+            ) == 0
+        );
     }
     game_prototype_free(definition);
-    assert(game_entities_flush_initializers(h.live->entities, h.clock.time) == 0);
+    assert(game_entities_flush_initializers(h.live->runtime->entities, h.clock.time) == 0);
     CF_M4x4 frame = cf_m4_from_trs(
         (CF_V3){ origin.x, shape.elevation, origin.y },
         game_visual_rotation(
@@ -1340,7 +1396,7 @@ static void authored_parts_at_birth(bool moving)
     ecs_query_end(&query);
     assert(count == 12);
     /* Lifecycle shrink must begin from the source's scale, including a scaled source. */
-    game_behavior_set_delta_seconds(h.live->behaviors, .001f);
+    game_behavior_set_delta_seconds(h.live->runtime->behaviors, .001f);
     for (int i = 0; i < count; i++) {
         assert(dispatch_tick(&h, pieces[i], .001f) >= 0);
         float scale = GAME_GameVisualTransform_get_const(h.world, pieces[i])->scale;
@@ -1404,7 +1460,9 @@ static void final_experience()
         GAME_GameVisualMotion_get(h.world, targets[i])->rotation = (CF_V3){ .4f,
                                                                             .3f + i,
                                                                             -.6f };
-        assert(game_behavior_attach(h.live->behaviors, targets[i], "ArenaImpactFeedback") == 0);
+        assert(
+            game_behavior_attach(h.live->runtime->behaviors, targets[i], "ArenaImpactFeedback") == 0
+        );
         damage(&h, targets[i], 30);
         damage(&h, targets[i], 30);
     }
@@ -1424,7 +1482,7 @@ static void final_experience()
 
 static void ship_ticks(encounter_host *h, int count, float delta)
 {
-    game_behavior_set_delta_seconds(h->live->behaviors, delta);
+    game_behavior_set_delta_seconds(h->live->runtime->behaviors, delta);
     for (int i = 0; i < count; i++) {
         float previous = GAME_GameVisualTransform_get_const(h->world, h->player)->roll;
         assert(dispatch_tick(h, h->player, delta) >= 0);
@@ -1437,16 +1495,16 @@ static void ship_ticks(encounter_host *h, int count, float delta)
 static void ship_motion()
 {
     encounter_host h = create(false);
-    assert(game_behavior_destroy_entity(h.live->behaviors, h.manager) == 0);
+    assert(game_behavior_destroy_entity(h.live->runtime->behaviors, h.manager) == 0);
     assert(ecs_world_apply_commands(h.world) == ECS_OK);
     assert(
-        game_live_add_definition(
+        game_preview_add_definition(
             h.live,
-            game_live_definition_new("ArenaShipMotionBehavior", behavior("ArenaShipMotionBehavior"))
+            game_preview_definition_new("ArenaShipMotionBehavior", behavior("ArenaShipMotionBehavior"))
         ) == 0
     );
-    assert(game_behavior_attach(h.live->behaviors, h.player, "ArenaShipMotionBehavior") == 0);
-    behavior_instance *motion = game_behavior_instance(h.live->behaviors, h.player, "ArenaShipMotionBehavior");
+    assert(game_behavior_attach(h.live->runtime->behaviors, h.player, "ArenaShipMotionBehavior") == 0);
+    behavior_instance *motion = game_behavior_instance(h.live->runtime->behaviors, h.player, "ArenaShipMotionBehavior");
     behavior_variable *speed = behavior_asset_find_variable_by_name(motion->asset, "Roll Speed (Degrees/Second)");
     behavior_variable *lift = behavior_asset_find_variable_by_name(motion->asset, "Reverse Nose Lift (Degrees)");
     assert(

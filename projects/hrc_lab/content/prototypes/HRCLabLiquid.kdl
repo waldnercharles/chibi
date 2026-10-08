@@ -1,5 +1,0 @@
-name "HRCLabLiquid"
-components {
-    GAME.GameFluidVolume absorption=0.035 color=0x38b69ead height=100.0 kind="Liquid" mass=0.004 refraction=8.0 spacing=4.0 visibility=0.012 width=100.0
-    (object)GAME.GameTransform
-}

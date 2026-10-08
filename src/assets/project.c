@@ -218,9 +218,9 @@ static char *read_file(const char *path, char *error, size_t error_size)
         return NULL;
     }
     long length = ftell(file);
-    if (length < 0 || fseek(file, 0, SEEK_SET) != 0) {
+    if (length < 0 || length > 512 * 1024 || fseek(file, 0, SEEK_SET) != 0) {
         fclose(file);
-        set_errorf(error, error_size, "Cannot seek project manifest %s", path);
+        set_errorf(error, error_size, "Cannot read bounded project manifest %s", path);
         return NULL;
     }
     char *text = xmalloc((size_t)length + 1);
@@ -306,25 +306,6 @@ static int read_manifest(const char *path, chibi_project *project, char *error, 
     return 0;
 }
 
-static void choose_start_scene(chibi_project *project)
-{
-    if (project->start_scene) {
-        return;
-    }
-    char *arena_2d = join_path(project->content, "scenes/Sandbox" DECLARATIVE_ASSET_EXTENSION);
-    if (is_file(arena_2d)) {
-        project->start_scene = xstrdup("scenes/Sandbox" DECLARATIVE_ASSET_EXTENSION);
-        free(arena_2d);
-        return;
-    }
-    free(arena_2d);
-    char *arena_3d = join_path(project->content, "scenes/Arena3D" DECLARATIVE_ASSET_EXTENSION);
-    if (is_file(arena_3d)) {
-        project->start_scene = xstrdup("scenes/Arena3D" DECLARATIVE_ASSET_EXTENSION);
-    }
-    free(arena_3d);
-}
-
 void chibi_project_free(chibi_project *project)
 {
     if (!project) {
@@ -346,9 +327,6 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
     }
     chibi_project_free(project);
     const char *requested = path && path[0] ? path : ".";
-    if ((!path || !path[0]) && is_file("projects/arena2d/" CHIBI_PROJECT_MANIFEST)) {
-        requested = "projects/arena2d";
-    }
     char *input = absolute_path(requested);
     if (!input) {
         set_errorf(error, error_size, "Project path does not exist: %s", requested);
@@ -429,7 +407,6 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
     if (!project->name) {
         project->name = basename_copy(project->root);
     }
-    choose_start_scene(project);
     if (!project->start_scene) {
         set_errorf(error, error_size, "Project has no start scene: %s", project->root);
         chibi_project_free(project);

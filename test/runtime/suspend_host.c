@@ -88,7 +88,7 @@ void test_suspended_commands(void *library)
                         assert(!pin_value_snapshot_to_arena(
                             &values,
                             &expected_variables[j],
-                            &instance->variables[j]
+                            &instance->execution.variables[j]
                         ));
                     }
                     expected = capture;
@@ -152,7 +152,7 @@ void test_suspended_commands(void *library)
                     acount(capture.values) == acount(expected.values)
                 );
                 same(capture.values, expected.values, acount(capture.values));
-                same(instance->variables, expected_variables, 4);
+                same(instance->execution.variables, expected_variables, 4);
                 if (!status) {
                     same(result + 1, expected_result + 1, 4);
                 }

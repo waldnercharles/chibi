@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/flow_snapshot.h"
 #include "test/suite_internal.h"
@@ -387,7 +390,7 @@ static void comparison_branches()
                         );
                         assert(
                             run && flow_run_status(run) == FLOW_COMPLETED &&
-                            bi->variables[0].b == want
+                            bi->execution.variables[0].b == want
                         );
                         if (mode) {
                             assert(

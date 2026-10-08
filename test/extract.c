@@ -1,13 +1,15 @@
 #include "graph/document/extract.h"
 
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/instance.h"
-#include "graph/runtime/value_array.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <math.h>

@@ -2,7 +2,7 @@
 
 #include "render/arena_geometry.h"
 #include "render/shader_catalog.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -297,7 +297,7 @@ bool render_mesh_surface_build_with_bounds(
     if (imported && imported->source && *imported->source) {
         const GameMeshParts *parts = GAME_GameMeshParts_get_const(world, entity);
         arena_parts parsed;
-        if (!render_arena_parts_parse(parts ? parts->parts : NULL, &parsed, error, size)) {
+        if (!render_arena_parts_read(parts ? parts->parts : NULL, &parsed, error, size)) {
             return false;
         }
         if (parsed.count) {

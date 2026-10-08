@@ -1,9 +1,9 @@
 #include "runtime/engine_input.h"
 
-#include "graph/document/events.h"
-#include "runtime/generated.h"
-#include "runtime/scenes/gameplay.h"
-#include "runtime/systems/schedule.h"
+#include "execution/status.h"
+#include "runtime/component_catalog.h"
+#include "runtime/events.h"
+#include "runtime/systems/scheduler.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -28,8 +28,8 @@ typedef struct
 struct engine_input
 {
     ecs_world *world;
-    game_behavior_world *behaviors;
-    system_schedule *systems;
+    engine_input_host host;
+    game_schedule *systems;
     CF_V2 movement;
     bool movement_sampled;
     CF_V2 aim;
@@ -40,15 +40,16 @@ struct engine_input
     ecs_entity *controlled;
     ecs_entity *released;
     binding_change *changes;
-    flow_error error;
     char message[256];
 };
 
-engine_input *engine_input_new(ecs_world *world, game_behavior_world *behaviors, system_schedule *systems)
+engine_input *engine_input_new(ecs_world *world, const engine_input_host *host, game_schedule *systems)
 {
     engine_input *input = xcalloc(1, sizeof *input);
     input->world = world;
-    input->behaviors = behaviors;
+    if (host) {
+        input->host = *host;
+    }
     input->systems = systems;
     return input;
 }
@@ -147,6 +148,7 @@ void engine_input_clear(engine_input *input)
         int result = ecs_query_begin(input->world, &query, &component, 1);
         assert(result == ECS_OK);
         (void)result;
+        (void)result;
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
             clear_owner(input, entity);
@@ -184,7 +186,7 @@ int engine_input_action(engine_input *input, const char *action, bool pressed)
     if (!input || !action || !action[0]) {
         return FLOW_ERR_ARGUMENT;
     }
-    if (!game_behavior_has_event(input->behaviors, action)) {
+    if (!input->host.has_event || !input->host.has_event(input->host.context, action)) {
         return FLOW_ERR_UNKNOWN_EVENT;
     }
     if (!update_button(input, action, pressed)) {
@@ -338,6 +340,59 @@ static int apply_aim_sample(engine_input *input)
     return FLOW_OK;
 }
 
+static int dispatch(engine_input *input, ecs_entity entity, const char *event, execution_arguments arguments)
+{
+    if (!input->host.dispatch) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    return input->host.dispatch(
+        input->host.context,
+        entity,
+        event,
+        arguments,
+        input->message,
+        sizeof input->message
+    );
+}
+
+static int dispatch_movement(engine_input *input)
+{
+    ecs_component_id component = GAME_COMPONENT_GameInput.id;
+    if (!ecs_world_component(input->world, component)) {
+        return FLOW_OK;
+    }
+    ecs_query query;
+    int result = ecs_query_begin(input->world, &query, &component, 1);
+    if (result != ECS_OK) {
+        return result;
+    }
+    CF_V2 direction = input->movement;
+    pin_value value = { .type = PIN_STRUCT,
+                        .type_name = GAME_T_CF_V2.name,
+                        .ptr = &direction };
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        GameInput *member = GAME_GameInput_get(input->world, entity);
+        bool active = direction.x != 0 || direction.y != 0;
+        bool was_active = member->move.x != 0 || member->move.y != 0;
+        member->move = direction;
+        if (!active && !was_active) {
+            continue;
+        }
+        result = dispatch(
+            input,
+            entity,
+            game_host_event_name(GAME_HOST_EVENT_INPUT),
+            (execution_arguments){ &value, 1 }
+        );
+        if (result < 0) {
+            break;
+        }
+    }
+    ecs_query_end(&query);
+    return result < 0 ? result : FLOW_OK;
+}
+
 static int apply_movement_sample(engine_input *input)
 {
     if (!input->movement_sampled) {
@@ -372,12 +427,11 @@ static int apply_movement_sample(engine_input *input)
         if (!ecs_entity_is_alive(input->world, released[i])) {
             continue;
         }
-        result = game_behavior_dispatch(
-            input->behaviors,
+        result = dispatch(
+            input,
             released[i],
-            graph_host_event_name(GRAPH_HOST_EVENT_INPUT),
-            (flow_inputs){ &value, 1, NULL },
-            NULL
+            game_host_event_name(GAME_HOST_EVENT_INPUT),
+            (execution_arguments){ &value, 1 }
         );
         if (result < 0) {
             break;
@@ -394,12 +448,11 @@ static int apply_movement_sample(engine_input *input)
             aim->firing = false;
             aim->manual = false;
         }
-        result = game_behavior_dispatch(
-            input->behaviors,
+        result = dispatch(
+            input,
             entity,
-            graph_host_event_name(GRAPH_HOST_EVENT_INPUT),
-            (flow_inputs){ &value, 1, NULL },
-            NULL
+            game_host_event_name(GAME_HOST_EVENT_INPUT),
+            (execution_arguments){ &value, 1 }
         );
         if (result < 0) {
             break;
@@ -408,9 +461,7 @@ static int apply_movement_sample(engine_input *input)
     afree(released);
     afree(input->controlled);
     input->controlled = controlled;
-    return result < 0
-             ? result
-             : game_movement_dispatch(input->world, input->behaviors, input->movement);
+    return result < 0 ? result : dispatch_movement(input);
 }
 
 static int dispatch_actions(engine_input *input)
@@ -446,13 +497,7 @@ static int dispatch_actions(engine_input *input)
             if (!GAME_GameInput_has(input->world, entity)) {
                 continue;
             }
-            result = game_behavior_dispatch(
-                input->behaviors,
-                entity,
-                transitions[i].action,
-                (flow_inputs){ 0 },
-                NULL
-            );
+            result = dispatch(input, entity, transitions[i].action, (execution_arguments){ 0 });
             if (result < 0) {
                 break;
             }
@@ -475,6 +520,7 @@ static void apply_action_state(engine_input *input)
     ecs_query query;
     int result = ecs_query_begin(input->world, &query, &component, 1);
     assert(result == ECS_OK);
+    (void)result;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         GameActionBinding *binding = GAME_GameActionBinding_get(input->world, entity);
@@ -490,62 +536,68 @@ static void apply_action_state(engine_input *input)
 
 int engine_input_apply(engine_input *input)
 {
-    input->error = (flow_error){ 0 };
     input->message[0] = 0;
     apply_action_state(input);
     int result = apply_aim_sample(input);
     if (result >= 0) {
         result = apply_movement_sample(input);
     }
+    /* Notify source field observers before an event boundary samples the
+     * mutated component. Each explicit edge remains authoritative, including
+     * repeated payloads; external actions still precede PressedChanged events. */
+    binding_change *changes = input->changes;
+    input->changes = NULL;
+    for (int i = 0; result >= 0 && i < acount(changes); i++) {
+        if (!input->host.field_changed ||
+            !ecs_entity_is_alive(input->world, changes[i].entity) ||
+            !GAME_GameActionBinding_has(input->world, changes[i].entity)) {
+            continue;
+        }
+        result = input->host.field_changed(
+            input->host.context,
+            changes[i].entity,
+            GAME_COMPONENT_GameActionBinding.id,
+            offsetof(GameActionBinding, pressed),
+            (pin_value){ .type = PIN_BOOL, .b = changes[i].pressed },
+            input->message,
+            sizeof input->message
+        );
+    }
     if (result >= 0) {
         result = dispatch_actions(input);
     }
     /* Gameplay runs after releasing the component query. Focus/transport
      * clears enqueue their release here and deliver it when simulation resumes. */
-    binding_change *changes = input->changes;
-    input->changes = NULL;
     for (int i = 0; result >= 0 && i < acount(changes); i++) {
         if (!ecs_entity_is_alive(input->world, changes[i].entity) ||
             !GAME_GameActionBinding_has(input->world, changes[i].entity)) {
             continue;
         }
         pin_value pressed = { .type = PIN_BOOL, .b = changes[i].pressed };
-        result = game_behavior_dispatch(
-            input->behaviors,
+        result = dispatch(
+            input,
             changes[i].entity,
-            graph_host_event_name(GRAPH_HOST_EVENT_PRESSED_CHANGED),
-            (flow_inputs){ &pressed, 1, NULL },
-            &input->error
+            game_host_event_name(GAME_HOST_EVENT_PRESSED_CHANGED),
+            (execution_arguments){ &pressed, 1 }
         );
         if (result >= 0) {
-            result = game_behavior_field_changed(
-                input->behaviors,
-                changes[i].entity,
-                GAME_COMPONENT_GameActionBinding.id,
-                offsetof(GameActionBinding, pressed),
-                pressed,
-                &input->error
-            );
-        }
-        if (result >= 0) {
-            result = system_schedule_field_changed(
+            game_schedule_error error = { 0 };
+            result = game_schedule_field_changed(
                 input->systems,
                 changes[i].entity,
                 GAME_COMPONENT_GameActionBinding.id,
                 offsetof(GameActionBinding, pressed),
                 pressed,
-                &input->error
+                &error
             );
+            if (result < 0) {
+                snprintf(input->message, sizeof input->message, "%s", error.message);
+            }
         }
     }
     afree(changes);
-    if (result < 0) {
-        snprintf(
-            input->message,
-            sizeof input->message,
-            "%s",
-            input->error.message ? input->error.message : "Input action failed"
-        );
+    if (result < 0 && !input->message[0]) {
+        snprintf(input->message, sizeof input->message, "Input action failed");
     }
     return result < 0 ? result : FLOW_OK;
 }

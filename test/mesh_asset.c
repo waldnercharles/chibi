@@ -1,5 +1,6 @@
-#include "render/mesh_asset.h"
+#include "runtime/geometry/mesh_asset.h"
 
+#include "authoring/mesh_prepare.h"
 #include "render/mesh_surface.h"
 #include "support/array.h"
 

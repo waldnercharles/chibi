@@ -1,8 +1,8 @@
 #ifndef CHIBI_GAME_INTERFACE_H
 #define CHIBI_GAME_INTERFACE_H
 
-#include "graph/model/annotate.h"
 #include "runtime/components.h"
+#include "types/annotate.h"
 
 NODE_FN NODE_JIT("v2-move") NODE_DESCRIPTION(
     "Returns transform moved by x and y."

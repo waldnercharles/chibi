@@ -1,30 +1,16 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_program.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
+#include "test/support/reflected_types.h"
 #include "test/whole_alias_fixture.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
-typedef struct
-{
-    float x, y;
-} alias_vector;
-static const type_field fields[] = {
-    { "x", PIN_F32, offsetof(alias_vector, x), sizeof(float), "float" },
-    { "y", PIN_F32, offsetof(alias_vector, y), sizeof(float), "float" },
-};
-static const type_desc source_type = { .name = "AliasSource",
-                                       .size = sizeof(alias_vector),
-                                       .fields = fields,
-                                       .field_count = 2 };
-static const type_desc target_type = { .name = "AliasTarget",
-                                       .size = sizeof(alias_vector),
-                                       .fields = fields,
-                                       .field_count = 2,
-                                       .alias_of = "AliasSource" };
 static pin_value copy_alias(const pin_value *args, arena *storage, const char *name)
 {
     pin_value result = { .type = PIN_STRUCT, .type_name = name };
@@ -68,7 +54,8 @@ static node_desc conversions[] = {
       .conversion_to = "AliasSource",
       .fn = from_alias },
 };
-static const type_desc *const types[] = { &source_type, &target_type };
+static const type_desc *const types[] = { &WHOLE_ALIAS_SOURCE_TYPE,
+                                          &WHOLE_ALIAS_TARGET_TYPE };
 static node_desc *const nodes[] = { &conversions[0], &conversions[1] };
 const registry_pack WHOLE_ALIAS_PACK = { .name = "Alias fixture",
                                          .types = types,

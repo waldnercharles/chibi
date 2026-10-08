@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/xalloc.h"
@@ -186,9 +189,12 @@ void whole_async_smoke()
         assert(flow_host_resume(capture.requests[i]) == FLOW_SUSPENDED_RESULT);
         now += .25;
         assert(behavior_instance_tick(instance, now) >= 0);
-        assert(instance->variables[0].u64 == (uint64_t)(100 + i));
+        assert(instance->execution.variables[0].u64 == (uint64_t)(100 + i));
     }
-    assert(flow_run_status(run) == FLOW_COMPLETED && instance->variables[1].i == 1);
+    assert(
+        flow_run_status(run) == FLOW_COMPLETED &&
+        instance->execution.variables[1].i == 1
+    );
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_instance_destroy(instance);
     whole_async_clear(&capture);

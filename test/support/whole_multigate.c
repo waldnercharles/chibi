@@ -1,5 +1,8 @@
 #include "ecs/ecs.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/update.h"
@@ -172,8 +175,8 @@ void whole_multigate_smoke()
             assert(flow_run_status(run) == FLOW_COMPLETED);
             assert(!behavior_instance_release_activation(bi, run));
         }
-        assert(bi->variables[1].i == (kind & WHOLE_MULTIGATE_LOOP ? 24 : 8));
-        assert(bi->variables[0].i == (kind & WHOLE_MULTIGATE_LOOP ? 3 : 2));
+        assert(bi->execution.variables[1].i == (kind & WHOLE_MULTIGATE_LOOP ? 24 : 8));
+        assert(bi->execution.variables[0].i == (kind & WHOLE_MULTIGATE_LOOP ? 3 : 2));
         if (!(kind & WHOLE_MULTIGATE_WAIT)) {
             assert(!behavior_instance_rebind(bi, NULL));
             behavior_batch *batch = NULL;
@@ -181,7 +184,7 @@ void whole_multigate_smoke()
                 flow_run *failed;
                 assert(behavior_instance_dispatch_batch(bi, "Tick", &batch, &failed) && !failed);
             }
-            assert(bi->variables[1].i == (kind & WHOLE_MULTIGATE_LOOP ? 24 : 8));
+            assert(bi->execution.variables[1].i == (kind & WHOLE_MULTIGATE_LOOP ? 24 : 8));
             behavior_batch_free(batch);
             assert(!behavior_instance_rebind(bi, NULL));
             behavior_instance *other = behavior_instance_create(a, NULL, NULL, NULL);
@@ -189,16 +192,18 @@ void whole_multigate_smoke()
             ecs_world *ecs = ecs_world_new();
             behavior_update_binding **bindings = NULL;
             node *entry;
-            const behavior_function *f = behavior_program_batch_event(a->program, "Tick", &entry);
+            const behavior_function *
+                f = behavior_program_batch_event(behavior_program_cached(a), "Tick", &entry);
             assert(f);
             behavior_update_row rows[2];
             for (int row = 0; row < 2; row++) {
                 behavior_instance *instance = row ? other : bi;
-                rows[row] = (behavior_update_row){
-                    .instance = instance,
-                    .binding = behavior_update_prepare(&bindings, instance, f, entry),
-                    .entity = ecs_entity_to_u64(ecs_world_create_entity(ecs))
-                };
+                rows[row] = behavior_update_row_make(
+                    instance,
+                    behavior_update_prepare(&bindings, instance, f, entry),
+                    ecs_entity_to_u64(ecs_world_create_entity(ecs)),
+                    0
+                );
             }
             void *code = behavior_update_compile();
             bool native = behavior_default_backend() == BEHAVIOR_SLJIT;
@@ -221,9 +226,12 @@ void whole_multigate_smoke()
                                                );
                 assert(end == rows + 2 && result == FLOW_OK);
             }
-            assert(bi->variables[1].i == (kind & WHOLE_MULTIGATE_LOOP ? 24 : 8));
-            assert(other->variables[1].i == bi->variables[1].i);
-            assert(bi->node_states[0].str != other->node_states[0].str);
+            assert(bi->execution.variables[1].i == (kind & WHOLE_MULTIGATE_LOOP ? 24 : 8));
+            assert(other->execution.variables[1].i == bi->execution.variables[1].i);
+            assert(
+                bi->execution.node_states[0].str !=
+                other->execution.node_states[0].str
+            );
             behavior_update_free_code(code);
             behavior_update_free_bindings(bindings);
             ecs_world_free(ecs);

@@ -151,7 +151,11 @@ static void presence_track(rml_element *element, presence_phase phase)
 {
     int i = presence_find(element);
     if (i < 0) {
-        apush(presences, ((presence){ rml_element_ref_create(element), rml_element_context(element) }));
+        apush(
+            presences,
+            ((presence){ .ref = rml_element_ref_create(element),
+                         .context = rml_element_context(element) })
+        );
         i = acount(presences) - 1;
     }
     presences[i].phase = phase;

@@ -25,7 +25,8 @@
 #include "render/shader_dir.h"
 #include "render/shader_fragment.h"
 #include "render/shader_images.h"
-#include "runtime/generated.h"
+#include "render/viewport.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -99,10 +100,6 @@ struct app_scene_renderer
 
 void app_scene_renderer_initialize()
 {
-    char message[256];
-    if (!render_image_mount_content("content", message, sizeof message)) {
-        fprintf(stderr, "%s\n", message);
-    }
     cf_fs_mount(render_shader_dir(), "/chibi-render", true);
     cf_shader_directory("/chibi-render");
 }
@@ -1357,6 +1354,7 @@ static bool starfield(ecs_world *world, GameStarfield2D *style)
     ecs_query query;
     int result = ecs_query_begin(world, &query, &component, 1);
     assert(result == ECS_OK);
+    (void)result;
     ecs_entity entity;
     bool found = ecs_query_next(&query, &entity);
     if (found) {

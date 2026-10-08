@@ -2,6 +2,7 @@
 
 #include "diagnostics/tracy.h"
 #include "runtime/material_terrain.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -17,6 +18,14 @@ enum
     /* Rows of a prefetched tile each unit of budget bakes per update. */
     STREAM_SLICE_ROWS = 16
 };
+
+static char *copy_text(arena *storage, const char *text)
+{
+    size_t size = strlen(text) + 1;
+    char *copy = arena_alloc(storage, size);
+    memcpy(copy, text, size);
+    return copy;
+}
 
 typedef struct
 {
@@ -34,6 +43,7 @@ typedef struct
 struct material_stream
 {
     material_stream_desc desc;
+    arena argument_storage;
     material_stream_tile *tiles;
     pending_tile pending;
     material_field_session *field_session;
@@ -54,7 +64,33 @@ material_stream *material_stream_new(material_stream_desc desc)
     material_stream *s = xcalloc(1, sizeof *s);
     s->desc = desc;
     s->desc.field = xstrdup(desc.field);
-    s->desc.parameters = xstrdup(desc.parameters ? desc.parameters : "");
+    assert(desc.context.parameter_count >= 0 && desc.context.parameter_count <= 4096);
+    assert(!desc.context.parameter_count || desc.context.parameters);
+    field_parameter *parameters = arena_alloc(
+        &s->argument_storage,
+        (size_t)desc.context.parameter_count * sizeof *parameters
+    );
+    for (int i = 0; i < desc.context.parameter_count; i++) {
+        parameters[i] = desc.context.parameters[i];
+        assert(parameters[i].name && strlen(parameters[i].name) <= FIELD_PARAMETER_NAME_MAX);
+        assert(
+            !parameters[i].value.type_name ||
+            strlen(parameters[i].value.type_name) <= FIELD_PARAMETER_NAME_MAX
+        );
+        assert(parameters[i].value.container == PIN_CONTAINER_SINGLE);
+        assert(
+            parameters[i].value.type == PIN_F32 ||
+            parameters[i].value.type == PIN_I32 || parameters[i].value.type == PIN_U32
+        );
+        parameters[i].name = copy_text(&s->argument_storage, parameters[i].name);
+        if (parameters[i].value.type_name) {
+            parameters[i].value.type_name = copy_text(
+                &s->argument_storage,
+                parameters[i].value.type_name
+            );
+        }
+    }
+    s->desc.context.parameters = parameters;
     s->columns = (desc.grid.width + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
                  MATERIAL_TERRAIN_CHUNK_CELLS;
     s->rows = (desc.grid.height + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
@@ -81,7 +117,7 @@ void material_stream_free(material_stream *s)
         fclose(s->file);
     }
     free((char *)s->desc.field);
-    free((char *)s->desc.parameters);
+    arena_free(&s->argument_storage);
     free(s);
 }
 
@@ -210,8 +246,7 @@ static bool bake_rows(
         s->field_session = material_field_session_new(
             fields,
             s->desc.field,
-            s->desc.parameters,
-            s->desc.seed,
+            s->desc.context,
             s->desc.tasks,
             error,
             size

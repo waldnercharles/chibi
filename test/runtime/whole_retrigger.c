@@ -1,6 +1,7 @@
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/flow_snapshot.h"
@@ -38,24 +39,30 @@ static saved_code *replace(behavior_function *f, void *library, int kind)
     saved_code *saved = NULL;
     for (int i = 0; i <= acount(f->definitions); i++) {
         behavior_function *part = i ? f->definitions[i - 1] : f;
-        apush(saved, ((saved_code){ part, part->code, part->inspection_code, part->dispatch }));
+        apush(
+            saved,
+            ((saved_code){ part,
+                           part->artifact->code,
+                           part->artifact->inspection_code,
+                           part->artifact->dispatch })
+        );
         char name[96];
         snprintf(name, sizeof name, "whole_retrigger_%d", kind);
         if (i) {
             snprintf(name, sizeof name, "whole_retrigger_%d_callee_%d", kind, i);
         }
-        part->code = part->inspection_code = dlsym(library, name);
-        part->dispatch = NULL;
-        assert(part->code);
+        part->artifact->code = part->artifact->inspection_code = dlsym(library, name);
+        part->artifact->dispatch = NULL;
+        assert(part->artifact->code);
     }
     return saved;
 }
 static void restore(saved_code *saved)
 {
     for (int i = 0; i < acount(saved); i++) {
-        saved[i].function->code = saved[i].code;
-        saved[i].function->inspection_code = saved[i].inspection;
-        saved[i].function->dispatch = saved[i].dispatch;
+        saved[i].function->artifact->code = saved[i].code;
+        saved[i].function->artifact->inspection_code = saved[i].inspection;
+        saved[i].function->artifact->dispatch = saved[i].dispatch;
     }
     afree(saved);
 }
@@ -164,7 +171,9 @@ static void parity(int kind, int control, double duration, unsigned budget, void
             assert(flow_run_status(second) == FLOW_COMPLETED);
             double wake = flow_run_wake_time(first);
             assert(isnan(duration) ? isnan(wake) : wake == .5 + duration);
-            assert(bi->variables[0].i == 0 && bi->variables[1].i == 1);
+            assert(
+                bi->execution.variables[0].i == 0 && bi->execution.variables[1].i == 1
+            );
         }
         if (flow_run_status(first) == FLOW_SUSPENDED) {
             observe(&c, first, FLOW_SUSPENDED_RESULT);
@@ -186,8 +195,8 @@ static void parity(int kind, int control, double duration, unsigned budget, void
             }
         }
         if (budget == 1000) {
-            assert(bi->variables[0].i == (control == 4 ? 99 : 7));
-            assert(bi->variables[1].i == (control == 4 ? 2 : 3));
+            assert(bi->execution.variables[0].i == (control == 4 ? 99 : 7));
+            assert(bi->execution.variables[1].i == (control == 4 ? 2 : 3));
         }
         if (mode) {
             assert(c.at == acount(expected));
@@ -245,10 +254,8 @@ static void clear(behavior_instance *bi)
 static void lifecycle(int kind, behavior_backend backend)
 {
     behavior_asset *a = whole_retrigger_fixture(kind);
-    char *json = behavior_asset_save(a);
-    behavior_asset *next = behavior_asset_load(json);
-    free(json);
-    assert(next);
+    behavior_asset *next = behavior_asset_clone(a);
+    assert(next && behavior_asset_equal(a, next));
     for (int j = 0; j < acount(next->graphs); j++) {
         graph *g = next->graphs[j];
         for (int n = 1; n < acount(g->nodes); n++) {
@@ -293,7 +300,7 @@ static void lifecycle(int kind, behavior_backend backend)
     assert(!behavior_instance_set_backend(bi, backend));
     first = dispatch(bi, 1, 7);
     assert(flow_run_status(first) == FLOW_SUSPENDED);
-    assert(bi->variables[0].i == 0 && bi->variables[1].i == 0);
+    assert(bi->execution.variables[0].i == 0 && bi->execution.variables[1].i == 0);
     assert(flow_run_wake_time(first) == bi->local_clock.current_time + 1.);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
@@ -324,7 +331,7 @@ static void paused(behavior_backend backend)
     assert(flow_run_status(first) == FLOW_COMPLETED);
     assert(flow_run_wake_time(second) == 1.5);
     assert(!flow_run_tick_at(second, 1.5));
-    assert(bi->variables[0].i == 42 && bi->variables[1].i == 2);
+    assert(bi->execution.variables[0].i == 42 && bi->execution.variables[1].i == 2);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
     if (backend != BEHAVIOR_ORACLE) {

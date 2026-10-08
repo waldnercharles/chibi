@@ -1,6 +1,9 @@
 #include "graph/nodes/component_nodes.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/local.h"
+#include "graph/model/native_definition.h"
+#include "runtime/core_definition.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -8,15 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define SETTING_PIN                                                            \
-    {                                                                          \
-        .name = "Component", .type = PIN_NAME, .flags = PIN_FLAG_SETTING,      \
-        .default_value = {                                                     \
-            .type = PIN_NAME                                                   \
-        }                                                                      \
-    }
-#define ENTITY_PIN                                                             \
-    { .name = "Entity", .type = PIN_HANDLE, .type_name = "ecs.entity", .flags = PIN_FLAG_DEFAULT_SELF }
 #define VALUE_PIN(pin_flags)                                                          \
     {                                                                                 \
         .name = "Value", .type = PIN_STRUCT, .flags = (pin_flags), .default_value = { \
@@ -31,8 +25,6 @@
             .type = PIN_NAME                                                   \
         }                                                                      \
     }
-#define EXEC_PIN { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC }
-#define THEN_PIN { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC }
 
 /* Set's Value input follows Exec, Component and Entity. */
 enum
@@ -40,77 +32,94 @@ enum
     SET_VALUE = 3,
 };
 
-static pin_spec get_inputs[] = { SETTING_PIN, ENTITY_PIN };
-static pin_spec get_outputs[] = { VALUE_PIN(PIN_FLAG_REFERENCE) };
-static pin_spec has_outputs[] = { { .name = "Value", .type = PIN_BOOL, .type_name = "bool" } };
-static pin_spec set_inputs[] = { EXEC_PIN, SETTING_PIN, ENTITY_PIN, VALUE_PIN(0) };
-static pin_spec set_outputs[] = { THEN_PIN, VALUE_PIN(0) };
-static pin_spec add_inputs[] = { EXEC_PIN, SETTING_PIN };
-static pin_spec add_outputs[] = { THEN_PIN,
-                                  { .name = "Value", .type = PIN_BOOL, .type_name = "bool" } };
+#define COMPONENT_PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
+    GRAPH_NATIVE_PORT_FLAGS(                                                                                  \
+        NAME,                                                                                                 \
+        KIND,                                                                                                 \
+        STORAGE,                                                                                              \
+        TYPE_NAME,                                                                                            \
+        CONTAINER,                                                                                            \
+        TYPE_FLAGS,                                                                                           \
+        GROUP,                                                                                                \
+        REFERENCE,                                                                                            \
+        OWNER,                                                                                                \
+        VALUE,                                                                                                \
+        ((TYPE_FLAGS & SCRIPT_TYPE_REFERENCE) ? PIN_FLAG_REFERENCE : 0) |                                     \
+            ((REFERENCE == SCRIPT_REFERENCE_COMPONENT) ? PIN_FLAG_SETTING : 0)                                \
+    )
+static pin_spec get_inputs[] = { CORE_COMPONENT_GET_INPUTS(COMPONENT_PORT) };
+static pin_spec get_outputs[] = { CORE_COMPONENT_GET_OUTPUTS(COMPONENT_PORT) };
+static pin_spec has_outputs[] = { CORE_COMPONENT_HAS_OUTPUTS(COMPONENT_PORT) };
+static pin_spec set_inputs[] = { CORE_COMPONENT_SET_INPUTS(COMPONENT_PORT) };
+static pin_spec set_outputs[] = { CORE_COMPONENT_SET_OUTPUTS(COMPONENT_PORT) };
+static pin_spec add_inputs[] = { CORE_COMPONENT_CHANGE_INPUTS(COMPONENT_PORT) };
+static pin_spec add_outputs[] = { CORE_COMPONENT_CHANGE_OUTPUTS(COMPONENT_PORT) };
+#undef COMPONENT_PORT
 static pin_spec make_inputs[] = { TYPE_PIN };
 static pin_spec make_outputs[] = { VALUE_PIN(0) };
 static pin_spec break_inputs[] = { VALUE_PIN(0), TYPE_PIN };
 
 node_desc NODE_GetComponent = {
-    .name = "Get Component",
+    .source_component_access = NODE_SOURCE_COMPONENT_READ,
+    .source_component_entity = 1,
+    .source_component_value = -1,
+    .name = CORE_COMPONENT_GET_NAME,
     .input_count = 2,
     .inputs = get_inputs,
     .output_count = 1,
     .outputs = get_outputs,
-    .category = "Components",
-    .keywords = "component read field entity self",
-    .description = "Reads a component from Entity, which defaults to Self.",
+    CORE_COMPONENT_GET_PRESENTATION,
 };
 
 node_desc NODE_SetComponent = {
-    .name = "Set Component",
+    .source_component_access = NODE_SOURCE_COMPONENT_WRITE,
+    .source_component_entity = 1,
+    .source_component_value = 2,
+    .name = CORE_COMPONENT_SET_NAME,
     .input_count = 4,
     .inputs = set_inputs,
     .output_count = 2,
     .outputs = set_outputs,
     .display_class = NODE_DISPLAY_FUNCTION,
-    .category = "Components",
-    .keywords = "component write assign field entity self",
-    .description = "Writes a component, or only the fields it shows, on "
-                   "Entity, which defaults to Self.",
+    CORE_COMPONENT_SET_PRESENTATION,
 };
 
 node_desc NODE_HasComponent = {
-    .name = "Has Component",
+    .source_component_access = NODE_SOURCE_COMPONENT_HAS,
+    .source_component_entity = 1,
+    .source_component_value = -1,
+    .name = CORE_COMPONENT_HAS_NAME,
     .input_count = 2,
     .inputs = get_inputs,
     .output_count = 1,
     .outputs = has_outputs,
-    .category = "Components",
-    .keywords = "component present exists check entity self",
-    .description = "Whether Entity, which defaults to Self, has a component.",
+    CORE_COMPONENT_HAS_PRESENTATION,
 };
 
 node_desc NODE_AddComponent = {
-    .name = "Add Component",
+    .source_component_access = NODE_SOURCE_COMPONENT_ADD,
+    .source_component_entity = -1,
+    .source_component_value = -1,
+    .name = CORE_COMPONENT_ADD_NAME,
     .input_count = 2,
     .inputs = add_inputs,
     .output_count = 2,
     .outputs = add_outputs,
     .display_class = NODE_DISPLAY_FUNCTION,
-    .category = "Components",
-    .keywords = "component add attach insert self",
-    .description = "Adds a component with default values to Self; Value is "
-                   "whether it was added.",
+    CORE_COMPONENT_ADD_PRESENTATION,
 };
 
 node_desc NODE_RemoveComponent = {
-    .name = "Remove Component",
+    .source_component_access = NODE_SOURCE_COMPONENT_REMOVE,
+    .source_component_entity = -1,
+    .source_component_value = -1,
+    .name = CORE_COMPONENT_REMOVE_NAME,
     .input_count = 2,
     .inputs = add_inputs,
     .output_count = 2,
     .outputs = add_outputs,
     .display_class = NODE_DISPLAY_FUNCTION,
-    .category = "Components",
-    .keywords = "component remove detach delete self",
-    .description = "Removes a component from Self; Value is whether it was "
-                   "there.",
+    CORE_COMPONENT_REMOVE_PRESENTATION,
 };
 
 node_desc NODE_MakeStruct = {

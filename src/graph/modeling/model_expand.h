@@ -6,11 +6,6 @@
 
 typedef struct
 {
-    uint64_t generated, authored;
-    char *asset, *path;
-} model_source;
-typedef struct
-{
     behavior_asset *asset;
     model_source *sources;
     model_part *parts;

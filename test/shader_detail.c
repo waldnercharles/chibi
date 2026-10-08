@@ -1,7 +1,7 @@
-#include "graph/shader/shader_detail.h"
-
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
+#include "runtime/shaders/detail.h"
 #include "support/array.h"
 
 #include <assert.h>

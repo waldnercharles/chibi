@@ -1,8 +1,7 @@
 #ifndef CHIBI_ECS_H
 #define CHIBI_ECS_H
 
-#include "graph/model/pin.h"
-#include "graph/model/type.h"
+#include "types/type.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -13,7 +12,7 @@
 typedef struct ecs_world ecs_world;
 typedef struct ecs_query ecs_query;
 typedef struct ecs_query_expr ecs_query_expr;
-typedef struct eval_component_reader eval_component_reader;
+struct ecs_execution_view;
 
 typedef struct
 {
@@ -95,8 +94,10 @@ struct ecs_query
 /* Entity storage grows automatically. Component rows remain contiguous, but a
  * structural change can relocate columns. Reacquire pointers after applying
  * commands or registering components; queries keep storage stable. */
-ecs_world *ecs_world_new(void);
+ecs_world *ecs_world_new();
 void ecs_world_free(ecs_world *world);
+/* The view belongs to the world. Reacquire columns after structural changes. */
+const struct ecs_execution_view *ecs_world_execution(const ecs_world *world);
 /* Optional bulk reservation; normal creation needs no capacity setting. */
 int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity);
 uint32_t ecs_world_entity_capacity(const ecs_world *world);
@@ -148,10 +149,6 @@ int ecs_component_read_field(
     int field,
     pin_value *out
 );
-/* Bind the ECS reflected component reader used by authored graph input
- * bindings. Its field_name argument is NULL for a whole component snapshot or
- * a dot-delimited path for a nested field. */
-void ecs_eval_component_reader_init(eval_component_reader *reader, ecs_world *world);
 int ecs_component_write_field(
     ecs_world *world,
     ecs_entity entity,
@@ -159,6 +156,24 @@ int ecs_component_write_field(
     int field,
     pin_value value
 );
+/* Retain a reflected value in its component row. offset and declared identify
+ * either the whole component or one nested reflected field. Managed writes
+ * snapshot the full row before publication and retire the previous row storage;
+ * returned managed pointers expire on replacement/removal/entity destruction.
+ * Plain numeric fields write without allocation. Containers are rejected until
+ * reflected fields describe their storage. Direct row writes retain their
+ * existing borrowed-pointer contract; this API never frees borrowed payloads. */
+int ecs_component_write_value(
+    ecs_world *,
+    ecs_entity,
+    ecs_component_id,
+    size_t offset,
+    pin_value declared,
+    pin_value value
+);
+/* Validate the same reflected destination contract without requiring an entity
+ * or mutating component storage. */
+bool ecs_component_accepts_value(const ecs_world *, ecs_component_id, size_t offset, pin_value declared);
 /* Retain reflected string values until the world is freed. */
 const char *ecs_world_intern_string(ecs_world *world, const char *text);
 

@@ -1,16 +1,16 @@
-/* The MCP's findReferences and callHierarchy, and inspectGraph's use counts,
- * over the catalog's reference index. Requests name symbols; responses give
- * the node and graph IDs inspectGraph and buildGraph take, and pins by name. */
+/* Native find_references, call_hierarchy and graph use counts over the
+ * catalog's shared reference index. Responses identify saved definitions,
+ * graph/node IDs and pin names for inspection. */
 #include "automation/navigation.h"
 
 #include "assets/call_hierarchy.h"
 #include "graph/document/events.h"
 #include "graph/nodes/component_nodes.h"
 #include "support/array.h"
-#include "third_party/yyjson/yyjson.h"
 
 #include <stdio.h>
 #include <string.h>
+#include <yyjson.h>
 
 enum
 {
@@ -351,7 +351,7 @@ static void add_symbol(const navigation *nav, yyjson_mut_doc *doc, yyjson_mut_va
     if (symbol.asset >= 0 && symbol.kind != REFERENCE_SYMBOL_EVENT) {
         add_asset(nav, doc, value, symbol.asset, true);
     }
-    if (symbol.kind == REFERENCE_SYMBOL_EVENT && graph_event_host_name(symbol.name)) {
+    if (symbol.kind == REFERENCE_SYMBOL_EVENT && game_host_event_reserved(symbol.name)) {
         yyjson_mut_obj_add_bool(doc, value, "host", true);
     }
 }
@@ -524,7 +524,7 @@ static void add_item_identity(
     yyjson_mut_obj_add_str(doc, object, "kind", CALL_KINDS[item->kind]);
     if (item->kind == CALL_EVENT) {
         add_text(doc, object, "name", item->name);
-        if (graph_event_host_name(item->name)) {
+        if (game_host_event_reserved(item->name)) {
             yyjson_mut_obj_add_bool(doc, object, "host", true);
         }
         if (item->asset >= 0) {

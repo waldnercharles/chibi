@@ -1,5 +1,0 @@
-name "ProjectileLifecycleProbe"
-components {
-    GAME.GameProjectile lifetime=0.05
-}
-(array)behaviors "ProjectileLifecycle"

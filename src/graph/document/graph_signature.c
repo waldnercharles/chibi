@@ -1,9 +1,11 @@
 #include "graph/document/graph_signature.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "graph/authoring/pin_edit.h"
 #include "graph/document/library.h"
 #include "graph/model/registry.h"
-#include "graph/runtime/value_array.h"
+#include "graph/nodes/core_nodes.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <string.h>

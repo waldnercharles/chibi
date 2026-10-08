@@ -1,7 +1,10 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "runtime/visual_motion.h"
 #include "test/whole_reaction_fixture.h"
 
@@ -81,7 +84,9 @@ void whole_reaction_smoke()
         assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_SUSPENDED);
         rotation.x = 99;
         assert(!behavior_instance_tick(bi, .125));
-        assert(flow_run_status(run) == FLOW_COMPLETED && bi->variables[0].b);
+        assert(
+            flow_run_status(run) == FLOW_COMPLETED && bi->execution.variables[0].b
+        );
         const GameVisualMotion *actual = GAME_GameVisualMotion_get_const(world, target ? other : owner);
         assert(
             actual->reaction_rotation.x == -1 &&

@@ -1,16 +1,15 @@
 #include "runtime/engine.h"
 
-#include "assets/system_document.h"
 #include "diagnostics/tracy.h"
-#include "graph/document/events.h"
-#include "graph/document/serialize.h"
-#include "render/sdf_motion.h"
-#include "runtime/behaviors/reactive.h"
+#include "execution/status.h"
+#include "runtime/component_catalog.h"
 #include "runtime/components.h" /* IWYU pragma: keep */
 #include "runtime/engine_input.h"
-#include "runtime/generated.h"
+#include "runtime/events.h"
 #include "runtime/particle_emitters.h"
 #include "runtime/scenes/physics.h"
+#include "runtime/source_input.h"
+#include "runtime/task_pool.h"
 #include "runtime/visual_motion.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -23,11 +22,12 @@
 
 typedef struct
 {
-    ecs_entity binding;
     char *name;
-    unsigned revision;
     int phase, order;
-    game_system *graph;
+    execution_program *program;
+    game_source_registry *sources;
+    game_source_system_batch *batch;
+    int batch_index;
     bool seen;
 } authored_system;
 
@@ -41,10 +41,13 @@ typedef enum
 struct engine
 {
     ecs_world *world;
-    game_live_world *live;
+    engine_modules modules;
+    game_source_input source_input;
     game_particle_emitters *emitters;
-    system_schedule *systems;
-    authored_system *authored;
+    game_schedule *systems;
+    game_task_pool *pool;
+    game_task_system tasks;
+    authored_system **authored;
     engine_render_fn render;
     void *render_user;
     engine_focus focus;
@@ -66,17 +69,17 @@ struct engine
 
 const game_visibility *engine_visibility(const engine *engine)
 {
-    return engine && engine->live ? engine->live->visibility : NULL;
+    return engine ? engine->modules.visibility : NULL;
 }
 
 game_audio *engine_audio(const engine *engine)
 {
-    return game_behavior_audio(engine->live->behaviors);
+    return engine->modules.audio;
 }
 
 game_ui *engine_ui(const engine *engine)
 {
-    return game_behavior_ui(engine->live->behaviors);
+    return engine->modules.ui;
 }
 
 bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity)
@@ -106,25 +109,110 @@ static int clock_now(struct timespec *out)
     return clock_gettime(CLOCK_MONOTONIC, out) == 0 ? 0 : -1;
 }
 
-engine *engine_new(ecs_world *world, game_live_world *live)
+static int sync_authored_systems(engine *);
+static void *schedule_enqueue(game_task_range *run, int count, int minimum, void *context, void *user)
+{
+    engine *e = user;
+    game_task_pool_begin(e->pool, true);
+    const game_task_system *tasks = game_task_pool_tasks(e->pool);
+    void *task = tasks->enqueue(run, count, minimum, context, tasks->user);
+    if (!task) {
+        game_task_pool_end(e->pool);
+    }
+    return task;
+}
+static void schedule_finish(void *task, void *user)
+{
+    engine *e = user;
+    const game_task_system *tasks = game_task_pool_tasks(e->pool);
+    tasks->finish(task, tasks->user);
+    game_task_pool_end(e->pool);
+}
+static bool has_simulation(const engine *e)
+{
+    return e->modules.sources || e->modules.entities || e->modules.physics ||
+           e->modules.materials || e->modules.particles ||
+           e->modules.visibility || e->modules.rendering;
+}
+static bool engine_paused(const engine *e)
+{
+    return e->modules.paused && e->modules.paused(e->modules.context);
+}
+static void boundary(engine *e)
+{
+    e->source_input.now = e->timing.simulation_time;
+    e->source_input.delta = ENGINE_FIXED_SECONDS;
+    if (e->modules.boundary) {
+        e->modules
+            .boundary(e->modules.context, e->source_input.now, e->source_input.delta);
+    }
+}
+static int update_sources(engine *e)
+{
+    game_source_registry *sources = e->modules.sources;
+    if (!sources) {
+        return FLOW_OK;
+    }
+    int status = game_source_begin(sources, e->timing.simulation_time, ENGINE_FIXED_SECONDS);
+    pin_value dt = { .type = PIN_F32, .f = (float)ENGINE_FIXED_SECONDS };
+    if (status >= 0) {
+        status = game_source_dispatch_all(sources, "Tick", &dt, 1, e->timing.simulation_time, ENGINE_FIXED_SECONDS);
+    }
+    if (status >= 0) {
+        status = game_source_step(sources, e->timing.simulation_time, ENGINE_FIXED_SECONDS);
+    }
+    if (status < 0) {
+        snprintf(e->error, sizeof e->error, "%s", game_source_error(sources));
+    }
+    return status < 0 ? status : FLOW_OK;
+}
+static int pump_sources(engine *e)
+{
+    if (!e->modules.sources) {
+        return FLOW_OK;
+    }
+    int status = game_source_pump(e->modules.sources, e->timing.simulation_time, ENGINE_FIXED_SECONDS);
+    if (status < 0) {
+        snprintf(e->error, sizeof e->error, "%s", game_source_error(e->modules.sources));
+    }
+    return status;
+}
+
+engine *engine_new(ecs_world *world, const engine_modules *modules)
 {
     if (!world) {
         return NULL;
     }
     engine *result = (engine *)xcalloc(1, sizeof *result);
     result->world = world;
-    result->systems = system_schedule_new(world);
-    result->live = live;
-    if (live) {
-        result->emitters = game_particle_emitters_new(live->particles);
-        game_particle_emitters_bind_materials(result->emitters, live->materials);
+    result->pool = game_task_pool_acquire();
+    result->tasks = (game_task_system){ game_task_pool_tasks(result->pool)->workers,
+                                        result,
+                                        schedule_enqueue,
+                                        schedule_finish };
+    result->systems = game_schedule_new(world, &result->tasks);
+    if (modules) {
+        result->modules = *modules;
+    }
+    assert(!result->modules.sources || game_source_world(result->modules.sources) == world);
+    assert(!result->modules.entities || game_entities_world(result->modules.entities) == world);
+    result->source_input.sources = result->modules.sources;
+    if (result->modules.particles) {
+        result->emitters = game_particle_emitters_new(result->modules.particles);
+        game_particle_emitters_bind_materials(result->emitters, result->modules.materials);
     }
     result->playing = true;
     result->time_scale = 1;
-    result
-        ->input = engine_input_new(world, live ? live->behaviors : NULL, result->systems);
-    if (live) {
-        game_behavior_set_delta_seconds(live->behaviors, ENGINE_FIXED_SECONDS);
+    if (!modules || modules->input) {
+        engine_input_host host = result->modules.sources
+                                   ? game_source_input_host(&result->source_input)
+                                   : (engine_input_host){ 0 };
+        result->input = engine_input_new(world, &host, result->systems);
+    }
+    boundary(result);
+    if (result->modules.sources && sync_authored_systems(result) < 0) {
+        engine_free(result);
+        return NULL;
     }
     return result;
 }
@@ -137,177 +225,239 @@ void engine_free(engine *engine)
     if (engine->emitters) {
         game_particle_emitters_free(engine->emitters);
     }
-    system_schedule_free(engine->systems);
+    game_schedule_free(engine->systems);
+    game_task_pool_release(engine->pool);
     for (int i = 0; i < acount(engine->authored); i++) {
-        game_system_free(engine->authored[i].graph);
-        free(engine->authored[i].name);
+        free(engine->authored[i]->name);
+        free(engine->authored[i]);
     }
     afree(engine->authored);
     afree(engine->recorded);
     afree(engine->replay);
-    engine_input_free(engine->input);
+    if (engine->input) {
+        engine_input_free(engine->input);
+    }
     free(engine);
 }
 
-int engine_register_system(engine *engine, const engine_system_desc *desc)
+int engine_register_system(engine *engine, const game_schedule_desc *desc)
 {
-    if (desc && desc->graph && engine->live) {
-        game_system *system = desc->graph;
-        game_behavior_world *behaviors = engine->live->behaviors;
-        game_system_bind_service(system, "game.entities", engine->live->entities);
-        game_system_bind_service(system, "game.particles", engine->live->particles);
-        game_system_bind_service(system, "game.save", game_behavior_save(behaviors));
-        game_system_bind_service(system, "game.audio", game_behavior_audio(behaviors));
-        game_system_bind_service(system, "game.ui", game_behavior_ui(behaviors));
-        game_system_bind_service(system, "game.visibility", engine->live->visibility);
+    for (int i = 0; desc && desc->name && i < acount(engine->authored); i++) {
+        if (!strcmp(engine->authored[i]->name, desc->name)) {
+            return -1;
+        }
     }
-    return system_schedule_register(engine->systems, desc);
+    return game_schedule_register(engine->systems, desc);
 }
-const system_schedule *engine_system_schedule(const engine *engine)
+const game_schedule *engine_system_schedule(const engine *engine)
 {
     return engine->systems;
 }
 
+typedef struct
+{
+    char *name;
+    int phase, order;
+    execution_program *program;
+} source_system_binding;
+static void source_bindings_free(source_system_binding *bindings)
+{
+    for (int i = 0; i < acount(bindings); i++) {
+        free(bindings[i].name);
+    }
+    afree(bindings);
+}
+static int source_system_run(ecs_world *, double, double, void *user, game_schedule_error *error)
+{
+    authored_system *system = user;
+    assert(system->batch);
+    int status = game_source_systems_run(
+        system->batch,
+        system->batch_index,
+        error->message,
+        sizeof error->message
+    );
+    error->status = status;
+    return status;
+}
+static bool source_system_parallel(void *user)
+{
+    authored_system *system = user;
+    assert(system->batch);
+    return game_source_systems_parallel(system->batch);
+}
 static int sync_authored_systems(engine *engine)
 {
-    if (!engine->live) {
+    if (!engine->modules.sources) {
         return 0;
     }
-    for (int i = 0; i < acount(engine->authored); i++) {
-        engine->authored[i].seen = false;
-    }
-    ecs_entity *bindings = NULL;
+    game_source_registry *sources = engine->modules.sources;
+    source_system_binding *bindings = NULL;
     ecs_component_id id = GAME_COMPONENT_EngineSystem.id;
     if (ecs_world_component(engine->world, id)) {
         ecs_query query;
-        int result = ecs_query_begin(engine->world, &query, &id, 1);
-        if (result != ECS_OK) {
+        int status = ecs_query_begin(engine->world, &query, &id, 1);
+        if (status != ECS_OK) {
             return FLOW_ERR_STATE;
         }
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            apush(bindings, entity);
+            const EngineSystem *binding = GAME_EngineSystem_get_const(engine->world, entity);
+            bool duplicate = false;
+            for (int i = 0; i < acount(bindings); i++) {
+                duplicate |= binding->asset &&
+                             !strcmp(bindings[i].name, binding->asset);
+            }
+            if (!binding->asset || !game_source_is_system(sources, binding->asset) ||
+                binding->phase < 0 || binding->phase >= SYSTEM_PHASE_COUNT ||
+                duplicate) {
+                snprintf(
+                    engine->error,
+                    sizeof engine->error,
+                    "Invalid or duplicate Scene source system: %s",
+                    binding->asset ? binding->asset : ""
+                );
+                ecs_query_end(&query);
+                source_bindings_free(bindings);
+                return FLOW_ERR_COMPILE;
+            }
+            apush(
+                bindings,
+                ((source_system_binding){ xstrdup(binding->asset),
+                                          binding->phase,
+                                          binding->order,
+                                          game_source_program(sources, binding->asset) })
+            );
         }
         ecs_query_end(&query);
     }
     for (int i = 0; i < acount(bindings); i++) {
-        EngineSystem binding = *GAME_EngineSystem_get_const(engine->world, bindings[i]);
-        const game_live_system_asset
-            *asset = game_live_find_system(engine->live, binding.asset);
-        if (!asset || binding.phase < 0 || binding.phase >= SYSTEM_PHASE_COUNT) {
-            snprintf(
-                engine->error,
-                sizeof engine->error,
-                "Invalid Scene system binding: %s",
-                binding.asset ? binding.asset : ""
-            );
-            afree(bindings);
-            return FLOW_ERR_COMPILE;
+        for (int j = 0; j < game_schedule_count(engine->systems); j++) {
+            const char *name = game_schedule_at(engine->systems, j);
+            if (strcmp(name, bindings[i].name)) {
+                continue;
+            }
+            bool authored = false;
+            for (int k = 0; k < acount(engine->authored); k++) {
+                authored |= !strcmp(engine->authored[k]->name, name);
+            }
+            if (!authored) {
+                snprintf(engine->error, sizeof engine->error, "Source system conflicts with native system: %s", name);
+                source_bindings_free(bindings);
+                return FLOW_ERR_COMPILE;
+            }
         }
-        int index = -1;
-        for (int j = 0; j < acount(engine->authored); j++) {
-            if (!strcmp(engine->authored[j].name, asset->name)) {
-                index = j;
+    }
+    const char **names = NULL;
+    for (int i = 0; i < acount(bindings); i++) {
+        apush(names, bindings[i].name);
+    }
+    int status = game_source_select_systems(sources, names, acount(names));
+    afree(names);
+    if (status < 0) {
+        snprintf(engine->error, sizeof engine->error, "%s", game_source_error(sources));
+        source_bindings_free(bindings);
+        return status;
+    }
+    for (int i = 0; i < acount(engine->authored); i++) {
+        authored_system *system = engine->authored[i];
+        system->seen = false;
+        for (int j = 0; j < acount(bindings); j++) {
+            source_system_binding *binding = &bindings[j];
+            if (system->program == binding->program) {
+                system->seen = !strcmp(system->name, binding->name) &&
+                               system->phase == binding->phase &&
+                               system->order == binding->order;
                 break;
             }
         }
-        if (index >= 0 && engine->authored[index].seen) {
-            snprintf(
-                engine->error,
-                sizeof engine->error,
-                "Duplicate Scene system: %s",
-                asset->name
-            );
-            afree(bindings);
-            return FLOW_ERR_COMPILE;
-        }
-        if (index >= 0 && engine->authored[index].revision == asset->revision &&
-            engine->authored[index].phase == binding.phase &&
-            engine->authored[index].order == binding.order) {
-            engine->authored[index].seen = true;
-            continue;
-        }
-        game_system_document *doc = game_live_load_system(
-            engine->live,
-            asset->json,
-            engine->error,
-            sizeof engine->error
-        );
-        if (!doc) {
-            afree(bindings);
-            return FLOW_ERR_COMPILE;
-        }
-        game_system *graph = game_system_new(
-            engine->world,
-            behavior_asset_clone(game_system_document_behavior_asset(doc))
-        );
-        int result = graph
-                       ? game_system_set_query(graph, game_system_document_query(doc))
-                       : -1;
-        game_system_document_free(doc);
-        engine_system_desc desc = { .name = asset->name,
-                                    .phase = binding.phase,
-                                    .order = binding.order,
-                                    .graph = graph };
-        if (result < 0 || engine_register_system(engine, &desc) < 0) {
-            snprintf(
-                engine->error,
-                sizeof engine->error,
-                "Could not compile Scene system %s",
-                asset->name
-            );
-            game_system_free(graph);
-            afree(bindings);
-            return FLOW_ERR_COMPILE;
-        }
-        authored_system current = {
-            bindings[i],   xstrdup(asset->name), asset->revision,
-            binding.phase, binding.order,        graph,
-            true
-        };
-        if (index < 0) {
-            apush(engine->authored, current);
-        } else {
-            game_system_free(engine->authored[index].graph);
-            free(engine->authored[index].name);
-            engine->authored[index] = current;
+        if (!system->seen) {
+            game_schedule_remove(engine->systems, system->name);
         }
     }
-    afree(bindings);
+    for (int i = 0; i < acount(bindings); i++) {
+        source_system_binding *binding = &bindings[i];
+        authored_system *system = NULL;
+        for (int j = 0; j < acount(engine->authored); j++) {
+            if (engine->authored[j]->program == binding->program) {
+                system = engine->authored[j];
+                break;
+            }
+        }
+        /* Publication can preserve the program pointer while replacing its
+         * immutable generation. Refresh copied scheduling effects each boundary. */
+        if (!system) {
+            system = xcalloc(1, sizeof *system);
+            apush(engine->authored, system);
+        } else {
+            free(system->name);
+        }
+        system->name = xstrdup(binding->name);
+        system->phase = binding->phase;
+        system->order = binding->order;
+        system->program = binding->program;
+        system->sources = sources;
+        system->seen = true;
+        execution_effect_summary effects = execution_module_effects(
+            execution_program_module(system->program)
+        );
+        game_schedule_desc desc = { .name = system->name,
+                                    .phase = system->phase,
+                                    .order = system->order,
+                                    .identity = system->program,
+                                    .run = source_system_run,
+                                    .parallel_ready = source_system_parallel,
+                                    .user = system,
+                                    .reads = effects.reads,
+                                    .read_count = effects.read_count,
+                                    .writes = effects.writes,
+                                    .write_count = effects.write_count,
+                                    .declared = effects.declared,
+                                    .structural = effects.structural,
+                                    .host_sink = effects.host_sink,
+                                    .world_read = effects.world_read,
+                                    .deterministic = effects.deterministic,
+                                    .parallel_safe = effects.parallel_safe };
+        status = game_schedule_register(engine->systems, &desc);
+        assert(!status);
+        (void)status;
+    }
+    source_bindings_free(bindings);
     for (int i = acount(engine->authored) - 1; i >= 0; i--) {
-        authored_system *a = &engine->authored[i];
-        if (a->seen) {
+        authored_system *system = engine->authored[i];
+        if (system->seen) {
             continue;
         }
-        system_schedule_remove(engine->systems, a->name);
-        game_system_free(a->graph);
-        free(a->name);
-        for (int j = i; j + 1 < acount(engine->authored); j++) {
-            engine->authored[j] = engine->authored[j + 1];
-        }
-        asetlen(engine->authored, acount(engine->authored) - 1);
+        free(system->name);
+        free(system);
+        adel(engine->authored, i);
     }
     return 0;
 }
 
 static int maintain_bindings(engine *engine)
 {
-    flow_error error = { 0 };
-    game_reactive_world_begin(engine->world);
-    int result = system_schedule_maintain(
+    game_schedule_error scheduling = { 0 };
+    const char *message = NULL;
+    int result = game_schedule_maintain(
         engine->systems,
         engine->timing.simulation_time,
         ENGINE_FIXED_SECONDS,
-        &error
+        &scheduling
     );
-    if (result >= 0 && engine->live) {
-        result = game_behavior_maintain(engine->live->behaviors, &error);
-    }
-    game_reactive_world_end(engine->world);
     if (result < 0) {
-        const char *message = error.message;
+        message = scheduling.message;
+    }
+    if (result >= 0 && engine->modules.sources) {
+        game_source_registry *sources = engine->modules.sources;
+        result = game_source_maintain(sources, engine->timing.simulation_time, ENGINE_FIXED_SECONDS);
+        if (result < 0) {
+            message = game_source_error(sources);
+        }
+    }
+    if (result < 0) {
         if (!message) {
-            message = system_schedule_error(engine->systems);
+            message = game_schedule_error_message(engine->systems);
         }
         snprintf(engine->error, sizeof engine->error, "%s", message && *message ? message : "Reactive maintenance failed");
     }
@@ -316,13 +466,71 @@ static int maintain_bindings(engine *engine)
 
 static int run_system_phase(engine *engine, system_phase phase)
 {
-    int result = system_schedule_run(engine->systems, phase, engine->timing.simulation_time, ENGINE_FIXED_SECONDS);
+    if (!game_schedule_build(engine->systems)) {
+        snprintf(
+            engine->error,
+            sizeof engine->error,
+            "%s",
+            game_schedule_error_message(engine->systems)
+        );
+        return FLOW_ERR_COMPILE;
+    }
+    const char **names = NULL;
+    for (int i = 0; i < acount(engine->authored); i++) {
+        authored_system *system = engine->authored[i];
+        if (system->seen && system->phase == (int)phase) {
+            system->batch_index = acount(names);
+            apush(names, system->name);
+        }
+    }
+    bool source_only = true;
+    for (int i = 0; i < game_schedule_count(engine->systems); i++) {
+        const game_schedule_desc *desc = game_schedule_descriptor_at(engine->systems, i);
+        if (desc->phase != phase) {
+            continue;
+        }
+        bool source = false;
+        for (int j = 0; j < acount(names); j++) {
+            source |= !strcmp(desc->name, names[j]);
+        }
+        source_only &= source;
+    }
+    game_source_registry *sources = engine->modules.sources;
+    game_source_system_batch *batch = sources ? game_source_systems_prepare(
+                                                    sources,
+                                                    names,
+                                                    acount(names),
+                                                    engine->timing.simulation_time,
+                                                    ENGINE_FIXED_SECONDS,
+                                                    source_only
+                                                )
+                                              : NULL;
+    afree(names);
+    if (sources && !batch) {
+        snprintf(engine->error, sizeof engine->error, "%s", game_source_error(sources));
+        return FLOW_ERR_COMPILE;
+    }
+    for (int i = 0; i < acount(engine->authored); i++) {
+        authored_system *system = engine->authored[i];
+        if (system->seen && system->phase == (int)phase) {
+            system->batch = batch;
+        }
+    }
+    int result = game_schedule_run(engine->systems, phase, engine->timing.simulation_time, ENGINE_FIXED_SECONDS);
+    int source_status = batch ? game_source_systems_finish(batch) : 0;
+    for (int i = 0; i < acount(engine->authored); i++) {
+        engine->authored[i]->batch = NULL;
+    }
+    if (result >= 0 && source_status < 0) {
+        snprintf(engine->error, sizeof engine->error, "%s", game_source_error(sources));
+        return source_status;
+    }
     if (result < 0) {
         snprintf(
             engine->error,
             sizeof engine->error,
             "%s",
-            system_schedule_error(engine->systems)
+            game_schedule_error_message(engine->systems)
         );
     }
     return result < 0 ? result : maintain_bindings(engine);
@@ -352,22 +560,35 @@ void engine_reset(engine *engine)
     engine->error[0] = 0;
     /* Recording and replay follow a scene from its start. */
     aclear(engine->recorded);
-    engine_input_reset(engine->input);
-    if (engine->live) {
-        game_save_discard(game_behavior_save(engine->live->behaviors));
-        game_behavior_set_time(engine->live->behaviors, 0);
-        game_behavior_set_delta_seconds(engine->live->behaviors, ENGINE_FIXED_SECONDS);
-        game_physics_reset(engine->live->physics);
-        game_materials_reset(engine->live->materials);
-        game_visibility_reset(engine->live->visibility);
-        game_audio_reset(engine_audio(engine));
-        game_ui_reset(game_behavior_ui(engine->live->behaviors));
+    if (engine->input) {
+        engine_input_reset(engine->input);
+    }
+    if (has_simulation(engine)) {
+        if (engine->modules.save) {
+            game_save_discard(engine->modules.save);
+        }
+        boundary(engine);
+        if (engine->modules.physics) {
+            game_physics_reset(engine->modules.physics);
+        }
+        if (engine->modules.materials) {
+            game_materials_reset(engine->modules.materials);
+        }
+        if (engine->modules.visibility) {
+            game_visibility_reset(engine->modules.visibility);
+        }
+        if (engine_audio(engine)) {
+            game_audio_reset(engine_audio(engine));
+        }
+        if (engine_ui(engine)) {
+            game_ui_reset(engine_ui(engine));
+        }
     }
 }
 
 const game_materials *engine_materials(const engine *engine)
 {
-    return engine && engine->live ? engine->live->materials : NULL;
+    return engine ? engine->modules.materials : NULL;
 }
 
 int engine_set_focus(engine *engine, engine_focus focus)
@@ -376,7 +597,7 @@ int engine_set_focus(engine *engine, engine_focus focus)
         return -1;
     }
     if (engine->focus == ENGINE_FOCUS_VIEWPORT &&
-        focus != ENGINE_FOCUS_VIEWPORT && !engine->replay) {
+        focus != ENGINE_FOCUS_VIEWPORT && !engine->replay && engine->input) {
         engine_input_clear(engine->input);
     }
     engine->focus = focus;
@@ -390,6 +611,9 @@ engine_focus engine_get_focus(const engine *engine)
 
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
 {
+    if (!engine->input) {
+        return FLOW_ERR_STATE;
+    }
     if (engine->replay) {
         *firing = false;
         return FLOW_OK;
@@ -399,6 +623,7 @@ int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
 
 void engine_record_input(engine *engine, unsigned seed)
 {
+    assert(engine->input);
     srand(seed);
     aclear(engine->recorded);
     engine->recording_input = true;
@@ -417,6 +642,7 @@ const input_keyframe *engine_recorded_input(const engine *engine, int *count)
 
 void engine_replay_input(engine *engine, const input_keyframe *keys, int count, unsigned seed)
 {
+    assert(engine->input);
     assert(count > 0 && keys[0].step == 0);
     srand(seed);
     aclear(engine->replay);
@@ -457,6 +683,9 @@ static const input_keyframe *replay_key(const engine *engine, int step)
  * a pause or focus change that clears input cannot drop it. */
 static int follow_input(engine *engine)
 {
+    if (!engine->input) {
+        return FLOW_OK;
+    }
     int step = (int)engine->timing.simulation_steps - 1;
     if (engine->replay) {
         return engine_input_hold(engine->input, replay_key(engine, step));
@@ -486,7 +715,7 @@ int engine_set_playing(engine *engine, bool playing)
     engine->accumulator = 0;
     engine->has_time = false;
     engine->step_requested = false;
-    if (!playing) {
+    if (!playing && engine->input) {
         engine_input_clear(engine->input);
     }
     return 0;
@@ -517,20 +746,20 @@ double engine_time_scale(const engine *engine)
     return engine->time_scale;
 }
 
-int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, flow_error *error)
+int engine_dispatch_input(engine *engine, const char *action, double value, int pressed, engine_input_failure *error)
 {
     if (error) {
-        *error = (flow_error){ 0 };
+        *error = (engine_input_failure){ 0 };
     }
     if (!engine || !action || !isfinite(value)) {
         return FLOW_ERR_ARGUMENT;
     }
-    if (engine->focus != ENGINE_FOCUS_VIEWPORT || !engine->playing || !engine->live) {
+    if (engine->focus != ENGINE_FOCUS_VIEWPORT || !engine->playing || !engine->input) {
         return FLOW_ERR_STATE;
     }
     int result = engine_input_action(engine->input, action, pressed != 0);
     if (result < 0 && error) {
-        *error = (flow_error){ .code = result, .message = "Unknown local input action." };
+        *error = (engine_input_failure){ .code = result, .message = "Unknown local input action." };
     }
     return result;
 }
@@ -540,7 +769,7 @@ int engine_sample_movement(engine *engine, float x, float y)
     if (!engine || !isfinite(x) || !isfinite(y)) {
         return FLOW_ERR_ARGUMENT;
     }
-    if (engine->focus != ENGINE_FOCUS_VIEWPORT || !engine->playing || !engine->live) {
+    if (engine->focus != ENGINE_FOCUS_VIEWPORT || !engine->playing || !engine->input) {
         return FLOW_ERR_STATE;
     }
     if (engine->replay) {
@@ -555,7 +784,7 @@ int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point)
     if (!engine || !isfinite(aim.x) || !isfinite(aim.y)) {
         return FLOW_ERR_ARGUMENT;
     }
-    if (!engine->live) {
+    if (!engine->input) {
         return FLOW_ERR_STATE;
     }
     if (engine->replay) {
@@ -568,11 +797,11 @@ int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point)
 
 static int flush_initializers(engine *engine)
 {
-    if (!engine->live) {
+    if (!engine->modules.entities) {
         return FLOW_OK;
     }
     int result = game_entities_flush_initializers(
-        engine->live->entities,
+        engine->modules.entities,
         engine->timing.simulation_time
     );
     if (result == FLOW_ERR_STEP_BUDGET) {
@@ -583,11 +812,16 @@ static int flush_initializers(engine *engine)
 
 static int pump_events(engine *engine)
 {
-    int result = game_materials_dispatch_events(engine->live->materials);
+    int result = engine->modules.materials
+                   ? game_materials_dispatch_events(engine->modules.materials)
+                   : FLOW_OK;
     if (result < 0) {
         return result;
     }
-    game_entities *entities = engine->live->entities;
+    game_entities *entities = engine->modules.entities;
+    if (!entities) {
+        return FLOW_OK;
+    }
     for (int batch = 0; batch < ENGINE_EVENT_BATCHES_MAX; batch++) {
         if (!game_entities_pending_events(entities)) {
             break;
@@ -601,7 +835,7 @@ static int pump_events(engine *engine)
         CHIBI_TRACE_ZONE_BEGIN(lifecycle_zone, "Contact batch lifecycle");
         result = flush_initializers(engine);
         CHIBI_TRACE_ZONE_END(lifecycle_zone);
-        if (result != 0 || game_behavior_paused(engine->live->behaviors)) {
+        if (result != 0 || engine_paused(engine)) {
             return result < 0 ? result : FLOW_PAUSED_RESULT;
         }
     }
@@ -629,7 +863,7 @@ static int update_visual_motion(engine *engine, float delta)
 static int finish_systems(engine *engine)
 {
     int result = FLOW_OK;
-    if (engine->live) {
+    if (has_simulation(engine)) {
         if (engine->phase == STEP_BEHAVIORS) {
             struct timespec start, end;
             if (clock_now(&start) != 0) {
@@ -641,7 +875,9 @@ static int finish_systems(engine *engine)
                 return result;
             }
             CHIBI_TRACE_ZONE_BEGIN(physics_zone, "Physics");
-            result = game_physics_tick(engine->live->physics, (float)ENGINE_FIXED_SECONDS);
+            result = engine->modules.physics
+                       ? game_physics_tick(engine->modules.physics, (float)ENGINE_FIXED_SECONDS)
+                       : FLOW_OK;
             CHIBI_TRACE_ZONE_END(physics_zone);
             if (clock_now(&end) != 0) {
                 return FLOW_ERR_STATE;
@@ -652,7 +888,7 @@ static int finish_systems(engine *engine)
                     engine->error,
                     sizeof engine->error,
                     "%s",
-                    game_physics_error(engine->live->physics)
+                    game_physics_error(engine->modules.physics)
                 );
                 return result;
             }
@@ -688,7 +924,7 @@ static int finish_systems(engine *engine)
         return result;
     }
     CHIBI_TRACE_ZONE_BEGIN(systems_zone, "ECS systems");
-    if (!engine->live) {
+    if (!has_simulation(engine)) {
         if ((result = run_system_phase(engine, SYSTEM_PRE_PHYSICS)) < 0 ||
             (result = run_system_phase(engine, SYSTEM_POST_PHYSICS)) < 0) {
             return result;
@@ -711,11 +947,11 @@ static int finish_systems(engine *engine)
     }
     /* Begin and reactions can change motion after integration. Resolve those
        authored values before presentation without advancing their clocks. */
-    if (engine->live && (result = update_visual_motion(engine, 0)) < 0) {
+    if (engine->modules.rendering && (result = update_visual_motion(engine, 0)) < 0) {
         return result;
     }
-    if (engine->live) {
-        const char *error = game_visibility_update(engine->live->visibility, ENGINE_FIXED_SECONDS);
+    if (engine->modules.visibility) {
+        const char *error = game_visibility_update(engine->modules.visibility, ENGINE_FIXED_SECONDS);
         if (error) {
             snprintf(engine->error, sizeof engine->error, "%s", error);
             return FLOW_ERR_NODE;
@@ -741,12 +977,14 @@ static int finish_step(engine *engine)
 
 static int continue_step(engine *engine)
 {
-    game_live_world *live = engine->live;
-    if (!live) {
+    engine_modules *live = &engine->modules;
+    if (!has_simulation(engine)) {
         return finish_step(engine);
     }
-    game_behavior_set_time(live->behaviors, engine->timing.simulation_time);
-    game_behavior_set_delta_seconds(live->behaviors, ENGINE_FIXED_SECONDS);
+    boundary(engine);
+    if (engine->phase == STEP_IDLE && sync_authored_systems(engine) < 0) {
+        return FLOW_ERR_COMPILE;
+    }
     int result = flush_initializers(engine);
     if (result != 0) {
         return result < 0 ? result : FLOW_OK;
@@ -757,11 +995,15 @@ static int continue_step(engine *engine)
             return FLOW_ERR_STATE;
         }
         CHIBI_TRACE_ZONE_BEGIN(visual_zone, "Visual systems");
-        result = game_particles_tick(live->particles, ENGINE_FIXED_SECONDS);
-        if (result >= 0) {
-            result = game_sdf_motion_tick(engine->world, ENGINE_FIXED_SECONDS);
+        result = live->particles
+                   ? game_particles_tick(live->particles, ENGINE_FIXED_SECONDS)
+                   : FLOW_OK;
+        if (result >= 0 && live->rendering) {
+            result = live->sdf_motion
+                       ? live->sdf_motion(engine->world, ENGINE_FIXED_SECONDS)
+                       : FLOW_OK;
         }
-        if (result >= 0) {
+        if (result >= 0 && live->rendering) {
             result = update_visual_motion(engine, (float)ENGINE_FIXED_SECONDS);
         }
         if (clock_now(&end) != 0) {
@@ -776,7 +1018,7 @@ static int continue_step(engine *engine)
         if (result >= 0) {
             result = maintain_bindings(engine);
         }
-        if (result >= 0) {
+        if (result >= 0 && engine->input) {
             CHIBI_TRACE_ZONE_BEGIN(input_zone, "Input actions");
             result = engine_input_apply(engine->input);
             CHIBI_TRACE_ZONE_END(input_zone);
@@ -792,7 +1034,8 @@ static int continue_step(engine *engine)
         }
         if (result >= 0) {
             CHIBI_TRACE_ZONE_BEGIN(events_zone, "Input events");
-            result = game_entities_dispatch_events(live->entities);
+            result = live->entities ? game_entities_dispatch_events(live->entities)
+                                    : FLOW_OK;
             CHIBI_TRACE_ZONE_END(events_zone);
         }
         if (result >= 0) {
@@ -800,31 +1043,32 @@ static int continue_step(engine *engine)
         }
         if (result >= 0) {
             CHIBI_TRACE_ZONE_BEGIN(behavior_zone, "Behavior update");
-            result = game_behavior_update(live->behaviors, NULL);
+            result = update_sources(engine);
             CHIBI_TRACE_ZONE_END(behavior_zone);
         }
         if (result >= 0) {
             CHIBI_TRACE_ZONE_BEGIN(behavior_pump_zone, "Behavior pump");
-            result = game_behavior_pump(live->behaviors, engine->timing.simulation_time);
+            result = pump_sources(engine);
             CHIBI_TRACE_ZONE_END(behavior_pump_zone);
         }
         if (result >= 0) {
             CHIBI_TRACE_ZONE_BEGIN(events_zone, "Behavior events");
-            result = game_entities_dispatch_events(live->entities);
+            result = live->entities ? game_entities_dispatch_events(live->entities)
+                                    : FLOW_OK;
             CHIBI_TRACE_ZONE_END(events_zone);
         }
         engine->phase = STEP_BEHAVIORS;
     } else {
         /* Resume a held activation before completing its remaining step stages. */
         CHIBI_TRACE_ZONE_BEGIN(behavior_pump_zone, "Behavior pump");
-        result = game_behavior_pump(live->behaviors, engine->timing.simulation_time);
+        result = pump_sources(engine);
         CHIBI_TRACE_ZONE_END(behavior_pump_zone);
     }
     if (result < 0) {
         return result;
     }
     result = flush_initializers(engine);
-    if (result != 0 || game_behavior_paused(live->behaviors)) {
+    if (result != 0 || engine_paused(engine)) {
         return result < 0 ? result : FLOW_OK;
     }
     if ((result = maintain_bindings(engine)) < 0) {
@@ -875,14 +1119,16 @@ static int advance_frame(engine *engine, double monotonic_time)
     engine->timing.systems_ms = 0;
     engine->timing.physics_ms = 0;
     engine->timing.events_ms = 0;
-    if (engine->live) {
-        game_behavior_profile_begin(engine->live->behaviors);
+    if (has_simulation(engine)) {
+        boundary(engine);
     }
-    int result = engine->live ? game_entities_flush(engine->live->entities) : FLOW_OK;
+    int result = engine->modules.entities
+                   ? game_entities_flush(engine->modules.entities)
+                   : FLOW_OK;
     if (result < 0) {
         return result;
     }
-    bool paused = engine->live && game_behavior_paused(engine->live->behaviors);
+    bool paused = engine_paused(engine);
     if (!paused && engine->debug_paused) {
         engine->timing.dropped_seconds += elapsed + engine->accumulator;
         engine->accumulator = 0;
@@ -894,13 +1140,13 @@ static int advance_frame(engine *engine, double monotonic_time)
         if (result < 0) {
             return result;
         }
-        paused = engine->live && game_behavior_paused(engine->live->behaviors);
+        paused = engine_paused(engine);
         if (!result && !paused && engine->phase != STEP_IDLE) {
             result = continue_step(engine);
             if (result < 0) {
                 return result;
             }
-            paused = game_behavior_paused(engine->live->behaviors);
+            paused = engine_paused(engine);
         }
     }
     if (!paused && (engine->playing || engine->step_requested)) {
@@ -924,7 +1170,7 @@ static int advance_frame(engine *engine, double monotonic_time)
             if (result < 0) {
                 return result;
             }
-            if (engine->live && game_behavior_paused(engine->live->behaviors)) {
+            if (engine_paused(engine)) {
                 break;
             }
         }
@@ -933,10 +1179,9 @@ static int advance_frame(engine *engine, double monotonic_time)
         engine->timing.dropped_seconds += elapsed + engine->accumulator;
         engine->accumulator = 0;
     }
-    engine->debug_paused = engine->live &&
-                           game_behavior_paused(engine->live->behaviors);
-    if (engine->live && engine->timing.simulation_steps == 0) {
-        const char *error = game_visibility_update(engine->live->visibility, 0);
+    engine->debug_paused = engine_paused(engine);
+    if (engine->modules.visibility && engine->timing.simulation_steps == 0) {
+        const char *error = game_visibility_update(engine->modules.visibility, 0);
         if (error) {
             snprintf(engine->error, sizeof engine->error, "%s", error);
             return FLOW_ERR_NODE;
@@ -998,23 +1243,18 @@ const engine_frame_timing *engine_last_timing(const engine *engine)
     return engine ? &engine->timing : NULL;
 }
 
-const game_behavior_profile_frame *engine_behavior_profile(const engine *engine)
-{
-    return engine->live ? game_behavior_profile(engine->live->behaviors) : NULL;
-}
-
 void engine_set_behavior_profiling(engine *engine, bool enabled)
 {
-    if (engine->live) {
-        game_behavior_set_profiling(engine->live->behaviors, enabled);
+    if (engine->modules.sources) {
+        game_source_profile_enable(engine->modules.sources, enabled);
     }
 }
 
 bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out)
 {
-    return engine && engine->live &&
+    return engine && engine->modules.physics &&
            game_physics_interpolate(
-               engine->live->physics,
+               engine->modules.physics,
                entity,
                engine->timing.alpha,
                out

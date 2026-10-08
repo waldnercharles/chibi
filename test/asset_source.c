@@ -1,8 +1,7 @@
 #include "assets/asset_source.h"
 
-#include "graph/document/events.h"
+#include "authoring/source_intelligence.h"
 #include "graph/model/registry.h"
-#include "graph/nodes/behavior_expression.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 
@@ -21,230 +20,56 @@ static bool has_completion(const asset_source_completions *choices, const char *
     return false;
 }
 
-static asset_source_completions complete_draft(const char *text)
+/* Executable source facts come from the shared canonical frontend. KDL
+ * property completion remains independently covered below. */
+static void test_source_payload_navigation()
 {
-    asset_source *source = asset_source_parse(text);
-    asset_source_completions result;
-    asset_source_complete(source, (int)strlen(text), "Behavior.code", NULL, 0, &result);
-    asset_source_free(source);
-    return result;
-}
-
-static const char *source_event_name(const graph_host_event_desc *event)
-{
-    return !strcmp(event->name, "Contact Begin") ? "ContactBegin" : event->name;
-}
-
-static const char *source_payload_name(const char *name)
-{
-    if (!strcmp(name, "DeltaSeconds")) {
-        return "dt";
+    const char
+        *text = "behavior Payload { on Tick(dt) { first:=dt; second:=dt; } }";
+    const script_catalog_parameter payload = { .name = "DeltaSeconds",
+                                               .type = { .storage = PIN_F32 } };
+    const script_catalog_capability event = { .id = 100,
+                                              .name = "Tick",
+                                              .kind = SCRIPT_CAPABILITY_EVENT,
+                                              .parameters = &payload,
+                                              .parameter_count = 1,
+                                              .completion_outcome = -1 };
+    const script_catalog catalog = { .capabilities = &event,
+                                     .capability_count = 1,
+                                     .tick_event = 100 };
+    script_syntax *syntax = script_parse(text);
+    script_analysis *analysis = script_analyze(syntax, &catalog);
+    assert(analysis->valid);
+    const authoring_document document = { .path = "Payload.chibi",
+                                          .syntax = syntax,
+                                          .analysis = analysis };
+    authoring_navigation *navigation = authoring_navigation_new(&document, 1, &catalog);
+    int offset = (int)(strstr(text, "first:=dt") - text) + 7;
+    const authoring_reference *use = authoring_navigation_at(navigation, 0, offset);
+    assert(use);
+    const authoring_reference *definition = authoring_navigation_definition(navigation, use->target);
+    assert(definition && definition->location.range.start == (int)(strstr(text, "dt)") - text));
+    int references = 0;
+    for (int i = 0; i < authoring_navigation_reference_count(navigation); i++) {
+        const authoring_reference *reference = authoring_navigation_reference_at(navigation, i);
+        references += reference->kind == AUTHORING_READ &&
+                      authoring_target_equal(reference->target, use->target);
     }
-    if (!strcmp(name, "Direction")) {
-        return "direction";
-    }
-    if (!strcmp(name, "Other")) {
-        return "other";
-    }
-    if (!strcmp(name, "Point")) {
-        return "point";
-    }
-    return name;
-}
-
-static void test_structured_completions()
-{
-    asset_source_completions choices = complete_draft("behavior Test { state ");
-    assert(has_completion(&choices, "entity") && has_completion(&choices, "string"));
-    assert(!has_completion(&choices, "handle") && !has_completion(&choices, "map"));
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { state bool enabled = ");
-    assert(has_completion(&choices, "true") && has_completion(&choices, "false"));
-    assert(!has_completion(&choices, "on"));
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { on ");
-    for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
-        assert(has_completion(&choices, source_event_name(&GRAPH_HOST_EVENTS[i])));
-    }
-    assert(!has_completion(&choices, "Contact Begin"));
-    asset_source_completions_free(&choices);
-    for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
-        const graph_host_event_desc *event = &GRAPH_HOST_EVENTS[i];
-        char draft[512];
-        snprintf(draft, sizeof draft, "behavior Test { on %s() { event.", source_event_name(event));
-        choices = complete_draft(draft);
-        assert(choices.start == (int)strlen(draft));
-        assert(acount(choices.items) == event->payload_count);
-        for (int p = 0; p < event->payload_count; p++) {
-            const pin_spec *pin = &event->payload[p];
-            assert(has_completion(&choices, source_payload_name(pin->name)));
-        }
-        asset_source_completions_free(&choices);
-    }
-    const type_desc *vector = registry_type_by_name("CF_V2");
-    if (vector) {
-        choices = complete_draft("behavior Test { on Input() { event.direction.");
-        for (int i = 0; i < vector->field_count; i++) {
-            assert(has_completion(&choices, vector->fields[i].name));
-        }
-        asset_source_completions_free(&choices);
-    }
-    choices = complete_draft("behavior Test { state set<int> seen = []; on Tick() { seen.");
-    assert(has_completion(&choices, "add") && has_completion(&choices, "remove"));
-    assert(!has_completion(&choices, "contains"));
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { state set<int> seen = []; on Tick() { if (seen.");
-    assert(has_completion(&choices, "contains"));
-    assert(!has_completion(&choices, "add") && !has_completion(&choices, "remove"));
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { state set<int> seen = []; state int count = 0; on Tick() { count = seen.");
-    assert(!acount(choices.items));
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { state int[] values = []; state int count = 0; on Tick() { for (item in ");
-    assert(has_completion(&choices, "values") && !has_completion(&choices, "count"));
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { on Tick() { ");
-    static const char *const unsupported[] = { "while",    "break",
-                                               "continue", "return",
-                                               "map",      "handle",
-                                               "nodes",    "components" };
-    for (size_t i = 0; i < sizeof unsupported / sizeof *unsupported; i++) {
-        assert(!has_completion(&choices, unsupported[i]));
-    }
-    bool destroy = false;
-    for (int i = 0; i < acount(choices.items); i++) {
-        assert(choices.items[i].label[0] != '"');
-        assert(!strchr(choices.items[i].label, ' '));
-        assert(!choices.items[i].insert || choices.items[i].insert[0] != '"');
-        if (!strcmp(choices.items[i].label, "destroy")) {
-            destroy = choices.items[i].insert &&
-                      !strcmp(choices.items[i].insert, "destroy(self);");
-        }
-    }
-    assert(destroy);
-    for (int i = 0; i < registry_node_count(); i++) {
-        const node_desc *node = registry_node(i);
-        int binding;
-        const char *spelling = behavior_expression_spelling(node, &binding);
-        if (!spelling || binding || behavior_expression_arity(node) < 0) {
-            continue;
-        }
-        const char *alias = behavior_expression_alias(node, 0);
-        if (alias) {
-            assert(has_completion(&choices, alias));
-        }
-    }
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { on Tick() { if (true) {} ");
-    assert(has_completion(&choices, "else"));
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { state int[] values = []; on Tick() { for (item in values) {} ");
-    assert(!has_completion(&choices, "else"));
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { on Tick() { // incomplete comment");
-    assert(!acount(choices.items));
-    asset_source_completions_free(&choices);
-    choices = complete_draft("behavior Test { on Tick() {} ");
-    assert(has_completion(&choices, "state") && has_completion(&choices, "on"));
-    assert(!has_completion(&choices, "destroy"));
-    asset_source_completions_free(&choices);
-}
-
-static void test_structured_navigation()
-{
-    asset_source *source = asset_source_parse(
-        "behavior Test { state int points = 0; on Tick() { poi"
-    );
-    asset_source_completions choices;
-    asset_source_complete(source, (int)strlen(source->text), "Test.code", NULL, 0, &choices);
-    assert(has_completion(&choices, "points"));
-    asset_source_completions_free(&choices);
-    asset_source_free(source);
-    const char *navigation = "behavior Test { state int points = 0; on Tick() "
-                             "{ int local = points; local += 1; } on Other() { "
-                             "int local = 2; local += points; } }";
-    source = asset_source_parse(navigation);
-    int use = (int)(strstr(navigation, "local += 1") - navigation);
-    asset_source_span definition;
-    assert(asset_source_definition_at(source, use, &definition));
-    assert(definition.start == (int)(strstr(navigation, "local = points") - navigation));
-    asset_source_span *references = asset_source_references_at(source, use);
-    assert(acount(references) == 2);
-    afree(references);
-    char *hover = asset_source_hover(source, use);
-    assert(hover && strstr(hover, "local: int"));
+    assert(references == 2);
+    char *hover = authoring_source_hover(navigation, 0, offset);
+    assert(hover && !strcmp(hover, "dt: float"));
     free(hover);
-    asset_source_free(source);
-    const char *same_name = "behavior Test { state int Tick = 0; on Tick() { "
-                            "Tick += 1; } }";
-    source = asset_source_parse(same_name);
-    use = (int)(strstr(same_name, "Tick +=") - same_name);
-    assert(asset_source_definition_at(source, use, &definition));
-    assert(definition.start == (int)(strstr(same_name, "Tick =") - same_name));
-    references = asset_source_references_at(source, use);
-    assert(acount(references) == 2);
-    afree(references);
-    asset_source_free(source);
-    const char *payload = "behavior Test { on Tick() { event.dt; event.dt; } "
-                          "on Input() { event.direction; } }";
-    source = asset_source_parse(payload);
-    use = (int)(strstr(payload, "event.dt") - payload) + 6;
-    hover = asset_source_hover(source, use);
-    assert(hover && strstr(hover, "dt: float"));
-    free(hover);
-    assert(asset_source_definition_at(source, use, &definition));
-    assert(definition.start == (int)(strstr(payload, "Tick()") - payload));
-    references = asset_source_references_at(source, use);
-    assert(acount(references) == 2 && references[0].end - references[0].start == 2);
-    afree(references);
-    asset_source_free(source);
-    for (int i = 0; i < registry_type_count(); i++) {
-        const type_desc *type = registry_type(i);
-        if (type->field_count < 2) {
-            continue;
-        }
-        char draft[1024];
-        snprintf(
-            draft,
-            sizeof draft,
-            "behavior Test { on Tick(%s body) { body.%s; body.%s; body.%s; } }",
-            type->name,
-            type->fields[0].name,
-            type->fields[0].name,
-            type->fields[1].name
-        );
-        source = asset_source_parse(draft);
-        use = (int)(strstr(draft, "body.") - draft) + 5;
-        hover = asset_source_hover(source, use);
-        assert(hover && strstr(hover, type->fields[0].name));
-        free(hover);
-        assert(asset_source_definition_at(source, use, &definition));
-        assert(definition.start == (int)(strstr(draft, type->name) - draft));
-        references = asset_source_references_at(source, use);
-        assert(acount(references) == 2);
-        afree(references);
-        asset_source_free(source);
-        break;
-    }
-    asset_source_span *spans = asset_source_highlight(
-        "behavior Test { // state fake\n on Tick() { x+=1; } }"
-    );
-    bool keyword = false, comment = false, operator = false;
-    for (int i = 0; i < acount(spans); i++) {
-        keyword |= !strcmp(spans[i].cls, "tok-keyword");
-        comment |= !strcmp(spans[i].cls, "tok-comment");
-        operator |= !strcmp(spans[i].cls, "tok-punctuation");
-    }
-    assert(keyword && comment && operator);
-    afree(spans);
+    authoring_navigation_free(navigation);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
 }
 
 static void test_property_completion()
 {
     /* Use declared packs so qualified and quoted names exercise the same
      * reflection metadata as loaded projects, including incomplete drafts. */
-    for (int p = 0; p < REGISTRY_PACK_COUNT; p++) {
-        const registry_pack *pack = REGISTRY_PACKS[p];
+    for (int p = 0; p < registry_pack_count(); p++) {
+        const registry_pack *pack = registry_pack_at(p);
         for (int t = 0; t < pack->type_count; t++) {
             const type_desc *type = pack->types[t];
             if (type->field_count < 2) {
@@ -304,7 +129,7 @@ static void test_property_completion()
             for (int f = 0; f < type->field_count; f++) {
                 const type_field *field = &type->fields[f];
                 const type_desc *nested = field->type == PIN_STRUCT
-                                            ? registry_type_by_name(field->type_name)
+                                            ? type_catalog_find(field->type_name)
                                             : NULL;
                 if (!nested || nested->field_count < 2) {
                     continue;
@@ -333,8 +158,7 @@ static void test_property_completion()
 void test_asset_source()
 {
     test_property_completion();
-    test_structured_completions();
-    test_structured_navigation();
+    test_source_payload_navigation();
     {
         const char *source = "// palette\ncolor 966781183 // water\namount "
                              "0.035000000000000003\n";
@@ -510,8 +334,8 @@ void test_asset_source()
 
     /* A new component line completes component names rather than the fields
      * of the preceding inline component, even while the document is incomplete. */
-    for (int i = 0; i < registry_type_count(); i++) {
-        const type_desc *type = registry_type(i);
+    for (int i = 0; i < type_catalog_count(); i++) {
+        const type_desc *type = type_catalog_at(i);
         if (!type->field_count) {
             continue;
         }
@@ -537,7 +361,7 @@ void test_asset_source()
         break;
     }
 
-    if (registry_type_by_name("GameTransform")) {
+    if (type_catalog_find("GameTransform")) {
         const char
             *draft = "version 1\nname \"Sandbox\"\n(array)entities {\n    - {\n"
                      "        name \"Player\"\n        prototype \"Player\"\n  "
@@ -559,8 +383,8 @@ void test_asset_source()
 
     /* Accepting a completion from a pack whose identity contains spaces must
      * insert a quoted KDL name, which still resolves its reflected fields. */
-    for (int p = 0; p < REGISTRY_PACK_COUNT; p++) {
-        const registry_pack *pack = REGISTRY_PACKS[p];
+    for (int p = 0; p < registry_pack_count(); p++) {
+        const registry_pack *pack = registry_pack_at(p);
         if (!strchr(pack->name, ' ') || !pack->type_count) {
             continue;
         }
@@ -615,8 +439,8 @@ void test_asset_source()
 
     /* Canonical qualified component identities resolve through their declared
      * reflection pack for value completion and field diagnostics. */
-    for (int p = 0; p < REGISTRY_PACK_COUNT; p++) {
-        const registry_pack *pack = REGISTRY_PACKS[p];
+    for (int p = 0; p < registry_pack_count(); p++) {
+        const registry_pack *pack = registry_pack_at(p);
         for (int i = 0; i < pack->type_count; i++) {
             const type_desc *type = pack->types[i];
             for (int f = 0; f < type->field_count; f++) {

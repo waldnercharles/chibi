@@ -1,11 +1,11 @@
 #include "runtime/material_ecs.h"
 
 #include "diagnostics/tracy.h"
-#include "render/particles.h"
 #include "runtime/behaviors/entities.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "runtime/material_destruction.h"
 #include "runtime/material_terrain.h"
+#include "runtime/particles.h"
 #include "runtime/task_pool.h"
 #include "support/array.h"
 #include "support/cos_sin.h"
@@ -16,7 +16,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-game_materials *game_materials_new(ecs_world *world, game_entities *entities, game_particles *particles)
+game_materials *game_materials_new_prepared(
+    ecs_world *world,
+    game_entities *entities,
+    game_particles *particles,
+    material_fields *fields
+)
 {
     game_materials *materials = xcalloc(1, sizeof *materials);
     materials->world = world;
@@ -24,8 +29,13 @@ game_materials *game_materials_new(ecs_world *world, game_entities *entities, ga
     materials->particles = particles;
     materials->pool = game_task_pool_acquire();
     materials->destruction = material_destruction_new();
-    materials->fields = material_fields_new();
+    materials->fields = fields ? fields : material_fields_new();
     return materials;
+}
+
+game_materials *game_materials_new(ecs_world *world, game_entities *entities, game_particles *particles)
+{
+    return game_materials_new_prepared(world, entities, particles, NULL);
 }
 
 void material_ecs_release_record(material_record *record)
@@ -60,6 +70,7 @@ static void release_records(game_materials *materials, bool keep_terrain)
             ecs_entity_is_alive(materials->world, record->entity)) {
             int result = ecs_world_destroy_entity(materials->world, record->entity);
             assert(result == ECS_OK);
+            (void)result;
         }
         material_ecs_release_record(record);
     }
@@ -484,6 +495,7 @@ static const char *configure(game_materials *materials)
         ecs_query query;
         int result = ecs_query_begin(materials->world, &query, &destruction_id, 1);
         assert(result == ECS_OK);
+        (void)result;
         ecs_entity entity;
         int count = 0;
         int debris_limit = 0;
@@ -764,9 +776,11 @@ void material_ecs_add_component(
     if (!ecs_world_component(world, component->id)) {
         int result = ecs_world_register_component(world, component, NULL);
         assert(result == ECS_OK);
+        (void)result;
     }
     int result = ecs_world_record_add(world, entity, component->id, value, 0);
     assert(result == ECS_OK);
+    (void)result;
 }
 
 static void detach(game_materials *materials, ecs_entity source, material_mask mask, fluid_vec hit, float kick)
@@ -864,6 +878,7 @@ static void detach(game_materials *materials, ecs_entity source, material_mask m
     material_ecs_add_component(world, entity, &GAME_COMPONENT_MaterialBreakProfile, &profile);
     int result = ecs_world_apply_commands(world);
     assert(result == ECS_OK);
+    (void)result;
     material_record *record = material_ecs_record(materials, entity);
     record->fragment = true;
     record->terrain_source = materials->records[source.slot].terrain_source;
@@ -1078,6 +1093,7 @@ const char *game_materials_prepare(game_materials *materials)
             ecs_entity_is_alive(materials->world, record->entity)) {
             int result = ecs_world_destroy_entity(materials->world, record->entity);
             assert(result == ECS_OK);
+            (void)result;
         }
         if (!ecs_entity_is_alive(materials->world, record->entity)) {
             materials->fragments -= record->fragment;
@@ -1107,6 +1123,7 @@ const char *game_materials_prepare(game_materials *materials)
         ecs_query query;
         int result = ecs_query_begin(materials->world, &query, &ids[i], 1);
         assert(result == ECS_OK);
+        (void)result;
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
             if (game_entities_is_retiring(materials->entities, entity)) {
@@ -1167,7 +1184,7 @@ int game_materials_dispatch_events(game_materials *materials)
             materials->entities,
             target,
             impact ? "Material Impact" : "Material Result",
-            (flow_inputs){ values, impact ? 3 : 7 }
+            (execution_arguments){ values, impact ? 3 : 7 }
         );
         if (result < 0) {
             return result;

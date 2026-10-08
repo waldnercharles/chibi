@@ -1,7 +1,7 @@
 #ifndef CHIBI_GAME_COMPONENTS_H
 #define CHIBI_GAME_COMPONENTS_H
 
-#include "graph/model/annotate.h"
+#include "types/annotate.h"
 
 #include <cute_math.h>
 #include <cute_math3d.h>

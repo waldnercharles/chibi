@@ -1,6 +1,7 @@
 #include "graph/document/serialize_internal.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/array.h"
 
 #include <stdlib.h>

@@ -97,16 +97,17 @@ static void parity(bool edge, bool pure, bool waits, int scenario, int control, 
     graph *hold = a->graphs[2];
     assert(!graph_set_breakpoint(hold, hold->nodes[1], control == 3));
     behavior_function *f = entry(a, a->graph);
-    void *code = f->code, *inspection = f->inspection_code, *dispatch = f->dispatch;
+    void *code = f->artifact->code, *inspection = f->artifact->inspection_code,
+         *dispatch = f->artifact->dispatch;
     test_flow_snapshot *expected = NULL;
     for (int mode = 0; mode < (library ? 4 : 3); mode++) {
         if (mode == 3) {
             char name[64];
             snprintf(name, sizeof name, "generated_name_%d_%d_%d", edge, pure, waits);
-            f->code = dlsym(library, name);
-            assert(f->code);
-            f->inspection_code = f->code;
-            f->dispatch = NULL;
+            f->artifact->code = dlsym(library, name);
+            assert(f->artifact->code);
+            f->artifact->inspection_code = f->artifact->code;
+            f->artifact->dispatch = NULL;
         }
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         assert(!behavior_instance_set_backend(
@@ -147,9 +148,9 @@ static void parity(bool edge, bool pure, bool waits, int scenario, int control, 
             flow_state state = flow_run_status(run);
             if (state == FLOW_COMPLETED || state == FLOW_FAILED) {
                 if (budget == 100) {
-                    assert(state == FLOW_COMPLETED && bi->variables[1].type == PIN_NAME);
+                    assert(state == FLOW_COMPLETED && bi->execution.variables[1].type == PIN_NAME);
                     assert(
-                        !strcmp(bi->variables[1].str, scenario ? "" : "retained \"name\" \xE2\x98\x83")
+                        !strcmp(bi->execution.variables[1].str, scenario ? "" : "retained \"name\" \xE2\x98\x83")
                     );
                 }
                 break;
@@ -177,9 +178,9 @@ static void parity(bool edge, bool pure, bool waits, int scenario, int control, 
         test_flow_snapshot_free(&expected[i]);
     }
     afree(expected);
-    f->code = code;
-    f->inspection_code = inspection;
-    f->dispatch = dispatch;
+    f->artifact->code = code;
+    f->artifact->inspection_code = inspection;
+    f->artifact->dispatch = dispatch;
     behavior_asset_free(a);
 }
 void test_compiled_names(const char *path)
@@ -266,13 +267,13 @@ int bench_names(const char *path, int count, int rotation)
                 vm == behavior_function_vm_allocations()
             );
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
-            assert(!strcmp(bi->variables[1].str, input.str));
+            assert(!strcmp(bi->execution.variables[1].str, input.str));
             printf(
                 "%s names_%s ns=%.3f checksum=%zu\n",
                 (const char *[]){ "SLJIT", "BYTECODE", "GENERATED_C" }[mode],
                 pure ? "pure" : "effectful",
                 elapsed * 1e9 / count,
-                strlen(bi->variables[1].str)
+                strlen(bi->execution.variables[1].str)
             );
             behavior_function_release_host(&ctx);
             behavior_function_activation_free(&activation);

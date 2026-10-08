@@ -2,7 +2,7 @@
 
 #include "diagnostics/tracy.h"
 #include "render/fullscreen.h"
-#include "render/particles.h"
+#include "runtime/particles.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 

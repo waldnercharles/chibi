@@ -1,7 +1,6 @@
 #ifndef CHIBI_RENDER_SHADER_PREVIEW_H
 #define CHIBI_RENDER_SHADER_PREVIEW_H
 
-#include "graph/model/behavior_asset.h"
 #include "render/arena3d.h"
 #include "render/shader_catalog.h"
 
@@ -17,10 +16,10 @@ typedef struct
     render_arena_activity activity; /* Materials only; shapes read no scene. */
 } render_shader_preview_options;
 
-/* Tool-owned GPU preview state. Materials use the production arena surface and
+/* GPU preview of a registered immutable shader. Materials use the production arena surface and
  * post-processing path; shapes use the production fragment renderer. */
 render_shader_preview *render_shader_preview_new(
-    const behavior_asset *asset,
+    const char *name,
     int width,
     int height,
     const render_shader_preview_options *options,

@@ -1,5 +1,7 @@
 #include "automation/field_preview.h"
 
+#include "assets/field_parameters.h"
+#include "graph/compiler/material_field.h"
 #include "platform/cute.h"
 #include "render/field_image.h"
 #include "runtime/material_field.h"
@@ -42,12 +44,14 @@ bool automation_field_preview(
     material_fields *fields = material_fields_new();
     float *values = xmalloc((size_t)width * height * sizeof(float));
     bool valid = material_field_compile(fields, asset, error, size) &&
-                 material_field_bake(
+                 material_field_bake_text(
                      fields,
                      asset->name,
                      parameters,
                      (unsigned)yyjson_get_uint(seed),
-                     (field_grid){ width, height, (float)spacing },
+                     (field_grid){ .width = width,
+                                   .height = height,
+                                   .cell_size = (float)spacing },
                      values,
                      NULL,
                      error,

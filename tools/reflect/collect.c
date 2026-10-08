@@ -449,6 +449,7 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
     s.size = clang_Type_getSizeOf(underlying);
     s.component = component;
     s.dense = dense;
+    s.constructor_name = annotation_value(c, "node:constructor:");
     CXString definition_name = clang_getCursorSpelling(definition);
     const char *underlying_name = clang_getCString(definition_name);
     if (underlying_name && strcmp(name, underlying_name) != 0) {
@@ -460,6 +461,7 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
         free(s.name);
         free(s.file);
         free(s.alias_of);
+        free(s.constructor_name);
         afree(s.fields);
         return;
     }
@@ -499,12 +501,14 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             s.size = clang_Type_getSizeOf(clang_getCursorType(c));
             s.component = is_component;
             s.dense = has_annotate(c, "node:component:index:dense");
+            s.constructor_name = annotation_value(c, "node:constructor:");
             s.fields = NULL;
             clang_visitChildren(c, field_visitor, &s.fields);
             if (g_failed) {
                 free(s.name);
                 free(s.file);
                 free(s.alias_of);
+                free(s.constructor_name);
                 afree(s.fields);
             } else {
                 apush(ctx->structs, s);
@@ -629,6 +633,7 @@ void reflect_dispose(collect_ctx *ctx)
         free(s->name);
         free(s->file);
         free(s->alias_of);
+        free(s->constructor_name);
         dispose_fields(s->fields);
     }
     for (int i = 0; i < acount(ctx->fns); i++) {

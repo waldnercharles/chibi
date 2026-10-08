@@ -1,9 +1,10 @@
 #include "assets/code_catalog.h"
 
-#include "assets/behavior_loader.h"
 #include "assets/code_source_intelligence.h"
 #include "assets/refactor.h"
+#include "assets/reference_adapters.h"
 #include "assets/system_document.h"
+#include "authoring/behavior_loader.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
@@ -322,7 +323,7 @@ void run_code_catalog_checks()
         snprintf(path, sizeof path, "%s/%s", root, folders[i]);
         assert(!mkdir(path, 0700));
     }
-    write_source(root, "libraries/Alpha.code", alpha);
+    write_source(root, "libraries/Alpha.chibi", alpha);
     code_source *authored = code_source_parse(zulu);
     test_check(authored->asset != NULL, "Library fixture parses before assigning authored graph identity");
     char *persisted = NULL;
@@ -333,11 +334,11 @@ void run_code_catalog_checks()
         authored->asset->graph->id_counter = 1001;
         persisted = code_source_persist(authored);
     }
-    write_source(root, "libraries/Zulu.code", persisted ? persisted : zulu);
+    write_source(root, "libraries/Zulu.chibi", persisted ? persisted : zulu);
     free(persisted);
     code_source_free(authored);
-    write_source(root, "behaviors/Consumer.code", consumer);
-    write_source(root, "systems/ConsumerSystem.code", system);
+    write_source(root, "behaviors/Consumer.chibi", consumer);
+    write_source(root, "systems/ConsumerSystem.chibi", system);
     code_catalog *catalog = code_catalog_load(root);
     test_check(!code_catalog_error_count(catalog), "Project library signature pass resolves forward filename references without authored call pins");
     const code_source_context *context = code_catalog_context(catalog);
@@ -369,14 +370,14 @@ void run_code_catalog_checks()
     code_catalog_free(catalog);
 
     ecs_world *ecs = ecs_world_new();
-    game_live_world *world = game_live_world_new(ecs);
+    game_preview_world *world = game_preview_world_new(ecs);
     test_check(app_behavior_fixtures_load(world, NULL, root) == 4, "Runtime project load registers libraries before dependent behaviors and systems");
     test_check(
-        game_live_find_definition(world, "Consumer") &&
-            game_live_find_system(world, "ConsumerSystem"),
+        game_preview_find_definition(world, "Consumer") &&
+            game_preview_find_system(world, "ConsumerSystem"),
         "Runtime retains dependent behavior and system definitions"
     );
-    game_system_document *document = game_live_load_system(world, system, error, sizeof error);
+    game_system_document *document = game_preview_load_system(world, system, error, sizeof error);
     test_check(document != NULL, "Runtime system reload parses and links against applied project libraries");
     compile_report report;
     compile_report_init(&report);
@@ -387,12 +388,12 @@ void run_code_catalog_checks()
     test_check(executable, "Reloaded systems contain executable linked library bodies, not unresolved external calls");
     compile_report_free(&report);
     game_system_document_free(document);
-    game_live_world_free(world);
+    game_preview_world_free(world);
     ecs_world_free(ecs);
-    const char *files[] = { "libraries/Alpha.code",
-                            "libraries/Zulu.code",
-                            "behaviors/Consumer.code",
-                            "systems/ConsumerSystem.code" };
+    const char *files[] = { "libraries/Alpha.chibi",
+                            "libraries/Zulu.chibi",
+                            "behaviors/Consumer.chibi",
+                            "systems/ConsumerSystem.chibi" };
     for (int i = 0; i < 4; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i]);
         assert(!unlink(path));

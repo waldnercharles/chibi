@@ -1,6 +1,7 @@
 #pragma once
 #include "graph/model/behavior_asset.h"
-#include "third_party/yyjson/yyjson.h"
+
+#include <yyjson.h>
 bool automation_field_preview(
     const behavior_asset *asset,
     yyjson_val *request,

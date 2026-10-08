@@ -1,7 +1,0 @@
-name "HRCLabOccluder"
-components {
-    GAME.GameAppearance antialias=0.25 color=0x893e46ff height=100.0 width=100.0
-    GAME.GameMaterial absorption=1.0 albedo=0x9cdce0ff emission_multiplier=1.0 scene=0x111212ff
-    (object)GAME.GameOrientation
-    (object)GAME.GameTransform
-}

@@ -1,5 +1,9 @@
 # Node editor references
 
+Studio source and shell assets are owned by the extracted `chibi-studio`
+repository. Paths under `src/editor/` and `projects/studio/` in this guide are
+relative to that repository. The engine supplies the shared SDK interfaces.
+
 This document is the node-graph counterpart of [Editor UI references](editor-ui-references.md). It covers the libraries and editors whose interaction contracts the RmlUi behavior graph editor ports. We port behavior, not code. Numbers were read from source or official docs on 2026-09-23; **(unverified)** marks the few that weren't.
 
 What the graphs themselves should offer (nodes, conversions, compiler safety and automation) is in [Graph language: lessons from Unreal and Blender](research/graph-language-2026-09-23.md).

@@ -1,4 +1,0 @@
-version 9
-name "Modeling Lab"
-content "content"
-start_scene "scenes/ModelPrimitiveStudy.kdl"

@@ -1,4 +1,0 @@
-name "FireStick"
-components {
-    GAME.GameActionBinding action="Fire" firing=#true source="Aim Stick"
-}

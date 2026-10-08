@@ -1,8 +1,9 @@
+#include "authoring/engine_preview.h"
+#include "authoring/preview.h"
+#include "authoring/prototype_preview.h"
 #include "graph/document/serialize.h"
-#include "runtime/behaviors/live.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
-#include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "test/support/code_fixture.h"
@@ -29,34 +30,30 @@ static char *read_content(const char *path)
     return text;
 }
 
-static behavior_asset *read_behavior(const char *name)
+static test_source_fixture read_behavior(const char *name)
 {
     char path[256];
     const char *root = !strcmp(name, "InputBehavior")
                          ? "test/fixtures/content/behaviors"
                          : "content/behaviors";
-    snprintf(path, sizeof path, "%s/%s.code", root, name);
+    snprintf(path, sizeof path, "%s/%s.chibi", root, name);
     char *text = read_content(path);
-    behavior_asset *asset = test_project_asset(path, text);
-    if (asset) {
-        asset = link_test_libraries(asset);
-    }
+    test_source_fixture fixture = test_source_prepare(path, text);
     free(text);
-    assert(asset);
-    compile_report report;
-    compile_report_init(&report);
-    int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
-        fprintf(stderr, "%s: %s\n", path, report.items[i].message);
-    }
-    assert(errors == 0);
-    compile_report_free(&report);
-    return asset;
+    return fixture;
 }
 
 static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 {
-    return game_behavior_attach(user, entity, name);
+    game_preview_runtime *runtime = user;
+    return game_source_attach(
+        runtime->sources,
+        entity,
+        name,
+        runtime->deferred,
+        runtime->now,
+        runtime->delta
+    );
 }
 
 static void check_heading(ecs_world *world, ecs_entity entity, float expected)
@@ -89,22 +86,22 @@ static void headings(bool isolated, bool projectile)
     register_test_preview_catalog(preview);
     ecs_world *world = preview ? game_prototype_preview_world(preview)
                                : ecs_world_new();
-    game_live_world *live = NULL;
+    game_preview_world *live = NULL;
     engine *runtime = NULL;
-    behavior_asset *asset = read_behavior(name);
+    test_source_fixture fixture = read_behavior(name);
     if (preview) {
-        assert(game_prototype_preview_register_behavior(preview, name, asset) == 0);
-        behavior_asset_free(asset);
+        test_source_register(game_prototype_preview_live(preview)->runtime, &fixture);
     } else {
         for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
             assert(
                 ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
             );
         }
-        live = game_live_world_new(world);
-        runtime = engine_new(world, live);
-        assert(game_live_add_definition(live, game_live_definition_new(name, asset)) == 0);
+        live = game_preview_world_new(world);
+        runtime = authoring_engine_new(world, live->runtime);
+        test_source_register(live->runtime, &fixture);
     }
+    test_source_free(&fixture);
     ecs_entity entity;
     if (preview) {
         assert(game_prototype_preview_launch(preview, prototype, error, sizeof error) == 0);
@@ -114,7 +111,7 @@ static void headings(bool isolated, bool projectile)
             game_prototype_spawn(
                 prototype,
                 world,
-                &(game_prototype_spawn_hooks){ attach, live->behaviors },
+                &(game_prototype_spawn_hooks){ attach, live->runtime },
                 &entity,
                 error,
                 sizeof error
@@ -122,9 +119,8 @@ static void headings(bool isolated, bool projectile)
         );
         assert(engine_set_playing(runtime, true) == 0);
     }
-    game_behavior_world *behaviors = preview
-                                       ? game_prototype_preview_behaviors(preview)
-                                       : live->behaviors;
+    game_preview_runtime *host = preview ? game_prototype_preview_live(preview)->runtime
+                                         : live->runtime;
     check_heading(world, entity, 0);
     simulation_fixture clock = simulation_fixture_new(runtime, preview);
     simulation_advance(&clock, 0);
@@ -148,8 +144,7 @@ static void headings(bool isolated, bool projectile)
                                     .type_name = "CF_V2",
                                     .ptr = &input };
                 assert(
-                    game_behavior_dispatch(behaviors, entity, "Input", (flow_inputs){ &value, 1, NULL }, NULL) >=
-                    0
+                    game_source_dispatch(host->sources, entity, "Input", &value, 1, host->now, host->delta) >= 0
                 );
             }
             simulation_step(&clock);
@@ -172,7 +167,7 @@ static void headings(bool isolated, bool projectile)
         game_prototype_preview_free(preview);
     } else {
         engine_free(runtime);
-        game_live_world_free(live);
+        game_preview_world_free(live);
         ecs_world_free(world);
     }
     game_prototype_free(prototype);

@@ -1,3 +1,5 @@
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/runtime.h"
 #include "graph/runtime/update_internal.h"
 #include "test/suite_internal.h"
@@ -132,15 +134,15 @@ static void sequence_parity(behavior_backend backend)
             const whole_record
                 *record = ecs_component_data_const(ecs, entities[i], component->id);
             assert(record->weight == weights[i]);
-            assert(instances[i][0]->variables[0].d == 10. + (frame + 1) * .125);
+            assert(instances[i][0]->execution.variables[0].d == 10. + (frame + 1) * .125);
             assert(
-                instances[i][1]->variables[0].d ==
+                instances[i][1]->execution.variables[0].d ==
                 10. + (frame + 1) * .25 + (frame >= 12 ? (frame - 11) * .25 : 0.)
             );
-            assert(instances[i][2]->variables[3].i == frame + 1);
+            assert(instances[i][2]->execution.variables[3].i == frame + 1);
             assert(pin_array_equal(
-                instances[i][2]->variables[1].ptr,
-                instances[i][2]->variables[2].ptr
+                instances[i][2]->execution.variables[1].ptr,
+                instances[i][2]->execution.variables[2].ptr
             ));
             for (int j = 0; j < PARTS; j++) {
                 assert(!behavior_instance_last_failure(instances[i][j]));
@@ -230,13 +232,12 @@ static uint64_t measure_sequence(int mode, int parts, int count, int frames, voi
                     !behavior_instance_set_variable(bi, assets[j]->variables[1].id, &owner)
                 );
             }
-            behavior_update_row row = {
-                .instance = bi,
-                .binding = behavior_update_prepare(&bindings, bi, functions[j], entries[j]),
-                .entity = owner.u64,
-                .services_revision = bi->services_revision,
-                .attachment = acount(rows)
-            };
+            behavior_update_row row = behavior_update_row_make(
+                bi,
+                behavior_update_prepare(&bindings, bi, functions[j], entries[j]),
+                owner.u64,
+                acount(rows)
+            );
             assert(row.binding);
             apush(rows, row);
         }
@@ -308,14 +309,17 @@ static uint64_t measure_sequence(int mode, int parts, int count, int frames, voi
     uint64_t checksum = 0;
     for (int i = 0; i < count; i++) {
         for (int j = 0; j < parts; j++) {
-            behavior_instance *bi = rows[i * parts + j].instance;
+            behavior_instance *bi = behavior_update_instance(&rows[i * parts + j]);
             if (j < 2) {
-                assert(bi->variables[0].d == (frames + 8) * (j ? .25 : .125));
-                checksum += (uint64_t)(bi->variables[0].d * 8);
+                assert(bi->execution.variables[0].d == (frames + 8) * (j ? .25 : .125));
+                checksum += (uint64_t)(bi->execution.variables[0].d * 8);
             } else {
-                assert(bi->variables[3].i == frames + 8);
-                assert(pin_array_equal(bi->variables[1].ptr, bi->variables[2].ptr));
-                checksum += (uint64_t)bi->variables[3].i;
+                assert(bi->execution.variables[3].i == frames + 8);
+                assert(pin_array_equal(
+                    bi->execution.variables[1].ptr,
+                    bi->execution.variables[2].ptr
+                ));
+                checksum += (uint64_t)bi->execution.variables[3].i;
             }
         }
         const whole_record *record = ecs_component_data_const(
@@ -344,7 +348,7 @@ static uint64_t measure_sequence(int mode, int parts, int count, int frames, voi
     afree(spans);
     behavior_update_free_bindings(bindings);
     for (int i = 0; i < acount(rows); i++) {
-        behavior_instance_destroy(rows[i].instance);
+        behavior_instance_destroy(behavior_update_instance(&rows[i]));
     }
     afree(rows);
     for (int j = 0; j < parts; j++) {

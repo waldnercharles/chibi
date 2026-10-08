@@ -16,14 +16,6 @@ bool serialize_read_pin_type(av_value *value, pin_type *out);
  * primitive types name themselves, and values start at zero. */
 const char *serialize_implied_type_name(pin_type type, const char *template_name);
 pin_value serialize_zero_value(pin_type type, pin_container container, const char *type_name);
-void serialize_write_value(
-    av_doc *doc,
-    av_value *obj,
-    const char *key,
-    pin_type t,
-    const char *type_name,
-    const pin_value *v
-);
 int serialize_read_value(pin_type t, const char *type_name, av_value *v, pin_value *out, graph *g);
 int serialize_read_array(
     pin_type element_type,

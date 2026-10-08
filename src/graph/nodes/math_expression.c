@@ -1,11 +1,14 @@
 #include "ecs/ecs.h"
-#include "graph/compiler/compile.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/authoring/local_edit.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/compare_nodes.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -95,56 +98,59 @@ typedef struct
 } math_function;
 
 static const math_function functions[] = {
-    { "sin", 1, { "Sine", "Shader Sin", "Field Sin" } },
-    { "cos", 1, { "Cosine", "Shader Cos", "Field Cos" } },
-    { "tan", 1, { "Tangent" } },
-    { "asin", 1, { "Arc Sine" } },
-    { "acos", 1, { "Arc Cosine" } },
-    { "atan", 1, { "Arc Tangent" } },
-    { "atan2", 2, { "Atan2" } },
-    { "sqrt", 1, { "Square Root", "Shader Sqrt" } },
-    { "pow", 2, { "Power" } },
-    { "exp", 1, { "Exponential" } },
-    { "log", 1, { "Logarithm" } },
-    { "ln", 1, { "Logarithm" } },
-    { "log10", 1, { "Logarithm 10" } },
-    { "floor", 1, { "Floor", "Shader Floor", "Field Floor" } },
-    { "ceil", 1, { "Ceiling" } },
-    { "round", 1, { "Round" } },
-    { "fract", 1, { "Fract", "Shader Fract" } },
-    { "sign", 1, { "Sign", "Shader Sign" } },
-    { "abs", 1, { "Abs", "Shader Abs", "Field Abs" } },
-    { "negate", 1, { "Negate", NULL, "Field Negate" } },
-    { "min", 2, { "Min", "Shader Min", "Field Min" } },
-    { "max", 2, { "Max", "Shader Max", "Field Max" } },
-    { "clamp", 3, { "Clamp", "Shader Clamp", "Field Clamp" } },
-    { "saturate", 1, { NULL, "Shader Saturate" } },
-    { "mix", 3, { "Mix", "Shader Mix" } },
-    { "step", 2, { "Step", "Shader Step" }, { 1, 0 } },
-    { "smoothstep", 3, { NULL, "Shader Smoothstep" }, { 1, 2, 0 } },
-    { "remap", 5, { NULL, NULL, "Field Remap" } },
-    { "select", 3, { NULL, NULL, "Field Select" } },
-    { "length", 1, { "Vector Length", "Shader Length" } },
-    { "dot", 2, { "Vector Dot", "Shader Dot" } },
-    { "distance", 2, { "Vector Distance" } },
-    { "direction", 1, { "Direction From Angle" } },
-    { "direction", 2, { "Direction To" } },
-    { "normalize", 1, { "Normalize Vector 2", "Shader Normalize" } },
-    { "rand", 0, { "Random Real" } },
-    { "vec2", 2, { "Make_CF_V2", "Shader Vector2" } },
-    { "vec3", 3, { "Make_CF_V3", "Shader Vector3" } },
-    { "vec4", 4, { NULL, "Shader Vector4" } },
-    { "noise", 2, { NULL, "Shader Noise" } },
-    { "noise", 3, { NULL, NULL, "Field Noise" } },
-    { "hash", 3, { NULL, NULL, "Field Hash" } },
-    { "fractal", 6, { NULL, NULL, "Field Fractal" } },
-    { "circle", 3, { NULL, NULL, "Field Circle" } },
-    { "box", 4, { NULL, NULL, "Field Box" } },
-    { "capsule", 7, { NULL, NULL, "Field Capsule" } },
-    { "rotate_x", 3, { NULL, NULL, "Field Rotate X" } },
-    { "rotate_y", 3, { NULL, NULL, "Field Rotate Y" } },
-    { "smooth_union", 3, { NULL, NULL, "Field Smooth Union" } },
-    { "smooth_subtract", 3, { NULL, NULL, "Field Smooth Subtract" } },
+    { .name = "sin", .arity = 1, .nodes = { "Sine", "Shader Sin", "Field Sin" } },
+    { .name = "cos", .arity = 1, .nodes = { "Cosine", "Shader Cos", "Field Cos" } },
+    { .name = "tan", .arity = 1, .nodes = { "Tangent" } },
+    { .name = "asin", .arity = 1, .nodes = { "Arc Sine" } },
+    { .name = "acos", .arity = 1, .nodes = { "Arc Cosine" } },
+    { .name = "atan", .arity = 1, .nodes = { "Arc Tangent" } },
+    { .name = "atan2", .arity = 2, .nodes = { "Atan2" } },
+    { .name = "sqrt", .arity = 1, .nodes = { "Square Root", "Shader Sqrt" } },
+    { .name = "pow", .arity = 2, .nodes = { "Power" } },
+    { .name = "exp", .arity = 1, .nodes = { "Exponential" } },
+    { .name = "log", .arity = 1, .nodes = { "Logarithm" } },
+    { .name = "ln", .arity = 1, .nodes = { "Logarithm" } },
+    { .name = "log10", .arity = 1, .nodes = { "Logarithm 10" } },
+    { .name = "floor", .arity = 1, .nodes = { "Floor", "Shader Floor", "Field Floor" } },
+    { .name = "ceil", .arity = 1, .nodes = { "Ceiling" } },
+    { .name = "round", .arity = 1, .nodes = { "Round" } },
+    { .name = "fract", .arity = 1, .nodes = { "Fract", "Shader Fract" } },
+    { .name = "sign", .arity = 1, .nodes = { "Sign", "Shader Sign" } },
+    { .name = "abs", .arity = 1, .nodes = { "Abs", "Shader Abs", "Field Abs" } },
+    { .name = "negate", .arity = 1, .nodes = { "Negate", NULL, "Field Negate" } },
+    { .name = "min", .arity = 2, .nodes = { "Min", "Shader Min", "Field Min" } },
+    { .name = "max", .arity = 2, .nodes = { "Max", "Shader Max", "Field Max" } },
+    { .name = "clamp", .arity = 3, .nodes = { "Clamp", "Shader Clamp", "Field Clamp" } },
+    { .name = "saturate", .arity = 1, .nodes = { NULL, "Shader Saturate" } },
+    { .name = "mix", .arity = 3, .nodes = { "Mix", "Shader Mix" } },
+    { .name = "step", .arity = 2, .nodes = { "Step", "Shader Step" }, .order = { 1, 0 } },
+    { .name = "smoothstep",
+      .arity = 3,
+      .nodes = { NULL, "Shader Smoothstep" },
+      .order = { 1, 2, 0 } },
+    { .name = "remap", .arity = 5, .nodes = { NULL, NULL, "Field Remap" } },
+    { .name = "select", .arity = 3, .nodes = { NULL, NULL, "Field Select" } },
+    { .name = "length", .arity = 1, .nodes = { "Vector Length", "Shader Length" } },
+    { .name = "dot", .arity = 2, .nodes = { "Vector Dot", "Shader Dot" } },
+    { .name = "distance", .arity = 2, .nodes = { "Vector Distance" } },
+    { .name = "direction", .arity = 1, .nodes = { "Direction From Angle" } },
+    { .name = "direction", .arity = 2, .nodes = { "Direction To" } },
+    { .name = "normalize", .arity = 1, .nodes = { "Normalize Vector 2", "Shader Normalize" } },
+    { .name = "rand", .arity = 0, .nodes = { "Random Real" } },
+    { .name = "vec2", .arity = 2, .nodes = { "Make_CF_V2", "Shader Vector2" } },
+    { .name = "vec3", .arity = 3, .nodes = { "Make_CF_V3", "Shader Vector3" } },
+    { .name = "vec4", .arity = 4, .nodes = { NULL, "Shader Vector4" } },
+    { .name = "noise", .arity = 2, .nodes = { NULL, "Shader Noise" } },
+    { .name = "noise", .arity = 3, .nodes = { NULL, NULL, "Field Noise" } },
+    { .name = "hash", .arity = 3, .nodes = { NULL, NULL, "Field Hash" } },
+    { .name = "fractal", .arity = 6, .nodes = { NULL, NULL, "Field Fractal" } },
+    { .name = "circle", .arity = 3, .nodes = { NULL, NULL, "Field Circle" } },
+    { .name = "box", .arity = 4, .nodes = { NULL, NULL, "Field Box" } },
+    { .name = "capsule", .arity = 7, .nodes = { NULL, NULL, "Field Capsule" } },
+    { .name = "rotate_x", .arity = 3, .nodes = { NULL, NULL, "Field Rotate X" } },
+    { .name = "rotate_y", .arity = 3, .nodes = { NULL, NULL, "Field Rotate Y" } },
+    { .name = "smooth_union", .arity = 3, .nodes = { NULL, NULL, "Field Smooth Union" } },
+    { .name = "smooth_subtract", .arity = 3, .nodes = { NULL, NULL, "Field Smooth Subtract" } },
 };
 
 /* Infix operators by binding power; higher binds tighter. */
@@ -1692,7 +1698,7 @@ static bool expression_numeric_operand(const pin_spec *pin)
     if (pin->type != PIN_STRUCT) {
         return false;
     }
-    const type_desc *type = registry_type_by_name(pin->type_name);
+    const type_desc *type = type_catalog_find(pin->type_name);
     if (!type || type->field_count != 1) {
         return false;
     }
@@ -3500,7 +3506,7 @@ int behavior_expression_infer_assignment_result(behavior_asset *asset, node *cal
                 container = PIN_CONTAINER_SINGLE;
             }
             if (left->field[0]) {
-                const type_desc *root = registry_type_by_name(name);
+                const type_desc *root = type_catalog_find(name);
                 const type_field *field = root ? pin_type_field_path(root, left->field)
                                                : NULL;
                 if (!field) {

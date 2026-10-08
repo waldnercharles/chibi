@@ -1,5 +1,6 @@
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "runtime/behaviors/entity_query.h"
@@ -31,8 +32,19 @@ const registry_pack *const REGISTRY_PACKS[] = { &CORE_EXTRA_PACK,
                                                 &GAME_REGISTRY_PACK,
                                                 &capabilities };
 const int REGISTRY_PACK_COUNT = 4;
+
+int type_catalog_pack_count()
+{
+    return REGISTRY_PACK_COUNT;
+}
+type_catalog_pack type_catalog_pack_at(int index)
+{
+    const registry_pack *pack = REGISTRY_PACKS[index];
+    return (type_catalog_pack){ pack->types, pack->type_count, pack->enums, pack->enum_count };
+}
 int main()
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
 #ifdef __EMSCRIPTEN__
     assert(!graph_sljit_available() && behavior_default_backend() == BEHAVIOR_BYTECODE);
 #else

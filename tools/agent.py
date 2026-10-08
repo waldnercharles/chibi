@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Bounded agent iteration; never certifies the full hardware gate."""
 import argparse
+from contextlib import nullcontext
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,7 +14,7 @@ import sys
 import tempfile
 import time
 
-from test_policy import admitted, NOTICE, run_commands, DEADLINE
+from test_policy import admitted, NOTICE, run_commands, DEADLINE, TOOLS
 
 ROOT = Path(__file__).resolve().parents[1]
 CPU = re.findall(r'CHIBI_CPU_SELECTOR\("([^"]+)"\)',
@@ -22,6 +24,271 @@ GPU = re.findall(r'CHIBI_GPU_SELECTOR\("([^"]+)"\)',
 START = time.monotonic()
 HEALTH = None
 NEXT = 'make test-policy-inventory'
+CPU_SELECTORS = {
+    '--compile-installed-space-cadet': 'compile-installed-space-cadet',
+    '--source-edit': 'source-edit',
+    '--source-presentation': 'source-presentation',
+    '--source-systems': 'source-systems',
+    '--system-schedule': 'system-schedule',
+}
+INSTALLED_PLAYERS = {'--player-installed-space-cadet-vm', '--player-installed-space-cadet-sljit'}
+PLAYER_SELECTORS = {
+    '--player-installed-space-cadet-vm': 'player-installed-space-cadet-vm',
+    '--player-installed-space-cadet-sljit': 'player-installed-space-cadet-sljit',
+    '--player-space-cadet-vm': 'player-space-cadet-vm',
+    '--player-space-cadet-sljit': 'player-space-cadet-sljit',
+}
+STUDIO_SELECTORS = {'--studio-starter-startup': 'studio-starter-startup',
+                    '--studio-source-edit': 'studio-source-edit'}
+GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS
+PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
+    ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)
+}
+PLAYER_EMPTY_CATALOGS = {
+    ('shader-values', 'parameters'): (12, '0ba1d1fcd4761fcb'),
+    ('parts', 'parts'): (24, '828f9f8944989ff6'),
+}
+PLAYER_RESOURCES |= PLAYER_EMPTY_CATALOGS.keys()
+
+
+def selector_command(selector, mappings):
+    key = mappings.get(selector)
+    return TOOLS.get(key) if key else None
+
+
+def runnable_selectors(classified, mappings):
+    return [selector for selector in classified
+            if admitted([selector]) and selector_command(selector, mappings)]
+
+
+def studio_resource_preflight(build):
+    resources = {'studio': (261, 438339, '55a85abd2ba57abc63d68c5c9a944b7f3ccdda3bf3885f296142b63bcc958d5d'),
+                 'ui': (2, 297, '8505446e5ec71ec7c070f17b6729e0f6c41e2f9666dc7218b3c80a2f2d184e92')}
+    for name, (count, length, digest) in resources.items():
+        base = build / 'share/chibi' / name
+        files = sorted(p for p in base.rglob('*') if p.is_file())
+        if len(files) != count or sum(p.stat().st_size for p in files) != length:
+            raise ValueError('studio_startup_resource_bounds_changed')
+        if any(p.is_symlink() or not 0 < p.stat().st_size <= 1024 * 1024 for p in files):
+            raise ValueError('studio_resource_file_invalid')
+        rows = {p.relative_to(base).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+        actual = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        if actual != digest:
+            raise ValueError('studio_startup_resource_generation_changed')
+
+
+def studio_startup_preflight():
+    source = Path('/Users/cwaldner/Personal/chibi-studio')
+    build = ROOT / 'build-verify/sdk-migration/external-studio-build'
+    evidence_path = ROOT / '.chibi/architecture/external-studio-native-acceptance.json'
+    if evidence_path.stat().st_size > 1024 * 1024:
+        raise ValueError('studio_startup_evidence_oversize')
+    evidence = json.loads(evidence_path.read_text())
+    def checksum(path, limit):
+        if not path.is_file() or not 0 < path.stat().st_size <= limit:
+            raise ValueError('studio_startup_input_missing_or_oversize')
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    if (evidence.get('build_exit') != 0 or evidence.get('configure_exit') != 0
+            or evidence.get('source') != str(source)
+            or evidence.get('private_engine_source_include') is not False
+            or checksum(build / 'bin/chibi-studio', 64 * 1024 * 1024) != evidence.get('binary_sha256')
+            or checksum(source / 'EXTRACTION.json', 1024 * 1024) != evidence.get('extraction_sha256')
+            or checksum(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/lib/cmake/Chibi/ChibiConfig.cmake',
+                        1024 * 1024) != evidence.get('sdk_config_sha256')):
+        raise ValueError('studio_startup_build_provenance_mismatch')
+    starter = source / 'projects/starter'
+    expected = {'project.kdl': b'version 10\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
+                'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n'}
+    if {p.relative_to(starter).as_posix() for p in starter.rglob('*') if p.is_file()} != set(expected):
+        raise ValueError('studio_starter_membership_changed')
+    for name, value in expected.items():
+        if (starter / name).stat().st_size != len(value) or (starter / name).read_bytes() != value:
+            raise ValueError('studio_starter_content_changed')
+    studio_resource_preflight(build)
+    return dict(starter_files=2, starter_bytes=118, frames=2, window=[1920, 1080],
+                studio_resource_files=261, studio_resource_bytes=438339)
+
+
+def bounded_read(path, limit):
+    if not path.is_file() or path.is_symlink() or not 0 < path.stat().st_size <= limit:
+        raise ValueError('studio_preflight_file_outside_bound')
+    with path.open('rb') as stream:
+        data = stream.read(limit + 1)
+    if not data or len(data) > limit:
+        raise ValueError('studio_preflight_file_outside_bound')
+    return data
+
+
+def studio_source_edit_preflight():
+    source = Path(os.environ.get('CHIBI_STUDIO_SOURCE', ''))
+    build = Path(os.environ.get('CHIBI_STUDIO_BUILD', ''))
+    evidence_path = Path(os.environ.get('CHIBI_STUDIO_ACCEPTANCE_EVIDENCE', ''))
+    if not all(p.is_absolute() for p in (source, build, evidence_path)):
+        raise ValueError('studio_acceptance_requires_explicit_absolute_paths')
+    if evidence_path.stat().st_size > 1024 * 1024:
+        raise ValueError('studio_acceptance_evidence_oversize')
+    evidence = json.loads(evidence_path.read_text())
+    for path, key in ((build / 'bin/studio-acceptance', 'binary_sha256'),
+                      (source / 'EXTRACTION.json', 'extraction_sha256')):
+        if not path.is_file() or path.is_symlink() or not 0 < path.stat().st_size <= 64 * 1024 * 1024:
+            raise ValueError('studio_acceptance_provenance_input_invalid')
+        if hashlib.sha256(path.read_bytes()).hexdigest() != evidence.get(key):
+            raise ValueError('studio_acceptance_provenance_mismatch')
+    native = json.loads(bounded_read(
+        ROOT / '.chibi/architecture/external-studio-native-acceptance.json', 1024 * 1024))
+    if (native.get('configure_exit') != 0 or native.get('build_exit') != 0 or
+            native.get('private_engine_source_include') is not False or
+            evidence.get('source') != str(source) or evidence.get('build') != str(build) or
+            native.get('source') != str(source) or native.get('sdk') != evidence.get('sdk') or
+            evidence.get('binary') != str(build / 'bin/studio-acceptance') or
+            evidence.get('frames') != 4 or evidence.get('hidden') is not True or
+            evidence.get('window') != [1920, 1080] or
+            evidence.get('success') != 'Studio source edit accepted: frames=4 edits=1 undo=1 redo=1'):
+        raise ValueError('studio_acceptance_build_not_verified')
+    if hashlib.sha256(bounded_read(build / 'compile_commands.json', 64 * 1024 * 1024)).hexdigest() != evidence.get('compile_commands_sha256'):
+        raise ValueError('studio_acceptance_compile_inputs_changed')
+    records = evidence.get('files')
+    if not isinstance(records, dict) or len(records) != 8:
+        raise ValueError('studio_acceptance_source_records_changed')
+    for name, record in records.items():
+        relative = Path(name)
+        if relative.is_absolute() or '..' in relative.parts or not name.startswith('tests/acceptance/'):
+            raise ValueError('studio_acceptance_source_path_invalid')
+        path = source / relative
+        if path.is_symlink() or path.stat().st_size != record['bytes'] or record['bytes'] > 65536:
+            raise ValueError('studio_acceptance_source_size_changed')
+        if hashlib.sha256(path.read_bytes()).hexdigest() != record['sha256']:
+            raise ValueError('studio_acceptance_source_changed')
+    sdk = Path(evidence['sdk'])
+    if hashlib.sha256(bounded_read(sdk / 'lib/cmake/Chibi/ChibiConfig.cmake', 1024 * 1024)).hexdigest() != native.get('sdk_config_sha256'):
+        raise ValueError('studio_acceptance_sdk_changed')
+    fixture = source / 'tests/acceptance/project'
+    expected = {
+        'project.kdl': b'version 10\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
+        'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
+        'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1;\n    on Tick {\n        count = count + 1;\n    }\n}\n',
+    }
+    paths = list(fixture.rglob('*'))
+    if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != set(expected):
+        raise ValueError('studio_acceptance_fixture_membership_changed')
+    for name, value in expected.items():
+        if (fixture / name).stat().st_size != len(value) or bounded_read(fixture / name, len(value)) != value:
+            raise ValueError('studio_acceptance_fixture_changed')
+    studio_resource_preflight(build)
+    return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=212, frames=4, window=[1920,1080])
+
+
+def player_artifact_preflight(artifact=None):
+    artifact = artifact or ROOT / '.chibi/architecture/player-space-cadet/project.chibip'
+    manifest_path = Path(str(artifact) + '.resources.json')
+    if not 0 < artifact.stat().st_size <= 64 * 1024 * 1024:
+        raise ValueError('player_artifact_size_outside_reviewed_bound')
+    with manifest_path.open('rb') as stream:
+        metadata = stream.read(1024 * 1024 + 1)
+    if len(metadata) > 1024 * 1024:
+        raise ValueError('player_manifest_exceeds_1MiB')
+    manifest = json.loads(metadata)
+    if (not isinstance(manifest, dict) or type(manifest.get('version')) is not int
+            or manifest['version'] != 1 or manifest.get('external') != []):
+        raise ValueError('player_manifest_requires_version1_embedded_resources_only')
+    records = manifest.get('embedded')
+    if not isinstance(records, list) or len(records) != len(PLAYER_RESOURCES):
+        raise ValueError('player_manifest_resource_count_outside_reviewed_bound')
+    identities = set()
+    for record in records:
+        if (not isinstance(record, dict) or record.get('kind') not in ('ui', 'font', 'shader-values', 'parts')
+                or not isinstance(record.get('key'), str) or not record['key']
+                or len(record['key'].encode()) > 65536
+                or type(record.get('bytes')) is not int
+                or not 0 < record['bytes'] <= 64 * 1024 * 1024
+                or not isinstance(record.get('content_hash'), str)
+                or not re.fullmatch(r'[0-9a-f]{16}', record['content_hash'])):
+            raise ValueError('player_manifest_resource_outside_reviewed_ui_font_scope')
+        identity = (record['kind'], record['key'])
+        if (identity in PLAYER_EMPTY_CATALOGS
+                and (record['bytes'], record['content_hash']) != PLAYER_EMPTY_CATALOGS[identity]):
+            raise ValueError('player_manifest_catalog_must_match_reviewed_empty_envelope')
+        if identity in identities:
+            raise ValueError('player_manifest_duplicate_resource_identity')
+        identities.add(identity)
+    if identities != PLAYER_RESOURCES or sum(record['bytes'] for record in records) > 4 * 1024 * 1024:
+        raise ValueError('player_manifest_requires_bounded_ui_and_font_resources')
+    fingerprint = 14695981039346656037
+    length = 0
+    with artifact.open('rb') as stream:
+        while chunk := stream.read(65536):
+            deadline = min(START + 60, float(os.environ.get(DEADLINE, START + 60)))
+            if time.monotonic() >= deadline:
+                raise ValueError('player_artifact_preflight_deadline_exceeded')
+            length += len(chunk)
+            if length > 64 * 1024 * 1024:
+                raise ValueError('player_artifact_exceeds_64MiB')
+            for byte in chunk:
+                fingerprint = ((fingerprint ^ byte) * 1099511628211) & 0xffffffffffffffff
+    if not length or manifest.get('artifact_hash') != f'{fingerprint:016x}':
+        raise ValueError('player_artifact_manifest_hash_mismatch')
+    return dict(artifact_bytes=length, resource_count=len(records),
+                resource_kinds=sorted({kind for kind, _ in identities}))
+
+
+def installed_space_cadet(selector):
+    from package_player import validate_package
+    from package_sdk import previous_package
+    def configured(name):
+        value = os.environ.get(name)
+        if not value or not Path(value).is_absolute():
+            raise ValueError(name + '_requires_explicit_absolute_path')
+        path = Path(value)
+        if path.is_symlink():
+            raise ValueError(name + '_must_not_be_symlink')
+        return path
+    project = configured('CHIBI_SPACE_CADET_ROOT')
+    sdk = configured('CHIBI_COMPILER_SDK')
+    for package in (sdk, project / '.chibi/runtime'):
+        files = list(package.rglob('*'))
+        if len(files) > 8192 or sum(p.stat().st_size for p in files if p.is_file()) > 1024**3:
+            raise ValueError('installed_package_inventory_exceeds_reviewed_bound')
+    compiler = previous_package(sdk, 'sdk')
+    player = validate_package(project / '.chibi/runtime')
+    contracts = ('runtime_headers_sha256', 'artifact_formats', 'project_format',
+                 'prepared_format', 'system', 'processor', 'pointer_bits', 'byte_order')
+    if any(compiler['requirements'].get(key) is None or
+           compiler['requirements'][key] != player['requirements'].get(key) for key in contracts):
+        raise ValueError('compiler_player_runtime_contract_mismatch')
+    pin_path = project / '.chibi-engine.json'
+    if pin_path.stat().st_size > 65536:
+        raise ValueError('game_pin_oversize')
+    pin = json.loads(pin_path.read_text())
+    expected = dict(format=2, kind='player', build_id=player['build_id'],
+                    engine_build_id=player['engine']['build_id'], sdk_build_id=player['sdk']['build_id'],
+                    package_version=player['package_version'], requirements=player['requirements'])
+    if pin != expected:
+        raise ValueError('game_pin_differs_from_installed_manifest')
+    paths = [project / 'project.kdl'] + sorted(p for p in (project / 'content').rglob('*') if p.is_file())
+    if len(paths) != 36 or sum(p.stat().st_size for p in paths) != 144741:
+        raise ValueError('SpaceCadet_source_membership_or_bytes_changed')
+    hashes = {p.relative_to(project).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+    fingerprint = hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    if fingerprint != '764be3d1fdd3b42741e8f68285ce480e9060ab6b2b98c6dd4d3572223eb0ef0b':
+        raise ValueError('SpaceCadet_source_fingerprint_changed')
+    if time.monotonic() >= min(START + 60, float(os.environ.get(DEADLINE, START + 60))):
+        raise ValueError('installed_preflight_deadline_exceeded')
+    artifact = project / '.chibi/prepared/project.chibip'
+    for path in (project / '.chibi', artifact.parent, artifact, Path(str(artifact) + '.resources.json')):
+        if path.is_symlink():
+            raise ValueError('installed_prepared_handoff_must_not_be_symlink')
+    evidence = dict(game_root=str(project), player_build_id=player['build_id'],
+                    compiler_build_id=compiler['build_id'], source_fingerprint=fingerprint)
+    if selector == '--compile-installed-space-cadet':
+        binary = sdk / 'bin/chibi-compile'
+        if 'bin/chibi-compile' not in compiler['files'] or not os.access(binary, os.X_OK):
+            raise ValueError('packaged_compiler_missing')
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        return [str(binary), '--project-root', str(project), '--output', str(artifact)], evidence, artifact
+    evidence.update(player_artifact_preflight(artifact))
+    backend = 'sljit' if selector.endswith('-sljit') else 'vm'
+    return [str(project / '.chibi/runtime/bin/chibi-player'), str(artifact), '--backend', backend,
+            '--hidden', '--frames', '4', '--fixed-dt', '0.0166667'], evidence, artifact
 
 
 class TerminationRequested(BaseException):
@@ -60,8 +327,11 @@ def test_plan(purpose, health):
     plan = dict(purpose=purpose, capabilities=health, full_verification=False,
                 quarantined_checks=['full-native', 'render'])
     if purpose == 'logic':
-        return dict(plan, commands=['make agent-test AGENT_SELECTOR=--graph-optimize'],
-                    gpu_startup=False, reason='logic_change_selects_CPU_assertions')
+        if '--source-edit' not in runnable_selectors(CPU, CPU_SELECTORS):
+            return dict(plan, commands=[], status='blocked', gpu_startup=False,
+                        reason='source_edit_policy_route_unavailable')
+        return dict(plan, commands=['make agent-test AGENT_SELECTOR=--source-edit'],
+                    gpu_startup=False, reason='logic_change_selects_CPU_source_assertions')
     if health.get('status') != 'enumerated' or not health.get('devices'):
         plan['discovery_note'] = 'Vulkan discovery is inconclusive; Metal/GLES/other rendering may work. Verify the actual bounded runtime result.'
     if purpose == 'temporal':
@@ -140,16 +410,17 @@ def main():
     for action in ['preview', 'mp4']:
         render = sub.add_parser(action)
         render.add_argument('request', type=Path, help='Existing preview_scene/preview_shader JSON request')
-        render.add_argument('--project-root', default='.')
+        render.add_argument('--project-root', required=True)
         render.add_argument('--output', type=Path, required=True)
         if action == 'mp4':
             render.add_argument('--frames', type=int, default=60, help='3..180 output frames at 60 fps (max 3 seconds)')
     args = parser.parse_args()
     if args.action == 'validation-plan':
-        return validation_plan(args, ROOT, CPU, GPU)
+        return validation_plan(args, ROOT, runnable_selectors(CPU, CPU_SELECTORS),
+                               runnable_selectors(GPU, GPU_SELECTORS))
     if args.action in ['test', 'gpu-test'] and not admitted([args.selector]):
         return report('blocked', NOTICE, selector=args.selector)
-    if args.action in ['doctor', 'plan', 'test', 'gpu-test', 'preview', 'mp4']:
+    if args.action in ['doctor', 'plan', 'gpu-test', 'preview', 'mp4']:
         HEALTH = startup_health()
     if args.action == 'doctor':
         print(json.dumps(HEALTH))
@@ -159,7 +430,11 @@ def main():
         print(json.dumps(plan))
         return 2 if plan.get('status') == 'blocked' else 0
     if args.action == 'list':
-        print(json.dumps(dict(cpu_selectors=[s for s in CPU if admitted([s])], opt_in_gpu_selectors=[],
+        print(json.dumps(dict(cpu_selectors=runnable_selectors(CPU, CPU_SELECTORS),
+                              opt_in_gpu_selectors=runnable_selectors(GPU, GPU_SELECTORS),
+                              unavailable_selectors=[s for s in CPU + GPU
+                                                     if not admitted([s]) or not
+                                                     selector_command(s, CPU_SELECTORS if s in CPU else GPU_SELECTORS)],
                               temporary_quarantine=NOTICE,
                               other_selectors='temporarily quarantined; hardware opt-in cannot authorize them',
                               authoring_workloads=dict(
@@ -183,14 +458,62 @@ def main():
         allowed = CPU if args.action == 'test' else GPU
         if args.selector not in allowed:
             return report('blocked', 'selector_not_classified_for_requested_capability', selector=args.selector)
+        mappings = CPU_SELECTORS if args.action == 'test' else GPU_SELECTORS
+        command = selector_command(args.selector, mappings)
+        if not command:
+            return report('blocked', 'selector_has_no_migrated_policy_route', selector=args.selector)
         env['CHIBI_EXECUTION_PROFILE'] = 'iteration' if args.action == 'test' else 'gpu-check'
-        with tempfile.TemporaryFile(mode='w+') as log:
-            code = run_commands([[str(ROOT / args.build_dir / 'test_suite'), args.selector]],
-                                max(.001, 60 - (time.monotonic() - START)), env, log)
-            if code:
-                log.seek(0)
-                raise RuntimeError(f'child_exit_{code}: {log.read()[-4000:]}')
-        return report('passed', 'selected_assertions_passed', selector=args.selector,
+        preflight = None
+        installed_artifact = None
+        if args.selector in INSTALLED_PLAYERS or args.selector == '--compile-installed-space-cadet':
+            command, preflight, installed_artifact = installed_space_cadet(args.selector)
+        elif args.selector in PLAYER_SELECTORS:
+            preflight = player_artifact_preflight()
+        elif args.selector == '--studio-source-edit':
+            acceptance_binary, acceptance_fixture, preflight = studio_source_edit_preflight()
+        elif args.selector in STUDIO_SELECTORS:
+            preflight = studio_startup_preflight()
+        execution_evidence = None
+        scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-source-edit-') if args.selector == '--studio-source-edit' else nullcontext(None)
+        with scratch_context as scratch:
+            if scratch:
+                project_copy = Path(scratch) / 'project'
+                shutil.copytree(acceptance_fixture, project_copy)
+                env['CHIBI_STUDIO_PREFS_PATH'] = str(project_copy / '.acceptance-prefs.json')
+                env['CHIBI_THUMBNAIL_CACHE'] = str(project_copy / '.acceptance-thumbnails')
+                command = [str(acceptance_binary), '--source-edit', '--project-root', str(project_copy)]
+            with tempfile.TemporaryFile(mode='w+') as log:
+                code = run_commands([command],
+                                    max(.001, 60 - (time.monotonic() - START)), env, log)
+                if code:
+                    log.seek(0)
+                    raise RuntimeError(f'child_exit_{code}: {log.read()[-4000:]}')
+                if args.selector == '--compile-installed-space-cadet':
+                    preflight.update(player_artifact_preflight(installed_artifact))
+                if args.selector in PLAYER_SELECTORS:
+                    log.seek(0)
+                    output = log.read()
+                    completed = re.findall(r'^frames=([0-9]+) steps=([0-9]+)$', output, re.M)
+                    if (len(completed) != 1 or int(completed[0][0]) != 4 or
+                            (args.selector in INSTALLED_PLAYERS and int(completed[0][1]) != 3)):
+                        raise RuntimeError(f'child_exit_incomplete_player_frames: {output[-4000:]}')
+                    execution_evidence = dict(frames=int(completed[0][0]), steps=int(completed[0][1]))
+                if args.selector in STUDIO_SELECTORS:
+                    log.seek(0)
+                    output = log.read()
+                    if args.selector == '--studio-source-edit' and output.count('Studio source edit accepted: frames=4 edits=1 undo=1 redo=1\n') != 1:
+                        raise RuntimeError(f'child_exit_incomplete_studio_edit: {output[-4000:]}')
+                    if args.selector == '--studio-source-edit':
+                        execution_evidence = dict(frames=4, edits=1, undo=1, redo=1)
+                    if any(message in output for message in ('Studio UI:', 'runtime frame failed', 'Could not initialize')):
+                        raise RuntimeError(f'child_exit_UI_initialization_failure: {output[-4000:]}')
+        reason = ('admitted_studio_source_edit_completed' if args.selector == '--studio-source-edit' else
+                  'admitted_two_frame_studio_startup_completed' if args.selector in STUDIO_SELECTORS else
+                  'admitted_installed_compile_completed' if args.selector == '--compile-installed-space-cadet' else
+                  'admitted_four_frame_player_completed' if preflight else 'selected_assertions_passed')
+        return report('passed', reason,
+                      selector=args.selector, artifact_preflight=preflight,
+                      execution_evidence=execution_evidence,
                       skipped=[dict(check='full-native/render', reason='temporary_60_second_quarantine')])
     if not Path('/proc/self/status').exists():
         return report('blocked', 'render_RSS_budget_requires_Linux_proc_use_hardware_profile_on_other_hosts')

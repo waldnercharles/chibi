@@ -68,7 +68,7 @@ static const char *driver =
     "   return\n"
     "  return\n"
     " if args[0]=='make':\n"
-    "  if 'package-native' in args: raise RuntimeError('unexpected native "
+    "  if 'package-player' in args: raise RuntimeError('unexpected native "
     "package')\n"
     "  if env.get('CCACHE_DISABLE')=='1': raise RuntimeError('disabled "
     "compiler cache')\n"
@@ -91,7 +91,8 @@ static const char *driver =
     "  if '--threads' in args:\n"
     "   copy(Path(args[args.index('--threads')+1]),out/'threads')\n"
     "  return\n"
-    " raise RuntimeError(args)\n"
+    " raise RuntimeError(args)\n";
+static const char *driver_setup =
     "p.run=run\n"
     "real_process=p.subprocess.run\n"
     "def process(args,**kw):\n"
@@ -252,7 +253,11 @@ void test_tool_publish()
     assert(mkdtemp(directory));
     path(bridge, directory, "bridge.py");
     path(log_path, directory, "command.log");
-    tool_write(bridge, driver);
+    FILE *file = fopen(bridge, "w");
+    assert(file);
+    assert(fputs(driver, file) >= 0);
+    assert(fputs(driver_setup, file) >= 0);
+    assert(!fclose(file));
     char filename[1024];
     path(filename, directory, "compiler");
     tool_write(filename, "compiler bytes");

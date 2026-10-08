@@ -1,5 +1,11 @@
 # Generative model authoring evidence
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 This implementation extends the declarative model workflow used for the Polaroid image reconstruction. The original reconstruction and Blender comparison remain available. New capabilities have separate authored examples so their effect can be inspected independently.
 
 ## Delivered capabilities
@@ -11,9 +17,9 @@ This implementation extends the declarative model workflow used for the Polaroid
 | Concave and sampled Bezier profiles, bounded circular tube sweeps, pivot transforms | `ModelConstructivePaths` |
 | Named attachment frames and reusable instance exports | `ModelAnchorStudy` |
 | Reference image alignment, orthographic views, Part isolation, section cuts and separate geometry/material costs | Studio's Model Preview and Model Resources panels |
-| Bounded mesh extraction, live material and coordinate preservation, OBJ/MTL and provenance | Public `bakeModel` and Studio's Bake Mesh Bundle |
+| Bounded mesh extraction, live material and coordinate preservation, OBJ/MTL and provenance | The recorded `bakeModel` operation and Studio's Bake Mesh Bundle; current native operation: `bake_model` |
 
-The source examples are generated through `projects/modeling_lab/author-detail.mjs` and `author-constructive.mjs`, using public authoring operations and verified project roots. See [the authoring guide](generative-model-authoring.md), [surface detail contracts](surface-detail-authoring.md), and [declarative model contracts](declarative-sdf-modeling.md).
+The source examples were generated through the now-retired `projects/modeling_lab/author-detail.mjs` and `author-constructive.mjs` recipes. Their saved assets remain available; no replacement recipe recreates them from an empty project. See [the authoring guide](generative-model-authoring.md), [surface detail contracts](surface-detail-authoring.md), and [declarative model contracts](declarative-sdf-modeling.md).
 
 ## Geometry reduction
 

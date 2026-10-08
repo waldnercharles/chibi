@@ -1,4 +1,6 @@
 #include "ecs/ecs.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "support/array.h"
@@ -152,7 +154,7 @@ void whole_component_smoke()
     target->weight = 8;
     assert(snapshot->weight == 3.25 && snapshot->stamp == INT64_MAX - 4);
     flow_run_free(run);
-    const behavior_program *program = a->program;
+    const behavior_program *program = behavior_program_cached(a);
     ecs_entity high = other;
     for (int i = 2; i < 20001; i++) {
         high = ecs_world_record_create(world, (uint64_t)i);
@@ -172,7 +174,10 @@ void whole_component_smoke()
     handle.u64 = ecs_entity_to_u64(high);
     run = flow_run_start(g, entry, (flow_inputs){ &handle, 1 }, &options, &error);
     assert(run && !flow_run_resume(run) && run->whole_function_executed);
-    assert(a->program == program && target->weight == source->weight && target->weight == 3.25);
+    assert(
+        behavior_program_cached(a) == program &&
+        target->weight == source->weight && target->weight == 3.25
+    );
     assert(target->stamp == INT64_MAX - 4);
     assert(oracle == eval_oracle_calls());
     flow_run_free(run);
@@ -182,7 +187,7 @@ void whole_component_smoke()
     handle.u64 = ecs_entity_to_u64(other);
     run = flow_run_start(g, entry, (flow_inputs){ &handle, 1 }, &options, &error);
     assert(run && !flow_run_resume(run) && run->whole_function_executed);
-    assert(a->program == program && oracle == eval_oracle_calls());
+    assert(behavior_program_cached(a) == program && oracle == eval_oracle_calls());
     assert(
         ((whole_record *)ecs_component_data(world, other, record_component.id))->weight == -6.5
     );

@@ -1,10 +1,13 @@
 #include "assets/model_source.h"
+#include "authoring/image_prepare.h"
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
-#include "graph/modeling/model_bake.h"
-#include "graph/shader/shader_volume.h"
 #include "platform/cute.h"
 #include "render/shader_catalog.h"
 #include "render/shader_images.h"
+#include "runtime/models/model_bake.h"
+#include "runtime/shaders/volume.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -372,7 +375,7 @@ static void reload_fixture(const shader_node *spec, shader_image_view *image)
     assert(render_shader_sample(id, &context, NULL, after, &error));
     assert(before[0][0] == after[0][0]);
     behavior_asset_free(model);
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     render_images_clear();
     assert(!unlink(path));
     assert(!rmdir(directory));

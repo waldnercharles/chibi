@@ -1,0 +1,68 @@
+#ifndef CHIBI_GRAPH_GENERATED_COMPONENTS_H
+#define CHIBI_GRAPH_GENERATED_COMPONENTS_H
+
+#include "graph/model/node.h"
+#include "runtime/component_catalog.h"
+
+extern node_desc GAME_NODE_Get_GameOrientation;
+extern node_desc GAME_NODE_Set_GameOrientation;
+extern node_desc GAME_NODE_Has_GameOrientation;
+extern node_desc GAME_NODE_Add_GameOrientation;
+extern node_desc GAME_NODE_Remove_GameOrientation;
+extern node_desc GAME_NODE_Get_GameSdfMotion;
+extern node_desc GAME_NODE_Set_GameSdfMotion;
+extern node_desc GAME_NODE_Has_GameSdfMotion;
+extern node_desc GAME_NODE_Add_GameSdfMotion;
+extern node_desc GAME_NODE_Remove_GameSdfMotion;
+extern node_desc GAME_NODE_Get_GameAppearance;
+extern node_desc GAME_NODE_Set_GameAppearance;
+extern node_desc GAME_NODE_Has_GameAppearance;
+extern node_desc GAME_NODE_Add_GameAppearance;
+extern node_desc GAME_NODE_Remove_GameAppearance;
+extern node_desc GAME_NODE_Get_GameTransform;
+extern node_desc GAME_NODE_Set_GameTransform;
+extern node_desc GAME_NODE_Has_GameTransform;
+extern node_desc GAME_NODE_Add_GameTransform;
+extern node_desc GAME_NODE_Remove_GameTransform;
+extern node_desc GAME_NODE_Get_GameCollider;
+extern node_desc GAME_NODE_Set_GameCollider;
+extern node_desc GAME_NODE_Has_GameCollider;
+extern node_desc GAME_NODE_Add_GameCollider;
+extern node_desc GAME_NODE_Remove_GameCollider;
+extern node_desc GAME_NODE_Get_GameHealth;
+extern node_desc GAME_NODE_Set_GameHealth;
+extern node_desc GAME_NODE_Has_GameHealth;
+extern node_desc GAME_NODE_Add_GameHealth;
+extern node_desc GAME_NODE_Remove_GameHealth;
+extern node_desc GAME_NODE_Get_GameMovement;
+extern node_desc GAME_NODE_Set_GameMovement;
+extern node_desc GAME_NODE_Has_GameMovement;
+extern node_desc GAME_NODE_Add_GameMovement;
+extern node_desc GAME_NODE_Remove_GameMovement;
+extern node_desc GAME_NODE_Get_GameInput;
+extern node_desc GAME_NODE_Set_GameInput;
+extern node_desc GAME_NODE_Has_GameInput;
+extern node_desc GAME_NODE_Add_GameInput;
+extern node_desc GAME_NODE_Remove_GameInput;
+extern node_desc GAME_NODE_Get_GameWeapon;
+extern node_desc GAME_NODE_Set_GameWeapon;
+extern node_desc GAME_NODE_Has_GameWeapon;
+extern node_desc GAME_NODE_Add_GameWeapon;
+extern node_desc GAME_NODE_Remove_GameWeapon;
+extern node_desc GAME_NODE_Get_GameProjectile;
+extern node_desc GAME_NODE_Set_GameProjectile;
+extern node_desc GAME_NODE_Has_GameProjectile;
+extern node_desc GAME_NODE_Add_GameProjectile;
+extern node_desc GAME_NODE_Remove_GameProjectile;
+extern node_desc GAME_NODE_Get_GameMaterial;
+extern node_desc GAME_NODE_Set_GameMaterial;
+extern node_desc GAME_NODE_Has_GameMaterial;
+extern node_desc GAME_NODE_Add_GameMaterial;
+extern node_desc GAME_NODE_Remove_GameMaterial;
+extern node_desc GAME_NODE_Get_GameShader;
+extern node_desc GAME_NODE_Set_GameShader;
+extern node_desc GAME_NODE_Has_GameShader;
+extern node_desc GAME_NODE_Add_GameShader;
+extern node_desc GAME_NODE_Remove_GameShader;
+
+#endif

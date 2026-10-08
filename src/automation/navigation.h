@@ -1,7 +1,7 @@
 #ifndef CHIBI_AUTOMATION_NAVIGATION_H
 #define CHIBI_AUTOMATION_NAVIGATION_H
 
-#include "assets/reference_index.h"
+#include "authoring/reference_index.h"
 #include "automation/controller.h"
 
 #include <stdbool.h>

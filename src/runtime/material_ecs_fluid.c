@@ -1,7 +1,7 @@
 #include "diagnostics/tracy.h"
-#include "render/particles.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/material_ecs.h"
+#include "runtime/particles.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -41,6 +41,7 @@ const char *material_ecs_configure_fluid(game_materials *materials)
     ecs_query query;
     int result = ecs_query_begin(materials->world, &query, &id, 1);
     assert(result == ECS_OK);
+    (void)result;
     ecs_entity entity;
     int count = 0;
     MaterialFluidWorld settings = { 0 };
@@ -374,6 +375,7 @@ static void camera_regions(game_materials *materials)
     ecs_query query;
     int result = ecs_query_begin(materials->world, &query, ids, 2);
     assert(result == ECS_OK);
+    (void)result;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         const GameCamera *camera = GAME_GameCamera_get_const(materials->world, entity);

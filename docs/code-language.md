@@ -1,18 +1,19 @@
 # Asset and behavior source — revision 3
 
-Executable behavior source uses `.code`; declarative content remains KDL.
-The shared C frontend constructs the same typed native models used by the
-visual editors and runtime compilers.
+Executable behavior source uses `.chibi`; declarative content remains KDL.
+The shared C frontend retains syntax snapshots and resolves typed semantic
+records. The compiler lowers those records directly into verified execution
+modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 9. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 10. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
-readable `.code` source. RML and RCSS remain separate markup formats.
+readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 9
+version 10
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -51,6 +52,10 @@ Separate multiple statements on one line with semicolons. Parenthesized calls,
 arrays and struct literals may span lines. An operator at the end or beginning
 of a line continues the expression. Source saving preserves the author's choice.
 
+Named call arguments use `Value: expression`. An explicit argument type includes
+its value or source, for example `Value: float = amount` or
+`Source: ref int from &count`. A bare identifier after `:` is a value expression.
+
 ```code
 system FreeMotion(position: Transform, velocity: Velocity)
     without Collider, Body
@@ -60,8 +65,9 @@ system FreeMotion(position: Transform, velocity: Velocity)
 ```
 
 A behavior, library or system is a readable program. Its declarations and
-statements construct the native behavior model used by the existing compiler,
-JIT and runtime. Source does not require graph node, pin or connection records.
+statements resolve into an owned typed semantic program. Direct lowering produces
+an immutable verified execution module; backend code and live instances have
+separate lifetimes. Source does not require graph node, pin or connection records.
 Library calls resolve against the project catalog; native calls resolve against
 registered engine capabilities. Unknown names and incompatible types are errors.
 
@@ -347,16 +353,15 @@ and bindings run in dependency order. At each world maintenance epoch, ownership
 checks also reject identical or overlapping destination fields across behavior
 and system managers for the same entity generation. Cross-asset dependency cycles
 are not analyzed globally. Unchanged destination values are not written.
-Native graph operations implement the relationship; `.code.meta` cannot provide it.
-The graph exposes the binding's semantic Set and its editable value and target.
-Compiler-derived maintenance events, branches and comparison guards are hidden;
-source or debugger navigation to them selects the Set. A read used by authored
-nodes remains visible.
+The compiler and execution runtime implement the relationship; `.chibi.meta`
+cannot provide it. The authoring graph projects the resolved binding and its
+editable value and target. Compiler-generated maintenance work is not an
+independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 9. Executable files contain no generated identity
-annotations or embedded authoring footer. Optional `<asset>.code.meta` JSON stores
+Project manifests use version 10. Executable files contain no generated identity
+annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently
 compilable and loses only presentation/debug identity.
@@ -365,10 +370,11 @@ Disk metadata is bound to exact source bytes. Stale metadata is ignored. Matchin
 ambiguity during an edit does not invalidate executable code; uncertain identities
 are replaced, and runtime state compatibility decides whether a restart is required.
 
-The shared frontend owns parsed source and returns independently owned candidate
-models. Source and graph views share one authoring document. Graph edits produce
-readable source; source edits reconstruct the native graph. Failed edits retain
-the last valid candidate. Highlighting, completion, diagnostics, hover,
+Source collections retain syntax, resolved facts, diagnostics and executable
+modules for each generation. Graph views retain a presentation of those facts.
+Graph edits produce source edits followed by analysis and preparation; source
+edits refresh the projection. Invalid drafts preserve the applied generation.
+Highlighting, completion, diagnostics, hover,
 definition, references, rename and call hierarchy consume shared semantic APIs
 outside Studio. Their UI availability and verification are recorded in
 `docs/authoring-navigation.md`.

@@ -1,3 +1,9 @@
+#include "authoring/engine_preview.h"
+#include "authoring/prototype_prepare.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
+#include "graph/nodes/generated_components.h"
 #include "support/array.h"
 #include "support/text_file.h"
 #include "test/suite_internal.h"
@@ -10,7 +16,7 @@
 typedef struct
 {
     ecs_world *world;
-    game_live_world *live;
+    game_preview_world *live;
     engine *runtime;
     game_prototype_preview *preview;
     ecs_entity entity;
@@ -111,14 +117,16 @@ static clock_fixture clock_new(bool preview, bool breakpoint)
                 ecs_world_register_component(f.world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
             );
         }
-        f.live = game_live_world_new(f.world);
-        f.runtime = engine_new(f.world, f.live);
-        assert(game_live_add_definition(f.live, game_live_definition_new("Clock", asset)) == 0);
+        f.live = game_preview_world_new(f.world);
+        f.runtime = authoring_engine_new(f.world, f.live->runtime);
+        assert(
+            game_preview_add_definition(f.live, game_preview_definition_new("Clock", asset)) == 0
+        );
         assert(
             game_prototype_spawn(
                 prototype,
                 f.world,
-                &(game_prototype_spawn_hooks){ clock_attach, f.live->behaviors },
+                &(game_prototype_spawn_hooks){ clock_attach, f.live->runtime->behaviors },
                 &f.entity,
                 error,
                 sizeof error
@@ -132,7 +140,8 @@ static clock_fixture clock_new(bool preview, bool breakpoint)
 
 static game_behavior_world *clock_behaviors(clock_fixture *f)
 {
-    return f->preview ? game_prototype_preview_behaviors(f->preview) : f->live->behaviors;
+    return f->preview ? game_prototype_preview_behaviors(f->preview)
+                      : f->live->runtime->behaviors;
 }
 
 static int clock_logs(clock_fixture *f, const char *message, ecs_entity entity)
@@ -156,7 +165,7 @@ static void clock_free(clock_fixture *f)
         return;
     }
     engine_free(f->runtime);
-    game_live_world_free(f->live);
+    game_preview_world_free(f->live);
     ecs_world_free(f->world);
 }
 
@@ -165,7 +174,7 @@ static void clock_render(void *user)
     (*(int *)user)++;
 }
 
-static int clock_system(ecs_world *, double now, double, void *user, flow_error *)
+static int clock_system(ecs_world *, double now, double, void *user, game_schedule_error *)
 {
     double *last = user;
     assert(now > *last && now - *last < ENGINE_FIXED_SECONDS + 1e-10);
@@ -185,7 +194,7 @@ static void cadence_checks()
             assert(
                 engine_register_system(
                     f.runtime,
-                    &(engine_system_desc){ .name = "clock",
+                    &(game_schedule_desc){ .name = "clock",
                                            .phase = SYSTEM_POST_EVENTS,
                                            .run = clock_system,
                                            .user = &system_time }
@@ -230,13 +239,16 @@ static void tick_parameter_checks()
         assert(set && graph_connect_exec(g, tick, 0, set, 0, 0) == 0);
         assert(graph_connect_data(g, tick, 1, set, 1) == 0);
         assert(
-            game_live_add_definition(f.live, game_live_definition_new(asset->name, asset)) == 0
+            game_preview_add_definition(
+                f.live,
+                game_preview_definition_new(asset->name, asset)
+            ) == 0
         );
-        assert(game_behavior_attach(f.live->behaviors, f.entity, "TickParameter") == 0);
-        game_behavior_set_batch_enabled(f.live->behaviors, batch);
-        game_behavior_set_delta_seconds(f.live->behaviors, .125);
+        assert(game_behavior_attach(f.live->runtime->behaviors, f.entity, "TickParameter") == 0);
+        game_behavior_set_batch_enabled(f.live->runtime->behaviors, batch);
+        game_behavior_set_delta_seconds(f.live->runtime->behaviors, .125);
         flow_error error;
-        assert(game_behavior_update(f.live->behaviors, &error) >= 0);
+        assert(game_behavior_update(f.live->runtime->behaviors, &error) >= 0);
         test_check(GAME_GameVelocity_get_const(f.world, f.entity)->y == .125f, "the editor Tick parameter receives the simulation delta with batching on and off");
         clock_free(&f);
     }
@@ -250,7 +262,7 @@ static ecs_entity authored_spawn(clock_fixture *f, const char *behavior_path, co
     free(json);
     assert(
         asset &&
-        game_live_add_definition(f->live, game_live_definition_new(asset->name, asset)) == 0
+        game_preview_add_definition(f->live, game_preview_definition_new(asset->name, asset)) == 0
     );
     json = text_file_read(prototype_path);
     assert(json);
@@ -265,7 +277,7 @@ static ecs_entity authored_spawn(clock_fixture *f, const char *behavior_path, co
         game_prototype_spawn(
             prototype,
             f->world,
-            &(game_prototype_spawn_hooks){ clock_attach, f->live->behaviors },
+            &(game_prototype_spawn_hooks){ clock_attach, f->live->runtime->behaviors },
             &entity,
             error,
             sizeof error
@@ -279,10 +291,10 @@ static void authored_motion_checks()
 {
     for (int mirrored = 0; mirrored < 2; mirrored++) {
         clock_fixture f = clock_new(false, false);
-        game_behavior_set_deferred(f.live->behaviors, true);
+        game_behavior_set_deferred(f.live->runtime->behaviors, true);
         ecs_entity flipper = authored_spawn(
             &f,
-            "content/behaviors/OrbitFlipperMotion.code",
+            "content/behaviors/OrbitFlipperMotion.chibi",
             "content/prototypes/OrbitFlipper.kdl"
         );
         if (mirrored) {
@@ -290,8 +302,8 @@ static void authored_motion_checks()
             GAME_GameTransform_get(f.world, flipper)->x *= -1;
             GAME_GameActionBinding_get(f.world, flipper)->source = GAME_CONTROL_M;
         }
-        game_behavior_set_deferred(f.live->behaviors, false);
-        assert(game_behavior_begin_pending(f.live->behaviors) >= 0);
+        game_behavior_set_deferred(f.live->runtime->behaviors, false);
+        assert(game_behavior_begin_pending(f.live->runtime->behaviors) >= 0);
         GameTransform origin = *GAME_GameTransform_get_const(f.world, flipper);
         float rest = GAME_GameOrientation_get_const(f.world, flipper)->radians;
         float target = rest + (mirrored ? .9f : -.9f);
@@ -325,7 +337,7 @@ static void authored_motion_checks()
     }
 
     clock_fixture f = clock_new(false, false);
-    ecs_entity ball = authored_spawn(&f, "content/behaviors/OrbitLaunch.code", "content/prototypes/OrbitBall.kdl");
+    ecs_entity ball = authored_spawn(&f, "content/behaviors/OrbitLaunch.chibi", "content/prototypes/OrbitBall.kdl");
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     assert(engine_frame(f.runtime, 1.0 / 60) == FLOW_OK);
     test_check(
@@ -351,12 +363,14 @@ static void spawn_cadence_checks(int count)
         error,
         sizeof error
     );
-    assert(prototype && game_entities_register(f.live->entities, prototype) == 0);
+    assert(prototype && game_entities_register(f.live->runtime->entities, prototype) == 0);
     game_prototype_free(prototype);
     behavior_asset *child = behavior_asset_new("ClockChild");
     assert(behavior_asset_set_owner_type(child, "ecs.entity") == 0);
     clock_log(child->graph, clock_event(child->graph, "Begin"), "child ready");
-    assert(game_live_add_definition(f.live, game_live_definition_new("ClockChild", child)) == 0);
+    assert(
+        game_preview_add_definition(f.live, game_preview_definition_new("ClockChild", child)) == 0
+    );
 
     behavior_asset *asset = behavior_asset_new("ClockSpawner");
     assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
@@ -380,8 +394,10 @@ static void spawn_cadence_checks(int count)
     assert(graph_connect_exec(g, spawn, 0, initialize, 0, 0) == 0);
     assert(graph_connect_data(g, spawn, 1, initialize, 1) == 0);
     assert(graph_connect_data(g, make, 0, initialize, 2) == 0);
-    assert(game_live_add_definition(f.live, game_live_definition_new("ClockSpawner", asset)) == 0);
-    assert(game_behavior_attach(f.live->behaviors, f.entity, "ClockSpawner") == 0);
+    assert(
+        game_preview_add_definition(f.live, game_preview_definition_new("ClockSpawner", asset)) == 0
+    );
+    assert(game_behavior_attach(f.live->runtime->behaviors, f.entity, "ClockSpawner") == 0);
     assert(engine_sample_movement(f.runtime, 1, 0) == FLOW_OK);
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     ecs_entity *children = NULL;
@@ -389,7 +405,7 @@ static void spawn_cadence_checks(int count)
     assert(
         engine_register_system(
             f.runtime,
-            &(engine_system_desc){ .name = "clock",
+            &(game_schedule_desc){ .name = "clock",
                                    .phase = SYSTEM_POST_EVENTS,
                                    .run = clock_system,
                                    .user = &system_time }
@@ -400,7 +416,7 @@ static void spawn_cadence_checks(int count)
     for (int frame = 0; frame < frames; frame++) {
         int step = steps[frame];
         assert(engine_frame(f.runtime, step * ENGINE_FIXED_SECONDS) == FLOW_OK);
-        game_entities_copy_live(f.live->entities, &children);
+        game_entities_copy_live(f.live->runtime->entities, &children);
         const engine_frame_timing *timing = engine_last_timing(f.runtime);
         const GameTransform *position = GAME_GameTransform_get_const(f.world, f.entity);
         test_check(
@@ -424,7 +440,7 @@ static void debugger_clock_checks()
 {
     for (int single = 0; single < 2; single++) {
         clock_fixture f = clock_new(false, true);
-        behavior_instance *instance = game_behavior_instance(f.live->behaviors, f.entity, "Clock");
+        behavior_instance *instance = game_behavior_instance(f.live->runtime->behaviors, f.entity, "Clock");
         behavior_instance_set_breakpoints_enabled(instance, true);
         assert(engine_frame(f.runtime, 0) == FLOW_OK);
         if (single) {
@@ -607,7 +623,7 @@ static void action_checks()
 {
     clock_fixture f = clock_new(false, false);
     ecs_entity observer = ecs_world_create_entity(f.world);
-    assert(game_behavior_attach(f.live->behaviors, observer, "Clock") == 0);
+    assert(game_behavior_attach(f.live->runtime->behaviors, observer, "Clock") == 0);
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     flow_error error = { 0 };
     assert(engine_dispatch_input(f.runtime, "Jump", 1, 1, &error) == FLOW_ERR_UNKNOWN_EVENT);
@@ -667,7 +683,8 @@ static int clock_reaction(node *, flow_context *ctx)
         reaction->entities,
         reaction->target,
         reaction->recursive ? "Contact Begin" : "Damage",
-        reaction->recursive ? (flow_inputs){ &other, 1, NULL } : (flow_inputs){ 0 }
+        reaction->recursive ? (execution_arguments){ &other, 1 }
+                            : (execution_arguments){ 0 }
     );
     return result < 0 ? result : flow_context_continue(ctx, 0);
 }
@@ -715,12 +732,12 @@ static void reaction_checks(bool recursive)
         node *reaction = graph_add_node(asset->graph, &reaction_desc);
         assert(graph_connect_exec(asset->graph, event, 0, reaction, 0, 0) == 0);
     }
-    assert(game_behavior_register_asset(f.live->behaviors, "Reactions", asset) == 0);
-    assert(game_behavior_attach(f.live->behaviors, f.entity, "Reactions") == 0);
-    reaction_fixture reaction = { f.live->entities, f.entity, recursive, 0 };
+    assert(game_behavior_register_asset(f.live->runtime->behaviors, "Reactions", asset) == 0);
+    assert(game_behavior_attach(f.live->runtime->behaviors, f.entity, "Reactions") == 0);
+    reaction_fixture reaction = { f.live->runtime->entities, f.entity, recursive, 0 };
     assert(
         behavior_instance_bind_service(
-            game_behavior_instance(f.live->behaviors, f.entity, "Reactions"),
+            game_behavior_instance(f.live->runtime->behaviors, f.entity, "Reactions"),
             "test.reaction",
             &reaction
         ) == 0
@@ -1037,17 +1054,17 @@ void run_parallel_checks(void)
     ecs_world_register_component(ecs, &GAME_COMPONENT_GameHealth, NULL);
     ecs_entity e1 = ecs_world_create_entity(ecs);
     ecs_entity e2 = ecs_world_create_entity(ecs);
-    game_live_world *live = game_live_world_new(ecs);
-    game_live_definition *definition = game_live_definition_new("parallel", make_live_behavior_asset());
-    game_live_add_definition(live, definition);
-    game_behavior_world *behaviors = live->behaviors;
+    game_preview_world *live = game_preview_world_new(ecs);
+    game_preview_definition *definition = game_preview_definition_new("parallel", make_live_behavior_asset());
+    game_preview_add_definition(live, definition);
+    game_behavior_world *behaviors = live->runtime->behaviors;
     game_behavior_attach(behaviors, e1, "parallel");
     game_behavior_attach(behaviors, e2, "parallel");
     g_parallel_calls = 0;
     game_behavior_set_parallel_for(behaviors, host_parallel, NULL);
     game_behavior_pump(behaviors, 1.0);
     test_check(g_parallel_calls == 1, "host parallel dispatch reaches reflected behavior effects");
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(ecs);
 
     ecs_world *first = ecs_world_new();

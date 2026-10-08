@@ -1,4 +1,0 @@
-name "Scene"
-components {
-    GAME.GameUi document="Scene" hidden=#true
-}

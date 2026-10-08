@@ -1,8 +1,0 @@
-behavior "Nudge" {
-    owner "ecs.entity";
-    value clamp_vx_rand_0_5_170_900_900: double = (clamp(cast<double>(&component("GAME.GameVelocity", "x")) + (rand() - 0.5) * 170, -900, 900));
-    on Nudge as nudge() {
-        await set_game_velocity_x(Value: clamp_vx_rand_0_5_170_900_900, Target: 0);
-        &component("GAME.GameVelocity").y -= 100;
-    }
-}

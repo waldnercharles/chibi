@@ -1,0 +1,129 @@
+#ifndef CHIBI_LANGUAGE_SEMANTIC_INTERNAL_H
+#define CHIBI_LANGUAGE_SEMANTIC_INTERNAL_H
+
+#include "language/semantic.h"
+
+#define SCRIPT_MAX_DEPTH 256
+
+/* Optional grammar fields have a null TSNode; Tree-sitter count/range APIs
+ * require a real node even when the language permits the field to be absent. */
+static inline uint32_t script_analyzer_named_count(TSNode node)
+{
+    return ts_node_is_null(node) ? 0 : ts_node_named_child_count(node);
+}
+static inline uint32_t script_analyzer_child_count(TSNode node)
+{
+    return ts_node_is_null(node) ? 0 : ts_node_child_count(node);
+}
+static inline script_range script_analyzer_range(TSNode node)
+{
+    return ts_node_is_null(node) ? (script_range){ .line = 1, .column = 1 }
+                                 : script_node_range(node);
+}
+
+typedef struct
+{
+    int symbol;
+    TSNode value;
+} initializer;
+typedef struct
+{
+    int function;
+    TSNode node;
+} function_body;
+typedef struct
+{
+    int symbol;
+    bool present;
+} narrowing;
+typedef struct
+{
+    const script_syntax *syntax;
+    const script_catalog *catalog;
+    script_analysis *out;
+    initializer *initializers;
+    function_body *bodies;
+    narrowing *narrowed;
+    int scope, function, loops, depth;
+    bool declarations_only;
+} analyzer;
+
+script_syntax *script_analyzer_recovery_syntax(const script_syntax *);
+void script_analyzer_recovery_restore(script_analysis *, const script_syntax *);
+
+TSNode script_analyzer_field(TSNode node, const char *name);
+bool script_analyzer_is(TSNode node, const char *name);
+bool script_analyzer_text_is(const analyzer *a, TSNode node, const char *text);
+char *script_analyzer_text_copy(const analyzer *a, TSNode node);
+void script_analyzer_diagnostic(analyzer *a, TSNode node, const char *format, ...);
+char *script_analyzer_name_copy(analyzer *a, TSNode node);
+int script_analyzer_scope_new(analyzer *a, TSNode node);
+int script_analyzer_lookup_name(const analyzer *a, const char *name);
+int script_analyzer_lookup_storage(analyzer *, TSNode, script_symbol_kind);
+int script_analyzer_lookup(analyzer *a, TSNode node);
+int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind, script_type type, bool writable);
+void script_analyzer_use(analyzer *a, TSNode node, int symbol, script_use_kind kind, uint64_t member);
+bool script_analyzer_present(const analyzer *a, int symbol);
+script_type script_analyzer_bad_type();
+script_type script_analyzer_boolean_type();
+void script_analyzer_require(analyzer *a, TSNode node, script_type expected, script_type actual);
+const script_expression *script_analyzer_result_source(const analyzer *, int expression);
+void script_analyzer_require_values(analyzer *, TSNode, int target, int value);
+script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *source);
+script_type script_analyzer_type_node(analyzer *a, TSNode node);
+int script_analyzer_expr_add(analyzer *a, script_expression expression);
+script_type script_analyzer_expr_type(const analyzer *a, int expression);
+unsigned script_analyzer_expr_effects(const analyzer *a, int expression);
+int script_analyzer_initializer_find(const analyzer *a, int symbol);
+void script_analyzer_resolve_initializer(analyzer *a, int symbol);
+script_operator script_analyzer_operator_node(analyzer *a, TSNode node);
+char *script_analyzer_qualified_name(analyzer *a, TSNode node);
+int script_analyzer_callable_symbol(const analyzer *a, const char *name);
+int script_analyzer_parameter_index(
+    const script_catalog_parameter *parameters,
+    int count,
+    const char *name
+);
+int script_analyzer_authored_parameter_index(
+    const analyzer *a,
+    const script_function *function,
+    const char *name
+);
+int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter);
+int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
+int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
+script_type script_analyzer_arithmetic_type(script_type left, script_type right);
+int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected);
+int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);
+int script_analyzer_statement_add(analyzer *a, script_statement statement);
+void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool truth);
+void script_analyzer_condition_type(analyzer *a, TSNode node, int value);
+int script_analyzer_statement_block(analyzer *a, TSNode node);
+int script_analyzer_statement_inner(analyzer *a, TSNode node);
+int script_analyzer_statement(analyzer *a, TSNode node);
+bool script_analyzer_token_present(const analyzer *a, TSNode node, const char *word);
+void script_analyzer_declare_value(analyzer *a, TSNode node);
+int script_analyzer_function_new(analyzer *a, TSNode node, script_function_kind kind, int symbol);
+void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bool results);
+void script_analyzer_declare_function(analyzer *a, TSNode node);
+int script_analyzer_query_expression(analyzer *a, TSNode node);
+int script_analyzer_query_component(analyzer *a, TSNode node, uint64_t component, bool excluded);
+void script_analyzer_query_intersect(analyzer *a, int term);
+void script_analyzer_system_parameters(analyzer *a, TSNode root);
+void script_analyzer_declaration_pass(analyzer *a, TSNode body);
+int script_analyzer_scope_at(const analyzer *a, TSNode body);
+void script_analyzer_handler(analyzer *a, TSNode node);
+uint64_t script_analyzer_expression_path(const script_analysis *out, int index);
+void script_analyzer_binding_reads(analyzer *a, script_binding *binding, int index, int depth);
+void script_analyzer_binding(analyzer *a, TSNode node);
+bool script_analyzer_declaration_kind(TSNode node);
+void script_analyzer_definition_pass(analyzer *a, TSNode body);
+unsigned script_analyzer_statement_effects(script_analysis *out, script_statement *statement);
+void script_analyzer_finish_effects(analyzer *a);
+bool script_analyzer_binding_depends(const script_binding *reader, const script_binding *writer);
+void script_analyzer_finish_bindings(analyzer *a);
+void script_analyzer_callable_definition(analyzer *a, int index, TSNode body);
+void script_analyzer_host_declarations(analyzer *a, TSNode root);
+bool script_analyzer_resolve_operator(analyzer *, TSNode, TSNode, script_expression *);
+bool script_analyzer_numeric_aggregate(const script_catalog *, script_type, int);
+#endif

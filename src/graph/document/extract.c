@@ -1,7 +1,10 @@
 #include "graph/document/extract.h"
 
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/xalloc.h"
 
 #include <assert.h>

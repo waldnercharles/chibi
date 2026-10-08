@@ -57,20 +57,21 @@ static uint64_t measure(int mode, int workload, int count, int frames, void *lib
     snprintf(symbol, sizeof symbol, "generated_tick%d", workload);
     behavior_function *f = tick(asset);
     assert(behavior_function_batchable(f));
-    void *code = f->code, *dispatch = f->dispatch, *system = f->system_code;
+    void *code = f->artifact->code, *dispatch = f->artifact->dispatch,
+         *system = f->artifact->system_code;
     /* Benchmark-only replacement on a fresh, quiescent program. This runs C
      * emitted from the same IR through the identical engine batch wrapper.
      * Restore owned JIT pointers before freeing the program. */
     if (mode == 4 || mode == 8 || mode == 10) {
-        f->code = dlsym(library, symbol);
-        assert(f->code);
-        f->dispatch = NULL;
-        f->system_code = NULL;
+        f->artifact->code = dlsym(library, symbol);
+        assert(f->artifact->code);
+        f->artifact->dispatch = NULL;
+        f->artifact->system_code = NULL;
         if (mode == 10) {
             char system_symbol[64];
             snprintf(system_symbol, sizeof system_symbol, "generated_system%d", workload);
-            f->system_code = dlsym(library, system_symbol);
-            assert(f->system_code);
+            f->artifact->system_code = dlsym(library, system_symbol);
+            assert(f->artifact->system_code);
         }
     }
     ecs_world *ecs = ecs_world_new();
@@ -119,12 +120,12 @@ static uint64_t measure(int mode, int workload, int count, int frames, void *lib
     bool duplicate;
     assert(
         f == behavior_program_function(
-                 behavior_program_graph(asset->program, asset->graph),
-                 behavior_program_event(asset->program, "Tick", &duplicate)
+                 behavior_program_graph(behavior_program_cached(asset), asset->graph),
+                 behavior_program_event(behavior_program_cached(asset), "Tick", &duplicate)
              )
     );
     if (mode == 4 || mode == 8 || mode == 10) {
-        assert(f->code == dlsym(library, symbol));
+        assert(f->artifact->code == dlsym(library, symbol));
     }
     assert(!game_behavior_pump(world, 0.));
     game_behavior_set_delta_seconds(world, .125);
@@ -163,20 +164,21 @@ static uint64_t measure(int mode, int workload, int count, int frames, void *lib
     uint64_t checksum = 0;
     for (int i = 0; i < count; i++) {
         if (workload < 2) {
-            assert(instances[i]->variables[0].d == 10. + (frames + 8) * .125);
-            checksum += (uint64_t)(instances[i]->variables[0].d * 8);
+            assert(instances[i]->execution.variables[0].d == 10. + (frames + 8) * .125);
+            checksum += (uint64_t)(instances[i]->execution.variables[0].d * 8);
         } else {
             const behavior_instance *bi = instances[i];
-            assert(bi->variables[3].i == frames + 8);
-            const pin_array *source = bi->variables[0].ptr,
-                            *saved = bi->variables[1].ptr,
-                            *final = bi->variables[2].ptr;
+            assert(bi->execution.variables[3].i == frames + 8);
+            const pin_array *source = bi->execution.variables[0].ptr,
+                            *saved = bi->execution.variables[1].ptr,
+                            *final = bi->execution.variables[2].ptr;
             assert(source->count == 3 && saved->count == 5 && final->count == 5);
             assert(pin_array_equal(saved, final));
             for (int j = 0; j < 3; j++) {
                 assert(pin_value_equal(&source->items[j], &final->items[j]));
             }
-            checksum += (uint64_t)bi->variables[3].i + (uint64_t) final->count;
+            checksum += (uint64_t)bi->execution.variables[3].i + (uint64_t)
+                                                                     final->count;
         }
         if (components) {
             const whole_record
@@ -216,9 +218,9 @@ static uint64_t measure(int mode, int workload, int count, int frames, void *lib
     );
     game_behavior_world_free(world);
     ecs_world_free(ecs);
-    f->code = code;
-    f->dispatch = dispatch;
-    f->system_code = system;
+    f->artifact->code = code;
+    f->artifact->dispatch = dispatch;
+    f->artifact->system_code = system;
     behavior_asset_free(asset);
     afree(instances);
     afree(entities);

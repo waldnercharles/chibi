@@ -1,9 +1,12 @@
+#include "assets/ui_document.h"
+#include "authoring/ui_events_adapter.h"
+#include "authoring/ui_loader.h"
 #include "test/asset_fixture.h"
 /* GameUi documents without a GPU: loading, model application and events. */
 #include "assets/project.h"
+#include "authoring/preview.h"
 #include "render/ui.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "support/text_file.h"
 #include "support/text_overlay.h"
@@ -57,7 +60,7 @@ static bool shipped_documents_load(
         chibi_project_free(&project);
         return true;
     }
-    render_ui *ui = render_ui_new(project.content, NULL);
+    render_ui *ui = authoring_ui_new(project.content, NULL);
     ui_world w = { .ecs = world };
     bool ok = true;
     for (struct dirent *e; ok && (e = readdir(dir));) {
@@ -100,10 +103,7 @@ static void shipped_documents()
     ecs_entity entity = ecs_world_create_entity(world);
     assert(GAME_GameUi_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    static const char *const CONTENT[] = { ".",
-                                           "projects/arena2d",
-                                           "projects/SpaceCadet",
-                                           "projects/studio" };
+    static const char *const CONTENT[] = { "projects/studio" };
     char failure[256] = "";
     bool ok = true;
     for (size_t i = 0; ok && i < sizeof CONTENT / sizeof *CONTENT; i++) {
@@ -143,7 +143,7 @@ static void overlay_on_page(const char *root)
     test_write_ui(folder, "Shell", "<body><slot/></body>", NULL);
     test_write_ui(folder, "Bound", "<div data-class-live=\"save.live\">{{ save.label }}</div>", NULL);
     ecs_world *world = ecs_world_new();
-    render_ui *ui = render_ui_new(root, NULL);
+    render_ui *ui = authoring_ui_new(root, NULL);
     ui_world w = { .ecs = world, .page = "Shell" };
     rml_backend_keep_warnings();
     for (int i = 0; i < 3; i++) {
@@ -541,7 +541,7 @@ static void self_data(const char *root)
     }
     game_ui *model = game_ui_new();
     ui_world w = { .ecs = world, .model = model };
-    render_ui *ui = render_ui_new(root, NULL);
+    render_ui *ui = authoring_ui_new(root, NULL);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     uint64_t first = ecs_entity_to_u64(boards[0]),
              second = ecs_entity_to_u64(boards[1]);
@@ -601,7 +601,7 @@ void test_game_ui_presenter()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     ecs_entity menu = ecs_world_create_entity(world);
     assert(GAME_GameUi_add(world, menu, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
@@ -613,12 +613,12 @@ void test_game_ui_presenter()
                                     "Locked", "Field", "Hit" };
     int emitted_count = (int)(sizeof emitted / sizeof *emitted);
     test_ui_probe_events(live, menu, emitted, emitted_count, &heard);
-    game_ui *model = game_behavior_ui(live->behaviors);
+    game_ui *model = game_behavior_ui(live->runtime->behaviors);
     ui_world w = { .ecs = world,
                    .model = model,
-                   .live = live,
-                   .save = game_behavior_save(live->behaviors) };
-    render_ui *ui = render_ui_new(root, NULL);
+                   .host = authoring_ui_events(live->runtime),
+                   .save = game_behavior_save(live->runtime->behaviors) };
+    render_ui *ui = authoring_ui_new(root, NULL);
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
     test_check(!render_ui_error(ui)[0], "a GameUi document loads from content/ui");
 
@@ -688,7 +688,7 @@ void test_game_ui_presenter()
     test_check(heard.count == before + 1, "a hidden overlay lets clicks reach the world's documents");
     test_remove_ui(folder, "Pause");
 
-    assert(game_behavior_destroy_entity(live->behaviors, menu) == ECS_OK);
+    assert(game_behavior_destroy_entity(live->runtime->behaviors, menu) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     game_ui_set_text(model, ecs_entity_to_u64(menu), "resume", "Go");
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
@@ -753,7 +753,7 @@ void test_game_ui_presenter()
         "value=\"loud\"/>\n",
         "input { display: block; width: 40dp; height: 40dp; }\n"
     );
-    game_save *settings = game_behavior_save(live->behaviors);
+    game_save *settings = game_behavior_save(live->runtime->behaviors);
     game_save_set(settings, "sound", "true");
     *GAME_GameUi_get(world, strip) = (GameUi){ .document = "Options" };
     render_ui_update(ui, &w, 1280, 720, 1.0 / 60);
@@ -931,7 +931,7 @@ void test_game_ui_presenter()
     self_data(root);
 
     render_ui_free(ui);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     test_ui_probes_free();
     ecs_world_free(world);
     test_remove_ui(folder, "Menu");

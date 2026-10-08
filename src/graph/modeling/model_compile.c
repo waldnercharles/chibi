@@ -1,7 +1,7 @@
 #include "graph/modeling/model_compile.h"
 
 #include "graph/modeling/model_internal.h"
-#include "graph/shader/shader_volume.h"
+#include "runtime/shaders/volume.h"
 #include "support/xalloc.h"
 
 #include <float.h>
@@ -10,42 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-void model_program_init(model_program *program)
-{
-    *program = (model_program){ .bounds.empty = true };
-    shader_graph_init(&program->shader);
-    shader_graph_init(&program->hit_shader);
-}
-void model_program_free(model_program *program)
-{
-    shader_graph_free(&program->shader);
-    shader_graph_free(&program->hit_shader);
-    for (int i = 0; i < acount(program->dependencies); i++) {
-        free(program->dependencies[i]);
-    }
-    afree(program->dependencies);
-    for (int i = 0; i < acount(program->parts); i++) {
-        free(program->parts[i].name);
-        free(program->parts[i].path);
-        free(program->parts[i].asset);
-    }
-    afree(program->parts);
-    for (int i = 0; i < acount(program->anchors); i++) {
-        free(program->anchors[i].asset);
-        free(program->anchors[i].name);
-        free(program->anchors[i].scope);
-    }
-    afree(program->anchors);
-    model_material_bindings bindings = { .slots = program->material_slots,
-                                         .dependencies = program->material_dependencies };
-    model_material_bindings_free(&bindings);
-    for (int i = 0; i < acount(program->parameters); i++) {
-        model_parameter_free(&program->parameters[i]);
-    }
-    afree(program->parameters);
-    model_bounds_program_free(program->bounds_program);
-    model_program_init(program);
-}
 int model_emit(compiler *c, const node *source, shader_op op, int width, int a, int b, int d)
 {
     if (c->failed) {
@@ -465,10 +429,10 @@ static bool compile_graph(const graph *source, model_program *program, shader_er
                    .shader = &program->shader,
                    .program = program,
                    .error = error };
-    if (program->bounds_program) {
-        for (int i = 0; i < acount(program->bounds_program->numeric.graph.nodes); i++) {
-            apush(program->shader.nodes, program->bounds_program->numeric.graph.nodes[i]);
-        }
+    if (program->bounds_program &&
+        acount(program->bounds_program->numeric.graph.nodes) &&
+        !shader_graph_clone(&program->bounds_program->numeric.graph, &program->shader, error)) {
+        return false;
     }
     int p = model_emit(&c, root, SHADER_OBJECT_POSITION, 3, -1, -1, -1);
     if (program->bounds_program) {
@@ -514,8 +478,13 @@ bool model_compile_with_catalog(
     expanded.parts = NULL;
     fresh.bounds_program = xcalloc(1, sizeof *fresh.bounds_program);
     struct model_bounds_program *bp = fresh.bounds_program;
-    bp->asset = expanded.asset;
-    expanded.asset = NULL;
+    const graph *construction = expanded.asset->graph;
+    bp->plan = model_prepare_bounds(
+        construction,
+        expanded.inputs,
+        acount(expanded.inputs),
+        error
+    );
     bp->numeric = expanded.numeric;
     model_numeric_init(&expanded.numeric);
     bp->inputs = expanded.inputs;
@@ -524,9 +493,9 @@ bool model_compile_with_catalog(
     expanded.sources = NULL;
     fresh.parameters = bp->numeric.parameters;
     bp->numeric.parameters = NULL;
-    bool valid = compile_graph(bp->asset->graph, &fresh, error);
+    bool valid = bp->plan && compile_graph(construction, &fresh, error);
     if (valid) {
-        valid = model_build_hit(&fresh, error);
+        valid = model_build_hit(&fresh, construction, error);
     }
     if (!valid && error) {
         for (int i = 0; i < acount(bp->sources); i++) {
@@ -568,26 +537,12 @@ bool model_compile_with_catalog(
         }
     }
     if (valid) {
-        shader_graph_init(&bp->proof);
-        shader_graph_copy_images(&bp->proof, &fresh.shader);
-        for (int i = 0; i < acount(fresh.shader.nodes); i++) {
-            apush(bp->proof.nodes, fresh.shader.nodes[i]);
-        }
-        bp->proof.output_count = fresh.shader.output_count;
-        memcpy(bp->proof.output, fresh.shader.output, sizeof bp->proof.output);
-        shader_graph_init(&bp->hit_proof);
-        shader_graph_copy_images(&bp->hit_proof, &fresh.hit_shader);
-        for (int i = 0; i < acount(fresh.hit_shader.nodes); i++) {
-            apush(bp->hit_proof.nodes, fresh.hit_shader.nodes[i]);
-        }
-        bp->hit_proof.output_count = fresh.hit_shader.output_count;
-        memcpy(
-            bp->hit_proof.output,
-            fresh.hit_shader.output,
-            sizeof bp->hit_proof.output
-        );
+        valid = shader_graph_clone(&fresh.shader, &bp->proof, error) &&
+                shader_graph_clone(&fresh.hit_shader, &bp->hit_proof, error) &&
+                model_build_part_shaders(&fresh, construction, error);
         float prepared[SHADER_PARAMETER_MAX][4];
-        valid = model_program_prepare(&fresh, NULL, prepared, &fresh.bounds, error);
+        valid = valid &&
+                model_program_prepare(&fresh, NULL, prepared, &fresh.bounds, error);
         if (valid) {
             for (int i = 0; i < acount(fresh.shader.nodes); i++) {
                 if (fresh.shader.nodes[i].op == SHADER_PARAMETER) {

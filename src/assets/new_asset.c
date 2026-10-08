@@ -2,11 +2,14 @@
 
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
-#include "assets/system_document.h"
+#include "authoring/source_format.h"
+#include "authoring/source_literal.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/modeling/model_compile.h"
 #include "graph/shader/shader_graph.h"
+#include "runtime/component_catalog.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
 
@@ -107,12 +110,41 @@ static char *graph_text(behavior_domain domain, const char *name)
     return text;
 }
 
+static char *source_text(const char *kind, const char *name)
+{
+    char error[160];
+    script_catalog catalog = { 0 };
+    pin_value value = { .type = PIN_STR, .str = name };
+    char *label = authoring_source_literal(
+        &catalog,
+        (script_type){ .storage = PIN_STR },
+        &value,
+        error,
+        sizeof error
+    );
+    if (!label) {
+        return NULL;
+    }
+    size_t bytes = strlen(kind) + strlen(label) + 8;
+    char *raw = xmalloc(bytes);
+    snprintf(raw, bytes, "%s %s {\n}\n", kind, label);
+    script_syntax *syntax = script_parse(raw);
+    char *text = authoring_source_format(syntax, error, sizeof error);
+    script_syntax_free(syntax);
+    free(label);
+    free(raw);
+    return text;
+}
+
 char *new_asset_text(new_asset_kind kind, const char *name)
 {
     switch (kind) {
         case NEW_ASSET_SCENE: {
             game_scene_document *scene = game_scene_document_new(name);
-            char *text = game_scene_document_save(scene);
+            char *text = game_scene_document_save(
+                scene,
+                (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+            );
             game_scene_document_free(scene);
             return text;
         }
@@ -122,18 +154,11 @@ char *new_asset_text(new_asset_kind kind, const char *name)
             game_prototype_free(prototype);
             return text;
         }
-        case NEW_ASSET_SYSTEM: {
-            /* No query: the system runs on what its graph reads. */
-            game_system_document *system = game_system_document_new(name);
-            char *text = game_system_document_save(system, NULL, NULL, NULL);
-            game_system_document_free(system);
-            return text;
-        }
-        case NEW_ASSET_BEHAVIOR: return graph_text(BEHAVIOR_DOMAIN_EVENT, name);
+        case NEW_ASSET_SYSTEM: return source_text("system", name);
+        case NEW_ASSET_BEHAVIOR: return source_text("behavior", name);
         case NEW_ASSET_EVENT:
             return graph_text(BEHAVIOR_DOMAIN_EVENT_DEFINITION, name);
-        case NEW_ASSET_LIBRARY:
-            return graph_text(BEHAVIOR_DOMAIN_LIBRARY, name);
+        case NEW_ASSET_LIBRARY: return source_text("library", name);
         case NEW_ASSET_MATERIAL:
             return graph_text(BEHAVIOR_DOMAIN_MATERIAL, name);
         case NEW_ASSET_SHAPE: return graph_text(BEHAVIOR_DOMAIN_SHAPE, name);

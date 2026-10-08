@@ -3,7 +3,7 @@
 #include "graph/document/serialize.h"
 #include "graph/runtime/instance.h"
 #include "runtime/behaviors/entities.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/text_file.h"
 #include "test/support/code_fixture.h"
 #include "test/support/event_fixture.h"
@@ -117,10 +117,10 @@ static void query_guard_parity(
 void bench_encounter_query(int count, unsigned budget, int repeats)
 {
     assert(count >= 0 && count <= 20000 && repeats > 0);
-    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.code");
+    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.chibi");
     assert(json);
     behavior_asset *asset = link_test_libraries(
-        test_project_asset("content/behaviors/ArenaWaveBehavior.code", json)
+        test_project_asset("content/behaviors/ArenaWaveBehavior.chibi", json)
     );
     free(json);
     assert(asset);
@@ -175,7 +175,10 @@ void bench_encounter_query(int count, unsigned budget, int repeats)
             );
         }
         assert(!result);
-        assert(instance->variables[2].i == count && instance->variables[3].b);
+        assert(
+            instance->execution.variables[2].i == count &&
+            instance->execution.variables[3].b
+        );
         steps = flow_run_steps(run);
         flow_run_free(run);
     }
@@ -200,16 +203,16 @@ void bench_encounter_query(int count, unsigned budget, int repeats)
 void encounter_query_code(const char *path, int count, int repeats)
 {
     assert(count >= 0 && count <= 20000 && repeats >= 0);
-    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.code");
+    char *json = text_file_read("content/behaviors/ArenaWaveBehavior.chibi");
     behavior_asset *asset = link_test_libraries(
-        test_project_asset("content/behaviors/ArenaWaveBehavior.code", json)
+        test_project_asset("content/behaviors/ArenaWaveBehavior.chibi", json)
     );
     free(json);
     assert(asset);
     behavior_program_publish(asset);
     graph *g = behavior_asset_find_graph(asset, 2010);
     const behavior_function *function = behavior_program_function(
-        behavior_program_graph(asset->program, g),
+        behavior_program_graph(behavior_program_cached(asset), g),
         graph_node_by_id(g, g->entry_id)
     );
     assert(function);
@@ -278,8 +281,8 @@ void encounter_query_code(const char *path, int count, int repeats)
             int result = mode ? entries[mode - 1](&ctx)
                               : behavior_function_run(function, &ctx, false);
             assert(
-                !result && bi->variables[2].i == count && bi->variables[3].b &&
-                !bi->variables[4].b
+                !result && bi->execution.variables[2].i == count &&
+                bi->execution.variables[3].b && !bi->execution.variables[4].b
             );
         }
         clock_gettime(CLOCK_MONOTONIC, &end);

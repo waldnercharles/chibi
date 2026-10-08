@@ -1,5 +1,11 @@
 # Generative model authoring implementation
 
+> Historical implementation record. Commands, MCP recipes, helper scripts and
+> validation results below describe the recorded revision. The MCP product and
+> its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
+> files and [native checks](runtime-authoring.md); see [testing](testing.md) for
+> admitted checks. These results do not verify the current checkout.
+
 Implement the authoring improvements identified by the Polaroid SDF and Blender comparison. Preserve the original reference model and comparison artifacts; new examples demonstrate each capability separately and in a combined asset. Work occurs in the existing declarative-modeling worktree.
 
 ## Scope and contracts

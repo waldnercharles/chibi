@@ -1,8 +1,9 @@
+#include "authoring/engine_preview.h"
+#include "authoring/preview.h"
+#include "authoring/prototype_preview.h"
 #include "graph/document/serialize.h"
-#include "runtime/behaviors/live.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
-#include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/event_fixture.h"
 #include "support/xalloc.h"
@@ -18,7 +19,7 @@
 typedef struct
 {
     ecs_world *world;
-    game_live_world *live;
+    game_preview_world *live;
     engine *engine;
     game_prototype_preview *preview;
     ecs_entity player;
@@ -40,31 +41,27 @@ static char *read_file(const char *path)
     return text;
 }
 
-static behavior_asset *behavior(const char *name)
+static test_source_fixture behavior(const char *name)
 {
     char path[256];
-    snprintf(path, sizeof path, "content/behaviors/%s.code", name);
+    snprintf(path, sizeof path, "content/behaviors/%s.chibi", name);
     char *text = read_file(path);
-    behavior_asset *asset = test_project_asset(path, text);
-    if (asset) {
-        asset = link_test_libraries(asset);
-    }
+    test_source_fixture fixture = test_source_prepare(path, text);
     free(text);
-    assert(asset);
-    compile_report report;
-    compile_report_init(&report);
-    int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; errors && i < acount(report.items); i++) {
-        fprintf(stderr, "enemy attack: %s\n", report.items[i].message);
-    }
-    assert(errors == 0);
-    compile_report_free(&report);
-    return asset;
+    return fixture;
 }
 
 static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 {
-    return game_behavior_attach(user, entity, name);
+    game_preview_runtime *runtime = user;
+    return game_source_attach(
+        runtime->sources,
+        entity,
+        name,
+        runtime->deferred,
+        runtime->now,
+        runtime->delta
+    );
 }
 
 static void launch(host *h, const game_prototype *player)
@@ -78,7 +75,7 @@ static void launch(host *h, const game_prototype *player)
             game_prototype_spawn(
                 player,
                 h->world,
-                &(game_prototype_spawn_hooks){ attach, h->live->behaviors },
+                &(game_prototype_spawn_hooks){ attach, h->live->runtime },
                 &h->player,
                 error,
                 sizeof error
@@ -101,21 +98,18 @@ static host create(bool isolated, const game_prototype_registry *registry, const
         for (int i = 0; i < registry->component_count; i++) {
             assert(ecs_world_register_component(h.world, registry->components[i], NULL) == ECS_OK);
         }
-        h.live = game_live_world_new(h.world);
+        h.live = game_preview_world_new(h.world);
         register_damage_event(h.live);
-        h.engine = engine_new(h.world, h.live);
+        h.engine = authoring_engine_new(h.world, h.live->runtime);
     }
     const char *names[] = { "HealthBehavior", "PlayerContactBehavior" };
     for (int i = 0; i < 2; i++) {
-        behavior_asset *asset = behavior(names[i]);
-        if (h.preview) {
-            assert(game_prototype_preview_register_behavior(h.preview, names[i], asset) == 0);
-            behavior_asset_free(asset);
-        } else {
-            assert(
-                game_live_add_definition(h.live, game_live_definition_new(names[i], asset)) == 0
-            );
-        }
+        test_source_fixture fixture = behavior(names[i]);
+        test_source_register(
+            h.preview ? game_prototype_preview_live(h.preview)->runtime : h.live->runtime,
+            &fixture
+        );
+        test_source_free(&fixture);
     }
     launch(&h, player);
     h.clock = simulation_fixture_new(h.engine, h.preview);
@@ -157,16 +151,24 @@ static void move(host *h, ecs_entity entity, float x)
 
 static void damage(host *h, int amount)
 {
-    game_behavior_world *world = h->preview
-                                   ? game_prototype_preview_behaviors(h->preview)
-                                   : h->live->behaviors;
-    behavior_instance *instance = game_behavior_instance(world, h->player, "HealthBehavior");
-    assert(instance);
+    game_preview_runtime *runtime = h->preview
+                                      ? game_prototype_preview_live(h->preview)->runtime
+                                      : h->live->runtime;
+    execution_program *program = game_source_program(runtime->sources, "HealthBehavior");
+    assert(program && execution_program_instance(program, ecs_entity_to_u64(h->player)));
     pin_value values[] = { { .type = PIN_I32, .type_name = "int", .i = amount },
                            { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 0 } };
-    flow_error error;
-    flow_run *run = behavior_instance_dispatch(instance, "Damage", (flow_inputs){ values, 2 }, &error);
-    assert(run && flow_run_status(run) == FLOW_COMPLETED);
+    assert(
+        game_source_dispatch(
+            runtime->sources,
+            h->player,
+            "Damage",
+            values,
+            2,
+            runtime->now,
+            runtime->delta
+        ) == 1
+    );
 }
 
 static void attacks(bool isolated, const game_prototype_registry *registry, const game_prototype *player)
@@ -238,7 +240,7 @@ static void attacks(bool isolated, const game_prototype_registry *registry, cons
         return;
     }
     engine_free(h.engine);
-    game_live_world_free(h.live);
+    game_preview_world_free(h.live);
     ecs_world_free(h.world);
 }
 

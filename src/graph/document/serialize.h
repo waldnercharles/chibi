@@ -43,6 +43,5 @@ av_value *behavior_asset_to_disk_value(av_doc *doc, const behavior_asset *asset)
 behavior_asset *behavior_asset_from_value(av_value *value);
 behavior_asset *behavior_asset_clone(const behavior_asset *asset);
 bool behavior_asset_equal(const behavior_asset *a, const behavior_asset *b);
-av_value *serialize_value(av_doc *doc, const pin_value *value);
 
 #endif

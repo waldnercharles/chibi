@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "runtime/behaviors/entities.h"
 #include "test/suite_internal.h"
@@ -58,11 +61,11 @@ static void delivery(behavior_backend backend)
 {
     behavior_asset *a = events();
     ecs_world *w = ecs_world_new();
-    game_live_world *live = game_live_world_new(w);
-    assert(!game_behavior_register_asset(live->behaviors, "commands", a));
+    game_preview_world *live = game_preview_world_new(w);
+    assert(!game_behavior_register_asset(live->runtime->behaviors, "commands", a));
     ecs_entity e = ecs_world_create_entity(w);
-    assert(!game_behavior_attach(live->behaviors, e, "commands"));
-    behavior_instance *receiver = game_behavior_instance(live->behaviors, e, "commands");
+    assert(!game_behavior_attach(live->runtime->behaviors, e, "commands"));
+    behavior_instance *receiver = game_behavior_instance(live->runtime->behaviors, e, "commands");
     assert(receiver && !behavior_instance_set_backend(receiver, backend));
     behavior_instance_set_trace_enabled(receiver, false);
     whole_command_capture captured = { .record = true };
@@ -73,7 +76,9 @@ static void delivery(behavior_backend backend)
     behavior_instance *sender = behavior_instance_create(a, &owner, NULL, NULL);
     behavior_instance_set_trace_enabled(sender, false);
     assert(!behavior_instance_set_backend(sender, backend));
-    assert(!behavior_instance_bind_service(sender, "game.entities", live->entities));
+    assert(
+        !behavior_instance_bind_service(sender, "game.entities", live->runtime->entities)
+    );
     char *name = strdup("queued real type");
     pin_value args[] = {
         { .type = PIN_I32, .i = 999 },
@@ -89,25 +94,27 @@ static void delivery(behavior_backend backend)
     if (backend != BEHAVIOR_ORACLE) {
         assert(run->whole_function_executed);
     }
-    assert(game_entities_pending_events(live->entities) == 65 && !captured.calls);
+    assert(
+        game_entities_pending_events(live->runtime->entities) == 65 && !captured.calls
+    );
     flow_run_free(run);
     behavior_instance_destroy(sender);
     memset(name, '?', strlen(name));
     free(name);
-    assert(!game_entities_dispatch_events(live->entities));
+    assert(!game_entities_dispatch_events(live->runtime->entities));
     if (captured.calls != 64) {
         fprintf(
             stderr,
             "delivery backend=%d calls=%d pending=%d activations=%d\n",
             backend,
             captured.calls,
-            game_entities_pending_events(live->entities),
+            game_entities_pending_events(live->runtime->entities),
             acount(receiver->activations)
         );
     }
-    assert(captured.calls == 64 && game_entities_pending_events(live->entities) == 1);
-    assert(!game_entities_dispatch_events(live->entities));
-    assert(captured.calls == 65 && !game_entities_pending_events(live->entities));
+    assert(captured.calls == 64 && game_entities_pending_events(live->runtime->entities) == 1);
+    assert(!game_entities_dispatch_events(live->runtime->entities));
+    assert(captured.calls == 65 && !game_entities_pending_events(live->runtime->entities));
     for (int i = 0; i < 65; i++) {
         const pin_value *v = captured.values + i * 4;
         assert(
@@ -121,7 +128,7 @@ static void delivery(behavior_backend backend)
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     }
     whole_command_clear(&captured);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(w);
     behavior_asset_free(a);
 }
@@ -135,8 +142,8 @@ static void destruction(behavior_backend backend)
         assert(!GAME_GameHealth_add(w, entities[i], 0));
     }
     assert(!ecs_world_apply_commands(w));
-    game_live_world *live = game_live_world_new(w);
-    game_entities *host = live->entities;
+    game_preview_world *live = game_preview_world_new(w);
+    game_entities *host = live->runtime->entities;
     behavior_asset *a = behavior_asset_new("Retire snapshot");
     graph *g = behavior_asset_add_function(a, "Retire", false);
     node *entry = g->nodes[0], *ret = g->nodes[1],
@@ -186,7 +193,7 @@ static void destruction(behavior_backend backend)
     flow_run_free(run);
     behavior_instance_destroy(bi);
     behavior_asset_free(a);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(w);
 }
 void test_compiled_entity_commands()

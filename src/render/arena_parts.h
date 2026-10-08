@@ -1,9 +1,12 @@
 #ifndef CHIBI_RENDER_ARENA_PARTS_H
 #define CHIBI_RENDER_ARENA_PARTS_H
 
-#include "platform/cute.h"
+#define RENDER_PARTS_PREPARED_VERSION 1
+
 #include "runtime/components.h"
 
+#include <cute_math.h>
+#include <cute_math3d.h>
 #include <stddef.h>
 
 enum
@@ -27,10 +30,10 @@ typedef struct
     int count;
 } arena_parts;
 
-/* code array payload of parts with primitive, size, position, rotation and material.
- * Empty text means no override. Dimensions are required and positive; transforms default zero. */
-bool render_arena_parts_parse(const char *text, arena_parts *parts, char *error, size_t size);
-/* malloc-owned canonical code payload, or NULL for invalid parts. */
-char *render_arena_parts_write(const arena_parts *parts);
-
+/* Copies supplied immutable parts; key is an opaque prepared identity. */
+bool render_arena_parts_publish(const char *, const arena_parts *, char *, size_t);
+bool render_arena_parts_read(const char *, arena_parts *, char *, size_t);
+void render_arena_parts_clear();
+/* malloc-owned portable snapshot of the complete resident part table. */
+bool render_arena_parts_save(unsigned char **, size_t *, char *, size_t);
 #endif

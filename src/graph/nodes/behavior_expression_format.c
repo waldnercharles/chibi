@@ -1,10 +1,11 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
-#include "graph/model/pin_fmt.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/component_nodes.h"
 #include "support/array.h"
+#include "types/value_format.h"
 
 #include <assert.h>
 #include <ctype.h>

@@ -794,12 +794,26 @@ void ar_ctx_link(ar_ctx *c, ar_lanes *w, int src, int dst, float src_anchor, flo
                         .seed = src_seed + (dst_seed - src_seed) * t,
                         .priority = AR_CORRIDOR_PRIORITY }
         );
-        apush(c->edges, (ar_ledge){ prev, corridor, prev_anchor, AR_WIRE_LANE * 0.5f, back });
+        apush(
+            c->edges,
+            (ar_ledge){ .from = prev,
+                        .to = corridor,
+                        .from_anchor = prev_anchor,
+                        .to_anchor = AR_WIRE_LANE * 0.5f,
+                        .back = back }
+        );
         apush(w->lanes, corridor);
         prev = corridor;
         prev_anchor = AR_WIRE_LANE * 0.5f;
     }
-    apush(c->edges, (ar_ledge){ prev, dst, prev_anchor, dst_anchor, back });
+    apush(
+        c->edges,
+        (ar_ledge){ .from = prev,
+                    .to = dst,
+                    .from_anchor = prev_anchor,
+                    .to_anchor = dst_anchor,
+                    .back = back }
+    );
 }
 
 /* Orders every rank to reduce crossings, then places each node vertically. */
@@ -1128,9 +1142,9 @@ static void ar_layout_component(
             if (!e->back) {
                 apush(
                     passes,
-                    ((ar_pass){ c.nodes[e->from].rank,
-                                c.nodes[e->from].y + e->from_anchor,
-                                c.nodes[e->to].y + e->to_anchor })
+                    ((ar_pass){ .gap = c.nodes[e->from].rank,
+                                .in = c.nodes[e->from].y + e->from_anchor,
+                                .out = c.nodes[e->to].y + e->to_anchor })
                 );
             }
         }

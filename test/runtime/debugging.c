@@ -1,3 +1,6 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
 /* The debugger's runtime support: stepping through function calls in every
    backend (Step enters a call, Step Over runs one as a node, Step Out finishes
    the call it is in), and failed runs logged at their node. */

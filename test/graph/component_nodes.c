@@ -1,12 +1,15 @@
 #include "graph/nodes/component_nodes.h"
 
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/authoring/optimize.h"
 #include "graph/compiler/compile.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_file.h"
@@ -80,11 +83,11 @@ static int compile_errors(const behavior_asset *asset)
 static void project_equivalence()
 {
     static const char *const patterns[] = {
-        "projects/*/content/behaviors/*.code",
-        "projects/*/content/libraries/*.code",
-        "content/behaviors/*.code",
-        "content/libraries/*.code",
-        "test/fixtures/content/behaviors/*.code",
+        "projects/*/content/behaviors/*.chibi",
+        "projects/*/content/libraries/*.chibi",
+        "content/behaviors/*.chibi",
+        "content/libraries/*.chibi",
+        "test/fixtures/content/behaviors/*.chibi",
     };
     int files = 0, raised = 0;
     for (size_t p = 0; p < sizeof patterns / sizeof *patterns; p++) {

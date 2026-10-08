@@ -1,6 +1,10 @@
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "test/whole_material_fixture.h"
 
 #include <assert.h>

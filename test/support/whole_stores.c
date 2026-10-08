@@ -1,3 +1,6 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "test/whole_store_fixture.h"
@@ -75,7 +78,7 @@ void whole_store_smoke()
         behavior_asset *a = whole_store_fixture(kind);
         behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
         behavior_instance_set_trace_enabled(bi, false);
-        void *backing = bi->variable_storage[0].data;
+        void *backing = bi->execution.variable_storage[0].data;
         whole_record record = { .tag = 251,
                                 .position = { 3, 4 },
                                 .weight = 2.75,
@@ -100,8 +103,8 @@ void whole_store_smoke()
             result->tag == record.tag && result->stamp == record.stamp &&
             result->active && result->weight == record.weight
         );
-        assert(bi->variables[0].ptr == (kind == WHOLE_STORE_SNAPSHOT ? NULL : backing));
-        assert(bi->variable_storage[0].data == backing);
+        assert(bi->execution.variables[0].ptr == (kind == WHOLE_STORE_SNAPSHOT ? NULL : backing));
+        assert(bi->execution.variable_storage[0].data == backing);
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
         flow_run_free(run);
         behavior_instance_destroy(bi);

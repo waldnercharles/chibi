@@ -1,7 +1,10 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
 #include "graph/nodes/behavior_expression.h"
-#include "graph/runtime/value_array.h"
+#include "graph/nodes/core_nodes.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <math.h>

@@ -1,6 +1,6 @@
 #include "render/arena_visual.h"
 
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -41,7 +41,7 @@ int render_arena_visuals(
         return 0;
     }
     arena_parts parts;
-    if (!render_arena_parts_parse(mesh ? mesh->parts : NULL, &parts, error, size)) {
+    if (!render_arena_parts_read(mesh ? mesh->parts : NULL, &parts, error, size)) {
         return -1;
     }
     if (!parts.count) {

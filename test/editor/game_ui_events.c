@@ -1,11 +1,14 @@
+#include "authoring/ui_events_adapter.h"
+#include "authoring/ui_loader.h"
+#include "graph/authoring/graph_edit.h"
 /* A game document's events reach its entity's behaviors in the update that
  * follows the click, with the payload the event asset declares (render/ui.h
  * ui_activation_send), so what a behavior sets shows in the same update. */
+#include "authoring/preview.h"
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
 #include "render/ui.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -113,13 +116,13 @@ void test_game_ui_events()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     const char *definitions[] = { BUMPED, LISTED };
     for (int i = 0; i < 2; i++) {
         behavior_asset *event = behavior_asset_load(definitions[i]);
         assert(
             event &&
-            game_live_add_definition(live, game_live_definition_new(event->name, event)) == 0
+            game_preview_add_definition(live, game_preview_definition_new(event->name, event)) == 0
         );
     }
     ecs_entity panel = ecs_world_create_entity(world);
@@ -127,12 +130,14 @@ void test_game_ui_events()
     assert(ecs_world_apply_commands(world) == ECS_OK);
     *GAME_GameUi_get(world, panel) = (GameUi){ .document = "Probe" };
     ui_probe bumped = { 0 }, plain = { 0 };
-    const game_live_definition *declared = game_live_find_definition(live, "Bumped");
+    const game_preview_definition *declared = game_preview_find_definition(live, "Bumped");
     test_ui_probe_attach(live, panel, bump_handler(declared->working), &bumped);
     const char *const plain_events[] = { "Plain" };
     test_ui_probe_events(live, panel, plain_events, 1, &plain);
-    ui_world w = { .ecs = world, .model = game_behavior_ui(live->behaviors), .live = live };
-    render_ui *ui = render_ui_new(root, NULL);
+    ui_world w = { .ecs = world,
+                   .model = game_behavior_ui(live->runtime->behaviors),
+                   .host = authoring_ui_events(live->runtime) };
+    render_ui *ui = authoring_ui_new(root, NULL);
     update(ui, &w);
     update(ui, &w);
     bool idle = text_is(ui, "#out", "idle") && !render_ui_error(ui)[0];
@@ -143,7 +148,7 @@ void test_game_ui_events()
     click(ui, 40, 20, RML_INPUT_MOD_SHIFT);
     update(ui, &w);
     bool ran = bumped.count == 1 && bumped.values == 6 &&
-               !game_entities_pending_events(live->entities);
+               !game_entities_pending_events(live->runtime->entities);
     bool flags = ran && bumped.payload[0].type == PIN_BOOL && bumped.payload[0].b &&
                  bumped.payload[1].type == PIN_BOOL && !bumped.payload[1].b;
     bool pointer = ran && bumped.payload[2].type == PIN_STRUCT &&
@@ -175,7 +180,7 @@ void test_game_ui_events()
     update(ui, &w);
     test_check(
         plain.count == 1 && plain.values == 0 && !strcmp(plain.event, "Plain") &&
-            !game_entities_pending_events(live->entities),
+            !game_entities_pending_events(live->runtime->entities),
         "an event without an event asset reaches its behavior with no payload"
     );
 
@@ -192,7 +197,7 @@ void test_game_ui_events()
     test_check(!render_ui_error(ui)[0], "that report ends with the update that made it");
 
     render_ui_free(ui);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     test_ui_probes_free();
     ecs_world_free(world);
     test_remove_ui(folder, "Probe");

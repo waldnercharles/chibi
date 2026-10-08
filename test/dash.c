@@ -1,7 +1,9 @@
+#include "authoring/engine_preview.h"
+#include "authoring/native_prototype.h"
+#include "authoring/preview.h"
 #include "graph/document/serialize.h"
-#include "runtime/behaviors/live.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
 #include "support/array.h"
 #include "support/text_file.h"
 #include "test/support/code_fixture.h"
@@ -17,37 +19,25 @@
 typedef struct
 {
     ecs_world *world;
-    game_live_world *live;
+    game_preview_world *live;
     engine *runtime;
     simulation_fixture simulation;
     ecs_entity player;
 } dash_fixture;
 
-static void load_behavior(game_live_world *live, const char *name)
+static void load_behavior(game_preview_world *live, const char *name)
 {
     char path[256];
     const char *root = !strcmp(name, "DashBehavior")
                          ? "test/fixtures/content/behaviors"
                          : "content/behaviors";
-    snprintf(path, sizeof path, "%s/%s.code", root, name);
+    snprintf(path, sizeof path, "%s/%s.chibi", root, name);
     char *text = text_file_read(path);
     assert(text);
-    behavior_asset *asset = test_project_asset(path, text);
+    test_source_fixture fixture = test_source_prepare(path, text);
     free(text);
-    if (!asset) {
-        fprintf(stderr, "Could not load dash fixture behavior %s: %s\n", name, graph_last_error());
-    }
-    assert(asset);
-    asset = link_test_libraries(asset);
-    compile_report report;
-    compile_report_init(&report);
-    int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
-        fprintf(stderr, "%s: %s\n", name, report.items[i].message);
-    }
-    assert(errors == 0);
-    compile_report_free(&report);
-    assert(game_live_add_definition(live, game_live_definition_new(name, asset)) == 0);
+    test_source_register(live->runtime, &fixture);
+    test_source_free(&fixture);
 }
 
 static ecs_entity body(dash_fixture *f, float x, float y, int type, unsigned category, unsigned mask)
@@ -72,7 +62,16 @@ static void add_health(dash_fixture *f, ecs_entity entity, int amount)
     assert(GAME_GameHealth_add(f->world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(f->world) == ECS_OK);
     *GAME_GameHealth_get(f->world, entity) = (GameHealth){ amount, amount };
-    assert(game_behavior_attach(f->live->behaviors, entity, "HealthBehavior") == 0);
+    assert(
+        game_source_attach(
+            f->live->runtime->sources,
+            entity,
+            "HealthBehavior",
+            f->live->runtime->deferred,
+            f->live->runtime->now,
+            f->live->runtime->delta
+        ) == 0
+    );
 }
 
 static dash_fixture create()
@@ -81,7 +80,7 @@ static dash_fixture create()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(f.world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    f.live = game_live_world_new(f.world);
+    f.live = game_preview_world_new(f.world);
     register_damage_event(f.live);
     const char *names[] = { "DashBehavior",
                             "TwinStickInputBehavior",
@@ -90,7 +89,7 @@ static dash_fixture create()
     for (int i = 0; i < 4; i++) {
         load_behavior(f.live, names[i]);
     }
-    f.runtime = engine_new(f.world, f.live);
+    f.runtime = authoring_engine_new(f.world, f.live->runtime);
     engine_set_focus(f.runtime, ENGINE_FOCUS_VIEWPORT);
     f.simulation = simulation_fixture_new(f.runtime, NULL);
     f.player = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 2 | 8);
@@ -107,9 +106,36 @@ static dash_fixture create()
                                                         .damage = 40,
                                                         .direction = { 1, 0 } };
     add_health(&f, f.player, 100);
-    assert(game_behavior_attach(f.live->behaviors, f.player, "TwinStickInputBehavior") == 0);
-    assert(game_behavior_attach(f.live->behaviors, f.player, "PlayerContactBehavior") == 0);
-    assert(game_behavior_attach(f.live->behaviors, f.player, "DashBehavior") == 0);
+    assert(
+        game_source_attach(
+            f.live->runtime->sources,
+            f.player,
+            "TwinStickInputBehavior",
+            f.live->runtime->deferred,
+            f.live->runtime->now,
+            f.live->runtime->delta
+        ) == 0
+    );
+    assert(
+        game_source_attach(
+            f.live->runtime->sources,
+            f.player,
+            "PlayerContactBehavior",
+            f.live->runtime->deferred,
+            f.live->runtime->now,
+            f.live->runtime->delta
+        ) == 0
+    );
+    assert(
+        game_source_attach(
+            f.live->runtime->sources,
+            f.player,
+            "DashBehavior",
+            f.live->runtime->deferred,
+            f.live->runtime->now,
+            f.live->runtime->delta
+        ) == 0
+    );
     simulation_frame(&f.simulation, 0);
     return f;
 }
@@ -117,7 +143,7 @@ static dash_fixture create()
 static void dispose(dash_fixture *f)
 {
     engine_free(f->runtime);
-    game_live_world_free(f->live);
+    game_preview_world_free(f->live);
     ecs_world_free(f->world);
 }
 
@@ -128,7 +154,12 @@ static void damage(dash_fixture *f, ecs_entity target, ecs_entity source, int am
                              .type_name = "ecs.entity",
                              .u64 = ecs_entity_to_u64(source) } };
     assert(
-        game_entities_request_event(f->live->entities, target, "Damage", (flow_inputs){ values, 2, NULL }) == 0
+        game_entities_request_event(
+            f->live->runtime->entities,
+            target,
+            "Damage",
+            (execution_arguments){ values, 2 }
+        ) == 0
     );
 }
 
@@ -244,10 +275,10 @@ static void held_contact()
                         .u64 = ecs_entity_to_u64(enemy) };
     assert(
         game_entities_request_event(
-            f.live->entities,
+            f.live->runtime->entities,
             f.player,
             "Contact Begin",
-            (flow_inputs){ &other, 1, NULL }
+            (execution_arguments){ &other, 1 }
         ) == 0
     );
     simulation_advance(&f.simulation, .4);
@@ -335,8 +366,9 @@ static void preview_restart()
                                          GAME_REGISTRY_COMPONENT_COUNT };
     game_prototype_preview *preview = game_prototype_preview_new(&registry);
     register_test_preview_catalog(preview);
-    for (int i = 0; i < game_live_definition_count(definitions.live); i++) {
-        game_live_definition *definition = game_live_definition_at(definitions.live, i);
+    for (int i = 0; i < game_preview_definition_count(definitions.live); i++) {
+        game_preview_definition
+            *definition = game_preview_definition_at(definitions.live, i);
         if (definition->working->domain != BEHAVIOR_DOMAIN_EVENT) {
             continue;
         }
@@ -353,7 +385,7 @@ static void preview_restart()
     game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
     free(text);
     assert(prototype);
-    assert(game_prototype_add_component(prototype, &GAME_COMPONENT_GameDash) == 0);
+    assert(game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameDash) == 0);
     for (int i = 0; i < acount(prototype->components); i++) {
         game_prototype_component *component = &prototype->components[i];
         if (component->desc->id == GAME_COMPONENT_GameDash.id) {

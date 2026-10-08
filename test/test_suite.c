@@ -1,3 +1,4 @@
+#include "graph/model/registry.h"
 #include "support/execution_policy.h"
 #include "test/instance_bank_fixture.h"
 #include "test/pending_fixture.h"
@@ -24,28 +25,15 @@
 #define PICO_UNIT_IMPLEMENTATION
 #include "suite_internal.h"
 
-void test_automation_graph_edit();
 void test_automation_code();
-void test_automation_metadata_write();
+int run_language_semantic_corpus(const char *manifest, const char *content_root);
+int run_language_semantic_corpora(const char *projects);
+int run_language_prepare_corpora(const char *projects);
+int run_language_prepare_corpora_sljit(const char *projects);
+void test_source_lifecycle();
+void test_source_presentation();
+void test_source_edit();
 void test_scene_metadata_disk();
-void run_code_source_location_checks();
-void run_code_source_name_checks();
-void run_code_source_checks();
-void run_code_query_checks();
-void run_code_catalog_checks();
-void run_code_value_checks();
-void run_code_call_checks();
-void run_code_method_checks();
-void run_code_declaration_checks();
-void test_code_print();
-void test_code_source_intelligence();
-void run_code_source_metadata_checks();
-void run_code_components_checks();
-void run_code_ecs_intelligence_checks();
-void test_code_system_query_inference();
-void test_code_ecs_syntax();
-void run_code_ecs_print_checks();
-void test_code_reactive();
 void test_code_system_runtime();
 void test_compiled_behaviors();
 void run_editor_command_checks();
@@ -68,11 +56,6 @@ void test_collab_protocol();
 void test_collab_replay();
 void test_automation_search();
 void test_automation_navigation();
-void test_automation_graph_optimize();
-void test_automation_prototype_edit();
-void test_automation_scene_edit();
-void test_automation_asset_write();
-void test_automation_refactor();
 void test_automation_preview_registration();
 void test_automation_profile_scenario_inputs();
 void run_prototype_preview_lifetime_check(void);
@@ -287,15 +270,9 @@ TEST_CASE(all_checks)
 {
     stacktrace_init(program_name);
     TEST_TIMED_CALL(registry_validate);
-    TEST_TIMED_CALL(test_automation_graph_edit);
     TEST_TIMED_CALL(test_automation_code);
     TEST_TIMED_CALL(test_automation_search);
     TEST_TIMED_CALL(test_automation_navigation);
-    TEST_TIMED_CALL(test_automation_graph_optimize);
-    TEST_TIMED_CALL(test_automation_prototype_edit);
-    TEST_TIMED_CALL(test_automation_scene_edit);
-    TEST_TIMED_CALL(test_automation_asset_write);
-    TEST_TIMED_CALL(test_automation_refactor);
     TEST_TIMED_CALL(test_automation_preview_registration);
     TEST_TIMED_CALL(test_automation_profile_scenario_inputs);
     TEST_TIMED_CALL(run_content_catalog_checks);
@@ -364,24 +341,6 @@ TEST_CASE(all_checks)
     TEST_TIMED_CALL(test_asset_source);
     TEST_TIMED_CALL(test_asset_code_checkpoint);
     TEST_TIMED_CALL(run_asset_text_checks);
-    TEST_TIMED_CALL(run_code_source_location_checks);
-    TEST_TIMED_CALL(run_code_source_name_checks);
-    TEST_TIMED_CALL(run_code_source_checks);
-    TEST_TIMED_CALL(run_code_query_checks);
-    TEST_TIMED_CALL(run_code_catalog_checks);
-    TEST_TIMED_CALL(run_code_value_checks);
-    TEST_TIMED_CALL(run_code_call_checks);
-    TEST_TIMED_CALL(run_code_method_checks);
-    TEST_TIMED_CALL(run_code_declaration_checks);
-    TEST_TIMED_CALL(test_code_print);
-    TEST_TIMED_CALL(test_code_source_intelligence);
-    TEST_TIMED_CALL(run_code_source_metadata_checks);
-    TEST_TIMED_CALL(run_code_components_checks);
-    TEST_TIMED_CALL(run_code_ecs_intelligence_checks);
-    TEST_TIMED_CALL(test_code_system_query_inference);
-    TEST_TIMED_CALL(test_code_ecs_syntax);
-    TEST_TIMED_CALL(run_code_ecs_print_checks);
-    TEST_TIMED_CALL(test_code_reactive);
     TEST_TIMED_CALL(test_code_system_runtime);
     TEST_TIMED_CALL(test_number_serialization);
     TEST_TIMED_CALL(test_auto_weapon);
@@ -555,11 +514,12 @@ static void print_test_selectors()
     puts("  modeling/materials: --model-constructive --model-bake --model-export --model-inspection --modeling --materials --material-thermal --material-mpm");
     puts("  gameplay: --game-capabilities --arena-combat --arena-encounter --arena-hud");
     puts("  collaboration: --collab");
-    puts("  Narrower costly checks: --automation-search --automation-refactor --automation-profile-scenario-inputs --editor-commands");
+    puts("  Narrower costly checks: --automation-search --automation-authoring-readonly --authoring-preview-lifecycle --automation-profile-scenario-inputs --editor-commands");
     puts("  Focused CPU checks: --shader-graph-codegen --prototype-preview-lifetime");
+    puts("  Source corpus: --prepare-corpora <project-manifest>; --prepare-corpora-sljit <project-manifest>; --semantic-corpora <project-manifest>; --semantic-corpus <source-manifest> <content-root>");
     puts("  Studio subgroups: --studio-documents list; --studio-shell list (then replace list with one name)");
     puts("  GPU/render coverage: make test-render");
-    puts("Use make agent-list for workload classifications; full/mixed checks require CHIBI_EXECUTION_PROFILE=hardware CHIBI_ALLOW_FULL_GPU=1.");
+    puts("Use make agent-list for workload classifications and make test-list for exact admitted commands. Full suites remain disabled under the temporary 60-second policy.");
     puts("The no-selector invocation is the full all_checks suite; --whole-function-audit is a separate full-coverage check.");
 }
 
@@ -597,6 +557,7 @@ static void agent_timeout(int signal_number)
 
 int main(int argc, char **argv)
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     if (argc == 2 && (!strcmp(argv[1], "--list-tests") || !strcmp(argv[1], "--help"))) {
         setvbuf(stdout, NULL, _IOLBF, 0);
         print_test_selectors();
@@ -625,7 +586,11 @@ int main(int argc, char **argv)
         }
     }
     if (!chibi_execution_hardware()) {
-        bool cpu = argc == 2 && agent_cpu_selector(argv[1]);
+        bool cpu = (argc == 2 && agent_cpu_selector(argv[1])) ||
+                   (argc == 4 && !strcmp(argv[1], "--semantic-corpus")) ||
+                   (argc == 3 && (!strcmp(argv[1], "--semantic-corpora") ||
+                                  !strcmp(argv[1], "--prepare-corpora") ||
+                                  !strcmp(argv[1], "--prepare-corpora-sljit")));
         bool gpu = argc == 2 && chibi_execution_is("gpu-check") &&
                    agent_gpu_selector(argv[1]);
         if ((!chibi_execution_is("iteration") && !chibi_execution_is("gpu-check")) ||
@@ -658,6 +623,22 @@ int main(int argc, char **argv)
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
     program_name = argc ? argv[0] : "test_suite";
+    if (argc == 4 && !strcmp(argv[1], "--semantic-corpus")) {
+        registry_validate();
+        return run_language_semantic_corpus(argv[2], argv[3]);
+    }
+    if (argc == 3 && !strcmp(argv[1], "--prepare-corpora")) {
+        registry_validate();
+        return run_language_prepare_corpora(argv[2]);
+    }
+    if (argc == 3 && !strcmp(argv[1], "--prepare-corpora-sljit")) {
+        registry_validate();
+        return run_language_prepare_corpora_sljit(argv[2]);
+    }
+    if (argc == 3 && !strcmp(argv[1], "--semantic-corpora")) {
+        registry_validate();
+        return run_language_semantic_corpora(argv[2]);
+    }
     test_timing_enabled = getenv("CHIBI_TEST_TIMINGS") &&
                           !strcmp(getenv("CHIBI_TEST_TIMINGS"), "1");
     if (argc == 2 && !strcmp(argv[1], "--shader-graph-gpu")) {
@@ -733,6 +714,11 @@ int main(int argc, char **argv)
         test_compiled_behaviors();
         return fails ? 1 : 0;
     }
+    if (argc > 1 && !strcmp(argv[1], "--execution-request-lifecycle")) {
+        registry_validate();
+        test_host_wait();
+        return fails ? 1 : 0;
+    }
     if (argc > 1 && !strcmp(argv[1], "--editor-commands")) {
         registry_validate();
         run_editor_command_checks();
@@ -743,9 +729,47 @@ int main(int argc, char **argv)
         test_automation_search();
         return fails ? 1 : 0;
     }
-    if (argc > 1 && !strcmp(argv[1], "--automation-refactor")) {
+    if (argc > 1 && !strcmp(argv[1], "--authoring-preview-lifecycle")) {
         registry_validate();
-        test_automation_refactor();
+        run_live_checks();
+        run_live_preview_checks();
+        run_prototype_live_checks();
+        test_source_lifecycle();
+        pu_print_stats();
+        return fails || pu_test_failed() ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--source-presentation")) {
+        test_source_presentation();
+        pu_print_stats();
+        return fails || pu_test_failed() ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--source-edit")) {
+        test_source_edit();
+        pu_print_stats();
+        return fails || pu_test_failed() ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--source-session")) {
+        registry_validate();
+        test_asset_code_checkpoint();
+        pu_print_stats();
+        return fails || pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--source-systems")) {
+        registry_validate();
+        test_code_system_runtime();
+        pu_print_stats();
+        return fails || pu_test_failed() ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--system-schedule")) {
+        registry_validate();
+        test_system_schedule();
+        pu_print_stats();
+        return fails || pu_test_failed() ? 1 : 0;
+    }
+    if (argc > 1 && !strcmp(argv[1], "--automation-authoring-readonly")) {
+        registry_validate();
+        test_automation_code();
+        test_automation_navigation();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--automation-profile-scenario-inputs")) {
@@ -813,39 +837,10 @@ int main(int argc, char **argv)
         run_graph_inline_checks();
         return fails ? 1 : 0;
     }
-    if (argc == 2 && !strcmp(argv[1], "--code-source")) {
-        registry_validate();
-        run_code_components_checks();
-        run_code_ecs_intelligence_checks();
-        test_code_system_query_inference();
-        test_code_ecs_syntax();
-        run_code_ecs_print_checks();
-        test_code_reactive();
-        test_code_system_runtime();
-        run_code_method_checks();
-        run_code_declaration_checks();
-        run_code_query_checks();
-        run_code_catalog_checks();
-        run_code_value_checks();
-        run_code_call_checks();
-        test_code_print();
-        test_code_source_intelligence();
-        run_code_source_checks();
-        run_code_source_metadata_checks();
-        run_code_source_name_checks();
-        run_code_source_location_checks();
-        test_automation_code();
-        test_automation_metadata_write();
-        return fails ? 1 : 0;
-    }
     if (argc == 2 && !strcmp(argv[1], "--asset-documents")) {
         registry_validate();
         test_asset_value();
         run_asset_text_checks();
-        run_code_source_location_checks();
-        run_code_source_name_checks();
-        run_code_source_checks();
-        run_code_source_metadata_checks();
         test_asset_source();
         test_asset_code_checkpoint();
         test_editor_documents();
@@ -1590,15 +1585,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && strcmp(argv[1], "--automation-authoring") == 0) {
         registry_validate();
-        test_automation_graph_edit();
         test_automation_code();
         test_automation_search();
         test_automation_navigation();
-        test_automation_graph_optimize();
-        test_automation_prototype_edit();
-        test_automation_scene_edit();
-        test_automation_asset_write();
-        test_automation_refactor();
         test_automation_preview_registration();
         test_automation_profile_scenario_inputs();
         return fails ? 1 : 0;
@@ -1677,6 +1666,12 @@ int main(int argc, char **argv)
         test_projectile();
         test_combat();
         test_auto_weapon();
+        return fails ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--shader-parameters-prepared")) {
+        extern void test_shader_parameters_prepared();
+        registry_validate();
+        test_shader_parameters_prepared();
         return fails ? 1 : 0;
     }
     if (argc > 1 && !strcmp(argv[1], "--shader-graph-codegen")) {

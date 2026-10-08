@@ -2,7 +2,7 @@
 // perceptual quality score or a physical ground-truth lighting comparison.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { pngPixels } from "./mcp/png-check.mjs";
+import { pngPixels } from "./png-check.mjs";
 
 const [reference, candidate] = process.argv.slice(2).map(path => pngPixels(readFileSync(path)));
 assert.equal(reference.width, candidate.width);

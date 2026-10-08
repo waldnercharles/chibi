@@ -1,5 +1,0 @@
-<div id="hud" autofocus="" data-keys="H:Repair">
-  <use ui="Meter" id="hull">Hull</use>
-  <div id="status">Speed <number-flow id="speed" value="0"/></div>
-  <div id="repair" data-event-click="emit('Repair')">Repair hull<span class="key">H</span></div>
-</div>

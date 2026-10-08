@@ -40,7 +40,7 @@ typedef struct
     asset_source_completion *items;
 } asset_source_completions;
 
-/* Independent highlighting for incomplete behavior or declarative KDL source.
+/* Independent highlighting for incomplete declarative KDL source.
  * The caller frees the returned array with afree. */
 asset_source_span *asset_source_highlight(const char *text);
 asset_source *asset_source_parse(const char *text);
@@ -57,10 +57,6 @@ void asset_source_complete(
     asset_source_completions *out
 );
 void asset_source_completions_free(asset_source_completions *out);
-/* Draft behavior symbol navigation. References include the declaration, and
- * resolve lexical brace scopes; callers free the returned array with afree. */
-bool asset_source_definition_at(const asset_source *source, int offset, asset_source_span *definition);
-asset_source_span *asset_source_references_at(const asset_source *source, int offset);
 char *asset_source_hover(const asset_source *source, int offset);
 /* Value at a source position, with its key when it has one. NULL on whitespace. */
 const av_value *asset_source_value_at(const asset_source *source, int offset, const char **name);

@@ -1,4 +1,0 @@
-name "LibraryHeader"
-components {
-    GAME.GameUi document="LibraryHeader" hidden=#true
-}

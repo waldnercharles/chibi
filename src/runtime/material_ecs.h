@@ -1,6 +1,6 @@
 #pragma once
 /* Private ECS adapter state. Native material algorithms do not include this file. */
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "runtime/material_debris.h"
 #include "runtime/material_destruction.h"
 #include "runtime/material_stream.h"

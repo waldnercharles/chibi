@@ -278,7 +278,7 @@ def publish(root, jobs, collab_url, threads=False, update_runtime=False, cache_d
             if update_runtime:
                 if not runtime_config.is_file():
                     raise RuntimeError('--update-game-runtime requires .chibi/game-runtime.json')
-                run('make', 'package-native', f'JOBS={jobs}', 'PACKAGE_OUTPUT=dist/game-runtime',
+                run('make', 'package-player', f'JOBS={jobs}', 'PLAYER_OUTPUT=dist/game-runtime',
                     'UPDATE_GAME_RUNTIME=0', cwd=source, env=env)
         if deployed:
             require_current_main(source, commit)

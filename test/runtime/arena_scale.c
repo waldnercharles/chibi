@@ -1,10 +1,11 @@
 #include "arena_reference.h"
+#include "assets/prototype.h"
+#include "authoring/preview.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "support/text_file.h"
 #include "test/support/code_fixture.h"
@@ -34,17 +35,17 @@ static double peak_memory_mb()
     return usage.ru_maxrss / 1024.0;
 #endif
 }
-static void load_definition(game_live_world *live, const char *path)
+static void load_definition(game_preview_world *live, const char *path)
 {
     char *json = text_file_read(path);
     assert(json);
     behavior_asset *asset = test_project_asset(path, json);
     free(json);
     assert(asset);
-    game_live_definition *definition = game_live_definition_new(asset->name, asset);
-    assert(!game_live_add_definition(live, definition));
+    game_preview_definition *definition = game_preview_definition_new(asset->name, asset);
+    assert(!game_preview_add_definition(live, definition));
 }
-static void load_catalog(game_live_world *live, const char *pattern)
+static void load_catalog(game_preview_world *live, const char *pattern)
 {
     glob_t paths = { 0 };
     assert(!glob(pattern, 0, NULL, &paths));
@@ -73,9 +74,9 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
     }
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     load_catalog(live, "content/events/*.kdl");
-    load_catalog(live, "content/libraries/*.code");
+    load_catalog(live, "content/libraries/*.chibi");
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char *json = text_file_read("content/prototypes/ArenaEnemy.kdl"), error[256];
@@ -85,12 +86,12 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
     assert(prototype);
     for (int i = 0; i < acount(prototype->graphs); i++) {
         char path[256];
-        snprintf(path, sizeof path, "content/behaviors/%s.code", prototype->graphs[i]);
+        snprintf(path, sizeof path, "content/behaviors/%s.chibi", prototype->graphs[i]);
         load_definition(live, path);
     }
-    game_behavior_set_profiling(live->behaviors, profile);
-    game_entities_profile_queries(live->entities, profile);
-    game_behavior_set_delta_seconds(live->behaviors, 1.0 / 60.0);
+    game_behavior_set_profiling(live->runtime->behaviors, profile);
+    game_entities_profile_queries(live->runtime->entities, profile);
+    game_behavior_set_delta_seconds(live->runtime->behaviors, 1.0 / 60.0);
     ecs_entity target = ecs_world_create_entity(world);
     assert(!GAME_GameTransform_add(world, target, 0));
     assert(!GAME_GameCollider_add(world, target, 0));
@@ -106,7 +107,7 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
         *GAME_GameTransform_get(world, enemy) = (GameTransform){ 100 + (i % 100) * 8,
                                                                  100 + (i / 100) * 8 };
         assert(!game_behavior_set_attachments(
-            live->behaviors,
+            live->runtime->behaviors,
             enemy,
             (const char *const *)prototype->graphs,
             acount(prototype->graphs)
@@ -138,14 +139,14 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
     uint64_t batches = behavior_batch_dispatches(), prepared = 0, native = 0;
     for (int frame = -8; frame < frames; frame++) {
         if (!frame) {
-            game_entities_profile_queries(live->entities, profile);
+            game_entities_profile_queries(live->runtime->entities, profile);
         }
-        game_behavior_profile_begin(live->behaviors);
+        game_behavior_profile_begin(live->runtime->behaviors);
         double now = (frame + 8) / 60.0;
         double clock_start = clocks ? seconds() : 0;
-        game_behavior_set_time(live->behaviors, now);
+        game_behavior_set_time(live->runtime->behaviors, now);
         if (clocks) {
-            game_behavior_set_delta_seconds(live->behaviors, 1.0 / 60.0);
+            game_behavior_set_delta_seconds(live->runtime->behaviors, 1.0 / 60.0);
         }
         double clock_elapsed = clocks ? (seconds() - clock_start) * 1000 : 0;
         double reference_elapsed = 0;
@@ -157,13 +158,15 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
             reference_snapshot(rows, snapshot, false);
         }
         double start = seconds();
-        assert(game_behavior_update(live->behaviors, NULL) == count * 2);
+        assert(game_behavior_update(live->runtime->behaviors, NULL) == count * 2);
         double updated = seconds();
-        assert(!game_behavior_pump(live->behaviors, now));
+        assert(!game_behavior_pump(live->runtime->behaviors, now));
         if (frame >= 0) {
-            assert(!game_behavior_last_pump_count(live->behaviors));
+            assert(!game_behavior_last_pump_count(live->runtime->behaviors));
         }
-        game_behavior_update_stats updates = game_behavior_last_update(live->behaviors);
+        game_behavior_update_stats updates = game_behavior_last_update(
+            live->runtime->behaviors
+        );
         assert(
             updates.entries == count * 2 && updates.prepared == count * 2 &&
             !updates.scheduled
@@ -197,7 +200,9 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
             apush(clock_ms, clock_elapsed);
             apush(complete_ms, clock_elapsed + elapsed);
         }
-        const game_behavior_profile_frame *p = game_behavior_profile(live->behaviors);
+        const game_behavior_profile_frame *p = game_behavior_profile(
+            live->runtime->behaviors
+        );
         if (!totals.count) {
             totals = *p;
             continue;
@@ -212,7 +217,7 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
         }
     }
     if (profile) {
-        game_entity_query_profile q = game_entities_query_profile(live->entities);
+        game_entity_query_profile q = game_entities_query_profile(live->runtime->entities);
         printf(
             "scale_queries searches=%llu world_candidates=%llu "
             "matching_candidates=%llu cache_builds=%llu\n",
@@ -239,11 +244,16 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
         assert(fabs(velocity->x + speed * position->x / distance) < .001);
         assert(fabs(velocity->y + speed * position->y / distance) < .001);
         checksum += velocity->x + velocity->y;
-        int attachments = game_behavior_attachment_count_for_entity(live->behaviors, enemies[i]);
+        int attachments = game_behavior_attachment_count_for_entity(
+            live->runtime->behaviors,
+            enemies[i]
+        );
         assert(attachments == acount(prototype->graphs));
         for (int j = 0; j < attachments; j++) {
             game_behavior_attachment_info info;
-            assert(!game_behavior_attachment_info_at(live->behaviors, enemies[i], j, &info));
+            assert(
+                !game_behavior_attachment_info_at(live->runtime->behaviors, enemies[i], j, &info)
+            );
             assert(behavior_instance_backend(info.instance) == backend);
         }
     }
@@ -319,7 +329,7 @@ int bench_arena_scale(int count, int frames, bool portable, bool profile, int mo
     afree(rows);
     afree(enemies);
     game_prototype_free(prototype);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
     behavior_debug_backend(previous);
     return 0;
@@ -334,8 +344,8 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
     }
-    game_live_world *live = game_live_world_new(world);
-    load_definition(live, "projects/arena2d/content/behaviors/Pursuit.code");
+    game_preview_world *live = game_preview_world_new(world);
+    load_definition(live, "projects/arena2d/content/behaviors/Pursuit.chibi");
     game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
                                          GAME_REGISTRY_COMPONENT_COUNT };
     char *json = text_file_read("projects/arena2d/content/prototypes/Swarmer.kdl"),
@@ -344,9 +354,9 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
     game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
     free(json);
     assert(prototype);
-    game_behavior_set_profiling(live->behaviors, profile);
-    game_entities_profile_queries(live->entities, profile);
-    game_behavior_set_delta_seconds(live->behaviors, 1.0 / 60.0);
+    game_behavior_set_profiling(live->runtime->behaviors, profile);
+    game_entities_profile_queries(live->runtime->entities, profile);
+    game_behavior_set_delta_seconds(live->runtime->behaviors, 1.0 / 60.0);
 
     ecs_entity target = ecs_world_create_entity(world);
     assert(!GAME_GameTransform_add(world, target, 0));
@@ -365,7 +375,7 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
             100 + (i / 100) * 8,
         };
         const char *behavior = "Pursuit";
-        assert(!game_behavior_set_attachments(live->behaviors, enemy, &behavior, 1));
+        assert(!game_behavior_set_attachments(live->runtime->behaviors, enemy, &behavior, 1));
         apush(enemies, enemy);
     }
     printf(
@@ -380,14 +390,16 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
     uint64_t prepared = 0, native = 0;
     for (int frame = -8; frame < frames; frame++) {
         if (!frame) {
-            game_entities_profile_queries(live->entities, profile);
+            game_entities_profile_queries(live->runtime->entities, profile);
         }
-        game_behavior_profile_begin(live->behaviors);
+        game_behavior_profile_begin(live->runtime->behaviors);
         double start = seconds();
-        game_behavior_set_time(live->behaviors, (frame + 8) / 60.0);
-        assert(game_behavior_update(live->behaviors, NULL) == count);
-        assert(!game_behavior_pump(live->behaviors, (frame + 8) / 60.0));
-        game_behavior_update_stats updates = game_behavior_last_update(live->behaviors);
+        game_behavior_set_time(live->runtime->behaviors, (frame + 8) / 60.0);
+        assert(game_behavior_update(live->runtime->behaviors, NULL) == count);
+        assert(!game_behavior_pump(live->runtime->behaviors, (frame + 8) / 60.0));
+        game_behavior_update_stats updates = game_behavior_last_update(
+            live->runtime->behaviors
+        );
         assert(updates.entries == count && updates.prepared == count && !updates.scheduled);
         assert(updates.native_loop == (!portable && !profile ? count : 0));
         prepared += updates.prepared;
@@ -397,7 +409,7 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
         }
     }
     if (profile) {
-        game_entity_query_profile q = game_entities_query_profile(live->entities);
+        game_entity_query_profile q = game_entities_query_profile(live->runtime->entities);
         printf(
             "neon_pursuit_queries searches=%llu world_candidates=%llu "
             "matching_candidates=%llu cache_builds=%llu\n",
@@ -426,7 +438,7 @@ int bench_neon_pursuit(int count, int frames, bool portable, bool profile)
     afree(samples);
     afree(enemies);
     game_prototype_free(prototype);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
     behavior_debug_backend(previous);
     return 0;

@@ -1,3 +1,4 @@
+#include "graph/authoring/graph_edit.h"
 #include "support/asset_text.h"
 #include "test/suite_internal.h"
 

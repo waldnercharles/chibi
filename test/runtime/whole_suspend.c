@@ -71,8 +71,8 @@ static void parity(int kind, int budget, bool expressions, int (*generated)(beha
         } while (true);
         assert(status == expected && ctx.steps == flow_run_steps(run));
         assert(
-            ctx.variables[0].i == oracle->variables[0].i &&
-            ctx.variables[1].i == oracle->variables[1].i
+            ctx.variables[0].i == oracle->execution.variables[0].i &&
+            ctx.variables[1].i == oracle->execution.variables[1].i
         );
         if (status) {
             assert(ctx.node_id == flow_run_error(run)->node->id);

@@ -25,26 +25,91 @@ static bool file_equals(const char *filename, const char *expected)
     return equal;
 }
 
+/* The fixture is produced in C; the production packager is the only Python
+ * workload. shasum supplies independent content digests for installed records. */
+static bool checksum(const char *filename, char result[65])
+{
+    const char *argv[] = { "shasum", "-a", "256", filename, NULL };
+    if (tool_run(argv, directory, log_path)) {
+        return false;
+    }
+    char *text = tool_read(log_path);
+    bool valid = text && strlen(text) >= 65;
+    if (valid) {
+        memcpy(result, text, 64);
+        result[64] = 0;
+    }
+    free(text);
+    return valid;
+}
 static void write_profile(int invalid)
 {
-    char filename[1024], contents[256];
-    path(filename, build, "CMakeCache.txt");
+    static const char *names[] = { "bin/chibi-player",
+                                   "include/chibi/types/example.h",
+                                   "share/chibi/engine.json",
+                                   "share/chibi/shaders/example.glsl" };
+    char filename[1024], files[4096] = "{", checksum_text[65];
+    for (int i = 0; i < 4; i++) {
+        path(filename, build, names[i]);
+        assert(checksum(filename, checksum_text));
+        struct stat info;
+        assert(!stat(filename, &info));
+        size_t offset = strlen(files);
+        int count = snprintf(
+            files + offset,
+            sizeof files - offset,
+            "%s\"%s\":{\"bytes\":%lld,\"sha256\":\"%s\"}",
+            i ? "," : "",
+            names[i],
+            (long long)info.st_size,
+            checksum_text
+        );
+        assert(count > 0 && (size_t)count < sizeof files - offset);
+    }
+    strcat(files, "}");
+    char canonical[8192], manifest[8192], identity[65];
+    const char *kind = invalid == 0 ? "sdk" : "runtime";
     snprintf(
-        contents,
-        sizeof contents,
-        "CHIBI_DISTRIBUTION:BOOL=%s\n"
-        "CHIBI_ENABLE_SANITIZERS:BOOL=%s\n",
-        invalid == 0 ? "OFF" : "ON",
-        invalid == 1 ? "ON" : "OFF"
+        canonical,
+        sizeof canonical,
+        "{\"engine\":{\"build_id\":\"fixture-engine\",\"manifest\":\"share/"
+        "chibi/engine.json\"},"
+        "\"files\":%s,\"kind\":\"%s\",\"manifest_format\":1,"
+        "\"package_version\":\"0.1.0\",\"products\":%s,"
+        "\"requirements\":{\"project_format\":%d},\"targets\":[\"Chibi::"
+        "player\"]}",
+        files,
+        kind,
+        invalid == 1 ? "{}" : "{\"chibi-player\":\"bin/chibi-player\"}",
+        CHIBI_PROJECT_VERSION
     );
-    tool_write(filename, contents);
+    path(filename, directory, "identity.json");
+    tool_write(filename, canonical);
+    assert(checksum(filename, identity));
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "{\"manifest_format\":1,\"kind\":\"%s\",\"build_id\":\"%s\","
+        "\"package_version\":\"0.1.0\",\"files\":%s,"
+        "\"products\":%s,\"targets\":[\"Chibi::player\"],"
+        "\"requirements\":{\"project_format\":%d},"
+        "\"engine\":{\"manifest\":\"share/chibi/"
+        "engine.json\",\"build_id\":\"fixture-engine\"}}\n",
+        kind,
+        identity,
+        files,
+        invalid == 1 ? "{}" : "{\"chibi-player\":\"bin/chibi-player\"}",
+        CHIBI_PROJECT_VERSION
+    );
+    path(filename, build, "share/chibi/package.json");
+    tool_write(filename, manifest);
 }
 
 static int package()
 {
     char script[1024];
-    path(script, tool_root(), "tools/package_native.py");
-    const char *argv[] = { "python3",  script, "--build", build,
+    path(script, tool_root(), "tools/package_player.py");
+    const char *argv[] = { "python3",  script, "--sdk", build,
                            "--output", output, NULL };
     return tool_run(argv, directory, log_path);
 }
@@ -56,6 +121,44 @@ static int install(const char *registration)
     const char *argv[] = { "python3",  script,       "--package", output,
                            "--config", registration, NULL };
     return tool_run(argv, directory, log_path);
+}
+
+static void previous_runtime(const char *game)
+{
+    char filename[1024], runtime[1024], canonical[1024], identity[65],
+        binary_hash[65];
+    static const char *directories[] = { ".chibi",
+                                         ".chibi/runtime",
+                                         ".chibi/runtime/bin",
+                                         ".chibi/runtime/share",
+                                         ".chibi/runtime/share/chibi" };
+    for (int i = 0; i < 5; i++) {
+        path(filename, game, directories[i]);
+        assert(!mkdir(filename, 0700));
+    }
+    path(runtime, game, ".chibi/runtime");
+    for (int i = 0; i < 2; i++) {
+        path(filename, runtime, i ? "bin/chibi_ctl" : "bin/chibi");
+        const char *copy[] = { "cp", "/usr/bin/true", filename, NULL };
+        assert(!tool_run(copy, directory, log_path));
+    }
+    assert(checksum(filename, binary_hash));
+    snprintf(canonical, sizeof canonical, "{\"bin/chibi\":\"%s\",\"bin/chibi_ctl\":\"%s\"}", binary_hash, binary_hash);
+    path(filename, directory, "previous-identity.json");
+    tool_write(filename, canonical);
+    assert(checksum(filename, identity));
+    char manifest[2048];
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "{\"format\":1,\"build_id\":\"%s\",\"project_version\":%d,\"files\":%s}"
+        "\n",
+        identity,
+        CHIBI_PROJECT_VERSION,
+        canonical
+    );
+    path(filename, runtime, "share/chibi/engine.json");
+    tool_write(filename, manifest);
 }
 
 static int configure_fixture(
@@ -213,7 +316,7 @@ TEST_CASE(warm_configuration_preserves_input_invalidation)
     return true;
 }
 
-TEST_CASE(package_preserves_unrelated_output_and_rejects_development_builds)
+TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages)
 {
     char marker[1024];
     assert(!mkdir(output, 0700));
@@ -235,13 +338,16 @@ TEST_CASE(package_installation_preserves_game_and_rejects_corruption)
 {
     REQUIRE(package() == 0);
     char manifest_path[1024];
-    path(manifest_path, output, "share/chibi/engine.json");
+    path(manifest_path, output, "share/chibi/package.json");
     char *manifest = tool_read(manifest_path);
     REQUIRE(manifest != NULL);
     bool complete = strstr(manifest, "\"build_id\"") &&
-                    strstr(manifest, "bin/chibi_ctl") &&
-                    strstr(manifest, "share/chibi/mcp/server.mjs") &&
-                    strstr(manifest, "share/chibi/studio/project.kdl");
+                    strstr(manifest, "bin/chibi-player") &&
+                    strstr(manifest, "\"kind\": \"player\"") &&
+                    strstr(manifest, "\"sdk\"") &&
+                    !strstr(manifest, "bin/chibi_ctl") &&
+                    !strstr(manifest, "include/chibi/") &&
+                    !strstr(manifest, "share/chibi/studio/");
     free(manifest);
     REQUIRE(complete);
 
@@ -271,18 +377,23 @@ TEST_CASE(package_installation_preserves_game_and_rejects_corruption)
     path(registration, directory, "registration.json");
     snprintf(contents, sizeof contents, "{\"games\":[\"%s\"]}\n", game);
     tool_write(registration, contents);
-    REQUIRE(install(registration) == 0);
+    previous_runtime(game);
+    char previous_binary[1024];
+    path(previous_binary, game, ".chibi/runtime/bin/chibi_ctl");
+    tool_write(previous_binary, "modified prior runtime\n");
+    REQUIRE(install(registration) != 0);
+    REQUIRE(file_equals(previous_binary, "modified prior runtime\n"));
     REQUIRE(file_equals(filename, "original game content\n"));
-    char *installed_config = tool_read(config);
-    REQUIRE(installed_config != NULL);
-    bool preserved = strstr(installed_config, original) &&
-                     strstr(installed_config, ".chibi/runtime/bin/chibi-mcp");
-    free(installed_config);
-    REQUIRE(preserved);
+    const char *restore[] = { "cp", "/usr/bin/true", previous_binary, NULL };
+    REQUIRE(tool_run(restore, directory, log_path) == 0);
+    REQUIRE(install(registration) == 0);
+    REQUIRE(access(previous_binary, F_OK) != 0);
+    REQUIRE(file_equals(filename, "original game content\n"));
+    REQUIRE(file_equals(config, original));
 
     char runtime_binary[1024], package_binary[1024], pin_path[1024];
-    path(runtime_binary, game, ".chibi/runtime/bin/chibi");
-    path(package_binary, output, "bin/chibi");
+    path(runtime_binary, game, ".chibi/runtime/bin/chibi-player");
+    path(package_binary, output, "bin/chibi-player");
     struct stat installed_stat, source_stat;
     REQUIRE(!lstat(runtime_binary, &installed_stat));
     REQUIRE(!stat(package_binary, &source_stat));
@@ -372,14 +483,28 @@ void test_tool_package()
     path(output, directory, "native release");
     path(log_path, directory, "command.log");
     assert(!mkdir(build, 0700));
-    for (int i = 0; i < 2; i++) {
-        char filename[1024];
-        path(filename, build, i ? "chibi_ctl" : "chibi");
-        const char *argv[] = { "cp", "/usr/bin/true", filename, NULL };
-        assert(tool_run(argv, directory, log_path) == 0);
+    char filename[1024];
+    const char *directories[] = {
+        "bin",   "include",     "include/chibi",      "include/chibi/types",
+        "share", "share/chibi", "share/chibi/shaders"
+    };
+    for (int i = 0; i < 7; i++) {
+        path(filename, build, directories[i]);
+        assert(!mkdir(filename, 0700));
     }
+    path(filename, build, "bin/chibi-player");
+    const char *copy[] = { "cp", "/usr/bin/true", filename, NULL };
+    assert(tool_run(copy, directory, log_path) == 0);
+    path(filename, build, "include/chibi/types/example.h");
+    tool_write(filename, "/* SDK-only declaration */\n");
+    path(filename, build, "share/chibi/shaders/example.glsl");
+    tool_write(filename, "void main() {}\n");
+    path(filename, build, "share/chibi/engine.json");
+    char engine[256];
+    snprintf(engine, sizeof engine, "{\"manifest_format\":1,\"build_id\":\"fixture-engine\",\"project_version\":%d}\n", CHIBI_PROJECT_VERSION);
+    tool_write(filename, engine);
     write_profile(-1);
-    RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_development_builds);
+    RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
     RUN_TEST_CASE(package_installation_preserves_game_and_rejects_corruption);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);
     RUN_TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints);

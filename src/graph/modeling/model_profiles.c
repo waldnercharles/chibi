@@ -1,5 +1,5 @@
 #include "graph/modeling/model_internal.h"
-#include "graph/runtime/value_array.h"
+#include "types/array.h"
 
 #include <float.h>
 #include <math.h>
@@ -115,13 +115,6 @@ static bool polygon_validate(const node *n, shader_error *error)
     }
     return true;
 }
-bool model_profile_operation(int op)
-{
-    return (op >= MODEL_PROFILE_CIRCLE && op <= MODEL_REVOLVE) ||
-           op == MODEL_PROFILE_OFFSET || op == MODEL_PROFILE_UNION ||
-           op == MODEL_PROFILE_INTERSECTION || op == MODEL_PROFILE_DIFFERENCE ||
-           op == MODEL_ROUNDED_EXTRUDE || op == MODEL_BEVELED_EXTRUDE;
-}
 bool model_profile_validate(const node *n, shader_error *error)
 {
     int op = model_operation(n);
@@ -147,106 +140,6 @@ bool model_profile_validate(const node *n, shader_error *error)
         if (radius <= 0 || radius > model_number(n, 1)) {
             return model_fail(error, n->id, "Extrusion edge width must be positive and at most Half Depth");
         }
-    }
-    return true;
-}
-bool model_profile_bounds(compiler *c, const node *n, double threshold, bound *out)
-{
-    int op = model_operation(n);
-    *out = (bound){ 0 };
-    if (op == MODEL_PROFILE_OFFSET) {
-        return model_bounds_visit(
-            c,
-            model_child(c->source, n, 0),
-            fmax(0, threshold + model_number(n, 1)),
-            out
-        );
-    }
-    if (op == MODEL_PROFILE_UNION || op == MODEL_PROFILE_INTERSECTION ||
-        op == MODEL_PROFILE_DIFFERENCE) {
-        bound a, b;
-        if (!model_bounds_visit(c, model_child(c->source, n, 0), threshold, &a)) {
-            return false;
-        }
-        *out = a;
-        if (op == MODEL_PROFILE_DIFFERENCE) {
-            return true;
-        }
-        if (!model_bounds_visit(c, model_child(c->source, n, 1), threshold, &b)) {
-            return false;
-        }
-        if (op == MODEL_PROFILE_UNION) {
-            if (a.empty) {
-                *out = b;
-                return true;
-            }
-            if (b.empty) {
-                return true;
-            }
-            for (int axis = 0; axis < 2; axis++) {
-                out->min[axis] = fmin(a.min[axis], b.min[axis]);
-                out->max[axis] = fmax(a.max[axis], b.max[axis]);
-            }
-            return true;
-        }
-        out->empty = a.empty || b.empty;
-        for (int axis = 0; axis < 2; axis++) {
-            out->min[axis] = fmax(a.min[axis], b.min[axis]);
-            out->max[axis] = fmin(a.max[axis], b.max[axis]);
-            out->empty |= out->min[axis] >= out->max[axis];
-        }
-        return true;
-    }
-    if (op == MODEL_EXTRUDE || op == MODEL_REVOLVE ||
-        op == MODEL_ROUNDED_EXTRUDE || op == MODEL_BEVELED_EXTRUDE) {
-        const node *profile = model_child(c->source, n, 0);
-        bound base;
-        if (!model_bounds_visit(c, profile, 0, &base)) {
-            return false;
-        }
-        if (op == MODEL_REVOLVE && base.min[0] < 0) {
-            return model_fail(c->error, n->id, "Revolve profile radial coordinates must be nonnegative");
-        }
-        if (!model_bounds_visit(c, profile, threshold, out)) {
-            return false;
-        }
-        if (op != MODEL_REVOLVE) {
-            out->min[2] = -model_number(n, 1) - threshold;
-            out->max[2] = model_number(n, 1) + threshold;
-        } else {
-            out->min[0] = out->min[2] = -out->max[0];
-            out->max[2] = out->max[0];
-        }
-        return true;
-    }
-    if (op == MODEL_PROFILE_POLYGON) {
-        const pin_array *points = vertices(n);
-        for (int axis = 0; axis < 2; axis++) {
-            out->min[axis] = DBL_MAX;
-            out->max[axis] = -DBL_MAX;
-        }
-        for (int i = 0; i < points->count; i++) {
-            for (int axis = 0; axis < 2; axis++) {
-                out->min[axis] = fmin(out->min[axis], vertex(points, i)[axis]);
-                out->max[axis] = fmax(out->max[axis], vertex(points, i)[axis]);
-            }
-        }
-        for (int axis = 0; axis < 2; axis++) {
-            out->min[axis] -= threshold;
-            out->max[axis] += threshold;
-        }
-        return true;
-    }
-    float center[3], half[3];
-    model_vector(n, 1, center);
-    if (op == MODEL_PROFILE_CIRCLE) {
-        half[0] = half[1] = model_number(n, 0);
-    } else {
-        model_vector(n, 0, half);
-    }
-    for (int axis = 0; axis < 2; axis++) {
-        out->min[axis] = (double)center[axis] - half[axis] - threshold;
-        out->max[axis] = (double)center[axis] + half[axis] + threshold;
     }
     return true;
 }

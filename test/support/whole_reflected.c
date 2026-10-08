@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "runtime/components.h"
@@ -84,8 +87,8 @@ void whole_reflected_smoke()
     assert(run && run->whole_function_executed && flow_run_status(run) == FLOW_SUSPENDED);
     geometry.width = 99;
     assert(!behavior_instance_tick(bi, .125) && flow_run_status(run) == FLOW_COMPLETED);
-    assert(bi->variables[0].i == 12 && bi->variables[1].i == GAME_PRIMITIVE_BOX);
-    assert(bi->variables[4].f == .18f * 2);
+    assert(bi->execution.variables[0].i == 12 && bi->execution.variables[1].i == GAME_PRIMITIVE_BOX);
+    assert(bi->execution.variables[4].f == .18f * 2);
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_instance_destroy(bi);
     behavior_asset_free(a);

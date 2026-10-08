@@ -1,11 +1,15 @@
 #!/bin/sh
 set -eu
 
-profile=$1
+requested_profile=$1
+profile=$requested_profile
+source_subdir=.
 build_dir=$2
 shift 2
 case "$profile" in
 	native|web) ;;
+	sdk-native) profile=native; source_subdir=sdk ;;
+	sdk-web) profile=web; source_subdir=sdk ;;
 	*) printf 'unknown build profile: %s\n' "$profile" >&2; exit 2 ;;
 esac
 
@@ -18,6 +22,8 @@ configure()
 	fi
 }
 source_dir=$(pwd -P)
+configure_source=$source_dir
+[ "$source_subdir" = . ] || configure_source="$source_dir/$source_subdir"
 if [ -f "$source_dir/.chibi-workspace.json" ]; then
 	python3 "$source_dir/tools/workspace_retirement.py" register "$build_dir"
 fi
@@ -30,7 +36,7 @@ fi
 fast_stamp="$build_dir/.chibi-config-inputs"
 fast_signature()
 {
-    python3 - "$source_dir" "$build_dir" "$profile" "$@" <<'PY_INPUTS'
+    python3 - "$source_dir" "$build_dir" "$requested_profile" "$@" <<'PY_INPUTS'
 import hashlib
 import json
 import os
@@ -210,7 +216,8 @@ if [ "$package_enabled" = 1 ]; then
         --build-dir "$build_dir" --profile "$profile" -- "$@")
 else
     mkdir -p "$build_dir"
-    printf '%s\n' 'unset(CHIBI_DEPENDENCY_PACKAGE CACHE)' > "$build_dir/.chibi-dependency-package.cmake"
+    printf '%s\n' 'unset(CHIBI_DEPENDENCY_PACKAGE CACHE)' \
+        'unset(CHIBI_DEPENDENCY_SOURCE_ROOT CACHE)' > "$build_dir/.chibi-dependency-package.cmake"
 fi
 cache="$build_dir/CMakeCache.txt"
 stamp="$build_dir/.chibi-config"
@@ -229,7 +236,7 @@ fi
 
 signature()
 {
-	printf '%s\n' "$profile" "$source_dir" "$cache_root" "$fingerprint" "$package" "$@"
+	printf '%s\n' "$requested_profile" "$configure_source" "$cache_root" "$fingerprint" "$package" "$@"
 	cksum "$source_dir/tools/configure.sh" "$cache_helper"
 	if [ -f "$cache" ]; then
 		cksum "$cache"
@@ -257,11 +264,11 @@ fi
 
 if [ "$profile" = native ] && [ ! -f "$cache" ] &&
     [ -z "${CMAKE_GENERATOR:-}" ] && command -v ninja >/dev/null 2>&1; then
-	configure -S "$source_dir" -B "$build_dir" -G Ninja \
+	configure -S "$configure_source" -B "$build_dir" -G Ninja \
 		-C "$build_dir/.chibi-fetchcontent-cache.cmake" \
 		-C "$build_dir/.chibi-dependency-package.cmake" "$@"
 else
-	configure -S "$source_dir" -B "$build_dir" \
+	configure -S "$configure_source" -B "$build_dir" \
 		-C "$build_dir/.chibi-fetchcontent-cache.cmake" \
 		-C "$build_dir/.chibi-dependency-package.cmake" "$@"
 fi

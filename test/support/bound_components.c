@@ -1,5 +1,9 @@
 #include "ecs/ecs.h"
+#include "execution/ecs_reader.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/update.h"
 #include "test/whole_aggregate_fixture.h"
@@ -86,14 +90,18 @@ static void storage_changes(behavior_backend backend)
     flow_run *begin = behavior_instance_dispatch(bi, "Begin", (flow_inputs){ 0 }, NULL);
     assert(begin && flow_run_status(begin) == FLOW_COMPLETED);
     flow_run_free(begin);
-    const behavior_function *function = behavior_program_batch_event(asset->program, "Tick", &tick);
+    const behavior_function *function = behavior_program_batch_event(
+        behavior_program_cached(asset),
+        "Tick",
+        &tick
+    );
     assert(function);
-    test.row = (behavior_update_row){
-        .instance = bi,
-        .binding = behavior_update_prepare(&test.bindings, bi, function, tick),
-        .services_revision = bi->services_revision,
-        .entity = handle.u64
-    };
+    test.row = behavior_update_row_make(
+        bi,
+        behavior_update_prepare(&test.bindings, bi, function, tick),
+        handle.u64,
+        0
+    );
     assert(test.row.binding);
     if (backend == BEHAVIOR_SLJIT) {
         test.code = behavior_update_compile();
@@ -102,11 +110,11 @@ static void storage_changes(behavior_backend backend)
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     /* Resolving a missing column cannot fail an untaken branch. */
     step(&test, NULL);
-    assert(bi->variables[0].d == 10.);
+    assert(bi->execution.variables[0].d == 10.);
     pin_value on = { .type = PIN_BOOL, .b = true }, off = { .type = PIN_BOOL };
     assert(!behavior_instance_set_variable(bi, enabled, &on));
     step(&test, "entity lacks component");
-    assert(bi->variables[0].d == 10.125);
+    assert(bi->execution.variables[0].d == 10.125);
 
     const ecs_component_desc *component = WHOLE_NODE_GetRecord.component;
     assert(!ecs_world_register_component(test.world, component, NULL));
@@ -203,19 +211,23 @@ static void separate_views(behavior_backend backend)
     assert(!behavior_instance_set_backend(bi, backend));
     behavior_instance_set_trace_enabled(bi, false);
     eval_component_reader reader;
-    ecs_eval_component_reader_init(&reader, other);
+    ecs_component_reader_init(&reader, other);
     assert(!behavior_instance_bind_service(bi, "ecs.world", test.world));
     assert(!behavior_instance_bind_service(bi, EVAL_COMPONENT_READER_SERVICE, &reader));
     assert(!behavior_instance_set_variable(bi, asset->variables[1].id, &handle));
     node *entry;
-    const behavior_function *function = behavior_program_batch_event(asset->program, "Tick", &entry);
+    const behavior_function *function = behavior_program_batch_event(
+        behavior_program_cached(asset),
+        "Tick",
+        &entry
+    );
     assert(function);
-    test.row = (behavior_update_row){
-        .instance = bi,
-        .binding = behavior_update_prepare(&test.bindings, bi, function, entry),
-        .services_revision = bi->services_revision,
-        .entity = handle.u64
-    };
+    test.row = behavior_update_row_make(
+        bi,
+        behavior_update_prepare(&test.bindings, bi, function, entry),
+        handle.u64,
+        0
+    );
     assert(test.row.binding);
     if (backend == BEHAVIOR_SLJIT) {
         test.code = behavior_update_compile();

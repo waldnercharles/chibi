@@ -1,7 +1,7 @@
 #ifndef TEST_WHOLE_PARTICLE_FIXTURE_H
 #define TEST_WHOLE_PARTICLE_FIXTURE_H
 #include "graph/model/behavior_asset.h"
-#include "render/particles.h"
+#include "runtime/particles.h"
 behavior_asset *whole_particle_fixture(bool directed, bool waits, bool random);
 void whole_particle_smoke();
 void test_compiled_particles(const char *path);

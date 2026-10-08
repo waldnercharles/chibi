@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "test/suite_internal.h"
 #include "test/whole_array_fixture.h"
@@ -68,7 +71,7 @@ static void parity(behavior_asset *a, int kind, int length, unsigned budget, int
         const flow_call_frame *stack = flow_run_call_stack(run, &count);
         if (!mode) {
             status = result;
-            sum = bi->variables[2].d;
+            sum = bi->execution.variables[2].d;
             steps = flow_run_steps(run);
             expected_error = *flow_run_error(run);
             frame_count = count;
@@ -90,7 +93,7 @@ static void parity(behavior_asset *a, int kind, int length, unsigned budget, int
             assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
             assert(
                 result == status && steps == flow_run_steps(run) &&
-                bi->variables[2].d == sum
+                bi->execution.variables[2].d == sum
             );
             if (result) {
                 const flow_error *actual = flow_run_error(run);

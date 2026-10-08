@@ -1,12 +1,14 @@
 #include "ecs/ecs.h"
 
 #include "ecs/execution.h"
-#include "graph/model/pin_conv.h"
-#include "graph/runtime/eval.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
+#include "types/catalog.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -19,6 +21,7 @@ typedef struct
     uint32_t slot_count; /* Allocated payload rows, independent of world capacity. */
     int count;
     uint32_t singleton;
+    arena *owned_rows; /* Lazy per-row snapshots, independent of borrowed writes. */
 } ecs_component;
 
 typedef enum
@@ -430,6 +433,13 @@ static void occupancy_add(ecs_world *world, ecs_component *component, uint32_t s
     component->dense[at] = slot;
 }
 
+static void release_row(ecs_component *component, uint32_t slot)
+{
+    if (slot < (uint32_t)acount(component->owned_rows)) {
+        arena_free(&component->owned_rows[slot]);
+    }
+}
+
 static void occupancy_remove(ecs_world *world, ecs_component *component, uint32_t slot)
 {
     uint64_t *word = &component->occupancy[slot / 64u];
@@ -437,6 +447,7 @@ static void occupancy_remove(ecs_world *world, ecs_component *component, uint32_
     assert(*word & bit);
     *word &= ~bit;
     occupancy_count(world, component, slot, -1);
+    release_row(component, slot);
     if (component->desc.index == ECS_INDEX_DENSE) {
         component->dense_stale = true;
     }
@@ -596,7 +607,7 @@ static const char *execution_intern(const ecs_execution_view *world, const char 
     return ecs_world_intern_string((ecs_world *)world, text);
 }
 
-ecs_world *ecs_world_new(void)
+ecs_world *ecs_world_new()
 {
     ecs_world *world = (ecs_world *)xcalloc(1, sizeof *world);
     world->free_hint = 1;
@@ -605,6 +616,11 @@ ecs_world *ecs_world_new(void)
     assert(!result);
     (void)result;
     return world;
+}
+
+const ecs_execution_view *ecs_world_execution(const ecs_world *world)
+{
+    return world ? &world->execution : NULL;
 }
 
 /* Descriptors own their identity strings; reflected type layouts stay borrowed. */
@@ -629,6 +645,11 @@ void ecs_world_free(ecs_world *world)
     }
     ecs_world_clear_commands(world);
     for (int i = 0; i < acount(world->components); i++) {
+        ecs_component *component = &world->components[i];
+        for (int slot = 0; slot < acount(component->owned_rows); slot++) {
+            arena_free(&component->owned_rows[slot]);
+        }
+        afree(component->owned_rows);
         component_desc_free_names(&world->components[i].desc);
         free(world->components[i].desc.column_base);
         free(world->components[i].occupancy);
@@ -1022,61 +1043,6 @@ int ecs_component_read_field(
     return ECS_OK;
 }
 
-static int eval_read_component_field(
-    void *user,
-    uint64_t owner,
-    const char *component_key,
-    const char *field_name,
-    pin_value *out
-)
-{
-    ecs_world *world = user;
-    ecs_entity entity = ecs_entity_from_u64(owner);
-    if (!world || !out || !ecs_entity_is_alive(world, entity)) {
-        return EVAL_COMPONENT_READ_INVALID_OWNER;
-    }
-    const ecs_component *component = NULL;
-    for (int i = 0; i < ecs_world_component_count(world); i++) {
-        const ecs_component_desc *candidate = ecs_world_component_at(world, i);
-        if (candidate && candidate->key && component_key &&
-            strcmp(candidate->key, component_key) == 0) {
-            component = find_component_const(world, candidate->id);
-            break;
-        }
-    }
-    if (!component) {
-        return EVAL_COMPONENT_READ_MISSING_COMPONENT;
-    }
-    if (!ecs_component_has(world, entity, component->desc.id)) {
-        return EVAL_COMPONENT_READ_MISSING_COMPONENT;
-    }
-    const void *data = ecs_component_data_const(world, entity, component->desc.id);
-    if (!component->desc.type || !data || !out) {
-        return EVAL_COMPONENT_READ_MISSING_COMPONENT;
-    }
-    if (!field_name) {
-        *out = (pin_value){
-            .type = PIN_STRUCT,
-            .container = PIN_CONTAINER_SINGLE,
-            .type_name = component->desc.type->name,
-            .ptr = (void *)data,
-        };
-        return EVAL_COMPONENT_READ_OK;
-    }
-    return pin_read_field_path(data, component->desc.type, field_name, out) == 0
-             ? EVAL_COMPONENT_READ_OK
-             : EVAL_COMPONENT_READ_MISSING_FIELD;
-}
-
-void ecs_eval_component_reader_init(eval_component_reader *reader, ecs_world *world)
-{
-    if (reader) {
-        *reader = (eval_component_reader){ .read = eval_read_component_field,
-                                           .user = world,
-                                           .execution = (const ecs_execution_view *)world };
-    }
-}
-
 const char *ecs_world_intern_string(ecs_world *world, const char *text)
 {
     assert(world);
@@ -1109,6 +1075,195 @@ int ecs_component_write_field(
         value.str = ecs_world_intern_string(world, value.str);
     }
     pin_write_field(data, type_field, value);
+    return ECS_OK;
+}
+
+static bool value_type_matches(pin_value declared, pin_value value)
+{
+    return declared.type == value.type && declared.container == value.container &&
+           !strcmp(
+               declared.type_name ? declared.type_name : "",
+               value.type_name ? value.type_name : ""
+           );
+}
+
+static bool field_size_valid(const type_field *field)
+{
+    size_t size = 0;
+    switch (field->type) {
+        case PIN_BOOL: size = sizeof(bool); break;
+        case PIN_I8:
+        case PIN_U8: size = sizeof(uint8_t); break;
+        case PIN_I16:
+        case PIN_U16: size = sizeof(uint16_t); break;
+        case PIN_I32:
+        case PIN_U32: size = sizeof(uint32_t); break;
+        case PIN_I64:
+        case PIN_U64:
+        case PIN_HANDLE: size = sizeof(uint64_t); break;
+        case PIN_F32: size = sizeof(float); break;
+        case PIN_F64: size = sizeof(double); break;
+        case PIN_STR:
+        case PIN_NAME: size = sizeof(const char *); break;
+        case PIN_ENUM: return field->size > 0 && field->size <= sizeof(int32_t);
+        case PIN_STRUCT: {
+            const type_desc *type = type_catalog_find(field->type_name);
+            return type && type->size && type->size == field->size;
+        }
+        case PIN_FLOW: return false;
+    }
+    return field->size == size;
+}
+
+static const type_field *write_target(const type_desc *type, size_t offset, pin_value declared, int depth)
+{
+    if (depth == 16) {
+        return NULL;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->offset > type->size || field->size > type->size - field->offset) {
+            return NULL;
+        }
+        bool nominal = field->type == PIN_STRUCT || field->type == PIN_ENUM ||
+                       field->type == PIN_HANDLE;
+        pin_value expected = { .type = field->type,
+                               .type_name = nominal ? field->type_name
+                                                    : declared.type_name };
+        if (offset == field->offset && field_size_valid(field) &&
+            value_type_matches(expected, declared)) {
+            return field;
+        }
+        if (field->type != PIN_STRUCT || offset < field->offset ||
+            offset - field->offset >= field->size) {
+            continue;
+        }
+        const type_desc *nested = type_catalog_find(field->type_name);
+        if (!nested || nested->size != field->size) {
+            return NULL;
+        }
+        const type_field *found = write_target(nested, offset - field->offset, declared, depth + 1);
+        if (found) {
+            return found;
+        }
+    }
+    return NULL;
+}
+
+static bool row_equal(const type_desc *type, const void *left, const void *right)
+{
+    for (int i = 0; i < type->field_count; i++) {
+        pin_value a, b;
+        pin_read_field(left, &type->fields[i], &a);
+        pin_read_field(right, &type->fields[i], &b);
+        if (!pin_value_equal(&a, &b)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool component_value_target(
+    const ecs_component *component,
+    size_t offset,
+    pin_value declared,
+    bool *whole,
+    const type_field **field
+)
+{
+    if (!component || declared.container != PIN_CONTAINER_SINGLE ||
+        declared.type == PIN_FLOW) {
+        return false;
+    }
+    const type_desc *type = component->desc.type;
+    *whole = offset == 0 && declared.type == PIN_STRUCT && declared.type_name &&
+             !strcmp(declared.type_name, type->name);
+    *field = *whole ? NULL : write_target(type, offset, declared, 0);
+    return *whole || *field;
+}
+
+bool ecs_component_accepts_value(const ecs_world *world, ecs_component_id id, size_t offset, pin_value declared)
+{
+    bool whole;
+    const type_field *field;
+    return component_value_target(
+        world ? find_component_const(world, id) : NULL,
+        offset,
+        declared,
+        &whole,
+        &field
+    );
+}
+
+int ecs_component_write_value(
+    ecs_world *world,
+    ecs_entity entity,
+    ecs_component_id id,
+    size_t offset,
+    pin_value declared,
+    pin_value value
+)
+{
+    ecs_component *component = world ? find_component(world, id) : NULL;
+    void *row = ecs_component_data(world, entity, id);
+    bool whole;
+    const type_field *field;
+    if (!row || !value_type_matches(declared, value) ||
+        !component_value_target(component, offset, declared, &whole, &field)) {
+        return ECS_ERR_ARGUMENT;
+    }
+    const type_desc *type = component->desc.type;
+    const type_desc *nested = declared.type == PIN_STRUCT
+                                ? (whole ? type : type_catalog_find(declared.type_name))
+                                : NULL;
+    if (declared.type == PIN_STRUCT &&
+        (!nested || !value.ptr || (!whole && nested->size != field->size))) {
+        return ECS_ERR_ARGUMENT;
+    }
+    bool managed = declared.type == PIN_STR || declared.type == PIN_NAME ||
+                   (nested && !type_is_plain(nested));
+    type_field target = whole ? (type_field){ .type = PIN_STRUCT,
+                                              .size = type->size,
+                                              .type_name = type->name }
+                              : *field;
+    target.offset = offset;
+    if (!managed) {
+        pin_write_field(row, &target, value);
+        return ECS_OK;
+    }
+    bool owned = entity.slot < (uint32_t)acount(component->owned_rows) &&
+                 component->owned_rows[entity.slot].first;
+    pin_value previous;
+    pin_read_field(row, &target, &previous);
+    if (owned && (whole ? row_equal(type, row, value.ptr)
+                        : pin_value_equal(&previous, &value))) {
+        return ECS_OK;
+    }
+    if (entity.slot >= INT_MAX) {
+        return ECS_ERR_CAPACITY;
+    }
+    int slot = (int)entity.slot;
+    arena next = { 0 };
+    void *snapshot = arena_alloc(&next, type->size);
+    memcpy(snapshot, row, type->size);
+    pin_write_field(snapshot, &target, value);
+    if (pin_struct_snapshot_fields(&next, type, snapshot)) {
+        arena_free(&next);
+        return ECS_ERR_ARGUMENT;
+    }
+    if (entity.slot >= (uint32_t)acount(component->owned_rows)) {
+        int before = acount(component->owned_rows);
+        asetlen(component->owned_rows, slot + 1);
+        memset(
+            component->owned_rows + before,
+            0,
+            (size_t)(acount(component->owned_rows) - before) * sizeof *component->owned_rows
+        );
+    }
+    arena old = component->owned_rows[entity.slot];
+    memcpy(row, snapshot, type->size);
+    component->owned_rows[entity.slot] = next;
+    arena_free(&old);
     return ECS_OK;
 }
 

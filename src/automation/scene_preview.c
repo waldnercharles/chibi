@@ -1,3 +1,6 @@
+#include "authoring/prototype_preview.h"
+#include "authoring/shader_prepare.h"
+#include "authoring/ui_events_adapter.h"
 #include "automation/controller.h"
 #include "automation/execution_policy.h"
 #include "automation/gpu_capture.h"
@@ -9,14 +12,12 @@
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/ui.h"
+#include "render/viewport.h"
 #include "runtime/camera.h"
-#include "runtime/scenes/prototype_preview.h"
 #include "support/execution_policy.h"
-#include "third_party/yyjson/yyjson.h"
 
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_video.h>
-#include <imgui/dcimgui.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
@@ -24,6 +25,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <yyjson.h>
 
 typedef struct
 {
@@ -150,11 +152,7 @@ static bool render_scene(
         return false;
     }
     cf_app_set_present_mode(CF_PRESENT_MODE_IMMEDIATE);
-    cf_app_init_imgui();
-    ImGui_GetIO()->IniFilename = NULL;
-    ImGuiIO_SetAppAcceptingEvents(ImGui_GetIO(), false);
     cf_app_set_canvas_size(width, height);
-    cf_app_set_imgui_render_target(cf_app_get_canvas());
     app_scene_renderer_initialize();
     scene_preview scene = { 0 };
     chibi_preview_run *run = NULL;
@@ -205,14 +203,16 @@ static bool render_scene(
         engine *preview_runtime = game_prototype_preview_runtime(scene.preview);
         char content_root[1024];
         snprintf(content_root, sizeof content_root, "%s/content", root);
-        ui_world ui = { .ecs = game_prototype_preview_world(scene.preview),
-                        .page = chibi_preview_page(run),
-                        .model = engine_ui(preview_runtime),
-                        .live = game_prototype_preview_live(scene.preview) };
+        ui_world ui = {
+            .ecs = game_prototype_preview_world(scene.preview),
+            .page = chibi_preview_page(run),
+            .model = engine_ui(preview_runtime),
+            .host = authoring_ui_events(game_prototype_preview_live(scene.preview))
+        };
         engine_viewport_set_ui(scene.viewport, &ui, content_root);
     }
-    /* Captures settle ImGui for two frames. Performance runs first warm the
-     * renderer with simulation frozen, then measure GPU-complete frame work.
+    /* Captures settle the renderer for two frames. Performance runs first warm
+     * it with simulation frozen, then measure GPU-complete frame work.
      * The 60 Hz pacing wait is outside the measured interval. */
     double timings[3600];
     int count = 0;
@@ -276,18 +276,16 @@ static bool render_scene(
             scene.renderer,
             (float)engine_last_timing(runtime)->simulation_time
         );
-        /* The requested image dimensions are pixels, independent of the host display DPI. */
-        ImGui_GetIO()->DisplayFramebufferScale = (ImVec2){ 1, 1 };
-        ImGui_SetNextWindowPos((ImVec2){ 0, 0 }, ImGuiCond_Always);
-        ImGui_SetNextWindowSize((ImVec2){ width, height }, ImGuiCond_Always);
-        ImGui_PushStyleVarImVec2(ImGuiStyleVar_WindowPadding, (ImVec2){ 0, 0 });
-        ImGui_PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
-        ImGui_Begin("Scene", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
         /* Its documents step a fixed frame each, as its simulation does. */
         engine_viewport_set_time(scene.viewport, i * ENGINE_FIXED_SECONDS);
-        engine_viewport_image(scene.viewport, width, height);
-        ImGui_End();
-        ImGui_PopStyleVarEx(2);
+        if (engine_viewport_render(scene.viewport, width, height) != 0) {
+            snprintf(error, size, "Could not render preview canvas");
+            ok = false;
+            break;
+        }
+        /* Readbacks inspect the app canvas, so queue the viewport's complete
+         * image there before the host draw flushes and presents it. */
+        engine_viewport_present(scene.viewport);
         CHIBI_TRACE_ZONE_BEGIN(present_zone, "Preview present / GPU wait");
         if (render_frames > 2) {
             cf_gpu_sync();
@@ -367,7 +365,7 @@ static bool render_scene(
         app_scene_renderer_free(scene.renderer);
     }
     chibi_preview_free(run);
-    render_shader_catalog_clear();
+    authoring_shader_catalog_clear();
     cf_destroy_app();
     return ok;
 }

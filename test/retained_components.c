@@ -1,5 +1,5 @@
 #include "assets/prototype.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "test/asset_fixture.h"
 

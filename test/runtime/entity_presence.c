@@ -1,8 +1,9 @@
+#include "authoring/preview.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/eval.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "support/arena.h"
 #include "support/array.h"
 
@@ -41,14 +42,14 @@ static void check_presence(ecs_index_kind index)
     ecs_component_desc component = GAME_COMPONENT_GameInput;
     component.index = index;
     assert(ecs_world_register_component(world, &component, NULL) == ECS_OK);
-    game_live_world *live = game_live_world_new(world);
+    game_preview_world *live = game_preview_world_new(world);
     presence_case test = { .asset = behavior_asset_new("Presence") };
     const node_desc *desc = registry_node_by_name("Has Entities With Component");
     assert(desc && (desc->access->flags & NODE_EFFECT_WORLD_READ));
     test.presence = graph_add_node(test.asset->graph, desc);
     eval_context_init(&test.eval);
     arena_init(&test.arena, 4096);
-    apush(test.services, ((service_binding){ "game.entities", live->entities }));
+    apush(test.services, ((service_binding){ "game.entities", live->runtime->entities }));
     test.eval.services = test.services;
     expect_presence(&test, "", false, "Choose a component");
     expect_presence(&test, "missing.Component", false, "not registered");
@@ -80,7 +81,7 @@ static void check_presence(ecs_index_kind index)
     expect_presence(&test, component.key, false, NULL);
     assert(GAME_GameInput_add(world, first, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    game_entities_request_destroy(live->entities, first);
+    game_entities_request_destroy(live->runtime->entities, first);
     expect_presence(&test, component.key, false, NULL);
 
     ecs_entity second = ecs_world_create_entity(world);
@@ -96,7 +97,7 @@ static void check_presence(ecs_index_kind index)
     assert(GAME_GameInput_add(world, replacement, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     expect_presence(&test, component.key, true, NULL);
-    assert(game_entities_flush(live->entities) == 0);
+    assert(game_entities_flush(live->runtime->entities) == 0);
     expect_presence(&test, component.key, true, NULL);
     assert(ecs_world_destroy_entity(world, replacement) == ECS_OK);
     expect_presence(&test, component.key, false, NULL);
@@ -106,7 +107,7 @@ static void check_presence(ecs_index_kind index)
     eval_context_free(&test.eval);
     arena_free(&test.arena);
     behavior_asset_free(test.asset);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 

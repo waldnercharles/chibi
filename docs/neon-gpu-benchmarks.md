@@ -1,6 +1,7 @@
 # NeonSwarm GPU benchmarks and captures
 
-> Script test and benchmark runners referenced below are retired. Their commands
+> The MCP product, authoring helpers, script test and benchmark runners referenced
+> below are retired. Their commands
 > are historical records, not current workflows. Measurements and source hashes
 > describe the recorded revisions; see [testing](testing.md) for current C tooling.
 

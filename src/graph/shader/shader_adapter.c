@@ -1,7 +1,8 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/shader/shader_graph.h"
-#include "graph/shader/shader_image.h"
+#include "runtime/shaders/image.h"
 #include "support/array.h"
 
 #include <stdio.h>

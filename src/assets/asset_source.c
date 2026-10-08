@@ -1,9 +1,6 @@
 #include "assets/asset_source.h"
 
-#include "graph/document/events.h"
 #include "graph/model/registry.h"
-#include "graph/nodes/behavior_expression.h"
-#include "graph/nodes/component_nodes.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/text_edit.h"
@@ -16,13 +13,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-
-static const char *const KEYWORDS[] = {
-    "asset",  "behavior", "state",   "on",   "if",    "else",    "for",
-    "in",     "true",     "false",   "null", "int",   "float",   "bool",
-    "string", "entity",   "set",     "self", "event", "destroy", "after",
-    "shared", "bind",     "without", "nil"
-};
 
 static bool word(char c)
 {
@@ -53,75 +43,6 @@ static void diagnostic(asset_source *s, av_source range, const char *message)
 }
 
 /* Highlight incomplete documents independently of their semantic parse. */
-static void behavior_lex(asset_source *s)
-{
-    const char *t = s->text;
-    for (int i = 0; t[i];) {
-        if (isspace((unsigned char)t[i])) {
-            i++;
-            continue;
-        }
-        int start = i;
-        const char *cls = "tok-name";
-        if (t[i] == '/' && t[i + 1] == '/') {
-            i += 2;
-            while (t[i] && t[i] != '\n') {
-                i++;
-            }
-            cls = "tok-comment";
-        } else if (t[i] == '/' && t[i + 1] == '*') {
-            i += 2;
-            int depth = 1;
-            while (t[i] && depth) {
-                if (t[i] == '/' && t[i + 1] == '*') {
-                    depth++;
-                    i += 2;
-                } else if (t[i] == '*' && t[i + 1] == '/') {
-                    depth--;
-                    i += 2;
-                } else {
-                    i++;
-                }
-            }
-            cls = "tok-comment";
-        } else if (t[i] == '"') {
-            i++;
-            while (t[i]) {
-                if (t[i] == '\\' && t[i + 1]) {
-                    i += 2;
-                    continue;
-                }
-                if (t[i++] == '"') {
-                    break;
-                }
-            }
-            cls = "tok-string";
-        } else if (strchr("{}[]();,=+-*/!<>:&|", t[i])) {
-            i++;
-            cls = "tok-punctuation";
-        } else {
-            i++;
-            while (word(t[i])) {
-                i++;
-            }
-            int n = i - start;
-            for (size_t k = 0; k < sizeof KEYWORDS / sizeof *KEYWORDS; k++) {
-                if ((int)strlen(KEYWORDS[k]) == n &&
-                    !memcmp(t + start, KEYWORDS[k], (size_t)n)) {
-                    cls = "tok-keyword";
-                    break;
-                }
-            }
-            if (isdigit((unsigned char)t[start]) ||
-                ((t[start] == '-' || t[start] == '+') &&
-                 isdigit((unsigned char)t[start + 1]))) {
-                cls = "tok-number";
-            }
-        }
-        apush(s->spans, ((asset_source_span){ start, i, cls }));
-    }
-}
-
 static void kdl_lex(asset_source *s)
 {
     const char *t = s->text;
@@ -214,26 +135,9 @@ static void kdl_lex(asset_source *s)
     }
 }
 
-static bool behavior_text(const asset_source *s)
-{
-    for (int i = 0; i < acount(s->spans); i++) {
-        asset_source_span span = s->spans[i];
-        if (!strcmp(span.cls, "tok-comment")) {
-            continue;
-        }
-        return span.end - span.start == 8 &&
-               !strncmp(s->text + span.start, "behavior", 8);
-    }
-    return false;
-}
-
 static void lex(asset_source *s)
 {
-    behavior_lex(s);
-    if (!behavior_text(s)) {
-        afree(s->spans);
-        kdl_lex(s);
-    }
+    kdl_lex(s);
 }
 
 asset_source_span *asset_source_highlight(const char *text)
@@ -247,12 +151,12 @@ asset_source_span *asset_source_highlight(const char *text)
  * not an arbitrary prefix stripped from a short type name. */
 static const type_desc *reflected_type_named(const char *name)
 {
-    const type_desc *type = registry_type_by_name(name);
+    const type_desc *type = type_catalog_find(name);
     if (type) {
         return type;
     }
-    for (int i = 0; i < REGISTRY_PACK_COUNT; i++) {
-        const registry_pack *pack = REGISTRY_PACKS[i];
+    for (int i = 0; i < registry_pack_count(); i++) {
+        const registry_pack *pack = registry_pack_at(i);
         size_t prefix = strlen(pack->name);
         if (strncmp(name, pack->name, prefix) || name[prefix] != '.') {
             continue;
@@ -291,7 +195,7 @@ static bool valid_field(const type_field *field, const av_value *v)
         return av_is_obj(v);
     }
     if (field->type == PIN_ENUM) {
-        const enum_desc *e = registry_enum_by_name(field->type_name);
+        const enum_desc *e = type_catalog_enum_find(field->type_name);
         if (!e) {
             return av_is_int(v) || av_is_str(v);
         }
@@ -489,25 +393,6 @@ typedef struct
     int node, block;
 } completion_scope;
 
-static void token_name(const asset_source *s, int i, char *name, size_t size)
-{
-    asset_source_span span = s->spans[i];
-    int n = span.end - span.start;
-    if ((size_t)n >= size) {
-        name[0] = 0;
-        return;
-    }
-    memcpy(name, s->text + span.start, (size_t)n);
-    name[n] = 0;
-    if (!strcmp(span.cls, "tok-string")) {
-        av_doc *doc = av_value_read(name, NULL, 0);
-        if (doc && av_is_str(av_doc_root(doc))) {
-            snprintf(name, size, "%s", av_get_str(av_doc_root(doc)));
-        }
-        av_doc_free(doc);
-    }
-}
-
 /* Scope recovery depends on braces and assignments, so it also works when a
  * value, terminator or closing brace has not been typed yet. */
 static completion_scope scope_at(const asset_source *s, int at)
@@ -609,352 +494,6 @@ static completion_scope scope_at(const asset_source *s, int at)
     return current;
 }
 
-/* A lexical symbol table for draft behaviors. Brace scopes prevent local names
- * in unrelated handlers from being linked; comments and strings are excluded. */
-typedef struct
-{
-    int token, scope;
-    char name[256], type[256];
-    bool set, array;
-} source_symbol;
-
-typedef struct
-{
-    int *scopes;
-    int *parents;
-    source_symbol *symbols;
-} source_symbols;
-
-static bool named_type(const char *name)
-{
-    if (reflected_type_named(name) || !strcmp(name, "string") ||
-        !strcmp(name, "entity") || !strcmp(name, "set")) {
-        return true;
-    }
-    for (int type = PIN_BOOL; type <= PIN_NAME; type++) {
-        if (!strcmp(name, pin_type_name(type))) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static source_symbols symbols_for(const asset_source *s)
-{
-    source_symbols out = { 0 };
-    apush(out.parents, -1);
-    int scope = 0;
-    for (int i = 0; i < acount(s->spans); i++) {
-        char c = s->text[s->spans[i].start];
-        if (!strcmp(s->spans[i].cls, "tok-punctuation") && c == '{') {
-            apush(out.parents, scope);
-            scope = acount(out.parents) - 1;
-        }
-        apush(out.scopes, scope);
-        if (!strcmp(s->spans[i].cls, "tok-punctuation") && c == '}' && scope) {
-            scope = out.parents[scope];
-        }
-    }
-    for (int i = 0; i + 1 < acount(s->spans); i++) {
-        char type[256];
-        token_name(s, i, type, sizeof type);
-        bool handler = !strcmp(type, "on");
-        bool loop = !strcmp(type, "for");
-        if (!named_type(type) && !handler && !loop) {
-            continue;
-        }
-        int name = i + 1;
-        if (loop && s->text[s->spans[name].start] == '(') {
-            name++;
-        }
-        if (name < acount(s->spans) && s->text[s->spans[name].start] == '<') {
-            int generic = 0;
-            do {
-                char c = s->text[s->spans[name].start];
-                generic += c == '<';
-                generic -= c == '>';
-                name++;
-            } while (name < acount(s->spans) && generic);
-        }
-        while (name < acount(s->spans) && (s->text[s->spans[name].start] == '[' ||
-                                           s->text[s->spans[name].start] == ']')) {
-            name++;
-        }
-        if (name >= acount(s->spans) || strcmp(s->spans[name].cls, "tok-name")) {
-            continue;
-        }
-        source_symbol symbol = { .token = name,
-                                 .scope = out.scopes[name],
-                                 .set = !strcmp(type, "set"),
-                                 .array = s->text[s->spans[i + 1].start] == '[' };
-        token_name(s, name, symbol.name, sizeof symbol.name);
-        snprintf(symbol.type, sizeof symbol.type, "%s", type);
-        if (loop && name + 2 < acount(s->spans)) {
-            char array[256];
-            token_name(s, name + 2, array, sizeof array);
-            for (int j = 0; j < acount(out.symbols); j++) {
-                if (out.symbols[j].array && !strcmp(out.symbols[j].name, array)) {
-                    snprintf(
-                        symbol.type,
-                        sizeof symbol.type,
-                        "%s",
-                        out.symbols[j].type
-                    );
-                }
-            }
-        }
-        /* Handler parameters and for bindings belong to the following body. */
-        if (!handler) {
-            for (int j = name + 1; j < acount(s->spans); j++) {
-                char c = s->text[s->spans[j].start];
-                if (c == '=' || c == ';' || c == '}') {
-                    break;
-                }
-                if (c == '{') {
-                    symbol.scope = out.scopes[j];
-                    break;
-                }
-            }
-        }
-        apush(out.symbols, symbol);
-    }
-    return out;
-}
-
-static void symbols_free(source_symbols *symbols)
-{
-    afree(symbols->scopes);
-    afree(symbols->parents);
-    afree(symbols->symbols);
-}
-
-static int token_at(const asset_source *s, int offset)
-{
-    for (int i = 0; i < acount(s->spans); i++) {
-        if (offset >= s->spans[i].start && offset < s->spans[i].end &&
-            !strcmp(s->spans[i].cls, "tok-name")) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-static int resolve_symbol(const asset_source *s, const source_symbols *symbols, int token)
-{
-    char name[256];
-    token_name(s, token, name, sizeof name);
-    char *member = strchr(name, '.');
-    if (member) {
-        *member = 0;
-    }
-    for (int scope = symbols->scopes[token]; scope >= 0;
-         scope = symbols->parents[scope]) {
-        int latest = -1;
-        for (int i = 0; i < acount(symbols->symbols); i++) {
-            source_symbol symbol = symbols->symbols[i];
-            if (!strcmp(symbol.type, "on") && symbol.token != token) {
-                continue;
-            }
-            if (symbol.scope == scope && !strcmp(symbol.name, name) &&
-                (symbol.token <= token || symbol.scope <= 1)) {
-                latest = i;
-            }
-            if (symbol.token == token) {
-                return i;
-            }
-        }
-        if (latest >= 0) {
-            return latest;
-        }
-    }
-    return -1;
-}
-
-typedef struct
-{
-    int symbol;
-    const graph_host_event_desc *event;
-    const type_field *field;
-    const pin_spec *payload;
-    asset_source_span declaration, selected;
-    char path[256];
-} source_member;
-
-static const graph_host_event_desc *event_at(
-    const asset_source *s,
-    const source_symbols *symbols,
-    int token
-);
-static const char *payload_alias(const char *name);
-static const graph_host_event_desc *source_event(const char *name);
-
-static bool member_at(
-    const asset_source *s,
-    const source_symbols *symbols,
-    int token,
-    int offset,
-    source_member *out
-)
-{
-    memset(out, 0, sizeof *out);
-    char label[256];
-    token_name(s, token, label, sizeof label);
-    char *dot = strchr(label, '.');
-    int relative = offset - s->spans[token].start;
-    if (!dot || relative <= dot - label) {
-        return false;
-    }
-    int last = relative;
-    while (label[last] && label[last] != '.') {
-        last++;
-    }
-    label[last] = 0;
-    char *path = dot + 1;
-    snprintf(out->path, sizeof out->path, "%s", path);
-    int first = relative;
-    while (first > 0 && label[first - 1] != '.') {
-        first--;
-    }
-    out->selected = (asset_source_span){ s->spans[token].start + first,
-                                         s->spans[token].start + last,
-                                         "tok-name" };
-    *dot = 0;
-    out->symbol = resolve_symbol(s, symbols, token);
-    const type_desc *type = NULL;
-    if (!strcmp(label, "event")) {
-        out->event = event_at(s, symbols, token);
-        if (!out->event) {
-            return false;
-        }
-        char *nested = strchr(path, '.');
-        if (nested) {
-            *nested = 0;
-        }
-        for (int i = 0; i < out->event->payload_count; i++) {
-            const pin_spec *pin = &out->event->payload[i];
-            if (!strcmp(path, payload_alias(pin->name))) {
-                out->payload = pin;
-                type = pin->type == PIN_STRUCT ? reflected_type_named(pin->type_name)
-                                               : NULL;
-            }
-        }
-        for (int i = 0; i < acount(symbols->symbols); i++) {
-            source_symbol symbol = symbols->symbols[i];
-            if (!strcmp(symbol.type, "on") && source_event(symbol.name) == out->event) {
-                out->declaration = s->spans[symbol.token];
-                break;
-            }
-        }
-        if (!nested) {
-            return out->payload != NULL;
-        }
-        path = nested + 1;
-    } else if (out->symbol >= 0) {
-        source_symbol symbol = symbols->symbols[out->symbol];
-        type = reflected_type_named(symbol.type);
-        out->declaration = s->spans[symbol.token > 0 ? symbol.token - 1 : symbol.token];
-    }
-    while (type) {
-        char *nested = strchr(path, '.');
-        if (nested) {
-            *nested = 0;
-        }
-        const type_field *field = field_named(type, path);
-        if (!field) {
-            return false;
-        }
-        out->field = field;
-        if (!nested) {
-            return true;
-        }
-        type = field->type == PIN_STRUCT ? reflected_type_named(field->type_name)
-                                         : NULL;
-        path = nested + 1;
-    }
-    return false;
-}
-
-static bool member_position(const asset_source *s, int token, int offset)
-{
-    asset_source_span span = s->spans[token];
-    const char *dot = memchr(s->text + span.start, '.', (size_t)(span.end - span.start));
-    return dot && offset > dot - s->text;
-}
-
-bool asset_source_definition_at(const asset_source *s, int offset, asset_source_span *definition)
-{
-    int token = token_at(s, offset);
-    if (token < 0) {
-        return false;
-    }
-    source_symbols symbols = symbols_for(s);
-    source_member member;
-    if (member_at(s, &symbols, token, offset, &member)) {
-        *definition = member.declaration;
-        symbols_free(&symbols);
-        return true;
-    }
-    if (member_position(s, token, offset)) {
-        symbols_free(&symbols);
-        return false;
-    }
-    int symbol = resolve_symbol(s, &symbols, token);
-    if (symbol >= 0) {
-        *definition = s->spans[symbols.symbols[symbol].token];
-    }
-    symbols_free(&symbols);
-    return symbol >= 0;
-}
-
-asset_source_span *asset_source_references_at(const asset_source *s, int offset)
-{
-    asset_source_span *result = NULL;
-    int token = token_at(s, offset);
-    if (token < 0) {
-        return NULL;
-    }
-    source_symbols symbols = symbols_for(s);
-    source_member selected;
-    bool member = member_at(s, &symbols, token, offset, &selected);
-    if (!member && member_position(s, token, offset)) {
-        symbols_free(&symbols);
-        return NULL;
-    }
-    int symbol = resolve_symbol(s, &symbols, token);
-    for (int i = 0; i < acount(s->spans); i++) {
-        if (strcmp(s->spans[i].cls, "tok-name")) {
-            continue;
-        }
-        if (member) {
-            char label[256];
-            token_name(s, i, label, sizeof label);
-            char *dot = strchr(label, '.');
-            if (!dot) {
-                continue;
-            }
-            int at = s->spans[i].start + (int)(dot + 1 - label) +
-                     (int)strlen(selected.path) - 1;
-            if (at >= s->spans[i].end) {
-                continue;
-            }
-            source_member candidate;
-            if (member_at(s, &symbols, i, at, &candidate) &&
-                candidate.symbol == selected.symbol &&
-                candidate.event == selected.event &&
-                candidate.declaration.start == selected.declaration.start &&
-                !strcmp(candidate.path, selected.path)) {
-                apush(result, candidate.selected);
-            }
-        } else if (symbol >= 0 && resolve_symbol(s, &symbols, i) == symbol) {
-            asset_source_span span = s->spans[i];
-            span.end = span.start + (int)strlen(symbols.symbols[symbol].name);
-            apush(result, span);
-        }
-    }
-    symbols_free(&symbols);
-    return result;
-}
-
 static const type_desc *context(const asset_source *s, int at)
 {
     return scope_at(s, at).type;
@@ -1047,384 +586,6 @@ static bool property_present(const asset_source *s, completion_scope scope, cons
     return false;
 }
 
-static bool identifier(const char *text)
-{
-    if (!isalpha((unsigned char)*text) && *text != '_') {
-        return false;
-    }
-    for (const char *p = text + 1; *p; p++) {
-        if (!isalnum((unsigned char)*p) && *p != '_') {
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool scope_contains(const source_symbols *symbols, int outer, int inner)
-{
-    for (int scope = inner; scope >= 0; scope = symbols->parents[scope]) {
-        if (scope == outer) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static const graph_host_event_desc *source_event(const char *name)
-{
-    for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
-        const graph_host_event_desc *event = &GRAPH_HOST_EVENTS[i];
-        if (!strcmp(name, event->name) || (!strcmp(name, "ContactBegin") &&
-                                           !strcmp(event->name, "Contact Begin"))) {
-            return event;
-        }
-    }
-    return NULL;
-}
-
-static const char *payload_alias(const char *name)
-{
-    if (!strcmp(name, "DeltaSeconds")) {
-        return "dt";
-    }
-    if (!strcmp(name, "Direction")) {
-        return "direction";
-    }
-    if (!strcmp(name, "Other")) {
-        return "other";
-    }
-    if (!strcmp(name, "Point")) {
-        return "point";
-    }
-    return name;
-}
-
-static const graph_host_event_desc *event_at(const asset_source *s, const source_symbols *symbols, int token)
-{
-    for (int i = 0; i < token; i++) {
-        char name[256];
-        token_name(s, i, name, sizeof name);
-        if (strcmp(name, "on") || i + 1 >= acount(s->spans)) {
-            continue;
-        }
-        token_name(s, i + 1, name, sizeof name);
-        const graph_host_event_desc *event = source_event(name);
-        for (int j = i + 2; j <= token; j++) {
-            char c = s->text[s->spans[j].start];
-            if (c == '{') {
-                if (scope_contains(symbols, symbols->scopes[j], symbols->scopes[token])) {
-                    return event;
-                }
-                break;
-            }
-        }
-    }
-    return NULL;
-}
-
-static void offer_state_types(asset_source_completions *out, const char *prefix, bool containers)
-{
-    for (int type = PIN_BOOL; type <= PIN_NAME; type++) {
-        const char *name = pin_type_name(type);
-        offer(out, prefix, name, "state value type", NULL, CODE_COMPLETE_TYPE);
-        if (containers) {
-            char array[64];
-            snprintf(array, sizeof array, "%s[]", name);
-            offer(out, prefix, array, "typed array", NULL, CODE_COMPLETE_TYPE);
-        }
-    }
-    offer(out, prefix, "string", "state value type", NULL, CODE_COMPLETE_TYPE);
-    offer(out, prefix, "entity", "entity reference", NULL, CODE_COMPLETE_TYPE);
-    if (containers) {
-        offer(out, prefix, "string[]", "typed array", NULL, CODE_COMPLETE_TYPE);
-        offer(out, prefix, "entity[]", "typed array", NULL, CODE_COMPLETE_TYPE);
-        offer(out, prefix, "set", "typed set", "set<int>", CODE_COMPLETE_TYPE);
-    }
-}
-
-static bool follows_if(const asset_source *s, int token)
-{
-    int braces = 0;
-    for (; token >= 0; token--) {
-        if (strcmp(s->spans[token].cls, "tok-punctuation")) {
-            continue;
-        }
-        char c = s->text[s->spans[token].start];
-        braces += c == '}';
-        braces -= c == '{';
-        if (c == '{' && !braces) {
-            break;
-        }
-    }
-    if (--token < 0 || s->text[s->spans[token].start] != ')') {
-        return false;
-    }
-    int parentheses = 0;
-    for (; token >= 0; token--) {
-        if (strcmp(s->spans[token].cls, "tok-punctuation")) {
-            continue;
-        }
-        char c = s->text[s->spans[token].start];
-        parentheses += c == ')';
-        parentheses -= c == '(';
-        if (c == '(' && !parentheses) {
-            break;
-        }
-    }
-    if (--token < 0) {
-        return false;
-    }
-    char name[256];
-    token_name(s, token, name, sizeof name);
-    return !strcmp(name, "if");
-}
-
-static void complete_structured(const asset_source *s, int at, char *prefix, asset_source_completions *out)
-{
-    source_symbols symbols = symbols_for(s);
-    int token = -1, previous = -1;
-    for (int i = 0; i < acount(s->spans) && s->spans[i].start < at; i++) {
-        if (!strcmp(s->spans[i].cls, "tok-comment")) {
-            continue;
-        }
-        token = i;
-        if (s->spans[i].end <= out->start) {
-            previous = i;
-        }
-    }
-    char before[256] = "";
-    if (previous >= 0) {
-        token_name(s, previous, before, sizeof before);
-    }
-    if (!strcmp(before, "on")) {
-        for (int i = 0; i < GRAPH_HOST_EVENT_COUNT; i++) {
-            const graph_host_event_desc *event = &GRAPH_HOST_EVENTS[i];
-            const char *name = !strcmp(event->name, "Contact Begin")
-                                 ? "ContactBegin"
-                                 : event->name;
-            if (identifier(name)) {
-                offer(out, prefix, name, event->description, NULL, CODE_COMPLETE_VALUE);
-            }
-        }
-        goto done;
-    }
-    if (!strcmp(before, "state") || !strcmp(before, "<")) {
-        offer_state_types(out, prefix, strcmp(before, "<") != 0);
-        goto done;
-    }
-    for (int i = previous; i >= 0; i--) {
-        char word[256];
-        token_name(s, i, word, sizeof word);
-        char c = s->text[s->spans[i].start];
-        if (c == ';' || c == '{' || c == '}') {
-            break;
-        }
-        if (!strcmp(word, "state")) {
-            bool assigned = false, container = false;
-            char type[256] = "";
-            if (i + 1 < acount(s->spans)) {
-                token_name(s, i + 1, type, sizeof type);
-            }
-            for (int j = i + 1; j <= previous; j++) {
-                assigned |= s->text[s->spans[j].start] == '=';
-                container |= s->text[s->spans[j].start] == '[' ||
-                             s->text[s->spans[j].start] == '<';
-            }
-            if (assigned) {
-                if (container) {
-                    offer(out, prefix, "[]", "empty collection", NULL, CODE_COMPLETE_VALUE);
-                } else if (!strcmp(type, "bool")) {
-                    offer(out, prefix, "true", "bool", NULL, CODE_COMPLETE_VALUE);
-                    offer(out, prefix, "false", "bool", NULL, CODE_COMPLETE_VALUE);
-                } else if (!strcmp(type, "string") || !strcmp(type, "name")) {
-                    offer(out, prefix, "empty string", "string default", "\"\"", CODE_COMPLETE_VALUE);
-                } else {
-                    offer(out, prefix, "0", "zero default", NULL, CODE_COMPLETE_VALUE);
-                }
-            }
-            goto done;
-        }
-    }
-    if (token >= 0 && s->text[s->spans[token].start] == '}' &&
-        s->spans[token].end <= out->start) {
-        symbols.scopes[token] = symbols.parents[symbols.scopes[token]];
-    }
-    if (!strcmp(before, "in")) {
-        for (int i = 0; i < acount(symbols.symbols); i++) {
-            if (symbols.symbols[i].array) {
-                offer(out, prefix, symbols.symbols[i].name, "array state", NULL, CODE_COMPLETE_VALUE);
-            }
-        }
-        goto done;
-    }
-    const graph_host_event_desc *event = token >= 0 ? event_at(s, &symbols, token)
-                                                    : NULL;
-    char *dot = strchr(prefix, '.');
-    if (dot) {
-        *dot = 0;
-        int symbol = token >= 0 ? resolve_symbol(s, &symbols, token) : -1;
-        const type_desc *type = symbol >= 0
-                                  ? reflected_type_named(symbols.symbols[symbol].type)
-                                  : NULL;
-        int consumed = (int)(dot + 1 - prefix);
-        bool payload = !strcmp(prefix, "event");
-        bool set = symbol >= 0 && symbols.symbols[symbol].set;
-        out->start += consumed;
-        memmove(prefix, dot + 1, strlen(dot + 1) + 1);
-        if (payload && event) {
-            char *nested = strchr(prefix, '.');
-            if (nested) {
-                *nested = 0;
-                for (int i = 0; i < event->payload_count; i++) {
-                    const pin_spec *pin = &event->payload[i];
-                    if (!strcmp(prefix, payload_alias(pin->name)) &&
-                        pin->type == PIN_STRUCT) {
-                        type = reflected_type_named(pin->type_name);
-                    }
-                }
-                int n = (int)(nested + 1 - prefix);
-                out->start += n;
-                memmove(prefix, nested + 1, strlen(nested + 1) + 1);
-            } else {
-                for (int i = 0; i < event->payload_count; i++) {
-                    const pin_spec *pin = &event->payload[i];
-                    offer(out, prefix, payload_alias(pin->name), pin->type_name, NULL, CODE_COMPLETE_FIELD);
-                }
-            }
-        } else if (set) {
-            /* Contains is a branch condition; add/remove are statements. */
-            bool condition = false;
-            if (!strcmp(before, "(") && previous > 0) {
-                int prior = previous - 1;
-                while (prior >= 0 && !strcmp(s->spans[prior].cls, "tok-comment")) {
-                    prior--;
-                }
-                char name[256];
-                if (prior >= 0) {
-                    token_name(s, prior, name, sizeof name);
-                    condition = !strcmp(name, "if");
-                }
-            }
-            if (condition) {
-                offer(out, prefix, "contains", "set membership condition", "contains(", CODE_COMPLETE_FUNCTION);
-            } else if (!strcmp(before, "{") || !strcmp(before, ";") || !strcmp(before, "}")) {
-                offer(out, prefix, "add", "insert set value", "add(", CODE_COMPLETE_FUNCTION);
-                offer(out, prefix, "remove", "remove set value", "remove(", CODE_COMPLETE_FUNCTION);
-            }
-        }
-        if (type && !payload) {
-            char *nested;
-            while ((nested = strchr(prefix, '.'))) {
-                *nested = 0;
-                const type_field *field = field_named(type, prefix);
-                type = field && field->type == PIN_STRUCT
-                         ? reflected_type_named(field->type_name)
-                         : NULL;
-                int n = (int)(nested + 1 - prefix);
-                out->start += n;
-                memmove(prefix, nested + 1, strlen(nested + 1) + 1);
-                if (!type) {
-                    break;
-                }
-            }
-        }
-        for (int i = 0; type && i < type->field_count; i++) {
-            const type_field *field = &type->fields[i];
-            offer(out, prefix, field->name, field->type_name, NULL, CODE_COMPLETE_FIELD);
-        }
-        goto done;
-    }
-    /* Inside a handler signature, only native component declarations belong. */
-    bool signature = false;
-    for (int i = previous; i >= 0; i--) {
-        char name[256];
-        token_name(s, i, name, sizeof name);
-        char c = s->text[s->spans[i].start];
-        if (c == '{' || c == '}' || c == ';') {
-            break;
-        }
-        if (!strcmp(name, "on")) {
-            signature = true;
-            break;
-        }
-    }
-    if (signature) {
-        if (!strcmp(before, "(") || !strcmp(before, ",")) {
-            for (int i = 0; i < registry_type_count(); i++) {
-                const type_desc *type = registry_type(i);
-                if (identifier(type->name) && component_by_key(type->name)) {
-                    offer(out, prefix, type->name, "component alias type", NULL, CODE_COMPLETE_TYPE);
-                }
-            }
-        }
-        goto done;
-    }
-    if (!event) {
-        offer(out, prefix, "state", "declare behavior state", NULL, CODE_COMPLETE_KEYWORD);
-        offer(out, prefix, "on", "declare event handler", NULL, CODE_COMPLETE_KEYWORD);
-        goto done;
-    }
-    static const char *const expressions[] = { "true", "false", "pi", "e" };
-    for (size_t i = 0; i < sizeof expressions / sizeof *expressions; i++) {
-        offer(out, prefix, expressions[i], "expression value", NULL, CODE_COMPLETE_VALUE);
-    }
-    bool statement = previous < 0 || !strcmp(before, "{") ||
-                     !strcmp(before, ";") || !strcmp(before, "}");
-    if (statement) {
-        offer(out, prefix, "if", "conditional block", "if (", CODE_COMPLETE_KEYWORD);
-        offer(out, prefix, "for", "iterate array state", "for (", CODE_COMPLETE_KEYWORD);
-        offer(out, prefix, "destroy", "destroy this entity", "destroy(self);", CODE_COMPLETE_FUNCTION);
-        if (!strcmp(before, "}") && follows_if(s, previous)) {
-            offer(out, prefix, "else", "alternate conditional block", "else {", CODE_COMPLETE_KEYWORD);
-        }
-    }
-    if (event->payload_count) {
-        offer(out, prefix, "event", "handler payload", "event.", CODE_COMPLETE_VALUE);
-    }
-    for (int i = 0; i < registry_node_count(); i++) {
-        const node_desc *node = registry_node(i);
-        int binding = 0;
-        const char *spelling = behavior_expression_spelling(node, &binding);
-        if (!spelling || binding || behavior_expression_arity(node) < 0) {
-            continue;
-        }
-        for (int alias = 0;; alias++) {
-            const char *name = behavior_expression_alias(node, alias);
-            if (!name) {
-                break;
-            }
-            if (identifier(name)) {
-                offer(out, prefix, name, node->description, NULL, CODE_COMPLETE_FUNCTION);
-            }
-        }
-    }
-    for (int i = 0; token >= 0 && i < acount(symbols.symbols); i++) {
-        source_symbol symbol = symbols.symbols[i];
-        if (!strcmp(symbol.type, "on") ||
-            !scope_contains(&symbols, symbol.scope, symbols.scopes[token])) {
-            continue;
-        }
-        if (symbol.token <= token || symbol.scope <= 1) {
-            offer(out, prefix, symbol.name, "declared symbol", NULL, CODE_COMPLETE_VALUE);
-        }
-    }
-done:
-    symbols_free(&symbols);
-}
-
-static void sort_completions(asset_source_completions *out)
-{
-    for (int i = 1; i < acount(out->items); i++) {
-        asset_source_completion item = out->items[i];
-        int at = i;
-        while (at > 0 && out->items[at - 1].score < item.score) {
-            out->items[at] = out->items[at - 1];
-            at--;
-        }
-        out->items[at] = item;
-    }
-}
-
 static void kdl_complete(
     const asset_source *s,
     int at,
@@ -1494,7 +655,7 @@ static void kdl_complete(
             offer(out, prefix, "#false", "bool", NULL, CODE_COMPLETE_KEYWORD);
         }
         const enum_desc *e = field && field->type == PIN_ENUM
-                               ? registry_enum_by_name(field->type_name)
+                               ? type_catalog_enum_find(field->type_name)
                                : NULL;
         for (int i = 0; e && i < e->value_count; i++) {
             const char *label = e->values[i].label ? e->values[i].label
@@ -1547,11 +708,11 @@ static void kdl_complete(
                 offer(out, prefix, common[i], "asset field", NULL, CODE_COMPLETE_FIELD);
             }
         }
-        for (int i = 0; i < registry_type_count(); i++) {
-            offer_name(out, prefix, registry_type(i)->name, "component type", CODE_COMPLETE_TYPE);
+        for (int i = 0; i < type_catalog_count(); i++) {
+            offer_name(out, prefix, type_catalog_at(i)->name, "component type", CODE_COMPLETE_TYPE);
         }
-        for (int p = 0; p < REGISTRY_PACK_COUNT; p++) {
-            const registry_pack *pack = REGISTRY_PACKS[p];
+        for (int p = 0; p < registry_pack_count(); p++) {
+            const registry_pack *pack = registry_pack_at(p);
             for (int i = 0; i < pack->type_count; i++) {
                 char qualified[256];
                 snprintf(
@@ -1601,23 +762,7 @@ void asset_source_complete(
             return;
         }
     }
-    if (!behavior_text(s)) {
-        kdl_complete(s, at, path, names, name_count, out);
-        return;
-    }
-    out->start = out->end = at;
-    while (out->start && word(s->text[out->start - 1])) {
-        out->start--;
-    }
-    while (word(s->text[out->end])) {
-        out->end++;
-    }
-    char *prefix = xmalloc((size_t)(at - out->start + 1));
-    memcpy(prefix, s->text + out->start, (size_t)(at - out->start));
-    prefix[at - out->start] = 0;
-    complete_structured(s, at, prefix, out);
-    sort_completions(out);
-    free(prefix);
+    kdl_complete(s, at, path, names, name_count, out);
 }
 
 void asset_source_completions_free(asset_source_completions *out)
@@ -1635,65 +780,7 @@ char *asset_source_hover(const asset_source *s, int at)
     const char *name;
     const av_value *v = asset_source_value_at(s, at, &name);
     if (!v || !name) {
-        int token = token_at(s, at);
-        if (token < 0) {
-            return NULL;
-        }
-        char label[256], text[512];
-        token_name(s, token, label, sizeof label);
-        source_symbols symbols = symbols_for(s);
-        source_member member;
-        if (member_at(s, &symbols, token, at, &member)) {
-            const char *type = member.field
-                                 ? (member.field->type_name
-                                        ? member.field->type_name
-                                        : pin_type_name(member.field->type))
-                                 : member.payload->type_name;
-            const char *description = member.field ? member.field->description
-                                                   : member.event->description;
-            snprintf(
-                text,
-                sizeof text,
-                "%s: %s\n%s",
-                member.path,
-                type ? type : "value",
-                description ? description : ""
-            );
-            symbols_free(&symbols);
-            return xstrdup(text);
-        }
-        if (member_position(s, token, at)) {
-            symbols_free(&symbols);
-            return NULL;
-        }
-        int symbol = resolve_symbol(s, &symbols, token);
-        if (symbol >= 0) {
-            source_symbol declaration = symbols.symbols[symbol];
-            int line, column;
-            asset_source_position(s, s->spans[declaration.token].start, &line, &column);
-            snprintf(
-                text,
-                sizeof text,
-                "%s: %s\nDeclared at %d:%d",
-                declaration.name,
-                declaration.type,
-                line,
-                column
-            );
-            symbols_free(&symbols);
-            return xstrdup(text);
-        }
-        symbols_free(&symbols);
-        const type_desc *type = reflected_type_named(label);
-        const node_desc *node = registry_node_by_name(label);
-        if (type) {
-            snprintf(text, sizeof text, "%s\n%d reflected fields", label, type->field_count);
-        } else if (node) {
-            snprintf(text, sizeof text, "%s\n%s", label, node->description ? node->description : "Registered graph function");
-        } else {
-            return NULL;
-        }
-        return xstrdup(text);
+        return NULL;
     }
     const type_desc *type = reflected_type_named(name);
     const type_field *field = field_named(context(s, at), name);

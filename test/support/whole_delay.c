@@ -1,4 +1,6 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "test/whole_array_fixture.h"
@@ -71,7 +73,7 @@ static void smoke(bool traced)
         status = flow_run_tick_at(run, wake);
         assert(++waits < 100);
     }
-    assert(!status && waits == 8 && instance->variables[0].i == 8);
+    assert(!status && waits == 8 && instance->execution.variables[0].i == 8);
     assert(flow_run_status(run) == FLOW_COMPLETED);
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     flow_run_free(run);

@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_program.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
 #include "support/arena.h"
@@ -9,26 +12,6 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#define FIELD(T, name, pin, spelling)                                          \
-    { #name, pin, offsetof(T, name), sizeof(((T *)0)->name), spelling }
-static const type_field pair_fields[] = { FIELD(whole_pair, x, PIN_F32, "float"),
-                                          FIELD(whole_pair, y, PIN_F32, "float") };
-static const type_field record_fields[] = {
-    FIELD(whole_record, tag, PIN_U8, "byte"),
-    FIELD(whole_record, position, PIN_STRUCT, "WholePair"),
-    FIELD(whole_record, weight, PIN_F64, "double"),
-    FIELD(whole_record, active, PIN_BOOL, "bool"),
-    FIELD(whole_record, stamp, PIN_I64, "int64")
-};
-#undef FIELD
-static const type_desc pair_type = { .name = "WholePair",
-                                     .size = sizeof(whole_pair),
-                                     .fields = pair_fields,
-                                     .field_count = 2 };
-const type_desc WHOLE_RECORD_TYPE = { .name = "WholeRecord",
-                                      .size = sizeof(whole_record),
-                                      .fields = record_fields,
-                                      .field_count = 5 };
 static pin_spec pair_pins[] = { { .name = "x", .type = PIN_F32, .type_name = "float" },
                                 { .name = "y", .type = PIN_F32, .type_name = "float" } };
 static pin_spec record_pins[] = {
@@ -46,7 +29,7 @@ static pin_spec record_pin[] = {
 };
 static node_desc make_pair = { .name = "Make WholePair",
                                .pure_kind = NODE_PURE_MAKE,
-                               .type = &pair_type,
+                               .type = &WHOLE_PAIR_TYPE,
                                .inputs = pair_pins,
                                .input_count = 2,
                                .outputs = pair_pin,
@@ -65,7 +48,7 @@ static node_desc break_record = { .name = "Break WholeRecord",
                                   .input_count = 1,
                                   .outputs = record_pins,
                                   .output_count = 5 };
-static const type_desc *const types[] = { &pair_type, &WHOLE_RECORD_TYPE };
+static const type_desc *const types[] = { &WHOLE_PAIR_TYPE, &WHOLE_RECORD_TYPE };
 static node_desc *const nodes[] = { &make_pair,
                                     &make_record,
                                     &break_record,
@@ -184,7 +167,10 @@ void whole_aggregate_smoke()
     behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(bi, 0);
     graph *g = a->graphs[2];
-    assert(behavior_program_function(behavior_program_graph(a->program, g), g->nodes[0]));
+    assert(behavior_program_function(
+        behavior_program_graph(behavior_program_cached(a), g),
+        g->nodes[0]
+    ));
     whole_record input = { .tag = 251,
                            .position = { 3, 4 },
                            .weight = 2.75,
@@ -192,12 +178,12 @@ void whole_aggregate_smoke()
                            .stamp = INT64_MIN + 7 };
     pin_value v = { .type = PIN_STRUCT, .type_name = "WholeRecord", .ptr = &input };
     assert(!behavior_instance_set_variable(bi, a->variables[0].id, &v));
-    bi->variables[1].f = .25f;
+    bi->execution.variables[1].f = .25f;
     arena storage = { 0 };
     eval_context ctx = { .instance = bi, .runtime = runtime_store_create(a->graph) };
     uint64_t calls = eval_oracle_calls(), allocations = runtime_store_creations();
     assert(!behavior_program_output(
-        behavior_program_graph(a->program, a->graph),
+        behavior_program_graph(behavior_program_cached(a), a->graph),
         a->graph->nodes[0],
         0,
         &storage,

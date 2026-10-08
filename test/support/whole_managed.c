@@ -1,3 +1,6 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "test/whole_managed_fixture.h"
@@ -5,48 +8,6 @@
 #include <assert.h>
 #include <string.h>
 
-static const type_field inner_fields[] = {
-    { .name = "text",
-      .type = PIN_STR,
-      .type_name = "const char *",
-      .offset = offsetof(whole_managed_inner, text),
-      .size = sizeof(const char *) },
-    { .name = "weight",
-      .type = PIN_F32,
-      .type_name = "float",
-      .offset = offsetof(whole_managed_inner, weight),
-      .size = sizeof(float) }
-};
-static const type_desc inner_type = { .name = "ManagedInner",
-                                      .size = sizeof(whole_managed_inner),
-                                      .fields = inner_fields,
-                                      .field_count = 2 };
-static const type_field fields[] = { { .name = "label",
-                                       .type = PIN_NAME,
-                                       .type_name = "name",
-                                       .offset = offsetof(whole_managed, label),
-                                       .size = sizeof(const char *) },
-                                     { .name = "nested",
-                                       .type = PIN_STRUCT,
-                                       .type_name = "ManagedInner",
-                                       .offset = offsetof(whole_managed, nested),
-                                       .size = sizeof(whole_managed_inner) },
-                                     { .name = "count",
-                                       .type = PIN_I32,
-                                       .type_name = "int",
-                                       .offset = offsetof(whole_managed, count),
-                                       .size = sizeof(int) } };
-static const type_desc record_type = { .name = "ManagedRecord",
-                                       .size = sizeof(whole_managed),
-                                       .fields = fields,
-                                       .field_count = 3 };
-const ecs_component_desc WHOLE_MANAGED_COMPONENT = {
-    .id = UINT64_C(0xabcdef1234),
-    .name = "ManagedRecord",
-    .key = "test.ManagedRecord",
-    .element_size = sizeof(whole_managed),
-    .type = &record_type
-};
 static pin_spec inputs[] = {
     { "Exec", PIN_FLOW, NULL, PIN_EXEC },
     { .name = "Value", .type = PIN_STRUCT, .type_name = "ManagedRecord" }
@@ -97,7 +58,8 @@ static node_desc set_node = { .name = "Set ManagedRecord",
                               .flow = set_record,
                               .component_kind = NODE_COMPONENT_SET_SELF,
                               .component = &WHOLE_MANAGED_COMPONENT };
-static const type_desc *const types[] = { &inner_type, &record_type };
+static const type_desc *const types[] = { &WHOLE_MANAGED_INNER_TYPE,
+                                          &WHOLE_MANAGED_TYPE };
 static node_desc *const nodes[] = { &set_node };
 const registry_pack WHOLE_MANAGED_PACK = { .name = "Managed values",
                                            .types = types,
@@ -222,10 +184,10 @@ void whole_managed_smoke()
     assert(!behavior_instance_set_variable(bi, a->variables[0].id, &arg));
     assert(!behavior_instance_tick(bi, .125));
     assert(flow_run_status(run) == FLOW_COMPLETED);
-    whole_managed *actual = bi->variables[1].ptr;
+    whole_managed *actual = bi->execution.variables[1].ptr;
     assert(!strcmp(actual->label, "old") && !strcmp(actual->nested.text, "nested"));
     assert(actual->nested.weight == 3.25f && actual->count == 7);
-    assert(!strcmp(bi->variables[2].str, "old"));
+    assert(!strcmp(bi->execution.variables[2].str, "old"));
     assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
     behavior_instance_destroy(bi);
     const whole_managed *component = ecs_component_data_const(

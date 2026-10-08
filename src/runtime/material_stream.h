@@ -23,8 +23,8 @@ typedef struct
 {
     /* Zero width and height generate unbounded signed tile coordinates. */
     field_grid grid;
-    const char *field, *parameters;
-    unsigned seed;
+    const char *field;
+    field_context context;
     int island_cells;
     /* Optional borrowed executor for generation. The caller opens its
      * submission scope around material_stream_update. */
@@ -37,8 +37,8 @@ typedef struct
 } material_stream_state;
 
 /* Fields are borrowed and must outlive the stream; configuration strings are
- * copied. Recreate on field revision or generation changes. Cold masks live in
- * a temporary file owned by the run. */
+ * and typed argument values are copied. Recreate on field revision or
+ * generation changes. Cold masks live in a temporary file owned by the run. */
 material_stream *material_stream_new(material_stream_desc desc);
 void material_stream_free(material_stream *stream);
 /* Outside mask consumers: evict distant tiles, prepare every missing required

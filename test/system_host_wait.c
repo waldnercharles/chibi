@@ -1,4 +1,5 @@
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "runtime/systems/system.h"
 
 #include <assert.h>

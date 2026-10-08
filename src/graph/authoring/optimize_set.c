@@ -1,5 +1,6 @@
 #include "graph/authoring/optimize_internal.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/xalloc.h"
 
 #include <stdlib.h>

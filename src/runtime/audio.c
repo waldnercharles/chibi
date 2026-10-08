@@ -1,6 +1,6 @@
 #include "runtime/audio.h"
 
-#include "graph/runtime/flow.h"
+#include "execution/host.h"
 #include "support/xalloc.h"
 
 #include <math.h>
@@ -130,58 +130,19 @@ unsigned char *game_sound_wav(game_sound sound, int *size)
     return wav;
 }
 
-static int play(node *, flow_context *ctx)
+static const char *play_sound(void *service, const pin_value *values, pin_value *)
 {
-    game_audio *audio = flow_context_service(ctx, "game.audio");
-    if (!audio) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Play Sound requires a game world");
-    }
-    pin_value values[6];
-    for (int i = 0; i < 6; i++) {
-        int result = flow_context_eval_data(ctx, i + 1, &values[i]);
-        if (result < 0) {
-            return result;
-        }
-    }
     game_sound sound = { values[0].f, values[1].f, values[2].f,
                          values[3].f, values[4].f, values[5].f };
-    if (!game_audio_emit(audio, sound)) {
-        return flow_context_fail(ctx, FLOW_ERR_ARGUMENT, "Sound requires 20-10000 Hz, 0.01-4 seconds, and 0-1 volume, pan and noise");
+    if (!game_audio_emit(service, sound)) {
+        return "Sound requires 20-10000 Hz, 0.01-4 seconds, and 0-1 volume, "
+               "pan and noise";
     }
-    return flow_context_continue(ctx, 0);
+    return NULL;
 }
-#define FLOAT_PIN(label, value)                                                  \
-    {                                                                            \
-        .name = label, .type = PIN_F32, .type_name = "float", .default_value = { \
-            .type = PIN_F32,                                                     \
-            .f = value                                                           \
-        }                                                                        \
-    }
-static pin_spec INPUTS[] = { { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
-                             FLOAT_PIN("Frequency", 440),
-                             FLOAT_PIN("End Frequency", 220),
-                             FLOAT_PIN("Duration", 0.15f),
-                             FLOAT_PIN("Volume", 0.5f),
-                             FLOAT_PIN("Pan", 0.5f),
-                             FLOAT_PIN("Noise", 0) };
-static pin_spec OUTPUTS[] = { { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC } };
-static const node_access ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
-static node_desc PLAY = {
-    .name = "Play Sound",
-    .category = "Audio",
-    .keywords = "tone sound effect cue noise sweep",
-    .description = "Queues a synthesized tone sweeping from Frequency to End "
-                   "Frequency Hz over Duration seconds, mixed with Noise.",
-    .input_count = 7,
-    .inputs = INPUTS,
-    .output_count = 1,
-    .outputs = OUTPUTS,
-    .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = play,
-    .display_class = NODE_DISPLAY_FLOW,
-    .access = &ACCESS
+const node_host_call GAME_AUDIO_PLAY_CALL = {
+    .service = "game.audio",
+    .invoke = play_sound,
+    .missing_service = "Play Sound requires a game world",
 };
-static node_desc *const NODES[] = { &PLAY };
-const registry_pack GAME_AUDIO_PACK = { .name = "game.audio",
-                                        .nodes = NODES,
-                                        .node_count = 1 };
+const node_access GAME_AUDIO_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };

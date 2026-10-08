@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_FOG_H
 
 #include "render/arena3d.h"
+#include "render/view.h"
 #include "runtime/engine.h"
 
 typedef struct render_fog render_fog;

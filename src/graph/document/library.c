@@ -1,10 +1,12 @@
 #include "graph/document/library.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/events.h"
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/state_nodes.h"
 
 #include <stdio.h>

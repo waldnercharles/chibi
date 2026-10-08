@@ -1,8 +1,10 @@
+#include "authoring/engine_preview.h"
+#include "authoring/preview.h"
+#include "authoring/prototype_prepare.h"
+#include "authoring/prototype_preview.h"
 #include "graph/document/serialize.h"
-#include "runtime/behaviors/live.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
-#include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/event_fixture.h"
 #include "support/xalloc.h"
@@ -29,27 +31,12 @@ static char *read_content(const char *path)
     return text;
 }
 
-static behavior_asset *read_behavior(const char *path)
+static test_source_fixture read_behavior(const char *path)
 {
     char *text = read_content(path);
-    behavior_asset *asset = test_project_asset(path, text);
-    if (asset) {
-        asset = link_test_libraries(asset);
-    }
+    test_source_fixture fixture = test_source_prepare(path, text);
     free(text);
-    if (!asset) {
-        fprintf(stderr, "Could not load %s: %s\n", path, graph_last_error());
-    }
-    assert(asset);
-    compile_report report;
-    compile_report_init(&report);
-    int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
-        fprintf(stderr, "%s: %s\n", path, report.items[i].message);
-    }
-    assert(errors == 0);
-    compile_report_free(&report);
-    return asset;
+    return fixture;
 }
 
 static game_prototype *read_prototype(const char *path, const game_prototype_registry *registry)
@@ -78,7 +65,15 @@ static ecs_entity projectile_in(ecs_world *world)
 
 static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 {
-    return game_behavior_attach(user, entity, name);
+    game_preview_runtime *runtime = user;
+    return game_source_attach(
+        runtime->sources,
+        entity,
+        name,
+        runtime->deferred,
+        runtime->now,
+        runtime->delta
+    );
 }
 
 void test_projectile()
@@ -93,7 +88,7 @@ void test_projectile()
                             "PlayerContactBehavior", "MovementTrailBehavior" };
     for (int isolated = 0; isolated < 2; isolated++) {
         ecs_world *world = isolated ? NULL : ecs_world_new();
-        game_live_world *live = NULL;
+        game_preview_world *live = NULL;
         engine *runtime = NULL;
         game_prototype_preview *preview = NULL;
         if (isolated) {
@@ -106,9 +101,9 @@ void test_projectile()
                     ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
                 );
             }
-            live = game_live_world_new(world);
+            live = game_preview_world_new(world);
             register_damage_event(live);
-            runtime = engine_new(world, live);
+            runtime = authoring_engine_new(world, live->runtime);
         }
         for (int i = 0; i < (int)(sizeof names / sizeof names[0]); i++) {
             char path[256];
@@ -118,16 +113,13 @@ void test_projectile()
                                        !strcmp(names[i], "WeaponBehavior")
                                  ? "test/fixtures/content/behaviors"
                                  : "content/behaviors";
-            snprintf(path, sizeof path, "%s/%s.code", root, names[i]);
-            behavior_asset *asset = read_behavior(path);
-            if (isolated) {
-                assert(game_prototype_preview_register_behavior(preview, names[i], asset) == 0);
-                behavior_asset_free(asset);
-            } else {
-                assert(
-                    game_live_add_definition(live, game_live_definition_new(names[i], asset)) == 0
-                );
-            }
+            snprintf(path, sizeof path, "%s/%s.chibi", root, names[i]);
+            test_source_fixture fixture = read_behavior(path);
+            test_source_register(
+                preview ? game_prototype_preview_live(preview)->runtime : live->runtime,
+                &fixture
+            );
+            test_source_free(&fixture);
         }
         char error[256];
         ecs_entity owner;
@@ -137,12 +129,12 @@ void test_projectile()
             owner = game_prototype_preview_entity(preview);
 
         } else {
-            assert(game_entities_register(live->entities, projectile) == 0);
+            assert(game_entities_register(live->runtime->entities, projectile) == 0);
             assert(
                 game_prototype_spawn(
                     player,
                     world,
-                    &(game_prototype_spawn_hooks){ attach, live->behaviors },
+                    &(game_prototype_spawn_hooks){ attach, live->runtime },
                     &owner,
                     error,
                     sizeof error
@@ -188,7 +180,7 @@ void test_projectile()
             assert(game_prototype_preview_register_prototype(preview, projectile) == 0);
 
         } else {
-            assert(game_entities_register(live->entities, projectile) == 0);
+            assert(game_entities_register(live->runtime->entities, projectile) == 0);
         }
         simulation_action(&clock, "Fire");
         shot = projectile_in(world);
@@ -239,11 +231,11 @@ void test_projectile()
         );
         assert(
             (preview ? game_prototype_preview_register_prototype(preview, projectile)
-                     : game_entities_register(live->entities, projectile)) == 0
+                     : game_entities_register(live->runtime->entities, projectile)) == 0
         );
         game_particles *particles = preview
                                       ? game_prototype_preview_particles(preview)
-                                      : live->particles;
+                                      : live->runtime->particles;
         int before_impact = game_particles_count(particles);
         simulation_action(&clock, "Fire");
         assert(!projectile_in(world).slot);
@@ -262,7 +254,7 @@ void test_projectile()
             game_prototype_preview_free(preview);
         } else {
             engine_free(runtime);
-            game_live_world_free(live);
+            game_preview_world_free(live);
             ecs_world_free(world);
         }
     }

@@ -1,5 +1,0 @@
-name "HUD"
-components {
-    GAME.GameUi document="HUD" order=50
-}
-(array)behaviors "HudDisplay"

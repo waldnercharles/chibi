@@ -1,8 +1,10 @@
+#include "authoring/engine_preview.h"
+#include "authoring/preview.h"
+#include "authoring/prototype_prepare.h"
+#include "authoring/prototype_preview.h"
 #include "graph/document/serialize.h"
-#include "runtime/behaviors/live.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
-#include "runtime/scenes/prototype_preview.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "test/support/code_fixture.h"
@@ -39,41 +41,40 @@ static game_prototype *prototype(const char *name, const game_prototype_registry
     return result;
 }
 
-static behavior_asset *behavior(const char *name)
+static test_source_fixture behavior(const char *name)
 {
     char path[256];
     const char *root = !strcmp(name, "WaveBehavior")
                          ? "test/fixtures/content/behaviors"
                          : "content/behaviors";
-    snprintf(path, sizeof path, "%s/%s.code", root, name);
+    snprintf(path, sizeof path, "%s/%s.chibi", root, name);
     char *text = read_file(path);
-    behavior_asset *asset = test_project_asset(path, text);
+    test_source_fixture fixture = test_source_prepare(path, text);
     free(text);
-    assert(asset);
-    asset = link_test_libraries(asset);
-    compile_report report;
-    compile_report_init(&report);
-    int errors = behavior_asset_compile(asset, &report);
-    for (int i = 0; i < acount(report.items); i++) {
-        fprintf(stderr, "%s: %s\n", name, report.items[i].message);
-    }
-    assert(errors == 0);
-    compile_report_free(&report);
-    return asset;
+    return fixture;
 }
 
 typedef struct
 {
     ecs_world *world;
-    game_live_world *live;
+    game_preview_world *live;
     engine *runtime;
     game_prototype_preview *preview;
     simulation_fixture simulation;
+    uint64_t elapsed, spawned;
 } host;
 
 static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 {
-    return game_behavior_attach(user, entity, name);
+    game_preview_runtime *runtime = user;
+    return game_source_attach(
+        runtime->sources,
+        entity,
+        name,
+        runtime->deferred,
+        runtime->now,
+        runtime->delta
+    );
 }
 
 static void tick(host *h, double time)
@@ -127,26 +128,38 @@ static void run(
         for (int i = 0; i < registry->component_count; i++) {
             assert(ecs_world_register_component(h.world, registry->components[i], NULL) == ECS_OK);
         }
-        h.live = game_live_world_new(h.world);
+        h.live = game_preview_world_new(h.world);
         register_damage_event(h.live);
-        h.runtime = engine_new(h.world, h.live);
+        h.runtime = authoring_engine_new(h.world, h.live->runtime);
     }
     const char *names[] = { "WaveBehavior", "EnemyBehavior", "HealthBehavior" };
     for (int i = 0; i < 3; i++) {
-        behavior_asset *asset = behavior(names[i]);
-        if (h.preview) {
-            assert(game_prototype_preview_register_behavior(h.preview, names[i], asset) == 0);
-            behavior_asset_free(asset);
-        } else {
-            assert(
-                game_live_add_definition(h.live, game_live_definition_new(names[i], asset)) == 0
-            );
+        test_source_fixture fixture = behavior(names[i]);
+        if (!strcmp(names[i], "WaveBehavior")) {
+            for (int j = 0; j < fixture.source->analysis->symbol_count; j++) {
+                const script_symbol *symbol = &fixture.source->analysis->symbols[j];
+                if (symbol->kind != SCRIPT_STATE) {
+                    continue;
+                }
+                if (!strcmp(symbol->name, "Elapsed")) {
+                    h.elapsed = symbol->id;
+                }
+                if (!strcmp(symbol->name, "Spawned")) {
+                    h.spawned = symbol->id;
+                }
+            }
+            assert(h.elapsed && h.spawned);
         }
+        test_source_register(
+            h.preview ? game_prototype_preview_live(h.preview)->runtime : h.live->runtime,
+            &fixture
+        );
+        test_source_free(&fixture);
     }
     if (h.preview) {
         assert(game_prototype_preview_register_prototype(h.preview, enemy) == 0);
     } else {
-        assert(game_entities_register(h.live->entities, enemy) == 0);
+        assert(game_entities_register(h.live->runtime->entities, enemy) == 0);
     }
     char error[256];
     for (int launch = 0; launch < 2; launch++) {
@@ -159,7 +172,7 @@ static void run(
                 game_prototype_spawn(
                     encounter,
                     h.world,
-                    &(game_prototype_spawn_hooks){ attach, h.live->behaviors },
+                    &(game_prototype_spawn_hooks){ attach, h.live->runtime },
                     &owner,
                     error,
                     sizeof error
@@ -181,13 +194,16 @@ static void run(
         ecs_entity latest;
         int first_count = enemies(&h, &latest);
         if (first_count != 1) {
-            behavior_instance
-                *instance = h.preview
-                              ? game_prototype_preview_instance(h.preview, "WaveBehavior")
-                              : game_behavior_instance(h.live->behaviors, owner, "WaveBehavior");
-            pin_value elapsed, spawned;
-            assert(behavior_instance_get_variable(instance, 4, &elapsed) == 0);
-            assert(behavior_instance_get_variable(instance, 5, &spawned) == 0);
+            game_preview_runtime *runtime = h.preview
+                                              ? game_prototype_preview_live(h.preview)
+                                                    ->runtime
+                                              : h.live->runtime;
+            execution_program *program = game_source_program(runtime->sources, "WaveBehavior");
+            execution_instance *instance = execution_program_instance(program, ecs_entity_to_u64(owner));
+            assert(instance);
+            const pin_value *elapsed = execution_instance_state(instance, h.elapsed);
+            const pin_value *spawned = execution_instance_state(instance, h.spawned);
+            assert(elapsed && spawned && elapsed->type == PIN_F32 && spawned->type == PIN_I32);
             fprintf(
                 stderr,
                 "wave first spawn: isolated=%d launch=%d count=%d elapsed=%.9g "
@@ -195,8 +211,8 @@ static void run(
                 isolated,
                 launch,
                 first_count,
-                elapsed.f,
-                spawned.i
+                elapsed->f,
+                spawned->i
             );
         }
         assert(first_count == 1);
@@ -239,7 +255,7 @@ static void run(
         } else {
             /* Restart the scene's owned runtime and world, preserving authored assets. */
             engine_free(h.runtime);
-            game_live_world_free(h.live);
+            game_preview_world_free(h.live);
             ecs_world_free(h.world);
             run(false, registry, encounter, player, enemy, true);
             return;
@@ -249,7 +265,7 @@ static void run(
         game_prototype_preview_free(h.preview);
     } else {
         engine_free(h.runtime);
-        game_live_world_free(h.live);
+        game_preview_world_free(h.live);
         ecs_world_free(h.world);
     }
 }

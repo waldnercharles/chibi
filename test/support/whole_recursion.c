@@ -1,8 +1,11 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/compare_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow.h"
 #include "graph/runtime/flow_internal.h"
@@ -249,6 +252,7 @@ static int emit(behavior_function *f, behavior_function_instruction i)
 behavior_function *whole_recursion_ir(bool waits, int limit)
 {
     behavior_function *f = xcalloc(1, sizeof *f);
+    f->artifact = execution_artifact_new();
     f->waits = waits;
     apush(f->frames, ((behavior_function_frame){ .source.parent = -1 }));
     apush(f->calls, ((behavior_function_invocation){ f, 0, 2, 2, 3 }));
@@ -593,7 +597,10 @@ static void runtime_smoke()
             assert(flow_host_resume(request) >= 0);
         }
         if (!cancelled) {
-            assert(flow_run_status(run) == FLOW_COMPLETED && bi->variables[0].i == 6);
+            assert(
+                flow_run_status(run) == FLOW_COMPLETED &&
+                bi->execution.variables[0].i == 6
+            );
             assert(capture.calls == 4);
         }
         whole_async_clear(&capture);

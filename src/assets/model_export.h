@@ -1,6 +1,6 @@
 #ifndef CHIBI_MODEL_EXPORT_H
 #define CHIBI_MODEL_EXPORT_H
-#include "graph/modeling/model_bake.h"
+#include "runtime/models/model_bake.h"
 
 #include <stddef.h>
 typedef struct

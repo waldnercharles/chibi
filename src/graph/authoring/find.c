@@ -2,9 +2,10 @@
 
 #include "graph/model/behavior_asset.h"
 #include "graph/model/local.h"
-#include "graph/model/pin_fmt.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/behavior_expression.h"
+#include "graph/nodes/core_nodes.h"
+#include "types/value_format.h"
 
 #include <ctype.h>
 #include <stdio.h>

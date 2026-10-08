@@ -1,3 +1,5 @@
+#include "graph/authoring/graph_edit.h"
+#include "graph/authoring/local_edit.h"
 #include "graph/authoring/optimize_internal.h"
 #include "graph/document/serialize.h"
 #include "graph/model/behavior_asset.h"
@@ -5,7 +7,7 @@
 #include "graph/model/registry.h"
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
-#include "graph/runtime/eval.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/arena.h"
 
 #include <assert.h>

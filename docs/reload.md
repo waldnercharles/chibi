@@ -1,18 +1,18 @@
 # Native development and workspace recovery
 
-`make dev` builds the ordinary native application in RelWithDebInfo and launches
-Studio with `.chibi/workspace.json` as its checkpoint. Native C changes take effect
-after rebuilding and restarting the application.
+`make studio-dev STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/sdk PROJECT_ROOT=/game` builds the separate Studio consumer in the selected native profile and launches
+Studio with `build-studio/workspace.json` as its checkpoint. Native C changes take effect
+after rebuilding the owning SDK or Studio product and restarting the application.
+`STUDIO_CMAKE_FLAGS` chooses the profile; `STUDIO_CHECKPOINT` selects the recovery file.
 
 ## Development loop
 
-Close Studio, edit the native source, and run `make dev` again. The build reuses
+Close Studio, edit the native source, and run `make studio-dev STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/sdk PROJECT_ROOT=/game` again. The build reuses
 unchanged objects and dependency packages. Build failures report diagnostics and
 leave the saved workspace available for the next successful launch.
 
 The native application has no code replacement, source watcher, application DLL,
-immutable application generations or restart-required notification. `make run`,
-`make debug` and `make dev` all use the same linked application lifecycle.
+immutable application generations or restart-required notification. `make studio-run` and `make studio-dev` use the same linked application lifecycle.
 
 Authored assets still update while Studio runs. Graph assets and systems update
 when their files change; prototypes and the open scene update when the runtime
@@ -23,7 +23,7 @@ require rebuilding the web application and refreshing the browser.
 ## Workspace checkpoints
 
 Normal close, Ctrl-C and SIGTERM save the workspace and exit normally. The next
-`make dev` launch imports `.chibi/workspace.json`. Window size and position use
+`make studio-dev STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/sdk PROJECT_ROOT=/game` launch imports `build-studio/workspace.json`. Window size and position use
 its adjacent `.window` file. Other native launches can opt into recovery with
 `--checkpoint PATH`.
 
@@ -33,7 +33,7 @@ or paused intent. Live simulation state and active pointer gestures are recreate
 A checkpoint is separate from saving source documents.
 
 If startup cannot import the saved workspace, the application preserves it as
-`.chibi/workspace.json.rejected-XXXXXX`, prints that path, and starts from project
+`build-studio/workspace.json.rejected-XXXXXX`, prints that path, and starts from project
 content. The preserved file retains unsaved documents for recovery after a schema
 change. Checkpoints contain stable document data and identities, never native
 pointers or generated code.
@@ -57,7 +57,7 @@ check target. Do not execute raw native or CMake checks to bypass quarantine.
 CUT65 removed the old `CHIBI_DEVELOPMENT_RELOAD` build mode, `chibi_dll`,
 `check-reload`, `check-dev`, staging descriptors and native watcher smoke checks.
 
-Existing `build-dev` directories are reconfigured by `make dev` to use the linked
+Existing `build-dev` directories are reconfigured by `make studio-dev STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/sdk PROJECT_ROOT=/game` to use the linked
 application. Dependency packages use the new build identity; existing caches stay
 on disk. Old generation directories and manifests are no longer read. Existing
 workspace checkpoints remain available for restart recovery. Remove the retired

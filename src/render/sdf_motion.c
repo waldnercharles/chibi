@@ -1,6 +1,6 @@
 #include "render/sdf_motion.h"
 
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 
 #include <assert.h>
 #include <math.h>

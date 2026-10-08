@@ -2,6 +2,7 @@
 #define CHIBI_COMPARE_NODES_H
 
 #include "graph/model/node.h"
+#include "graph/nodes/core_nodes.h"
 
 extern node_desc NODE_Greater_Or_Equal;
 extern node_desc NODE_Integer_Greater_Or_Equal;

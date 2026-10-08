@@ -698,7 +698,12 @@ void arrange_route(
             }
             ar_levels(g, pos, &c, &lanes, i, &levels);
             for (int k = 0; k + 1 < acount(levels); k++) {
-                apush(passes, ((ar_pass){ column[l->from] + k, levels[k], levels[k + 1] }));
+                apush(
+                    passes,
+                    ((ar_pass){ .gap = column[l->from] + k,
+                                .in = levels[k],
+                                .out = levels[k + 1] })
+                );
             }
         }
         apush(pass_start, acount(passes));

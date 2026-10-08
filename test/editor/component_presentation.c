@@ -1,4 +1,4 @@
-#include "editor/documents/component_presentation.h"
+#include "authoring/component_presentation.h"
 
 #include "support/array.h"
 #include "support/text_file.h"
@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static game_prototype_registry registry;
+static ecs_component_catalog registry;
 
 static int field_index(const ecs_component_desc *desc, const char *name)
 {
@@ -44,7 +44,7 @@ static void valid_document()
         "   damage {\n                (array)range {\n                    - "
         "1\n                    - 9\n                }\n                unit "
         "\"hp\"\n            }\n        }\n    }\n}\n",
-        &registry,
+        registry,
         &p,
         error,
         sizeof error
@@ -74,7 +74,7 @@ static void valid_document()
     component_presentation_free(&p);
     component_presentation empty = { 0 };
     test_check(
-        component_presentation_read("", &registry, &empty, error, sizeof error) &&
+        component_presentation_read("", registry, &empty, error, sizeof error) &&
             component_presentation_tab(&empty, &GAME_COMPONENT_GameBody) ==
                 COMPONENT_TAB_OBJECT &&
             component_presentation_icon(&empty, &GAME_COMPONENT_GameCamera) ==
@@ -233,7 +233,7 @@ static void rejected_documents()
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         component_presentation p = { 0 };
         char error[256] = { 0 };
-        bool ok = component_presentation_read(cases[i].code, &registry, &p, error, sizeof error);
+        bool ok = component_presentation_read(cases[i].code, registry, &p, error, sizeof error);
         char message[320];
         snprintf(
             message,
@@ -245,17 +245,24 @@ static void rejected_documents()
     }
 }
 
-/* Arena2D's Player keeps the gamepad icon and its components' tabs. */
+/* A synthetic subject keeps the gamepad icon and its components' tabs. */
 static void shipped_document()
 {
-    char *text = text_file_read("projects/arena2d/content/" COMPONENT_PRESENTATION_PATH);
-    char *player_text = text_file_read("projects/arena2d/content/prototypes/Player.kdl");
+    char *text = text_file_read("test/fixtures/component-presentation/content/" COMPONENT_PRESENTATION_PATH);
+    char *player_text = text_file_read("test/fixtures/component-presentation/content/prototypes/InspectorSubject.kdl");
     component_presentation p = { 0 };
     char error[256] = { 0 };
     bool ok = text &&
-              component_presentation_read(text, &registry, &p, error, sizeof error);
+              component_presentation_read(text, registry, &p, error, sizeof error);
     game_prototype *player = player_text
-                               ? game_prototype_load(player_text, &registry, error, sizeof error)
+                               ? game_prototype_load(
+                                     player_text,
+                                     &(game_prototype_registry){
+                                         .components = registry.components,
+                                         .component_count = registry.component_count },
+                                     error,
+                                     sizeof error
+                                 )
                                : NULL;
     int tabs = 0, icons = 0;
     for (int i = 0; ok && i < acount(p.components); i++) {
@@ -280,7 +287,8 @@ static void shipped_document()
                 COMPONENT_TAB_GAMEPLAY &&
             component_presentation_tab(&p, &GAME_COMPONENT_GameAppearance) ==
                 COMPONENT_TAB_OBJECT,
-        "Arena2D's editor/Components.kdl keeps Player's icon and component "
+        "The component presentation fixture keeps the subject's icon and "
+        "component "
         "tabs"
     );
     game_prototype_free(player);
@@ -300,7 +308,7 @@ static void last_valid_document()
         "        tab \"Physics\"\n"
         "    }\n"
         "}\n",
-        &registry,
+        registry,
         &p,
         error,
         sizeof error
@@ -311,7 +319,7 @@ static void last_valid_document()
         "        tab \"Nowhere\"\n"
         "    }\n"
         "}\n",
-        &registry,
+        registry,
         &p,
         error,
         sizeof error
@@ -323,7 +331,7 @@ static void last_valid_document()
         "        tab \"Physics\"\n"
         "    }\n"
         "}\n",
-        &registry,
+        registry,
         &p,
         error,
         sizeof error
@@ -340,7 +348,7 @@ static void last_valid_document()
 
 void test_component_presentation()
 {
-    registry = (game_prototype_registry){
+    registry = (ecs_component_catalog){
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };

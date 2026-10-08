@@ -3,19 +3,8 @@
 #include "ecs/ecs.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
-typedef struct
-{
-    const char *text;
-    float weight;
-} whole_managed_inner;
-typedef struct
-{
-    const char *label;
-    whole_managed_inner nested;
-    int count;
-} whole_managed;
+#include "test/support/reflected_types.h"
 extern const registry_pack WHOLE_MANAGED_PACK;
-extern const ecs_component_desc WHOLE_MANAGED_COMPONENT;
 behavior_asset *whole_managed_fixture(bool waits, bool components);
 void whole_managed_smoke();
 void test_compiled_managed(const char *path);

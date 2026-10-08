@@ -6,8 +6,8 @@
  * same cases run natively (test_suite --ui-bench) and as WASM under Node
  * (build-web/ui_bench.js); ui_bench_studio.c adds the native Studio. */
 
+#include "authoring/component_presentation.h"
 #include "ecs/ecs.h"
-#include "editor/documents/component_presentation.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 

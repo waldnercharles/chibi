@@ -2,7 +2,7 @@
 #define CHIBI_REFACTOR_H
 
 #include "assets/prototype.h"
-#include "assets/reference_index.h"
+#include "authoring/reference_index.h"
 
 #include <stdbool.h>
 #include <stddef.h>

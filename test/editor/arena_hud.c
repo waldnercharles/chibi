@@ -1,13 +1,14 @@
+#include "authoring/ui_loader.h"
 /* End to end on arena2d's Neon Swarm Sandbox (wave 3, workstream X): the HUD
  * document shows what the HudDisplay behavior sets, and the HUD's Repair
  * button and H key reach the behavior. Scenarios run through the controller,
  * as the MCP runs them, and the document renders headless. */
+#include "authoring/preview.h"
 #include "automation/controller.h"
 #include "render/ui.h"
 #include "runtime/behaviors/behavior.h"
 #include "runtime/behaviors/entities.h"
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "test/suite_internal.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -158,7 +159,7 @@ static bool text_is(rml_element *root, const char *selector, const char *expecte
 typedef struct
 {
     ecs_world *world;
-    game_live_world *live;
+    game_preview_world *live;
     ecs_entity hud;
     render_ui *ui;
     ui_world w;
@@ -172,15 +173,15 @@ static hud_view hud_open()
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(v.world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    v.live = game_live_world_new(v.world);
+    v.live = game_preview_world_new(v.world);
     v.hud = ecs_world_create_entity(v.world);
     assert(GAME_GameUi_add(v.world, v.hud, 0) == ECS_OK);
     assert(ecs_world_apply_commands(v.world) == ECS_OK);
     *GAME_GameUi_get(v.world, v.hud) = (GameUi){ .document = "HUD" };
-    v.ui = render_ui_new(ROOT "/content", NULL);
+    v.ui = authoring_ui_new(ROOT "/content", NULL);
     v.w = (ui_world){ .ecs = v.world,
-                      .model = game_behavior_ui(v.live->behaviors),
-                      .live = v.live };
+                      .model = game_behavior_ui(v.live->runtime->behaviors),
+                      .live = v.live->runtime };
     return v;
 }
 
@@ -205,7 +206,7 @@ static rml_element *hud_document(hud_view *v)
 static void hud_close(hud_view *v)
 {
     render_ui_free(v->ui);
-    game_live_world_free(v->live);
+    game_preview_world_free(v->live);
     test_ui_probes_free();
     ecs_world_free(v->world);
 }
@@ -283,11 +284,11 @@ void test_arena_hud()
     click(v.ui, rml_element_query_selector(doc, "#repair"));
     hud_frame(&v);
     bool clicked = v.repairs.count == 1 &&
-                   !game_entities_pending_events(v.live->entities);
+                   !game_entities_pending_events(v.live->runtime->entities);
     render_ui_input(v.ui, &(rml_input){ .type = RML_INPUT_KEY_PRESS, .key = RML_INPUT_KEY_H });
     hud_frame(&v);
     bool keyed = v.repairs.count == 2 &&
-                 !game_entities_pending_events(v.live->entities);
+                 !game_entities_pending_events(v.live->runtime->entities);
     test_check(
         clicked && keyed,
         "arena2d: the HUD's Repair button and H key reach its entity's "

@@ -8,7 +8,7 @@ static const behavior_function *body(behavior_asset *a)
 {
     behavior_program_publish(a);
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, a->graphs[1]),
+        behavior_program_graph(behavior_program_cached(a), a->graphs[1]),
         a->graphs[1]->nodes[0]
     );
     assert(f && behavior_function_entry(f));

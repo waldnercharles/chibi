@@ -1,5 +1,6 @@
-#include "runtime/behaviors/live.h"
-#include "runtime/generated.h"
+#include "authoring/preview.h"
+#include "graph/model/registry.h"
+#include "runtime/component_catalog.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +28,7 @@ static void measure(int count, float spacing)
     ecs_world *ecs = ecs_world_new();
     require(ecs_world_register_component(ecs, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
     require(ecs_world_register_component(ecs, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
-    game_live_world *live = game_live_world_new(ecs);
+    game_preview_world *live = game_preview_world_new(ecs);
     for (int i = 0; i < count; i++) {
         ecs_entity entity = ecs_world_create_entity(ecs);
         require(GAME_GameTransform_add(ecs, entity, 0) == ECS_OK);
@@ -38,12 +39,12 @@ static void measure(int count, float spacing)
         *GAME_GameCollider_get(ecs, entity) = (GameCollider){ 8.0f, 1, 1 };
     }
     double start = seconds();
-    require(game_physics_tick(live->physics, 0) == 0);
+    require(game_physics_tick(live->runtime->physics, 0) == 0);
     double first = seconds() - start;
-    game_entities_reset(live->entities);
+    game_entities_reset(live->runtime->entities);
     start = seconds();
     for (int i = 0; i < PASSES; i++) {
-        require(game_physics_tick(live->physics, 0) == 0);
+        require(game_physics_tick(live->runtime->physics, 0) == 0);
     }
     double average = (seconds() - start) / PASSES;
     printf(
@@ -55,12 +56,13 @@ static void measure(int count, float spacing)
         PASSES
     );
     fflush(stdout);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(ecs);
 }
 
 int main()
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     measure(1000, 40);
     measure(4000, 40);
     measure(1000, 12);

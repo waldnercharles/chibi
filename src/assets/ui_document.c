@@ -41,11 +41,6 @@ static int breaks(const char *p, const char *end)
     return count;
 }
 
-static int line_breaks(const char *text)
-{
-    return breaks(text, text + strlen(text));
-}
-
 static bool fail(char *error, size_t size, const char *format, ...)
 {
     va_list args;
@@ -777,7 +772,10 @@ static void put_scoped(expansion *x, ui_document *asset, const char *name)
     rcss_map_own(&asset->map, path);
     free(path);
     char *scoped = ui_document_scope(asset->rcss, name);
-    assert(line_breaks(scoped) == line_breaks(asset->rcss)); /* so the map holds */
+    assert(
+        breaks(scoped, scoped + strlen(scoped)) ==
+        breaks(asset->rcss, asset->rcss + strlen(asset->rcss))
+    ); /* so the map holds */
     rcss_join(&x->rcss, &x->map, scoped, &asset->map);
     free(scoped);
 }
@@ -1029,6 +1027,9 @@ static void push_tag_events(ui_document_event **events, const char *open, const 
     if (tag_attribute(attrs, end, "data-keys", value, sizeof value)) {
         push_key_events(events, value, element);
     }
+    if (tag_attribute(attrs, end, "data-area-keys", value, sizeof value)) {
+        push_key_events(events, value, element);
+    }
 }
 
 void ui_document_events(const char *rml, ui_document_event **events)
@@ -1177,18 +1178,11 @@ static void use_spans(const char *rml, name_span **spans)
     }
 }
 
-/* The events of the tag opening at `open`: its handlers' emit('Name')
- * calls, then each event its data-keys bindings name. */
-static void tag_event_spans(const char *open, const char *end, name_span **spans)
+/* Event names in one key-binding attribute of the tag opening at `open`. */
+static void key_event_spans(const char *open, const char *end, const char *attribute, name_span **spans)
 {
-    emit_span *emits = NULL;
-    emit_spans(open, end, &emits);
-    for (int i = 0; i < acount(emits); i++) {
-        apush(*spans, ((name_span){ emits[i].at, emits[i].length }));
-    }
-    afree(emits);
     size_t length;
-    const char *value = attribute_span(open, end, "data-keys", &length);
+    const char *value = attribute_span(open, end, attribute, &length);
     const char *stop = value ? value + length : NULL;
     for (const char *p = value; p && p < stop;) {
         p += strspn(p, " ");
@@ -1201,6 +1195,18 @@ static void tag_event_spans(const char *open, const char *end, name_span **spans
             apush(*spans, ((name_span){ colon + 1, (size_t)(p - colon - 1) }));
         }
     }
+}
+
+static void tag_event_spans(const char *open, const char *end, name_span **spans)
+{
+    emit_span *emits = NULL;
+    emit_spans(open, end, &emits);
+    for (int i = 0; i < acount(emits); i++) {
+        apush(*spans, ((name_span){ emits[i].at, emits[i].length }));
+    }
+    afree(emits);
+    key_event_spans(open, end, "data-keys", spans);
+    key_event_spans(open, end, "data-area-keys", spans);
 }
 
 static void event_spans(const char *rml, name_span **spans)
@@ -1222,6 +1228,18 @@ static int span_order(const void *a, const void *b)
     const char *left = ((const name_span *)a)->at;
     const char *right = ((const name_span *)b)->at;
     return (left > right) - (left < right);
+}
+
+void ui_document_event_ranges(const char *rml, ui_document_event_range **ranges)
+{
+    name_span *spans = NULL;
+    event_spans(rml, &spans);
+    qsort(spans, (size_t)acount(spans), sizeof *spans, span_order);
+    for (int i = 0; i < acount(spans); i++) {
+        int start = (int)(spans[i].at - rml);
+        apush(*ranges, ((ui_document_event_range){ start, start + (int)spans[i].length }));
+    }
+    afree(spans);
 }
 
 char *ui_document_rename(const char *rml, bool event, const char *from, const char *to, int *count)
@@ -1251,44 +1269,4 @@ char *ui_document_rename(const char *rml, bool event, const char *from, const ch
     afree(out);
     afree(spans);
     return text;
-}
-
-char *ui_document_compose(const ui_document *document, const char *base)
-{
-    static const char FORMAT[] = "<rml><head><style>%s\n%s</style></"
-                                 "head><body%s%s>%s</body></rml>";
-    const char *space = document->body ? " " : "",
-               *body = document->body ? document->body : "";
-    int size = snprintf(
-        NULL,
-        0,
-        FORMAT,
-        base,
-        document->rcss,
-        space,
-        body,
-        document->rml
-    );
-    assert(size >= 0);
-    char *text = xmalloc((size_t)size + 1);
-    snprintf(
-        text,
-        (size_t)size + 1,
-        FORMAT,
-        base,
-        document->rcss,
-        space,
-        body,
-        document->rml
-    );
-    return text;
-}
-
-void ui_document_free(ui_document *document)
-{
-    free(document->rml);
-    free(document->rcss);
-    free(document->body);
-    rcss_map_free(&document->map);
-    *document = (ui_document){ 0 };
 }

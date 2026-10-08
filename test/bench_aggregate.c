@@ -13,7 +13,7 @@ static const behavior_function *body(behavior_asset *a, int graph)
 {
     behavior_program_publish(a);
     const behavior_function *f = behavior_program_function(
-        behavior_program_graph(a->program, a->graphs[graph]),
+        behavior_program_graph(behavior_program_cached(a), a->graphs[graph]),
         a->graphs[graph]->nodes[0]
     );
     assert(f && behavior_function_entry(f));

@@ -1,5 +1,8 @@
 #include "ecs/ecs.h"
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/update.h"
@@ -97,19 +100,26 @@ void whole_batch_smoke()
     for (int i = 0; i < 32; i++) {
         assert(behavior_instance_dispatch_batch(instance, "Tick", &batch, &failed) && !failed);
     }
-    assert(instance->variables[0].d == 14. && !acount(instance->activations));
+    assert(instance->execution.variables[0].d == 14. && !acount(instance->activations));
     assert(behavior_batch_dispatches() == batches + 33);
     ecs_world *ecs = ecs_world_new();
     ecs_entity entity = ecs_world_create_entity(ecs);
     behavior_update_binding **bindings = NULL;
     node *entry;
-    const behavior_function *function = behavior_program_batch_event(asset->program, "Tick", &entry);
+    const behavior_function *function = behavior_program_batch_event(
+        behavior_program_cached(asset),
+        "Tick",
+        &entry
+    );
     behavior_update_row rows[2] = {
-        { .instance = instance,
-          .binding = behavior_update_prepare(&bindings, instance, function, entry),
-          .entity = ecs_entity_to_u64(entity) },
+        behavior_update_row_make(
+            instance,
+            behavior_update_prepare(&bindings, instance, function, entry),
+            ecs_entity_to_u64(entity),
+            0
+        ),
         /* A dead entity must end the span before any body executes. */
-        { .instance = instance, .entity = 0 }
+        behavior_update_row_make(instance, NULL, 0, 0)
     };
     rows[1].binding = rows[0].binding;
     void *code = behavior_function_system_entry(function);
@@ -125,7 +135,7 @@ void whole_batch_smoke()
                     : behavior_update_run_c(rows, rows + 2, (const ecs_execution_view *)ecs, &result, NULL);
         assert(end == rows + 1 && result == FLOW_OK);
     }
-    assert(instance->variables[0].d == 18. && !acount(instance->activations));
+    assert(instance->execution.variables[0].d == 18. && !acount(instance->activations));
     behavior_update_free_bindings(bindings);
     ecs_world_free(ecs);
     assert(stores == runtime_store_creations());

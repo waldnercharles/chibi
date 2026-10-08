@@ -1,7 +1,7 @@
 #ifndef CHIBI_RENDER_MESH_MATERIAL_H
 #define CHIBI_RENDER_MESH_MATERIAL_H
 #include "render/material_raster.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 typedef struct render_mesh_material render_mesh_material;
 typedef struct
 {

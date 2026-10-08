@@ -11,7 +11,7 @@ bool chibi_preview_readback_raw(int width, int height, FILE *out, char *error, s
 char *chibi_scene_preview_handle(const char *request, const char *default_root, int *exit_code);
 
 /* Tooling-only GPU feedback for authored material and shape assets. The
- * renderer remains unaware of MCP or JSON; this seam owns request parsing,
+ * renderer remains unaware of automation JSON; this seam owns request parsing,
  * safe asset resolution, and the readback response. */
 char *chibi_render_preview_handle(const char *request, const char *default_root, int *exit_code);
 

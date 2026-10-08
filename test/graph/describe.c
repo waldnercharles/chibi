@@ -1,6 +1,8 @@
 #include "graph/authoring/describe.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "graph/nodes/component_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "test/suite_internal.h"
 
 #include <assert.h>
@@ -63,13 +65,13 @@ void run_graph_describe_checks()
     test_check(describes(&preset, text), "describe: a Set preset names the field it writes");
 
     node *tick = graph_add_node(g, &NODE_Event);
-    graph_set_event_name(g, tick, graph_host_event_name(GRAPH_HOST_EVENT_TICK));
+    graph_set_event_name(g, tick, game_host_event_name(GAME_HOST_EVENT_TICK));
     test_check(
         placed_describes(
             tick,
             catalog,
             2,
-            GRAPH_HOST_EVENTS[GRAPH_HOST_EVENT_TICK].description
+            GAME_HOST_EVENTS[GAME_HOST_EVENT_TICK].description
         ),
         "describe: an engine event reads its own sentence"
     );
@@ -89,9 +91,9 @@ void run_graph_describe_checks()
     assert(graph_set_node_reference(g, send, 0, "Hit") == 0);
     test_check(placed_describes(send, catalog, 2, "Sends Hit to Entity."), "describe: Send Event names the event it sends");
     node_subject host = { .desc = &NODE_Event,
-                          .host = &GRAPH_HOST_EVENTS[GRAPH_HOST_EVENT_CONTACT_BEGIN] };
+                          .host = &GAME_HOST_EVENTS[GAME_HOST_EVENT_CONTACT_BEGIN] };
     test_check(
-        describes(&host, GRAPH_HOST_EVENTS[GRAPH_HOST_EVENT_CONTACT_BEGIN].description),
+        describes(&host, GAME_HOST_EVENTS[GAME_HOST_EVENT_CONTACT_BEGIN].description),
         "describe: a search result for an engine event reads the event's "
         "sentence"
     );

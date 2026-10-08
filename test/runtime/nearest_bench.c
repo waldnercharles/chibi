@@ -1,8 +1,9 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_function_internal.h"
 #include "graph/model/registry.h"
 #include "graph/runtime/flow_internal.h"
 #include "runtime/behaviors/entities.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "test/suite_internal.h"
 #include "test/whole_data_fixture.h"
 
@@ -72,13 +73,14 @@ int bench_nearest(const char *path, int count, int rotation)
             int mode = (order + rotation) % 6;
             behavior_asset *a = fixture();
             behavior_function *f = entry(a);
-            void *code = f->code, *inspection = f->inspection_code,
-                 *dispatch = f->dispatch;
+            void *code = f->artifact->code,
+                 *inspection = f->artifact->inspection_code,
+                 *dispatch = f->artifact->dispatch;
             if (mode % 3 == 2) {
-                f->code = dlsym(library, "generated_nearest");
-                assert(f->code);
-                f->inspection_code = f->code;
-                f->dispatch = NULL;
+                f->artifact->code = dlsym(library, "generated_nearest");
+                assert(f->artifact->code);
+                f->artifact->inspection_code = f->artifact->code;
+                f->artifact->dispatch = NULL;
             }
             behavior_instance *bi = behavior_instance_create(a, NULL, NULL, NULL);
             assert(entry(a) == f);
@@ -108,13 +110,14 @@ int bench_nearest(const char *path, int count, int rotation)
                     );
                 }
                 assert(
-                    bi->variables[0].b && bi->variables[1].u64 == expected &&
-                    bi->variables[3].f == 1
+                    bi->execution.variables[0].b &&
+                    bi->execution.variables[1].u64 == expected &&
+                    bi->execution.variables[3].f == 1
                 );
-                const CF_V2 *position = bi->variables[2].ptr;
+                const CF_V2 *position = bi->execution.variables[2].ptr;
                 assert(position && position->x == 1 && position->y == 0);
                 if (i >= 0) {
-                    checksum += bi->variables[1].u64;
+                    checksum += bi->execution.variables[1].u64;
                 }
                 if (run) {
                     assert(!behavior_instance_release_activation(bi, run));
@@ -135,9 +138,9 @@ int bench_nearest(const char *path, int count, int rotation)
             );
             behavior_batch_free(batch);
             behavior_instance_destroy(bi);
-            f->code = code;
-            f->inspection_code = inspection;
-            f->dispatch = dispatch;
+            f->artifact->code = code;
+            f->artifact->inspection_code = inspection;
+            f->artifact->dispatch = dispatch;
             behavior_asset_free(a);
         }
         game_entities_free(service);

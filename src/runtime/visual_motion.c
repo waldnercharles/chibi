@@ -1,86 +1,11 @@
 #include "runtime/visual_motion.h"
 
-#include "graph/runtime/flow.h"
-#include "runtime/generated.h"
+#include "execution/status.h"
+#include "runtime/component_catalog.h"
 
 #include <assert.h>
 #include <math.h>
-
-static bool finite_vector(CF_V3 value);
-
-/* Target can name another instance's entity. Keep this write serialized until
- * entry analysis proves disjoint targets. */
-static const node_access visual_reaction_access = {
-    .reads = &GAME_COMPONENT_GameVisualMotion.id,
-    .read_count = 1,
-    .writes = &GAME_COMPONENT_GameVisualMotion.id,
-    .write_count = 1
-};
-static pin_spec visual_reaction_inputs[] = {
-    { .name = "Exec", .type = PIN_FLOW, .kind = PIN_EXEC },
-    { .name = "Rotation", .type = PIN_STRUCT, .type_name = "CF_V3" },
-    { .name = "Lift", .type = PIN_F32, .type_name = "float" },
-    { .name = "Target", .type = PIN_HANDLE, .type_name = "ecs.entity", .flags = PIN_FLAG_DEFAULT_SELF },
-};
-static pin_spec visual_reaction_outputs[] = {
-    { .name = "Then", .type = PIN_FLOW, .kind = PIN_EXEC },
-};
-
-static int set_visual_reaction(node *, flow_context *ctx)
-{
-    pin_value rotation, lift, target;
-    int result = flow_context_eval_data(ctx, 1, &rotation);
-    if (result < 0) {
-        return result;
-    }
-    result = flow_context_eval_data(ctx, 2, &lift);
-    if (result < 0) {
-        return result;
-    }
-    result = flow_context_eval_data(ctx, 3, &target);
-    if (result < 0) {
-        return result;
-    }
-    if (rotation.type != PIN_STRUCT || !rotation.ptr || lift.type != PIN_F32 ||
-        target.type != PIN_HANDLE || !isfinite(lift.f)) {
-        return flow_context_fail(ctx, FLOW_ERR_ARGUMENT, "Trigger Visual Reaction needs finite rotation and lift");
-    }
-    ecs_world *world = flow_context_service(ctx, "ecs.world");
-    if (!world) {
-        return flow_context_fail(ctx, FLOW_ERR_NODE, "Trigger Visual Reaction requires an ECS world");
-    }
-    ecs_entity entity = ecs_entity_from_u64(target.u64);
-    GameVisualMotion *motion = GAME_GameVisualMotion_get(world, entity);
-    if (!motion) {
-        return flow_context_fail(ctx, FLOW_ERR_STATE, "Trigger Visual Reaction target has no GameVisualMotion");
-    }
-    CF_V3 value = *(const CF_V3 *)rotation.ptr;
-    if (!finite_vector(value) || !isfinite(motion->reaction_duration) ||
-        motion->reaction_duration < 0) {
-        return flow_context_fail(ctx, FLOW_ERR_ARGUMENT, "Trigger Visual Reaction needs finite motion state");
-    }
-    motion->reaction_rotation = value;
-    motion->reaction_lift = lift.f;
-    motion->reaction_age = 0;
-    return flow_context_continue(ctx, 0);
-}
-
-node_desc NODE_Set_Visual_Reaction = {
-    .name = "Trigger Visual Reaction",
-    .input_count = 4,
-    .output_count = 1,
-    .inputs = visual_reaction_inputs,
-    .outputs = visual_reaction_outputs,
-    .flow_kind = NODE_FLOW_CUSTOM,
-    .flow = set_visual_reaction,
-    .lower = game_visual_reaction_lower,
-    .display_class = NODE_DISPLAY_FLOW,
-    .category = "Visual/Motion",
-    .keywords = "trigger visual reaction bump recoil hit lift rotation",
-    .description = "Pulses Target's visual rotation by Rotation and height by "
-                   "Lift over its reaction duration; Target defaults to Self.",
-    .access = &visual_reaction_access,
-};
+#include <string.h>
 
 static bool finite_vector(CF_V3 value)
 {

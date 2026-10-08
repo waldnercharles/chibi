@@ -1,7 +1,10 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/compiler/behavior_expression_wasm.h"
 #include "graph/compiler/graph_jit_sljit.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/conv_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/behavior_data.h"
 #include "graph/runtime/instance.h"
 #include "graph/runtime/runtime.h"
@@ -83,6 +86,16 @@ const registry_pack *const REGISTRY_PACKS[] = {
     &CORE_ARRAY_PACK,  &CORE_SET_MAP_PACK,  &CORE_STATE_PACK
 };
 const int REGISTRY_PACK_COUNT = sizeof REGISTRY_PACKS / sizeof REGISTRY_PACKS[0];
+
+int type_catalog_pack_count()
+{
+    return REGISTRY_PACK_COUNT;
+}
+type_catalog_pack type_catalog_pack_at(int index)
+{
+    const registry_pack *pack = REGISTRY_PACKS[index];
+    return (type_catalog_pack){ pack->types, pack->type_count, pack->enums, pack->enum_count };
+}
 
 #ifdef __EMSCRIPTEN__
 enum
@@ -272,7 +285,7 @@ static double wasm_smoke_bench(int region, bool wasm)
     behavior_instance_set_trace_enabled(wasm_smoke_instance, 0);
     wasm_smoke_restore_inputs();
     const behavior_graph_program *program = behavior_program_graph(
-        wasm_smoke_asset->program,
+        behavior_program_cached(wasm_smoke_asset),
         wasm_smoke_asset->graph
     );
     arena storage = { 0 };
@@ -445,7 +458,7 @@ static void wasm_smoke_poll(void *unused)
     assert(loop_result.f == wasm_smoke_expected(1));
 
     const behavior_graph_program *program = behavior_program_graph(
-        wasm_smoke_asset->program,
+        behavior_program_cached(wasm_smoke_asset),
         wasm_smoke_asset->graph
     );
     unsigned graph_executions = 0;
@@ -610,7 +623,8 @@ static void wasm_smoke_linear_regression(void)
 
     behavior_instance *instance = behavior_instance_create(asset, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(instance, 0);
-    const behavior_graph_program *program = behavior_program_graph(asset->program, g);
+    const behavior_graph_program
+        *program = behavior_program_graph(behavior_program_cached(asset), g);
     arena storage = { 0 };
     runtime_store *runtime = runtime_store_create(g);
     eval_context context = { .instance = instance, .runtime = runtime };
@@ -1161,8 +1175,8 @@ static void wasm_smoke_start()
     }
     wasm_smoke_instance = behavior_instance_create(wasm_smoke_asset, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(wasm_smoke_instance, 0);
-    const behavior_graph_program
-        *program = behavior_program_graph(wasm_smoke_asset->program, g);
+    const behavior_graph_program *
+        program = behavior_program_graph(behavior_program_cached(wasm_smoke_asset), g);
     assert(behavior_graph_program_wasm_expression_count(program) >= WASM_SMOKE_ELIGIBLE_REGIONS);
     behavior_expression_wasm_stats compiled;
     behavior_expression_wasm_get_stats(&compiled);
@@ -1195,6 +1209,7 @@ static void wasm_smoke_start()
 
 int main()
 {
+    registry_set_packs(REGISTRY_PACKS, REGISTRY_PACK_COUNT);
     behavior_asset *asset = behavior_asset_new("Backend smoke");
     behavior_variable *variable = behavior_asset_add_variable(
         asset,
@@ -1286,14 +1301,15 @@ int main()
     behavior_instance_set_trace_enabled(instance, 0);
     graph *function = asset->graphs[1];
     assert(behavior_program_function(
-        behavior_program_graph(asset->program, function),
+        behavior_program_graph(behavior_program_cached(asset), function),
         graph_node_by_id(function, function->entry_id)
     ));
     run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &error);
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
     assert(
-        instance->variables[0].d == 3.25 && instance->variables[1].f == -2.5f &&
-        instance->variables[2].b
+        instance->execution.variables[0].d == 3.25 &&
+        instance->execution.variables[1].f == -2.5f &&
+        instance->execution.variables[2].b
     );
     assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
     printf(
@@ -1306,14 +1322,14 @@ int main()
     asset = whole_pure_fixture();
     instance = behavior_instance_create(asset, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(instance, 0);
-    instance->variables[0].d = 4;
+    instance->execution.variables[0].d = 4;
     arena storage = { 0 };
     eval_context ctx = { .instance = instance,
                          .runtime = runtime_store_create(asset->graph) };
     uint64_t allocations = runtime_store_creations();
     assert(
         behavior_program_output(
-            behavior_program_graph(asset->program, asset->graph),
+            behavior_program_graph(behavior_program_cached(asset), asset->graph),
             asset->graph->nodes[0],
             0,
             &storage,
@@ -1344,8 +1360,9 @@ int main()
     run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &error);
     assert(run && flow_run_status(run) == FLOW_COMPLETED);
     assert(
-        instance->variables[0].d == sine + cosine &&
-        instance->variables[1].f == -.5f && instance->variables[2].b
+        instance->execution.variables[0].d == sine + cosine &&
+        instance->execution.variables[1].f == -.5f &&
+        instance->execution.variables[2].b
     );
     assert(eval_before == eval_oracle_calls() && flow_before == flow_oracle_calls());
     printf(
@@ -1359,17 +1376,19 @@ int main()
         instance = behavior_instance_create(asset, NULL, NULL, NULL);
         behavior_instance_set_trace_enabled(instance, 0);
         assert(behavior_program_function(
-            behavior_program_graph(asset->program, asset->graph),
+            behavior_program_graph(behavior_program_cached(asset), asset->graph),
             asset->graph->nodes[0]
         ));
         run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &error);
         assert(run && flow_run_status(run) == FLOW_COMPLETED);
-        assert(instance->variables[0].i == 1);
+        assert(instance->execution.variables[0].i == 1);
         assert(
-            wide ? instance->variables[1].i64 == 5 && instance->variables[2].i64 == 2 &&
-                       instance->variables[3].i64 == 292
-                 : instance->variables[1].i == 5 && instance->variables[2].i == 2 &&
-                       instance->variables[3].i == 292
+            wide ? instance->execution.variables[1].i64 == 5 &&
+                       instance->execution.variables[2].i64 == 2 &&
+                       instance->execution.variables[3].i64 == 292
+                 : instance->execution.variables[1].i == 5 &&
+                       instance->execution.variables[2].i == 2 &&
+                       instance->execution.variables[3].i == 292
         );
         behavior_instance_destroy(instance);
         behavior_asset_free(asset);
@@ -1379,18 +1398,19 @@ int main()
     behavior_instance_set_trace_enabled(instance, 0);
     run = behavior_instance_dispatch(instance, "Run", (flow_inputs){ 0 }, &error);
     assert(
-        run && flow_run_status(run) == FLOW_COMPLETED && instance->variables[0].i == 4
+        run && flow_run_status(run) == FLOW_COMPLETED &&
+        instance->execution.variables[0].i == 4
     );
     behavior_instance_destroy(instance);
     behavior_asset_free(asset);
     asset = whole_integer_operation(&NODE_To_Integer64, PIN_F64, PIN_I64);
     instance = behavior_instance_create(asset, NULL, NULL, NULL);
     behavior_instance_set_trace_enabled(instance, 0);
-    instance->variables[0].d = 0x1p63;
+    instance->execution.variables[0].d = 0x1p63;
     ctx = (eval_context){ .instance = instance,
                           .runtime = runtime_store_create(asset->graph) };
     assert(!behavior_program_output(
-        behavior_program_graph(asset->program, asset->graph),
+        behavior_program_graph(behavior_program_cached(asset), asset->graph),
         asset->graph->nodes[0],
         0,
         &storage,

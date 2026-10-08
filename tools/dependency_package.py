@@ -42,7 +42,8 @@ PACKAGE_CMAKE = ("dependencies.cmake", "Findcrypto.cmake", "apply_patch.cmake", 
                  "zep_dependencies.cmake", "tree_sitter.cmake", "ckdl.cmake", "thirdparty.cmake",
                  "dependency_package/CMakeLists.txt")
 APP_OPTIONS = {"CHIBI_REFLECT_EXECUTABLE", "CHIBI_COLLAB_URL", "CHIBI_DISTRIBUTION",
-               "CHIBI_ENABLE_WARNINGS", "LIBCLANG_ROOT"}
+               "CHIBI_ENABLE_WARNINGS", "LIBCLANG_ROOT", "CMAKE_EXPORT_COMPILE_COMMANDS",
+               "CHIBI_SDK_BUILD_COMPILER", "CHIBI_SDK_BUILD_NATIVE", "CHIBI_SDK_BUILD_DESKTOP"}
 
 
 def source_files(source: Path) -> list[Path]:

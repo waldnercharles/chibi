@@ -1,12 +1,12 @@
 #include "assets/prototype.h"
 
-#include "graph/model/registry.h"
-#include "graph/runtime/value_array.h"
-#include "runtime/components.h"
+#include "ecs/component_catalog.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
+#include "types/array.h"
+#include "types/catalog.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -17,23 +17,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const type_desc PROTOTYPE_TAG_TYPE = { "PrototypeTag", 1, NULL, 0, NULL };
-static uint64_t identity_id(const char *identity)
-{
-    uint64_t hash = UINT64_C(1469598103934665603);
-    for (const unsigned char *p = (const unsigned char *)identity; *p; p++) {
-        hash ^= *p;
-        hash *= UINT64_C(1099511628211);
-    }
-    return hash ? hash : 1;
-}
+#define PROTOTYPE_DEFAULT_MAX_DEPTH 64
 
 /* A prototype's identity defaults to one derived from its name, so documents
  * record it only when it differs. */
 static char *name_identity(const char *name)
 {
     char identity[32];
-    snprintf(identity, sizeof identity, "prototype-%016llx", (unsigned long long)identity_id(name));
+    snprintf(identity, sizeof identity, "prototype-%016llx", (unsigned long long)ecs_component_marker_id(name));
     return xstrdup(identity);
 }
 
@@ -47,11 +38,11 @@ static void setup_tag(game_prototype *prototype)
         prototype->identity
     );
     prototype->tag.desc = (ecs_component_desc){
-        .id = identity_id(prototype->identity),
+        .id = ecs_component_marker_id(prototype->identity),
         .key = prototype->identity,
         .name = prototype->tag.name,
         .element_size = 1,
-        .type = &PROTOTYPE_TAG_TYPE,
+        .type = &TYPE_MARKER,
         .index = ECS_INDEX_BITSET,
     };
 }
@@ -87,14 +78,10 @@ const ecs_component_desc *game_prototype_registry_find(
     const char *name
 )
 {
-    for (int i = 0; i < registry->component_count; i++) {
-        const ecs_component_desc *desc = registry->components[i];
-        if (desc && (strcmp(desc->name, name) == 0 ||
-                     (desc->key && strcmp(desc->key, name) == 0))) {
-            return desc;
-        }
-    }
-    return NULL;
+    return ecs_component_catalog_find(
+        (ecs_component_catalog){ registry->components, registry->component_count },
+        name
+    );
 }
 
 static const type_desc *find_type(const game_prototype_registry *registry, const char *name)
@@ -105,7 +92,7 @@ static const type_desc *find_type(const game_prototype_registry *registry, const
             return desc->type;
         }
     }
-    return registry_type_by_name(name);
+    return type_catalog_find(name);
 }
 
 static game_prototype_component *find_component_in(game_prototype_component *components, const char *name)
@@ -235,7 +222,7 @@ static int parse_field(
         case PIN_ENUM: {
             int label_value = 0;
             bool label = av_is_str(json) &&
-                         registry_enum_value(field->type_name, av_get_str(json), &label_value);
+                         type_catalog_enum_value(field->type_name, av_get_str(json), &label_value);
             result = label ? 0 : read_signed_range(json, INT32_MIN, INT32_MAX, &signed_value);
             if (!result) {
                 value.e = label ? label_value : (int32_t)signed_value;
@@ -741,7 +728,7 @@ static av_value *write_value(
         case PIN_I32: return av_sint(doc, value.i);
         case PIN_I64: return av_sint(doc, value.i64);
         case PIN_ENUM: {
-            const char *label = registry_enum_label(field->type_name, value.e);
+            const char *label = type_catalog_enum_label(field->type_name, value.e);
             return label ? av_str(doc, label) : av_sint(doc, value.e);
         }
         case PIN_U8: return av_uint(doc, value.u8);
@@ -1509,6 +1496,78 @@ av_value *game_prototype_rebase_component_value(
     return result;
 }
 
+static bool default_field_valid(const type_field *field, size_t row_size)
+{
+    size_t size;
+    switch (field->type) {
+        case PIN_BOOL: size = sizeof(bool); break;
+        case PIN_I8:
+        case PIN_U8: size = sizeof(uint8_t); break;
+        case PIN_I16:
+        case PIN_U16: size = sizeof(uint16_t); break;
+        case PIN_I32:
+        case PIN_U32: size = sizeof(uint32_t); break;
+        case PIN_I64:
+        case PIN_U64:
+        case PIN_HANDLE: size = sizeof(uint64_t); break;
+        case PIN_F32: size = sizeof(float); break;
+        case PIN_F64: size = sizeof(double); break;
+        case PIN_STR:
+        case PIN_NAME: size = sizeof(const char *); break;
+        case PIN_ENUM:
+            if (!field->size || field->size > sizeof(int32_t)) {
+                return false;
+            }
+            size = field->size;
+            break;
+        case PIN_STRUCT: size = field->size; break;
+        default: return false;
+    }
+    return field->size == size && field->offset <= row_size &&
+           size <= row_size - field->offset;
+}
+
+static int copy_default_fields(
+    game_prototype *prototype,
+    void *out,
+    const void *initial,
+    const type_desc *type,
+    int depth
+)
+{
+    if (!type || type->field_count < 0 || (type->field_count && !type->fields) ||
+        depth >= PROTOTYPE_DEFAULT_MAX_DEPTH) {
+        return -1;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (!default_field_valid(field, type->size)) {
+            return -1;
+        }
+        pin_value value;
+        pin_read_field(initial, field, &value);
+        if (field->type == PIN_STRUCT) {
+            const type_desc *nested = find_type(prototype->registry, field->type_name);
+            if (!nested || nested->size != field->size ||
+                copy_default_fields(
+                    prototype,
+                    (char *)out + field->offset,
+                    value.ptr,
+                    nested,
+                    depth + 1
+                )) {
+                return -1;
+            }
+            continue;
+        }
+        if ((field->type == PIN_STR || field->type == PIN_NAME) && value.str) {
+            value.str = own_string(prototype, value.str);
+        }
+        pin_write_field(out, field, value);
+    }
+    return 0;
+}
+
 int game_prototype_add_component(game_prototype *prototype, const ecs_component_desc *desc)
 {
     if (!prototype || !desc || !desc->name || find_component(prototype, desc->name)) {
@@ -1522,137 +1581,28 @@ int game_prototype_add_component(game_prototype *prototype, const ecs_component_
         adel(prototype->detached_components, index);
         return 0;
     }
-    game_prototype_component component = {
-        .desc = desc,
-        .data = xcalloc(1, desc->element_size),
-    };
+    game_prototype_component component = { .desc = desc,
+                                           .data = xcalloc(1, desc->element_size) };
+    const game_prototype_registry *registry = prototype->registry;
+    int strings = acount(prototype->strings);
+    for (int i = 0; i < registry->default_count; i++) {
+        const game_prototype_default *initial = &registry->defaults[i];
+        if (initial->component != desc->id) {
+            continue;
+        }
+        if (!initial->data || initial->size != desc->element_size ||
+            !desc->type || desc->type->size != desc->element_size ||
+            copy_default_fields(prototype, component.data, initial->data, desc->type, 0)) {
+            for (int j = strings; j < acount(prototype->strings); j++) {
+                free(prototype->strings[j]);
+            }
+            asetlen(prototype->strings, strings);
+            free(component.data);
+            return -1;
+        }
+        break;
+    }
     apush(prototype->components, component);
-    if (!strcmp(desc->name, "GameAppearance")) {
-        const char *fields[] = { "width", "height", "color", "shape", "antialias" };
-        pin_value values[] = {
-            { .type = PIN_F32, .f = 32 },
-            { .type = PIN_F32, .f = 32 },
-            { .type = PIN_U32, .u = 0xFFFFFFFFu },
-            { .type = PIN_ENUM, .e = GAME_SHAPE_BOX },
-            { .type = PIN_F32, .f = 1 },
-        };
-        for (int i = 0; i < (int)(sizeof fields / sizeof *fields); i++) {
-            if (game_prototype_write_field(prototype, desc->name, fields[i], values[i])) {
-                return -1;
-            }
-        }
-        return 0;
-    }
-    if (!strcmp(desc->name, "GameCamera")) {
-        const char *fields[] = { "width", "height" };
-        pin_value values[] = {
-            { .type = PIN_F32, .f = 960 },
-            { .type = PIN_F32, .f = 540 },
-        };
-        for (int i = 0; i < (int)(sizeof fields / sizeof *fields); i++) {
-            if (game_prototype_write_field(prototype, desc->name, fields[i], values[i])) {
-                return -1;
-            }
-        }
-        return 0;
-    }
-    if (!strcmp(desc->name, "GameVisualTransform")) {
-        return game_prototype_write_field(
-            prototype,
-            desc->name,
-            "scale",
-            (pin_value){ .type = PIN_F32, .f = 1 }
-        );
-    }
-    if (!strcmp(desc->name, "GameVisualMotion")) {
-        float rotation[3] = { 0 };
-        const char *angles[] = { "pitch", "yaw", "roll" };
-        pin_value value;
-        if (find_component(prototype, "GameVisualTransform")) {
-            for (int i = 0; i < 3; i++) {
-                if (game_prototype_read_field(prototype, "GameVisualTransform", angles[i], &value) !=
-                    0) {
-                    return -1;
-                }
-                rotation[i] = value.f;
-            }
-        }
-        float elevation = 0;
-        if (find_component(prototype, "GameGeometry3D")) {
-            if (game_prototype_read_field(prototype, "GameGeometry3D", "elevation", &value) !=
-                0) {
-                return -1;
-            }
-            elevation = value.f;
-        }
-        const char *fields[] = { "speed", "reaction_duration", "reaction_age", "rest_elevation" };
-        const float values[] = { 1, .32f, .32f, elevation };
-        for (int i = 0; i < 4; i++) {
-            if (game_prototype_write_field(
-                    prototype,
-                    desc->name,
-                    fields[i],
-                    (pin_value){ .type = PIN_F32, .f = values[i] }
-                ) != 0) {
-                return -1;
-            }
-        }
-        return game_prototype_write_field(
-            prototype,
-            desc->name,
-            "rotation",
-            (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = rotation }
-        );
-    }
-    if (!strcmp(desc->name, "GameRhythm")) {
-        int result = game_prototype_write_field(
-            prototype,
-            desc->name,
-            "bpm",
-            (pin_value){ .type = PIN_F32, .f = 120 }
-        );
-        return result ? result
-                      : game_prototype_write_field(
-                            prototype,
-                            desc->name,
-                            "pulse_width",
-                            (pin_value){ .type = PIN_F32, .f = .18f }
-                        );
-    }
-    if (!strcmp(desc->name, "GameMeshParts")) {
-        return game_prototype_write_field(
-            prototype,
-            desc->name,
-            "parts",
-            (pin_value){ .type = PIN_STR, .str = "(array)-\n" }
-        );
-    }
-    if (!strcmp(desc->name, "GameHRC2D")) {
-        GameHRC2D defaults = game_hrc2d_defaults();
-        for (int i = 0; i < desc->type->field_count; i++) {
-            const type_field *field = &desc->type->fields[i];
-            pin_value value = { 0 };
-            pin_read_field(&defaults, field, &value);
-            int result = game_prototype_write_field(prototype, desc->name, field->name, value);
-            if (result) {
-                return result;
-            }
-        }
-        return 0;
-    }
-    if (!strcmp(desc->name, "GameParticleEmitter")) {
-        GameParticleEmitter defaults = game_particle_emitter_defaults();
-        for (int i = 0; i < desc->type->field_count; i++) {
-            const type_field *field = &desc->type->fields[i];
-            pin_value value = { 0 };
-            pin_read_field(&defaults, field, &value);
-            int result = game_prototype_write_field(prototype, desc->name, field->name, value);
-            if (result) {
-                return result;
-            }
-        }
-        return 0;
-    }
     return 0;
 }
 

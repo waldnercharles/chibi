@@ -3,7 +3,7 @@
 CUT-53 adds a CPU-only converter for **triangulated Wavefront OBJ**. It reuses the
 Suzanne recipe's RG16 PNG encoder and the existing `Model Sampled SDF` node. The
 Suzanne subdivision, capping, orientation and parity sampling remain specific to
-`projects/suzanne_sampled/convert.py`; they are not applied to imported meshes.
+`chibi-examples/projects/suzanne_sampled/convert.py`; they are not applied to imported meshes.
 
 ## Small example
 
@@ -16,8 +16,9 @@ python3 tools/mesh_sdf/convert.py test/fixtures/mesh_sdf/box.obj /tmp/local-box 
   --axes blender --scale 2 --padding 1 --resolution 17
 ```
 
-The committed `projects/local_mesh_sampled` project contains the 17³ result and
-MCP-authored `LocalBox` model and minimal camera/model scene. The scene satisfies
+The independent `chibi-examples` repository owns
+`projects/local_mesh_sampled`, which contains the 17³ result and
+saved `LocalBox` model and minimal camera/model scene. The scene satisfies
 the repository project contract; GPU rendering acceptance remains separate.
 The CC0 example is a closed asymmetric box, deliberately sized to reveal axis
 swaps: source extents `(2,4,6)` become engine extents `(4,12,8)`. The output has
@@ -25,20 +26,13 @@ swaps: source extents `(2,4,6)` become engine extents `(4,12,8)`. The output has
 have SHA-256 digests. Identical inputs, flags, converter and Blender build produce
 identical output bytes; elapsed time is reported on stdout, outside provenance.
 
-To author the converted directory as a project through public MCP:
-
-```sh
-printf 'version 7\nname "Local box"\ncontent "content"\n' > /tmp/local-box/project.kdl
-python3 tools/mesh_sdf/author.py /tmp/local-box --controller "$PWD/build/chibi_ctl" --name Box
-build/chibi_ctl --project-root /tmp/local-box --format
-```
-
-`author.py` searches the node catalog, creates a sampled-volume → named part →
-output graph, validates the model and returns its inspection. Use a new model
-name; it does not overwrite existing models. For an existing project, copy the
-content-addressed PNG into its `content/sdf/` and set the five sampled-node inputs
-from provenance: Image, Half Size, Resolution, Range and Lipschitz. There is no
-runtime format change, editor integration or mesh-to-SDF MCP endpoint in this slice.
+To use a conversion in a project, copy its content-addressed PNG into
+`content/sdf/` and edit the model's KDL source to set its Image, Half Size,
+Resolution, Range, and Lipschitz values. The committed `LocalBox` model is a
+source example. Format and validate the saved model with the native controller;
+see [the asset workflow](../../docs/runtime-authoring.md). The former
+`author.py` MCP graph-construction helper is retired; its generated sample
+assets and the CPU converter remain.
 
 ## Input and geometry contract
 
@@ -125,8 +119,8 @@ axis mapping, explicit scale/translation, repeated byte determinism, concave and
 disconnected/overlapping/nested-shell sign cases, open and
 inconsistently wound/non-manifold/inward meshes, invalid settings and work/time/
 memory exhaustion with no published output. Metadata-limit, FIFO/device, growing
-file and input-preparation deadline regressions cover publication failure paths. With `CHIBI_CTL`, they also author,
-validate, inspect and bake the result through public MCP. A synthetic 5³ field
+file and input-preparation deadline regressions cover publication failure paths. The former MCP authoring checks are retired; native validation, inspection,
+and baking operate on saved asset files. A synthetic 5³ field
 compares the shared encoder byte-for-byte with the pinned PR151 Suzanne encoder,
 without regenerating Suzanne. These CPU checks do not establish GPU performance
 or representative-hardware rendering acceptance (CUT-44/CUT-51).

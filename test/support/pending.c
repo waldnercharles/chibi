@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/instance.h"
 #include "runtime/behaviors/behavior.h"
 #include "runtime/behaviors/entities.h"
@@ -52,7 +55,7 @@ void bench_behavior_destroy(int count)
     assert(count > 0 && count <= 20000);
     ecs_world *ecs = ecs_world_new();
     game_behavior_world *world = game_behavior_world_new(ecs);
-    game_entities *host = game_entities_new(ecs, world);
+    game_entities *host = game_behavior_entities_new(ecs, world);
     behavior_asset *assets[5];
     const char *names[] = { "A", "B", "C", "D", "E" };
     for (int i = 0; i < 5; i++) {
@@ -115,7 +118,7 @@ static void test_bulk_destroy(behavior_backend backend)
     assert(!graph_set_event_name(signal->graph, signal->graph->nodes[0], "Work"));
     ecs_world *ecs = ecs_world_new();
     game_behavior_world *world = game_behavior_world_new(ecs);
-    game_entities *host = game_entities_new(ecs, world);
+    game_entities *host = game_behavior_entities_new(ecs, world);
     assert(!game_behavior_register_asset(world, a->name, a));
     assert(!game_behavior_register_asset(world, signal->name, signal));
     ecs_entity stale = ecs_world_create_entity(ecs);
@@ -129,13 +132,13 @@ static void test_bulk_destroy(behavior_backend backend)
                                 i % 2 ? signal->name : a->name };
         assert(!game_behavior_set_attachments(world, entities[i], names, 2));
         instances[i] = game_behavior_instance(world, entities[i], a->name);
-        assert(!game_entities_request_event(host, entities[i], "Work", (flow_inputs){ 0 }));
+        assert(!game_entities_request_event(host, entities[i], "Work", (execution_arguments){ 0 }));
     }
     assert(entities[0].slot == stale.slot && entities[0].generation != stale.generation);
     uint64_t eval = eval_oracle_calls(), flow = flow_oracle_calls();
     assert(game_behavior_update(world, NULL) == COUNT);
     for (int i = 0; i < COUNT; i++) {
-        assert(instances[i]->variables[0].i == 1);
+        assert(instances[i]->execution.variables[0].i == 1);
         enqueue(instances[i], true);
     }
     assert(!game_behavior_pump(world, 0));
@@ -163,7 +166,7 @@ static void test_bulk_destroy(behavior_backend backend)
     assert(game_behavior_attachment_count(world) == COUNT + 1);
     for (int i = 0; i < COUNT; i++) {
         assert(ecs_entity_is_alive(ecs, entities[i]) == !(i % 2));
-        assert(instances[i]->alive == !(i % 2));
+        assert(instances[i]->execution.alive == !(i % 2));
         if (i % 2) {
             assert(!acount(instances[i]->activations));
             continue;
@@ -180,11 +183,11 @@ static void test_bulk_destroy(behavior_backend backend)
     }
     assert(!game_entities_pending_events(host));
     for (int i = 0; i < COUNT; i += 2) {
-        assert(instances[i]->variables[0].i == 3);
+        assert(instances[i]->execution.variables[0].i == 3);
     }
     assert(game_behavior_update(world, NULL) == (COUNT + 1) / 2);
     for (int i = 0; i < COUNT; i += 2) {
-        assert(instances[i]->variables[0].i == 4);
+        assert(instances[i]->execution.variables[0].i == 4);
     }
     assert(game_behavior_log_count(world) == (COUNT + 1) / 2);
     for (int i = 0; i < game_behavior_log_count(world); i++) {
@@ -195,10 +198,10 @@ static void test_bulk_destroy(behavior_backend backend)
     ecs_entity replacement = ecs_world_create_entity(ecs);
     assert(!game_behavior_attach(world, replacement, a->name));
     behavior_instance *reused = game_behavior_instance(world, replacement, a->name);
-    assert(!reused->variables[0].i && !acount(reused->activations));
+    assert(!reused->execution.variables[0].i && !acount(reused->activations));
     enqueue(reused, false);
     assert(!game_behavior_pump(world, 1) && game_behavior_last_pump_count(world) == 1);
-    assert(reused->variables[0].i == 1);
+    assert(reused->execution.variables[0].i == 1);
     /* A destruction already in the ECS command buffer is applied once and its
      * behavior is still detached, even when the host queues the same handle. */
     assert(!ecs_world_record_destroy(ecs, replacement, 0));
@@ -290,11 +293,11 @@ static void test_growth(behavior_backend backend, int mode)
         assert(!game_behavior_pump(world, 0) && game_behavior_last_pump_count(world) == 1);
     }
     behavior_debug_backend(previous);
-    assert(state.created && !state.created->variables[0].i);
+    assert(state.created && !state.created->execution.variables[0].i);
     assert(!game_behavior_pump(world, .5) && game_behavior_last_pump_count(world) == 1);
-    assert(state.created->variables[0].i == 1);
+    assert(state.created->execution.variables[0].i == 1);
     assert(!game_behavior_pump(world, 1) && !game_behavior_last_pump_count(world));
-    assert(state.created->clock->current_time == 1);
+    assert(state.created->execution.clock->current_time == 1);
     game_behavior_world_free(world);
     ecs_world_free(ecs);
     behavior_asset_free(a);
@@ -320,9 +323,9 @@ static void test_targeted_growth(behavior_backend backend)
     grow_state state = { world, owner, a->name, NULL };
     game_behavior_set_sink(world, grow_sink, &state);
     assert(game_behavior_dispatch(world, owner, "Work", (flow_inputs){ 0 }, NULL) == 2);
-    assert(state.created && state.created->variables[0].i == 2);
+    assert(state.created && state.created->execution.variables[0].i == 2);
     for (int i = 0; i < 127; i++) {
-        assert(!others[i]->variables[0].i);
+        assert(!others[i]->execution.variables[0].i);
     }
     behavior_debug_backend(previous);
     game_behavior_world_free(world);
@@ -345,14 +348,21 @@ static void test_clock_inheritance(behavior_backend backend)
         game_behavior_set_delta_seconds(world, -0.0);
         assert(!game_behavior_attach(world, owner, a->name));
         behavior_instance *bi = game_behavior_instance(world, owner, a->name);
-        assert(bi->clock->current_time == now && signbit(bi->clock->delta_seconds));
+        assert(
+            bi->execution.clock->current_time == now &&
+            signbit(bi->execution.clock->delta_seconds)
+        );
         flow_run *run = behavior_instance_dispatch(bi, "Wait", (flow_inputs){ 0 }, NULL);
         assert(run && flow_run_wake_time(run) == now + .25);
-        assert(!game_behavior_pump(world, now) && !bi->variables[0].i);
+        assert(!game_behavior_pump(world, now) && !bi->execution.variables[0].i);
         game_behavior_set_delta_seconds(world, 0.0);
-        assert(!signbit(bi->clock->delta_seconds));
-        assert(!game_behavior_pump(world, now + .25) && bi->variables[0].i == 1);
-        assert(!game_behavior_pump(world, now + .25) && bi->variables[0].i == 1);
+        assert(!signbit(bi->execution.clock->delta_seconds));
+        assert(
+            !game_behavior_pump(world, now + .25) && bi->execution.variables[0].i == 1
+        );
+        assert(
+            !game_behavior_pump(world, now + .25) && bi->execution.variables[0].i == 1
+        );
         assert(game_behavior_detach_entity(world, owner) == 1);
     }
     behavior_debug_backend(previous);
@@ -420,8 +430,14 @@ static void test_detach_suffix(behavior_backend backend)
      * while retaining the pending prefix across word boundaries. */
     assert(game_behavior_detach_entity(world, entities[127]) == 1);
     assert(!game_behavior_pump(world, .25) && game_behavior_last_pump_count(world) == 4);
-    assert(instances[0]->variables[0].i == 1 && instances[63]->variables[0].i == 1);
-    assert(instances[64]->variables[0].i == 1 && instances[129]->variables[0].i == 1);
+    assert(
+        instances[0]->execution.variables[0].i == 1 &&
+        instances[63]->execution.variables[0].i == 1
+    );
+    assert(
+        instances[64]->execution.variables[0].i == 1 &&
+        instances[129]->execution.variables[0].i == 1
+    );
     assert(game_behavior_instance(world, entities[129], asset->name) == instances[129]);
     enqueue(instances[0], true);
     enqueue(instances[63], true);
@@ -429,7 +445,10 @@ static void test_detach_suffix(behavior_backend backend)
     assert(!game_behavior_pump(world, .25) && game_behavior_last_pump_count(world) == 3);
     assert(game_behavior_detach_entity(world, entities[129]) == 1);
     assert(!game_behavior_pump(world, .5) && game_behavior_last_pump_count(world) == 2);
-    assert(instances[0]->variables[0].i == 2 && instances[63]->variables[0].i == 2);
+    assert(
+        instances[0]->execution.variables[0].i == 2 &&
+        instances[63]->execution.variables[0].i == 2
+    );
     assert(!game_behavior_pump(world, .5) && !game_behavior_last_pump_count(world));
     assert(game_behavior_has_event(world, "Wait"));
     assert(game_behavior_attachment_count(world) == COUNT - 2);
@@ -478,8 +497,9 @@ void test_pending_backend(behavior_backend backend)
     );
     assert(!game_behavior_pump(world, .25) && game_behavior_last_pump_count(world) == 3);
     assert(
-        instances[63]->variables[0].i == 2 &&
-        instances[64]->variables[0].i == 1 && instances[256]->variables[0].i == 1
+        instances[63]->execution.variables[0].i == 2 &&
+        instances[64]->execution.variables[0].i == 1 &&
+        instances[256]->execution.variables[0].i == 1
     );
     assert(!game_behavior_pump(world, .5) && !game_behavior_last_pump_count(world));
 
@@ -509,10 +529,13 @@ void test_pending_backend(behavior_backend backend)
     assert(!game_behavior_attach(world, entities[63], a->name));
     behavior_debug_backend(previous);
     instances[63] = game_behavior_instance(world, entities[63], a->name);
-    assert(!instances[63]->variables[0].i);
+    assert(!instances[63]->execution.variables[0].i);
     enqueue(instances[63], false);
     assert(!game_behavior_pump(world, .75) && game_behavior_last_pump_count(world) == 2);
-    assert(instances[63]->variables[0].i == 1 && instances[256]->variables[0].i == 2);
+    assert(
+        instances[63]->execution.variables[0].i == 1 &&
+        instances[256]->execution.variables[0].i == 2
+    );
     assert(!game_behavior_pump(world, .75) && !game_behavior_last_pump_count(world));
 
     /* Detach moved the last row into slot 63. Choose a row still after Emit. */
@@ -526,9 +549,12 @@ void test_pending_backend(behavior_backend backend)
     assert(state.calls == 1);
     assert(!parallel_count);
     assert(game_behavior_last_pump_count(world) == 2);
-    assert(!instances[0]->variables[0].i && instances[255]->variables[0].i == 1);
+    assert(
+        !instances[0]->execution.variables[0].i &&
+        instances[255]->execution.variables[0].i == 1
+    );
     assert(!game_behavior_pump(world, 1) && game_behavior_last_pump_count(world) == 1);
-    assert(instances[0]->variables[0].i == 1);
+    assert(instances[0]->execution.variables[0].i == 1);
     assert(!game_behavior_pump(world, 1) && !game_behavior_last_pump_count(world));
     if (backend != BEHAVIOR_ORACLE) {
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());

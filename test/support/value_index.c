@@ -2,8 +2,8 @@
 #include "graph/nodes/set_map_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
-#include "graph/runtime/value_array.h"
 #include "test/whole_array_op_fixture.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <math.h>
@@ -120,7 +120,9 @@ void test_value_index()
     for (int miss = 0; miss < 2; miss++) {
         behavior_asset *asset = whole_array_op_fixture(ARRAY_OP_INTS, ARRAY_OP_SET_CONTAINS, true);
         behavior_instance *bi = behavior_instance_create(asset, NULL, NULL, NULL);
-        const compile_report *report = behavior_program_report(asset->program);
+        const compile_report *report = behavior_program_report(
+            behavior_program_cached(asset)
+        );
         bool diagnostic = false;
         for (int i = 0; i < acount(report->items); i++) {
             const compile_diagnostic *d = &report->items[i];
@@ -148,8 +150,8 @@ void test_value_index()
         assert(run && flow_run_status(run) == FLOW_SUSPENDED);
         arena_free(&input);
         assert(!flow_run_tick_at(run, .25));
-        assert(bi->variables[2].b == !miss);
-        pin_array *saved = bi->variables[0].ptr;
+        assert(bi->execution.variables[2].b == !miss);
+        pin_array *saved = bi->execution.variables[0].ptr;
         assert(saved->buckets && saved->items[4095].i == 4095);
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
         behavior_instance_destroy(bi);

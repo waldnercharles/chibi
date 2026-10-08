@@ -1,5 +1,4 @@
 #include "assets/code_source.h"
-#include "automation/asset_write.h"
 #include "automation/controller.h"
 #include "suite_internal.h"
 #include "support/text_file.h"
@@ -32,30 +31,13 @@ static yyjson_doc *analyze(const char *source, int offset, int *status)
     return analyze_project("/missing-project-root", source, offset, status);
 }
 
-static yyjson_doc *publish(const char *project, const char *source, const char *hash, bool create, int *status)
+static void write_source(const char *path, const char *source)
 {
-    yyjson_mut_doc *request = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(request);
-    yyjson_mut_doc_set_root(request, root);
-    yyjson_mut_obj_add_int(request, root, "contract", CHIBI_AUTOMATION_CONTRACT);
-    yyjson_mut_obj_add_str(request, root, "operation", "build_code");
-    yyjson_mut_obj_add_str(request, root, "kind", "behavior");
-    yyjson_mut_obj_add_str(request, root, "name", "Unsaved");
-    yyjson_mut_obj_add_strcpy(request, root, "source", source);
-    yyjson_mut_obj_add_bool(request, root, "create", create);
-    if (hash) {
-        yyjson_mut_obj_add_strcpy(request, root, "expected_hash", hash);
-    }
-    char *json = yyjson_mut_write(request, 0, NULL);
-    char *response = chibi_automation_handle(json, project, status);
-    yyjson_doc *document = yyjson_read(response, strlen(response), 0);
-    free(response);
-    free(json);
-    yyjson_mut_doc_free(request);
-    return document;
+    FILE *file = fopen(path, "wb");
+    assert(file && fputs(source, file) >= 0 && !fclose(file));
 }
 
-static void publication(const char *source)
+static void persisted_source(const char *source)
 {
     char project[] = "/tmp/chibi-code-XXXXXX";
     test_check(mkdtemp(project) != NULL, "create code authoring project");
@@ -65,42 +47,28 @@ static void publication(const char *source)
     snprintf(path, sizeof path, "%s/content/behaviors", project);
     mkdir(path, 0700);
     int status;
-    yyjson_doc *response = publish(project, source, NULL, true, &status);
-    test_check(status == CHIBI_AUTOMATION_OK, "native source candidate publishes atomically");
-    yyjson_val *result = yyjson_obj_get(yyjson_doc_get_root(response), "result");
-    size_t index, count;
-    yyjson_val *key, *value;
-    int kinds = 0, names = 0;
-    yyjson_obj_foreach(result, index, count, key, value)
-    {
-        kinds += !strcmp(yyjson_get_str(key), "kind");
-        names += !strcmp(yyjson_get_str(key), "name");
-    }
-    test_check(
-        kinds == 1 && names == 1 &&
-            !strcmp(yyjson_get_str(yyjson_obj_get(result, "name")), "Unsaved"),
-        "published asset identity has unique keys and uses the destination name"
-    );
-    if (strstr(source, "behavior DeclaredName")) {
-        yyjson_val *document = yyjson_obj_get(result, "document");
-        test_check(!strcmp(yyjson_get_str(yyjson_obj_get(document, "name")), "DeclaredName"), "publication retains the declaration name in graph metadata when its destination differs");
-    }
-    yyjson_doc_free(response);
-    snprintf(path, sizeof path, "%s/content/behaviors/Unsaved.code", project);
+    snprintf(path, sizeof path, "%s/content/behaviors/Unsaved.chibi", project);
+    write_source(path, source);
+    code_source *authored_source = code_source_parse(source);
+    test_check(authored_source && authored_source->asset, "authored source builds before file persistence");
+    test_check(code_source_metadata_save(authored_source, path), "authored source stores optional metadata beside executable text");
     char *saved = text_file_read(path);
     if (strstr(source, "// Keep this authored comment.")) {
         test_check(
             saved && strstr(saved, "// Keep this authored comment.") &&
                 strstr(saved, "state int count = 0;") && strstr(saved, "on Tick() {}"),
-            "source publication preserves authored statements and comments"
+            "file authoring preserves statements and comments"
         );
-        test_check(saved && !strstr(saved, "@node") && !strstr(saved, "@authoring"), "structured publication keeps executable source free of machine annotations");
+        test_check(
+            saved && !strstr(saved, "@node") && !strstr(saved, "@authoring"),
+            "authored executable source has no machine annotations"
+        );
     }
-    behavior_asset *authored = behavior_asset_load(source);
+    behavior_asset *authored = code_source_build_behavior(authored_source);
     code_source *reopened_source = saved ? code_source_parse(saved) : NULL;
     test_check(
         reopened_source && code_source_metadata_load(reopened_source, path),
-        "publication stores optional metadata beside executable source"
+        "reopened source restores optional metadata beside executable text"
     );
     behavior_asset *reopened = reopened_source
                                  ? code_source_build_behavior(reopened_source)
@@ -112,6 +80,7 @@ static void publication(const char *source)
     behavior_asset_free(authored);
     behavior_asset_free(reopened);
     code_source_free(reopened_source);
+    code_source_free(authored_source);
     test_check(chibi_automation_format_assets(project, true) == 0, "canonical check keeps structured behavior source");
     test_check(chibi_automation_format_assets(project, false) == 0, "format preserves structured source and comments");
     char *formatted = text_file_read(path);
@@ -132,6 +101,12 @@ static void publication(const char *source)
             ),
         "readAsset exposes the structured behavior native graph"
     );
+    if (strstr(source, "behavior DeclaredName")) {
+        const char *name = yyjson_get_str(
+            yyjson_ptr_get(yyjson_doc_get_root(read), "/result/document/name")
+        );
+        test_check(name && !strcmp(name, "DeclaredName"), "readAsset retains the declaration name when the filename differs");
+    }
     yyjson_doc_free(read);
     free(reply);
     char metadata_path[300];
@@ -145,27 +120,19 @@ static void publication(const char *source)
     );
     test_check(status == CHIBI_AUTOMATION_OK, "validateAsset compiles structured behavior source without optional metadata");
     free(reply);
-    char hash[17];
-    snprintf(
-        hash,
-        sizeof hash,
-        "%016llx",
-        (
-            unsigned long long
-        )automation_content_hash(saved ? saved : source, strlen(saved ? saved : source))
+    yyjson_doc *response = analyze_project(project, "behavior {", -1, &status);
+    test_check(
+        status == CHIBI_AUTOMATION_OK &&
+            !yyjson_get_bool(yyjson_ptr_get(yyjson_doc_get_root(response), "/result/valid")),
+        "invalid unsaved replacement reports a failed candidate"
     );
-    response = publish(project, "behavior {", hash, false, &status);
-    test_check(status == CHIBI_AUTOMATION_VALIDATION_ERROR, "invalid replacement is refused");
     yyjson_doc_free(response);
     char *retained = text_file_read(path);
-    test_check(retained && saved && !strcmp(saved, retained), "failed source compilation retains the previous file");
-    response = publish(project, source, "0000000000000000", false, &status);
-    test_check(status == CHIBI_AUTOMATION_CONFLICT, "stale source publication is refused");
-    yyjson_doc_free(response);
+    test_check(retained && saved && !strcmp(saved, retained), "analysis of invalid source retains the authored file");
     free(saved);
     free(retained);
     unlink(path);
-    snprintf(path, sizeof path, "%s/content/behaviors/Unsaved.code.meta", project);
+    snprintf(path, sizeof path, "%s/content/behaviors/Unsaved.chibi.meta", project);
     unlink(path);
     snprintf(path, sizeof path, "%s/content/behaviors", project);
     rmdir(path);
@@ -189,7 +156,7 @@ static void system_format_preserves_source()
     test_check(mkdir(path, 0700) == 0, "create system formatting content directory");
     snprintf(path, sizeof path, "%s/content/systems", project);
     test_check(mkdir(path, 0700) == 0, "create system formatting asset directory");
-    snprintf(path, sizeof path, "%s/content/systems/FreeMotion.code", project);
+    snprintf(path, sizeof path, "%s/content/systems/FreeMotion.chibi", project);
     FILE *file = fopen(path, "wb");
     test_check(file != NULL, "create authored system source");
     if (file) {
@@ -240,7 +207,7 @@ static void project_library_context()
         snprintf(path, sizeof path, "%s/%s", project, folders[i]);
         test_check(mkdir(path, 0700) == 0, "create source API project catalogue directory");
     }
-    snprintf(path, sizeof path, "%s/content/libraries/Shared.code", project);
+    snprintf(path, sizeof path, "%s/content/libraries/Shared.chibi", project);
     FILE *file = fopen(path, "wb");
     test_check(file != NULL, "create source API library definition");
     if (file) {
@@ -266,15 +233,21 @@ static void project_library_context()
         "analyzeCode external definition includes exact library identity"
     );
     yyjson_doc_free(response);
-    response = publish(project, source, NULL, true, &status);
-    test_check(status == CHIBI_AUTOMATION_OK, "buildCode validates and persists calls against project library bodies");
-    yyjson_doc_free(response);
-    snprintf(path, sizeof path, "%s/content/behaviors/Unsaved.code", project);
+    snprintf(path, sizeof path, "%s/content/behaviors/Unsaved.chibi", project);
+    write_source(path, source);
+    char *reply = chibi_automation_handle(
+        "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":"
+        "\"behavior\",\"name\":\"Unsaved\"}",
+        project,
+        &status
+    );
+    test_check(status == CHIBI_AUTOMATION_OK, "validateAsset resolves authored calls against project library bodies");
+    free(reply);
     char *saved = text_file_read(path);
-    test_check(saved && strstr(saved, "Shared.Seven"), "project library publication retains readable external call source");
+    test_check(saved && strstr(saved, "Shared.Seven"), "file authoring retains readable external call source");
     free(saved);
     unlink(path);
-    snprintf(path, sizeof path, "%s/content/libraries/Shared.code", project);
+    snprintf(path, sizeof path, "%s/content/libraries/Shared.chibi", project);
     unlink(path);
     for (int i = 2; i >= 0; i--) {
         snprintf(path, sizeof path, "%s/%s", project, folders[i]);
@@ -296,9 +269,9 @@ static void empty_source_documents()
     {
         const char *kind, *folder, *extension, *source;
     } cases[] = {
-        { "behavior", "behaviors", "code", "behavior \"Empty\" {}" },
-        { "library", "libraries", "code", "library \"Empty\" {}" },
-        { "system", "systems", "code", "system \"Empty\" {}" },
+        { "behavior", "behaviors", "chibi", "behavior \"Empty\" {}" },
+        { "library", "libraries", "chibi", "library \"Empty\" {}" },
+        { "system", "systems", "chibi", "system \"Empty\" {}" },
         { "event", "events", "kdl", "name \"Empty\"\nversion 13\n" },
     };
     for (int i = 0; i < 4; i++) {
@@ -361,8 +334,29 @@ static void empty_source_documents()
     assert(!rmdir(content) && !rmdir(project));
 }
 
+static void retired_mutations_are_unknown()
+{
+    const char *operations[] = { "edit_graph",   "edit_prototype",
+                                 "edit_scene",   "optimize_graph",
+                                 "build_code",   "rename_symbol",
+                                 "delete_symbol" };
+    for (int i = 0; i < 7; i++) {
+        char request[128];
+        snprintf(request, sizeof request, "{\"contract\":1,\"operation\":\"%s\"}", operations[i]);
+        int status;
+        char *reply = chibi_automation_handle(request, "/missing-project-root", &status);
+        test_check(
+            status == CHIBI_AUTOMATION_INVALID_REQUEST && reply &&
+                strstr(reply, "unknown operation"),
+            "retired controller mutation is rejected before project access"
+        );
+        free(reply);
+    }
+}
+
 void test_automation_code()
 {
+    retired_mutations_are_unknown();
     empty_source_documents();
     project_library_context();
     int nul_status;
@@ -406,9 +400,9 @@ void test_automation_code()
     );
     yyjson_doc_free(response);
     system_format_preserves_source();
-    publication(source);
-    publication("behavior Unsaved {\n    // Keep this authored comment.\n    state int count = 0;\n    on Tick() {}\n}\n");
-    publication("behavior DeclaredName {\n    // Keep this authored comment.\n    state int count = 0;\n    on Tick() {}\n}\n");
+    persisted_source(source);
+    persisted_source("behavior Unsaved {\n    // Keep this authored comment.\n    state int count = 0;\n    on Tick() {}\n}\n");
+    persisted_source("behavior DeclaredName {\n    // Keep this authored comment.\n    state int count = 0;\n    on Tick() {}\n}\n");
     free(source);
     behavior_asset_free(asset);
 }

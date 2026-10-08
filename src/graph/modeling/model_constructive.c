@@ -1,5 +1,5 @@
 #include "graph/modeling/model_internal.h"
-#include "graph/runtime/value_array.h"
+#include "types/array.h"
 
 #include <float.h>
 #include <math.h>
@@ -54,31 +54,6 @@ bool model_constructive_validate(const node *n, shader_error *error)
         if (!isfinite(squared) || squared > FLT_MAX || (float)squared <= 0) {
             return model_fail(error, n->id, "Tube segment exceeds finite arithmetic or repeats an adjacent point");
         }
-    }
-    return true;
-}
-bool model_constructive_bounds(compiler *c, const node *n, double threshold, bound *out)
-{
-    int op = model_operation(n);
-    if (op == MODEL_OFFSET || op == MODEL_SHELL) {
-        double outer = model_number(n, 1);
-        if (op == MODEL_SHELL) {
-            int side = n->input_pins[2].default_value.e;
-            outer *= side == 0 ? .5 : side == 1 ? 1 : 0;
-        }
-        return model_bounds_visit(c, model_child(c->source, n, 0), fmax(0, threshold + outer), out);
-    }
-    const pin_array *p = points(n);
-    *out = (bound){ 0 };
-    for (int axis = 0; axis < 3; axis++) {
-        out->min[axis] = DBL_MAX;
-        out->max[axis] = -DBL_MAX;
-        for (int i = 0; i < p->count; i++) {
-            out->min[axis] = fmin(out->min[axis], point(p, i)[axis]);
-            out->max[axis] = fmax(out->max[axis], point(p, i)[axis]);
-        }
-        out->min[axis] -= model_number(n, 1) + threshold;
-        out->max[axis] += model_number(n, 1) + threshold;
     }
     return true;
 }

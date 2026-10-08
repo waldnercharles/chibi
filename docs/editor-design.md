@@ -1540,7 +1540,7 @@ than two diagonals becomes one.
 A backward (cycle) wire leaves its output rightward, passes its own node on
 the side it heads for, runs left through the lanes its columns reserve,
 passes its target the same way, and enters from the left, so it never
-crosses the nodes between its ends. `graph_layout`, which MCP edits use,
+crosses the nodes between its ends. `graph_layout`, the shared automatic arrangement routine,
 measures pin rows in the order Studio draws them: execution pins, then data
 outputs, then data inputs, counting only drawn pins.
 

@@ -1,4 +1,7 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/runtime/eval.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
@@ -137,8 +140,8 @@ void whole_switch_smoke()
                 result = flow_run_tick_at(run, flow_run_wake_time(run));
             }
             assert(!result && run->whole_function_executed && !acount(run->children));
-            assert(bi->variables[0].i == whole_switch_expected(kind, sample));
-            assert(bi->variables[1].i == (kind & WHOLE_SWITCH_LOOP ? 3 : 1));
+            assert(bi->execution.variables[0].i == whole_switch_expected(kind, sample));
+            assert(bi->execution.variables[1].i == (kind & WHOLE_SWITCH_LOOP ? 3 : 1));
             flow_run_free(run);
             behavior_instance_destroy(bi);
         }

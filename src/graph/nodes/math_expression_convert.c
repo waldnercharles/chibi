@@ -1,10 +1,12 @@
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
-#include "graph/model/type.h"
 #include "graph/nodes/behavior_expression.h"
-#include "graph/runtime/value_array.h"
+#include "graph/nodes/core_nodes.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
+#include "types/type.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -81,7 +83,7 @@ static bool numeric_struct(const type_desc *type)
         return false;
     }
     if (!type->field_count && type->alias_of && strcmp(type->alias_of, type->name)) {
-        return numeric_struct(registry_type_by_name(type->alias_of));
+        return numeric_struct(type_catalog_find(type->alias_of));
     }
     if (type->field_count <= 0) {
         return false;
@@ -104,7 +106,7 @@ static bool numeric_value(const pin_spec *pin)
         return true;
     }
     return pin->type == PIN_STRUCT &&
-           numeric_struct(registry_type_by_name(pin->type_name));
+           numeric_struct(type_catalog_find(pin->type_name));
 }
 
 static const char *fail(expression_build *build, const char *message)
@@ -849,6 +851,7 @@ node *behavior_expression_convert_selection(
         int target_output = 0, target_pin = -1;
         const pin_spec *target_spec = graph_pin_by_id(target, output->target_pin_id, &target_output, &target_pin);
         assert(target_spec && !target_output);
+        (void)target_spec;
         int result = graph_connect_data(source, call, 0, target, target_pin);
         assert(result == 0);
         (void)result;

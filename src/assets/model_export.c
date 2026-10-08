@@ -1,10 +1,13 @@
 #include "assets/model_export.h"
 
 #include "assets/model_source.h"
+#include "authoring/image_prepare.h"
+#include "authoring/mesh_prepare.h"
+#include "authoring/shader_prepare.h"
 #include "render/shader_catalog.h"
-#include "render/shader_images.h"
+#include "runtime/images/catalog.h"
 #include "support/array.h"
-#include "support/text_file.h"
+#include "support/file_io.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -90,7 +93,7 @@ static bool validate_staged_mesh(const char *directory, char *error, size_t size
     size_t length = strlen(directory) + sizeof "/model.mesh.json";
     char *path = xmalloc(length);
     snprintf(path, length, "%s/model.mesh.json", directory);
-    char *text = text_file_read_disk(path);
+    char *text = file_read_text(path);
     free(path);
     render_mesh_asset mesh = { 0 };
     bool ok = text && render_mesh_asset_parse(text, &mesh, error, size);
@@ -314,19 +317,11 @@ bool model_export_bundle(
         snprintf(error, size, "Export destination must be a new directory.");
         return false;
     }
-    bool owns_filesystem = !cf_fs_get_base_directory();
-    if (owns_filesystem) {
-        CF_Result initialized = cf_fs_init(NULL);
-        if (cf_is_error(initialized)) {
-            snprintf(error, size, "%s", initialized.details);
-            return false;
-        }
-        render_images_clear();
-    }
     model_source_catalog sources;
     bool ok = model_source_load(root, &sources, error, size);
     if (ok) {
-        ok = render_image_mount_content(root, error, size);
+        ok = render_image_mount_content(root, error, size) &&
+             authoring_mesh_mount_content(root, error, size);
     }
     const behavior_asset *source = NULL;
     for (int i = 0; ok && i < acount(sources.saved); i++) {
@@ -455,9 +450,5 @@ bool model_export_bundle(
     model_bake_result_free(&bake);
     model_program_free(&program);
     model_source_free(&sources);
-    if (owns_filesystem) {
-        render_images_clear();
-        cf_fs_destroy();
-    }
     return ok;
 }

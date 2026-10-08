@@ -1,9 +1,10 @@
 #include "render/sdf_motion.h"
 
-#include "runtime/behaviors/live.h"
+#include "authoring/engine_preview.h"
+#include "authoring/preview.h"
+#include "authoring/prototype_preview.h"
+#include "runtime/component_catalog.h"
 #include "runtime/engine.h"
-#include "runtime/generated.h"
-#include "runtime/scenes/prototype_preview.h"
 #include "test/support/simulation_fixture.h"
 
 #include <assert.h>
@@ -81,8 +82,8 @@ static void clocks()
     assert(ecs_world_apply_commands(world) == ECS_OK);
     GameSdfMotion *motion = GAME_GameSdfMotion_get(world, entity);
     *motion = (GameSdfMotion){ .time = 2, .pluck_age = 3 };
-    game_live_world *live = game_live_world_new(world);
-    engine *runtime = engine_new(world, live);
+    game_preview_world *live = game_preview_world_new(world);
+    engine *runtime = authoring_engine_new(world, live->runtime);
     assert(engine_frame(runtime, 0) >= 0);
     assert(engine_set_playing(runtime, true) == 0);
     simulation_fixture simulation = simulation_fixture_new(runtime, NULL);
@@ -105,7 +106,7 @@ static void clocks()
     close_to(GAME_GameSdfMotion_get_const(world, entity)->time, 2.25f + ENGINE_FIXED_SECONDS);
     assert(game_sdf_motion_tick(world, INFINITY) < 0);
     engine_free(runtime);
-    game_live_world_free(live);
+    game_preview_world_free(live);
     ecs_world_free(world);
 }
 

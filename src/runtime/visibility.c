@@ -1,7 +1,6 @@
 #include "runtime/visibility.h"
 
-#include "graph/runtime/eval.h"
-#include "runtime/generated.h"
+#include "runtime/component_catalog.h"
 #include "runtime/scenes/physics.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -248,9 +247,9 @@ const unsigned char *game_visibility_cells(const game_visibility *visibility, Ga
     return visibility->enabled ? visibility->cells : NULL;
 }
 
-static const char *sample_node(const eval_context *ctx, const pin_value *in, arena *, pin_value *out)
+const char *game_visibility_sample_values(void *service, const pin_value *in, pin_value *out)
 {
-    game_visibility *visibility = eval_context_service(ctx, "game.visibility");
+    game_visibility *visibility = service;
     if (!visibility || !in[0].ptr) {
         return "Visibility At requires a game world and position";
     }
@@ -262,36 +261,13 @@ static const char *sample_node(const eval_context *ctx, const pin_value *in, are
     }
     game_visibility_sample
         sample = game_visibility_at(visibility, *(const CF_V2 *)in[0].ptr);
-    out[0] = (pin_value){ .type = PIN_BOOL, .type_name = "bool", .b = sample.visible };
-    out[1] = (pin_value){ .type = PIN_BOOL, .type_name = "bool", .b = sample.explored };
-    out[2] = (pin_value){ .type = PIN_BOOL, .type_name = "bool", .b = sample.obstacle };
+    out[0].b = sample.visible;
+    out[1].b = sample.explored;
+    out[2].b = sample.obstacle;
     return NULL;
 }
-
-static const node_access ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
-static pin_spec INPUTS[] = {
-    { .name = "Position", .type = PIN_STRUCT, .type_name = "CF_V2" }
+const node_host_call GAME_VISIBILITY_SAMPLE_CALL = {
+    .service = "game.visibility",
+    .invoke = game_visibility_sample_values
 };
-static pin_spec OUTPUTS[] = {
-    { .name = "Visible", .type = PIN_BOOL, .type_name = "bool" },
-    { .name = "Explored", .type = PIN_BOOL, .type_name = "bool" },
-    { .name = "Obstacle", .type = PIN_BOOL, .type_name = "bool" }
-};
-static node_desc SAMPLE = {
-    .name = "Visibility At",
-    .category = "Visibility",
-    .keywords = "fog sight explored terrain memory",
-    .description = "Samples the fog-of-war cell at Position; Visible is always "
-                   "true without fog and false outside its grid.",
-    .input_count = 1,
-    .inputs = INPUTS,
-    .output_count = 3,
-    .outputs = OUTPUTS,
-    .pure_kind = NODE_PURE_READ,
-    .read_inputs = sample_node,
-    .access = &ACCESS
-};
-static node_desc *const NODES[] = { &SAMPLE };
-const registry_pack GAME_VISIBILITY_PACK = { .name = "game.visibility",
-                                             .nodes = NODES,
-                                             .node_count = 1 };
+const node_access GAME_VISIBILITY_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

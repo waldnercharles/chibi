@@ -1,5 +1,6 @@
 #include "graph/modeling/model_authoring.h"
 
+#include "graph/authoring/graph_edit.h"
 #include "support/array.h"
 
 #include <stdarg.h>

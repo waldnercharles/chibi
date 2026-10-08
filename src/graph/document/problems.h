@@ -1,11 +1,11 @@
 #ifndef CHIBI_GRAPH_PROBLEMS_H
 #define CHIBI_GRAPH_PROBLEMS_H
 
-#include "graph/compiler/compile.h"
+#include "graph/compiler/validation.h"
 
 /* Validating graph assets as the project runs them: linked with its libraries
  * and event definitions, then compiled. Studio's Problems, the graph editor's
- * live compile and the MCP's asset catalog share it. */
+ * live compile and native asset inspection share it. */
 
 /* Compiles `asset` linked with the libraries and event definitions in
  * `catalog` into `report`; a failed link is one error. Returns the linked

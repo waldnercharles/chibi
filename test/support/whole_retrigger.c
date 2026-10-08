@@ -1,5 +1,8 @@
+#include "graph/authoring/asset_edit.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/compare_nodes.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/nodes/state_nodes.h"
 #include "graph/runtime/flow_internal.h"
 #include "graph/runtime/instance.h"
@@ -140,7 +143,7 @@ void whole_retrigger_smoke()
         assert(second && flow_run_status(second) == FLOW_COMPLETED);
         assert(second->whole_function_executed && !acount(second->children));
         assert(flow_run_wake_time(first) == 1.5 && flow_run_wake_time(leaf) == 1.5);
-        assert(bi->variables[0].i == 0 && bi->variables[1].i == 1);
+        assert(bi->execution.variables[0].i == 0 && bi->execution.variables[1].i == 1);
         assert(!behavior_instance_tick(bi, 1.));
         int result = behavior_instance_tick(bi, 1.5);
         if (kind == WHOLE_RETRIGGER_LOOP) {
@@ -148,7 +151,7 @@ void whole_retrigger_smoke()
             result = behavior_instance_tick(bi, 2.5);
         }
         assert(!result && flow_run_status(first) == FLOW_COMPLETED);
-        assert(bi->variables[0].i == 7 && bi->variables[1].i == 2);
+        assert(bi->execution.variables[0].i == 7 && bi->execution.variables[1].i == 2);
         assert(eval == eval_oracle_calls() && flow == flow_oracle_calls());
         behavior_instance_destroy(bi);
         behavior_asset_free(a);

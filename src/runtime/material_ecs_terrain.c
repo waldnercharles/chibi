@@ -52,7 +52,8 @@ static void spawn_tile(
                               .height = grid.height * terrain.cell_size,
                               .category = terrain.category,
                               .mask = terrain.mask };
-    GameDestructible destructible = { terrain.cell_size, terrain.min_fragment_cells };
+    GameDestructible destructible = { .cell_size = terrain.cell_size,
+                                      .min_fragment_cells = terrain.min_fragment_cells };
     appearance.width = collider.width;
     appearance.height = collider.height;
     material_ecs_add_component(world, entity, &GAME_COMPONENT_GameTransform, &transform);
@@ -72,6 +73,7 @@ static void spawn_tile(
     }
     int result = ecs_world_apply_commands(world);
     assert(result == ECS_OK);
+    (void)result;
     material_record *record = material_ecs_record(materials, entity);
     record->terrain_source = source;
     record->mask = mask;
@@ -90,6 +92,7 @@ static void discard_terrain(game_materials *materials, ecs_entity source)
         if (ecs_entity_is_alive(materials->world, r->entity)) {
             int result = ecs_world_destroy_entity(materials->world, r->entity);
             assert(result == ECS_OK);
+            (void)result;
         }
         materials->fragments -= r->fragment;
         material_ecs_release_record(r);
@@ -111,15 +114,26 @@ static const char *stream_terrain(
 {
     material_record *record = material_ecs_record(materials, source);
     if (record->terrain_hash != hash) {
+        field_context context;
+        if (!material_field_context(
+                materials->fields,
+                terrain.field,
+                terrain.parameters,
+                terrain.seed,
+                &context,
+                materials->error,
+                sizeof materials->error
+            )) {
+            return materials->error;
+        }
         discard_terrain(materials, source);
         record = material_ecs_record(materials, source);
         record->stream = material_stream_new((material_stream_desc){
-            .grid = { (int)ceilf(terrain.width / terrain.cell_size),
-                      (int)ceilf(terrain.height / terrain.cell_size),
-                      terrain.cell_size },
+            .grid = { .width = (int)ceilf(terrain.width / terrain.cell_size),
+                      .height = (int)ceilf(terrain.height / terrain.cell_size),
+                      .cell_size = terrain.cell_size },
             .field = terrain.field,
-            .parameters = terrain.parameters,
-            .seed = terrain.seed,
+            .context = context,
             .island_cells = terrain.island_cells,
             .tasks = game_task_pool_tasks(materials->pool) });
         record->terrain = true;
@@ -134,6 +148,7 @@ static const char *stream_terrain(
         ecs_query query;
         int result = ecs_query_begin(world, &query, ids, 2);
         assert(result == ECS_OK);
+        (void)result;
         ecs_entity e;
         while (ecs_query_next(&query, &e)) {
             const GameCamera *camera = GAME_GameCamera_get_const(world, e);
@@ -167,6 +182,7 @@ static const char *stream_terrain(
         ecs_query query;
         int result = ecs_query_begin(world, &query, moving, 3);
         assert(result == ECS_OK);
+        (void)result;
         ecs_entity e;
         while (ecs_query_next(&query, &e)) {
             const GameVelocity *velocity = GAME_GameVelocity_get_const(world, e);
@@ -212,6 +228,7 @@ static const char *stream_terrain(
             if (ecs_entity_is_alive(world, r->entity)) {
                 int result = ecs_world_destroy_entity(world, r->entity);
                 assert(result == ECS_OK);
+                (void)result;
             }
             material_ecs_release_record(r);
         }
@@ -306,16 +323,28 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
     if (material_ecs_record(materials, source)->terrain_hash == hash) {
         return NULL;
     }
-    field_grid grid = { (int)ceilf(terrain.width / terrain.cell_size),
-                        (int)ceilf(terrain.height / terrain.cell_size),
-                        terrain.cell_size };
+    field_grid grid = { .width = (int)ceilf(terrain.width / terrain.cell_size),
+                        .height = (int)ceilf(terrain.height / terrain.cell_size),
+                        .cell_size = terrain.cell_size };
     float *field = xmalloc((size_t)grid.width * grid.height * sizeof(float));
+    field_context context;
+    if (!material_field_context(
+            materials->fields,
+            terrain.field,
+            terrain.parameters,
+            terrain.seed,
+            &context,
+            materials->error,
+            sizeof materials->error
+        )) {
+        free(field);
+        return materials->error;
+    }
     game_task_pool_begin(materials->pool, true);
     bool baked = material_field_bake(
         materials->fields,
         terrain.field,
-        terrain.parameters,
-        terrain.seed,
+        context,
         grid,
         field,
         game_task_pool_tasks(materials->pool),
@@ -367,6 +396,7 @@ const char *material_ecs_generate_terrains(game_materials *materials)
     ecs_query query;
     int result = ecs_query_begin(materials->world, &query, &id, 1);
     assert(result == ECS_OK);
+    (void)result;
     while (ecs_query_next(&query, &entity)) {
         if (!game_entities_is_retiring(materials->entities, entity)) {
             apush(sources, entity);

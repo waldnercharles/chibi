@@ -1759,6 +1759,14 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
         { "behavior B { t: task; n: double = 0; on Impulse(amount, enabled) { "
           "n = t; } }",
           "" },
+        /* Only the block's own `pulse` is assigned Charge, so awaiting the
+         * state gives no result. */
+        { "behavior B { pulse: task; power: double = 0;"
+          "function Charge(time: double) -> (power: double) { yield; return "
+          "time }"
+          "on Impulse(amount, enabled) { power = await pulse;"
+          "if enabled { pulse: task = Charge(1); pulse = Charge(amount) } } }",
+          "" },
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         prepare();
@@ -1814,48 +1822,64 @@ TEST_CASE(program_version_11_references_migrate_to_values)
 }
 TEST_CASE(program_version_12_results_migrate_to_returns)
 {
-    const char *source = "behavior R { n: double = 0\n"
-                         "    function Pair(x: double) -> (Sum: double, Twice: "
-                         "double, Kept: double) {\n"
-                         "        result Sum: double = x + 1\n"
-                         "        Kept = 4\n"
-                         "        result Twice: double = (x) * 2\n"
-                         "        if x > 10 {\n"
-                         "            return\n"
-                         "        }\n"
-                         "        return\n"
-                         "    }\n"
-                         "    pure function Seven() -> (Result: double) { "
-                         "result Result: double = 7; }\n"
-                         "    function Half(x: double) -> (Out: double) {\n"
-                         "        result Out: double = x / 2\n"
-                         "        if x > 100 {\n"
-                         "            return\n"
-                         "        }\n"
-                         "    }\n"
-                         "    on Impulse(amount, enabled) { p := Pair(2); n = "
-                         "p.Sum + p.Twice + p.Kept + Seven() + Half(4) }\n"
-                         "}\n";
-    const char *expected = "behavior R { n: double = 0\n"
-                           "    function Pair(x: double) -> (Sum: double, "
-                           "Twice: double, Kept: double) {\n"
-                           "        Kept = 4\n"
-                           "        if x > 10 {\n"
-                           "            return(x + 1, (x) * 2, Kept)\n"
-                           "        }\n"
-                           "        return(x + 1, (x) * 2, Kept)\n"
-                           "    }\n"
-                           "    pure function Seven() -> (Result: double) { "
-                           "return 7 }\n"
-                           "    function Half(x: double) -> (Out: double) {\n"
-                           "        if x > 100 {\n"
-                           "            return x / 2\n"
-                           "        }\n"
-                           "        return x / 2\n"
-                           "    }\n"
-                           "    on Impulse(amount, enabled) { p := Pair(2); n "
-                           "= p.Sum + p.Twice + p.Kept + Seven() + Half(4) }\n"
-                           "}\n";
+    const char
+        *source = "behavior R { n: double = 0\n"
+                  "    function Pair(x: double) -> (Sum: double, Twice: "
+                  "double, Kept: double) {\n"
+                  "        result Sum: double = x + 1\n"
+                  "        Kept = 4\n"
+                  "        result Twice: double = (x) * 2\n"
+                  "        if x > 10 {\n"
+                  "            return\n"
+                  "        }\n"
+                  "        return\n"
+                  "    }\n"
+                  "    pure function Seven() -> (Result: double) { "
+                  "result Result: double = 7; }\n"
+                  "    function Half(x: double) -> (Out: double) {\n"
+                  "        result Out: double = x / 2\n"
+                  "        if x > 100 {\n"
+                  "            return\n"
+                  "        }\n"
+                  "    }\n"
+                  "    function Set(x: double) -> (Value: double) {\n"
+                  "        result Value: double = x\n"
+                  "        if x > 1 {\n"
+                  "            Value = 10\n"
+                  "        }\n"
+                  "        return\n"
+                  "    }\n"
+                  "    on Impulse(amount, enabled) { p := Pair(2); n = "
+                  "p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
+                  "}\n";
+    const char *
+        expected = "behavior R { n: double = 0\n"
+                   "    function Pair(x: double) -> (Sum: double, "
+                   "Twice: double, Kept: double) {\n"
+                   "        Kept = 4\n"
+                   "        if x > 10 {\n"
+                   "            return(x + 1, (x) * 2, Kept)\n"
+                   "        }\n"
+                   "        return(x + 1, (x) * 2, Kept)\n"
+                   "    }\n"
+                   "    pure function Seven() -> (Result: double) { "
+                   "return 7 }\n"
+                   "    function Half(x: double) -> (Out: double) {\n"
+                   "        if x > 100 {\n"
+                   "            return x / 2\n"
+                   "        }\n"
+                   "        return x / 2\n"
+                   "    }\n"
+                   "    function Set(x: double) -> (Value: double) {\n"
+                   "        Value = x\n"
+                   "        if x > 1 {\n"
+                   "            Value = 10\n"
+                   "        }\n"
+                   "        return Value\n"
+                   "    }\n"
+                   "    on Impulse(amount, enabled) { p := Pair(2); n "
+                   "= p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
+                   "}\n";
     char *migrated = chibi_migrate_results(source);
     REQUIRE(migrated && !strcmp(migrated, expected));
     REQUIRE(!chibi_migrate_results(expected));
@@ -1870,7 +1894,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
         const pin_value args[] = { { .type = PIN_F64, .d = 0 },
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "n", 20));
+        REQUIRE(number_state(instance, "n", 30));
     }
     free(migrated);
     return true;

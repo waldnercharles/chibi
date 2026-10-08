@@ -120,9 +120,26 @@ static uint64_t task_function(analyzer *a, TSNode call)
                                                  : NULL;
     return library && (library->effects & SCRIPT_EFFECT_SUSPEND) ? library->id : 0;
 }
-/* Infers task states from every `state = Call()` before any body is analyzed,
- * so an `await` reads the same type whichever handler comes first. */
-void script_analyzer_task_hints(analyzer *a, TSNode node)
+/* Whether a local or parameter anywhere under `node` is named `name`. */
+static bool declares(analyzer *a, TSNode node, const char *name)
+{
+    if (script_analyzer_is(node, "local_declaration") ||
+        script_analyzer_is(node, "parameter")) {
+        char *declared = script_analyzer_name_copy(a, script_analyzer_field(node, "name"));
+        bool same = !strcmp(declared, name);
+        free(declared);
+        if (same) {
+            return true;
+        }
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        if (declares(a, ts_node_named_child(node, i), name)) {
+            return true;
+        }
+    }
+    return false;
+}
+static void task_hints(analyzer *a, TSNode body, TSNode node)
 {
     if (script_analyzer_is(node, "assignment")) {
         TSNode target = script_analyzer_field(node, "target");
@@ -130,8 +147,10 @@ void script_analyzer_task_hints(analyzer *a, TSNode node)
         int symbol = script_analyzer_is(target, "identifier")
                        ? script_analyzer_lookup(a, target)
                        : -1;
-        if (symbol >= 0 && script_analyzer_is(value, "call_expression") &&
-            script_analyzer_is(script_analyzer_field(node, "operator"), "=")) {
+        if (symbol >= 0 && (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_TASK) &&
+            script_analyzer_is(value, "call_expression") &&
+            script_analyzer_is(script_analyzer_field(node, "operator"), "=") &&
+            !declares(a, body, a->out->symbols[symbol].name)) {
             script_type task = { .storage = PIN_U64,
                                  .nominal = task_function(a, value),
                                  .flags = SCRIPT_TYPE_TASK };
@@ -139,8 +158,16 @@ void script_analyzer_task_hints(analyzer *a, TSNode node)
         }
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        script_analyzer_task_hints(a, ts_node_named_child(node, i));
+        task_hints(a, body, ts_node_named_child(node, i));
     }
+}
+/* Infers task states from every `state = Call()` before any body is analyzed,
+ * so an `await` reads the same type whichever handler comes first. A name
+ * that a local or parameter also uses is left to the in-order inference,
+ * which resolves it in its own scope. */
+void script_analyzer_task_hints(analyzer *a, TSNode body)
+{
+    task_hints(a, body, body);
 }
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
 {

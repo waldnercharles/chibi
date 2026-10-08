@@ -380,8 +380,10 @@ char *chibi_migrate_references(const char *source)
 /* A version 12 `result Name: T = e` declaration, removed from the source. */
 typedef struct
 {
-    int offset; /* Where it was, in the stripped source. */
-    char *name, *value;
+    int offset;   /* Where it was, in the stripped source. */
+    char *indent; /* Its line's indentation, or NULL when it shared a line. */
+    char *name, *spelling, *value;
+    bool assigned; /* The function also assigns the result. */
 } declared;
 static char *copy_text(const char *from, const char *to)
 {
@@ -454,8 +456,10 @@ static const char *result_declaration(const char *source, const char *p, declare
         value++;
     }
     const char *end = expression_end(value);
-    out->name = *name == '"' ? copy_text(name + 1, colon - 1) : copy_text(name, colon);
-    out->value = copy_text(value, end);
+    *out = (declared){ .name = *name == '"' ? copy_text(name + 1, colon - 1)
+                                            : copy_text(name, colon),
+                       .spelling = copy_text(name, colon),
+                       .value = copy_text(value, end) };
     return end + (*end == ';');
 }
 /* Removes every result declaration, with its line when it stands alone. */
@@ -483,6 +487,9 @@ static char *strip_results(const char *source, declared **out)
             line--;
         }
         if ((line == stripped || line[-1] == '\n') && (*end == '\n' || !*end)) {
+            d.indent = xmalloc((size_t)(at - line) + 1);
+            memcpy(d.indent, line, (size_t)(at - line));
+            d.indent[at - line] = '\0';
             at = line;
             end += *end == '\n';
         }
@@ -515,6 +522,30 @@ static void returns(TSNode node, TSNode **out)
         }
     }
 }
+/* Whether the function's own statements assign `name`. */
+static bool assigns(const char *source, TSNode node, const char *name)
+{
+    if (is(node, "assignment")) {
+        TSNode target = ts_node_child_by_field_name(node, "target", 6);
+        uint32_t start = ts_node_start_byte(target),
+                 length = ts_node_end_byte(target) - start;
+        if (is(target, "string")) {
+            start++, length -= 2;
+        }
+        if (is_name(target) && strlen(name) == length &&
+            !strncmp(name, source + start, length)) {
+            return true;
+        }
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (!is(child, "function_declaration") &&
+            !is(child, "macro_declaration") && assigns(source, child, name)) {
+            return true;
+        }
+    }
+    return false;
+}
 static const declared *declaration_of(const declared *all, const char *source, TSNode name)
 {
     uint32_t start = ts_node_start_byte(name), length = ts_node_end_byte(name) - start;
@@ -522,7 +553,7 @@ static const declared *declaration_of(const declared *all, const char *source, T
         start++, length -= 2;
     }
     for (int i = 0; i < acount(all); i++) {
-        if (strlen(all[i].name) == length &&
+        if (!all[i].assigned && strlen(all[i].name) == length &&
             !strncmp(all[i].name, source + start, length)) {
             return &all[i];
         }
@@ -555,7 +586,8 @@ static char *return_value(const char *source, TSNode function, const declared *o
         append_value(&text, d ? d->value : source + start, d ? strlen(d->value) : end - start);
     }
     for (int i = 0; ts_node_is_null(results) && i < acount(own); i++, count++) {
-        append_value(&text, own[i].value, strlen(own[i].value));
+        const char *value = own[i].assigned ? own[i].spelling : own[i].value;
+        append_value(&text, value, strlen(value));
     }
     apush(text, '\0');
     size_t size = strlen(text) + 4;
@@ -626,15 +658,35 @@ char *chibi_migrate_results(const char *source)
         if (!first) {
             continue;
         }
+        TSNode body = ts_node_child_by_field_name(function, "body", 4);
         declared *own = NULL;
         for (int j = i; j < acount(all); j++) {
-            if (ts_node_eq(function, enclosing_function(root, all[j].offset))) {
-                apush(own, all[j]);
+            if (!ts_node_eq(function, enclosing_function(root, all[j].offset))) {
+                continue;
+            }
+            declared d = all[j];
+            d.assigned = assigns(stripped, body, d.name);
+            apush(own, d);
+            if (d.assigned) {
+                /* Version 12 returned the declared value until an assignment
+                 * replaced it; set it where it was declared instead. */
+                size_t size = strlen(d.spelling) + strlen(d.value) +
+                              (d.indent ? strlen(d.indent) : 0) + 8;
+                char *text = xmalloc(size);
+                snprintf(
+                    text,
+                    size,
+                    d.indent ? "%s%s = %s\n" : "%s%s = %s; ",
+                    d.indent ? d.indent : "",
+                    d.spelling,
+                    d.value
+                );
+                apush(inserts, ((insertion){ d.offset, acount(inserts), text }));
+                apush(texts, text);
             }
         }
         char *value = return_value(stripped, function, own);
         apush(texts, value);
-        TSNode body = ts_node_child_by_field_name(function, "body", 4);
         TSNode *found = NULL;
         returns(body, &found);
         for (int j = 0; j < acount(found); j++) {
@@ -656,7 +708,9 @@ char *chibi_migrate_results(const char *source)
         free(texts[i]);
     }
     for (int i = 0; i < acount(all); i++) {
+        free(all[i].indent);
         free(all[i].name);
+        free(all[i].spelling);
         free(all[i].value);
     }
     afree(texts);

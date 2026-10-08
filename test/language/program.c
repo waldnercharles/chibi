@@ -2312,14 +2312,22 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     }
     return true;
 }
-TEST_CASE(program_contextual_words_name_values)
+TEST_CASE(program_parameters_and_contextual_words_name_values)
 {
     const char *source = "behavior V { n: double = 0\n"
+                         "m: double = 2\n"
+                         "k: double = 0\n"
                          "function Approach(value: double, from: double) -> "
                          "(r: double) { return value - from }\n"
+                         "function Step(left: double) -> (r: double) { "
+                         "while left > 0 { left -= 1 } return left }\n"
+                         "function Drain(left: double) -> (r: double) { "
+                         "while left > 0 { left -= 1\n yield } "
+                         "return left + 7 }\n"
                          "on Impulse(amount, enabled) { split := 1.0\n"
                          "value := amount\n"
-                         "n = Approach(value, split) } }";
+                         "n = Approach(value, split) + Step(m)\n"
+                         "k = await Drain(m) } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2331,7 +2339,11 @@ TEST_CASE(program_contextual_words_name_values)
         const pin_value args[] = { { .type = PIN_F64, .d = 5 },
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "n", 4));
+        for (int i = 1; i <= 3; i++) {
+            REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
+        }
+        REQUIRE(number_state(instance, "n", 4) && number_state(instance, "m", 2));
+        REQUIRE(number_state(instance, "k", 7));
     }
     return true;
 }
@@ -2436,7 +2448,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
-    RUN_TEST_CASE(program_contextual_words_name_values);
+    RUN_TEST_CASE(program_parameters_and_contextual_words_name_values);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
     pu_clear_setup();

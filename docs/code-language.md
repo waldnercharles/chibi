@@ -281,7 +281,7 @@ behavior SharedGate {
 Functions declare data parameters and results. Ordinary functions infer their
 execution continuation; `pure function` declares a data-only signature. Calls
 use the function name directly. Qualification selects an external library:
-`"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`; a call passes any writable value to them directly, such as `nudge(self.Velocity)`, and the function writes through it. There is no address-of operator.
+`"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`; a call passes any writable value to them directly, such as `nudge(self.Velocity)`, and the function writes through it. There is no address-of operator. Other parameters are the function's own copies, so it may assign them without changing the caller's value.
 Type parameters preserve generic relationships, for example
 `function Identity<T: float>(item: T) -> (output: T) { ... }`. A function
 without results omits `->`. A function gives its results with `return x`, or `return(a, b)` in

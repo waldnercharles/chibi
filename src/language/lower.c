@@ -3733,7 +3733,8 @@ static bool direct_target(lower *l, const script_expression *e)
         (l->captured && l->captured[e->symbol] >= 0)) {
         return false;
     }
-    return l->variables[e->symbol] >= 0 || l->parameters[e->symbol] >= 0 ||
+    return l->variables[e->symbol] >= 0 ||
+           (l->parameters[e->symbol] >= 0 && s->kind != SCRIPT_PARAMETER) ||
            (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT));
 }
 static void assign(lower *l, const script_statement *s)

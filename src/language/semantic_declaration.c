@@ -80,7 +80,7 @@ void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bo
             script_analyzer_field(parameter, "name"),
             results ? SCRIPT_RESULT : SCRIPT_PARAMETER,
             type,
-            results || (type.flags & SCRIPT_TYPE_REFERENCE)
+            true
         );
         script_function *function = &a->out->functions[function_index];
         if (results) {

@@ -438,8 +438,8 @@ static const char *write_reference(arena *storage, const pin_value *args, int co
     if (ref->kind == LANGUAGE_REFERENCE_VALUE) {
         error = write_reference_value(ref->owner->value_storage, ref, args);
     } else {
-        arena temporary;
-        arena_init(&temporary, 4096);
+        /* Scalars never allocate, so the arena gets a block only on demand. */
+        arena temporary = { 0 };
         error = write_reference_value(&temporary, ref, args);
         arena_free(&temporary);
     }

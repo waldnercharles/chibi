@@ -3698,7 +3698,8 @@ static void assign_value(lower *l, const script_statement *s, int value)
         value = convert(l, value, l->a->expressions[s->second].type, target->type, s->range);
     }
     if (target->kind == SCRIPT_EXPR_SYMBOL) {
-        if (l->target_cached && target_index == l->target_expression) {
+        if (l->target_cached && target_index == l->target_expression &&
+            l->target_reference >= 0) {
             l->result_sources[target->symbol] = -1;
             reference_write(l, l->target_reference, value, target->type, s->range);
             return;
@@ -3731,6 +3732,22 @@ static void assign_value(lower *l, const script_statement *s, int value)
     }
     error(l, s->range, "Assignment target requires a linked write capability or aggregate contract");
 }
+/* A plain state, parameter or local is read and stored in place; anything
+ * else is written through a reference. */
+static bool direct_target(lower *l, const script_expression *e)
+{
+    if (e->kind != SCRIPT_EXPR_SYMBOL || e->symbol < 0) {
+        return false;
+    }
+    const script_symbol *s = &l->a->symbols[e->symbol];
+    if (s->lazy_local ||
+        (s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)) ||
+        (l->captured && l->captured[e->symbol] >= 0)) {
+        return false;
+    }
+    return l->variables[e->symbol] >= 0 || l->parameters[e->symbol] >= 0 ||
+           (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT));
+}
 static void assign(lower *l, const script_statement *s)
 {
     int index = s->expression;
@@ -3751,7 +3768,8 @@ static void assign(lower *l, const script_statement *s)
     int saved_expression = l->target_expression,
         saved_reference = l->target_reference, saved_value = l->target_value;
     bool saved_cached = l->target_cached;
-    int destination = reference(l, index);
+    bool direct = direct_target(l, &l->a->expressions[index]);
+    int destination = direct ? -1 : reference(l, index);
     const script_expression *rhs = &l->a->expressions[s->second];
     bool compound = s->op != SCRIPT_OP_NONE;
     if (rhs->kind == SCRIPT_EXPR_CALL && rhs->argument_count) {
@@ -3759,13 +3777,14 @@ static void assign(lower *l, const script_statement *s)
     }
     l->target_expression = index;
     l->target_reference = destination;
-    l->target_value = compound ? reference_read(
-                                     l,
-                                     destination,
-                                     l->a->expressions[index].type,
-                                     s->range
-                                 )
-                               : -1;
+    l->target_value = !compound ? -1
+                    : direct    ? expression(l, index)
+                                : reference_read(
+                                      l,
+                                      destination,
+                                      l->a->expressions[index].type,
+                                      s->range
+                                  );
     l->target_cached = compound;
     int value = expression(l, s->second);
     /* Retain the destination for simple writes without replacing RHS reads. */

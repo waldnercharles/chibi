@@ -9,6 +9,7 @@
 #include "language/lower.h"
 #include "runtime/native_definitions.h"
 #include "runtime/state_definition.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
@@ -2022,6 +2023,32 @@ TEST_CASE(program_task_shares_boxed_locals)
     return true;
 }
 
+TEST_CASE(program_assignments_and_reference_writes_do_not_allocate)
+{
+    /* Plain state and local writes store in place, and a reference write of
+     * a number needs no scratch storage. */
+    const char
+        *source = "behavior R { n: double = 0; m: double = 0;"
+                  "function Add(x: ref double) -> () { i := 0.0; while i "
+                  "< 1000 { x += 1; i += 1; } }"
+                  "on Impulse(amount, enabled) { i := 0.0; while i < 1000 "
+                  "{ n += 1; i += 1; } Add(&m); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        uint64_t blocks = arena_block_allocations();
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(arena_block_allocations() - blocks < 16);
+        REQUIRE(number_state(instance, "n", 1000) && number_state(instance, "m", 1000));
+    }
+    return true;
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
@@ -2054,5 +2081,6 @@ void test_language_program()
     RUN_TEST_CASE(program_library_call_starts_a_task);
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
+    RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
     pu_clear_setup();
 }

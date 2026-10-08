@@ -37,12 +37,12 @@ behavior "HudDisplay" {
         value real = real(Value: 1.0);
         value max = max(A: double = convert<"To Real">(entry.maximum), B: double = real);
         value divide = divide(A: double = convert<"To Real">(entry.current), B: double = max);
-        result Result: double = divide;
+        return divide
     }
     pure function "length(vec2(velocity.x, velocity.y))"<T0: struct<"GameVelocity">, T1: double>(velocity: T0 = null) -> (Result: T1 = 0.0) {
         depth_limit 64;
         value make_cf_v2 = make_cf_v2(x: entry.velocity.x, y: entry.velocity.y);
         value vector_length = vector_length(Value: make_cf_v2);
-        result Result: double = vector_length;
+        return vector_length
     }
 }

@@ -122,8 +122,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         result.kind = SCRIPT_STMT_BLOCK;
         return script_analyzer_statement_add(a, result);
     }
-    if (script_analyzer_is(node, "local_declaration") ||
-        script_analyzer_is(node, "result_declaration")) {
+    if (script_analyzer_is(node, "local_declaration")) {
         result.kind = SCRIPT_STMT_DECLARE;
         script_type type = script_analyzer_type_node(a, script_analyzer_field(node, "type"));
         result.expression = script_analyzer_expression(a, script_analyzer_field(node, "value"), type);
@@ -139,14 +138,10 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             );
         }
         int existing = script_analyzer_lookup(a, script_analyzer_field(node, "name"));
-        script_symbol_kind kind = script_analyzer_is(node, "result_declaration")
-                                    ? SCRIPT_RESULT
-                                    : SCRIPT_LOCAL;
-        if (existing >= 0 && a->out->symbols[existing].kind == kind &&
+        if (existing >= 0 && a->out->symbols[existing].kind == SCRIPT_LOCAL &&
             a->out->symbols[existing].scope == a->scope &&
-            (kind == SCRIPT_RESULT ||
-             a->out->symbols[existing].declaration.start ==
-                 script_analyzer_range(script_analyzer_field(node, "name")).start)) {
+            a->out->symbols[existing].declaration.start ==
+                script_analyzer_range(script_analyzer_field(node, "name")).start) {
             result.symbol = existing;
             if (a->out->symbols[existing].type.flags & SCRIPT_TYPE_UNTYPED) {
                 a->out->symbols[existing].type = type;
@@ -157,7 +152,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             result.symbol = script_analyzer_symbol_new(
                 a,
                 script_analyzer_field(node, "name"),
-                script_analyzer_is(node, "result_declaration") ? SCRIPT_RESULT : SCRIPT_LOCAL,
+                SCRIPT_LOCAL,
                 type,
                 true
             );

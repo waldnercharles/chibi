@@ -345,6 +345,284 @@ char *chibi_migrate_references(const char *source)
     return result;
 }
 
+/* A version 12 `result Name: T = e` declaration, removed from the source. */
+typedef struct
+{
+    int offset; /* Where it was, in the stripped source. */
+    char *name, *value;
+} declared;
+static char *copy_text(const char *from, const char *to)
+{
+    while (to > from && isspace((unsigned char)to[-1])) {
+        to--;
+    }
+    char *text = xmalloc((size_t)(to - from) + 1);
+    memcpy(text, from, (size_t)(to - from));
+    text[to - from] = '\0';
+    return text;
+}
+/* The end of the expression at `p`: a newline, `;` or `}` outside brackets. */
+static const char *expression_end(const char *p)
+{
+    int depth = 0;
+    while (*p) {
+        const char *skip = skip_literal(p);
+        if (skip != p) {
+            p = skip;
+            continue;
+        }
+        if (!depth && (*p == '\n' || *p == ';' || *p == '}')) {
+            return p;
+        }
+        depth += (*p == '(' || *p == '[' || *p == '{') -
+                 (*p == ')' || *p == ']' || *p == '}');
+        p++;
+    }
+    return p;
+}
+static bool statement_start(const char *source, const char *p)
+{
+    while (p > source && (p[-1] == ' ' || p[-1] == '\t')) {
+        p--;
+    }
+    return p == source || p[-1] == '\n' || p[-1] == '{' || p[-1] == ';';
+}
+/* Parses `result Name: T = e` at `p`. Returns its end, or NULL. */
+static const char *result_declaration(const char *source, const char *p, declared *out)
+{
+    if (strncmp(p, "result", 6) || word_char(p[6]) ||
+        (p > source && word_char(p[-1])) || !statement_start(source, p)) {
+        return NULL;
+    }
+    const char *name = p + 6;
+    while (*name == ' ' || *name == '\t') {
+        name++;
+    }
+    const char *colon = name;
+    if (*colon == '"') {
+        colon = skip_literal(colon);
+    } else {
+        while (word_char(*colon)) {
+            colon++;
+        }
+    }
+    if (colon == name) {
+        return NULL;
+    }
+    const char *equals = colon;
+    while (*equals && *equals != '=' && *equals != '\n') {
+        const char *skip = skip_literal(equals);
+        equals = skip != equals ? skip : equals + 1;
+    }
+    if (*equals != '=') {
+        return NULL;
+    }
+    const char *value = equals + 1;
+    while (*value == ' ' || *value == '\t') {
+        value++;
+    }
+    const char *end = expression_end(value);
+    out->name = *name == '"' ? copy_text(name + 1, colon - 1) : copy_text(name, colon);
+    out->value = copy_text(value, end);
+    return end + (*end == ';');
+}
+/* Removes every result declaration, with its line when it stands alone. */
+static char *strip_results(const char *source, declared **out)
+{
+    char *stripped = xmalloc(strlen(source) + 1), *at = stripped;
+    for (const char *p = source; *p;) {
+        const char *skip = skip_literal(p);
+        if (skip != p) {
+            at = stpncpy(at, p, (size_t)(skip - p));
+            p = skip;
+            continue;
+        }
+        declared d;
+        const char *end = result_declaration(source, p, &d);
+        if (!end) {
+            *at++ = *p++;
+            continue;
+        }
+        while (*end == ' ' || *end == '\t') {
+            end++;
+        }
+        char *line = at;
+        while (line > stripped && (line[-1] == ' ' || line[-1] == '\t')) {
+            line--;
+        }
+        if ((line == stripped || line[-1] == '\n') && (*end == '\n' || !*end)) {
+            at = line;
+            end += *end == '\n';
+        }
+        d.offset = (int)(at - stripped);
+        apush(*out, d);
+        p = end;
+    }
+    *at = '\0';
+    return stripped;
+}
+static TSNode enclosing_function(TSNode root, int offset)
+{
+    TSNode node = ts_node_descendant_for_byte_range(root, (uint32_t)offset, (uint32_t)offset);
+    while (!ts_node_is_null(node) && !is(node, "function_declaration") &&
+           !is(node, "macro_declaration")) {
+        node = ts_node_parent(node);
+    }
+    return node;
+}
+static void returns(TSNode node, TSNode **out)
+{
+    if (is(node, "return_statement")) {
+        apush(*out, node);
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (!is(child, "function_declaration") && !is(child, "macro_declaration")) {
+            returns(child, out);
+        }
+    }
+}
+static const declared *declaration_of(const declared *all, const char *source, TSNode name)
+{
+    uint32_t start = ts_node_start_byte(name), length = ts_node_end_byte(name) - start;
+    if (is(name, "string")) {
+        start++, length -= 2;
+    }
+    for (int i = 0; i < acount(all); i++) {
+        if (strlen(all[i].name) == length &&
+            !strncmp(all[i].name, source + start, length)) {
+            return &all[i];
+        }
+    }
+    return NULL;
+}
+static void append_value(char **text, const char *value, size_t length)
+{
+    if (acount(*text)) {
+        apush(*text, ',');
+        apush(*text, ' ');
+    }
+    for (size_t i = 0; i < length; i++) {
+        apush(*text, value[i]);
+    }
+}
+/* The value `return` gives: the declared expressions, or the result itself
+ * for a result without one, in signature order. */
+static char *return_value(const char *source, TSNode function, const declared *own)
+{
+    TSNode results = ts_node_child_by_field_name(function, "results", 7);
+    char *text = NULL;
+    int count = 0;
+    for (uint32_t i = 0;
+         !ts_node_is_null(results) && i < ts_node_named_child_count(results);
+         i++, count++) {
+        TSNode name = ts_node_child_by_field_name(ts_node_named_child(results, i), "name", 4);
+        const declared *d = declaration_of(own, source, name);
+        uint32_t start = ts_node_start_byte(name), end = ts_node_end_byte(name);
+        append_value(&text, d ? d->value : source + start, d ? strlen(d->value) : end - start);
+    }
+    for (int i = 0; ts_node_is_null(results) && i < acount(own); i++, count++) {
+        append_value(&text, own[i].value, strlen(own[i].value));
+    }
+    apush(text, '\0');
+    size_t size = strlen(text) + 4;
+    char *value = xmalloc(size);
+    snprintf(value, size, count > 1 || *text == '(' ? "(%s)" : " %s", text);
+    afree(text);
+    return value;
+}
+/* Appends `return` before the closing brace of a body without one. */
+static void append_return(
+    const char *source,
+    TSNode body,
+    const char *value,
+    insertion **out,
+    char ***texts
+)
+{
+    int close = (int)ts_node_end_byte(body) - 1;
+    int line = close;
+    while (line > 0 && (source[line - 1] == ' ' || source[line - 1] == '\t')) {
+        line--;
+    }
+    size_t size = (size_t)(close - line) + strlen(value) + 16;
+    char *text = xmalloc(size);
+    if (line > 0 && source[line - 1] == '\n') {
+        snprintf(text, size, "%.*s    return%s\n", close - line, source + line, value);
+        apush(*out, ((insertion){ line, acount(*out), text }));
+    } else {
+        snprintf(text, size, "return%s ", value);
+        apush(*out, ((insertion){ close, acount(*out), text }));
+    }
+    apush(*texts, text);
+}
+char *chibi_migrate_results(const char *source)
+{
+    declared *all = NULL;
+    char *stripped = strip_results(source, &all);
+    if (!acount(all)) {
+        free(stripped);
+        afree(all);
+        return NULL;
+    }
+    script_syntax *syntax = script_parse(stripped);
+    TSNode root = ts_tree_root_node(syntax->tree);
+    insertion *inserts = NULL;
+    char **texts = NULL;
+    for (int i = 0; i < acount(all); i++) {
+        TSNode function = enclosing_function(root, all[i].offset);
+        assert(!ts_node_is_null(function));
+        bool first = true;
+        for (int j = 0; j < i; j++) {
+            first &= !ts_node_eq(function, enclosing_function(root, all[j].offset));
+        }
+        if (!first) {
+            continue;
+        }
+        declared *own = NULL;
+        for (int j = i; j < acount(all); j++) {
+            if (ts_node_eq(function, enclosing_function(root, all[j].offset))) {
+                apush(own, all[j]);
+            }
+        }
+        char *value = return_value(stripped, function, own);
+        apush(texts, value);
+        TSNode body = ts_node_child_by_field_name(function, "body", 4);
+        TSNode *found = NULL;
+        returns(body, &found);
+        for (int j = 0; j < acount(found); j++) {
+            if (!ts_node_is_null(ts_node_child_by_field_name(found[j], "value", 5))) {
+                continue;
+            }
+            TSNode outcome = ts_node_child_by_field_name(found[j], "outcome", 7);
+            TSNode end = ts_node_is_null(outcome) ? ts_node_child(found[j], 0) : outcome;
+            apush(inserts, ((insertion){ (int)ts_node_end_byte(end), acount(inserts), value }));
+        }
+        if (!acount(found)) {
+            append_return(stripped, body, value, &inserts, &texts);
+        }
+        afree(found);
+        afree(own);
+    }
+    char *migrated = apply(stripped, inserts);
+    for (int i = 0; i < acount(texts); i++) {
+        free(texts[i]);
+    }
+    for (int i = 0; i < acount(all); i++) {
+        free(all[i].name);
+        free(all[i].value);
+    }
+    afree(texts);
+    afree(inserts);
+    afree(all);
+    script_syntax_free(syntax);
+    if (!migrated) {
+        return stripped;
+    }
+    free(stripped);
+    return migrated;
+}
 static char *read_text(const char *path)
 {
     FILE *file = fopen(path, "rb");
@@ -440,6 +718,12 @@ int chibi_project_migrate_content(const char *content, int from, char *error, si
                 migrated = xmalloc((size_t)(count + 1) * sizeof *migrated);
                 for (int i = 0; i < count; i++) {
                     migrated[i] = chibi_migrate_references(sources[i]);
+                }
+                break;
+            case 12:
+                migrated = xmalloc((size_t)(count + 1) * sizeof *migrated);
+                for (int i = 0; i < count; i++) {
+                    migrated[i] = chibi_migrate_results(sources[i]);
                 }
                 break;
             default: assert(false);

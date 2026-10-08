@@ -1,13 +1,12 @@
 library "WeaponActions" {
     function "Spawn Prototype At"(Prototype: name = "", Transform: struct<"GameTransform"> = null) -> (Entity: handle<"ecs.entity"> = 0) {
         action spawn_prototype = engine["Spawn Prototype"](entry.Prototype)
-        result Entity: handle<"ecs.entity"> = spawn_prototype.Entity
         after entry {
             spawn_prototype()
         }
         after spawn_prototype {
             await set_entity_game_transform(spawn_prototype.Entity, convert<"game_transform_to_cf">(entry.Transform))
-            return
+            return spawn_prototype.Entity
         }
     }
     function "Fire Projectile"(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0, Prototype: name = "Projectile", Shooter: handle<"ecs.entity"> = 0) -> (Entity: handle<"ecs.entity"> = 0) {
@@ -15,7 +14,6 @@ library "WeaponActions" {
         value normalize_vector_2 = vec2_norm(entry.Direction)
         value multiply = multiply(normalize_vector_2.Result, getentity_gameprojectile.Value.speed)
         action spawn_prototype_at = "Spawn Prototype At"(entry.Prototype, convert<"game_transform_to_cf">(entry.Origin))
-        result Entity: handle<"ecs.entity"> = spawn_prototype_at.Entity
         after entry {
             spawn_prototype_at()
         }
@@ -24,7 +22,7 @@ library "WeaponActions" {
             await set_entity_game_orientation(spawn_prototype_at.Entity, "DirectionMath"."Direction Orientation"(normalize_vector_2.Result.x, normalize_vector_2.Result.y))
             await set_game_projectile_damage(entry.Damage, spawn_prototype_at.Entity)
             await set_game_collider_ignore_entity(entry.Shooter, spawn_prototype_at.Entity)
-            return
+            return spawn_prototype_at.Entity
         }
     }
 }

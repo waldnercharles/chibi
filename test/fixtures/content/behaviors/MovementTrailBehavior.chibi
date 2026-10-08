@@ -33,7 +33,7 @@ behavior "MovementTrailBehavior" {
         value clamp = clamp(entry, real, real_2)
         value real_3 = real(64.0)
         value multiply = multiply(clamp, real_3)
-        result Result: float = multiply
+        return multiply
     }
     pure function "Is Stationary"(Direction: struct<"CF_V2"> = null) -> (Stationary: bool = false) {
         depth_limit 32
@@ -41,6 +41,6 @@ behavior "MovementTrailBehavior" {
         value multiply_2 = multiply(entry.Direction.y, entry.Direction.y)
         value add = add(multiply, multiply_2)
         value greater_or_equal = greater_or_equal(0.0, add)
-        result Stationary: bool = greater_or_equal
+        return greater_or_equal
     }
 }

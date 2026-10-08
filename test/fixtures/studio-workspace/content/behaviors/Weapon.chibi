@@ -40,6 +40,6 @@ behavior "Weapon" {
     }
     pure function "position + offset"<T0: struct<"CF_V2">, T1: struct<"CF_V2">, T2: struct<"CF_V2">>(position: T0 = null, offset: T1 = null) -> (Result: T2 = null) {
         value add = add(entry.position, entry.offset)
-        result Result: struct<"CF_V2"> = add
+        return add
     }
 }

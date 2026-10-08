@@ -211,7 +211,7 @@ static void project_library_context()
     FILE *file = fopen(path, "wb");
     test_check(file != NULL, "create source API library definition");
     if (file) {
-        fputs("library Shared { pure function Seven() -> (Result: int) { result Result: int = 7; } }", file);
+        fputs("library Shared { pure function Seven() -> (Result: int) { return 7 } }", file);
         fclose(file);
     }
     const char *source = "behavior Unsaved { value chosen = Shared.Seven(); }";

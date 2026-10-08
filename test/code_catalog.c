@@ -54,8 +54,8 @@ static void cross_library_rename()
 {
     char *definition_metadata = NULL, *caller_metadata = NULL;
     char *definition = identified_library(
-        "library Shared { pure function Seven() -> (Result: int) { result "
-        "Result: int = 7; } }",
+        "library Shared { pure function Seven() -> (Result: int) { return 7 } "
+        "}",
         NULL,
         "Seven",
         &definition_metadata
@@ -72,7 +72,7 @@ static void cross_library_rename()
     code_catalog *catalog = code_catalog_from_assets(one, 1);
     char *caller = identified_library(
         "library Caller { pure function Forward() -> (Result: int) { value "
-        "chosen = Shared.Seven(); result Result: int = chosen.Result; } }",
+        "chosen = Shared.Seven(); return chosen.Result } }",
         code_catalog_context(catalog),
         "Forward",
         &caller_metadata
@@ -203,7 +203,9 @@ static void prototype_inventory()
 
 static void snapshot_library_metadata()
 {
-    code_source *source = code_source_parse("library Shared { pure function Seven() -> (Result: int) { result Result: int = 7; } }");
+    code_source *source = code_source_parse(
+        "library Shared { pure function Seven() -> (Result: int) { return 7 } }"
+    );
     assert(source->asset);
     graph *function = behavior_asset_find_graph_by_name(source->asset, "Seven");
     assert(function);
@@ -306,11 +308,11 @@ void run_code_catalog_checks()
     cross_library_rename();
     const char
         *alpha = "library Alpha { pure function Forward() -> (Result: int) { "
-                 "value chosen = Zulu.Seven(); result Result: int = "
-                 "chosen.Result; } }";
+                 "value chosen = Zulu.Seven(); return "
+                 "chosen.Result } }";
     const char
         *zulu = "library Zulu { pure function Seven() -> (Result: int) { "
-                "result Result: int = 7; } }";
+                "return 7 } }";
     const char
         *consumer = "behavior Consumer { value chosen = Alpha.Forward(); }";
     const char

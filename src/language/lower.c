@@ -33,7 +33,7 @@ typedef struct
     int **function_addresses;
     int *captured;
     int function, pc, payload_first, payload_function;
-    int *locals, *variables, *parameters, *results, *labels, *addresses, *result_sources;
+    int *locals, *variables, *parameters, *results, *labels, *addresses;
     int *goto_pc, *goto_symbol;
     lower_loop *loops;
     bool failed, initializing, async_emitted;
@@ -3598,7 +3598,6 @@ static void store_symbol(lower *l, int symbol, int value, script_range range)
         error(l, range, "Local assignment has no declared reference expression");
         return;
     }
-    l->result_sources[symbol] = -1;
     if (((s->type.flags & SCRIPT_TYPE_REFERENCE) ||
          (l->captured && l->captured[symbol] >= 0)) &&
         l->parameters[symbol] >= 0) {
@@ -3690,7 +3689,6 @@ static void assign_value(lower *l, const script_statement *s, int value)
     if (target->kind == SCRIPT_EXPR_SYMBOL) {
         if (l->target_cached && s->expression == l->target_expression &&
             l->target_reference >= 0) {
-            l->result_sources[target->symbol] = -1;
             reference_write(l, l->target_reference, value, target->type, s->range);
             return;
         }
@@ -3806,13 +3804,6 @@ static void return_results(lower *l, script_range range)
     for (int i = 0; i < f->result_count; i++) {
         int symbol = f->results[i];
         const script_symbol *s = &l->a->symbols[symbol];
-        if (l->result_sources[symbol] >= 0) {
-            int source = l->result_sources[symbol];
-            int value = expression(l, source);
-            value = convert(l, value, l->a->expressions[source].type, s->type, range);
-            store_symbol(l, symbol, value, range);
-            l->result_sources[symbol] = source;
-        }
         int value = symbol_value(
             l,
             &(script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
@@ -4020,10 +4011,6 @@ static void statement(lower *l, int index)
         }
         case SCRIPT_STMT_DECLARE: {
             if (l->a->symbols[s->symbol].lazy_local) {
-                return;
-            }
-            if (l->a->symbols[s->symbol].kind == SCRIPT_RESULT) {
-                l->result_sources[s->symbol] = s->expression;
                 return;
             }
             int value = expression(l, s->expression);
@@ -4336,23 +4323,6 @@ static void discard_bodies(execution_module_plan *module)
         module->bindings[i].dependencies = NULL;
     }
 }
-static void result_declarations(lower *l, int index)
-{
-    if (index < 0) {
-        return;
-    }
-    const script_statement *s = &l->a->statements[index];
-    if (s->kind == SCRIPT_STMT_BLOCK) {
-        for (int i = 0; i < s->child_count; i++) {
-            result_declarations(l, s->children[i]);
-        }
-        return;
-    }
-    if (s->kind == SCRIPT_STMT_DECLARE && s->symbol >= 0 &&
-        l->a->symbols[s->symbol].kind == SCRIPT_RESULT) {
-        statement(l, index);
-    }
-}
 static uint64_t function_id(const script_analysis *analysis, int index)
 {
     const script_function *function = &analysis->functions[index];
@@ -4609,7 +4579,6 @@ static behavior_function *value_evaluator_context(
     l->payload_function = -1;
     l->locals = indices(l->a->symbol_count);
     l->addresses = indices(l->a->symbol_count);
-    l->result_sources = indices(l->a->symbol_count);
     l->parameters = indices(l->a->symbol_count);
     l->results = indices(l->a->symbol_count);
     pin_value *arguments = NULL;
@@ -4737,7 +4706,6 @@ static behavior_function *value_evaluator_context(
     l->captured = NULL;
     free(l->locals);
     free(l->addresses);
-    free(l->result_sources);
     free(l->parameters);
     free(l->results);
     return function;
@@ -4896,7 +4864,6 @@ static void lower_function(lower *l, int index)
             afree(defaults);
         }
     }
-    l->result_sources = indices(l->a->symbol_count);
     l->parameters = indices(l->a->symbol_count);
     l->results = indices(l->a->symbol_count);
     l->labels = indices(l->a->symbol_count);
@@ -5104,9 +5071,7 @@ static void lower_function(lower *l, int index)
     }
     if (child_callable) {
         l->function = f->parent;
-        if (closure) {
-            result_declarations(l, owner->body);
-        } else {
+        if (!closure) {
             statement(l, owner->body);
         }
     }
@@ -5171,7 +5136,6 @@ static void lower_function(lower *l, int index)
     l->function_addresses[index] = l->addresses;
     free(l->captured);
     l->captured = NULL;
-    free(l->result_sources);
     free(l->parameters);
     free(l->results);
     free(l->labels);
@@ -5188,7 +5152,6 @@ static pin_value evaluate_default(lower *l, const script_symbol *s)
     l->initializer_depth = 0;
     l->locals = indices(l->a->symbol_count);
     l->addresses = indices(l->a->symbol_count);
-    l->result_sources = indices(l->a->symbol_count);
     l->parameters = indices(l->a->symbol_count);
     l->results = indices(l->a->symbol_count);
     behavior_function_builder_signature(l->builder, NULL, 0, &result, 1, NULL, 0);
@@ -5253,7 +5216,6 @@ static pin_value evaluate_default(lower *l, const script_symbol *s)
     behavior_function_builder_free(l->builder);
     free(l->locals);
     free(l->addresses);
-    free(l->result_sources);
     free(l->parameters);
     free(l->results);
     l->initializing = false;
@@ -5695,7 +5657,6 @@ execution_module_plan *script_lower(
         l.pc = 0;
         l.locals = indices(a->symbol_count);
         l.addresses = indices(a->symbol_count);
-        l.result_sources = indices(a->symbol_count);
         l.parameters = indices(a->symbol_count);
         l.results = indices(a->symbol_count);
         pin_value *vars = NULL;
@@ -5757,7 +5718,6 @@ execution_module_plan *script_lower(
         behavior_function_builder_free(l.builder);
         free(l.locals);
         free(l.addresses);
-        free(l.result_sources);
         free(l.parameters);
         free(l.results);
     }

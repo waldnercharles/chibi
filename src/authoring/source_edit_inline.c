@@ -402,8 +402,7 @@ bool source_edit_inline(
             }
             free(text);
         }
-        if (!strcmp(kind, "result_declaration") ||
-            !strcmp(kind, "metadata_declaration")) {
+        if (!strcmp(kind, "metadata_declaration")) {
             script_range range = script_node_range(node);
             apush(returns, ((text_edit){ range.start - body.start, range.end - body.start, xstrdup("") }));
         }

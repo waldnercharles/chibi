@@ -1812,6 +1812,57 @@ TEST_CASE(program_version_11_references_migrate_to_values)
     free(migrated);
     return true;
 }
+TEST_CASE(program_version_12_results_migrate_to_returns)
+{
+    const char *source = "behavior R { n: double = 0\n"
+                         "    function Pair(x: double) -> (Sum: double, Twice: "
+                         "double, Kept: double) {\n"
+                         "        result Sum: double = x + 1\n"
+                         "        Kept = 4\n"
+                         "        result Twice: double = (x) * 2\n"
+                         "        if x > 10 {\n"
+                         "            return\n"
+                         "        }\n"
+                         "        return\n"
+                         "    }\n"
+                         "    pure function Seven() -> (Result: double) { "
+                         "result Result: double = 7; }\n"
+                         "    on Impulse(amount, enabled) { p := Pair(2); n = "
+                         "p.Sum + p.Twice + p.Kept + Seven() }\n"
+                         "}\n";
+    const char *expected = "behavior R { n: double = 0\n"
+                           "    function Pair(x: double) -> (Sum: double, "
+                           "Twice: double, Kept: double) {\n"
+                           "        Kept = 4\n"
+                           "        if x > 10 {\n"
+                           "            return(x + 1, (x) * 2, Kept)\n"
+                           "        }\n"
+                           "        return(x + 1, (x) * 2, Kept)\n"
+                           "    }\n"
+                           "    pure function Seven() -> (Result: double) { "
+                           "return 7 }\n"
+                           "    on Impulse(amount, enabled) { p := Pair(2); n "
+                           "= p.Sum + p.Twice + p.Kept + Seven() }\n"
+                           "}\n";
+    char *migrated = chibi_migrate_results(source);
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    REQUIRE(!chibi_migrate_results(expected));
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(migrated, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 18));
+    }
+    free(migrated);
+    return true;
+}
 TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -1899,7 +1950,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "version 12\n", 11));
+    REQUIRE(!strncmp(text, "version 13\n", 11));
     unlink(path);
     snprintf(path, sizeof path, "%s/content/B.chibi", root);
     file = fopen(path, "rb");
@@ -2156,6 +2207,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
     RUN_TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits);
     RUN_TEST_CASE(program_version_11_references_migrate_to_values);
+    RUN_TEST_CASE(program_version_12_results_migrate_to_returns);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
     RUN_TEST_CASE(program_library_call_starts_a_task);

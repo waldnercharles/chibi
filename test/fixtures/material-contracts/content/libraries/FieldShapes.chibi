@@ -7,6 +7,6 @@ library "FieldShapes" {
         value field_min = field_min(field_circle, field_box)
         value field_capsule = field_capsule(entry.X, entry.Y, -90.0, 0.0, 60.0, 0.0, 18.0)
         value field_smooth_union = field_smooth_union(field_min, field_capsule, 15.0)
-        result Value: float = field_smooth_union
+        return field_smooth_union
     }
 }

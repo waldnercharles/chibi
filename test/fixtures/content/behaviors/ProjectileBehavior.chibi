@@ -32,6 +32,6 @@ behavior "ProjectileBehavior" {
         value abs = abs(entry.x)
         value abs_2 = abs(entry.y)
         value add = add(abs, abs_2)
-        result Result: float = add
+        return add
     }
 }

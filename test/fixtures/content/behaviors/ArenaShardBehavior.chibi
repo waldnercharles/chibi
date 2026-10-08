@@ -28,7 +28,7 @@ behavior "ArenaShardBehavior" {
         value add = add(entry.Age, entry.Delta)
         value real = real(0.55)
         value divide = divide(add, real)
-        result Result: float = divide
+        return divide
     }
     pure function "Fade"<T0: float, T1: double>(Normalized: T0 = 0.0) -> (Result: T1 = 0.0) {
         value real = real(1.0)
@@ -36,27 +36,27 @@ behavior "ArenaShardBehavior" {
         value real_2 = real(1.0)
         value subtract_2 = subtract(real_2, entry)
         value multiply = multiply(subtract, subtract_2)
-        result Result: double = multiply
+        return multiply
     }
     pure function "Position X"<T0: float, T1: float, T2: float, T3: float>(PositionX: T0 = 0.0, VelocityX: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
         value multiply = multiply(entry.VelocityX, entry.Delta)
         value add = add(entry.PositionX, multiply)
-        result Result: float = add
+        return add
     }
     pure function "Position Y"<T0: float, T1: float, T2: float, T3: float>(PositionY: T0 = 0.0, VelocityY: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
         value multiply = multiply(entry.VelocityY, entry.Delta)
         value add = add(entry.PositionY, multiply)
-        result Result: float = add
+        return add
     }
     pure function "Pitch"<T0: float, T1: float, T2: float, T3: float>(Pitch: T0 = 0.0, PitchRate: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
         value multiply = multiply(entry.PitchRate, entry.Delta)
         value add = add(entry.Pitch, multiply)
-        result Result: float = add
+        return add
     }
     pure function "Roll"<T0: float, T1: float, T2: float, T3: float>(Roll: T0 = 0.0, RollRate: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
         value multiply = multiply(entry.RollRate, entry.Delta)
         value add = add(entry.Roll, multiply)
-        result Result: float = add
+        return add
     }
     function "Initialize Shard"(scale: float = 0.0, "Pitch Rate": double = 0.0, "Roll Rate": double = 0.0, Lift: double = 0.0) {
         after entry {

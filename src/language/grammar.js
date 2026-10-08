@@ -22,7 +22,6 @@ const K = Object.fromEntries(
     "macro",
     "entry",
     "exit",
-    "result",
     "owner",
     "description",
     "domain",
@@ -134,7 +133,6 @@ module.exports = grammar({
         $.events_declaration,
         $.entry_declaration,
         $.exit_declaration,
-        $.result_declaration,
         $.metadata_declaration,
         $.query_declaration,
       ),
@@ -249,16 +247,6 @@ module.exports = grammar({
     entry_declaration: ($) =>
       seq(K.entry, field("name", $._name), field("body", $.block)),
     exit_declaration: ($) => seq(K.exit, field("name", $._name), $._end),
-    result_declaration: ($) =>
-      seq(
-        K.result,
-        field("name", $._name),
-        ":",
-        field("type", $.type),
-        "=",
-        field("value", $._expression),
-        $._end,
-      ),
     metadata_declaration: ($) =>
       seq(
         field(

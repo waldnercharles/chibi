@@ -16,5 +16,10 @@ char **chibi_migrate_task_calls(const char *const *sources, int count);
  * unary `&` operators, binding a `fallback` through a leading `&x` as
  * `binding: x`, or NULL when the source does not change. */
 char *chibi_migrate_references(const char *source);
+/* Version 13 removes `result Name: T = e` declarations: each bare `return` of
+ * their function returns the declared values in signature order, and a body
+ * without a `return` ends with one. Returns an owned copy of `source`, or NULL
+ * when it declares no results. */
+char *chibi_migrate_results(const char *source);
 
 #endif

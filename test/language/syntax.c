@@ -109,7 +109,7 @@ TEST_CASE(language_callable_types_entries_and_results)
     parse(
         "library Helpers {\n"
         "pure function Identity<T: plain int>(ref int source, item: T = 1) "
-        "-> (Result: T) { result Result: T = item; }\n"
+        "-> (Result: T) { return item }\n"
         "function Apply(amount: int) -> () { entry Run { return(); } exit "
         "Done; }\n"
         "macro Route(key: name) -> (Success: bool) { return.Success(true); }\n"

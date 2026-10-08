@@ -370,7 +370,6 @@
 
 extern const native_definition_pack NATIVE_STATE_DEFINITION_PACK;
 
-/* Authoritative display text shared by source and graph authoring. */
 #define NATIVE_STATE_once_PRESENTATION                                         \
     .category = "Flow Control", .keywords = "stateful do once reset",          \
     .description = "Fires Completed on the first Exec only until Reset; "      \

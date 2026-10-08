@@ -46,7 +46,6 @@
 
 extern const native_definition_pack GAME_AUDIO_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define GAME_AUDIO_PLAY_PRESENTATION                                           \
     .category = "Audio", .keywords = "tone sound effect cue noise sweep",      \
     .description = "Queues a synthesized tone sweeping from Frequency to End " \

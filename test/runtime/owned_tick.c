@@ -10,8 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Managed snapshots are observed after producer retirement, sibling execution
- * and publication. Former private graph batch/update/oracle banks are retired. */
+/* Managed snapshots survive producer retirement, sibling execution and publication. */
 static ecs_world *world;
 static game_source_registry *registry;
 static authoring_source *source;

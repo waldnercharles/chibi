@@ -6,8 +6,6 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Former graph batching counters/backend mutation belonged to the retired
- * executor. These retain its observable binding and attachment contracts. */
 static ecs_world *world;
 static game_source_registry *registry;
 static authoring_source *prepared;

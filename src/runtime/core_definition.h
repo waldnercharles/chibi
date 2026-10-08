@@ -217,7 +217,6 @@
 
 extern const native_definition_pack CORE_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define CORE_DELAY_PRESENTATION                                                \
     .keywords = "wait timer seconds after later",                              \
     .description = "Waits Duration seconds, then fires Completed; a Duration " \

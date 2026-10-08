@@ -183,12 +183,8 @@ bool script_type_assignable(script_type expected, script_type actual)
     if ((expected.flags | actual.flags) & SCRIPT_TYPE_UNTYPED) {
         return true;
     }
-    if (expected.flags & SCRIPT_TYPE_GENERIC) {
-        expected.flags &= ~SCRIPT_TYPE_GENERIC;
-    }
-    if (actual.flags & SCRIPT_TYPE_GENERIC) {
-        actual.flags &= ~SCRIPT_TYPE_GENERIC;
-    }
+    expected.flags &= ~SCRIPT_TYPE_GENERIC;
+    actual.flags &= ~SCRIPT_TYPE_GENERIC;
     if ((actual.flags & SCRIPT_TYPE_OPTIONAL) &&
         !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
         return false;

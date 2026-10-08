@@ -64,7 +64,6 @@
 
 extern const native_definition_pack GAME_VISUAL_REACTION_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define GAME_VISUAL_REACTION_TRIGGER_PRESENTATION                              \
     .category = "Visual/Motion",                                               \
     .keywords = "trigger visual reaction bump recoil hit lift rotation",       \

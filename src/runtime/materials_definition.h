@@ -181,7 +181,6 @@
 
 extern const native_definition_pack GAME_MATERIAL_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define GAME_MATERIAL_DamageMaterial_PRESENTATION                              \
     .category = "Physics",                                                     \
     .description = "Queues Energy damage that carves Entity's material "       \

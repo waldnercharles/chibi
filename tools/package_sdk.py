@@ -43,8 +43,7 @@ def canonical_digest(value):
 
 
 def package_identity(manifest):
-    # The complete contract and provenance are content identity, not only files.
-    # No field contains the package's own identity before this final assignment.
+    # Package identity covers the contract and provenance as well as file checksums.
     return canonical_digest({key: value for key, value in manifest.items() if key != 'build_id'})
 
 

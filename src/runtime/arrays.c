@@ -115,7 +115,8 @@ pin_value native_array_length(const pin_value *inputs, int count, arena *a)
 {
     (void)count;
     (void)a;
-    return scalar(PIN_I32, array_arg(inputs, 0) ? array_arg(inputs, 0)->count : 0);
+    const pin_array *array = array_arg(inputs, 0);
+    return scalar(PIN_I32, array ? array->count : 0);
 }
 
 pin_value native_array_last_index(const pin_value *inputs, int count, arena *a)

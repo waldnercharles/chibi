@@ -189,7 +189,6 @@
       false)
 extern const native_definition_pack GAME_UI_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define GAME_UI_SET_TEXT_PRESENTATION                                          \
     .category = "UI",                                                          \
     .keywords = "label hud score caption widget element selector",             \

@@ -409,7 +409,11 @@ void behavior_function_trace_values(
     const struct behavior_function_calls *calls = ctx->activation
                                                     ? ctx->activation->calls
                                                     : NULL;
-    for (int i = 0; calls && i < acount(calls->frames); i++) {
+    /* A failed call stack never resumes, and its frames released their host banks. */
+    if (!calls || calls->result < 0) {
+        return;
+    }
+    for (int i = 0; i < acount(calls->frames); i++) {
         trace_context(calls->frames[i]->function, &calls->frames[i]->context, mark, user);
     }
 }

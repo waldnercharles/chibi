@@ -32,6 +32,10 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
         script_analyzer_diagnostic(a, node, "Shared state is restricted to systems");
     }
     script_type type = script_analyzer_type_node(a, script_analyzer_field(node, "type"));
+    if (kind == SCRIPT_SHARED_STATE && (type.flags & SCRIPT_TYPE_TASK)) {
+        /* A task belongs to the entity that started it. */
+        script_analyzer_diagnostic(a, node, "Shared state cannot hold a task");
+    }
     int symbol = script_analyzer_symbol_new(
         a,
         script_analyzer_field(node, "name"),

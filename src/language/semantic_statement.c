@@ -139,8 +139,16 @@ static bool declares(analyzer *a, TSNode node, const char *name)
     }
     return false;
 }
+/* Locals shadow a state only inside their own callable. */
+static bool callable(TSNode node)
+{
+    return script_analyzer_is(node, "function_declaration") ||
+           script_analyzer_is(node, "macro_declaration") ||
+           script_analyzer_is(node, "handler");
+}
 static void task_hints(analyzer *a, TSNode body, TSNode node)
 {
+    body = callable(node) ? node : body;
     if (script_analyzer_is(node, "assignment")) {
         TSNode target = script_analyzer_field(node, "target");
         TSNode value = script_analyzer_field(node, "value");
@@ -163,8 +171,8 @@ static void task_hints(analyzer *a, TSNode body, TSNode node)
 }
 /* Infers task states from every `state = Call()` before any body is analyzed,
  * so an `await` reads the same type whichever handler comes first. A name
- * that a local or parameter also uses is left to the in-order inference,
- * which resolves it in its own scope. */
+ * that a local or parameter of the same callable also uses is left to the
+ * in-order inference, which resolves it in its own scope. */
 void script_analyzer_task_hints(analyzer *a, TSNode body)
 {
     task_hints(a, body, body);

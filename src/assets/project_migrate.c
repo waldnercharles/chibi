@@ -8,11 +8,13 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 typedef struct
 {
@@ -760,7 +762,12 @@ static char *staged_path(const char *path)
 static int stage_text(const char *path, const char *text, char *error, size_t error_size)
 {
     char *staged = staged_path(path);
-    FILE *file = fopen(staged, "wb");
+    /* Never write through a link someone left at the staging path. */
+    int fd = open(staged, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0644);
+    FILE *file = fd >= 0 ? fdopen(fd, "wb") : NULL;
+    if (fd >= 0 && !file) {
+        close(fd);
+    }
     size_t size = strlen(text);
     bool written = file && fwrite(text, 1, size, file) == size;
     written = file && !fclose(file) && written;

@@ -1761,6 +1761,8 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
           "" },
         /* Only the block's own `pulse` is assigned Charge, so awaiting the
          * state gives no result. */
+        { "system S(p: Position) { shared worker: task }",
+          "Shared state cannot hold a task" },
         { "behavior B { pulse: task; power: double = 0;"
           "function Charge(time: double) -> (power: double) { yield; return "
           "time }"
@@ -1883,6 +1885,49 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     char *migrated = chibi_migrate_results(source);
     REQUIRE(migrated && !strcmp(migrated, expected));
     REQUIRE(!chibi_migrate_results(expected));
+    /* A link at the staging path is refused, not written through. */
+    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], outside[256],
+         link[256], error[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/content/R.chibi", root);
+    FILE *file = fopen(path, "wb");
+    fputs(source, file);
+    fclose(file);
+    snprintf(outside, sizeof outside, "%s/outside", root);
+    file = fopen(outside, "wb");
+    fputs("keep", file);
+    fclose(file);
+    snprintf(link, sizeof link, "%s/content/R.chibi.migrating", root);
+    REQUIRE(!symlink(outside, link));
+    char manifest[256];
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    file = fopen(manifest, "wb");
+    fputs("version 12\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", file);
+    fclose(file);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) < 0);
+    char text[2048];
+    file = fopen(outside, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(!strcmp(text, "keep"));
+    file = fopen(path, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(!strcmp(text, source));
+    unlink(link);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    file = fopen(path, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(!strcmp(text, expected));
+    unlink(path);
+    unlink(outside);
+    unlink(manifest);
+    snprintf(path, sizeof path, "%s/content", root);
+    rmdir(path);
+    rmdir(root);
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2170,7 +2215,8 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                      "power = await pulse }"
                      "function Start(time: double) { pulse = Charge(time) }"
                      "function Charge(time: double) -> (power: double) { "
-                     "yield; return(time * 2); } }";
+                     "yield; return(time * 2); }"
+                     "function Other() { pulse := 1 } }";
     const char
         *local = "behavior P { power: double = 0;"
                  "function Charge(time: double) -> (power: double) { "

@@ -350,7 +350,17 @@ static int upgrade(const char *manifest, const char *content, int from, char *er
     char *updated = xmalloc(size);
     snprintf(updated, size, "%.*s%d%s", (int)(digits - text), text, CHIBI_PROJECT_VERSION, rest);
     free(text);
-    int status = write_asset_file(manifest, updated, error, error_size);
+    /* Replace the manifest only once the new one is fully written. */
+    size_t length = strlen(manifest) + sizeof ".migrating";
+    char *staged = xmalloc(length);
+    snprintf(staged, length, "%s.migrating", manifest);
+    int status = write_asset_file(staged, updated, error, error_size);
+    if (!status && rename(staged, manifest)) {
+        set_errorf(error, error_size, "Cannot replace %s", manifest);
+        remove(staged);
+        status = -1;
+    }
+    free(staged);
     free(updated);
     return status;
 }

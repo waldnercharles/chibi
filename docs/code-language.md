@@ -7,13 +7,13 @@ modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 11. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 13. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 11
+version 13
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -219,6 +219,9 @@ behavior Turret {
 - `yield` resumes on the next update.
 - `cancel t` stops a running task and the tasks it started; anything awaiting it
   wakes with default results. Cancelling a finished task does nothing.
+- A finished task keeps its results until 32 more of its owner's tasks finish.
+  Awaiting it after that gives default results, like a cancelled task, so keep a
+  result you need longer in a state.
 - A task is true while it is running, so `if t` and `if !t` test it.
 - A `task` state needs no default; until assigned it refers to no task.
 - Tasks belong to the entity or system registration that started them and stop
@@ -418,7 +421,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 11. Executable files contain no generated identity
+Project manifests use version 13. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

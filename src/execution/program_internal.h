@@ -22,8 +22,9 @@ typedef struct
     const behavior_function *function;
     bool pending, delivered;
     flow_host_request *request;
-    bool begun, timer;
+    bool begun, timer, yield;
     double deadline;
+    uint64_t update; /* A yield resumes on any later update. */
 } command_wait;
 typedef struct
 {
@@ -129,6 +130,7 @@ typedef struct
 struct execution_program
 {
     execution_module *module;
+    uint64_t updates;
     execution_program_failure failure;
     execution_profile_observer observer;
     void *observer_context;
@@ -214,4 +216,11 @@ int program_initialize_local(behavior_function_context *, pin_value *, bool);
 int program_store_local_group(behavior_function_context *, pin_value *, int, bool);
 void program_collect_payloads(execution_program *, execution_activation *extra);
 const pin_value *program_event_argument(behavior_function_context *, uint64_t, int);
+static inline bool program_wait_due(const command_wait *wait, double now)
+{
+    return wait->timer &&
+           (wait->yield ? wait->update != wait->activation->instance->program->updates
+                        : wait->deadline <= now);
+}
+
 #endif

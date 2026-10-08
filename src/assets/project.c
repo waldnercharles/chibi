@@ -308,38 +308,47 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     return 0;
 }
 
+/* The digits of a top-level `version <from>` node, or NULL. */
+static const char *version_digits(const char *text, int from)
+{
+    for (const char *line = text; line; line = strchr(line, '\n')) {
+        line += *line == '\n';
+        const char *p = line + strspn(line, " \t");
+        if (strncmp(p, "version", 7) || !strchr(" \t", p[7])) {
+            continue;
+        }
+        p += 7 + strspn(p + 7, " \t");
+        char *end;
+        if (strtol(p, &end, 10) == from && end != p) {
+            return p;
+        }
+    }
+    return NULL;
+}
 /* Runs each step from `from` and then records the new version. The manifest
  * is written last, so an interrupted upgrade reruns from the old version. */
 static int upgrade(const char *manifest, const char *content, int from, char *error, size_t error_size)
 {
-    for (int version = from; version < CHIBI_PROJECT_VERSION; version++) {
-        if (chibi_project_migrate_content(content, version, error, error_size)) {
-            return -1;
-        }
-    }
     char *text = read_file(manifest, error, error_size);
     if (!text) {
         return -1;
     }
-    char old[32];
-    snprintf(old, sizeof old, "version %d\n", from);
-    char *at = strstr(text, old);
-    if (!at || (at != text && at[-1] != '\n')) {
+    const char *digits = version_digits(text, from);
+    if (!digits) {
         free(text);
-        set_errorf(error, error_size, "Cannot find the version line in %s", manifest);
+        set_errorf(error, error_size, "Cannot find the version node in %s", manifest);
         return -1;
     }
+    for (int version = from; version < CHIBI_PROJECT_VERSION; version++) {
+        if (chibi_project_migrate_content(content, version, error, error_size)) {
+            free(text);
+            return -1;
+        }
+    }
+    const char *rest = digits + strspn(digits, "0123456789");
     size_t size = strlen(text) + 32;
     char *updated = xmalloc(size);
-    snprintf(
-        updated,
-        size,
-        "%.*sversion %d\n%s",
-        (int)(at - text),
-        text,
-        CHIBI_PROJECT_VERSION,
-        at + strlen(old)
-    );
+    snprintf(updated, size, "%.*s%d%s", (int)(digits - text), text, CHIBI_PROJECT_VERSION, rest);
     free(text);
     int status = write_asset_file(manifest, updated, error, error_size);
     free(updated);

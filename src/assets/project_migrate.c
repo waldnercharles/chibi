@@ -49,6 +49,37 @@ static bool same_name(const char *a_source, TSNode a, const char *b_source, TSNo
     return length_a == length_b &&
            !memcmp(a_source + start_a, b_source + start_b, length_a);
 }
+static char *name_text(const char *source, TSNode node)
+{
+    uint32_t start = ts_node_start_byte(node), length = ts_node_end_byte(node) - start;
+    if (is(node, "string")) {
+        start++, length -= 2;
+    }
+    char *text = xmalloc(length + 1);
+    memcpy(text, source + start, length);
+    text[length] = '\0';
+    return text;
+}
+static int name_char(const char **p)
+{
+    *p += strspn(*p, "_ -");
+    return tolower((unsigned char)(**p ? *(*p)++ : 0));
+}
+/* Library calls resolve through the catalog, which ignores case and the
+ * separators `_`, ` ` and `-` (script_name_matches). */
+static bool similar_name(const char *a_source, TSNode a, const char *b_source, TSNode b)
+{
+    char *x = name_text(a_source, a), *y = name_text(b_source, b);
+    const char *p = x, *q = y;
+    int c, d;
+    do {
+        c = name_char(&p), d = name_char(&q);
+    } while (c == d && c);
+    bool matches = c == d;
+    free(x);
+    free(y);
+    return matches;
+}
 static bool is_name(TSNode node)
 {
     return is(node, "identifier") || is(node, "string");
@@ -97,11 +128,12 @@ static const function *callee(const corpus *c, int file, TSNode target)
     for (int i = 0; is_name(name) && i < acount(c->functions); i++) {
         const function *f = &c->functions[i];
         const char *defined = c->sources[f->file];
-        bool scope = ts_node_is_null(library)
-                       ? f->file == file
-                       : !ts_node_is_null(f->library) &&
-                             same_name(source, library, defined, f->library);
-        if (scope && same_name(source, name, defined, f->name)) {
+        bool local = ts_node_is_null(library);
+        bool scope = local ? f->file == file
+                           : !ts_node_is_null(f->library) &&
+                                 similar_name(source, library, defined, f->library);
+        if (scope && (local ? same_name(source, name, defined, f->name)
+                            : similar_name(source, name, defined, f->name))) {
             return f;
         }
     }
@@ -648,15 +680,27 @@ static char *read_text(const char *path)
     }
     return text;
 }
-static int write_text(const char *path, const char *text, char *error, size_t error_size)
+#define STAGED_SUFFIX ".migrating"
+static char *staged_path(const char *path)
 {
-    FILE *file = fopen(path, "wb");
+    size_t size = strlen(path) + sizeof STAGED_SUFFIX;
+    char *staged = xmalloc(size);
+    snprintf(staged, size, "%s" STAGED_SUFFIX, path);
+    return staged;
+}
+/* Writes the migrated source beside the original, which stays untouched. */
+static int stage_text(const char *path, const char *text, char *error, size_t error_size)
+{
+    char *staged = staged_path(path);
+    FILE *file = fopen(staged, "wb");
     size_t size = strlen(text);
     bool written = file && fwrite(text, 1, size, file) == size;
     written = file && !fclose(file) && written;
     if (!written) {
-        snprintf(error, error_size, "Cannot write migrated source %s", path);
+        snprintf(error, error_size, "Cannot write migrated source %s", staged);
+        remove(staged);
     }
+    free(staged);
     return written ? 0 : -1;
 }
 static bool has_suffix(const char *name, const char *suffix)
@@ -729,10 +773,26 @@ int chibi_project_migrate_content(const char *content, int from, char *error, si
             default: assert(false);
         }
     }
-    for (int i = 0; i < count; i++) {
-        if (!status && migrated[i]) {
-            status = write_text(paths[i], migrated[i], error, error_size);
+    /* Every source is staged before any original is replaced, and a failed
+     * step leaves the originals. Each step is idempotent, so a step
+     * interrupted while replacing reruns cleanly. */
+    int staged = 0;
+    for (; !status && staged < count; staged++) {
+        if (migrated[staged]) {
+            status = stage_text(paths[staged], migrated[staged], error, error_size);
         }
+    }
+    for (int i = 0; i < staged; i++) {
+        char *from = migrated[i] ? staged_path(paths[i]) : NULL;
+        if (from && status) {
+            remove(from);
+        } else if (from && rename(from, paths[i])) {
+            snprintf(error, error_size, "Cannot replace source %s", paths[i]);
+            status = -1;
+        }
+        free(from);
+    }
+    for (int i = 0; i < count; i++) {
         free(migrated ? migrated[i] : NULL);
         free(sources[i]);
         free(paths[i]);

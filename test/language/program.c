@@ -578,7 +578,7 @@ TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_re
             REQUIRE(execution_instance_pending(instances[i]) == 1);
             REQUIRE(number_state(instances[i], "count", 1));
             REQUIRE(number_state(instances[i], "local_count", 0));
-            REQUIRE(execution_program_pump(program, i + 1, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, i + 1, 0, 1000) == FLOW_OK);
             REQUIRE(execution_instance_pending(instances[i]) == 0);
             REQUIRE(number_state(instances[i], "local_count", 11));
             REQUIRE(number_state(instances[i], "position_x", i ? 9 : 6));
@@ -601,7 +601,7 @@ TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_re
             ECS_OK
         );
         REQUIRE(execution_instance_dispatch(instances[0], 11, args, 2, 2, 0, 1000) == FLOW_OK);
-        REQUIRE(execution_program_pump(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 3, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instances[0], "count", 2));
         REQUIRE(number_state(instances[0], "local_count", 12));
         REQUIRE(number_state(instances[0], "position_x", 13));
@@ -610,11 +610,11 @@ TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_re
         REQUIRE(execution_instance_pending(instances[0]) == 1);
         execution_program_detach(program, ecs_entity_to_u64(owners[0]));
         REQUIRE(execution_program_instance(program, ecs_entity_to_u64(owners[0])) == NULL);
-        REQUIRE(execution_program_pump(program, 4, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 4, 0, 1000) == FLOW_OK);
         instances[0] = execution_program_attach(program, ecs_entity_to_u64(owners[0]));
         REQUIRE(instances[0] != NULL && number_state(instances[0], "count", 0));
         REQUIRE(execution_instance_dispatch(instances[0], 11, args, 2, 4, 0, 1000) == FLOW_OK);
-        REQUIRE(execution_program_pump(program, 5, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 5, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instances[0], "local_count", 11));
         REQUIRE(number_state(instances[0], "position_x", 13));
         other_program = execution_program_new(module, world, NULL);
@@ -625,7 +625,7 @@ TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_re
         );
         REQUIRE(other != NULL);
         REQUIRE(execution_instance_dispatch(other, 11, args, 2, 10, 0, 1000) == FLOW_OK);
-        REQUIRE(execution_program_pump(other_program, 11, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(other_program, 11, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(other, "count", 1));
         REQUIRE(number_state(other, "local_count", 11));
         REQUIRE(number_state(other, "position_x", 13));
@@ -734,12 +734,12 @@ TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes)
                 ) == FLOW_OK
             );
             replacement[0] = 'X';
-            REQUIRE(execution_program_pump(program, now + 1, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, now + 1, 0, 1000) == FLOW_OK);
             REQUIRE(string_state(instance, "observed", "before"));
             REQUIRE(string_state(instance, "text", "final"));
             REQUIRE(execution_instance_pending(instance) == 1);
             REQUIRE(execution_instance_state(instance, state_id("count"))->d == round + 1);
-            REQUIRE(execution_program_pump(program, now + 2, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, now + 2, 0, 1000) == FLOW_OK);
             REQUIRE(string_state(instance, "observed", "between"));
             REQUIRE(execution_instance_pending(instance) == 0);
             REQUIRE(
@@ -784,11 +784,11 @@ TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume)
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         for (int round = 0; round < 2; round++) {
             REQUIRE(execution_instance_pending(instance) == 1);
-            REQUIRE(execution_program_pump(program, round * 2 + 1, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, round * 2 + 1, 0, 1000) == FLOW_OK);
             REQUIRE(number_state(instance, "first", round));
             REQUIRE(string_state(instance, "before_text", "before"));
             REQUIRE(execution_instance_pending(instance) == 1);
-            REQUIRE(execution_program_pump(program, round * 2 + 2, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, round * 2 + 2, 0, 1000) == FLOW_OK);
             REQUIRE(number_state(instance, "second", (round + 1) * 100));
             REQUIRE(string_state(instance, "after_text", "replacement"));
         }
@@ -845,7 +845,7 @@ TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_res
             REQUIRE(memory_text_state(instance, "observed", 0));
             execution_memory_usage warm = { 0 };
             for (int step = 1; step <= 64; step++) {
-                REQUIRE(execution_program_pump(program, step, 0, 1000) == FLOW_OK);
+                REQUIRE(execution_program_update(program, step, 0, 1000) == FLOW_OK);
                 REQUIRE(number_state(instance, "count", step));
                 REQUIRE(memory_text_state(instance, "observed", step <= 3 ? 0 : 4));
                 REQUIRE(execution_instance_pending(instance) == (step < 64));
@@ -922,7 +922,7 @@ TEST_CASE(program_lazy_tuple_initializes_once_and_preserves_group_writes)
                 );
                 REQUIRE(number_state(instance, "calls", round + 1));
                 REQUIRE(number_state(instance, "first", c == 1 ? 77 : round + 1));
-                REQUIRE(execution_program_pump(program, now + 1, 0, 1000) == FLOW_OK);
+                REQUIRE(execution_program_update(program, now + 1, 0, 1000) == FLOW_OK);
                 REQUIRE(number_state(instance, "calls", round + 1));
                 REQUIRE(number_state(instance, "second", c < 2 ? 77 : round + 1));
                 REQUIRE(string_state(instance, "text", "captured"));
@@ -957,22 +957,22 @@ TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_det
             number_state(instance, "early_count", 0) &&
             number_state(instance, "late_count", 0)
         );
-        REQUIRE(execution_program_pump(program, 0.5, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.5, 0, 1000) == FLOW_OK);
         REQUIRE(
             number_state(instance, "early_count", 0) &&
             number_state(instance, "late_count", 0)
         );
-        REQUIRE(execution_program_pump(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(
             number_state(instance, "early_count", 1) &&
             number_state(instance, "late_count", 0)
         );
-        REQUIRE(execution_program_pump(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
         REQUIRE(
             number_state(instance, "early_count", 1) &&
             number_state(instance, "late_count", 0)
         );
-        REQUIRE(execution_program_pump(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 3, 0, 1000) == FLOW_OK);
         REQUIRE(
             number_state(instance, "early_count", 1) &&
             number_state(instance, "late_count", 1)
@@ -982,7 +982,7 @@ TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_det
         REQUIRE(execution_program_instance(program, ecs_entity_to_u64(owner)) == NULL);
         instance = execution_program_attach(program, ecs_entity_to_u64(owner));
         REQUIRE(instance != NULL);
-        REQUIRE(execution_program_pump(program, 10, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 10, 0, 1000) == FLOW_OK);
         REQUIRE(
             number_state(instance, "early_count", 0) &&
             number_state(instance, "late_count", 0)
@@ -1448,11 +1448,11 @@ TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration
         args[0].d = 2;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "evaluations", 2));
-        REQUIRE(execution_program_pump(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 3, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "completions", 0));
-        REQUIRE(execution_program_pump(program, 3.5, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 3.5, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "completions", 0));
-        REQUIRE(execution_program_pump(program, 4, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 4, 0, 1000) == FLOW_OK);
         REQUIRE(
             number_state(instance, "completions", 1) &&
             number_state(instance, "captured", 1)
@@ -1463,7 +1463,7 @@ TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration
         execution_program_detach(program, ecs_entity_to_u64(owner));
         instance = execution_program_attach(program, ecs_entity_to_u64(owner));
         REQUIRE(instance);
-        REQUIRE(execution_program_pump(program, 9, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 9, 0, 1000) == FLOW_OK);
         REQUIRE(
             number_state(instance, "completions", 0) &&
             number_state(instance, "evaluations", 0)
@@ -1524,7 +1524,7 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
         REQUIRE(first.status == FLOW_PAUSED_RESULT);
         REQUIRE(first.owner == owner && first.point.occurrence == call && first.depth == 0);
         REQUIRE(number_state(instance, "calls", 0));
-        REQUIRE(execution_program_pump(program, 0.5, 0, 1000) >= FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.5, 0, 1000) >= FLOW_OK);
         REQUIRE(number_state(instance, "calls", 0));
         REQUIRE(
             execution_inspector_breakpoint(debugger, execution_module_id(module), handler, call, false)
@@ -1545,7 +1545,7 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
         REQUIRE(number_state(instance, "observed", 1));
         REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_SUSPENDED_RESULT);
         REQUIRE(number_state(instance, "calls", 1));
-        REQUIRE(execution_program_pump(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "observed", 11));
         REQUIRE(execution_inspector_pause(debugger, owner));
         REQUIRE(execution_instance_dispatch(instance, 10, &tick, 1, 2, 0, 1000) == FLOW_OK);
@@ -1555,7 +1555,7 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
         REQUIRE(execution_inspector_cursor(debugger).run > first.run);
         REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_SUSPENDED_RESULT);
         REQUIRE(number_state(instance, "calls", 2));
-        REQUIRE(execution_program_pump(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 3, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "observed", 12));
         int saved = -1;
         for (int n = 0; n < execution_inspector_watch_count(debugger); n++) {
@@ -1584,7 +1584,7 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
         REQUIRE(other);
         REQUIRE(execution_instance_dispatch(other, 10, &tick, 1, 4, 0, 1000) == FLOW_OK);
         REQUIRE(execution_instance_pending(other) > 0);
-        REQUIRE(execution_program_pump(program, 5, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 5, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(other, "observed", 11));
         REQUIRE(execution_inspector_cursor(debugger).owner == sibling_owner);
         REQUIRE(execution_inspector_owner_cursor(debugger, owner, &selected));
@@ -1631,11 +1631,11 @@ TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller)
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "steps", 1) && number_state(instance, "seen", 1));
         REQUIRE(number_state(instance, "out", 0));
-        REQUIRE(execution_program_pump(program, 0.25, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.25, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "steps", 2) && number_state(instance, "out", 0));
-        REQUIRE(execution_program_pump(program, 0.5, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.5, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "steps", 2));
-        REQUIRE(execution_program_pump(program, 1.25, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1.25, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "steps", 3) && number_state(instance, "out", 8));
         REQUIRE(number_state(instance, "seen", 11));
         REQUIRE(execution_instance_pending(instance) == 0);
@@ -1670,7 +1670,7 @@ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
         REQUIRE(execution_instance_pending(instance) > 0);
         args[1].b = false;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.5, 0, 1000) == FLOW_OK);
-        REQUIRE(execution_program_pump(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "woke", 1));
         REQUIRE(number_state(instance, "inner", 0) && number_state(instance, "outer", 0));
         REQUIRE(execution_instance_pending(instance) == 0);
@@ -1702,14 +1702,14 @@ TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
         for (int i = 0; i < 40; i++) {
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         }
-        REQUIRE(execution_program_pump(program, 0.1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "done", 41));
         /* The oldest finished slot, the first task's, now runs Long. */
         args[0].d = 2;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.2, 0, 1000) == FLOW_OK);
         args[1].b = false;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.3, 0, 1000) == FLOW_OK);
-        REQUIRE(execution_program_pump(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "kept", 1) && number_state(instance, "stale", 0));
         REQUIRE(execution_instance_pending(instance) == 0);
     }
@@ -1734,7 +1734,7 @@ TEST_CASE(program_task_stops_with_owner_and_does_not_block_events)
                              { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         for (int i = 1; i <= 3; i++) {
-            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
         REQUIRE(number_state(instance, "ticks", 4) && number_state(instance, "hits", 1));
         args[1].b = false;
@@ -1742,7 +1742,7 @@ TEST_CASE(program_task_stops_with_owner_and_does_not_block_events)
         REQUIRE(number_state(instance, "hits", 2));
         execution_program_detach(program, handle);
         instance = execution_program_attach(program, handle);
-        REQUIRE(execution_program_pump(program, 5, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 5, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "ticks", 0) && execution_instance_pending(instance) == 0);
     }
     return true;
@@ -1885,7 +1885,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
                    "function Idle() -> () { } }";
     const char
         *user = "behavior U { on Impulse(amount, enabled) { Store.Work(); "
-                "Store.Idle(); Work(); } }";
+                "store.work(); Store.Idle(); Work(); } }";
     const char *sources[] = { source, library, user };
     char **all = chibi_migrate_task_calls(sources, 3);
     char *migrated = all[0];
@@ -1895,7 +1895,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
         !strcmp(
             all[2],
             "behavior U { on Impulse(amount, enabled) { await Store.Work(); "
-            "Store.Idle(); Work(); } }"
+            "await store.work(); Store.Idle(); Work(); } }"
         )
     );
     free(all[2]);
@@ -1915,7 +1915,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         for (int i = 1; i <= 4; i++) {
-            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
         REQUIRE(number_state(instance, "n", 204) && execution_instance_pending(instance) == 0);
     }
@@ -1942,7 +1942,11 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     REQUIRE(!symlink(root, link));
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     file = fopen(path, "wb");
-    fputs("version 10\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", file);
+    fputs(
+        "version  10 // saved by an older build\r\ncontent \"content\"\r\n"
+        "start_scene \"scenes/Start.kdl\"\r\n",
+        file
+    );
     fclose(file);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 10);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
@@ -1993,7 +1997,7 @@ TEST_CASE(program_single_result_call_fields_read_the_result)
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         for (int i = 1; i <= 3; i++) {
-            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
         REQUIRE(number_state(instance, "n", 34));
     }
@@ -2020,7 +2024,7 @@ TEST_CASE(program_task_with_several_results_awaits_a_tuple)
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         for (int i = 1; i <= 3; i++) {
-            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
         REQUIRE(number_state(instance, "n", 23));
     }
@@ -2057,7 +2061,7 @@ TEST_CASE(program_library_call_starts_a_task)
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "n", 11) && number_state(instance, "local_count", 0));
-        REQUIRE(execution_program_pump(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(
             number_state(instance, "local_count", 12) &&
             execution_instance_pending(instance) == 0
@@ -2084,11 +2088,34 @@ TEST_CASE(program_task_keeps_state_and_component_references)
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "n", 0));
         for (int i = 1; i <= 3; i++) {
-            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
         REQUIRE(number_state(instance, "n", 2) && execution_instance_pending(instance) == 0);
         pin_value x;
         REQUIRE(ecs_component_read_field(world, owner, 501, 0, &x) == ECS_OK && x.d == 7);
+    }
+    return true;
+}
+TEST_CASE(program_yield_resumes_on_the_next_update_without_time)
+{
+    const char *source = "behavior Y { done: double = 0;"
+                         "function Short() { yield; done += 1 }"
+                         "on Impulse(amount, enabled) { Short() } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_pump(program, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "done", 0));
+        REQUIRE(execution_program_update(program, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "done", 1));
     }
     return true;
 }
@@ -2100,16 +2127,24 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                   "yield; return(time * 2); }"
                   "on Impulse(amount, enabled) { pulse = Charge(amount); "
                   "power = await pulse; } }";
+    /* The await is analyzed before the assignment that types the state. */
+    const char
+        *reordered = "behavior P { pulse: task; power: double = 0;"
+                     "on Impulse(amount, enabled) { Start(amount); "
+                     "power = await pulse }"
+                     "function Start(time: double) { pulse = Charge(time) }"
+                     "function Charge(time: double) -> (power: double) { "
+                     "yield; return(time * 2); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int b = 0; b < 2; b++) {
+    for (int b = 0; b < 4; b++) {
         prepare();
-        REQUIRE(compile(source, backends[b]));
+        REQUIRE(compile(b < 2 ? source : reordered, backends[b % 2]));
         ecs_entity owner = ecs_world_create_entity(world);
         execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
         const pin_value args[] = { { .type = PIN_F64, .d = 3 },
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(execution_program_pump(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "power", 6));
     }
     return true;
@@ -2142,7 +2177,7 @@ TEST_CASE(program_task_shares_boxed_locals)
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         }
         for (int i = 1; i <= 3; i++) {
-            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
         /* The caller and its task share v; each declaration of u is its own;
          * w and z outlive their callers. */
@@ -2212,6 +2247,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
     RUN_TEST_CASE(program_library_call_starts_a_task);
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
+    RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);

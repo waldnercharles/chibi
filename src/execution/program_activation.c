@@ -220,7 +220,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     }
     for (int i = 0; i < acount(a->requests);) {
         command_wait *wait = a->requests[i];
-        if (wait->timer && wait->deadline <= now) {
+        if (program_wait_due(wait, now)) {
             bool completed = flow_host_complete(wait->request, -1, (pin_value){ 0 });
             assert(completed);
             (void)completed;
@@ -260,7 +260,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     double deadline = 0;
     for (int i = 0; i < acount(a->requests); i++) {
         command_wait *wait = a->requests[i];
-        if (wait->timer && (!deadline || wait->deadline < deadline)) {
+        if (wait->timer && !wait->yield && (!deadline || wait->deadline < deadline)) {
             deadline = wait->deadline;
         }
     }

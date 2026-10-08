@@ -865,6 +865,7 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
 {
     assert(!p->dispatching && !p->system_prepared);
     bool update = phase > 0;
+    p->updates += update;
     p->now = now;
     p->delta = delta;
     p->budget = budget ? budget : 10000;
@@ -1034,6 +1035,7 @@ int execution_program_update(execution_program *p, double now, double delta, uns
 int execution_program_prepare_system(execution_program *p, double now, double delta, unsigned budget)
 {
     assert(p && !p->system_prepared && !p->running && !p->dispatching);
+    p->updates++;
     int status = execution_program_pump(p, now, delta, budget);
     if (status < 0) {
         return status;

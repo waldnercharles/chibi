@@ -104,6 +104,44 @@ static void infer_task(analyzer *a, int symbol, script_type value)
     s->mixed_tasks = s->type.nominal != 0;
     s->type.nominal = s->mixed_tasks ? 0 : value.nominal;
 }
+/* The function a call starts a task of, by name: a local function or a
+ * library function that waits. */
+static uint64_t task_function(analyzer *a, TSNode call)
+{
+    char *name = script_analyzer_qualified_name(a, script_analyzer_field(call, "function"));
+    int symbol = script_analyzer_callable_symbol(a, name);
+    int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+    free(name);
+    if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_FUNCTION) {
+        return a->out->symbols[symbol].id;
+    }
+    const script_catalog_capability *library = index >= 0
+                                                 ? &a->catalog->capabilities[index]
+                                                 : NULL;
+    return library && (library->effects & SCRIPT_EFFECT_SUSPEND) ? library->id : 0;
+}
+/* Infers task states from every `state = Call()` before any body is analyzed,
+ * so an `await` reads the same type whichever handler comes first. */
+void script_analyzer_task_hints(analyzer *a, TSNode node)
+{
+    if (script_analyzer_is(node, "assignment")) {
+        TSNode target = script_analyzer_field(node, "target");
+        TSNode value = script_analyzer_field(node, "value");
+        int symbol = script_analyzer_is(target, "identifier")
+                       ? script_analyzer_lookup(a, target)
+                       : -1;
+        if (symbol >= 0 && script_analyzer_is(value, "call_expression") &&
+            script_analyzer_is(script_analyzer_field(node, "operator"), "=")) {
+            script_type task = { .storage = PIN_U64,
+                                 .nominal = task_function(a, value),
+                                 .flags = SCRIPT_TYPE_TASK };
+            infer_task(a, symbol, task);
+        }
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        script_analyzer_task_hints(a, ts_node_named_child(node, i));
+    }
+}
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
 {
     if (script_analyzer_is(node, "block")) {

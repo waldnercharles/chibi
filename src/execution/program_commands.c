@@ -231,7 +231,7 @@ static bool wait_runnable(void *owner, double now)
     }
     for (int i = 0; i < acount(a->requests); i++) {
         command_wait *wait = a->requests[i];
-        if ((wait->timer && wait->deadline <= now) ||
+        if (program_wait_due(wait, now) ||
             (flow_host_status(wait->request) == FLOW_HOST_READY && !wait->delivered)) {
             return true;
         }
@@ -277,8 +277,10 @@ static int begin_command(behavior_function_context *ctx, int command)
         descriptor->intrinsic == NODE_COMMAND_YIELD) {
         wait->timer = true;
         if (descriptor->intrinsic == NODE_COMMAND_YIELD) {
-            /* Any later update is after this one. */
-            wait->deadline = nextafter(ctx->now, INFINITY);
+            wait->yield = true;
+            wait->update = activation->instance->program->updates;
+            wait->begun = true;
+            return 1;
         } else {
             assert(binding->count == 1);
             pin_value duration = ctx->command_arguments[binding->first];

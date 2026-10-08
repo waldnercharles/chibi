@@ -117,6 +117,7 @@ static script_analysis *analyze(
             for (int j = 0; j < acount(a.initializers); j++) {
                 script_analyzer_resolve_initializer(&a, a.initializers[j].symbol);
             }
+            script_analyzer_task_hints(&a, body);
             script_analyzer_definition_pass(&a, body);
             if (out->kind == SCRIPT_PROGRAM_SYSTEM) {
                 int function = script_analyzer_function_new(&a, body, SCRIPT_FUNCTION_SYSTEM, -1);

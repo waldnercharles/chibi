@@ -2,7 +2,8 @@
 # the compiler driving this build (which may be a different Clang or GCC).
 function(chibi_reflect_resource_include output)
     get_filename_component(library "${LIBCLANG_LIBRARY}" REALPATH)
-    get_filename_component(library_dir "${library}" DIRECTORY)
+    # Keep the found path's directory: distributions symlink it out of the LLVM prefix.
+    get_filename_component(library_dir "${LIBCLANG_LIBRARY}" DIRECTORY)
     get_filename_component(prefix "${library_dir}/.." REALPATH)
     set(clang "${prefix}/bin/clang")
     if(EXISTS "${clang}")

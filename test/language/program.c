@@ -1827,8 +1827,14 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                          "    }\n"
                          "    pure function Seven() -> (Result: double) { "
                          "result Result: double = 7; }\n"
+                         "    function Half(x: double) -> (Out: double) {\n"
+                         "        result Out: double = x / 2\n"
+                         "        if x > 100 {\n"
+                         "            return\n"
+                         "        }\n"
+                         "    }\n"
                          "    on Impulse(amount, enabled) { p := Pair(2); n = "
-                         "p.Sum + p.Twice + p.Kept + Seven() }\n"
+                         "p.Sum + p.Twice + p.Kept + Seven() + Half(4) }\n"
                          "}\n";
     const char *expected = "behavior R { n: double = 0\n"
                            "    function Pair(x: double) -> (Sum: double, "
@@ -1841,8 +1847,14 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                            "    }\n"
                            "    pure function Seven() -> (Result: double) { "
                            "return 7 }\n"
+                           "    function Half(x: double) -> (Out: double) {\n"
+                           "        if x > 100 {\n"
+                           "            return x / 2\n"
+                           "        }\n"
+                           "        return x / 2\n"
+                           "    }\n"
                            "    on Impulse(amount, enabled) { p := Pair(2); n "
-                           "= p.Sum + p.Twice + p.Kept + Seven() }\n"
+                           "= p.Sum + p.Twice + p.Kept + Seven() + Half(4) }\n"
                            "}\n";
     char *migrated = chibi_migrate_results(source);
     REQUIRE(migrated && !strcmp(migrated, expected));
@@ -1858,7 +1870,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
         const pin_value args[] = { { .type = PIN_F64, .d = 0 },
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "n", 18));
+        REQUIRE(number_state(instance, "n", 20));
     }
     free(migrated);
     return true;
@@ -2135,10 +2147,17 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                      "function Start(time: double) { pulse = Charge(time) }"
                      "function Charge(time: double) -> (power: double) { "
                      "yield; return(time * 2); } }";
+    const char
+        *local = "behavior P { power: double = 0;"
+                 "function Charge(time: double) -> (power: double) { "
+                 "yield; return(time * 2); }"
+                 "on Impulse(amount, enabled) { t: task = Charge(amount); "
+                 "power = await t } }";
+    const char *sources[] = { source, reordered, local };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int b = 0; b < 4; b++) {
+    for (int b = 0; b < 6; b++) {
         prepare();
-        REQUIRE(compile(b < 2 ? source : reordered, backends[b % 2]));
+        REQUIRE(compile(sources[b / 2], backends[b % 2]));
         ecs_entity owner = ecs_world_create_entity(world);
         execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
         const pin_value args[] = { { .type = PIN_F64, .d = 3 },

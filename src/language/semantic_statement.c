@@ -196,6 +196,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             );
         }
         a->out->symbols[result.symbol].initializer = result.expression;
+        infer_task(a, result.symbol, script_analyzer_expr_type(a, result.expression));
         result.effects = script_analyzer_expr_effects(a, result.expression);
         if (a->out->expressions[result.expression].awaited) {
             for (int i = 0; i < acount(a->out->symbols); i++) {

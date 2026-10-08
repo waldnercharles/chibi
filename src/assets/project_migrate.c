@@ -564,7 +564,21 @@ static char *return_value(const char *source, TSNode function, const declared *o
     afree(text);
     return value;
 }
-/* Appends `return` before the closing brace of a body without one. */
+/* Whether the body's own statements can reach its closing brace. A body
+ * with `on` or `after` handlers finishes from them instead. */
+static bool falls_through(TSNode body)
+{
+    TSNode last = { 0 };
+    for (uint32_t i = 0; i < ts_node_named_child_count(body); i++) {
+        TSNode child = ts_node_named_child(body, i);
+        if (is(child, "handler")) {
+            return false;
+        }
+        last = is(child, "comment") ? last : child;
+    }
+    return ts_node_is_null(last) || !is(last, "return_statement");
+}
+/* Appends `return` before the closing brace of a body that can reach it. */
 static void append_return(
     const char *source,
     TSNode body,
@@ -631,7 +645,7 @@ char *chibi_migrate_results(const char *source)
             TSNode end = ts_node_is_null(outcome) ? ts_node_child(found[j], 0) : outcome;
             apush(inserts, ((insertion){ (int)ts_node_end_byte(end), acount(inserts), value }));
         }
-        if (!acount(found)) {
+        if (!acount(found) || falls_through(body)) {
             append_return(stripped, body, value, &inserts, &texts);
         }
         afree(found);

@@ -24,9 +24,6 @@ configure()
 source_dir=$(pwd -P)
 configure_source=$source_dir
 [ "$source_subdir" = . ] || configure_source="$source_dir/$source_subdir"
-if [ -f "$source_dir/.chibi-workspace.json" ]; then
-	python3 "$source_dir/tools/workspace_retirement.py" register "$build_dir"
-fi
 # Commits run the clang-format CI checks (.githooks/pre-commit).
 if [ -z "$(git -C "$source_dir" config --get core.hooksPath 2>/dev/null)" ]; then
 	git -C "$source_dir" config core.hooksPath .githooks 2>/dev/null || :
@@ -131,8 +128,7 @@ for path in sorted(files):
                          stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns))
     except FileNotFoundError:
         metadata.append((str(path), None))
-ignored = {"PWD", "OLDPWD", "SHLVL", "_", "CHIBI_WORKSPACE_LOCK_FD",
-           "CHIBI_TEST_DEADLINE", "CHIBI_TEST_PROCESS_GROUP", "CHIBI_QUIET_LOG"}
+ignored = {"PWD", "OLDPWD", "SHLVL", "_", "CHIBI_TEST_DEADLINE", "CHIBI_TEST_PROCESS_GROUP", "CHIBI_QUIET_LOG"}
 environment = {name: value for name, value in os.environ.items() if name not in ignored}
 value = [sys.argv[3:], str(source), str(build), metadata, environment]
 print(hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest())

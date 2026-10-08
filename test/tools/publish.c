@@ -114,7 +114,7 @@ static const char *driver_setup =
     "os.environ['CC']=sys.executable;os.environ['CXX']=sys.executable\n"
     "os.environ['EM_CONFIG']=str(root/'emscripten-config')\n"
     "if mode=='identity':\n"
-    " env=p.build_environment(root);env.pop('CHIBI_WORKSPACE_LOCK_FD',None)\n"
+    " env=p.build_environment(root)\n"
     " rows=[p.build_identity('a',{},'',False,env)[0],p.build_identity('b',{},''"
     ",False,env)[0],\n"
     " p.build_identity('a',{'projects/"

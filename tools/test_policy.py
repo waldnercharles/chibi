@@ -12,7 +12,6 @@ import subprocess
 import sys
 import time
 
-from quiet import child_fds
 
 ROOT = Path(__file__).resolve().parents[1]
 LIMIT = 60
@@ -335,7 +334,7 @@ def supervise(commands):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return 124
-            child = subprocess.Popen(command, cwd=ROOT, pass_fds=child_fds())
+            child = subprocess.Popen(command, cwd=ROOT)
             try:
                 result = wait_until(child, deadline)
             except subprocess.TimeoutExpired:
@@ -373,7 +372,7 @@ def run_commands(commands, seconds=LIMIT, env=None, output=None):
     child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
                               '_supervise', json.dumps(commands)], cwd=ROOT,
                              env=environment, start_new_session=owns_group,
-                             stdout=output, stderr=output, pass_fds=child_fds())
+                             stdout=output, stderr=output)
     try:
         try:
             result = wait_until(child, deadline)

@@ -7,14 +7,17 @@
 #include <assert.h>
 #include <limits.h>
 #include <math.h>
+#include <stdbool.h>
 #include <string.h>
 pin_value native_conversion_To_String(const pin_value *inputs, int input_count, arena *a)
 {
     (void)input_count;
     pin_value r = { .type = PIN_STR, .type_name = "const char *", .str = "" };
-    /* pin_value_to_string returns a static ring buffer: copy into the arena,
-     * never hand the ring out. */
-    const char *text = pin_value_to_string(&inputs[0]);
+    /* Text converts whole. Other values format through pin_value_to_string's
+     * bounded static ring buffer: copy into the arena, never hand the ring out. */
+    bool textual = inputs[0].type == PIN_STR || inputs[0].type == PIN_NAME;
+    const char *text = textual ? (inputs[0].str ? inputs[0].str : "")
+                               : pin_value_to_string(&inputs[0]);
     size_t len = strlen(text);
     char *copy = arena_alloc(a, len + 1);
     if (!copy) {

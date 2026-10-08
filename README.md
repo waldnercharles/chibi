@@ -18,6 +18,20 @@ dist/sdk/bin/chibi-compile --project-root /absolute/game --output /absolute/outp
 /installed/player/bin/chibi-player /absolute/output/game.chibip --resource-root /absolute/output
 ```
 
+To play a game while developing it, put `chibi` on your `PATH` and run it from the
+game's directory or with the game's directory or `project.kdl`:
+
+```sh
+make build BUILD_TARGET=chibi
+ln -s "$PWD/build/sdk/chibi" ~/.local/bin/chibi
+chibi ~/games/neon-swarm            # or: cd ~/games/neon-swarm && chibi
+```
+
+`chibi` prepares the project into `.chibi/build/game.chibip` when the project's
+files or the compiler changed since the last run, then starts `chibi-player`
+beside it. Options after the project go to the player. Studio's `chibi-dev`
+opens a project the same way.
+
 Both SDK product builds prepare a standalone host reflection tool. `SDK_PREFIX`,
 `RUNTIME_SDK_PREFIX`, and `PLAYER_OUTPUT` select their outputs. Packaging leaves
 registered games untouched; `make update-game-runtime` explicitly verifies and

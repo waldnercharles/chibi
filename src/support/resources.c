@@ -1,6 +1,7 @@
 #include "support/resources.h"
 
 #include "assets/project.h"
+#include "support/file_io.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -9,13 +10,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <yyjson.h>
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#elif defined(_WIN32)
-#include <windows.h>
-#elif !defined(__EMSCRIPTEN__)
-#include <unistd.h>
-#endif
 
 #define RESOURCE_PATH_SIZE 4096
 
@@ -39,56 +33,15 @@ static void join(char *out, const char *base, const char *suffix)
     }
 }
 
-#ifndef __EMSCRIPTEN__
-static void executable_resources()
-{
-    char executable[RESOURCE_PATH_SIZE];
-#if defined(__APPLE__)
-    uint32_t size = sizeof executable;
-    if (_NSGetExecutablePath(executable, &size) != 0) {
-        fprintf(stderr, "Cannot locate engine executable\n");
-        abort();
-    }
-    char resolved[RESOURCE_PATH_SIZE];
-    if (realpath(executable, resolved)) {
-        memcpy(executable, resolved, strlen(resolved) + 1);
-    }
-#elif defined(_WIN32)
-    DWORD length = GetModuleFileNameA(NULL, executable, sizeof executable);
-    if (!length || length >= sizeof executable) {
-        fprintf(stderr, "Cannot locate engine executable\n");
-        abort();
-    }
-    for (char *p = executable; *p; p++) {
-        if (*p == '\\') {
-            *p = '/';
-        }
-    }
-#else
-    ssize_t length = readlink("/proc/self/exe", executable, sizeof executable - 1);
-    if (length < 0 || (size_t)length >= sizeof executable - 1) {
-        fprintf(stderr, "Cannot locate engine executable\n");
-        abort();
-    }
-    executable[length] = '\0';
-#endif
-    char *slash = strrchr(executable, '/');
-    if (!slash) {
-        fprintf(stderr, "Engine executable has no directory\n");
-        abort();
-    }
-    *slash = '\0';
-    join(installed_root, executable, "/../share/chibi");
-}
-#endif
-
 const char *resource_install_root()
 {
 #ifdef __EMSCRIPTEN__
     return NULL;
 #else
     if (!installed_root[0]) {
-        executable_resources();
+        char *directory = file_executable_dir();
+        join(installed_root, directory, "/../share/chibi");
+        free(directory);
     }
     return installed_root;
 #endif

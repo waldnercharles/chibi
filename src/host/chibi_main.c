@@ -52,8 +52,9 @@ static bool ignored(const char *name)
 }
 
 /* Whether `directory` or anything under it, except ignored entries, changed
- * after `since`. A directory's own modification time
- * covers entries added, removed or renamed in it. */
+ * after `since`. A directory's own modification time covers entries added,
+ * removed or renamed in it, and an entry that cannot be stated, such as a
+ * dangling symlink, counts as changed. */
 static bool changed_since(const char *directory, int64_t since)
 {
     if (modified(directory) > since) {
@@ -74,7 +75,8 @@ static bool changed_since(const char *directory, int64_t since)
         if (stat(path, &info) == 0 && S_ISDIR(info.st_mode)) {
             changed = changed_since(path, since);
         } else {
-            changed = modified(path) > since;
+            int64_t time = modified(path);
+            changed = time < 0 || time > since;
         }
         free(path);
     }

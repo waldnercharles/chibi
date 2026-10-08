@@ -511,9 +511,8 @@ static int fallback_expression(analyzer *a, TSNode node, script_type expected)
             result.type = actual;
         }
         script_analyzer_require(a, value, result.type, actual);
-        if (ordinal == 1 &&
-            !(script_analyzer_expr_type(a, index).flags & SCRIPT_TYPE_REFERENCE)) {
-            script_analyzer_diagnostic(a, value, "Fallback binding requires a reference");
+        if (ordinal == 1 && !a->out->expressions[index].writable) {
+            script_analyzer_diagnostic(a, value, "Fallback binding requires a writable value");
         }
         if (ordinal == 2 &&
             (script_analyzer_expr_effects(a, index) ||
@@ -823,8 +822,7 @@ static int local_root(const analyzer *a, int expression)
                      ? e->symbol
                      : -1;
         }
-        bool path = (e->kind == SCRIPT_EXPR_UNARY && e->op == SCRIPT_OP_REFERENCE) ||
-                    e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX;
+        bool path = e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX;
         if (!path) {
             return -1;
         }

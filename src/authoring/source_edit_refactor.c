@@ -279,12 +279,12 @@ static bool extract(
             output_collision |= !strncmp(a->symbols[i].name, prefix, strlen(prefix));
         }
     } while (output_collision);
-    source_refactor_append(&definition, ") -> (");
+    source_refactor_append(&definition, acount(outputs) ? ") -> (" : ")");
     for (int i = 0; valid && i < acount(outputs); i++) {
         source_refactor_append(&definition, "%srefactor_return_%d_%d: ", i ? ", " : "", output_namespace, i);
         valid = source_refactor_type(catalog, a->symbols[outputs[i]].type, false, &definition, error, size);
     }
-    source_refactor_append(&definition, ") {\n%s", macro ? "after entry {\n" : "");
+    source_refactor_append(&definition, "%s {\n%s", acount(outputs) ? ")" : "", macro ? "after entry {\n" : "");
     char *selected = valid ? source_refactor_slice(a->text, range) : xstrdup("");
     text_edit *capture_edits = NULL;
     for (int i = 0; valid && i < a->expression_count; i++) {

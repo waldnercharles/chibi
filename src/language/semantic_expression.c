@@ -560,15 +560,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         result.left = script_analyzer_expression(a, script_analyzer_field(node, "operand"), expected);
         result.type = script_analyzer_expr_type(a, result.left);
         result.effects = script_analyzer_expr_effects(a, result.left);
-        if (script_analyzer_text_is(a, op, "&")) {
-            result.op = SCRIPT_OP_REFERENCE;
-            if ((expected.flags & SCRIPT_TYPE_REFERENCE) &&
-                !a->out->expressions[result.left].writable) {
-                script_analyzer_diagnostic(a, node, "Reference requires a writable value");
-            }
-            result.type.flags |= SCRIPT_TYPE_REFERENCE;
-            result.writable = a->out->expressions[result.left].writable;
-        } else if (result.op == SCRIPT_OP_NOT) {
+        if (result.op == SCRIPT_OP_NOT) {
             if (!(result.type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK))) {
                 script_analyzer_require(
                     a,

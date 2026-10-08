@@ -2212,7 +2212,7 @@
       },
       "results": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "parameter_list",
@@ -2780,7 +2780,7 @@
       },
       "results": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "parameter_list",
@@ -4636,10 +4636,6 @@
         "types": [
           {
             "type": "!",
-            "named": false
-          },
-          {
-            "type": "&",
             "named": false
           },
           {

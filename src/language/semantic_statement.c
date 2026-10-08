@@ -455,15 +455,21 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 script_analyzer_diagnostic(a, outcome, "Unknown macro exit");
             }
         }
-        if (script_analyzer_is(values, "argument_list")) {
+        /* `return x` returns the single result like `return(x)`. */
+        bool single = !ts_node_is_null(values) &&
+                      !script_analyzer_is(values, "argument_list") &&
+                      acount(function->results) == 1;
+        if (single || script_analyzer_is(values, "argument_list")) {
             int ordinal = 0;
-            for (uint32_t i = 0; i < script_analyzer_named_count(values); i++) {
-                TSNode child = ts_node_named_child(values, i);
+            uint32_t count = single ? 1 : script_analyzer_named_count(values);
+            for (uint32_t i = 0; i < count; i++) {
+                TSNode child = single ? values : ts_node_named_child(values, i);
                 if (ts_node_is_extra(child)) {
                     continue;
                 }
                 TSNode value = script_analyzer_field(child, "value"),
-                       name_node = script_analyzer_field(child, "name");
+                       name_node = single ? (TSNode){ 0 }
+                                          : script_analyzer_field(child, "name");
                 int parameter = ordinal++;
                 if (!ts_node_is_null(name_node)) {
                     char *name = script_analyzer_name_copy(a, name_node);

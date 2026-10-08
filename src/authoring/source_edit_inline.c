@@ -298,15 +298,7 @@ bool source_edit_inline(
             size
         );
         char *value = source_refactor_slice(a->text, a->expressions[arg->value].range);
-        source_refactor_append(
-            &replacement,
-            " = %s(%s);\n",
-            (symbol->type.flags & SCRIPT_TYPE_REFERENCE) &&
-                    !(a->expressions[arg->value].type.flags & SCRIPT_TYPE_REFERENCE)
-                ? "&"
-                : "",
-            value
-        );
+        source_refactor_append(&replacement, " = (%s);\n", value);
         free(value);
     }
     for (int i = 0; valid && i < function->parameter_count; i++) {

@@ -1,4 +1,4 @@
-version 11
+version 12
 name "Behavior runtime contracts"
 content "content"
 start_scene "scenes/Start.kdl"

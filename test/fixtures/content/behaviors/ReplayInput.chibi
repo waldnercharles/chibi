@@ -1,9 +1,8 @@
 behavior "ReplayInput" {
-    owner "ecs.entity";
-    on Fire as fire() {
-        set_game_velocity(Value: {
+    on Fire {
+        set_game_velocity({
             x: 1.0,
             y: 0.0
-        });
+        })
     }
 }

@@ -1,5 +1,6 @@
 #include "authoring/source_format.h"
 #include "authoring/source_metadata.h"
+#include "authoring/source_minimize.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -216,6 +217,91 @@ TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors)
     return true;
 }
 
+static const script_catalog_parameter tick[] = { { .name = "dt",
+                                                   .type = { .storage = PIN_F32 } } };
+static const script_catalog_capability capabilities[] = {
+    { .id = 30,
+      .name = "Tick",
+      .kind = SCRIPT_CAPABILITY_EVENT,
+      .parameters = tick,
+      .parameter_count = 1 },
+};
+static const script_catalog catalog = {
+    .capabilities = capabilities,
+    .capability_count = 1,
+    .entity_type = 40,
+    .tick_event = 30,
+};
+
+static bool minimize(const char *input, const char *expected)
+{
+    text = authoring_source_minimize(input, &catalog, "Demo");
+    if (strcmp(text, expected)) {
+        fprintf(stderr, "minimize:\n%s\nexpected:\n%s\n", text, expected);
+        return false;
+    }
+    return true;
+}
+
+TEST_CASE(source_minimize_drops_redundant_text)
+{
+    REQUIRE(minimize(
+        "library Demo {\n"
+        "    function Scale(a: float = 0.0, b: float = 2.0) -> (r: float = "
+        "0.0) {\n"
+        "        r = a * b;\n"
+        "    }\n"
+        "    function Twice(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "        return(a * 2.0);\n"
+        "    }\n"
+        "    function Use() -> () {\n"
+        "        x: float = Scale(a: 1.0, b: 2.0);\n"
+        "        y: float = Scale(b: 3.0);\n"
+        "        if (x > 0) {\n"
+        "            x = 1.0;\n"
+        "        } else {\n"
+        "        }\n"
+        "        return();\n"
+        "    }\n"
+        "}\n",
+        "library Demo {\n"
+        "    function Scale(a: float = 0.0, b: float = 2.0) -> (r: float = "
+        "0.0) {\n"
+        "        r = a * b\n"
+        "    }\n"
+        "    function Twice(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "        return a * 2.0\n"
+        "    }\n"
+        "    function Use() {\n"
+        "        x := Scale(1.0)\n"
+        "        y := Scale(b: 3.0)\n"
+        "        if x > 0 {\n"
+        "            x = 1.0\n"
+        "        }\n"
+        "        return\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
+
+TEST_CASE(source_minimize_keeps_invalid_source)
+{
+    const char
+        *input = "library Demo { function F() -> () { x := missing(a: 1); } }";
+    REQUIRE(minimize(input, input));
+    return true;
+}
+
+TEST_CASE(source_format_keeps_else_and_arrow_spacing)
+{
+    REQUIRE(format("library M{function F(x:int)->(r:int){if x>0{r=1;}\nelse{r=engine [\"Self\"]();}}}"));
+    REQUIRE(strstr(text, "-> (r: int)"));
+    REQUIRE(strstr(text, "} else {"));
+    REQUIRE(strstr(text, "engine[\"Self\"]()"));
+    return true;
+}
+
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
@@ -227,5 +313,8 @@ void test_language_format()
     RUN_TEST_CASE(source_metadata_preserves_bound_identities);
     RUN_TEST_CASE(source_metadata_rejects_stale_or_changed_tokens);
     RUN_TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors);
+    RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
+    RUN_TEST_CASE(source_minimize_drops_redundant_text);
+    RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     pu_setup(NULL, NULL);
 }

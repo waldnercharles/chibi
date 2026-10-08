@@ -1,4 +1,4 @@
-version 11
+version 12
 name "Studio contracts"
 content "content"
 start_scene "scenes/Main.kdl"

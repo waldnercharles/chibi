@@ -5,6 +5,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -207,6 +208,143 @@ char **chibi_migrate_task_calls(const char *const *sources, int count)
     return migrated;
 }
 
+/* Skips a string or comment starting at `p`; returns `p` otherwise. */
+static const char *skip_literal(const char *p)
+{
+    if (*p == '"') {
+        for (p++; *p && *p != '"'; p++) {
+            p += *p == '\\' && p[1];
+        }
+        return *p ? p + 1 : p;
+    }
+    if (p[0] == '/' && p[1] == '/') {
+        return p + strcspn(p, "\n");
+    }
+    if (p[0] == '/' && p[1] == '*') {
+        const char *close = strstr(p + 2, "*/");
+        return close ? close + 2 : p + strlen(p);
+    }
+    return p;
+}
+static bool word_char(char c)
+{
+    return isalnum((unsigned char)c) || c == '_';
+}
+/* An `&` after an operand is the binary operator; elsewhere it is unary. */
+static bool after_operand(const char *source, const char *last)
+{
+    if (!last) {
+        return false;
+    }
+    if (*last == ')' || *last == ']' || *last == '"') {
+        return true;
+    }
+    if (!word_char(*last)) {
+        return false;
+    }
+    const char *word = last;
+    while (word > source && word_char(word[-1])) {
+        word--;
+    }
+    /* Every version 11 keyword but the literals introduces an expression. */
+    static const char *keywords[] = {
+        "behavior", "library",     "system",   "without",     "state",
+        "shared",   "action",      "value",    "local",       "event",
+        "disabled", "on",          "after",    "as",          "bind",
+        "events",   "pure",        "function", "macro",       "entry",
+        "exit",     "result",      "owner",    "description", "domain",
+        "dataflow", "depth_limit", "query",    "if",          "else",
+        "while",    "for",         "foreach",  "in",          "match",
+        "case",     "default",     "sequence", "branch",      "return",
+        "goto",     "break",       "continue", "await",       "yield",
+        "cancel",   "engine",      "cast",     "plain",       "ref",
+        "service",  "setting",     "wildcard", "from",        "split"
+    };
+    for (size_t i = 0; i < sizeof keywords / sizeof *keywords; i++) {
+        size_t n = strlen(keywords[i]);
+        if ((size_t)(last - word + 1) == n && !strncmp(word, keywords[i], n)) {
+            return false;
+        }
+    }
+    return true;
+}
+/* `fallback(&x, ...)` and `fallback((&x), ...)` bound their first argument
+ * through the reference. Returns where `binding: ` goes, or NULL. */
+static const char *fallback_binding(const char *source, const char *last)
+{
+    const char *open = NULL;
+    while (last && *last == '(') {
+        open = last;
+        do {
+            last = last > source ? last - 1 : NULL;
+        } while (last && isspace((unsigned char)*last));
+    }
+    if (!open || !last || last - source < 7) {
+        return NULL;
+    }
+    const char *word = last - 7;
+    if (strncmp(word, "fallback", 8) || (word > source && word_char(word[-1]))) {
+        return NULL;
+    }
+    const char *after = strchr(word, '(') + 1;
+    return after;
+}
+char *chibi_migrate_references(const char *source)
+{
+    insertion *inserts = NULL;
+    char *result = NULL;
+    const char *last = NULL;
+    int removed = 0;
+    for (const char *p = source; *p;) {
+        const char *skip = skip_literal(p);
+        if (skip != p) {
+            last = *p == '"' ? skip - 1 : last;
+            p = skip;
+            continue;
+        }
+        if (p[0] == '&' && (p[1] == '&' || p[1] == '=')) {
+            last = p + 1;
+            p += 2;
+            continue;
+        }
+        if (*p == '&' && !after_operand(source, last)) {
+            const char *binding = fallback_binding(source, last);
+            if (binding) {
+                apush(inserts, ((insertion){ (int)(binding - source), acount(inserts), "binding: " }));
+            }
+            apush(inserts, ((insertion){ (int)(p - source), -1, NULL }));
+            removed++;
+            p++;
+            continue;
+        }
+        if (!isspace((unsigned char)*p)) {
+            last = p;
+        }
+        p++;
+    }
+    if (removed) {
+        size_t size = strlen(source) + 1;
+        for (int i = 0; i < acount(inserts); i++) {
+            size += inserts[i].text ? strlen(inserts[i].text) : 0;
+        }
+        result = xmalloc(size);
+        char *at = result;
+        int from = 0;
+        for (int i = 0; i < acount(inserts); i++) {
+            at = stpncpy(at, source + from, (size_t)(inserts[i].offset - from));
+            from = inserts[i].offset;
+            if (inserts[i].text) {
+                at = stpcpy(at, inserts[i].text);
+            } else {
+                from++;
+            }
+        }
+        strcpy(at, source + from);
+    }
+    afree(inserts);
+    return result;
+}
+
 static char *read_text(const char *path)
 {
     FILE *file = fopen(path, "rb");
@@ -297,6 +435,12 @@ int chibi_project_migrate_content(const char *content, int from, char *error, si
         switch (from) {
             case 10:
                 migrated = chibi_migrate_task_calls((const char *const *)sources, count);
+                break;
+            case 11:
+                migrated = xmalloc((size_t)(count + 1) * sizeof *migrated);
+                for (int i = 0; i < count; i++) {
+                    migrated[i] = chibi_migrate_references(sources[i]);
+                }
                 break;
             default: assert(false);
         }

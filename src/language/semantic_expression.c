@@ -367,19 +367,37 @@ static int join_task(analyzer *a, TSNode node, int value)
                                  .awaited = true,
                                  .effects = script_analyzer_expr_effects(a, value) |
                                             SCRIPT_EFFECT_SUSPEND };
-    for (int i = 0; task.nominal && i < acount(a->out->symbols); i++) {
+    const script_catalog_capability
+        *library = script_catalog_capability_by_id(a->catalog, task.nominal);
+    if (library && library->result_count) {
+        for (int i = 0; i < library->result_count; i++) {
+            apush(result.results, library->results[i].type);
+        }
+        result.result_count = library->result_count;
+        result.type = library->result_count == 1
+                        ? library->results[0].type
+                        : (script_type){ .storage = PIN_STRUCT,
+                                         .nominal = library->id,
+                                         .flags = SCRIPT_TYPE_RESULTS };
+    }
+    for (int i = 0; task.nominal && !library && i < acount(a->out->symbols); i++) {
         const script_symbol *symbol = &a->out->symbols[i];
         if (symbol->id != task.nominal || symbol->kind != SCRIPT_FUNCTION ||
             symbol->function < 0) {
             continue;
         }
         const script_function *function = &a->out->functions[symbol->function];
-        if (acount(function->results) > 1) {
-            script_analyzer_diagnostic(a, node, "Awaiting a task with several results is not supported");
-        } else if (acount(function->results) == 1) {
-            result.type = a->out->symbols[function->results[0]].type;
-            apush(result.results, result.type);
-            result.result_count = 1;
+        int count = acount(function->results);
+        for (int r = 0; r < count; r++) {
+            apush(result.results, a->out->symbols[function->results[r]].type);
+        }
+        result.result_count = count;
+        result.right = symbol->function;
+        if (count == 1) {
+            result.type = result.results[0];
+        } else if (count > 1) {
+            result.type = (script_type){ .storage = PIN_STRUCT,
+                                         .flags = SCRIPT_TYPE_RESULTS };
         }
         break;
     }

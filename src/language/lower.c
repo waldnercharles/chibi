@@ -923,7 +923,16 @@ static int external_call(
         error(l, e->range, "Imported function signature differs from the declaration catalog");
         return -1;
     }
-    int invocation = behavior_function_builder_call(l->builder, host.function, args, argument_count, results, result_count);
+    int invocation = e->task
+                       ? behavior_function_builder_task(l->builder, host.function, args, argument_count)
+                       : behavior_function_builder_call(
+                             l->builder,
+                             host.function,
+                             args,
+                             argument_count,
+                             results,
+                             result_count
+                         );
     int first = behavior_function_builder_call_first(l->builder, invocation);
     for (int i = 0; i < argument_count; i++) {
         set_kind(
@@ -934,7 +943,7 @@ static int external_call(
         );
     }
     int output_first = behavior_function_builder_call_results(l->builder, invocation);
-    for (int i = 0; i < result_count; i++) {
+    for (int i = 0; !e->task && i < result_count; i++) {
         set_kind(
             l,
             BEHAVIOR_BANK_DATA,
@@ -968,6 +977,9 @@ static int external_call(
     }
     emit(l, (behavior_function_instruction){ .op = BF_INVOKE, .left = invocation }, e->range);
     int result_first = behavior_function_builder_call_results(l->builder, invocation);
+    if (e->task) {
+        return host_result(l, result_first, e->type, e->range);
+    }
     if (e->instance) {
         script_type *types = NULL;
         int *values = NULL;
@@ -1138,14 +1150,22 @@ static void await_command(lower *l, uint64_t action, script_range range)
 }
 /* Yield, Join, Cancel and Running are built-in commands; all but Yield take a
  * task handle. Running returns a bool and Join the task's single result. */
-static int task_command(lower *l, const node_command *command, int handle, script_type result, script_range range)
+/* Join's results are the task's results: one value, or a tuple whose first
+ * command result is returned like an awaited call's. */
+static int task_command(lower *l, const node_command *command, int handle, const script_expression *e)
 {
+    script_type result = e->type;
+    script_range range = e->range;
     uint64_t id = execution_task_command_id(command);
     pin_value *args = NULL, *results = NULL;
     if (handle >= 0) {
         apush(args, ((pin_value){ .type = PIN_U64 }));
     }
-    if (result.storage != PIN_FLOW) {
+    if (result.flags & SCRIPT_TYPE_RESULTS) {
+        for (int i = 0; i < e->result_count; i++) {
+            apush(results, initial(l, e->results[i]));
+        }
+    } else if (result.storage != PIN_FLOW) {
         apush(results, initial(l, result));
     }
     uint64_t action = id ^ (uint64_t)range.start;
@@ -1180,9 +1200,11 @@ static int task_command(lower *l, const node_command *command, int handle, scrip
     if (command == &EXECUTION_Yield || command == &EXECUTION_TaskJoin) {
         await_command(l, action, range);
     }
-    return result.storage == PIN_FLOW
-             ? -1
-             : command_result(l, behavior_function_builder_command_results(l->builder, index), result, range);
+    int first = behavior_function_builder_command_results(l->builder, index);
+    if (result.flags & SCRIPT_TYPE_RESULTS) {
+        return first;
+    }
+    return result.storage == PIN_FLOW ? -1 : command_result(l, first, result, range);
 }
 static int command(lower *l, const script_expression *e, const script_catalog_capability *cap, script_lower_host host)
 {
@@ -2394,13 +2416,9 @@ static int condition_value(lower *l, int index)
 {
     const script_expression *e = &l->a->expressions[index];
     if (e->type.flags & SCRIPT_TYPE_TASK) {
-        return task_command(
-            l,
-            &EXECUTION_TaskRunning,
-            expression(l, index),
-            (script_type){ .storage = PIN_BOOL },
-            e->range
-        );
+        const script_expression running = { .type = { .storage = PIN_BOOL },
+                                            .range = e->range };
+        return task_command(l, &EXECUTION_TaskRunning, expression(l, index), &running);
     }
     if (!(e->type.flags & SCRIPT_TYPE_OPTIONAL)) {
         return expression(l, index);
@@ -2488,6 +2506,25 @@ static const script_expression *tuple_signature(lower *l, int source)
         source = l->a->symbols[expression->symbol].initializer;
     }
     return NULL;
+}
+/* A call with one result produces that value directly, so naming its only
+ * output reads the call's value rather than a tuple field. */
+static bool sole_output(lower *l, const script_expression *e)
+{
+    const script_expression *call = tuple_signature(l, e->left);
+    if ((l->a->expressions[e->left].type.flags & SCRIPT_TYPE_RESULTS) ||
+        !call || call->kind != SCRIPT_EXPR_CALL || call->result_count != 1) {
+        return false;
+    }
+    const script_catalog_capability
+        *capability = script_catalog_capability_by_id(l->catalog, call->capability);
+    if (capability) {
+        return capability->result_count == 1 &&
+               e->member == script_catalog_id("port", capability->results[0].name);
+    }
+    int function = call->entry >= 0 ? call->entry : call->right;
+    return function >= 0 && acount(l->a->functions[function].results) == 1 &&
+           e->member == l->a->symbols[l->a->functions[function].results[0]].id;
 }
 static int symbol_value(lower *l, const script_expression *e)
 {
@@ -2967,6 +3004,9 @@ static bool command_tuple(lower *l, const script_expression *receiver)
         }
         receiver = &l->a->expressions[initializer];
     }
+    if (receiver->kind == SCRIPT_EXPR_JOIN) {
+        return true;
+    }
     if (receiver->kind != SCRIPT_EXPR_CALL || receiver->right >= 0) {
         return false;
     }
@@ -3125,12 +3165,11 @@ static int expression_value(lower *l, int index)
             return constant(l, e->constant, e->range);
         case SCRIPT_EXPR_SYMBOL: return symbol_value(l, e);
         case SCRIPT_EXPR_CALL: return call(l, e);
-        case SCRIPT_EXPR_YIELD:
-            return task_command(l, &EXECUTION_Yield, -1, e->type, e->range);
+        case SCRIPT_EXPR_YIELD: return task_command(l, &EXECUTION_Yield, -1, e);
         case SCRIPT_EXPR_JOIN:
-            return task_command(l, &EXECUTION_TaskJoin, expression(l, e->left), e->type, e->range);
+            return task_command(l, &EXECUTION_TaskJoin, expression(l, e->left), e);
         case SCRIPT_EXPR_CANCEL:
-            return task_command(l, &EXECUTION_TaskCancel, expression(l, e->left), e->type, e->range);
+            return task_command(l, &EXECUTION_TaskCancel, expression(l, e->left), e);
         case SCRIPT_EXPR_STRUCT:
         case SCRIPT_EXPR_ARRAY: return constructor(l, e);
         case SCRIPT_EXPR_COMPONENT:
@@ -3226,6 +3265,9 @@ static int expression_value(lower *l, int index)
             return binary(l, e->op, left, right, e->type, operand, e->range);
         }
         case SCRIPT_EXPR_MEMBER: {
+            if (sole_output(l, e)) {
+                return expression(l, e->left);
+            }
             const script_expression *receiver = &l->a->expressions[e->left];
             if (receiver->kind == SCRIPT_EXPR_SYMBOL && receiver->symbol >= 0 &&
                 !(receiver->type.flags & SCRIPT_TYPE_RESULTS)) {

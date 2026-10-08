@@ -7,8 +7,9 @@
  * `from + 1`. Returns 0, or -1 with `error` set. */
 int chibi_project_migrate_content(const char *content, int from, char *error, size_t error_size);
 /* Version 11 starts a task for an unawaited call to a function that waits.
- * Returns an owned copy of a version 10 source with `await` before each call
- * that blocked under version 10, or NULL when nothing changes. */
-char *chibi_migrate_task_calls(const char *source);
+ * Given every version 10 source of a project, returns an owned array with an
+ * owned copy of each source that gains `await` before the calls that blocked
+ * under version 10, or NULL for a source that does not change. */
+char **chibi_migrate_task_calls(const char *const *sources, int count);
 
 #endif

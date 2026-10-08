@@ -216,9 +216,11 @@ behavior Turret {
 - Tasks belong to the entity or system registration that started them and stop
   when it is removed. A running task never blocks the events and ticks of its
   owner.
-- A task cannot take reference arguments, and awaiting a task whose function has
-  several results is not supported; await the call itself for those.
-- Calls into an imported library always wait for the library function.
+- Calls into a library start tasks the same way, such as `Store.Work()`.
+- Awaiting a task whose function has several results gives the same tuple as
+  awaiting the call: `(await t).b`.
+- A task cannot take reference arguments, because it can outlive the locals they
+  point to. Pass values and return results, or await the call.
 
 The runtime retains call frames and captured locals across supported native waits
 and cancels owned invocations when their entity or system registration is

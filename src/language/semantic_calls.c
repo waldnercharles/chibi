@@ -251,7 +251,8 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
     int receiver_function = receiver.symbol >= 0
                               ? a->out->symbols[receiver.symbol].function
                               : -1;
-    if (receiver_function < 0 && initializer && initializer->kind == SCRIPT_EXPR_CALL) {
+    if (receiver_function < 0 && initializer &&
+        (initializer->kind == SCRIPT_EXPR_CALL || initializer->kind == SCRIPT_EXPR_JOIN)) {
         receiver_function = initializer->right;
     }
     const script_catalog_capability
@@ -261,7 +262,8 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                                 )
                                               : NULL;
     bool output_root = receiver.kind == SCRIPT_EXPR_SYMBOL ||
-                       receiver.kind == SCRIPT_EXPR_CALL;
+                       receiver.kind == SCRIPT_EXPR_CALL ||
+                       receiver.kind == SCRIPT_EXPR_JOIN;
     bool named_output = output_root && initializer_capability &&
                         script_analyzer_parameter_index(
                             initializer_capability->results,
@@ -1238,19 +1240,35 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     }
     free(seen);
     free(resolved_arguments);
-    if (function && !capability && !result.instance && entry_index < 0 &&
-        function->kind == SCRIPT_FUNCTION_AUTHORED && !ts_node_eq(node, a->awaited) &&
-        !script_analyzer_is(ts_node_parent(node), "action_declaration") &&
-        script_analyzer_function_waits(a, function_index)) {
+    /* An unawaited call to an authored function or library function that
+     * waits starts a task. Action initializers and invocations keep their own
+     * lifetimes. */
+    bool spawnable = !result.instance && entry_index < 0 &&
+                     !ts_node_eq(node, a->awaited) &&
+                     !script_analyzer_is(ts_node_parent(node), "action_declaration") &&
+                     !(symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION);
+    bool authored_task = spawnable && function && !capability &&
+                         function->kind == SCRIPT_FUNCTION_AUTHORED &&
+                         script_analyzer_function_waits(a, function_index);
+    bool library_task = spawnable && capability &&
+                        capability->kind == SCRIPT_CAPABILITY_FUNCTION &&
+                        (capability->effects & SCRIPT_EFFECT_SUSPEND);
+    if (authored_task || library_task) {
         result.task = true;
+        result.effects &= ~SCRIPT_EFFECT_SUSPEND;
         result.type = (script_type){
             .storage = PIN_U64,
-            .nominal = a->out->symbols[function->symbol].id,
+            .nominal = library_task ? capability->id
+                                    : a->out->symbols[function->symbol].id,
             .flags = SCRIPT_TYPE_TASK
         };
-        for (int i = 0; i < acount(function->parameters); i++) {
-            if (a->out->symbols[function->parameters[i]].type.flags &
-                SCRIPT_TYPE_REFERENCE) {
+        int parameters = library_task ? capability->parameter_count
+                                      : acount(function->parameters);
+        for (int i = 0; i < parameters; i++) {
+            script_type type = library_task
+                                 ? capability->parameters[i].type
+                                 : a->out->symbols[function->parameters[i]].type;
+            if (type.flags & SCRIPT_TYPE_REFERENCE) {
                 script_analyzer_diagnostic(a, node, "A task cannot take reference arguments; await the call");
             }
         }

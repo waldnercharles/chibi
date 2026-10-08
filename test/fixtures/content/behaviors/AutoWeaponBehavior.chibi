@@ -21,7 +21,7 @@ behavior "AutoWeaponBehavior" {
             await set_variable<"Elapsed">(Value: float = add(A: float = elapsed, B: float = delta_time()));
             while (check_firing_interval.Ready) {
                 await set_variable<"Elapsed">(Value: float = check_firing_interval.Remainder);
-                "WeaponActions"."Fire Projectile"(Origin: entry.Origin, Direction: entry.Direction, Damage: entry.Damage, Prototype: "Projectile", Shooter: self);
+                await "WeaponActions"."Fire Projectile"(Origin: entry.Origin, Direction: entry.Direction, Damage: entry.Damage, Prototype: "Projectile", Shooter: self);
             }
             return();
         }

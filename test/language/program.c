@@ -1715,10 +1715,6 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
         { "behavior B { n: double = 0; on Impulse(amount, enabled) { cancel n; "
           "} }",
           "Cancel requires a task" },
-        { "behavior B { function P() -> (a: double, b: double) { yield; "
-          "return(1, 2); }"
-          "on Impulse(amount, enabled) { t := P(); await t; } }",
-          "several results" },
         { "behavior B { t: task; n: double = 0; on Impulse(amount, enabled) { "
           "n = t; } }",
           "" },
@@ -1754,9 +1750,29 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
                     "function Plain() -> () { n += 100; }"
                     "on Impulse(amount, enabled) { Plain(); x := (await "
                     "Outer()).v; n += x; await Outer(); await Wait(); } }";
-    char *migrated = chibi_migrate_task_calls(source);
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    REQUIRE(!chibi_migrate_task_calls(expected));
+    const char
+        *library = "library Store { function Work() -> () { await Delay(1); } "
+                   "function Idle() -> () { } }";
+    const char
+        *user = "behavior U { on Impulse(amount, enabled) { Store.Work(); "
+                "Store.Idle(); Work(); } }";
+    const char *sources[] = { source, library, user };
+    char **all = chibi_migrate_task_calls(sources, 3);
+    char *migrated = all[0];
+    REQUIRE(migrated && !strcmp(migrated, expected) && !all[1]);
+    REQUIRE(
+        all[2] &&
+        !strcmp(
+            all[2],
+            "behavior U { on Impulse(amount, enabled) { await Store.Work(); "
+            "Store.Idle(); Work(); } }"
+        )
+    );
+    free(all[2]);
+    free(all);
+    all = chibi_migrate_task_calls(&expected, 1);
+    REQUIRE(!all[0]);
+    free(all);
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -1807,6 +1823,100 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     return true;
 }
 
+TEST_CASE(program_single_result_call_fields_read_the_result)
+{
+    const char *source = "behavior B { n: double = 0;"
+                         "function P() -> (v: double) { return(n + 1); }"
+                         "function W() -> (v: double) { await Delay(1); "
+                         "return(n + 10); }"
+                         "on Impulse(amount, enabled) { x := P().v; n += x; y "
+                         ":= await W(); n += y.v;"
+                         "n += (await W()).v; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        for (int i = 1; i <= 3; i++) {
+            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+        }
+        REQUIRE(number_state(instance, "n", 34));
+    }
+    return true;
+}
+
+TEST_CASE(program_task_with_several_results_awaits_a_tuple)
+{
+    const char *source = "behavior B { n: double = 0;"
+                         "function P(x: double) -> (a: double, b: double) { "
+                         "yield; return(x, x * 10); }"
+                         "on Impulse(amount, enabled) { t := P(amount); r := "
+                         "await t; n += r.a + r.b;"
+                         "n += (await t).b; u := P(2); n += (await u).a; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        for (int i = 1; i <= 3; i++) {
+            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+        }
+        REQUIRE(number_state(instance, "n", 23));
+    }
+    return true;
+}
+
+TEST_CASE(program_library_call_starts_a_task)
+{
+    const char *library_source = "library Store { count: double = 10;"
+                                 "function Work() -> (local_count: double, "
+                                 "position_x: double) {"
+                                 "count += 1; await Delay(1); count += 1; "
+                                 "return(count, self.Position.x); } }";
+    const char *owner_source =
+        "behavior Owner { n: double = 0; local_count: double = 0;"
+        "on Impulse(amount, enabled) { t := library_work(); n += 1;"
+        "if t { n += 10; } local_count = (await t).local_count; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_module(library_source, backends[b]));
+        imported = module;
+        module = NULL;
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        REQUIRE(compile(owner_source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(positioned(3, false))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 11) && number_state(instance, "local_count", 0));
+        REQUIRE(execution_program_pump(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            number_state(instance, "local_count", 12) &&
+            execution_instance_pending(instance) == 0
+        );
+    }
+    return true;
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
@@ -1833,5 +1943,8 @@ void test_language_program()
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
     RUN_TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits);
+    RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
+    RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
+    RUN_TEST_CASE(program_library_call_starts_a_task);
     pu_clear_setup();
 }

@@ -56,7 +56,7 @@ of a line continues the expression.
 program: it drops semicolons, argument labels before the first skipped
 parameter, literal arguments equal to their defaults, inferable declaration and
 argument types, redundant parentheses and casts, handler aliases (the payload is
-`event`), empty `else` blocks, `-> ()` and `return()`. Each rewrite is kept only
+`event`), empty `else` blocks, `-> ()` and `return()`, and writes `return(x)` as `return x`. Each rewrite is kept only
 when the re-analyzed program is unchanged; source that does not analyze is only
 re-indented.
 

@@ -322,10 +322,17 @@ static char *slice(const char *text, int from, int to)
     return out;
 }
 /* Replaces a node with the text of one of its parts. */
+/* Replaces `node` with `part`, keeping a word before it apart: `return(x)`
+ * becomes `return x`. */
 static void unwrap_node(collector *c, TSNode node, TSNode part)
 {
-    char *inner = slice(c->text, start(part), end(part));
-    add(c, start(node), end(node), inner);
+    int from = start(node);
+    bool word = from > 0 && (isalnum((unsigned char)c->text[from - 1]) ||
+                             c->text[from - 1] == '_');
+    size_t size = (size_t)(end(part) - start(part)) + 2;
+    char *inner = xmalloc(size);
+    snprintf(inner, size, "%s%.*s", word ? " " : "", end(part) - start(part), c->text + start(part));
+    add(c, from, end(node), inner);
     free(inner);
 }
 /* Removes a node with its line when nothing else shares that line. */
@@ -545,6 +552,16 @@ static void storage_path(collector *c, TSNode node)
     }
 }
 
+/* `return(x)` returns its single value as `return x`. */
+static void bare_return(collector *c, TSNode list)
+{
+    TSNode value = ts_node_named_child(list, 0);
+    size_t size = (size_t)(end(value) - start(value)) + 2;
+    char *text = xmalloc(size);
+    snprintf(text, size, " %.*s", end(value) - start(value), c->text + start(value));
+    add(c, start(list), end(list), text);
+    free(text);
+}
 static void collect(collector *c, TSNode node, pass phase)
 {
     const char *type = ts_node_type(node);
@@ -590,9 +607,16 @@ static void collect(collector *c, TSNode node, pass phase)
         component_call(c, node, node);
     }
     if (phase == PASS_SHAPE && !strcmp(type, "argument_list")) {
-        if (is(ts_node_parent(node), "return_statement") &&
-            !ts_node_named_child_count(node)) {
+        TSNode parent = ts_node_parent(node);
+        if (is(parent, "return_statement") && !ts_node_named_child_count(node)) {
             add(c, start(node), end(node), "");
+        } else if (
+            is(parent, "return_statement") &&
+            ts_node_is_null(field(parent, "outcome")) &&
+            ts_node_named_child_count(node) == 1 &&
+            !is(ts_node_named_child(node, 0), "named_argument")
+        ) {
+            bare_return(c, node);
         } else {
             default_arguments(c, node);
         }

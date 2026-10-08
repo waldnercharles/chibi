@@ -40,13 +40,11 @@
     GAME_SAVE_PORT(X, "Failed", NATIVE_PARAMETER_EXEC, PIN_FLOW, NULL)
 extern const native_definition_pack GAME_SAVE_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define GAME_SAVE_READ_PRESENTATION                                            \
     .category = "Storage", .keywords = "save profile unlock persistent load",  \
     .description = "Reads Key from save data, including uncommitted changes; " \
                    "when missing, Found is false and Text is Default."
 
-/* Shared authoring presentation for these native declarations. */
 #define GAME_SAVE_SET_PRESENTATION                                             \
     .category = "Storage",                                                     \
     .description = "Sets Key to Text in save data; the change persists only "  \

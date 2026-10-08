@@ -261,7 +261,6 @@
 
 extern const native_definition_pack NATIVE_ARRAY_DEFINITION_PACK;
 
-/* Authoritative display text shared by source and graph authoring. */
 #define NATIVE_ARRAY_make_PRESENTATION                                         \
     .category = "Array", .keywords = "array make collection",                  \
     .description = "Builds an array from the Item inputs in pin order."

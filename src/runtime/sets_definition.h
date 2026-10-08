@@ -62,7 +62,6 @@
       false)
 extern const native_definition_pack NATIVE_SET_DEFINITION_PACK;
 
-/* Authoritative display text shared by source and graph authoring. */
 #define NATIVE_SET_make_PRESENTATION                                           \
     .category = "Set", .keywords = "set make collection",                      \
     .description = "Builds a set from the Item inputs, dropping duplicates."

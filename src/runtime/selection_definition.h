@@ -73,7 +73,6 @@
 
 extern const native_definition_pack NATIVE_SELECTION_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define NATIVE_SELECT_PRESENTATION                                             \
     .category = "Utilities",                                                   \
     .keywords = "select choose pick value ternary if else bool true false "    \
@@ -82,7 +81,6 @@ extern const native_definition_pack NATIVE_SELECTION_DEFINITION_PACK;
                    "A bool Index picks Option1 when true and Option0 when "    \
                    "false. An out-of-range Index fails evaluation."
 
-/* Authoritative display text shared by source and graph authoring. */
 #define NATIVE_SWITCH_Int_PRESENTATION                                         \
     .category = "Flow Control", .keywords = "switch int cases default",        \
     .description = "Fires the case output numbered Selection, counting from "  \

@@ -21,7 +21,7 @@ const char *pin_value_to_string(const pin_value *v)
     }
 
     if (v->container >= PIN_CONTAINER_ARRAY) {
-        const pin_array *array = (const pin_array *)v->ptr;
+        const pin_array *array = v->ptr;
         snprintf(buf, PIN_FMT_CAP, "Array[%d]", array ? array->count : 0);
         return buf;
     }
@@ -45,8 +45,6 @@ const char *pin_value_to_string(const pin_value *v)
         case PIN_F32: snprintf(buf, PIN_FMT_CAP, "%g", (double)v->f); break;
         case PIN_F64: snprintf(buf, PIN_FMT_CAP, "%g", v->d); break;
         case PIN_NAME:
-            snprintf(buf, PIN_FMT_CAP, "%s", v->str ? v->str : "");
-            break;
         case PIN_STR:
             snprintf(buf, PIN_FMT_CAP, "%s", v->str ? v->str : "");
             break;

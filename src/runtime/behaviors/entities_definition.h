@@ -3,7 +3,6 @@
 
 #include "runtime/native_definitions.h"
 
-/* Each port list is the signature shared by native execution and graph views. */
 #define GAME_ENTITY_GET_GLOBAL_NAME "Get Global Variable"
 #define GAME_ENTITY_SET_GLOBAL_NAME "Set Global Variable"
 #define GAME_ENTITY_HAS_NAME "Has Entities With Component"
@@ -221,7 +220,6 @@
 
 extern const native_definition_pack GAME_ENTITY_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define GAME_ENTITY_GET_GLOBAL_PRESENTATION                                    \
     .category = "Global",                                                      \
     .keywords = "global shared variable binding reference entity value",       \

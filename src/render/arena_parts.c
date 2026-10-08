@@ -204,7 +204,7 @@ render_parts_table *render_parts_prepare(
                 w.error = "Prepared part keys are duplicated";
             }
         }
-        if (!w.error && true) {
+        if (!w.error) {
             asetcap(table->records, acount(table->records) + 1);
             apush(table->records, r);
         } else {

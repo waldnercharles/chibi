@@ -248,18 +248,13 @@ bool source_edit_declarations(
         if (!identifier(r->name)) {
             return fail(error, size, "Retained value references require an identifier name");
         }
-        char *quoted = xstrdup(r->name);
-        if (!quoted) {
-            return false;
-        }
-        patch(changes, selected->declaration, quoted);
+        patch(changes, selected->declaration, r->name);
         for (int i = 0; i < a->use_count; i++) {
             if (a->uses[i].symbol == index &&
                 (!a->uses[i].member || a->uses[i].kind == SCRIPT_CALL)) {
-                patch(changes, a->uses[i].range, quoted);
+                patch(changes, a->uses[i].range, r->name);
             }
         }
-        free(quoted);
     } else if (r->kind == AUTHORING_EDIT_SET_DISABLED) {
         script_syntax *syntax = script_parse(a->text);
         TSNode node = ts_node_named_descendant_for_byte_range(

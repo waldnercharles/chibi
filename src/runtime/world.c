@@ -33,11 +33,12 @@ static bool paused(void *context)
 }
 static void bind(game_world *world, const char *name, void *value)
 {
-    if (value) {
-        int status = game_source_bind_service(world->sources, name, value);
-        assert(!status);
-        (void)status;
+    if (!value) {
+        return;
     }
+    int status = game_source_bind_service(world->sources, name, value);
+    assert(!status);
+    (void)status;
 }
 static bool same_name(const char *a, const char *b)
 {

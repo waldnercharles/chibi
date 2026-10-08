@@ -121,7 +121,6 @@ static bool prepare_shader(
     memcpy(asset.widths, value.widths, sizeof asset.widths);
     memcpy(asset.defaults, value.defaults, sizeof asset.defaults);
     memcpy(asset.bounds, value.bounds, sizeof asset.bounds);
-    /* All owned fields move together; the decoded envelope is now empty. */
     apush(g->assets, asset);
     return true;
 }

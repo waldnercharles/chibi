@@ -66,7 +66,6 @@
 #define GAME_PARTICLES_OUTPUTS(X) GAME_PARTICLES_EXEC(X, "Then")
 extern const native_definition_pack GAME_PARTICLES_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define GAME_PARTICLES_BURST_PRESENTATION                                      \
     .category = "Effects", .keywords = "particles burst sparks impact",        \
     .description = "Bursts Count streaks from Position in random directions "  \

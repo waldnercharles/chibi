@@ -50,7 +50,6 @@
 
 extern const native_definition_pack GAME_VISIBILITY_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define VISIBILITY_SAMPLE_PRESENTATION                                         \
     .category = "Visibility", .keywords = "fog sight explored terrain memory", \
     .description = "Samples the fog-of-war cell at Position; Visible is "      \

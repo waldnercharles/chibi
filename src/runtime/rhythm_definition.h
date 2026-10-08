@@ -20,7 +20,6 @@
     GAME_RHYTHM_VALUE(X, "Duration")
 extern const native_definition_pack GAME_RHYTHM_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define GAME_RHYTHM_PRESENTATION                                               \
     .category = "Time", .keywords = "beat tempo phase pulse rhythm music",     \
     .description = "Reads the scene rhythm clock, 120 BPM without one; Phase " \

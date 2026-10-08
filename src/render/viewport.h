@@ -101,7 +101,7 @@ bool engine_viewport_ui_capture(const engine_viewport *viewport);
  * focused: typed letters are the field's, not gameplay's or a shortcut's. */
 bool engine_viewport_ui_typing(const engine_viewport *viewport);
 
-/* ENG-3: whether the scene area held the keyboard as of the last draw. */
+/* Whether the scene area held the keyboard as of the last draw. */
 int engine_viewport_focused(const engine_viewport *viewport);
 void engine_viewport_pixel_size(const engine_viewport *viewport, int *width, int *height);
 void engine_viewport_get_view(const engine_viewport *viewport, engine_viewport_view *view);

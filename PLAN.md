@@ -26,7 +26,7 @@ Private source publication was authorized on 2026-10-08. The extracted
 repositories are `waldnercharles/chibi-studio`, `waldnercharles/chibi-arena3d`,
 `waldnercharles/chibi-space-cadet`, `waldnercharles/chibi-voidweaver` and
 `waldnercharles/chibi-examples`. The engine refactor is published on
-`cwaldner/code-language-prototype` in the existing private `c-blueprints`
+`cwaldner/code-language-prototype` in the existing private `chibi`
 repository. Branch publication does not merge the refactor into engine `main`
 or change the acceptance limits below.
 

@@ -36,7 +36,6 @@
     PHYSICS_PORT(X, "Entities", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_ARRAY)
 extern const native_definition_pack GAME_PHYSICS_DEFINITION_PACK;
 
-/* Shared authoring presentation for these native declarations. */
 #define PHYSICS_RAY_PRESENTATION                                               \
     .category = "Physics",                                                     \
     .keywords = "ray segment visibility line sight wall occlusion ricochet "   \

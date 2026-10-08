@@ -6,43 +6,6 @@ $(error Temporary 60-second policy: use one validation goal per invocation; aggr
 endif
 endif
 
-# Native desktop setup commands can run before a SessionStart hook.
-# Enrollment is silent and creates no state for repositories without installation.
-ifeq ($(wildcard .chibi-workspace.json),)
-ifneq ($(wildcard tools/workspaces.py),)
-ifneq ($(shell python3 tools/workspaces.py enroll >/dev/null && printf ready),ready)
-$(error Workspace enrollment failed; inspect the workspaces error above)
-endif
-endif
-endif
-
-# Managed workspaces hold one lock across configure, tests, and launched runtimes.
-# Recursive make inherits MAKEFLAGS, command-line variables, and the lock fd.
-override CHIBI_WORKSPACE_INNER := 0
-ifneq ($(shell test -f .chibi-workspace.json && printf managed),)
-ifeq ($(strip $(CHIBI_WORKSPACE_LOCK_FD)),)
-CHIBI_WORKSPACE_GOALS := $(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
-.DEFAULT_GOAL := all
-.PHONY: $(CHIBI_WORKSPACE_GOALS) .chibi-workspace-invocation
-$(CHIBI_WORKSPACE_GOALS): .chibi-workspace-invocation
-.chibi-workspace-invocation:
-ifneq ($(findstring q,$(firstword $(MAKEFLAGS))),)
-# Every delegated convenience goal is phony and therefore pending in query mode.
-	@:
-else
-	+@python3 tools/workspaces.py run -- $(MAKE) $(CHIBI_WORKSPACE_GOALS)
-endif
-else
-ifneq ($(shell python3 tools/workspaces.py validate-lock >/dev/null 2>&1 && printf valid),valid)
-$(error Invalid inherited workspace lock; run make without CHIBI_WORKSPACE_LOCK_FD)
-endif
-override CHIBI_WORKSPACE_INNER := 1
-endif
-else
-override CHIBI_WORKSPACE_INNER := 1
-endif
-
-ifeq ($(CHIBI_WORKSPACE_INNER),1)
 # Convenience wrapper around CMake. `make` configures and builds.
 BUILD_DIR ?= build
 SDK_BUILD_DIR ?= build-sdk
@@ -69,7 +32,7 @@ WEB_PORT ?= 8099
 CHIBI_COLLAB_URL ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
-BUILD_TARGET ?= chibi-compile chibi-player chibi_ctl
+BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
 VERBOSE ?= 0
 export VERBOSE TEST_ARGS AGENT_SELECTOR
 MAKEFLAGS += --no-print-directory
@@ -197,12 +160,12 @@ studio-build:
 studio-run:
 	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
 	@$(MAKE) studio-build
-	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-studio" --project-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-dev" --project-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
 
 studio-dev:
 	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
 	@$(MAKE) studio-build
-	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-studio" --checkpoint "$(abspath $(STUDIO_CHECKPOINT))" --project-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-dev" --checkpoint "$(abspath $(STUDIO_CHECKPOINT))" --project-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
 
 package-studio:
 	@$(MAKE) studio-build STUDIO_BUILD_DIR="$(STUDIO_PACKAGE_BUILD_DIR)" STUDIO_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_STUDIO_DISTRIBUTION=ON"
@@ -345,4 +308,3 @@ clean:
 	fi
 	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(TOOLS_BUILD_DIR)" "$(WEB_BUILD_DIR)"
 
-endif # CHIBI_WORKSPACE_INNER

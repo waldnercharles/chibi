@@ -36,7 +36,7 @@ target_link_libraries(chibi_platform PUBLIC
 configure_file("${CHIBI_SDK_ROOT}/src/assets/project.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/platform/assets/project.h" COPYONLY)
 target_include_directories(chibi_platform PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/platform")
-target_link_libraries(chibi_platform PRIVATE chibi_json)
+target_link_libraries(chibi_platform PRIVATE chibi_json chibi_support)
 target_compile_definitions(chibi_platform PRIVATE CHIBI_DISTRIBUTION)
 if(EMSCRIPTEN)
     target_compile_definitions(chibi_platform PRIVATE CHIBI_SOURCE_DIR="/resources")

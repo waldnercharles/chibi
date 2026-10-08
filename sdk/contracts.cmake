@@ -185,7 +185,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
 endif()
 
 if(CHIBI_SDK_BUILD_DESKTOP)
-    chibi_sdk_contract(chibi_platform "${CHIBI_SDK_ROOT}/src/support" chibi_json
+    chibi_sdk_contract(chibi_platform "${CHIBI_SDK_ROOT}/src/support" chibi_json chibi_support
         "$<BUILD_INTERFACE:cute>" "$<INSTALL_INTERFACE:${CHIBI_DESKTOP_CUTE}>")
     chibi_sdk_contract(chibi_ui_host "${CHIBI_SDK_ROOT}/src" chibi_platform chibi_json chibi_ui_document_values chibi_ui_documents chibi_builtin_fonts chibi_text_search chibi_support
         "$<BUILD_INTERFACE:RmlUi::Core>" "$<INSTALL_INTERFACE:${CHIBI_DESKTOP_RMLUI}>" c++ stdc++)

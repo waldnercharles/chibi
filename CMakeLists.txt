@@ -223,6 +223,14 @@ if(CHIBI_SDK_BUILD_NATIVE)
     add_dependencies(chibi_native_bindings generate_runtime_registry)
 endif()
 
+if(TARGET chibi)
+    # Build-tree players read shaders from ../share/chibi, as installed ones do.
+    add_custom_target(chibi_build_shaders
+        COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
+            "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/shaders")
+    add_dependencies(chibi chibi_build_shaders)
+endif()
+
 if(TARGET Chibi::project_preparation AND TARGET Chibi::render)
     # The controller uses the same explicit headers and package links as its
     # standalone installed build; this directory stages its owning resources.

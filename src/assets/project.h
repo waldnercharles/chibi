@@ -23,6 +23,9 @@ typedef struct
 
 /* Resolve a project directory, its project.kdl, or a legacy content directory. */
 int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size);
+/* The owned path of the nearest directory at or above `start` that holds
+ * project.kdl, or NULL when none does. */
+char *chibi_project_find(const char *start);
 /* Creates an empty project with content/scenes/Start.kdl as its start scene.
  * `root` must not already exist; its parent directory must exist. */
 int chibi_project_create(const char *root, const char *name, char *error, size_t error_size);

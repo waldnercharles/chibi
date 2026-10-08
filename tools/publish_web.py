@@ -101,9 +101,8 @@ def build_environment(root):
     names.update(dependency_package.ENVIRONMENT)
     env = {key: value for key, value in os.environ.items()
            if key in names or key.startswith(('EM', 'CCACHE_', 'CHIBI_'))}
-    # A parent's make options and workspace lock do not belong to this checkout.
-    for key in ('MAKEFLAGS', 'MFLAGS', 'MAKEOVERRIDES', 'CHIBI_WORKSPACE_LOCK_FD',
-                'CHIBI_WORKSPACE_ROOT', 'CHIBI_WORKSPACE_INNER', 'CCACHE_BASEDIR'):
+    # A parent's make options do not belong to this checkout.
+    for key in ('MAKEFLAGS', 'MFLAGS', 'MAKEOVERRIDES', 'CCACHE_BASEDIR'):
         env.pop(key, None)
     env.setdefault('EM_CACHE', str(root / '.cache' / 'emscripten'))
     env.setdefault('CCACHE_DIR', str(root / '.cache' / 'ccache'))

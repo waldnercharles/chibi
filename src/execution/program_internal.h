@@ -106,6 +106,7 @@ struct execution_instance
     execution_activation **activations;
     execution_task *tasks;
     int finished_first, finished_last, finished_count;
+    int spare; /* Evicted slots, linked by next. */
     arena selections;
     execution_activation *running;
     execution_activation **system_activations;

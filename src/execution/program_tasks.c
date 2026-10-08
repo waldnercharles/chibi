@@ -73,19 +73,32 @@ static int link_of(const execution_instance *instance, const execution_task *t)
 {
     return (int)(t - instance->tasks + 1);
 }
-/* Reuses the oldest finished slot once TASK_RETAINED have finished. */
-static execution_task *task_new(execution_instance *instance)
+/* Drops the oldest finished task's results and invalidates its handle. */
+static void evict(execution_instance *instance)
 {
-    if (instance->finished_count < TASK_RETAINED) {
-        apush(instance->tasks, ((execution_task){ .generation = 1 }));
-        return &instance->tasks[acount(instance->tasks) - 1];
-    }
     execution_task *t = slot(instance, instance->finished_first);
+    int link = instance->finished_first;
     instance->finished_first = t->next;
     instance->finished_last = t->next ? instance->finished_last : 0;
     instance->finished_count--;
     arena_free(&t->storage);
-    *t = (execution_task){ .generation = t->generation + 1 };
+    *t = (execution_task){ .generation = t->generation + 1, .next = instance->spare };
+    instance->spare = link;
+}
+/* Reuses an evicted slot, or the oldest finished one once TASK_RETAINED have
+ * finished. */
+static execution_task *task_new(execution_instance *instance)
+{
+    if (!instance->spare && instance->finished_count < TASK_RETAINED) {
+        apush(instance->tasks, ((execution_task){ .generation = 1 }));
+        return &instance->tasks[acount(instance->tasks) - 1];
+    }
+    if (!instance->spare) {
+        evict(instance);
+    }
+    execution_task *t = slot(instance, instance->spare);
+    instance->spare = t->next;
+    t->next = 0;
     return t;
 }
 static void adopt(execution_instance *instance, execution_task *parent, execution_task *t)
@@ -123,7 +136,9 @@ static void retire(execution_instance *instance, execution_task *t)
         instance->finished_first = link;
     }
     instance->finished_last = link;
-    instance->finished_count++;
+    if (++instance->finished_count > TASK_RETAINED) {
+        evict(instance);
+    }
 }
 
 static void box_release(execution_box *box)

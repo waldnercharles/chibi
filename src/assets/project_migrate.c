@@ -99,7 +99,6 @@ static void collect(TSNode node, int file, TSNode library, function **functions)
                          .name = ts_node_child_by_field_name(node, "name", 4),
                          .body = ts_node_child_by_field_name(node, "body", 4) })
         );
-        return;
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
         collect(ts_node_named_child(node, i), file, library, functions);
@@ -146,7 +145,7 @@ static const function *callee(const corpus *c, int file, TSNode target)
 static bool blocking(const corpus *c, int file, TSNode node)
 {
     if (!is(node, "call_expression") || is(outer(node), "await_expression") ||
-        is(ts_node_parent(node), "action_declaration")) {
+        is(outer(node), "action_declaration")) {
         return false;
     }
     const function *f = callee(c, file, ts_node_child_by_field_name(node, "function", 8));
@@ -158,7 +157,9 @@ static bool waits(const corpus *c, int file, TSNode node)
         return true;
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        if (waits(c, file, ts_node_named_child(node, i))) {
+        TSNode child = ts_node_named_child(node, i);
+        if (!is(child, "function_declaration") &&
+            !is(child, "macro_declaration") && waits(c, file, child)) {
             return true;
         }
     }

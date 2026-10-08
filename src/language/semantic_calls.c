@@ -40,6 +40,14 @@ char *script_analyzer_qualified_name(analyzer *a, TSNode node)
     free(right);
     return name;
 }
+static TSNode unparenthesized_parent(TSNode node)
+{
+    TSNode parent = ts_node_parent(node);
+    while (script_analyzer_is(parent, "parenthesized_expression")) {
+        parent = ts_node_parent(parent);
+    }
+    return parent;
+}
 int script_analyzer_callable_symbol(const analyzer *a, const char *name)
 {
     int symbol = script_analyzer_lookup_name(a, name);
@@ -1263,7 +1271,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
      * lifetimes. */
     bool spawnable = !result.instance && entry_index < 0 &&
                      !ts_node_eq(node, a->awaited) &&
-                     !script_analyzer_is(ts_node_parent(node), "action_declaration") &&
+                     !script_analyzer_is(unparenthesized_parent(node), "action_declaration") &&
                      !(symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION);
     bool authored_task = spawnable && function && !capability &&
                          function->kind == SCRIPT_FUNCTION_AUTHORED &&

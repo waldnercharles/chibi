@@ -1679,15 +1679,17 @@ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
 }
 TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
 {
-    const char
-        *source = "behavior Many { done: double = 0; kept: double = 0; "
-                  "stale: double = 0; first: task;"
-                  "function Short() -> () { yield; done += 1; }"
-                  "function Long() -> () { await Delay(1); kept += 1; }"
-                  "on Impulse(amount, enabled) { if !enabled { cancel "
-                  "first; if first { stale += 1; } } "
-                  "else if amount == 0 { first = Short(); } "
-                  "else if amount == 1 { Short(); } else { Long(); } } }";
+    const char *source = "behavior Many { done: double = 0; kept: double = 0; "
+                         "stale: double = 0; got: double = -1; first: task;"
+                         "function Short() -> (v: double) { yield; done += 1; "
+                         "return 7 }"
+                         "function Long() -> () { await Delay(1); kept += 1; }"
+                         "on Impulse(amount, enabled) { if !enabled { cancel "
+                         "first; if first { stale += 1; } } "
+                         "else if amount == 0 { first = Short(); } "
+                         "else if amount == 1 { Short(); } "
+                         "else if amount == 3 { got = await first } else { "
+                         "Long(); } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -1704,6 +1706,10 @@ TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
         }
         REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "done", 41));
+        /* All 41 finished together; only the newest 32 keep their results. */
+        args[0].d = 3;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.15, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "got", 0));
         /* The oldest finished slot, the first task's, now runs Long. */
         args[0].d = 2;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.2, 0, 1000) == FLOW_OK);
@@ -1784,6 +1790,42 @@ TEST_CASE(program_task_semantics_reject_invalid_uses)
     return true;
 }
 
+TEST_CASE(program_nested_functions_wait_for_themselves)
+{
+    /* Version 10 blocked on nested callees too; action initializers keep
+     * their own lifetime, parenthesized or not. */
+    const char *source = "behavior N { n: double = 0;"
+                         "action later = (Outer());"
+                         "function Outer() -> () { function Inner() -> () { "
+                         "await Delay(1); } Inner(); n += 1; } }";
+    const char *expected = "behavior N { n: double = 0;"
+                           "action later = (Outer());"
+                           "function Outer() -> () { function Inner() -> () { "
+                           "await Delay(1); } await Inner(); n += 1; } }";
+    char **all = chibi_migrate_task_calls(&source, 1);
+    REQUIRE(all[0] && !strcmp(all[0], expected));
+    free(all[0]);
+    free(all);
+    /* Declaring a waiting function does not make its parent wait. */
+    const char *plain = "behavior P { n: double = 0;"
+                        "function Outer() -> (v: double) { "
+                        "function Inner() { yield } return 3 }"
+                        "on Impulse(amount, enabled) { x := Outer(); n = x } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(plain, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 3));
+    }
+    return true;
+}
 TEST_CASE(program_version_11_references_migrate_to_values)
 {
     const char *source = "behavior R { n: double = 1; m: int = 6;"
@@ -1917,7 +1959,15 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     fclose(file);
     REQUIRE(!strcmp(text, source));
     unlink(link);
+    snprintf(link, sizeof link, "%s.migrating", manifest);
+    REQUIRE(!symlink(outside, link));
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    file = fopen(outside, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(!strcmp(text, "keep"));
+    struct stat info;
+    REQUIRE(!lstat(manifest, &info) && S_ISREG(info.st_mode));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2330,6 +2380,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
     RUN_TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits);
+    RUN_TEST_CASE(program_nested_functions_wait_for_themselves);
     RUN_TEST_CASE(program_version_11_references_migrate_to_values);
     RUN_TEST_CASE(program_version_12_results_migrate_to_returns);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);

@@ -33,7 +33,10 @@ static bool waits(TSNode node)
         return true;
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        if (waits(ts_node_named_child(node, i))) {
+        TSNode child = ts_node_named_child(node, i);
+        /* A nested function waits for itself, not for its parent. */
+        if (!script_analyzer_is(child, "function_declaration") &&
+            !script_analyzer_is(child, "macro_declaration") && waits(child)) {
             return true;
         }
     }

@@ -354,6 +354,7 @@ static int upgrade(const char *manifest, const char *content, int from, char *er
     size_t length = strlen(manifest) + sizeof ".migrating";
     char *staged = xmalloc(length);
     snprintf(staged, length, "%s.migrating", manifest);
+    remove(staged); /* Never write through a link left at the staging path. */
     int status = write_asset_file(staged, updated, error, error_size);
     if (!status && rename(staged, manifest)) {
         set_errorf(error, error_size, "Cannot replace %s", manifest);

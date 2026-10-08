@@ -18,6 +18,7 @@
 
 #define CHIBI_BUILD_DIR ".chibi/build"
 #define CHIBI_ARTIFACT CHIBI_BUILD_DIR "/game.chibip"
+#define CHIBI_COMPILER_STAMP CHIBI_BUILD_DIR "/compiler"
 
 extern char **environ;
 
@@ -54,7 +55,8 @@ static bool ignored(const char *name)
 /* Whether `directory` or anything under it, except ignored entries, changed
  * after `since`. A directory's own modification time covers entries added,
  * removed or renamed in it, and an entry that cannot be stated, such as a
- * dangling symlink, counts as changed. */
+ * dangling symlink, counts as changed. Symlinked directories are compared by
+ * their target's own time rather than walked, so link cycles terminate. */
 static bool changed_since(const char *directory, int64_t since)
 {
     if (modified(directory) > since) {
@@ -72,7 +74,7 @@ static bool changed_since(const char *directory, int64_t since)
         }
         char *path = join(directory, entry->d_name);
         struct stat info;
-        if (stat(path, &info) == 0 && S_ISDIR(info.st_mode)) {
+        if (lstat(path, &info) == 0 && S_ISDIR(info.st_mode)) {
             changed = changed_since(path, since);
         } else {
             int64_t time = modified(path);
@@ -131,23 +133,63 @@ static bool open_project(chibi_project *project, const char *requested)
 }
 
 /* Whether the project's sources changed after `since`, including a content
- * directory that lives outside the project root. */
+ * directory and start scene that live outside the project root. */
 static bool sources_changed(const chibi_project *project, int64_t since)
 {
     size_t length = strlen(project->root);
     bool inside = !strncmp(project->content, project->root, length) &&
                   (project->content[length] == '/' || project->content[length] == '\0');
-    return changed_since(project->root, since) ||
-           (!inside && changed_since(project->content, since));
+    if (changed_since(project->root, since) ||
+        (!inside && changed_since(project->content, since))) {
+        return true;
+    }
+    char *scene = chibi_project_scene_path(project, NULL);
+    int64_t time = scene ? modified(scene) : 0;
+    free(scene);
+    return time < 0 || time > since;
+}
+
+/* Identifies the compiler that prepared an artifact: its resolved path and
+ * modification time, so switching to another SDK also rebuilds. */
+static char *compiler_identity(const char *compiler)
+{
+    char *resolved = realpath(compiler, NULL);
+    if (!resolved) {
+        return xstrdup("");
+    }
+    size_t size = strlen(resolved) + 32;
+    char *identity = xmalloc(size);
+    snprintf(identity, size, "%s %lld\n", resolved, (long long)modified(resolved));
+    free(resolved);
+    return identity;
+}
+
+static bool compiler_changed(const char *stamp, const char *identity)
+{
+    char *recorded = file_read_text(stamp);
+    bool changed = !recorded || strcmp(recorded, identity);
+    free(recorded);
+    return changed;
+}
+
+static void record_compiler(const char *stamp, const char *identity)
+{
+    FILE *file = fopen(stamp, "wb");
+    if (file) {
+        fputs(identity, file);
+        fclose(file);
+    }
 }
 
 static int prepare(const char *bin, const chibi_project *project, const char *artifact)
 {
     const char *root = project->root;
     char *compiler = join(bin, "chibi-compile");
+    char *identity = compiler_identity(compiler);
+    char *stamp = join(root, CHIBI_COMPILER_STAMP);
     int64_t prepared = modified(artifact);
     int result = 0;
-    if (prepared < 0 || modified(compiler) > prepared ||
+    if (prepared < 0 || compiler_changed(stamp, identity) ||
         sources_changed(project, prepared)) {
         char *build = join(root, CHIBI_BUILD_DIR);
         char *dot = join(root, ".chibi");
@@ -156,9 +198,14 @@ static int prepare(const char *bin, const chibi_project *project, const char *ar
         char *argv[] = { compiler,   "--project-root", (char *)root,
                          "--output", (char *)artifact, NULL };
         result = run(argv);
+        if (!result) {
+            record_compiler(stamp, identity);
+        }
         free(dot);
         free(build);
     }
+    free(stamp);
+    free(identity);
     free(compiler);
     return result;
 }

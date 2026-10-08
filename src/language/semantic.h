@@ -31,7 +31,8 @@ typedef struct
     script_range declaration;
     int scope, initializer, function;
     bool writable, disabled, resolving, outcome, lazy_local;
-    bool boxed; /* A task keeps this local by reference. */
+    bool boxed;       /* A task keeps this local by reference. */
+    bool mixed_tasks; /* Holds tasks of different functions. */
 } script_symbol;
 typedef enum
 {

@@ -1840,6 +1840,17 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     FILE *file = fopen(path, "wb");
     fputs(source, file);
     fclose(file);
+    /* Symlinks are not sources: neither a cycle nor a file outside content is
+     * followed. */
+    char outside[256], link[256];
+    snprintf(outside, sizeof outside, "%s/Outside.chibi", root);
+    file = fopen(outside, "wb");
+    fputs(source, file);
+    fclose(file);
+    snprintf(link, sizeof link, "%s/content/Outside.chibi", root);
+    REQUIRE(!symlink(outside, link));
+    snprintf(link, sizeof link, "%s/content/loop", root);
+    REQUIRE(!symlink(root, link));
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     file = fopen(path, "wb");
     fputs("version 10\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", file);
@@ -1858,6 +1869,14 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     fclose(file);
     REQUIRE(!strcmp(text, expected));
     unlink(path);
+    file = fopen(outside, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(!strcmp(text, source));
+    unlink(outside);
+    unlink(link);
+    snprintf(link, sizeof link, "%s/content/Outside.chibi", root);
+    unlink(link);
     snprintf(path, sizeof path, "%s/content", root);
     rmdir(path);
     rmdir(root);
@@ -1984,6 +2003,28 @@ TEST_CASE(program_task_keeps_state_and_component_references)
     }
     return true;
 }
+TEST_CASE(program_task_state_awaits_its_function_results)
+{
+    const char
+        *source = "behavior P { pulse: task; power: double = 0;"
+                  "function Charge(time: double) -> (power: double) { "
+                  "yield; return(time * 2); }"
+                  "on Impulse(amount, enabled) { pulse = Charge(amount); "
+                  "power = await pulse; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        const pin_value args[] = { { .type = PIN_F64, .d = 3 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_pump(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "power", 6));
+    }
+    return true;
+}
 TEST_CASE(program_task_shares_boxed_locals)
 {
     const char *source = "behavior B { seen: double = 0; kept: double = 0;"
@@ -2080,6 +2121,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
     RUN_TEST_CASE(program_library_call_starts_a_task);
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
+    RUN_TEST_CASE(program_task_state_awaits_its_function_results);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
     pu_clear_setup();

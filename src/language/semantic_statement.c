@@ -91,6 +91,19 @@ int script_analyzer_statement_block(analyzer *a, TSNode node)
     a->scope = old_scope;
     return script_analyzer_statement_add(a, result);
 }
+/* A task symbol declared without its function takes the function of the
+ * tasks assigned to it, so awaiting it gives that function's results. Tasks
+ * of different functions leave it awaitable only for completion. */
+static void infer_task(analyzer *a, int symbol, script_type value)
+{
+    script_symbol *s = &a->out->symbols[symbol];
+    if (!(s->type.flags & SCRIPT_TYPE_TASK) || !(value.flags & SCRIPT_TYPE_TASK) ||
+        !value.nominal || s->type.nominal == value.nominal || s->mixed_tasks) {
+        return;
+    }
+    s->mixed_tasks = s->type.nominal != 0;
+    s->type.nominal = s->mixed_tasks ? 0 : value.nominal;
+}
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
 {
     if (script_analyzer_is(node, "block")) {
@@ -207,6 +220,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         if (address.symbol >= 0) {
             script_analyzer_use(a, target, address.symbol, SCRIPT_WRITE, address.member);
+            infer_task(a, address.symbol, script_analyzer_expr_type(a, result.second));
         }
         return script_analyzer_statement_add(a, result);
     }

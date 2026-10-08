@@ -263,13 +263,14 @@ static int collect_sources(const char *directory, char ***paths, char *error, si
         size_t size = strlen(directory) + strlen(entry->d_name) + 2;
         char *path = xmalloc(size);
         snprintf(path, size, "%s/%s", directory, entry->d_name);
+        /* Like the source catalog, symlinks are not project sources. */
         struct stat info;
-        if (stat(path, &info)) {
+        if (lstat(path, &info)) {
             snprintf(error, error_size, "Cannot inspect %s", path);
             status = -1;
         } else if (S_ISDIR(info.st_mode)) {
             status = collect_sources(path, paths, error, error_size);
-        } else if (has_suffix(entry->d_name, ".chibi")) {
+        } else if (S_ISREG(info.st_mode) && has_suffix(entry->d_name, ".chibi")) {
             apush(*paths, path);
             continue;
         }

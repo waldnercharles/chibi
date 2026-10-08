@@ -97,7 +97,7 @@ def studio_startup_preflight():
                         1024 * 1024) != evidence.get('sdk_config_sha256')):
         raise ValueError('studio_startup_build_provenance_mismatch')
     starter = source / 'projects/starter'
-    expected = {'project.kdl': b'version 10\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
+    expected = {'project.kdl': b'version 11\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
                 'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n'}
     if {p.relative_to(starter).as_posix() for p in starter.rglob('*') if p.is_file()} != set(expected):
         raise ValueError('studio_starter_membership_changed')
@@ -164,7 +164,7 @@ def studio_source_edit_preflight():
         raise ValueError('studio_acceptance_sdk_changed')
     fixture = source / 'tests/acceptance/project'
     expected = {
-        'project.kdl': b'version 10\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
+        'project.kdl': b'version 11\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
         'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
         'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1;\n    on Tick {\n        count = count + 1;\n    }\n}\n',
     }

@@ -9,7 +9,8 @@
 bool program_instance_busy(const execution_instance *instance)
 {
     for (int i = 0; i < acount(instance->activations); i++) {
-        if (!instance->activations[i]->finished) {
+        /* Tasks run beside later updates rather than delaying them. */
+        if (!instance->activations[i]->finished && !instance->activations[i]->task) {
             return true;
         }
     }

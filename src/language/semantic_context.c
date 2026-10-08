@@ -461,7 +461,32 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
     int old_scope = a->scope;
     a->scope = record->scope;
     script_type expected = record->type;
-    int value = script_analyzer_expression(a, a->initializers[index].value, expected);
+    TSNode node = a->initializers[index].value;
+    int value;
+    if (ts_node_is_null(node) && (expected.flags & SCRIPT_TYPE_TASK)) {
+        /* A task state starts with no task. */
+        value = script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
+                                 .type = expected,
+                                 .constant = { .type = PIN_U64 },
+                                 .range = record->declaration,
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .entry = -1 }
+        );
+    } else if (ts_node_is_null(node)) {
+        script_analyzer_diagnostic(
+            a,
+            node,
+            "'%s' requires a default value",
+            record->name
+        );
+        value = script_analyzer_expression(a, node, expected);
+    } else {
+        value = script_analyzer_expression(a, node, expected);
+    }
     a->scope = old_scope;
     record = &a->out->symbols[symbol];
     record->initializer = value;

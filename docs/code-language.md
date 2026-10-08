@@ -7,13 +7,13 @@ modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 10. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 11. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 10
+version 11
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -178,11 +178,51 @@ such as `x := calculation;` evaluates once at that execution point using a nativ
 Snapshot node. Later reads use the captured value; a root-level `value` or `local`
 remains a lazy computation.
 
-This provides suspended invocations, not a general coroutine API. Source cannot
-currently create task handles, launch concurrent child tasks, explicitly yield,
-await another task, or cancel a task by handle. The runtime retains call frames
-and captured locals across supported native waits and cancels owned invocations
-when their entity or system registration is removed.
+### Tasks
+
+A function waits when its body contains `await` or `yield`. Calling such a
+function without `await` starts a task: the function runs inside the call until
+its first suspension, then runs beside the caller, and the call returns a `task`
+handle. `await` on the call or on the handle waits for the function and gives its
+result.
+
+```code
+behavior Turret {
+    pulse: task
+    ready: bool = false
+
+    function Charge(time: double) -> (power: double) {
+        await Delay(time)
+        yield
+        return(time * 2)
+    }
+
+    on Begin {
+        pulse = Charge(1)     // starts a task and continues here
+        power := await pulse  // waits for the task's result
+        if !pulse {           // a task is true while it is running
+            ready = true
+        }
+        cancel pulse          // stops it and every task it started
+    }
+}
+```
+
+- `yield` resumes on the next update.
+- `cancel t` stops a running task and the tasks it started; anything awaiting it
+  wakes with default results. Cancelling a finished task does nothing.
+- A task is true while it is running, so `if t` and `if !t` test it.
+- A `task` state needs no default; until assigned it refers to no task.
+- Tasks belong to the entity or system registration that started them and stop
+  when it is removed. A running task never blocks the events and ticks of its
+  owner.
+- A task cannot take reference arguments, and awaiting a task whose function has
+  several results is not supported; await the call itself for those.
+- Calls into an imported library always wait for the library function.
+
+The runtime retains call frames and captured locals across supported native waits
+and cancels owned invocations when their entity or system registration is
+removed.
 
 Native calls use their reflected names or unique snake-case spellings. Named
 arguments follow `name: expression`; ordinary statement calls may use positional
@@ -360,7 +400,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 10. Executable files contain no generated identity
+Project manifests use version 11. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

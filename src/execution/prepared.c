@@ -339,6 +339,7 @@ static uint64_t context_abi()
                               FIELD(command_arguments),
                               FIELD(command_results),
                               FIELD(begin_command),
+                              FIELD(start_task),
                               FIELD(error_status),
                               FIELD(owner),
                               FIELD(owner_type_name),

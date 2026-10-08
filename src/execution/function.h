@@ -226,6 +226,9 @@ typedef struct behavior_function_context
     pin_value *command_arguments;
     pin_value *command_results;
     int (*begin_command)(struct behavior_function_context *context, int command);
+    /* Starts the active function's task invocation and stores its handle in
+     * the invocation result. */
+    int (*start_task)(struct behavior_function_context *context, int call);
     int error_status;
     uint64_t owner;
     const char *owner_type_name;

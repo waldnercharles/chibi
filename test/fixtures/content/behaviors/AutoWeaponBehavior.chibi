@@ -7,7 +7,7 @@ behavior "AutoWeaponBehavior" {
     value get_gameweapon = get_game_weapon();
     on Tick as tick() {
         if (find_nearest_entity.Found) {
-            "Fire Ready Projectiles"(Origin: get_gametransform, Direction: direction_to<"Direction To">(Origin: get_gametransform, Target: find_nearest_entity.Position), Damage: get_gameweapon.Value.damage);
+            await "Fire Ready Projectiles"(Origin: get_gametransform, Direction: direction_to<"Direction To">(Origin: get_gametransform, Target: find_nearest_entity.Position), Damage: get_gameweapon.Value.damage);
         } else {
         }
     }

@@ -2,6 +2,7 @@
 #define CHIBI_EXECUTION_PROGRAM_INTERNAL_H
 #include "ecs/ecs.h"
 #include "execution/component.h"
+#include "execution/definition.h"
 #include "execution/module_internal.h"
 #include "execution/request.h"
 typedef struct
@@ -51,6 +52,7 @@ struct execution_activation
     execution_activation *continuation_owner;
     behavior_function_context *continuation_context;
     uint64_t origin_action;
+    uint64_t task; /* Handle when this activation runs a task, else 0. */
     uint64_t debug_run;
     uint64_t debug_previous, debug_module, debug_function;
     bool debug_paused;
@@ -72,6 +74,19 @@ typedef struct
     arena storage;
     bool seen;
 } observer_cache;
+/* A task slot keeps its results after the task finishes so a later await can
+ * read them. Handles carry the slot generation, so a reused slot's old handles
+ * neither wait nor cancel. */
+typedef struct
+{
+    uint32_t generation;
+    execution_activation *activation; /* NULL once the task has finished. */
+    uint64_t parent;
+    pin_value *results;
+    int result_count;
+    arena storage;
+    flow_host_request **waiters;
+} execution_task;
 struct execution_instance
 {
     execution_program *program;
@@ -83,6 +98,7 @@ struct execution_instance
     binding_cache *bindings;
     observer_cache *observations;
     execution_activation **activations;
+    execution_task *tasks;
     arena selections;
     execution_activation *running;
     execution_activation **system_activations;
@@ -142,6 +158,17 @@ bool program_binding_order(execution_program *p);
 int program_binding_run(execution_instance *, int, double, double, unsigned);
 void program_collect_states(execution_program *p);
 void program_activation_free(execution_activation *a);
+void program_activation_cancel(execution_activation *a);
+void program_bind_tasks(behavior_function_context *);
+int program_task_command(
+    behavior_function_context *,
+    const behavior_function_command *,
+    node_command_intrinsic,
+    flow_host_request *
+);
+void program_task_finished(execution_activation *, bool cancelled);
+void program_tasks_free(execution_instance *);
+bool program_request_deliver(flow_host_request *, const pin_value *, int);
 int program_activation_run(execution_activation *, double, double, unsigned);
 execution_activation *program_activation_new(
     execution_instance *,

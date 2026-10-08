@@ -26,6 +26,30 @@ unsigned script_analyzer_statement_effects(script_analysis *out, script_statemen
     }
     return effects;
 }
+static bool waits(TSNode node)
+{
+    if (script_analyzer_is(node, "await_expression") ||
+        script_analyzer_is(node, "yield_statement")) {
+        return true;
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        if (waits(ts_node_named_child(node, i))) {
+            return true;
+        }
+    }
+    return false;
+}
+/* A function waits when its body awaits or yields. Calling it without await
+ * starts a task, so unawaited calls never make the caller wait. */
+bool script_analyzer_function_waits(const analyzer *a, int function)
+{
+    for (int i = 0; i < acount(a->bodies); i++) {
+        if (a->bodies[i].function == function) {
+            return waits(a->bodies[i].node);
+        }
+    }
+    return false;
+}
 void script_analyzer_finish_effects(analyzer *a)
 {
     script_analysis *out = a->out;
@@ -39,7 +63,8 @@ void script_analyzer_finish_effects(analyzer *a)
             }
             if (expression->kind == SCRIPT_EXPR_CALL) {
                 if (expression->right >= 0) {
-                    effects |= out->functions[expression->right].effects;
+                    effects |= out->functions[expression->right].effects &
+                               ~(expression->task ? SCRIPT_EFFECT_SUSPEND : 0u);
                 }
             } else if (expression->right >= 0) {
                 effects |= out->expressions[expression->right].effects;

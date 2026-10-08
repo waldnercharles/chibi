@@ -69,6 +69,9 @@ typedef enum
     SCRIPT_EXPR_NIL,
     SCRIPT_EXPR_FALLBACK,
     SCRIPT_EXPR_STORE,
+    SCRIPT_EXPR_YIELD,
+    SCRIPT_EXPR_JOIN,   /* await of a task handle in left */
+    SCRIPT_EXPR_CANCEL, /* cancel of a task handle in left */
 } script_expression_kind;
 typedef enum
 {
@@ -118,6 +121,7 @@ typedef struct
     size_t offset;
     unsigned effects;
     bool writable, awaited, constant_snapshot, partial;
+    bool task; /* An unawaited call to a waiting function starts a task. */
 } script_expression;
 typedef enum
 {

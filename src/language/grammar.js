@@ -45,6 +45,8 @@ const K = Object.fromEntries(
     "break",
     "continue",
     "await",
+    "yield",
+    "cancel",
     "true",
     "false",
     "nil",
@@ -153,8 +155,7 @@ module.exports = grammar({
             field("name", $._name),
             ":",
             field("type", $.type),
-            "=",
-            field("value", $._expression),
+            optional(seq("=", field("value", $._expression))),
           ),
           seq(
             field("type", $.type),
@@ -307,6 +308,8 @@ module.exports = grammar({
         $.goto_statement,
         $.break_statement,
         $.continue_statement,
+        $.yield_statement,
+        $.cancel_statement,
         $.label_statement,
       ),
     local_declaration: ($) =>
@@ -395,6 +398,8 @@ module.exports = grammar({
     goto_statement: ($) => seq(K.goto, field("name", $._name), $._end),
     break_statement: ($) => seq(K.break, $._end),
     continue_statement: ($) => seq(K.continue, $._end),
+    yield_statement: ($) => seq(K.yield, $._end),
+    cancel_statement: ($) => seq(K.cancel, field("value", $._expression), $._end),
     label_statement: ($) => seq(field("name", $._name), ":"),
     _expression: ($) =>
       choice(

@@ -1,5 +1,6 @@
 #include "assets/project.h"
 
+#include "assets/project_migrate.h"
 #include "support/asset_text.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
@@ -235,7 +236,7 @@ static char *read_file(const char *path, char *error, size_t error_size)
     return text;
 }
 
-static int read_manifest(const char *path, chibi_project *project, char *error, size_t error_size)
+static int read_manifest(const char *path, chibi_project *project, int *opened, char *error, size_t error_size)
 {
     char *text = read_file(path, error, error_size);
     if (!text) {
@@ -261,7 +262,7 @@ static int read_manifest(const char *path, chibi_project *project, char *error, 
         return -1;
     }
     int found = (int)av_get_int(version);
-    if (found != CHIBI_PROJECT_VERSION) {
+    if (found < CHIBI_PROJECT_OLDEST_VERSION || found > CHIBI_PROJECT_VERSION) {
         av_doc_free(document);
         snprintf(
             error,
@@ -302,8 +303,47 @@ static int read_manifest(const char *path, chibi_project *project, char *error, 
     project->content = manifest_content ? xstrdup(manifest_content) : NULL;
     project->start_scene = manifest_scene ? xstrdup(manifest_scene) : NULL;
     project->ui = manifest_ui ? xstrdup(manifest_ui) : NULL;
+    *opened = found;
     av_doc_free(document);
     return 0;
+}
+
+/* Runs each step from `from` and then records the new version. The manifest
+ * is written last, so an interrupted upgrade reruns from the old version. */
+static int upgrade(const char *manifest, const char *content, int from, char *error, size_t error_size)
+{
+    for (int version = from; version < CHIBI_PROJECT_VERSION; version++) {
+        if (chibi_project_migrate_content(content, version, error, error_size)) {
+            return -1;
+        }
+    }
+    char *text = read_file(manifest, error, error_size);
+    if (!text) {
+        return -1;
+    }
+    char old[32];
+    snprintf(old, sizeof old, "version %d\n", from);
+    char *at = strstr(text, old);
+    if (!at || (at != text && at[-1] != '\n')) {
+        free(text);
+        set_errorf(error, error_size, "Cannot find the version line in %s", manifest);
+        return -1;
+    }
+    size_t size = strlen(text) + 32;
+    char *updated = xmalloc(size);
+    snprintf(
+        updated,
+        size,
+        "%.*sversion %d\n%s",
+        (int)(at - text),
+        text,
+        CHIBI_PROJECT_VERSION,
+        at + strlen(old)
+    );
+    free(text);
+    int status = write_asset_file(manifest, updated, error, error_size);
+    free(updated);
+    return status;
 }
 
 void chibi_project_free(chibi_project *project)
@@ -317,6 +357,29 @@ void chibi_project_free(chibi_project *project)
     free(project->start_scene);
     free(project->ui);
     *project = (chibi_project){ 0 };
+}
+
+int chibi_project_migrate(const char *path, char *error, size_t error_size)
+{
+    chibi_project project = { 0 };
+    char *manifest = NULL;
+    int from = CHIBI_PROJECT_VERSION;
+    if (is_directory(path)) {
+        manifest = join_path(path, CHIBI_PROJECT_MANIFEST);
+    } else {
+        manifest = xstrdup(path);
+    }
+    int status = read_manifest(manifest, &project, &from, error, error_size);
+    chibi_project_free(&project);
+    free(manifest);
+    if (status) {
+        return -1;
+    }
+    if (chibi_project_open(&project, path, error, error_size)) {
+        return -1;
+    }
+    chibi_project_free(&project);
+    return CHIBI_PROJECT_VERSION - from;
 }
 
 int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
@@ -368,13 +431,13 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
         return -1;
     }
     project->root = root;
-    if (manifest && read_manifest(manifest, project, error, error_size) != 0) {
+    int version = CHIBI_PROJECT_VERSION;
+    if (manifest && read_manifest(manifest, project, &version, error, error_size) != 0) {
         chibi_project_free(project);
         free(input);
         free(manifest);
         return -1;
     }
-    free(manifest);
     if (input_is_content) {
         free(project->content);
         project->content = xstrdup(input);
@@ -386,9 +449,21 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
                            : join_path(project->root, project->content);
     free(input);
     char *absolute_content = absolute_path(content_path);
+    if (absolute_content && is_directory(absolute_content) &&
+        version < CHIBI_PROJECT_VERSION &&
+        upgrade(manifest, absolute_content, version, error, error_size)) {
+        free(absolute_content);
+        absolute_content = NULL;
+        version = -1;
+    }
+    free(manifest);
     free(content_path);
     free(project->content);
     project->content = absolute_content;
+    if (version < 0) {
+        chibi_project_free(project);
+        return -1;
+    }
     if (!project->content) {
         set_errorf(error, error_size, "Content directory does not exist: %s", requested);
         chibi_project_free(project);

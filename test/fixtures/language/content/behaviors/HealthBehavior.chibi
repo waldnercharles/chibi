@@ -11,7 +11,7 @@ behavior "HealthBehavior" {
     }
     on Damage as damage(Amount: int = 0, Source: handle<"ecs.entity"> = 0) {
         if (convert<"To Real">(damage.Amount) > 0) {
-            "Apply Damage"(Current: &component("GAME.GameHealth", "current"), Maximum: &component("GAME.GameHealth", "maximum"), Amount: damage.Amount, Source: damage.Source);
+            await "Apply Damage"(Current: &component("GAME.GameHealth", "current"), Maximum: &component("GAME.GameHealth", "maximum"), Amount: damage.Amount, Source: damage.Source);
         } else {
         }
     }

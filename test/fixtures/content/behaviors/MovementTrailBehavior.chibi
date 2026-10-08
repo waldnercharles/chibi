@@ -6,7 +6,7 @@ behavior "MovementTrailBehavior" {
         if (is_stationary) {
             set_variable<"Particle Carry">(Value: float = 0.0);
         } else {
-            "Emit Movement Trail"(Direction: input.Direction);
+            await "Emit Movement Trail"(Direction: input.Direction);
         }
     }
     function "Emit Movement Trail"(Direction: struct<"CF_V2"> = null) -> () {

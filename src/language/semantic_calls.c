@@ -1238,9 +1238,27 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     }
     free(seen);
     free(resolved_arguments);
-    int count = capability ? capability->result_count
-              : function   ? acount(function->results)
-                           : 0;
+    if (function && !capability && !result.instance && entry_index < 0 &&
+        function->kind == SCRIPT_FUNCTION_AUTHORED && !ts_node_eq(node, a->awaited) &&
+        !script_analyzer_is(ts_node_parent(node), "action_declaration") &&
+        script_analyzer_function_waits(a, function_index)) {
+        result.task = true;
+        result.type = (script_type){
+            .storage = PIN_U64,
+            .nominal = a->out->symbols[function->symbol].id,
+            .flags = SCRIPT_TYPE_TASK
+        };
+        for (int i = 0; i < acount(function->parameters); i++) {
+            if (a->out->symbols[function->parameters[i]].type.flags &
+                SCRIPT_TYPE_REFERENCE) {
+                script_analyzer_diagnostic(a, node, "A task cannot take reference arguments; await the call");
+            }
+        }
+    }
+    int count = result.task ? 0
+              : capability  ? capability->result_count
+              : function    ? acount(function->results)
+                            : 0;
     if (count == 1) {
         result.type = capability ? capability->results[0].type
                                  : a->out->symbols[function->results[0]].type;
@@ -1318,7 +1336,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         result.type = (script_type){ .storage = PIN_STRUCT,
                                      .nominal = result.capability,
                                      .flags = SCRIPT_TYPE_RESULTS };
-    } else if (capability || function) {
+    } else if (!result.task && (capability || function)) {
         result.type = (script_type){ .storage = PIN_FLOW };
     }
     for (int i = 0; i < count; i++) {

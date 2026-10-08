@@ -1001,6 +1001,10 @@
           "named": true
         },
         {
+          "type": "cancel_statement",
+          "named": true
+        },
+        {
           "type": "continue_statement",
           "named": true
         },
@@ -1046,6 +1050,10 @@
         },
         {
           "type": "while_statement",
+          "named": true
+        },
+        {
+          "type": "yield_statement",
           "named": true
         }
       ]
@@ -1171,6 +1179,10 @@
           "named": true
         },
         {
+          "type": "cancel_statement",
+          "named": true
+        },
+        {
           "type": "continue_statement",
           "named": true
         },
@@ -1265,8 +1277,92 @@
         {
           "type": "while_statement",
           "named": true
+        },
+        {
+          "type": "yield_statement",
+          "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "cancel_statement",
+    "named": true,
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "await_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin_reference",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "cast_expression",
+            "named": true
+          },
+          {
+            "type": "engine_reference",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "member_expression",
+            "named": true
+          },
+          {
+            "type": "nil",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "struct_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -3775,7 +3871,7 @@
       },
       "value": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "array_expression",
@@ -4033,6 +4129,10 @@
           "named": true
         },
         {
+          "type": "cancel_statement",
+          "named": true
+        },
+        {
           "type": "continue_statement",
           "named": true
         },
@@ -4126,6 +4226,10 @@
         },
         {
           "type": "while_statement",
+          "named": true
+        },
+        {
+          "type": "yield_statement",
           "named": true
         }
       ]
@@ -4768,6 +4872,11 @@
     }
   },
   {
+    "type": "yield_statement",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "!",
     "named": false
   },
@@ -4945,6 +5054,10 @@
   },
   {
     "type": "break",
+    "named": false
+  },
+  {
+    "type": "cancel",
     "named": false
   },
   {
@@ -5165,6 +5278,10 @@
   },
   {
     "type": "without",
+    "named": false
+  },
+  {
+    "type": "yield",
     "named": false
   },
   {

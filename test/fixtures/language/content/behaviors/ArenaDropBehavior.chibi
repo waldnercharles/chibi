@@ -37,7 +37,7 @@ behavior "ArenaDropBehavior" {
             forloop();
         }
         after forloop.Body {
-            "Spawn Source Beam"(Position: entry.Position, Appearance: &local.Appearance, Material: entry.Material, Orientation: entry.Orientation, Visual: entry.Visual, Center: primitive_part_2.Center, "Center Y": primitive_part_2.Elevation, Width: primitive_part_2.Width, Height: primitive_part_2.Height, Depth: primitive_part_2.Depth, Primitive: primitive_part_2.Primitive);
+            await "Spawn Source Beam"(Position: entry.Position, Appearance: &local.Appearance, Material: entry.Material, Orientation: entry.Orientation, Visual: entry.Visual, Center: primitive_part_2.Center, "Center Y": primitive_part_2.Elevation, Width: primitive_part_2.Width, Height: primitive_part_2.Height, Depth: primitive_part_2.Depth, Primitive: primitive_part_2.Primitive);
         }
         after forloop.Completed {
             return();

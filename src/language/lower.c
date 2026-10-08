@@ -5,6 +5,7 @@
 #include "execution/intrinsics.h"
 #include "execution/scalar.h"
 #include "execution/state.h"
+#include "execution/task.h"
 #include "language/identity.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -824,19 +825,24 @@ static int authored_call(lower *l, const script_expression *e)
     for (int i = 0; i < f->parameter_count; i++) {
         apush(args, signature_initial(l, l->a->symbols[f->parameters[i]].type));
     }
-    for (int i = 0; i < output->result_count; i++) {
+    for (int i = 0; !e->task && i < output->result_count; i++) {
         apush(results, initial(l, l->a->symbols[output->results[i]].type));
     }
-    int invocation = behavior_function_builder_call(
-        l->builder,
-        l->module->functions[index].body
-            ? l->module->functions[index].body
-            : behavior_function_builder_definition(l->builders[index]),
-        args,
-        acount(args),
-        results,
-        acount(results)
-    );
+    const behavior_function *callee = l->module->functions[index].body
+                                        ? l->module->functions[index].body
+                                        : behavior_function_builder_definition(
+                                              l->builders[index]
+                                          );
+    int invocation = e->task
+                       ? behavior_function_builder_task(l->builder, callee, args, acount(args))
+                       : behavior_function_builder_call(
+                             l->builder,
+                             callee,
+                             args,
+                             acount(args),
+                             results,
+                             acount(results)
+                         );
     int argument_first = behavior_function_builder_call_first(l->builder, invocation);
     for (int i = 0; i < f->parameter_count; i++) {
         if (l->a->symbols[f->parameters[i]].type.flags & SCRIPT_TYPE_REFERENCE) {
@@ -867,6 +873,9 @@ static int authored_call(lower *l, const script_expression *e)
     }
     emit(l, (behavior_function_instruction){ .op = BF_INVOKE, .left = invocation }, e->range);
     int result_first = behavior_function_builder_call_results(l->builder, invocation);
+    if (e->task) {
+        return host_result(l, result_first, e->type, e->range);
+    }
     if (e->instance) {
         script_type *types = NULL;
         int *values = NULL;
@@ -1098,6 +1107,83 @@ static void complete_results(
     afree(types);
     afree(values);
 }
+/* Suspends until the asynchronous command just begun completes. */
+static void await_command(lower *l, uint64_t action, script_range range)
+{
+    int status = value_op(
+        l,
+        (behavior_function_instruction){
+            .op = BF_CONTEXT,
+            .type = PIN_I32,
+            .offset = offsetof(behavior_function_context, error_status) },
+        range
+    );
+    int zero = constant(l, (pin_value){ .type = PIN_I32 }, range);
+    int waiting = value_op(
+        l,
+        (
+            behavior_function_instruction
+        ){ .op = BF_GT, .type = PIN_I32, .left = status, .right = zero },
+        range
+    );
+    int branch = emit(
+        l,
+        (behavior_function_instruction){ .op = BF_BRANCH, .left = waiting, .target = -1 },
+        range
+    );
+    int done = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, range);
+    behavior_function_builder_patch_target(l->builder, branch, l->pc);
+    emit(l, (behavior_function_instruction){ .op = BF_SUSPEND, .node_id = action }, range);
+    behavior_function_builder_patch_target(l->builder, done, l->pc);
+}
+/* Yield, Join, Cancel and Running are built-in commands; all but Yield take a
+ * task handle. Running returns a bool and Join the task's single result. */
+static int task_command(lower *l, const node_command *command, int handle, script_type result, script_range range)
+{
+    uint64_t id = execution_task_command_id(command);
+    pin_value *args = NULL, *results = NULL;
+    if (handle >= 0) {
+        apush(args, ((pin_value){ .type = PIN_U64 }));
+    }
+    if (result.storage != PIN_FLOW) {
+        apush(results, initial(l, result));
+    }
+    uint64_t action = id ^ (uint64_t)range.start;
+    int index = behavior_function_builder_command(
+        l->builder,
+        command,
+        NULL,
+        args,
+        acount(args),
+        results,
+        acount(results),
+        action
+    );
+    afree(args);
+    afree(results);
+    if (!behavior_function_builder_command_identity(l->builder, index, id, EXECUTION_TASK_ABI)) {
+        error(l, range, "Cannot link task command identity");
+    }
+    if (handle >= 0) {
+        emit(
+            l,
+            (behavior_function_instruction){
+                .op = BF_COMMAND_ARGUMENT,
+                .type = PIN_U64,
+                .left = handle,
+                .target = behavior_function_builder_command_first(l->builder, index),
+                .offset = offsetof(pin_value, d) },
+            range
+        );
+    }
+    emit(l, (behavior_function_instruction){ .op = BF_COMMAND_BEGIN, .target = index, .node_id = action }, range);
+    if (command == &EXECUTION_Yield || command == &EXECUTION_TaskJoin) {
+        await_command(l, action, range);
+    }
+    return result.storage == PIN_FLOW
+             ? -1
+             : command_result(l, behavior_function_builder_command_results(l->builder, index), result, range);
+}
 static int command(lower *l, const script_expression *e, const script_catalog_capability *cap, script_lower_host host)
 {
     bool timer = host.command && host.command->intrinsic == NODE_COMMAND_DELAY;
@@ -1177,31 +1263,7 @@ static int command(lower *l, const script_expression *e, const script_catalog_ca
         e->range
     );
     if (e->awaited) {
-        int status = value_op(
-            l,
-            (behavior_function_instruction){
-                .op = BF_CONTEXT,
-                .type = PIN_I32,
-                .offset = offsetof(behavior_function_context, error_status) },
-            e->range
-        );
-        int zero = constant(l, (pin_value){ .type = PIN_I32 }, e->range);
-        int waiting = value_op(
-            l,
-            (
-                behavior_function_instruction
-            ){ .op = BF_GT, .type = PIN_I32, .left = status, .right = zero },
-            e->range
-        );
-        int branch = emit(
-            l,
-            (behavior_function_instruction){ .op = BF_BRANCH, .left = waiting, .target = -1 },
-            e->range
-        );
-        int done = emit(l, (behavior_function_instruction){ .op = BF_JUMP, .target = -1 }, e->range);
-        behavior_function_builder_patch_target(l->builder, branch, l->pc);
-        emit(l, (behavior_function_instruction){ .op = BF_SUSPEND, .node_id = action }, e->range);
-        behavior_function_builder_patch_target(l->builder, done, l->pc);
+        await_command(l, action, e->range);
     }
     int first_result = behavior_function_builder_command_results(l->builder, index);
     if (!asynchronous) {
@@ -2331,6 +2393,15 @@ static int component(lower *l, const script_expression *e)
 static int condition_value(lower *l, int index)
 {
     const script_expression *e = &l->a->expressions[index];
+    if (e->type.flags & SCRIPT_TYPE_TASK) {
+        return task_command(
+            l,
+            &EXECUTION_TaskRunning,
+            expression(l, index),
+            (script_type){ .storage = PIN_BOOL },
+            e->range
+        );
+    }
     if (!(e->type.flags & SCRIPT_TYPE_OPTIONAL)) {
         return expression(l, index);
     }
@@ -3054,6 +3125,12 @@ static int expression_value(lower *l, int index)
             return constant(l, e->constant, e->range);
         case SCRIPT_EXPR_SYMBOL: return symbol_value(l, e);
         case SCRIPT_EXPR_CALL: return call(l, e);
+        case SCRIPT_EXPR_YIELD:
+            return task_command(l, &EXECUTION_Yield, -1, e->type, e->range);
+        case SCRIPT_EXPR_JOIN:
+            return task_command(l, &EXECUTION_TaskJoin, expression(l, e->left), e->type, e->range);
+        case SCRIPT_EXPR_CANCEL:
+            return task_command(l, &EXECUTION_TaskCancel, expression(l, e->left), e->type, e->range);
         case SCRIPT_EXPR_STRUCT:
         case SCRIPT_EXPR_ARRAY: return constructor(l, e);
         case SCRIPT_EXPR_COMPONENT:
@@ -3087,7 +3164,8 @@ static int expression_value(lower *l, int index)
                 );
             }
             if (e->op == SCRIPT_OP_NOT) {
-                pin_type operand = l->a->expressions[e->left].type.flags & SCRIPT_TYPE_OPTIONAL
+                pin_type operand = l->a->expressions[e->left].type.flags &
+                                           (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK)
                                      ? PIN_BOOL
                                      : slot_type(l->a->expressions[e->left].type);
                 int zero = kind_op(

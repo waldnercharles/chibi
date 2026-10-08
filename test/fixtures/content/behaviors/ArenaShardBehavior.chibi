@@ -19,11 +19,11 @@ behavior "ArenaShardBehavior" {
         if (greater_or_equal) {
             destroy_entity(Entity: self);
         } else {
-            "Advance Shard Motion"(Seconds: delta_time, Age: age_2.Value);
+            await "Advance Shard Motion"(Seconds: delta_time, Age: age_2.Value);
         }
     }
     on Begin as begin() {
-        "Initialize Shard"(scale: get_gamevisualtransform.Value.scale, "Pitch Rate": random_range, "Roll Rate": random_range_2, Lift: random_range_3);
+        await "Initialize Shard"(scale: get_gamevisualtransform.Value.scale, "Pitch Rate": random_range, "Roll Rate": random_range_2, Lift: random_range_3);
     }
     pure function "Age Phase"<T0: float, T1: float, T2: float>(Age: T0 = 0.0, Delta: T1 = 0.0) -> (Result: T2 = 0.0) {
         depth_limit 64;

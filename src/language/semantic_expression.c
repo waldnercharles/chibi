@@ -352,6 +352,40 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
     }
 }
 
+/* Awaiting a task handle waits for that task and takes the results of the
+ * function that started it, when the handle's type names one. */
+static int join_task(analyzer *a, TSNode node, int value)
+{
+    script_type task = script_analyzer_expr_type(a, value);
+    script_expression result = { .kind = SCRIPT_EXPR_JOIN,
+                                 .type = { .storage = PIN_FLOW },
+                                 .range = script_analyzer_range(node),
+                                 .symbol = -1,
+                                 .left = value,
+                                 .right = -1,
+                                 .entry = -1,
+                                 .awaited = true,
+                                 .effects = script_analyzer_expr_effects(a, value) |
+                                            SCRIPT_EFFECT_SUSPEND };
+    for (int i = 0; task.nominal && i < acount(a->out->symbols); i++) {
+        const script_symbol *symbol = &a->out->symbols[i];
+        if (symbol->id != task.nominal || symbol->kind != SCRIPT_FUNCTION ||
+            symbol->function < 0) {
+            continue;
+        }
+        const script_function *function = &a->out->functions[symbol->function];
+        if (acount(function->results) > 1) {
+            script_analyzer_diagnostic(a, node, "Awaiting a task with several results is not supported");
+        } else if (acount(function->results) == 1) {
+            result.type = a->out->symbols[function->results[0]].type;
+            apush(result.results, result.type);
+            result.result_count = 1;
+        }
+        break;
+    }
+    asetlen(a->narrowed, 0);
+    return script_analyzer_expr_add(a, result);
+}
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected)
 {
     script_expression result = { .kind = SCRIPT_EXPR_ERROR,
@@ -368,10 +402,20 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         return script_analyzer_expression(a, script_analyzer_field(node, "expression"), expected);
     }
     if (script_analyzer_is(node, "await_expression")) {
-        int value = script_analyzer_expression(a, script_analyzer_field(node, "value"), expected);
+        TSNode inner = script_analyzer_field(node, "value");
+        while (script_analyzer_is(inner, "parenthesized_expression")) {
+            inner = script_analyzer_field(inner, "expression");
+        }
+        TSNode outer = a->awaited;
+        a->awaited = inner;
+        int value = script_analyzer_expression(a, inner, expected);
+        a->awaited = outer;
         script_expression *call = &a->out->expressions[value];
         if (call->kind == SCRIPT_EXPR_STORE) {
             return value; /* A state write completes synchronously. */
+        }
+        if (call->type.flags & SCRIPT_TYPE_TASK) {
+            return join_task(a, node, value);
         }
         if (call->kind != SCRIPT_EXPR_CALL) {
             script_analyzer_diagnostic(a, node, "Await requires a capability call");
@@ -507,7 +551,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             result.type.flags |= SCRIPT_TYPE_REFERENCE;
             result.writable = a->out->expressions[result.left].writable;
         } else if (result.op == SCRIPT_OP_NOT) {
-            if (!(result.type.flags & SCRIPT_TYPE_OPTIONAL)) {
+            if (!(result.type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK))) {
                 script_analyzer_require(
                     a,
                     node,

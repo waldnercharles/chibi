@@ -11,7 +11,7 @@ behavior "DashBehavior" {
     on Dash as dash() {
         if (greater_or_equal) {
             if (greater_or_equal_2) {
-                "Start Dash"();
+                await "Start Dash"();
             } else {
             }
         } else {
@@ -20,12 +20,12 @@ behavior "DashBehavior" {
     on Tick as tick() {
         await "Advance Dash Timers"();
         if (less) {
-            "Drive Dash"();
+            await "Drive Dash"();
         } else {
         }
     }
     on "Contact Begin" as contact_begin(Other: handle<"ecs.entity"> = 0, Point: struct<"CF_V2"> = null) {
-        "Strike Target"(Other: contact_begin.Other);
+        await "Strike Target"(Other: contact_begin.Other);
     }
     function "Capture Dash Direction"() -> () {
         depth_limit 64;
@@ -152,7 +152,7 @@ behavior "DashBehavior" {
         depth_limit 64;
         after entry {
             foreach (foreach_2 in get_contact_entities(Entity: self, Categories: 2)) {
-                "Strike Target"(Other: foreach_2);
+                await "Strike Target"(Other: foreach_2);
             }
             return();
         }

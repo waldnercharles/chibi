@@ -112,12 +112,21 @@ static int call_error(
     return status;
 }
 
-static invocation_frame *frame_new(const behavior_function *function, behavior_function_context *parent)
+static const behavior_function_invocation *invocation(
+    const behavior_function *function,
+    const behavior_function_context *parent
+)
 {
     const behavior_function_instruction
         *i = &function->instructions[parent->activation->pc - 1];
     assert(i->op == BF_INVOKE && i->left >= 0 && i->left < acount(function->calls));
-    behavior_function_invocation call = function->calls[i->left];
+    return &function->calls[i->left];
+}
+static invocation_frame *frame_new(const behavior_function *function, behavior_function_context *parent)
+{
+    const behavior_function_instruction
+        *i = &function->instructions[parent->activation->pc - 1];
+    behavior_function_invocation call = *invocation(function, parent);
     assert(call.function && parent->data && parent->value_storage);
     unsigned depth = parent->call_depth +
                      (unsigned)function->frames[i->frame].depth + 1;
@@ -141,6 +150,7 @@ static invocation_frame *frame_new(const behavior_function *function, behavior_f
         .source_pause = parent->source_pause,
         .source_capture = parent->source_capture,
         .begin_command = parent->begin_command,
+        .start_task = parent->start_task,
         .action_result = parent->action_result,
         .event_argument = parent->event_argument,
         .complete_action = parent->complete_action,
@@ -286,6 +296,16 @@ int behavior_function_run_calls(
             context->commit_instance(context);
         }
         if (result == BEHAVIOR_FUNCTION_CALL_RESULT) {
+            const behavior_function_invocation *call = invocation(active, context);
+            if (call->task) {
+                result = context->start_task(context, (int)(call - active->calls));
+                if (!result) {
+                    continue;
+                }
+                root->wake_time = context->wake_time;
+                calls->result = result;
+                return result;
+            }
             invocation_frame *frame = frame_new(active, context);
             if (!frame) {
                 calls->result = context->failure == BEHAVIOR_FUNCTION_DEPTH

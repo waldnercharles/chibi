@@ -450,6 +450,7 @@ static void instance_free(execution_instance *instance)
         program_activation_free(activation);
     }
     afree(instance->activations);
+    program_tasks_free(instance);
     program_observers_free(instance);
     for (int i = 0; i < instance->program->module->plan.state_count; i++) {
         state_free(&instance->states[i]);

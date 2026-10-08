@@ -44,6 +44,7 @@ typedef struct
     initializer *initializers;
     function_body *bodies;
     narrowing *narrowed;
+    TSNode awaited; /* The call an enclosing await applies to. */
     int scope, function, loops, depth;
     bool declarations_only;
 } analyzer;
@@ -98,6 +99,7 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_statement_add(analyzer *a, script_statement statement);
 void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool truth);
 void script_analyzer_condition_type(analyzer *a, TSNode node, int value);
+bool script_analyzer_function_waits(const analyzer *a, int function);
 int script_analyzer_statement_block(analyzer *a, TSNode node);
 int script_analyzer_statement_inner(analyzer *a, TSNode node);
 int script_analyzer_statement(analyzer *a, TSNode node);

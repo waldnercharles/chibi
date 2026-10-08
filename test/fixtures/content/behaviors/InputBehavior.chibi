@@ -15,7 +15,7 @@ behavior "InputBehavior" {
         }
     }
     after set_gamevelocity {
-        "Face Direction"(Direction: input.Direction);
+        await "Face Direction"(Direction: input.Direction);
     }
     function "Face Direction"(Direction: struct<"CF_V2"> = null) -> () {
         depth_limit 64;

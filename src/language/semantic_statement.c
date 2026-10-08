@@ -50,7 +50,7 @@ void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool tr
 void script_analyzer_condition_type(analyzer *a, TSNode node, int value)
 {
     script_type type = script_analyzer_expr_type(a, value);
-    if (!(type.flags & SCRIPT_TYPE_OPTIONAL)) {
+    if (!(type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK))) {
         script_analyzer_require(a, node, script_analyzer_boolean_type(), type);
     }
 }
@@ -225,7 +225,8 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         if (result.expression >= 0 &&
             a->out->expressions[result.expression].kind != SCRIPT_EXPR_CALL &&
-            a->out->expressions[result.expression].kind != SCRIPT_EXPR_STORE) {
+            a->out->expressions[result.expression].kind != SCRIPT_EXPR_STORE &&
+            a->out->expressions[result.expression].kind != SCRIPT_EXPR_JOIN) {
             script_analyzer_diagnostic(a, node, "Expression statements must invoke a callable");
         }
         result.effects = script_analyzer_expr_effects(a, result.expression);
@@ -354,6 +355,38 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                          script_analyzer_expr_effects(a, result.second) |
                          a->out->statements[result.body].effects;
         a->scope = old_scope;
+        return script_analyzer_statement_add(a, result);
+    }
+    if (script_analyzer_is(node, "yield_statement") ||
+        script_analyzer_is(node, "cancel_statement")) {
+        bool yield = script_analyzer_is(node, "yield_statement");
+        script_expression task = { .kind = yield ? SCRIPT_EXPR_YIELD : SCRIPT_EXPR_CANCEL,
+                                   .type = { .storage = PIN_FLOW },
+                                   .range = script_analyzer_range(node),
+                                   .symbol = -1,
+                                   .left = -1,
+                                   .right = -1,
+                                   .entry = -1,
+                                   .effects = yield ? SCRIPT_EFFECT_SUSPEND
+                                                    : SCRIPT_EFFECT_WRITE };
+        if (!yield) {
+            TSNode value = script_analyzer_field(node, "value");
+            task.left = script_analyzer_expression(
+                a,
+                value,
+                (script_type){ .storage = PIN_U64, .flags = SCRIPT_TYPE_TASK }
+            );
+            if (!(script_analyzer_expr_type(a, task.left).flags & SCRIPT_TYPE_TASK)) {
+                script_analyzer_diagnostic(a, value, "Cancel requires a task");
+            }
+            task.effects |= script_analyzer_expr_effects(a, task.left);
+        }
+        result.kind = SCRIPT_STMT_EXPRESSION;
+        result.expression = script_analyzer_expr_add(a, task);
+        result.effects = task.effects;
+        if (yield) {
+            asetlen(a->narrowed, 0);
+        }
         return script_analyzer_statement_add(a, result);
     }
     if (script_analyzer_is(node, "break_statement") ||

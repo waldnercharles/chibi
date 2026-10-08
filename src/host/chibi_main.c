@@ -4,6 +4,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <spawn.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /* chibi [PROJECT] [PLAYER OPTIONS]: prepares the project when its sources or
@@ -225,8 +227,14 @@ static int prepare(const char *bin, const chibi_project *project, const char *ar
         mkdir(build, 0777);
         char *argv[] = { compiler,   "--project-root", (char *)root,
                          "--output", (char *)artifact, NULL };
+        /* Date the artifact to when compilation started, so a source saved
+         * while the compiler runs is newer and rebuilds next time. */
+        struct timespec started[2];
+        clock_gettime(CLOCK_REALTIME, &started[0]);
+        started[1] = started[0];
         result = run(argv);
         if (!result) {
+            utimensat(AT_FDCWD, artifact, started, 0);
             record_compiler(stamp, identity);
         }
         free(dot);

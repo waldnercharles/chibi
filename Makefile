@@ -6,43 +6,6 @@ $(error Temporary 60-second policy: use one validation goal per invocation; aggr
 endif
 endif
 
-# Native desktop setup commands can run before a SessionStart hook.
-# Enrollment is silent and creates no state for repositories without installation.
-ifeq ($(wildcard .chibi-workspace.json),)
-ifneq ($(wildcard tools/workspaces.py),)
-ifneq ($(shell python3 tools/workspaces.py enroll >/dev/null && printf ready),ready)
-$(error Workspace enrollment failed; inspect the workspaces error above)
-endif
-endif
-endif
-
-# Managed workspaces hold one lock across configure, tests, and launched runtimes.
-# Recursive make inherits MAKEFLAGS, command-line variables, and the lock fd.
-override CHIBI_WORKSPACE_INNER := 0
-ifneq ($(shell test -f .chibi-workspace.json && printf managed),)
-ifeq ($(strip $(CHIBI_WORKSPACE_LOCK_FD)),)
-CHIBI_WORKSPACE_GOALS := $(if $(MAKECMDGOALS),$(MAKECMDGOALS),all)
-.DEFAULT_GOAL := all
-.PHONY: $(CHIBI_WORKSPACE_GOALS) .chibi-workspace-invocation
-$(CHIBI_WORKSPACE_GOALS): .chibi-workspace-invocation
-.chibi-workspace-invocation:
-ifneq ($(findstring q,$(firstword $(MAKEFLAGS))),)
-# Every delegated convenience goal is phony and therefore pending in query mode.
-	@:
-else
-	+@python3 tools/workspaces.py run -- $(MAKE) $(CHIBI_WORKSPACE_GOALS)
-endif
-else
-ifneq ($(shell python3 tools/workspaces.py validate-lock >/dev/null 2>&1 && printf valid),valid)
-$(error Invalid inherited workspace lock; run make without CHIBI_WORKSPACE_LOCK_FD)
-endif
-override CHIBI_WORKSPACE_INNER := 1
-endif
-else
-override CHIBI_WORKSPACE_INNER := 1
-endif
-
-ifeq ($(CHIBI_WORKSPACE_INNER),1)
 # Convenience wrapper around CMake. `make` configures and builds.
 BUILD_DIR ?= build
 SDK_BUILD_DIR ?= build-sdk
@@ -345,4 +308,3 @@ clean:
 	fi
 	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(TOOLS_BUILD_DIR)" "$(WEB_BUILD_DIR)"
 
-endif # CHIBI_WORKSPACE_INNER

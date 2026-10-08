@@ -219,8 +219,9 @@ behavior Turret {
 - Calls into a library start tasks the same way, such as `Store.Work()`.
 - Awaiting a task whose function has several results gives the same tuple as
   awaiting the call: `(await t).b`.
-- A task cannot take reference arguments, because it can outlive the locals they
-  point to. Pass values and return results, or await the call.
+- A task keeps references to state and components for as long as it runs, so
+  `Bump(&health)` works. A reference to a local is rejected, because the task
+  can outlive the local; await the call or keep the value in state.
 
 The runtime retains call frames and captured locals across supported native waits
 and cancels owned invocations when their entity or system registration is

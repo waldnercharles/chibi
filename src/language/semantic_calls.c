@@ -812,6 +812,28 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
     return found;
 }
 
+/* A task can outlive its caller's locals and parameters, so it can keep
+ * references only to state and components. */
+static bool local_root(const analyzer *a, int expression)
+{
+    while (expression >= 0) {
+        const script_expression *e = &a->out->expressions[expression];
+        if (e->kind == SCRIPT_EXPR_SYMBOL) {
+            const script_symbol *symbol = e->symbol >= 0 ? &a->out->symbols[e->symbol]
+                                                         : NULL;
+            return symbol && (symbol->kind == SCRIPT_LOCAL ||
+                              (symbol->kind == SCRIPT_PARAMETER &&
+                               !(symbol->type.flags & SCRIPT_TYPE_REFERENCE)));
+        }
+        bool path = (e->kind == SCRIPT_EXPR_UNARY && e->op == SCRIPT_OP_REFERENCE) ||
+                    e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX;
+        if (!path) {
+            return false;
+        }
+        expression = e->left;
+    }
+    return false;
+}
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {
     TSNode target = script_analyzer_field(node, "function"),
@@ -1262,14 +1284,15 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                     : a->out->symbols[function->symbol].id,
             .flags = SCRIPT_TYPE_TASK
         };
-        int parameters = library_task ? capability->parameter_count
-                                      : acount(function->parameters);
-        for (int i = 0; i < parameters; i++) {
-            script_type type = library_task
-                                 ? capability->parameters[i].type
-                                 : a->out->symbols[function->parameters[i]].type;
-            if (type.flags & SCRIPT_TYPE_REFERENCE) {
-                script_analyzer_diagnostic(a, node, "A task cannot take reference arguments; await the call");
+        for (int i = 0; i < acount(result.arguments); i++) {
+            int p = result.arguments[i].parameter;
+            script_type type = p < 0 ? script_analyzer_bad_type()
+                             : library_task
+                                 ? capability->parameters[p].type
+                                 : a->out->symbols[function->parameters[p]].type;
+            if ((type.flags & SCRIPT_TYPE_REFERENCE) &&
+                local_root(a, result.arguments[i].value)) {
+                script_analyzer_diagnostic(a, node, "A task cannot keep a reference to a local; use state or a component, or await the call");
             }
         }
     }

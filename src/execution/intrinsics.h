@@ -55,4 +55,7 @@ uint64_t execution_intrinsic_abi(uint64_t);
 const node_host_call *execution_intrinsic_resolve(uint64_t);
 const node_access *execution_intrinsic_access(uint64_t);
 pin_value execution_reference_value(arena *, behavior_function_context *, pin_value *, pin_value type);
+/* Rebinds a state or component reference to `owner` in `storage`, so a task
+ * can keep it after its caller ends. A reference to a local cannot move. */
+const char *execution_reference_capture(arena *storage, behavior_function_context *owner, pin_value *value);
 #endif

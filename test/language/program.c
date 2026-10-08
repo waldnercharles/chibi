@@ -1917,6 +1917,40 @@ TEST_CASE(program_library_call_starts_a_task)
     return true;
 }
 
+TEST_CASE(program_task_keeps_state_and_component_references)
+{
+    const char *source = "behavior R { n: double = 0;"
+                         "function Bump(x: ref double) -> () { yield; x += 1; "
+                         "yield; x += 1; }"
+                         "on Impulse(amount, enabled) { Bump(&n); "
+                         "Bump(&self.Position.x); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = positioned(5, false);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 0));
+        for (int i = 1; i <= 3; i++) {
+            REQUIRE(execution_program_pump(program, i, 0, 1000) == FLOW_OK);
+        }
+        REQUIRE(number_state(instance, "n", 2) && execution_instance_pending(instance) == 0);
+        pin_value x;
+        REQUIRE(ecs_component_read_field(world, owner, 501, 0, &x) == ECS_OK && x.d == 7);
+    }
+    prepare();
+    syntax = script_parse(
+        "behavior R { function Bump(x: ref double) -> () { yield; x += 1; }"
+        "on Impulse(amount, enabled) { v := 1.0; Bump(&v); } }"
+    );
+    analysis = script_analyze(syntax, &catalog);
+    REQUIRE(!analysis->valid && strstr(analysis->diagnostics[0].message, "reference to a local"));
+    return true;
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
@@ -1946,5 +1980,6 @@ void test_language_program()
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
     RUN_TEST_CASE(program_library_call_starts_a_task);
+    RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     pu_clear_setup();
 }

@@ -160,6 +160,32 @@ pin_value execution_reference_value(
     arena_set_trace(storage, ref, reference_trace, NULL);
     return (pin_value){ .type = BF_POINTER_TYPE, .u64 = (uintptr_t)ref };
 }
+static const language_reference_path *capture_path(arena *storage, const language_reference_path *path)
+{
+    if (!path) {
+        return NULL;
+    }
+    language_reference_path *copy = arena_alloc(storage, sizeof *copy);
+    *copy = *path;
+    copy->parent = capture_path(storage, path->parent);
+    arena_set_trace(storage, copy, reference_path_trace, NULL);
+    return copy;
+}
+const char *execution_reference_capture(arena *storage, behavior_function_context *owner, pin_value *value)
+{
+    const language_reference *base = (const language_reference *)(uintptr_t)
+                                         value->u64;
+    if (base->kind == LANGUAGE_REFERENCE_VALUE) {
+        return "A task cannot keep a reference to a local; await the call";
+    }
+    language_reference *ref = arena_alloc(storage, sizeof *ref);
+    *ref = *base;
+    ref->owner = owner;
+    ref->path = capture_path(storage, base->path);
+    arena_set_trace(storage, ref, reference_trace, NULL);
+    value->u64 = (uintptr_t)ref;
+    return NULL;
+}
 static const char *field_reference(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count == 4);

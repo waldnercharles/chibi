@@ -1,4 +1,6 @@
 #include "execution/definition.h"
+#include "execution/function.h"
+#include "execution/intrinsics.h"
 #include "execution/program_internal.h"
 #include "execution/request.h"
 #include "execution/status.h"
@@ -101,6 +103,20 @@ static int start_task(behavior_function_context *ctx, int index)
     if (!a) {
         ctx->error_message = "task arguments do not match the function";
         return FLOW_ERR_ARGUMENT;
+    }
+    /* The activation owns its argument copies; references in them move to it. */
+    pin_value *arguments = (pin_value *)a->context.arguments;
+    for (int i = 0; i < call->count; i++) {
+        if (behavior_function_kind(call->function, BEHAVIOR_BANK_ARGUMENT, i) !=
+            BEHAVIOR_REFERENCE) {
+            continue;
+        }
+        const char *error = execution_reference_capture(&a->payload, &a->context, &arguments[i]);
+        if (error) {
+            program_activation_free(a);
+            ctx->error_message = error;
+            return FLOW_ERR_ARGUMENT;
+        }
     }
     execution_task *t = task_new(instance);
     t->activation = a;

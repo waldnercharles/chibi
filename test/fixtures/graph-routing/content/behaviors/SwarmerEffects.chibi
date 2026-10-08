@@ -1,6 +1,5 @@
 behavior "SwarmerEffects" {
-    owner "ecs.entity";
-    on Begin as begin() {
-        await "WeaponActions"."Spawn Prototype At"(Prototype: "SpawnEmitter", Transform: &component("GAME.GameTransform"));
+    on Begin {
+        await "WeaponActions"."Spawn Prototype At"("SpawnEmitter", self.Transform)
     }
 }

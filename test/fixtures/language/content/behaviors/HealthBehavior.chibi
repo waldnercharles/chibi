@@ -35,7 +35,7 @@ behavior "HealthBehavior" {
             if (convert<"To Real">(entry.Current) > 0) {
                 if (has_gamedash) {
                     if (cast<double>(&component("GAME.GameDash", "remaining")) > 0) {
-                        return();
+                        return ();
                     } else {
                         current_remaininghealth();
                     }
@@ -43,7 +43,7 @@ behavior "HealthBehavior" {
                     current_remaininghealth();
                 }
             } else {
-                return();
+                return ();
             }
         }
         after current_remaininghealth.True {
@@ -51,13 +51,13 @@ behavior "HealthBehavior" {
             await send_event<"Damaged">(Entity: self_2, Amount: int = subtract(A: int = &local.Current, B: int = convert<"To Integer">(&local."Remaining Health")), Source: entry.Source);
             if (remaining_health <= 0) {
                 await send_event<"Died">(Entity: self_3, Source: entry.Source);
-                return();
+                return ();
             } else {
-                return();
+                return ();
             }
         }
         after current_remaininghealth.False {
-            return();
+            return ();
         }
     }
     function "Notify Encounter"() -> () {
@@ -68,9 +68,9 @@ behavior "HealthBehavior" {
                 foreach (foreach_2 in find_entities_with_component(Component: "GAME.GameEncounter")) {
                     send_event<"RefreshEncounter">(Entity: foreach_2);
                 }
-                return();
+                return ();
             } else {
-                return();
+                return ();
             }
         }
     }

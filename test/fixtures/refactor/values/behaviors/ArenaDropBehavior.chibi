@@ -40,7 +40,7 @@ behavior "ArenaDropBehavior" {
             "Spawn Source Beam"(Position: entry.Position, Appearance: &local.Appearance, Material: entry.Material, Orientation: entry.Orientation, Visual: entry.Visual, Center: primitive_part_2.Center, "Center Y": primitive_part_2.Elevation, Width: primitive_part_2.Width, Height: primitive_part_2.Height, Depth: primitive_part_2.Depth, Primitive: primitive_part_2.Primitive);
         }
         after forloop.Completed {
-            return();
+            return ();
         }
     }
     function "Spawn Surface Pulse"(Prototype: name = "ArenaHitPulse", Position: struct<"GameTransform"> = null) -> () {
@@ -51,7 +51,7 @@ behavior "ArenaDropBehavior" {
         }
         after spawn_prototype {
             await set_entity_game_transform(Entity: spawn_prototype.Entity, Value: entry.Position);
-            return();
+            return ();
         }
     }
     function "Spawn Source Beam"(Position: struct<"GameTransform"> = null, Appearance: struct<"GameGeometry3D"> = null, Material: struct<"GameShader"> = null, Orientation: struct<"GameOrientation"> = null, Visual: struct<"GameVisualTransform"> = null, Center: struct<"CF_V2"> = null, "Center Y": float = 0.0, Width: float = 0.0, Height: float = 0.0, Depth: float = 0.0, Primitive: int = 0) -> () {
@@ -74,7 +74,7 @@ behavior "ArenaDropBehavior" {
             await set_entity_game_shader(Entity: &local.Shard, Value: entry.Material);
             await set_entity_game_orientation(Entity: &local.Shard, Value: entry.Orientation);
             await set_entity_game_visual_transform(Entity: &local.Shard, Value: entry.Visual);
-            return();
+            return ();
         }
     }
 }

@@ -223,7 +223,7 @@ TEST_CASE(language_invalid_source_has_positioned_diagnostics)
         "behavior Broken { true := 1 }",
         "behavior Broken { on Begin { value := ; } }",
         "behavior Broken { on Begin { if true { }",
-        "library Broken { function MissingArrow() {} }",
+        "library Broken { function MissingBody() -> () }",
     };
     for (int i = 0; i < 5; i++) {
         cleanup();

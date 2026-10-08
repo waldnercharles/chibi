@@ -50,7 +50,15 @@ payloads are declarative configuration, not executable behavior source.
 Semicolons are optional at the end of a line and before a closing brace.
 Separate multiple statements on one line with semicolons. Parenthesized calls,
 arrays and struct literals may span lines. An operator at the end or beginning
-of a line continues the expression. Source saving preserves the author's choice.
+of a line continues the expression.
+
+`chibi_ctl --format` writes the shortest spelling that analyzes to the same
+program: it drops semicolons, argument labels before the first skipped
+parameter, literal arguments equal to their defaults, inferable declaration and
+argument types, redundant parentheses and casts, handler aliases (the payload is
+`event`), empty `else` blocks, `-> ()` and `return()`. Each rewrite is kept only
+when the re-analyzed program is unchanged; source that does not analyze is only
+re-indented.
 
 Named call arguments use `Value: expression`. An explicit argument type includes
 its value or source, for example `Value: float = amount` or
@@ -90,7 +98,7 @@ Behavior-root declarations own persistent instance state. `elapsed := 0;` infers
 Boolean, string and homogeneous array defaults also infer their type. Empty arrays
 and nominal values require an explicit type. `elapsed: number = 0;` spells out the
 type; native storage types such as `float` and `int64` remain available when precision
-or a reflected interface needs them. Formatting preserves existing numeric storage.
+or a reflected interface needs them. Formatting keeps a declared type unless inference produces the same storage.
 
 Names may be identifiers or quoted display names. Prototype references in native
 prototype arguments resolve project symbols, such as `spawn(MovementEmitter)`.
@@ -269,7 +277,8 @@ execution continuation; `pure function` declares a data-only signature. Calls
 use the function name directly. Qualification selects an external library:
 `"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`.
 Type parameters preserve generic relationships, for example
-`function Identity<T: float>(item: T) -> (output: T) { ... }`.
+`function Identity<T: float>(item: T) -> (output: T) { ... }`. A function
+without results omits `->`.
 
 When several graph calls share a pure generated expression body, formatting
 emits one ordinary pure function and calls it from each original site. Typed

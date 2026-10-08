@@ -1,10 +1,9 @@
 behavior "WeaponBehavior" {
-    owner "ecs.entity";
-    value get_gameweapon = get_game_weapon();
-    on Fire as fire() {
-        await "WeaponActions"."Fire Projectile"(Origin: get_game_transform(), Direction: {
+    value get_gameweapon = get_game_weapon()
+    on Fire {
+        await "WeaponActions"."Fire Projectile"(get_game_transform(), {
             x: 1.0,
             y: 0.0
-        }, Damage: get_gameweapon.Value.damage, Prototype: "Projectile", Shooter: self);
+        }, get_gameweapon.Value.damage, "Projectile", self)
     }
 }

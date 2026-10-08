@@ -219,8 +219,7 @@ module.exports = grammar({
         field("name", $._name),
         optional(field("type_parameters", $.type_parameter_list)),
         field("parameters", $.parameter_list),
-        "->",
-        field("results", $.parameter_list),
+        optional(seq("->", field("results", $.parameter_list))),
         field("body", $.callable_body),
       ),
     callable_body: ($) =>

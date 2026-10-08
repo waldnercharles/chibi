@@ -19,7 +19,7 @@
 typedef struct
 {
     int file;
-    TSNode library, name, body;
+    TSNode library, name, body, scope;
     bool waits;
 } function;
 typedef struct
@@ -97,7 +97,8 @@ static void collect(TSNode node, int file, TSNode library, function **functions)
             ((function){ .file = file,
                          .library = library,
                          .name = ts_node_child_by_field_name(node, "name", 4),
-                         .body = ts_node_child_by_field_name(node, "body", 4) })
+                         .body = ts_node_child_by_field_name(node, "body", 4),
+                         .scope = ts_node_parent(node) })
         );
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
@@ -113,8 +114,18 @@ static TSNode outer(TSNode node)
     }
     return parent;
 }
-/* The function a call names: a local function by name, or a library function
- * as Library.Function in any file. */
+static bool contains(TSNode outer, TSNode node)
+{
+    return ts_node_start_byte(outer) <= ts_node_start_byte(node) &&
+           ts_node_end_byte(node) <= ts_node_end_byte(outer);
+}
+static uint32_t span(TSNode node)
+{
+    return ts_node_end_byte(node) - ts_node_start_byte(node);
+}
+/* The function a call names: the innermost local function of that name whose
+ * scope holds the call, or a library function as Library.Function in any
+ * file. */
 static const function *callee(const corpus *c, int file, TSNode target)
 {
     const char *source = c->sources[file];
@@ -126,19 +137,26 @@ static const function *callee(const corpus *c, int file, TSNode target)
             return NULL;
         }
     }
+    bool local = ts_node_is_null(library);
+    const function *found = NULL;
     for (int i = 0; is_name(name) && i < acount(c->functions); i++) {
         const function *f = &c->functions[i];
         const char *defined = c->sources[f->file];
-        bool local = ts_node_is_null(library);
-        bool scope = local ? f->file == file
-                           : !ts_node_is_null(f->library) &&
-                                 similar_name(source, library, defined, f->library);
-        if (scope && (local ? same_name(source, name, defined, f->name)
-                            : similar_name(source, name, defined, f->name))) {
-            return f;
+        if (!local) {
+            if (!ts_node_is_null(f->library) &&
+                similar_name(source, library, defined, f->library) &&
+                similar_name(source, name, defined, f->name)) {
+                return f;
+            }
+            continue;
+        }
+        if (f->file == file && contains(f->scope, target) &&
+            same_name(source, name, defined, f->name) &&
+            (!found || span(f->scope) < span(found->scope))) {
+            found = f;
         }
     }
-    return NULL;
+    return found;
 }
 /* A call blocked under version 10 when it called a function that waits and
  * was not already awaited. An action's call runs when the action starts. */
@@ -763,8 +781,9 @@ static char *staged_path(const char *path)
 static int stage_text(const char *path, const char *text, char *error, size_t error_size)
 {
     char *staged = staged_path(path);
-    /* Never write through a link someone left at the staging path. */
-    int fd = open(staged, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0644);
+    /* Never write through a symbolic or hard link left at the staging path. */
+    unlink(staged);
+    int fd = open(staged, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0644);
     FILE *file = fd >= 0 ? fdopen(fd, "wb") : NULL;
     if (fd >= 0 && !file) {
         close(fd);

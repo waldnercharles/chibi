@@ -308,13 +308,32 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     return 0;
 }
 
+/* The depth of braces open after `line`, skipping quoted strings. */
+static int line_depth(const char *line, int depth)
+{
+    bool quoted = false;
+    for (const char *p = line; *p && *p != '\n'; p++) {
+        if (*p == '\\' && quoted && p[1]) {
+            p++;
+            continue;
+        }
+        quoted ^= *p == '"';
+        depth += !quoted && *p == '{';
+        depth -= !quoted && *p == '}';
+    }
+    return depth;
+}
+
 /* The digits of a top-level `version <from>` node, or NULL. */
 static const char *version_digits(const char *text, int from)
 {
+    int depth = 0;
     for (const char *line = text; line; line = strchr(line, '\n')) {
         line += *line == '\n';
         const char *p = line + strspn(line, " \t");
-        if (strncmp(p, "version", 7) || !strchr(" \t", p[7])) {
+        bool top = depth == 0;
+        depth = line_depth(line, depth);
+        if (!top || strncmp(p, "version", 7) || !strchr(" \t", p[7])) {
             continue;
         }
         p += 7 + strspn(p + 7, " \t");

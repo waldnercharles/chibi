@@ -152,6 +152,9 @@ static void task_hints(analyzer *a, TSNode body, TSNode node)
     if (script_analyzer_is(node, "assignment")) {
         TSNode target = script_analyzer_field(node, "target");
         TSNode value = script_analyzer_field(node, "value");
+        while (script_analyzer_is(value, "parenthesized_expression")) {
+            value = script_analyzer_field(value, "expression");
+        }
         int symbol = script_analyzer_is(target, "identifier")
                        ? script_analyzer_lookup(a, target)
                        : -1;

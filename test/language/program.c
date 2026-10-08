@@ -1927,9 +1927,10 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     char *migrated = chibi_migrate_results(source);
     REQUIRE(migrated && !strcmp(migrated, expected));
     REQUIRE(!chibi_migrate_results(expected));
-    /* A link at the staging path is refused, not written through. */
+    /* Links at the staging paths are replaced, not written through, and
+     * only the top-level version node changes. */
     char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], outside[256],
-         link[256], error[256];
+         staged[256], error[256];
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
     REQUIRE(!mkdir(path, 0700));
@@ -1941,33 +1942,31 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(outside, "wb");
     fputs("keep", file);
     fclose(file);
-    snprintf(link, sizeof link, "%s/content/R.chibi.migrating", root);
-    REQUIRE(!symlink(outside, link));
+    snprintf(staged, sizeof staged, "%s/content/R.chibi.migrating", root);
+    REQUIRE(!link(outside, staged));
     char manifest[256];
     snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    snprintf(staged, sizeof staged, "%s.migrating", manifest);
+    REQUIRE(!symlink(outside, staged));
     file = fopen(manifest, "wb");
-    fputs("version 12\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", file);
+    fputs(
+        "meta {\n    version 12\n}\nversion 12\ncontent \"content\"\n"
+        "start_scene \"scenes/Start.kdl\"\n",
+        file
+    );
     fclose(file);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) < 0);
-    char text[2048];
-    file = fopen(outside, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    REQUIRE(!strcmp(text, "keep"));
-    file = fopen(path, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    REQUIRE(!strcmp(text, source));
-    unlink(link);
-    snprintf(link, sizeof link, "%s.migrating", manifest);
-    REQUIRE(!symlink(outside, link));
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    char text[2048];
     file = fopen(outside, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
     REQUIRE(!strcmp(text, "keep"));
     struct stat info;
     REQUIRE(!lstat(manifest, &info) && S_ISREG(info.st_mode));
+    file = fopen(manifest, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(!strncmp(text, "meta version=12\nversion 13\n", 26));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2033,6 +2032,24 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     free(all);
     all = chibi_migrate_task_calls(&expected, 1);
     REQUIRE(!all[0]);
+    free(all);
+    /* A call names the innermost function of that name in its scope. */
+    const char
+        *nested = "behavior N { function A() -> () { "
+                  "function Tick() -> () { } Tick(); } "
+                  "function C() -> () { "
+                  "function Tick() -> () { await Delay(1); } Tick(); } }";
+    all = chibi_migrate_task_calls(&nested, 1);
+    REQUIRE(
+        all[0] &&
+        !strcmp(
+            all[0],
+            "behavior N { function A() -> () { function Tick() -> () { } "
+            "Tick(); } function C() -> () { function Tick() -> () { await "
+            "Delay(1); } await Tick(); } }"
+        )
+    );
+    free(all[0]);
     free(all);
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
@@ -2273,9 +2290,16 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                  "yield; return(time * 2); }"
                  "on Impulse(amount, enabled) { t: task = Charge(amount); "
                  "power = await t } }";
-    const char *sources[] = { source, reordered, local };
+    const char
+        *wrapped = "behavior P { pulse: task; power: double = 0;"
+                   "on Impulse(amount, enabled) { Start(amount); "
+                   "power = await pulse }"
+                   "function Start(time: double) { pulse = (Charge(time)) }"
+                   "function Charge(time: double) -> (power: double) { "
+                   "yield; return(time * 2); } }";
+    const char *sources[] = { source, reordered, local, wrapped };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int b = 0; b < 6; b++) {
+    for (int b = 0; b < 8; b++) {
         prepare();
         REQUIRE(compile(sources[b / 2], backends[b % 2]));
         ecs_entity owner = ecs_world_create_entity(world);

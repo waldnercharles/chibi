@@ -301,6 +301,12 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
         range
     );
 }
+/* Any numeric index, such as a `number`, truncates to the int an array takes. */
+static int index_slot(lower *l, const script_expression *e)
+{
+    script_type from = l->a->expressions[e->right].type;
+    return convert(l, expression(l, e->right), from, (script_type){ .storage = PIN_I32 }, e->range);
+}
 static behavior_function_op binary_op(script_operator op)
 {
     switch (op) {
@@ -2838,7 +2844,7 @@ static int reference_expression(lower *l, const script_expression *e)
         int slots[] = { reference(l, e->left), -1, -1, -1 };
         if (e->kind == SCRIPT_EXPR_INDEX) {
             headers[2] = (pin_value){ .type = PIN_I32 };
-            slots[2] = expression(l, e->right);
+            slots[2] = index_slot(l, e);
         }
         return primitive(
             l,
@@ -3133,8 +3139,8 @@ static int expression_value(lower *l, int index)
             return value;
         }
         case SCRIPT_EXPR_INDEX: {
-            int array = expression(l, e->left), index = expression(l, e->right);
-            return array_item(l, array, index, e->type, e->range);
+            int array = expression(l, e->left);
+            return array_item(l, array, index_slot(l, e), e->type, e->range);
         }
         case SCRIPT_EXPR_FALLBACK: return expression(l, e->left);
         case SCRIPT_EXPR_NIL:

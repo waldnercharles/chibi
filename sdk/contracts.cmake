@@ -38,6 +38,7 @@ chibi_sdk_contract(chibi_support "${CHIBI_SDK_ROOT}/src/support" m)
 chibi_sdk_contract(chibi_types "${CHIBI_SDK_ROOT}/src/types" chibi_support m)
 chibi_sdk_contract(chibi_execution_contract "${CHIBI_SDK_ROOT}/src/execution" chibi_types)
 chibi_sdk_contract(chibi_tasks "${CHIBI_SDK_ROOT}/src/runtime")
+chibi_sdk_contract(chibi_input_action "${CHIBI_SDK_ROOT}/src/runtime")
 chibi_sdk_contract(chibi_asset_values "${CHIBI_SDK_ROOT}/src/support" chibi_support)
 if(TARGET chibi_builtin_fonts)
     chibi_sdk_contract(chibi_builtin_fonts "${CHIBI_SDK_ROOT}/src/runtime/ui" chibi_ui_documents)
@@ -63,7 +64,7 @@ chibi_sdk_contract(chibi_set_capabilities "${CHIBI_SDK_ROOT}/src/runtime" chibi_
 chibi_sdk_contract(chibi_comparison_capabilities "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities)
 chibi_sdk_contract(chibi_conversion_capabilities "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities)
 chibi_sdk_contract(chibi_text_capabilities "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities chibi_fmt)
-chibi_sdk_contract(chibi_native_prepared "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities chibi_behavior_runtime)
+chibi_sdk_contract(chibi_native_prepared "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities chibi_behavior_runtime chibi_input_action)
 chibi_sdk_contract(chibi_host_native_catalog "${CHIBI_SDK_ROOT}/src/host" chibi_native_capabilities chibi_events)
 chibi_sdk_contract(chibi_ecs "${CHIBI_SDK_ROOT}/src/ecs" chibi_types)
 chibi_sdk_contract(chibi_execution "${CHIBI_SDK_ROOT}/src/execution"
@@ -99,7 +100,7 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_native_types chibi_native_capabilities)
     chibi_sdk_contract(chibi_save_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities chibi_json)
     chibi_sdk_contract(chibi_ui_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_asset_values chibi_native_capabilities chibi_value_document chibi_math)
-    chibi_sdk_contract(chibi_input_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime chibi_scheduling chibi_events)
+    chibi_sdk_contract(chibi_input_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_input_action chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime chibi_scheduling chibi_events)
     chibi_sdk_contract(chibi_declared_components "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_native_types chibi_capabilities chibi_execution chibi_types chibi_support)
     chibi_sdk_contract(chibi_player "${CHIBI_SDK_ROOT}/src/runtime"
@@ -148,7 +149,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_graph_compilation "${CHIBI_SDK_ROOT}/src/graph"
         chibi_graph_authoring chibi_shader_runtime chibi_model_runtime chibi_fields chibi_field_catalog chibi_field_capabilities)
     chibi_sdk_contract(chibi_source_catalog "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_authoring chibi_asset_text chibi_ui_document)
+        chibi_authoring chibi_input_map chibi_asset_text chibi_ui_document)
     chibi_sdk_contract(chibi_source_presentation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_authoring chibi_graph_model chibi_text_source chibi_json chibi_graph_authoring)
     chibi_sdk_contract(chibi_graph_catalog "${CHIBI_SDK_ROOT}/src/authoring"
@@ -171,8 +172,10 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_prototype_document "${CHIBI_SDK_ROOT}/src/assets"
         chibi_ecs chibi_asset_values chibi_asset_text)
     chibi_sdk_contract(chibi_reference_index "${CHIBI_SDK_ROOT}/src/authoring" chibi_support chibi_events)
+    chibi_sdk_contract(chibi_input_map "${CHIBI_SDK_ROOT}/src/assets"
+        chibi_input_action chibi_types chibi_asset_values chibi_asset_text chibi_support)
     chibi_sdk_contract(chibi_project_document "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_asset_text chibi_language_syntax chibi_support)
+        chibi_input_action chibi_asset_text chibi_language_syntax chibi_support)
     chibi_sdk_contract(chibi_component_presentation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_ecs chibi_asset_text)
     chibi_sdk_contract(chibi_asset_text "${CHIBI_SDK_ROOT}/src/support"

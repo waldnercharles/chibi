@@ -143,6 +143,19 @@ static void assets(execution_wire *wire, game_player_asset **records, int *count
         }
     }
 }
+static void actions(execution_wire *wire, input_action **records, int *count)
+{
+    execution_wire_count(wire, count, 3);
+    for (int i = 0; i < *count && !wire->error; i++) {
+        input_action action = wire->reading ? (input_action){ 0 } : (*records)[i];
+        wire_name(wire, &action.name);
+        execution_wire_u64(wire, &action.controls);
+        execution_wire_bool(wire, &action.firing);
+        if (wire->reading && !wire->error) {
+            apush(*records, action);
+        }
+    }
+}
 /* Refuses a scene the player would refuse to enter, so compiling catches it. */
 static void scene_write(execution_wire *wire, const game_scene *scene, char *error, size_t size)
 {
@@ -182,7 +195,8 @@ bool game_player_prepared_write(
         (spec->scene_count && !spec->scenes) || spec->world.ecs ||
         (spec->world.modules & ~GAME_WORLD_MODULES_ALL) ||
         spec->asset_count < 0 || spec->asset_count > GAME_PLAYER_MAX_ASSETS ||
-        (spec->asset_count && !spec->assets)) {
+        (spec->asset_count && !spec->assets) || spec->world.action_count < 0 ||
+        (spec->world.action_count && !spec->world.actions)) {
         return fail(error, size, "Invalid prepared player record metadata");
     }
     execution_wire wire = { 0 };
@@ -217,6 +231,9 @@ bool game_player_prepared_write(
         blob(&wire, events, &event_length);
     }
     free(events);
+    input_action *input = (input_action *)spec->world.actions;
+    int action_count = spec->world.action_count;
+    actions(&wire, &input, &action_count);
     int modules = spec->module_count;
     count(&wire, &modules);
     for (int i = 0; i < modules && !wire.error; i++) {
@@ -382,6 +399,9 @@ game_player *game_player_prepared_read(
             wire.error = "Prepared player event catalog decoding failed";
         }
     }
+    input_action *input = NULL;
+    actions(&wire, &input, &spec.world.action_count);
+    spec.world.actions = input;
     count(&wire, &spec.module_count);
     for (int i = 0; i < spec.module_count && !wire.error; i++) {
         game_package_module m = { 0 };
@@ -434,6 +454,7 @@ game_player *game_player_prepared_read(
     afree(scenes);
     afree(modules);
     afree(asset_records);
+    afree(input);
     if (spec.world.fields) {
         material_fields_free(spec.world.fields);
     }

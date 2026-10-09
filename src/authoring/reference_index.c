@@ -38,7 +38,6 @@ static const reference_named_field_entry REFERENCE_NAMED_FIELDS[] = {
     { "GameShader", "shape", REFERENCE_ASSET_SHAPE, REFERENCE_BIND },
     { "GameUi", "document", REFERENCE_ASSET_UI, REFERENCE_BIND },
     { "GameSpawnRequest", "prototype", REFERENCE_ASSET_PROTOTYPE, REFERENCE_SPAWN },
-    { "GameActionBinding", "action", REFERENCE_ASSET_EVENT, REFERENCE_SEND },
 };
 
 static char *copy(const char *text)

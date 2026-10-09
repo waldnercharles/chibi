@@ -1,5 +1,6 @@
 #include "authoring/source_catalog.h"
 
+#include "assets/input_map.h"
 #include "assets/ui_document.h"
 #include "authoring/reference_index.h"
 #include "authoring/source_catalog_snapshot.h"
@@ -46,6 +47,8 @@ struct source_catalog
     source_catalog_reference *references;
     source_catalog_diagnostic *diagnostics;
     script_catalog_capability *capabilities;
+    input_action *input;
+    int native_capabilities;
     size_t bytes;
     int files, entries;
     int values;
@@ -150,16 +153,20 @@ static script_type event_type(source_catalog *c, const av_value *variable)
     }
     return type;
 }
-static void named_event(source_catalog *c, const char *path, const char *name)
+static const script_catalog_capability *find_event(const source_catalog *c, const char *name, int count)
 {
-    if (!name || !*name) {
-        return;
-    }
-    for (int i = 0; i < c->view.capability_count; i++) {
+    for (int i = 0; i < count; i++) {
         const script_catalog_capability *value = &c->view.capabilities[i];
         if (value->kind == SCRIPT_CAPABILITY_EVENT && !strcmp(value->name, name)) {
-            return;
+            return value;
         }
+    }
+    return NULL;
+}
+static void named_event(source_catalog *c, const char *path, const char *name)
+{
+    if (!name || !*name || find_event(c, name, c->view.capability_count)) {
+        return;
     }
     capability(
         c,
@@ -308,8 +315,7 @@ static void project_references(
         for (int j = 0; j < component->field_count; j++) {
             const char *field = component->fields[j].name;
             reference_asset_kind kind = reference_named_field_kind(component->name, field);
-            if (kind == REFERENCE_ASSET_EVENT || kind == REFERENCE_ASSET_PROTOTYPE ||
-                kind == REFERENCE_ASSET_SYSTEM) {
+            if (kind == REFERENCE_ASSET_PROTOTYPE || kind == REFERENCE_ASSET_SYSTEM) {
                 const av_value *named = av_obj_get(fields, field);
                 if (!av_get_str(named)) {
                     continue;
@@ -317,17 +323,12 @@ static void project_references(
                 if (!project_value(c, path)) {
                     return;
                 }
-                if (kind == REFERENCE_ASSET_EVENT) {
-                    named_event(c, path, av_get_str(named));
-                }
                 value_reference(
                     c,
                     path,
                     text,
                     named,
-                    kind == REFERENCE_ASSET_EVENT    ? SOURCE_REFERENCE_EVENT
-                    : kind == REFERENCE_ASSET_SYSTEM ? SOURCE_REFERENCE_SYSTEM
-                                                     : SOURCE_REFERENCE_PROTOTYPE
+                    kind == REFERENCE_ASSET_SYSTEM ? SOURCE_REFERENCE_SYSTEM : SOURCE_REFERENCE_PROTOTYPE
                 );
             }
         }
@@ -536,6 +537,156 @@ static void scan(source_catalog *c, const char *path, int depth, declaration_kin
     }
     closedir(directory);
 }
+static void *grow(source_catalog *c, const void *items, int count, int extra, size_t size)
+{
+    void *grown = arena_alloc(&c->storage, (size_t)(count + extra) * size);
+    memcpy(grown, items, (size_t)count * size);
+    return grown;
+}
+/* An edit of the input map replaces the file, and one without text removes
+ * it. */
+static char *input_text(source_catalog *c, const char *path)
+{
+    for (int i = 0; i < c->edit_count; i++) {
+        if (c->edits[i].path && !strcmp(c->edits[i].path, path)) {
+            c->edit_used[i] = true;
+            return c->edits[i].text ? edited_source(c, path, c->edits[i].text) : NULL;
+        }
+    }
+    struct stat info;
+    if (lstat(path, &info) && errno == ENOENT) {
+        return NULL;
+    }
+    return read_source(c, path);
+}
+static bool has_global(const source_catalog *c, const char *name)
+{
+    for (int i = 0; i < c->view.global_count; i++) {
+        if (!strcmp(c->view.globals[i].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Each action is the event of its name, so an action named like a host
+ * event (Tick, Begin, ...) would dispatch that event when pressed. Project
+ * events may share an action's name: both raise the same event. */
+static bool actions_unclaimed(source_catalog *c, const char *path)
+{
+    bool unclaimed = true;
+    for (int i = 0; i < acount(c->input); i++) {
+        const script_catalog_capability *event = find_event(c, c->input[i].name, c->native_capabilities);
+        if (!event) {
+            continue;
+        }
+        char message[sizeof c->diagnostics->message];
+        snprintf(
+            message,
+            sizeof message,
+            "Input action %s takes the name of the event %s; rename the action",
+            c->input[i].name,
+            event->qualified_name ? event->qualified_name : event->name
+        );
+        error(c, path, (script_range){ 0 }, message);
+        unclaimed = false;
+    }
+    return unclaimed;
+}
+/* The input map's actions are events, and `input.<Action>` reads one: an
+ * InputMap field per action holds its name, whose InputAction type reads
+ * held and pressed through the native input capabilities. */
+static void input_declarations(source_catalog *c)
+{
+    char path[MAX_PATH];
+    snprintf(path, sizeof path, "%s/" INPUT_MAP_FILE, c->root);
+    char *text = input_text(c, path);
+    char message[192];
+    if (!text || !input_map_read(text, &c->input, message, sizeof message)) {
+        if (text) {
+            error(c, path, (script_range){ 0 }, message);
+        }
+        free(text);
+        return;
+    }
+    free(text);
+    if (!acount(c->input)) {
+        return;
+    }
+    const char *getters[] = { INPUT_ACTION_HELD, INPUT_ACTION_PRESSED };
+    script_catalog_field *reads = arena_alloc(&c->storage, 2 * sizeof *reads);
+    for (int i = 0; i < 2; i++) {
+        uint64_t id = script_catalog_id("capability", getters[i]);
+        if (!script_catalog_capability_by_id(&c->view, id)) {
+            error(c, path, (script_range){ 0 }, "Input actions need the native input capabilities");
+            return;
+        }
+        reads[i] = (script_catalog_field){
+            .id = script_catalog_id("field", i ? "InputAction.pressed" : "InputAction.held"),
+            .name = i ? "pressed" : "held",
+            .type = { .storage = PIN_BOOL },
+            .read = id,
+        };
+    }
+    if (script_catalog_find_type(&c->view, INPUT_ACTION_TYPE) >= 0 ||
+        script_catalog_find_type(&c->view, INPUT_MAP_TYPE) >= 0) {
+        error(
+            c,
+            path,
+            (script_range){ 0 },
+            "Input actions need the type names " INPUT_ACTION_TYPE
+            " and " INPUT_MAP_TYPE "; rename the type that uses one"
+        );
+        return;
+    }
+    if (has_global(c, "input")) {
+        error(c, path, (script_range){ 0 }, "Input actions need the global name input; rename the global that uses it");
+        return;
+    }
+    if (!actions_unclaimed(c, path)) {
+        return;
+    }
+    uint64_t action_type = script_catalog_id("type", INPUT_ACTION_TYPE);
+    uint64_t map_type = script_catalog_id("type", INPUT_MAP_TYPE);
+    int count = acount(c->input);
+    script_catalog_field *actions = arena_alloc(&c->storage, (size_t)count * sizeof *actions);
+    for (int i = 0; i < count; i++) {
+        const char *name = own(c, c->input[i].name);
+        size_t size = strlen(name) + sizeof "InputMap.";
+        char *field = arena_alloc(&c->storage, size);
+        snprintf(field, size, "InputMap.%s", name);
+        actions[i] = (script_catalog_field){
+            .id = script_catalog_id("field", field),
+            .name = name,
+            .type = { .storage = PIN_STR, .nominal = action_type },
+            .constant = true,
+        };
+        named_event(c, path, name);
+    }
+    script_catalog_type *types = grow(c, c->view.types, c->view.type_count, 2, sizeof *types);
+    types[c->view.type_count] = (script_catalog_type){
+        .id = action_type,
+        .name = INPUT_ACTION_TYPE,
+        .type = { .storage = PIN_STR, .nominal = action_type },
+        .fields = reads,
+        .field_count = 2,
+    };
+    types[c->view.type_count + 1] = (script_catalog_type){
+        .id = map_type,
+        .name = INPUT_MAP_TYPE,
+        .type = { .storage = PIN_STR, .nominal = map_type },
+        .fields = actions,
+        .field_count = count,
+    };
+    c->view.types = types;
+    c->view.type_count += 2;
+    script_catalog_global *globals = grow(c, c->view.globals, c->view.global_count, 1, sizeof *globals);
+    globals[c->view.global_count++] = (script_catalog_global){
+        .id = script_catalog_id("global", "input"),
+        .name = "input",
+        .type = { .storage = PIN_STR, .nominal = map_type },
+    };
+    c->view.globals = globals;
+}
 static script_catalog_parameter *parameters(
     source_catalog *c,
     const char *path,
@@ -694,6 +845,9 @@ bool source_catalog_edit_path(const char *root, const char *path)
     if (depth > MAX_DEPTH) {
         return false;
     }
+    if (!strcmp(relative, INPUT_MAP_FILE)) {
+        return true;
+    }
     const char *folders[] = { "events/", "prototypes/", "scenes/", "ui/" };
     for (int i = 0; i < 4; i++) {
         const char *extension = i == 3 ? ".rml" : DECLARATIVE_ASSET_EXTENSION;
@@ -743,6 +897,7 @@ static source_catalog *build(
         error(c, root, (script_range){ 0 }, "Cannot retain native declaration defaults");
         return c;
     }
+    c->native_capabilities = c->view.capability_count;
     if (edit_count > MAX_SOURCES) {
         error(c, root, (script_range){ 0 }, "Executable edit count limit exceeded");
         return c;
@@ -792,6 +947,7 @@ static source_catalog *build(
         }
         scan(c, path, 0, kinds[i]);
     }
+    input_declarations(c);
     for (int i = 0; i < edit_count; i++) {
         if (!c->edit_used[i] && edits[i].text) {
             load_file(c, edits[i].path, edit_kind(root, edits[i].path));
@@ -909,6 +1065,10 @@ const script_catalog *source_catalog_view(const source_catalog *c)
 {
     return &c->view;
 }
+const input_action *source_catalog_input(const source_catalog *c)
+{
+    return c->input;
+}
 int source_catalog_source_count(const source_catalog *c)
 {
     return acount(c->sources);
@@ -958,6 +1118,7 @@ void source_catalog_free(source_catalog *c)
     afree(c->references);
     afree(c->diagnostics);
     afree(c->capabilities);
+    input_map_free(c->input);
     arena_free(&c->storage);
     free(c);
 }

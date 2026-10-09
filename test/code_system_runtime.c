@@ -31,7 +31,6 @@ static system_fixture active;
 static char *formatted;
 static ecs_world *input_world;
 static game_source_registry *input_sources;
-static game_schedule *input_schedule;
 static engine_input *source_input;
 static authoring_language_catalog *input_catalog;
 static authoring_source *input_source;
@@ -40,7 +39,7 @@ static system_fixture fixture_new()
 {
     system_fixture f = { .world = ecs_world_new() };
     const ecs_component_desc *components[] = {
-        &GAME_COMPONENT_GameHealth,   &GAME_COMPONENT_GameActionBinding,
+        &GAME_COMPONENT_GameHealth,   &GAME_COMPONENT_GameAim,
         &GAME_COMPONENT_GameCollider, &GAME_COMPONENT_GameTransform,
         &GAME_COMPONENT_GameMovement, &GAME_COMPONENT_GameInput
     };
@@ -329,9 +328,9 @@ static bool live_component_resume(behavior_backend backend)
 static bool optional_membership_roundtrip(behavior_backend backend)
 {
     const char
-        *text = "system Optional(health:Health, trigger:ActionBinding?) "
+        *text = "system Optional(health:Health, trigger:Aim?) "
                 "without Collider { "
-                "if trigger { if trigger.Pressed { health.Current+=7; } } "
+                "if trigger { if trigger.Firing { health.Current+=7; } } "
                 "else { health.Current+=2; } }";
     script_syntax *syntax = script_parse(text);
     char error[256];
@@ -342,17 +341,17 @@ static bool optional_membership_roundtrip(behavior_backend backend)
     for (int pass = 0; pass < 2; pass++) {
         system_fixture f = fixture_new();
         ecs_entity present = health(&f), absent = health(&f), excluded = health(&f);
-        REQUIRE(!GAME_GameActionBinding_add(f.world, present, 0));
+        REQUIRE(!GAME_GameAim_add(f.world, present, 0));
         REQUIRE(!GAME_GameCollider_add(f.world, excluded, 0));
         REQUIRE(!ecs_world_apply_commands(f.world));
-        GAME_GameActionBinding_get(f.world, present)->pressed = true;
+        GAME_GameAim_get(f.world, present)->firing = true;
         REQUIRE(prepare(&f, pass ? saved : text, backend));
         REQUIRE(tick(&f, 0));
         REQUIRE(instance(&f, present) && instance(&f, absent) && !instance(&f, excluded));
         REQUIRE(GAME_GameHealth_get_const(f.world, present)->current == 7);
         REQUIRE(GAME_GameHealth_get_const(f.world, absent)->current == 2);
         REQUIRE(GAME_GameHealth_get_const(f.world, excluded)->current == 0);
-        REQUIRE(!GAME_GameActionBinding_remove(f.world, present, 0));
+        REQUIRE(!GAME_GameAim_remove(f.world, present, 0));
         REQUIRE(!ecs_world_apply_commands(f.world));
         REQUIRE(tick(&f, .1));
         REQUIRE(GAME_GameHealth_get_const(f.world, present)->current == 9);
@@ -368,22 +367,22 @@ static bool optional_membership_roundtrip(behavior_backend backend)
 static bool any_query_membership(behavior_backend backend)
 {
     system_fixture f = fixture_new();
-    ecs_entity bare = health(&f), bound = health(&f), collider = health(&f);
-    REQUIRE(!GAME_GameActionBinding_add(f.world, bound, 0));
-    REQUIRE(!GAME_GameActionBinding_add(f.world, collider, 0));
+    ecs_entity bare = health(&f), aimed = health(&f), collider = health(&f);
+    REQUIRE(!GAME_GameAim_add(f.world, aimed, 0));
+    REQUIRE(!GAME_GameAim_add(f.world, collider, 0));
     REQUIRE(!GAME_GameCollider_add(f.world, collider, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(prepare(
         &f,
         "system AnyQuery(health:Health) { "
-        "query any(has(Collider), not(has(ActionBinding))); "
+        "query any(has(Collider), not(has(Aim))); "
         "health.Current+=1; }",
         backend
     ));
     REQUIRE(tick(&f, 0));
-    REQUIRE(instance(&f, bare) && !instance(&f, bound) && instance(&f, collider));
+    REQUIRE(instance(&f, bare) && !instance(&f, aimed) && instance(&f, collider));
     REQUIRE(GAME_GameHealth_get_const(f.world, bare)->current == 1);
-    REQUIRE(GAME_GameHealth_get_const(f.world, bound)->current == 0);
+    REQUIRE(GAME_GameHealth_get_const(f.world, aimed)->current == 0);
     REQUIRE(GAME_GameHealth_get_const(f.world, collider)->current == 1);
     fixture_free(&f);
     return true;
@@ -410,35 +409,20 @@ static bool reactive_checkpoint(behavior_backend backend)
 {
     system_fixture f = fixture_new();
     ecs_entity owner = ecs_world_create_entity(f.world);
-    REQUIRE(!GAME_GameActionBinding_add(f.world, owner, 0));
+    REQUIRE(!GAME_GameAim_add(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(prepare(
-        &f,
-        "system Watch(binding:ActionBinding) { state changes:double=0; "
-        "bind binding.Disabled=!binding.Pressed; "
-        "on binding.PressedChanged(pressed) { changes+=1; "
-        "await delay(Duration:1); changes+=10; } }",
-        backend
-    ));
+    REQUIRE(prepare(&f, "system Watch(aim:Aim) { bind aim.Manual=!aim.Firing; }", backend));
     REQUIRE(tick(&f, 0));
-    REQUIRE(GAME_GameActionBinding_get(f.world, owner)->disabled);
-    REQUIRE(state(&f, owner, "changes") == 0);
-    GAME_GameActionBinding_get(f.world, owner)->pressed = true;
+    REQUIRE(GAME_GameAim_get(f.world, owner)->manual);
+    GAME_GameAim_get(f.world, owner)->firing = true;
     REQUIRE(tick(&f, .1));
-    REQUIRE(state(&f, owner, "changes") == 1);
-    REQUIRE(execution_instance_pending(instance(&f, owner)) == 1);
-    GAME_GameActionBinding_get(f.world, owner)->pressed = false;
+    REQUIRE(!GAME_GameAim_get(f.world, owner)->manual);
+    GAME_GameAim_get(f.world, owner)->firing = false;
     REQUIRE(tick(&f, .2));
-    REQUIRE(GAME_GameActionBinding_get(f.world, owner)->disabled);
-    REQUIRE(state(&f, owner, "changes") == 1);
-    REQUIRE(tick(&f, 1.2));
-    REQUIRE(state(&f, owner, "changes") == 11);
-    GAME_GameActionBinding_get(f.world, owner)->pressed = true;
-    REQUIRE(tick(&f, 1.3));
-    REQUIRE(state(&f, owner, "changes") == 12);
-    REQUIRE(!GAME_GameActionBinding_remove(f.world, owner, 0));
+    REQUIRE(GAME_GameAim_get(f.world, owner)->manual);
+    REQUIRE(!GAME_GameAim_remove(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(tick(&f, 1.4));
+    REQUIRE(tick(&f, .3));
     REQUIRE(!instance(&f, owner));
     fixture_free(&f);
     return true;
@@ -520,10 +504,6 @@ static void cleanup()
         engine_input_free(source_input);
     }
     source_input = NULL;
-    if (input_schedule) {
-        game_schedule_free(input_schedule);
-    }
-    input_schedule = NULL;
     if (input_sources) {
         game_source_registry_free(input_sources);
     }
@@ -627,13 +607,10 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
     for (int b = 0; b < 2; b++) {
         cleanup();
         input_world = ecs_world_new();
-        REQUIRE(!ecs_world_register_component(input_world, &GAME_COMPONENT_GameActionBinding, NULL));
         REQUIRE(!ecs_world_register_component(input_world, &GAME_COMPONENT_GameInput, NULL));
         ecs_entity owner = ecs_world_create_entity(input_world);
-        REQUIRE(!GAME_GameActionBinding_add(input_world, owner, 0));
         REQUIRE(!GAME_GameInput_add(input_world, owner, 0));
         REQUIRE(!ecs_world_apply_commands(input_world));
-        GAME_GameActionBinding_get(input_world, owner)->action = "Pulse";
         const script_catalog_capability pulse = {
             .id = script_catalog_id("event", "Pulse"),
             .name = "Pulse",
@@ -654,10 +631,8 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
         input_source = authoring_source_prepare_document(
             "Input.chibi",
             "systems/Input.chibi",
-            "system InputWatch(binding:ActionBinding){ state changes:double=0;"
-            " state pulses:double=0; state down:bool=false;"
-            " on Pulse{pulses+=1;}"
-            " on binding.PressedChanged(pressed){changes+=1;down=pressed;} }",
+            "system InputWatch(controls:Input){ state pulses:double=0; on "
+            "Pulse{pulses+=1;} }",
             authoring_language_catalog_view(input_catalog),
             &bindings,
             backends[b]
@@ -674,47 +649,21 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
         system_fixture f = { .world = input_world,
                              .source = input_source,
                              .program = game_source_program(input_sources, "InputWatch") };
-        REQUIRE(f.program && state(&f, owner, "changes") == 0);
-        uint64_t down_id = 0;
-        for (int i = 0; i < input_source->analysis->symbol_count; i++) {
-            const script_symbol *symbol = &input_source->analysis->symbols[i];
-            if (symbol->kind == SCRIPT_STATE && !strcmp(symbol->name, "down")) {
-                down_id = symbol->id;
-            }
-        }
-        REQUIRE(down_id);
+        REQUIRE(f.program && state(&f, owner, "pulses") == 0);
         game_source_input bridge = { .sources = input_sources, .now = .1, .delta = .1 };
         const engine_input_host host = game_source_input_host(&bridge);
-        input_schedule = game_schedule_new(input_world, NULL);
-        source_input = engine_input_new(input_world, &host, input_schedule);
+        source_input = engine_input_new(input_world, &host);
         REQUIRE(engine_input_action(source_input, "Missing", true) == FLOW_ERR_UNKNOWN_EVENT);
         REQUIRE(engine_input_action(source_input, "Pulse", true) == 1);
         REQUIRE(engine_input_apply(source_input) == FLOW_OK);
-        fprintf(
-            stderr,
-            "input first edge backend=%d changes=%g pulses=%g error=%s\n",
-            backends[b],
-            state(&f, owner, "changes"),
-            state(&f, owner, "pulses"),
-            game_source_error(input_sources)
-        );
-        REQUIRE(state(&f, owner, "changes") == 1 && state(&f, owner, "pulses") == 1);
-        const pin_value *down = execution_instance_state(instance(&f, owner), down_id);
-        REQUIRE(down && down->type == PIN_BOOL && down->b);
-        REQUIRE(game_source_step(input_sources, .2, .1) == FLOW_OK);
-        REQUIRE(state(&f, owner, "changes") == 1);
+        REQUIRE(state(&f, owner, "pulses") == 1);
         bridge.now = .3;
         REQUIRE(engine_input_action(source_input, "Pulse", true) == 0);
         REQUIRE(engine_input_apply(source_input) == FLOW_OK);
-        REQUIRE(state(&f, owner, "changes") == 1 && state(&f, owner, "pulses") == 1);
         bridge.now = .4;
         REQUIRE(engine_input_action(source_input, "Pulse", false) == 1);
         REQUIRE(engine_input_apply(source_input) == FLOW_OK);
-        REQUIRE(state(&f, owner, "changes") == 2 && state(&f, owner, "pulses") == 1);
-        down = execution_instance_state(instance(&f, owner), down_id);
-        REQUIRE(down && down->type == PIN_BOOL && !down->b);
-        REQUIRE(game_source_step(input_sources, .5, .1) == FLOW_OK);
-        REQUIRE(state(&f, owner, "changes") == 2);
+        REQUIRE(state(&f, owner, "pulses") == 1);
     }
     return true;
 }

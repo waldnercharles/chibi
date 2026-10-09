@@ -457,6 +457,10 @@ GPU check that needs the render-enabled tools of the main build: run
 9 assertions in 6.1 seconds on a cold shader cache and 0.9 seconds warm. The
 tiled case fails when Cute's compute renderer is unavailable. Every SDL_GPU
 backend has one, so there a failure means Cute's tile shaders did not load.
+`viewport-resize` creates an engine viewport at a 640 x 360 placeholder in a
+hidden app. The first requested size must replace the canvas on that draw, and
+a later size only once it has been requested for two more draws. Build and run
+it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
 near clipping, a mixed 2D layer, and a later frame without the occluder) with

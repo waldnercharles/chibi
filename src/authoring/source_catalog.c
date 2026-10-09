@@ -48,6 +48,7 @@ struct source_catalog
     source_catalog_diagnostic *diagnostics;
     script_catalog_capability *capabilities;
     input_action *input;
+    int native_capabilities;
     size_t bytes;
     int files, entries;
     int values;
@@ -152,16 +153,20 @@ static script_type event_type(source_catalog *c, const av_value *variable)
     }
     return type;
 }
-static void named_event(source_catalog *c, const char *path, const char *name)
+static const script_catalog_capability *find_event(const source_catalog *c, const char *name, int count)
 {
-    if (!name || !*name) {
-        return;
-    }
-    for (int i = 0; i < c->view.capability_count; i++) {
+    for (int i = 0; i < count; i++) {
         const script_catalog_capability *value = &c->view.capabilities[i];
         if (value->kind == SCRIPT_CAPABILITY_EVENT && !strcmp(value->name, name)) {
-            return;
+            return value;
         }
+    }
+    return NULL;
+}
+static void named_event(source_catalog *c, const char *path, const char *name)
+{
+    if (!name || !*name || find_event(c, name, c->view.capability_count)) {
+        return;
     }
     capability(
         c,
@@ -554,6 +559,63 @@ static char *input_text(source_catalog *c, const char *path)
     }
     return read_source(c, path);
 }
+/* Each action's definition is its exact node name in the map, which
+ * input_map_read accepted. */
+static void input_definitions(source_catalog *c, const char *path, const char *text)
+{
+    av_doc *document = asset_text_read(text, NULL, 0);
+    assert(document);
+    const av_value *root = av_doc_root(document);
+    for (size_t i = 0; i < av_obj_size(root); i++) {
+        const char *name = own(c, av_get_str(av_obj_key_at(root, i)));
+        av_source at = av_get_source(av_obj_value_at(root, i));
+        assert(at.name_start < at.name_end && at.name_end != SIZE_MAX);
+        apush(
+            c->definitions,
+            ((source_catalog_definition){
+                .id = script_catalog_id("event", name),
+                .kind = SCRIPT_CAPABILITY_EVENT,
+                .name = name,
+                .path = path,
+                .text = text,
+                .range = text_range(text, (int)at.name_start, (int)at.name_end) })
+        );
+    }
+    av_doc_free(document);
+}
+static bool has_global(const source_catalog *c, const char *name)
+{
+    for (int i = 0; i < c->view.global_count; i++) {
+        if (!strcmp(c->view.globals[i].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Each action is the event of its name, so an action named like a host
+ * event (Tick, Begin, ...) would dispatch that event when pressed. Project
+ * events may share an action's name: both raise the same event. */
+static bool actions_unclaimed(source_catalog *c, const char *path)
+{
+    bool unclaimed = true;
+    for (int i = 0; i < acount(c->input); i++) {
+        const script_catalog_capability *event = find_event(c, c->input[i].name, c->native_capabilities);
+        if (!event) {
+            continue;
+        }
+        char message[sizeof c->diagnostics->message];
+        snprintf(
+            message,
+            sizeof message,
+            "Input action %s takes the name of the event %s; rename the action",
+            c->input[i].name,
+            event->qualified_name ? event->qualified_name : event->name
+        );
+        error(c, path, (script_range){ 0 }, message);
+        unclaimed = false;
+    }
+    return unclaimed;
+}
 /* The input map's actions are events, and `input.<Action>` reads one: an
  * InputMap field per action holds its name, whose InputAction type reads
  * held and pressed through the native input capabilities. */
@@ -570,6 +632,7 @@ static void input_declarations(source_catalog *c)
         free(text);
         return;
     }
+    const char *owned_text = own(c, text);
     free(text);
     if (!acount(c->input)) {
         return;
@@ -598,6 +661,13 @@ static void input_declarations(source_catalog *c)
             "Input actions need the type names " INPUT_ACTION_TYPE
             " and " INPUT_MAP_TYPE "; rename the type that uses one"
         );
+        return;
+    }
+    if (has_global(c, "input")) {
+        error(c, path, (script_range){ 0 }, "Input actions need the global name input; rename the global that uses it");
+        return;
+    }
+    if (!actions_unclaimed(c, path)) {
         return;
     }
     uint64_t action_type = script_catalog_id("type", INPUT_ACTION_TYPE);
@@ -641,6 +711,7 @@ static void input_declarations(source_catalog *c)
         .type = { .storage = PIN_STR, .nominal = map_type },
     };
     c->view.globals = globals;
+    input_definitions(c, own(c, path), owned_text);
 }
 static script_catalog_parameter *parameters(
     source_catalog *c,
@@ -852,6 +923,7 @@ static source_catalog *build(
         error(c, root, (script_range){ 0 }, "Cannot retain native declaration defaults");
         return c;
     }
+    c->native_capabilities = c->view.capability_count;
     if (edit_count > MAX_SOURCES) {
         error(c, root, (script_range){ 0 }, "Executable edit count limit exceeded");
         return c;
@@ -973,7 +1045,14 @@ static source_catalog *build(
                 }
             }
             if (!reference->id) {
-                error(c, reference->path, reference->range, "Unknown authored behavior or system attachment");
+                char message[192];
+                snprintf(
+                    message,
+                    sizeof message,
+                    "Unknown behavior or system '%s'",
+                    reference->name
+                );
+                error(c, reference->path, reference->range, message);
             }
             continue;
         }
@@ -988,7 +1067,15 @@ static source_catalog *build(
             }
         }
         if (!reference->id) {
-            error(c, reference->path, reference->range, "Unknown authored prototype or event reference");
+            char message[192];
+            snprintf(
+                message,
+                sizeof message,
+                "Unknown %s '%s'",
+                kind == SCRIPT_CAPABILITY_EVENT ? "event" : "prototype",
+                reference->name
+            );
+            error(c, reference->path, reference->range, message);
         }
     }
     return c;

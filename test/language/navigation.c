@@ -1,3 +1,5 @@
+#include "assets/input_map.h"
+#include "authoring/source_catalog.h"
 #include "authoring/source_intelligence.h"
 #include "authoring/source_rename.h"
 #include "support/xalloc.h"
@@ -6,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static authoring_document documents[3];
 static script_analysis *declarations[3];
@@ -19,6 +22,7 @@ static char error[192];
 static char *edited;
 static authoring_completions completions;
 static authoring_highlight *highlights;
+static source_catalog *input_catalog;
 static const script_catalog_field fields[] = {
     { .id = 20, .name = "x", .type = { .storage = PIN_I32 }, .writable = true },
     { .id = 21, .name = "y", .type = { .storage = PIN_I32 }, .offset = sizeof(int), .writable = true },
@@ -51,6 +55,8 @@ static void cleanup()
     }
     memset(documents, 0, sizeof documents);
     memset(declarations, 0, sizeof declarations);
+    source_catalog_free(input_catalog);
+    input_catalog = NULL;
     navigation = NULL;
     plan = NULL;
     edited = NULL;
@@ -59,7 +65,7 @@ static void cleanup()
 
 /* The test catalog uses actual discovered declaration IDs and signatures. No
  * executable backend, graph compiler or runtime is constructed. */
-static bool project(const char *const *source, int count)
+static void base_catalog()
 {
     cleanup();
     memset(capabilities, 0, sizeof capabilities);
@@ -73,6 +79,11 @@ static bool project(const char *const *source, int count)
                                 .tick_event = 100,
                                 .globals = globals,
                                 .global_count = 1 };
+}
+
+/* Adds the sources' library functions to the catalog, then analyzes them. */
+static bool load(const char *const *source, int count)
+{
     document_count = count;
     static const char *paths[] = { "lib.chibi", "app.chibi", "other.chibi" };
     for (int d = 0; d < count; d++) {
@@ -95,6 +106,13 @@ static bool project(const char *const *source, int count)
                 const script_symbol *p = &a->symbols[f->parameters[j]];
                 parameters[at][j] = (script_catalog_parameter){ .name = p->name,
                                                                 .type = p->type };
+                /* Constant defaults travel with the signature, as in a project catalog. */
+                if (p->initializer >= 0 &&
+                    a->expressions[p->initializer].kind == SCRIPT_EXPR_CONSTANT) {
+                    parameters[at][j].has_default = true;
+                    parameters[at][j]
+                        .default_value = a->expressions[p->initializer].constant;
+                }
             }
             for (int j = 0; j < f->result_count; j++) {
                 const script_symbol *r = &a->symbols[f->results[j]];
@@ -125,6 +143,12 @@ static bool project(const char *const *source, int count)
     }
     navigation = authoring_navigation_new(documents, count, &catalog);
     return valid;
+}
+
+static bool project(const char *const *source, int count)
+{
+    base_catalog();
+    return load(source, count);
 }
 
 static const authoring_reference *at(int document, const char *token)
@@ -858,6 +882,96 @@ TEST_CASE(rename_external_declaration_uses_exact_source_and_catalog_identity)
     return true;
 }
 
+/* Spawn takes a prototype by name; Spark and Ember are prototypes. */
+static bool spawn_project(const char *const *source, int count)
+{
+    static const script_catalog_parameter spawn_parameter = {
+        .name = "prototype",
+        .type = { .storage = PIN_NAME },
+        .reference_kind = SCRIPT_REFERENCE_PROTOTYPE
+    };
+    static const source_catalog_definition definitions[] = {
+        { .id = 400,
+          .kind = SCRIPT_CAPABILITY_PROTOTYPE,
+          .name = "Spark",
+          .path = "prototypes/Spark.kdl",
+          .text = "name \"Spark\"\n",
+          .range = { 5, 12, 1, 6 } },
+    };
+    base_catalog();
+    capabilities[1] = (script_catalog_capability){ .id = 400,
+                                                   .name = "Spark",
+                                                   .kind = SCRIPT_CAPABILITY_PROTOTYPE,
+                                                   .completion_outcome = -1 };
+    capabilities[2] = (script_catalog_capability){ .id = 401,
+                                                   .name = "Ember",
+                                                   .kind = SCRIPT_CAPABILITY_PROTOTYPE,
+                                                   .completion_outcome = -1 };
+    capabilities[3] = (script_catalog_capability){ .id = 402,
+                                                   .name = "Spawn",
+                                                   .parameters = &spawn_parameter,
+                                                   .parameter_count = 1,
+                                                   .completion_outcome = -1 };
+    catalog.capability_count = 4;
+    bool valid = load(source, count);
+    authoring_navigation_free(navigation);
+    navigation = authoring_navigation_new_project(documents, count, &catalog, definitions, 1, NULL, 0);
+    return valid;
+}
+
+static bool names_prototype(int document, const char *token, uint64_t id)
+{
+    const authoring_reference *reference = at(document, token);
+    return reference && reference->target.kind == AUTHORING_PROTOTYPE &&
+           reference->target.id == id && reference->kind == AUTHORING_HANDLE;
+}
+
+TEST_CASE(navigation_follows_prototype_names_into_spawn)
+{
+    const char *sources[] = {
+        "library Effects { function Launch(kind:name=\"\"){ Spawn(kind); } "
+        "function Burst(kind:name=\"Ember\"){ Launch(kind:kind); } }",
+        "behavior App { label:=\"Spark\"; aim:name=\"Spark\"; on Tick { "
+        "pick:=\"Spark\"; Spawn(pick); aim=\"Ember\"; Spawn(aim); "
+        "Effects.Burst(kind:\"Spark\"); miss:=\"Nothing\"; "
+        "Spawn(miss); } }",
+    };
+    REQUIRE(spawn_project(sources, 2));
+    REQUIRE(names_prototype(1, "\"Spark\"; Spawn(pick)", 400)); /* A local. */
+    REQUIRE(names_prototype(1, "\"Spark\"; on Tick", 400));     /* State. */
+    REQUIRE(names_prototype(1, "\"Ember\"; Spawn(aim)", 401)); /* Its assignment. */
+    /* Through two library parameters, from an argument and from a default. */
+    REQUIRE(names_prototype(1, "\"Spark\"); miss", 400));
+    REQUIRE(names_prototype(0, "\"Ember\"){", 401));
+    REQUIRE(!at(0, "\"\"){"));          /* Names no prototype. */
+    REQUIRE(!at(1, "\"Nothing\""));     /* Names no prototype. */
+    REQUIRE(!at(1, "\"Spark\"; aim:")); /* Never reaches a spawn. */
+    const authoring_reference *spark = at(1, "\"Spark\"; Spawn(pick)");
+    REQUIRE(references(spark->target) == 4);
+    REQUIRE(plan_rename(spark->target, "Bright Spark"));
+    edited = apply(1);
+    REQUIRE(edited);
+    REQUIRE(strstr(edited, "label:=\"Spark\"; aim:name=\"Bright Spark\";"));
+    REQUIRE(strstr(edited, "pick:=\"Bright Spark\";"));
+    REQUIRE(strstr(edited, "Effects.Burst(kind:\"Bright Spark\")"));
+    return true;
+}
+/* A call that omits a defaulted parameter references the prototype only at its default. */
+TEST_CASE(prototype_rename_skips_omitted_defaults)
+{
+    const char *sources[] = {
+        "library Effects { function Burst(kind:name=\"Spark\"){ Spawn(kind); } "
+        "}",
+        "behavior App { on Tick { Effects.Burst(); } }",
+    };
+    REQUIRE(spawn_project(sources, 2));
+    const authoring_reference *spark = at(0, "\"Spark\"){");
+    REQUIRE(spark && references(spark->target) == 2); /* The default and the prototype. */
+    REQUIRE(plan_rename(spark->target, "Bright Spark"));
+    edited = apply(0);
+    REQUIRE(edited && strstr(edited, "kind:name=\"Bright Spark\""));
+    return true;
+}
 TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
 {
     static const script_catalog_capability pulse = { .id = 401,
@@ -951,6 +1065,136 @@ TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
     return true;
 }
 
+/* The project catalog reads content/input.kdl, so `input.Jump`, `on Jump` and
+ * the map's `Jump` node name one action. */
+static bool input_map_project()
+{
+    static const char source[] = "behavior Jumper {\n"
+                                 "    held: bool = false;\n"
+                                 "    on Jump {\n"
+                                 "        held = input.Jump.held;\n"
+                                 "        held = input.jump.pressed;\n"
+                                 "    }\n"
+                                 "}\n";
+    static const script_catalog_parameter action = { .name = "Action",
+                                                     .type = { .storage = PIN_STR } };
+    static const script_catalog_parameter value = { .name = "Value",
+                                                    .type = { .storage = PIN_BOOL } };
+    for (int i = 0; i < 2; i++) {
+        const char *name = i ? INPUT_ACTION_PRESSED : INPUT_ACTION_HELD;
+        capabilities[i] = (script_catalog_capability){
+            .id = script_catalog_id("capability", name),
+            .name = name,
+            .kind = SCRIPT_CAPABILITY_FUNCTION,
+            .parameters = &action,
+            .parameter_count = 1,
+            .results = &value,
+            .result_count = 1,
+            .effects = SCRIPT_EFFECT_READ,
+            .completion_outcome = -1,
+        };
+    }
+    catalog = (script_catalog){ .capabilities = capabilities, .capability_count = 2 };
+    char root[] = "/tmp/chibi-input-navigation-XXXXXX", path[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/" INPUT_MAP_FILE, root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file);
+    fputs("Jump {\n    (array)sources \"Space\"\n}\nDash {\n    (array)sources \"X\"\n}\n", file);
+    fclose(file);
+    input_catalog = source_catalog_new(root, &catalog);
+    unlink(path);
+    rmdir(root);
+    REQUIRE(!source_catalog_diagnostic_count(input_catalog));
+    const script_catalog *view = source_catalog_view(input_catalog);
+    document_count = 1;
+    documents[0] = (authoring_document){ .path = "behaviors/Jumper.chibi",
+                                         .syntax = script_parse(source) };
+    documents[0].analysis = script_analyze_document(
+        documents[0].syntax,
+        view,
+        documents[0].path
+    );
+    for (int i = 0; i < documents[0].analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "input navigation: %s\n",
+            documents[0].analysis->diagnostics[i].message
+        );
+    }
+    REQUIRE(documents[0].analysis->valid);
+    navigation = authoring_navigation_new_project(
+        documents,
+        1,
+        view,
+        source_catalog_definitions(input_catalog),
+        source_catalog_definition_count(input_catalog),
+        source_catalog_references(input_catalog),
+        source_catalog_reference_count(input_catalog)
+    );
+    return true;
+}
+TEST_CASE(navigation_connects_input_actions_to_the_input_map)
+{
+    REQUIRE(input_map_project());
+    const authoring_reference *use = at(0, "Jump.held");
+    REQUIRE(use && use->kind == AUTHORING_READ);
+    REQUIRE(
+        use->target.kind == AUTHORING_CALLABLE &&
+        use->target.id == script_catalog_id("event", "Jump")
+    );
+    REQUIRE(use->location.range.end - use->location.range.start == 4);
+    const authoring_reference *handler = at(0, "Jump {"),
+                              *other = at(0, "jump.pressed");
+    REQUIRE(handler && authoring_target_equal(handler->target, use->target));
+    REQUIRE(other && authoring_target_equal(other->target, use->target));
+    const authoring_reference *definition = authoring_navigation_definition(navigation, use->target);
+    REQUIRE(definition && definition->location.document == 1);
+    const char *map = authoring_navigation_document_text(navigation, 1);
+    REQUIRE(authoring_navigation_document_kind(navigation, 1) == SOURCE_TEXT_KDL);
+    REQUIRE(definition->location.range.start == 0 && definition->location.range.end == 4);
+    REQUIRE(definition->location.range.line == 1 && definition->location.range.column == 1);
+    REQUIRE(!strncmp(map, "Jump {", 6));
+    const authoring_reference
+        *dash = authoring_navigation_at(navigation, 1, (int)(strstr(map, "Dash") - map));
+    REQUIRE(dash && dash->kind == AUTHORING_DEFINE && dash->location.range.line == 4);
+    REQUIRE(references(use->target) == 4);
+    return true;
+}
+TEST_CASE(rename_input_action_edits_the_input_map_and_scripts)
+{
+    REQUIRE(input_map_project());
+    authoring_target jump = at(0, "Jump.held")->target;
+    REQUIRE(!plan_rename(jump, "Dash"));
+    REQUIRE(plan_rename(jump, "Leap"));
+    REQUIRE(plan->count == 4);
+    edited = apply(0);
+    REQUIRE(
+        edited && !strcmp(
+                      edited,
+                      "behavior Jumper {\n"
+                      "    held: bool = false;\n"
+                      "    on Leap {\n"
+                      "        held = input.Leap.held;\n"
+                      "        held = input.Leap.pressed;\n"
+                      "    }\n"
+                      "}\n"
+                  )
+    );
+    free(edited);
+    edited = authoring_rename_document(
+        plan,
+        1,
+        authoring_navigation_document_text(navigation, 1),
+        error,
+        sizeof error
+    );
+    REQUIRE(
+        edited && !strcmp(edited, "Leap {\n    (array)sources \"Space\"\n}\nDash {\n    (array)sources \"X\"\n}\n")
+    );
+    return true;
+}
+
 void test_language_navigation()
 {
     pu_setup(NULL, cleanup);
@@ -969,7 +1213,11 @@ void test_language_navigation()
     RUN_TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members);
     RUN_TEST_CASE(intelligence_prototype_arguments_use_declared_reference_context);
     RUN_TEST_CASE(navigation_resolves_external_definitions_and_selected_references);
+    RUN_TEST_CASE(navigation_follows_prototype_names_into_spawn);
+    RUN_TEST_CASE(prototype_rename_skips_omitted_defaults);
     RUN_TEST_CASE(rename_external_declaration_uses_exact_source_and_catalog_identity);
     RUN_TEST_CASE(rename_declared_events_preserves_exact_rml_tokens);
+    RUN_TEST_CASE(navigation_connects_input_actions_to_the_input_map);
+    RUN_TEST_CASE(rename_input_action_edits_the_input_map_and_scripts);
     pu_setup(NULL, NULL);
 }

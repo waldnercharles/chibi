@@ -722,6 +722,16 @@ static void add_behavior(reference_index *index, reference at, const char *behav
 void reference_index_add_prototype(reference_index *index, int source, const game_prototype *prototype)
 {
     reference at = { .source = source };
+    reference use = at;
+    use.role = REFERENCE_USE;
+    for (int i = 0; i < acount(prototype->includes); i++) {
+        use.symbol = reference_asset_symbol(reference_index_named_asset(
+            index,
+            REFERENCE_ASSET_PROTOTYPE,
+            prototype->includes[i]
+        ));
+        reference_index_add_reference(index, use);
+    }
     for (int i = 0; i < acount(prototype->graphs); i++) {
         add_behavior(index, at, prototype->graphs[i]);
     }

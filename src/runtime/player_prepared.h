@@ -1,6 +1,6 @@
 #pragma once
 
-#define GAME_PLAYER_PREPARED_VERSION 7
+#define GAME_PLAYER_PREPARED_VERSION 9
 #include "runtime/player.h"
 
 #define GAME_PLAYER_PREPARED_MAX_BYTES (64 * 1024 * 1024)
@@ -24,8 +24,9 @@ typedef struct
     game_player_resource_host resources;
     size_t decoded_budget; /* Zero selects 64 MiB; otherwise caller-selected. */
 } game_player_host;
-/* One portable project artifact owns the initial scene, named prototypes,
- * executable module records and typed field catalog. Native implementations,
+/* One portable project artifact owns the named start scene, the other named
+ * scenes Load Scene can start, named prototypes, executable module records
+ * and typed field catalog. Native implementations,
  * descriptors and callbacks are supplied by the host and outlive the player.
  * Resource handles must have the portable identity supported by scene encoding;
  * no authored text, source compiler or process pointers are saved.

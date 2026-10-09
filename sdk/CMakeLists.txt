@@ -430,7 +430,8 @@ if(CHIBI_SDK_BUILD_COMPILER)
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
     chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)
-    target_link_libraries(chibi_project_document PRIVATE chibi_asset_text chibi_language_syntax chibi_support)
+    target_link_libraries(chibi_project_document PRIVATE chibi_input_action chibi_asset_text
+        chibi_language_syntax chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_project_document)
     add_library(chibi_reference_index STATIC "${CHIBI_SDK_ROOT}/src/authoring/reference_index.c")
     add_library(Chibi::reference_index ALIAS chibi_reference_index)
@@ -490,18 +491,20 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/authoring/source_format.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_metadata.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_navigation.c"
+        "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_flow.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_rename.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_intelligence.c")
     add_library(Chibi::authoring ALIAS chibi_authoring)
     set_target_properties(chibi_authoring PROPERTIES EXPORT_NAME authoring)
     chibi_sdk_headers(chibi_authoring PUBLIC authoring/source_prepare.h authoring/source_link.h
         authoring/source_format.h authoring/source_metadata.h authoring/source_navigation.h
+        authoring/source_prototype_flow.h
         authoring/source_rename.h authoring/source_intelligence.h authoring/source_declaration.h
         authoring/native_bindings.h authoring/source_literal.h authoring/source_references.h)
     target_include_directories(chibi_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/authoring"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi_authoring PUBLIC chibi_compiler chibi_native_capabilities chibi_reference_index
-        PRIVATE chibi_json chibi_asset_text)
+        PRIVATE chibi_json chibi_asset_text chibi_input_action)
     list(APPEND CHIBI_SDK_TARGETS chibi_syntax_runtime chibi_language_syntax
         chibi_language chibi_compiler chibi_authoring)
     include(source_authoring.cmake)

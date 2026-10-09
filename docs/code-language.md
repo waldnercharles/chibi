@@ -7,13 +7,13 @@ modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 17. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 16. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 17
+version 16
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -114,6 +114,8 @@ by a local value. Missing, ambiguous and wrong-kind symbols are errors.
 Values include booleans, numbers, strings, arrays, sets, maps, nominal handles and
 reflected structs. Arrays use `number[]`; collection types use `set<int>` or
 `map<int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
+Collection natives such as `array_add` return a new value: write
+`hair = array_add(hair, h)`. A pure native called as a statement is an error.
 Runtime strings cannot contain embedded NUL bytes. Explicit scalar conversions use
 `cast<number>(value)` or `cast<float>(value)`. They remain available at numeric
 boundaries; ordinary arithmetic uses its inferred or expected type. A cast to a
@@ -198,7 +200,8 @@ Capturing a shared action instance is rejected because later invocations could
 replace its output. Scopes with explicit labels cannot declare awaited results,
 because a jump could bypass their initialization. An ordinary block declaration
 such as `x := calculation;` evaluates once at that execution point using a native
-Snapshot node. Later reads use the captured value.
+Snapshot node. Later reads use the captured value; a root-level `local`
+remains a lazy computation.
 
 ### Tasks
 
@@ -232,9 +235,7 @@ behavior Turret {
 
 - `yield` resumes on the next update.
 - `cancel t` stops a running task and the tasks it started; anything awaiting it
-  wakes with default results. Cancelling a finished task does nothing. A task
-  may cancel itself or a task that started it; the cancelled code stops at once,
-  at the `cancel` or at the call that is running the canceller.
+  wakes with default results. Cancelling a finished task does nothing.
 - A finished task keeps its results until 32 more of its owner's tasks finish.
   Awaiting it after that is a runtime error, so keep a result you need longer in
   a state.
@@ -266,12 +267,17 @@ arguments. Explicit types are needed for polymorphic values that reflection
 cannot infer. Multiple results use named projections, such as
 `nearest.Entity`. No result is selected by guessing the first output.
 
-A value computed once per run is declared where it is needed, as in
-`nearest := find_nearest_entity(Owner: self, Radius: 500)` inside a handler or
-function. A computation that should be recomputed at every read is written where
-it is read, or as a function. Assignments belong in executable blocks.
+A root-level `local` names a computation that each activation evaluates once,
+when it is first read, and keeps until the activation ends:
 
-Stateful capabilities shared by several paths
+```code
+local nearest = find_nearest_entity(Owner: self, Radius: 500);
+```
+
+A computation that should be recomputed at every read is written where it is
+read, or as a function. Assignments belong in executable blocks.
+
+A local is not an eager snapshot. Stateful capabilities shared by several paths
 have one named action instance. Methods invoke its named entries, and handlers
 consume its named outcomes. The instance keeps its state across method calls and
 events. An invocation runs any emitted outcome handler before its next statement.
@@ -397,14 +403,23 @@ Fire {
 }
 ```
 
-Each action is an event that entities with Input receive when one of its
-sources goes down. Scripts read an action through the `input` global:
+A map holds at most 256 actions. Each action is an event that entities with
+Input receive when one of its sources goes down, so an action cannot take the
+name of a host event such as `Tick`, and no other global may be named `input`.
+A project event may share an action's name; pressing the action raises it. Scripts read an action through the `input` global:
 `input.Boost.held` is true while any of its sources is down, and
 `input.Boost.pressed` is true for the one fixed step after one went down, even
 for a tap released before that step. Action names are typed members, so
 `input.Bost.held` is a compile error, and completion after `input.` lists the
 map's actions. A pause or focus change keeps held actions, so resuming with the
 same controls held presses nothing again.
+
+Migrating a version 15 project moves its GameActionBinding components into the
+map, leaving out disabled and retained ones. Which action a script's
+`ActionBinding` or `PressedChanged` meant depended on its entity, so a script
+that still uses one stops the migration until it is rewritten with
+`input.<Action>`. So does an existing `content/input.kdl` that is not an input
+map, until it is fixed or moved.
 
 ### Maintained ECS relationships
 
@@ -451,7 +466,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 17. Executable files contain no generated identity
+Project manifests use version 16. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

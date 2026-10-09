@@ -45,7 +45,7 @@ if(TARGET chibi_builtin_fonts)
 endif()
 chibi_sdk_contract(chibi_ui_document_values "${CHIBI_SDK_ROOT}/src/ui" chibi_support)
 chibi_sdk_contract(chibi_text_search "${CHIBI_SDK_ROOT}/src/support" chibi_support)
-chibi_sdk_contract(chibi_image_catalog "${CHIBI_SDK_ROOT}/src/runtime/images" chibi_shader_runtime chibi_types chibi_support)
+chibi_sdk_contract(chibi_image_catalog "${CHIBI_SDK_ROOT}/src/runtime/images" chibi_shader_runtime chibi_types chibi_support m)
 if(TARGET chibi_image_preparation)
     chibi_sdk_contract(chibi_image_preparation "${CHIBI_SDK_ROOT}/src/authoring" chibi_image_catalog chibi_support m)
 endif()
@@ -175,7 +175,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_input_map "${CHIBI_SDK_ROOT}/src/assets"
         chibi_input_action chibi_types chibi_asset_values chibi_asset_text chibi_support)
     chibi_sdk_contract(chibi_project_document "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_asset_text chibi_language_syntax chibi_support)
+        chibi_input_action chibi_asset_text chibi_language_syntax chibi_support)
     chibi_sdk_contract(chibi_component_presentation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_ecs chibi_asset_text)
     chibi_sdk_contract(chibi_asset_text "${CHIBI_SDK_ROOT}/src/support"
@@ -187,7 +187,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_compiler "${CHIBI_SDK_ROOT}/src/language"
         chibi_language chibi_execution)
     chibi_sdk_contract(chibi_authoring "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_compiler chibi_native_capabilities chibi_reference_index chibi_json chibi_asset_text)
+        chibi_compiler chibi_native_capabilities chibi_reference_index chibi_json chibi_asset_text chibi_input_action)
 endif()
 
 if(CHIBI_SDK_BUILD_DESKTOP)

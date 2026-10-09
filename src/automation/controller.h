@@ -12,14 +12,17 @@ int chibi_automation_preview(
     const char *root,
     const char *request,
     chibi_preview_run **run,
-    bool *perspective,
     char *error,
     size_t error_size
 );
 game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run);
-/* The root ui document the previewed UI shows on: the scene's, else the
- * project's default; NULL for none. */
+/* The root ui document the previewed UI shows on: the current scene's, else
+ * the project's default; NULL for none. */
 const char *chibi_preview_page(const chibi_preview_run *run);
+bool chibi_preview_perspective(const chibi_preview_run *run);
+/* Counts the scenes scripts have loaded, so a host can tell when to re-read
+ * the page and projection and reset its camera. */
+int chibi_preview_loads(const chibi_preview_run *run);
 int chibi_preview_step(chibi_preview_run *run, char *error, size_t size);
 /* Owned inspection JSON, taken outside the measured frame interval. */
 char *chibi_preview_state(chibi_preview_run *run);
@@ -41,6 +44,11 @@ enum
  * `default_root` is used when the request omits project_root. The response is
  * safe to print to stdout; diagnostics are data, never process logging. */
 char *chibi_automation_handle(const char *request, const char *default_root, int *exit_code);
+
+/* The folder the project at `root` keeps its content in, which virtual
+ * content/ paths name: the one its manifest names, joined to `root`. `root`
+ * must be the project the current request or preview opened. */
+const char *chibi_automation_content(const char *root);
 
 /* Rewrites every authored asset under root in the canonical form its loader
  * and saver produce. With check, only reports differences. Returns the

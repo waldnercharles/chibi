@@ -39,7 +39,7 @@ target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c studio_selectors.c
-    test_policy.c validation_plan.c publish.c $<TARGET_OBJECTS:chibi_sdk_contracts>
+    validate_project.c test_policy.c validation_plan.c publish.c $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
     "${CHIBI_TOOL_ROOT}/third_party/yyjson/yyjson.c")
@@ -67,6 +67,13 @@ if(TARGET Chibi::entity_runtime)
 endif()
 add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
 
+# Reflection cases drive the native generator that SDK packages are built with.
+if(CHIBI_REFLECT_EXECUTABLE)
+    target_sources(test_tools PRIVATE reflect.c)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_REFLECT=1
+        CHIBI_REFLECT_PATH="${CHIBI_REFLECT_EXECUTABLE}")
+endif()
+
 # The SDK installs no Box3D headers, so only an in-tree build can call Box3D directly.
 if(TARGET chibi_box3d)
     target_sources(test_tools PRIVATE box3d.c)
@@ -75,13 +82,38 @@ if(TARGET chibi_box3d)
 endif()
 
 if(TARGET Chibi::render)
-    add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c)
+    add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/scene3d.c
+        device_controls.c)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     target_link_libraries(chibi_render_consumer PRIVATE Chibi::render)
     target_compile_options(chibi_render_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_render_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::render)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
+    # Surface materials with roughness and metallic come from material graphs.
+    if(TARGET Chibi::shader_preparation)
+        target_link_libraries(chibi_render_consumer PRIVATE Chibi::shader_preparation
+            Chibi::graph_compilation Chibi::graph_authoring)
+        target_sources(chibi_render_consumer PRIVATE ../render/material_graphs.c ../render/material_ramps.c)
+        target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
+        target_link_libraries(test_tools PRIVATE Chibi::shader_preparation
+            Chibi::graph_compilation Chibi::graph_authoring)
+        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
+        target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
+    endif()
+endif()
+
+# Image preparation decodes and imports files, so only compiler builds have it.
+if(TARGET Chibi::image_preparation)
+    add_library(chibi_image_preparation_consumer OBJECT ../authoring/sky_files.c)
+    target_include_directories(chibi_image_preparation_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_image_preparation_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+    target_link_libraries(chibi_image_preparation_consumer PRIVATE Chibi::image_preparation)
+    target_compile_options(chibi_image_preparation_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_image_preparation_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::image_preparation)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_IMAGE_PREPARATION=1)
 endif()
 
 if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
@@ -90,13 +122,14 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     add_library(chibi_source_runtime_consumer OBJECT
         ../runtime/whole_math.c ../runtime/whole_integer.c ../runtime/whole_conversion.c
         ../runtime/owned_tick.c ../runtime/parallel_tick.c ../runtime/whole_alias.c ../runtime/persistent_store.c
+        ../authoring/new_asset.c
         ../support/reflected_types.c)
     target_include_directories(chibi_source_runtime_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_link_libraries(chibi_source_runtime_consumer PRIVATE Chibi::authoring
+    target_link_libraries(chibi_source_runtime_consumer PRIVATE Chibi::authoring Chibi::asset_authoring
         Chibi::behavior_runtime Chibi::arithmetic_capabilities Chibi::host_native_default)
     target_compile_options(chibi_source_runtime_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_source_runtime_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::arithmetic_capabilities)
+    target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::asset_authoring Chibi::arithmetic_capabilities)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SOURCE_RUNTIME=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_RUNTIME=1)
     target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::native_types)

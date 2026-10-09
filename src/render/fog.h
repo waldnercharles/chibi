@@ -1,7 +1,7 @@
 #ifndef CHIBI_RENDER_FOG_H
 #define CHIBI_RENDER_FOG_H
 
-#include "render/arena3d.h"
+#include "render/scene3d.h"
 #include "render/view.h"
 #include "runtime/engine.h"
 
@@ -12,7 +12,7 @@ bool render_fog_draw(
     render_fog *fog,
     const game_visibility *visibility,
     const engine_viewport_camera *frame,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     float time
 );
 

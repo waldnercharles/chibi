@@ -15,16 +15,15 @@
       .has_default = true,                                                                     \
       .default_value = VALUE },
 static const native_parameter_definition INPUTS[] = { GAME_INPUT_ACTION_INPUTS(PORT) };
-#define ARRAYS(KEY, NAME, SOURCE, OUTPUTS)                                     \
+#define ARRAYS(KEY, NAME, OUTPUTS)                                             \
     static const native_parameter_definition KEY##_outputs[] = { OUTPUTS(PORT) };
 GAME_INPUT_OPERATIONS(ARRAYS)
 #undef ARRAYS
 #undef PORT
 #define COUNT(A) (sizeof(A) / sizeof *(A))
-#define DEFINITION(KEY, NAME, SOURCE, OUTPUTS)                                 \
+#define DEFINITION(KEY, NAME, OUTPUTS)                                         \
     { .canonical_name = NAME,                                                  \
       GAME_INPUT_##KEY##_PRESENTATION,                                         \
-      .source_name = SOURCE,                                                   \
       .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
       .pure = true,                                                            \
       .effects = SCRIPT_EFFECT_READ,                                           \
@@ -37,7 +36,7 @@ static const native_capability_definition DEFINITIONS[] = {
     GAME_INPUT_OPERATIONS(DEFINITION)
 };
 #undef DEFINITION
-#define BINDING(KEY, NAME, SOURCE, OUTPUTS)                                    \
+#define BINDING(KEY, NAME, OUTPUTS)                                            \
     { .canonical_name = NAME,                                                  \
       .implementation = { .call = &GAME_INPUT_##KEY##_CALL,                    \
                           .access = &GAME_INPUT_READ_ACCESS } },

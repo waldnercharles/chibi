@@ -14,7 +14,7 @@ foreach(header source_catalog_snapshot source_prepare_internal)
 endforeach()
 target_include_directories(chibi_source_catalog PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/private/source_catalog")
-target_link_libraries(chibi_source_catalog PUBLIC chibi_authoring
+target_link_libraries(chibi_source_catalog PUBLIC chibi_authoring chibi_input_map
     PRIVATE chibi_asset_text chibi_ui_document)
 
 add_library(chibi_source_presentation STATIC)

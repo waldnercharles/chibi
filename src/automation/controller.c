@@ -1,6 +1,7 @@
 #include "automation/controller.h"
 
 #include "assets/asset_source.h"
+#include "assets/input_map.h"
 #include "assets/model_export.h"
 #include "assets/new_asset.h"
 #include "assets/project.h"
@@ -23,6 +24,7 @@
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/source_catalog.h"
 #include "authoring/source_collection.h"
 #include "authoring/source_format.h"
 #include "authoring/source_intelligence.h"
@@ -285,6 +287,15 @@ static const contract_field CONTRACT_ASSET_REFERENCE[] = {
     { "path", "string", false, "Content-relative asset path, alternatively use kind and name." },
     { "kind", "string", false, "Asset family, required with name when path is omitted." },
     { "name", "string", false, "Asset name, required with kind when path is omitted." },
+};
+static const contract_field CONTRACT_NEW_PROJECT[] = {
+    { "path", "string", true, "New project directory; it must not exist and its parent must." },
+    { "name", "string", true, "Project name written to project.kdl." },
+};
+static const contract_field CONTRACT_NEW_ASSET[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "kind", "string", true, "scene, prototype, behavior, event, system, library, material, shape, field, shader-library or model." },
+    { "name", "string", true, "Asset name: a letter, then letters, digits, - and _." },
 };
 static const contract_field CONTRACT_BAKE_MODEL[] = {
     { "project_root", "string", false, "Saved project directory; defaults to the controller root." },
@@ -610,6 +621,39 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         1,
         true,
         true,
+        false,
+    },
+    {
+        "validate_project",
+        "Validate the manifest, start scene and every asset, listing only "
+        "assets with problems.",
+        CONTRACT_PROJECT_ROOT,
+        CONTRACT_FIELD_COUNT(CONTRACT_PROJECT_ROOT),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "new_project",
+        "Create a project directory with project.kdl and an empty start "
+        "scene.",
+        CONTRACT_NEW_PROJECT,
+        CONTRACT_FIELD_COUNT(CONTRACT_NEW_PROJECT),
+        1,
+        false,
+        false,
+        false,
+    },
+    {
+        "new_asset",
+        "Write an empty asset of a kind in its content folder, the form "
+        "Studio's New menu starts from.",
+        CONTRACT_NEW_ASSET,
+        CONTRACT_FIELD_COUNT(CONTRACT_NEW_ASSET),
+        1,
+        false,
+        false,
         false,
     },
     {
@@ -1424,24 +1468,42 @@ static bool read_ui_asset(const char *root, const char *name, char *error, size_
     return ok;
 }
 
+/* Whether the ui folder holds markup for `name`, matched as preparation
+ * matches it: a regular file with the exact name, top level only. */
+static bool ui_exists(const char *root, const char *name)
+{
+    char folder[1024], file[512], path[1600];
+    ui_folder(root, folder, sizeof folder);
+    snprintf(file, sizeof file, "%s" UI_MARKUP_EXTENSION, name);
+    DIR *dir = opendir(folder);
+    bool found = false;
+    for (struct dirent *entry; dir && !found && (entry = readdir(dir));) {
+        found = entry->d_name[0] != '.' && !strcmp(entry->d_name, file);
+    }
+    if (dir) {
+        closedir(dir);
+    }
+    snprintf(path, sizeof path, "%s/%s", folder, file);
+    struct stat info;
+    return found && !stat(path, &info) && S_ISREG(info.st_mode);
+}
+
 /* UI language service (workstream B): validateAsset for a ui asset whose
  * markup is `rml`: its syntax, widgets, imports and RmlUi's warnings.
  * Returns the error count. */
 static int validate_ui(
     const char *root,
-    const asset_ref *ref,
+    const char *name,
     const char *rml,
     yyjson_mut_doc *doc,
     yyjson_mut_val *diagnostics
 )
 {
-    char *name = asset_name_from_filename(ref->filename);
     char content[1024];
     snprintf(content, sizeof content, "%s/content", root);
     char *rcss = ui_styles(root, name);
     int errors = automation_ui_validate(content, name, rml, rcss, doc, diagnostics);
     free(rcss);
-    free(name);
     return errors;
 }
 
@@ -2584,7 +2646,7 @@ static int build_catalog_from_entries(
                     "model and shape asset names must be unique: %s",
                     entries[i].filename
                 );
-                return -1;
+                return CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
         }
     }
@@ -2620,10 +2682,10 @@ static int build_catalog_from_entries(
     authoring_language_catalog_free(links.native);
     if (status) {
         free_catalog_assets(assets);
-        return -1;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     *out = assets;
-    return 0;
+    return CHIBI_AUTOMATION_OK;
 }
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size)
@@ -2727,6 +2789,8 @@ static bool asset_entries_equal(const asset_entry *left, const asset_entry *righ
     return true;
 }
 
+/* CHIBI_AUTOMATION_OK, VALIDATION_ERROR for asset names that collide, or
+ * IO_ERROR, with why in `error`. */
 static int catalog_snapshot_get(
     const char *root,
     catalog_asset **out,
@@ -2738,7 +2802,7 @@ static int catalog_snapshot_get(
 {
     asset_entry *entries = NULL;
     if (enumerate_assets(root, &entries, error, error_size) != 0) {
-        return -1;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     uint64_t components = components_hash();
     if (CATALOG_SNAPSHOT.assets && !strcmp(CATALOG_SNAPSHOT.root, root) &&
@@ -2757,11 +2821,11 @@ static int catalog_snapshot_get(
     catalog_asset *previous = CATALOG_SNAPSHOT.components == components
                                 ? CATALOG_SNAPSHOT.assets
                                 : NULL;
-    if (build_catalog_from_entries(root, entries, previous, &assets, &references, error, error_size) !=
-        0) {
+    int status = build_catalog_from_entries(root, entries, previous, &assets, &references, error, error_size);
+    if (status != CHIBI_AUTOMATION_OK) {
         free_asset_entries(entries);
         free_catalog_snapshot(&CATALOG_SNAPSHOT);
-        return -1;
+        return status;
     }
     uint64_t next_revision = CATALOG_SNAPSHOT.revision + 1;
     free_catalog_snapshot(&CATALOG_SNAPSHOT);
@@ -3042,11 +3106,95 @@ static yyjson_mut_val *add_catalog_reference(
     return object;
 }
 
-static void add_catalog_diagnostics(yyjson_mut_doc *doc, yyjson_mut_val *object, const catalog_asset *asset)
+/* A source's stand-in for the declaration catalog's own diagnostics. */
+static bool catalog_fallout(const char *message)
+{
+    return !strcmp(message, AUTHORING_SOURCES_CATALOG_INCOMPLETE);
+}
+
+/* Notes a check that failed only with catalog fallout and lets the checks
+ * after it run, so the fallout cannot hide an asset's own problems. */
+static int past_fallout(int status, char *error, bool *fallout)
+{
+    if (status == CHIBI_AUTOMATION_OK || !catalog_fallout(error)) {
+        return status;
+    }
+    *fallout = true;
+    error[0] = '\0';
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* The fallout past_fallout set aside, once no other problem turned up. */
+static int fallout_status(bool fallout, char *error, size_t error_size)
+{
+    if (!fallout) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    set_error(error, error_size, AUTHORING_SOURCES_CATALOG_INCOMPLETE);
+    return CHIBI_AUTOMATION_VALIDATION_ERROR;
+}
+
+/* Whether `diagnostic` is the declaration catalog's `message` for the file at `path`. */
+static bool catalog_names(const source_catalog_diagnostic *diagnostic, const char *path, const char *message)
+{
+    return diagnostic->path && !strcmp(diagnostic->path, path) &&
+           !strcmp(diagnostic->message, message);
+}
+
+/* Whether the declaration catalog lists `message` for the file at `path`. */
+static bool catalog_lists(const source_catalog *catalog, const char *path, const char *message)
+{
+    for (int i = 0; i < source_catalog_diagnostic_count(catalog); i++) {
+        if (catalog_names(source_catalog_diagnostic_at(catalog, i), path, message)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Claims a listing of `message` at `path` that no earlier diagnostic claimed. */
+static bool catalog_claim(const source_catalog *catalog, bool *claimed, const char *path, const char *message)
+{
+    for (int i = 0; i < source_catalog_diagnostic_count(catalog); i++) {
+        if (!claimed[i] &&
+            catalog_names(source_catalog_diagnostic_at(catalog, i), path, message)) {
+            claimed[i] = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Marks the asset's own diagnostics validate_project leaves out: catalog
+ * fallout, and each error the declaration catalog lists again with its line,
+ * one for each listing. The caller frees the result. */
+static bool *catalog_omitted(const source_catalog *catalog, const catalog_asset *asset, const char *path)
+{
+    bool *claimed = xcalloc((size_t)source_catalog_diagnostic_count(catalog) + 1, sizeof *claimed);
+    bool *omitted = xcalloc((size_t)acount(asset->diagnostics) + 1, sizeof *omitted);
+    for (int i = 0; i < acount(asset->diagnostics); i++) {
+        const char *message = asset->diagnostics[i].message;
+        omitted[i] = catalog_fallout(message) ||
+                     catalog_claim(catalog, claimed, path, message);
+    }
+    free(claimed);
+    return omitted;
+}
+
+/* Leaves out the diagnostics `omitted` marks, when it is set. */
+static void add_catalog_diagnostics(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const catalog_asset *asset,
+    const bool *omitted
+)
 {
     yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, object, "diagnostics");
     for (int i = 0; i < acount(asset->diagnostics); i++) {
         const catalog_diagnostic *diagnostic = &asset->diagnostics[i];
+        if (omitted && omitted[i]) {
+            continue;
+        }
         yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
         yyjson_mut_obj_add_strcpy(doc, item, "severity", diagnostic->severity);
         yyjson_mut_obj_add_int(doc, item, "rule", diagnostic->rule);
@@ -3094,7 +3242,7 @@ static yyjson_mut_val *add_catalog_asset(
     for (int i = 0; i < acount(asset->dependents); i++) {
         add_catalog_reference(doc, dependents, &asset->dependents[i], assets, count);
     }
-    add_catalog_diagnostics(doc, object, asset);
+    add_catalog_diagnostics(doc, object, asset, NULL);
     yyjson_mut_obj_add_bool(doc, object, "valid", asset->valid);
     yyjson_mut_obj_add_int(doc, object, "errors", asset->errors);
     yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
@@ -3211,9 +3359,9 @@ static int handle_catalog(const char *root, yyjson_val *request, response *resul
     uint64_t revision = 0;
     uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -3256,9 +3404,9 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
     uint64_t revision = 0;
     uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -3359,9 +3507,9 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     uint64_t revision = 0;
     uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     int count = acount(assets);
@@ -3520,9 +3668,9 @@ static int handle_navigation(const char *root, yyjson_val *request, response *re
     catalog_asset *assets = NULL;
     uint64_t revision = 0, content_hash = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -5183,9 +5331,9 @@ static int handle_list_assets(const char *root, yyjson_val *request, response *r
     uint64_t revision = 0;
     uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -5437,6 +5585,44 @@ static char *canonical_asset(
     return NULL;
 }
 
+/* The input map is canonical as its own writer emits it. Returns whether it
+ * differed, or -1 when it is invalid or cannot be written. */
+static int format_input_map(const char *root, bool check)
+{
+    size_t length = strlen(root) + sizeof "/content/" INPUT_MAP_FILE;
+    char *path = xmalloc(length);
+    snprintf(path, length, "%s/content/" INPUT_MAP_FILE, root);
+    struct stat info;
+    if (stat(path, &info) && errno == ENOENT) {
+        free(path);
+        return 0;
+    }
+    char error[256];
+    input_action *map = NULL;
+    char *json = read_file(path, NULL, NULL, error, sizeof error);
+    char *written = json && input_map_read(json, &map, error, sizeof error)
+                      ? input_map_write(map)
+                      : NULL;
+    char *text = written ? asset_text_to_disk(written, error, sizeof error) : NULL;
+    int differing = text ? strcmp(json, text) != 0 : -1;
+    if (!text) {
+        fprintf(stderr, "chibi_ctl --format: %s\n", error);
+    } else if (differing) {
+        fprintf(stderr, "%s content/" INPUT_MAP_FILE "\n", check ? "not canonical:" : "formatted");
+        FILE *file = check ? NULL : fopen(path, "wb");
+        if (!check && (!file || fputs(text, file) < 0 || fclose(file))) {
+            fprintf(stderr, "chibi_ctl --format: could not write content/" INPUT_MAP_FILE "\n");
+            differing = -1;
+        }
+    }
+    input_map_free(map);
+    free(text);
+    free(written);
+    free(json);
+    free(path);
+    return differing;
+}
+
 int chibi_automation_format_assets(const char *root, bool check)
 {
     asset_entry *entries = NULL;
@@ -5513,6 +5699,10 @@ int chibi_automation_format_assets(const char *root, bool check)
         free(text);
         free(json);
         free(path);
+    }
+    if (differing >= 0) {
+        int map = format_input_map(root, check);
+        differing = map < 0 ? map : differing + map;
     }
     source_catalog_free(sources);
     authoring_language_catalog_free(native);
@@ -5834,7 +6024,7 @@ static int compile_project_graph(const char *root, const behavior_asset *asset, 
     return report->error_count;
 }
 
-static int validate_prototype_shader(const char *, const char *, char *, size_t);
+static int validate_prototype_bindings(const char *, const char *, char *, size_t);
 static int validate_scene_behavior(const char *, const char *, char *, size_t);
 static int validate_scene_dependencies(const char *, const char *, char *, size_t);
 
@@ -5909,14 +6099,16 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 acount(prototype->components)
             );
             game_prototype_free(prototype);
-            if (validate_prototype_shader(root, json, load_error, sizeof load_error) !=
+            if (validate_prototype_bindings(root, json, load_error, sizeof load_error) !=
                 CHIBI_AUTOMATION_OK) {
                 errors = 1;
                 add_load_diagnostic(result->doc, diagnostics, load_error);
             }
         }
     } else if (ref.family->loader == ASSET_UI) {
-        errors = validate_ui(root, &ref, json, result->doc, diagnostics);
+        char *name = asset_name_from_filename(ref.filename);
+        errors = validate_ui(root, name, json, result->doc, diagnostics);
+        free(name);
     } else if (ref.family->loader == ASSET_EDITOR || ref.family->loader == ASSET_SCENARIO) {
         char load_error[256] = { 0 };
         bool ok = ref.family->loader == ASSET_EDITOR
@@ -5952,6 +6144,365 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "asset validation failed");
         return -1;
     }
+    return 0;
+}
+
+/* A cataloged asset's path below `root`, owned. */
+static char *asset_path(const char *root, const catalog_asset *asset)
+{
+    size_t bytes = strlen(root) + strlen(asset->asset.relative) + 2;
+    char *path = xmalloc(bytes);
+    snprintf(path, bytes, "%s/%s", root, asset->asset.relative);
+    return path;
+}
+
+/* A cataloged asset's text, owned; NULL with why in `error`. */
+static char *asset_text(const char *root, const catalog_asset *asset, char *error, size_t size)
+{
+    char *path = asset_path(root, asset);
+    char *text = read_file(path, NULL, NULL, error, size);
+    free(path);
+    return text;
+}
+
+/* Whether `path` is one of the cataloged scenes, which the asset checks cover. */
+static bool cataloged_scene(const char *root, const catalog_asset *assets, const char *path)
+{
+    char *file = realpath(path, NULL);
+    bool found = false;
+    for (int i = 0; file && !found && i < acount(assets); i++) {
+        if (assets[i].asset.family->loader != ASSET_SCENE) {
+            continue;
+        }
+        char *scene = asset_path(root, &assets[i]);
+        char *other = realpath(scene, NULL);
+        found = other && !strcmp(file, other);
+        free(other);
+        free(scene);
+    }
+    free(file);
+    return found;
+}
+
+/* A start scene no scene asset covers loads, and so do its prototypes and
+   behaviors; false with why in `error` when it does not. */
+static bool valid_start_scene(const char *root, const char *path, char *error, size_t size)
+{
+    char *json = read_file(path, NULL, NULL, error, size);
+    bool valid = json && (validate_scene_dependencies(root, json, error, size) ==
+                              CHIBI_AUTOMATION_OK ||
+                          catalog_fallout(error));
+    free(json);
+    return valid;
+}
+
+/* The manifest opens at this build's version and names a start scene that
+   exists and loads, and a UI document that exists; adds a diagnostic for each
+   problem and returns how many. */
+static int validate_manifest(
+    const char *root,
+    const catalog_asset *assets,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *diagnostics
+)
+{
+    chibi_project project = { 0 };
+    char error[512] = { 0 };
+    /* Validation never upgrades the project, so an old one fails here. */
+    if (chibi_project_read(&project, root, error, sizeof error) != 0) {
+        add_load_diagnostic(doc, diagnostics, error);
+        return 1;
+    }
+    char *scene = chibi_project_scene_path(&project, NULL);
+    assert(scene); /* an open project has a content folder and start scene */
+    struct stat info;
+    char message[1024];
+    int errors = 0;
+    if (stat(scene, &info) != 0 || !S_ISREG(info.st_mode)) {
+        snprintf(message, sizeof message, "start scene not found: %s", project.start_scene);
+        add_load_diagnostic(doc, diagnostics, message);
+        errors++;
+    } else if (!cataloged_scene(root, assets, scene) && !valid_start_scene(root, scene, error, sizeof error)) {
+        snprintf(message, sizeof message, "start scene %s: %s", project.start_scene, error);
+        add_load_diagnostic(doc, diagnostics, message);
+        errors++;
+    }
+    if (project.ui && !ui_exists(root, project.ui)) {
+        snprintf(message, sizeof message, "Unknown UI document '%s'", project.ui);
+        add_load_diagnostic(doc, diagnostics, message);
+        errors++;
+    }
+    free(scene);
+    chibi_project_free(&project);
+    return errors;
+}
+
+/* What validate_asset checks beyond the catalog: a scene's prototypes and
+   behaviors, and a prototype's shader binding and UI document. */
+static int validate_asset_dependencies(const char *root, const catalog_asset *asset, char *error, size_t size)
+{
+    int loader = asset->asset.family->loader;
+    if (asset->errors || (loader != ASSET_SCENE && loader != ASSET_PROTOTYPE)) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    char *json = asset_text(root, asset, error, size);
+    if (!json) {
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
+    int status = loader == ASSET_SCENE
+                   ? validate_scene_dependencies(root, json, error, size)
+                   : validate_prototype_bindings(root, json, error, size);
+    free(json);
+    return status;
+}
+
+/* validate_asset's markup, style and RmlUi checks for a UI asset the catalog
+   loaded; returns the error count. */
+static int validate_catalog_ui(
+    const char *root,
+    const catalog_asset *asset,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *diagnostics
+)
+{
+    if (asset->errors || asset->asset.family->loader != ASSET_UI) {
+        return 0;
+    }
+    char error[256] = { 0 };
+    char *rml = asset_text(root, asset, error, sizeof error);
+    if (!rml) {
+        add_load_diagnostic(doc, diagnostics, error);
+        return 1;
+    }
+    int errors = validate_ui(root, asset->name, rml, doc, diagnostics);
+    free(rml);
+    return errors;
+}
+
+static void add_range_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const source_catalog_diagnostic *diagnostic)
+{
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_obj_add_strcpy(doc, object, "severity", "error");
+    yyjson_mut_obj_add_strcpy(doc, object, "rule_name", "CATALOG");
+    yyjson_mut_obj_add_strcpy(doc, object, "message", diagnostic->message);
+    if (diagnostic->range.line) {
+        yyjson_mut_obj_add_int(doc, object, "line", diagnostic->range.line);
+        yyjson_mut_obj_add_int(doc, object, "column", diagnostic->range.column);
+    }
+}
+
+/* The project's declaration catalog, whose diagnostics name the file they are
+   about, such as a scene naming a missing prototype. Without it every source
+   reports only that the catalog is incomplete. NULL with why in `error`. */
+static source_catalog *declaration_catalog(const char *root, char *error, size_t size)
+{
+    authoring_language_catalog *native = source_native_catalog(root, error, size);
+    if (!native) {
+        return NULL;
+    }
+    size_t bytes = strlen(root) + sizeof "/content";
+    char *content = xmalloc(bytes);
+    snprintf(content, bytes, "%s/content", root);
+    source_catalog *catalog = source_catalog_new(content, authoring_language_catalog_view(native));
+    free(content);
+    authoring_language_catalog_free(native);
+    return catalog;
+}
+
+static int handle_validate_project(const char *root, response *result, int *exit_code)
+{
+    catalog_asset *assets = NULL;
+    uint64_t revision = 0;
+    uint64_t hash = 0;
+    char error[256] = { 0 }, catalog_error[256] = { 0 };
+    /* Colliding names leave no catalog, but they are a problem to list. */
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &hash, catalog_error, sizeof catalog_error);
+    if (cataloged == CHIBI_AUTOMATION_IO_ERROR) {
+        response_error(result, exit_code, cataloged, catalog_error);
+        return -1;
+    }
+    source_catalog *catalog = declaration_catalog(root, error, sizeof error);
+    if (!catalog) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    int declarations = source_catalog_diagnostic_count(catalog);
+    bool *placed = xcalloc((size_t)declarations + 1, sizeof *placed);
+    yyjson_mut_doc *doc = result->doc;
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, result->root, "result");
+    yyjson_mut_val *project = yyjson_mut_obj_add_arr(doc, value, "project");
+    int errors = validate_manifest(root, assets, doc, project);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        add_load_diagnostic(doc, project, catalog_error);
+        errors++;
+    }
+    int warnings = 0;
+    yyjson_mut_val *problems = yyjson_mut_obj_add_arr(doc, value, "problems");
+    for (int i = 0; i < acount(assets); i++) {
+        const catalog_asset *asset = &assets[i];
+        error[0] = '\0';
+        char *path = asset_path(root, asset);
+        /* The declaration diagnostics below take the place of the fallout,
+           in sources and in scenes whose behaviors are sources, and of the
+           errors they repeat with lines. */
+        bool *omitted = catalog_omitted(catalog, asset, path);
+        int asset_errors = asset->errors;
+        for (int j = 0; j < acount(asset->diagnostics); j++) {
+            asset_errors -= omitted[j];
+        }
+        bool dependencies = validate_asset_dependencies(root, asset, error, sizeof error) !=
+                                CHIBI_AUTOMATION_OK &&
+                            !catalog_fallout(error) &&
+                            !catalog_lists(catalog, path, error);
+        /* Kept apart until the asset turns out to have problems. */
+        yyjson_mut_val *ui = yyjson_mut_arr(doc);
+        asset_errors += validate_catalog_ui(root, asset, doc, ui);
+        for (int j = 0; j < declarations; j++) {
+            const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);
+            if (diagnostic->path && !strcmp(diagnostic->path, path)) {
+                placed[j] = true;
+                asset_errors++;
+            }
+        }
+        asset_errors += dependencies;
+        errors += asset_errors;
+        warnings += asset->warnings;
+        if (!asset_errors && !asset->warnings) {
+            free(omitted);
+            free(path);
+            continue;
+        }
+        yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, problems);
+        yyjson_mut_obj_add_strcpy(doc, object, "kind", asset->asset.family->kind);
+        yyjson_mut_obj_add_strcpy(doc, object, "name", asset->name);
+        yyjson_mut_obj_add_strcpy(doc, object, "path", asset->asset.relative);
+        yyjson_mut_obj_add_int(doc, object, "errors", asset_errors);
+        yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
+        add_catalog_diagnostics(doc, object, asset, omitted);
+        free(omitted);
+        yyjson_mut_val *diagnostics = yyjson_mut_obj_get(object, "diagnostics");
+        for (int j = 0; j < declarations; j++) {
+            const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);
+            if (diagnostic->path && !strcmp(diagnostic->path, path)) {
+                add_range_diagnostic(doc, diagnostics, diagnostic);
+            }
+        }
+        if (dependencies) {
+            add_load_diagnostic(doc, diagnostics, error);
+        }
+        for (yyjson_mut_val *item; (item = yyjson_mut_arr_remove_first(ui));) {
+            yyjson_mut_arr_append(diagnostics, item);
+        }
+        free(path);
+    }
+    /* A catalog diagnostic about a file no asset family lists stays visible. */
+    for (int j = 0; j < declarations; j++) {
+        if (!placed[j]) {
+            add_range_diagnostic(doc, project, source_catalog_diagnostic_at(catalog, j));
+            errors++;
+        }
+    }
+    free(placed);
+    source_catalog_free(catalog);
+    yyjson_mut_obj_add_bool(doc, value, "valid", errors == 0);
+    yyjson_mut_obj_add_int(doc, value, "assets", acount(assets));
+    yyjson_mut_obj_add_int(doc, value, "errors", errors);
+    yyjson_mut_obj_add_int(doc, value, "warnings", warnings);
+    if (errors) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "project validation failed");
+        return -1;
+    }
+    return 0;
+}
+
+/* The status a scaffold writer's errno names: a refused request, a taken
+ * name, or storage that failed. */
+static int scaffold_status()
+{
+    switch (errno) {
+        case EINVAL: return CHIBI_AUTOMATION_INVALID_REQUEST;
+        case EEXIST: return CHIBI_AUTOMATION_CONFLICT;
+        default: return CHIBI_AUTOMATION_IO_ERROR;
+    }
+}
+
+static int handle_new_project(yyjson_val *request, response *result, int *exit_code)
+{
+    const char *path = request_string(request, "path");
+    char error[512] = { 0 };
+    struct stat info;
+    if (path && stat(path, &info) == 0) {
+        snprintf(error, sizeof error, "Project already exists: %s", path);
+        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, error);
+        return -1;
+    }
+    chibi_project project = { 0 };
+    if (chibi_project_create(path, request_string(request, "name"), error, sizeof error) !=
+        0) {
+        response_error(result, exit_code, scaffold_status(), error);
+        return -1;
+    }
+    if (chibi_project_open(&project, path, error, sizeof error) != 0) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+        return -1;
+    }
+    char *scene = chibi_project_scene_path(&project, NULL);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "project_root", project.root);
+    yyjson_mut_obj_add_str(result->doc, value, "manifest", CHIBI_PROJECT_MANIFEST);
+    yyjson_mut_obj_add_strcpy(
+        result->doc,
+        value,
+        "start_scene",
+        scene + strlen(project.root) + 1
+    );
+    free(scene);
+    chibi_project_free(&project);
+    return 0;
+}
+
+/* The new-asset kind whose folder is the family's, or -1 when the family has
+   no new form. */
+static int new_asset_kind_of(const asset_family *family)
+{
+    for (int i = 0; family && i < NEW_ASSET_KIND_COUNT; i++) {
+        if (!strcmp(new_asset_folder((new_asset_kind)i), family->folder)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int handle_new_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *name = request_string(request, "name");
+    const asset_family *family = family_by_kind(request_string(request, "kind"));
+    int kind = new_asset_kind_of(family);
+    if (kind < 0 || !name) {
+        response_error(
+            result,
+            exit_code,
+            CHIBI_AUTOMATION_INVALID_REQUEST,
+            kind < 0 ? "kind must name an asset family that has a new form" : "name is required"
+        );
+        return -1;
+    }
+    size_t bytes = strlen(root) + sizeof "/content";
+    char *content = xmalloc(bytes);
+    snprintf(content, bytes, "%s/content", root);
+    char error[512] = { 0 };
+    errno = 0;
+    char *path = new_asset_create(content, (new_asset_kind)kind, name, error, sizeof error);
+    free(content);
+    if (!path) {
+        response_error(result, exit_code, scaffold_status(), error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "kind", family->kind);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "name", name);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "path", path + strlen(root) + 1);
+    free(path);
     return 0;
 }
 
@@ -6016,7 +6567,8 @@ static int register_shared_assets(const char *root, game_prototype_preview *prev
     size_t size = strlen(root) + sizeof "/content";
     char *content = xmalloc(size);
     snprintf(content, size, "%s/content", root);
-    int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), preview, content);
+    /* The preview's live world is the only world, so nothing registers twice. */
+    int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), NULL, content);
     free(content);
     if (loaded < 0) {
         set_error(error, error_size, "project source or native asset preparation failed; see preparation diagnostics");
@@ -6181,12 +6733,14 @@ typedef struct
 {
     bool scene_target;
     bool owns_file_system;
+    char *root; /* a scene target's project, for the scenes scripts load */
     asset_ref prototype_ref;
     size_t prototype_bytes;
     uint64_t prototype_hash;
     game_prototype_registry registry;
     game_prototype *prototype;
     game_scene_document *scene;
+    int loads; /* scenes started by Load Scene */
     game_prototype **scene_prototypes;
     game_prototype_preview_scene_entity *scene_entities;
     game_prototype_preview *preview;
@@ -6198,6 +6752,21 @@ typedef struct
     bool aim_firing, aim_point, controls_sampled;
     uint64_t controls;
 } scenario_context;
+
+static game_scene_flow *scenario_scenes(const scenario_context *context)
+{
+    return game_world_scenes(
+        game_prototype_preview_live(context->preview)->runtime->owner
+    );
+}
+
+/* Mixes in the current scene's name: two scenes can leave the same state
+ * yet answer Current Scene differently. Prototype scenarios have no scene. */
+static uint64_t scenario_scene_hash(const scenario_context *context, uint64_t hash)
+{
+    const char *scene = game_scene_flow_current(scenario_scenes(context));
+    return scene ? scenario_hash_bytes(hash, scene, strlen(scene)) : hash;
+}
 
 static uint64_t scenario_state_hash(scenario_context *context)
 {
@@ -6226,12 +6795,12 @@ static uint64_t scenario_state_hash(scenario_context *context)
         game_material_state materials = game_materials_inspect(engine_materials(runtime));
         hash = scenario_hash_bytes(hash, &materials.hash, sizeof materials.hash);
     }
-    return scenario_hash_bytes(hash, &sounds, sizeof sounds);
+    return scenario_scene_hash(context, scenario_hash_bytes(hash, &sounds, sizeof sounds));
 }
 
 typedef struct
 {
-    uint64_t ecs, saved_state, visibility, shader_overrides, materials, audio;
+    uint64_t ecs, saved_state, visibility, shader_overrides, materials, audio, scene;
     uint64_t physics_bodies, physics_contacts, physics_events;
     game_material_hash_parts material;
 } scenario_hash_parts;
@@ -6267,6 +6836,7 @@ static scenario_hash_parts scenario_state_hash_parts(scenario_context *context)
         parts.materials = parts.material.hash;
     }
     parts.audio = game_audio_hash(engine_audio(runtime));
+    parts.scene = scenario_scene_hash(context, seed);
     game_physics_hashes physics = game_physics_hash(
         game_prototype_preview_live(context->preview)->runtime->physics
     );
@@ -6286,6 +6856,7 @@ static void add_scenario_hash_parts(yyjson_mut_doc *doc, yyjson_mut_val *value, 
     add_hash_named(doc, hashes, "shader_overrides", parts.shader_overrides);
     add_hash_named(doc, hashes, "materials", parts.materials);
     add_hash_named(doc, hashes, "audio", parts.audio);
+    add_hash_named(doc, hashes, "scene", parts.scene);
     yyjson_mut_val *physics = yyjson_mut_obj_add_obj(doc, hashes, "physics");
     add_hash_named(doc, physics, "body_state", parts.physics_bodies);
     add_hash_named(doc, physics, "contact_pairs", parts.physics_contacts);
@@ -6408,6 +6979,17 @@ static int advance_request_scenario(
     size_t error_size
 );
 
+static void clear_scenario_scene(scenario_context *context)
+{
+    for (int i = 0; i < acount(context->scene_prototypes); i++) {
+        game_prototype_free(context->scene_prototypes[i]);
+    }
+    afree(context->scene_prototypes);
+    afree(context->scene_entities);
+    game_scene_document_free(context->scene);
+    context->scene = NULL;
+}
+
 static void scenario_context_free(scenario_context *context)
 {
     if (!context) {
@@ -6417,12 +6999,8 @@ static void scenario_context_free(scenario_context *context)
     free_asset_entries(context->runtime_assets);
     game_prototype_preview_free(context->preview);
     game_prototype_free(context->prototype);
-    for (int i = 0; i < acount(context->scene_prototypes); i++) {
-        game_prototype_free(context->scene_prototypes[i]);
-    }
-    afree(context->scene_prototypes);
-    afree(context->scene_entities);
-    game_scene_document_free(context->scene);
+    clear_scenario_scene(context);
+    free(context->root);
     if (context->owns_file_system) {
         authoring_shader_catalog_clear();
         cf_fs_destroy();
@@ -6473,8 +7051,7 @@ static bool scenario_runtime_asset(const scenario_context *context, const asset_
     return !strcmp(kind, "prototype") || !strcmp(kind, "behavior") ||
            !strcmp(kind, "library") || !strcmp(kind, "event") ||
            !strcmp(kind, "field") || !strcmp(kind, "system") ||
-           (context->scene_target &&
-            !strcmp(entry->relative, context->prototype_ref.relative));
+           (context->scene_target && !strcmp(kind, "scene"));
 }
 
 static int register_scenario_prototypes(const char *root, scenario_context *context, char *error, size_t error_size)
@@ -6618,6 +7195,113 @@ static int prepare_scenario(
     return status;
 }
 
+/* Reads a scene document, applies its physics settings and readies the
+ * entities it starts with. */
+static int enter_scenario_scene(scenario_context *context, const char *json, char *error, size_t error_size)
+{
+    context->scene = game_scene_document_load(json, error, error_size);
+    if (!context->scene) {
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    /* The document checked the settings, and no scene bodies remain. */
+    int configured = game_prototype_preview_configure_physics(
+        context->preview,
+        context->scene->physics
+    );
+    assert(configured == 0);
+    (void)configured;
+    for (int i = 0; i < acount(context->scene->entities); i++) {
+        game_scene_entity *entity = &context->scene->entities[i];
+        asset_ref prototype_ref = { 0 };
+        char *prototype_json = NULL;
+        uint64_t prototype_hash = 0;
+        int status = load_named_asset(
+            context->root,
+            family_by_kind("prototype"),
+            entity->prototype,
+            &prototype_ref,
+            &prototype_json,
+            NULL,
+            &prototype_hash,
+            error,
+            error_size
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            free(prototype_json);
+            return status;
+        }
+        char *scenario_json = scenario_prototype_text(prototype_json, prototype_hash);
+        game_prototype *
+            prototype = scenario_json
+                          ? game_prototype_load(scenario_json, &context->registry, error, error_size)
+                          : NULL;
+        free(scenario_json);
+        free(prototype_json);
+        if (!prototype) {
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+        if (game_prototype_preview_register_prototype(context->preview, prototype) != 0) {
+            game_prototype_free(prototype);
+            set_error(error, error_size, "could not register scene prototype");
+            return CHIBI_AUTOMATION_EXECUTION_ERROR;
+        }
+        apush(context->scene_prototypes, prototype);
+        apush(
+            context->scene_entities,
+            ((game_prototype_preview_scene_entity){
+                .prototype = prototype,
+                .components = entity->components,
+                .behaviors = (const char *const *)entity->behaviors,
+                .behavior_count = acount(entity->behaviors),
+                .own_behaviors = entity->own_behaviors,
+            })
+        );
+        for (int behavior = 0; behavior < acount(prototype->graphs); behavior++) {
+            status = register_preview_behavior_name(
+                context->root,
+                context->preview,
+                prototype->graphs[behavior],
+                error,
+                error_size
+            );
+            if (status != CHIBI_AUTOMATION_OK) {
+                return status;
+            }
+        }
+        for (int behavior = 0; behavior < acount(entity->behaviors); behavior++) {
+            status = register_preview_behavior_name(
+                context->root,
+                context->preview,
+                entity->behaviors[behavior],
+                error,
+                error_size
+            );
+            if (status != CHIBI_AUTOMATION_OK) {
+                return status;
+            }
+        }
+    }
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* Load Scene can start any scene in the project, as in the player. */
+static void list_scenario_scenes(scenario_context *context, const char *start)
+{
+    char **names = NULL;
+    for (int i = 0; i < acount(context->runtime_assets); i++) {
+        if (!strcmp(context->runtime_assets[i].family->kind, "scene")) {
+            apush(names, asset_name_from_filename(context->runtime_assets[i].filename));
+        }
+    }
+    game_scene_flow *flow = scenario_scenes(context);
+    game_scene_flow_set(flow, (const char *const *)names, acount(names));
+    game_scene_flow_enter(flow, start);
+    for (int i = 0; i < acount(names); i++) {
+        free(names[i]);
+    }
+    afree(names);
+}
+
 static int prepare_scene_scenario(
     const char *root,
     const char *name,
@@ -6643,20 +7327,11 @@ static int prepare_scene_scenario(
         free(scene_json);
         return status;
     }
-    context->scene = game_scene_document_load(scene_json, error, error_size);
-    free(scene_json);
-    if (!context->scene) {
-        scenario_context_free(context);
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
-    }
-    if (!acount(context->scene->entities)) {
-        scenario_context_free(context);
-        set_error(error, error_size, "scene has no entities");
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
-    }
+    context->root = xstrdup(root);
     context->registry = project_registry();
     context->preview = game_prototype_preview_new(&context->registry);
     if (!context->preview) {
+        free(scene_json);
         scenario_context_free(context);
         set_error(error, error_size, "could not create scene preview");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
@@ -6665,90 +7340,23 @@ static int prepare_scene_scenario(
     if (status == CHIBI_AUTOMATION_OK) {
         status = register_shared_assets(root, context->preview, error, error_size);
     }
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = enter_scenario_scene(context, scene_json, error, error_size);
+    }
+    /* A scene a script loads may start empty; a scenario needs something to run. */
+    if (status == CHIBI_AUTOMATION_OK && !acount(context->scene->entities)) {
+        set_error(error, error_size, "scene has no entities");
+        status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    free(scene_json);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = register_scenario_prototypes(root, context, error, error_size);
+    }
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return status;
     }
-    for (int i = 0; i < acount(context->scene->entities); i++) {
-        game_scene_entity *entity = &context->scene->entities[i];
-        asset_ref prototype_ref = { 0 };
-        char *prototype_json = NULL;
-        uint64_t prototype_hash = 0;
-        status = load_named_asset(
-            root,
-            family_by_kind("prototype"),
-            entity->prototype,
-            &prototype_ref,
-            &prototype_json,
-            NULL,
-            &prototype_hash,
-            error,
-            error_size
-        );
-        if (status != CHIBI_AUTOMATION_OK) {
-            free(prototype_json);
-            scenario_context_free(context);
-            return status;
-        }
-        char *scenario_json = scenario_prototype_text(prototype_json, prototype_hash);
-        game_prototype *
-            prototype = scenario_json
-                          ? game_prototype_load(scenario_json, &context->registry, error, error_size)
-                          : NULL;
-        free(scenario_json);
-        free(prototype_json);
-        if (!prototype) {
-            scenario_context_free(context);
-            return CHIBI_AUTOMATION_VALIDATION_ERROR;
-        }
-        if (game_prototype_preview_register_prototype(context->preview, prototype) != 0) {
-            game_prototype_free(prototype);
-            scenario_context_free(context);
-            set_error(error, error_size, "could not register scene prototype");
-            return CHIBI_AUTOMATION_EXECUTION_ERROR;
-        }
-        apush(context->scene_prototypes, prototype);
-        apush(
-            context->scene_entities,
-            ((game_prototype_preview_scene_entity){
-                .prototype = prototype,
-                .components = entity->components,
-                .behaviors = (const char *const *)entity->behaviors,
-                .behavior_count = acount(entity->behaviors),
-                .own_behaviors = entity->own_behaviors,
-            })
-        );
-        for (int behavior = 0; behavior < acount(prototype->graphs); behavior++) {
-            status = register_preview_behavior_name(
-                root,
-                context->preview,
-                prototype->graphs[behavior],
-                error,
-                error_size
-            );
-            if (status != CHIBI_AUTOMATION_OK) {
-                scenario_context_free(context);
-                return status;
-            }
-        }
-        for (int behavior = 0; behavior < acount(entity->behaviors); behavior++) {
-            status = register_preview_behavior_name(
-                root,
-                context->preview,
-                entity->behaviors[behavior],
-                error,
-                error_size
-            );
-            if (status != CHIBI_AUTOMATION_OK) {
-                scenario_context_free(context);
-                return status;
-            }
-        }
-    }
-    status = register_scenario_prototypes(root, context, error, error_size);
-    if (status != CHIBI_AUTOMATION_OK) {
-        scenario_context_free(context);
-    }
+    list_scenario_scenes(context, name);
     return status;
 }
 
@@ -6965,13 +7573,7 @@ static bool runtime_snapshot_limit(
     return request_uint(request, key, out) && *out > 0 && *out <= maximum;
 }
 
-static int advance_scenario(
-    scenario_context *context,
-    uint64_t frames,
-    double fixed_dt,
-    char *error,
-    size_t error_size
-)
+static int launch_scenario(scenario_context *context, char *error, size_t error_size)
 {
     char launch_error[256] = { 0 };
     int launch = context->scene_target ? game_prototype_preview_launch_scene(
@@ -6988,25 +7590,96 @@ static int advance_scenario(
                                              sizeof launch_error
                                          );
     if (launch != ECS_OK) {
-        set_error(error, error_size, launch_error[0] ? launch_error : "could not launch prototype");
+        set_error(error, error_size, launch_error[0] ? launch_error : "could not launch scenario");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* Starts the scene a script asked for during the last frame, as the player
+ * does between frames: the clock, input and recordings go on. */
+static int follow_scenario_scene(scenario_context *context, char *error, size_t error_size)
+{
+    char *next = context->scene_target
+                   ? game_scene_flow_take(scenario_scenes(context))
+                   : NULL;
+    if (!next) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    char *json = NULL;
+    asset_ref ref;
+    char reason[256] = { 0 };
+    int status = load_named_asset(
+        context->root,
+        family_by_kind("scene"),
+        next,
+        &ref,
+        &json,
+        NULL,
+        NULL,
+        reason,
+        sizeof reason
+    );
+    if (status == CHIBI_AUTOMATION_OK) {
+        /* Begin runs inside start, so the new name must be current first. */
+        game_scene_flow_enter(scenario_scenes(context), next);
+        game_prototype_preview_end_scene(context->preview);
+        clear_scenario_scene(context);
+        status = enter_scenario_scene(context, json, reason, sizeof reason);
+    }
+    if (status == CHIBI_AUTOMATION_OK && game_prototype_preview_start_scene(
+                                             context->preview,
+                                             context->scene_entities,
+                                             acount(context->scene_entities),
+                                             reason,
+                                             sizeof reason
+                                         ) != ECS_OK) {
+        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        snprintf(error, error_size, "scene %s: %s", next, reason[0] ? reason : "could not start");
+    }
+    context->loads += status == CHIBI_AUTOMATION_OK;
+    free(json);
+    free(next);
+    return status;
+}
+
+static int tick_scenario(scenario_context *context, double now, char *error, size_t error_size)
+{
+    if (game_prototype_preview_tick(context->preview, now) != 0) {
+        const char *message = engine_error(
+            game_prototype_preview_runtime(context->preview)
+        );
+        set_error(error, error_size, message ? message : "scenario frame failed");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    return follow_scenario_scene(context, error, error_size);
+}
+
+static int advance_scenario(
+    scenario_context *context,
+    uint64_t frames,
+    double fixed_dt,
+    char *error,
+    size_t error_size
+)
+{
+    int status = launch_scenario(context, error, error_size);
+    if (status != CHIBI_AUTOMATION_OK) {
+        return status;
+    }
+    /* Like the player's first frame, this one runs no step and follows no
+     * scene. The player begins its start scene in the next frame's step,
+     * with its first Tick, and follows a scene Begin asked for after that. */
     if (game_prototype_preview_tick(context->preview, 0) != 0) {
         set_error(error, error_size, "could not initialize scenario clock");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    for (uint64_t frame = 0; frame < frames; frame++) {
-        if (game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
-            0) {
-            set_error(
-                error,
-                error_size,
-                engine_error(game_prototype_preview_runtime(context->preview))
-            );
-            return CHIBI_AUTOMATION_EXECUTION_ERROR;
-        }
+    for (uint64_t frame = 0; frame < frames && status == CHIBI_AUTOMATION_OK; frame++) {
+        status = tick_scenario(context, (double)(frame + 1) * fixed_dt, error, error_size);
     }
-    return CHIBI_AUTOMATION_OK;
+    return status;
 }
 
 #define SCENARIO_PROFILE_MAX_TOTAL SCENARIO_RUN_MAX_FRAMES
@@ -7546,24 +8219,7 @@ static int profile_scenario(
     scenario_profile_frame *samples = NULL;
     scenario_profile_allocations allocations = { 0 };
     if (status == CHIBI_AUTOMATION_OK) {
-        char launch_error[256] = { 0 };
-        int launch = context.scene_target ? game_prototype_preview_launch_scene(
-                                                context.preview,
-                                                context.scene_entities,
-                                                acount(context.scene_entities),
-                                                launch_error,
-                                                sizeof launch_error
-                                            )
-                                          : game_prototype_preview_launch(
-                                                context.preview,
-                                                context.prototype,
-                                                launch_error,
-                                                sizeof launch_error
-                                            );
-        if (launch != ECS_OK) {
-            snprintf(error, sizeof error, "%s", launch_error[0] ? launch_error : "could not launch scenario");
-            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
-        }
+        status = launch_scenario(&context, error, sizeof error);
     }
     if (status == CHIBI_AUTOMATION_OK) {
         engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), behavior_details);
@@ -7597,9 +8253,8 @@ static int profile_scenario(
             int step_status = CHIBI_AUTOMATION_OK;
             if (sampled_inputs) {
                 step_status = step_sequence(&context, &sequence, fixed_dt, error, sizeof error);
-            } else if (game_prototype_preview_tick(context.preview, (double)(frame + 1) * fixed_dt) != 0) {
-                snprintf(error, sizeof error, "scenario profiling failed");
-                step_status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+            } else {
+                step_status = tick_scenario(&context, (double)(frame + 1) * fixed_dt, error, sizeof error);
             }
             if (step_status != CHIBI_AUTOMATION_OK) {
                 status = step_status;
@@ -8175,14 +8830,12 @@ static int run_scenario_inputs(
         return launch;
     }
     for (uint64_t frame = 0; frame < frames; frame++) {
-        if (apply_scenario_input(context, &inputs[frame], error, error_size) !=
-                CHIBI_AUTOMATION_OK ||
-            game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
-                0) {
-            if (!error[0]) {
-                snprintf(error, error_size, "prototype scenario failed");
-            }
-            return CHIBI_AUTOMATION_EXECUTION_ERROR;
+        int status = apply_scenario_input(context, &inputs[frame], error, error_size);
+        if (status == CHIBI_AUTOMATION_OK) {
+            status = tick_scenario(context, (double)(frame + 1) * fixed_dt, error, error_size);
+        }
+        if (status != CHIBI_AUTOMATION_OK) {
+            return status;
         }
         observations->world_hash[frame] = scenario_state_hash(context);
         observations->live_entities[frame] = ecs_world_live_count(
@@ -8263,16 +8916,7 @@ static int step_sequence(
     if (status != CHIBI_AUTOMATION_OK) {
         return status;
     }
-    if (game_prototype_preview_tick(context->preview, (double)(++sequence->frame) * fixed_dt) !=
-        0) {
-        set_error(
-            error,
-            error_size,
-            engine_error(game_prototype_preview_runtime(context->preview))
-        );
-        return CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    return CHIBI_AUTOMATION_OK;
+    return tick_scenario(context, (double)(++sequence->frame) * fixed_dt, error, error_size);
 }
 
 static int advance_request_scenario(
@@ -8310,7 +8954,8 @@ struct chibi_preview_run
     scenario_context context;
     scenario_sequence sequence;
     yyjson_doc *request;
-    char *page; /* the root ui document its UI shows on, or NULL */
+    char *page;       /* the project's default root ui document, or NULL */
+    bool perspective; /* at launch */
 };
 
 game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run)
@@ -8320,13 +8965,18 @@ game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run)
 
 const char *chibi_preview_page(const chibi_preview_run *run)
 {
-    return run->page;
+    const game_scene_document *scene = run->context.scene;
+    return scene && scene->ui ? scene->ui : run->page;
 }
 
-/* The scene's root ui document, else the default in the manifest at `root`. */
-static char *preview_page(const char *root, const game_scene_document *scene)
+bool chibi_preview_perspective(const chibi_preview_run *run)
 {
-    return scene && scene->ui ? xstrdup(scene->ui) : manifest_string(root, "ui");
+    return run->context.scene ? run->context.scene->perspective : run->perspective;
+}
+
+int chibi_preview_loads(const chibi_preview_run *run)
+{
+    return run->context.loads;
 }
 
 int chibi_preview_step(chibi_preview_run *run, char *error, size_t size)
@@ -8363,13 +9013,11 @@ int chibi_automation_preview(
     const char *root,
     const char *request,
     chibi_preview_run **out,
-    bool *perspective,
     char *error,
     size_t error_size
 )
 {
     *out = NULL;
-    *perspective = false;
     yyjson_doc *doc = yyjson_read(request, strlen(request), 0);
     yyjson_val *value = doc ? yyjson_doc_get_root(doc) : NULL;
     const char *kind = request_string(value, "kind"),
@@ -8410,13 +9058,13 @@ int chibi_automation_preview(
         }
     }
     if (status == CHIBI_AUTOMATION_OK) {
-        *perspective = context->scene
-                         ? context->scene->perspective
-                         : GAME_GameGeometry3D_has(
-                               game_prototype_preview_world(context->preview),
-                               game_prototype_preview_entity(context->preview)
-                           );
-        run->page = preview_page(root, context->scene);
+        run->page = manifest_string(root, "ui");
+        run->perspective = context->scene
+                             ? context->scene->perspective
+                             : GAME_GameGeometry3D_has(
+                                   game_prototype_preview_world(context->preview),
+                                   game_prototype_preview_entity(context->preview)
+                               );
         *out = run;
         return status;
     }
@@ -9873,8 +10521,9 @@ static int attached_ui_documents(
 {
     catalog_asset *assets;
     uint64_t revision, content_hash;
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, error_size)) {
-        return CHIBI_AUTOMATION_IO_ERROR;
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash, error, error_size);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        return cataloged;
     }
     const reference_index *index = CATALOG_SNAPSHOT.references;
     int at = reference_index_find_name(index, REFERENCE_ASSET_BEHAVIOR, behavior);
@@ -10848,7 +11497,18 @@ static int validate_shader_binding(const char *root, const GameShader *binding, 
     return status;
 }
 
-static int validate_prototype_shader(const char *root, const char *text, char *error, size_t error_size)
+/* A GameUi component names a UI document the project has. */
+static int validate_ui_binding(const char *root, const GameUi *ui, char *error, size_t error_size)
+{
+    if (!ui || !ui->document || !ui->document[0] || ui_exists(root, ui->document)) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    set_errorf(error, error_size, "Unknown UI document '%s'", ui->document);
+    return CHIBI_AUTOMATION_VALIDATION_ERROR;
+}
+
+/* A prototype's shader binding and UI document resolve. */
+static int validate_prototype_bindings(const char *root, const char *text, char *error, size_t error_size)
 {
     game_prototype_registry registry = project_registry();
     game_prototype *prototype = game_prototype_load(text, &registry, error, error_size);
@@ -10856,11 +11516,13 @@ static int validate_prototype_shader(const char *root, const char *text, char *e
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     int status = CHIBI_AUTOMATION_OK;
-    for (int i = 0; i < acount(prototype->components); i++) {
+    for (int i = 0; i < acount(prototype->components) && status == CHIBI_AUTOMATION_OK;
+         i++) {
         const game_prototype_component *component = &prototype->components[i];
         if (!strcmp(component->desc->name, "GameShader")) {
             status = validate_shader_binding(root, component->data, error, error_size);
-            break;
+        } else if (!strcmp(component->desc->name, "GameUi")) {
+            status = validate_ui_binding(root, component->data, error, error_size);
         }
     }
     game_prototype_free(prototype);
@@ -10883,6 +11545,7 @@ static int validate_prototype_behaviors(const char *root, const char *json, char
         yyjson_doc_free(document);
         return CHIBI_AUTOMATION_OK;
     }
+    bool fallout = false;
     yyjson_arr_iter iterator = yyjson_arr_iter_with(behaviors);
     yyjson_val *name;
     while ((name = yyjson_arr_iter_next(&iterator))) {
@@ -10910,14 +11573,18 @@ static int validate_prototype_behaviors(const char *root, const char *json, char
             return status;
         }
         free(behavior_json);
-        status = validate_scene_behavior(root, yyjson_get_str(name), error, error_size);
+        status = past_fallout(
+            validate_scene_behavior(root, yyjson_get_str(name), error, error_size),
+            error,
+            &fallout
+        );
         if (status != CHIBI_AUTOMATION_OK) {
             yyjson_doc_free(document);
             return status;
         }
     }
     yyjson_doc_free(document);
-    return CHIBI_AUTOMATION_OK;
+    return fallout_status(fallout, error, error_size);
 }
 
 static int validate_scene_behavior(const char *root, const char *name, char *error, size_t error_size)
@@ -10950,7 +11617,8 @@ static int validate_scene_behavior(const char *root, const char *name, char *err
         }
     }
     if (!found) {
-        snprintf(error, error_size, "Unknown behavior source %s", name);
+        /* The catalog's words, so validate_project counts it once. */
+        snprintf(error, error_size, "Unknown behavior or system '%s'", name);
     } else if (!valid && !error[0]) {
         set_error(error, error_size, "Project source preparation failed");
     }
@@ -10965,8 +11633,14 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
     if (!scene) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
+    if (scene->ui && !ui_exists(root, scene->ui)) {
+        set_errorf(error, error_size, "Unknown UI document '%s'", scene->ui);
+        game_scene_document_free(scene);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
     game_prototype_registry registry = project_registry();
     int status = CHIBI_AUTOMATION_OK;
+    bool fallout = false;
     for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
         game_scene_entity *entity = &scene->entities[i];
         asset_ref prototype_ref = { 0 };
@@ -10982,6 +11656,9 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
             error,
             error_size
         );
+        if (status == CHIBI_AUTOMATION_NOT_FOUND) {
+            set_errorf(error, error_size, "Unknown prototype '%s'", entity->prototype);
+        }
         if (status != CHIBI_AUTOMATION_OK) {
             free(prototype_json);
             break;
@@ -10992,7 +11669,11 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
             status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             break;
         }
-        status = validate_prototype_behaviors(root, prototype_json, error, error_size);
+        status = past_fallout(
+            validate_prototype_behaviors(root, prototype_json, error, error_size),
+            error,
+            &fallout
+        );
         free(prototype_json);
         if (status == CHIBI_AUTOMATION_OK) {
             ecs_world *world = ecs_world_new();
@@ -11032,6 +11713,9 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
                     error_size
                 );
             }
+            if (status == CHIBI_AUTOMATION_OK) {
+                status = validate_ui_binding(root, GAME_GameUi_get_const(world, actor), error, error_size);
+            }
             ecs_world_free(world);
             game_prototype_owned_strings_free(component_strings);
         }
@@ -11039,11 +11723,17 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         for (int behavior = 0;
              behavior < acount(entity->behaviors) && status == CHIBI_AUTOMATION_OK;
              behavior++) {
-            status = validate_scene_behavior(root, entity->behaviors[behavior], error, error_size);
+            status = past_fallout(
+                validate_scene_behavior(root, entity->behaviors[behavior], error, error_size),
+                error,
+                &fallout
+            );
         }
     }
     game_scene_document_free(scene);
-    return status;
+    return status != CHIBI_AUTOMATION_OK
+             ? status
+             : fallout_status(fallout, error, error_size);
 }
 
 static int load_ui_source(
@@ -11107,7 +11797,9 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "profile_scenario") || !strcmp(operation, "status") ||
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
            !strcmp(operation, "validate_asset") ||
-           !strcmp(operation, "bake_model") || !strcmp(operation, "preview_field") ||
+           !strcmp(operation, "validate_project") ||
+           !strcmp(operation, "new_asset") || !strcmp(operation, "bake_model") ||
+           !strcmp(operation, "preview_field") ||
            !strcmp(operation, "import_sky") || !strcmp(operation, "search_nodes") ||
            !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
@@ -11179,6 +11871,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     }
     scenario_context image_context = { 0 };
     bool needs_images = root && (!strcmp(operation, "validate_asset") ||
+                                 !strcmp(operation, "validate_project") ||
                                  !strcmp(operation, "inspect_graph") ||
                                  !strcmp(operation, "bake_model"));
     if (needs_images) {
@@ -11234,6 +11927,12 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_read_asset(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "validate_asset")) {
         handle_validate_asset(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "validate_project")) {
+        handle_validate_project(root, &result, exit_code);
+    } else if (!strcmp(operation, "new_project")) {
+        handle_new_project(root_value, &result, exit_code);
+    } else if (!strcmp(operation, "new_asset")) {
+        handle_new_asset(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "catalog")) {
         handle_catalog(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "search_assets")) {

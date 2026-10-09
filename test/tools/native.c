@@ -1,6 +1,7 @@
 #include "execution/function_builder.h"
 #include "execution/module_builder.h"
 #include "execution/status.h"
+#include "runtime/audio.h"
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/behaviors/entities_source.h"
 #include "runtime/component_catalog.h"
@@ -11,9 +12,11 @@
 #include "runtime/player_prepared.h"
 #include "runtime/world.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,7 +35,7 @@ static game_event_catalog *event_catalog, *wrong_events;
 static ecs_world *world;
 static game_source_registry *registry;
 static game_source_entities *host;
-static game_scene *scene;
+static game_scene *scene, *other_scene;
 static execution_module *module;
 static bool catalog_active;
 static int old_begins, new_begins;
@@ -104,6 +107,8 @@ static void cleanup()
     registry = NULL;
     game_scene_free(scene);
     scene = NULL;
+    game_scene_free(other_scene);
+    other_scene = NULL;
     execution_module_free(module);
     module = NULL;
     ecs_world_free(world);
@@ -453,7 +458,7 @@ TEST_CASE(native_prepared_world_runs_source_and_real_physics)
 }
 static struct
 {
-    int steps;
+    int steps, presses;
     bool held, pressed;
 } jump;
 /* Reads the service the engine bound, the way Action Held and Pressed do. */
@@ -470,15 +475,62 @@ static const char *observe_jump(void *service, const pin_value *, pin_value *)
     jump.pressed = pressed.b;
     return error;
 }
-static bool bind_jump(ecs_world *ecs, GameControl source, bool disabled)
+static const char *count_jump(void *, const pin_value *, pin_value *)
 {
-    ecs_entity entity = ecs_world_create_entity(ecs);
-    REQUIRE(GAME_GameActionBinding_add(ecs, entity, 0) == ECS_OK);
-    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
-    *GAME_GameActionBinding_get(ecs, entity) = (GameActionBinding){ .source = source,
-                                                                    .action = "Jump",
-                                                                    .disabled = disabled };
-    return true;
+    jump.presses++;
+    return NULL;
+}
+/* A handler whose body makes one host call. */
+static behavior_function *host_body(const node_host_call *call, const pin_value *in, int count, uint64_t identity)
+{
+    behavior_function_builder *builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, in, count, NULL, 0, NULL, 0);
+    int host_call = behavior_function_builder_host(builder, call, &GAME_INPUT_READ_ACCESS, NULL, 0, NULL, 0);
+    bool identified = behavior_function_builder_host_identity(builder, host_call, identity, identity + 1);
+    assert(identified);
+    (void)identified;
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_HOST_CALL,
+                                         .target = host_call,
+                                         .left = BEHAVIOR_FUNCTION_HOST_DATA }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[192];
+    behavior_function *body = behavior_function_builder_finish(builder, error, sizeof error);
+    behavior_function_builder_free(builder);
+    return body;
+}
+static void handler(
+    execution_module_plan *plan,
+    const char *event,
+    uint64_t id,
+    const pin_value *in,
+    int count,
+    behavior_function *body
+)
+{
+    execution_module_event_field *fields = NULL;
+    if (count) {
+        fields = xmalloc(sizeof *fields);
+        *fields = (execution_module_event_field){ .name = "dt", .initial = *in };
+    }
+    apush(
+        plan->events,
+        ((
+            execution_module_event_declaration
+        ){ .id = id, .abi = id + 1, .name = event, .fields = fields, .field_count = count })
+    );
+    apush(
+        plan->functions,
+        ((execution_module_function){ .id = id + 2,
+                                      .kind = EXECUTION_FUNCTION_HANDLER,
+                                      .event = id,
+                                      .event_abi = id + 1,
+                                      .body = body })
+    );
+    plan->event_count++;
+    plan->function_count++;
 }
 /* Samples controls, runs exactly one fixed step and checks what Tick read. */
 static bool jump_step(engine *runtime, uint64_t controls, bool held, bool pressed)
@@ -490,56 +542,73 @@ static bool jump_step(engine *runtime, uint64_t controls, bool held, bool presse
     REQUIRE(jump.steps == steps + 1 && jump.held == held && jump.pressed == pressed);
     return true;
 }
-/* A world whose Tick reads Jump, bound to Z and X and to a disabled C. */
+/* A world whose input map binds Jump to Z and X. Its Tick reads Jump, and an
+ * input owner counts Jump events. */
 static bool jump_world(engine **out)
 {
     cleanup();
     jump = (typeof(jump)){ 0 };
     char error[192];
-    game_world_options options = { .modules = GAME_WORLD_INPUT };
+    const input_action actions[] = {
+        { "Jump", (UINT64_C(1) << GAME_CONTROL_Z) | (UINT64_C(1) << GAME_CONTROL_X), false },
+    };
+    /* A count without actions, an unnamed or empty-named action, one action
+     * listed twice, an action without controls or with one outside
+     * GameControl, or more than the most actions a map holds is rejected. */
+    const input_action unnamed = { NULL, UINT64_C(1) << GAME_CONTROL_Z, false };
+    const input_action empty = { "", UINT64_C(1) << GAME_CONTROL_Z, false };
+    const input_action twice[] = {
+        { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false },
+        { "Jump", UINT64_C(1) << GAME_CONTROL_X, false },
+    };
+    const input_action uncontrolled = { "Jump", 0, false };
+    const input_action none = { "Jump", UINT64_C(1) << GAME_CONTROL_NONE, false };
+    const input_action beyond = { "Jump", UINT64_C(1) << GAME_CONTROL_COUNT, false };
+    static char names[INPUT_ACTION_MAX + 1][8];
+    static input_action many[INPUT_ACTION_MAX + 1];
+    for (int i = 0; i <= INPUT_ACTION_MAX; i++) {
+        snprintf(names[i], sizeof names[i], "A%d", i);
+        many[i] = (input_action){ names[i], UINT64_C(1) << GAME_CONTROL_Z, false };
+    }
+    game_world_options invalid[] = {
+        { .modules = GAME_WORLD_INPUT, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &unnamed, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = twice, .action_count = 2 },
+        { .modules = GAME_WORLD_INPUT, .actions = &empty, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &uncontrolled, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &none, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &beyond, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = many, .action_count = INPUT_ACTION_MAX + 1 },
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        REQUIRE(!game_world_new(&invalid[i], error, sizeof error));
+        REQUIRE(!strcmp(error, "Invalid runtime world options"));
+    }
+    game_world_options most = { .modules = GAME_WORLD_INPUT,
+                                .actions = many,
+                                .action_count = INPUT_ACTION_MAX };
+    game_world *full = game_world_new(&most, error, sizeof error);
+    REQUIRE(full);
+    game_world_free(full);
+    game_world_options options = { .modules = GAME_WORLD_INPUT,
+                                   .actions = actions,
+                                   .action_count = 1 };
     simulation = game_world_new(&options, error, sizeof error);
     REQUIRE(simulation);
     ecs_world *ecs = game_world_ecs(simulation);
-    static const node_host_call call = { .service = GAME_INPUT_SERVICE,
+    static const node_host_call tick = { .service = GAME_INPUT_SERVICE,
                                          .invoke = observe_jump,
                                          .optional_service = true };
-    behavior_function_builder *builder = behavior_function_builder_new();
+    static const node_host_call press = { .invoke = count_jump };
     const pin_value dt = { .type = PIN_F32 };
-    behavior_function_builder_signature(builder, &dt, 1, NULL, 0, NULL, 0);
-    int host_call = behavior_function_builder_host(builder, &call, &GAME_INPUT_READ_ACCESS, NULL, 0, NULL, 0);
-    REQUIRE(behavior_function_builder_host_identity(builder, host_call, 990, 991));
-    behavior_function_builder_emit(
-        builder,
-        (behavior_function_instruction){ .op = BF_HOST_CALL,
-                                         .target = host_call,
-                                         .left = BEHAVIOR_FUNCTION_HOST_DATA }
-    );
-    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
-    behavior_function *body = behavior_function_builder_finish(builder, error, sizeof error);
-    behavior_function_builder_free(builder);
-    REQUIRE(body);
+    behavior_function *tick_body = host_body(&tick, &dt, 1, 990);
+    behavior_function *press_body = host_body(&press, NULL, 0, 980);
+    REQUIRE(tick_body && press_body);
     execution_module_plan *plan = execution_module_plan_new();
     plan->id = 992;
     plan->valid = true;
-    execution_module_event_field *event_fields = malloc(sizeof *event_fields);
-    REQUIRE(event_fields);
-    *event_fields = (execution_module_event_field){ .name = "dt", .initial = dt };
-    apush(
-        plan->events,
-        ((
-            execution_module_event_declaration
-        ){ .id = 993, .abi = 994, .name = "Tick", .fields = event_fields, .field_count = 1 })
-    );
-    plan->event_count = 1;
-    apush(
-        plan->functions,
-        ((execution_module_function){ .id = 995,
-                                      .kind = EXECUTION_FUNCTION_HANDLER,
-                                      .event = 993,
-                                      .event_abi = 994,
-                                      .body = body })
-    );
-    plan->function_count = 1;
+    handler(plan, "Tick", 993, &dt, 1, tick_body);
+    handler(plan, "Jump", 983, NULL, 0, press_body);
     module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
     execution_module_plan_free(plan);
     REQUIRE(module);
@@ -547,12 +616,11 @@ static bool jump_world(engine **out)
     execution_module_free(module);
     module = NULL;
     ecs_entity jumper = ecs_world_create_entity(ecs);
+    REQUIRE(GAME_GameInput_add(ecs, jumper, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
     REQUIRE(
         game_source_attach(game_world_sources(simulation), jumper, "Jumper", false, 0, 0) == 0
     );
-    REQUIRE(bind_jump(ecs, GAME_CONTROL_Z, false));
-    REQUIRE(bind_jump(ecs, GAME_CONTROL_X, false));
-    REQUIRE(bind_jump(ecs, GAME_CONTROL_C, true));
     *out = game_world_engine(simulation);
     REQUIRE(engine_frame(*out, 0) == 0);
     return true;
@@ -570,12 +638,35 @@ TEST_CASE(native_action_state_combines_sources_per_step)
     /* Moving from one source to another never releases the action. */
     REQUIRE(jump_step(runtime, x, true, false));
     REQUIRE(jump_step(runtime, 0, false, false));
+    /* A control outside the map holds nothing. */
     REQUIRE(jump_step(runtime, c, false, false));
+    REQUIRE(jump.presses == 1);
     /* A tap between two steps still counts as pressed for the next one. */
     bool firing;
     REQUIRE(engine_sample_controls(runtime, x, &firing) == FLOW_OK);
     REQUIRE(jump_step(runtime, 0, false, true));
     REQUIRE(jump_step(runtime, 0, false, false));
+    REQUIRE(jump.presses == 2);
+    cleanup();
+    return true;
+}
+TEST_CASE(native_pause_keeps_held_actions)
+{
+    engine *runtime;
+    REQUIRE(jump_world(&runtime));
+    const uint64_t z = UINT64_C(1) << GAME_CONTROL_Z;
+    REQUIRE(jump_step(runtime, z, true, true));
+    REQUIRE(jump.presses == 1);
+    REQUIRE(engine_set_playing(runtime, false) == 0);
+    /* Hosts sample no controls while paused; that sample is ignored. */
+    bool firing = true;
+    REQUIRE(engine_sample_controls(runtime, 0, &firing) == FLOW_OK && !firing);
+    REQUIRE(engine_frame(runtime, (jump.steps + 0.5) * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(engine_set_playing(runtime, true) == 0);
+    /* The first frame after resuming only restarts the clock. */
+    REQUIRE(engine_frame(runtime, (jump.steps + 0.5) * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(jump_step(runtime, z, true, false));
+    REQUIRE(jump.presses == 1);
     cleanup();
     return true;
 }
@@ -882,6 +973,144 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
     }
     return true;
 }
+static game_scene *one_object_scene(const char *name, float x, const char *global)
+{
+    GameTransform transform = { .x = x };
+    GameGlobalBinding binding = { .name = global };
+    game_scene_component components[] = {
+        { &GAME_COMPONENT_GameTransform, &transform },
+        { &GAME_COMPONENT_GameGlobalBinding, &binding }
+    };
+    game_scene_object object = { .name = name,
+                                 .components = components,
+                                 .component_count = global ? 2 : 1 };
+    game_scene_spec spec = { .name = name,
+                             .physics = game_physics_defaults(),
+                             .objects = &object,
+                             .object_count = 1 };
+    char error[192];
+    return game_scene_prepare(&spec, error, sizeof error);
+}
+/* Two entities bound to one global name. */
+static game_scene *twice_bound_scene(const char *global)
+{
+    GameGlobalBinding binding = { .name = global };
+    game_scene_component component = { &GAME_COMPONENT_GameGlobalBinding, &binding };
+    game_scene_object objects[] = {
+        { .name = "First", .components = &component, .component_count = 1 },
+        { .name = "Second", .components = &component, .component_count = 1 }
+    };
+    game_scene_spec spec = { .name = "Twice",
+                             .physics = game_physics_defaults(),
+                             .objects = objects,
+                             .object_count = 2 };
+    char error[192];
+    return game_scene_prepare(&spec, error, sizeof error);
+}
+static float first_x(const game_player *p)
+{
+    ecs_entity entity = game_scene_instance_entity(game_player_scene(p), 0);
+    return GAME_GameTransform_get_const(game_world_ecs(game_player_world(p)), entity)
+        ->x;
+}
+/* Asks for a scene the way Load Scene does and starts it as hosts do. */
+static bool follow(const char *name, char *error, size_t size)
+{
+    game_scene_flow *flow = game_world_scenes(game_player_world(player));
+    pin_value in = { .type = PIN_STR, .str = name };
+    if (GAME_SCENE_LOAD_CALL.invoke(flow, &in, NULL)) {
+        return false;
+    }
+    char *next = game_scene_flow_take(flow);
+    bool loaded = game_player_load_scene(player, next, error, size);
+    free(next);
+    return loaded;
+}
+TEST_CASE(native_player_loads_named_scenes)
+{
+    char error[192];
+    scene = one_object_scene("Hero", 1, "Player");
+    other_scene = one_object_scene("Goal", 2, NULL);
+    REQUIRE(scene && other_scene);
+    game_player_named_scene named = { "Start", other_scene };
+    game_player_spec spec = { .world = { .modules = GAME_WORLD_AUDIO },
+                              .scene = scene,
+                              .scene_name = "Start",
+                              .scenes = &named,
+                              .scene_count = 1 };
+    REQUIRE(!game_player_new(&spec, error, sizeof error));
+    size_t length;
+    game_player_application application = { 0 };
+    /* Entering a scene that binds one global to two entities fails, so the
+       player refuses it when the package is written or opened. */
+    game_scene *twice = twice_bound_scene("Player");
+    REQUIRE(twice);
+    named = (game_player_named_scene){ "Twice", twice };
+    REQUIRE(!game_player_new(&spec, error, sizeof error));
+    REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
+    error[0] = 0;
+    REQUIRE(
+        !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
+    REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
+    game_scene_free(twice);
+    named = (game_player_named_scene){ "Next", other_scene };
+    REQUIRE(
+        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
+    game_player_host host_context = {
+        .components = { .components = GAME_REGISTRY_COMPONENTS,
+                        .component_count = GAME_REGISTRY_COMPONENT_COUNT },
+        .linker = &(execution_prepared_linker){ .host = player_host }
+    };
+    player = game_player_prepared_read(player_bytes, length, &host_context, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(player);
+    game_world *w = game_player_world(player);
+    game_scene_flow *flow = game_world_scenes(w);
+    game_save *save = game_world_modules(w)->save;
+    REQUIRE(!strcmp(game_scene_flow_current(flow), "Start"));
+    REQUIRE(first_x(player) == 1);
+    REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 1);
+    engine *runtime = game_world_engine(w);
+    REQUIRE(engine_frame(runtime, 0) == 0 && engine_frame(runtime, .05) == 0);
+    uint64_t steps = engine_last_timing(runtime)->simulation_steps;
+    REQUIRE(steps > 0);
+
+    pin_value missing = { .type = PIN_STR, .str = "Missing" };
+    REQUIRE(!strcmp(GAME_SCENE_LOAD_CALL.invoke(flow, &missing, NULL), "No scene named 'Missing'"));
+    REQUIRE(!game_scene_flow_take(flow));
+
+    REQUIRE(game_save_set(save, "level", "1") && game_save_commit(save));
+    REQUIRE(game_save_set(save, "unsaved", "1"));
+    game_audio *audio = engine_audio(runtime);
+    REQUIRE(game_audio_emit(audio, (game_sound){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
+    uint64_t cues = game_audio_hash(audio);
+    REQUIRE(follow("Next", error, sizeof error));
+    REQUIRE(!strcmp(game_scene_flow_current(flow), "Next"));
+    REQUIRE(ecs_world_live_count(game_world_ecs(w)) == 1);
+    REQUIRE(first_x(player) == 2);
+    REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 0);
+    REQUIRE(!strcmp(game_save_get(save, "level"), "1") && !game_save_get(save, "unsaved"));
+    /* The clock and sounds go on across a load. */
+    REQUIRE(game_audio_count(audio) == 1 && game_audio_hash(audio) == cues);
+    REQUIRE(engine_frame(runtime, .1) == 0);
+    REQUIRE(engine_last_timing(runtime)->simulation_steps > steps);
+
+    REQUIRE(!GAME_SCENE_RELOAD_CALL.invoke(flow, NULL, NULL));
+    char *next = game_scene_flow_take(flow);
+    REQUIRE(!strcmp(next, "Next"));
+    free(next);
+    REQUIRE(follow("Start", error, sizeof error));
+    REQUIRE(ecs_world_live_count(game_world_ecs(w)) == 1);
+    REQUIRE(first_x(player) == 1);
+    REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 1);
+
+    REQUIRE(!game_player_load_scene(player, "Missing", error, sizeof error));
+    REQUIRE(!strcmp(error, "No scene named 'Missing'"));
+    engine_reset(runtime);
+    REQUIRE(game_audio_count(audio) == 0);
+    return true;
+}
 typedef struct
 {
     float level;
@@ -974,7 +1203,11 @@ TEST_CASE(native_player_reads_declared_components)
                                    .object_count = 1 };
     scene = game_scene_prepare(&scene_spec, error, sizeof error);
     REQUIRE(scene);
-    game_player_spec spec = { .world = { .components = components },
+    /* The input map travels with the package. */
+    const input_action jump_map = { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false };
+    game_player_spec spec = { .world = { .components = components,
+                                         .actions = &jump_map,
+                                         .action_count = 1 },
                               .declared = declared,
                               .scene = scene };
     /* A player keeps its own set's layout while a newer set is published. */
@@ -990,6 +1223,13 @@ TEST_CASE(native_player_reads_declared_components)
     declared_components_free(newer);
     game_player_application application = { 0 };
     size_t length;
+    /* A count without actions is rejected before it is written. */
+    spec.world.actions = NULL;
+    REQUIRE(
+        !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
+    REQUIRE(strstr(error, "Invalid prepared player record metadata") && !player_bytes);
+    spec.world.actions = &jump_map;
     REQUIRE(
         game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );
@@ -1036,8 +1276,10 @@ void test_tool_native()
     RUN_TEST_CASE(native_prepared_spawn_generations);
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
+    RUN_TEST_CASE(native_player_loads_named_scenes);
     RUN_TEST_CASE(native_player_reads_declared_components);
     RUN_TEST_CASE(native_action_state_combines_sources_per_step);
     RUN_TEST_CASE(native_recorded_taps_replay_per_step);
+    RUN_TEST_CASE(native_pause_keeps_held_actions);
     pu_clear_setup();
 }

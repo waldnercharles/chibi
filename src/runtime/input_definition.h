@@ -1,6 +1,7 @@
 #ifndef CHIBI_GAME_INPUT_DEFINITION_H
 #define CHIBI_GAME_INPUT_DEFINITION_H
 
+#include "runtime/input_action.h"
 #include "runtime/native_definitions.h"
 
 #define GAME_INPUT_PORT(X, NAME, STORAGE, TYPE_NAME)                           \
@@ -19,10 +20,11 @@
 #define GAME_INPUT_HELD_OUTPUTS(X) GAME_INPUT_PORT(X, "Held", PIN_BOOL, "bool")
 #define GAME_INPUT_PRESSED_OUTPUTS(X)                                          \
     GAME_INPUT_PORT(X, "Pressed", PIN_BOOL, "bool")
-/* X(KEY, NAME, SOURCE, OUTPUTS) */
+/* X(KEY, NAME, OUTPUTS). Scripts read them as input.<Action>.held and
+ * input.<Action>.pressed, never by name. */
 #define GAME_INPUT_OPERATIONS(X)                                               \
-    X(HELD, "Action Held", "held", GAME_INPUT_HELD_OUTPUTS)                    \
-    X(PRESSED, "Action Pressed", "pressed", GAME_INPUT_PRESSED_OUTPUTS)
+    X(HELD, INPUT_ACTION_HELD, GAME_INPUT_HELD_OUTPUTS)                        \
+    X(PRESSED, INPUT_ACTION_PRESSED, GAME_INPUT_PRESSED_OUTPUTS)
 
 #define GAME_INPUT_HELD_PRESENTATION                                           \
     .category = "Input", .keywords = "action button key down hold",            \

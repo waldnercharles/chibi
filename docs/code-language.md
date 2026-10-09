@@ -334,7 +334,10 @@ retargeting establish the current event baseline without inventing a transition.
 Input delivers queued `PressedChanged(pressed)` edges after its component queries
 finish, preserving release and re-press payloads within one update. Other component
 writes are observed at maintenance points. Behavior callbacks may suspend using
-normal behavior continuations.
+normal behavior continuations. To read an action across all of its bindings,
+`held("Jump")` is true while any source bound to `Jump` is down, and
+`pressed("Jump")` is true for the one fixed step after one went down, even for a
+tap released before that step.
 
 A system maintains relationships for its matched entities. While an entity's
 system invocation is active or suspended, relationship values and subscription

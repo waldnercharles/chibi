@@ -3,6 +3,7 @@
 
 #include "ecs/ecs.h"
 #include "execution/arguments.h"
+#include "execution/host.h"
 #include "runtime/components.h"
 #include "runtime/input_timeline.h"
 
@@ -33,5 +34,12 @@ const char *engine_input_error(const engine_input *input);
 input_keyframe engine_input_held(const engine_input *input);
 /* Hold a key's input as the host samples it: controls, movement, then aim. */
 int engine_input_hold(engine_input *input, const input_keyframe *key);
+
+/* Action Held and Action Pressed read every source of an action, as combined at
+ * the start of the fixed step. Without the service they are false. */
+#define GAME_INPUT_SERVICE "game.input"
+extern const node_host_call GAME_INPUT_HELD_CALL;
+extern const node_host_call GAME_INPUT_PRESSED_CALL;
+extern const node_access GAME_INPUT_READ_ACCESS;
 
 #endif

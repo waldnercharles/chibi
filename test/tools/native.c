@@ -686,6 +686,8 @@ TEST_CASE(native_player_reads_declared_components)
 {
     char error[192];
     REQUIRE(rejected("CF_V2", "float", "already an engine type"));
+    REQUIRE(rejected("float", "float", "built-in script type"));
+    REQUIRE(rejected("task", "float", "built-in script type"));
     REQUIRE(rejected("Charge", "vec9", "unknown type vec9"));
     REQUIRE(rejected("Charge", "handle", "unknown type handle"));
     REQUIRE(rejected("2Charge", "float", "identifier"));

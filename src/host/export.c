@@ -86,8 +86,13 @@ static bool copy_tree(const char *from, const char *to)
         return failed("missing", from);
     }
     bool copied = true;
-    struct dirent *entry;
-    while (copied && (entry = readdir(dir))) {
+    while (copied) {
+        errno = 0; /* readdir's end and its failure both return NULL */
+        struct dirent *entry = readdir(dir);
+        if (!entry) {
+            copied = errno == 0 || failed(strerror(errno), from);
+            break;
+        }
         if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
             continue;
         }

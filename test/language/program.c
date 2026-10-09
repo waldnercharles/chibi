@@ -2422,7 +2422,7 @@ TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors)
     snprintf(path, sizeof path, "%s/content", root);
     REQUIRE(!mkdir(path, 0700));
     /* Scenes outside content/scenes migrate too, and so does a start scene
-     * outside the content. */
+     * that a relative path places outside the content. */
     char scene[256], start[256];
     snprintf(scene, sizeof scene, "%s/content/Level.kdl", root);
     snprintf(start, sizeof start, "%s/Start.kdl", root);
@@ -2434,7 +2434,7 @@ TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors)
     }
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     FILE *file = fopen(path, "wb");
-    fprintf(file, "version 14\ncontent \"content\"\nstart_scene \"%s\"\n", start);
+    fputs("version 14\ncontent \"content\"\nstart_scene \"../Start.kdl\"\n", file);
     fclose(file);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
     for (int i = 0; i < 2; i++) {

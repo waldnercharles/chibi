@@ -12,6 +12,7 @@
 #include <string.h>
 
 #define VOICE_QUEUE 128
+/* The host mixer's rate. It plays files without resampling. */
 #define SOUND_RATE 44100
 #define FADE_MAX 60
 #define OGG_BEGIN_OF_STREAM 2 /* page header flags */
@@ -109,8 +110,8 @@ static size_t wav_chunk(const unsigned char *bytes, size_t length, size_t at, co
     return 0;
 }
 /* What the playback host decodes: a plain PCM (8 to 32-bit) or float (32 or
- * 64-bit) format, not WAVE_FORMAT_EXTENSIBLE, with one or two channels, then a
- * data chunk holding at least one whole frame. */
+ * 64-bit) format, not WAVE_FORMAT_EXTENSIBLE, with one or two channels at the
+ * mixer's rate, then a data chunk holding at least one whole frame. */
 static bool wav_playable(const unsigned char *bytes, size_t length)
 {
     uint32_t size;
@@ -123,7 +124,8 @@ static bool wav_playable(const unsigned char *bytes, size_t length)
     bool integer = format == 1 &&
                    (bits == 8 || bits == 16 || bits == 24 || bits == 32);
     bool real = format == 3 && (bits == 32 || bits == 64);
-    if ((channels != 1 && channels != 2) || !(integer || real)) {
+    if ((channels != 1 && channels != 2) || !(integer || real) ||
+        le32(bytes + fmt + 4) != SOUND_RATE) {
         return false;
     }
     /* The host looks for samples only after the format. */
@@ -131,9 +133,9 @@ static bool wav_playable(const unsigned char *bytes, size_t length)
     return data && size >= (uint32_t)(channels * bits / 8);
 }
 /* An Ogg stream whose first page holds only a mono or stereo Vorbis
- * identification header, as stb_vorbis requires, and whose pages are whole up
- * to the one that ends the stream. Bytes after that page, such as a tag, are
- * ignored. Opus and surround streams are not decoded. */
+ * identification header at the mixer's rate, as stb_vorbis requires, and whose
+ * pages are whole up to the one that ends the stream. Bytes after that page,
+ * such as a tag, are ignored. Opus and surround streams are not decoded. */
 static bool ogg_vorbis(const unsigned char *bytes, size_t length)
 {
     if (length < 28 + VORBIS_IDENTIFICATION || bytes[5] != OGG_BEGIN_OF_STREAM ||
@@ -141,7 +143,8 @@ static bool ogg_vorbis(const unsigned char *bytes, size_t length)
         return false;
     }
     const unsigned char *id = bytes + 28;
-    if (id[0] != 1 || memcmp(id + 1, "vorbis", 6) || (id[11] != 1 && id[11] != 2)) {
+    if (id[0] != 1 || memcmp(id + 1, "vorbis", 6) ||
+        (id[11] != 1 && id[11] != 2) || le32(id + 12) != SOUND_RATE) {
         return false;
     }
     for (size_t page = 0; page < length;) {
@@ -177,6 +180,11 @@ game_sound_format game_sound_format_of(const void *data, size_t length)
     }
     return GAME_SOUND_INVALID;
 }
+void game_audio_reserve_sounds(game_audio *audio, int count)
+{
+    assert(count >= 0);
+    asetcap(audio->sounds, acount(audio->sounds) + count);
+}
 void game_audio_add_sound(game_audio *audio, const char *name, const void *data, size_t length)
 {
     assert(find(audio, name) < 0 && game_sound_format_of(data, length));
@@ -198,6 +206,24 @@ size_t game_audio_sound_storage_bytes(const game_audio *audio)
         bytes += strlen(audio->sounds[i].name) + 1 + audio->sounds[i].length;
     }
     return bytes;
+}
+static uint64_t fnv(uint64_t hash, const void *data, size_t length)
+{
+    const unsigned char *bytes = data;
+    for (size_t i = 0; i < length; i++) {
+        hash = (hash ^ bytes[i]) * UINT64_C(1099511628211);
+    }
+    return hash;
+}
+uint64_t game_audio_library_hash(const game_audio *audio)
+{
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (int i = 0; i < acount(audio->sounds); i++) {
+        const sound *s = &audio->sounds[i];
+        hash = fnv(hash, s->name, strlen(s->name) + 1);
+        hash = fnv(fnv(hash, &s->length, sizeof s->length), s->data, s->length);
+    }
+    return hash;
 }
 const void *game_audio_sound(const game_audio *audio, int index, size_t *length)
 {
@@ -232,12 +258,7 @@ uint64_t game_audio_hash(const game_audio *audio)
 static void mix(game_audio *audio, unsigned char tag, const float *values, int count)
 {
     uint64_t hash = audio->hash ? audio->hash : UINT64_C(14695981039346656037);
-    hash = (hash ^ tag) * UINT64_C(1099511628211);
-    const unsigned char *bytes = (const unsigned char *)values;
-    for (size_t i = 0; i < (size_t)count * sizeof *values; i++) {
-        hash = (hash ^ bytes[i]) * UINT64_C(1099511628211);
-    }
-    audio->hash = hash;
+    audio->hash = fnv(fnv(hash, &tag, 1), values, (size_t)count * sizeof *values);
 }
 static bool unit(float x)
 {

@@ -271,26 +271,37 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
     }
     const engine_modules *services = game_world_modules(p->world);
     if (services->audio) {
+        /* The library keeps records, names and its own copy of each file, all
+         * charged before any file is copied. */
+        assert(!game_audio_sound_count(services->audio));
+        int sounds = 0;
+        size_t bytes = 0;
         for (int i = 0; i < spec->asset_count; i++) {
             const game_player_asset *asset = &spec->assets[i];
-            if (asset->kind != GAME_PLAYER_ASSET_SOUND) {
-                continue;
+            if (asset->kind == GAME_PLAYER_ASSET_SOUND) {
+                sounds++;
+                bytes += strlen(asset->name) + 1 + asset->length;
             }
-            game_audio_add_sound(
-                services->audio,
-                asset->name,
-                asset->data,
-                asset->length
-            );
         }
-        /* The library keeps its own copy of each sound, bounded by the
-         * artifact the caller already holds. */
-        size_t bytes = game_audio_sound_storage_bytes(services->audio);
+        game_audio_reserve_sounds(services->audio, sounds);
+        bytes += game_audio_sound_storage_bytes(services->audio);
         if (bytes > *remaining) {
             fail(error, size, "Prepared player retained storage budget exceeded");
             goto reject;
         }
         *remaining -= bytes;
+        for (int i = 0; i < spec->asset_count; i++) {
+            const game_player_asset *asset = &spec->assets[i];
+            if (asset->kind == GAME_PLAYER_ASSET_SOUND) {
+                game_audio_add_sound(
+                    services->audio,
+                    asset->name,
+                    asset->data,
+                    asset->length
+                );
+            }
+        }
+        assert(game_audio_sound_storage_bytes(services->audio) == bytes);
     }
     if (services->physics &&
         game_physics_configure(services->physics, game_scene_physics(spec->scene)) < 0) {

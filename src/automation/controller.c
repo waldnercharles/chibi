@@ -6530,6 +6530,16 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         snprintf(hash, sizeof hash, "%016llx", (unsigned long long)entries[i].hash);
         catalog_hash_text(&context->runtime_hash, hash);
     }
+    /* Sounds are no catalog asset, but which ones loaded decides what
+     * play_sound finds, so a replay checks them too. */
+    const game_audio *audio = engine_audio(
+        game_prototype_preview_runtime(context->preview)
+    );
+    if (game_audio_sound_count(audio)) {
+        char hash[17];
+        snprintf(hash, sizeof hash, "%016llx", (unsigned long long)game_audio_library_hash(audio));
+        catalog_hash_text(&context->runtime_hash, hash);
+    }
     return status;
 }
 

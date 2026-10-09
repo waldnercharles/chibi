@@ -1062,6 +1062,15 @@ TEST_CASE(native_player_plays_sounds)
     game_audio *audio = game_world_modules(game_player_world(player))->audio;
     REQUIRE(game_audio_sound_count(audio) == 1);
     REQUIRE(!memcmp(game_audio_sound(audio, 0, &length), wav, sizeof wav) && length == sizeof wav);
+    /* Recordings identify the library by its names and files. */
+    game_audio *library = game_audio_new();
+    uint64_t empty = game_audio_library_hash(library);
+    game_audio_add_sound(library, "Jump", wav, sizeof wav);
+    REQUIRE(game_audio_library_hash(library) == game_audio_library_hash(audio));
+    REQUIRE(game_audio_library_hash(library) != empty);
+    game_audio_add_sound(library, "Land", wav, sizeof wav);
+    REQUIRE(game_audio_library_hash(library) != game_audio_library_hash(audio));
+    game_audio_free(library);
     /* The library's records, names and copies count against the retained
      * storage budget. */
     size_t budget = 1 << 20;
@@ -1131,11 +1140,12 @@ TEST_CASE(native_player_plays_sounds)
                                  .length = sizeof text };
     REQUIRE(!game_player_asset_valid(&sound));
     /* Players only take sounds they can decode: not WAVE_FORMAT_EXTENSIBLE,
-     * surround, 12-bit samples, or less than one whole frame. */
+     * surround, 12-bit samples, less than one whole frame, or 48 kHz, which
+     * the 44.1 kHz mixer would play slow and low. */
     static const struct
     {
         int at, value;
-    } undecodable[] = { { 20, 0xFFFE }, { 22, 6 }, { 34, 12 }, { 40, 1 } };
+    } undecodable[] = { { 20, 0xFFFE }, { 22, 6 }, { 34, 12 }, { 40, 1 }, { 24, 48000 } };
     for (size_t i = 0; i < sizeof undecodable / sizeof *undecodable; i++) {
         unsigned char edited[sizeof wav];
         memcpy(edited, wav, sizeof wav);
@@ -1159,10 +1169,11 @@ TEST_CASE(native_player_plays_sounds)
     memcpy(early + 12, wav + 36, 12);
     memcpy(early + 24, wav + 12, 24);
     REQUIRE(!game_sound_format_of(early, sizeof early));
-    /* A page holding only a stereo Vorbis identification header, an empty
-     * page that ends the stream, and a few trailing bytes. */
+    /* A page holding only a stereo 44.1 kHz Vorbis identification header, an
+     * empty page that ends the stream, and a few trailing bytes. */
     unsigned char ogg[88] = { 'O', 'g', 'g', 'S' };
     ogg[5] = 2, ogg[26] = 1, ogg[27] = 30, ogg[28] = 1, ogg[39] = 2;
+    ogg[40] = 0x44, ogg[41] = 0xAC;
     memcpy(ogg + 29, "vorbis", 6);
     memcpy(ogg + 58, "OggS", 4);
     ogg[63] = 4;
@@ -1177,6 +1188,9 @@ TEST_CASE(native_player_plays_sounds)
     ogg[5] = 6;
     REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
     ogg[5] = 2;
+    ogg[40] = 0x80, ogg[41] = 0xBB; /* 48 kHz */
+    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    ogg[40] = 0x44, ogg[41] = 0xAC;
     ogg[39] = 6;
     REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
     memcpy(ogg + 28, "OpusHead", 8);

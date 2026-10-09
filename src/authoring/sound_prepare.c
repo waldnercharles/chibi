@@ -88,8 +88,9 @@ static bool add_sound(
     } else if (game_sound_format_of(bytes, length) != format(file)) {
         /* A file must hold what its extension says, in a form players decode. */
         reason = format(file) == GAME_SOUND_OGG
-                   ? "is not a complete mono or stereo Ogg Vorbis file"
-                   : "is not a plain mono or stereo PCM or float WAV file";
+                   ? "is not a complete mono or stereo 44.1 kHz Ogg Vorbis file"
+                   : "is not a plain mono or stereo 44.1 kHz PCM or float WAV "
+                     "file";
     }
     if (reason) {
         snprintf(error, size, "sounds/%s: %s", file, reason);

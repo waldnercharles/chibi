@@ -559,6 +559,10 @@ void engine_reset(engine *engine)
     if (engine->input) {
         engine_input_reset(engine->input);
     }
+    /* Only a restart clears audio; it carries on across scene changes. */
+    if (engine_audio(engine)) {
+        game_audio_reset(engine_audio(engine));
+    }
     engine_reset_scene(engine);
 }
 
@@ -584,9 +588,6 @@ void engine_reset_scene(engine *engine)
         }
         if (engine->modules.visibility) {
             game_visibility_reset(engine->modules.visibility);
-        }
-        if (engine_audio(engine)) {
-            game_audio_reset(engine_audio(engine));
         }
         if (engine_ui(engine)) {
             game_ui_reset(engine_ui(engine));

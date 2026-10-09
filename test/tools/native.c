@@ -1,6 +1,7 @@
 #include "execution/function_builder.h"
 #include "execution/module_builder.h"
 #include "execution/status.h"
+#include "runtime/audio.h"
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/behaviors/entities_source.h"
 #include "runtime/component_catalog.h"
@@ -702,7 +703,8 @@ TEST_CASE(native_player_loads_named_scenes)
     other_scene = one_object_scene("Goal", 2, NULL);
     REQUIRE(scene && other_scene);
     game_player_named_scene named = { "Start", other_scene };
-    game_player_spec spec = { .scene = scene,
+    game_player_spec spec = { .world = { .modules = GAME_WORLD_AUDIO },
+                              .scene = scene,
                               .scene_name = "Start",
                               .scenes = &named,
                               .scene_count = 1 };
@@ -734,13 +736,17 @@ TEST_CASE(native_player_loads_named_scenes)
 
     REQUIRE(game_save_set(save, "level", "1") && game_save_commit(save));
     REQUIRE(game_save_set(save, "unsaved", "1"));
+    game_audio *audio = engine_audio(runtime);
+    REQUIRE(game_audio_emit(audio, (game_sound){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
+    uint64_t cues = game_audio_hash(audio);
     REQUIRE(follow("Next", error, sizeof error));
     REQUIRE(!strcmp(game_scene_flow_current(flow), "Next"));
     REQUIRE(ecs_world_live_count(game_world_ecs(w)) == 1);
     REQUIRE(first_x(player) == 2);
     REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 0);
     REQUIRE(!strcmp(game_save_get(save, "level"), "1") && !game_save_get(save, "unsaved"));
-    /* The clock goes on across a load. */
+    /* The clock and sounds go on across a load. */
+    REQUIRE(game_audio_count(audio) == 1 && game_audio_hash(audio) == cues);
     REQUIRE(engine_frame(runtime, .1) == 0);
     REQUIRE(engine_last_timing(runtime)->simulation_steps > steps);
 
@@ -755,6 +761,8 @@ TEST_CASE(native_player_loads_named_scenes)
 
     REQUIRE(!game_player_load_scene(player, "Missing", error, sizeof error));
     REQUIRE(!strcmp(error, "No scene named 'Missing'"));
+    engine_reset(runtime);
+    REQUIRE(game_audio_count(audio) == 0);
     return true;
 }
 void test_tool_native()

@@ -82,11 +82,12 @@ running one with `reload_scene()`, and read its name with `current_scene()`. A
 scene's name is its file name in `content/scenes` without `.kdl`. A request
 takes effect after the frame: the host destroys every entity, discards
 uncommitted save changes, keeps committed save data, and starts the scene, whose
-Begin runs before its first frame. Time and held input carry on. `chibi-compile`
-prepares every scene in `content/scenes`, so the player can load any of them.
-Scene scenarios (`run_scenario`, `runtime_snapshot`, `profile_scenario` and
-recordings) follow requests the same way. Studio play mode cannot load scenes
-yet, so a request there fails with "This host cannot load scenes".
+Begin runs before its first frame. Time, held input and audio carry on.
+`chibi-compile` prepares every scene in `content/scenes`, so the player can load
+any of them. Scene scenarios (`run_scenario`, `runtime_snapshot`,
+`profile_scenario` and recordings) follow requests the same way. Studio play
+mode cannot load scenes yet, so a request there fails with "This host cannot
+load scenes".
 
 ## Runtime identity and capability requests
 

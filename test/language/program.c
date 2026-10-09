@@ -1075,9 +1075,9 @@ TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics)
     }
     return true;
 }
-/* A failed call stack released its frames' host banks; collecting payloads
- * after the failure must not trace them. */
-TEST_CASE(program_collection_skips_a_failed_call_stack)
+/* A failed call stack unwinds at once, so neither payload collection nor a
+ * service rebind reaches the host banks its frames released. */
+TEST_CASE(program_failed_call_stacks_unwind_at_once)
 {
     const char *source = "behavior Failure { n: double = 0;"
                          "function Inner() -> (Result: double) { Delay(1); "
@@ -1098,6 +1098,7 @@ TEST_CASE(program_collection_skips_a_failed_call_stack)
         strcpy(failure_message, "nested failure");
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) < 0);
         execution_program_clear_error(program);
+        execution_program_set_name(program, "rebound after failure");
         REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "n", 0));
     }
@@ -2947,7 +2948,7 @@ TEST_CASE(program_assignments_and_reference_writes_do_not_allocate)
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(program_collection_skips_a_failed_call_stack);
+    RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
     RUN_TEST_CASE(program_system_membership_exit_cancels_pending_work);

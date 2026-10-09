@@ -72,6 +72,7 @@
 #include "support/text_file.h"
 #include "support/text_search.h"
 #include "support/xalloc.h"
+#include "types/type.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -212,6 +213,7 @@ typedef struct
     reference_index *references;
     uint64_t revision;
     uint64_t content_hash;
+    uint64_t components; /* the component schemas the assets were checked against */
 } catalog_snapshot;
 
 static catalog_snapshot CATALOG_SNAPSHOT;
@@ -786,6 +788,7 @@ static int handle_record_scenario(const char *root, yyjson_val *request, respons
 static int handle_replay_scenario(const char *root, yyjson_val *request, response *result, int *exit_code);
 static int handle_read_recording(yyjson_val *request, response *result, int *exit_code);
 static uint64_t catalog_content_hash(const catalog_asset *assets);
+static uint64_t components_hash();
 static int load_asset(
     const char *root,
     yyjson_val *request,
@@ -2719,7 +2722,9 @@ static int catalog_snapshot_get(
     if (enumerate_assets(root, &entries, error, error_size) != 0) {
         return -1;
     }
+    uint64_t components = components_hash();
     if (CATALOG_SNAPSHOT.assets && !strcmp(CATALOG_SNAPSHOT.root, root) &&
+        CATALOG_SNAPSHOT.components == components &&
         asset_entries_equal(entries, CATALOG_SNAPSHOT.entries)) {
         free_asset_entries(entries);
         *out = CATALOG_SNAPSHOT.assets;
@@ -2743,6 +2748,7 @@ static int catalog_snapshot_get(
     CATALOG_SNAPSHOT.references = references;
     CATALOG_SNAPSHOT.revision = next_revision;
     CATALOG_SNAPSHOT.content_hash = catalog_content_hash(assets);
+    CATALOG_SNAPSHOT.components = components;
     *out = CATALOG_SNAPSHOT.assets;
     *revision = CATALOG_SNAPSHOT.revision;
     *content_hash = CATALOG_SNAPSHOT.content_hash;
@@ -3078,6 +3084,26 @@ static void catalog_hash_text(uint64_t *hash, const char *text)
         *hash ^= *value;
         *hash *= UINT64_C(1099511628211);
     }
+}
+
+/* A project's declarations change its component schemas without changing
+ * any asset the catalog lists. */
+static uint64_t components_hash()
+{
+    uint64_t hash = UINT64_C(1469598103934665603);
+    ecs_component_catalog catalog = project_components();
+    for (int i = 0; i < catalog.component_count; i++) {
+        char layout[32];
+        snprintf(
+            layout,
+            sizeof layout,
+            ":%016llx;",
+            (unsigned long long)type_layout_hash(catalog.components[i]->type)
+        );
+        catalog_hash_text(&hash, catalog.components[i]->name);
+        catalog_hash_text(&hash, layout);
+    }
+    return hash;
 }
 
 static uint64_t catalog_content_hash(const catalog_asset *assets)

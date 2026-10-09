@@ -58,8 +58,9 @@ The Environment also sets how scene-linear light reaches the display:
   so the boost tops out near 7.5 stops, and a frame with no lit pixels keeps
   the authored exposure. It eases toward the metered value at
   `adaptation_speed` per scene second, from 0.1 to 100, so it holds still while
-  scene time is paused; zero adapts every frame. The first frame and any jump
-  back in scene time, such as a restart, snap to the metered value.
+  scene time is paused; zero adapts every frame. The first frame, any jump
+  back in scene time, and the frame after `app_scene_renderer_reset` (Studio
+  resets on scene load, restart and stop) snap to the metered value.
 
 ## Optional material inputs
 
@@ -79,7 +80,7 @@ queued draws alone. It runs `test_tools` from the desktop build, so set
 `CHIBI_TOOLS_BUILD_DIR=build/test/tools`. llvmpipe leaks 112 bytes from its
 own worker threads, so LeakSanitizer hosts on llvmpipe need
 `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with Vulkan llvmpipe
-passed 14 cases and 64 assertions in 1.9 seconds on 2026-10-09.
+passed 14 cases and 66 assertions in 1.9 seconds on 2026-10-09.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

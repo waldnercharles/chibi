@@ -501,10 +501,13 @@ static void add_locations(
         if (locations[i].definition != definitions) {
             continue;
         }
-        char path[1024];
-        snprintf(path, sizeof path, "content%s", locations[i].path + prefix);
+        const char *rest = locations[i].path + prefix;
+        size_t size = strlen("content") + strlen(rest) + 1;
+        char *path = xmalloc(size);
+        snprintf(path, size, "content%s", rest);
         yyjson_mut_val *place = yyjson_mut_arr_add_obj(doc, array);
         yyjson_mut_obj_add_strcpy(doc, place, "path", path);
+        free(path);
         yyjson_mut_obj_add_int(doc, place, "line", locations[i].line);
         yyjson_mut_obj_add_int(doc, place, "column", locations[i].column);
     }

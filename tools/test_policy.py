@@ -85,6 +85,8 @@ TOOLS = {
     'text-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--text-format'],
     # Three reviewed native cases: retained spawn generations, a three-step physics world, and prepared player handoff/rejection.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native'],
+    # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.
+    'physics': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--physics'],
     'ui-authoring': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--ui-authoring'],
     'prototype-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--prototype-document'],
     # Five reviewed bounded field cases, including atomic typed argument codec handoff.
@@ -122,12 +124,12 @@ TOOLS = {
 }
 # Every admitted selector of each built driver, run under one shared deadline.
 GROUPS = {
-    'native': ['native-runtime', 'native-catalog', 'native-values', 'runtime-scene', 'scene-prepared',
-               'render-resources', 'persistent-store', 'whole-alias', 'whole-integer', 'whole-conversion',
-               'whole-select', 'whole-math', 'owned-tick', 'parallel-tick', 'source-native-features',
-               'source-native-numeric-queries', 'source-native-material', 'source-presentation',
-               'system-schedule', 'source-systems', 'source-edit', 'shader-parameters-prepared',
-               'language-prepared'],
+    'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'runtime-scene',
+               'scene-prepared', 'render-resources', 'persistent-store', 'whole-alias',
+               'whole-integer', 'whole-conversion', 'whole-select', 'whole-math', 'owned-tick',
+               'parallel-tick', 'source-native-features', 'source-native-numeric-queries',
+               'source-native-material', 'source-presentation', 'system-schedule',
+               'source-systems', 'source-edit', 'shader-parameters-prepared', 'language-prepared'],
     'language': ['language', 'language-semantic', 'language-execution', 'language-program',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',

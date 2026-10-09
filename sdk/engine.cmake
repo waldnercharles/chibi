@@ -28,7 +28,7 @@ target_link_libraries(chibi_engine PUBLIC chibi_behavior_runtime chibi_entity_ru
     chibi_native_types chibi_scheduling chibi_physics_runtime chibi_material_runtime
     chibi_visibility_runtime chibi_particle_runtime chibi_audio_runtime chibi_ui_runtime chibi_save_runtime chibi_input_runtime
     PRIVATE chibi_task_pool_runtime chibi_spatial_runtime
-    chibi_visual_motion_runtime chibi_execution chibi_support)
+    chibi_visual_motion_runtime chibi_execution chibi_support chibi_declared_components)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(chibi_engine PRIVATE -ffp-contract=off)
 endif()
@@ -37,10 +37,20 @@ if(COMMAND chibi_enable_tracy)
 endif()
 list(APPEND CHIBI_SDK_TARGETS chibi_engine)
 
+# The component types a project declares, shared by the player and authoring.
+add_library(chibi_declared_components STATIC "${CHIBI_SDK_ROOT}/src/runtime/declared_components.c")
+add_library(Chibi::declared_components ALIAS chibi_declared_components)
+set_target_properties(chibi_declared_components PROPERTIES EXPORT_NAME declared_components)
+chibi_sdk_headers(chibi_declared_components PUBLIC runtime/declared_components.h)
+target_link_libraries(chibi_declared_components PUBLIC chibi_native_types chibi_capabilities
+    chibi_execution chibi_types PRIVATE chibi_support)
+list(APPEND CHIBI_SDK_TARGETS chibi_declared_components)
+
 add_library(chibi_player STATIC "${CHIBI_SDK_ROOT}/src/runtime/player.c"
     "${CHIBI_SDK_ROOT}/src/runtime/player_prepared.c")
 add_library(Chibi::player ALIAS chibi_player)
 set_target_properties(chibi_player PROPERTIES EXPORT_NAME player)
 chibi_sdk_headers(chibi_player PUBLIC runtime/player.h runtime/player_prepared.h)
-target_link_libraries(chibi_player PUBLIC chibi_engine chibi_behavior_runtime chibi_scene_runtime chibi_field_catalog)
+target_link_libraries(chibi_player PUBLIC chibi_engine chibi_behavior_runtime chibi_scene_runtime
+    chibi_field_catalog chibi_declared_components)
 list(APPEND CHIBI_SDK_TARGETS chibi_player)

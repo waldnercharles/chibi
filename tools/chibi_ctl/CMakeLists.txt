@@ -62,6 +62,16 @@ add_executable(chibi_ctl main.c prepare.c registry.c)
 target_compile_definitions(chibi_ctl PRIVATE CHIBI_CTL_STANDALONE=1)
 target_include_directories(chibi_ctl PRIVATE "${private_headers}")
 target_link_libraries(chibi_ctl PRIVATE chibi_automation)
+# In the engine tree the SDK's function adds the manifest; installed SDKs
+# ship its resource script.
+if(COMMAND chibi_windows_manifest)
+    chibi_windows_manifest(chibi_ctl)
+elseif(WIN32)
+    enable_language(RC)
+    target_sources(chibi_ctl PRIVATE "${Chibi_RESOURCE_DIR}/windows/chibi.rc")
+    set_source_files_properties("${Chibi_RESOURCE_DIR}/windows/chibi.rc"
+        PROPERTIES OBJECT_DEPENDS "${Chibi_RESOURCE_DIR}/windows/chibi.manifest")
+endif()
 foreach(package IN LISTS packages)
     target_link_libraries(chibi_ctl PRIVATE Chibi::${package})
 endforeach()

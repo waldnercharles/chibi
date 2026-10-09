@@ -189,16 +189,29 @@ void relationship_detach(ecs_world *world, uint32_t slot)
     }
 }
 
+static uint64_t hash_pair(uint64_t hash, ecs_component_id id, uint64_t other)
+{
+    uint64_t value[2] = { id, other };
+    const unsigned char *bytes = (const unsigned char *)value;
+    for (size_t b = 0; b < sizeof value; b++) {
+        hash ^= bytes[b];
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+/* Hashes the slot's targets and, in order, its sources, so child order counts. */
 uint64_t relationship_hash(const ecs_relationship *relationship, uint32_t slot, uint64_t hash)
 {
     for (int i = 0; i < target_count(relationship, slot); i++) {
-        uint64_t value[2] = { relationship->desc.id,
-                              ecs_entity_to_u64(target_at(relationship, slot, i)) };
-        const unsigned char *bytes = (const unsigned char *)value;
-        for (size_t b = 0; b < sizeof value; b++) {
-            hash ^= bytes[b];
-            hash *= UINT64_C(1099511628211);
-        }
+        hash = hash_pair(
+            hash,
+            relationship->desc.id,
+            ecs_entity_to_u64(target_at(relationship, slot, i))
+        );
+    }
+    for (int i = 0; i < acount(relationship->sources[slot]); i++) {
+        hash = hash_pair(hash, ~relationship->desc.id, relationship->sources[slot][i]);
     }
     return hash;
 }

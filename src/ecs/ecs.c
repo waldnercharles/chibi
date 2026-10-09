@@ -857,9 +857,11 @@ static int apply_name(ecs_world *world, const ecs_command *command)
         return ECS_ERR_DUPLICATE;
     }
     ecs_component *names = &world->components[NAME_COMPONENT];
+    /* ON_ADD sees the command's copy until write_value moves it to the row. */
+    ecs_name staged = { name };
     int result = component_matches(names, slot)
                    ? ECS_OK
-                   : add_component(world, names, command->entity, NULL);
+                   : add_component(world, names, command->entity, &staged);
     pin_value value = NAME_VALUE;
     value.str = name;
     if (result == ECS_OK) {
@@ -880,7 +882,7 @@ static int apply_child_index(ecs_world *world, const ecs_command *command)
         return ECS_ERR_ENTITY;
     }
     if (!hierarchy_parent(world, command->entity.slot)) {
-        return ECS_ERR_COMPONENT;
+        return ECS_OK; /* Unparented earlier in the sync point. */
     }
     hierarchy_move_child(world, command->entity.slot, *(const int *)command->value);
     return ECS_OK;
@@ -932,13 +934,11 @@ ecs_world *ecs_world_new()
     world->execution.intern_string = execution_intern;
     int result = ecs_world_reserve_entities(world, INITIAL_ENTITY_SLOTS - 1);
     assert(!result);
-    for (int i = 0;
-         !result && i < (int)(sizeof BUILTIN_COMPONENTS / sizeof *BUILTIN_COMPONENTS);
+    for (int i = 0; i < (int)(sizeof BUILTIN_COMPONENTS / sizeof *BUILTIN_COMPONENTS);
          i++) {
-        result = ecs_world_register_component(world, &BUILTIN_COMPONENTS[i], NULL);
+        result |= ecs_world_register_component(world, &BUILTIN_COMPONENTS[i], NULL);
     }
-    result = result ? result
-                    : ecs_world_register_relationship(world, &CHILD_OF_DESC, NULL);
+    result |= ecs_world_register_relationship(world, &CHILD_OF_DESC, NULL);
     assert(!result);
     (void)result;
     return world;
@@ -1080,6 +1080,9 @@ int ecs_world_add_with(ecs_world *world, ecs_component_id component_id, ecs_comp
     ecs_component *component = find_component(world, component_id);
     if (!component || !find_component(world, implied) || implied == component_id) {
         return ECS_ERR_COMPONENT;
+    }
+    if (implied == ECS_NAME) {
+        return ECS_ERR_ARGUMENT; /* Names are set only through record_name. */
     }
     for (int i = 0; i < acount(component->with); i++) {
         if (component->with[i] == implied) {
@@ -2243,6 +2246,11 @@ uint64_t ecs_world_hash(const ecs_world *world)
                 continue;
             }
             hash = hash_bytes(hash, &component->desc.id, sizeof component->desc.id);
+            if (i == NAME_COMPONENT) {
+                const char *name = hierarchy_name(world, slot);
+                hash = hash_bytes(hash, name, strlen(name));
+                continue;
+            }
             hash = hash_bytes(
                 hash,
                 component_address(component, slot),

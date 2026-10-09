@@ -212,6 +212,52 @@ TEST_CASE(ecs_disabled_entities_leave_queries_that_do_not_name_them)
     return true;
 }
 
+static void record_added_name(ecs_world *observed, ecs_event, ecs_entity entity, ecs_component_id, void *user)
+{
+    const char *name = ecs_entity_name(observed, entity);
+    *(bool *)user = name && !strcmp(name, "Spawned");
+}
+
+/* Builds Level with children A and B, then reorders them when reorder is set. */
+static uint64_t named_tree_hash(bool reorder)
+{
+    ecs_world *saved = world;
+    world = ecs_world_new();
+    ecs_entity level = spawn_child((ecs_entity){ 0 }, "Level");
+    char name[] = "A";
+    spawn_child(level, name);
+    name[0] = 'B';
+    ecs_entity b = spawn_child(level, name);
+    if (reorder) {
+        assert(ecs_world_record_child_index(world, b, 0, 0) == ECS_OK);
+        assert(ecs_world_apply_commands(world) == ECS_OK);
+    }
+    uint64_t hash = ecs_world_hash(world);
+    ecs_world_free(world);
+    world = saved;
+    return hash;
+}
+
+TEST_CASE(ecs_names_apply_with_creates_and_hash_by_content)
+{
+    bool seen = false;
+    REQUIRE(ecs_world_observe(world, ECS_ON_ADD, ECS_NAME, record_added_name, &seen) > 0);
+    ecs_entity parent = spawn_child((ecs_entity){ 0 }, "Parent");
+    ecs_entity child = spawn();
+    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_name(world, child, "Spawned", 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(seen && same(ecs_lookup(world, (ecs_entity){ 0 }, "Parent.Spawned"), child));
+    REQUIRE(ecs_world_record_child_index(world, child, 0, 1) == ECS_OK);
+    REQUIRE(ecs_world_record_remove_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(same(ecs_lookup(world, (ecs_entity){ 0 }, "Spawned"), child));
+    REQUIRE(ecs_world_add_with(world, health_desc.id, ECS_NAME) == ECS_ERR_ARGUMENT);
+    REQUIRE(named_tree_hash(false) == named_tree_hash(false));
+    REQUIRE(named_tree_hash(false) != named_tree_hash(true));
+    return true;
+}
+
 void test_tool_ecs_hierarchy()
 {
     pu_setup(prepare_world, release_world);
@@ -219,5 +265,6 @@ void test_tool_ecs_hierarchy()
     RUN_TEST_CASE(ecs_names_resolve_paths_and_stay_unique_among_siblings);
     RUN_TEST_CASE(ecs_destroying_a_parent_destroys_its_named_subtree);
     RUN_TEST_CASE(ecs_disabled_entities_leave_queries_that_do_not_name_them);
+    RUN_TEST_CASE(ecs_names_apply_with_creates_and_hash_by_content);
     pu_clear_setup();
 }

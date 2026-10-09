@@ -294,7 +294,7 @@ void run_ecs_checks(void)
             ecs_world_hash(ordered) != 0,
         "identical seeded worlds expose an identical deterministic hash"
     );
-    test_check(ecs_world_component_count(ordered) == 1, "component registration remains independent per world");
+    test_check(ecs_world_component_count(ordered) == 3, "component registration remains independent per world");
     test_check(
         ecs_world_iteration_begin(world) == ECS_OK &&
             ecs_world_iteration_end(world) == ECS_OK,

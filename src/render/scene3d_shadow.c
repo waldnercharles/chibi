@@ -603,7 +603,7 @@ void render_scene3d_shadow_bind(render_scene3d_shadow *shadow, int count)
         texels[i] = shadow->cascades[i].texel;
         ranges[i] = shadow->cascades[i].range;
     }
-    CF_V4 soft = { count ? shadow->spread : 0 };
+    CF_V4 soft = { .x = shadow->spread };
     /* Cascades, a square's texel in its own UV, and a square's size in atlas UV. */
     CF_V4 settings = { (float)count,
                        1.0f / TILE,

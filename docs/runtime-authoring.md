@@ -37,8 +37,11 @@ and icon, and every asset. Markup in `content/ui` must be a regular file:
 `problems` list only the assets with errors or warnings, each diagnostic naming
 what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
 model and a shape share a name there is no catalog, so it lists no asset
-problems until one is renamed. It never changes files: a project saved by an
-earlier build fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
+problems until one is renamed. Once nothing else is wrong, it prepares the
+project as `chibi-compile` does and lists what preparation refuses, such as
+resources that together pass the player's 4,096 records or 64 MiB, so a valid
+project compiles. It never changes files: a project saved by an earlier build
+fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
 A prototype is the `name` it declares, whatever its file is called: scenes and
 other prototypes' `(array)includes` find it by that name in the player and in
 `chibi_ctl` alike, and two prototypes that declare one name, or a name over

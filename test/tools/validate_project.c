@@ -13,6 +13,8 @@
 
 /* The longest prototype name the player takes, GAME_PROTOTYPE_NAME_MAX. */
 #define PROTOTYPE_NAME_MAX 1024
+/* How many resources a player takes in all, GAME_PLAYER_MAX_ASSETS. */
+#define PLAYER_MAX_ASSETS 4096
 
 /* An Ogg Vorbis file's first page holds only its 30-byte identification
  * header; a page with no segments is its header alone. */
@@ -566,6 +568,40 @@ TEST_CASE(sounds_must_decode)
     return true;
 }
 
+/* The smallest WAV players take: one silent 16-bit mono frame at 44.1 kHz. */
+static const unsigned char SILENCE[] = {
+    'R',  'I',  'F', 'F', 38,   0,    0,    0, 'W', 'A', 'V', 'E',
+    'f',  'm',  't', ' ', 16,   0,    0,    0, 1,   0,   1,   0,
+    0x44, 0xAC, 0,   0,   0x88, 0x58, 0x01, 0, 2,   0,   16,  0,
+    'd',  'a',  't', 'a', 2,    0,    0,    0, 0,   0
+};
+
+static void write_silences(int first, int end)
+{
+    for (int i = first; i < end; i++) {
+        char name[64];
+        snprintf(name, sizeof name, "game/content/sounds/%04d.wav", i);
+        write_bytes(name, SILENCE, sizeof SILENCE);
+    }
+}
+
+TEST_CASE(resources_are_limited_together)
+{
+    /* Even a new project carries resources besides its sounds, so sounds
+     * that fit the player's resource count on their own overflow it with
+     * them, and compiling refuses the project. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/sounds");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_silences(0, 1);
+    REQUIRE(validate() == 0);
+    write_silences(1, PLAYER_MAX_ASSETS - 1);
+    REQUIRE(validate() != 0 && errors() == 1);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "cannot be read within the resource limit"));
+    return true;
+}
+
 /* Whether `text` is there and reads `expected`. */
 static bool reads(const char *text, const char *expected)
 {
@@ -829,6 +865,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(prototypes_are_found_by_declared_name);
     RUN_TEST_CASE(scenarios_load_graph_assets);
     RUN_TEST_CASE(sounds_must_decode);
+    RUN_TEST_CASE(resources_are_limited_together);
     RUN_TEST_CASE(manifest_content_folder_is_used);
     RUN_TEST_CASE(scenes_run_under_their_own_name);
     pu_clear_setup();

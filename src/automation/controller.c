@@ -6473,6 +6473,35 @@ static int validate_sounds(const char *root, yyjson_mut_doc *doc, yyjson_mut_val
     return !valid;
 }
 
+/* Prepares the project as chibi-compile does, which refuses more than the
+   checks before it, such as resources that only overflow the player's limits
+   together; the refusal is a problem of the project. Returns how many, at
+   most one. */
+static int validate_preparation(const char *root, yyjson_mut_doc *doc, yyjson_mut_val *project)
+{
+    char error[512] = { 0 };
+    native_capabilities *native = authoring_application_catalog_new(
+        studio_project_is(root),
+        error,
+        sizeof error
+    );
+    authoring_project_options options = {
+        .project = root,
+        .native = native,
+        .components = { GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT },
+        .modules = GAME_WORLD_MODULES_ALL
+    };
+    authoring_project_artifact artifact = { 0 };
+    bool valid = native &&
+                 authoring_project_prepare(&options, &artifact, error, sizeof error);
+    authoring_project_artifact_free(&artifact);
+    native_capabilities_free(native);
+    if (!valid) {
+        add_load_diagnostic(doc, project, error);
+    }
+    return !valid;
+}
+
 /* The manifest opens at this build's version and names a start scene that
    exists and loads, a UI document that exists, and a title and icon that
    preparation accepts, and the ui folder holds only regular markup files;
@@ -6687,6 +6716,12 @@ static int handle_validate_project(const char *root, response *result, int *exit
     }
     free(placed);
     source_catalog_free(catalog);
+    /* Only once nothing else is wrong, since preparation stops at the first
+       problem and would repeat one listed above. The project then opened at
+       this build's version, so preparation never upgrades its files. */
+    if (!errors) {
+        errors = validate_preparation(root, doc, project);
+    }
     yyjson_mut_obj_add_bool(doc, value, "valid", errors == 0);
     yyjson_mut_obj_add_int(doc, value, "assets", acount(assets));
     yyjson_mut_obj_add_int(doc, value, "errors", errors);

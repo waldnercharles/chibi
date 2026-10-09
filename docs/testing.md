@@ -166,7 +166,7 @@ of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-fourteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+fifteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
@@ -185,11 +185,12 @@ or one declaring a name longer than the player takes, fails it; a scene runs as
 a scenario in a project that has a material; a scene requested by its file name
 runs, and reloads, under its own name; a scenario and validation accept a real
 Ogg Vorbis sound, but refuse copies whose headers or audio packets players
-cannot decode; and in a project whose manifest names another content folder,
-assets are scaffolded, validated, run, formatted, found and reported there
-under their `content/` paths, and `status` names that folder even once the
-project is too old to open. A few short `chibi_ctl` runs, CPU only; the project
-is removed afterwards.
+cannot decode; sounds that fit the player's resource count alone, but not with
+the project's other resources, fail validation as they fail compiling; and in a
+project whose manifest names another content folder, assets are scaffolded,
+validated, run, formatted, found and reported there under their `content/`
+paths, and `status` names that folder even once the project is too old to open.
+A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,

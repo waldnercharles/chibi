@@ -351,6 +351,12 @@ static bool application_icon_read(
     free(data);
     return true;
 }
+bool authoring_project_application_valid(const chibi_project *project, char *error, size_t size)
+{
+    game_player_asset icon;
+    return application_title_valid(project, error, size) &&
+           application_icon_read(project, &icon, error, size);
+}
 static uint64_t content_hash(const void *data, size_t size)
 {
     const unsigned char *bytes = data;

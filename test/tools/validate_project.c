@@ -1,3 +1,4 @@
+#include "assets/project.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
@@ -26,8 +27,9 @@ static void write_file(const char *relative, const char *text)
     tool_write(file, text);
 }
 
-/* Sends one request to chibi_ctl from `root`, inside the project "game" when
- * `scoped`; returns its exit status and keeps its reply. */
+/* Sends requests, one per line, to one chibi_ctl from `root`, inside the
+ * project "game" when `scoped`; returns its exit status and keeps the last
+ * reply. */
 static int ctl(bool scoped, const char *request)
 {
     write_file("request.json", request);
@@ -38,6 +40,9 @@ static int ctl(bool scoped, const char *request)
     int status = tool_run(args, root, log_path);
     char *output = tool_read(log_path);
     const char *json = output ? strstr(output, "{\"contract\"") : NULL;
+    for (const char *next; json && (next = strstr(json + 1, "{\"contract\""));) {
+        json = next;
+    }
     yyjson_doc_free(reply);
     reply = json ? yyjson_read(json, strlen(json), YYJSON_READ_STOP_WHEN_DONE) : NULL;
     free(output);
@@ -60,10 +65,15 @@ static int errors()
     return (int)yyjson_get_int(result("errors"));
 }
 
-/* The message of the first diagnostic in `diagnostics`. */
+/* The message of the diagnostic at `index` in `diagnostics`. */
+static const char *message_at(yyjson_val *diagnostics, size_t index)
+{
+    return yyjson_get_str(yyjson_obj_get(yyjson_arr_get(diagnostics, index), "message"));
+}
+
 static const char *first_message(yyjson_val *diagnostics)
 {
-    return yyjson_get_str(yyjson_obj_get(yyjson_arr_get_first(diagnostics), "message"));
+    return message_at(diagnostics, 0);
 }
 
 static void set_start_scene(const char *scene)
@@ -188,11 +198,26 @@ TEST_CASE(missing_ui_documents_are_reported)
     /* Preparation only reads regular files. */
     path(hud, sizeof hud, "game/content/ui/Hud.rml");
     REQUIRE(mkdir(hud, 0700) == 0);
-    REQUIRE(validate() != 0 && errors() == 2);
+    REQUIRE(validate() != 0 && errors() == 3);
     REQUIRE(!strcmp(first_message(result("project")), "Unknown UI document 'Hud'"));
+    REQUIRE(!strcmp(message_at(result("project"), 1), "UI document 'Hud' is not a regular file"));
     REQUIRE(rmdir(hud) == 0);
+    /* Preparation follows a link, but the catalog never does, so linked
+     * markup is never checked and is refused, named or not. */
+    char broken[256], extra[256];
+    write_file("broken.rml", "<div>\n");
+    path(broken, sizeof broken, "broken.rml");
+    REQUIRE(symlink(broken, hud) == 0);
+    REQUIRE(validate() != 0 && errors() == 3);
+    REQUIRE(!strcmp(first_message(result("project")), "Unknown UI document 'Hud'"));
+    REQUIRE(unlink(hud) == 0);
     write_file("game/content/ui/Hud.rml", "<div>Score</div>\n");
     write_file("game/content/ui/Pause.rml", "<div>Paused</div>\n");
+    path(extra, sizeof extra, "game/content/ui/Extra.rml");
+    REQUIRE(symlink(broken, extra) == 0);
+    REQUIRE(validate() != 0 && errors() == 1);
+    REQUIRE(!strcmp(first_message(result("project")), "UI document 'Extra' is not a regular file"));
+    REQUIRE(unlink(extra) == 0);
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
 
     /* A GameUi document is looked up the same way, by name only, in the
@@ -283,6 +308,133 @@ TEST_CASE(old_projects_are_not_upgraded)
     return true;
 }
 
+TEST_CASE(application_settings_are_checked)
+{
+    /* Preparation decodes the icon, so one that is missing or not a PNG
+     * fails validation too. */
+    append_manifest("application {\n    icon \"icon.png\"\n}\n");
+    REQUIRE(validate() != 0 && errors() == 1);
+    const char *message = first_message(result("project"));
+    REQUIRE(
+        message &&
+        strstr(message, "Application icon is not a readable PNG: icon.png: ") == message
+    );
+    write_file("game/icon.png", "not a png");
+    REQUIRE(validate() != 0 && errors() == 1);
+    static const unsigned char png[] = {
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+        0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0xDA, 0x63, 0x64, 0x60, 0xF8, 0x5F,
+        0x0F, 0x00, 0x02, 0x87, 0x01, 0x80, 0xEB, 0x47, 0xBA, 0x92, 0x00, 0x00,
+        0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+    };
+    char icon[256];
+    path(icon, sizeof icon, "game/icon.png");
+    FILE *file = fopen(icon, "wb");
+    REQUIRE(file && fwrite(png, 1, sizeof png, file) == sizeof png && !fclose(file));
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+
+    /* The window shows the project name unless a title replaces it. */
+    static const char NAME_LINE[] = "name \"Game\"\n";
+    char manifest[256], name[CHIBI_APPLICATION_TEXT_MAX + 2],
+        updated[2 * CHIBI_APPLICATION_TEXT_MAX];
+    path(manifest, sizeof manifest, "game/project.kdl");
+    char *text = tool_read(manifest);
+    char *line = text ? strstr(text, NAME_LINE) : NULL;
+    REQUIRE(line);
+    memset(name, 'G', sizeof name - 1);
+    name[sizeof name - 1] = '\0';
+    *line = '\0';
+    snprintf(updated, sizeof updated, "%sname \"%s\"\n%s", text, name, line + strlen(NAME_LINE));
+    free(text);
+    tool_write(manifest, updated);
+    REQUIRE(validate() != 0 && errors() == 1);
+    REQUIRE(strstr(first_message(result("project")), "set a shorter application title"));
+    return true;
+}
+
+TEST_CASE(prototype_includes_resolve)
+{
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameHealth current=3 maximum=3\n}\n(array)behaviors \"Spin\"\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Spin\"}") == 0
+    );
+    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Hull\"\ncomponents {\n    GameTransform x=1 y=2\n}\n");
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Drone\" prototype=\"Drone\"\n}\n");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Drone\"}") ==
+        0
+    );
+    REQUIRE(yyjson_get_int(result("components")) == 2);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    /* The formatter keeps the include instead of folding Hull's components in. */
+    const char *args[] = { program, "--project-root", "game", "--format", NULL };
+    REQUIRE(tool_run(args, root, log_path) == 0);
+    char drone[256];
+    path(drone, sizeof drone, "game/content/prototypes/Drone.kdl");
+    char *text = tool_read(drone);
+    bool kept = text && strstr(text, "(array)includes \"Hull\"") &&
+                !strstr(text, "GameHealth");
+    free(text);
+    REQUIRE(kept);
+    /* The include is an edge from Drone to Hull, and only Drone's. Hull's
+     * behavior stays Hull's reference. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"asset_dependencies\",\"kind\":\"prototype\",\"name\":\"Drone\"}") ==
+        0
+    );
+    yyjson_val *edges = result("edges");
+    REQUIRE(yyjson_arr_size(edges) == 1);
+    yyjson_val *to = yyjson_obj_get(yyjson_arr_get_first(edges), "to");
+    REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(to, "name")), "Hull"));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"asset_dependencies\",\"kind\":\"prototype\",\"name\":\"Hull\",\"direction\":\"incoming\"}") ==
+        0
+    );
+    REQUIRE(yyjson_arr_size(result("edges")) == 1);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"asset_dependencies\",\"kind\":\"behavior\",\"name\":\"Spin\",\"direction\":\"incoming\"}") ==
+        0
+    );
+    REQUIRE(yyjson_arr_size(result("edges")) == 1);
+    /* One controller first finds Drone's include missing, then sees the Hull
+     * it creates, so only its last reply is checked. */
+    char hull[256];
+    path(hull, sizeof hull, "game/content/prototypes/Hull.kdl");
+    REQUIRE(unlink(hull) == 0);
+    ctl(true,
+        "{\"contract\":1,\"operation\":\"validate_project\"}\n"
+        "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\","
+        "\"name\":\"Hull\"}\n"
+        "{\"contract\":1,\"operation\":\"validate_project\"}");
+    REQUIRE(yyjson_get_bool(result("valid")));
+
+    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Nope\"\n");
+    REQUIRE(validate() != 0 && errors() == 2 && yyjson_arr_size(result("problems")) == 2);
+    yyjson_val *problem;
+    size_t index, count;
+    yyjson_arr_foreach(result("problems"), index, count, problem)
+    {
+        const char *message = first_message(yyjson_obj_get(problem, "diagnostics"));
+        REQUIRE(!strcmp(message, "prototype include Nope is unavailable"));
+    }
+    /* An include names a prototype, not its file. */
+    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Hull.kdl\"\n");
+    REQUIRE(validate() != 0 && errors() == 2);
+    problem = yyjson_arr_get_first(result("problems"));
+    const char *message = first_message(yyjson_obj_get(problem, "diagnostics"));
+    REQUIRE(!strcmp(message, "prototype include Hull.kdl is named Hull"));
+    return true;
+}
+
 TEST_CASE(scenarios_load_graph_assets)
 {
     /* A scenario registers each graph asset once, in its one world. */
@@ -314,6 +466,8 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(missing_ui_documents_are_reported);
     RUN_TEST_CASE(catalog_errors_are_reported_once);
     RUN_TEST_CASE(old_projects_are_not_upgraded);
+    RUN_TEST_CASE(application_settings_are_checked);
+    RUN_TEST_CASE(prototype_includes_resolve);
     RUN_TEST_CASE(scenarios_load_graph_assets);
     pu_clear_setup();
 }

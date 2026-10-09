@@ -416,6 +416,15 @@ static const script_catalog_parameter field_write[] = {
       .has_default = true,
       .default_owner = true },
 };
+static const script_catalog_parameter selector[] = {
+    { .name = "Component",
+      .type = { .storage = PIN_NAME },
+      .reference_kind = SCRIPT_REFERENCE_COMPONENT },
+    { .name = "Entity",
+      .type = { .storage = PIN_HANDLE, .nominal = 40 },
+      .has_default = true,
+      .default_owner = true },
+};
 static const script_catalog_parameter reals[] = {
     { .name = "A", .type = { .storage = PIN_F64 } },
     { .name = "B", .type = { .storage = PIN_F64 } }
@@ -466,6 +475,17 @@ static const script_catalog_capability component_capabilities[] = {
       .component_entity = 1,
       .component_value = 0,
       .effects = SCRIPT_EFFECT_WRITE },
+    { .id = 37,
+      .name = "has_component",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = selector,
+      .parameter_count = 2,
+      .results = present,
+      .result_count = 1,
+      .component_access = SCRIPT_COMPONENT_ACCESS_HAS,
+      .component_entity = 1,
+      .component_value = -1,
+      .effects = SCRIPT_EFFECT_READ },
     { .id = 34,
       .name = "multiply",
       .operator_name = "*",
@@ -540,6 +560,21 @@ TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
     return true;
 }
 
+/* A generic call names its component through an argument, not a fixed
+ * component the minimizer could spell as a path, so it keeps its call. */
+TEST_CASE(source_minimize_keeps_generic_component_calls)
+{
+    const char *input = "behavior Demo {\n"
+                        "    on Tick {\n"
+                        "        if has_component(\"Velocity\", self) {\n"
+                        "            e := self\n"
+                        "        }\n"
+                        "    }\n"
+                        "}\n";
+    REQUIRE(minimize_in(&component_catalog, input, input));
+    return true;
+}
+
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
@@ -558,5 +593,6 @@ void test_language_format()
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);
     RUN_TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators);
+    RUN_TEST_CASE(source_minimize_keeps_generic_component_calls);
     pu_setup(NULL, NULL);
 }

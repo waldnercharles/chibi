@@ -6073,6 +6073,21 @@ typedef struct
     uint64_t controls;
 } scenario_context;
 
+static game_scene_flow *scenario_scenes(const scenario_context *context)
+{
+    return game_world_scenes(
+        game_prototype_preview_live(context->preview)->runtime->owner
+    );
+}
+
+/* Mixes in the current scene's name: two scenes can leave the same state
+ * yet answer Current Scene differently. Prototype scenarios have no scene. */
+static uint64_t scenario_scene_hash(const scenario_context *context, uint64_t hash)
+{
+    const char *scene = game_scene_flow_current(scenario_scenes(context));
+    return scene ? scenario_hash_bytes(hash, scene, strlen(scene)) : hash;
+}
+
 static uint64_t scenario_state_hash(scenario_context *context)
 {
     uint64_t hash = scenario_world_hash(game_prototype_preview_world(context->preview));
@@ -6100,12 +6115,12 @@ static uint64_t scenario_state_hash(scenario_context *context)
         game_material_state materials = game_materials_inspect(engine_materials(runtime));
         hash = scenario_hash_bytes(hash, &materials.hash, sizeof materials.hash);
     }
-    return scenario_hash_bytes(hash, &sounds, sizeof sounds);
+    return scenario_scene_hash(context, scenario_hash_bytes(hash, &sounds, sizeof sounds));
 }
 
 typedef struct
 {
-    uint64_t ecs, saved_state, visibility, shader_overrides, materials, audio;
+    uint64_t ecs, saved_state, visibility, shader_overrides, materials, audio, scene;
     uint64_t physics_bodies, physics_contacts, physics_events;
     game_material_hash_parts material;
 } scenario_hash_parts;
@@ -6141,6 +6156,7 @@ static scenario_hash_parts scenario_state_hash_parts(scenario_context *context)
         parts.materials = parts.material.hash;
     }
     parts.audio = game_audio_hash(engine_audio(runtime));
+    parts.scene = scenario_scene_hash(context, seed);
     game_physics_hashes physics = game_physics_hash(
         game_prototype_preview_live(context->preview)->runtime->physics
     );
@@ -6160,6 +6176,7 @@ static void add_scenario_hash_parts(yyjson_mut_doc *doc, yyjson_mut_val *value, 
     add_hash_named(doc, hashes, "shader_overrides", parts.shader_overrides);
     add_hash_named(doc, hashes, "materials", parts.materials);
     add_hash_named(doc, hashes, "audio", parts.audio);
+    add_hash_named(doc, hashes, "scene", parts.scene);
     yyjson_mut_val *physics = yyjson_mut_obj_add_obj(doc, hashes, "physics");
     add_hash_named(doc, physics, "body_state", parts.physics_bodies);
     add_hash_named(doc, physics, "contact_pairs", parts.physics_contacts);
@@ -6499,13 +6516,6 @@ static int prepare_scenario(
         scenario_context_free(context);
     }
     return status;
-}
-
-static game_scene_flow *scenario_scenes(const scenario_context *context)
-{
-    return game_world_scenes(
-        game_prototype_preview_live(context->preview)->runtime->owner
-    );
 }
 
 /* Reads a scene document, applies its physics settings and readies the

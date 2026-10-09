@@ -68,8 +68,10 @@ The smallest complete example is Play Sound:
 
 ## Change saved projects (migration)
 
-A project saved at an older version loads only after `--migrate` upgrades
-it; there are no compatibility aliases (see the first rule in `AGENTS.md`).
+Opening a project saved at an older version (`chibi_project_open`) upgrades
+it in place, and `chibi_ctl --migrate` does the same explicitly. The
+`validate_project` operation refuses an older project until one of them has
+run. There are no compatibility aliases (see the first rule in `AGENTS.md`).
 
 1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
    that upgrades the previous version to the `switch` in

@@ -949,6 +949,7 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(type_catalog_find("Charge") == type);
     ecs_component_catalog components = declared_components_ecs(declared);
     REQUIRE(components.component_count == 1 && components.components[0]->type == type);
+    REQUIRE(components.components[0]->layout_hash == type_layout_hash(type));
     ecs_component_catalog project = project_components();
     REQUIRE(script_catalog_project() == declared_components_catalog(declared));
     REQUIRE(project.component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
@@ -973,7 +974,20 @@ TEST_CASE(native_player_reads_declared_components)
                                    .object_count = 1 };
     scene = game_scene_prepare(&scene_spec, error, sizeof error);
     REQUIRE(scene);
-    game_player_spec spec = { .declared = declared, .scene = scene };
+    game_player_spec spec = { .world = { .components = components },
+                              .declared = declared,
+                              .scene = scene };
+    /* A player keeps its own set's layout while a newer set is published. */
+    declared_component smaller = { .name = "Charge", .fields = &level, .field_count = 1 };
+    declared_components *newer = declared_components_new(&smaller, 1, error, sizeof error);
+    REQUIRE(newer && type_catalog_find("Charge")->size != type->size);
+    player = game_player_new(&spec, error, sizeof error);
+    REQUIRE(player);
+    ecs_world *own = game_world_ecs(game_player_world(player));
+    REQUIRE(ecs_world_component(own, charge_id)->type == type);
+    game_player_free(player);
+    player = NULL;
+    declared_components_free(newer);
     game_player_application application = { 0 };
     size_t length;
     REQUIRE(

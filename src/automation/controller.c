@@ -324,6 +324,7 @@ static const contract_field CONTRACT_SEARCH_ASSETS[] = {
     { "summary", "boolean", false, "Return identity and validation fields without relationship details." },
 };
 static const contract_field CONTRACT_DESCRIBE_REGISTRY[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "sections", "string[]", false, "nodes, types, services, or components; defaults to all but nodes." },
 };
 static const contract_field CONTRACT_CATALOG[] = {
@@ -413,6 +414,7 @@ static const contract_field CONTRACT_SEARCH_NODES[] = {
     { "behavior", "string", false, "A behavior asset's name: offer only the UI events of the GameUi documents on the prototypes and scene objects that attach it." },
 };
 static const contract_field CONTRACT_DESCRIBE_COMPONENTS[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "names", "string[]", false, "Optional component names or stable keys; omit to describe every reflected component." },
 };
 static const contract_field CONTRACT_PROFILE_SCENARIO[] = {

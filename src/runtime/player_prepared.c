@@ -119,7 +119,7 @@ static void assets(execution_wire *wire, game_player_asset **records, int *count
 }
 static void actions(execution_wire *wire, input_action **records, int *count)
 {
-    execution_wire_count(wire, count, 17);
+    execution_wire_count(wire, count, 3);
     for (int i = 0; i < *count && !wire->error; i++) {
         input_action action = wire->reading ? (input_action){ 0 } : (*records)[i];
         wire_name(wire, &action.name);

@@ -618,6 +618,24 @@ static bool reads(const char *text, const char *expected)
     return text && !strcmp(text, expected);
 }
 
+/* Whether the catalog lists `member` among the members of the asset found
+ * by `query`. */
+static bool catalog_lists(const char *query, const char *member)
+{
+    char request[256];
+    snprintf(request, sizeof request, "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"%s\"}", query);
+    if (ctl(true, request) != 0) {
+        return false;
+    }
+    yyjson_val *members = yyjson_obj_get(yyjson_arr_get(result("assets"), 0), "members");
+    for (size_t i = 0; i < yyjson_arr_size(members); i++) {
+        if (reads(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(members, i), "name")), member)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Runs chibi_ctl --format on the project, with "--check" to only compare. */
 static int format(const char *check)
 {
@@ -912,13 +930,7 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
     );
     REQUIRE(global_x("Ship.Turret") == 110 && global_x("Turret") == 0);
     /* The catalog lists a child by its path. */
-    REQUIRE(ctl(true, "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"Start\"}") == 0);
-    yyjson_val *members = yyjson_obj_get(yyjson_arr_get(result("assets"), 0), "members");
-    bool listed = false;
-    for (size_t i = 0; i < yyjson_arr_size(members); i++) {
-        listed |= reads(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(members, i), "name")), "Ship.Turret");
-    }
-    REQUIRE(listed);
+    REQUIRE(catalog_lists("Start", "Ship.Turret"));
     write_file(
         "game/content/scenes/Start.kdl",
         "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Ship\" "
@@ -963,6 +975,7 @@ TEST_CASE(prototype_children_come_with_their_instance)
     /* Snapshots name only the scene's own objects. */
     REQUIRE(yyjson_arr_size(result("entities")) == 2);
     REQUIRE(global_x("Flagship") == 100 && global_x(NULL) == 104);
+    REQUIRE(catalog_lists("Ship", "Gun"));
     /* A child is an edge to the prototype it uses. */
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"asset_dependencies\",\"kind\":\"prototype\",\"name\":\"Ship\"}") ==

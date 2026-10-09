@@ -1399,7 +1399,8 @@ static void catalog_member_add(catalog_asset *asset, const char *kind, const cha
     apush(asset->members, member);
 }
 
-/* Scene entities by path, their children nested under them. */
+/* Scene entities and prototype children by path, their children nested
+ * under them. */
 static void catalog_scan_entities(catalog_asset *asset, yyjson_val *entities, const char *parent, int depth)
 {
     size_t index, count;
@@ -1455,6 +1456,7 @@ static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
         }
     }
     catalog_scan_entities(asset, yyjson_obj_get(root, "entities"), NULL, 0);
+    catalog_scan_entities(asset, yyjson_obj_get(root, "children"), NULL, 0);
     if (acount(asset->members) > 1) {
         asort(asset->members, catalog_member_compare);
     }

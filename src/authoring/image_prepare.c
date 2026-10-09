@@ -116,27 +116,29 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
     *out = (shader_image_view){ pixels, width, height };
     return true;
 }
-bool image_prepare_png_valid(const char *path, char *error, size_t size)
+void *image_prepare_png_read(const char *path, int *length, char *error, size_t size)
 {
-    int length = 0;
     FILE *file = fopen(path, "rb");
-    void *bytes = file ? read_file(file, &length) : NULL;
+    void *bytes = file ? read_file(file, length) : NULL;
     if (!bytes) {
-        return failure(error, size, "Cannot read bounded image file");
+        failure(error, size, "Cannot read bounded image file");
+        return NULL;
     }
     int width = 0, height = 0;
-    chibi_image_cp_load_png_wh(bytes, length, &width, &height);
+    chibi_image_cp_load_png_wh(bytes, *length, &width, &height);
     if (!sides_valid(width, height)) {
         free(bytes);
-        return failure(error, size, IMAGE_SIDES_MESSAGE);
+        failure(error, size, IMAGE_SIDES_MESSAGE);
+        return NULL;
     }
-    chibi_image_cp_image_t image = chibi_image_cp_load_png_mem(bytes, length);
-    free(bytes);
+    chibi_image_cp_image_t image = chibi_image_cp_load_png_mem(bytes, *length);
     if (!image.pix) {
-        return failure(error, size, chibi_image_cp_error_reason);
+        free(bytes);
+        failure(error, size, chibi_image_cp_error_reason);
+        return NULL;
     }
     chibi_image_cp_free_png(&image);
-    return true;
+    return bytes;
 }
 bool render_image_mount_content(const char *root, char *error, size_t size)
 {

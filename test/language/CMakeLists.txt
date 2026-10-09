@@ -24,7 +24,7 @@ add_executable(test_language main.c syntax.c semantic.c execution.c program.c he
 target_include_directories(test_language PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
 target_compile_definitions(test_language PRIVATE
     CHIBI_LANGUAGE_EXAMPLE_DIR="${CHIBI_LANGUAGE_TEST_ROOT}/examples/language")
-target_link_libraries(test_language PRIVATE Chibi::authoring Chibi::source_catalog Chibi::input_map Chibi::source_presentation Chibi::behavior_runtime Chibi::field_catalog Chibi::project_document Chibi::prototype_document Chibi::scene_document Chibi::ui_authoring Chibi::ui_document Chibi::text_capabilities Chibi::state_capabilities Chibi::core_capabilities Chibi::graph_model Chibi::graph_authoring Chibi::graph_compilation Chibi::mesh_runtime Chibi::ui_documents test_behavior_consumer)
+target_link_libraries(test_language PRIVATE Chibi::authoring Chibi::source_catalog Chibi::input_map Chibi::source_presentation Chibi::behavior_runtime Chibi::field_catalog Chibi::project_document Chibi::prototype_document Chibi::scene_document Chibi::ui_authoring Chibi::ui_document Chibi::text_capabilities Chibi::state_capabilities Chibi::arithmetic_capabilities Chibi::core_capabilities Chibi::graph_model Chibi::graph_authoring Chibi::graph_compilation Chibi::mesh_runtime Chibi::ui_documents test_behavior_consumer)
 target_compile_options(test_language PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 if(APPLE)
     target_link_options(test_language PRIVATE -Wl,-dead_strip)

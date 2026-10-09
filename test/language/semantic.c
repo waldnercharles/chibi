@@ -175,6 +175,23 @@ TEST_CASE(language_pure_call_chain_rejects_effects)
     REQUIRE(analysis->valid);
     return true;
 }
+TEST_CASE(language_discarded_pure_result_rejected)
+{
+    parse("system Motion(position: Position) { VectorAdd(position, position); mutate(); }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+    REQUIRE(diagnostic("VectorAdd returns a new value and changes nothing; assign its result"));
+    parse("system Motion(position: Position) { action sum = VectorAdd(position, position); sum(); mutate(); }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+    REQUIRE(diagnostic("sum returns a new value and changes nothing; assign its result"));
+    parse("library Values { function One() -> (count: int) { return 1; } function Use() -> () { One(); } }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    parse("system Motion(position: Position) { position = VectorAdd(position, position); mutate(); }");
+    REQUIRE(analysis->valid);
+    return true;
+}
 TEST_CASE(language_binding_cycle_rejected)
 {
     parse("behavior Bindings { bind self.Position.x = self.Position.y; bind self.Position.y = self.Position.x; }");
@@ -231,6 +248,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);
     RUN_TEST_CASE(language_pure_call_chain_rejects_effects);
+    RUN_TEST_CASE(language_discarded_pure_result_rejected);
     RUN_TEST_CASE(language_binding_cycle_rejected);
     RUN_TEST_CASE(language_inferred_return_of_several_results_is_rejected);
     RUN_TEST_CASE(language_invalid_source_retains_bounded_diagnostics);

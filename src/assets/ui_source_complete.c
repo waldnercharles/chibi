@@ -165,7 +165,7 @@ static void list_files(const char *folder, const char *suffix, bool deep, char *
     }
     closedir(dir);
     if (acount(found) > 1) {
-        qsort(found, (size_t)acount(found), sizeof *found, name_order);
+        asort(found, name_order);
     }
     for (int i = 0; i < acount(found); i++) {
         apush(*paths, found[i]);
@@ -583,7 +583,7 @@ void ui_source_complete(
         complete_css(&r, project, 0, 0);
     }
     if (acount(out->items) > 1) {
-        qsort(out->items, (size_t)acount(out->items), sizeof *out->items, completion_order);
+        asort(out->items, completion_order);
     }
 }
 

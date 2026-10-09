@@ -881,13 +881,7 @@ static const char *verify_instruction(const behavior_function *f, int pc)
             );
             break;
         case BF_CAST:
-            CHECK(
-                scalar_type(f->slots[i->left]) &&
-                    !behavior_scalar_string(f->slots[i->left]) &&
-                    !behavior_scalar_string(i->type) && i->type != PIN_HANDLE &&
-                    f->slots[i->left] != PIN_HANDLE,
-                "invalid numeric cast"
-            );
+            CHECK(behavior_scalar_cast_supported(f->slots[i->left], i->type), "invalid numeric cast");
             break;
         case BF_CONVERT:
             CHECK(
@@ -1124,8 +1118,9 @@ static bool context_address(size_t offset)
         FIELD(inspection_user)
         FIELD(points)
         FIELD(variables)
-        FIELD(states) FIELD(arguments) FIELD(results) FIELD(error_message)
-            FIELD(services) FIELD(queries) FIELD(commands) FIELD(command_arguments)
+        FIELD(states)
+        FIELD(arguments) FIELD(results) FIELD(error_message) FIELD(services)
+            FIELD(queries) FIELD(commands) FIELD(command_arguments)
                 FIELD(command_results) FIELD(owner_type_name) FIELD(world)
                     FIELD(binding_world) FIELD(columns) FIELD(variable_storage)
                         FIELD(value_owner) FIELD(value_storage) FIELD(watches)

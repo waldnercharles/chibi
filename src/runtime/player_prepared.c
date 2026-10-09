@@ -61,7 +61,7 @@ static const void *blob(execution_wire *wire, const void *data, size_t *length)
 }
 static void count(execution_wire *wire, int *value)
 {
-    execution_wire_count(wire, value, 8);
+    execution_wire_count(wire, value, 1);
     if (!wire->error && *value > GAME_PACKAGE_MAX_MODULES) {
         wire->error = "Prepared player record count exceeds limit";
     }
@@ -75,7 +75,7 @@ static void wire_name(execution_wire *wire, const char **value)
 }
 static void assets(execution_wire *wire, game_player_asset **records, int *count)
 {
-    execution_wire_count(wire, count, 40);
+    execution_wire_count(wire, count, 5);
     if (!wire->error && *count > GAME_PLAYER_MAX_ASSETS) {
         wire->error = "Prepared player resource count exceeds limit";
     }
@@ -119,7 +119,7 @@ static void assets(execution_wire *wire, game_player_asset **records, int *count
 }
 static void actions(execution_wire *wire, input_action **records, int *count)
 {
-    execution_wire_count(wire, count, 17);
+    execution_wire_count(wire, count, 3);
     for (int i = 0; i < *count && !wire->error; i++) {
         input_action action = wire->reading ? (input_action){ 0 } : (*records)[i];
         wire_name(wire, &action.name);
@@ -163,7 +163,8 @@ bool game_player_prepared_write(
         (spec->prototype_count && !spec->prototypes) || spec->world.ecs ||
         (spec->world.modules & ~GAME_WORLD_MODULES_ALL) ||
         spec->asset_count < 0 || spec->asset_count > GAME_PLAYER_MAX_ASSETS ||
-        (spec->asset_count && !spec->assets)) {
+        (spec->asset_count && !spec->assets) || spec->world.action_count < 0 ||
+        (spec->world.action_count && !spec->world.actions)) {
         return fail(error, size, "Invalid prepared player record metadata");
     }
     execution_wire wire = { 0 };

@@ -86,11 +86,19 @@ static void leave_context(behavior_function_context *ctx, int result)
     cancel_continuations(ctx);
     program_boxes_detach(a, ctx);
     for (int i = 0; i < acount(a->requests);) {
-        if (a->requests[i]->context != ctx) {
+        command_wait *wait = a->requests[i];
+        if (wait->context != ctx) {
             i++;
             continue;
         }
-        execution_request_detach(a->requests[i]->request);
+        /* A delivered request, such as a spawn still initializing its entity,
+         * belongs to the activation until it finishes, not to the frame. */
+        if (wait->delivered) {
+            wait->context = ctx->parent;
+            i++;
+            continue;
+        }
+        execution_request_detach(wait->request);
     }
 }
 execution_activation *program_activation_new(

@@ -176,7 +176,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_input_map "${CHIBI_SDK_ROOT}/src/assets"
         chibi_input_action chibi_types chibi_asset_values chibi_asset_text chibi_support)
     chibi_sdk_contract(chibi_project_document "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_input_action chibi_input_map chibi_types chibi_asset_text chibi_language_syntax chibi_support)
+        chibi_asset_text chibi_language_syntax chibi_support)
     chibi_sdk_contract(chibi_component_presentation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_ecs chibi_asset_text)
     chibi_sdk_contract(chibi_asset_text "${CHIBI_SDK_ROOT}/src/support"

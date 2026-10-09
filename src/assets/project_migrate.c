@@ -1,11 +1,9 @@
 #include "assets/project_migrate.h"
 
-#include "assets/input_map.h"
 #include "language/syntax.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
-#include "types/catalog.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -1856,45 +1854,45 @@ char *chibi_migrate_scene_behaviors(const char *scene)
     av_doc_free(document);
     return migrated;
 }
-/* Adds one binding's control to its action. A binding without an action or
- * a control, or a disabled one, never held anything. */
-static bool move_binding(const av_value *binding, input_action **map, char *error, size_t error_size)
+/* Adds one binding's control label to its action in the input map `map`. A
+ * binding without an action or a control, or a disabled one, never held
+ * anything. Reading the map checks the labels. */
+static void move_binding(const av_value *binding, av_doc *map)
 {
     const av_value *action = av_obj_get(binding, "action");
     const av_value *source = av_obj_get(binding, "source");
     const av_value *disabled = av_obj_get(binding, "disabled");
     const av_value *firing = av_obj_get(binding, "firing");
     if (!av_is_str(action) || !av_get_str(action)[0] || !av_is_str(source) ||
+        !strcmp(av_get_str(source), "None") ||
         (av_is_bool(disabled) && av_get_bool(disabled))) {
-        return true;
+        return;
     }
-    int control;
-    if (!type_catalog_enum_value("GameControl", av_get_str(source), &control)) {
-        snprintf(error, error_size, "Unknown input control %s", av_get_str(source));
-        return false;
+    av_value *root = av_doc_root(map);
+    av_value *entry = av_obj_get(root, av_get_str(action));
+    if (!av_is_obj(entry)) {
+        entry = av_obj_add_obj(map, root, av_get_str(action));
     }
-    if (control > 0) {
-        input_map_add(
-            map,
-            av_get_str(action),
-            UINT64_C(1) << control,
-            av_is_bool(firing) && av_get_bool(firing)
-        );
+    av_value *sources = av_obj_get(entry, "sources");
+    if (!av_is_arr(sources)) {
+        sources = av_obj_add_arr(map, entry, "sources");
     }
-    return true;
+    bool listed = false;
+    for (size_t i = 0; i < av_arr_size(sources) && !listed; i++) {
+        const av_value *label = av_arr_get(sources, i);
+        listed = av_is_str(label) && !strcmp(av_get_str(label), av_get_str(source));
+    }
+    if (!listed) {
+        av_arr_add_str(map, sources, av_get_str(source));
+    }
+    if (av_is_bool(firing) && av_get_bool(firing)) {
+        av_obj_add_bool(map, entry, "firing", true);
+    }
 }
 /* Removes the bindings from `owner`'s components object `key`, adding active
  * ones to `map`, and drops the object when nothing else is left in it unless
  * `keep` is set. Returns whether any were removed. */
-static bool move_bindings(
-    av_value *owner,
-    const char *key,
-    bool active,
-    bool keep,
-    input_action **map,
-    char *error,
-    size_t error_size
-)
+static bool move_bindings(av_value *owner, const char *key, bool active, bool keep, av_doc *map)
 {
     av_value *components = av_obj_get(owner, key);
     bool changed = false;
@@ -1904,9 +1902,8 @@ static bool move_bindings(
             strcmp(name, "GameActionBinding")) {
             continue;
         }
-        if (active &&
-            !move_binding(av_obj_value_at(components, i), map, error, error_size)) {
-            return false;
+        if (active) {
+            move_binding(av_obj_value_at(components, i), map);
         }
         av_obj_remove_key(components, name);
         changed = true;
@@ -1916,7 +1913,7 @@ static bool move_bindings(
     }
     return changed;
 }
-char *chibi_migrate_action_bindings(const char *asset, input_action **map, char *error, size_t error_size)
+char *chibi_migrate_action_bindings(const char *asset, av_doc *map)
 {
     char message[128];
     av_doc *document = asset_text_read(asset, message, sizeof message);
@@ -1926,47 +1923,102 @@ char *chibi_migrate_action_bindings(const char *asset, input_action **map, char 
         return NULL;
     }
     /* A prototype holds components and detached ones; a scene's entities hold
-     * components and retained ones. */
-    bool changed = move_bindings(root, "components", true, true, map, error, error_size);
-    changed |= move_bindings(root, "detached_components", false, false, map, error, error_size);
+     * components and retained ones, which are detached too. */
+    bool changed = move_bindings(root, "components", true, true, map);
+    changed |= move_bindings(root, "detached_components", false, false, map);
     av_value *entities = av_obj_get(root, "entities");
     for (size_t i = 0; av_is_arr(entities) && i < av_arr_size(entities); i++) {
         av_value *entity = av_arr_get(entities, i);
         if (av_is_obj(entity)) {
-            changed |= move_bindings(entity, "components", true, false, map, error, error_size);
-            changed |= move_bindings(entity, "retained_components", true, false, map, error, error_size);
+            changed |= move_bindings(entity, "components", true, false, map);
+            changed |= move_bindings(entity, "retained_components", false, false, map);
         }
     }
-    char *migrated = changed && !error[0] ? asset_text_write(root) : NULL;
+    char *migrated = changed ? asset_text_write(root) : NULL;
     av_doc_free(document);
     return migrated;
 }
+/* The word in `source`, outside strings and comments, that reads a binding,
+ * or NULL. */
+static const char *binding_use(const char *source)
+{
+    static const char *const words[] = { "ActionBinding",
+                                         "GameActionBinding",
+                                         "PressedChanged" };
+    for (const char *p = source; *p;) {
+        const char *skipped = skip_literal(p);
+        if (skipped != p || !word_char(*p)) {
+            p = skipped != p ? skipped : p + 1;
+            continue;
+        }
+        const char *end = p;
+        while (word_char(*end)) {
+            end++;
+        }
+        for (size_t i = 0; i < sizeof words / sizeof *words; i++) {
+            if ((size_t)(end - p) == strlen(words[i]) &&
+                !strncmp(p, words[i], (size_t)(end - p))) {
+                return words[i];
+            }
+        }
+        p = end;
+    }
+    return NULL;
+}
+static av_doc *empty_map()
+{
+    av_doc *map = av_doc_new();
+    av_doc_set_root(map, av_obj(map));
+    return map;
+}
+static bool code_path(const char *path)
+{
+    size_t length = strlen(path);
+    return length > strlen(".chibi") &&
+           !strcmp(path + length - strlen(".chibi"), ".chibi");
+}
 /* Moves the bindings of every scene and prototype into the input map at
- * paths[target], whose source is empty when the project has none. */
+ * paths[target], whose source is empty when the project has none. Which
+ * action a script's binding read meant depends on its entity, so a script
+ * that reads one stops the migration for a person to rewrite it as
+ * `input.<Action>`. */
 static char **migrate_bindings(char **sources, char **paths, int count, int target, char *error, size_t error_size)
 {
     char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
-    input_action *map = NULL;
-    if (sources[target][0] &&
-        !input_map_read(sources[target], &map, error, error_size)) {
+    for (int i = 0; i < count; i++) {
+        const char *word = code_path(paths[i]) ? binding_use(sources[i]) : NULL;
+        if (word) {
+            snprintf(
+                error,
+                error_size,
+                "%s reads %s, which version 16 replaces with input.<Action>; "
+                "rewrite it, then migrate",
+                paths[i],
+                word
+            );
+            return migrated;
+        }
+    }
+    char message[128];
+    av_doc *map = sources[target][0]
+                    ? asset_text_read(sources[target], message, sizeof message)
+                    : empty_map();
+    if (!map || !av_is_obj(av_doc_root(map))) {
+        snprintf(error, error_size, "Cannot read %s: %s", paths[target], map ? "not a map" : message);
+        av_doc_free(map);
         return migrated;
     }
     bool moved = false;
-    for (int i = 0; i < count && !error[0]; i++) {
-        if (i == target) {
-            continue;
-        }
-        migrated[i] = chibi_migrate_action_bindings(sources[i], &map, error, error_size);
-        moved |= migrated[i] != NULL;
-        size_t length = strlen(error);
-        if (length) {
-            snprintf(error + length, error_size - length, " in %s", paths[i]);
+    for (int i = 0; i < count; i++) {
+        if (i != target && !code_path(paths[i])) {
+            migrated[i] = chibi_migrate_action_bindings(sources[i], map);
+            moved |= migrated[i] != NULL;
         }
     }
-    if (moved && acount(map) && !error[0]) {
-        migrated[target] = input_map_write(map);
+    if (moved && av_obj_size(av_doc_root(map))) {
+        migrated[target] = asset_text_write(av_doc_root(map));
     }
-    input_map_free(map);
+    av_doc_free(map);
     return migrated;
 }
 static int collect_sources(const char *directory, const char *suffix, char ***paths, char *error, size_t error_size)
@@ -2028,6 +2080,10 @@ int chibi_project_migrate_content(
         error,
         error_size
     );
+    /* Version 16 also checks scripts for binding reads. */
+    if (!status && from == 15) {
+        status = collect_sources(content, ".chibi", &paths, error, error_size);
+    }
     /* The scan skips hidden entries, and the start scene may lie outside the
      * content, so add it unless the scan found it. */
     struct stat info;
@@ -2039,9 +2095,9 @@ int chibi_project_migrate_content(
     int map = -1;
     bool created = false;
     if (!status && from == 15) {
-        size_t size = strlen(content) + sizeof "/" INPUT_MAP_FILE;
+        size_t size = strlen(content) + sizeof "/input.kdl";
         char *path = xmalloc(size);
-        snprintf(path, size, "%s/" INPUT_MAP_FILE, content);
+        snprintf(path, size, "%s/input.kdl", content);
         for (int i = 0; i < acount(paths) && map < 0; i++) {
             map = strcmp(paths[i], path) ? -1 : i;
         }

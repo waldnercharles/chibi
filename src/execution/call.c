@@ -55,6 +55,21 @@ void behavior_function_clear_calls(behavior_function_activation *activation)
     activation->calls = NULL;
 }
 
+/* A failed stack never resumes. Unwinding it at once detaches its frames'
+ * pending requests and continuations, whose host banks the failure released. */
+static int settle_calls(struct behavior_function_calls *calls, int result)
+{
+    calls->result = result;
+    if (result >= 0) {
+        return result;
+    }
+    for (int i = acount(calls->frames) - 1; i >= 0; i--) {
+        frame_free(calls->frames[i], result);
+    }
+    asetlen(calls->frames, 0);
+    return result;
+}
+
 void behavior_function_visit_contexts(
     behavior_function_context *ctx,
     void (*visit)(behavior_function_context *)
@@ -300,15 +315,15 @@ int behavior_function_run_calls(
                     continue;
                 }
                 root->wake_time = context->wake_time;
-                calls->result = result;
-                return result;
+                return settle_calls(calls, result);
             }
             invocation_frame *frame = frame_new(active, context);
             if (!frame) {
-                calls->result = context->failure == BEHAVIOR_FUNCTION_DEPTH
-                                  ? FLOW_ERR_INVALID_GRAPH
-                                  : FLOW_ERR_ARGUMENT;
-                return calls->result;
+                return settle_calls(
+                    calls,
+                    context->failure == BEHAVIOR_FUNCTION_DEPTH ? FLOW_ERR_INVALID_GRAPH
+                                                                : FLOW_ERR_ARGUMENT
+                );
             }
             apush(calls->frames, frame);
             frame->entered = true;
@@ -330,8 +345,7 @@ int behavior_function_run_calls(
             context = count > 1 ? &calls->frames[count - 2]->context : root;
         }
         root->wake_time = context->wake_time;
-        calls->result = result;
-        return result;
+        return settle_calls(calls, result);
     }
 }
 

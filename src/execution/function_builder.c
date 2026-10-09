@@ -1091,23 +1091,42 @@ static behavior_value_kind payload_kind(pin_value value, behavior_value_kind kin
  * provenance. Arbitrary raw loads cannot manufacture logical references. */
 static bool context_address(size_t offset)
 {
+    // clang-format off
 #define FIELD(name) case offsetof(behavior_function_context, name):
     switch (offset) {
-        FIELD(parent)
-        FIELD(activation)
-        FIELD(data)
-        FIELD(program_name)
-        FIELD(instance_time) FIELD(inspection_user) FIELD(points) FIELD(variables)
-            FIELD(states) FIELD(arguments) FIELD(results) FIELD(error_message)
-                FIELD(services) FIELD(queries) FIELD(commands)
-                    FIELD(command_arguments) FIELD(command_results)
-                        FIELD(owner_type_name) FIELD(world) FIELD(binding_world)
-                            FIELD(columns) FIELD(variable_storage) FIELD(value_owner)
-                                FIELD(value_storage) FIELD(watches) FIELD(edges)
-                                    FIELD(watch_storage) return true;
-        default: return false;
+    FIELD(parent)
+    FIELD(activation)
+    FIELD(data)
+    FIELD(program_name)
+    FIELD(instance_time)
+    FIELD(inspection_user)
+    FIELD(points)
+    FIELD(variables)
+    FIELD(states)
+    FIELD(arguments)
+    FIELD(results)
+    FIELD(error_message)
+    FIELD(services)
+    FIELD(queries)
+    FIELD(commands)
+    FIELD(command_arguments)
+    FIELD(command_results)
+    FIELD(owner_type_name)
+    FIELD(world)
+    FIELD(binding_world)
+    FIELD(columns)
+    FIELD(variable_storage)
+    FIELD(value_owner)
+    FIELD(value_storage)
+    FIELD(watches)
+    FIELD(edges)
+    FIELD(watch_storage)
+        return true;
+    default:
+        return false;
     }
 #undef FIELD
+    // clang-format on
 }
 static const char *verify_instruction_kinds(const behavior_function *f, int pc, const int *headers)
 {

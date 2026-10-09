@@ -23,60 +23,20 @@ NATIVE = {
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--player-installed-space-cadet-sljit',): 'Pinned installed player SLJIT, four hidden1280x720frames, exact8resources, shared60seconds',
-    ('--studio-starter-startup',): 'Reviewed first measurement: own empty starter, actual Studio shell, two hidden1920x1080 frames, fixed dt; agent exact build/resource provenance and UI diagnostics required, whole process60s',
-    ('--player-space-cadet-vm',): 'Reviewed first GPU measurement: fixed prepared SpaceCadet UI/font manifest, VM, four hidden 1280x720 frames at fixed dt, whole process under 60 seconds; tools/agent.py preflight required',
-    ('--player-space-cadet-sljit',): 'Reviewed first GPU measurement: fixed prepared SpaceCadet UI/font manifest, SLJIT, four hidden 1280x720 frames at fixed dt, whole process under 60 seconds; tools/agent.py preflight required',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
-    ('--prepare-corpora-sljit', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive six-project SLJIT preparation, shared 256 sources/8 MiB, compilation only, no execution/GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eight pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--source-edit',): 'Independently reviewed nine fixed source-edit cases, tiny inputs and checked transactions including extraction/inline/signature/binding/capture and layout, no files/world/runtime/GPU; docs/testing.md',
-    ('--source-session',): 'First supervised measurement; independently reviewed four tiny source session cases and fixed KDL checkpoint/merge, at most two sources per project, no engine step/render/window/process; docs/testing.md',
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',
     ('--source-presentation',): 'First supervised measurement; independently reviewed two cases, six tiny source snapshots, graph ownership/layout and invalid drafts, CPU only; docs/testing.md',
-    ('--prepare-corpora', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive project preparation, shared 256 sources/8 MiB, BYTECODE compilation only, CPU; docs/testing.md',
-    ('--semantic-corpora', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive 6-project/87-source semantics, shared 256 sources/8 MiB executable-text ceiling, CPU only; docs/testing.md',
-    ('--semantic-corpus', '.chibi/architecture/semantic-content.txt', 'content'): 'First supervised measurement; independently reviewed exhaustive 29-file project semantics, capped 256 sources/8 MiB, CPU only; docs/testing.md',
-    ('--execution-request-lifecycle',): 'First supervised measurement; independently reviewed 1024 tiny host-wait iterations and lifecycle/retention/FIFO cases, CPU only; docs/testing.md',
-    ('--authoring-preview-lifecycle',): 'First supervised measurement; independently reviewed small in-memory live/update/prototype contracts, 3 CPU engine frames; docs/testing.md',
-    ('--ui-tab-list',): '1.743s; reviewed CPU-only tab input/layout contracts, 10 existing checks; docs/testing.md',
-    ('--iframe-updates',): '2.379s; CUT61 targeted CPU contracts, 3 pico cases/385 assertions and 12 existing checks; docs/research/cut61-iframe-profile/finish/README.md',
-    ('--kit-documents',): '0.469–0.551s; CUT61 7b0389ea, 10 checks and 49 frames; docs/research/cut61-iframe-profile/finish/README.md',
-    ('--compiled-behaviors',): '47.2s; docs/testing.md selector evidence',
-    ('--automation-authoring-readonly',): 'First supervised measurement; independently reviewed finite code/navigation file contracts and mutation rejection; docs/testing.md',
-    ('--automation-search',): '52.728s; source metadata and host event contracts; docs/testing.md selector evidence',
-    ('--automation-profile-scenario-inputs',): '15.8s; docs/testing.md selector evidence',
-    ('--editor-commands',): '12.5s; docs/testing.md selector evidence',
-    ('--material-thermal',): '4.8s; docs/testing.md selector evidence',
-    ('--material-mpm',): '3.6s; docs/testing.md selector evidence',
-    ('--whole-function-audit',): '1.3s; docs/testing.md baseline',
-    ('--graph-optimize',): '0.5s; docs/testing.md baseline',
-    ('--studio-documents', 'tabs'): '8s; PR164 focused evidence',
-    ('--studio-shell', 'document-tabs'): '9.2s; independently reviewed authored tab fixture, 17 checks, Debug ASan+UBSan with native Metal; docs/testing.md',
-    ('--studio-shell', 'readout_follows_camera'): '3s; PR164 focused evidence',
-    ('--bench-arena-scene-scale', '2048', '240', '0'): '1.4s; Arena scaling evidence',
 }
 TOOLS = {
     'studio-source-edit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-source-edit'],
     'compile-installed-space-cadet': [sys.executable, str(ROOT / 'tools/agent.py'), 'test', '--', '--compile-installed-space-cadet'],
     'player-installed-space-cadet-vm': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-vm'],
     'player-installed-space-cadet-sljit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-sljit'],
-    'studio-starter-startup': [str(ROOT / 'build-verify/sdk-migration/external-studio-build/bin/chibi-dev'),
-                              '--project-root', '/Users/cwaldner/Personal/chibi-studio/projects/starter',
-                              '--headless', '--frames', '2', '--fixed-dt', '0.0166667'],
-    # Reviewed first GPU measurements: exact prepared SpaceCadet, four hidden frames each.
-    'player-space-cadet-vm': [str(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/bin/chibi-player'),
-                             str(ROOT / '.chibi/architecture/player-space-cadet/project.chibip'),
-                             '--backend', 'vm', '--hidden', '--frames', '4', '--fixed-dt', '0.0166667'],
-    'player-space-cadet-sljit': [str(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/bin/chibi-player'),
-                                str(ROOT / '.chibi/architecture/player-space-cadet/project.chibip'),
-                                '--backend', 'sljit', '--hidden', '--frames', '4', '--fixed-dt', '0.0166667'],
     # Existing admitted source-edit and shader persistence cases, now installed SDK consumers.
     'source-edit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-edit'],
     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--shader-parameters-prepared'],
-    # Same bounded six unique-project manifests as the admitted native-driver selectors.
-    'semantic-corpora': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--semantic-corpora', '.chibi/architecture/semantic-corpus/projects.txt'],
-    'prepare-corpora': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--prepare-corpora', '.chibi/architecture/semantic-corpus/projects.txt'],
-    'prepare-corpora-sljit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--prepare-corpora-sljit', '.chibi/architecture/semantic-corpus/projects.txt'],
     # Reviewed four fixed scheduling cases, including verified source cohorts and mixed phase membership.
     'system-schedule': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--system-schedule'],
     # Same admitted eight fixed source-system cases through installed public consumer, VM and SLJIT.
@@ -95,14 +55,6 @@ TOOLS = {
     'whole-conversion': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-conversion'],
     # One reviewed public scalar Select case; six widths, two conditions, both backends.
     'whole-select': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-select'],
-    # Same admitted primitive math fixture under the debugger for its observed SIGSEGV.
-    'whole-math-debug': ['/usr/bin/lldb', '-b', '-o', 'settings set target.disable-aslr false',
-                         '-o', 'run', '-k', 'thread backtrace all', '-k', 'quit', '--',
-                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-math'],
-    # Same admitted owned Tick fixture under a bounded on-crash debugger for the observed SIGSEGV.
-    'owned-tick-debug': ['/usr/bin/lldb', '-b', '-o', 'settings set target.disable-aslr false',
-                         '-o', 'run', '-k', 'thread backtrace all', '-k', 'quit', '--',
-                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--owned-tick'],
     # Two reviewed bounded primitive math/ABI cases; 4594 invocations, VM and SLJIT.
     'whole-math': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-math'],
     # Two reviewed owned snapshot cases; four value kinds, three owners/frames, both backends.
@@ -115,10 +67,6 @@ TOOLS = {
     'source-native-numeric-queries': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-native-numeric-queries'],
     # One reviewed source material case; four payload types, two backends, CPU shader stage only.
     'source-native-material': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-native-material'],
-    # Independently reviewed extracted SpaceCadet: 35 files/144658 bytes, eight sources, no Begin/window/GPU.
-    'compile-space-cadet': [str(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/bin/chibi-compile'),
-                            '--project-root', '/Users/cwaldner/Personal/chibi-space-cadet',
-                            '--output', str(ROOT / '.chibi/architecture/player-space-cadet/project.chibip')],
     # One reviewed CPU-only typed renderer transaction/lifetime case; no window, GPU, fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--render-resources'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
@@ -171,6 +119,19 @@ TOOLS = {
                  '--syntax', '--corpus', str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'corpus.txt')],
     'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools')],
 
+}
+# Every admitted selector of each built driver, run under one shared deadline.
+GROUPS = {
+    'native': ['native-runtime', 'native-catalog', 'native-values', 'runtime-scene', 'scene-prepared',
+               'render-resources', 'persistent-store', 'whole-alias', 'whole-integer', 'whole-conversion',
+               'whole-select', 'whole-math', 'owned-tick', 'parallel-tick', 'source-native-features',
+               'source-native-numeric-queries', 'source-native-material', 'source-presentation',
+               'system-schedule', 'source-systems', 'source-edit', 'shader-parameters-prepared',
+               'language-prepared'],
+    'language': ['language', 'language-semantic', 'language-execution', 'language-program',
+                 'language-headless', 'language-format', 'language-navigation', 'language-publication',
+                 'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
+                 'graph-authoring', 'model-runtime'],
 }
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')
@@ -400,7 +361,7 @@ def run_commands(commands, seconds=LIMIT, env=None, output=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['inventory', 'disabled', 'unit', 'short', 'tool', 'admit', 'native', 'admit-env', 'native-env', 'agent-env', 'studio-selectors', '_supervise'])
+    parser.add_argument('action', choices=['inventory', 'disabled', 'unit', 'short', 'tool', 'group', 'admit', 'native', 'admit-env', 'native-env', 'agent-env', '_supervise'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments
@@ -416,7 +377,8 @@ def main():
             print('ADMITTED (60s ceiling): python3 tools/test_policy.py tool', name)
         print('ADMITTED: make test / test-short (C execution-policy units, one deadline)')
         print('ADMITTED: make test-tools (all C tooling and process integrations, one deadline)')
-        print('ADMITTED: make test-studio-selectors (C CLI checks, one deadline)')
+        for name in GROUPS:
+            print(f'ADMITTED (60s ceiling): python3 tools/test_policy.py group {name}')
         print('Retired script suites are absent. Other native commands remain quarantined; see docs/test-quarantine.md.')
         return 0
     if args.action == 'disabled':
@@ -429,14 +391,14 @@ def main():
         if args.action == 'unit':
             command.append('--unit')
         return run_commands([command])
-    if args.action == 'studio-selectors':
-        if len(arguments) != 2:
-            parser.error('studio-selectors requires the C tooling driver and test_suite binary')
-        return run_commands([[str(Path(arguments[0]).resolve()), '--studio-selectors', str(Path(arguments[1]).resolve())]])
+    if args.action == 'group':
+        if len(arguments) != 1 or arguments[0] not in GROUPS:
+            parser.error('unknown test group')
+        return run_commands([TOOLS[name] for name in GROUPS[arguments[0]]])
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
-        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'player-space-cadet-vm', 'player-space-cadet-sljit', 'studio-starter-startup', 'studio-source-edit'):
+        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])
         return run_commands([TOOLS[arguments[0]]])

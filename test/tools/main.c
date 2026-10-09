@@ -13,7 +13,6 @@ void test_tool_validation_plan();
 void test_tool_publish();
 void test_tool_types();
 void test_tool_ecs();
-void test_tool_studio_selectors(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
@@ -118,11 +117,10 @@ int main(int argc, char **argv)
         !persistent_store && !whole_alias && !whole_math && !whole_integer &&
         !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
         !source_features && !source_numeric && !source_material &&
-        !source_presentation && !system_schedule && !source_systems &&
-        (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
+        !source_presentation && !system_schedule && !source_systems) {
         fprintf(
             stderr,
-            "Usage: %s [--package | --unit | --studio-selectors test_suite | "
+            "Usage: %s [--package | --unit | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
@@ -224,8 +222,6 @@ int main(int argc, char **argv)
         test_tool_prepared(argv[2], argv[0]);
     } else if (read) {
         test_tool_prepared_runtime(argv[2]);
-    } else if (argc == 3) {
-        test_tool_studio_selectors(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
     } else {

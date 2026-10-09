@@ -504,8 +504,10 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         module = NULL;
         GameTransform transform = { .x = 4 };
         GameGlobalBinding binding = { .name = "Player" };
-        game_scene_component components[] = { { &GAME_COMPONENT_GameTransform, &transform },
-                                              { &GAME_COMPONENT_GameGlobalBinding, &binding } };
+        game_scene_component components[] = {
+            { &GAME_COMPONENT_GameTransform, &transform },
+            { &GAME_COMPONENT_GameGlobalBinding, &binding }
+        };
         const char *behavior = "Initial";
         game_scene_object object = { .name = "Initial",
                                      .components = components,

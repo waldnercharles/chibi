@@ -336,7 +336,7 @@ merge authority.
 ### Planning helper
 
 ```sh
-python3 tools/agent.py validation-plan --base origin/main --scope mixed --review-note 'Independent review: affected tooling and runtime contracts covered by selected checks' --tools --selector=--graph-optimize
+python3 tools/agent.py validation-plan --base origin/main --scope mixed --review-note 'Independent review: affected tooling and runtime contracts covered by selected checks' --tools --selector=--source-edit
 ```
 
 The helper records Git identity and admitted commands; it does not execute them

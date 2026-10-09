@@ -3006,6 +3006,25 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
         fclose(file);
         REQUIRE(!strcmp(text, kept[i][1]));
     }
+
+    /* So does a map that the moved bindings would take past the action
+     * limit. */
+    snprintf(path, sizeof path, "%s/content/" INPUT_MAP_FILE, root);
+    FILE *full = fopen(path, "wb");
+    for (int i = 0; i < INPUT_ACTION_MAX; i++) {
+        fprintf(full, "A%d {\n    (array)sources \"Space\"\n}\n", i);
+    }
+    fclose(full);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
+    REQUIRE(strstr(error, "more than 256 actions"));
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
+        char text[1024];
+        FILE *file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        REQUIRE(!strcmp(text, kept[i][1]));
+    }
     for (int i = 0; i < 4; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);

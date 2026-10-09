@@ -138,7 +138,7 @@ const engine_frame_timing *engine_last_timing(const engine *engine);
 void engine_set_behavior_profiling(engine *engine, bool enabled);
 /* Where presentation draws the entity: its global transform, moved by the
  * physics interpolation of the nearest body at or above it. engine may be NULL,
- * which draws the global transform as it is. */
+ * which draws the exact world transform, propagated or not. */
 GameGlobalTransform2D engine_render_transform(const engine *, const ecs_world *, ecs_entity);
 /* The same for a GlobalTransform3D, moved with the nearest 3D body at or above
  * the entity. */

@@ -1101,6 +1101,28 @@ static void followers_ignore_their_anchor()
     dispose(&f);
 }
 
+/* A collider that joins the body it touches stops pushing it. */
+static void followers_stop_touching_the_body_they_join()
+{
+    fixture f = create();
+    ecs_entity ship = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 1);
+    ecs_entity dock = ecs_world_create_entity(f.world);
+    assert(GAME_GameTransform_add(f.world, dock, 0) == ECS_OK);
+    ecs_entity hull = body(&f, 6, 0, GAME_BODY_KINEMATIC, 1, 1);
+    assert(ecs_world_record_add_pair(f.world, hull, ECS_CHILD_OF, dock, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    step(&f, 1.0f / 60);
+    assert(ecs_world_record_add_pair(f.world, hull, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    float x = GAME_GameTransform_get_const(f.world, ship)->x;
+    for (int i = 0; i < 4; i++) {
+        *GAME_GameVelocity_get(f.world, ship) = (GameVelocity){ 0 };
+        step(&f, 1.0f / 60);
+    }
+    assert(fabsf(GAME_GameTransform_get_const(f.world, ship)->x - x) < .001f);
+    dispose(&f);
+}
+
 /* A continuous sensor stops partway through its sweep, after its followers
  * were tested at its end, so it cannot carry a collider. */
 static void continuous_sensors_carry_no_colliders()
@@ -1379,6 +1401,7 @@ static void physics_cases()
     followers();
     followers_move_with_their_body();
     followers_ignore_their_anchor();
+    followers_stop_touching_the_body_they_join();
     continuous_sensors_carry_no_colliders();
     followed_material();
     current_contact_query();

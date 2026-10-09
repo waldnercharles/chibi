@@ -1344,10 +1344,13 @@ void engine_set_behavior_profiling(engine *engine, bool enabled)
 
 GameGlobalTransform2D engine_render_transform(const engine *engine, const ecs_world *world, ecs_entity entity)
 {
+    if (!engine) {
+        return game_transform_world_2d(world, entity);
+    }
     const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
     assert(global);
     GameGlobalTransform2D shown = *global;
-    if (!engine || !engine->modules.physics) {
+    if (!engine->modules.physics) {
         return shown;
     }
     for (ecs_entity at = entity; at.slot; at = ecs_parent(world, at)) {

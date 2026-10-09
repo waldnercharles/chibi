@@ -2855,6 +2855,40 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     }
     return true;
 }
+TEST_CASE(program_task_handles_belong_to_their_instance)
+{
+    const char *source = "behavior P { pulse: task; alive: double = 0;"
+                         "function Charge(time: double) -> (power: double) { "
+                         "yield; return(time) }"
+                         "on Impulse(amount, enabled) { if enabled { pulse = "
+                         "Charge(amount) } else { alive = 0; if pulse { alive "
+                         "= 1 } } } }";
+    prepare();
+    REQUIRE(compile(source, BEHAVIOR_BYTECODE));
+    execution_instance *a = execution_program_attach(
+        program,
+        ecs_entity_to_u64(ecs_world_create_entity(world))
+    );
+    execution_instance *b = execution_program_attach(
+        program,
+        ecs_entity_to_u64(ecs_world_create_entity(world))
+    );
+    const pin_value start[] = { { .type = PIN_F64, .d = 1 },
+                                { .type = PIN_BOOL, .b = true } };
+    const pin_value check[] = { { .type = PIN_F64, .d = 0 },
+                                { .type = PIN_BOOL, .b = false } };
+    REQUIRE(execution_instance_dispatch(a, 11, start, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(execution_instance_dispatch(b, 11, start, 2, 0, 0, 1000) == FLOW_OK);
+    pin_value handle = *execution_instance_state(a, state_id("pulse"));
+    REQUIRE(handle.u64 != execution_instance_state(b, state_id("pulse"))->u64);
+    /* B running its own task does not make A's handle live in B. */
+    REQUIRE(execution_instance_set_state(b, state_id("pulse"), handle) == 0);
+    REQUIRE(execution_instance_dispatch(b, 11, check, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(b, "alive", 0));
+    REQUIRE(execution_instance_dispatch(a, 11, check, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(a, "alive", 1));
+    return true;
+}
 TEST_CASE(program_component_paths_test_presence)
 {
     const char *source = "behavior H { n: double = 0;"
@@ -3073,6 +3107,7 @@ void test_language_program()
     RUN_TEST_CASE(program_returns_convert_to_their_result_type);
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
+    RUN_TEST_CASE(program_task_handles_belong_to_their_instance);
     RUN_TEST_CASE(program_component_paths_test_presence);
     RUN_TEST_CASE(program_branch_completes_inside_action_continuation);
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);

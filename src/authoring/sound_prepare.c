@@ -11,6 +11,9 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#define STB_VORBIS_NO_PUSHDATA_API
+#define STB_VORBIS_NO_STDIO
+#include "vendor/sound_vorbis.h"
 
 static bool fail(char *error, size_t size, const char *text)
 {
@@ -52,6 +55,22 @@ static unsigned char *read_file(const char *path, size_t limit, size_t *length)
     }
     return bytes;
 }
+/* Decodes the whole stream as players do: one their decoder cannot open, or
+ * whose audio packets all fail, plays nothing. */
+static bool vorbis_plays(const unsigned char *bytes, size_t length)
+{
+    stb_vorbis *vorbis = chibi_sound_vorbis_open_memory(bytes, (int)length, NULL, NULL);
+    if (!vorbis) {
+        return false;
+    }
+    bool sound = false;
+    float **samples;
+    while (chibi_sound_vorbis_get_frame_float(vorbis, NULL, &samples) > 0) {
+        sound = true;
+    }
+    chibi_sound_vorbis_close(vorbis);
+    return sound;
+}
 static bool named(const game_player_asset *assets, int from, const char *name)
 {
     for (int i = from; i < acount(assets); i++) {
@@ -91,6 +110,8 @@ static bool add_sound(
                    ? "is not a complete mono or stereo 44.1 kHz Ogg Vorbis file"
                    : "is not a plain mono or stereo 44.1 kHz PCM or float WAV "
                      "file";
+    } else if (format(file) == GAME_SOUND_OGG && !vorbis_plays(bytes, length)) {
+        reason = "holds no Vorbis audio that players can decode";
     }
     if (reason) {
         snprintf(error, size, "sounds/%s: %s", file, reason);

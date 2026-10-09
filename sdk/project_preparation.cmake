@@ -13,6 +13,13 @@ target_include_directories(chibi_shader_preparation PRIVATE
 target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi_graph_model chibi_player
     PRIVATE chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog)
 
+# Players' pinned Vorbis decoder, compiled with private symbols, so preparation
+# refuses an Ogg sound that players cannot decode.
+file(READ "${CHIBI_CUTE_MATH_INCLUDE_DIR}/../libraries/stb/stb_vorbis.c" code)
+string(REPLACE "stb_vorbis_" "chibi_sound_vorbis_" code "${code}")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation/vendor/sound_vorbis.h" "${code}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CHIBI_CUTE_MATH_INCLUDE_DIR}/../libraries/stb/stb_vorbis.c")
 add_library(chibi_project_compilation STATIC)
 foreach(unit component_declarations project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
     graph_sources native_graph_prepare material_prepare scene_prepare sound_prepare ui_prepare ui_prepare_assets)
@@ -28,6 +35,7 @@ foreach(header project_prepare_internal graph_sources native_graph_prepare ui_pr
         "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation/authoring/${header}.h" COPYONLY)
 endforeach()
 target_include_directories(chibi_project_compilation PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation")
+target_include_directories(chibi_project_compilation SYSTEM PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation")
 target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chibi_prototype_document
     chibi_scene_document chibi_player chibi_native_prepared chibi_shader_preparation
     PRIVATE chibi_graph_catalog chibi_host_native_default chibi_graph_compilation chibi_asset_authoring

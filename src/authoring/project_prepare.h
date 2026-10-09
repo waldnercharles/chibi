@@ -1,5 +1,6 @@
 #ifndef CHIBI_AUTHORING_PROJECT_PREPARE_H
 #define CHIBI_AUTHORING_PROJECT_PREPARE_H
+#include "assets/project.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/player_prepared.h"
 
@@ -28,4 +29,7 @@ bool authoring_project_prepare(
     size_t size
 );
 void authoring_project_artifact_free(authoring_project_artifact *);
+/* The manifest's application settings as preparation reads them: a title
+ * that fits, and an icon that decodes as a PNG. */
+bool authoring_project_application_valid(const chibi_project *, char *error, size_t size);
 #endif

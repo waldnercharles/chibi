@@ -407,9 +407,41 @@ static game_prototype *load_document(
     size_t error_size
 );
 
+/* Folds the included prototype's content into `prototype`, before its own. */
+static bool merge_include(
+    game_prototype *prototype,
+    const char *name,
+    char *const *stack,
+    int stack_count,
+    char *error,
+    size_t error_size
+)
+{
+    const game_prototype_registry *registry = prototype->registry;
+    const char *source = registry->include(name, registry->include_user);
+    if (!source) {
+        set_error(error, error_size, "prototype include %s is unavailable", name);
+        return false;
+    }
+    game_prototype *base = load_document(source, registry, stack, stack_count, error, error_size);
+    if (base && strcmp(base->name, name)) {
+        set_error(error, error_size, "prototype include %s is named %s", name, base->name);
+        game_prototype_free(base);
+        return false;
+    }
+    if (base) {
+        merge_prototype(prototype, base);
+        game_prototype_free(base);
+    }
+    return base != NULL;
+}
+
+/* With `authored`, the included prototypes are named but not loaded, so the
+ * result holds only what the document itself says. */
 static game_prototype *load_value_document(
     av_value *root,
     const game_prototype_registry *registry,
+    bool authored,
     char *const *stack,
     int stack_count,
     char *error,
@@ -455,7 +487,7 @@ static game_prototype *load_value_document(
 
     av_value *includes = av_obj_get(root, "includes");
     if (includes) {
-        if (!av_is_arr(includes) || !registry->include) {
+        if (!av_is_arr(includes) || (!authored && !registry->include)) {
             set_error(error, error_size, "prototype includes need a resolver");
             game_prototype_free(prototype);
             return NULL;
@@ -468,30 +500,11 @@ static game_prototype *load_value_document(
                 game_prototype_free(prototype);
                 return NULL;
             }
-            const char *source = registry->include(av_get_str(include), registry->include_user);
-            if (!source) {
-                set_error(error, error_size, "prototype include %s is unavailable", av_get_str(include));
+            if (!authored &&
+                !merge_include(prototype, av_get_str(include), next_stack, stack_count + 1, error, error_size)) {
                 game_prototype_free(prototype);
                 return NULL;
             }
-            game_prototype *base = load_document(source, registry, next_stack, stack_count + 1, error, error_size);
-            if (base && strcmp(base->name, av_get_str(include))) {
-                set_error(
-                    error,
-                    error_size,
-                    "prototype include %s is named %s",
-                    av_get_str(include),
-                    base->name
-                );
-                game_prototype_free(base);
-                base = NULL;
-            }
-            if (!base) {
-                game_prototype_free(prototype);
-                return NULL;
-            }
-            merge_prototype(prototype, base);
-            game_prototype_free(base);
             apush(prototype->includes, own_string(prototype, av_get_str(include)));
         }
     }
@@ -545,9 +558,16 @@ static game_prototype *load_document(
 )
 {
     av_doc *doc = asset_text_read(text, error, error_size);
-    game_prototype *result = doc
-                               ? load_value_document(av_doc_root(doc), registry, stack, stack_count, error, error_size)
-                               : NULL;
+    game_prototype *result = doc ? load_value_document(
+                                       av_doc_root(doc),
+                                       registry,
+                                       false,
+                                       stack,
+                                       stack_count,
+                                       error,
+                                       error_size
+                                   )
+                                 : NULL;
     av_doc_free(doc);
     return result;
 }
@@ -559,7 +579,7 @@ game_prototype *game_prototype_load_value(
     size_t error_size
 )
 {
-    return load_value_document(value, registry, NULL, 0, error, error_size);
+    return load_value_document(value, registry, false, NULL, 0, error, error_size);
 }
 
 game_prototype *game_prototype_load(
@@ -578,6 +598,21 @@ game_prototype *game_prototype_load(
         error[0] = '\0';
     }
     return load_document(json, registry, NULL, 0, error, error_size);
+}
+
+game_prototype *game_prototype_load_authored(
+    const char *text,
+    const game_prototype_registry *registry,
+    char *error,
+    size_t error_size
+)
+{
+    av_doc *doc = asset_text_read(text, error, error_size);
+    game_prototype *result = doc
+                               ? load_value_document(av_doc_root(doc), registry, true, NULL, 0, error, error_size)
+                               : NULL;
+    av_doc_free(doc);
+    return result;
 }
 
 game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size)

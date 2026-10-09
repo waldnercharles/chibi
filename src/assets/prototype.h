@@ -80,6 +80,15 @@ game_prototype *game_prototype_load(
     char *error,
     size_t error_size
 );
+/* Only what the document itself authors: its includes are named in
+ * `includes` but not loaded, so no resolver is needed. For indexing a
+ * prototype's direct references; its components are not what it spawns. */
+game_prototype *game_prototype_load_authored(
+    const char *text,
+    const game_prototype_registry *registry,
+    char *error,
+    size_t error_size
+);
 /* A prototype named `name` with no components or behaviors. */
 game_prototype *game_prototype_new(const char *name);
 game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size);

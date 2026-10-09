@@ -30,7 +30,9 @@ printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"B
 
 Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
 `material`, `shape`, `field`, `shader-library` and `model`. Before running content,
-`validate_project` checks the manifest, its start scene and every asset. Its
+`validate_project` checks the manifest, its start scene, its application title
+and icon, and every asset. Markup in `content/ui` must be a regular file:
+`chibi_ctl` never follows a link, so a linked document is refused. The reply's
 `problems` list only the assets with errors or warnings, each diagnostic naming
 what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
 model and a shape share a name there is no catalog, so it lists no asset

@@ -793,8 +793,11 @@ TEST_CASE(native_player_reads_declared_components)
     game_player_free(player);
     player = NULL;
     declared_components_free(newer);
+    game_player_application application = { 0 };
     size_t length;
-    REQUIRE(game_player_prepared_write(&spec, &player_bytes, &length, error, sizeof error));
+    REQUIRE(
+        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
     game_scene_free(scene);
     scene = NULL;
     declared_components_free(declared);

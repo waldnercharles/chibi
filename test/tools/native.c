@@ -594,6 +594,9 @@ static const struct
     { 3, { 0, Z_DOWN, 0 } },      /* release, tap */
     { 3, { X_DOWN, Z_DOWN, 0 } }, /* tap one source, then another */
     { 1, { 0 } },
+    { 1, { Z_DOWN } },
+    /* Move to another source, then release: never pressed again. */
+    { 3, { Z_DOWN | X_DOWN, X_DOWN, 0 } },
 };
 #define TAPPED_STEPS (int)(sizeof tapped_steps / sizeof *tapped_steps)
 /* Runs every step, sampling live controls (ignored while replaying), and keeps
@@ -617,8 +620,9 @@ static bool run_taps(engine *runtime, bool read[][2])
 TEST_CASE(native_recorded_taps_replay_per_step)
 {
     static const bool expected[TAPPED_STEPS][2] = {
-        { false, false }, { false, true }, { true, true },  { true, true },
-        { true, false },  { false, true }, { false, true }, { false, false },
+        { false, false }, { false, true },  { true, true },  { true, true },
+        { true, false },  { false, true },  { false, true }, { false, false },
+        { true, true },   { false, false },
     };
     engine *runtime;
     REQUIRE(jump_world(&runtime));

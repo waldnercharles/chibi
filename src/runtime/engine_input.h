@@ -30,10 +30,13 @@ void engine_input_aim(engine_input *input, CF_V2 aim, bool firing, bool point);
 int engine_input_controls(engine_input *input, uint64_t controls, bool *firing);
 int engine_input_apply(engine_input *input);
 const char *engine_input_error(const engine_input *input);
+/* The controls held after each change since the last step, oldest first;
+ * the last entry is the current controls. Several entries mean an action
+ * may have gone down and up between steps. */
+int engine_input_trail(const engine_input *input, const uint64_t **controls);
 /* The held input as a key at step zero. */
 input_keyframe engine_input_held(const engine_input *input);
-/* Hold a key's input as the host samples it: taps, controls, movement, then
- * aim. */
+/* Hold a key's input as the host samples it: controls, movement, then aim. */
 int engine_input_hold(engine_input *input, const input_keyframe *key);
 
 /* Action Held and Action Pressed read every source of an action, as combined at

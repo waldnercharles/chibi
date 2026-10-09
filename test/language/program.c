@@ -2379,16 +2379,22 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                            "+ Shadow(5) + (n * 2) }\n"
                            "}\n";
     char error[256] = "";
-    char *migrated = chibi_migrate_values(source, error, sizeof error);
+    char *migrated = NULL, *unchanged = NULL;
+    REQUIRE(!chibi_migrate_values(source, &migrated, error, sizeof error));
     REQUIRE(migrated && !strcmp(migrated, expected) && !error[0]);
-    REQUIRE(!chibi_migrate_values(expected, error, sizeof error) && !error[0]);
+    REQUIRE(!chibi_migrate_values(expected, &unchanged, error, sizeof error) && !unchanged);
     /* Expanding `twice` where a local `n` is declared would read the local. */
     const char *shadowed = "behavior V { n: double = 0\n"
                            "    value twice = n * 2\n"
                            "    on Impulse(amount, enabled) { n := amount; m "
                            ":= twice }\n"
                            "}\n";
-    REQUIRE(!chibi_migrate_values(shadowed, error, sizeof error) && strstr(error, "`n`"));
+    REQUIRE(
+        chibi_migrate_values(shadowed, &unchanged, error, sizeof error) &&
+        strstr(error, "`n`")
+    );
+    /* The failure does not depend on room for its message. */
+    REQUIRE(chibi_migrate_values(shadowed, &unchanged, NULL, 0) == -1 && !unchanged);
     /* Expanding `x` inside Outer would call Outer's own F. */
     const char *callable = "behavior V { n: double = 0\n"
                            "    function F() { return 1 }\n"
@@ -2397,7 +2403,10 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                            "        return x }\n"
                            "}\n";
     error[0] = '\0';
-    REQUIRE(!chibi_migrate_values(callable, error, sizeof error) && strstr(error, "`F`"));
+    REQUIRE(
+        chibi_migrate_values(callable, &unchanged, error, sizeof error) &&
+        strstr(error, "`F`")
+    );
     /* An action is a callable too. */
     const char *action = "behavior V { n: double = 0\n"
                          "    function F() { return 1 }\n"
@@ -2406,7 +2415,39 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                          "        return x }\n"
                          "}\n";
     error[0] = '\0';
-    REQUIRE(!chibi_migrate_values(action, error, sizeof error) && strstr(error, "`F`"));
+    REQUIRE(
+        chibi_migrate_values(action, &unchanged, error, sizeof error) &&
+        strstr(error, "`F`")
+    );
+    /* A project whose values conflict stays at version 13, even when the
+     * caller has no room for the message. */
+    char root[] = "/tmp/chibi-values-XXXXXX", path[256], manifest[256], text[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/content/V.chibi", root);
+    FILE *file = fopen(path, "wb");
+    fputs(shadowed, file);
+    fclose(file);
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    file = fopen(manifest, "wb");
+    fputs("version 13\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", file);
+    fclose(file);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1 && strstr(error, "`n`"));
+    REQUIRE(chibi_project_migrate(root, NULL, 0) == -1);
+    file = fopen(manifest, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(strstr(text, "version 13"));
+    file = fopen(path, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(!strcmp(text, shadowed));
+    unlink(path);
+    unlink(manifest);
+    snprintf(path, sizeof path, "%s/content", root);
+    rmdir(path);
+    rmdir(root);
     free(migrated);
     prepare();
     REQUIRE(compile(expected, BEHAVIOR_BYTECODE));

@@ -1197,14 +1197,15 @@ static int by_start(const void *a, const void *b)
 {
     return ((const replacement *)a)->start - ((const replacement *)b)->start;
 }
-char *chibi_migrate_values(const char *source, char *error, size_t error_size)
+int chibi_migrate_values(const char *source, char **migrated, char *error, size_t error_size)
 {
     lazy *all = NULL;
     char *text = strip_lazy(source, &all);
+    *migrated = NULL;
     if (!acount(all)) {
         free(text);
         afree(all);
-        return NULL;
+        return 0;
     }
     script_syntax *syntax = script_parse(text);
     TSNode root = ts_tree_root_node(syntax->tree);
@@ -1246,7 +1247,7 @@ char *chibi_migrate_values(const char *source, char *error, size_t error_size)
         afree(all);
         script_syntax_free(syntax);
         free(text);
-        return NULL;
+        return -1;
     }
     for (int i = 0; i < acount(all); i++) {
         /* A declaration alone on its lines goes with them. */
@@ -1285,7 +1286,7 @@ char *chibi_migrate_values(const char *source, char *error, size_t error_size)
         apush(result, text[from]);
     }
     apush(result, '\0');
-    char *migrated = xstrdup(result);
+    *migrated = xstrdup(result);
     afree(result);
     afree(edits);
     for (int i = 0; i < acount(all); i++) {
@@ -1294,7 +1295,7 @@ char *chibi_migrate_values(const char *source, char *error, size_t error_size)
     afree(all);
     script_syntax_free(syntax);
     free(text);
-    return migrated;
+    return 0;
 }
 
 static char *read_text(const char *path)
@@ -1613,9 +1614,7 @@ int chibi_project_migrate_content(
             case 13:
                 migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
                 for (int i = 0; i < count && !status; i++) {
-                    error[0] = '\0';
-                    migrated[i] = chibi_migrate_values(sources[i], error, error_size);
-                    status = error[0] ? -1 : 0;
+                    status = chibi_migrate_values(sources[i], &migrated[i], error, error_size);
                 }
                 break;
             case 14:

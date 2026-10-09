@@ -101,12 +101,13 @@ static bool language_category(const char *category)
 
 /* Feature functions exclude generated field, struct, flow, state and operator
  * forms and the language library; those follow from the components and the
- * language themselves. */
+ * language themselves. Generic component functions such as add_component name
+ * no component of their own, so they are features. */
 static bool feature_function(const script_catalog_capability *capability)
 {
     return (capability->kind == SCRIPT_CAPABILITY_FUNCTION ||
             capability->kind == SCRIPT_CAPABILITY_ACTION) &&
-           capability->component_access == SCRIPT_COMPONENT_ACCESS_NONE &&
+           !capability->component &&
            capability->struct_access == SCRIPT_STRUCT_ACCESS_NONE &&
            capability->flow.kind == SCRIPT_FLOW_ACCESS_NONE &&
            capability->state_access == SCRIPT_STATE_ACCESS_NONE &&

@@ -1368,6 +1368,48 @@ TEST_CASE(program_source_float_width_conversion_preserves_native_input)
     return true;
 }
 
+TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit)
+{
+    const char *source = "behavior Mixed { count:int=3; level:float=2.5; "
+                         "below:bool=false; "
+                         "scaled:float=0; on Tick { below = level < count; "
+                         "scaled = cast<float>(count); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        syntax = script_parse(source);
+        analysis = script_analyze(syntax, &catalog);
+        REQUIRE(analysis->valid && !syntax->diagnostic_count);
+        uint64_t below_id = state_id("below"), scaled_id = state_id("scaled");
+        REQUIRE(below_id && scaled_id);
+        const script_lower_bindings bindings = { .global = global };
+        owned_plan = script_lower(analysis, &catalog, &bindings);
+        REQUIRE(owned_plan && owned_plan->valid);
+        char error[192];
+        module = execution_module_finish(&owned_plan, backends[b], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "mixed numeric publication: %s\n", error);
+        }
+        REQUIRE(module && !owned_plan);
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        ecs_entity owner = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        const pin_value dt = { .type = PIN_F64 };
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000) == FLOW_OK);
+        const pin_value *below = execution_instance_state(instance, below_id),
+                        *scaled = execution_instance_state(instance, scaled_id);
+        REQUIRE(below && below->type == PIN_BOOL && below->b);
+        REQUIRE(scaled && scaled->type == PIN_F32 && scaled->f == 3.0f);
+    }
+    return true;
+}
 TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state)
 {
     const char *source =
@@ -2971,6 +3013,7 @@ void test_language_program()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
+    RUN_TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit);
     RUN_TEST_CASE(program_system_membership_exit_cancels_pending_work);
     RUN_TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected);
     RUN_TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace);

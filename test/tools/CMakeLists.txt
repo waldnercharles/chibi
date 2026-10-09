@@ -67,6 +67,13 @@ if(TARGET Chibi::entity_runtime)
 endif()
 add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
 
+# Reflection cases drive the native generator that SDK packages are built with.
+if(CHIBI_REFLECT_EXECUTABLE)
+    target_sources(test_tools PRIVATE reflect.c)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_REFLECT=1
+        CHIBI_REFLECT_PATH="${CHIBI_REFLECT_EXECUTABLE}")
+endif()
+
 # The SDK installs no Box3D headers, so only an in-tree build can call Box3D directly.
 if(TARGET chibi_box3d)
     target_sources(test_tools PRIVATE box3d.c)

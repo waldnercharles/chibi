@@ -24,6 +24,8 @@ authoring_sources *authoring_sources_prepare_catalog(
     behavior_backend
 );
 const script_catalog *authoring_sources_catalog(const authoring_sources *);
+/* The project's input map, an array.h vector owned by the collection. */
+const input_action *authoring_sources_input(const authoring_sources *);
 int authoring_sources_definition_count(const authoring_sources *);
 const source_catalog_definition *authoring_sources_definitions(const authoring_sources *);
 int authoring_sources_reference_count(const authoring_sources *);

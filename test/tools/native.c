@@ -5,14 +5,17 @@
 #include "runtime/behaviors/entities_source.h"
 #include "runtime/component_catalog.h"
 #include "runtime/declared_components.h"
+#include "runtime/engine_input.h"
 #include "runtime/material_field_prepared.h"
 #include "runtime/player.h"
 #include "runtime/player_prepared.h"
 #include "runtime/world.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -450,6 +453,286 @@ TEST_CASE(native_prepared_world_runs_source_and_real_physics)
     }
     return true;
 }
+static struct
+{
+    int steps, presses;
+    bool held, pressed;
+} jump;
+/* Reads the service the engine bound, the way Action Held and Pressed do. */
+static const char *observe_jump(void *service, const pin_value *, pin_value *)
+{
+    const pin_value action = { .type = PIN_STR, .str = "Jump" };
+    pin_value held = { .type = PIN_BOOL }, pressed = { .type = PIN_BOOL };
+    const char *error = GAME_INPUT_HELD_CALL.invoke(service, &action, &held);
+    if (!error) {
+        error = GAME_INPUT_PRESSED_CALL.invoke(service, &action, &pressed);
+    }
+    jump.steps++;
+    jump.held = held.b;
+    jump.pressed = pressed.b;
+    return error;
+}
+static const char *count_jump(void *, const pin_value *, pin_value *)
+{
+    jump.presses++;
+    return NULL;
+}
+/* A handler whose body makes one host call. */
+static behavior_function *host_body(const node_host_call *call, const pin_value *in, int count, uint64_t identity)
+{
+    behavior_function_builder *builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, in, count, NULL, 0, NULL, 0);
+    int host_call = behavior_function_builder_host(builder, call, &GAME_INPUT_READ_ACCESS, NULL, 0, NULL, 0);
+    bool identified = behavior_function_builder_host_identity(builder, host_call, identity, identity + 1);
+    assert(identified);
+    (void)identified;
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_HOST_CALL,
+                                         .target = host_call,
+                                         .left = BEHAVIOR_FUNCTION_HOST_DATA }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[192];
+    behavior_function *body = behavior_function_builder_finish(builder, error, sizeof error);
+    behavior_function_builder_free(builder);
+    return body;
+}
+static void handler(
+    execution_module_plan *plan,
+    const char *event,
+    uint64_t id,
+    const pin_value *in,
+    int count,
+    behavior_function *body
+)
+{
+    execution_module_event_field *fields = NULL;
+    if (count) {
+        fields = xmalloc(sizeof *fields);
+        *fields = (execution_module_event_field){ .name = "dt", .initial = *in };
+    }
+    apush(
+        plan->events,
+        ((
+            execution_module_event_declaration
+        ){ .id = id, .abi = id + 1, .name = event, .fields = fields, .field_count = count })
+    );
+    apush(
+        plan->functions,
+        ((execution_module_function){ .id = id + 2,
+                                      .kind = EXECUTION_FUNCTION_HANDLER,
+                                      .event = id,
+                                      .event_abi = id + 1,
+                                      .body = body })
+    );
+    plan->event_count++;
+    plan->function_count++;
+}
+/* Samples controls, runs exactly one fixed step and checks what Tick read. */
+static bool jump_step(engine *runtime, uint64_t controls, bool held, bool pressed)
+{
+    bool firing;
+    REQUIRE(engine_sample_controls(runtime, controls, &firing) == FLOW_OK);
+    int steps = jump.steps;
+    REQUIRE(engine_frame(runtime, (steps + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(jump.steps == steps + 1 && jump.held == held && jump.pressed == pressed);
+    return true;
+}
+/* A world whose input map binds Jump to Z and X. Its Tick reads Jump, and an
+ * input owner counts Jump events. */
+static bool jump_world(engine **out)
+{
+    cleanup();
+    jump = (typeof(jump)){ 0 };
+    char error[192];
+    const input_action actions[] = {
+        { "Jump", (UINT64_C(1) << GAME_CONTROL_Z) | (UINT64_C(1) << GAME_CONTROL_X), false },
+    };
+    /* A count without actions, an unnamed or empty-named action, one action
+     * listed twice, an action without controls or with one outside
+     * GameControl, or more than the most actions a map holds is rejected. */
+    const input_action unnamed = { NULL, UINT64_C(1) << GAME_CONTROL_Z, false };
+    const input_action empty = { "", UINT64_C(1) << GAME_CONTROL_Z, false };
+    const input_action twice[] = {
+        { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false },
+        { "Jump", UINT64_C(1) << GAME_CONTROL_X, false },
+    };
+    const input_action uncontrolled = { "Jump", 0, false };
+    const input_action none = { "Jump", UINT64_C(1) << GAME_CONTROL_NONE, false };
+    const input_action beyond = { "Jump", UINT64_C(1) << GAME_CONTROL_COUNT, false };
+    static char names[INPUT_ACTION_MAX + 1][8];
+    static input_action many[INPUT_ACTION_MAX + 1];
+    for (int i = 0; i <= INPUT_ACTION_MAX; i++) {
+        snprintf(names[i], sizeof names[i], "A%d", i);
+        many[i] = (input_action){ names[i], UINT64_C(1) << GAME_CONTROL_Z, false };
+    }
+    game_world_options invalid[] = {
+        { .modules = GAME_WORLD_INPUT, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &unnamed, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = twice, .action_count = 2 },
+        { .modules = GAME_WORLD_INPUT, .actions = &empty, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &uncontrolled, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &none, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &beyond, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = many, .action_count = INPUT_ACTION_MAX + 1 },
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        REQUIRE(!game_world_new(&invalid[i], error, sizeof error));
+        REQUIRE(!strcmp(error, "Invalid runtime world options"));
+    }
+    game_world_options most = { .modules = GAME_WORLD_INPUT,
+                                .actions = many,
+                                .action_count = INPUT_ACTION_MAX };
+    game_world *full = game_world_new(&most, error, sizeof error);
+    REQUIRE(full);
+    game_world_free(full);
+    game_world_options options = { .modules = GAME_WORLD_INPUT,
+                                   .actions = actions,
+                                   .action_count = 1 };
+    simulation = game_world_new(&options, error, sizeof error);
+    REQUIRE(simulation);
+    ecs_world *ecs = game_world_ecs(simulation);
+    static const node_host_call tick = { .service = GAME_INPUT_SERVICE,
+                                         .invoke = observe_jump,
+                                         .optional_service = true };
+    static const node_host_call press = { .invoke = count_jump };
+    const pin_value dt = { .type = PIN_F32 };
+    behavior_function *tick_body = host_body(&tick, &dt, 1, 990);
+    behavior_function *press_body = host_body(&press, NULL, 0, 980);
+    REQUIRE(tick_body && press_body);
+    execution_module_plan *plan = execution_module_plan_new();
+    plan->id = 992;
+    plan->valid = true;
+    handler(plan, "Tick", 993, &dt, 1, tick_body);
+    handler(plan, "Jump", 983, NULL, 0, press_body);
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    execution_module_plan_free(plan);
+    REQUIRE(module);
+    REQUIRE(game_source_register(game_world_sources(simulation), "Jumper", module, NULL) == 0);
+    execution_module_free(module);
+    module = NULL;
+    ecs_entity jumper = ecs_world_create_entity(ecs);
+    REQUIRE(GAME_GameInput_add(ecs, jumper, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    REQUIRE(
+        game_source_attach(game_world_sources(simulation), jumper, "Jumper", false, 0, 0) == 0
+    );
+    *out = game_world_engine(simulation);
+    REQUIRE(engine_frame(*out, 0) == 0);
+    return true;
+}
+TEST_CASE(native_action_state_combines_sources_per_step)
+{
+    engine *runtime;
+    REQUIRE(jump_world(&runtime));
+    const uint64_t z = UINT64_C(1) << GAME_CONTROL_Z,
+                   x = UINT64_C(1) << GAME_CONTROL_X,
+                   c = UINT64_C(1) << GAME_CONTROL_C;
+    REQUIRE(jump_step(runtime, 0, false, false));
+    REQUIRE(jump_step(runtime, z, true, true));
+    REQUIRE(jump_step(runtime, z, true, false));
+    /* Moving from one source to another never releases the action. */
+    REQUIRE(jump_step(runtime, x, true, false));
+    REQUIRE(jump_step(runtime, 0, false, false));
+    /* A control outside the map holds nothing. */
+    REQUIRE(jump_step(runtime, c, false, false));
+    REQUIRE(jump.presses == 1);
+    /* A tap between two steps still counts as pressed for the next one. */
+    bool firing;
+    REQUIRE(engine_sample_controls(runtime, x, &firing) == FLOW_OK);
+    REQUIRE(jump_step(runtime, 0, false, true));
+    REQUIRE(jump_step(runtime, 0, false, false));
+    REQUIRE(jump.presses == 2);
+    cleanup();
+    return true;
+}
+TEST_CASE(native_pause_keeps_held_actions)
+{
+    engine *runtime;
+    REQUIRE(jump_world(&runtime));
+    const uint64_t z = UINT64_C(1) << GAME_CONTROL_Z;
+    REQUIRE(jump_step(runtime, z, true, true));
+    REQUIRE(jump.presses == 1);
+    REQUIRE(engine_set_playing(runtime, false) == 0);
+    /* Hosts sample no controls while paused; that sample is ignored. */
+    bool firing = true;
+    REQUIRE(engine_sample_controls(runtime, 0, &firing) == FLOW_OK && !firing);
+    REQUIRE(engine_frame(runtime, (jump.steps + 0.5) * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(engine_set_playing(runtime, true) == 0);
+    /* The first frame after resuming only restarts the clock. */
+    REQUIRE(engine_frame(runtime, (jump.steps + 0.5) * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(jump_step(runtime, z, true, false));
+    REQUIRE(jump.presses == 1);
+    cleanup();
+    return true;
+}
+#define Z_DOWN (UINT64_C(1) << GAME_CONTROL_Z)
+#define X_DOWN (UINT64_C(1) << GAME_CONTROL_X)
+/* The controls sampled before each step. */
+static const struct
+{
+    int count;
+    uint64_t samples[3];
+} tapped_steps[] = {
+    { 1, { 0 } },
+    { 2, { Z_DOWN, 0 } },         /* tap */
+    { 1, { Z_DOWN } },            /* press */
+    { 2, { 0, Z_DOWN } },         /* release, press */
+    { 1, { Z_DOWN } },            /* hold */
+    { 3, { 0, Z_DOWN, 0 } },      /* release, tap */
+    { 3, { X_DOWN, Z_DOWN, 0 } }, /* tap one source, then another */
+    { 1, { 0 } },
+    { 1, { Z_DOWN } },
+    /* Move to another source, then release: never pressed again. */
+    { 3, { Z_DOWN | X_DOWN, X_DOWN, 0 } },
+};
+#define TAPPED_STEPS (int)(sizeof tapped_steps / sizeof *tapped_steps)
+/* Runs every step, sampling live controls (ignored while replaying), and keeps
+ * what Tick read in each. */
+static bool run_taps(engine *runtime, bool read[][2])
+{
+    for (int step = 0; step < TAPPED_STEPS; step++) {
+        for (int i = 0; i < tapped_steps[step].count; i++) {
+            bool firing;
+            REQUIRE(
+                engine_sample_controls(runtime, tapped_steps[step].samples[i], &firing) == FLOW_OK
+            );
+        }
+        REQUIRE(engine_frame(runtime, (step + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+        REQUIRE(jump.steps == step + 1);
+        read[step][0] = jump.held;
+        read[step][1] = jump.pressed;
+    }
+    return true;
+}
+TEST_CASE(native_recorded_taps_replay_per_step)
+{
+    static const bool expected[TAPPED_STEPS][2] = {
+        { false, false }, { false, true },  { true, true },  { true, true },
+        { true, false },  { false, true },  { false, true }, { false, false },
+        { true, true },   { false, false },
+    };
+    engine *runtime;
+    REQUIRE(jump_world(&runtime));
+    engine_record_input(runtime, 3);
+    bool live[TAPPED_STEPS][2], replayed[TAPPED_STEPS][2];
+    REQUIRE(run_taps(runtime, live));
+    REQUIRE(!memcmp(live, expected, sizeof live));
+    int count;
+    const input_keyframe *recorded = engine_recorded_input(runtime, &count);
+    input_keyframe *keys = NULL;
+    for (int i = 0; i < count; i++) {
+        apush(keys, recorded[i]);
+    }
+    REQUIRE(jump_world(&runtime));
+    engine_replay_input(runtime, keys, count, 3);
+    afree(keys);
+    REQUIRE(run_taps(runtime, replayed));
+    REQUIRE(!memcmp(replayed, live, sizeof live));
+    cleanup();
+    return true;
+}
 static bool player_host(void *, uint64_t id, execution_prepared_host *out)
 {
     static const node_host_call call = { .invoke = tick };
@@ -754,6 +1037,7 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(type_catalog_find("Charge") == type);
     ecs_component_catalog components = declared_components_ecs(declared);
     REQUIRE(components.component_count == 1 && components.components[0]->type == type);
+    REQUIRE(components.components[0]->layout_hash == type_layout_hash(type));
     ecs_component_catalog project = project_components();
     REQUIRE(script_catalog_project() == declared_components_catalog(declared));
     REQUIRE(project.component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
@@ -778,9 +1062,33 @@ TEST_CASE(native_player_reads_declared_components)
                                    .object_count = 1 };
     scene = game_scene_prepare(&scene_spec, error, sizeof error);
     REQUIRE(scene);
-    game_player_spec spec = { .declared = declared, .scene = scene };
+    /* The input map travels with the package. */
+    const input_action jump_map = { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false };
+    game_player_spec spec = { .world = { .components = components,
+                                         .actions = &jump_map,
+                                         .action_count = 1 },
+                              .declared = declared,
+                              .scene = scene };
+    /* A player keeps its own set's layout while a newer set is published. */
+    declared_component smaller = { .name = "Charge", .fields = &level, .field_count = 1 };
+    declared_components *newer = declared_components_new(&smaller, 1, error, sizeof error);
+    REQUIRE(newer && type_catalog_find("Charge")->size != type->size);
+    player = game_player_new(&spec, error, sizeof error);
+    REQUIRE(player);
+    ecs_world *own = game_world_ecs(game_player_world(player));
+    REQUIRE(ecs_world_component(own, charge_id)->type == type);
+    game_player_free(player);
+    player = NULL;
+    declared_components_free(newer);
     game_player_application application = { 0 };
     size_t length;
+    /* A count without actions is rejected before it is written. */
+    spec.world.actions = NULL;
+    REQUIRE(
+        !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
+    REQUIRE(strstr(error, "Invalid prepared player record metadata") && !player_bytes);
+    spec.world.actions = &jump_map;
     REQUIRE(
         game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );
@@ -828,5 +1136,8 @@ void test_tool_native()
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
     RUN_TEST_CASE(native_player_reads_declared_components);
+    RUN_TEST_CASE(native_action_state_combines_sources_per_step);
+    RUN_TEST_CASE(native_recorded_taps_replay_per_step);
+    RUN_TEST_CASE(native_pause_keeps_held_actions);
     pu_clear_setup();
 }

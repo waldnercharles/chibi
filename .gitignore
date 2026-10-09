@@ -52,3 +52,5 @@ content/*/.authoring-*.tmp
 # Local external game mount and browser capture outputs.
 projects/local-game
 .playwright-mcp/
+build-sdk-reflect/
+build-studio/

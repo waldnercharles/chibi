@@ -1,7 +1,7 @@
 #ifndef CHIBI_IMAGE_CATALOG_H
 #define CHIBI_IMAGE_CATALOG_H
 
-#define RENDER_IMAGE_PREPARED_VERSION 1
+#define RENDER_IMAGE_PREPARED_VERSION 2
 
 #include "runtime/shaders/program.h"
 

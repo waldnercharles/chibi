@@ -5,6 +5,7 @@
 #include "authoring/parts_prepare.h"
 #include "authoring/shader_prepare.h"
 #include "runtime/component_catalog.h"
+#include "runtime/images/catalog.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -26,6 +27,25 @@ bool authoring_prototype_resources(const game_prototype *prototype, char *error,
             const GameMeshParts *parts = component->data;
             if (parts->parts && parts->parts[0] &&
                 !authoring_parts_prepare(parts->parts, error, size)) {
+                return false;
+            }
+        }
+        if (component->desc->id == GAME_COMPONENT_GameSprite.id) {
+            const GameSprite *sprite = component->data;
+            shader_image_source source = { .key = (char *)sprite->image,
+                                           .color_space = SHADER_IMAGE_SRGB,
+                                           .filter = SHADER_IMAGE_NEAREST,
+                                           .wrap = SHADER_IMAGE_CLAMP };
+            shader_error diagnostic = { 0 };
+            if (!sprite->image || !render_image_variant(&source, &diagnostic)) {
+                if (size) {
+                    snprintf(
+                        error,
+                        size,
+                        "Sprite: %s",
+                        sprite->image ? diagnostic.message : "no image"
+                    );
+                }
                 return false;
             }
         }

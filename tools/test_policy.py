@@ -23,6 +23,9 @@ NATIVE = {
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--player-installed-space-cadet-sljit',): 'Pinned installed player SLJIT, four hidden1280x720frames, exact8resources, shared60seconds',
+    ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
+    ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
+    ('--sdf-coverage',): 'Reviewed hidden 128x128 app: production warped-SDF shape, plain and bordered, three phases, instanced and tiled draw paths against its CPU field, readback; GPU; docs/testing.md',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
@@ -38,6 +41,9 @@ TOOLS = {
     'player-installed-space-cadet-sljit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-sljit'],
     # Existing admitted source-edit and shader persistence cases, now installed SDK consumers.
     'source-edit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-edit'],
+    # Catalog coverage of the all-features fixture, and four frames of each of its scenes.
+    'feature-coverage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                         '--feature-coverage', str(ROOT / 'test/fixtures/feature-coverage')],
     # One new-asset scaffolding case in a temporary content folder.
     'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--new-asset'],
     # Thirteen validate_project cases, each a scaffolded temporary project and a few built chibi_ctl runs.
@@ -80,9 +86,22 @@ TOOLS = {
     # and halves, sky irradiance, the split-sum table, sky publication, and pure desktop key/stick
     # mapping; no window, GPU, fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--render-resources'],
+    # Two reviewed hidden-app 64x64 cases: Cute's interior border on a circle and a diamond,
+    # opaque and translucent, through the instanced and tiled draw paths. The agent runs the
+    # render-enabled test_tools of its selected build directory.
+    'interior-border': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--interior-border'],
+    # Fourteen reviewed hidden-app scenes of meshes and SDFs hiding each other, compared with
+    # hidden-surface rejection on and off, plus Cute's whole-canvas depth copy on its own.
+    'sdf-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-visibility'],
+    # One reviewed hidden-app case: the production warped-SDF shape through both draw paths,
+    # checked against its CPU field outside the antialiased edge.
+    'sdf-coverage': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-coverage'],
     # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure, the Environment
     # sky and its light, and color ramps.
     'scene3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene3d'],
+    # The same renders on GLES, the WebGL 2 fallback's backend. GLES needs a display, so Xvfb
+    # provides one; Linux only.
+    'scene3d-gles': ['xvfb-run', '-a', str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene3d-gles'],
     # Four reviewed hidden-app 64x64 cases: a ramp past 4 KB of the ramp table through a 2D draw
     # shader and the material raster, every program kind compiling the table, and the table
     # counted among a raster batch's samplers.
@@ -154,7 +173,7 @@ GROUPS = {
                'source-native-numeric-queries', 'source-native-material', 'source-presentation',
                'system-schedule', 'source-systems', 'source-edit', 'new-asset', 'validate-project',
                'shader-parameters-prepared',
-               'language-prepared', 'ecs-query-benchmark'],
+               'language-prepared', 'ecs-query-benchmark', 'feature-coverage'],
     'language': ['language', 'language-semantic', 'language-execution', 'language-program',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
@@ -431,7 +450,8 @@ def main():
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
-        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit'):
+        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
+                            'interior-border', 'sdf-visibility', 'sdf-coverage'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])
         return run_commands([TOOLS[arguments[0]]])

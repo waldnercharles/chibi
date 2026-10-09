@@ -1,0 +1,4 @@
+name "DriftSystem"
+components {
+    GAME.EngineSystem asset="Drift"
+}

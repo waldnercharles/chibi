@@ -291,11 +291,6 @@ static bool module_function(const execution_module *m, const behavior_function *
         if (m->plan.functions[i].body == f || m->plan.functions[i].subscription == f) {
             return true;
         }
-        for (int j = 0; j < m->plan.functions[i].local_count; j++) {
-            if (m->plan.functions[i].locals[j].initializer == f) {
-                return true;
-            }
-        }
     }
     for (int i = 0; i < m->plan.binding_count; i++) {
         if (m->plan.bindings[i].body == f || m->plan.bindings[i].dependencies == f) {
@@ -558,11 +553,6 @@ static void record_failure(const behavior_function *f, const behavior_function_c
         const execution_module_function *fn = &scope->functions[i];
         if (fn->body == f || fn->subscription == f) {
             error.function_id = fn->id;
-        }
-        for (int j = 0; j < fn->local_count; j++) {
-            if (fn->locals[j].initializer == f) {
-                error.function_id = fn->id;
-            }
         }
     }
     const char *asset = p->name;

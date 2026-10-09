@@ -83,13 +83,16 @@ endif()
 
 if(TARGET Chibi::render)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/scene3d.c
-        device_controls.c)
+        device_controls.c ../render/interior_border.c ../sdf_coverage.c ../sdf_visibility.c
+        ../draw_backend.cpp)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
-    target_link_libraries(chibi_render_consumer PRIVATE Chibi::render)
+    target_link_libraries(chibi_render_consumer PRIVATE Chibi::render Chibi::shader_preparation
+        Chibi::graph_authoring Chibi::graph_compilation)
     target_compile_options(chibi_render_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_render_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::render)
+    target_link_libraries(test_tools PRIVATE Chibi::render Chibi::shader_preparation Chibi::graph_authoring
+        Chibi::graph_compilation)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
     # Surface materials with roughness and metallic come from material graphs.
     if(TARGET Chibi::shader_preparation)
@@ -147,6 +150,13 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::studio_capabilities)
         target_link_libraries(test_tools PRIVATE Chibi::studio_capabilities)
+        # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
+        if(TARGET chibi_ctl)
+            target_sources(test_tools PRIVATE feature_coverage.c)
+            target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1
+                CHIBI_CTL_PATH="$<TARGET_FILE:chibi_ctl>")
+            add_dependencies(test_tools chibi_ctl)
+        endif()
     endif()
 endif()
 

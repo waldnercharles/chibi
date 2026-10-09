@@ -204,6 +204,28 @@ TEST_CASE(language_binding_cycle_rejected)
     REQUIRE(analysis->binding_count == 1);
     return true;
 }
+TEST_CASE(language_inferred_return_of_several_results_is_rejected)
+{
+    parse(
+        "library Tuples { function Pair() -> (a: double, b: double) { "
+        "return(1, 2) } "
+        "function Both() { return Pair() } }"
+    );
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic(
+        "This call has several results; return the ones you need by name, as "
+        "in "
+        "return(Hit: r.Hit, Distance: r.Distance)"
+    ));
+    parse(
+        "library Tuples { function Pair() -> (a: double, b: double) { "
+        "return(1, 2) } "
+        "function First() { return Pair().a } }"
+    );
+    REQUIRE(analysis->valid);
+    return true;
+}
 TEST_CASE(language_invalid_source_retains_bounded_diagnostics)
 {
     const char *source = "behavior Broken { on Tick { sample := ; }";
@@ -228,6 +250,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_pure_call_chain_rejects_effects);
     RUN_TEST_CASE(language_discarded_pure_result_rejected);
     RUN_TEST_CASE(language_binding_cycle_rejected);
+    RUN_TEST_CASE(language_inferred_return_of_several_results_is_rejected);
     RUN_TEST_CASE(language_invalid_source_retains_bounded_diagnostics);
     pu_clear_setup();
 }

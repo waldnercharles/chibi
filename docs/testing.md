@@ -38,9 +38,42 @@ the drivers `make test-build` produced; set `CHIBI_TOOLS_BUILD_DIR`,
 `build-language/` for the `test-language*` targets. Add a case to the selector
 that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
-`scene3d` and `material-ramps` render through a hidden window, which needs a
-display and a GPU driver the CI job does not set up, so they stay out of the
-group; run them with `python3 tools/test_policy.py tool <name>`.
+`scene3d`, `scene3d-gles` and `material-ramps` render through a hidden window,
+which needs a display and a GPU driver the CI job does not set up, so they stay
+out of the group; run them with `python3 tools/test_policy.py tool <name>`.
+
+## Feature coverage
+
+`test/fixtures/feature-coverage` is the all-features project: one scene per
+area (2D physics, UI, particles, audio, save, rhythm, materials, input and
+entities). `test_tools --feature-coverage <project>` compares the engine
+catalog (components, native functions and events) with what the project's
+scripts, prototypes and scenes use, prints each gap, and runs every scene for
+four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
+failure. Every prototype, behavior, library and system must be reachable from a
+scene: placed or attached there, spawned or called from source that runs, and
+only that source counts. A spawn reaches the prototype it names directly or
+through a value, such as a local, state or library parameter that holds the
+prototype's name, as find references does. A scene entity with its own behavior list
+runs that list in place of its prototype's; otherwise it and a spawned
+prototype run the prototype's list. Components count on these placed and
+spawned instances, after the scene's overrides, and where running source reads,
+writes or adds them, directly or through a generic call such as
+`add_component("GAME.Heat")`; a system query alone matches nothing without
+them, so it does not count.
+A system runs only while an entity's `EngineSystem` names it. Components the
+project declares in `content/components` load as they do in preparation and
+count as its own catalog entries. Run it on any project whose content folder is
+`content` to list what that project leaves unused; it fails while any of that
+is unlisted.
+
+The project's `coverage-gaps.txt` lists the entries no scene uses yet, in groups
+under a comment that gives the reason; without the file, every unused entry is a
+gap. The check fails when a catalog entry is in neither the scenes nor that
+list, when a listed entry has no reason comment above it, and when a listed
+entry becomes used. A PR that adds a component, native function or event uses it
+in a feature-coverage scene; it lists the entry as a gap only with a reason. The
+`native` group, and so CI, runs it on the fixture.
 
 CI runs the build and both groups on Linux and macOS. On Windows it builds the
 SDK tools, compiles `test/fixtures/studio` under a one-minute step timeout
@@ -386,6 +419,35 @@ consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
 the copy Cute pins). A box falls onto static ground and comes to rest, then
 closest raycasts hit the box, hit the ground and miss. It needs a native tools
 build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.
+`interior-border` draws a circle and a diamond with Cute's interior border into
+a hidden 64 x 64 canvas, opaque and translucent, through Cute's instanced and
+tiled draw paths, and compares every pixel with an analytic reference. It is a
+GPU check that needs the render-enabled tools of the main build: run
+`make build BUILD_TARGET=test_tools`, then
+`make agent-gpu-test AGENT_SELECTOR=--interior-border`, which runs that build's
+`test/tools/test_tools` after the agent's device preflight. Pass the same
+`BUILD_DIR` to both to check another build. On lavapipe it passes
+9 assertions in 6.1 seconds on a cold shader cache and 0.9 seconds warm. The
+tiled case fails when Cute's compute renderer is unavailable. Every SDL_GPU
+backend has one, so there a failure means Cute's tile shaders did not load.
+`sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
+(occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
+near clipping, a mixed 2D layer, and a later frame without the occluder) with
+hidden-surface rejection on and off, and requires the same pixels both ways and
+the expected depth snapshot copies. It also checks Cute's whole-canvas depth copy
+on its own: a cropped draw after the copy must not reach the snapshot. It reads
+the shaders from `src/render/shaders`. Build and run it like `interior-border`
+with `AGENT_SELECTOR=--sdf-visibility`. On lavapipe it passes in 8.9 seconds
+with Mesa's shader cache disabled and 2.9 seconds warm.
+`sdf-coverage` draws the production warped-SDF shape from `src/render/sdf_shapes.c`
+into a hidden 128 x 128 canvas at three warp and pluck phases, plain and with an
+interior border, through Cute's instanced and tiled draw paths. Every pixel whose
+neighborhood lies more than two pixels from the CPU field's edge, to first order,
+must be untouched background outside and fill inside. That catches wrong
+parameter packing, bounds that clip the warp, and background erased by a false
+opaque-cover claim. Cute owns the antialiased band between. Build and run it like
+`interior-border` with `AGENT_SELECTOR=--sdf-coverage`. On lavapipe it passes
+2 assertions in 4.6 seconds with Mesa's shader cache disabled and 1.3 seconds warm.
 `sky-files` selects four in-tree Radiance `.hdr` cases: flat and run-length
 decoding, fourteen malformed files, preparation from mounted content (read
 once, with an identity that follows the texels) and import that never replaces

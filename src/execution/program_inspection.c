@@ -306,12 +306,6 @@ static execution_module *function_module(execution_program *p, const behavior_fu
             *id = f->id;
             return m;
         }
-        for (int j = 0; j < f->local_count; j++) {
-            if (f->locals[j].initializer == body) {
-                *id = f->id;
-                return m;
-            }
-        }
     }
     for (int k = 0; k < acount(p->imports); k++) {
         execution_module *found = function_module(p->imports[k], body, id);
@@ -417,7 +411,7 @@ static int pause_point(void *user, behavior_function_context *ctx, const behavio
 {
     execution_activation *a = user;
     execution_inspector *i = a->instance->program->owner_program->inspector;
-    if (!i || a->initializer) {
+    if (!i) {
         return 0;
     }
     execution_activation *owner = root(a);
@@ -660,7 +654,6 @@ void program_inspection_bind(execution_activation *a)
     a->context.source_debug_user = a;
     a->context.source_pause = pause_point;
     a->context.source_capture = capture;
-    a->context.source_debug_suppressed = a->initializer;
 }
 bool program_inspection_paused(const execution_activation *a)
 {

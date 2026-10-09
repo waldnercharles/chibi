@@ -34,12 +34,6 @@ typedef struct
     int count;
     bool break_requested;
 } action_values;
-typedef struct
-{
-    behavior_function_context *context;
-    int value;
-    bool ready, initializing;
-} local_value;
 struct execution_activation
 {
     execution_instance *instance;
@@ -50,7 +44,6 @@ struct execution_activation
     command_wait *wait;
     command_wait **requests;
     action_values *actions;
-    local_value *locals;
     execution_activation *continuation_owner;
     behavior_function_context *continuation_context;
     uint64_t origin_action;
@@ -61,7 +54,8 @@ struct execution_activation
     uint64_t debug_previous, debug_module, debug_function;
     bool debug_paused;
     int status;
-    bool finished, running, initializer, has_run;
+    /* Cancelled while running: stops when control returns to it. */
+    bool finished, running, has_run, stopping;
 };
 typedef struct
 {
@@ -220,8 +214,6 @@ bool program_capture_reference(
     const execution_module_capture *,
     pin_value *
 );
-int program_initialize_local(behavior_function_context *, pin_value *, bool);
-int program_store_local_group(behavior_function_context *, pin_value *, int, bool);
 void program_collect_payloads(execution_program *, execution_activation *extra);
 const pin_value *program_event_argument(behavior_function_context *, uint64_t, int);
 static inline bool program_wait_due(const command_wait *wait, double now)

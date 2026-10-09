@@ -188,13 +188,23 @@ void script_analyzer_finish_bindings(analyzer *a)
     afree(a->out->bindings);
     a->out->bindings = ordered;
 }
+static void define_inferred(analyzer *a, int body);
 void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
 {
     int old_scope = a->scope, old_function = a->function;
     a->function = index;
     a->scope = a->out->functions[index].scope;
     if (a->out->functions[index].kind != SCRIPT_FUNCTION_SYSTEM) {
+        int nested = acount(a->bodies);
         script_analyzer_declaration_pass(a, body);
+        /* Nested inferred functions have results before this body calls them. */
+        for (int i = nested; i < acount(a->bodies); i++) {
+            if (a->out->functions[a->bodies[i].function].inferred) {
+                define_inferred(a, i);
+            }
+        }
+        a->scope = a->out->functions[index].scope;
+        a->function = index;
         script_analyzer_definition_pass(a, body);
     }
     script_statement block = { .kind = SCRIPT_STMT_BLOCK,
@@ -221,12 +231,13 @@ void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
     a->function = old_function;
     asetlen(a->narrowed, 0);
 }
-static bool calls(const analyzer *a, TSNode node, const char *name)
+/* Whether `node` calls `symbol`, resolving each call where `node` sees it. */
+static bool calls(const analyzer *a, TSNode node, int symbol)
 {
     if (script_analyzer_is(node, "call_expression")) {
         char *target = script_analyzer_text_copy(a, script_analyzer_field(node, "function"));
         const char *dot = strrchr(target, '.');
-        bool match = !strcmp(dot ? dot + 1 : target, name);
+        bool match = script_analyzer_callable_symbol(a, dot ? dot + 1 : target) == symbol;
         free(target);
         if (match) {
             return true;
@@ -235,7 +246,8 @@ static bool calls(const analyzer *a, TSNode node, const char *name)
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
         TSNode child = ts_node_named_child(node, i);
         if (!script_analyzer_is(child, "function_declaration") &&
-            !script_analyzer_is(child, "macro_declaration") && calls(a, child, name)) {
+            !script_analyzer_is(child, "macro_declaration") &&
+            calls(a, child, symbol)) {
             return true;
         }
     }
@@ -257,7 +269,11 @@ static void define_inferred(analyzer *a, int body)
     a->bodies[body].state = BODY_ACTIVE;
     for (int i = 0; i < acount(a->bodies); i++) {
         const script_function *callee = &a->out->functions[a->bodies[i].function];
-        if (callee->inferred && calls(a, b.node, a->out->symbols[callee->symbol].name)) {
+        int old_scope = a->scope;
+        a->scope = a->out->functions[b.function].scope;
+        bool called = callee->inferred && calls(a, b.node, callee->symbol);
+        a->scope = old_scope;
+        if (called) {
             define_inferred(a, i);
         }
     }

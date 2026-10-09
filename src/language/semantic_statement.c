@@ -120,40 +120,32 @@ static uint64_t task_function(analyzer *a, TSNode call)
                                                  : NULL;
     return library && (library->effects & SCRIPT_EFFECT_SUSPEND) ? library->id : 0;
 }
-/* Locals shadow a state only inside their own callable. */
-static bool callable(TSNode node)
+/* Whether a local or parameter declared directly in `scope` is named `name`. */
+static bool declares(analyzer *a, TSNode scope, const char *name)
 {
-    return script_analyzer_is(node, "function_declaration") ||
-           script_analyzer_is(node, "macro_declaration") ||
-           script_analyzer_is(node, "handler");
-}
-/* Whether a local or parameter of this callable, outside nested ones, is
- * named `name`. */
-static bool declares(analyzer *a, TSNode node, const char *name)
-{
-    if (script_analyzer_is(node, "local_declaration") ||
-        script_analyzer_is(node, "parameter")) {
-        char *declared = script_analyzer_name_copy(a, script_analyzer_field(node, "name"));
+    for (uint32_t i = 0; i < script_analyzer_named_count(scope); i++) {
+        TSNode child = ts_node_named_child(scope, i);
+        if (script_analyzer_is(child, "parameter_list") && declares(a, child, name)) {
+            return true;
+        }
+        if (!script_analyzer_is(child, "local_declaration") &&
+            !script_analyzer_is(child, "parameter")) {
+            continue;
+        }
+        char *declared = script_analyzer_name_copy(a, script_analyzer_field(child, "name"));
         bool same = !strcmp(declared, name);
         free(declared);
         if (same) {
             return true;
         }
     }
-    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        TSNode child = ts_node_named_child(node, i);
-        if (!callable(child) && declares(a, child, name)) {
-            return true;
-        }
-    }
     return false;
 }
-/* Whether a callable around `node`, which nested functions can see into,
- * declares `name`. */
+/* Whether a block or callable enclosing `node` declares `name`. */
 static bool shadowed(analyzer *a, TSNode node, const char *name)
 {
     for (; !ts_node_is_null(node); node = ts_node_parent(node)) {
-        if (callable(node) && declares(a, node, name)) {
+        if (declares(a, node, name)) {
             return true;
         }
     }

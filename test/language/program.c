@@ -1994,7 +1994,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     REQUIRE(!symlink(outside, staged));
     file = fopen(manifest, "wb");
     fputs(
-        "meta {\n    version 12\n}\n// metadata {\nname \"P\"; version "
+        "meta {\n    version 12\n}\n// metadata {\nname #\"P\\\"#; version "
         "+12\ncontent "
         "\"content\"\n"
         "start_scene \"scenes/Start.kdl\"\n",
@@ -2227,6 +2227,23 @@ TEST_CASE(program_results_are_inferred_from_returns)
         }
         REQUIRE(number_state(instance, "n", 18));
     }
+    /* B's nested F calls A; A's own nested F is a different function. */
+    const char
+        *nested = "behavior B { n: double = 0;"
+                  "function Outer() { function F() { return Inner() } return "
+                  "F() }"
+                  "function Inner() { function F() { return 2 } return F() }"
+                  "on Impulse(amount, enabled) { n = Outer() } }";
+    prepare();
+    REQUIRE(compile(nested, BEHAVIOR_BYTECODE));
+    execution_instance *instance = execution_program_attach(
+        program,
+        ecs_entity_to_u64(ecs_world_create_entity(world))
+    );
+    const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                               { .type = PIN_BOOL, .b = true } };
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(instance, "n", 2));
     static const struct
     {
         const char *source, *message;
@@ -2446,10 +2463,18 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                   "function Other(pulse: double) { } pulse = Charge(time) }"
                   "function Charge(time: double) -> (power: double) { "
                   "yield; return(time * 2); } }";
-    const char *sources[] = { source,  reordered, local,
-                              wrapped, qualified, nested };
+    /* A sibling block's local `pulse` does not shadow the state. */
+    const char *sibling = "behavior P { pulse: task; power: double = 0;"
+                          "on Impulse(amount, enabled) { Start(amount); "
+                          "power = await pulse }"
+                          "function Start(time: double) { "
+                          "if (time > 99) { pulse := 1 } pulse = Charge(time) }"
+                          "function Charge(time: double) -> (power: double) { "
+                          "yield; return(time * 2); } }";
+    const char *sources[] = { source,    reordered, local,  wrapped,
+                              qualified, nested,    sibling };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int b = 0; b < 12; b++) {
+    for (int b = 0; b < 14; b++) {
         prepare();
         REQUIRE(compile(sources[b / 2], backends[b % 2]));
         ecs_entity owner = ecs_world_create_entity(world);

@@ -42,8 +42,8 @@ static void draw_scene(void *user)
     engine *runtime = game_prototype_preview_runtime(scene->preview);
     const game_particles *particles = game_prototype_preview_particles(scene->preview);
     if (scene->perspective) {
-        render_arena_camera camera;
-        engine_viewport_get_arena_camera(scene->viewport, &camera);
+        render_scene3d_camera camera;
+        engine_viewport_get_camera3d(scene->viewport, &camera);
         scene->failed = !app_scene_renderer_draw3d(
             scene->renderer,
             world,

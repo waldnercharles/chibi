@@ -11,7 +11,7 @@
 #include "authoring/source_collection.h"
 #include "authoring/ui_prepare.h"
 #include "authoring/visual_prepare.h"
-#include "render/arena_parts.h"
+#include "render/scene3d_parts.h"
 #include "render/shader_values.h"
 #include "runtime/behaviors/module_set.h"
 #include "runtime/event_catalog.h"
@@ -38,7 +38,7 @@ static void clear_visuals()
 {
     authoring_shader_catalog_clear();
     shader_values_clear();
-    render_arena_parts_clear();
+    render_scene3d_parts_clear();
     render_mesh_assets_clear();
     render_image_catalog_clear();
 }

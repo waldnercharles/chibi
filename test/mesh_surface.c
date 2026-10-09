@@ -69,7 +69,7 @@ void test_mesh_surface()
     close_value(surface.max.x - surface.min.x, 16);
     assert(render_mesh_surface_pick(&surface, position, &height));
     close_value(height, 13);
-    CF_M4x4 model = render_arena_visual_model(&surface.parts[0].visual);
+    CF_M4x4 model = render_scene3d_visual_model(&surface.parts[0].visual);
     CF_V3 normal = render_mesh_surface_normal(model, (CF_V3){ 0, 1, 0 });
     close_value(normal.x, 0);
     close_value(normal.y, 0);

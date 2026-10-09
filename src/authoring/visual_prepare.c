@@ -1,6 +1,6 @@
 #include "authoring/visual_prepare.h"
 
-#include "render/arena_parts.h"
+#include "render/scene3d_parts.h"
 #include "render/shader_catalog_records.h"
 #include "render/shader_values.h"
 #include "runtime/component_catalog.h"
@@ -125,7 +125,7 @@ bool authoring_visual_prepare(
         goto fail;
     }
     unsigned char *parts = NULL;
-    if (!render_arena_parts_save(&parts, &length, error, size) ||
+    if (!render_scene3d_parts_save(&parts, &length, error, size) ||
         !append(result, "parts", GAME_PLAYER_ASSET_PARTS, parts, length, &total, error, size)) {
         goto fail;
     }

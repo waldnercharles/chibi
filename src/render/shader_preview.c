@@ -1,9 +1,9 @@
 #include "render/shader_preview.h"
 
 #include "ecs/ecs.h"
-#include "render/arena3d.h"
-#include "render/arena_post.h"
 #include "render/material_raster.h"
+#include "render/scene3d.h"
+#include "render/scene3d_post.h"
 #include "render/shader_fragment.h"
 #include "render/shader_program.h"
 #include "render/shader_values.h"
@@ -17,12 +17,12 @@
 struct render_shader_preview
 {
     char *name; /* the shader in the catalog */
-    render_arena *arena;
-    render_arena_post *post;
-    render_arena_camera camera;
+    render_scene3d *scene3d;
+    render_scene3d_post *post;
+    render_scene3d_camera camera;
     render_programs *programs;
     render_material_entity entity;
-    render_arena_activity activity;
+    render_scene3d_activity activity;
     float center_x, center_y;
     float span_width, span_height;
     int width, height;
@@ -47,31 +47,31 @@ static void set_preview_error(render_shader_preview *preview, const char *messag
 
 static bool prepare_material_preview(render_shader_preview *preview, int width, int height, shader_error *error)
 {
-    preview->arena = render_arena_new();
-    preview->post = render_arena_post_new();
-    if (!preview->arena || !preview->post) {
-        set_error(error, "Could not create the arena shader preview.");
+    preview->scene3d = render_scene3d_new();
+    preview->post = render_scene3d_post_new();
+    if (!preview->scene3d || !preview->post) {
+        set_error(error, "Could not create the 3D shader preview.");
         return false;
     }
     CF_V3 corners[8];
     for (int i = 0; i < 8; i++) {
-        float r = RENDER_ARENA_PREVIEW_RADIUS;
+        float r = RENDER_SCENE3D_PREVIEW_RADIUS;
         corners[i] = (CF_V3){ i & 1 ? r : -r, i & 2 ? r : -r, i & 4 ? r : -r };
     }
-    CF_Aabb bounds = render_arena_fit(corners, 8, (float)width / height);
+    CF_Aabb bounds = render_scene3d_fit(corners, 8, (float)width / height);
     preview->center_x = (bounds.min.x + bounds.max.x) * .5f;
     preview->center_y = (bounds.min.y + bounds.max.y) * .5f;
     preview->span_width = bounds.max.x - bounds.min.x;
     preview->span_height = bounds.max.y - bounds.min.y;
-    preview->camera = render_arena_camera_make(
+    preview->camera = render_scene3d_camera_make(
         preview->center_x,
         preview->center_y,
         preview->span_width,
         preview->span_height
     );
-    GameEnvironment settings = render_arena_post_defaults();
-    if (!render_arena_post_prepare(preview->post, width, height, &settings)) {
-        set_error(error, render_arena_post_error(preview->post));
+    GameEnvironment settings = render_scene3d_post_defaults();
+    if (!render_scene3d_post_prepare(preview->post, width, height, &settings)) {
+        set_error(error, render_scene3d_post_error(preview->post));
         return false;
     }
     return true;
@@ -145,7 +145,7 @@ static render_shader_preview *preview_new(
         preview->span_width = options->span_width;
         preview->span_height = options->span_height;
         if (preview->material) {
-            preview->camera = render_arena_camera_make(
+            preview->camera = render_scene3d_camera_make(
                 preview->center_x,
                 preview->center_y,
                 preview->span_width,
@@ -204,25 +204,25 @@ bool render_shader_preview_draw(render_shader_preview *preview, float time, cons
         return false;
     }
     if (preview->material) {
-        if (!render_arena_preview_material(
-                preview->arena,
+        if (!render_scene3d_preview_material(
+                preview->scene3d,
                 shader,
                 &preview->camera,
                 parameters_json,
                 time,
                 &preview->activity
             )) {
-            set_preview_error(preview, render_arena_error(preview->arena));
+            set_preview_error(preview, render_scene3d_error(preview->scene3d));
             return false;
         }
-        cf_render_to(render_arena_post_target(preview->post), true);
-        if (!render_arena_post_process(preview->post)) {
-            set_preview_error(preview, render_arena_post_error(preview->post));
+        cf_render_to(render_scene3d_post_target(preview->post), true);
+        if (!render_scene3d_post_process(preview->post)) {
+            set_preview_error(preview, render_scene3d_post_error(preview->post));
             return false;
         }
-        CF_Canvas output = render_arena_post_output(preview->post);
+        CF_Canvas output = render_scene3d_post_output(preview->post);
         if (!output.id) {
-            set_preview_error(preview, "Arena post-processing produced no output canvas.");
+            set_preview_error(preview, "3D post-processing produced no output canvas.");
             return false;
         }
         cf_draw_push();
@@ -263,8 +263,8 @@ void render_shader_preview_free(render_shader_preview *preview)
         return;
     }
     render_programs_free(preview->programs);
-    render_arena_free(preview->arena);
-    render_arena_post_free(preview->post);
+    render_scene3d_free(preview->scene3d);
+    render_scene3d_post_free(preview->post);
     free(preview->name);
     free(preview);
 }

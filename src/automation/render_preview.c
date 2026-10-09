@@ -13,7 +13,7 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
-#include "render/arena_influence.h"
+#include "render/scene3d_influence.h"
 #include "render/shader_catalog.h"
 #include "render/shader_dir.h"
 #include "render/shader_images.h"
@@ -134,9 +134,14 @@ static bool read_preview_pair(yyjson_val *object, const char *key, float pair[2]
 }
 
 /* Beat and surface-influence values a material reads from its scene. */
-static bool parse_preview_activity(yyjson_val *root, render_arena_activity *activity, char *error, size_t error_size)
+static bool parse_preview_activity(
+    yyjson_val *root,
+    render_scene3d_activity *activity,
+    char *error,
+    size_t error_size
+)
 {
-    *activity = (render_arena_activity){ 0 };
+    *activity = (render_scene3d_activity){ 0 };
     static const char *beats[] = { "beat_phase", "beat_pulse" };
     float *targets[] = { &activity->beat_phase, &activity->beat_pulse };
     for (int i = 0; i < 2; i++) {
@@ -711,7 +716,7 @@ static bool add_sample_grid(
     const behavior_asset *asset,
     const char *parameters_json,
     float time,
-    const render_arena_activity *activity,
+    const render_scene3d_activity *activity,
     const preview_sample_grid *grid,
     char *error,
     size_t error_size
@@ -748,7 +753,7 @@ static bool add_sample_grid(
     /* Shapes render without a scene, so only materials read the activity. */
     bool material = !render_shader_is_shape(shader);
     render_influences *influences = render_influences_new();
-    render_influences_preview(influences, activity->influence, RENDER_ARENA_PREVIEW_RADIUS);
+    render_influences_preview(influences, activity->influence, RENDER_SCENE3D_PREVIEW_RADIUS);
     bool sampled_all = true;
     for (int y = 0; sampled_all && y < grid->rows; y++) {
         float row = grid->rows == 1 ? 0.5f : (float)y / (float)(grid->rows - 1);
@@ -1078,7 +1083,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         yyjson_doc_free(document);
         return response_finish(&response);
     }
-    render_arena_activity activity;
+    render_scene3d_activity activity;
     if (!parse_preview_activity(root, &activity, error, sizeof error)) {
         response_error(&response, PREVIEW_INVALID_REQUEST, error);
         if (exit_code) {

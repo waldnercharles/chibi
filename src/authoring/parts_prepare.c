@@ -28,7 +28,7 @@ static bool vector(av_value *value, CF_V3 *out, bool required)
     return true;
 }
 
-static bool valid(const arena_part *part)
+static bool valid(const scene3d_part *part)
 {
     return part->primitive >= GAME_PRIMITIVE_BOX &&
            part->primitive < GAME_PRIMITIVE_COUNT && part->dimensions.x > 0 &&
@@ -40,9 +40,9 @@ static bool valid(const arena_part *part)
            );
 }
 
-bool authoring_parts_parse(const char *text, arena_parts *parts, char *error, size_t size)
+bool authoring_parts_parse(const char *text, scene3d_parts *parts, char *error, size_t size)
 {
-    *parts = (arena_parts){ 0 };
+    *parts = (scene3d_parts){ 0 };
     if (size) {
         error[0] = 0;
     }
@@ -51,8 +51,8 @@ bool authoring_parts_parse(const char *text, arena_parts *parts, char *error, si
     }
     av_doc *doc = av_value_read(text, NULL, 0);
     av_value *root = av_doc_root(doc);
-    if (!av_is_arr(root) || av_arr_size(root) > ARENA_PART_LIMIT) {
-        snprintf(error, size, "Mesh Parts needs an array of at most %d parts.", ARENA_PART_LIMIT);
+    if (!av_is_arr(root) || av_arr_size(root) > SCENE3D_PART_LIMIT) {
+        snprintf(error, size, "Mesh Parts needs an array of at most %d parts.", SCENE3D_PART_LIMIT);
         av_doc_free(doc);
         return false;
     }
@@ -60,7 +60,7 @@ bool authoring_parts_parse(const char *text, arena_parts *parts, char *error, si
     av_value *item;
     av_arr_foreach(root, index, count, item)
     {
-        arena_part *part = &parts->parts[parts->count];
+        scene3d_part *part = &parts->parts[parts->count];
         av_value *primitive = av_obj_get(item, "primitive");
         const char *material = av_get_str(av_obj_get(item, "material"));
         int64_t primitive_value = av_get_sint(primitive);
@@ -76,7 +76,7 @@ bool authoring_parts_parse(const char *text, arena_parts *parts, char *error, si
             (av_obj_get(item, "material") && !material)) {
             snprintf(error, size, "Mesh part %zu needs a valid primitive, positive size and finite transforms.", index + 1);
             av_doc_free(doc);
-            *parts = (arena_parts){ 0 };
+            *parts = (scene3d_parts){ 0 };
             return false;
         }
         snprintf(part->material, sizeof part->material, "%s", material ? material : "");
@@ -95,16 +95,16 @@ static void write_vector(av_doc *doc, av_value *object, const char *key, CF_V3 v
     av_obj_add_val(doc, object, key, array);
 }
 
-char *authoring_parts_write(const arena_parts *parts)
+char *authoring_parts_write(const scene3d_parts *parts)
 {
-    if (parts->count < 0 || parts->count > ARENA_PART_LIMIT) {
+    if (parts->count < 0 || parts->count > SCENE3D_PART_LIMIT) {
         return NULL;
     }
     av_doc *doc = av_doc_new();
     av_value *root = av_arr(doc);
     av_doc_set_root(doc, root);
     for (int i = 0; i < parts->count; i++) {
-        const arena_part *part = &parts->parts[i];
+        const scene3d_part *part = &parts->parts[i];
         if (!valid(part) || !memchr(part->material, 0, sizeof part->material)) {
             av_doc_free(doc);
             return NULL;
@@ -126,7 +126,7 @@ char *authoring_parts_write(const arena_parts *parts)
 
 bool authoring_parts_prepare(const char *text, char *error, size_t size)
 {
-    arena_parts parts;
+    scene3d_parts parts;
     return authoring_parts_parse(text, &parts, error, size) &&
-           render_arena_parts_publish(text, &parts, error, size);
+           render_scene3d_parts_publish(text, &parts, error, size);
 }

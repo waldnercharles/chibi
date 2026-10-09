@@ -8,7 +8,7 @@
  * render targets; RASTER_ACCUMULATE continues from the previous batch's. */
 typedef enum
 {
-    RENDER_PROGRAM_ARENA,
+    RENDER_PROGRAM_SCENE3D,
     RENDER_PROGRAM_FRAGMENT,
     RENDER_PROGRAM_RASTER,
     RENDER_PROGRAM_RASTER_ACCUMULATE,

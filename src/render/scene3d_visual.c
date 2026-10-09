@@ -1,15 +1,15 @@
-#include "render/arena_visual.h"
+#include "render/scene3d_visual.h"
 
 #include "runtime/component_catalog.h"
 
 #include <math.h>
 #include <stdio.h>
 
-int render_arena_visuals(
+int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,
     const GameTransform *position,
-    arena_visual visuals[ARENA_PART_LIMIT],
+    scene3d_visual visuals[SCENE3D_PART_LIMIT],
     char *error,
     size_t size
 )
@@ -40,12 +40,12 @@ int render_arena_visuals(
     if (scale == 0) {
         return 0;
     }
-    arena_parts parts;
-    if (!render_arena_parts_read(mesh ? mesh->parts : NULL, &parts, error, size)) {
+    scene3d_parts parts;
+    if (!render_scene3d_parts_read(mesh ? mesh->parts : NULL, &parts, error, size)) {
         return -1;
     }
     if (!parts.count) {
-        parts.parts[0] = (arena_part){
+        parts.parts[0] = (scene3d_part){
             .primitive = shape->primitive,
             .dimensions = { shape->width, shape->height, shape->depth }
         };
@@ -57,7 +57,7 @@ int render_arena_visuals(
         (CF_V3){ scale, scale, scale }
     );
     for (int i = 0; i < parts.count; i++) {
-        const arena_part *part = &parts.parts[i];
+        const scene3d_part *part = &parts.parts[i];
         if (part->primitive < GAME_PRIMITIVE_BOX ||
             part->primitive >= GAME_PRIMITIVE_COUNT ||
             !isfinite(part->dimensions.x + part->dimensions.y + part->dimensions.z) ||
@@ -71,12 +71,12 @@ int render_arena_visuals(
             game_visual_rotation(0, part->rotation),
             (CF_V3){ 1, 1, 1 }
         );
-        visuals[i] = (arena_visual){ *part, cf_mul_m4(frame, local) };
+        visuals[i] = (scene3d_visual){ *part, cf_mul_m4(frame, local) };
     }
     return parts.count;
 }
 
-CF_M4x4 render_arena_visual_model(const arena_visual *visual)
+CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual)
 {
     CF_V3 dimensions = visual->part.dimensions;
     if (visual->part.primitive == GAME_PRIMITIVE_CAPSULE) {
@@ -86,9 +86,9 @@ CF_M4x4 render_arena_visual_model(const arena_visual *visual)
     return cf_mul_m4(visual->frame, cf_m4_scale(dimensions));
 }
 
-bool render_arena_visual_visible(const arena_visual *visual, CF_M4x4 view_projection)
+bool render_scene3d_visual_visible(const scene3d_visual *visual, CF_M4x4 view_projection)
 {
-    CF_M4x4 clip = cf_mul_m4(view_projection, render_arena_visual_model(visual));
+    CF_M4x4 clip = cf_mul_m4(view_projection, render_scene3d_visual_model(visual));
     /* Every built-in mesh lies in [-1,1]^3. The wider depth interval also
      * conservatively contains the zero-to-one clip convention. No perspective
      * division: bounds crossing the eye or a clip plane must remain visible. */

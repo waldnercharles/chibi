@@ -2,13 +2,13 @@ layout(location = 0) in vec3 v_normal;
 layout(location = 1) in vec3 v_world;
 layout(location = 2) flat in vec4 v_material;
 layout(location = 0) out vec4 result;
-layout(set = 2, binding = 0) uniform sampler2D arena_parameters;
+layout(set = 2, binding = 0) uniform sampler2D scene_parameters;
 const float PI = 3.141592653589793;
 
 vec4 material_value(int slot)
 {
     int texel = int(v_material.x) * 38 + slot;
-    return texelFetch(arena_parameters, ivec2(texel % 2048, texel / 2048), 0);
+    return texelFetch(scene_parameters, ivec2(texel % 2048, texel / 2048), 0);
 }
 
 vec3 safe_normal(vec3 value, vec3 fallback)
@@ -65,14 +65,14 @@ vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 
     vec3 ambient = mix(vec3(0.06, 0.07, 0.10), vec3(0.17, 0.20, 0.27), sky);
     vec3 result = surface_light(base, roughness, metallic, normal, view, key) * 2.8 +
                   base * (1.0 - metallic) * ambient;
-    for (int i = 0; i < int(arena_light_count.x); i++) {
-        vec3 delta = arena_light_positions[i].xyz - v_world;
-        float radius = arena_light_positions[i].w;
+    for (int i = 0; i < int(scene_light_count.x); i++) {
+        vec3 delta = scene_light_positions[i].xyz - v_world;
+        float radius = scene_light_positions[i].w;
         float distance_squared = dot(delta, delta);
         if (distance_squared >= radius * radius || dot(normal, delta) < 0.0) continue;
         float fade = 1.0 - distance_squared / (radius * radius);
         vec3 light = safe_normal(delta, normal);
-        vec3 radiance = arena_light_colors[i].rgb * arena_light_colors[i].w * fade * fade;
+        vec3 radiance = scene_light_colors[i].rgb * scene_light_colors[i].w * fade * fade;
         result += surface_light(base, roughness, metallic, normal, view, light) * radiance;
     }
     return result;
@@ -119,7 +119,7 @@ void main()
     }
     vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
     vec3 object_normal = vec3(dot(inverse_x.xyz, normal), dot(inverse_y.xyz, normal), dot(inverse_z.xyz, normal));
-    vec3 view = safe_normal(arena_camera_time.xyz - v_world, normal);
+    vec3 view = safe_normal(scene_camera_time.xyz - v_world, normal);
     SGSample sg_context;
     sg_context.position = local.xz;
     sg_context.uv = primitive_uv(local, material_value(37).xyz, object_normal, int(v_material.z));
@@ -140,7 +140,7 @@ void main()
     sg_context.world_position = v_world;
     sg_context.normal = normal;
     sg_context.view_direction = view;
-    sg_context.time = arena_camera_time.w;
+    sg_context.time = scene_camera_time.w;
     vec4 fallback = material_value(0);
     vec3 base = fallback.rgb;
     vec3 emission = material_value(1).rgb;

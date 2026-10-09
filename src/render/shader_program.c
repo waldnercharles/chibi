@@ -54,10 +54,10 @@ render_programs *render_programs_new(render_program_kind kind)
 {
     render_programs *programs = xcalloc(1, sizeof *programs);
     programs->kind = kind;
-    if (kind == RENDER_PROGRAM_ARENA) {
-        programs->vertex = render_shader_source("arena3d.vert");
-        programs->body = render_shader_source("arena3d.frag");
-        programs->scene = render_shader_source("arena3d_scene.glsl");
+    if (kind == RENDER_PROGRAM_SCENE3D) {
+        programs->vertex = render_shader_source("scene3d.vert");
+        programs->body = render_shader_source("scene3d.frag");
+        programs->scene = render_shader_source("scene3d_scene.glsl");
     } else if (kind == RENDER_PROGRAM_MESH_MATERIAL || kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW) {
         programs->vertex = render_shader_source(
             (kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW)
@@ -372,7 +372,7 @@ int render_programs_prepare(render_programs *programs, const render_shader_set *
     programs->error[0] = 0;
     if (!programs->body ||
         (programs->kind != RENDER_PROGRAM_FRAGMENT && !programs->vertex) ||
-        (programs->kind == RENDER_PROGRAM_ARENA && !programs->scene)) {
+        (programs->kind == RENDER_PROGRAM_SCENE3D && !programs->scene)) {
         snprintf(programs->error, sizeof programs->error, "Cannot read material shader sources.");
         return 0;
     }

@@ -2,8 +2,8 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
-#include "render/arena3d.h"
 #include "render/mesh_surface.h"
+#include "render/scene3d.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
 
@@ -324,16 +324,16 @@ static void perspective_model_selection()
     set_component(world, entity, &GAME_COMPONENT_GameSdfSurface3D, &surface);
     set_component(world, entity, &GAME_COMPONENT_GameShader, &binding);
     CF_V3 corners[8];
-    assert(render_arena_entity_bounds(world, entity, corners));
+    assert(render_scene3d_entity_bounds(world, entity, corners));
     CF_V3 minimum = { 20, 6, 9.5f }, maximum = { 26, 12, 15.5f };
     for (int i = 0; i < 8; i++) {
         near(corners[i].x, i & 1 ? maximum.x : minimum.x);
         near(corners[i].y, i & 4 ? maximum.y : minimum.y);
         near(corners[i].z, i & 2 ? maximum.z : minimum.z);
     }
-    render_arena_camera camera = render_arena_camera_make(23, -12.5f, 100, 80);
-    CF_V3 projected = render_arena_project(&camera, (CF_V3){ 23, 9, 12.5f });
-    ecs_entity picked = render_arena_pick(
+    render_scene3d_camera camera = render_scene3d_camera_make(23, -12.5f, 100, 80);
+    CF_V3 projected = render_scene3d_project(&camera, (CF_V3){ 23, 9, 12.5f });
+    ecs_entity picked = render_scene3d_pick(
         world,
         &camera,
         (CF_V2){ projected.x, projected.y },
@@ -341,11 +341,11 @@ static void perspective_model_selection()
     );
     assert(ecs_entity_to_u64(picked) == ecs_entity_to_u64(entity));
     /* This ray intersects the model's box proxy but misses its spherical surface. */
-    projected = render_arena_project(&camera, (CF_V3){ 25.8f, 9, 15.3f });
-    picked = render_arena_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
+    projected = render_scene3d_project(&camera, (CF_V3){ 25.8f, 9, 15.3f });
+    picked = render_scene3d_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
     assert(!ecs_entity_to_u64(picked));
-    projected = render_arena_project(&camera, (CF_V3){ -7, 0, 8 });
-    picked = render_arena_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
+    projected = render_scene3d_project(&camera, (CF_V3){ -7, 0, 8 });
+    picked = render_scene3d_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
     assert(!ecs_entity_to_u64(picked));
     /* A raw primitive retains its manual dimensions and original picking path. */
     ecs_entity raw = ecs_world_create_entity(world);
@@ -353,20 +353,20 @@ static void perspective_model_selection()
     geometry.width = geometry.height = geometry.depth = 2;
     set_component(world, raw, &GAME_COMPONENT_GameTransform, &transform);
     set_component(world, raw, &GAME_COMPONENT_GameGeometry3D, &geometry);
-    picked = render_arena_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
+    picked = render_scene3d_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
     assert(ecs_entity_to_u64(picked) == ecs_entity_to_u64(raw));
     render_shader_model_stats_reset();
-    assert(render_arena_entity_bounds(world, entity, corners));
-    projected = render_arena_project(&camera, (CF_V3){ 23, 9, 12.5f });
-    picked = render_arena_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
+    assert(render_scene3d_entity_bounds(world, entity, corners));
+    projected = render_scene3d_project(&camera, (CF_V3){ 23, 9, 12.5f });
+    picked = render_scene3d_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
     assert(ecs_entity_to_u64(picked) == ecs_entity_to_u64(entity));
     assert(render_shader_model_stats().bounds_updates == 0);
     behavior_asset *empty = empty_intersection();
     assert(render_shader_upsert(empty, &error));
     binding.shape = empty->name;
     set_component(world, entity, &GAME_COMPONENT_GameShader, &binding);
-    assert(!render_arena_entity_bounds(world, entity, corners));
-    picked = render_arena_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
+    assert(!render_scene3d_entity_bounds(world, entity, corners));
+    picked = render_scene3d_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
     assert(!ecs_entity_to_u64(picked));
     render_shader_clear_world(world);
     ecs_world_free(world);
@@ -440,7 +440,7 @@ void test_model_surface()
     near(surface.min.z, 10);
     near(surface.max.z, 18);
     CF_V3 proxy_center = cf_m4_transform_point(
-        render_arena_visual_model(&surface.parts[0].visual),
+        render_scene3d_visual_model(&surface.parts[0].visual),
         (CF_V3){ 0 }
     );
     near(proxy_center.x, 2);

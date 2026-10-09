@@ -11,12 +11,12 @@
 #include "graph/runtime/instance.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
-#include "render/arena3d.h"
-#include "render/arena_influence.h"
-#include "render/arena_parts.h"
-#include "render/arena_post.h"
-#include "render/arena_trail.h"
-#include "render/arena_visual.h"
+#include "render/scene3d.h"
+#include "render/scene3d_influence.h"
+#include "render/scene3d_parts.h"
+#include "render/scene3d_post.h"
+#include "render/scene3d_trail.h"
+#include "render/scene3d_visual.h"
 #include "render/shader_catalog.h"
 #include "render/shader_images.h"
 #include "runtime/component_catalog.h"
@@ -134,19 +134,19 @@ static float activity(render_influences *influences, float x)
 
 static void parts_and_trails()
 {
-    arena_parts parts = { .count = 2,
-                          .parts = {
-                              { .primitive = GAME_PRIMITIVE_TRIANGLE_PRISM,
-                                .dimensions = { 20, 4, 12 },
-                                .rotation = { .2f, .3f, .4f } },
-                              { .primitive = GAME_PRIMITIVE_TETRAHEDRON,
-                                .dimensions = { 5, 2, 4 },
-                                .position = { -6, 1, 8 },
-                                .material = "Fin" },
-                          } };
+    scene3d_parts parts = { .count = 2,
+                            .parts = {
+                                { .primitive = GAME_PRIMITIVE_TRIANGLE_PRISM,
+                                  .dimensions = { 20, 4, 12 },
+                                  .rotation = { .2f, .3f, .4f } },
+                                { .primitive = GAME_PRIMITIVE_TETRAHEDRON,
+                                  .dimensions = { 5, 2, 4 },
+                                  .position = { -6, 1, 8 },
+                                  .material = "Fin" },
+                            } };
     char *json = authoring_parts_write(&parts);
     assert(json);
-    arena_parts copy;
+    scene3d_parts copy;
     char error[128];
     assert(authoring_parts_parse(json, &copy, error, sizeof error));
     assert(copy.count == 2 && !memcmp(&parts.parts, &copy.parts, sizeof parts.parts));
@@ -189,14 +189,14 @@ static void parts_and_trails()
     );
     assert(ecs_world_record_add(world, entity, GAME_COMPONENT_GameTrail.id, &trail, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    arena_trails *trails = render_arena_trails_new();
-    render_arena_trails_collect(trails, world, NULL, 0);
+    scene3d_trails *trails = render_scene3d_trails_new();
+    render_scene3d_trails_collect(trails, world, NULL, 0);
     *GAME_GameTransform_get(world, entity) = (GameTransform){ 10, 10 };
-    render_arena_trails_collect(trails, world, NULL, .1f);
+    render_scene3d_trails_collect(trails, world, NULL, .1f);
     *GAME_GameTransform_get(world, entity) = (GameTransform){ 20, 0 };
-    render_arena_trails_collect(trails, world, NULL, .2f);
+    render_scene3d_trails_collect(trails, world, NULL, .2f);
     int count;
-    const arena_trail_segment *segments = render_arena_trails_segments(trails, &count);
+    const scene3d_trail_segment *segments = render_scene3d_trails_segments(trails, &count);
     assert(count > 2 && count <= 128);
     assert(cf_len_v3(segments[0].from) < .0001f);
     assert(cf_len_v3(cf_sub_v3(segments[count - 1].to, (CF_V3){ 20, 0, 0 })) < .0001f);
@@ -215,24 +215,24 @@ static void parts_and_trails()
     assert(rounded);
     /* A render between history samples still ends exactly at the live actor. */
     *GAME_GameTransform_get(world, entity) = (GameTransform){ 21, 1 };
-    render_arena_trails_collect(trails, world, NULL, .205);
-    segments = render_arena_trails_segments(trails, &count);
+    render_scene3d_trails_collect(trails, world, NULL, .205);
+    segments = render_scene3d_trails_segments(trails, &count);
     assert(cf_len_v3(cf_sub_v3(segments[count - 1].to, (CF_V3){ 21, 0, 1 })) < .0001f);
     assert(ecs_world_destroy_entity(world, entity) == ECS_OK);
-    render_arena_trails_collect(trails, world, NULL, .25);
-    segments = render_arena_trails_segments(trails, &count);
-    arena_trail_segment paused[128];
+    render_scene3d_trails_collect(trails, world, NULL, .25);
+    segments = render_scene3d_trails_segments(trails, &count);
+    scene3d_trail_segment paused[128];
     int paused_count = count;
     assert(count <= 128);
     memcpy(paused, segments, (size_t)count * sizeof *segments);
-    render_arena_trails_collect(trails, world, NULL, .25);
-    segments = render_arena_trails_segments(trails, &count);
+    render_scene3d_trails_collect(trails, world, NULL, .25);
+    segments = render_scene3d_trails_segments(trails, &count);
     assert(count == paused_count && !memcmp(paused, segments, (size_t)count * sizeof *segments));
-    render_arena_trails_collect(trails, world, NULL, .61);
-    render_arena_trails_segments(trails, &count);
+    render_scene3d_trails_collect(trails, world, NULL, .61);
+    render_scene3d_trails_segments(trails, &count);
     assert(count == 0);
-    render_arena_trails_reset(trails);
-    render_arena_trails_free(trails);
+    render_scene3d_trails_reset(trails);
+    render_scene3d_trails_free(trails);
     ecs_world_free(world);
 }
 
@@ -563,31 +563,31 @@ static void visual_offset_node()
 
 static void visual_culling()
 {
-    arena_visual visual = { .part = { .primitive = GAME_PRIMITIVE_BOX,
-                                      .dimensions = { 1, 1, 1 } },
-                            .frame = cf_m4_identity() };
+    scene3d_visual visual = { .part = { .primitive = GAME_PRIMITIVE_BOX,
+                                        .dimensions = { 1, 1, 1 } },
+                              .frame = cf_m4_identity() };
     CF_M4x4 clip = cf_m4_identity();
-    assert(render_arena_visual_visible(&visual, clip));
+    assert(render_scene3d_visual_visible(&visual, clip));
     for (int axis = 0; axis < 3; axis++) {
         for (int sign = -1; sign <= 1; sign += 2) {
             visual.frame = cf_m4_identity();
             visual.frame.elements[12 + axis] = sign * 1.99f;
-            assert(render_arena_visual_visible(&visual, clip));
+            assert(render_scene3d_visual_visible(&visual, clip));
             visual.frame.elements[12 + axis] = sign * 2.01f;
-            assert(!render_arena_visual_visible(&visual, clip));
+            assert(!render_scene3d_visual_visible(&visual, clip));
         }
     }
     visual.frame = cf_m4_identity();
     visual.frame.elements[12] = 3;
     visual.part.dimensions.x = 4;
-    assert(render_arena_visual_visible(&visual, clip));
+    assert(render_scene3d_visual_visible(&visual, clip));
     visual.frame.elements[12] = 6;
-    assert(!render_arena_visual_visible(&visual, clip));
+    assert(!render_scene3d_visual_visible(&visual, clip));
     /* A bound crossing the eye plane cannot use divided center coordinates. */
     visual.frame = cf_m4_identity();
     clip.elements[11] = 1;
     clip.elements[15] = 0;
-    assert(render_arena_visual_visible(&visual, clip));
+    assert(render_scene3d_visual_visible(&visual, clip));
 }
 
 static void influence_capacity()
@@ -863,7 +863,7 @@ static void rhythm_and_defaults()
         game_prototype_read_field(prototype, "GameMeshParts", "parts", &value) == 0 &&
         !strcmp(value.str, "(array)-\n")
     );
-    arena_parts parts;
+    scene3d_parts parts;
     assert(authoring_parts_parse(value.str, &parts, error, sizeof error) && parts.count == 0);
     assert(game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameParticleEmitter) == 0);
     assert(
@@ -1038,9 +1038,9 @@ typedef struct
 {
     ecs_world *world;
     game_particles *particles;
-    render_arena *renderer;
-    render_arena_post *post;
-    render_arena_camera camera;
+    render_scene3d *renderer;
+    render_scene3d_post *post;
+    render_scene3d_camera camera;
     CF_Canvas canvas;
     CF_DrawStats3d stats;
 } fixture;
@@ -1053,12 +1053,12 @@ static fixture fixture_new()
     }
     f.camera.view = cf_look_at((CF_V3){ 0, 0, 400 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
     f.camera.projection = cf_perspective(.7853981634f, 1, 1, 1000);
-    f.post = render_arena_post_new();
-    GameEnvironment environment = render_arena_post_defaults();
+    f.post = render_scene3d_post_new();
+    GameEnvironment environment = render_scene3d_post_defaults();
     environment.bloom_strength = 0;
-    assert(render_arena_post_prepare(f.post, SIDE, SIDE, &environment));
-    f.canvas = render_arena_post_target(f.post);
-    f.renderer = render_arena_new();
+    assert(render_scene3d_post_prepare(f.post, SIDE, SIDE, &environment));
+    f.canvas = render_scene3d_post_target(f.post);
+    f.renderer = render_scene3d_new();
     assert(f.canvas.id && f.renderer);
     cf_canvas_set_clear_color(f.canvas, (CF_Color){ 0, 0, 0, 1 });
     return f;
@@ -1067,9 +1067,9 @@ static fixture fixture_new()
 static void fixture_free(fixture *f)
 {
     render_shader_clear_world(f->world);
-    render_arena_free(f->renderer);
+    render_scene3d_free(f->renderer);
     game_particles_free(f->particles);
-    render_arena_post_free(f->post);
+    render_scene3d_post_free(f->post);
     ecs_world_free(f->world);
 }
 
@@ -1092,7 +1092,7 @@ static ecs_entity actor(fixture *f, const char *name, CF_V3 position, int primit
 
 static void read_canvas(fixture *f, CF_Pixel pixels[PIXELS])
 {
-    CF_Readback readback = cf_canvas_readback(render_arena_post_output(f->post));
+    CF_Readback readback = cf_canvas_readback(render_scene3d_post_output(f->post));
     assert(readback.id);
     uint64_t start = cf_get_ticks();
     while (!cf_readback_ready(readback)) {
@@ -1107,15 +1107,15 @@ static void draw(fixture *f, const behavior_asset *preview, float time, CF_Pixel
 {
     cf_draw3d_stats();
     cf_app_update(NULL);
-    bool ok = preview ? authoring_render_arena_preview(
+    bool ok = preview ? authoring_render_scene3d_preview(
                             f->renderer,
                             preview,
                             &f->camera,
                             NULL,
                             time,
-                            &(render_arena_activity){ 0 }
+                            &(render_scene3d_activity){ 0 }
                         )
-                      : render_arena_draw(
+                      : render_scene3d_draw(
                             f->renderer,
                             f->world,
                             f->particles,
@@ -1125,11 +1125,11 @@ static void draw(fixture *f, const behavior_asset *preview, float time, CF_Pixel
                             (render_skip){ 0 }
                         );
     if (!ok) {
-        fprintf(stderr, "Surface draw: %s\n", render_arena_error(f->renderer));
+        fprintf(stderr, "Surface draw: %s\n", render_scene3d_error(f->renderer));
     }
     assert(ok);
     cf_render_to(f->canvas, true);
-    assert(render_arena_post_process(f->post));
+    assert(render_scene3d_post_process(f->post));
     cf_app_draw_onto_screen(false);
     f->stats = cf_draw3d_stats();
     read_canvas(f, pixels);
@@ -1184,9 +1184,9 @@ static void visual_errors()
         cf_draw3d_stats();
         cf_app_update(NULL);
         assert(
-            !render_arena_draw(f.renderer, f.world, f.particles, &f.camera, 0, NULL, (render_skip){ 0 })
+            !render_scene3d_draw(f.renderer, f.world, f.particles, &f.camera, 0, NULL, (render_skip){ 0 })
         );
-        assert(strstr(render_arena_error(f.renderer), messages[failure]));
+        assert(strstr(render_scene3d_error(f.renderer), messages[failure]));
         cf_app_draw_onto_screen(false);
         assert(cf_draw3d_stats().instances == 0);
         read_canvas(&f, after);
@@ -1196,14 +1196,14 @@ static void visual_errors()
     GAME_GameVisualTransform_get(f.world, entities[0])->scale = 1;
     GAME_GameShader_get(f.world, entities[1])->material = a->name;
     draw(&f, NULL, 0, after);
-    assert(!*render_arena_error(f.renderer) && !memcmp(baseline, after, sizeof baseline));
+    assert(!*render_scene3d_error(f.renderer) && !memcmp(baseline, after, sizeof baseline));
     fixture_free(&f);
     behavior_asset_free(a);
 }
 
 static CF_Pixel at(fixture *f, const CF_Pixel *pixels, CF_V3 world)
 {
-    CF_V3 p = render_arena_project(&f->camera, world);
+    CF_V3 p = render_scene3d_project(&f->camera, world);
     int x = (int)((p.x * .5f + .5f) * SIDE);
     int y = (int)((.5f - p.y * .5f) * SIDE);
     assert(x >= 0 && x < SIDE && y >= 0 && y < SIDE);
@@ -1377,7 +1377,7 @@ static void material_checks()
     draw(&f, NULL, 0, base);
     assert(memcmp(changed, base, sizeof base) == 0);
     draw(&f, a, 0, preview);
-    assert(render_arena_error(f.renderer)[0]);
+    assert(render_scene3d_error(f.renderer)[0]);
     assert(memcmp(changed, preview, sizeof changed) == 0);
     fixture_free(&f);
     behavior_asset_free(a);
@@ -1580,7 +1580,7 @@ static void context_pixels()
     f.camera.view = cf_look_at((CF_V3){ 20, 10, 400 }, (CF_V3){ 20, 10, 0 }, (CF_V3){ 0, 1, 0 });
     int x = 70, y = 59;
     CF_V2 ndc = { 2 * (x + .5f) / SIDE - 1, 1 - 2 * (y + .5f) / SIDE };
-    CF_Ray3 ray = render_arena_ray(&f.camera, ndc);
+    CF_Ray3 ray = render_scene3d_ray(&f.camera, ndc);
     float distance = (50 - ray.p.z) / ray.d.z;
     CF_V3 world = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, distance));
     CF_V3 local = cf_sub_v3(world, (CF_V3){ 20, 10, 0 });
@@ -1968,7 +1968,7 @@ static void surface_activity()
     GAME_GameTransform_get(f.world, source)->x = 0;
     draw(&f, NULL, .4f, active);
     assert(ecs_world_destroy_entity(f.world, source) == ECS_OK);
-    render_arena_reset(f.renderer);
+    render_scene3d_reset(f.renderer);
     draw(&f, NULL, .4f, faded);
     left = at(&f, faded, (CF_V3){ -25, 0, 50 });
     assert(left.r == 0 && left.g == 0 && left.b == 0);
@@ -1979,7 +1979,7 @@ static void surface_activity()
 static void rendered_trail()
 {
     fixture f = fixture_new();
-    f.camera = render_arena_camera_make(0, 0, 160, 160);
+    f.camera = render_scene3d_camera_make(0, 0, 160, 160);
     behavior_asset *a = material("Trail source", true);
     publish(a);
     ecs_entity entity = actor(&f, a->name, (CF_V3){ -30, 10, -20 }, GAME_PRIMITIVE_TRIANGLE_PRISM, 5, "");
@@ -2028,7 +2028,7 @@ static void rendered_trail()
     draw(&f, NULL, .61f, pixels);
     turn = at(&f, pixels, (CF_V3){ 0, 10, 20 });
     assert(turn.r == 0 && turn.g == 0 && turn.b == 0);
-    render_arena_reset(f.renderer);
+    render_scene3d_reset(f.renderer);
     draw(&f, NULL, .61f, pixels);
     assert(f.stats.commands == 0);
     fixture_free(&f);
@@ -2038,7 +2038,7 @@ static void rendered_trail()
 static void trail_particle_crossing()
 {
     fixture f = fixture_new();
-    f.camera = render_arena_camera_make(0, 0, 160, 160);
+    f.camera = render_scene3d_camera_make(0, 0, 160, 160);
     CF_M4x4 inverse = cf_m4_invert(f.camera.view);
     CF_V3 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14] };
     CF_V3 crossing = { 0, 5, 0 };

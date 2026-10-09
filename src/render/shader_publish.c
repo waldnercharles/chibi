@@ -1,7 +1,7 @@
 #include "render/shader_publish.h"
 
-#include "render/arena_parts_table.h"
 #include "render/catalog_publication.h"
+#include "render/scene3d_parts_table.h"
 #include "render/shader_catalog_records.h"
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_prepared.h"
@@ -216,7 +216,7 @@ static bool materials_valid(const resource_generation *g, shader_error *error)
         }
     }
     for (int i = 0; i < render_parts_count(g->parts) && ok; i++) {
-        const arena_parts *parts = render_parts_at(g->parts, i);
+        const scene3d_parts *parts = render_parts_at(g->parts, i);
         for (int j = 0; j < parts->count; j++) {
             const char *name = parts->parts[j].material;
             int index = *name ? asset_index(g, name) : 0;

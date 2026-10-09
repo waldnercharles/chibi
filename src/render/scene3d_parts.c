@@ -1,6 +1,6 @@
-#include "render/arena_parts.h"
+#include "render/scene3d_parts.h"
 
-#include "render/arena_parts_table.h"
+#include "render/scene3d_parts_table.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/value_wire.h"
@@ -12,20 +12,20 @@
 typedef struct
 {
     char *key;
-    arena_parts parts;
+    scene3d_parts parts;
 } prepared_parts;
 static prepared_parts *records;
-bool render_arena_parts_publish(const char *key, const arena_parts *parts, char *error, size_t size)
+bool render_scene3d_parts_publish(const char *key, const scene3d_parts *parts, char *error, size_t size)
 {
     if (!key || !*key) {
         return parts && !parts->count;
     }
-    if (!parts || parts->count < 0 || parts->count > ARENA_PART_LIMIT) {
+    if (!parts || parts->count < 0 || parts->count > SCENE3D_PART_LIMIT) {
         snprintf(error, size, "Invalid prepared mesh part count.");
         return false;
     }
     for (int i = 0; i < parts->count; i++) {
-        const arena_part *p = &parts->parts[i];
+        const scene3d_part *p = &parts->parts[i];
         if (p->primitive < GAME_PRIMITIVE_BOX || p->primitive >= GAME_PRIMITIVE_COUNT ||
             p->dimensions.x <= 0 || p->dimensions.y <= 0 || p->dimensions.z <= 0 ||
             !isfinite(
@@ -47,9 +47,9 @@ bool render_arena_parts_publish(const char *key, const arena_parts *parts, char 
     apush(records, ((prepared_parts){ xstrdup(key), *parts }));
     return true;
 }
-bool render_arena_parts_read(const char *key, arena_parts *parts, char *error, size_t size)
+bool render_scene3d_parts_read(const char *key, scene3d_parts *parts, char *error, size_t size)
 {
-    *parts = (arena_parts){ 0 };
+    *parts = (scene3d_parts){ 0 };
     if (!key || !*key) {
         return true;
     }
@@ -62,7 +62,7 @@ bool render_arena_parts_read(const char *key, arena_parts *parts, char *error, s
     snprintf(error, size, "Mesh parts have not been prepared.");
     return false;
 }
-void render_arena_parts_clear()
+void render_scene3d_parts_clear()
 {
     for (int i = 0; i < acount(records); i++) {
         free(records[i].key);
@@ -74,13 +74,13 @@ struct render_parts_table
 {
     prepared_parts *records;
 };
-static bool parts_valid(const arena_parts *parts)
+static bool parts_valid(const scene3d_parts *parts)
 {
-    if (parts->count < 0 || parts->count > ARENA_PART_LIMIT) {
+    if (parts->count < 0 || parts->count > SCENE3D_PART_LIMIT) {
         return false;
     }
     for (int i = 0; i < parts->count; i++) {
-        const arena_part *p = &parts->parts[i];
+        const scene3d_part *p = &parts->parts[i];
         if (p->primitive < GAME_PRIMITIVE_BOX || p->primitive >= GAME_PRIMITIVE_COUNT ||
             p->dimensions.x <= 0 || p->dimensions.y <= 0 || p->dimensions.z <= 0 ||
             !isfinite(
@@ -101,11 +101,11 @@ static void parts_wire(execution_wire *w, prepared_parts *r)
         w->error = "Prepared part key is invalid";
     }
     execution_wire_count(w, &r->parts.count, 8);
-    if (!w->error && r->parts.count > ARENA_PART_LIMIT) {
+    if (!w->error && r->parts.count > SCENE3D_PART_LIMIT) {
         w->error = "Prepared part count exceeds limit";
     }
     for (int i = 0; i < r->parts.count && !w->error; i++) {
-        arena_part *p = &r->parts.parts[i];
+        scene3d_part *p = &r->parts.parts[i];
         execution_wire_int(w, &p->primitive);
         float *values[] = { &p->dimensions.x, &p->dimensions.y,
                             &p->dimensions.z, &p->position.x,
@@ -140,7 +140,7 @@ static void parts_header(execution_wire *w)
         w->error = "Prepared part table version is unsupported";
     }
 }
-bool render_arena_parts_save(unsigned char **data, size_t *length, char *error, size_t size)
+bool render_scene3d_parts_save(unsigned char **data, size_t *length, char *error, size_t size)
 {
     *data = NULL;
     *length = 0;
@@ -256,7 +256,7 @@ int render_parts_count(const render_parts_table *table)
 {
     return acount(table->records);
 }
-const arena_parts *render_parts_at(const render_parts_table *table, int index)
+const scene3d_parts *render_parts_at(const render_parts_table *table, int index)
 {
     return &table->records[index].parts;
 }

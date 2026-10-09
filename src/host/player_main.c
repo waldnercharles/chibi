@@ -1,7 +1,7 @@
 #include "execution/backend.h"
 #include "host/native_default.h"
 #include "platform/cute.h"
-#include "render/arena3d.h"
+#include "render/scene3d.h"
 #include "render/scene_renderer.h"
 #include "render/sdf_motion.h"
 #include "render/shader_images.h"
@@ -198,8 +198,8 @@ static void render(void *context)
     game_world *world = game_player_world(host->player);
     const engine_modules *modules = game_world_modules(world);
     if (engine_viewport_perspective(host->viewport)) {
-        render_arena_camera camera;
-        engine_viewport_get_arena_camera(host->viewport, &camera);
+        render_scene3d_camera camera;
+        engine_viewport_get_camera3d(host->viewport, &camera);
         host->render_failed = !app_scene_renderer_draw3d(
             host->renderer,
             game_world_ecs(world),
@@ -516,9 +516,6 @@ int main(int argc, char **argv)
         }
         if (camera) {
             engine_viewport_set_view(host.viewport, &view);
-            engine_viewport_clear_arena_camera(host.viewport);
-        } else if (game_scene_perspective(scene)) {
-            engine_viewport_set_arena_showcase(host.viewport, (float)now);
         }
         engine_viewport_set_time(host.viewport, now);
         if (engine_viewport_draw(

@@ -1,4 +1,4 @@
-#include "render/arena_trail.h"
+#include "render/scene3d_trail.h"
 
 #include "render/shader_program.h"
 #include "runtime/component_catalog.h"
@@ -59,12 +59,12 @@ typedef struct
     int first, count;
 } ribbon_range;
 
-struct arena_trails
+struct scene3d_trails
 {
     const ecs_world *world;
     double time, simulation_time;
     trail_source sources[TRAIL_SOURCES];
-    arena_trail_segment segments[TRAIL_SEGMENTS];
+    scene3d_trail_segment segments[TRAIL_SEGMENTS];
     int count;
     bool reported_capacity;
     trail_span spans[TRAIL_SOURCES];
@@ -79,11 +79,11 @@ struct arena_trails
     int range_count;
 };
 
-arena_trails *render_arena_trails_new()
+scene3d_trails *render_scene3d_trails_new()
 {
-    return xcalloc(1, sizeof(arena_trails));
+    return xcalloc(1, sizeof(scene3d_trails));
 }
-void render_arena_trails_free(arena_trails *trails)
+void render_scene3d_trails_free(scene3d_trails *trails)
 {
     if (trails->mesh.id) {
         cf_destroy_mesh(trails->mesh);
@@ -96,7 +96,7 @@ void render_arena_trails_free(arena_trails *trails)
     free(trails->quads);
     free(trails);
 }
-void render_arena_trails_reset(arena_trails *trails)
+void render_scene3d_trails_reset(scene3d_trails *trails)
 {
     trails->world = NULL;
     trails->time = trails->simulation_time = 0;
@@ -106,7 +106,7 @@ void render_arena_trails_reset(arena_trails *trails)
     trails->reported_capacity = false;
 }
 
-static trail_source *source_for(arena_trails *trails, ecs_entity entity)
+static trail_source *source_for(scene3d_trails *trails, ecs_entity entity)
 {
     trail_source *oldest = &trails->sources[0];
     for (int i = 0; i < TRAIL_SOURCES; i++) {
@@ -185,7 +185,7 @@ static CF_V3 curve(CF_V3 a, CF_V3 b, CF_V3 tangent_a, CF_V3 tangent_b, float t)
     );
 }
 
-static void segments_for(arena_trails *trails, const trail_source *source, double time)
+static void segments_for(scene3d_trails *trails, const trail_source *source, double time)
 {
     if (!source->count) {
         return;
@@ -214,7 +214,7 @@ static void segments_for(arena_trails *trails, const trail_source *source, doubl
             double born = a.time + (b.time - a.time) * (k - .5) / TRAIL_SUBDIVISIONS;
             float fade = (float)fmax(0, 1 - (time - born) / source->style.lifetime);
             unsigned color = source->style.color;
-            trails->segments[trails->count++] = (arena_trail_segment){
+            trails->segments[trails->count++] = (scene3d_trail_segment){
                 .from = from,
                 .to = to,
                 .color = { (color >> 24) / 255.0f,
@@ -232,7 +232,7 @@ static void segments_for(arena_trails *trails, const trail_source *source, doubl
     }
 }
 
-void render_arena_trails_collect(arena_trails *trails, ecs_world *world, const engine *runtime, double time)
+void render_scene3d_trails_collect(scene3d_trails *trails, ecs_world *world, const engine *runtime, double time)
 {
     double simulation_time = time;
     if (runtime) {
@@ -241,7 +241,7 @@ void render_arena_trails_collect(arena_trails *trails, ecs_world *world, const e
         time = fmax(0, simulation_time - (1 - timing->alpha) * ENGINE_FIXED_SECONDS);
     }
     if (trails->world != world || simulation_time < trails->simulation_time) {
-        render_arena_trails_reset(trails);
+        render_scene3d_trails_reset(trails);
     }
     time = fmax(time, trails->time);
     trails->world = world;
@@ -298,17 +298,17 @@ void render_arena_trails_collect(arena_trails *trails, ecs_world *world, const e
     }
 }
 
-const arena_trail_segment *render_arena_trails_segments(const arena_trails *trails, int *count)
+const scene3d_trail_segment *render_scene3d_trails_segments(const scene3d_trails *trails, int *count)
 {
     *count = trails->count;
     return trails->segments;
 }
 
-static bool prepare_resources(arena_trails *trails, char *error, size_t size)
+static bool prepare_resources(scene3d_trails *trails, char *error, size_t size)
 {
     if (!trails->shader.id) {
-        char *vertex = render_shader_source("arena_trail.vert");
-        char *fragment = render_shader_source("arena_trail.frag");
+        char *vertex = render_shader_source("scene3d_trail.vert");
+        char *fragment = render_shader_source("scene3d_trail.frag");
         if (vertex && fragment) {
             trails->shader = cf_make_shader_from_source(vertex, fragment);
         }
@@ -362,9 +362,9 @@ static CF_V3 ribbon_side(CF_V3 direction, CF_V3 view, CF_V3 fallback)
     return cf_dot_v3(side, side) > 1e-10f ? cf_norm_v3(side) : fallback;
 }
 
-bool render_arena_trails_prepare(
-    arena_trails *trails,
-    const render_arena_camera *camera,
+bool render_scene3d_trails_prepare(
+    scene3d_trails *trails,
+    const render_scene3d_camera *camera,
     char *error,
     size_t size
 )
@@ -384,7 +384,7 @@ bool render_arena_trails_prepare(
     ribbon_quad *quads = trails->quads;
     for (int span = 0; span < trails->span_count; span++) {
         trail_span range = trails->spans[span];
-        const arena_trail_segment *segments = trails->segments + range.first;
+        const scene3d_trail_segment *segments = trails->segments + range.first;
         float total = 0, distance = 0;
         for (int i = 0; i < range.count; i++) {
             total += cf_distance_v3(segments[i].from, segments[i].to);
@@ -395,8 +395,8 @@ bool render_arena_trails_prepare(
         int start = trails->vertex_count, quad_count = 0;
         CF_V3 center_sum = { 0 };
         for (int i = 0; i <= range.count; i++) {
-            const arena_trail_segment *before = &segments[i ? i - 1 : 0];
-            const arena_trail_segment *after = &segments[i < range.count ? i : i - 1];
+            const scene3d_trail_segment *before = &segments[i ? i - 1 : 0];
+            const scene3d_trail_segment *after = &segments[i < range.count ? i : i - 1];
             CF_V3 point = i ? before->to : after->from;
             CF_V3 view = perspective ? cf_sub_v3(eye, point) : facing;
             CF_V3 a = ribbon_side(cf_sub_v3(before->to, before->from), view, right);
@@ -458,7 +458,7 @@ bool render_arena_trails_prepare(
     return true;
 }
 
-void render_arena_trails_draw(const arena_trails *trails, const render_arena_camera *camera)
+void render_scene3d_trails_draw(const scene3d_trails *trails, const render_scene3d_camera *camera)
 {
     if (!trails->index_count) {
         return;

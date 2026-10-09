@@ -5805,14 +5805,14 @@ static char *canonical_asset(
         case ASSET_PROTOTYPE: {
             prototype_includes includes = { root };
             game_prototype_registry registry = prototype_registry(&includes);
+            /* It must resolve, but saves as authored: its own content, naming
+             * its includes and children's prototypes. */
             game_prototype *prototype = game_prototype_load(json, &registry, error, error_size);
-            char *text = NULL;
-            if (prototype) {
-                /* Saving folds included components in, so a prototype that
-                 * includes others keeps its text as written. */
-                text = acount(includes.texts) ? xstrdup(json)
-                                              : game_prototype_save(prototype);
-            }
+            game_prototype *authored = prototype
+                                         ? game_prototype_load_authored(json, &registry, error, error_size)
+                                         : NULL;
+            char *text = authored ? game_prototype_save(authored) : NULL;
+            game_prototype_free(authored);
             game_prototype_free(prototype);
             prototype_includes_free(&includes);
             return text;

@@ -964,8 +964,10 @@ TEST_CASE(prototype_children_come_with_their_instance)
     REQUIRE(format(NULL) == 0 && format("--check") == 0);
     path(ship, sizeof ship, "game/content/prototypes/Ship.kdl");
     char *text = tool_read(ship);
+    /* A prototype with children is formatted too: Transform's zero fields go. */
     bool nested = text &&
-                  strstr(text, "(array)children {\n    - {\n        name \"Gun\"");
+                  strstr(text, "(array)children {\n    - {\n        name \"Gun\"") &&
+                  strstr(text, "(object)GAME.GameTransform");
     free(text);
     REQUIRE(nested);
     REQUIRE(

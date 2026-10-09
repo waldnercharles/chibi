@@ -1,18 +1,18 @@
 behavior EntityProbe {
     on Begin {
-        spawner: handle<"ecs.entity"> = get_global_variable(Name: "Spawner");
-        await set_global_variable(Name: "Spawned", Value: int = 0);
-        drone := await spawn_prototype(Prototype: "Drone");
-        if (has_entities_with_component(Component: "GAME.GameCollider")) {
-            colliders := find_entities_with_component(Component: "GAME.GameCollider");
-            nearest := find_nearest_entity(Position: self.Transform, Radius: 64.0, Categories: 2, Exclude: self);
-            if (nearest.Found) {
-                await send_event<"Probe Signal">(Entity: spawner, Count: select(Index: 1, Option0: int = 0, Option1: int = 1));
-                destroy_entity(Entity: nearest.Entity);
+        spawner: handle<"ecs.entity"> = get_global_variable("Spawner")
+        await set_global_variable("Spawned", Value: int = 0)
+        drone := await spawn_prototype("Drone")
+        if has_entities_with_component("GAME.GameCollider") {
+            colliders := find_entities_with_component("GAME.GameCollider")
+            nearest := find_nearest_entity(self.Transform, 64.0, 2, self)
+            if nearest.Found {
+                await send_event<"Probe Signal">(spawner, select(1, Option0: int = 0, Option1: int = 1))
+                destroy_entity(nearest.Entity)
             }
         }
     }
-    on "Probe Signal"(Count) {
-        self.Health.current -= Count;
+    on "Probe Signal" {
+        self.Health.current -= Count
     }
 }

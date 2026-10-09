@@ -855,6 +855,51 @@ TEST_CASE(scenes_run_under_their_own_name)
     return true;
 }
 
+/* The x a Tick wrote to the scene's only Transform in the last snapshot. */
+static double snapshot_x()
+{
+    yyjson_val *entities = result("entities");
+    for (size_t i = 0; i < yyjson_arr_size(entities); i++) {
+        yyjson_val *components = yyjson_obj_get(yyjson_arr_get(entities, i), "components");
+        for (size_t j = 0; j < yyjson_arr_size(components); j++) {
+            yyjson_val *component = yyjson_arr_get(components, j);
+            if (reads(yyjson_get_str(yyjson_obj_get(component, "name")), "GameTransform")) {
+                yyjson_val *x = yyjson_arr_get(yyjson_obj_get(component, "fields"), 0);
+                assert(reads(yyjson_get_str(yyjson_obj_get(x, "name")), "x"));
+                return yyjson_get_num(yyjson_obj_get(x, "value"));
+            }
+        }
+    }
+    assert(false);
+    return 0;
+}
+
+TEST_CASE(scenarios_hold_input_actions)
+{
+    /* A scenario's controls reach the input map of the engine that plays it. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Dot\"}") == 0
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Jumper\"}") == 0
+    );
+    write_file("game/content/input.kdl", "Jump {\n    (array)sources \"Mouse Left\"\n}\n");
+    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n    (object)GAME.GameTransform\n}\n");
+    write_file("game/content/behaviors/Jumper.chibi", "behavior Jumper {\n    on Tick {\n        if input.Jump.held {\n            self.Transform = vec2(7, 0)\n        }\n    }\n}\n");
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\" {\n        (array)behaviors \"Jumper\"\n    }\n}\n");
+    /* 1 is GAME_CONTROL_MOUSE_LEFT, the first GameControl. */
+    const char *request = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
+                          "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":2,"
+                          "\"input_timeline\":[{\"frame\":0,\"input\":"
+                          "{\"controls\":[%s]}}]}";
+    char held[256], released[256];
+    snprintf(held, sizeof held, request, "1");
+    snprintf(released, sizeof released, request, "");
+    REQUIRE(ctl(true, held) == 0 && snapshot_x() == 7);
+    REQUIRE(ctl(true, released) == 0 && snapshot_x() == 0);
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -877,5 +922,6 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(resources_are_limited_together);
     RUN_TEST_CASE(manifest_content_folder_is_used);
     RUN_TEST_CASE(scenes_run_under_their_own_name);
+    RUN_TEST_CASE(scenarios_hold_input_actions);
     pu_clear_setup();
 }

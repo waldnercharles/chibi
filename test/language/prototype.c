@@ -57,7 +57,16 @@ static const ecs_component_desc nested = {
     .element_size = sizeof(nested_default),
     .type = &nested_type,
 };
-static const ecs_component_desc *const components[] = { &component, &nested };
+/* The engine computes Derived from DefaultRow, so it is never authored. */
+static const ecs_component_desc derived = {
+    .id = 9003,
+    .key = "test.Derived",
+    .name = "Derived",
+    .element_size = sizeof(component_default),
+    .type = &component_type,
+    .derived_from = 9001,
+};
+static const ecs_component_desc *const components[] = { &component, &nested, &derived };
 static game_prototype *prototype, *loaded;
 static game_scene_document *scene, *reloaded;
 static char *saved;
@@ -168,6 +177,38 @@ static bool keeps_prototype_behaviors(const game_scene_document *document)
            entities[2].own_behaviors && !acount(entities[2].behaviors);
 }
 
+TEST_CASE(derived_components_are_never_authored_or_captured)
+{
+    const game_prototype_registry registry = { .components = components,
+                                               .component_count = 3 };
+    char error[256];
+    loaded = game_prototype_load(
+        "name \"Computed\"\ncomponents {\n    Derived count=1\n}\n",
+        &registry,
+        error,
+        sizeof error
+    );
+    REQUIRE(!loaded && strstr(error, "Derived is computed by the engine"));
+    prototype = game_prototype_new("Computed");
+    prototype->registry_storage = registry;
+    REQUIRE(game_prototype_add_component(prototype, &derived) != 0);
+    game_prototype_free(prototype);
+    prototype = NULL;
+    ecs_world *world = ecs_world_new();
+    REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &derived, NULL) == ECS_OK);
+    ecs_entity entity = ecs_world_create_entity(world);
+    REQUIRE(ecs_world_record_add(world, entity, component.id, NULL, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_component_has(world, entity, derived.id));
+    prototype = game_prototype_capture_entity("Captured", world, entity, &registry);
+    bool captured = prototype && acount(prototype->components) == 1 &&
+                    prototype->components[0].desc == &component;
+    ecs_world_free(world);
+    REQUIRE(captured);
+    return true;
+}
+
 TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own)
 {
     char error[192];
@@ -196,5 +237,6 @@ void test_prototype_document()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence);
     RUN_TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own);
+    RUN_TEST_CASE(derived_components_are_never_authored_or_captured);
     pu_clear_setup();
 }

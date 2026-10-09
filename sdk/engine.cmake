@@ -6,7 +6,7 @@ add_library(Chibi::visibility_runtime ALIAS chibi_visibility_runtime)
 set_target_properties(chibi_visibility_runtime PROPERTIES EXPORT_NAME visibility_runtime)
 chibi_sdk_headers(chibi_visibility_runtime PUBLIC runtime/visibility.h runtime/visibility_definition.h)
 target_link_libraries(chibi_visibility_runtime PUBLIC chibi_entity_runtime chibi_native_types
-    chibi_native_capabilities PRIVATE chibi_physics_runtime chibi_support)
+    chibi_native_capabilities PRIVATE chibi_physics_runtime chibi_spatial_runtime chibi_support)
 list(APPEND CHIBI_SDK_TARGETS chibi_visibility_runtime)
 
 # Simulation consumes installed runtime services; display hosts inject rendering

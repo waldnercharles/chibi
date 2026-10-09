@@ -135,6 +135,9 @@ bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity en
 const engine_frame_timing *engine_last_timing(const engine *engine);
 /* Detailed per-behavior timers are opt-in; aggregate frame timing stays active. */
 void engine_set_behavior_profiling(engine *engine, bool enabled);
-bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out);
+/* Where presentation draws the entity: its global transform, moved by the
+ * physics interpolation of the nearest body at or above it. engine may be NULL,
+ * which draws the global transform as it is. */
+GameGlobalTransform2D engine_render_transform(const engine *, const ecs_world *, ecs_entity);
 
 #endif

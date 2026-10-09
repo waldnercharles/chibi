@@ -10,6 +10,7 @@
 #include "runtime/scenes/physics.h"
 #include "runtime/source_input.h"
 #include "runtime/task_pool.h"
+#include "runtime/transform_propagation.h"
 #include "runtime/visual_motion.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -92,10 +93,10 @@ bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity en
     if (state->hidden) {
         return false;
     }
-    const GameTransform *position = GAME_GameTransform_get_const(world, entity);
+    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
     const game_visibility *visibility = engine_visibility(engine);
-    return !state->visibility_culled || !position || !visibility ||
-           game_visibility_at(visibility, *position).visible;
+    return !state->visibility_culled || !global || !visibility ||
+           game_visibility_at(visibility, global->position).visible;
 }
 
 static double elapsed_ms(struct timespec start, struct timespec end)
@@ -920,6 +921,17 @@ static int update_visual_motion(engine *engine, float delta)
     return result;
 }
 
+static int propagate_transforms(engine *engine)
+{
+    CHIBI_TRACE_ZONE_BEGIN(zone, "Transform propagation");
+    int result = game_transform_propagate(engine->world);
+    CHIBI_TRACE_ZONE_END(zone);
+    if (result != ECS_OK) {
+        snprintf(engine->error, sizeof engine->error, "Transform propagation failed (%d).", result);
+    }
+    return result;
+}
+
 static int finish_systems(engine *engine)
 {
     int result = FLOW_OK;
@@ -950,6 +962,9 @@ static int finish_systems(engine *engine)
                     "%s",
                     game_physics_error(engine->modules.physics)
                 );
+                return result;
+            }
+            if ((result = propagate_transforms(engine)) < 0) {
                 return result;
             }
             result = run_system_phase(engine, SYSTEM_POST_PHYSICS);
@@ -995,6 +1010,9 @@ static int finish_systems(engine *engine)
         return result;
     }
     CHIBI_TRACE_ZONE_END(systems_zone);
+    if ((result = propagate_transforms(engine)) < 0) {
+        return result;
+    }
     if (engine->emitters && !game_particle_emitters_collect(
                                 engine->emitters,
                                 engine->world,
@@ -1311,13 +1329,26 @@ void engine_set_behavior_profiling(engine *engine, bool enabled)
     }
 }
 
-bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out)
+GameGlobalTransform2D engine_render_transform(const engine *engine, const ecs_world *world, ecs_entity entity)
 {
-    return engine && engine->modules.physics &&
-           game_physics_interpolate(
-               engine->modules.physics,
-               entity,
-               engine->timing.alpha,
-               out
-           );
+    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
+    assert(global);
+    GameGlobalTransform2D shown = *global;
+    if (!engine || !engine->modules.physics) {
+        return shown;
+    }
+    for (ecs_entity at = entity; at.slot; at = ecs_parent(world, at)) {
+        CF_V2 offset;
+        if (game_physics_interpolation_offset(
+                engine->modules.physics,
+                at,
+                engine->timing.alpha,
+                &offset
+            )) {
+            shown.position.x += offset.x;
+            shown.position.y += offset.y;
+            break;
+        }
+    }
+    return shown;
 }

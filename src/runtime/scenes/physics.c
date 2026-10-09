@@ -6,6 +6,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/materials.h"
 #include "runtime/task_pool.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -46,6 +47,7 @@ typedef struct
     int proxy;
     float angle, stop_fraction;
     bool seen, pierceable_fragment, masked;
+    bool follower; /* Has a ChildOf parent, so it follows it and never writes back. */
 } physics_body;
 
 typedef struct
@@ -386,7 +388,12 @@ int game_physics_workers(const game_physics *physics)
     return physics->active_workers;
 }
 
-bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out)
+bool game_physics_interpolation_offset(
+    const game_physics *physics,
+    ecs_entity entity,
+    float alpha,
+    CF_V2 *out
+)
 {
     assert(out && isfinite(alpha));
     if (!entity.slot || entity.slot >= (unsigned)acount(physics->bodies) ||
@@ -395,7 +402,7 @@ bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, fl
         return false;
     }
     const physics_body *body = &physics->bodies[entity.slot];
-    if (!body->body.index1 || !same_entity(body->entity, entity)) {
+    if (!body->body.index1 || !same_entity(body->entity, entity) || body->follower) {
         return false;
     }
     const GameTransform *authored = GAME_GameTransform_get_const(physics->world, entity);
@@ -403,11 +410,11 @@ bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, fl
         return false;
     }
     if (authored->x != body->end.p.x || authored->y != body->end.p.y) {
-        *out = *authored;
+        *out = (CF_V2){ 0 };
         return true;
     }
     b2Vec2 position = b2Lerp(body->start.p, body->end.p, fminf(1, fmaxf(0, alpha)));
-    *out = (GameTransform){ position.x, position.y };
+    *out = (CF_V2){ position.x - body->end.p.x, position.y - body->end.p.y };
     return true;
 }
 
@@ -431,6 +438,16 @@ bool game_physics_inspect_body(const game_physics *physics, ecs_entity entity, g
         .shape_count = b2Body_GetShapeCount(body->body)
     };
     return true;
+}
+
+/* Bodies live in world space. Returns whether a parent places the entity, so
+ * its body follows that parent and never writes its pose back. */
+static bool world_pose(const ecs_world *world, ecs_entity entity, GameTransform *position, float *angle)
+{
+    GameGlobalTransform2D pose = game_transform_world_2d(world, entity);
+    *position = pose.position;
+    *angle = pose.radians;
+    return game_transform_parent(world, entity).slot != 0;
 }
 
 static bool valid(
@@ -731,15 +748,16 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
 static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
 {
     ecs_world *world = physics->world;
-    GameTransform position = *GAME_GameTransform_get_const(world, entity);
+    GameTransform position;
+    float angle;
+    bool follower = world_pose(world, entity, &position, &angle);
     GameCollider collider = *GAME_GameCollider_get_const(world, entity);
     const GameBody *authored = GAME_GameBody_get_const(world, entity);
     GameBody settings = authored ? *authored : (GameBody){ .type = GAME_BODY_STATIC };
     const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
-    float angle = orientation ? orientation->radians : 0;
     const GameVelocity *velocity = GAME_GameVelocity_get_const(world, entity);
-    const GameDrive *drive = GAME_GameDrive_get_const(world, entity);
-    CF_V2 movement = velocity ? *velocity : (CF_V2){ 0 };
+    const GameDrive *drive = follower ? NULL : GAME_GameDrive_get_const(world, entity);
+    CF_V2 movement = velocity && !follower ? *velocity : (CF_V2){ 0 };
     if (!valid(&position, angle, &collider, &settings, movement)) {
         snprintf(
             physics->error,
@@ -749,13 +767,22 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
         );
         return FLOW_ERR_ARGUMENT;
     }
-    if (settings.angular_velocity != 0 &&
-        (settings.type != GAME_BODY_KINEMATIC || !orientation)) {
+    if (follower && settings.type == GAME_BODY_DYNAMIC) {
         snprintf(
             physics->error,
             sizeof physics->error,
-            "Angular velocity requires a kinematic Body and Orientation on "
-            "entity %u.",
+            "A dynamic Body must be a root entity; entity %u has a parent.",
+            entity.slot
+        );
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (settings.angular_velocity != 0 &&
+        (settings.type != GAME_BODY_KINEMATIC || !orientation || follower)) {
+        snprintf(
+            physics->error,
+            sizeof physics->error,
+            "Angular velocity requires a kinematic root Body and Orientation "
+            "on entity %u.",
             entity.slot
         );
         return FLOW_ERR_ARGUMENT;
@@ -791,6 +818,7 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
     body->collider = collider;
     body->settings = settings;
     body->seen = true;
+    body->follower = follower;
     body->pierceable_fragment = game_materials_is_pierceable_fragment(
         game_entities_materials(physics->entities),
         entity
@@ -942,18 +970,20 @@ static float distance(const physics_body *a, b2Transform first, const physics_bo
 
 static bool read_geometry(ecs_world *world, game_entities *entities, ecs_entity entity, physics_body *body)
 {
-    const GameTransform *position = GAME_GameTransform_get_const(world, entity);
     const GameCollider *collider = GAME_GameCollider_get_const(world, entity);
-    const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
-    float angle = orientation ? orientation->radians : 0;
-    if (!position || !collider ||
-        !valid(position, angle, collider, &(GameBody){ 0 }, (CF_V2){ 0 })) {
+    if (!GAME_GameTransform_has(world, entity) || !collider) {
+        return false;
+    }
+    GameTransform position;
+    float angle;
+    world_pose(world, entity, &position, &angle);
+    if (!valid(&position, angle, collider, &(GameBody){ 0 }, (CF_V2){ 0 })) {
         return false;
     }
     body->entity = entity;
     body->collider = *collider;
     body->mask = game_materials_mask(game_entities_materials(entities), entity);
-    body->end = (b2Transform){ { position->x, position->y }, b2MakeRot(angle) };
+    body->end = (b2Transform){ { position.x, position.y }, b2MakeRot(angle) };
     if (collider->shape == GAME_COLLIDER_CIRCLE) {
         b2Vec2 center = { 0 };
         body->geometry = b2MakeProxy(&center, 1, collider->radius);
@@ -1824,7 +1854,7 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     CHIBI_TRACE_ZONE_BEGIN(writeback_zone, "Physics writeback");
     for (int i = 0; i < acount(physics->bodies); i++) {
         physics_body *body = &physics->bodies[i];
-        if (!body->body.index1) {
+        if (!body->body.index1 || body->follower) {
             continue;
         }
         *GAME_GameTransform_get(physics->world, body->entity) = (GameTransform){

@@ -1253,4 +1253,39 @@ typedef NODE_TYPE(EntityCondition)
 }
 EntityCondition;
 
+/* Transform hierarchy. Transform with Orientation, and Transform3D, place an
+ * entity relative to its ChildOf parent, or to the world for a root. Transform
+ * propagation computes the global transforms from them, parents first, after
+ * physics, after presentation and before each draw. Renderers and cameras
+ * read the global transforms, and scripts read them and write the local ones.
+ * Physics, vision and aim compute the same world placement on demand. */
+
+/* Local 3D placement in project units. rotation is a unit quaternion; a zero
+ * one reads as identity. KDL loads omitted fields as zero, so author scale. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameTransform3D)
+{
+    CF_V3 position;
+    CF_Quat rotation;
+    CF_V3 scale;
+}
+GameTransform3D;
+
+/* World placement of a Transform3D: the columns of an affine matrix. */
+typedef NODE_DERIVED_COMPONENT(GameGlobalTransform3D, GameTransform3D)
+{
+    CF_V3 x_axis;
+    CF_V3 y_axis;
+    CF_V3 z_axis;
+    CF_V3 position;
+}
+GameGlobalTransform3D;
+
+/* World placement of a Transform and its Orientation. */
+typedef NODE_DERIVED_COMPONENT(GameGlobalTransform2D, GameTransform)
+{
+    CF_V2 position;
+    float radians;
+}
+GameGlobalTransform2D;
+
 #endif

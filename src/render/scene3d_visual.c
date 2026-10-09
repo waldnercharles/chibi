@@ -14,17 +14,17 @@ int render_scene3d_visuals(
     size_t size
 )
 {
+    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
     if (!position) {
-        position = GAME_GameTransform_get_const(world, entity);
+        position = global ? &global->position : NULL;
     }
     const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
     if (!position || !shape) {
         return 0;
     }
-    const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
     const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
     const GameMeshParts *mesh = GAME_GameMeshParts_get_const(world, entity);
-    float angle = heading ? heading->radians : 0;
+    float angle = global ? global->radians : 0;
     float scale = transform ? transform->scale : 1;
     CF_V3 rotation = transform
                        ? (CF_V3){ transform->pitch, transform->yaw, transform->roll }

@@ -986,22 +986,57 @@ static void interpolation()
     ecs_entity actor = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 0);
     *GAME_GameVelocity_get(f.world, actor) = (GameVelocity){ 600, 0 };
     assert(step(&f, 1.0f / 60) == 0);
-    GameTransform shown;
-    assert(game_physics_interpolate(f.physics, actor, .5f, &shown));
-    assert(fabsf(shown.x - 5) < .001f);
+    CF_V2 offset;
+    assert(game_physics_interpolation_offset(f.physics, actor, .5f, &offset));
+    assert(fabsf(offset.x + 5) < .001f && offset.y == 0);
     assert(fabsf(GAME_GameTransform_get(f.world, actor)->x - 10) < .001f);
     *GAME_GameTransform_get(f.world, actor) = (GameTransform){ 500, 10 };
-    assert(game_physics_interpolate(f.physics, actor, .5f, &shown));
-    assert(shown.x == 500 && shown.y == 10);
+    assert(game_physics_interpolation_offset(f.physics, actor, .5f, &offset));
+    assert(offset.x == 0 && offset.y == 0);
     assert(step(&f, 0) == 0);
-    assert(game_physics_interpolate(f.physics, actor, 0, &shown));
-    assert(shown.x == 500 && shown.y == 10);
+    assert(game_physics_interpolation_offset(f.physics, actor, 0, &offset));
+    assert(offset.x == 0 && offset.y == 0);
     game_entities_request_destroy(f.entities, actor);
-    assert(!game_physics_interpolate(f.physics, actor, .5f, &shown));
+    assert(!game_physics_interpolation_offset(f.physics, actor, .5f, &offset));
     assert(game_entities_flush(f.entities) == 0);
     ecs_entity replacement = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 0);
-    assert(!game_physics_interpolate(f.physics, actor, .5f, &shown));
-    assert(!game_physics_interpolate(f.physics, replacement, .5f, &shown));
+    assert(!game_physics_interpolation_offset(f.physics, actor, .5f, &offset));
+    assert(!game_physics_interpolation_offset(f.physics, replacement, .5f, &offset));
+    dispose(&f);
+}
+
+static void followers()
+{
+    fixture f = create();
+    ecs_entity parent = body(&f, 100, 0, GAME_BODY_KINEMATIC, 1, 0);
+    GAME_GameOrientation_get(f.world, parent)->radians = 1.57079633f;
+    ecs_entity child = sensor(&f, 10, 0);
+    assert(ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    *GAME_GameVelocity_get(f.world, child) = (GameVelocity){ 600, 0 };
+    ecs_entity there = body(&f, 100, 10, GAME_BODY_KINEMATIC, 2, 4);
+    ecs_entity origin = body(&f, 10, 0, GAME_BODY_KINEMATIC, 2, 4);
+    /* The child collides where its parent places it, ignores its own Velocity
+     * and never writes its pose back. */
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(other(&f, child) == ecs_entity_to_u64(there));
+    assert(other(&f, there) == ecs_entity_to_u64(child));
+    assert(!other(&f, origin));
+    const GameTransform *local = GAME_GameTransform_get_const(f.world, child);
+    assert(local->x == 10 && local->y == 0);
+    CF_V2 offset;
+    assert(!game_physics_interpolation_offset(f.physics, child, .5f, &offset));
+    /* A parent without a Transform only groups; its children stay roots. */
+    ecs_entity group = ecs_world_create_entity(f.world);
+    ecs_entity grouped = body(&f, 0, 40, GAME_BODY_DYNAMIC, 1, 0);
+    assert(ecs_world_record_add_pair(f.world, grouped, ECS_CHILD_OF, group, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    *GAME_GameVelocity_get(f.world, grouped) = (GameVelocity){ 60, 0 };
+    step(&f, 1.0f / 60);
+    assert(fabsf(GAME_GameTransform_get_const(f.world, grouped)->x - 1) < .001f);
+    GAME_GameBody_get(f.world, child)->type = GAME_BODY_DYNAMIC;
+    assert(game_physics_tick(f.physics, 1.0f / 60) < 0);
+    assert(strstr(game_physics_error(f.physics), "root entity"));
     dispose(&f);
 }
 
@@ -1236,6 +1271,7 @@ static void physics_cases()
     repeated_moving_sweeps();
     lifecycle_and_validation();
     interpolation();
+    followers();
     current_contact_query();
     ordered_contacts();
 }

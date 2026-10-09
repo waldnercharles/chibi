@@ -94,6 +94,18 @@ serially, run prepared activations in workers, then finish serially after joinin
 Unsafe effects, mixed native/source phases, profiling and inspection retain serial
 execution. Runtime code does not infer parallel safety from a system name or role.
 
+## Transform hierarchy
+
+Transform (with Orientation) and Transform3D place an entity relative to its
+nearest ChildOf ancestor that has one, or to the world. GlobalTransform2D and
+GlobalTransform3D are derived components: adding the local transform adds them,
+scripts and value writes cannot change them, and prototypes, scenes and captures
+leave them out. Propagation writes them parents first after the physics step,
+after presentation systems, and at the start of each draw and camera framing, so
+renderers always read current placements. Physics, vision, aim and nearest-entity
+queries compute the same world placement on demand. A body under a placed parent
+follows it in world space and never writes back; dynamic bodies must be roots.
+
 ## Prepared artifacts and products
 
 `chibi-compile` prepares executable modules, scenes and declared resources without

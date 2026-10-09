@@ -202,16 +202,16 @@ bool render_mesh_surface_build_with_bounds(
         }
         const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
         const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
-        const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
+        const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
         if (!position) {
-            position = GAME_GameTransform_get_const(world, entity);
+            position = global ? &global->position : NULL;
         }
         float scale = transform ? transform->scale : 1;
         CF_V3 rotation = transform ? (CF_V3){ transform->pitch,
                                               transform->yaw,
                                               transform->roll }
                                    : (CF_V3){ 0 };
-        float angle = heading ? heading->radians : 0;
+        float angle = global ? global->radians : 0;
         CF_V3 dimensions = { shape->width, shape->height, shape->depth };
         CF_V3 center = { 0 };
         const GameShader *binding = GAME_GameShader_get_const(world, entity);
@@ -309,12 +309,12 @@ bool render_mesh_surface_build_with_bounds(
             return false;
         }
         const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-        const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
+        const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
         const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
         if (!position) {
-            position = GAME_GameTransform_get_const(world, entity);
+            position = global ? &global->position : NULL;
         }
-        float angle = heading ? heading->radians : 0;
+        float angle = global ? global->radians : 0;
         float scale = transform ? transform->scale : 1;
         CF_V3 rotation = transform ? (CF_V3){ transform->pitch,
                                               transform->yaw,

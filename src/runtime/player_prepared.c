@@ -42,7 +42,8 @@ static void application(execution_wire *wire, game_player_application *app)
         return;
     }
     if ((title && (!title[0] || strlen(title) > GAME_PLAYER_APPLICATION_TEXT_MAX)) ||
-        (icon && (!icon[0] || strlen(icon) > GAME_PLAYER_APPLICATION_TEXT_MAX)) ||
+        (icon && (strlen(icon) > GAME_PLAYER_APPLICATION_TEXT_MAX ||
+                  !game_player_relative_path(icon))) ||
         width > GAME_PLAYER_APPLICATION_SIZE_MAX ||
         height > GAME_PLAYER_APPLICATION_SIZE_MAX) {
         wire->error = "Prepared player application settings are invalid";

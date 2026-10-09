@@ -160,8 +160,9 @@ is diagnostic evidence, not a passing test.
 
 `--new-asset` admits one case: `new_asset_create` writes a behavior and a scene
 into one temporary content folder, creating the missing folders, and refuses an
-existing file, a model named like a shape and an invalid name. CPU only; the
-folder is removed afterwards.
+existing file, a model named like a shape, an invalid name and a folder blocked
+by a file. Each refusal's errno tells a bad request from a taken name and a
+storage failure. CPU only; the folder is removed afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,

@@ -178,6 +178,7 @@ char *new_asset_text(new_asset_kind kind, const char *name)
 char *new_asset_create(const char *content, new_asset_kind kind, const char *name, char *error, size_t size)
 {
     if (!new_asset_name_valid(name, error, size)) {
+        errno = EINVAL;
         return NULL;
     }
     size_t bytes = strlen(content) + strlen("shader-libraries") + strlen(name) + 16;

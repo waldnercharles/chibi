@@ -24,7 +24,9 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
  * project.kdl, or NULL when none does. */
 char *chibi_project_find(const char *start);
 /* Creates an empty project with content/scenes/Start.kdl as its start scene.
- * `root` must not already exist; its parent directory must exist. */
+ * `root` must not already exist; its parent directory must exist. On failure
+ * errno is EINVAL for a missing name, path or parent, EEXIST when `root`
+ * exists, and otherwise the storage error. */
 int chibi_project_create(const char *root, const char *name, char *error, size_t error_size);
 void chibi_project_free(chibi_project *project);
 

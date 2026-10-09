@@ -69,9 +69,17 @@ TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder)
 
     errno = 0;
     REQUIRE(!new_asset_create(content, NEW_ASSET_PROTOTYPE, "1Block", error, sizeof error));
-    REQUIRE(errno != EEXIST);
+    REQUIRE(errno == EINVAL);
     snprintf(expected_path, sizeof expected_path, "%s/prototypes/1Block.kdl", content);
     REQUIRE(access(expected_path, F_OK) != 0);
+
+    /* A file where the folder belongs is a storage failure, not a bad name. */
+    snprintf(expected_path, sizeof expected_path, "%s/libraries", content);
+    FILE *blocker = fopen(expected_path, "wb");
+    REQUIRE(blocker && !fclose(blocker));
+    errno = 0;
+    REQUIRE(!new_asset_create(content, NEW_ASSET_LIBRARY, "Wind", error, sizeof error));
+    REQUIRE(errno == ENOTDIR);
     return true;
 }
 

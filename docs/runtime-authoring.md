@@ -18,7 +18,9 @@ installed authoring tool rather than mounting a game under the engine checkout.
 Scaffold files with the controller instead of copying another project. `new_project`
 writes `project.kdl` and an empty `content/scenes/Start.kdl`; `new_asset` writes an
 empty asset of one kind in its content folder, the same form Studio's New menu
-starts from, and never overwrites a file:
+starts from, and never overwrites a file. A taken name fails with `asset_conflict`,
+a bad name or path with `invalid_request`, and a disk that refuses the write with
+`io_error`:
 
 ```sh
 printf '%s\n' '{"contract":1,"operation":"new_project","path":"tetris","name":"Tetris"}' | chibi_ctl

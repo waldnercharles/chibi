@@ -29,7 +29,7 @@ NATIVE = {
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
     ('--prepare-corpora-sljit', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive six-project SLJIT preparation, shared 256 sources/8 MiB, compilation only, no execution/GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eight pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
-    ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and three refusals, CPU only; docs/testing.md',
+    ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and four refusals, CPU only; docs/testing.md',
     ('--source-edit',): 'Independently reviewed nine fixed source-edit cases, tiny inputs and checked transactions including extraction/inline/signature/binding/capture and layout, no files/world/runtime/GPU; docs/testing.md',
     ('--source-session',): 'First supervised measurement; independently reviewed four tiny source session cases and fixed KDL checkpoint/merge, at most two sources per project, no engine step/render/window/process; docs/testing.md',
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',

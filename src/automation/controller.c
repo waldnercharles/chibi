@@ -2580,7 +2580,7 @@ static int build_catalog_from_entries(
                     "model and shape asset names must be unique: %s",
                     entries[i].filename
                 );
-                return -1;
+                return CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
         }
     }
@@ -2616,10 +2616,10 @@ static int build_catalog_from_entries(
     authoring_language_catalog_free(links.native);
     if (status) {
         free_catalog_assets(assets);
-        return -1;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     *out = assets;
-    return 0;
+    return CHIBI_AUTOMATION_OK;
 }
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size)
@@ -2723,6 +2723,8 @@ static bool asset_entries_equal(const asset_entry *left, const asset_entry *righ
     return true;
 }
 
+/* CHIBI_AUTOMATION_OK, VALIDATION_ERROR for asset names that collide, or
+ * IO_ERROR, with why in `error`. */
 static int catalog_snapshot_get(
     const char *root,
     catalog_asset **out,
@@ -2734,7 +2736,7 @@ static int catalog_snapshot_get(
 {
     asset_entry *entries = NULL;
     if (enumerate_assets(root, &entries, error, error_size) != 0) {
-        return -1;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
     if (CATALOG_SNAPSHOT.assets && !strcmp(CATALOG_SNAPSHOT.root, root) &&
         asset_entries_equal(entries, CATALOG_SNAPSHOT.entries)) {
@@ -2746,11 +2748,19 @@ static int catalog_snapshot_get(
     }
     catalog_asset *assets = NULL;
     reference_index *references = NULL;
-    if (build_catalog_from_entries(root, entries, CATALOG_SNAPSHOT.assets, &assets, &references, error, error_size) !=
-        0) {
+    int status = build_catalog_from_entries(
+        root,
+        entries,
+        CATALOG_SNAPSHOT.assets,
+        &assets,
+        &references,
+        error,
+        error_size
+    );
+    if (status != CHIBI_AUTOMATION_OK) {
         free_asset_entries(entries);
         free_catalog_snapshot(&CATALOG_SNAPSHOT);
-        return -1;
+        return status;
     }
     uint64_t next_revision = CATALOG_SNAPSHOT.revision + 1;
     free_catalog_snapshot(&CATALOG_SNAPSHOT);
@@ -3034,6 +3044,28 @@ static yyjson_mut_val *add_catalog_reference(
 static bool catalog_fallout(const char *message)
 {
     return !strcmp(message, AUTHORING_SOURCES_CATALOG_INCOMPLETE);
+}
+
+/* Notes a check that failed only with catalog fallout and lets the checks
+ * after it run, so the fallout cannot hide an asset's own problems. */
+static int past_fallout(int status, char *error, bool *fallout)
+{
+    if (status == CHIBI_AUTOMATION_OK || !catalog_fallout(error)) {
+        return status;
+    }
+    *fallout = true;
+    error[0] = '\0';
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* The fallout past_fallout set aside, once no other problem turned up. */
+static int fallout_status(bool fallout, char *error, size_t error_size)
+{
+    if (!fallout) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    set_error(error, error_size, AUTHORING_SOURCES_CATALOG_INCOMPLETE);
+    return CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
 
 static void add_catalog_diagnostics(
@@ -5969,9 +6001,11 @@ static int handle_validate_project(const char *root, response *result, int *exit
     catalog_asset *assets = NULL;
     uint64_t revision = 0;
     uint64_t hash = 0;
-    char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &hash, error, sizeof error) != 0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    char error[256] = { 0 }, catalog_error[256] = { 0 };
+    /* Colliding names leave no catalog, but they are a problem to list. */
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &hash, catalog_error, sizeof catalog_error);
+    if (cataloged == CHIBI_AUTOMATION_IO_ERROR) {
+        response_error(result, exit_code, cataloged, catalog_error);
         return -1;
     }
     source_catalog *catalog = declaration_catalog(root, error, sizeof error);
@@ -5985,6 +6019,10 @@ static int handle_validate_project(const char *root, response *result, int *exit
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, result->root, "result");
     yyjson_mut_val *project = yyjson_mut_obj_add_arr(doc, value, "project");
     int errors = validate_manifest(root, doc, project);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        add_load_diagnostic(doc, project, catalog_error);
+        errors++;
+    }
     int warnings = 0;
     yyjson_mut_val *problems = yyjson_mut_obj_add_arr(doc, value, "problems");
     for (int i = 0; i < acount(assets); i++) {
@@ -6055,6 +6093,17 @@ static int handle_validate_project(const char *root, response *result, int *exit
     return 0;
 }
 
+/* The status a scaffold writer's errno names: a refused request, a taken
+ * name, or storage that failed. */
+static int scaffold_status()
+{
+    switch (errno) {
+        case EINVAL: return CHIBI_AUTOMATION_INVALID_REQUEST;
+        case EEXIST: return CHIBI_AUTOMATION_CONFLICT;
+        default: return CHIBI_AUTOMATION_IO_ERROR;
+    }
+}
+
 static int handle_new_project(yyjson_val *request, response *result, int *exit_code)
 {
     const char *path = request_string(request, "path");
@@ -6066,9 +6115,13 @@ static int handle_new_project(yyjson_val *request, response *result, int *exit_c
         return -1;
     }
     chibi_project project = { 0 };
-    if (chibi_project_create(path, request_string(request, "name"), error, sizeof error) != 0 ||
-        chibi_project_open(&project, path, error, sizeof error) != 0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
+    if (chibi_project_create(path, request_string(request, "name"), error, sizeof error) !=
+        0) {
+        response_error(result, exit_code, scaffold_status(), error);
+        return -1;
+    }
+    if (chibi_project_open(&project, path, error, sizeof error) != 0) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
         return -1;
     }
     char *scene = chibi_project_scene_path(&project, NULL);
@@ -6120,12 +6173,7 @@ static int handle_new_asset(const char *root, yyjson_val *request, response *res
     char *path = new_asset_create(content, (new_asset_kind)kind, name, error, sizeof error);
     free(content);
     if (!path) {
-        response_error(
-            result,
-            exit_code,
-            errno == EEXIST ? CHIBI_AUTOMATION_CONFLICT : CHIBI_AUTOMATION_INVALID_REQUEST,
-            error
-        );
+        response_error(result, exit_code, scaffold_status(), error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -11074,6 +11122,7 @@ static int validate_prototype_behaviors(const char *root, const char *json, char
         yyjson_doc_free(document);
         return CHIBI_AUTOMATION_OK;
     }
+    bool fallout = false;
     yyjson_arr_iter iterator = yyjson_arr_iter_with(behaviors);
     yyjson_val *name;
     while ((name = yyjson_arr_iter_next(&iterator))) {
@@ -11101,14 +11150,18 @@ static int validate_prototype_behaviors(const char *root, const char *json, char
             return status;
         }
         free(behavior_json);
-        status = validate_scene_behavior(root, yyjson_get_str(name), error, error_size);
+        status = past_fallout(
+            validate_scene_behavior(root, yyjson_get_str(name), error, error_size),
+            error,
+            &fallout
+        );
         if (status != CHIBI_AUTOMATION_OK) {
             yyjson_doc_free(document);
             return status;
         }
     }
     yyjson_doc_free(document);
-    return CHIBI_AUTOMATION_OK;
+    return fallout_status(fallout, error, error_size);
 }
 
 static int validate_scene_behavior(const char *root, const char *name, char *error, size_t error_size)
@@ -11161,6 +11214,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
     int status = CHIBI_AUTOMATION_OK;
+    bool fallout = false;
     for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
         game_scene_entity *entity = &scene->entities[i];
         asset_ref prototype_ref = { 0 };
@@ -11186,7 +11240,11 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
             status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             break;
         }
-        status = validate_prototype_behaviors(root, prototype_json, error, error_size);
+        status = past_fallout(
+            validate_prototype_behaviors(root, prototype_json, error, error_size),
+            error,
+            &fallout
+        );
         free(prototype_json);
         if (status == CHIBI_AUTOMATION_OK) {
             ecs_world *world = ecs_world_new();
@@ -11233,11 +11291,17 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         for (int behavior = 0;
              behavior < acount(entity->behaviors) && status == CHIBI_AUTOMATION_OK;
              behavior++) {
-            status = validate_scene_behavior(root, entity->behaviors[behavior], error, error_size);
+            status = past_fallout(
+                validate_scene_behavior(root, entity->behaviors[behavior], error, error_size),
+                error,
+                &fallout
+            );
         }
     }
     game_scene_document_free(scene);
-    return status;
+    return status != CHIBI_AUTOMATION_OK
+             ? status
+             : fallout_status(fallout, error, error_size);
 }
 
 static int load_ui_source(

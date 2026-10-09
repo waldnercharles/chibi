@@ -103,6 +103,7 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     }
     if (!root || !root[0] || !name || !name[0]) {
         set_error(error, error_size, "Project path and name are required");
+        errno = EINVAL;
         return -1;
     }
     bool named = false;
@@ -111,19 +112,23 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     }
     if (!named) {
         set_error(error, error_size, "Enter a project name");
+        errno = EINVAL;
         return -1;
     }
     if (is_directory(root) || is_file(root)) {
         set_errorf(error, error_size, "Project already exists: %s", root);
+        errno = EEXIST;
         return -1;
     }
     char *parent = parent_path(root);
     if (!is_directory(parent)) {
         set_errorf(error, error_size, "Project parent directory does not exist: %s", parent);
         free(parent);
+        errno = EINVAL;
         return -1;
     }
     free(parent);
+    errno = 0;
     if (mkdir(root, 0755) != 0) {
         if (error_size) {
             snprintf(error, error_size, "Cannot create project: %s", strerror(errno));
@@ -141,11 +146,13 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
                    write_asset_file(manifest_path, manifest, error, error_size) == 0 &&
                    write_asset_file(scene_path, scene, error, error_size) == 0;
     if (!written) {
+        int failure = errno ? errno : EIO;
         unlink(scene_path);
         unlink(manifest_path);
         rmdir(scenes);
         rmdir(content);
         rmdir(root);
+        errno = failure;
         if (!error_size || !error[0]) {
             set_error(error, error_size, "Could not create project files");
         }

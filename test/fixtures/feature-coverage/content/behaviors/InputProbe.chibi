@@ -8,10 +8,4 @@ behavior InputProbe {
             self.Aim.firing = true
         }
     }
-    on Fire {
-        self.Aim.firing = true
-    }
-    on Dash {
-        self.Aim.firing = false
-    }
 }

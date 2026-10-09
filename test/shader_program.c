@@ -5,9 +5,9 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
-#include "render/arena3d.h"
-#include "render/arena_post.h"
 #include "render/material_raster.h"
+#include "render/scene3d.h"
+#include "render/scene3d_post.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
 #include "support/array.h"
@@ -199,21 +199,21 @@ static void fragment_checks(behavior_asset *asset)
 }
 
 static void arena_frame(
-    render_arena *arena,
-    render_arena_post *post,
+    render_scene3d *arena,
+    render_scene3d_post *post,
     const behavior_asset *asset,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     CF_Pixel pixels[PIXELS]
 )
 {
     cf_app_update(NULL);
     assert(
-        authoring_render_arena_preview(arena, asset, camera, NULL, 0, &(render_arena_activity){ 0 })
+        authoring_render_scene3d_preview(arena, asset, camera, NULL, 0, &(render_scene3d_activity){ 0 })
     );
-    cf_render_to(render_arena_post_target(post), true);
-    assert(render_arena_post_process(post));
+    cf_render_to(render_scene3d_post_target(post), true);
+    assert(render_scene3d_post_process(post));
     cf_app_draw_onto_screen(false);
-    read_canvas_pixels(render_arena_post_output(post), pixels);
+    read_canvas_pixels(render_scene3d_post_output(post), pixels);
 }
 
 static void arena_checks(behavior_asset *asset)
@@ -223,12 +223,12 @@ static void arena_checks(behavior_asset *asset)
     edit_ramp(asset, 3, initial, 1);
     int material = publish(asset);
     (void)material;
-    render_arena *arena = render_arena_new();
-    render_arena_post *post = render_arena_post_new();
-    GameEnvironment environment = render_arena_post_defaults();
+    render_scene3d *arena = render_scene3d_new();
+    render_scene3d_post *post = render_scene3d_post_new();
+    GameEnvironment environment = render_scene3d_post_defaults();
     environment.bloom_strength = 0;
-    assert(arena && post && render_arena_post_prepare(post, SIDE, SIDE, &environment));
-    render_arena_camera camera = render_arena_camera_make(0, 0, 140, 140);
+    assert(arena && post && render_scene3d_post_prepare(post, SIDE, SIDE, &environment));
+    render_scene3d_camera camera = render_scene3d_camera_make(0, 0, 140, 140);
     CF_Pixel before[PIXELS], after[PIXELS];
     unsigned compile_before = render_shader_compile_count();
     arena_frame(arena, post, asset, &camera, before);
@@ -241,8 +241,8 @@ static void arena_checks(behavior_asset *asset)
     assert(render_shader_compile_count() == compile_warm);
     int center = SIDE * (SIDE / 2) + SIDE / 2;
     assert(memcmp(&before[center], &after[center], sizeof before[center]) != 0);
-    render_arena_free(arena);
-    render_arena_post_free(post);
+    render_scene3d_free(arena);
+    render_scene3d_post_free(post);
 }
 
 static void compute_frame(

@@ -1,6 +1,7 @@
 # Author a game with Chibi
 
 The game's `project.kdl` selects its `content` directory and starting scene.
+`chibi-compile` and `chibi_ctl` both read assets from that directory.
 Project format 10 uses `.chibi` executable source for behaviors, callable
 libraries, and systems. Scenes, prototypes, shaders, models, and other declarative
 assets use KDL. Studio, text editors, and AI agents edit these same asset files.
@@ -30,12 +31,21 @@ printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"B
 
 Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
 `material`, `shape`, `field`, `shader-library` and `model`. Before running content,
-`validate_project` checks the manifest, its start scene and every asset. Its
+`validate_project` checks the manifest, its start scene, its application title
+and icon, and every asset. Markup in `content/ui` must be a regular file:
+`chibi_ctl` never follows a link, so a linked document is refused. The reply's
 `problems` list only the assets with errors or warnings, each diagnostic naming
 what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
 model and a shape share a name there is no catalog, so it lists no asset
 problems until one is renamed. It never changes files: a project saved by an
 earlier build fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
+A prototype is the `name` it declares, whatever its file is called: scenes and
+other prototypes' `(array)includes` find it by that name in the player and in
+`chibi_ctl` alike, and two prototypes that declare one name, or a name over
+1024 bytes, are refused.
+`new_asset` names a new prototype's file after it. `--format` checks a
+prototype with includes but keeps its text as written instead of folding the
+included components in.
 
 ## Declare components
 
@@ -115,9 +125,13 @@ JSON response per line. Requests use `contract: 1`, an `operation`, and the
 operation's fields at the top level. For example, validate a saved behavior:
 
 ```sh
-printf '%s\n' '{"contract":1,"operation":"validate_asset","path":"behaviors/Projectile.chibi"}' | \
+printf '%s\n' '{"contract":1,"operation":"validate_asset","path":"content/behaviors/Projectile.chibi"}' | \
   chibi_ctl --project-root "$PWD"
 ```
+
+Asset paths in requests and replies start with `content/`, which stands for the
+folder `project.kdl` selects: `content/behaviors/Projectile.chibi` is
+`behaviors/Projectile.chibi` there.
 
 Change the path to an asset in your project. A request failure returns a nonzero
 exit status. Inspect the response's diagnostics as well as its status. Retained

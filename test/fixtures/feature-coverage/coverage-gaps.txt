@@ -33,6 +33,8 @@ component GameMeshParts
 component GameMeshSurface2D
 component GameShader
 component GamePointLight
+component GameDirectionalLight
+component GameSpotLight
 component GameEnvironment
 component GameFog
 component GameReflection

@@ -52,7 +52,13 @@ void chibi_project_free(chibi_project *project);
  * the number of version steps applied, or -1 with `error` set. */
 int chibi_project_migrate(const char *path, char *error, size_t error_size);
 
-/* Returns an owned scene path inside the selected project. */
+/* The owned path of the folder the project at directory `root` keeps its
+ * content in: the one its manifest names, joined to `root`, else
+ * `root`/content. Reads the manifest at any version without upgrading it;
+ * NULL with `error` set when it is malformed. */
+char *chibi_project_content(const char *root, char *error, size_t error_size);
+/* Returns an owned scene path inside the selected project; a path below
+ * content/ names a file in its content folder. */
 char *chibi_project_scene_path(const chibi_project *project, const char *requested);
 
 #endif

@@ -13,7 +13,7 @@
 #include "authoring/source_collection.h"
 #include "authoring/ui_prepare.h"
 #include "authoring/visual_prepare.h"
-#include "render/arena_parts.h"
+#include "render/scene3d_parts.h"
 #include "render/shader_values.h"
 #include "runtime/behaviors/module_set.h"
 #include "runtime/event_catalog.h"
@@ -41,8 +41,9 @@ static void clear_visuals()
 {
     authoring_shader_catalog_clear();
     shader_values_clear();
-    render_arena_parts_clear();
+    render_scene3d_parts_clear();
     render_mesh_assets_clear();
+    render_skies_clear();
     render_image_catalog_clear();
 }
 static bool sources_valid(const authoring_sources *sources, char *error, size_t size)
@@ -351,6 +352,12 @@ static bool application_icon_read(
     free(data);
     return true;
 }
+bool authoring_project_application_valid(const chibi_project *project, char *error, size_t size)
+{
+    game_player_asset icon;
+    return application_title_valid(project, error, size) &&
+           application_icon_read(project, &icon, error, size);
+}
 static uint64_t content_hash(const void *data, size_t size)
 {
     const unsigned char *bytes = data;
@@ -389,7 +396,7 @@ static char *manifest(
 {
     static const char *const kinds[] = { "shader", "model",         "mesh",
                                          "image",  "shader-values", "parts",
-                                         "ui",     "font" };
+                                         "ui",     "font",          "sky" };
     static_assert(sizeof kinds / sizeof *kinds == GAME_PLAYER_ASSET_COUNT);
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);

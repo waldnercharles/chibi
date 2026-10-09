@@ -6,7 +6,7 @@ A vertex shader and fragment shader may each declare `uniform_block` with differ
 
 The patch prefixes the generated instance with `vs` or `fs`, and updates the rewritten member expressions to match. The vertex stage uses `cf_vs_ubi_uniform_block`; the fragment stage uses `cf_fs_ubi_uniform_block`.
 
-Chibi uses this pattern directly. `src/render/shaders/arena3d.vert` declares a vertex `uniform_block` containing `u_view_projection`. `src/render/shaders/arena3d_scene.glsl` declares a fragment `uniform_block` containing scene and lighting values. The names describe independent stage data.
+Chibi uses this pattern directly. `src/render/shaders/scene3d.vert` declares a vertex `uniform_block` containing `u_view_projection`. `src/render/shaders/scene3d_scene.glsl` declares a fragment `uniform_block` containing scene and lighting values. The names describe independent stage data.
 
 Illustrative shader pair, not a new reproduction from this audit.
 

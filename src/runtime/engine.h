@@ -84,6 +84,9 @@ engine *engine_new(ecs_world *world, const engine_modules *);
 void engine_free(engine *engine);
 /* Reset time and input before recreating authored entities and their Begin runs. */
 void engine_reset(engine *engine);
+/* Reset per-scene state for a scene change; time, input, recordings and
+ * audio go on. */
+void engine_reset_scene(engine *engine);
 int engine_register_system(engine *engine, const game_schedule_desc *desc);
 const game_schedule *engine_system_schedule(const engine *engine);
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user);

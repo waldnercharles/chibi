@@ -50,6 +50,27 @@ an explicit project root; browser Studio receives an explicit sample list throug
 `WEB_PROJECTS`. The extracted browser build and rendered product acceptance are
 tracked separately from package integrity and installed-consumer linking.
 
+## Window and icon
+
+An optional `application` block in `project.kdl` sets how the shipped game's
+window looks. Every field is optional: the title defaults to the project name,
+the size to 1280×720, and the icon is a PNG path relative to the project root.
+
+```kdl
+application {
+    title "My Game"
+    width 1600
+    height 900
+    fullscreen #false
+    icon "icon.png"
+}
+```
+
+`chibi-compile` stores these settings in the artifact, checks that the icon is
+a readable PNG, and lists it with the external resources in the artifact's
+resource manifest. The player resolves the icon against its resource root. A
+project name longer than 1024 bytes needs a shorter `title`.
+
 ## Deployment identity
 
 `share/chibi/package.json` inventories the deployed files and pins the source

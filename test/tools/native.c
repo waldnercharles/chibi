@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static game_world *simulation;
 static game_scene_instance *scene_instance;
@@ -556,9 +557,37 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         REQUIRE(ticks == 0 && game_scene_object_count(scene) == 1);
         record.name = "Initial";
         size_t player_length;
+        game_player_application application = { .title = "Native",
+                                                .width = 640,
+                                                .height = 360,
+                                                .fullscreen = true,
+                                                .icon = "art/icon.png" };
         REQUIRE(
-            game_player_prepared_write(&spec, &player_bytes, &player_length, error, sizeof error)
+            game_player_prepared_write(&spec, &application, &player_bytes, &player_length, error, sizeof error)
         );
+        char artifact_path[] = "/tmp/chibi-native-player-XXXXXX";
+        int artifact_fd = mkstemp(artifact_path);
+        REQUIRE(artifact_fd >= 0);
+        bool written = write(artifact_fd, player_bytes, player_length) ==
+                       (ssize_t)player_length;
+        close(artifact_fd);
+        game_player_application read = { 0 };
+        bool read_back = written &&
+                         game_player_application_read(artifact_path, &read, error, sizeof error);
+        unlink(artifact_path);
+        REQUIRE(read_back);
+        REQUIRE(!strcmp(read.title, "Native") && !strcmp(read.icon, "art/icon.png"));
+        REQUIRE(read.width == 640 && read.height == 360 && read.fullscreen);
+        game_player_application_free(&read);
+        /* An icon outside the resource root is refused, as on reading. */
+        application.icon = "../outside.png";
+        unsigned char *unsafe = NULL;
+        size_t unsafe_length = 0;
+        REQUIRE(
+            !game_player_prepared_write(&spec, &application, &unsafe, &unsafe_length, error, sizeof error)
+        );
+        REQUIRE(!unsafe);
+        application.icon = "art/icon.png";
         game_player_host player_host_context = {
             .components = { .components = GAME_REGISTRY_COMPONENTS,
                             .component_count = GAME_REGISTRY_COMPONENT_COUNT },

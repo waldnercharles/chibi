@@ -3699,6 +3699,16 @@ static void assign_value(lower *l, const script_statement *s, int value)
 {
     int symbol = s->symbol;
     if (s->expression < 0) {
+        /* A `return` stores into its result, which may be wider. */
+        if (symbol >= 0 && symbol < l->a->symbol_count) {
+            value = convert(
+                l,
+                value,
+                l->a->expressions[s->second].type,
+                l->a->symbols[symbol].type,
+                s->range
+            );
+        }
         store_symbol(l, symbol, value, s->range);
         return;
     }

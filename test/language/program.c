@@ -2435,6 +2435,33 @@ TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
     }
     return true;
 }
+/* Found animating Celeste's sprite: a result takes the type of its first
+ * return, a literal settles to a number, and other returns convert to it. */
+TEST_CASE(program_returns_convert_to_their_result_type)
+{
+    const char
+        *source = "behavior M { n: double = 0; k: int = 3;"
+                  "function Half(v: int) { return v % 2 }"
+                  "function First() { if k == 2 { return 8.5 } return Half(k) }"
+                  "function Literal() { if k == 2 { return 8 } return Half(k) }"
+                  "function Declared() -> (r: double) { return Half(k) }"
+                  "on Impulse(amount, enabled) {"
+                  "n = First() * 0.5 + Literal() * 0.5 + Declared() } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 2));
+    }
+    return true;
+}
 TEST_CASE(program_yield_resumes_on_the_next_update_without_time)
 {
     const char *source = "behavior Y { done: double = 0;"
@@ -2663,6 +2690,7 @@ void test_language_program()
     RUN_TEST_CASE(program_library_task_writes_the_callers_state);
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     RUN_TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp);
+    RUN_TEST_CASE(program_returns_convert_to_their_result_type);
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);

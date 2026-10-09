@@ -4,7 +4,9 @@
 #include "render/scene_renderer.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
+#include "runtime/images/sky.h"
 #include "runtime/particles.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
@@ -53,6 +55,7 @@ static void setup()
 static void teardown()
 {
     backdrop = false;
+    render_skies_clear();
     engine_free(runtime);
     runtime = NULL;
     render_scene3d_free(scene3d);
@@ -1220,6 +1223,227 @@ TEST_CASE(wide_spot_lights_read_only_their_face)
     return true;
 }
 
+enum
+{
+    SKY_WIDTH = 64,
+    SKY_HEIGHT = SKY_WIDTH / 2
+};
+static const char *const sky_key = "content/skies/test.hdr";
+
+/* Publishes the RGBE texels `rgbe` as the sky, row 0 looking up. Tests keep
+ * values under Neutral's knee, which leaves hues as they are. */
+static void publish_sky(const unsigned char (*rgbe)[SKY_WIDTH][4])
+{
+    render_sky sky = { .width = SKY_WIDTH,
+                       .height = SKY_HEIGHT,
+                       .texels = xmalloc(SKY_WIDTH * SKY_HEIGHT * 4) };
+    memcpy(sky.texels, rgbe, SKY_WIDTH * SKY_HEIGHT * 4);
+    render_sky_publish(sky_key, &sky);
+}
+
+static void publish_uniform_sky(const unsigned char rgbe[4])
+{
+    static unsigned char texels[SKY_HEIGHT][SKY_WIDTH][4];
+    for (int y = 0; y < SKY_HEIGHT; y++) {
+        for (int x = 0; x < SKY_WIDTH; x++) {
+            memcpy(texels[y][x], rgbe, 4);
+        }
+    }
+    publish_sky(texels);
+}
+
+/* Looks level along -Z from the origin: +X lies to the right and up on top. */
+static void look_level()
+{
+    lens.view = cf_look_at((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 });
+}
+
+static GameEnvironment sky_environment()
+{
+    GameEnvironment environment = game_environment_defaults();
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.sky = sky_key;
+    return environment;
+}
+
+static CF_Pixel pixel(int x, int y)
+{
+    return pixels[y * SIDE + x];
+}
+
+/* A sky colored by the octant each texel looks into: red where it looks
+ * toward +X, green toward +Y and blue toward +Z. Row 0 looks up, the middle
+ * column along -Z and the column three quarters across along +X. */
+static void publish_octant_sky()
+{
+    static unsigned char texels[SKY_HEIGHT][SKY_WIDTH][4];
+    for (int y = 0; y < SKY_HEIGHT; y++) {
+        float elevation = (.5f - (y + .5f) / SKY_HEIGHT) * 3.14159265f;
+        for (int x = 0; x < SKY_WIDTH; x++) {
+            float azimuth = ((x + .5f) / SKY_WIDTH - .5f) * 2 * 3.14159265f;
+            CF_V3 ray = { cosf(elevation) * sinf(azimuth),
+                          sinf(elevation),
+                          -cosf(elevation) * cosf(azimuth) };
+            unsigned char rgbe[4] = { ray.x > 0 ? 128 : 0,
+                                      ray.y > 0 ? 128 : 0,
+                                      ray.z > 0 ? 128 : 0,
+                                      128 };
+            memcpy(texels[y][x], rgbe, 4);
+        }
+    }
+    publish_sky(texels);
+}
+
+/* Whether the pixel at (x, y) shows the octant its view ray looks into, with
+ * the sky turned `quarters` quarter turns counterclockwise from above. */
+static bool shows_octant(int x, int y, int quarters)
+{
+    CF_V2 ndc = { (x + .5f) * 2 / SIDE - 1, 1 - (y + .5f) * 2 / SIDE };
+    CF_V3 ray = render_scene3d_ray(&lens, ndc).d;
+    for (int i = 0; i < quarters; i++) {
+        ray = (CF_V3){ -ray.z, ray.y, ray.x };
+    }
+    CF_Pixel shown = pixel(x, y);
+    REQUIRE(ray.x > 0 ? shown.colors.r > 100 : !shown.colors.r);
+    REQUIRE(ray.y > 0 ? shown.colors.g > 100 : !shown.colors.g);
+    REQUIRE(ray.z > 0 ? shown.colors.b > 100 : !shown.colors.b);
+    return true;
+}
+
+/* Looking along each axis, unturned and turned a quarter, every corner of
+ * the view shows the sky in the direction it looks: each cube face keeps
+ * its orientation on the GPU. */
+TEST_CASE(sky_fills_the_view_in_its_directions)
+{
+    publish_octant_sky();
+    static const CF_V3 views[][2] = {
+        { { 0, 0, -1 }, { 0, 1, 0 } }, { { 0, 0, 1 }, { 0, 1, 0 } },
+        { { 1, 0, 0 }, { 0, 1, 0 } },  { { -1, 0, 0 }, { 0, 1, 0 } },
+        { { 0, 1, 0 }, { 0, 0, -1 } }, { { 0, -1, 0 }, { 0, 0, 1 } }
+    };
+    GameEnvironment environment = sky_environment();
+    for (int quarters = 0; quarters < 2; quarters++) {
+        environment.sky_rotation = 90.0f * quarters;
+        for (int i = 0; i < 6; i++) {
+            lens.view = cf_look_at((CF_V3){ 0 }, views[i][0], views[i][1]);
+            REQUIRE(render(&environment));
+            int corners[] = { 8, SIDE - 8 };
+            for (int j = 0; j < 4; j++) {
+                REQUIRE(shows_octant(corners[j % 2], corners[j / 2], quarters));
+            }
+        }
+    }
+    return true;
+}
+
+/* The sky lies on the far plane: surfaces keep every pixel they cover. */
+TEST_CASE(sky_shows_only_where_no_surface_is)
+{
+    look_level();
+    add_solid((CF_V3){ 0, 0, -6 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    GameEnvironment environment = sky_environment();
+    environment.sky = NULL;
+    REQUIRE(render(&environment));
+    static CF_Pixel bare[PIXELS];
+    memcpy(bare, pixels, sizeof pixels);
+    publish_uniform_sky((const unsigned char[4]){ 128, 128, 128, 128 });
+    environment.sky = sky_key;
+    REQUIRE(render(&environment));
+    int covered = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        bool open = !bare[i].colors.r && !bare[i].colors.g && !bare[i].colors.b;
+        covered += !open;
+        REQUIRE(open ? pixels[i].colors.r > 100 : pixels[i].val == bare[i].val);
+    }
+    REQUIRE(covered > 100 && covered < PIXELS / 2);
+    return true;
+}
+
+/* Translucent surfaces blend over the sky rather than under it. */
+TEST_CASE(translucent_surfaces_blend_over_the_sky)
+{
+    look_level();
+    publish_uniform_sky((const unsigned char[4]){ 0, 0, 128, 128 });
+    add_solid((CF_V3){ 0, 0, -6 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xff000080u);
+    GameEnvironment environment = sky_environment();
+    REQUIRE(render(&environment));
+    CF_Pixel open = pixel(4, 4), behind = pixel(SIDE / 2, SIDE / 2);
+    REQUIRE(!open.colors.r && open.colors.b > 100);
+    REQUIRE(
+        behind.colors.r > 20 && behind.colors.b > 20 &&
+        behind.colors.b < open.colors.b
+    );
+    return true;
+}
+
+/* Rotation turns the sky counterclockwise seen from above, so a quarter turn
+ * brings what lay along +X ahead, along -Z. */
+TEST_CASE(sky_rotation_turns_it_counterclockwise_from_above)
+{
+    look_level();
+    static unsigned char texels[SKY_HEIGHT][SKY_WIDTH][4];
+    for (int y = 0; y < SKY_HEIGHT; y++) {
+        for (int x = 0; x < SKY_WIDTH; x++) {
+            bool east = x >= SKY_WIDTH * 5 / 8 && x < SKY_WIDTH * 7 / 8;
+            memcpy(texels[y][x], (unsigned char[4]){ east ? 128 : 0, 0, 0, 128 }, 4);
+        }
+    }
+    publish_sky(texels);
+    GameEnvironment environment = sky_environment();
+    float rotations[] = { 0, 90, -90, 450 };
+    for (int i = 0; i < 4; i++) {
+        environment.sky_rotation = rotations[i];
+        REQUIRE(render(&environment));
+        CF_Pixel ahead = pixel(SIDE / 2, SIDE / 2);
+        REQUIRE(i % 2 ? ahead.colors.r > 100 : !ahead.colors.r);
+    }
+    return true;
+}
+
+/* Each stop of sky exposure doubles it, exactly as doubled texels would. */
+TEST_CASE(sky_exposure_scales_it_in_stops)
+{
+    look_level();
+    publish_uniform_sky((const unsigned char[4]){ 128, 64, 32, 127 });
+    GameEnvironment environment = sky_environment();
+    environment.sky_exposure = 1;
+    REQUIRE(render(&environment));
+    static CF_Pixel exposed[PIXELS];
+    memcpy(exposed, pixels, sizeof pixels);
+    publish_uniform_sky((const unsigned char[4]){ 128, 64, 32, 128 });
+    environment.sky_exposure = 0;
+    REQUIRE(render(&environment));
+    REQUIRE(pixels[0].colors.r > 100 && !memcmp(pixels, exposed, sizeof pixels));
+    environment.sky_exposure = -1;
+    REQUIRE(render(&environment));
+    REQUIRE(pixels[0].colors.r < exposed[0].colors.r);
+    return true;
+}
+
+TEST_CASE(sky_settings_must_be_valid)
+{
+    GameEnvironment environment = sky_environment();
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "test.hdr has not been prepared"));
+    publish_uniform_sky((const unsigned char[4]){ 128, 128, 128, 128 });
+    float exposures[] = { 20.5f, -21, NAN };
+    for (int i = 0; i < 3; i++) {
+        environment.sky_exposure = exposures[i];
+        REQUIRE(!render(&environment));
+        REQUIRE(strstr(render_scene3d_error(scene3d), "sky exposure must be -20 to 20 stops"));
+    }
+    environment.sky_exposure = -20;
+    float rotations[] = { INFINITY, NAN };
+    for (int i = 0; i < 2; i++) {
+        environment.sky_rotation = rotations[i];
+        REQUIRE(!render(&environment));
+        REQUIRE(strstr(render_scene3d_error(scene3d), "sky rotation must be finite"));
+    }
+    environment.sky_rotation = -1e6f;
+    REQUIRE(render(&environment));
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -1258,6 +1482,12 @@ void test_render_scene3d()
     RUN_TEST_CASE(spot_and_point_lights_share_shadow_maps);
     RUN_TEST_CASE(spot_light_angles_must_be_in_range);
     RUN_TEST_CASE(wide_spot_lights_read_only_their_face);
+    RUN_TEST_CASE(sky_fills_the_view_in_its_directions);
+    RUN_TEST_CASE(sky_shows_only_where_no_surface_is);
+    RUN_TEST_CASE(translucent_surfaces_blend_over_the_sky);
+    RUN_TEST_CASE(sky_rotation_turns_it_counterclockwise_from_above);
+    RUN_TEST_CASE(sky_exposure_scales_it_in_stops);
+    RUN_TEST_CASE(sky_settings_must_be_valid);
     pu_clear_setup();
     cf_destroy_app();
 }

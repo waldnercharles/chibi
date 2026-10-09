@@ -93,6 +93,18 @@ if(TARGET Chibi::render)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
 endif()
 
+# Image preparation decodes and imports files, so only compiler builds have it.
+if(TARGET Chibi::image_preparation)
+    add_library(chibi_image_preparation_consumer OBJECT ../authoring/sky_files.c)
+    target_include_directories(chibi_image_preparation_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_image_preparation_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+    target_link_libraries(chibi_image_preparation_consumer PRIVATE Chibi::image_preparation)
+    target_compile_options(chibi_image_preparation_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_image_preparation_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::image_preparation)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_IMAGE_PREPARATION=1)
+endif()
+
 if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     configure_file("${CHIBI_TOOL_ROOT}/test/support/reflected_types.h"
         "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/support/reflected_types.h" COPYONLY)

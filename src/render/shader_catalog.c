@@ -7,6 +7,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_asset.h"
 #include "runtime/images/catalog.h"
+#include "runtime/images/sky.h"
 #include "runtime/models/model_program.h"
 #include "runtime/shaders/volume.h"
 #include "support/array.h"
@@ -1636,6 +1637,7 @@ void render_shader_catalog_clear()
     afree(shader_catalog_assets);
     render_image_catalog_clear();
     render_mesh_assets_clear();
+    render_skies_clear();
     shader_catalog_resources_changed();
 }
 const char *shader_catalog_write_parameter_value(void *service, const pin_value *inputs, bool shape)

@@ -24,9 +24,9 @@ into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
   hidden light. Spot and point lights share the 32-light ranking, and a spot
   light without a direction lights nothing. `shadows` works as it does for a
   point light.
-- **Environment** (`GameEnvironment`): exposure, bloom, and a hemisphere ambient
-  that blends `ambient_ground` below to `ambient_sky` above, scaled by
-  `ambient_intensity`. Without an Environment the scene uses
+- **Environment** (`GameEnvironment`): exposure, bloom, a sky (see Sky), and a
+  hemisphere ambient that blends `ambient_ground` below to `ambient_sky` above,
+  scaled by `ambient_intensity`. Without an Environment the scene uses
   `game_environment_defaults()`.
 
 Omitted KDL fields are zero, so author every lighting field you need. Studio adds
@@ -131,6 +131,49 @@ The Environment also sets how scene-linear light reaches the display:
   back in scene time, and the frame after `app_scene_renderer_reset` (Studio
   resets on scene load, restart and stop) snap to the metered value.
 
+## Sky
+
+The Environment's `sky` names an equirectangular Radiance `.hdr` image under
+`content/`, such as `content/skies/field.hdr` (`render/scene3d_sky.c`). It is
+drawn on the far plane, so it fills every pixel no surface covers, and an empty
+`sky` draws none.
+
+- **Files**: the image must be twice as wide as it is tall and 2 to 4096 texels
+  wide, in the `32-bit_rle_rgbe` format with rows top to bottom (`-Y +X`), flat
+  or run-length encoded, as Poly Haven and most HDR tools write it. Radiance's
+  original run-length encoding, which no current tool writes, is rejected. Row 0 looks
+  straight up; the middle column looks along -Z, the column three quarters
+  across along +X, and the left and right edges along +Z.
+- **Rotation**: `sky_rotation` turns the sky about the up axis, in degrees
+  counterclockwise seen from above, so 90 brings what lay along +X to -Z. It
+  must be finite.
+- **Exposure**: `sky_exposure` scales the sky by two to its power, from -20 to
+  20 stops. The scene's exposure, auto exposure and tone map then treat it like
+  any other light.
+- **Storage**: preparation decodes the file once and the prepared project
+  carries its RGBE texels, 4 bytes each, so a 4096-wide sky takes 32 MB of the
+  player's 64 MB resource budget. The renderer resamples it bilinearly on the
+  CPU into a half-float cube whose faces are the largest power of two up to a
+  quarter of its width; values past 65504 saturate. It rebuilds the cube only
+  when the sky's texels change, so preparing the same file again costs no
+  rebuild, but the frame that first shows a 4096-wide sky pays for six
+  1024-texel faces.
+- **Order**: the sky draws after opaque surfaces and before trails and
+  translucent surfaces, which blend over it.
+- **Import**: the `import_sky` controller operation checks that a file decodes
+  as a sky, then copies it into the project's content, by default to
+  `content/skies/` with the file's own name. It never replaces an existing file.
+
+  ```sh
+  printf '%s\n' '{"contract":1,"operation":"import_sky","source":"/downloads/meadow_2k.hdr"}' | \
+    chibi_ctl --project-root "$PWD"
+  ```
+
+  The response's `path` is the key to put in `sky`; `destination` picks another
+  `content/... .hdr` path.
+- **Not covered**: the sky lights nothing yet. Ambient light still comes from
+  the hemisphere colors.
+
 ## Optional material inputs
 
 Rhythm, Surface Influence, trails and particles feed materials only when a scene
@@ -163,11 +206,24 @@ straight down, and beside a point light's in the same atlas. Every accepted
 outer angle, from 2 degrees with a hard edge to 160, lights the floor below at
 full strength, and angles out of range are rejected. Near the edge of a
 hard-edged cone 160 degrees across, lookups stay on the spot light's face
-rather than reading the shadows of the light before it. It runs `test_tools`
+rather than reading the shadows of the light before it. Looking along each
+axis, unturned and turned a quarter, every corner of the view shows the sky
+in the direction it looks; a box in front of the sky keeps every pixel it
+covered without one, and a translucent box blends over it; a quarter turn of
+rotation brings +X ahead; one stop of exposure matches texels twice as
+bright; and missing skies, exposure out of range and rotation that isn't
+finite are rejected. It runs `test_tools`
 from the desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 29 cases and 314 assertions in 4.5 seconds on 2026-10-09.
+Vulkan llvmpipe passed 35 cases and 4646 assertions in 5.2 seconds on 2026-10-09.
+
+`python3 tools/test_policy.py tool render-resources` checks on the CPU that the
+sky's cube faces follow the GPU's face selection table and hold exact half
+floats, and that skies publish, and are charged, with a prepared generation, and
+`python3 tools/test_policy.py tool sky-files` decodes flat and run-length
+files, rejects malformed ones, prepares skies from mounted content and imports
+them without replacing a file. Both need the in-tree build above.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

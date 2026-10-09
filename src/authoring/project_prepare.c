@@ -43,6 +43,7 @@ static void clear_visuals()
     shader_values_clear();
     render_scene3d_parts_clear();
     render_mesh_assets_clear();
+    render_skies_clear();
     render_image_catalog_clear();
 }
 static bool sources_valid(const authoring_sources *sources, char *error, size_t size)
@@ -395,7 +396,7 @@ static char *manifest(
 {
     static const char *const kinds[] = { "shader", "model",         "mesh",
                                          "image",  "shader-values", "parts",
-                                         "ui",     "font" };
+                                         "ui",     "font",          "sky" };
     static_assert(sizeof kinds / sizeof *kinds == GAME_PLAYER_ASSET_COUNT);
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);

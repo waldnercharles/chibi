@@ -1169,7 +1169,7 @@ static bool finish(work *w, refactor_plan *plan)
         l->metadata = NULL;
         l->references = NULL;
     }
-    qsort(plan->edits, (size_t)acount(plan->edits), sizeof *plan->edits, edit_order);
+    asort(plan->edits, edit_order);
     return true;
 }
 

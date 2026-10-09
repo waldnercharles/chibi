@@ -9,6 +9,7 @@
 #define SHAPE_POLY     5
 #define SHAPE_DIAMOND    6
 #define SHAPE_POLY_FILL  7
+#define SHAPE_SPRITE     8
 
 struct Entity {
     vec4 inv_rot;       // inv_xx, inv_xy, inv_yx, inv_yy

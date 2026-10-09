@@ -135,6 +135,8 @@ typedef struct
     int shape, material;
 } render_shader_set;
 bool render_shader_set_add(render_shader_set *set, int asset, shader_error *error);
+/* Adds one image variant, such as a sprite's, for sg_image_sample. */
+bool render_shader_set_add_image(render_shader_set *set, int image, shader_error *error);
 /* Transactional slot bindings and one shared material parameter payload.
    Entry 0 is the entity fallback; compiled slot i uses entry i+1. */
 bool render_shader_model_material_snapshot(

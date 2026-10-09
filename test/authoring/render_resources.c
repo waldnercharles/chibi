@@ -209,9 +209,31 @@ TEST_CASE(prepared_renderer_resources_publish_atomically_and_retain_retired_toke
     );
     return true;
 }
+/* A sprite's image variant joins a program's sorted image set, and the
+ * program samples it by that variant. */
+TEST_CASE(sprite_images_join_the_program_set_and_sample_by_variant)
+{
+    render_shader_set set = { 0 };
+    shader_error error = { 0 };
+    REQUIRE(render_shader_set_add_image(&set, 7, &error));
+    REQUIRE(render_shader_set_add_image(&set, 3, &error));
+    REQUIRE(render_shader_set_add_image(&set, 7, &error));
+    REQUIRE(set.count == 2 && set.images[0] == 3 && set.images[1] == 7);
+    char *glsl = render_shader_glsl(&set, 2, 0);
+    REQUIRE(strstr(glsl, "if(id==3) return textureLod(sg_image_0,uv,0.0);"));
+    REQUIRE(strstr(glsl, "if(id==7) return textureLod(sg_image_1,uv,0.0);"));
+    free(glsl);
+    for (int i = set.count; i < RENDER_SHADER_IMAGE_MAX; i++) {
+        REQUIRE(render_shader_set_add_image(&set, 10 + i, &error));
+    }
+    REQUIRE(!render_shader_set_add_image(&set, 99, &error) && error.message[0]);
+    REQUIRE(set.count == RENDER_SHADER_IMAGE_MAX);
+    return true;
+}
 void test_render_resources()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(prepared_renderer_resources_publish_atomically_and_retain_retired_tokens);
+    RUN_TEST_CASE(sprite_images_join_the_program_set_and_sample_by_variant);
     pu_clear_setup();
 }

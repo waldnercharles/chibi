@@ -179,7 +179,8 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
         "Apply(Rotation:struct<\"CF_V3\">,Target:handle<\"ecs.entity\">)->(){ "
         "await delay(Duration:0.125); await "
         "trigger_visual_reaction(Rotation:Rotation,Lift:4.0%s); } "
-        "on Tick { Apply(Rotation:rotation,Target:target); done=true; } }";
+        "on Tick { await Apply(Rotation:rotation,Target:target); done=true; } "
+        "}";
     for (int backend = 0; backend < 2; backend++) {
         for (int explicit_target = 0; explicit_target < 2; explicit_target++) {
             char text[1024];
@@ -265,7 +266,7 @@ TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
                 "double){ await delay(Duration:0.125); r:=Read(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
                 "Duration); } "
-                "on Tick { r:=Apply(); phase=r.Phase; pulse=r.Pulse; "
+                "on Tick { r:=await Apply(); phase=r.Phase; pulse=r.Pulse; "
                 "period=r.Period; duration=r.Duration; } }";
     for (int backend = 0; backend < 2; backend++) {
         world = ecs_world_new();
@@ -589,7 +590,8 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 "await "
                 "set_material_parameter(Entity:Target,Name:\"Second\",Value:"
                 "Value); } "
-                "on Tick { Apply(Value:payload,Target:self); done=true; } }",
+                "on Tick { await Apply(Value:payload,Target:self); done=true; "
+                "} }",
                 payloads[kind],
                 kind == 0   ? "float"
                 : kind == 1 ? "double"

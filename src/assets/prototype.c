@@ -589,6 +589,7 @@ static game_prototype *load_value_document(
     game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
     prototype->name = xstrdup(name);
     prototype->identity = name_identity(name);
+    prototype->authored = authored;
     prototype->registry_storage = *registry;
     prototype->registry = &prototype->registry_storage;
     av_value *identity = av_obj_get(root, "identity");
@@ -1052,6 +1053,13 @@ av_value *game_prototype_to_value(const game_prototype *prototype)
         av_obj_add_strcpy(doc, root, "identity", prototype->identity);
     }
     free(identity);
+    if (prototype->authored && acount(prototype->includes)) {
+        av_value *includes = av_arr(doc);
+        for (int i = 0; i < acount(prototype->includes); i++) {
+            av_arr_add_strcpy(doc, includes, prototype->includes[i]);
+        }
+        av_obj_add_val(doc, root, "includes", includes);
+    }
     av_obj_add_val(
         doc,
         root,

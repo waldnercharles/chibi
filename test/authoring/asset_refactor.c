@@ -19,13 +19,19 @@ static const char *const texts[] = {
     "}\n",
     "name \"Turret\"\n",
     "name \"Barrel\"\n",
+    "name \"Escort\"\n"
+    "(array)includes \"Ship\"\n"
+    "(array)children {\n"
+    "    - name=\"Rear\" prototype=\"Barrel\"\n"
+    "}\n",
 };
-static const char *const names[] = { "Ship", "Turret", "Barrel" };
+static const char *const names[] = { "Ship", "Turret", "Barrel", "Escort" };
 enum
 {
     SHIP,
     TURRET,
     BARREL,
+    ESCORT,
     PROTOTYPE_COUNT
 };
 
@@ -41,7 +47,33 @@ static const char *find_prototype(const char *name, void *)
 
 static const game_prototype_registry registry = { .include = find_prototype };
 
-/* Renaming a prototype a child uses rewrites the child in its parent. */
+/* Whether the plan rewrites `asset` so that the child at `path` uses
+ * `prototype` and the asset still includes what it did. */
+static bool rewritten(const refactor_plan *plan, int asset, const char *path, const char *prototype)
+{
+    char error[256];
+    for (int i = 0; i < acount(plan->edits); i++) {
+        if (plan->edits[i].asset != asset) {
+            continue;
+        }
+        game_prototype *saved = game_prototype_load_authored(plan->edits[i].text, &registry, error, sizeof error);
+        int child = saved ? game_scene_document_entity_index(saved->children, path)
+                          : -1;
+        game_prototype *original = game_prototype_load_authored(texts[asset], &registry, error, sizeof error);
+        bool ok = child >= 0 &&
+                  !strcmp(saved->children->entities[child].prototype, prototype) &&
+                  acount(saved->children->entities) ==
+                      acount(original->children->entities) &&
+                  acount(saved->includes) == acount(original->includes);
+        game_prototype_free(original);
+        game_prototype_free(saved);
+        return ok;
+    }
+    return false;
+}
+
+/* Renaming a prototype a child uses rewrites the child in its parent, and a
+ * parent that includes another keeps only its own children. */
 TEST_CASE(prototype_children_follow_a_rename)
 {
     char error[256] = "";
@@ -50,10 +82,10 @@ TEST_CASE(prototype_children_follow_a_rename)
         char path[64];
         snprintf(path, sizeof path, "content/prototypes/%s.kdl", names[i]);
         reference_index_add_asset(index, REFERENCE_ASSET_PROTOTYPE, names[i], path, NULL);
+        game_prototype *prototype = game_prototype_load_authored(texts[i], &registry, error, sizeof error);
+        reference_index_add_prototype(index, i, prototype);
+        game_prototype_free(prototype);
     }
-    game_prototype *ship = game_prototype_load_authored(texts[SHIP], &registry, error, sizeof error);
-    reference_index_add_prototype(index, SHIP, ship);
-    game_prototype_free(ship);
     refactor_project project = { index, texts, &registry };
     refactor_plan plan = { 0 };
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = BARREL };
@@ -62,19 +94,10 @@ TEST_CASE(prototype_children_follow_a_rename)
     if (!renamed) {
         fprintf(stderr, "rename: %s\n", error);
     }
-    game_prototype *saved = NULL;
-    for (int i = 0; renamed && i < acount(plan.edits); i++) {
-        if (plan.edits[i].asset == SHIP) {
-            saved = game_prototype_load_authored(plan.edits[i].text, &registry, error, sizeof error);
-        }
-    }
+    bool followed = renamed && rewritten(&plan, SHIP, "Left.Muzzle", "Cannon") &&
+                    rewritten(&plan, ESCORT, "Rear", "Cannon");
     refactor_plan_free(&plan);
     reference_index_free(index);
-    int muzzle = saved ? game_scene_document_entity_index(saved->children, "Left.Muzzle")
-                       : -1;
-    bool followed = muzzle >= 0 &&
-                    !strcmp(saved->children->entities[muzzle].prototype, "Cannon");
-    game_prototype_free(saved);
     REQUIRE(followed);
     return true;
 }

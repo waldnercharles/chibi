@@ -70,6 +70,9 @@ typedef struct game_prototype
     game_prototype_component *detached_components;
     char **graphs;
     char **includes; /* the prototypes its document includes, in order */
+    /* Loaded as authored: it holds only its own content, so saving names its
+     * includes again. */
+    bool authored;
     /* Its children, nested in the scene entity shape: the document's roots
      * are this prototype's direct children. NULL when it has none. */
     game_scene_document *children;

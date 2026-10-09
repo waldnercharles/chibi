@@ -119,7 +119,9 @@ static bool read_asset(
             snprintf(why, size, "Executable source uses canonical source refactoring");
             return false;
         case REFERENCE_ASSET_PROTOTYPE:
-            l->prototype = game_prototype_load(text, project->registry, why, size);
+            /* As written: renames edit its own content, and the prototypes it
+             * names may be renamed in the same plan. */
+            l->prototype = game_prototype_load_authored(text, project->registry, why, size);
             return l->prototype != NULL;
         case REFERENCE_ASSET_SCENE:
             l->scene = game_scene_document_load(text, why, size);
@@ -219,24 +221,6 @@ static char *saved_text(
     return text;
 }
 
-/* Whether the new text loads. A prototype loads as written: the registry
- * still resolves the prototypes it names by their names before the plan. */
-static bool reloads(
-    const refactor_project *project,
-    reference_asset_kind kind,
-    const char *text,
-    loaded *check,
-    char *why,
-    size_t size
-)
-{
-    if (kind != REFERENCE_ASSET_PROTOTYPE) {
-        return read_asset(project, kind, text, check, why, size);
-    }
-    check->prototype = game_prototype_load_authored(text, project->registry, why, size);
-    return check->prototype != NULL;
-}
-
 /* The asset's new file text, checked to load again; NULL with the error. */
 static char *file_text(work *w, loaded *l)
 {
@@ -244,7 +228,7 @@ static char *file_text(work *w, loaded *l)
     char why[256] = "";
     char *text = saved_text(w->project, kind, l, why, sizeof why);
     loaded check = { .asset = l->asset };
-    if (!text || !reloads(w->project, kind, text, &check, why, sizeof why)) {
+    if (!text || !read_asset(w->project, kind, text, &check, why, sizeof why)) {
         fail(w, "the rewritten %s would not load: %s", asset_name(w, l->asset), why);
         free(text);
         text = NULL;

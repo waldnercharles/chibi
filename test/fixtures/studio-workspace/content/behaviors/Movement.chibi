@@ -1,7 +1,7 @@
 behavior "Movement" {
     on Tick {
         self.Orientation.Radians = atan2(self.Aim.Direction.y, self.Aim.Direction.x)
-        if self.ActionBinding.Pressed {
+        if input.Boost.held {
             self.Drive.Target = direction(cast<double>(self.Orientation.Radians)) * cast<double>(self.Movement.Speed) * 2
         } else {
             if length(self.Input.Move) > 0.1 {

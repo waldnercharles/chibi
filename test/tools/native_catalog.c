@@ -16,7 +16,7 @@ static void cleanup()
     native = NULL;
     arena_free(&values);
 }
-TEST_CASE(native_application_catalog_links_generated_kernels_and_observer_metadata)
+TEST_CASE(native_application_catalog_links_generated_kernels_and_input_reads)
 {
     test_native_catalog_enable();
     arena_init(&values, 4096);
@@ -48,12 +48,11 @@ TEST_CASE(native_application_catalog_links_generated_kernels_and_observer_metada
     input = (GameTransform){ 99, 99 };
     REQUIRE(output.x == -3 && output.y == 10);
     REQUIRE(result.type == PIN_STRUCT && !strcmp(result.type_name, "GameTransform"));
-    index = script_catalog_find_capability(catalog, "PressedChanged", SCRIPT_CAPABILITY_EVENT);
+    /* Actions are read by name; the input map declares their events. */
+    index = script_catalog_find_capability(catalog, "Action Held", SCRIPT_CAPABILITY_FUNCTION);
     REQUIRE(index >= 0);
     declaration = &catalog->capabilities[index];
-    REQUIRE(declaration->component_field == script_catalog_id("field", "GameActionBinding.pressed"));
-    REQUIRE(declaration->receiver == script_catalog_id("type", "GameActionBinding"));
-    REQUIRE(declaration->parameter_count == 1 && declaration->parameters[0].type.storage == PIN_BOOL);
+    REQUIRE(declaration->parameter_count == 1 && declaration->parameters[0].type.storage == PIN_STR);
     native_capabilities_free(native);
     native = NULL;
     REQUIRE(output.x == -3 && output.y == 10);
@@ -62,6 +61,6 @@ TEST_CASE(native_application_catalog_links_generated_kernels_and_observer_metada
 void test_tool_native_catalog()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(native_application_catalog_links_generated_kernels_and_observer_metadata);
+    RUN_TEST_CASE(native_application_catalog_links_generated_kernels_and_input_reads);
     pu_clear_setup();
 }

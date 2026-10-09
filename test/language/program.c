@@ -1,6 +1,8 @@
+#include "assets/input_map.h"
 #include "assets/project.h"
 #include "assets/project_migrate.h"
 #include "authoring/native_bindings.h"
+#include "authoring/source_catalog.h"
 #include "ecs/ecs.h"
 #include "execution/delay.h"
 #include "execution/inspection.h"
@@ -14,11 +16,13 @@
 #include "runtime/state_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,9 +76,20 @@ static const type_desc velocity_type = {
     .field_count = 1,
 };
 static const type_desc *const reflected_types[] = { &position_type, &velocity_type };
+/* A few controls, as the input map names them. */
+static const enum_value_desc control_values[] = {
+    { 3, "GAME_CONTROL_SPACE", "Space" },
+    { 30, "GAME_CONTROL_X", "X" },
+    { 32, "GAME_CONTROL_Z", "Z" },
+};
+static const enum_desc control_type = { "GameControl", control_values, 3 };
+static const enum_desc *const program_enums[] = { &control_type };
 type_catalog_pack test_program_types()
 {
-    return (type_catalog_pack){ .types = reflected_types, .type_count = 2 };
+    return (type_catalog_pack){ .types = reflected_types,
+                                .type_count = 2,
+                                .enums = program_enums,
+                                .enum_count = 1 };
 }
 static const ecs_component_desc position_component = {
     .id = 501,
@@ -320,8 +335,29 @@ static const char *managed_text(arena *storage, const pin_value *, int count, pi
              : NULL;
 }
 static const node_host_call managed_call = { .value = managed_text };
+static bool jump_held, jump_pressed;
+static const char *action_held(arena *, const pin_value *in, int count, pin_value *out)
+{
+    assert(count == 1 && !strcmp(in[0].str, "Jump"));
+    *out = (pin_value){ .type = PIN_BOOL, .b = jump_held };
+    return NULL;
+}
+static const char *action_pressed(arena *, const pin_value *in, int count, pin_value *out)
+{
+    assert(count == 1 && !strcmp(in[0].str, "Jump"));
+    *out = (pin_value){ .type = PIN_BOOL, .b = jump_pressed };
+    return NULL;
+}
+static const node_host_call held_call = { .value = action_held };
+static const node_host_call pressed_call = { .value = action_pressed };
 static bool host(void *, uint64_t id, script_lower_host *out)
 {
+    if (id == script_catalog_id("capability", INPUT_ACTION_HELD) ||
+        id == script_catalog_id("capability", INPUT_ACTION_PRESSED)) {
+        bool held = id == script_catalog_id("capability", INPUT_ACTION_HELD);
+        *out = (script_lower_host){ .call = held ? &held_call : &pressed_call };
+        return true;
+    }
     if (id == 60) {
         *out = (script_lower_host){ .call = &managed_call };
         return true;
@@ -2270,7 +2306,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     );
     fclose(file);
     REQUIRE(!chmod(manifest, 0640) && !chmod(path, 0600));
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 2);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 12);
     char text[2048];
     file = fopen(outside, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
@@ -2283,7 +2319,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 14\n"));
+    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 16\n"));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2419,7 +2455,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "version 14\n", 11));
+    REQUIRE(!strncmp(text, "version 16\n", 11));
     unlink(path);
     snprintf(path, sizeof path, "%s/content/B.chibi", root);
     file = fopen(path, "rb");
@@ -2510,6 +2546,494 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                                { .type = PIN_BOOL, .b = true } };
     REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
     REQUIRE(number_state(instance, "n", 8));
+    return true;
+}
+/* Migrates a version 14 project holding content/Level.kdl and a start scene
+ * at `path` under the root, which the manifest names `start_scene`. */
+static bool migrates_start_scene(
+    const char *source,
+    const char *expected,
+    const char *start_scene,
+    const char *path
+)
+{
+    char root[] = "/tmp/chibi-migrate-XXXXXX", manifest[256], error[256];
+    REQUIRE(mkdtemp(root));
+    char scene[256], start[256], directory[256];
+    snprintf(directory, sizeof directory, "%s/content", root);
+    REQUIRE(!mkdir(directory, 0700));
+    snprintf(scene, sizeof scene, "%s/content/Level.kdl", root);
+    snprintf(start, sizeof start, "%s/%s", root, path);
+    snprintf(directory, sizeof directory, "%s", start);
+    *strrchr(directory, '/') = 0;
+    REQUIRE(!mkdir(directory, 0700) || errno == EEXIST);
+    const char *scenes[] = { scene, start };
+    for (int i = 0; i < 2; i++) {
+        FILE *file = fopen(scenes[i], "wb");
+        fputs(source, file);
+        fclose(file);
+    }
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    FILE *file = fopen(manifest, "wb");
+    fprintf(file, "version 14\ncontent \"content\"\nstart_scene \"%s\"\n", start_scene);
+    fclose(file);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 14);
+    for (int i = 0; i < 2; i++) {
+        char text[1024];
+        file = fopen(scenes[i], "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        REQUIRE(!strcmp(text, expected));
+        unlink(scenes[i]);
+    }
+    unlink(manifest);
+    rmdir(directory);
+    snprintf(directory, sizeof directory, "%s/content", root);
+    rmdir(directory);
+    rmdir(root);
+    return true;
+}
+TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors)
+{
+    const char *source = "version 1\n"
+                         "name \"Start\"\n"
+                         "(array)entities {\n"
+                         "    - name=\"Camera\" prototype=\"Camera\"\n"
+                         "    - name=\"Player\" prototype=\"Player\" {\n"
+                         "        (array)behaviors \"Move\"\n"
+                         "    }\n"
+                         "}\n";
+    const char *expected = "version 1\n"
+                           "name \"Start\"\n"
+                           "(array)entities {\n"
+                           "    - {\n"
+                           "        name \"Camera\"\n"
+                           "        prototype \"Camera\"\n"
+                           "        (array)behaviors\n"
+                           "    }\n"
+                           "    - {\n"
+                           "        name \"Player\"\n"
+                           "        prototype \"Player\"\n"
+                           "        (array)behaviors \"Move\"\n"
+                           "    }\n"
+                           "}\n";
+    char *migrated = chibi_migrate_scene_behaviors(source);
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    REQUIRE(!chibi_migrate_scene_behaviors(expected));
+    REQUIRE(!chibi_migrate_scene_behaviors(
+        "name \"Camera\"\n(array)entities {\n    - name=\"A\"\n}\n"
+    ));
+    free(migrated);
+
+    /* Scenes outside content/scenes migrate too, and so does a start scene
+     * the scan cannot find: outside the content, or hidden. */
+    REQUIRE(migrates_start_scene(source, expected, "../Start.kdl", "Start.kdl"));
+    REQUIRE(migrates_start_scene(source, expected, ".scenes/Start.kdl", "content/.scenes/Start.kdl"));
+    return true;
+}
+static const script_catalog_parameter action_parameter = { .name = "Action",
+                                                           .type = { .storage = PIN_STR } };
+static const script_catalog_parameter held_result = { .name = "Held",
+                                                      .type = { .storage = PIN_BOOL } };
+static const script_catalog_parameter pressed_result = { .name = "Pressed",
+                                                         .type = { .storage = PIN_BOOL } };
+/* Writes content/input.kdl under a new temporary root. */
+static bool input_project(char root[], const char *map)
+{
+    REQUIRE(mkdtemp(root));
+    char path[256];
+    snprintf(path, sizeof path, "%s/" INPUT_MAP_FILE, root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file);
+    fputs(map, file);
+    fclose(file);
+    return true;
+}
+static void remove_input_project(const char *root)
+{
+    char path[256];
+    snprintf(path, sizeof path, "%s/" INPUT_MAP_FILE, root);
+    unlink(path);
+    rmdir(root);
+}
+static bool bool_state(execution_instance *instance, const char *name, bool expected)
+{
+    const pin_value *value = execution_instance_state(instance, state_id(name));
+    return value && value->type == PIN_BOOL && value->b == expected;
+}
+TEST_CASE(program_input_map_validates_actions)
+{
+    const char *canonical = "Jump {\n"
+                            "    (array)sources \"Space\" \"Z\"\n"
+                            "}\n"
+                            "Fire {\n"
+                            "    (array)sources \"X\"\n"
+                            "    firing #true\n"
+                            "}\n";
+    input_action *map;
+    char error[256];
+    REQUIRE(input_map_read(canonical, &map, error, sizeof error));
+    REQUIRE(acount(map) == 2 && !strcmp(map[0].name, "Jump") && !map[0].firing);
+    REQUIRE(map[0].controls == ((UINT64_C(1) << 3) | (UINT64_C(1) << 32)));
+    REQUIRE(!strcmp(map[1].name, "Fire") && map[1].firing);
+    char *text = input_map_write(map);
+    REQUIRE(!strcmp(text, canonical));
+    free(text);
+    input_map_add(&map, "Jump", UINT64_C(1) << 30, false);
+    REQUIRE(acount(map) == 2 && map[0].controls & (UINT64_C(1) << 30));
+    input_map_free(map);
+    static const struct
+    {
+        const char *text, *message;
+    } invalid[] = {
+        { "Jump {\n    (array)sources \"Nope\"\n}\n", "Jump: sources must list" },
+        { "Jump {\n    (array)sources\n}\n", "Jump: sources must list" },
+        { "Jump {\n    (array)sources \"Z\"\n}\nJump {\n    (array)sources "
+          "\"X\"\n}\n",
+          "duplicate" },
+        { "\"\" {\n    (array)sources \"Z\"\n}\n", "an action needs a name" },
+        { "Jump {\n    (array)sources \"Z\"\n    firing 1\n}\n", "optional firing flag" },
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        REQUIRE(!input_map_read(invalid[i].text, &map, error, sizeof error) && !map);
+        if (!strstr(error, invalid[i].message)) {
+            fprintf(stderr, "input map: %s\n", error);
+        }
+        REQUIRE(
+            strstr(error, INPUT_MAP_FILE ": ") == error &&
+            strstr(error, invalid[i].message)
+        );
+    }
+    /* A map holds at most INPUT_ACTION_MAX actions. */
+    size_t size = (INPUT_ACTION_MAX + 1) *
+                  sizeof "A256 {\n    (array)sources \"Z\"\n}\n";
+    char *many = xmalloc(size);
+    size_t most = 0, used = 0;
+    for (int i = 0; i <= INPUT_ACTION_MAX; i++) {
+        most = used;
+        used += (size_t)snprintf(many + used, size - used, "A%d {\n    (array)sources \"Z\"\n}\n", i);
+    }
+    REQUIRE(!input_map_read(many, &map, error, sizeof error) && !map);
+    REQUIRE(strstr(error, "at most"));
+    many[most] = 0;
+    REQUIRE(input_map_read(many, &map, error, sizeof error));
+    REQUIRE(acount(map) == INPUT_ACTION_MAX);
+    input_map_free(map);
+    free(many);
+    return true;
+}
+TEST_CASE(program_input_actions_read_through_typed_names)
+{
+    script_catalog_capability capabilities[] = {
+        { .id = 10,
+          .name = "Tick",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = &tick_parameter,
+          .parameter_count = 1 },
+        { .id = script_catalog_id("capability", INPUT_ACTION_HELD),
+          .name = INPUT_ACTION_HELD,
+          .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .parameters = &action_parameter,
+          .parameter_count = 1,
+          .results = &held_result,
+          .result_count = 1,
+          .effects = SCRIPT_EFFECT_READ },
+        { .id = script_catalog_id("capability", INPUT_ACTION_PRESSED),
+          .name = INPUT_ACTION_PRESSED,
+          .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .parameters = &action_parameter,
+          .parameter_count = 1,
+          .results = &pressed_result,
+          .result_count = 1,
+          .effects = SCRIPT_EFFECT_READ },
+    };
+    script_catalog native = catalog;
+    native.capabilities = capabilities;
+    native.capability_count = 3;
+    char root[] = "/tmp/chibi-input-XXXXXX";
+    REQUIRE(input_project(root, "Jump {\n    (array)sources \"Space\"\n}\n"));
+    source_catalog *project = source_catalog_new(root, &native);
+    /* An unsaved edit of the map replaces the file, and one without text
+     * removes it. */
+    char map[256];
+    snprintf(map, sizeof map, "%s/" INPUT_MAP_FILE, root);
+    source_catalog_edit edits[] = {
+        { .path = map, .text = "Dash {\n    (array)sources \"X\"\n}\n" },
+        { .path = map },
+    };
+    for (int i = 0; i < 2; i++) {
+        source_catalog *edited = source_catalog_edited(root, &native, &edits[i], 1);
+        const script_catalog *edited_view = source_catalog_view(edited);
+        REQUIRE(!source_catalog_diagnostic_count(edited));
+        REQUIRE(script_catalog_find_capability(edited_view, "Jump", SCRIPT_CAPABILITY_EVENT) < 0);
+        REQUIRE(
+            (script_catalog_find_capability(edited_view, "Dash", SCRIPT_CAPABILITY_EVENT) >=
+             0) == !i
+        );
+        REQUIRE(acount(source_catalog_input(edited)) == !i);
+        source_catalog_free(edited);
+    }
+    /* A project type that takes an input type's name is reported. */
+    const script_catalog_type taken = { .id = script_catalog_id("type", "input_action"),
+                                        .name = "input_action",
+                                        .type = { .storage = PIN_F64 } };
+    script_catalog clash = native;
+    clash.types = &taken;
+    clash.type_count = 1;
+    source_catalog *clashing = source_catalog_new(root, &clash);
+    REQUIRE(source_catalog_diagnostic_count(clashing) == 1);
+    REQUIRE(strstr(source_catalog_diagnostic_at(clashing, 0)->message, "rename the type"));
+    source_catalog_free(clashing);
+    /* So is a project global that takes the name input. */
+    const script_catalog_global global = { .id = script_catalog_id("global", "input"),
+                                           .name = "input",
+                                           .type = { .storage = PIN_F64 } };
+    clash = native;
+    clash.globals = &global;
+    clash.global_count = 1;
+    clashing = source_catalog_new(root, &clash);
+    REQUIRE(source_catalog_diagnostic_count(clashing) == 1);
+    REQUIRE(strstr(source_catalog_diagnostic_at(clashing, 0)->message, "rename the global"));
+    source_catalog_free(clashing);
+    /* An action named like an existing event would dispatch that event, so
+     * each such action is reported. */
+    source_catalog_edit lifecycle = {
+        .path = map,
+        .text = "Tick {\n    (array)sources \"X\"\n}\n"
+                "Jump {\n    (array)sources \"Space\"\n}\n",
+    };
+    clashing = source_catalog_edited(root, &native, &lifecycle, 1);
+    REQUIRE(source_catalog_diagnostic_count(clashing) == 1);
+    REQUIRE(
+        strstr(source_catalog_diagnostic_at(clashing, 0)->message, "Input action Tick takes the name of the event Tick; rename the action")
+    );
+    REQUIRE(
+        script_catalog_find_capability(source_catalog_view(clashing), "Jump", SCRIPT_CAPABILITY_EVENT) < 0
+    );
+    source_catalog_free(clashing);
+    /* A project event may share an action's name: both raise that event. */
+    char events[256], event[256];
+    snprintf(events, sizeof events, "%s/events", root);
+    snprintf(event, sizeof event, "%s/Jump.kdl", events);
+    REQUIRE(!mkdir(events, 0700));
+    FILE *file = fopen(event, "wb");
+    REQUIRE(file);
+    fputs("version 3\nname \"Jump\"\ndomain \"event\"\n", file);
+    fclose(file);
+    source_catalog *shared = source_catalog_new(root, &native);
+    REQUIRE(!source_catalog_diagnostic_count(shared));
+    REQUIRE(
+        script_catalog_find_capability(source_catalog_view(shared), "Jump", SCRIPT_CAPABILITY_EVENT) >= 0
+    );
+    source_catalog_free(shared);
+    unlink(event);
+    rmdir(events);
+    remove_input_project(root);
+    REQUIRE(!source_catalog_diagnostic_count(project));
+    const script_catalog *view = source_catalog_view(project);
+    REQUIRE(script_catalog_find_capability(view, "Jump", SCRIPT_CAPABILITY_EVENT) >= 0);
+    const char *source = "behavior Jumper {\n"
+                         "    held: bool = false;\n"
+                         "    pressed: bool = false;\n"
+                         "    on Tick(dt) {\n"
+                         "        held = input.Jump.held;\n"
+                         "        pressed = input.jump.pressed;\n"
+                         "    }\n"
+                         "}\n";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        prepare();
+        REQUIRE(compile_catalog(source, backends[i], view));
+        program = execution_program_new(module, world, NULL);
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value dt = { .type = PIN_F64, .d = 1 };
+        jump_held = true;
+        jump_pressed = false;
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(bool_state(instance, "held", true) && bool_state(instance, "pressed", false));
+        jump_held = false;
+        jump_pressed = true;
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(bool_state(instance, "held", false) && bool_state(instance, "pressed", true));
+    }
+    /* A misspelled action and the retired string reads do not compile. */
+    const char *invalid[] = {
+        "behavior B { x: bool = false; on Tick(dt) { x = input.Jmp.held; } }",
+        "behavior B { x: bool = false; on Tick(dt) { x = held(\"Jump\"); } }"
+    };
+    for (int i = 0; i < 2; i++) {
+        script_syntax *wrong = script_parse(invalid[i]);
+        script_analysis *checked = script_analyze(wrong, view);
+        REQUIRE(!checked->valid);
+        REQUIRE(i || strstr(checked->diagnostics[0].message, "Unknown reflected member 'Jmp'"));
+        script_analysis_free(checked);
+        script_syntax_free(wrong);
+    }
+    source_catalog_free(project);
+    return true;
+}
+/* Migrates a version 15 project whose scene and prototype bind actions, into
+ * an input map that already holds one. */
+TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
+{
+    const char *scene = "version 1\n"
+                        "name \"Start\"\n"
+                        "(array)entities {\n"
+                        "    - {\n"
+                        "        name \"Player\"\n"
+                        "        prototype \"Player\"\n"
+                        "        (array)behaviors\n"
+                        "        components {\n"
+                        "            GAME.GameActionBinding action=\"Jump\" "
+                        "source=\"Z\"\n"
+                        "            GAME.GameInput\n"
+                        "        }\n"
+                        "        retained_components {\n"
+                        "            GAME.GameActionBinding action=\"Slide\" "
+                        "source=\"X\"\n"
+                        "        }\n"
+                        "    }\n"
+                        "}\n";
+    const char
+        *prototype = "name \"Player\"\n"
+                     "components {\n"
+                     "    GAME.GameActionBinding action=\"Fire\" firing=#true "
+                     "source=\"X\"\n"
+                     "    (object)GAME.GameInput\n"
+                     "}\n"
+                     "detached_components {\n"
+                     "    GAME.GameActionBinding action=\"Dash\" source=\"Z\"\n"
+                     "}\n";
+    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
+    REQUIRE(mkdtemp(root));
+    const char *directories[] = { "content", "content/scenes", "content/prototypes" };
+    for (int i = 0; i < 3; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        REQUIRE(!mkdir(path, 0700));
+    }
+    const char *files[][2] = {
+        { CHIBI_PROJECT_MANIFEST, "version 15\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n" },
+        { "content/scenes/Start.kdl", scene },
+        { "content/prototypes/Player.kdl", prototype },
+        { "content/" INPUT_MAP_FILE, "Jump {\n    (array)sources \"Space\"\n}\n" },
+    };
+    for (int i = 0; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "wb");
+        fputs(files[i][1], file);
+        fclose(file);
+    }
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
+    const char *expected[] = {
+        NULL,
+        "version 1\n"
+        "name \"Start\"\n"
+        "(array)entities {\n"
+        "    - {\n"
+        "        name \"Player\"\n"
+        "        prototype \"Player\"\n"
+        "        (array)behaviors\n"
+        "        components {\n"
+        "            (object)GAME.GameInput\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        "name \"Player\"\n"
+        "components {\n"
+        "    (object)GAME.GameInput\n"
+        "}\n",
+        "Jump {\n"
+        "    (array)sources \"Space\" \"Z\"\n"
+        "}\n"
+        "Fire {\n"
+        "    (array)sources \"X\"\n"
+        "    firing #true\n"
+        "}\n",
+    };
+    for (int i = 3; i >= 0; i--) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        char text[1024];
+        FILE *file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        if (expected[i] && strcmp(text, expected[i])) {
+            fprintf(stderr, "migrated %s:\n%s", files[i][0], text);
+        }
+        REQUIRE(!expected[i] || !strcmp(text, expected[i]));
+    }
+
+    /* Which action a script's binding read meant depends on its entity, so
+     * one stops the migration. */
+    const char *scripts[][2] = {
+        { CHIBI_PROJECT_MANIFEST, "version 15\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n" },
+        { "content/Move.chibi", "behavior Move {\n    // ActionBinding\n    on pressed_changed(pressed) {\n    }\n}\n" },
+    };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, scripts[i][0]);
+        FILE *file = fopen(path, "wb");
+        fputs(scripts[i][1], file);
+        fclose(file);
+    }
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
+    REQUIRE(strstr(error, "Move.chibi reads PressedChanged"));
+    snprintf(path, sizeof path, "%s/%s", root, scripts[1][0]);
+    unlink(path);
+
+    /* An input map that the input map reader would reject stops the
+     * migration before any asset changes. */
+    const char *unrelated[][2] = {
+        { "content/scenes/Start.kdl", scene },
+        { "content/" INPUT_MAP_FILE, "bindings {\n    jump \"Space\"\n}\n" },
+    };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, unrelated[i][0]);
+        FILE *file = fopen(path, "wb");
+        fputs(unrelated[i][1], file);
+        fclose(file);
+    }
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
+    REQUIRE(strstr(error, "content/" INPUT_MAP_FILE " is not an input map"));
+    const char *const *kept[] = { scripts[0], unrelated[0], unrelated[1] };
+    for (int i = 0; i < 3; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
+        char text[1024];
+        FILE *file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        REQUIRE(!strcmp(text, kept[i][1]));
+    }
+
+    /* So does a map that the moved bindings would take past the action
+     * limit. */
+    snprintf(path, sizeof path, "%s/content/" INPUT_MAP_FILE, root);
+    FILE *full = fopen(path, "wb");
+    for (int i = 0; i < INPUT_ACTION_MAX; i++) {
+        fprintf(full, "A%d {\n    (array)sources \"Space\"\n}\n", i);
+    }
+    fclose(full);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
+    REQUIRE(strstr(error, "more than 256 actions"));
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
+        char text[1024];
+        FILE *file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        REQUIRE(!strcmp(text, kept[i][1]));
+    }
+    for (int i = 0; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        unlink(path);
+    }
+    for (int i = 2; i >= 0; i--) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        rmdir(path);
+    }
+    rmdir(root);
     return true;
 }
 TEST_CASE(program_single_result_call_fields_read_the_result)
@@ -3182,6 +3706,10 @@ void test_language_program()
     RUN_TEST_CASE(program_version_11_references_migrate_to_values);
     RUN_TEST_CASE(program_version_12_results_migrate_to_returns);
     RUN_TEST_CASE(program_version_13_values_migrate_to_their_expressions);
+    RUN_TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors);
+    RUN_TEST_CASE(program_version_15_bindings_migrate_to_the_input_map);
+    RUN_TEST_CASE(program_input_map_validates_actions);
+    RUN_TEST_CASE(program_input_actions_read_through_typed_names);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

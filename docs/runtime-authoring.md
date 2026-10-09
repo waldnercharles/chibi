@@ -68,6 +68,22 @@ declarations in the prepared artifact, so the player needs no source.
 `chibi_ctl` formats, validates, describes and runs them like engine components.
 Studio does not read declarations yet.
 
+## Scene entities
+
+A scene entity starts from its prototype's components and behaviors. Its
+`components` override the prototype's values. A `behaviors` list replaces the
+prototype's behaviors, and an empty `(array)behaviors` removes them all; leave
+the list out to keep the prototype's behaviors.
+
+```kdl
+(array)entities {
+    - name="Player" prototype="Player"
+    - name="Decoy" prototype="Player" {
+        (array)behaviors
+    }
+}
+```
+
 ## Edit and verify
 
 1. Read the existing asset and its dependencies. Use the shared SDK's reflected

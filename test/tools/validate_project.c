@@ -4,6 +4,7 @@
 #include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -874,6 +875,45 @@ static double snapshot_x()
     return 0;
 }
 
+TEST_CASE(components_are_declared_in_chibi_sources)
+{
+    char folder[256], source[256];
+    path(folder, sizeof folder, "game/content/components");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    path(folder, sizeof folder, "game/content/systems");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    write_file("game/content/components/Charge.chibi", "// Stored energy.\ncomponent Charge{level : 0 .. 100 charge\nrate:charge / s}\n");
+    write_file("game/content/systems/Recharge.chibi", "system Recharge(charge: Charge) {\n    charge.level += charge.rate * dt\n}\n");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    /* chibi_ctl formats component sources with the rest of the content. */
+    REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
+    path(source, sizeof source, "game/content/components/Charge.chibi");
+    char *formatted = tool_read(source);
+    bool canonical = reads(
+        formatted,
+        "// Stored energy.\n"
+        "component Charge {\n"
+        "    level: 0..100 charge\n"
+        "    rate: charge/s\n"
+        "}\n"
+    );
+    free(formatted);
+    REQUIRE(canonical);
+    /* A field's mistake is reported where it is. */
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: flaot\n}\n");
+    REQUIRE(validate() != 0);
+    REQUIRE(strstr(failure(), "Charge.chibi: 2:12: Unknown type or unit 'flaot'"));
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: float\n    job: task\n}\n");
+    REQUIRE(validate() != 0);
+    REQUIRE(strstr(failure(), "Charge.chibi: 3:5: A component field cannot hold a task"));
+    /* A project may not declare a component the engine already has. */
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: float\n}\n");
+    write_file("game/content/components/Transform.chibi", "component GameTransform {\n    x: float\n}\n");
+    REQUIRE(validate() != 0);
+    REQUIRE(strstr(failure(), "Transform.chibi: the name is already an engine type"));
+    return true;
+}
+
 TEST_CASE(scenarios_hold_input_actions)
 {
     /* A scenario's controls reach the input map of the engine that plays it. */
@@ -923,5 +963,6 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(manifest_content_folder_is_used);
     RUN_TEST_CASE(scenes_run_under_their_own_name);
     RUN_TEST_CASE(scenarios_hold_input_actions);
+    RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     pu_clear_setup();
 }

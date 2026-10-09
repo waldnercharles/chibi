@@ -116,6 +116,13 @@ static bool field_type(const char *spelling, type_field *field, size_t *alignmen
                            .nominal = script_catalog_id("type", nested->name) };
     return true;
 }
+bool declared_components_field_type(const char *spelling)
+{
+    type_field field = { 0 };
+    size_t alignment;
+    script_type type;
+    return field_type(spelling, &field, &alignment, &type);
+}
 static bool identifier(const char *name)
 {
     if (!name || !(*name == '_' || (*name >= 'A' && *name <= 'Z') ||
@@ -167,7 +174,10 @@ static bool build(declared_components *c, int index, const declared_component *i
             }
         }
         type_field field = { .name = own(c, f->name),
-                             .description = own(c, f->description) };
+                             .description = own(c, f->description),
+                             .unit = own(c, f->unit),
+                             .min = f->min,
+                             .max = f->max };
         size_t field_alignment;
         script_type type;
         if (!field_type(f->type, &field, &field_alignment, &type)) {

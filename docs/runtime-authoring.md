@@ -52,27 +52,40 @@ included components in.
 
 ## Declare components
 
-A game declares its own component types under `content/components`, one KDL file
-per component. Fields are laid out in order with natural alignment and start
-zeroed. A field type is a script scalar (`bool`, `int`, `float`, `double`,
-`string`, `entity`, ...) or an engine struct such as `CF_V2`:
+A game declares its own component types under `content/components`, one `.chibi`
+file per component. Fields are laid out in order with natural alignment and start
+zeroed. A field's type is a script scalar (`bool`, `int`, `float`, `double`,
+`number`, `string`, `entity`, ...), an engine struct such as `CF_V2`, or a
+measure: a `number` with an optional range and an optional unit. The `//`
+comments directly above the component and each field describe them.
 
-```kdl
-name "Charge"
-description "Stored energy that refills over time."
-(array)fields {
-    - name="level" type="float"
-    - name="capacity" type="float"
-    - name="full" type="bool"
-    - name="drift" type="CF_V2"
+```code
+// Stored energy that refills over time.
+component Charge {
+    level: 0..100 charge
+    // Charge gained per second.
+    rate: charge/s
+    delay: s
+    full: bool
+    drift: CF_V2
 }
 ```
+
+A range such as `0..1` or `-1.5..2` sets the field's editing range in Studio. It
+is a hint, never a clamp: scripts and assets may store any value. A unit such as
+`u/s`, `rad`, `u/s^2` (shown as u/s²) or `banana/basket` labels the value. Unit
+names mean units only in a field's type, so `s` stays a free name in scripts.
+A unit standing alone must be a common one (`u`, `px`, `m`, `s`, `ms`, `rad`,
+`deg`, `Hz`, `fps`, `bpm`, `EV`, `dB`, `kg`, `N`), so a misspelled type name
+is reported instead of becoming a unit; after a range or with a `/`, any name
+works.
 
 Prototypes, scenes, behaviors and systems then use `Charge` like an engine
 component. A name may not reuse an engine type. The compiler stores the
 declarations in the prepared artifact, so the player needs no source.
 `chibi_ctl` formats, validates, describes and runs them like engine components.
-Studio does not read declarations yet.
+Projects saved before version 19 declared components in KDL; `--migrate`
+rewrites each into `.chibi`.
 
 ## Scene entities
 

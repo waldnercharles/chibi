@@ -5858,6 +5858,68 @@ static int format_input_map(const char *root, bool check)
     return differing;
 }
 
+static int compare_names(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+/* Formats one content/components source, already validated by load_declared. */
+static int format_component(const char *root, const char *name, bool check)
+{
+    char relative[512];
+    snprintf(relative, sizeof relative, "content/components/%s", name);
+    char *path = content_path(root, relative);
+    char error[256];
+    char *text = read_file(path, NULL, NULL, error, sizeof error);
+    script_syntax *syntax = text ? script_parse(text) : NULL;
+    char *formatted = syntax ? authoring_source_format(syntax, error, sizeof error)
+                             : NULL;
+    script_syntax_free(syntax);
+    int differing = formatted ? strcmp(text, formatted) != 0 : -1;
+    if (!formatted) {
+        fprintf(stderr, "chibi_ctl --format: %s: %s\n", relative, error);
+    } else if (differing) {
+        fprintf(stderr, "%s %s\n", check ? "not canonical:" : "formatted", relative);
+        FILE *file = check ? NULL : fopen(path, "wb");
+        if (!check && (!file || fputs(formatted, file) < 0 || fclose(file))) {
+            fprintf(stderr, "chibi_ctl --format: could not write %s\n", relative);
+            differing = -1;
+        }
+    }
+    free(formatted);
+    free(text);
+    free(path);
+    return differing;
+}
+static int format_components(const char *root, bool check)
+{
+    char *folder = content_path(root, "content/components");
+    DIR *dir = opendir(folder);
+    free(folder);
+    if (!dir) {
+        return 0;
+    }
+    char **names = NULL;
+    for (struct dirent *entry; (entry = readdir(dir));) {
+        size_t n = strlen(entry->d_name);
+        if (entry->d_name[0] != '.' && n > strlen(CODE_ASSET_EXTENSION) &&
+            !strcmp(entry->d_name + n - strlen(CODE_ASSET_EXTENSION), CODE_ASSET_EXTENSION)) {
+            apush(names, xstrdup(entry->d_name));
+        }
+    }
+    closedir(dir);
+    if (names) {
+        qsort(names, (size_t)acount(names), sizeof *names, compare_names);
+    }
+    int differing = 0;
+    for (int i = 0; i < acount(names); i++) {
+        int one = differing >= 0 ? format_component(root, names[i], check) : 0;
+        differing = one < 0 ? one : differing + one;
+        free(names[i]);
+    }
+    afree(names);
+    return differing;
+}
+
 int chibi_automation_format_assets(const char *root, bool check)
 {
     asset_entry *entries = NULL;
@@ -5936,6 +5998,10 @@ int chibi_automation_format_assets(const char *root, bool check)
     if (differing >= 0) {
         int map = format_input_map(root, check);
         differing = map < 0 ? map : differing + map;
+    }
+    if (differing >= 0) {
+        int components = format_components(root, check);
+        differing = components < 0 ? components : differing + components;
     }
     source_catalog_free(sources);
     authoring_language_catalog_free(native);

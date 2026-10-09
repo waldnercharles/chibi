@@ -54,5 +54,10 @@ char *chibi_migrate_action_bindings(const char *asset, av_doc *map);
  * local's expression. Returns -1 and describes the problem in `error` when a
  * declaration would capture a name the local reads. */
 int chibi_migrate_locals(const char *source, char **migrated, char *error, size_t error_size);
+/* Version 19 declares components in .chibi. Returns the owned source of the
+ * component a content/components KDL file declares, with each description as
+ * `//` lines above what it describes, or NULL with `error` set when the file
+ * is not one valid declaration or a name is a reserved word in .chibi. */
+char *chibi_migrate_component(const char *kdl, char *error, size_t error_size);
 
 #endif

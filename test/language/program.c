@@ -1926,11 +1926,18 @@ TEST_CASE(program_nested_functions_wait_for_themselves)
     const char *source = "behavior N { n: double = 0;"
                          "action later = (Outer());"
                          "function Outer() -> () { function Inner() -> () { "
-                         "await Delay(1); } Inner(); n += 1; } }";
+                         "await Delay(1); } Inner(); n += 1; }"
+                         "function Pause() -> () { await Delay(1); }"
+                         "function Start() -> () { action Pause = timer(1); "
+                         "Pause(); } }";
+    /* A nested action shadows the waiting function of the same name. */
     const char *expected = "behavior N { n: double = 0;"
                            "action later = (Outer());"
                            "function Outer() -> () { function Inner() -> () { "
-                           "await Delay(1); } await Inner(); n += 1; } }";
+                           "await Delay(1); } await Inner(); n += 1; }"
+                           "function Pause() -> () { await Delay(1); }"
+                           "function Start() -> () { action Pause = timer(1); "
+                           "Pause(); } }";
     char **all = chibi_migrate_task_calls(&source, 1);
     REQUIRE(all[0] && !strcmp(all[0], expected));
     free(all[0]);

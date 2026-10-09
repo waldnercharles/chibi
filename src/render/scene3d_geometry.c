@@ -1,4 +1,4 @@
-#include "render/arena_geometry.h"
+#include "render/scene3d_geometry.h"
 
 #include "runtime/components.h"
 #include "runtime/visual_parts.h"
@@ -45,7 +45,7 @@ static CF_Mesh flat_mesh(const CF_V3 points[], const int triangles[][3], int cou
 
 static void triangle(CF_V3 out[][3], int *count, CF_V3 a, CF_V3 b, CF_V3 c)
 {
-    assert(*count < ARENA_MESH_TRIANGLE_LIMIT);
+    assert(*count < SCENE3D_MESH_TRIANGLE_LIMIT);
     out[*count][0] = a;
     out[*count][1] = b;
     out[*count][2] = c;
@@ -78,7 +78,7 @@ static void beam(CF_V3 out[][3], int *count, CF_V3 center, CF_V3 size)
     }
 }
 
-int render_arena_mesh_triangles(int primitive, CF_V3 out[ARENA_MESH_TRIANGLE_LIMIT][3])
+int render_scene3d_mesh_triangles(int primitive, CF_V3 out[SCENE3D_MESH_TRIANGLE_LIMIT][3])
 {
     int count = 0;
     switch (primitive) {
@@ -136,12 +136,12 @@ int render_arena_mesh_triangles(int primitive, CF_V3 out[ARENA_MESH_TRIANGLE_LIM
     return count;
 }
 
-CF_Mesh render_arena_polygon_mesh(int primitive)
+CF_Mesh render_scene3d_polygon_mesh(int primitive)
 {
-    CF_V3 triangles[ARENA_MESH_TRIANGLE_LIMIT][3];
-    int count = render_arena_mesh_triangles(primitive, triangles);
+    CF_V3 triangles[SCENE3D_MESH_TRIANGLE_LIMIT][3];
+    int count = render_scene3d_mesh_triangles(primitive, triangles);
     assert(count > 0);
-    vertex vertices[ARENA_MESH_TRIANGLE_LIMIT * 3];
+    vertex vertices[SCENE3D_MESH_TRIANGLE_LIMIT * 3];
     for (int i = 0; i < count; i++) {
         CF_V3 normal = cf_norm_v3(cf_cross_v3(
             cf_sub_v3(triangles[i][1], triangles[i][0]),
@@ -164,7 +164,7 @@ CF_Mesh render_arena_polygon_mesh(int primitive)
     return mesh;
 }
 
-CF_Mesh render_arena_prism_mesh()
+CF_Mesh render_scene3d_prism_mesh()
 {
     /* A triangular footprint pointing +X, extruded along Y; CCW from outside. */
     static const CF_V3 points[] = {
@@ -178,7 +178,7 @@ CF_Mesh render_arena_prism_mesh()
     return flat_mesh(points, triangles, TRIANGLES);
 }
 
-CF_Mesh render_arena_octahedron_mesh()
+CF_Mesh render_scene3d_octahedron_mesh()
 {
     static const CF_V3 points[] = {
         { 0.5f, 0, 0 },  { 0, 0, 0.5f }, { -0.5f, 0, 0 },
@@ -191,7 +191,7 @@ CF_Mesh render_arena_octahedron_mesh()
     return flat_mesh(points, triangles, TRIANGLES);
 }
 
-CF_Mesh render_arena_tetrahedron_mesh()
+CF_Mesh render_scene3d_tetrahedron_mesh()
 {
     static const CF_V3 points[] = {
         { -0.5f, -0.5f, -0.5f },

@@ -1,11 +1,11 @@
-#include "render/arena3d.h"
+#include "render/scene3d.h"
 
 #include "platform/cute.h"
-#include "render/arena_geometry.h"
-#include "render/arena_influence.h"
-#include "render/arena_trail.h"
-#include "render/arena_visual.h"
 #include "render/material.h"
+#include "render/scene3d_geometry.h"
+#include "render/scene3d_influence.h"
+#include "render/scene3d_trail.h"
+#include "render/scene3d_visual.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
 #include "runtime/component_catalog.h"
@@ -38,34 +38,36 @@ typedef struct
     int particle_shape;
     float particle_age;
     bool transparent;
-} arena_draw;
+} scene3d_draw;
 
 typedef struct
 {
     CF_V4 *pixels;
-    arena_draw *draws;
+    scene3d_draw *draws;
     render_shader_parameter_cache *cache;
     char binding_error[256];
     unsigned worker;
 } draw_buffer;
 
-struct render_arena
+struct render_scene3d
 {
     render_programs *programs;
     render_influences *influences;
-    arena_trails *trails;
+    scene3d_trails *trails;
     game_particle_emitters *emitters;
     CF_Mesh prism, octahedron, tetrahedron;
     CF_Mesh particle_quad;
     CF_Mesh polygons[4];
     CF_V4 rhythm;
+    /* Direction toward the sun, sun radiance, and hemisphere ambient radiance. */
+    CF_V4 sun_direction, sun_color, ambient_sky, ambient_ground;
     CF_Texture parameters;
     int texture_height;
     draw_buffer buffer, *chunks;
     ecs_entity *entities;
     game_task_pool *pool;
     bool parallel_disabled;
-    render_arena_work work;
+    render_scene3d_work work;
     CF_V4 light_positions[POINT_LIGHT_LIMIT];
     CF_V4 light_colors[POINT_LIGHT_LIMIT];
     float light_scores[POINT_LIGHT_LIMIT];
@@ -98,80 +100,82 @@ static CF_Mesh particle_quad()
     return mesh;
 }
 
-render_arena *render_arena_new()
+render_scene3d *render_scene3d_new()
 {
-    render_arena *arena = xcalloc(1, sizeof *arena);
-    arena->pool = game_task_pool_acquire();
-    arena->programs = render_programs_new(RENDER_PROGRAM_ARENA);
-    arena->influences = render_influences_new();
-    arena->trails = render_arena_trails_new();
-    arena->emitters = game_particle_emitters_new(NULL);
-    arena->prism = render_arena_prism_mesh();
-    arena->octahedron = render_arena_octahedron_mesh();
-    arena->tetrahedron = render_arena_tetrahedron_mesh();
-    arena->particle_quad = particle_quad();
+    render_scene3d *scene3d = xcalloc(1, sizeof *scene3d);
+    scene3d->pool = game_task_pool_acquire();
+    scene3d->programs = render_programs_new(RENDER_PROGRAM_SCENE3D);
+    scene3d->influences = render_influences_new();
+    scene3d->trails = render_scene3d_trails_new();
+    scene3d->emitters = game_particle_emitters_new(NULL);
+    scene3d->prism = render_scene3d_prism_mesh();
+    scene3d->octahedron = render_scene3d_octahedron_mesh();
+    scene3d->tetrahedron = render_scene3d_tetrahedron_mesh();
+    scene3d->particle_quad = particle_quad();
     for (int i = 0; i < 4; i++) {
-        arena->polygons[i] = render_arena_polygon_mesh(GAME_PRIMITIVE_CHEVRON_PYRAMID + i);
+        scene3d->polygons[i] = render_scene3d_polygon_mesh(
+            GAME_PRIMITIVE_CHEVRON_PYRAMID + i
+        );
     }
-    return arena;
+    return scene3d;
 }
 
-const char *render_arena_error(const render_arena *arena)
+const char *render_scene3d_error(const render_scene3d *scene3d)
 {
-    return arena->binding_error[0] ? arena->binding_error
-                                   : render_programs_error(arena->programs);
+    return scene3d->binding_error[0] ? scene3d->binding_error
+                                     : render_programs_error(scene3d->programs);
 }
 
-int render_arena_particle_count(const render_arena *arena)
+int render_scene3d_particle_count(const render_scene3d *scene3d)
 {
     int heads;
-    game_particle_emitters_heads(arena->emitters, &heads);
-    return arena->simulation_particles + heads +
-           game_particles_count(game_particle_emitters_particles(arena->emitters));
+    game_particle_emitters_heads(scene3d->emitters, &heads);
+    return scene3d->simulation_particles + heads +
+           game_particles_count(game_particle_emitters_particles(scene3d->emitters));
 }
 
-void render_arena_reset(render_arena *arena)
+void render_scene3d_reset(render_scene3d *scene3d)
 {
-    arena->simulation_particles = 0;
-    render_influences_reset(arena->influences);
-    render_arena_trails_reset(arena->trails);
-    game_particle_emitters_reset(arena->emitters);
+    scene3d->simulation_particles = 0;
+    render_influences_reset(scene3d->influences);
+    render_scene3d_trails_reset(scene3d->trails);
+    game_particle_emitters_reset(scene3d->emitters);
 }
 
-void render_arena_free(render_arena *arena)
+void render_scene3d_free(render_scene3d *scene3d)
 {
-    if (!arena) {
+    if (!scene3d) {
         return;
     }
-    render_programs_free(arena->programs);
-    render_influences_free(arena->influences);
-    render_arena_trails_free(arena->trails);
-    game_particle_emitters_free(arena->emitters);
-    cf_destroy_mesh(arena->prism);
-    cf_destroy_mesh(arena->octahedron);
-    cf_destroy_mesh(arena->tetrahedron);
-    cf_destroy_mesh(arena->particle_quad);
+    render_programs_free(scene3d->programs);
+    render_influences_free(scene3d->influences);
+    render_scene3d_trails_free(scene3d->trails);
+    game_particle_emitters_free(scene3d->emitters);
+    cf_destroy_mesh(scene3d->prism);
+    cf_destroy_mesh(scene3d->octahedron);
+    cf_destroy_mesh(scene3d->tetrahedron);
+    cf_destroy_mesh(scene3d->particle_quad);
     for (int i = 0; i < 4; i++) {
-        cf_destroy_mesh(arena->polygons[i]);
+        cf_destroy_mesh(scene3d->polygons[i]);
     }
-    if (arena->parameters.id) {
-        cf_destroy_texture(arena->parameters);
+    if (scene3d->parameters.id) {
+        cf_destroy_texture(scene3d->parameters);
     }
-    game_task_pool_release(arena->pool);
-    for (int i = 0; i < acount(arena->chunks); i++) {
-        afree(arena->chunks[i].pixels);
-        afree(arena->chunks[i].draws);
-        render_shader_parameter_cache_free(arena->chunks[i].cache);
+    game_task_pool_release(scene3d->pool);
+    for (int i = 0; i < acount(scene3d->chunks); i++) {
+        afree(scene3d->chunks[i].pixels);
+        afree(scene3d->chunks[i].draws);
+        render_shader_parameter_cache_free(scene3d->chunks[i].cache);
     }
-    afree(arena->chunks);
-    afree(arena->entities);
-    render_shader_parameter_cache_free(arena->buffer.cache);
-    afree(arena->buffer.pixels);
-    afree(arena->buffer.draws);
-    free(arena);
+    afree(scene3d->chunks);
+    afree(scene3d->entities);
+    render_shader_parameter_cache_free(scene3d->buffer.cache);
+    afree(scene3d->buffer.pixels);
+    afree(scene3d->buffer.draws);
+    free(scene3d);
 }
 
-static void draw_shape(const render_arena *arena, const GameGeometry3D *shape)
+static void draw_shape(const render_scene3d *scene3d, const GameGeometry3D *shape)
 {
     cf_draw3d_scale((CF_V3){ shape->width, shape->height, shape->depth });
     switch (shape->primitive) {
@@ -186,28 +190,30 @@ static void draw_shape(const render_arena *arena, const GameGeometry3D *shape)
         case GAME_PRIMITIVE_CONE:
             cf_draw3d_cone((CF_V3){ 0, -0.5f, 0 }, (CF_V3){ 0, 0.5f, 0 }, 0.5f);
             break;
-        case GAME_PRIMITIVE_TRIANGLE_PRISM: cf_draw3d_mesh(arena->prism); break;
+        case GAME_PRIMITIVE_TRIANGLE_PRISM:
+            cf_draw3d_mesh(scene3d->prism);
+            break;
         case GAME_PRIMITIVE_OCTAHEDRON:
-            cf_draw3d_mesh(arena->octahedron);
+            cf_draw3d_mesh(scene3d->octahedron);
             break;
         case GAME_PRIMITIVE_TETRAHEDRON:
-            cf_draw3d_mesh(arena->tetrahedron);
+            cf_draw3d_mesh(scene3d->tetrahedron);
             break;
         case GAME_PRIMITIVE_CHEVRON_PYRAMID:
         case GAME_PRIMITIVE_BOX_FRAME:
         case GAME_PRIMITIVE_TRIANGLE_OUTLINE:
         case GAME_PRIMITIVE_TRIANGLE:
-            cf_draw3d_mesh(arena->polygons[shape->primitive - GAME_PRIMITIVE_CHEVRON_PYRAMID]);
+            cf_draw3d_mesh(scene3d->polygons[shape->primitive - GAME_PRIMITIVE_CHEVRON_PYRAMID]);
             break;
     }
 }
 
 static void append_draw(
     draw_buffer *buffer,
-    arena_draw draw,
+    scene3d_draw draw,
     const game_material_coefficients *color,
     const float parameters[SHADER_PARAMETER_MAX][4],
-    const render_arena_camera *camera
+    const render_scene3d_camera *camera
 )
 {
     draw.row = acount(buffer->draws);
@@ -246,7 +252,7 @@ static void collect_entity(
     draw_buffer *buffer,
     ecs_world *world,
     ecs_entity entity,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     const engine *runtime
 )
 {
@@ -257,9 +263,9 @@ static void collect_entity(
     if (runtime) {
         engine_render_position(runtime, entity, &position);
     }
-    arena_visual visuals[ARENA_PART_LIMIT];
+    scene3d_visual visuals[SCENE3D_PART_LIMIT];
     char error[256] = { 0 };
-    int count = render_arena_visuals(world, entity, &position, visuals, error, sizeof error);
+    int count = render_scene3d_visuals(world, entity, &position, visuals, error, sizeof error);
     if (count <= 0) {
         if (count < 0 && !buffer->binding_error[0]) {
             snprintf(buffer->binding_error, sizeof buffer->binding_error, "%s", error);
@@ -276,7 +282,7 @@ static void collect_entity(
     const GameShader *binding = GAME_GameShader_get_const(world, entity);
     CF_M4x4 view_projection = cf_mul_m4(camera->projection, camera->view);
     for (int i = 0; i < count; i++) {
-        const arena_visual *visual = &visuals[i];
+        const scene3d_visual *visual = &visuals[i];
         const char *name = visual->part.material[0] ? visual->part.material
                          : binding                  ? binding->material
                                                     : NULL;
@@ -287,7 +293,7 @@ static void collect_entity(
             }
             return;
         }
-        if (!render_arena_visual_visible(visual, view_projection)) {
+        if (!render_scene3d_visual_visible(visual, view_projection)) {
             continue;
         }
         float parameters[SHADER_PARAMETER_MAX][4];
@@ -299,21 +305,21 @@ static void collect_entity(
             parameters,
             &buffer->cache
         );
-        arena_draw draw = { .frame = visual->frame,
-                            .shape = { .primitive = visual->part.primitive,
-                                       .width = visual->part.dimensions.x,
-                                       .height = visual->part.dimensions.y,
-                                       .depth = visual->part.dimensions.z },
-                            .material = id };
+        scene3d_draw draw = { .frame = visual->frame,
+                              .shape = { .primitive = visual->part.primitive,
+                                         .width = visual->part.dimensions.x,
+                                         .height = visual->part.dimensions.y,
+                                         .depth = visual->part.dimensions.z },
+                              .material = id };
         append_draw(buffer, draw, &color, parameters, camera);
     }
 }
 
 static void collect_particles(
-    render_arena *arena,
+    render_scene3d *scene3d,
     const game_particle *items,
     int count,
-    const render_arena_camera *camera
+    const render_scene3d_camera *camera
 )
 {
     CF_M4x4 camera_frame = cf_m4_invert(camera->view);
@@ -375,24 +381,24 @@ static void collect_particles(
         frame.elements[13] = particle->elevation;
         frame.elements[14] = particle->position.y;
         float stretch = particle->shape == GAME_PARTICLE_STREAK ? 2.8f : 1;
-        arena_draw draw = {
+        scene3d_draw draw = {
             .frame = frame,
             .particle_shape = particle->shape + 1,
             .particle_age = age,
             .shape = { .width = radius * 2 * stretch, .height = radius * 2, .depth = 1 },
         };
-        append_draw(&arena->buffer, draw, &color, NULL, camera);
+        append_draw(&scene3d->buffer, draw, &color, NULL, camera);
     }
 }
 
 static void collect_lights(
-    render_arena *arena,
+    render_scene3d *scene3d,
     ecs_world *world,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     const engine *runtime
 )
 {
-    arena->light_count = 0;
+    scene3d->light_count = 0;
     int candidates = 0;
     CF_M4x4 inverse = cf_m4_invert(camera->view);
     CF_V3 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14] };
@@ -428,51 +434,113 @@ static void collect_lights(
         float peak = fmaxf((float)red, fmaxf((float)green, (float)blue)) / 255;
         float score = (float)(light->intensity * peak * radius2 /
                               (dx * dx + dy * dy + dz * dz + radius2));
-        int slot = arena->light_count;
+        int slot = scene3d->light_count;
         candidates++;
         if (slot == POINT_LIGHT_LIMIT) {
             slot--;
-            if (score <= arena->light_scores[slot]) {
+            if (score <= scene3d->light_scores[slot]) {
                 continue;
             }
         } else {
-            arena->light_count++;
+            scene3d->light_count++;
         }
-        while (slot > 0 && score > arena->light_scores[slot - 1]) {
-            arena->light_scores[slot] = arena->light_scores[slot - 1];
-            arena->light_positions[slot] = arena->light_positions[slot - 1];
-            arena->light_colors[slot] = arena->light_colors[slot - 1];
+        while (slot > 0 && score > scene3d->light_scores[slot - 1]) {
+            scene3d->light_scores[slot] = scene3d->light_scores[slot - 1];
+            scene3d->light_positions[slot] = scene3d->light_positions[slot - 1];
+            scene3d->light_colors[slot] = scene3d->light_colors[slot - 1];
             slot--;
         }
-        arena->light_scores[slot] = score;
-        arena->light_positions[slot] = (CF_V4){ position.x,
-                                                light->elevation,
-                                                position.y,
-                                                light->radius };
+        scene3d->light_scores[slot] = score;
+        scene3d->light_positions[slot] = (CF_V4){ position.x,
+                                                  light->elevation,
+                                                  position.y,
+                                                  light->radius };
         /* Packed component colors use the same linear channel convention as Material. */
-        arena->light_colors[slot] = (CF_V4){ ((light->color >> 24) & 255u) / 255.0f,
-                                             ((light->color >> 16) & 255u) / 255.0f,
-                                             ((light->color >> 8) & 255u) / 255.0f,
-                                             light->intensity };
+        scene3d->light_colors[slot] = (CF_V4){ ((light->color >> 24) & 255u) / 255.0f,
+                                               ((light->color >> 16) & 255u) / 255.0f,
+                                               ((light->color >> 8) & 255u) / 255.0f,
+                                               light->intensity };
     }
     ecs_query_end(&query);
-    int dropped = candidates - arena->light_count;
-    if ((dropped > 0) != (arena->lights_dropped > 0)) {
+    int dropped = candidates - scene3d->light_count;
+    if ((dropped > 0) != (scene3d->lights_dropped > 0)) {
         fprintf(
             stderr,
-            "Arena point lights: %d active, %d omitted by the %d-light camera "
+            "3D point lights: %d active, %d omitted by the %d-light camera "
             "influence budget.\n",
-            arena->light_count,
+            scene3d->light_count,
             dropped,
             POINT_LIGHT_LIMIT
         );
     }
-    arena->lights_dropped = dropped;
+    scene3d->lights_dropped = dropped;
+}
+
+static CF_V4 radiance(unsigned color, float intensity)
+{
+    return (CF_V4){ ((color >> 24) & 255u) / 255.0f * intensity,
+                    ((color >> 16) & 255u) / 255.0f * intensity,
+                    ((color >> 8) & 255u) / 255.0f * intensity,
+                    0 };
+}
+
+static void set_sun(render_scene3d *scene3d, const GameDirectionalLight *light)
+{
+    CF_V3 direction = light->direction;
+    float length = cf_len_v3(direction);
+    scene3d->sun_color = (CF_V4){ 0 };
+    if (!isfinite(length) || length <= 0 || !isfinite(light->intensity) ||
+        light->intensity <= 0) {
+        return;
+    }
+    direction = cf_div_v3_f(direction, -length);
+    scene3d->sun_direction = (CF_V4){ direction.x, direction.y, direction.z, 0 };
+    scene3d->sun_color = radiance(light->color, light->intensity);
+}
+
+static void set_ambient(render_scene3d *scene3d, const GameEnvironment *environment)
+{
+    float intensity = isfinite(environment->ambient_intensity)
+                        ? fmaxf(environment->ambient_intensity, 0)
+                        : 0;
+    scene3d->ambient_sky = radiance(environment->ambient_sky, intensity);
+    scene3d->ambient_ground = radiance(environment->ambient_ground, intensity);
+}
+
+/* At most one visible directional light shades the scene. */
+static bool collect_sun(render_scene3d *scene3d, ecs_world *world, const engine *runtime)
+{
+    scene3d->sun_color = (CF_V4){ 0 };
+    ecs_component_id required[] = { GAME_COMPONENT_GameDirectionalLight.id };
+    ecs_query query;
+    if (ecs_query_begin(world, &query, required, 1) != ECS_OK) {
+        return true;
+    }
+    int count = 0;
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        /* The light has no place in the world, so fog cannot cull it; only
+         * hiding it at run time leaves it out. */
+        const GameRenderState *state = GAME_GameRenderState_get_const(world, entity);
+        if (runtime && state && state->hidden) {
+            continue;
+        }
+        if (count++) {
+            break;
+        }
+        set_sun(scene3d, GAME_GameDirectionalLight_get_const(world, entity));
+    }
+    ecs_query_end(&query);
+    if (count > 1) {
+        snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "A 3D scene can have only one Directional Light.");
+        return false;
+    }
+    return true;
 }
 
 static int compare_draws(const void *left, const void *right)
 {
-    const arena_draw *a = left, *b = right;
+    const scene3d_draw *a = left, *b = right;
     if (a->transparent != b->transparent) {
         return a->transparent ? 1 : -1;
     }
@@ -488,98 +556,103 @@ static int compare_draws(const void *left, const void *right)
     return (a->row > b->row) - (a->row < b->row);
 }
 
-static bool submit(render_arena *arena, const render_arena_camera *camera, float time)
+static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera, float time)
 {
-    if (!acount(arena->buffer.draws)) {
-        render_arena_trails_draw(arena->trails, camera);
+    if (!acount(scene3d->buffer.draws)) {
+        render_scene3d_trails_draw(scene3d->trails, camera);
         return true;
     }
-    for (int i = 0; i < acount(arena->buffer.draws); i++) {
-        arena_draw *draw = &arena->buffer.draws[i];
+    for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
+        scene3d_draw *draw = &scene3d->buffer.draws[i];
         render_shader_set set = { 0 };
         shader_error error = { 0 };
         if (!render_shader_set_add(&set, draw->material, &error)) {
             snprintf(
-                arena->binding_error,
-                sizeof arena->binding_error,
+                scene3d->binding_error,
+                sizeof scene3d->binding_error,
                 "%s",
                 error.message
             );
             return false;
         }
-        draw->program = render_programs_prepare(arena->programs, &set);
-        if (render_programs_error(arena->programs)[0]) {
+        draw->program = render_programs_prepare(scene3d->programs, &set);
+        if (render_programs_error(scene3d->programs)[0]) {
             snprintf(
-                arena->binding_error,
-                sizeof arena->binding_error,
+                scene3d->binding_error,
+                sizeof scene3d->binding_error,
                 "%s",
-                render_programs_error(arena->programs)
+                render_programs_error(scene3d->programs)
             );
         }
         if (!draw->program) {
             return false;
         }
     }
-    int cells = acount(arena->buffer.pixels);
+    int cells = acount(scene3d->buffer.pixels);
     int height = 1;
     while (height * PARAMETER_TEXTURE_WIDTH < cells) {
         height *= 2;
     }
     if (height > 2048) {
-        snprintf(arena->binding_error, sizeof arena->binding_error, "Arena material instance capacity exceeded.");
+        snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "3D material instance capacity exceeded.");
         return false;
     }
-    if (height > arena->texture_height) {
-        if (arena->parameters.id) {
-            cf_destroy_texture(arena->parameters);
+    if (height > scene3d->texture_height) {
+        if (scene3d->parameters.id) {
+            cf_destroy_texture(scene3d->parameters);
         }
         CF_TextureParams params = cf_texture_defaults(PARAMETER_TEXTURE_WIDTH, height);
         params.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
         params.filter = CF_FILTER_NEAREST;
         params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT;
         params.stream = true;
-        arena->parameters = cf_make_texture(params);
-        arena->texture_height = height;
+        scene3d->parameters = cf_make_texture(params);
+        scene3d->texture_height = height;
     }
-    asetlen(arena->buffer.pixels, arena->texture_height * PARAMETER_TEXTURE_WIDTH);
+    asetlen(scene3d->buffer.pixels, scene3d->texture_height * PARAMETER_TEXTURE_WIDTH);
     memset(
-        arena->buffer.pixels + cells,
+        scene3d->buffer.pixels + cells,
         0,
-        (size_t)(acount(arena->buffer.pixels) - cells) * sizeof *arena->buffer.pixels
+        (size_t)(acount(scene3d->buffer.pixels) - cells) *
+            sizeof *scene3d->buffer.pixels
     );
     cf_texture_update(
-        arena->parameters,
-        arena->buffer.pixels,
-        acount(arena->buffer.pixels) * (int)sizeof *arena->buffer.pixels
+        scene3d->parameters,
+        scene3d->buffer.pixels,
+        acount(scene3d->buffer.pixels) * (int)sizeof *scene3d->buffer.pixels
     );
-    asort(arena->buffer.draws, compare_draws);
+    asort(scene3d->buffer.draws, compare_draws);
     CF_M4x4 inverse = cf_m4_invert(camera->view);
     CF_V4 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14], time };
-    cf_draw3d_set_uniform("arena_camera_time", &eye, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("arena_rhythm", &arena->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
-    CF_V4 light_count = { .x = (float)arena->light_count };
-    cf_draw3d_set_uniform("arena_light_count", &light_count, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("arena_light_positions", arena->light_positions, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
-    cf_draw3d_set_uniform("arena_light_colors", arena->light_colors, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
-    render_influences_bind(arena->influences);
-    cf_draw3d_set_texture("arena_parameters", arena->parameters);
+    cf_draw3d_set_uniform("scene_camera_time", &eye, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_rhythm", &scene3d->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_sun_direction", &scene3d->sun_direction, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_sun_color", &scene3d->sun_color, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_ambient_sky", &scene3d->ambient_sky, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_ambient_ground", &scene3d->ambient_ground, CF_UNIFORM_TYPE_FLOAT4, 1);
+    CF_V4 light_count = { .x = (float)scene3d->light_count };
+    cf_draw3d_set_uniform("scene_light_count", &light_count, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_light_positions", scene3d->light_positions, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
+    cf_draw3d_set_uniform("scene_light_colors", scene3d->light_colors, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
+    render_influences_bind(scene3d->influences);
+    cf_draw3d_set_texture("scene_parameters", scene3d->parameters);
     cf_draw3d_push_projection(camera->projection);
     cf_draw3d_push_view(camera->view);
     int program = 0;
     CF_RenderState state = cf_render_state_3d_defaults();
     cf_draw3d_push_render_state(state);
     bool transparent = false;
-    for (int i = 0; i < acount(arena->buffer.draws); i++) {
-        const arena_draw *draw = &arena->buffer.draws[i];
+    for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
+        const scene3d_draw *draw = &scene3d->buffer.draws[i];
         if (program != draw->program) {
             if (program) {
-                render_programs_unbind3d(arena->programs, program);
+                render_programs_unbind3d(scene3d->programs, program);
             }
             program = draw->program;
-            render_programs_bind3d(arena->programs, program);
+            render_programs_bind3d(scene3d->programs, program);
         }
         if (draw->transparent && !transparent) {
-            render_arena_trails_draw(arena->trails, camera);
+            render_scene3d_trails_draw(scene3d->trails, camera);
             transparent = true;
             cf_draw3d_pop_render_state();
             state.depth_write_enabled = false;
@@ -601,22 +674,22 @@ static bool submit(render_arena *arena, const render_arena_camera *camera, float
         cf_draw3d_transform(draw->frame);
         if (draw->particle_shape) {
             cf_draw3d_scale((CF_V3){ draw->shape.width, draw->shape.height, 1 });
-            cf_draw3d_mesh(arena->particle_quad);
+            cf_draw3d_mesh(scene3d->particle_quad);
         } else {
-            draw_shape(arena, &draw->shape);
+            draw_shape(scene3d, &draw->shape);
         }
         cf_draw3d_pop();
         cf_draw3d_pop_mesh_attributes2();
         cf_draw3d_pop_mesh_attributes();
     }
     cf_draw3d_pop_render_state();
-    render_programs_unbind3d(arena->programs, program);
+    render_programs_unbind3d(scene3d->programs, program);
     /* Later meshes would otherwise keep the parameters bound past their resize or free. */
-    cf_draw3d_set_texture("arena_parameters", (CF_Texture){ 0 });
+    cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
     cf_draw3d_pop_view();
     cf_draw3d_pop_projection();
     if (!transparent) {
-        render_arena_trails_draw(arena->trails, camera);
+        render_scene3d_trails_draw(scene3d->trails, camera);
     }
     return true;
 }
@@ -627,39 +700,39 @@ enum
 };
 typedef struct
 {
-    render_arena *arena;
+    render_scene3d *scene3d;
     ecs_world *world;
-    const render_arena_camera *camera;
+    const render_scene3d_camera *camera;
     const engine *runtime;
 } collect_context;
 static void collect_range(int start, int end, uint32_t worker, void *user)
 {
     collect_context *ctx = user;
-    render_arena *arena = ctx->arena;
+    render_scene3d *scene3d = ctx->scene3d;
     for (int c = start; c < end; c++) {
-        draw_buffer *buffer = &arena->chunks[c];
+        draw_buffer *buffer = &scene3d->chunks[c];
         aclear(buffer->pixels);
         aclear(buffer->draws);
         buffer->binding_error[0] = 0;
         buffer->worker = worker;
         int limit = (c + 1) * DRAW_CHUNK;
-        if (limit > acount(arena->entities)) {
-            limit = acount(arena->entities);
+        if (limit > acount(scene3d->entities)) {
+            limit = acount(scene3d->entities);
         }
         for (int i = c * DRAW_CHUNK; i < limit; i++) {
-            collect_entity(buffer, ctx->world, arena->entities[i], ctx->camera, ctx->runtime);
+            collect_entity(buffer, ctx->world, scene3d->entities[i], ctx->camera, ctx->runtime);
         }
     }
 }
 static void collect_geometry(
-    render_arena *arena,
+    render_scene3d *scene3d,
     ecs_world *world,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     const engine *runtime,
     render_skip skip
 )
 {
-    aclear(arena->entities);
+    aclear(scene3d->entities);
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
                                     GAME_COMPONENT_GameGeometry3D.id };
     ecs_query query;
@@ -667,170 +740,178 @@ static void collect_geometry(
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
             if (!render_skip_has(skip, entity)) {
-                apush(arena->entities, entity);
+                apush(scene3d->entities, entity);
             }
         }
         ecs_query_end(&query);
     }
-    int count = acount(arena->entities);
-    arena->work = (render_arena_work){ .entities = count, .workers = 1 };
-    const game_task_system *tasks = game_task_pool_tasks(arena->pool);
-    if (arena->parallel_disabled || count < DRAW_CHUNK * 2 || tasks->workers == 1) {
-        arena->buffer.binding_error[0] = 0;
+    int count = acount(scene3d->entities);
+    scene3d->work = (render_scene3d_work){ .entities = count, .workers = 1 };
+    const game_task_system *tasks = game_task_pool_tasks(scene3d->pool);
+    if (scene3d->parallel_disabled || count < DRAW_CHUNK * 2 || tasks->workers == 1) {
+        scene3d->buffer.binding_error[0] = 0;
         for (int i = 0; i < count; i++) {
-            collect_entity(&arena->buffer, world, arena->entities[i], camera, runtime);
+            collect_entity(&scene3d->buffer, world, scene3d->entities[i], camera, runtime);
         }
         snprintf(
-            arena->binding_error,
-            sizeof arena->binding_error,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error,
             "%s",
-            arena->buffer.binding_error
+            scene3d->buffer.binding_error
         );
         return;
     }
     int chunks = (count + DRAW_CHUNK - 1) / DRAW_CHUNK;
-    while (acount(arena->chunks) < chunks) {
-        apush(arena->chunks, ((draw_buffer){ 0 }));
+    while (acount(scene3d->chunks) < chunks) {
+        apush(scene3d->chunks, ((draw_buffer){ 0 }));
     }
-    collect_context ctx = { arena, world, camera, runtime };
-    game_task_pool_begin(arena->pool, true);
+    collect_context ctx = { scene3d, world, camera, runtime };
+    game_task_pool_begin(scene3d->pool, true);
     void *task = tasks->enqueue(collect_range, chunks, 1, &ctx, tasks->user);
     tasks->finish(task, tasks->user);
-    game_task_pool_end(arena->pool);
+    game_task_pool_end(scene3d->pool);
     unsigned workers = 0;
     for (int c = 0; c < chunks; c++) {
-        draw_buffer *buffer = &arena->chunks[c];
+        draw_buffer *buffer = &scene3d->chunks[c];
         workers |= 1u << buffer->worker;
-        if (buffer->binding_error[0] && !arena->binding_error[0]) {
+        if (buffer->binding_error[0] && !scene3d->binding_error[0]) {
             snprintf(
-                arena->binding_error,
-                sizeof arena->binding_error,
+                scene3d->binding_error,
+                sizeof scene3d->binding_error,
                 "%s",
                 buffer->binding_error
             );
         }
-        int rows = acount(arena->buffer.draws), pixels = acount(arena->buffer.pixels);
+        int rows = acount(scene3d->buffer.draws),
+            pixels = acount(scene3d->buffer.pixels);
         for (int i = 0; i < acount(buffer->draws); i++) {
-            arena_draw draw = buffer->draws[i];
+            scene3d_draw draw = buffer->draws[i];
             draw.row += rows;
-            apush(arena->buffer.draws, draw);
+            apush(scene3d->buffer.draws, draw);
         }
         int size = acount(buffer->pixels);
         if (size) {
-            asetlen(arena->buffer.pixels, pixels + size);
+            asetlen(scene3d->buffer.pixels, pixels + size);
             memcpy(
-                arena->buffer.pixels + pixels,
+                scene3d->buffer.pixels + pixels,
                 buffer->pixels,
                 (size_t)size * sizeof *buffer->pixels
             );
         }
     }
-    arena->work.tasks = chunks;
-    arena->work.workers = __builtin_popcount(workers);
+    scene3d->work.tasks = chunks;
+    scene3d->work.workers = __builtin_popcount(workers);
 }
-void render_arena_set_parallel(render_arena *arena, bool enabled)
+void render_scene3d_set_parallel(render_scene3d *scene3d, bool enabled)
 {
-    arena->parallel_disabled = !enabled;
+    scene3d->parallel_disabled = !enabled;
 }
-render_arena_work render_arena_last_work(const render_arena *arena)
+render_scene3d_work render_scene3d_last_work(const render_scene3d *scene3d)
 {
-    return arena->work;
+    return scene3d->work;
 }
 
-bool render_arena_draw(
-    render_arena *arena,
+bool render_scene3d_draw(
+    render_scene3d *scene3d,
     ecs_world *world,
     const game_particles *particles,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     float time,
     const struct engine *runtime,
+    const GameEnvironment *environment,
     render_skip skip
 )
 {
-    arena->simulation_particles = game_particles_count(particles);
-    arena->binding_error[0] = 0;
-    aclear(arena->buffer.pixels);
-    aclear(arena->buffer.draws);
-    game_beat beat;
-    if (!game_rhythm_sample(world, time, &beat)) {
-        snprintf(arena->binding_error, sizeof arena->binding_error, "Scene needs one valid rhythm clock.");
+    scene3d->simulation_particles = game_particles_count(particles);
+    scene3d->binding_error[0] = 0;
+    aclear(scene3d->buffer.pixels);
+    aclear(scene3d->buffer.draws);
+    /* Rhythm is an optional material input; without a valid clock it rests at zero. */
+    game_beat beat = { 0 };
+    game_rhythm_sample(world, time, &beat);
+    scene3d->rhythm = (CF_V4){ (float)beat.phase,
+                               (float)beat.pulse,
+                               (float)beat.period,
+                               (float)beat.duration };
+    set_ambient(scene3d, environment);
+    if (!collect_sun(scene3d, world, runtime)) {
         return false;
     }
-    arena->rhythm = (CF_V4){ (float)beat.phase,
-                             (float)beat.pulse,
-                             (float)beat.period,
-                             (float)beat.duration };
-    collect_lights(arena, world, camera, runtime);
-    render_influences_collect(arena->influences, world, runtime, time);
-    render_arena_trails_collect(arena->trails, world, runtime, time);
+    collect_lights(scene3d, world, camera, runtime);
+    render_influences_collect(scene3d->influences, world, runtime, time);
+    render_scene3d_trails_collect(scene3d->trails, world, runtime, time);
     if (!runtime && !game_particle_emitters_collect(
-                        arena->emitters,
+                        scene3d->emitters,
                         world,
                         runtime,
                         time,
-                        arena->binding_error,
-                        sizeof arena->binding_error
+                        scene3d->binding_error,
+                        sizeof scene3d->binding_error
                     )) {
         return false;
     }
-    collect_geometry(arena, world, camera, runtime, skip);
-    collect_particles(arena, game_particles_data(particles), game_particles_count(particles), camera);
+    collect_geometry(scene3d, world, camera, runtime, skip);
+    collect_particles(scene3d, game_particles_data(particles), game_particles_count(particles), camera);
     if (!runtime) {
-        const game_particles *emitted = game_particle_emitters_particles(arena->emitters);
-        collect_particles(arena, game_particles_data(emitted), game_particles_count(emitted), camera);
+        const game_particles *emitted = game_particle_emitters_particles(scene3d->emitters);
+        collect_particles(scene3d, game_particles_data(emitted), game_particles_count(emitted), camera);
         int head_count;
-        const game_particle *heads = game_particle_emitters_heads(arena->emitters, &head_count);
-        collect_particles(arena, heads, head_count, camera);
+        const game_particle *heads = game_particle_emitters_heads(scene3d->emitters, &head_count);
+        collect_particles(scene3d, heads, head_count, camera);
     }
-    if (arena->binding_error[0]) {
+    if (scene3d->binding_error[0]) {
         return false;
     }
-    if (!render_arena_trails_prepare(
-            arena->trails,
+    if (!render_scene3d_trails_prepare(
+            scene3d->trails,
             camera,
-            arena->binding_error,
-            sizeof arena->binding_error
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
         )) {
         return false;
     }
-    return submit(arena, camera, time);
+    return submit(scene3d, camera, time);
 }
 
-void render_arena_set_error(render_arena *arena, const char *message)
+void render_scene3d_set_error(render_scene3d *scene3d, const char *message)
 {
-    snprintf(arena->binding_error, sizeof arena->binding_error, "%s", message);
+    snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "%s", message);
 }
 
-bool render_arena_preview_material(
-    render_arena *arena,
+bool render_scene3d_preview_material(
+    render_scene3d *scene3d,
     int material,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     const char *parameters_json,
     float time,
-    const render_arena_activity *activity
+    const render_scene3d_activity *activity
 )
 {
-    arena->simulation_particles = 0;
-    game_particle_emitters_reset(arena->emitters);
-    arena->binding_error[0] = 0;
-    aclear(arena->buffer.pixels);
-    aclear(arena->buffer.draws);
-    arena->light_count = 0;
-    arena->rhythm = (CF_V4){ .x = activity->beat_phase, .y = activity->beat_pulse };
-    render_arena_reset(arena);
-    render_influences_preview(arena->influences, activity->influence, RENDER_ARENA_PREVIEW_RADIUS);
+    scene3d->simulation_particles = 0;
+    game_particle_emitters_reset(scene3d->emitters);
+    scene3d->binding_error[0] = 0;
+    aclear(scene3d->buffer.pixels);
+    aclear(scene3d->buffer.draws);
+    scene3d->light_count = 0;
+    scene3d->rhythm = (CF_V4){ .x = activity->beat_phase, .y = activity->beat_pulse };
+    GameDirectionalLight sun = game_directional_light_defaults();
+    GameEnvironment environment = game_environment_defaults();
+    set_sun(scene3d, &sun);
+    set_ambient(scene3d, &environment);
+    render_scene3d_reset(scene3d);
+    render_influences_preview(scene3d->influences, activity->influence, RENDER_SCENE3D_PREVIEW_RADIUS);
     if (!material || render_shader_is_shape(material)) {
         return false;
     }
     float parameters[SHADER_PARAMETER_MAX][4];
     render_shader_parameters(material, NULL, (ecs_entity){ 0 }, parameters_json, parameters);
     game_material_coefficients color = { .scene = { 1, 1, 1, 1 } };
-    arena_draw draw = { .frame = cf_m4_identity(),
-                        .shape = { .primitive = GAME_PRIMITIVE_SPHERE,
-                                   .width = RENDER_ARENA_PREVIEW_RADIUS * 2,
-                                   .height = RENDER_ARENA_PREVIEW_RADIUS * 2,
-                                   .depth = RENDER_ARENA_PREVIEW_RADIUS * 2 },
-                        .material = material };
-    append_draw(&arena->buffer, draw, &color, parameters, camera);
-    return submit(arena, camera, time);
+    scene3d_draw draw = { .frame = cf_m4_identity(),
+                          .shape = { .primitive = GAME_PRIMITIVE_SPHERE,
+                                     .width = RENDER_SCENE3D_PREVIEW_RADIUS * 2,
+                                     .height = RENDER_SCENE3D_PREVIEW_RADIUS * 2,
+                                     .depth = RENDER_SCENE3D_PREVIEW_RADIUS * 2 },
+                          .material = material };
+    append_draw(&scene3d->buffer, draw, &color, parameters, camera);
+    return submit(scene3d, camera, time);
 }

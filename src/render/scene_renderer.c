@@ -3,7 +3,6 @@
 #include "diagnostics/tracy.h"
 #include "platform/cute.h"
 #include "render/appearance_geometry.h"
-#include "render/arena_post.h"
 #include "render/draw_textures.h"
 #include "render/fluid_raster.h"
 #include "render/fog.h"
@@ -20,6 +19,7 @@
 #include "render/post_2d.h"
 #include "render/radiance.h"
 #include "render/reflections.h"
+#include "render/scene3d_post.h"
 #include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
 #include "render/shader_dir.h"
@@ -44,10 +44,10 @@ typedef struct
 
 struct app_scene_renderer
 {
-    render_arena *arena;
-    render_arena_post *post;
+    render_scene3d *scene3d;
+    render_scene3d_post *post;
     render_fog *fog;
-    bool arena_attempted, parallel_disabled, resources_attempted;
+    bool scene3d_attempted, parallel_disabled, resources_attempted;
     render_material_raster *raster;
     render_model_inspection inspection;
     int sdf_batch_limit;
@@ -144,8 +144,8 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     }
     afree(renderer->mesh_surfaces);
     render_fluid_raster_free(renderer->fluid);
-    render_arena_free(renderer->arena);
-    render_arena_post_free(renderer->post);
+    render_scene3d_free(renderer->scene3d);
+    render_scene3d_post_free(renderer->post);
     render_post_2d_free(renderer->hdr);
     if (renderer->fog) {
         render_fog_free(renderer->fog);
@@ -177,15 +177,15 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     free(renderer);
 }
 
-static bool arena_ready(app_scene_renderer *renderer)
+static bool scene3d_ready(app_scene_renderer *renderer)
 {
-    if (!renderer->arena_attempted) {
-        renderer->arena_attempted = true;
-        renderer->arena = render_arena_new();
-        render_arena_set_parallel(renderer->arena, !renderer->parallel_disabled);
-        renderer->post = render_arena_post_new();
+    if (!renderer->scene3d_attempted) {
+        renderer->scene3d_attempted = true;
+        renderer->scene3d = render_scene3d_new();
+        render_scene3d_set_parallel(renderer->scene3d, !renderer->parallel_disabled);
+        renderer->post = render_scene3d_post_new();
     }
-    return renderer->arena && renderer->post;
+    return renderer->scene3d && renderer->post;
 }
 
 const char *app_scene_renderer_error(const app_scene_renderer *renderer)
@@ -200,8 +200,9 @@ const char *app_scene_renderer_warning(const app_scene_renderer *renderer)
 
 int app_scene_renderer_particle_count(const app_scene_renderer *renderer)
 {
-    return renderer && renderer->arena ? render_arena_particle_count(renderer->arena)
-                                       : 0;
+    return renderer && renderer->scene3d
+             ? render_scene3d_particle_count(renderer->scene3d)
+             : 0;
 }
 
 void app_scene_renderer_set_view(app_scene_renderer *renderer, bool unlit, bool fogless)
@@ -223,7 +224,7 @@ static bool draw_fog(
     app_scene_renderer *renderer,
     const engine *runtime,
     const engine_viewport_camera *frame,
-    const render_arena_camera *camera
+    const render_scene3d_camera *camera
 )
 {
     return renderer->fogless || render_fog_draw(
@@ -250,9 +251,9 @@ static bool entity_shown(
     return !runtime || !state || !state->hidden;
 }
 
-static bool arena_environment(app_scene_renderer *renderer, ecs_world *world, GameEnvironment *settings)
+static bool scene3d_environment(app_scene_renderer *renderer, ecs_world *world, GameEnvironment *settings)
 {
-    *settings = render_arena_post_defaults();
+    *settings = game_environment_defaults();
     if (!ecs_world_component(world, GAME_COMPONENT_GameEnvironment.id)) {
         return true;
     }
@@ -276,9 +277,9 @@ static bool arena_environment(app_scene_renderer *renderer, ecs_world *world, Ga
     return valid;
 }
 
-static void arena_present(app_scene_renderer *renderer)
+static void scene3d_present(app_scene_renderer *renderer)
 {
-    CF_Canvas output = render_arena_post_output(renderer->post);
+    CF_Canvas output = render_scene3d_post_output(renderer->post);
     if (!output.id) {
         return;
     }
@@ -289,43 +290,43 @@ static void arena_present(app_scene_renderer *renderer)
     cf_draw_pop();
 }
 
-static bool arena_prepare(app_scene_renderer *renderer, int width, int height, const GameEnvironment *settings)
+static bool scene3d_prepare(app_scene_renderer *renderer, int width, int height, const GameEnvironment *settings)
 {
-    if (render_arena_post_prepare(renderer->post, width, height, settings)) {
+    if (render_scene3d_post_prepare(renderer->post, width, height, settings)) {
         return true;
     }
     snprintf(
         renderer->error,
         sizeof renderer->error,
         "%s",
-        render_arena_post_error(renderer->post)
+        render_scene3d_post_error(renderer->post)
     );
-    arena_present(renderer);
+    scene3d_present(renderer);
     return false;
 }
 
-static bool arena_finish(app_scene_renderer *renderer, bool submitted)
+static bool scene3d_finish(app_scene_renderer *renderer, bool submitted)
 {
     snprintf(
         renderer->error,
         sizeof renderer->error,
         "%s",
-        render_arena_error(renderer->arena)
+        render_scene3d_error(renderer->scene3d)
     );
     bool processed = false;
     if (submitted) {
-        cf_render_to(render_arena_post_target(renderer->post), true);
-        processed = render_arena_post_process(renderer->post);
+        cf_render_to(render_scene3d_post_target(renderer->post), true);
+        processed = render_scene3d_post_process(renderer->post);
         if (!processed) {
             snprintf(
                 renderer->error,
                 sizeof renderer->error,
                 "%s",
-                render_arena_post_error(renderer->post)
+                render_scene3d_post_error(renderer->post)
             );
         }
     }
-    arena_present(renderer);
+    scene3d_present(renderer);
     return submitted && processed;
 }
 
@@ -333,7 +334,7 @@ bool app_scene_renderer_draw3d(
     app_scene_renderer *renderer,
     ecs_world *world,
     const game_particles *particles,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     engine_viewport *viewport,
     const engine *runtime,
     render_skip skip
@@ -343,23 +344,32 @@ bool app_scene_renderer_draw3d(
         return false;
     }
     initialize_resources(renderer);
-    if (!arena_ready(renderer)) {
+    if (!scene3d_ready(renderer)) {
         return false;
     }
     renderer->error[0] = 0;
     GameEnvironment settings;
-    if (!arena_environment(renderer, world, &settings)) {
-        arena_present(renderer);
+    if (!scene3d_environment(renderer, world, &settings)) {
+        scene3d_present(renderer);
         return false;
     }
     int width, height;
     engine_viewport_pixel_size(viewport, &width, &height);
-    if (!arena_prepare(renderer, width, height, &settings)) {
+    if (!scene3d_prepare(renderer, width, height, &settings)) {
         return false;
     }
-    bool drawn = arena_finish(
+    bool drawn = scene3d_finish(
         renderer,
-        render_arena_draw(renderer->arena, world, particles, camera, renderer->time, runtime, skip)
+        render_scene3d_draw(
+            renderer->scene3d,
+            world,
+            particles,
+            camera,
+            renderer->time,
+            runtime,
+            &settings,
+            skip
+        )
     );
     engine_viewport_camera frame;
     engine_viewport_get_camera(viewport, &frame);
@@ -371,8 +381,8 @@ void app_scene_renderer_reset(app_scene_renderer *renderer)
     if (renderer && renderer->border) {
         render_material_border_cache_clear(renderer->border);
     }
-    if (renderer && renderer->arena) {
-        render_arena_reset(renderer->arena);
+    if (renderer && renderer->scene3d) {
+        render_scene3d_reset(renderer->scene3d);
     }
     if (renderer && renderer->radiance) {
         render_radiance_reset(renderer->radiance);
@@ -1860,15 +1870,15 @@ bool app_scene_renderer_draw(
 void app_scene_renderer_set_parallel(app_scene_renderer *renderer, bool enabled)
 {
     renderer->parallel_disabled = !enabled;
-    if (renderer->arena) {
-        render_arena_set_parallel(renderer->arena, enabled);
+    if (renderer->scene3d) {
+        render_scene3d_set_parallel(renderer->scene3d, enabled);
     }
 }
 
-render_arena_work app_scene_renderer_last_work(const app_scene_renderer *renderer)
+render_scene3d_work app_scene_renderer_last_work(const app_scene_renderer *renderer)
 {
-    return renderer->arena ? render_arena_last_work(renderer->arena)
-                           : (render_arena_work){ 0 };
+    return renderer->scene3d ? render_scene3d_last_work(renderer->scene3d)
+                             : (render_scene3d_work){ 0 };
 }
 
 void app_scene_renderer_set_model_inspection(

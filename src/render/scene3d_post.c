@@ -1,4 +1,4 @@
-#include "render/arena_post.h"
+#include "render/scene3d_post.h"
 
 #include "render/draw_textures.h"
 #include "render/shader_program.h"
@@ -31,7 +31,7 @@ typedef struct
     int width, height, count;
 } post_targets;
 
-struct render_arena_post
+struct render_scene3d_post
 {
     post_targets targets;
     CF_Canvas output, pending_output;
@@ -41,14 +41,9 @@ struct render_arena_post
     char error[512];
 };
 
-GameEnvironment render_arena_post_defaults()
+render_scene3d_post *render_scene3d_post_new()
 {
-    return (GameEnvironment){ 0, 0.18f, 1, 0.012f };
-}
-
-render_arena_post *render_arena_post_new()
-{
-    return xcalloc(1, sizeof(render_arena_post));
+    return xcalloc(1, sizeof(render_scene3d_post));
 }
 
 static void destroy_canvas(CF_Canvas canvas)
@@ -68,7 +63,7 @@ static void destroy_targets(post_targets *targets)
     }
 }
 
-void render_arena_post_free(render_arena_post *post)
+void render_scene3d_post_free(render_scene3d_post *post)
 {
     if (!post) {
         return;
@@ -105,7 +100,7 @@ static bool supports_hdr()
            cf_query_pixel_format(format, CF_PIXELFORMAT_OP_ALPHA_BLENDING);
 }
 
-static bool load_shader(render_arena_post *post, CF_Shader *shader, const char *file)
+static bool load_shader(render_scene3d_post *post, CF_Shader *shader, const char *file)
 {
     if (shader->id) {
         return true;
@@ -141,7 +136,7 @@ static CF_Canvas make_canvas(int width, int height, bool hdr, bool depth)
     return canvas;
 }
 
-static bool resize(render_arena_post *post, int width, int height)
+static bool resize(render_scene3d_post *post, int width, int height)
 {
     if (post->targets.width == width && post->targets.height == height) {
         return true;
@@ -177,7 +172,7 @@ static bool in_range(float value, float low, float high)
     return isfinite(value) && value >= low && value <= high;
 }
 
-bool render_arena_post_prepare(render_arena_post *post, int width, int height, const GameEnvironment *settings)
+bool render_scene3d_post_prepare(render_scene3d_post *post, int width, int height, const GameEnvironment *settings)
 {
     assert(post && settings);
     post->ready = false;
@@ -209,9 +204,9 @@ bool render_arena_post_prepare(render_arena_post *post, int width, int height, c
         );
         return false;
     }
-    if (!load_shader(post, &post->downsample, "arena_post_downsample.shd") ||
-        !load_shader(post, &post->blur, "arena_post_blur.shd") ||
-        !load_shader(post, &post->composite, "arena_post_composite.shd") ||
+    if (!load_shader(post, &post->downsample, "scene3d_post_downsample.shd") ||
+        !load_shader(post, &post->blur, "scene3d_post_blur.shd") ||
+        !load_shader(post, &post->composite, "scene3d_post_composite.shd") ||
         !resize(post, width, height)) {
         return false;
     }
@@ -220,18 +215,18 @@ bool render_arena_post_prepare(render_arena_post *post, int width, int height, c
     return true;
 }
 
-CF_Canvas render_arena_post_target(const render_arena_post *post)
+CF_Canvas render_scene3d_post_target(const render_scene3d_post *post)
 {
     assert(post->ready);
     return post->targets.scene;
 }
 
-CF_Canvas render_arena_post_output(const render_arena_post *post)
+CF_Canvas render_scene3d_post_output(const render_scene3d_post *post)
 {
     return post->output;
 }
 
-const char *render_arena_post_error(const render_arena_post *post)
+const char *render_scene3d_post_error(const render_scene3d_post *post)
 {
     return post->error;
 }
@@ -242,7 +237,7 @@ static void pass(CF_Canvas source, CF_Canvas destination)
     cf_render_to(destination, true);
 }
 
-static void downsample(render_arena_post *post, int last)
+static void downsample(render_scene3d_post *post, int last)
 {
     CF_Canvas source = post->targets.scene;
     cf_draw_push_shader(post->downsample);
@@ -260,7 +255,7 @@ static void downsample(render_arena_post *post, int last)
     cf_draw_pop_shader();
 }
 
-static void blur(render_arena_post *post, int index)
+static void blur(render_scene3d_post *post, int index)
 {
     bloom_level *level = &post->targets.levels[index];
     float radius = post->settings.bloom_radius;
@@ -273,7 +268,7 @@ static void blur(render_arena_post *post, int index)
     cf_draw_pop_shader();
 }
 
-bool render_arena_post_process(render_arena_post *post)
+bool render_scene3d_post_process(render_scene3d_post *post)
 {
     if (!post->ready) {
         return false;

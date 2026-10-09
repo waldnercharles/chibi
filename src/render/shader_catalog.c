@@ -1,7 +1,7 @@
 #include "render/shader_catalog.h"
 
-#include "render/arena_parts.h"
 #include "render/catalog_publication.h"
+#include "render/scene3d_parts.h"
 #include "render/shader_catalog_internal.h"
 #include "render/shader_values.h"
 #include "runtime/component_catalog.h"
@@ -1629,7 +1629,7 @@ void render_shader_catalog_clear()
 {
     assert(!prepared_publication);
     shader_values_clear();
-    render_arena_parts_clear();
+    render_scene3d_parts_clear();
     for (int i = 0; i < acount(shader_catalog_assets); i++) {
         shader_catalog_free_asset(&shader_catalog_assets[i]);
     }

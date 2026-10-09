@@ -15,6 +15,7 @@ typedef union
     GameMeshParts parts;
     GameHRC2D hrc;
     GameParticleEmitter emitter;
+    GameEnvironment environment;
     GameDirectionalLight light;
 } native_initial;
 
@@ -101,6 +102,10 @@ static int initial_row(
         storage->emitter = game_particle_emitter_defaults();
         out->data = &storage->emitter;
         out->size = sizeof storage->emitter;
+    } else if (!strcmp(desc->name, "GameEnvironment")) {
+        storage->environment = game_environment_defaults();
+        out->data = &storage->environment;
+        out->size = sizeof storage->environment;
     } else if (!strcmp(desc->name, "GameDirectionalLight")) {
         storage->light = game_directional_light_defaults();
         out->data = &storage->light;

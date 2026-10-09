@@ -1,4 +1,4 @@
-#include "render/arena_influence.h"
+#include "render/scene3d_influence.h"
 
 #include "platform/cute.h"
 #include "runtime/component_catalog.h"
@@ -201,9 +201,9 @@ void render_influences_preview(render_influences *influences, const float color[
 void render_influences_bind(render_influences *influences)
 {
     CF_V4 count = { .x = (float)influences->count };
-    cf_draw3d_set_uniform("arena_influence_count", &count, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("arena_influence_positions", influences->positions, CF_UNIFORM_TYPE_FLOAT4, INFLUENCE_LIMIT);
-    cf_draw3d_set_uniform("arena_influence_colors", influences->colors, CF_UNIFORM_TYPE_FLOAT4, INFLUENCE_LIMIT);
+    cf_draw3d_set_uniform("scene_influence_count", &count, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_influence_positions", influences->positions, CF_UNIFORM_TYPE_FLOAT4, INFLUENCE_LIMIT);
+    cf_draw3d_set_uniform("scene_influence_colors", influences->colors, CF_UNIFORM_TYPE_FLOAT4, INFLUENCE_LIMIT);
 }
 
 void render_influences_sample(void *userdata, const float position[3], float color[3])

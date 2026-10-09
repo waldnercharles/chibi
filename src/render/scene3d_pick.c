@@ -1,7 +1,7 @@
-#include "render/arena3d.h"
-#include "render/arena_geometry.h"
-#include "render/arena_visual.h"
 #include "render/mesh_surface.h"
+#include "render/scene3d.h"
+#include "render/scene3d_geometry.h"
+#include "render/scene3d_visual.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
 #include "support/array.h"
@@ -19,9 +19,9 @@ static int entity_model(const ecs_world *world, ecs_entity entity)
     return render_shader_is_model(id) ? id : 0;
 }
 
-bool render_arena_entity_bounds(const ecs_world *world, ecs_entity entity, CF_V3 corners[8])
+bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_V3 corners[8])
 {
-    arena_visual visuals[ARENA_PART_LIMIT];
+    scene3d_visual visuals[SCENE3D_PART_LIMIT];
     char error[128];
     int count;
     if (entity_model(world, entity)) {
@@ -33,7 +33,7 @@ bool render_arena_entity_bounds(const ecs_world *world, ecs_entity entity, CF_V3
         }
         render_mesh_surface_free(&surface);
     } else {
-        count = render_arena_visuals(world, entity, NULL, visuals, error, sizeof error);
+        count = render_scene3d_visuals(world, entity, NULL, visuals, error, sizeof error);
     }
     if (count <= 0) {
         return false;
@@ -188,8 +188,8 @@ static float primitive_hit(CF_Ray3 ray, int primitive)
         case GAME_PRIMITIVE_BOX_FRAME:
         case GAME_PRIMITIVE_TRIANGLE_OUTLINE:
         case GAME_PRIMITIVE_TRIANGLE: {
-            CF_V3 triangles[ARENA_MESH_TRIANGLE_LIMIT][3];
-            int count = render_arena_mesh_triangles(primitive, triangles);
+            CF_V3 triangles[SCENE3D_MESH_TRIANGLE_LIMIT][3];
+            int count = render_scene3d_mesh_triangles(primitive, triangles);
             float nearest = FLT_MAX;
             for (int i = 0; i < count; i++) {
                 CF_V3 edge1 = cf_sub_v3(triangles[i][1], triangles[i][0]);
@@ -279,9 +279,9 @@ static float model_ray_hit(ecs_world *world, ecs_entity entity, int id, CF_Ray3 
     return FLT_MAX;
 }
 
-ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera, CF_V2 ndc, render_skip skip)
+ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *camera, CF_V2 ndc, render_skip skip)
 {
-    CF_Ray3 ray = render_arena_ray(camera, ndc);
+    CF_Ray3 ray = render_scene3d_ray(camera, ndc);
     CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
     ecs_entity nearest = { 0 };
     float distance = FLT_MAX;
@@ -305,11 +305,11 @@ ecs_entity render_arena_pick(ecs_world *world, const render_arena_camera *camera
             }
             continue;
         }
-        arena_visual visuals[ARENA_PART_LIMIT];
+        scene3d_visual visuals[SCENE3D_PART_LIMIT];
         char error[128];
-        int count = render_arena_visuals(world, entity, NULL, visuals, error, sizeof error);
+        int count = render_scene3d_visuals(world, entity, NULL, visuals, error, sizeof error);
         for (int i = 0; i < count; i++) {
-            CF_M4x4 inverse = cf_m4_invert(render_arena_visual_model(&visuals[i]));
+            CF_M4x4 inverse = cf_m4_invert(render_scene3d_visual_model(&visuals[i]));
             CF_Ray3 local = cf_make_ray3(
                 cf_m4_transform_point(inverse, ray.p),
                 cf_m4_transform_point(inverse, end)

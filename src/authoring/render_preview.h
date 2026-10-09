@@ -2,13 +2,13 @@
 #define CHIBI_AUTHORING_RENDER_PREVIEW_H
 #include "graph/model/behavior_asset.h"
 #include "render/shader_preview.h"
-bool authoring_render_arena_preview(
-    render_arena *,
+bool authoring_render_scene3d_preview(
+    render_scene3d *,
     const behavior_asset *,
-    const render_arena_camera *,
+    const render_scene3d_camera *,
     const char *,
     float,
-    const render_arena_activity *
+    const render_scene3d_activity *
 );
 render_shader_preview *authoring_shader_preview_new(
     const behavior_asset *,

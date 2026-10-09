@@ -539,15 +539,30 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEncounterMember)
 GameEncounterMember;
 
 /* Scene-wide display settings. Exposure is in stops; bloom radius is a fraction
- * of viewport height. Zero strength disables bloom. */
+ * of viewport height. Zero strength disables bloom. The 3D ambient light blends
+ * from the ground color below to the sky color above; colors are 0xRRGGBBAA in
+ * Material's linear convention and the intensity scales both. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 {
     float exposure;
     float bloom_strength;
     float bloom_threshold;
     float bloom_radius;
+    unsigned ambient_sky NODE_COLOR;
+    unsigned ambient_ground NODE_COLOR;
+    float ambient_intensity;
 }
 GameEnvironment;
+
+static inline GameEnvironment game_environment_defaults()
+{
+    return (GameEnvironment){ .bloom_strength = .18f,
+                              .bloom_threshold = 1,
+                              .bloom_radius = .012f,
+                              .ambient_sky = 0x2b3345ffu,
+                              .ambient_ground = 0x0f121affu,
+                              .ambient_intensity = 1 };
+}
 
 /* Light from an infinitely distant source, such as the sun. Direction is the
  * world-space direction the light travels; it need not be normalized. Color

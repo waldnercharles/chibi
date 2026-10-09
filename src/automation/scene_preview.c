@@ -42,8 +42,8 @@ static void draw_scene(void *user)
     engine *runtime = game_prototype_preview_runtime(scene->preview);
     const game_particles *particles = game_prototype_preview_particles(scene->preview);
     if (engine_viewport_perspective(scene->viewport)) {
-        render_arena_camera camera;
-        engine_viewport_get_arena_camera(scene->viewport, &camera);
+        render_scene3d_camera camera;
+        engine_viewport_get_camera3d(scene->viewport, &camera);
         scene->failed = !app_scene_renderer_draw3d(
             scene->renderer,
             world,
@@ -111,7 +111,6 @@ static double seconds()
 static void show_scene(scene_preview *scene, const chibi_preview_run *run, ui_world *ui, const char *content_root)
 {
     engine_viewport_reset_camera(scene->viewport);
-    engine_viewport_clear_arena_camera(scene->viewport);
     app_scene_renderer_reset(scene->renderer);
     engine_viewport_set_perspective(scene->viewport, chibi_preview_perspective(run));
     ui->page = chibi_preview_page(run);

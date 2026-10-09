@@ -7,6 +7,8 @@
 #include "runtime/particles.h"
 #include "runtime/scenes/physics_settings.h"
 
+#include <stdbool.h>
+
 typedef struct game_prototype_preview game_prototype_preview;
 
 typedef struct
@@ -15,6 +17,7 @@ typedef struct
     av_value *components;
     const char *const *behaviors;
     int behavior_count;
+    bool own_behaviors; /* behaviors replace the prototype's; otherwise it keeps them */
 } game_prototype_preview_scene_entity;
 
 game_prototype_preview *game_prototype_preview_new(const game_prototype_registry *registry);
@@ -47,8 +50,8 @@ int game_prototype_preview_launch(
     char *error,
     size_t error_size
 );
-/* Launch a scene fixture in authored order. The scene behavior list replaces
- * the prototype's attached behaviors for each entity, matching scene loading. */
+/* Launch a scene fixture in authored order. An entity's own behavior list
+ * replaces its prototype's, matching scene loading. */
 int game_prototype_preview_launch_scene(
     game_prototype_preview *preview,
     const game_prototype_preview_scene_entity *entities,

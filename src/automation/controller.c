@@ -6675,6 +6675,7 @@ static int prepare_scene_scenario(
                 .components = entity->components,
                 .behaviors = (const char *const *)entity->behaviors,
                 .behavior_count = acount(entity->behaviors),
+                .own_behaviors = entity->own_behaviors,
             })
         );
         for (int behavior = 0; behavior < acount(prototype->graphs); behavior++) {

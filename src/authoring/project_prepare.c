@@ -182,6 +182,31 @@ void authoring_project_artifact_free(authoring_project_artifact *artifact)
     free(artifact->manifest);
     *artifact = (authoring_project_artifact){ 0 };
 }
+/* The window icon ships beside the artifact, so it must be a readable PNG. */
+static bool application_icon_valid(const chibi_project *project, char *error, size_t size)
+{
+    const char *icon = project->application.icon;
+    if (!icon) {
+        return true;
+    }
+    size_t length = strlen(project->root) + strlen(icon) + 2;
+    char *path = xmalloc(length);
+    snprintf(path, length, "%s/%s", project->root, icon);
+    static const unsigned char png[8] = { 0x89, 'P',  'N',  'G',
+                                          '\r', '\n', 0x1a, '\n' };
+    unsigned char magic[8] = { 0 };
+    FILE *file = fopen(path, "rb");
+    bool valid = file && fread(magic, 1, sizeof magic, file) == sizeof magic &&
+                 !memcmp(magic, png, sizeof png);
+    if (file) {
+        fclose(file);
+    }
+    free(path);
+    if (!valid && size) {
+        snprintf(error, size, "Application icon is not a readable PNG: %s", icon);
+    }
+    return valid;
+}
 static uint64_t content_hash(const void *data, size_t size)
 {
     const unsigned char *bytes = data;
@@ -272,7 +297,8 @@ bool authoring_project_prepare(
     const game_scene **visual_scenes = NULL;
     size_t module_bytes = 0;
     char *scene_path = NULL, *text = NULL;
-    if (chibi_project_open(&project, options->project, error, size)) {
+    if (chibi_project_open(&project, options->project, error, size) ||
+        !application_icon_valid(&project, error, size)) {
         goto done;
     }
     if (!render_image_mount_content(project.content, error, size) ||
@@ -447,7 +473,24 @@ bool authoring_project_prepare(
         .asset_count = acount(assets),
         .scene = scene
     };
-    valid = game_player_prepared_write(&spec, &artifact->data, &artifact->size, error, size);
+    /* The window shows the project name unless the title replaces it. */
+    char *title = project.application.title;
+    if (!title && strlen(project.name) <= GAME_PLAYER_APPLICATION_TEXT_MAX) {
+        title = project.name;
+    }
+    game_player_application application = { .title = title,
+                                            .width = project.application.width,
+                                            .height = project.application.height,
+                                            .fullscreen = project.application.fullscreen,
+                                            .icon = project.application.icon };
+    valid = game_player_prepared_write(
+        &spec,
+        &application,
+        &artifact->data,
+        &artifact->size,
+        error,
+        size
+    );
     if (valid) {
         artifact->manifest = manifest(assets, artifact);
         if (!artifact->manifest) {

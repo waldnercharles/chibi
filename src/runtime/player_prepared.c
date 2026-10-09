@@ -28,6 +28,31 @@ static void header(execution_wire *wire)
         wire->error = "Prepared player magic or version is unsupported";
     }
 }
+/* The front of the artifact: bounded window settings any host can read alone. */
+static void application(execution_wire *wire, game_player_application *app)
+{
+    const char *title = app->title, *icon = app->icon;
+    uint64_t width = (uint64_t)app->width, height = (uint64_t)app->height;
+    execution_wire_string(wire, &title);
+    execution_wire_string(wire, &icon);
+    execution_wire_u64(wire, &width);
+    execution_wire_u64(wire, &height);
+    execution_wire_bool(wire, &app->fullscreen);
+    if (wire->error) {
+        return;
+    }
+    if ((title && (!title[0] || strlen(title) > GAME_PLAYER_APPLICATION_TEXT_MAX)) ||
+        (icon && (!icon[0] || strlen(icon) > GAME_PLAYER_APPLICATION_TEXT_MAX)) ||
+        width > GAME_PLAYER_APPLICATION_SIZE_MAX ||
+        height > GAME_PLAYER_APPLICATION_SIZE_MAX) {
+        wire->error = "Prepared player application settings are invalid";
+        return;
+    }
+    app->title = (char *)title;
+    app->icon = (char *)icon;
+    app->width = (int)width;
+    app->height = (int)height;
+}
 static const void *blob(execution_wire *wire, const void *data, size_t *length)
 {
     execution_wire_size(wire, length);
@@ -132,13 +157,14 @@ static void scene_write(execution_wire *wire, const game_scene *scene, char *err
 }
 bool game_player_prepared_write(
     const game_player_spec *spec,
+    const game_player_application *app,
     unsigned char **data,
     size_t *length,
     char *error,
     size_t size
 )
 {
-    assert(spec && data && length && (!size || error));
+    assert(spec && app && data && length && (!size || error));
     *data = NULL;
     *length = 0;
     if (size) {
@@ -155,6 +181,8 @@ bool game_player_prepared_write(
     }
     execution_wire wire = { 0 };
     header(&wire);
+    game_player_application settings = *app;
+    application(&wire, &settings);
     uint64_t flags = spec->world.modules;
     execution_wire_u64(&wire, &flags);
     scene_write(&wire, spec->scene, error, size);
@@ -265,6 +293,8 @@ game_player *game_player_prepared_read(
                             .storage = &storage,
                             .storage_budget = &metadata_budget };
     header(&wire);
+    game_player_application settings = { 0 };
+    application(&wire, &settings);
     uint64_t flags = 0;
     execution_wire_u64(&wire, &flags);
     if (!wire.error && (flags & ~(uint64_t)GAME_WORLD_MODULES_ALL)) {
@@ -358,6 +388,40 @@ game_player *game_player_prepared_read(
     game_event_catalog_free(spec.world.events);
     arena_free(&storage);
     return player;
+}
+bool game_player_application_read(const char *path, game_player_application *app, char *error, size_t size)
+{
+    assert(path && app && (!size || error));
+    *app = (game_player_application){ 0 };
+    /* Header, two bounded strings with their sizes, two sizes and a flag. */
+    unsigned char data[2 * GAME_PLAYER_APPLICATION_TEXT_MAX + 256];
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return fail(error, size, "Prepared player file could not be opened");
+    }
+    size_t length = fread(data, 1, sizeof data, file);
+    fclose(file);
+    /* The bounded prefix already bounds the strings this can allocate. */
+    arena storage = { 0 };
+    execution_wire wire = { .data = data, .size = length, .reading = true, .storage = &storage };
+    header(&wire);
+    game_player_application read = { 0 };
+    application(&wire, &read);
+    if (wire.error) {
+        arena_free(&storage);
+        return fail(error, size, wire.error);
+    }
+    *app = read;
+    app->title = read.title ? xstrdup(read.title) : NULL;
+    app->icon = read.icon ? xstrdup(read.icon) : NULL;
+    arena_free(&storage);
+    return true;
+}
+void game_player_application_free(game_player_application *app)
+{
+    free(app->title);
+    free(app->icon);
+    *app = (game_player_application){ 0 };
 }
 game_player *game_player_open(
     const char *path,

@@ -119,6 +119,23 @@ content "content"
 start_scene "scenes/Main.kdl"
 ```
 
+An optional `application` block sets how the shipped game's window looks. Every
+field is optional: the title defaults to the project name, the size to 1280×720,
+and the icon is a PNG path relative to the project root.
+
+```kdl
+application {
+    title "My Game"
+    width 1600
+    height 900
+    fullscreen #false
+    icon "icon.png"
+}
+```
+
+`chibi-compile` stores these settings in the artifact and checks that the icon is
+a readable PNG. The player resolves the icon against its resource root.
+
 Create `content/scenes/Main.kdl`:
 
 ```kdl

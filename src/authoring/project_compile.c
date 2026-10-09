@@ -6,6 +6,7 @@
 #include "runtime/component_catalog.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,6 +67,21 @@ static bool backup_file(const char *path, char **backup)
     *backup = temporary;
     return true;
 }
+/* Creates the directories above `path` that do not exist yet. */
+static bool make_parents(const char *path)
+{
+    assert(path[0]);
+    char *directory = xstrdup(path);
+    bool valid = true;
+    for (char *slash = strchr(directory + 1, '/'); valid && slash;
+         slash = strchr(slash + 1, '/')) {
+        *slash = 0;
+        valid = !mkdir(directory, 0777) || errno == EEXIST;
+        *slash = '/';
+    }
+    free(directory);
+    return valid;
+}
 static bool write_artifact(
     const char *output,
     const authoring_project_artifact *artifact,
@@ -77,7 +93,10 @@ static bool write_artifact(
     char *manifest = xmalloc(length);
     snprintf(manifest, length, "%s.resources.json", output);
     const char *paths[] = { output, manifest };
-    char *temporary[] = { write_temporary(output, artifact->data, artifact->size), NULL };
+    char *temporary[] = { NULL, NULL };
+    if (make_parents(output)) {
+        temporary[0] = write_temporary(output, artifact->data, artifact->size);
+    }
     char *backups[2] = { 0 };
     bool published[2] = { 0 };
     bool valid = temporary[0] != NULL;

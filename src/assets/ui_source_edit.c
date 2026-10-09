@@ -111,7 +111,7 @@ static int change_order(const void *a, const void *b)
 static void join_changes(editing *e)
 {
     text_edit *c = e->changes;
-    qsort(c, (size_t)acount(c), sizeof *c, change_order);
+    asort(c, change_order);
     int kept = 0;
     for (int i = 0; i < acount(c); i++) {
         if (!kept || c[kept - 1].end < c[i].start) {

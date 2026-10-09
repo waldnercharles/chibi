@@ -21,6 +21,8 @@ enum
     SCRIPT_TYPE_RESULTS = 1u << 3,
     SCRIPT_TYPE_UNTYPED = 1u << 4,
     SCRIPT_TYPE_GENERIC = 1u << 5,
+    /* A task handle; its nominal names the function that started it, if known. */
+    SCRIPT_TYPE_TASK = 1u << 6,
 };
 enum
 {

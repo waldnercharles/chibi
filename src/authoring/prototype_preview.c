@@ -241,7 +241,12 @@ int game_prototype_preview_launch(
                 preview->live->runtime->now,
                 preview->live->runtime->delta
             ) != 0) {
-            snprintf(error, error_size, "prototype behavior Begin failed");
+            snprintf(
+                error,
+                error_size,
+                "prototype behavior Begin failed: %s",
+                game_source_error(preview->live->runtime->sources)
+            );
             clear_entity(preview);
             return ECS_ERR_COMMAND;
         }
@@ -372,7 +377,12 @@ int game_prototype_preview_start_scene(
             preview->live->runtime->now,
             preview->live->runtime->delta
         ) != 0) {
-        snprintf(error, error_size, "scene behavior Begin failed");
+        snprintf(
+            error,
+            error_size,
+            "scene behavior Begin failed: %s",
+            game_source_error(preview->live->runtime->sources)
+        );
         clear_entity(preview);
         return ECS_ERR_COMMAND;
     }

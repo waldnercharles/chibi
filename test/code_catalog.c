@@ -54,8 +54,8 @@ static void cross_library_rename()
 {
     char *definition_metadata = NULL, *caller_metadata = NULL;
     char *definition = identified_library(
-        "library Shared { pure function Seven() -> (Result: int) { result "
-        "Result: int = 7; } }",
+        "library Shared { pure function Seven() -> (Result: int) { return 7 } "
+        "}",
         NULL,
         "Seven",
         &definition_metadata
@@ -72,7 +72,7 @@ static void cross_library_rename()
     code_catalog *catalog = code_catalog_from_assets(one, 1);
     char *caller = identified_library(
         "library Caller { pure function Forward() -> (Result: int) { value "
-        "chosen = Shared.Seven(); result Result: int = chosen.Result; } }",
+        "chosen = Shared.Seven(); return chosen.Result } }",
         code_catalog_context(catalog),
         "Forward",
         &caller_metadata
@@ -203,7 +203,9 @@ static void prototype_inventory()
 
 static void snapshot_library_metadata()
 {
-    code_source *source = code_source_parse("library Shared { pure function Seven() -> (Result: int) { result Result: int = 7; } }");
+    code_source *source = code_source_parse(
+        "library Shared { pure function Seven() -> (Result: int) { return 7 } }"
+    );
     assert(source->asset);
     graph *function = behavior_asset_find_graph_by_name(source->asset, "Seven");
     assert(function);
@@ -222,7 +224,7 @@ static void snapshot_library_metadata()
     test_check(signature && signature->graph_id == 1000, "Snapshot library catalogs retain restored callable identities before loading consumers");
     char error[256];
     behavior_asset *consumer = restored
-                                 ? code_catalog_load_behavior(catalog, "behavior Consumer { value chosen = Shared.Seven(); }", error, sizeof error)
+                                 ? code_catalog_load_behavior(catalog, "behavior Consumer { local chosen = Shared.Seven(); }", error, sizeof error)
                                  : NULL;
     bool resolved = false;
     for (int i = 0; consumer && i < acount(consumer->graph->nodes); i++) {
@@ -284,7 +286,7 @@ static void typed_references()
     );
     context.reference_count = 1;
     source = code_source_parse_context(
-        "behavior ComponentRef { value read = get_component(Component: "
+        "behavior ComponentRef { local read = get_component(Component: "
         "GameVelocity, Entity: self); }",
         NULL,
         &context
@@ -306,15 +308,15 @@ void run_code_catalog_checks()
     cross_library_rename();
     const char
         *alpha = "library Alpha { pure function Forward() -> (Result: int) { "
-                 "value chosen = Zulu.Seven(); result Result: int = "
-                 "chosen.Result; } }";
+                 "local chosen = Zulu.Seven(); return "
+                 "chosen.Result } }";
     const char
         *zulu = "library Zulu { pure function Seven() -> (Result: int) { "
-                "result Result: int = 7; } }";
+                "return 7 } }";
     const char
-        *consumer = "behavior Consumer { value chosen = Alpha.Forward(); }";
+        *consumer = "behavior Consumer { local chosen = Alpha.Forward(); }";
     const char
-        *system = "system ConsumerSystem { value chosen = Alpha.Forward(); }";
+        *system = "system ConsumerSystem { local chosen = Alpha.Forward(); }";
     char root[] = "/tmp/chibi-code-catalog-XXXXXX";
     assert(mkdtemp(root));
     const char *folders[] = { "libraries", "behaviors", "systems" };

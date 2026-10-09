@@ -29,6 +29,26 @@ static bool failure(char *error, size_t size, const char *message)
     }
     return false;
 }
+/* Closes `file` and returns its contents when it holds 1 to IMAGE_BYTES_MAX
+ * bytes. */
+static void *read_file(FILE *file, int *length)
+{
+    bool valid = !fseek(file, 0, SEEK_END);
+    long bytes = valid ? ftell(file) : -1;
+    valid = bytes > 0 && bytes <= IMAGE_BYTES_MAX && !fseek(file, 0, SEEK_SET);
+    unsigned char *data = valid ? xmalloc((size_t)bytes) : NULL;
+    if (valid) {
+        valid = fread(data, 1, (size_t)bytes, file) == (size_t)bytes &&
+                fgetc(file) == EOF;
+    }
+    valid = fclose(file) == 0 && valid;
+    if (!valid) {
+        free(data);
+        return NULL;
+    }
+    *length = (int)bytes;
+    return data;
+}
 static void *read_bytes(const char *key, int *length)
 {
     if (!key || strncmp(key, "content/", 8) || strstr(key, "..") || strchr(key, '\\')) {
@@ -40,24 +60,9 @@ static void *read_bytes(const char *key, int *length)
         snprintf(path, size, "%s/%s", roots[i], key + 8);
         FILE *file = fopen(path, "rb");
         free(path);
-        if (!file) {
-            continue;
+        if (file) {
+            return read_file(file, length);
         }
-        bool valid = !fseek(file, 0, SEEK_END);
-        long bytes = valid ? ftell(file) : -1;
-        valid = bytes > 0 && bytes <= IMAGE_BYTES_MAX && !fseek(file, 0, SEEK_SET);
-        unsigned char *data = valid ? xmalloc((size_t)bytes) : NULL;
-        if (valid) {
-            valid = fread(data, 1, (size_t)bytes, file) == (size_t)bytes &&
-                    fgetc(file) == EOF;
-        }
-        valid = fclose(file) == 0 && valid;
-        if (!valid) {
-            free(data);
-            return NULL;
-        }
-        *length = (int)bytes;
-        return data;
     }
     return NULL;
 }
@@ -103,6 +108,22 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
         return failure(error, size, png ? chibi_image_cp_error_reason : chibi_image_cj_error_reason);
     }
     *out = (shader_image_view){ pixels, width, height };
+    return true;
+}
+bool image_prepare_png_valid(const char *path, char *error, size_t size)
+{
+    int length = 0;
+    FILE *file = fopen(path, "rb");
+    void *bytes = file ? read_file(file, &length) : NULL;
+    if (!bytes) {
+        return failure(error, size, "Cannot read bounded image file");
+    }
+    chibi_image_cp_image_t image = chibi_image_cp_load_png_mem(bytes, length);
+    free(bytes);
+    if (!image.pix) {
+        return failure(error, size, chibi_image_cp_error_reason);
+    }
+    chibi_image_cp_free_png(&image);
     return true;
 }
 bool render_image_mount_content(const char *root, char *error, size_t size)

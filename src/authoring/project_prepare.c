@@ -182,7 +182,7 @@ void authoring_project_artifact_free(authoring_project_artifact *artifact)
     free(artifact->manifest);
     *artifact = (authoring_project_artifact){ 0 };
 }
-/* The window icon ships beside the artifact, so it must be a readable PNG. */
+/* The window icon ships beside the artifact, so it must decode as a PNG. */
 static bool application_icon_valid(const chibi_project *project, char *error, size_t size)
 {
     const char *icon = project->application.icon;
@@ -192,18 +192,11 @@ static bool application_icon_valid(const chibi_project *project, char *error, si
     size_t length = strlen(project->root) + strlen(icon) + 2;
     char *path = xmalloc(length);
     snprintf(path, length, "%s/%s", project->root, icon);
-    static const unsigned char png[8] = { 0x89, 'P',  'N',  'G',
-                                          '\r', '\n', 0x1a, '\n' };
-    unsigned char magic[8] = { 0 };
-    FILE *file = fopen(path, "rb");
-    bool valid = file && fread(magic, 1, sizeof magic, file) == sizeof magic &&
-                 !memcmp(magic, png, sizeof png);
-    if (file) {
-        fclose(file);
-    }
+    char reason[128];
+    bool valid = image_prepare_png_valid(path, reason, sizeof reason);
     free(path);
     if (!valid && size) {
-        snprintf(error, size, "Application icon is not a readable PNG: %s", icon);
+        snprintf(error, size, "Application icon is not a readable PNG: %s: %s", icon, reason);
     }
     return valid;
 }

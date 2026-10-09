@@ -48,6 +48,7 @@ struct source_catalog
     source_catalog_diagnostic *diagnostics;
     script_catalog_capability *capabilities;
     input_action *input;
+    int native_capabilities;
     size_t bytes;
     int files, entries;
     int values;
@@ -152,9 +153,9 @@ static script_type event_type(source_catalog *c, const av_value *variable)
     }
     return type;
 }
-static const script_catalog_capability *find_event(const source_catalog *c, const char *name)
+static const script_catalog_capability *find_event(const source_catalog *c, const char *name, int count)
 {
-    for (int i = 0; i < c->view.capability_count; i++) {
+    for (int i = 0; i < count; i++) {
         const script_catalog_capability *value = &c->view.capabilities[i];
         if (value->kind == SCRIPT_CAPABILITY_EVENT && !strcmp(value->name, name)) {
             return value;
@@ -164,7 +165,7 @@ static const script_catalog_capability *find_event(const source_catalog *c, cons
 }
 static void named_event(source_catalog *c, const char *path, const char *name)
 {
-    if (!name || !*name || find_event(c, name)) {
+    if (!name || !*name || find_event(c, name, c->view.capability_count)) {
         return;
     }
     capability(
@@ -567,13 +568,14 @@ static bool has_global(const source_catalog *c, const char *name)
     }
     return false;
 }
-/* Each action is an event of its own, so pressing a control that takes an
- * existing event's name would dispatch that event instead. Reports each. */
+/* Each action is the event of its name, so an action named like a host
+ * event (Tick, Begin, ...) would dispatch that event when pressed. Project
+ * events may share an action's name: both raise the same event. */
 static bool actions_unclaimed(source_catalog *c, const char *path)
 {
     bool unclaimed = true;
     for (int i = 0; i < acount(c->input); i++) {
-        const script_catalog_capability *event = find_event(c, c->input[i].name);
+        const script_catalog_capability *event = find_event(c, c->input[i].name, c->native_capabilities);
         if (!event) {
             continue;
         }
@@ -895,6 +897,7 @@ static source_catalog *build(
         error(c, root, (script_range){ 0 }, "Cannot retain native declaration defaults");
         return c;
     }
+    c->native_capabilities = c->view.capability_count;
     if (edit_count > MAX_SOURCES) {
         error(c, root, (script_range){ 0 }, "Executable edit count limit exceeded");
         return c;

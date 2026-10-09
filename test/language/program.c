@@ -2811,6 +2811,23 @@ TEST_CASE(program_input_actions_read_through_typed_names)
         script_catalog_find_capability(source_catalog_view(clashing), "Jump", SCRIPT_CAPABILITY_EVENT) < 0
     );
     source_catalog_free(clashing);
+    /* A project event may share an action's name: both raise that event. */
+    char events[256], event[256];
+    snprintf(events, sizeof events, "%s/events", root);
+    snprintf(event, sizeof event, "%s/Jump.kdl", events);
+    REQUIRE(!mkdir(events, 0700));
+    FILE *file = fopen(event, "wb");
+    REQUIRE(file);
+    fputs("version 3\nname \"Jump\"\ndomain \"event\"\n", file);
+    fclose(file);
+    source_catalog *shared = source_catalog_new(root, &native);
+    REQUIRE(!source_catalog_diagnostic_count(shared));
+    REQUIRE(
+        script_catalog_find_capability(source_catalog_view(shared), "Jump", SCRIPT_CAPABILITY_EVENT) >= 0
+    );
+    source_catalog_free(shared);
+    unlink(event);
+    rmdir(events);
     remove_input_project(root);
     REQUIRE(!source_catalog_diagnostic_count(project));
     const script_catalog *view = source_catalog_view(project);

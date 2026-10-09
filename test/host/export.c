@@ -54,10 +54,13 @@ static bool executable(const char *relative)
     return access(path, X_OK) == 0;
 }
 
-/* Only the named entries remain in the root: no staging folder is left. */
-static int entries()
+/* Entries in a folder under the root, to show no staging or partial file is
+ * left. */
+static int entries(const char *relative)
 {
-    DIR *dir = opendir(root);
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s", root, relative);
+    DIR *dir = opendir(path);
     int count = 0;
     struct dirent *entry;
     while ((entry = readdir(dir))) {
@@ -195,6 +198,7 @@ TEST_CASE(export_assembles_a_runnable_folder)
         20
     ));
     REQUIRE(has("apps/Game.app.tar.gz", NULL));
+    int archived_entries = entries("apps");
     /* A tar that cannot run leaves the earlier archive in place. */
     char path[4096];
     snprintf(path, sizeof path, "%s", getenv("PATH"));
@@ -202,7 +206,7 @@ TEST_CASE(export_assembles_a_runnable_folder)
     bool archived = export_as("apps/Game", CHIBI_EXPORT_APP, true);
     setenv("PATH", path, 1);
     REQUIRE(!archived && has("apps/Game.app.tar.gz", NULL));
-    REQUIRE(!has("apps/Game.app.tar.gz.partial", NULL));
+    REQUIRE(entries("apps") == archived_entries);
 
     /* Without a title, people see the project name. */
     title = NULL;
@@ -230,7 +234,7 @@ TEST_CASE(export_assembles_a_runnable_folder)
     remove_at("project/fail");
     remove_at("project/art/sheet.bin");
     REQUIRE(!export_to("broken"));
-    REQUIRE(entries() == 5); /* sdk, project, out, apps and mine */
+    REQUIRE(entries(".") == 5); /* sdk, project, out, apps and mine */
 
     char command[600];
     snprintf(command, sizeof command, "rm -rf '%s'", root);

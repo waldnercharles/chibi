@@ -557,10 +557,21 @@ static bool publish(const char *staging, const char *output)
  * earlier archive in place. */
 static bool archive(const char *output)
 {
-    size_t size = strlen(output) + sizeof ".tar.gz.partial";
+    size_t size = strlen(output) + sizeof ".tar.gz.XXXXXX";
     char *path = xmalloc(size), *partial = xmalloc(size);
     snprintf(path, size, "%s.tar.gz", output);
-    snprintf(partial, size, "%s.tar.gz.partial", output);
+    /* A new file of its own, so concurrent exports and a planted link
+     * cannot receive this archive. */
+    snprintf(partial, size, "%s.tar.gz.XXXXXX", output);
+    int fd = mkstemp(partial);
+    if (fd < 0) {
+        failed(strerror(errno), partial);
+        free(partial);
+        free(path);
+        return false;
+    }
+    fchmod(fd, 0644);
+    close(fd);
     char *parent = xstrdup(output);
     char *slash = strrchr(parent, '/');
     const char *base = slash ? slash + 1 : output;

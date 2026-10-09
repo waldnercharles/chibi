@@ -5505,14 +5505,22 @@ static int find_prototype(
             family->folder,
             entry->d_name
         );
-        char *text = NULL, ignored[256];
+        char *text = NULL, reason[256];
         size_t candidate_bytes;
         uint64_t candidate_hash;
-        if (read_asset_file(root, &candidate, &text, &candidate_bytes, &candidate_hash, ignored, sizeof ignored) !=
-                CHIBI_AUTOMATION_OK ||
-            strcmp(candidate.name, name)) {
+        int loaded = read_asset_file(root, &candidate, &text, &candidate_bytes, &candidate_hash, reason, sizeof reason);
+        if (loaded == CHIBI_AUTOMATION_NOT_FOUND ||
+            (loaded == CHIBI_AUTOMATION_OK && strcmp(candidate.name, name))) {
             free(text);
             continue;
+        }
+        /* A file the search cannot read could declare the name too. */
+        if (loaded != CHIBI_AUTOMATION_OK) {
+            set_error(error, error_size, reason);
+            free(*json);
+            *json = NULL;
+            status = loaded;
+            break;
         }
         if (status == CHIBI_AUTOMATION_OK) {
             snprintf(

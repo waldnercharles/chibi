@@ -549,6 +549,16 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     REQUIRE(unlink(copy) == 0);
     write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n");
     REQUIRE(validate() != 0 && errors() == 1);
+    /* A file the search cannot read fails it, since that file could declare
+     * the name too. Reads refuse a linked prototype folder. */
+    char linked[256];
+    path(linked, sizeof linked, "game/content/linked");
+    REQUIRE(rename(folder, linked) == 0 && symlink("linked", folder) == 0);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"enemies/grunt\"}") !=
+        0
+    );
+    REQUIRE(reads(failure(), "asset directory is not a directory: prototypes"));
     return true;
 }
 

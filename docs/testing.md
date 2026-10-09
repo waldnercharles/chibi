@@ -180,12 +180,13 @@ and keeps its include through `--format`, while a missing include is
 reported and the included prototype's behaviors stay its own references; a
 prototype is found by the name it declares, even when another file bears that
 name or the name could not name a file, `new_asset` refuses a declared name,
-and two declarations of one name are reported; a scene runs as a scenario in a
-project that has a material; and in a project whose manifest names another
-content folder, assets are scaffolded, validated, run, formatted, found and
-reported there under their `content/` paths, and `status` names that folder
-even once the project is too old to open. A few short `chibi_ctl` runs, CPU
-only; the project is removed afterwards.
+two declarations of one name are reported, and a file the search cannot read
+fails it; a scene runs as a scenario in a project that has a material; and in
+a project whose manifest names another content folder, assets are
+scaffolded, validated, run, formatted, found and reported there under their
+`content/` paths, and `status` names that folder even once the project is too
+old to open. A few short `chibi_ctl` runs, CPU only; the project is removed
+afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,

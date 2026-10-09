@@ -6,14 +6,17 @@
 #include "assets/scene_document.h"
 #include "authoring/application_catalog.h"
 #include "authoring/language_catalog.h"
+#include "authoring/project_prepare_internal.h"
 #include "authoring/source_catalog.h"
 #include "runtime/behaviors/entities_definition.h"
 #include "runtime/component_catalog.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <assert.h>
 #include <dirent.h>
 #include <limits.h>
 #include <stdio.h>
@@ -49,7 +52,7 @@ typedef struct
 typedef struct
 {
     char *name;
-    char **behaviors;
+    char **behaviors, **includes;
 } prototype_entry;
 
 static char project_root[PATH_MAX], content_root[PATH_MAX];
@@ -282,50 +285,76 @@ static void reach_behavior(const char *name)
     }
 }
 
-static void reach_prototype(const char *name)
+/* Reaches the named prototype with its behaviors and the prototypes it
+ * includes. Returns whether it reached it now. */
+static bool reach_prototype(const char *name)
 {
-    if (listed(reached_prototypes, name)) {
-        return;
-    }
-    apush(reached_prototypes, xstrdup(name));
     for (int i = 0; i < acount(prototypes); i++) {
-        for (int j = 0; !strcmp(prototypes[i].name, name) &&
-                        j < acount(prototypes[i].behaviors);
-             j++) {
-            reach_behavior(prototypes[i].behaviors[j]);
+        prototype_entry *prototype = &prototypes[i];
+        if (strcmp(prototype->name, name)) {
+            continue;
         }
+        if (listed(reached_prototypes, name)) {
+            return false;
+        }
+        apush(reached_prototypes, xstrdup(prototype->name));
+        for (int j = 0; j < acount(prototype->behaviors); j++) {
+            reach_behavior(prototype->behaviors[j]);
+        }
+        for (int j = 0; j < acount(prototype->includes); j++) {
+            reach_prototype(prototype->includes[j]);
+        }
+        return true;
     }
+    return false;
 }
 
+/* The names in a prototype document's includes, owned by the caller. */
+static char **prototype_includes(const char *text)
+{
+    char error[256];
+    av_doc *document = av_doc_read(text, error, sizeof error);
+    assert(document); /* project_prepare_prototypes already read it. */
+    const av_value *includes = av_obj_get(av_doc_root(document), "includes");
+    char **names = NULL;
+    for (size_t i = 0; includes && i < av_arr_size(includes); i++) {
+        apush(names, xstrdup(av_get_str(av_arr_get(includes, i))));
+    }
+    av_doc_free(document);
+    return names;
+}
+
+/* Loads the prototypes as project preparation does, so includes resolve. */
 static void use_prototypes()
 {
     game_prototype_registry registry = {
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
-    char **paths = directory_files("prototypes");
-    for (int i = 0; i < acount(paths); i++) {
-        char *text = tool_read(paths[i]);
-        char error[256];
-        game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
-        if (!prototype) {
-            fprintf(stderr, "%s: %s\n", paths[i], error);
+    project_prototype *values = NULL;
+    char error[256];
+    if (!project_prepare_prototypes(content_root, &registry, &values, error, sizeof error)) {
+        fprintf(stderr, "%s/prototypes: %s\n", content_root, error);
+        problems++;
+    }
+    for (int i = 0; i < acount(values); i++) {
+        const game_prototype *prototype = values[i].prototype;
+        if (!prototype) { /* Loading stopped at an earlier failure. */
+            continue;
         }
-        problems += !prototype;
-        for (int j = 0; prototype && j < acount(prototype->components); j++) {
+        for (int j = 0; j < acount(prototype->components); j++) {
             use_component_name(prototype->components[j].desc->name);
         }
-        if (prototype) {
-            prototype_entry item = { .name = xstrdup(prototype->name) };
-            for (int j = 0; j < acount(prototype->graphs); j++) {
-                apush(item.behaviors, xstrdup(prototype->graphs[j]));
-            }
-            apush(prototypes, item);
+        prototype_entry item = {
+            .name = xstrdup(prototype->name),
+            .includes = prototype_includes(values[i].text),
+        };
+        for (int j = 0; j < acount(prototype->graphs); j++) {
+            apush(item.behaviors, xstrdup(prototype->graphs[j]));
         }
-        game_prototype_free(prototype);
-        free(text);
+        apush(prototypes, item);
     }
-    free_paths(paths);
+    project_prepare_prototypes_free(values);
 }
 
 static void use_scene_components(const av_value *components)
@@ -433,8 +462,7 @@ static bool reach_spawned(
             argument->range.end - argument->range.start - 2,
             source->text + argument->range.start + 1
         );
-        reached |= !listed(reached_prototypes, name);
-        reach_prototype(name);
+        reached |= reach_prototype(name);
     }
     return reached;
 }
@@ -510,6 +538,7 @@ static void free_reach()
     for (int i = 0; i < acount(prototypes); i++) {
         free(prototypes[i].name);
         free_paths(prototypes[i].behaviors);
+        free_paths(prototypes[i].includes);
     }
     afree(prototypes);
     free_paths(reached_prototypes);

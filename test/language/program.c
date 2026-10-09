@@ -2788,7 +2788,7 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
         fputs(files[i][1], file);
         fclose(file);
     }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 15);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
     const char *expected[] = {
         NULL,

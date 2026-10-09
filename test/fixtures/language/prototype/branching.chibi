@@ -5,15 +5,15 @@ behavior Branching {
     intensity := 0
 
     on Tick(dt) {
-        if (!paused && active) {
+        if !paused && active {
             elapsed += dt
         }
 
-        if (paused || !active) {
+        if paused || !active {
             intensity = 0
-        } else if (elapsed < 1) {
+        } else if elapsed < 1 {
             intensity = 0.25
-        } else if (elapsed >= 1 && elapsed < 3) {
+        } else if elapsed >= 1 && elapsed < 3 {
             intensity = 0.75
         } else {
             intensity = 1

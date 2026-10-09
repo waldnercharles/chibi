@@ -26,6 +26,7 @@
 #include "authoring/source_format.h"
 #include "authoring/source_intelligence.h"
 #include "authoring/source_metadata.h"
+#include "authoring/source_minimize.h"
 #include "authoring/source_presentation.h"
 #include "authoring/source_references.h"
 #include "authoring/source_rename.h"
@@ -5220,14 +5221,33 @@ static bool save_code_metadata(const char *path, const char *text, const char *m
 
 /* Formatting and optional identity remapping consume exact syntax snapshots. */
 #define CANONICAL_SOURCE_MAX_BYTES (8 * 1024 * 1024)
-static char *canonical_source(const char *text, const char *path, char **metadata, char *error, size_t error_size)
+static char *canonical_source(
+    const source_catalog *sources,
+    const char *text,
+    const char *path,
+    char **metadata,
+    char *error,
+    size_t error_size
+)
 {
     if (strlen(text) > CANONICAL_SOURCE_MAX_BYTES) {
         set_error(error, error_size, "source exceeds formatter byte limit");
         return NULL;
     }
     script_syntax *source = script_parse(text);
-    char *saved = authoring_source_format(source, error, error_size);
+    const char *identity = NULL;
+    for (int i = 0; i < source_catalog_source_count(sources); i++) {
+        const source_catalog_source *entry = source_catalog_source_at(sources, i);
+        if (!strcmp(entry->path, path)) {
+            identity = entry->identity;
+        }
+    }
+    char *minimal = identity
+                      ? authoring_source_minimize(text, source_catalog_view(sources), identity)
+                      : xstrdup(text);
+    script_syntax *shortened = script_parse(minimal);
+    free(minimal);
+    char *saved = authoring_source_format(shortened, error, error_size);
     if (saved) {
         size_t length = strlen(path) + sizeof ".meta";
         char *sidecar_path = xmalloc(length);
@@ -5245,6 +5265,7 @@ static char *canonical_source(const char *text, const char *path, char **metadat
         }
         free(sidecar);
     }
+    script_syntax_free(shortened);
     script_syntax_free(source);
     return saved;
 }
@@ -5252,6 +5273,7 @@ static char *canonical_source(const char *text, const char *path, char **metadat
 /* Owned canonical file text for one asset, produced by its native loader and
  * saver. */
 static char *canonical_asset(
+    const source_catalog *sources,
     const asset_family *family,
     const char *json,
     const char *path,
@@ -5264,7 +5286,7 @@ static char *canonical_asset(
     switch (family->loader) {
         case ASSET_GRAPH: {
             if (!strcmp(family->extension, CODE_ASSET_EXTENSION)) {
-                return canonical_source(json, path, metadata, error, error_size);
+                return canonical_source(sources, json, path, metadata, error, error_size);
             }
             behavior_asset *asset = behavior_asset_load(json);
             if (!asset) {
@@ -5283,7 +5305,7 @@ static char *canonical_asset(
             return text;
         }
         case ASSET_SYSTEM:
-            return canonical_source(json, path, metadata, error, error_size);
+            return canonical_source(sources, json, path, metadata, error, error_size);
         case ASSET_PROTOTYPE: {
             game_prototype_registry registry = {
                 .components = GAME_REGISTRY_COMPONENTS,
@@ -5331,6 +5353,17 @@ int chibi_automation_format_assets(const char *root, bool check)
         fprintf(stderr, "chibi_ctl --format: %s\n", error);
         return -1;
     }
+    authoring_language_catalog *native = source_native_catalog(root, error, sizeof error);
+    if (!native) {
+        fprintf(stderr, "chibi_ctl --format: %s\n", error);
+        free_asset_entries(entries);
+        return -1;
+    }
+    size_t length = strlen(root) + sizeof "/content";
+    char *content = xmalloc(length);
+    snprintf(content, length, "%s/content", root);
+    source_catalog *sources = source_catalog_new(content, authoring_language_catalog_view(native));
+    free(content);
     int differing = 0;
     for (int i = 0; i < acount(entries) && differing >= 0; i++) {
         if (entries[i].family->loader == ASSET_UI) {
@@ -5344,7 +5377,7 @@ int chibi_automation_format_assets(const char *root, bool check)
         char *json = read_file(path, &bytes, &hash, error, sizeof error);
         char *metadata = NULL;
         char *text = json
-                       ? canonical_asset(entries[i].family, json, path, &metadata, error, sizeof error)
+                       ? canonical_asset(sources, entries[i].family, json, path, &metadata, error, sizeof error)
                        : NULL;
         if (text && strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
             char *disk = asset_text_to_disk(text, error, sizeof error);
@@ -5386,6 +5419,8 @@ int chibi_automation_format_assets(const char *root, bool check)
         free(json);
         free(path);
     }
+    source_catalog_free(sources);
+    authoring_language_catalog_free(native);
     free_asset_entries(entries);
     return differing;
 }

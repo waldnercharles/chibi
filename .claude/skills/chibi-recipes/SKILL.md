@@ -72,16 +72,20 @@ The smallest complete example is Play Sound:
 
 ## Change saved projects (migration)
 
-Projects saved at another version don't load: the loader rejects any
-`version` other than `CHIBI_PROJECT_VERSION`. Migrate assets directly; there
-are no compatibility aliases (see the first rule in `AGENTS.md`).
+A project saved at an older version loads only after `--migrate` upgrades
+it; there are no compatibility aliases (see the first rule in `AGENTS.md`).
 
-1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h`.
-2. Edit every project the change reaches to the new format and set its
-   `project.kdl` `version`: every `project.kdl` under `test/fixtures`, and the
-   game and Studio repositories (`chibi-voidweaver`, `chibi-celeste`,
-   `chibi-studio/projects`), each in its own PR that names the engine PR it
-   needs.
-3. Cover the new format with a pico_unit case that loads a small project.
+1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
+   that upgrades the previous version to the `switch` in
+   `src/assets/project_migrate.c`. Steps are idempotent and stage every
+   source before replacing any.
+2. Cover the step with a pico_unit case that migrates a small old-format
+   source and checks the result (see `program_version_11_references_migrate_to_values`
+   in `test/language/program.c`).
+3. Migrate every project the change reaches with
+   `build/bin/chibi_ctl --project-root <root> --migrate`: every `project.kdl`
+   under `test/fixtures`, and the game and Studio repositories
+   (`chibi-voidweaver`, `chibi-celeste`, `chibi-studio/projects`), each in
+   its own PR that names the engine PR it needs.
 4. Run `chibi_ctl --format` on each migrated project and compile it with
    `chibi-compile` to prove it still loads.

@@ -196,11 +196,13 @@ static bool build(declared_components *c, int index, const declared_component *i
                          .fields = fields,
                          .field_count = count };
     c->spellings[index] = spellings;
+    uint64_t layout = type_layout_hash(type);
     c->descs[index] = (ecs_component_desc){ .id = script_catalog_id("component", name),
                                             .key = name,
                                             .name = name,
                                             .element_size = type->size,
                                             .type = type,
+                                            .layout_hash = layout,
                                             .index = ECS_INDEX_DENSE };
     uint64_t id = script_catalog_id("type", name);
     c->script_types[index] = (script_catalog_type){
@@ -212,7 +214,7 @@ static bool build(declared_components *c, int index, const declared_component *i
         .fields = script_fields,
         .field_count = count,
         .size = type->size,
-        .layout = type_layout_hash(type),
+        .layout = layout,
         .component_id = c->descs[index].id,
         .component = true,
     };

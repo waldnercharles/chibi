@@ -90,6 +90,29 @@ the list out to keep the prototype's behaviors.
 }
 ```
 
+An entity's `children` are entities placed under it: each is `ChildOf` its
+parent, and its `Transform` is relative to the parent's placement. A name must
+be unique among its siblings and cannot contain `.`; a path such as
+`Ship.Turret` names a nested entity, for example as a scenario target.
+
+```kdl
+(array)entities {
+    - {
+        name "Ship"
+        prototype "Ship"
+        (array)children {
+            - {
+                name "Turret"
+                prototype "Turret"
+                components {
+                    GameTransform x=0.0 y=-12.0
+                }
+            }
+        }
+    }
+}
+```
+
 ## Edit and verify
 
 1. Read the existing asset and its dependencies. Use the shared SDK's reflected

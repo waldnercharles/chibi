@@ -227,8 +227,60 @@ TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own)
     REQUIRE(saved);
     reloaded = game_scene_document_load(saved, error, sizeof error);
     REQUIRE(reloaded && keeps_prototype_behaviors(reloaded));
-    REQUIRE(game_scene_document_add_entity(reloaded, "Added", "Mover") == 0);
+    REQUIRE(game_scene_document_add_entity(reloaded, -1, "Added", "Mover") == 0);
     REQUIRE(!alast(reloaded->entities).own_behaviors);
+    return true;
+}
+
+static bool at_path(const game_scene_document *document, const char *path, const char *prototype)
+{
+    int index = game_scene_document_entity_index(document, path);
+    if (index < 0 || strcmp(document->entities[index].prototype, prototype)) {
+        return false;
+    }
+    char *named = game_scene_document_entity_path(document, index);
+    bool same = !strcmp(named, path);
+    free(named);
+    return same;
+}
+
+/* Children nest under their parent, are named by path, and save back nested
+ * in the same order. */
+TEST_CASE(scene_children_nest_by_path)
+{
+    char error[192];
+    const char
+        *text = "version 1\nname \"Fleet\"\n(array)entities {\n"
+                "    - name=\"Ship\" prototype=\"Hull\" { (array)children {\n"
+                "        - name=\"Turret\" prototype=\"Gun\" { (array)children "
+                "{\n"
+                "            - name=\"Barrel\" prototype=\"Tube\"; }; }\n"
+                "        - name=\"Light\" prototype=\"Lamp\"; }; }\n"
+                "    - name=\"Turret\" prototype=\"Gun\"\n"
+                "}\n";
+    scene = game_scene_document_load(text, error, sizeof error);
+    REQUIRE(scene && acount(scene->entities) == 5);
+    REQUIRE(at_path(scene, "Ship", "Hull") && at_path(scene, "Ship.Turret.Barrel", "Tube"));
+    REQUIRE(at_path(scene, "Ship.Light", "Lamp") && at_path(scene, "Turret", "Gun"));
+    REQUIRE(scene->entities[game_scene_document_entity_index(scene, "Turret")].parent == -1);
+    REQUIRE(game_scene_document_entity_index(scene, "Barrel") < 0);
+    REQUIRE(game_scene_document_entity_index(scene, "Ship..Light") < 0);
+    /* Names are unique among siblings and cannot hold the separator. */
+    int ship = game_scene_document_entity_index(scene, "Ship");
+    REQUIRE(game_scene_document_add_entity(scene, ship, "Light", "Lamp") != 0);
+    REQUIRE(game_scene_document_add_entity(scene, ship, "Port.Light", "Lamp") != 0);
+    REQUIRE(game_scene_document_rename_entity(scene, ship + 1, "Light", error, sizeof error) != 0);
+    REQUIRE(game_scene_document_add_entity(scene, ship, "Shield", "Dome") == 0);
+    saved = game_scene_document_save(scene, (ecs_component_catalog){ 0 });
+    reloaded = game_scene_document_load(saved, error, sizeof error);
+    REQUIRE(reloaded && acount(reloaded->entities) == 6);
+    /* The appended child saves among its siblings, ahead of the later root. */
+    REQUIRE(game_scene_document_entity_index(reloaded, "Ship.Shield") == 4);
+    /* Removing a parent removes its descendants and keeps the rest in place. */
+    REQUIRE(game_scene_document_remove_entity(reloaded, 1) == 0);
+    REQUIRE(acount(reloaded->entities) == 4);
+    REQUIRE(at_path(reloaded, "Ship.Light", "Lamp") && at_path(reloaded, "Ship.Shield", "Dome"));
+    REQUIRE(at_path(reloaded, "Turret", "Gun"));
     return true;
 }
 
@@ -237,6 +289,7 @@ void test_prototype_document()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence);
     RUN_TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own);
+    RUN_TEST_CASE(scene_children_nest_by_path);
     RUN_TEST_CASE(derived_components_are_never_authored_or_captured);
     pu_clear_setup();
 }

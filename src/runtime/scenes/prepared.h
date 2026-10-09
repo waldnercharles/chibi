@@ -3,7 +3,7 @@
 #include "ecs/component_catalog.h"
 #include "runtime/scenes/scene.h"
 
-#define GAME_SCENE_PREPARED_VERSION UINT64_C(2)
+#define GAME_SCENE_PREPARED_VERSION UINT64_C(3)
 
 /* Versioned field-wise scene/prototype records. Stable component IDs, names,
  * sizes and reflected layout hashes are verified against the explicit catalog.

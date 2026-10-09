@@ -538,6 +538,22 @@ static void *grow(source_catalog *c, const void *items, int count, int extra, si
     memcpy(grown, items, (size_t)count * size);
     return grown;
 }
+/* An edit of the input map replaces the file, and one without text removes
+ * it. */
+static char *input_text(source_catalog *c, const char *path)
+{
+    for (int i = 0; i < c->edit_count; i++) {
+        if (c->edits[i].path && !strcmp(c->edits[i].path, path)) {
+            c->edit_used[i] = true;
+            return c->edits[i].text ? edited_source(c, path, c->edits[i].text) : NULL;
+        }
+    }
+    struct stat info;
+    if (lstat(path, &info) && errno == ENOENT) {
+        return NULL;
+    }
+    return read_source(c, path);
+}
 /* The input map's actions are events, and `input.<Action>` reads one: an
  * InputMap field per action holds its name, whose InputAction type reads
  * held and pressed through the native input capabilities. */
@@ -545,11 +561,7 @@ static void input_declarations(source_catalog *c)
 {
     char path[MAX_PATH];
     snprintf(path, sizeof path, "%s/" INPUT_MAP_FILE, c->root);
-    struct stat info;
-    if (lstat(path, &info) && errno == ENOENT) {
-        return;
-    }
-    char *text = read_source(c, path);
+    char *text = input_text(c, path);
     char message[192];
     if (!text || !input_map_read(text, &c->input, message, sizeof message)) {
         if (text) {
@@ -777,6 +789,9 @@ bool source_catalog_edit_path(const char *root, const char *path)
     if (depth > MAX_DEPTH) {
         return false;
     }
+    if (!strcmp(relative, INPUT_MAP_FILE)) {
+        return true;
+    }
     const char *folders[] = { "events/", "prototypes/", "scenes/", "ui/" };
     for (int i = 0; i < 4; i++) {
         const char *extension = i == 3 ? ".rml" : DECLARATIVE_ASSET_EXTENSION;
@@ -875,12 +890,12 @@ static source_catalog *build(
         }
         scan(c, path, 0, kinds[i]);
     }
+    input_declarations(c);
     for (int i = 0; i < edit_count; i++) {
         if (!c->edit_used[i] && edits[i].text) {
             load_file(c, edits[i].path, edit_kind(root, edits[i].path));
         }
     }
-    input_declarations(c);
     free(c->edit_used);
     c->edit_used = NULL;
     c->edits = NULL;

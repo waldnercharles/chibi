@@ -2609,6 +2609,26 @@ TEST_CASE(program_input_actions_read_through_typed_names)
     char root[] = "/tmp/chibi-input-XXXXXX";
     REQUIRE(input_project(root, "Jump {\n    (array)sources \"Space\"\n}\n"));
     source_catalog *project = source_catalog_new(root, &native);
+    /* An unsaved edit of the map replaces the file, and one without text
+     * removes it. */
+    char map[256];
+    snprintf(map, sizeof map, "%s/" INPUT_MAP_FILE, root);
+    source_catalog_edit edits[] = {
+        { .path = map, .text = "Dash {\n    (array)sources \"X\"\n}\n" },
+        { .path = map },
+    };
+    for (int i = 0; i < 2; i++) {
+        source_catalog *edited = source_catalog_edited(root, &native, &edits[i], 1);
+        const script_catalog *edited_view = source_catalog_view(edited);
+        REQUIRE(!source_catalog_diagnostic_count(edited));
+        REQUIRE(script_catalog_find_capability(edited_view, "Jump", SCRIPT_CAPABILITY_EVENT) < 0);
+        REQUIRE(
+            (script_catalog_find_capability(edited_view, "Dash", SCRIPT_CAPABILITY_EVENT) >=
+             0) == !i
+        );
+        REQUIRE(acount(source_catalog_input(edited)) == !i);
+        source_catalog_free(edited);
+    }
     remove_input_project(root);
     REQUIRE(!source_catalog_diagnostic_count(project));
     const script_catalog *view = source_catalog_view(project);

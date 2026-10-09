@@ -130,7 +130,9 @@ jobs:
 
   studio-windows:
     name: Studio build (Windows)
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: windows-2022
     # Studio on Windows is new; keep this row advisory until it has passed once.
     continue-on-error: true

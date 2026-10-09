@@ -6528,7 +6528,8 @@ static int register_shared_assets(const char *root, game_prototype_preview *prev
     size_t size = strlen(root) + sizeof "/content";
     char *content = xmalloc(size);
     snprintf(content, size, "%s/content", root);
-    int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), preview, content);
+    /* The preview's live world is the only world, so nothing registers twice. */
+    int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), NULL, content);
     bool sounds = loaded >= 0 &&
                   authoring_sounds_load(
                       content,

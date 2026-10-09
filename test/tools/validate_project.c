@@ -283,6 +283,23 @@ TEST_CASE(old_projects_are_not_upgraded)
     return true;
 }
 
+TEST_CASE(scenarios_load_graph_assets)
+{
+    /* A scenario registers each graph asset once, in its one world. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"material\",\"name\":\"Glow\"}") == 0
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Dot\"}") == 0
+    );
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\"\n}\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -297,5 +314,6 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(missing_ui_documents_are_reported);
     RUN_TEST_CASE(catalog_errors_are_reported_once);
     RUN_TEST_CASE(old_projects_are_not_upgraded);
+    RUN_TEST_CASE(scenarios_load_graph_assets);
     pu_clear_setup();
 }

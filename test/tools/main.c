@@ -26,6 +26,7 @@ void test_tool_scene();
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
+void test_device_controls();
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -225,6 +226,7 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     if (render_resources) {
         test_render_resources();
+        test_device_controls();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

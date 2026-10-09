@@ -32,27 +32,24 @@ files or the compiler changed since the last run, then starts `chibi-player`
 beside it. Options after the project go to the player. Studio's `chibi-dev`
 opens a project the same way.
 
-To use Studio and `chibi` in any project without a checkout's build folders,
-install them from the engine checkout, with `chibi-studio` checked out beside it:
+To use `chibi` and Studio in any project without a checkout's build folders,
+install the SDK, then Studio from its checkout:
 
 ```sh
 make install                    # into ~/.local; PREFIX=/elsewhere to change it
+make -C ../chibi-studio install # the same PREFIX
 cd ~/games/neon-swarm && chibi-dev
 ```
 
-`make install` builds a Release SDK and Studio in their own build folders and
-installs `chibi-dev`, `chibi`, `chibi-compile` and `chibi-player` into
-`PREFIX/bin`, with their shaders, UI and licenses in `PREFIX/share/chibi`. Add
-`PREFIX/bin` to `PATH` if it is not there already; macOS does not include
-`~/.local/bin`. The executables find their resources relative to themselves, so
-the folder can be moved. To uninstall, delete those four executables and
-`PREFIX/share/chibi`. On Windows, which has no make wrappers, build Studio with
-CMake as its README describes and install both of its components:
-
-```bat
-cmake --install build --prefix "%LOCALAPPDATA%/Programs/Chibi"
-cmake --install build --prefix "%LOCALAPPDATA%/Programs/Chibi" --component sdk_tools
-```
+`make install` builds a Release SDK in its own build folder and installs
+`chibi`, `chibi-compile` and `chibi-player` into `PREFIX/bin`, their shaders and
+licenses into `PREFIX/share/chibi`, and the libraries, headers and CMake package
+that Studio and other consumers build against. Add `PREFIX/bin` to `PATH` if it
+is not there already; macOS does not include `~/.local/bin`. The executables
+find their resources relative to themselves. To uninstall, delete the files
+CMake lists in `build-install-sdk/install_manifest.txt` and
+`PREFIX/share/chibi/engine.json`. On Windows, which has no make wrappers, run
+the target's commands directly.
 
 To ship a game, export it with an installed SDK's `chibi`:
 

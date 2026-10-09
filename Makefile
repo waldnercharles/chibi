@@ -75,7 +75,7 @@ help:
 		'make studio-run PROJECT_ROOT=/game  Run the external Studio consumer' \
 		'make studio-dev PROJECT_ROOT=/game  Run Studio with checkpoint recovery' \
 		'make package-studio Package the external Studio distribution' \
-		'make install [PREFIX=~/.local]  Install chibi-dev and chibi from ../chibi-studio' \
+		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
 		'make controller-build / controller-run PROJECT_ROOT=/game' \
 		'make update-game-runtime Explicitly refresh registered deployments' \
 		'make agent-list     List runnable classified selectors and admission status' \
@@ -141,7 +141,6 @@ STUDIO_CHECKPOINT ?= $(STUDIO_BUILD_DIR)/workspace.json
 PREFIX ?= $(HOME)/.local
 INSTALL_SDK_BUILD_DIR ?= build-install-sdk
 INSTALL_SDK_PREFIX ?= dist/install-sdk
-INSTALL_STUDIO_BUILD_DIR ?= build-install-studio
 
 controller-run:
 	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
@@ -178,14 +177,14 @@ package-studio:
 	@$(MAKE) studio-build STUDIO_BUILD_DIR="$(STUDIO_PACKAGE_BUILD_DIR)" STUDIO_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_STUDIO_DISTRIBUTION=ON"
 	@$(QUIET) package-studio -- python3 "$(STUDIO_SDK_PREFIX)/share/chibi/tools/package_studio.py" --build "$(STUDIO_PACKAGE_BUILD_DIR)" --sdk "$(STUDIO_SDK_PREFIX)" --output "$(STUDIO_OUTPUT)"
 
-# Release Studio and the SDK's chibi, chibi-compile and chibi-player, in their
-# own build trees so development builds stay as they are.
+# A Release SDK, in its own build tree so the development SDK stays as it is.
+# Packaging computes the engine identity, engine.json, which exports carry;
+# the install adds it to the build's files. Studio's `make install` builds
+# against PREFIX.
 install:
-	@test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'No Studio checkout at $(STUDIO_SOURCE): clone chibi-studio beside chibi or set STUDIO_SOURCE' >&2; exit 2; }
 	@$(MAKE) package-sdk SDK_BUILD_DIR="$(INSTALL_SDK_BUILD_DIR)" SDK_PREFIX="$(INSTALL_SDK_PREFIX)" SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
-	@$(MAKE) studio-build STUDIO_SDK_PREFIX="$(INSTALL_SDK_PREFIX)" STUDIO_BUILD_DIR="$(INSTALL_STUDIO_BUILD_DIR)" STUDIO_CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Release
-	@cmake --install "$(INSTALL_STUDIO_BUILD_DIR)" --prefix "$(abspath $(PREFIX))"
-	@cmake --install "$(INSTALL_STUDIO_BUILD_DIR)" --prefix "$(abspath $(PREFIX))" --component sdk_tools
+	@cmake --install "$(INSTALL_SDK_BUILD_DIR)" --prefix "$(abspath $(PREFIX))"
+	@cmake -E copy "$(INSTALL_SDK_PREFIX)/share/chibi/engine.json" "$(abspath $(PREFIX))/share/chibi/engine.json"
 
 build-release:
 	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"

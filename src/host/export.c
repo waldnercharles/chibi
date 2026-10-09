@@ -25,6 +25,7 @@
 /* Bytes kept of a long project name, well under any file system's limit on a
  * file name. */
 #define EXECUTABLE_NAME_MAX 128
+#define WINDOWS_ICON_SIDE_MAX 256
 /* An empty file in the data folder that only this exporter writes, so that
  * replacing an output never deletes a folder it did not make. */
 #define EXPORT_MARKER ".chibi-export"
@@ -184,12 +185,42 @@ static bool copy_external(const char *project, const char *data)
     return copied;
 }
 
+/* Where each layout keeps the game's data and the player, inside the output. */
+static const struct
+{
+    const char *data, *executables, *suffix;
+} LAYOUTS[] = {
+    [CHIBI_EXPORT_FOLDER] = { "data", NULL, "" },
+    [CHIBI_EXPORT_APP] = { "Contents/Resources", "Contents/MacOS", "" },
+    [CHIBI_EXPORT_WINDOWS] = { "data", NULL, ".exe" },
+    [CHIBI_EXPORT_WEB] = { "data", NULL, "" },
+};
+
+/* A device name Windows reserves whatever follows a dot. */
+static bool windows_device(const char *name)
+{
+    static const char *const NAMES[] = { "con", "prn", "aux", "nul" };
+    size_t stem = strcspn(name, ".");
+    for (size_t i = 0; i < sizeof NAMES / sizeof *NAMES; i++) {
+        if (stem == strlen(NAMES[i]) && !strncasecmp(name, NAMES[i], stem)) {
+            return true;
+        }
+    }
+    return stem == 4 &&
+           (!strncasecmp(name, "com", 3) || !strncasecmp(name, "lpt", 3)) &&
+           name[3] >= '1' && name[3] <= '9';
+}
+
 /* The executable's file name: the project name with path and shell
  * metacharacters replaced and cut to EXECUTABLE_NAME_MAX bytes, never the
- * data folder's name, and then the layout's suffix. */
-static char *executable_name(const char *name, const char *suffix)
+ * data folder's name or, on Windows, a device's, and then the layout's
+ * suffix. */
+static char *executable_name(const char *name, chibi_export_layout layout)
 {
-    const char *base = name && name[0] && strcasecmp(name, "data") ? name : "game";
+    bool reserved = !name || !name[0] || !strcasecmp(name, "data") ||
+                    (layout == CHIBI_EXPORT_WINDOWS && windows_device(name));
+    const char *base = reserved ? "game" : name;
+    const char *suffix = LAYOUTS[layout].suffix;
     size_t length = strnlen(base, EXECUTABLE_NAME_MAX);
     char *file = xmalloc(length + strlen(suffix) + 1);
     memcpy(file, base, length);
@@ -204,17 +235,6 @@ static char *executable_name(const char *name, const char *suffix)
     }
     return file;
 }
-
-/* Where each layout keeps the game's data and the player, inside the output. */
-static const struct
-{
-    const char *data, *executables, *suffix;
-} LAYOUTS[] = {
-    [CHIBI_EXPORT_FOLDER] = { "data", NULL, "" },
-    [CHIBI_EXPORT_APP] = { "Contents/Resources", "Contents/MacOS", "" },
-    [CHIBI_EXPORT_WINDOWS] = { "data", NULL, ".exe" },
-    [CHIBI_EXPORT_WEB] = { "data", NULL, "" },
-};
 
 static bool write_marker(const char *data)
 {
@@ -382,10 +402,16 @@ static bool icon_valid(const chibi_export_spec *spec)
     size_t size = 0;
     unsigned char *png = (unsigned char *)read_bytes(path, &size);
     bool app = spec->layout == CHIBI_EXPORT_APP;
-    bool valid = png &&
-                 (app ? icns_type(png, size) != NULL : square_side(png, size) > 0);
+    uint32_t side = png ? square_side(png, size) : 0;
+    bool valid = app ? png && icns_type(png, size) != NULL
+                     : side > 0 && side <= WINDOWS_ICON_SIDE_MAX;
     if (!valid) {
-        failed(app ? "a macOS app icon must be a square PNG of 16, 32, 64, 128, 256, 512 or 1024 pixels" : "a Windows icon must be a square PNG", path);
+        failed(
+            app ? "a macOS app icon must be a square PNG of 16, 32, 64, 128, "
+                  "256, 512 or 1024 pixels"
+                : "a Windows icon must be a square PNG of at most 256 pixels",
+            path
+        );
     }
     free(png);
     free(path);
@@ -433,8 +459,8 @@ static bool embed_icon(const char *executable, const char *png)
     size_t size = 0;
     unsigned char *bytes = (unsigned char *)read_bytes(png, &size);
     uint32_t side = bytes ? square_side(bytes, size) : 0;
-    /* A side of 0 means 256 pixels or more. */
-    BYTE stored = side < 256 ? (BYTE)side : 0;
+    /* A side of 0 means 256 pixels, the largest Windows has. */
+    BYTE stored = side < WINDOWS_ICON_SIDE_MAX ? (BYTE)side : 0;
     icon_group group = { .type = 1,
                          .count = 1,
                          .width = stored,
@@ -715,7 +741,7 @@ static bool assemble(const chibi_export_spec *spec, const char *staging)
                          : join(spec->bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
     char *player = join(spec->bin, "chibi-player" CHIBI_EXECUTABLE_SUFFIX);
     char *engine = join(spec->bin, "../share/chibi");
-    char *name = executable_name(spec->name, LAYOUTS[spec->layout].suffix);
+    char *name = executable_name(spec->name, spec->layout);
     const char *executables = LAYOUTS[spec->layout].executables;
     char *executable_dir = executables ? join(staging, executables) : xstrdup(staging);
     char *executable = join(executable_dir, name);

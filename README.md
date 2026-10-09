@@ -56,8 +56,9 @@ a directory on `PATH`, put the project icon in your icon theme as
 `neon-swarm.png`, and the entry in `~/.local/share/applications`.
 
 On Windows the folder holds `Neon Swarm.exe` beside `data/`, with the project
-icon, which must be a square PNG, in the executable's resources. The SDK links
-the C runtime statically, so the folder runs without the Visual C++
+icon, which must be a square PNG of at most 256 pixels, in the executable's
+resources. The SDK and its dependencies link the release C runtime statically
+in every configuration, so the folder runs without the Visual C++
 redistributable.
 
 For browsers, export a static site with the browser player, which

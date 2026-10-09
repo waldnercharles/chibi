@@ -21,6 +21,7 @@ typedef struct
     char *name;
     uint64_t fingerprint;
     char *aliases;
+    bool declared; /* Matched a current declaration; others are not kept. */
 } component_identity;
 
 static component_identity *g_component_identities;
@@ -270,7 +271,8 @@ void record_new_components(const collect_ctx *ctx)
                                        strdup(key),
                                        strdup(s->name),
                                        fingerprint,
-                                       NULL })
+                                       NULL,
+                                       true })
             );
             continue;
         }
@@ -284,6 +286,7 @@ void record_new_components(const collect_ctx *ctx)
         identity->line = s->line;
         identity->name = strdup(s->name);
         identity->fingerprint = fingerprint;
+        identity->declared = true;
     }
     for (int i = 0; i < acount(ctx->structs); i++) {
         const struct_info *left = &ctx->structs[i];
@@ -305,11 +308,11 @@ void record_new_components(const collect_ctx *ctx)
             }
         }
     }
-    if (g_failed) {
-        return;
-    }
 }
 
+/* Rows whose declaration is gone are dropped: a rename is inferred in the run
+ * that removes the old declaration, and a kept row would hand its identity to
+ * any later struct with the same layout. */
 void write_component_manifest()
 {
     if (!g_manifest_path) {
@@ -325,6 +328,9 @@ void write_component_manifest()
     fputs("# file line id key current_name fingerprint aliases\n", file);
     for (int i = 0; i < acount(g_component_identities); i++) {
         const component_identity *identity = &g_component_identities[i];
+        if (!identity->declared) {
+            continue;
+        }
         fprintf(
             file,
             "%s %u %llu %s %s %llu %s\n",

@@ -3115,17 +3115,65 @@ static int fallout_status(bool fallout, char *error, size_t error_size)
     return CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
 
+/* Whether `diagnostic` is the declaration catalog's `message` for the file at `path`. */
+static bool catalog_names(const source_catalog_diagnostic *diagnostic, const char *path, const char *message)
+{
+    return diagnostic->path && !strcmp(diagnostic->path, path) &&
+           !strcmp(diagnostic->message, message);
+}
+
+/* Whether the declaration catalog lists `message` for the file at `path`. */
+static bool catalog_lists(const source_catalog *catalog, const char *path, const char *message)
+{
+    for (int i = 0; i < source_catalog_diagnostic_count(catalog); i++) {
+        if (catalog_names(source_catalog_diagnostic_at(catalog, i), path, message)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Claims a listing of `message` at `path` that no earlier diagnostic claimed. */
+static bool catalog_claim(const source_catalog *catalog, bool *claimed, const char *path, const char *message)
+{
+    for (int i = 0; i < source_catalog_diagnostic_count(catalog); i++) {
+        if (!claimed[i] &&
+            catalog_names(source_catalog_diagnostic_at(catalog, i), path, message)) {
+            claimed[i] = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Marks the asset's own diagnostics validate_project leaves out: catalog
+ * fallout, and each error the declaration catalog lists again with its line,
+ * one for each listing. The caller frees the result. */
+static bool *catalog_omitted(const source_catalog *catalog, const catalog_asset *asset, const char *path)
+{
+    bool *claimed = xcalloc((size_t)source_catalog_diagnostic_count(catalog) + 1, sizeof *claimed);
+    bool *omitted = xcalloc((size_t)acount(asset->diagnostics) + 1, sizeof *omitted);
+    for (int i = 0; i < acount(asset->diagnostics); i++) {
+        const char *message = asset->diagnostics[i].message;
+        omitted[i] = catalog_fallout(message) ||
+                     catalog_claim(catalog, claimed, path, message);
+    }
+    free(claimed);
+    return omitted;
+}
+
+/* Leaves out the diagnostics `omitted` marks, when it is set. */
 static void add_catalog_diagnostics(
     yyjson_mut_doc *doc,
     yyjson_mut_val *object,
     const catalog_asset *asset,
-    bool omit_fallout
+    const bool *omitted
 )
 {
     yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, object, "diagnostics");
     for (int i = 0; i < acount(asset->diagnostics); i++) {
         const catalog_diagnostic *diagnostic = &asset->diagnostics[i];
-        if (omit_fallout && catalog_fallout(diagnostic->message)) {
+        if (omitted && omitted[i]) {
             continue;
         }
         yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
@@ -3175,7 +3223,7 @@ static yyjson_mut_val *add_catalog_asset(
     for (int i = 0; i < acount(asset->dependents); i++) {
         add_catalog_reference(doc, dependents, &asset->dependents[i], assets, count);
     }
-    add_catalog_diagnostics(doc, object, asset, false);
+    add_catalog_diagnostics(doc, object, asset, NULL);
     yyjson_mut_obj_add_bool(doc, object, "valid", asset->valid);
     yyjson_mut_obj_add_int(doc, object, "errors", asset->errors);
     yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
@@ -6075,7 +6123,8 @@ static int validate_manifest(
 {
     chibi_project project = { 0 };
     char error[512] = { 0 };
-    if (chibi_project_open(&project, root, error, sizeof error) != 0) {
+    /* Validation never upgrades the project, so an old one fails here. */
+    if (chibi_project_read(&project, root, error, sizeof error) != 0) {
         add_load_diagnostic(doc, diagnostics, error);
         return 1;
     }
@@ -6207,32 +6256,34 @@ static int handle_validate_project(const char *root, response *result, int *exit
     for (int i = 0; i < acount(assets); i++) {
         const catalog_asset *asset = &assets[i];
         error[0] = '\0';
-        /* The declaration diagnostics below take the fallout's place, in
-           sources and in scenes whose behaviors are sources. */
+        char *path = asset_path(root, asset);
+        /* The declaration diagnostics below take the place of the fallout,
+           in sources and in scenes whose behaviors are sources, and of the
+           errors they repeat with lines. */
+        bool *omitted = catalog_omitted(catalog, asset, path);
         int asset_errors = asset->errors;
         for (int j = 0; j < acount(asset->diagnostics); j++) {
-            asset_errors -= catalog_fallout(asset->diagnostics[j].message);
+            asset_errors -= omitted[j];
         }
         bool dependencies = validate_asset_dependencies(root, asset, error, sizeof error) !=
                                 CHIBI_AUTOMATION_OK &&
-                            !catalog_fallout(error);
+                            !catalog_fallout(error) &&
+                            !catalog_lists(catalog, path, error);
         /* Kept apart until the asset turns out to have problems. */
         yyjson_mut_val *ui = yyjson_mut_arr(doc);
         asset_errors += validate_catalog_ui(root, asset, doc, ui);
-        char *path = asset_path(root, asset);
         for (int j = 0; j < declarations; j++) {
             const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);
             if (diagnostic->path && !strcmp(diagnostic->path, path)) {
                 placed[j] = true;
                 asset_errors++;
-                /* The catalog already names this missing prototype or behavior, with its line. */
-                dependencies = dependencies && strcmp(diagnostic->message, error);
             }
         }
         asset_errors += dependencies;
         errors += asset_errors;
         warnings += asset->warnings;
         if (!asset_errors && !asset->warnings) {
+            free(omitted);
             free(path);
             continue;
         }
@@ -6242,7 +6293,8 @@ static int handle_validate_project(const char *root, response *result, int *exit
         yyjson_mut_obj_add_strcpy(doc, object, "path", asset->asset.relative);
         yyjson_mut_obj_add_int(doc, object, "errors", asset_errors);
         yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
-        add_catalog_diagnostics(doc, object, asset, true);
+        add_catalog_diagnostics(doc, object, asset, omitted);
+        free(omitted);
         yyjson_mut_val *diagnostics = yyjson_mut_obj_get(object, "diagnostics");
         for (int j = 0; j < declarations; j++) {
             const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);

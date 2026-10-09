@@ -36,6 +36,9 @@ typedef struct
 
 /* Resolve a project directory, its project.kdl, or a legacy content directory. */
 int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size);
+/* chibi_project_open without upgrading: a project saved by an earlier build
+ * fails, naming --migrate. */
+int chibi_project_read(chibi_project *project, const char *path, char *error, size_t error_size);
 /* The owned path of the nearest directory at or above `start` that holds
  * project.kdl, or NULL when none does. */
 char *chibi_project_find(const char *start);

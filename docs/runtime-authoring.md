@@ -34,7 +34,8 @@ Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
 `problems` list only the assets with errors or warnings, each diagnostic naming
 what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
 model and a shape share a name there is no catalog, so it lists no asset
-problems until one is renamed.
+problems until one is renamed. It never changes files: a project saved by an
+earlier build fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
 
 ## Declare components
 

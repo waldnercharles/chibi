@@ -533,7 +533,7 @@ char *chibi_project_find(const char *start)
     return NULL;
 }
 
-int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
+static int open_project(chibi_project *project, const char *path, bool migrate, char *error, size_t error_size)
 {
     if (!project) {
         set_error(error, error_size, "Project output is required");
@@ -584,6 +584,13 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
     project->root = root;
     int version = CHIBI_PROJECT_VERSION;
     if (manifest && read_manifest(manifest, project, &version, error, error_size) != 0) {
+        chibi_project_free(project);
+        free(input);
+        free(manifest);
+        return -1;
+    }
+    if (!migrate && version < CHIBI_PROJECT_VERSION) {
+        snprintf(error, error_size, "Project version %d is older than %d; run chibi_ctl --project-root <root> --migrate", version, CHIBI_PROJECT_VERSION);
         chibi_project_free(project);
         free(input);
         free(manifest);
@@ -642,6 +649,16 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
         error[0] = '\0';
     }
     return 0;
+}
+
+int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
+{
+    return open_project(project, path, true, error, error_size);
+}
+
+int chibi_project_read(chibi_project *project, const char *path, char *error, size_t error_size)
+{
+    return open_project(project, path, false, error, error_size);
 }
 
 char *chibi_project_scene_path(const chibi_project *project, const char *requested)

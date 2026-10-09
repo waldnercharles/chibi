@@ -59,7 +59,7 @@ static void cleanup()
 
 /* The test catalog uses actual discovered declaration IDs and signatures. No
  * executable backend, graph compiler or runtime is constructed. */
-static bool project(const char *const *source, int count)
+static void base_catalog()
 {
     cleanup();
     memset(capabilities, 0, sizeof capabilities);
@@ -73,6 +73,11 @@ static bool project(const char *const *source, int count)
                                 .tick_event = 100,
                                 .globals = globals,
                                 .global_count = 1 };
+}
+
+/* Adds the sources' library functions to the catalog, then analyzes them. */
+static bool load(const char *const *source, int count)
+{
     document_count = count;
     static const char *paths[] = { "lib.chibi", "app.chibi", "other.chibi" };
     for (int d = 0; d < count; d++) {
@@ -125,6 +130,12 @@ static bool project(const char *const *source, int count)
     }
     navigation = authoring_navigation_new(documents, count, &catalog);
     return valid;
+}
+
+static bool project(const char *const *source, int count)
+{
+    base_catalog();
+    return load(source, count);
 }
 
 static const authoring_reference *at(int document, const char *token)
@@ -858,6 +869,80 @@ TEST_CASE(rename_external_declaration_uses_exact_source_and_catalog_identity)
     return true;
 }
 
+/* Spawn takes a prototype by name; Spark and Ember are prototypes. */
+static bool spawn_project(const char *const *source, int count)
+{
+    static const script_catalog_parameter spawn_parameter = {
+        .name = "prototype",
+        .type = { .storage = PIN_NAME },
+        .reference_kind = SCRIPT_REFERENCE_PROTOTYPE
+    };
+    static const source_catalog_definition definitions[] = {
+        { .id = 400,
+          .kind = SCRIPT_CAPABILITY_PROTOTYPE,
+          .name = "Spark",
+          .path = "prototypes/Spark.kdl",
+          .text = "name \"Spark\"\n",
+          .range = { 5, 12, 1, 6 } },
+    };
+    base_catalog();
+    capabilities[1] = (script_catalog_capability){ .id = 400,
+                                                   .name = "Spark",
+                                                   .kind = SCRIPT_CAPABILITY_PROTOTYPE,
+                                                   .completion_outcome = -1 };
+    capabilities[2] = (script_catalog_capability){ .id = 401,
+                                                   .name = "Ember",
+                                                   .kind = SCRIPT_CAPABILITY_PROTOTYPE,
+                                                   .completion_outcome = -1 };
+    capabilities[3] = (script_catalog_capability){ .id = 402,
+                                                   .name = "Spawn",
+                                                   .parameters = &spawn_parameter,
+                                                   .parameter_count = 1,
+                                                   .completion_outcome = -1 };
+    catalog.capability_count = 4;
+    bool valid = load(source, count);
+    authoring_navigation_free(navigation);
+    navigation = authoring_navigation_new_project(documents, count, &catalog, definitions, 1, NULL, 0);
+    return valid;
+}
+
+static bool names_prototype(int document, const char *token, uint64_t id)
+{
+    const authoring_reference *reference = at(document, token);
+    return reference && reference->target.kind == AUTHORING_PROTOTYPE &&
+           reference->target.id == id && reference->kind == AUTHORING_HANDLE;
+}
+
+TEST_CASE(navigation_follows_prototype_names_into_spawn)
+{
+    const char *sources[] = {
+        "library Effects { function Launch(kind:name=\"\"){ Spawn(kind); } "
+        "function Burst(kind:name=\"Ember\"){ Launch(kind:kind); } }",
+        "behavior App { label:=\"Spark\"; aim:name=\"Spark\"; on Tick { "
+        "pick:=\"Spark\"; Spawn(pick); aim=\"Ember\"; Spawn(aim); "
+        "Effects.Burst(kind:\"Spark\"); miss:=\"Nothing\"; "
+        "Spawn(miss); } }",
+    };
+    REQUIRE(spawn_project(sources, 2));
+    REQUIRE(names_prototype(1, "\"Spark\"; Spawn(pick)", 400)); /* A local. */
+    REQUIRE(names_prototype(1, "\"Spark\"; on Tick", 400));     /* State. */
+    REQUIRE(names_prototype(1, "\"Ember\"; Spawn(aim)", 401)); /* Its assignment. */
+    /* Through two library parameters, from an argument and from a default. */
+    REQUIRE(names_prototype(1, "\"Spark\"); miss", 400));
+    REQUIRE(names_prototype(0, "\"Ember\"){", 401));
+    REQUIRE(!at(0, "\"\"){"));          /* Names no prototype. */
+    REQUIRE(!at(1, "\"Nothing\""));     /* Names no prototype. */
+    REQUIRE(!at(1, "\"Spark\"; aim:")); /* Never reaches a spawn. */
+    const authoring_reference *spark = at(1, "\"Spark\"; Spawn(pick)");
+    REQUIRE(references(spark->target) == 4);
+    REQUIRE(plan_rename(spark->target, "Bright Spark"));
+    edited = apply(1);
+    REQUIRE(edited);
+    REQUIRE(strstr(edited, "label:=\"Spark\"; aim:name=\"Bright Spark\";"));
+    REQUIRE(strstr(edited, "pick:=\"Bright Spark\";"));
+    REQUIRE(strstr(edited, "Effects.Burst(kind:\"Bright Spark\")"));
+    return true;
+}
 TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
 {
     static const script_catalog_capability pulse = { .id = 401,
@@ -969,6 +1054,7 @@ void test_language_navigation()
     RUN_TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members);
     RUN_TEST_CASE(intelligence_prototype_arguments_use_declared_reference_context);
     RUN_TEST_CASE(navigation_resolves_external_definitions_and_selected_references);
+    RUN_TEST_CASE(navigation_follows_prototype_names_into_spawn);
     RUN_TEST_CASE(rename_external_declaration_uses_exact_source_and_catalog_identity);
     RUN_TEST_CASE(rename_declared_events_preserves_exact_rml_tokens);
     pu_setup(NULL, NULL);

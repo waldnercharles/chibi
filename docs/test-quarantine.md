@@ -32,7 +32,7 @@ Configuration and compilation remain separate from test execution.
 | `test-full`, `test-slow`: native `all_checks` aggregate and audit | Native suite measurements exceed 60 seconds. |
 | `test-render`: scene/shader/Studio/RmlUi/Arena GPU and window checks | Measured render aggregates exceed 60 seconds; other components are unadmitted. |
 | `--editor-checkpoint`: workspace recovery assertions | Unadmitted runtime; retained native assertions are not execution evidence. |
-| Build-integrated runtime checks: `check-generation`, `check-reflect`, `check-host`, `check-assets`, `check-behavior-backend` | No admission for their complete execution; compilation alone is not a pass. |
+| Build-integrated runtime checks: `check-generation`, `check-host`, `check-assets`, `check-behavior-backend` | No admission for their complete execution; compilation alone is not a pass. |
 | `test-compiler-parity`, no-SLJIT rejection checks, web backend execution | Unadmitted runtime; retained smoke compilation is not assertion coverage. |
 | Make `benchmark` aggregate and long controller profiles/captures | No complete-command admission. |
 | `agent-gpu-test`, other selector/argument tuples, multi-goal validation | Unmeasured or outside the exact admission inventory. |

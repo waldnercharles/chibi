@@ -213,6 +213,7 @@ static const struct
     [CHIBI_EXPORT_FOLDER] = { "data", NULL, "" },
     [CHIBI_EXPORT_APP] = { "Contents/Resources", "Contents/MacOS", "" },
     [CHIBI_EXPORT_WINDOWS] = { "data", NULL, ".exe" },
+    [CHIBI_EXPORT_WEB] = { "data", NULL, "" },
 };
 
 static bool write_marker(const char *data)
@@ -586,6 +587,97 @@ static bool finish_app(const chibi_export_spec *spec, const char *staging, const
     return sign(staging);
 }
 
+/* Lists every file under `directory` by its path from `prefix`. */
+static bool list_tree(const char *directory, const char *prefix, yyjson_mut_doc *doc, yyjson_mut_val *files)
+{
+    DIR *dir = opendir(directory);
+    if (!dir) {
+        return failed("missing", directory);
+    }
+    bool listed = true;
+    while (listed) {
+        errno = 0;
+        struct dirent *entry = readdir(dir);
+        if (!entry) {
+            listed = errno == 0 || failed(strerror(errno), directory);
+            break;
+        }
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
+            continue;
+        }
+        char *path = join(directory, entry->d_name);
+        char *name = prefix[0] ? join(prefix, entry->d_name) : xstrdup(entry->d_name);
+        if (is_directory(path)) {
+            listed = list_tree(path, name, doc, files);
+        } else {
+            yyjson_mut_arr_add_strcpy(doc, files, name);
+        }
+        free(name);
+        free(path);
+    }
+    closedir(dir);
+    return listed;
+}
+
+/* The page fetches each file data/files.json lists into the browser's /data
+ * before the player starts, as a desktop player finds them beside itself. */
+static bool write_file_list(const char *data)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *files = yyjson_mut_arr(doc);
+    yyjson_mut_doc_set_root(doc, files);
+    char *path = join(data, "files.json");
+    bool written = list_tree(data, "", doc, files) &&
+                   (yyjson_mut_write_file(path, doc, 0, NULL, NULL) ||
+                    failed("cannot write", path));
+    free(path);
+    yyjson_mut_doc_free(doc);
+    return written;
+}
+
+/* The browser player's index.html with each {{TITLE}} replaced by the
+ * game's title. */
+static bool write_page(const char *from, const char *to, const char *title)
+{
+    size_t size = 0;
+    char *page = read_bytes(from, &size);
+    if (!page) {
+        return failed("missing", from);
+    }
+    char *text = NULL;
+    static const char marker[] = "{{TITLE}}";
+    for (size_t i = 0; i < size; i++) {
+        if (size - i >= sizeof marker - 1 &&
+            !memcmp(page + i, marker, sizeof marker - 1)) {
+            put_xml(&text, title);
+            i += sizeof marker - 2;
+            continue;
+        }
+        apush(text, page[i]);
+    }
+    free(page);
+    return write_built(to, &text);
+}
+
+static bool finish_web(const chibi_export_spec *spec, const char *staging, const char *data, const char *name)
+{
+    static const char *const files[] = { "chibi-player.js", "chibi-player.wasm" };
+    bool finished = true;
+    for (size_t i = 0; finished && i < sizeof files / sizeof *files; i++) {
+        char *from = join(spec->web, files[i]);
+        char *to = join(staging, files[i]);
+        finished = copy_file(from, to, 0644);
+        free(from);
+        free(to);
+    }
+    char *from = join(spec->web, "index.html");
+    char *to = join(staging, "index.html");
+    finished = finished && write_page(from, to, display_name(spec, name));
+    free(from);
+    free(to);
+    return finished && write_file_list(data);
+}
+
 /* Adds what the layout needs beside the player and data. */
 static bool finish(
     const chibi_export_spec *spec,
@@ -599,6 +691,7 @@ static bool finish(
         case CHIBI_EXPORT_FOLDER:
             return write_desktop_entry(spec, staging, name);
         case CHIBI_EXPORT_APP: return finish_app(spec, staging, data, name);
+        case CHIBI_EXPORT_WEB: return finish_web(spec, staging, data, name);
         case CHIBI_EXPORT_WINDOWS: break;
     }
     if (!spec->icon) {
@@ -615,18 +708,25 @@ static bool assemble(const chibi_export_spec *spec, const char *staging)
     char *data = join(staging, LAYOUTS[spec->layout].data);
     char *artifact = join(data, EXPORT_ARTIFACT);
     char *engine_files_dir = join(data, "engine");
-    char *compiler = join(spec->bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
+    bool web = spec->layout == CHIBI_EXPORT_WEB;
+    /* An artifact carries its compiler's target ABI: a site's comes from the
+     * browser player's compiler, run under Node. */
+    char *compiler = web ? join(spec->web, "compiler/chibi-compile.js")
+                         : join(spec->bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
     char *player = join(spec->bin, "chibi-player" CHIBI_EXECUTABLE_SUFFIX);
     char *engine = join(spec->bin, "../share/chibi");
     char *name = executable_name(spec->name, LAYOUTS[spec->layout].suffix);
     const char *executables = LAYOUTS[spec->layout].executables;
     char *executable_dir = executables ? join(staging, executables) : xstrdup(staging);
     char *executable = join(executable_dir, name);
-    char *argv[] = { compiler,   "--project-root", (char *)spec->project,
-                     "--output", artifact,         NULL };
+    char *argv[] = {
+        "node",   compiler, "--project-root", (char *)spec->project, "--output",
+        artifact, NULL
+    };
+    char **command = web ? argv : argv + 1;
     bool assembled = make_parents(artifact) || failed(strerror(errno), data);
     assembled = assembled && write_marker(data);
-    if (assembled && chibi_process_run(argv) != 0) {
+    if (assembled && chibi_process_run(command) != 0) {
         assembled = failed("the project did not compile", spec->project);
     }
     assembled = assembled && copy_external(spec->project, data);
@@ -640,7 +740,9 @@ static bool assemble(const chibi_export_spec *spec, const char *staging)
         free(from);
         free(to);
     }
-    assembled = assembled && copy_file(player, executable, 0755);
+    if (!web) {
+        assembled = assembled && copy_file(player, executable, 0755);
+    }
     if (assembled) {
         assembled = finish(spec, staging, data, name, executable);
     }
@@ -770,7 +872,8 @@ static char *output_path(const chibi_export_spec *spec)
 
 bool chibi_export(const chibi_export_spec *spec)
 {
-    assert(spec->layout >= CHIBI_EXPORT_FOLDER && spec->layout <= CHIBI_EXPORT_WINDOWS);
+    assert(spec->layout >= CHIBI_EXPORT_FOLDER && spec->layout <= CHIBI_EXPORT_WEB);
+    assert((spec->layout == CHIBI_EXPORT_WEB) == (spec->web != NULL));
     char *output = output_path(spec);
     if (!output) {
         return failed("the output must name a folder", spec->output);
@@ -781,7 +884,9 @@ bool chibi_export(const chibi_export_spec *spec)
         return failed("only Windows can add the icon to a Windows export", spec->icon);
     }
 #endif
-    if (spec->layout != CHIBI_EXPORT_FOLDER && spec->icon && !icon_valid(spec)) {
+    bool embeds_icon = spec->layout == CHIBI_EXPORT_APP ||
+                       spec->layout == CHIBI_EXPORT_WINDOWS;
+    if (embeds_icon && spec->icon && !icon_valid(spec)) {
         free(output);
         return false;
     }

@@ -13,6 +13,9 @@ typedef enum
     /* The player as <name>.exe beside data/, with the icon in its resources;
      * only a Windows host can add the icon */
     CHIBI_EXPORT_WINDOWS,
+    /* A static site: index.html and the browser player beside data/, which
+     * data/files.json lists for the page to fetch */
+    CHIBI_EXPORT_WEB,
 } chibi_export_layout;
 
 /* `bin` holds this host's chibi-compile and chibi-player, and bin/../share/chibi holds the
@@ -25,6 +28,7 @@ typedef struct
     const char *title;   /* the name people see, or NULL for `name` */
     const char *icon;    /* project-relative PNG, or NULL */
     const char *bin;
+    const char *web; /* the browser player's folder, for CHIBI_EXPORT_WEB */
     const char *output;
     chibi_export_layout layout;
     bool archive; /* also write <output>.tar.gz */

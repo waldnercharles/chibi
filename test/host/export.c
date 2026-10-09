@@ -76,15 +76,17 @@ static const char *icon = "art/icon.png";
 
 static bool export_as(const char *relative, chibi_export_layout layout, bool archive)
 {
-    char project[512], bin[512], output[512];
+    char project[512], bin[512], web[512], output[512];
     snprintf(project, sizeof project, "%s/project", root);
     snprintf(bin, sizeof bin, "%s/sdk/bin", root);
+    snprintf(web, sizeof web, "%s/web", root);
     snprintf(output, sizeof output, "%s/%s", root, relative);
     chibi_export_spec spec = { .project = project,
                                .name = game,
                                .title = title,
                                .icon = icon,
                                .bin = bin,
+                               .web = layout == CHIBI_EXPORT_WEB ? web : NULL,
                                .output = output,
                                .layout = layout,
                                .archive = archive };
@@ -274,13 +276,46 @@ TEST_CASE(export_assembles_a_runnable_folder)
     REQUIRE(export_to("win/Game")); /* replaces a Windows export */
     icon = "art/icon.png";
 
+    /* A web export is a static site: the browser player's page titled for the
+     * game beside its script and module, and data/files.json listing every
+     * data file for the page to fetch. */
+    write_at("web/index.html", "<title>{{TITLE}}</title>{{TITLE", 0644);
+    /* The browser player's compiler runs under Node; this fake node runs the
+     * fake compiler script instead. */
+    write_at("node/node", "#!/bin/sh\nscript=$1\nshift\nexec sh \"$script\" \"$@\"\n", 0755);
+    char compiler[512], fake_compiler[512];
+    snprintf(compiler, sizeof compiler, "%s/sdk/bin/chibi-compile", root);
+    snprintf(fake_compiler, sizeof fake_compiler, "%s/web/compiler/chibi-compile.js", root);
+    write_at("web/compiler/chibi-compile.js", "", 0644);
+    REQUIRE(rename(compiler, fake_compiler) == 0);
+    char *saved_path = strdup(getenv("PATH")), node_path[1024];
+    snprintf(node_path, sizeof node_path, "%s/node:%s", root, saved_path);
+    setenv("PATH", node_path, 1);
+    write_at("web/chibi-player.js", "script", 0644);
+    write_at("web/chibi-player.wasm", "module", 0644);
+    title = "<Web> & Co";
+    REQUIRE(export_as("site", CHIBI_EXPORT_WEB, false));
+    REQUIRE(has("site/index.html", "<title>&lt;Web&gt; &amp; Co</title>{{TITLE"));
+    REQUIRE(has("site/chibi-player.js", "script") && has("site/chibi-player.wasm", "module"));
+    REQUIRE(!has("site/My Game_2", NULL) && !has("site/my-game-2.desktop", NULL));
+    REQUIRE(has("site/data/game.chibip", "artifact"));
+    REQUIRE(contains("site/data/files.json", "\"game.chibip\""));
+    REQUIRE(contains("site/data/files.json", "\"art/sheet.bin\""));
+    REQUIRE(contains("site/data/files.json", "\"engine/shaders/nested/a.glsl\""));
+    REQUIRE(export_as("site", CHIBI_EXPORT_WEB, false)); /* replaces a site */
+    remove_at("web/chibi-player.wasm");
+    REQUIRE(!export_as("broken", CHIBI_EXPORT_WEB, false));
+    setenv("PATH", saved_path, 1);
+    free(saved_path);
+    REQUIRE(rename(fake_compiler, compiler) == 0);
+
     /* A failed compile or a missing resource leaves no partial folder. */
     write_at("project/fail", "", 0644);
     REQUIRE(!export_to("broken"));
     remove_at("project/fail");
     remove_at("project/art/sheet.bin");
     REQUIRE(!export_to("broken"));
-    REQUIRE(entries(".") == 7); /* sdk, project, out, apps, mine, linked and win */
+    REQUIRE(entries(".") == 10); /* sdk, project, out, apps, mine, linked, win, web, node and site */
 
     char command[600];
     snprintf(command, sizeof command, "rm -rf '%s'", root);

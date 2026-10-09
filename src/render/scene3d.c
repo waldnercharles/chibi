@@ -4,6 +4,7 @@
 #include "render/material.h"
 #include "render/scene3d_geometry.h"
 #include "render/scene3d_influence.h"
+#include "render/scene3d_point_shadow.h"
 #include "render/scene3d_shadow.h"
 #include "render/scene3d_trail.h"
 #include "render/scene3d_visual.h"
@@ -52,7 +53,7 @@ typedef struct
 {
     CF_V4 *pixels;
     scene3d_draw *draws;
-    scene3d_caster *casters; /* Kept only while the sun casts shadows. */
+    scene3d_caster *casters; /* Kept only while a light casts shadows. */
     render_shader_parameter_cache *cache;
     char binding_error[256];
     unsigned worker;
@@ -74,7 +75,9 @@ struct render_scene3d
     bool sun_shadows;
     float sun_spread; /* Tangent of half the sun's angular diameter. */
     render_scene3d_shadow *shadow;
+    render_scene3d_point_shadow *point_shadow;
     CF_M4x4 *shadow_boxes;
+    int *near_boxes; /* Boxes that can cast into the current point light. */
     CF_Texture parameters;
     int texture_height;
     draw_buffer buffer, *chunks;
@@ -85,7 +88,9 @@ struct render_scene3d
     CF_V4 light_positions[POINT_LIGHT_LIMIT];
     CF_V4 light_colors[POINT_LIGHT_LIMIT];
     float light_scores[POINT_LIGHT_LIMIT];
+    bool light_shadows[POINT_LIGHT_LIMIT];
     int light_count, lights_dropped;
+    int shadowed_lights; /* The first lights, which cast shadows. */
     int simulation_particles;
     char binding_error[256];
 };
@@ -121,6 +126,7 @@ render_scene3d *render_scene3d_new()
     scene3d->programs = render_programs_new(RENDER_PROGRAM_SCENE3D);
     scene3d->influences = render_influences_new();
     scene3d->shadow = render_scene3d_shadow_new();
+    scene3d->point_shadow = render_scene3d_point_shadow_new();
     scene3d->trails = render_scene3d_trails_new();
     scene3d->emitters = game_particle_emitters_new(NULL);
     scene3d->prism = render_scene3d_prism_mesh();
@@ -165,7 +171,9 @@ void render_scene3d_free(render_scene3d *scene3d)
     render_programs_free(scene3d->programs);
     render_influences_free(scene3d->influences);
     render_scene3d_shadow_free(scene3d->shadow);
+    render_scene3d_point_shadow_free(scene3d->point_shadow);
     afree(scene3d->shadow_boxes);
+    afree(scene3d->near_boxes);
     render_scene3d_trails_free(scene3d->trails);
     game_particle_emitters_free(scene3d->emitters);
     cf_destroy_mesh(scene3d->prism);
@@ -417,6 +425,33 @@ static void collect_particles(
     }
 }
 
+/* Moves the highest-ranked lights that cast shadows, up to the shadow limit,
+ * ahead of the rest, which keep their order. */
+static void order_shadowed_lights(render_scene3d *scene3d)
+{
+    int shadowed = 0;
+    for (int i = 0;
+         i < scene3d->light_count && shadowed < RENDER_SCENE3D_POINT_SHADOW_LIMIT;
+         i++) {
+        if (!scene3d->light_shadows[i]) {
+            continue;
+        }
+        CF_V4 position = scene3d->light_positions[i],
+              color = scene3d->light_colors[i];
+        size_t moved = (size_t)(i - shadowed);
+        memmove(
+            &scene3d->light_positions[shadowed + 1],
+            &scene3d->light_positions[shadowed],
+            moved * sizeof position
+        );
+        memmove(&scene3d->light_colors[shadowed + 1], &scene3d->light_colors[shadowed], moved * sizeof color);
+        scene3d->light_positions[shadowed] = position;
+        scene3d->light_colors[shadowed] = color;
+        shadowed++;
+    }
+    scene3d->shadowed_lights = shadowed;
+}
+
 static void collect_lights(
     render_scene3d *scene3d,
     ecs_world *world,
@@ -425,6 +460,7 @@ static void collect_lights(
 )
 {
     scene3d->light_count = 0;
+    scene3d->shadowed_lights = 0;
     int candidates = 0;
     CF_M4x4 inverse = cf_m4_invert(camera->view);
     CF_V3 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14] };
@@ -474,9 +510,11 @@ static void collect_lights(
             scene3d->light_scores[slot] = scene3d->light_scores[slot - 1];
             scene3d->light_positions[slot] = scene3d->light_positions[slot - 1];
             scene3d->light_colors[slot] = scene3d->light_colors[slot - 1];
+            scene3d->light_shadows[slot] = scene3d->light_shadows[slot - 1];
             slot--;
         }
         scene3d->light_scores[slot] = score;
+        scene3d->light_shadows[slot] = light->shadows;
         scene3d->light_positions[slot] = (CF_V4){ position.x,
                                                   light->elevation,
                                                   position.y,
@@ -500,6 +538,7 @@ static void collect_lights(
         );
     }
     scene3d->lights_dropped = dropped;
+    order_shadowed_lights(scene3d);
 }
 
 static CF_V4 radiance(unsigned color, float intensity)
@@ -611,13 +650,16 @@ static CF_M4x4 shape_box(CF_M4x4 frame, const GameGeometry3D *shape)
     return cf_mul_m4(frame, cf_m4_scale(size));
 }
 
-/* Fits the sun's shadow cascades to the solids in view, then the casters
- * outside it. Returns the cascade count. */
-static int fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *camera)
+/* Whether any light casts shadows, so solids outside the view still count. */
+static bool casts_shadows(const render_scene3d *scene3d)
 {
-    if (!scene3d->sun_shadows) {
-        return 0;
-    }
+    return scene3d->sun_shadows || scene3d->shadowed_lights;
+}
+
+/* Boxes around the solids in view, then the casters outside it. Opaque draws
+ * sort first, so draw i has box i. Returns the boxes in view. */
+static int collect_shadow_boxes(render_scene3d *scene3d)
+{
     aclear(scene3d->shadow_boxes);
     for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
         const scene3d_draw *draw = &scene3d->buffer.draws[i];
@@ -629,6 +671,15 @@ static int fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *came
     for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
         const scene3d_caster *caster = &scene3d->buffer.casters[i];
         apush(scene3d->shadow_boxes, shape_box(caster->frame, &caster->shape));
+    }
+    return receivers;
+}
+
+/* Fits the sun's shadow cascades to the boxes. Returns the cascade count. */
+static int fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *camera, int receivers)
+{
+    if (!scene3d->sun_shadows) {
+        return 0;
     }
     CF_V3 toward = { scene3d->sun_direction.x,
                      scene3d->sun_direction.y,
@@ -653,11 +704,10 @@ static void draw_caster(const render_scene3d *scene3d, CF_M4x4 frame, const Game
 }
 
 /* Opaque solids in view and the casters write their depth from the sun into
- * each cascade they reach. Opaque draws sort first, so draw i has box i. */
-static bool draw_shadow(render_scene3d *scene3d, int cascades)
+ * each cascade they reach. */
+static bool draw_shadow(render_scene3d *scene3d, int cascades, int receivers)
 {
     render_scene3d_shadow *shadow = scene3d->shadow;
-    int receivers = acount(scene3d->shadow_boxes) - acount(scene3d->buffer.casters);
     for (int cascade = 0; cascade < cascades; cascade++) {
         if (!render_scene3d_shadow_begin(
                 shadow,
@@ -683,6 +733,64 @@ static bool draw_shadow(render_scene3d *scene3d, int cascades)
             }
         }
         render_scene3d_shadow_end(shadow, cascade);
+    }
+    return true;
+}
+
+/* The solid around box i: an opaque draw in view or a caster outside it. */
+static void draw_boxed(const render_scene3d *scene3d, int i, int receivers)
+{
+    if (i < receivers) {
+        const scene3d_draw *draw = &scene3d->buffer.draws[i];
+        draw_caster(scene3d, draw->frame, &draw->shape);
+        return;
+    }
+    const scene3d_caster *caster = &scene3d->buffer.casters[i - receivers];
+    draw_caster(scene3d, caster->frame, &caster->shape);
+}
+
+/* Opaque solids in view and the casters near each shadowed point light write
+ * their depth from it into each face they reach. */
+static bool draw_point_shadows(render_scene3d *scene3d, int receivers)
+{
+    render_scene3d_point_shadow *shadow = scene3d->point_shadow;
+    render_scene3d_point_shadow_set(shadow, scene3d->light_positions, scene3d->shadowed_lights);
+    int opaque = 0;
+    while (opaque < receivers && !scene3d->buffer.draws[opaque].transparent) {
+        opaque++;
+    }
+    for (int light = 0; light < scene3d->shadowed_lights; light++) {
+        aclear(scene3d->near_boxes);
+        for (int i = 0; i < acount(scene3d->shadow_boxes); i++) {
+            bool solid = i < opaque || i >= receivers;
+            if (solid &&
+                render_scene3d_point_shadow_near(shadow, light, scene3d->shadow_boxes[i])) {
+                apush(scene3d->near_boxes, i);
+            }
+        }
+        for (int face = 0; face < RENDER_SCENE3D_POINT_SHADOW_FACES; face++) {
+            if (!render_scene3d_point_shadow_begin(
+                    shadow,
+                    light,
+                    face,
+                    scene3d->binding_error,
+                    sizeof scene3d->binding_error
+                )) {
+                return false;
+            }
+            for (int i = 0; i < acount(scene3d->near_boxes); i++) {
+                int box = scene3d->near_boxes[i];
+                if (render_scene3d_point_shadow_reaches(
+                        shadow,
+                        light,
+                        face,
+                        scene3d->shadow_boxes[box]
+                    )) {
+                    draw_boxed(scene3d, box, receivers);
+                }
+            }
+            render_scene3d_point_shadow_end(shadow, light, face);
+        }
     }
     return true;
 }
@@ -758,9 +866,12 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         sizeof *scene3d->buffer.draws,
         compare_draws
     );
-    int cascades = fit_shadow(scene3d, camera);
+    int receivers = casts_shadows(scene3d) ? collect_shadow_boxes(scene3d) : 0;
+    int cascades = fit_shadow(scene3d, camera, receivers);
     scene3d->work.cascades = cascades;
-    if (!draw_shadow(scene3d, cascades)) {
+    scene3d->work.point_shadows = scene3d->shadowed_lights;
+    if (!draw_shadow(scene3d, cascades, receivers) ||
+        !draw_point_shadows(scene3d, receivers)) {
         return false;
     }
     CF_M4x4 inverse = cf_m4_invert(camera->view);
@@ -777,6 +888,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     cf_draw3d_set_uniform("scene_light_colors", scene3d->light_colors, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
     render_influences_bind(scene3d->influences);
     render_scene3d_shadow_bind(scene3d->shadow, cascades);
+    render_scene3d_point_shadow_bind(scene3d->point_shadow);
     cf_draw3d_set_texture("scene_parameters", scene3d->parameters);
     cf_draw3d_push_projection(camera->projection);
     cf_draw3d_push_view(camera->view);
@@ -829,6 +941,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     /* Later meshes would otherwise keep the parameters bound past their resize or free. */
     cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
     render_scene3d_shadow_unbind();
+    render_scene3d_point_shadow_unbind();
     cf_draw3d_pop_view();
     cf_draw3d_pop_projection();
     if (!transparent) {
@@ -859,7 +972,7 @@ static void collect_range(int start, int end, uint32_t worker, void *user)
         aclear(buffer->casters);
         buffer->binding_error[0] = 0;
         buffer->worker = worker;
-        buffer->shadows = scene3d->sun_shadows;
+        buffer->shadows = casts_shadows(scene3d);
         int limit = (c + 1) * DRAW_CHUNK;
         if (limit > acount(scene3d->entities)) {
             limit = acount(scene3d->entities);
@@ -895,7 +1008,7 @@ static void collect_geometry(
     const game_task_system *tasks = game_task_pool_tasks(scene3d->pool);
     if (scene3d->parallel_disabled || count < DRAW_CHUNK * 2 || tasks->workers == 1) {
         scene3d->buffer.binding_error[0] = 0;
-        scene3d->buffer.shadows = scene3d->sun_shadows;
+        scene3d->buffer.shadows = casts_shadows(scene3d);
         for (int i = 0; i < count; i++) {
             collect_entity(&scene3d->buffer, world, scene3d->entities[i], camera, runtime);
         }
@@ -1044,6 +1157,7 @@ bool render_scene3d_preview_material(
     aclear(scene3d->buffer.draws);
     aclear(scene3d->buffer.casters);
     scene3d->light_count = 0;
+    scene3d->shadowed_lights = 0;
     scene3d->rhythm = (CF_V4){ .x = activity->beat_phase, .y = activity->beat_pulse };
     GameDirectionalLight sun = game_directional_light_defaults();
     sun.shadows = false;

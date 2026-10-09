@@ -590,13 +590,16 @@ static inline GameDirectionalLight game_directional_light_defaults()
 }
 
 /* Local scene-linear light. Radius and center elevation use project units;
- * color is 0xRRGGBBAA, matching other authored color fields. */
+ * color is 0xRRGGBBAA, matching other authored color fields. Shadows lets
+ * opaque solids within its radius block it, for up to four lights a view
+ * ranks highest. */
 typedef NODE_COMPONENT_TYPE_DENSE(GamePointLight)
 {
     unsigned color NODE_COLOR;
     float intensity;
     float radius;
     float elevation;
+    bool shadows;
 }
 GamePointLight;
 

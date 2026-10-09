@@ -415,10 +415,15 @@ TEST_CASE(slow_auto_exposure_eases_past_half_float_steps)
 /* A 2-unit box rests on a floor at the origin. Sunlight travels along +x and
  * down at 45 degrees, so the box shades the floor where 1 < x < 3. The floor
  * spans just the view, so no other solid reaches as close to the sun. */
-static GameDirectionalLight *add_shadow_scene()
+static void add_box_on_floor()
 {
     add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
     add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+}
+
+static GameDirectionalLight *add_shadow_scene()
+{
+    add_box_on_floor();
     GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     return sun;
@@ -711,6 +716,258 @@ TEST_CASE(sun_size_softens_shadows_away_from_casters)
     return true;
 }
 
+/* A white point light. */
+static ecs_entity add_lamp(CF_V3 at, float intensity, float radius)
+{
+    ecs_entity lamp = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ at.x, at.z });
+    GamePointLight light = { .color = 0xffffffffu,
+                             .intensity = intensity,
+                             .radius = radius,
+                             .elevation = at.y };
+    assert(
+        ecs_world_record_add(world, lamp, GAME_COMPONENT_GamePointLight.id, &light, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return lamp;
+}
+
+static void place_lamp(ecs_entity lamp, CF_V3 at)
+{
+    GameTransform *transform = GAME_GameTransform_get(world, lamp);
+    transform->x = at.x;
+    transform->y = at.z;
+    GAME_GamePointLight_get(world, lamp)->elevation = at.y;
+    GAME_GameGeometry3D_get(world, lamp)->elevation = at.y;
+}
+
+/* Whether the segment from a to b passes through the box on the floor,
+ * grown on every side by `grow`. */
+static bool crosses_box(CF_V3 a, CF_V3 b, float grow)
+{
+    float from[] = { a.x, a.y, a.z }, to[] = { b.x, b.y, b.z };
+    float low[] = { -1 - grow, -grow, -1 - grow },
+          high[] = { 1 + grow, 2 + grow, 1 + grow };
+    float enter = 0, leave = 1;
+    for (int k = 0; k < 3; k++) {
+        float step = to[k] - from[k];
+        if (step == 0 && (from[k] < low[k] || from[k] > high[k])) {
+            return false;
+        }
+        if (step == 0) {
+            continue;
+        }
+        float a_t = (low[k] - from[k]) / step, b_t = (high[k] - from[k]) / step;
+        enter = fmaxf(enter, fminf(a_t, b_t));
+        leave = fminf(leave, fmaxf(a_t, b_t));
+    }
+    return enter < leave;
+}
+
+/* How far a shadow's edge may lie from where the box puts it: the lookup's
+ * filter and bias, and a pixel's footprint on the floor. */
+static const float edge_slack = .1f;
+
+/* Checks a grid of the floor around the box that the camera sees. Each point
+ * shows the frame in `shown` for the set of casting lamps, one bit each,
+ * whose light the box blocks from it; a null frame is black. Points within
+ * edge_slack of a shadow's edge go unchecked. Counts the points each frame
+ * shows lit, or black. */
+static bool floor_matches(const CF_V3 *casting, int count, CF_Pixel *const *shown, int *checked)
+{
+    CF_M4x4 inverse = cf_m4_invert(lens.view);
+    CF_V3 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14] };
+    for (float x = -3; x <= 3; x += .25f) {
+        for (float z = -3; z <= 3; z += .25f) {
+            CF_V3 point = { x, 0, z };
+            CF_V3 ndc = render_scene3d_project(&lens, point);
+            if (fabsf(ndc.x) > .95f || fabsf(ndc.y) > .95f ||
+                crosses_box(eye, point, edge_slack)) {
+                continue;
+            }
+            int blocked = 0;
+            bool edge = false;
+            for (int i = 0; i < count; i++) {
+                bool inside = crosses_box(point, casting[i], -edge_slack);
+                edge = edge || inside != crosses_box(point, casting[i], edge_slack);
+                blocked |= inside << i;
+            }
+            if (edge) {
+                continue;
+            }
+            int i = pixel_index(point);
+            CF_Pixel expected = shown[blocked] ? shown[blocked][i]
+                                               : (CF_Pixel){ .colors.a = 255 };
+            if (distance(pixels[i], expected) > 3) {
+                return false;
+            }
+            checked[blocked] += !shown[blocked] || expected.colors.g > 10;
+        }
+    }
+    return true;
+}
+
+/* Renders each set of lamps without shadows into frames[mask], with the
+ * lamps whose bits the mask sets turned off, then every lamp with shadows.
+ * With every lamp off the frame is black, so it is left out. */
+static bool render_lamps(const ecs_entity *lamps, int count, CF_Pixel (*frames)[PIXELS])
+{
+    GameEnvironment environment = unlit_environment();
+    float intensities[2];
+    assert(count <= 2);
+    for (int i = 0; i < count; i++) {
+        intensities[i] = GAME_GamePointLight_get(world, lamps[i])->intensity;
+    }
+    for (int mask = 0; mask < (1 << count) - 1; mask++) {
+        for (int i = 0; i < count; i++) {
+            GAME_GamePointLight_get(world, lamps[i])->intensity = mask >> i & 1
+                                                                    ? 0
+                                                                    : intensities[i];
+        }
+        if (!render(&environment)) {
+            return false;
+        }
+        memcpy(frames[mask], pixels, sizeof pixels);
+    }
+    for (int i = 0; i < count; i++) {
+        GamePointLight *light = GAME_GamePointLight_get(world, lamps[i]);
+        light->intensity = intensities[i];
+        light->shadows = true;
+    }
+    return render(&environment);
+}
+
+/* Spots for one lamp: high to one side of the box, above it, and low beside
+ * two of its corners, so shadows cross from one face to the next. */
+static const CF_V3 lamp_spots[] = {
+    { -3, 4, -1 },
+    { 0, 4, 0 },
+    { 2.2f, 1, 2.2f },
+    { -2.4f, .8f, 1.6f },
+};
+enum
+{
+    LAMP_SPOTS = sizeof lamp_spots / sizeof *lamp_spots
+};
+
+/* The box's roof and front face, which nothing shades. */
+static const CF_V3 box_faces[] = { { 0, 2, 0 }, { 0, 1, 1 } };
+
+TEST_CASE(point_lights_cast_shadows_from_every_face)
+{
+    add_box_on_floor();
+    ecs_entity lamp = add_lamp(lamp_spots[0], 2, 20);
+    /* The lamp's own bulb casts nothing for it. */
+    GameGeometry3D bulb = { GAME_PRIMITIVE_BOX, .6f, .6f, .6f };
+    assert(ecs_world_record_add(world, lamp, GAME_COMPONENT_GameGeometry3D.id, &bulb, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    static CF_Pixel open[1][PIXELS];
+    CF_Pixel *shown[] = { open[0], NULL };
+    for (int spot = 0; spot < LAMP_SPOTS; spot++) {
+        place_lamp(lamp, lamp_spots[spot]);
+        GAME_GamePointLight_get(world, lamp)->shadows = false;
+        REQUIRE(render_lamps(&lamp, 1, open));
+        REQUIRE(!render_scene3d_error(scene3d)[0]);
+        REQUIRE(render_scene3d_last_work(scene3d).point_shadows == 1);
+        int checked[2] = { 0 };
+        REQUIRE(floor_matches(&lamp_spots[spot], 1, shown, checked));
+        REQUIRE(checked[0] > 10 && checked[1] > 10);
+        /* Lit surfaces keep all their light: nothing shadows itself. */
+        for (int i = 0; i < 2; i++) {
+            int at = pixel_index(box_faces[i]);
+            REQUIRE(distance(pixels[at], open[0][at]) <= 3);
+        }
+    }
+    return true;
+}
+
+/* Two lamps each cast from their own maps, though a brighter light near the
+ * camera that casts nothing, and reaches nothing in view, outranks both. */
+TEST_CASE(point_lights_cast_shadows_from_their_own_maps)
+{
+    add_box_on_floor();
+    add_lamp((CF_V3){ 0, 4, 4 }, 10, 1);
+    CF_V3 spots[] = { lamp_spots[0], { -2.5f, 3, 2 } };
+    ecs_entity lamps[] = { add_lamp(spots[0], 2, 20), add_lamp(spots[1], 2, 20) };
+    static CF_Pixel frames[3][PIXELS];
+    CF_Pixel *shown[] = { frames[0], frames[1], frames[2], NULL };
+    REQUIRE(render_lamps(lamps, 2, frames));
+    REQUIRE(render_scene3d_last_work(scene3d).point_shadows == 2);
+    int checked[4] = { 0 };
+    REQUIRE(floor_matches(spots, 2, shown, checked));
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(checked[i] > 5);
+    }
+    return true;
+}
+
+/* Five lamps cast, but only the four a view ranks highest get maps. The four
+ * share a spot; the dimmest, added first, lights the floor around the box
+ * unblocked, and alone where the box blocks the four. */
+TEST_CASE(point_light_shadows_stop_at_four_lights)
+{
+    add_box_on_floor();
+    ecs_entity lamps[5];
+    for (int i = 0; i < 5; i++) {
+        lamps[i] = add_lamp(lamp_spots[i ? 0 : 1], i ? .5f : .4f, 20);
+    }
+    GameEnvironment environment = unlit_environment();
+    static CF_Pixel frames[2][PIXELS];
+    for (int frame = 1; frame >= 0; frame--) {
+        for (int i = 1; i < 5; i++) {
+            GAME_GamePointLight_get(world, lamps[i])->intensity = frame ? 0 : .5f;
+        }
+        REQUIRE(render(&environment));
+        memcpy(frames[frame], pixels, sizeof pixels);
+    }
+    for (int i = 0; i < 5; i++) {
+        GAME_GamePointLight_get(world, lamps[i])->shadows = true;
+    }
+    REQUIRE(render(&environment));
+    REQUIRE(render_scene3d_last_work(scene3d).point_shadows == 4);
+    CF_Pixel *shown[] = { frames[0], frames[1] };
+    int checked[2] = { 0 };
+    REQUIRE(floor_matches(lamp_spots, 1, shown, checked));
+    REQUIRE(checked[0] > 10 && checked[1] > 10);
+    /* Floor the box would block from the dim lamp. */
+    CF_V3 past = { -1.5f, 0, .25f };
+    REQUIRE(crosses_box(past, lamp_spots[1], -edge_slack));
+    REQUIRE(distance(pixel_at(past), frames[0][pixel_index(past)]) <= 3);
+    return true;
+}
+
+/* A long wall casts for a lamp whose radius reaches only one end of it. */
+TEST_CASE(long_solids_cast_for_point_lights_near_one_end)
+{
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid((CF_V3){ 0, .5f, -14 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, 30, 1 }, 0xffffffffu);
+    ecs_entity lamp = add_lamp((CF_V3){ -1.5f, 1.5f, .5f }, 2, 4);
+    static CF_Pixel open[1][PIXELS];
+    REQUIRE(render_lamps(&lamp, 1, open));
+    CF_V3 lit = { -1, 0, 0 }, shaded = { 1, 0, 0 };
+    REQUIRE(
+        open[0][pixel_index(shaded)].colors.g > 10 && pixel_at(shaded).colors.g == 0
+    );
+    REQUIRE(distance(pixel_at(lit), open[0][pixel_index(lit)]) <= 3);
+    return true;
+}
+
+/* A small slab above the view, which the camera culls, still blocks a lamp
+ * above it. */
+TEST_CASE(solids_outside_the_view_cast_for_point_lights)
+{
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid((CF_V3){ 0, 6, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .5f, .5f, .2f }, 0xffffffffu);
+    ecs_entity lamp = add_lamp((CF_V3){ 0, 8, 0 }, 3, 12);
+    static CF_Pixel open[1][PIXELS];
+    REQUIRE(render_lamps(&lamp, 1, open));
+    CF_V3 lit = { -2, 0, 1 }, shaded = { 0, 0, .5f };
+    REQUIRE(
+        open[0][pixel_index(shaded)].colors.g > 10 && pixel_at(shaded).colors.g == 0
+    );
+    REQUIRE(distance(pixel_at(lit), open[0][pixel_index(lit)]) <= 3);
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -737,6 +994,11 @@ void test_render_scene3d()
     RUN_TEST_CASE(empty_depth_ranges_take_no_cascade);
     RUN_TEST_CASE(shadow_cascades_cover_only_what_the_view_shows);
     RUN_TEST_CASE(sun_size_softens_shadows_away_from_casters);
+    RUN_TEST_CASE(point_lights_cast_shadows_from_every_face);
+    RUN_TEST_CASE(point_lights_cast_shadows_from_their_own_maps);
+    RUN_TEST_CASE(point_light_shadows_stop_at_four_lights);
+    RUN_TEST_CASE(long_solids_cast_for_point_lights_near_one_end);
+    RUN_TEST_CASE(solids_outside_the_view_cast_for_point_lights);
     pu_clear_setup();
     cf_destroy_app();
 }

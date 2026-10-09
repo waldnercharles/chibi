@@ -262,10 +262,21 @@ static void infer_results(analyzer *a, script_function *function, TSNode values)
     }
     a->scope = old_scope;
 }
-static void infer_type(analyzer *a, int symbol, int expression)
+/* A result holds one value, so a call with several results is unpacked. */
+static void infer_type(analyzer *a, int symbol, int expression, TSNode node)
 {
     script_type type = script_analyzer_expr_type(a, expression);
     type.flags &= ~SCRIPT_TYPE_REFERENCE;
+    if (type.flags & SCRIPT_TYPE_RESULTS) {
+        script_analyzer_diagnostic(
+            a,
+            node,
+            "This call has several results; return the ones you need by name, "
+            "as in "
+            "return(Hit: r.Hit, Distance: r.Distance)"
+        );
+        type = script_analyzer_bad_type();
+    }
     a->out->symbols[symbol].type = type;
 }
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
@@ -655,7 +666,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 int expr = script_analyzer_expression(a, value, type);
                 script_analyzer_require(a, value, type, script_analyzer_expr_type(a, expr));
                 if (type.flags & SCRIPT_TYPE_UNTYPED) {
-                    infer_type(a, function->results[parameter], expr);
+                    infer_type(a, function->results[parameter], expr, value);
                 }
                 script_statement assign = {
                     .kind = SCRIPT_STMT_ASSIGN,

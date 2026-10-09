@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <cute_math3d.h>
 #include <math.h>
+#include <string.h>
 
 /* Transform propagation over a world with only the transform components. */
 static ecs_world *world;
@@ -163,6 +164,10 @@ TEST_CASE(transforms_compose_3d_matrices)
     REQUIRE(near_3d(middle->x_axis, 0, 2, 0) && near_3d(middle->y_axis, -2, 0, 0));
     REQUIRE(near_3d(middle->z_axis, 0, 0, 2));
     REQUIRE(near_3d(GAME_GameGlobalTransform3D_get_const(world, leaf)->position, 3, 4, 3));
+    /* The exact walk agrees with propagation. */
+    REQUIRE(game_transform_parent_3d(world, leaf).slot == child.slot);
+    GameGlobalTransform3D walked = game_transform_world_3d(world, leaf);
+    REQUIRE(!memcmp(&walked, GAME_GameGlobalTransform3D_get_const(world, leaf), sizeof walked));
     return true;
 }
 

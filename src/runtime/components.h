@@ -1275,4 +1275,58 @@ typedef NODE_DERIVED_COMPONENT(GameGlobalTransform2D, GameTransform)
 }
 GameGlobalTransform2D;
 
+/* 3D physics. Entities with Transform3D and Collider3D collide in one Box3D
+ * world per ECS world, created when the first one appears. Lengths are project
+ * units and masses kilograms. A Body3D makes the collider kinematic or dynamic;
+ * without one it is static. A dynamic body must be placed in the world, and
+ * physics writes its position, rotation and velocities back. Any other body
+ * under a ChildOf parent with a Transform3D teleports with that parent, so it
+ * does not push like a moving kinematic root. */
+
+typedef enum
+{
+    GAME_COLLIDER3D_BOX,
+    GAME_COLLIDER3D_SPHERE,
+    GAME_COLLIDER3D_CAPSULE
+} GameCollider3DShape;
+
+/* A shape centered on the entity and scaled by its world scale. A box uses
+ * size, its full extents; a sphere uses radius; a capsule uses radius and
+ * height, its full length along local Y, at least twice the radius. Two
+ * colliders touch when each one's category shares a bit with the other's
+ * mask, so zero masks touch nothing. Sensors report contacts without pushing.
+ * Friction and restitution of zero are frictionless and inelastic. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameCollider3D)
+{
+    GameCollider3DShape shape;
+    CF_V3 size;
+    float radius;
+    float height;
+    unsigned category;
+    unsigned mask;
+    bool sensor;
+    float friction;
+    float restitution;
+}
+GameCollider3D;
+
+/* World-space velocities: linear in units/second, angular in radians/second.
+ * Kinematic bodies move at them. Dynamic bodies start from them, and physics
+ * writes the solved values back each step. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameBody3D)
+{
+    GameBodyType type;
+    CF_V3 linear_velocity;
+    CF_V3 angular_velocity;
+}
+GameBody3D;
+
+/* The scene's 3D gravity in units/second^2, on at most one entity. Without
+ * one, gravity is 9.81 meters/second^2 along -Y. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameGravity3D)
+{
+    CF_V3 acceleration;
+}
+GameGravity3D;
+
 #endif

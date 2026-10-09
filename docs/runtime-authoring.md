@@ -193,6 +193,37 @@ Scenarios hash every audio request, and `runtime_snapshot` counts the sounds and
 tones played in `sound_cues`. Studio play mode cannot play sound files yet, so
 `play_sound` and `play_music` fail there with "No sound named".
 
+## Simulate 3D bodies
+
+An entity with `GAME.GameTransform3D` and `GAME.GameCollider3D` collides in the
+scene's Box3D world. A collider is a box (`size` is its full extents), a sphere
+(`radius`) or a capsule (`radius`, and `height` along local Y), scaled by the
+entity's world scale. Lengths are units, 32 to the meter. Without
+`GAME.GameBody3D` the collider is static; with one it is kinematic, moving at its
+velocities, or dynamic, and physics writes a dynamic body's position, rotation
+and velocities back each step. Dynamic bodies must be roots. Any other body
+under a ChildOf parent with a Transform3D teleports with that parent, so give
+a platform that should carry bodies its own velocities instead. Moving a body's
+Transform3D from a script teleports it. Gravity is 9.81 meters per second
+squared down Y unless one entity's `GAME.GameGravity3D` sets it. Behaviors
+handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
+`on ContactEnd3D` with `event.Other`. A sensor collider reports both without
+pushing. Hull and triangle-mesh colliders are not available yet.
+
+```kdl
+name "Crate"
+components {
+    GAME.GameBody3D type="Dynamic"
+    GAME.GameCollider3D category=1 mask=1 friction=0.6 {
+        size x=32.0 y=32.0 z=32.0
+    }
+    GAME.GameTransform3D {
+        position y=64.0
+        scale x=1.0 y=1.0 z=1.0
+    }
+}
+```
+
 ## Runtime identity and capability requests
 
 `.chibi-engine.json` records the player package build ID, source SDK build ID,

@@ -149,6 +149,9 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     if (options->modules & GAME_WORLD_PHYSICS) {
         w->modules.physics = game_physics_new(w->ecs, w->modules.entities);
     }
+    if (options->modules & GAME_WORLD_PHYSICS3D) {
+        w->modules.physics3d = game_physics3d_new(w->ecs, w->modules.entities);
+    }
     if (options->modules & GAME_WORLD_VISIBILITY) {
         w->modules.visibility = game_visibility_new(w->ecs, w->modules.entities);
     }
@@ -189,6 +192,9 @@ void game_world_free(game_world *w)
     game_source_registry_free(w->sources);
     if (w->modules.physics) {
         game_physics_free(w->modules.physics);
+    }
+    if (w->modules.physics3d) {
+        game_physics3d_free(w->modules.physics3d);
     }
     if (w->modules.materials) {
         game_materials_free(w->modules.materials);

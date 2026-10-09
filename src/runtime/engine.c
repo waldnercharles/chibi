@@ -8,6 +8,7 @@
 #include "runtime/events.h"
 #include "runtime/particle_emitters.h"
 #include "runtime/scenes/physics.h"
+#include "runtime/scenes/physics3d.h"
 #include "runtime/source_input.h"
 #include "runtime/task_pool.h"
 #include "runtime/transform_propagation.h"
@@ -133,8 +134,8 @@ static void schedule_finish(void *task, void *user)
 static bool has_simulation(const engine *e)
 {
     return e->modules.sources || e->modules.entities || e->modules.physics ||
-           e->modules.materials || e->modules.particles ||
-           e->modules.visibility || e->modules.rendering;
+           e->modules.physics3d || e->modules.materials ||
+           e->modules.particles || e->modules.visibility || e->modules.rendering;
 }
 static bool engine_paused(const engine *e)
 {
@@ -596,6 +597,9 @@ void engine_reset_scene(engine *engine)
         if (engine->modules.physics) {
             game_physics_reset(engine->modules.physics);
         }
+        if (engine->modules.physics3d) {
+            game_physics3d_reset(engine->modules.physics3d);
+        }
         if (engine->modules.materials) {
             game_materials_reset(engine->modules.materials);
         }
@@ -951,10 +955,6 @@ static int finish_systems(engine *engine)
                        ? game_physics_tick(engine->modules.physics, (float)ENGINE_FIXED_SECONDS)
                        : FLOW_OK;
             CHIBI_TRACE_ZONE_END(physics_zone);
-            if (clock_now(&end) != 0) {
-                return FLOW_ERR_STATE;
-            }
-            engine->timing.physics_ms += elapsed_ms(start, end);
             if (result < 0) {
                 snprintf(
                     engine->error,
@@ -964,6 +964,24 @@ static int finish_systems(engine *engine)
                 );
                 return result;
             }
+            CHIBI_TRACE_ZONE_BEGIN(physics3d_zone, "Physics 3D");
+            result = engine->modules.physics3d
+                       ? game_physics3d_tick(engine->modules.physics3d, (float)ENGINE_FIXED_SECONDS)
+                       : FLOW_OK;
+            CHIBI_TRACE_ZONE_END(physics3d_zone);
+            if (result < 0) {
+                snprintf(
+                    engine->error,
+                    sizeof engine->error,
+                    "%s",
+                    game_physics3d_error(engine->modules.physics3d)
+                );
+                return result;
+            }
+            if (clock_now(&end) != 0) {
+                return FLOW_ERR_STATE;
+            }
+            engine->timing.physics_ms += elapsed_ms(start, end);
             if ((result = propagate_transforms(engine)) < 0) {
                 return result;
             }
@@ -1342,6 +1360,34 @@ GameGlobalTransform2D engine_render_transform(const engine *engine, const ecs_wo
             )) {
             shown.position.x += offset.x;
             shown.position.y += offset.y;
+            break;
+        }
+    }
+    return shown;
+}
+
+GameGlobalTransform3D engine_render_transform_3d(const engine *engine, const ecs_world *world, ecs_entity entity)
+{
+    const GameGlobalTransform3D *global = GAME_GameGlobalTransform3D_get_const(world, entity);
+    assert(global);
+    GameGlobalTransform3D shown = *global;
+    if (!engine || !engine->modules.physics3d) {
+        return shown;
+    }
+    for (ecs_entity at = entity; at.slot; at = ecs_parent(world, at)) {
+        CF_Quat rotation;
+        CF_V3 translation;
+        if (game_physics3d_interpolation(
+                engine->modules.physics3d,
+                at,
+                engine->timing.alpha,
+                &rotation,
+                &translation
+            )) {
+            shown.x_axis = cf_mul_q_v3(rotation, shown.x_axis);
+            shown.y_axis = cf_mul_q_v3(rotation, shown.y_axis);
+            shown.z_axis = cf_mul_q_v3(rotation, shown.z_axis);
+            shown.position = cf_add_v3(cf_mul_q_v3(rotation, shown.position), translation);
             break;
         }
     }

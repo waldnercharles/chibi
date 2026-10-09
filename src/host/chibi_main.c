@@ -21,7 +21,8 @@
 
 /* chibi [PROJECT] [PLAYER OPTIONS]: prepares the project when its sources or
  * the compiler changed since the last preparation, then plays it.
- * chibi export [PROJECT] --output DIR: builds a runnable game folder. */
+ * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
+ * folder, or a static site for browsers. */
 
 #define CHIBI_BUILD_DIR ".chibi/build"
 #define CHIBI_ARTIFACT CHIBI_BUILD_DIR "/game.chibip"
@@ -132,14 +133,16 @@ static int usage(const char *program)
 {
     printf(
         "Usage: %s [PROJECT] [PLAYER OPTIONS]\n"
-        "       %s export [PROJECT] --output DIR [--archive]\n"
+        "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
         "nearest project.kdl at or above the working directory is used.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
         "and engine files, ready to run and ship: a DIR.app on macOS, a\n"
         "folder with an .exe on Windows, and a folder with a .desktop entry\n"
-        "elsewhere. --archive also writes DIR.tar.gz.\n",
+        "elsewhere. --web PLAYER writes a static site instead, with the\n"
+        "browser player from the PLAYER folder (make package-web-player).\n"
+        "--archive also writes DIR.tar.gz.\n",
         program,
         program
     );
@@ -255,7 +258,7 @@ static int prepare(const char *bin, const chibi_project *project, const char *ar
 
 static int export_game(int argc, char **argv)
 {
-    const char *requested = NULL, *output = NULL;
+    const char *requested = NULL, *output = NULL, *web = NULL;
     bool archive = false;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
@@ -265,6 +268,8 @@ static int export_game(int argc, char **argv)
             archive = true;
         } else if (!strcmp(argv[i], "--output") && i + 1 < argc && !output) {
             output = argv[++i];
+        } else if (!strcmp(argv[i], "--web") && i + 1 < argc && !web) {
+            web = argv[++i];
         } else if (argv[i][0] != '-' && !requested) {
             requested = argv[i];
         } else {
@@ -293,6 +298,10 @@ static int export_game(int argc, char **argv)
                                .layout = CHIBI_EXPORT_WINDOWS,
 #endif
                                .archive = archive };
+    if (web) {
+        spec.layout = CHIBI_EXPORT_WEB;
+        spec.web = web;
+    }
     bool exported = chibi_export(&spec);
     free(bin);
     chibi_project_free(&project);

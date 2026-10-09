@@ -7,13 +7,13 @@ modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 14. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 15. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 14
+version 15
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -417,7 +417,10 @@ retargeting establish the current event baseline without inventing a transition.
 Input delivers queued `PressedChanged(pressed)` edges after its component queries
 finish, preserving release and re-press payloads within one update. Other component
 writes are observed at maintenance points. Behavior callbacks may suspend using
-normal behavior continuations.
+normal behavior continuations. To read an action across all of its bindings,
+`held("Jump")` is true while any source bound to `Jump` is down, and
+`pressed("Jump")` is true for the one fixed step after one went down, even for a
+tap released before that step.
 
 A system maintains relationships for its matched entities. While an entity's
 system invocation is active or suspended, relationship values and subscription
@@ -443,7 +446,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 14. Executable files contain no generated identity
+Project manifests use version 15. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

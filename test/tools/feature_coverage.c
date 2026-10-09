@@ -59,8 +59,8 @@ typedef struct
 
 typedef struct
 {
-    char *name;
-    char **behaviors, **includes, **systems;
+    const game_prototype *prototype; /* Merged over its includes; values owns it. */
+    char **includes;
 } prototype_entry;
 
 static char project_root[PATH_MAX], content_root[PATH_MAX];
@@ -316,32 +316,45 @@ static void reach_system(const char *name)
     }
 }
 
+/* An instance a scene runs: its merged components count as used, and the
+ * systems its EngineSystem names run. */
+static void use_instance(const game_prototype *instance)
+{
+    for (int i = 0; i < acount(instance->components); i++) {
+        const game_prototype_component *component = &instance->components[i];
+        use_component_name(component->desc->name);
+        const EngineSystem *system = component->data;
+        if (component->desc->id == GAME_COMPONENT_EngineSystem.id && system->asset) {
+            reach_system(system->asset);
+        }
+    }
+}
+
 /* Reaches the named prototype and the prototypes it includes. A spawn also
- * runs the systems its EngineSystem names and its behaviors, which already
- * hold its includes' behaviors. A scene placement runs the entity's own
- * behavior list and the systems of its merged instance (use_scenes). Returns
- * whether it reached anything new. */
+ * uses its merged instance and runs its behaviors, which already hold its
+ * includes' behaviors. A scene placement uses the entity's merged instance
+ * and runs its own behavior list instead (place_prototype). Returns whether
+ * it reached anything new. */
 static bool reach_prototype(const char *name, bool spawned)
 {
     for (int i = 0; i < acount(prototypes); i++) {
-        prototype_entry *prototype = &prototypes[i];
+        const prototype_entry *item = &prototypes[i];
+        const game_prototype *prototype = item->prototype;
         if (strcmp(prototype->name, name)) {
             continue;
         }
         bool reached = !listed(reached_prototypes, name);
         if (reached) {
             apush(reached_prototypes, xstrdup(name));
-            for (int j = 0; j < acount(prototype->includes); j++) {
-                reach_prototype(prototype->includes[j], false);
+            for (int j = 0; j < acount(item->includes); j++) {
+                reach_prototype(item->includes[j], false);
             }
         }
         if (spawned && !listed(spawned_prototypes, name)) {
             apush(spawned_prototypes, xstrdup(name));
-            for (int j = 0; j < acount(prototype->systems); j++) {
-                reach_system(prototype->systems[j]);
-            }
-            for (int j = 0; j < acount(prototype->behaviors); j++) {
-                reach_behavior(prototype->behaviors[j]);
+            use_instance(prototype);
+            for (int j = 0; j < acount(prototype->graphs); j++) {
+                reach_behavior(prototype->graphs[j]);
             }
             reached = true;
         }
@@ -365,21 +378,6 @@ static char **prototype_includes(const char *text)
     return names;
 }
 
-/* The systems a prototype's or instance's merged EngineSystem names, owned
- * by the caller. */
-static char **engine_systems(const game_prototype *prototype)
-{
-    char **systems = NULL;
-    for (int i = 0; i < acount(prototype->components); i++) {
-        const game_prototype_component *component = &prototype->components[i];
-        const EngineSystem *system = component->data;
-        if (component->desc->id == GAME_COMPONENT_EngineSystem.id && system->asset) {
-            apush(systems, xstrdup(system->asset));
-        }
-    }
-    return systems;
-}
-
 /* Loads the prototypes as project preparation does, so includes resolve. */
 static void use_prototypes()
 {
@@ -394,27 +392,17 @@ static void use_prototypes()
         problems++;
     }
     for (int i = 0; i < acount(values); i++) {
-        const game_prototype *prototype = values[i].prototype;
-        if (!prototype) { /* Loading stopped at an earlier failure. */
+        if (!values[i].prototype) { /* Loading stopped at an earlier failure. */
             continue;
         }
-        prototype_entry item = {
-            .name = xstrdup(prototype->name),
-            .includes = prototype_includes(values[i].text),
-            .systems = engine_systems(prototype),
-        };
-        for (int j = 0; j < acount(prototype->graphs); j++) {
-            apush(item.behaviors, xstrdup(prototype->graphs[j]));
-        }
-        for (int j = 0; j < acount(prototype->components); j++) {
-            use_component_name(prototype->components[j].desc->name);
-        }
+        prototype_entry item = { .prototype = values[i].prototype,
+                                 .includes = prototype_includes(values[i].text) };
         apush(prototypes, item);
     }
 }
 
-/* A placed entity runs the systems its merged instance names: the scene's
- * component overrides apply over its prototype's, as at runtime. */
+/* A placed entity's instance is its prototype with the scene's component
+ * overrides merged over it, as at runtime. */
 static void place_prototype(const game_scene_entity *entity)
 {
     reach_prototype(entity->prototype, false);
@@ -425,19 +413,8 @@ static void place_prototype(const game_scene_entity *entity)
         problems++;
         return;
     }
-    char **systems = engine_systems(object);
-    for (int i = 0; i < acount(systems); i++) {
-        reach_system(systems[i]);
-    }
-    free_paths(systems);
+    use_instance(object);
     game_prototype_free(object);
-}
-
-static void use_scene_components(const av_value *components)
-{
-    for (size_t i = 0; components && i < av_obj_size(components); i++) {
-        use_component_name(av_get_str(av_obj_key_at(components, i)));
-    }
 }
 
 static void use_scenes()
@@ -453,10 +430,7 @@ static void use_scenes()
         problems += !scene;
         for (int j = 0; scene && j < acount(scene->entities); j++) {
             const game_scene_entity *entity = &scene->entities[j];
-            use_scene_components(entity->components);
-            if (entity->prototype) {
-                place_prototype(entity);
-            }
+            place_prototype(entity);
             for (int k = 0; k < acount(entity->behaviors); k++) {
                 reach_behavior(entity->behaviors[k]);
             }
@@ -568,12 +542,9 @@ static void use_reachable()
         }
     }
     for (int i = 0; i < acount(prototypes); i++) {
-        if (!listed(reached_prototypes, prototypes[i].name)) {
-            fprintf(
-                stderr,
-                "prototype %s: no scene uses or spawns it\n",
-                prototypes[i].name
-            );
+        const char *name = prototypes[i].prototype->name;
+        if (!listed(reached_prototypes, name)) {
+            fprintf(stderr, "prototype %s: no scene uses or spawns it\n", name);
             problems++;
         }
     }
@@ -599,10 +570,7 @@ static void use_reachable()
 static void free_reach()
 {
     for (int i = 0; i < acount(prototypes); i++) {
-        free(prototypes[i].name);
-        free_paths(prototypes[i].behaviors);
         free_paths(prototypes[i].includes);
-        free_paths(prototypes[i].systems);
     }
     afree(prototypes);
     project_prepare_prototypes_free(values);
@@ -633,8 +601,12 @@ static void read_allowed_gaps()
     while (fgets(line, sizeof line, file)) {
         line[strcspn(line, "\r\n")] = 0;
         char *name = strchr(line, ' ');
-        if (!line[0] || line[0] == '#') {
-            reasoned = line[0] == '#';
+        if (!line[0]) {
+            reasoned = false;
+            continue;
+        }
+        if (line[0] == '#') { /* A bare "#" spaces a reason; it gives none. */
+            reasoned |= line[1 + strspn(line + 1, " \t")] != 0;
             continue;
         }
         if (!reasoned) {
@@ -745,8 +717,7 @@ TEST_CASE(test_catalog_coverage)
 static bool run_scene(const char *path)
 {
     const char *file = strrchr(path, '/') + 1;
-    char name[MAX_LINE], request_path[MAX_PATH], log_path[MAX_PATH],
-        request[2 * MAX_LINE];
+    char name[MAX_LINE], request_path[MAX_PATH], log_path[MAX_PATH];
     snprintf(name, sizeof name, "%.*s", (int)(strlen(file) - 4), file);
     yyjson_mut_doc *message = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(message);
@@ -756,13 +727,17 @@ static bool run_scene(const char *path)
     yyjson_mut_obj_add_str(message, root, "kind", "scene");
     yyjson_mut_obj_add_str(message, root, "name", name);
     yyjson_mut_obj_add_int(message, root, "frames", SCENARIO_FRAMES);
-    char *json = yyjson_mut_write(message, 0, NULL);
-    snprintf(request, sizeof request, "%s\n", json);
-    free(json);
+    size_t length;
+    char *json = yyjson_mut_write(message, 0, &length);
     yyjson_mut_doc_free(message);
+    char *request = xmalloc(length + 2); /* The controller reads one line. */
+    memcpy(request, json, length);
+    memcpy(request + length, "\n", 2);
+    free(json);
     snprintf(request_path, sizeof request_path, "%s/feature-coverage-request.json", scratch);
     snprintf(log_path, sizeof log_path, "%s/feature-coverage-%s.log", scratch, name);
     tool_write(request_path, request);
+    free(request);
     const char *argv[] = { "/bin/sh",
                            "-c",
                            "exec \"$0\" --project-root \"$1\" < \"$2\"",

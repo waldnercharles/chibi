@@ -1,6 +1,7 @@
 /* Feature coverage: compares the engine catalog (components, native functions
  * and events) with what one project's scripts, prototypes and scenes use, and
  * runs each of the project's scenes for a few frames through run_scenario. */
+#include "assets/project.h"
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
 #include "authoring/application_catalog.h"
@@ -51,7 +52,7 @@ typedef struct
     char **behaviors;
 } prototype_entry;
 
-static char project_root[PATH_MAX];
+static char project_root[PATH_MAX], content_root[PATH_MAX];
 static char scratch[] = "/tmp/chibi-feature-coverage-XXXXXX";
 static authoring_language_catalog *native;
 static source_catalog *project;
@@ -204,11 +205,28 @@ static void use_analysis(const script_catalog *catalog, const script_analysis *a
     }
 }
 
+/* The rest of a source's path when it lies under content/<folder>, or NULL. */
+static const char *in_folder(const source_catalog_source *source, const char *folder)
+{
+    const char *path = source->path;
+    size_t root = strlen(content_root), length = strlen(folder);
+    if (!strncmp(path, content_root, root) && path[root] == '/') {
+        path += root + 1;
+    }
+    return strncmp(path, folder, length) || path[length] != '/' ? NULL
+                                                                : path + length + 1;
+}
+
+/* A library's own uses don't count, since no check shows that a scene calls
+ * it: a feature used only inside a library stays a gap. */
 static void use_sources()
 {
     const script_catalog *catalog = source_catalog_view(project);
     for (int i = 0; i < source_catalog_source_count(project); i++) {
         const source_catalog_source *source = source_catalog_source_at(project, i);
+        if (in_folder(source, "libraries")) {
+            continue;
+        }
         script_analysis
             *analysis = script_analyze_document(source->syntax, catalog, source->identity);
         if (!analysis->valid) {
@@ -234,7 +252,7 @@ static int compare_paths(const void *a, const void *b)
 static char **directory_files(const char *folder)
 {
     char path[MAX_PATH];
-    snprintf(path, sizeof path, "%s/content/%s", project_root, folder);
+    snprintf(path, sizeof path, "%s/%s", content_root, folder);
     char **paths = NULL;
     DIR *directory = opendir(path);
     if (!directory) {
@@ -363,8 +381,7 @@ static void use_scenes()
 /* A behavior source's name is its file name in content/behaviors. */
 static bool behavior_name(const source_catalog_source *source, char *name, size_t size)
 {
-    const char *folder = "behaviors/", *found = strstr(source->path, folder);
-    const char *file = found ? found + strlen(folder) : NULL;
+    const char *file = in_folder(source, "behaviors");
     if (!file || strchr(file, '/')) {
         return false;
     }
@@ -534,15 +551,14 @@ static void report(bool strict)
 
 TEST_CASE(test_catalog_coverage)
 {
-    char error[256], content[MAX_PATH];
+    char error[256];
     native_capabilities *table = authoring_application_catalog_new(false, error, sizeof error);
     REQUIRE(table != NULL);
     const authoring_language_catalog_input input = { .native = table };
     native = authoring_language_catalog_new(&input, error, sizeof error);
     native_capabilities_free(table);
     REQUIRE(native != NULL);
-    snprintf(content, sizeof content, "%s/content", project_root);
-    project = source_catalog_new(content, authoring_language_catalog_view(native));
+    project = source_catalog_new(content_root, authoring_language_catalog_view(native));
     for (int i = 0; i < source_catalog_diagnostic_count(project); i++) {
         const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(project, i);
         fprintf(
@@ -628,8 +644,22 @@ TEST_CASE(test_scenes_run)
 
 int run_feature_coverage(const char *root)
 {
+    char error[256];
+    chibi_project manifest;
     if (!realpath(root, project_root)) {
         perror(root);
+        return 1;
+    }
+    if (chibi_project_open(&manifest, project_root, error, sizeof error)) {
+        fprintf(stderr, "%s: %s\n", root, error);
+        return 1;
+    }
+    bool resolved = realpath(manifest.content, content_root);
+    if (!resolved) {
+        perror(manifest.content);
+    }
+    chibi_project_free(&manifest);
+    if (!resolved) {
         return 1;
     }
     RUN_TEST_CASE(test_catalog_coverage);

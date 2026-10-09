@@ -49,22 +49,37 @@ static int state_assign(state_value *state, const pin_value *value)
     state->storage = storage;
     return FLOW_OK;
 }
-static ecs_query_expr *query_import(const execution_module *m, int index)
+/* Lowers a compiled query tree to terms. A group needs a scope unless it is
+ * an AND of ANDs; every ANY gets one, so neighboring OR chains stay apart.
+ * An empty scope holds, so an empty ANY holds a negated one instead. */
+static void query_import(const execution_module *m, int index, ecs_oper oper, ecs_term **terms)
 {
     const execution_module_query *q = &m->plan.queries[index];
     if (q->kind == EXECUTION_QUERY_HAS) {
-        return ecs_query_expr_has(q->component);
+        apush(*terms, ((ecs_term){ .oper = oper, .id = q->component }));
+        return;
     }
-    ecs_query_expr_kind kind = q->kind == EXECUTION_QUERY_ALL ? ECS_QUERY_ALL
-                             : q->kind == EXECUTION_QUERY_ANY ? ECS_QUERY_ANY
-                                                              : ECS_QUERY_NOT;
-    ecs_query_expr *out = ecs_query_expr_new(kind);
+    if (q->kind == EXECUTION_QUERY_NOT && oper != ECS_OR) {
+        query_import(m, q->children[0], oper == ECS_NOT ? ECS_AND : ECS_NOT, terms);
+        return;
+    }
+    bool scoped = q->kind != EXECUTION_QUERY_ALL || oper != ECS_AND;
+    ecs_oper inner = q->kind == EXECUTION_QUERY_ANY ? ECS_OR
+                   : q->kind == EXECUTION_QUERY_NOT ? ECS_NOT
+                                                    : ECS_AND;
+    if (scoped) {
+        apush(*terms, ((ecs_term){ .kind = ECS_TERM_OPEN, .oper = oper }));
+    }
+    if (q->kind == EXECUTION_QUERY_ANY && !q->child_count) {
+        apush(*terms, ((ecs_term){ .kind = ECS_TERM_OPEN, .oper = ECS_NOT }));
+        apush(*terms, ((ecs_term){ .kind = ECS_TERM_CLOSE }));
+    }
     for (int i = 0; i < q->child_count; i++) {
-        int result = ecs_query_expr_add(out, query_import(m, q->children[i]));
-        assert(!result);
-        (void)result;
+        query_import(m, q->children[i], inner, terms);
     }
-    return out;
+    if (scoped) {
+        apush(*terms, ((ecs_term){ .kind = ECS_TERM_CLOSE }));
+    }
 }
 static bool service_present(const service_binding *services, const char *name)
 {
@@ -145,7 +160,8 @@ static execution_program *program_new(
         }
     }
     if (m->plan.query >= 0) {
-        p->query = query_import(m, m->plan.query);
+        query_import(m, m->plan.query, ECS_AND, &p->query);
+        p->queried = true;
     }
     if (!program_binding_order(p)) {
         execution_program_free(p);
@@ -512,7 +528,7 @@ void execution_program_free(execution_program *p)
         }
     }
     free(p->shared);
-    ecs_query_expr_free(p->query);
+    afree(p->query);
     afree(p->binding_order);
     afree(p->services);
     for (int i = 0; i < acount(p->pending_services); i++) {
@@ -843,11 +859,11 @@ static uint64_t *owners(execution_program *p)
             apush(out, p->instances[i]->owner);
         }
     }
-    if (!p->query || !p->enabled) {
+    if (!p->queried || !p->enabled) {
         return out;
     }
     ecs_query query;
-    int status = ecs_query_begin_expression(p->world, &query, p->query);
+    int status = ecs_query_begin_terms(p->world, &query, p->query, acount(p->query));
     assert(!status);
     (void)status;
     ecs_entity entity;

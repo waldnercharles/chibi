@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{TITLE}}</title>
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+    #canvas { display: block; width: 100%; height: 100%; border: 0; outline: none; touch-action: none; }
+    #status {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+      box-sizing: border-box; max-width: calc(100% - 32px); margin: 0; padding: 10px 16px;
+      border: 1px solid #303746; border-radius: 8px; background: #101620;
+      color: #d9e1ed; font: 14px/1.5 system-ui, sans-serif; text-align: center;
+      overflow-wrap: anywhere; pointer-events: none;
+    }
+    #status[data-error] { border-color: #9d4b55; color: #ffd9dd; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" tabindex="0" aria-label="{{TITLE}}"></canvas>
+  <p id="status" role="status" aria-live="polite">Loading...</p>
+  <noscript>JavaScript is required to play this game.</noscript>
+  <script>
+    var Module = (() => {
+      const canvas = document.getElementById('canvas');
+      const status = document.getElementById('status');
+      let lastError = '';
+      const fail = message => {
+        status.dataset.error = '';
+        status.textContent = String(message);
+        status.hidden = false;
+      };
+      canvas.addEventListener('contextmenu', event => event.preventDefault());
+      canvas.addEventListener('pointerdown', () => canvas.focus());
+      canvas.addEventListener('webglcontextlost', event => {
+        event.preventDefault();
+        fail('Graphics context lost. Reload this page to continue.');
+      });
+      return {
+        canvas,
+        printErr: text => {
+          console.error(text);
+          lastError = text;
+        },
+        onRuntimeInitialized: () => {
+          status.hidden = true;
+          canvas.focus();
+        },
+        onAbort: reason => fail(lastError || reason || 'The game stopped.'),
+        // The player calls this when the game stops; the reason is the last error it printed.
+        chibiStopped: () => fail(lastError || 'The game stopped.'),
+        chibiFail: fail,
+      };
+    })();
+  </script>
+  <script src="chibi-player.js"></script>
+</body>
+</html>

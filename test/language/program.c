@@ -2289,7 +2289,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 18\n"));
+    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 19\n"));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2425,7 +2425,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "version 18\n", 11));
+    REQUIRE(!strncmp(text, "version 19\n", 11));
     unlink(path);
     snprintf(path, sizeof path, "%s/content/B.chibi", root);
     file = fopen(path, "rb");
@@ -3461,6 +3461,80 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
     rmdir(root);
     return true;
 }
+/* Migrates a version 18 scene whose object names hold the '.' that version 19
+ * uses to separate paths, and stops on a rename that would clash. */
+TEST_CASE(program_version_18_dotted_names_are_renamed)
+{
+    const char *scene = "version 1\n"
+                        "name \"Start\"\n"
+                        "(array)entities {\n"
+                        "    - name=\"Ship\"\n"
+                        "    - name=\"Ship.Turret.Barrel\"\n"
+                        "}\n";
+    const char *renamed = "version 1\n"
+                          "name \"Start\"\n"
+                          "(array)entities {\n"
+                          "    - name=\"Ship\"\n"
+                          "    - name=\"Ship_Turret_Barrel\"\n"
+                          "}\n";
+    const char *clash = "version 1\n"
+                        "name \"Start\"\n"
+                        "(array)entities {\n"
+                        "    - name=\"Ship.Turret\"\n"
+                        "    - name=\"Ship_Turret\"\n"
+                        "}\n";
+    const char *manifest = "version 18\ncontent \"content\"\nstart_scene "
+                           "\"scenes/Start.kdl\"\n";
+    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256], text[1024];
+    REQUIRE(mkdtemp(root));
+    const char *directories[] = { "content", "content/scenes" };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        REQUIRE(!mkdir(path, 0700));
+    }
+    const char *runs[][2] = {
+        { scene, NULL },
+        { clash, "Start.kdl has two objects that version 19 names Ship_Turret" }
+    };
+    for (int run = 0; run < 2; run++) {
+        const char *files[][2] = {
+            { CHIBI_PROJECT_MANIFEST, manifest },
+            { "content/scenes/Start.kdl", runs[run][0] },
+        };
+        for (int i = 0; i < 2; i++) {
+            snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+            FILE *file = fopen(path, "wb");
+            fputs(files[i][1], file);
+            fclose(file);
+        }
+        int migrated = chibi_project_migrate(root, error, sizeof error);
+        snprintf(path, sizeof path, "%s/%s", root, files[1][0]);
+        FILE *file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        if (runs[run][1]) {
+            REQUIRE(migrated == -1 && strstr(error, runs[run][1]));
+            REQUIRE(!strcmp(text, clash));
+            continue;
+        }
+        REQUIRE(migrated == CHIBI_PROJECT_VERSION - 18);
+        REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
+        if (strcmp(text, renamed)) {
+            fprintf(stderr, "migrated scene:\n%s", text);
+        }
+        REQUIRE(!strcmp(text, renamed));
+    }
+    snprintf(path, sizeof path, "%s/%s", root, CHIBI_PROJECT_MANIFEST);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", root);
+    unlink(path);
+    for (int i = 1; i >= 0; i--) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        rmdir(path);
+    }
+    rmdir(root);
+    return true;
+}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -4135,6 +4209,7 @@ void test_language_program()
     RUN_TEST_CASE(program_input_actions_read_through_typed_names);
     RUN_TEST_CASE(program_version_16_locals_migrate_to_declarations);
     RUN_TEST_CASE(program_version_17_sdf_motion_is_removed);
+    RUN_TEST_CASE(program_version_18_dotted_names_are_renamed);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

@@ -2581,6 +2581,61 @@ static char **migrate_motions(char **sources, char **paths, int count, char *err
     }
     return migrated;
 }
+/* The name of the `index`th object in a scene's `entities`, or NULL. */
+static av_value *object_name(av_value *entities, size_t index)
+{
+    av_value *entity = av_arr_get(entities, index);
+    av_value *name = av_is_obj(entity) ? av_obj_get(entity, "name") : NULL;
+    return av_is_str(name) ? name : NULL;
+}
+/* Version 19 names nested scene objects by '.'-separated paths, so an
+ * object name holding '.' takes '_' in its place. Earlier scenes are flat, so
+ * a renamed object that would share a name with another stops the migration
+ * for a person to rename one of them. Returns an owned copy of `asset` with
+ * the new names, or NULL when no name changes. */
+static char *undot_names(const char *asset, const char *path, char *error, size_t error_size)
+{
+    char message[128];
+    av_doc *document = asset_text_read(asset, message, sizeof message);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    av_value *entities = av_is_obj(root) ? av_obj_get(root, "entities") : NULL;
+    size_t count = av_is_arr(entities) ? av_arr_size(entities) : 0;
+    bool changed = false;
+    for (size_t i = 0; i < count; i++) {
+        av_value *name = object_name(entities, i);
+        if (!name || !strchr(av_get_str(name), '.')) {
+            continue;
+        }
+        char *undotted = xstrdup(av_get_str(name));
+        for (char *dot = strchr(undotted, '.'); dot; dot = strchr(dot, '.')) {
+            *dot = '_';
+        }
+        av_set_str(name, undotted);
+        free(undotted);
+        changed = true;
+    }
+    for (size_t i = 0; changed && i < count; i++) {
+        av_value *a = object_name(entities, i);
+        for (size_t j = i + 1; a && j < count; j++) {
+            av_value *b = object_name(entities, j);
+            if (b && !strcmp(av_get_str(a), av_get_str(b))) {
+                snprintf(
+                    error,
+                    error_size,
+                    "%s has two objects that version 19 names %s, because '.' "
+                    "separates paths; rename one, then migrate",
+                    path,
+                    av_get_str(a)
+                );
+                av_doc_free(document);
+                return NULL;
+            }
+        }
+    }
+    char *migrated = changed ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
 static int collect_sources(const char *directory, const char *suffix, char ***paths, char *error, size_t error_size)
 {
     DIR *dir = opendir(directory);
@@ -2630,9 +2685,9 @@ int chibi_project_migrate_content(
 )
 {
     char **paths = NULL;
-    /* Versions 15, 16 and 18 change scenes and prototypes, wherever the
+    /* Versions 15, 16, 18 and 19 change scenes and prototypes, wherever the
      * project keeps them; every other step changes scripts. */
-    bool scenes = from == 14 || from == 15 || from == 17;
+    bool scenes = from == 14 || from == 15 || from == 17 || from == 18;
     int status = collect_sources(
         content,
         scenes ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
@@ -2724,6 +2779,14 @@ int chibi_project_migrate_content(
             case 17:
                 error[0] = '\0';
                 migrated = migrate_motions(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 18:
+                error[0] = '\0';
+                migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+                for (int i = 0; i < count && !error[0]; i++) {
+                    migrated[i] = undot_names(sources[i], paths[i], error, error_size);
+                }
                 status = error[0] ? -1 : 0;
                 break;
             default: assert(false);

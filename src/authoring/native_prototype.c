@@ -15,6 +15,7 @@ typedef union
     GameMeshParts parts;
     GameHRC2D hrc;
     GameParticleEmitter emitter;
+    GameDirectionalLight light;
 } native_initial;
 
 static bool contains(game_prototype_component *components, const char *name)
@@ -100,6 +101,10 @@ static int initial_row(
         storage->emitter = game_particle_emitter_defaults();
         out->data = &storage->emitter;
         out->size = sizeof storage->emitter;
+    } else if (!strcmp(desc->name, "GameDirectionalLight")) {
+        storage->light = game_directional_light_defaults();
+        out->data = &storage->light;
+        out->size = sizeof storage->light;
     }
     return 0;
 }

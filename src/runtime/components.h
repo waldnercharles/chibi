@@ -549,6 +549,24 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 }
 GameEnvironment;
 
+/* Light from an infinitely distant source, such as the sun. Direction is the
+ * world-space direction the light travels; it need not be normalized. Color
+ * is 0xRRGGBBAA in Material's linear convention. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameDirectionalLight)
+{
+    unsigned color NODE_COLOR;
+    float intensity;
+    CF_V3 direction;
+}
+GameDirectionalLight;
+
+static inline GameDirectionalLight game_directional_light_defaults()
+{
+    return (GameDirectionalLight){ .color = 0xffffffffu,
+                                   .intensity = 2.8f,
+                                   .direction = { .45f, -.85f, -.4f } };
+}
+
 /* Local scene-linear light. Radius and center elevation use project units;
  * color is 0xRRGGBBAA, matching other authored color fields. */
 typedef NODE_COMPONENT_TYPE_DENSE(GamePointLight)

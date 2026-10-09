@@ -1,6 +1,7 @@
 #pragma once
 #include "ecs/component_catalog.h"
 #include "execution/log.h"
+#include "runtime/behaviors/scene_flow.h"
 #include "runtime/engine.h"
 
 typedef struct game_world game_world;
@@ -42,6 +43,8 @@ game_entities *game_world_entities(const game_world *);
 engine *game_world_engine(const game_world *);
 game_materials *game_world_materials(const game_world *);
 material_fields *game_world_fields(const game_world *);
+/* Scene requests from scripts, which the host applies between frames. */
+game_scene_flow *game_world_scenes(const game_world *);
 
 /* Borrowed installed services; callbacks/context and service ownership remain
  * with the world. Valid until world_free. */

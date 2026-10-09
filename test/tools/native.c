@@ -29,7 +29,7 @@ static game_event_catalog *event_catalog, *wrong_events;
 static ecs_world *world;
 static game_source_registry *registry;
 static game_source_entities *host;
-static game_scene *scene;
+static game_scene *scene, *other_scene;
 static execution_module *module;
 static bool catalog_active;
 static int old_begins, new_begins;
@@ -101,6 +101,8 @@ static void cleanup()
     registry = NULL;
     game_scene_free(scene);
     scene = NULL;
+    game_scene_free(other_scene);
+    other_scene = NULL;
     execution_module_free(module);
     module = NULL;
     ecs_world_free(world);
@@ -657,6 +659,112 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
     }
     return true;
 }
+static game_scene *one_object_scene(const char *name, float x, const char *global)
+{
+    GameTransform transform = { .x = x };
+    GameGlobalBinding binding = { .name = global };
+    game_scene_component components[] = {
+        { &GAME_COMPONENT_GameTransform, &transform },
+        { &GAME_COMPONENT_GameGlobalBinding, &binding }
+    };
+    game_scene_object object = { .name = name,
+                                 .components = components,
+                                 .component_count = global ? 2 : 1 };
+    game_scene_spec spec = { .name = name,
+                             .physics = game_physics_defaults(),
+                             .objects = &object,
+                             .object_count = 1 };
+    char error[192];
+    return game_scene_prepare(&spec, error, sizeof error);
+}
+static float first_x(const game_player *p)
+{
+    ecs_entity entity = game_scene_instance_entity(game_player_scene(p), 0);
+    return GAME_GameTransform_get_const(game_world_ecs(game_player_world(p)), entity)
+        ->x;
+}
+/* Asks for a scene the way Load Scene does and starts it as hosts do. */
+static bool follow(const char *name, char *error, size_t size)
+{
+    game_scene_flow *flow = game_world_scenes(game_player_world(player));
+    pin_value in = { .type = PIN_STR, .str = name };
+    if (GAME_SCENE_LOAD_CALL.invoke(flow, &in, NULL)) {
+        return false;
+    }
+    char *next = game_scene_flow_take(flow);
+    bool loaded = game_player_load_scene(player, next, error, size);
+    free(next);
+    return loaded;
+}
+TEST_CASE(native_player_loads_named_scenes)
+{
+    char error[192];
+    scene = one_object_scene("Hero", 1, "Player");
+    other_scene = one_object_scene("Goal", 2, NULL);
+    REQUIRE(scene && other_scene);
+    game_player_named_scene named = { "Start", other_scene };
+    game_player_spec spec = { .world = { .modules = GAME_WORLD_AUDIO },
+                              .scene = scene,
+                              .scene_name = "Start",
+                              .scenes = &named,
+                              .scene_count = 1 };
+    REQUIRE(!game_player_new(&spec, error, sizeof error));
+    named.name = "Next";
+    size_t length;
+    REQUIRE(game_player_prepared_write(&spec, &player_bytes, &length, error, sizeof error));
+    game_player_host host_context = {
+        .components = { .components = GAME_REGISTRY_COMPONENTS,
+                        .component_count = GAME_REGISTRY_COMPONENT_COUNT },
+        .linker = &(execution_prepared_linker){ .host = player_host }
+    };
+    player = game_player_prepared_read(player_bytes, length, &host_context, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(player);
+    game_world *w = game_player_world(player);
+    game_scene_flow *flow = game_world_scenes(w);
+    game_save *save = game_world_modules(w)->save;
+    REQUIRE(!strcmp(game_scene_flow_current(flow), "Start"));
+    REQUIRE(first_x(player) == 1);
+    REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 1);
+    engine *runtime = game_world_engine(w);
+    REQUIRE(engine_frame(runtime, 0) == 0 && engine_frame(runtime, .05) == 0);
+    uint64_t steps = engine_last_timing(runtime)->simulation_steps;
+    REQUIRE(steps > 0);
+
+    pin_value missing = { .type = PIN_STR, .str = "Missing" };
+    REQUIRE(!strcmp(GAME_SCENE_LOAD_CALL.invoke(flow, &missing, NULL), "No scene named 'Missing'"));
+    REQUIRE(!game_scene_flow_take(flow));
+
+    REQUIRE(game_save_set(save, "level", "1") && game_save_commit(save));
+    REQUIRE(game_save_set(save, "unsaved", "1"));
+    game_audio *audio = engine_audio(runtime);
+    REQUIRE(game_audio_tone(audio, (game_tone){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
+    uint64_t cues = game_audio_hash(audio);
+    REQUIRE(follow("Next", error, sizeof error));
+    REQUIRE(!strcmp(game_scene_flow_current(flow), "Next"));
+    REQUIRE(ecs_world_live_count(game_world_ecs(w)) == 1);
+    REQUIRE(first_x(player) == 2);
+    REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 0);
+    REQUIRE(!strcmp(game_save_get(save, "level"), "1") && !game_save_get(save, "unsaved"));
+    /* The clock and sounds go on across a load. */
+    REQUIRE(game_audio_count(audio) == 1 && game_audio_hash(audio) == cues);
+    REQUIRE(engine_frame(runtime, .1) == 0);
+    REQUIRE(engine_last_timing(runtime)->simulation_steps > steps);
+
+    REQUIRE(!GAME_SCENE_RELOAD_CALL.invoke(flow, NULL, NULL));
+    char *next = game_scene_flow_take(flow);
+    REQUIRE(!strcmp(next, "Next"));
+    free(next);
+    REQUIRE(follow("Start", error, sizeof error));
+    REQUIRE(ecs_world_live_count(game_world_ecs(w)) == 1);
+    REQUIRE(first_x(player) == 1);
+    REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 1);
+
+    REQUIRE(!game_player_load_scene(player, "Missing", error, sizeof error));
+    REQUIRE(!strcmp(error, "No scene named 'Missing'"));
+    engine_reset(runtime);
+    REQUIRE(game_audio_count(audio) == 0);
+    return true;
+}
 static int staged_sounds;
 static void *stage_sounds(void *, const game_player_asset *assets, int count, size_t *, char *, size_t)
 {
@@ -788,6 +896,7 @@ void test_tool_native()
     RUN_TEST_CASE(native_prepared_spawn_generations);
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
+    RUN_TEST_CASE(native_player_loads_named_scenes);
     RUN_TEST_CASE(native_player_plays_sounds);
     pu_clear_setup();
 }

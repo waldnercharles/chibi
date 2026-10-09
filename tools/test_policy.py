@@ -135,7 +135,7 @@ TOOLS = {
     'native-values': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native-values'],
     # Two independently reviewed finite formatting and owned-value cases, no world/process/GPU.
     'text-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--text-format'],
-    # Four reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, and sound requests.
+    # Five reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and sound requests.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native'],
     'ui-authoring': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--ui-authoring'],
     'prototype-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--prototype-document'],

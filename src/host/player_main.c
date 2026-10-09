@@ -318,6 +318,27 @@ static void log_message(void *, const execution_log_message *message)
         message->text
     );
 }
+/* Starts the scene scripts asked for during the frame that just drew. */
+static bool follow_scene(player_host *host, ui_world *ui, char *error, size_t size)
+{
+    char *next = game_scene_flow_take(game_world_scenes(game_player_world(host->player)));
+    if (!next) {
+        return true;
+    }
+    bool loaded = game_player_load_scene(host->player, next, error, size);
+    free(next);
+    if (!loaded) {
+        return false;
+    }
+    const game_scene *scene = game_scene_instance_scene(game_player_scene(host->player));
+    engine_viewport_reset_camera(host->viewport);
+    engine_viewport_clear_arena_camera(host->viewport);
+    app_scene_renderer_reset(host->renderer);
+    engine_viewport_set_perspective(host->viewport, game_scene_perspective(scene));
+    ui->page = game_scene_ui(scene);
+    engine_viewport_set_ui(host->viewport, ui, "");
+    return true;
+}
 int main(int argc, char **argv)
 {
     const char *artifact = NULL, *root = NULL, *shader_dir = NULL, *save_path = NULL;
@@ -537,6 +558,11 @@ int main(int argc, char **argv)
         }
         engine_viewport_present(host.viewport);
         cf_app_draw_onto_screen(true);
+        if (!follow_scene(&host, &ui, error, sizeof error)) {
+            fprintf(stderr, "%s\n", error);
+            goto finish;
+        }
+        scene = game_scene_instance_scene(game_player_scene(host.player));
         now += fixed_dt ? fixed_dt : CF_DELTA_TIME;
         frame++;
     }

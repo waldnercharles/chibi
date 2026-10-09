@@ -54,6 +54,12 @@ typedef struct
     const char *name;
     game_scene *scene;
 } game_player_prototype;
+/* A scene Load Scene can start, by the name scripts give it. */
+typedef struct
+{
+    const char *name;
+    game_scene *scene;
+} game_player_named_scene;
 typedef struct
 {
     game_world_options world;
@@ -64,6 +70,11 @@ typedef struct
     const game_player_prototype *prototypes;
     int prototype_count;
     game_scene *scene;
+    /* The start scene's name (its own name when NULL) and the other scenes
+     * Load Scene can start, each named once. */
+    const char *scene_name;
+    const game_player_named_scene *scenes;
+    int scene_count;
     const game_player_asset *assets;
     int asset_count;
     game_player_resource_host resources;
@@ -81,3 +92,8 @@ game_player *game_player_new(const game_player_spec *, char *error, size_t size)
 void game_player_free(game_player *);
 game_world *game_player_world(const game_player *);
 const game_scene_instance *game_player_scene(const game_player *);
+/* Destroys every entity, resets the engine's per-scene state and starts the
+ * named scene; time, input and committed saves go on. Call it between frames,
+ * as game_scene_flow_take asks. An unknown name changes nothing; any other
+ * failure leaves an empty world, and the host should stop. */
+bool game_player_load_scene(game_player *, const char *name, char *error, size_t size);

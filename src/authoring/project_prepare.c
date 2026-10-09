@@ -23,6 +23,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -176,6 +177,125 @@ static bool attachments_valid(
     }
     return true;
 }
+typedef struct
+{
+    const chibi_project *project;
+    const project_prototype *prototypes;
+    material_fields *fields;
+    const authoring_sources *sources;
+    ecs_world *schemas;
+} scene_inputs;
+static game_scene *prepare_scene(const scene_inputs *in, const char *path, char *error, size_t size)
+{
+    char *text = project_prepare_read(path, NULL, error, size);
+    game_scene_document *document = text ? game_scene_document_load(text, error, size)
+                                         : NULL;
+    free(text);
+    if (!document) {
+        return NULL;
+    }
+    if (!document->ui && in->project->ui) {
+        game_scene_document_set_ui(document, in->project->ui);
+    }
+    game_prototype **objects = NULL;
+    bool valid = true;
+    for (int i = 0; valid && i < acount(document->entities); i++) {
+        game_prototype *object = project_prepare_object(&document->entities[i], in->prototypes, error, size);
+        valid = object &&
+                authoring_prototype_parameters_fields(in->fields, object, error, size);
+        if (object) {
+            apush(objects, object);
+        }
+    }
+    game_scene *scene = valid ? authoring_scene_prepare(
+                                    document,
+                                    (const game_prototype *const *)objects,
+                                    acount(objects),
+                                    error,
+                                    size
+                                )
+                              : NULL;
+    for (int i = 0; i < acount(objects); i++) {
+        game_prototype_free(objects[i]);
+    }
+    afree(objects);
+    game_scene_document_free(document);
+    if (scene && (!attachments_valid(scene, in->sources, error, size) ||
+                  game_scene_register_components(scene, in->schemas, error, size))) {
+        game_scene_free(scene);
+        return NULL;
+    }
+    return scene;
+}
+static char *scene_name(const char *path)
+{
+    const char *slash = strrchr(path, '/');
+    const char *name = slash ? slash + 1 : path;
+    char *copy = xstrdup(name);
+    char *dot = strrchr(copy, '.');
+    if (dot) {
+        *dot = 0;
+    }
+    return copy;
+}
+static int compare_names(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+/* Every scene in content/scenes, sorted, so Load Scene can start any of them. */
+static char **scene_files(const char *content)
+{
+    char directory[4096];
+    snprintf(directory, sizeof directory, "%s/scenes", content);
+    DIR *dir = opendir(directory);
+    char **names = NULL;
+    for (struct dirent *entry; dir && (entry = readdir(dir));) {
+        size_t n = strlen(entry->d_name);
+        if (entry->d_name[0] != '.' && n > 4 && !strcmp(entry->d_name + n - 4, ".kdl")) {
+            apush(names, xstrdup(entry->d_name));
+        }
+    }
+    if (dir) {
+        closedir(dir);
+    }
+    if (acount(names) > 1) {
+        qsort(names, (size_t)acount(names), sizeof *names, compare_names);
+    }
+    return names;
+}
+static bool prepare_scenes(
+    const scene_inputs *in,
+    const char *start,
+    game_player_named_scene **scenes,
+    char *error,
+    size_t size
+)
+{
+    char **files = scene_files(in->project->content);
+    bool valid = true;
+    for (int i = 0; valid && i < acount(files); i++) {
+        char *name = scene_name(files[i]);
+        if (!strcmp(name, start)) {
+            free(name);
+            continue;
+        }
+        char path[4096], reason[512];
+        snprintf(path, sizeof path, "%s/scenes/%s", in->project->content, files[i]);
+        game_scene *scene = prepare_scene(in, path, reason, sizeof reason);
+        if (!scene) {
+            snprintf(error, size, "scenes/%s: %s", files[i], reason);
+            free(name);
+            valid = false;
+            continue;
+        }
+        apush(*scenes, ((game_player_named_scene){ name, scene }));
+    }
+    for (int i = 0; i < acount(files); i++) {
+        free(files[i]);
+    }
+    afree(files);
+    return valid;
+}
 void authoring_project_artifact_free(authoring_project_artifact *artifact)
 {
     assert(artifact);
@@ -262,9 +382,8 @@ bool authoring_project_prepare(
     authoring_language_catalog *native = NULL;
     authoring_sources *sources = NULL;
     project_prototype *prototypes = NULL;
-    game_prototype **objects = NULL;
-    game_scene_document *document = NULL;
     game_scene *scene = NULL;
+    game_player_named_scene *scenes = NULL;
     game_event_catalog *events = NULL;
     game_package_module *modules = NULL;
     const execution_module **definitions = NULL;
@@ -272,7 +391,7 @@ bool authoring_project_prepare(
     game_player_asset *assets = NULL;
     const game_scene **visual_scenes = NULL;
     size_t module_bytes = 0;
-    char *scene_path = NULL, *text = NULL;
+    char *scene_path = NULL, *start = NULL;
     if (chibi_project_open(&project, options->project, error, size)) {
         goto done;
     }
@@ -335,34 +454,15 @@ bool authoring_project_prepare(
             goto done;
         }
     }
+    scene_inputs inputs = { &project, prototypes, fields, sources, schemas };
     scene_path = chibi_project_scene_path(&project, options->scene);
-    text = scene_path ? project_prepare_read(scene_path, NULL, error, size) : NULL;
-    document = text ? game_scene_document_load(text, error, size) : NULL;
-    if (!document) {
+    if (!scene_path) {
+        fail(error, size, "Project has no start scene");
         goto done;
     }
-    if (!document->ui && project.ui) {
-        game_scene_document_set_ui(document, project.ui);
-    }
-    for (int i = 0; i < acount(document->entities); i++) {
-        game_prototype *object = project_prepare_object(&document->entities[i], prototypes, error, size);
-        if (!object) {
-            goto done;
-        }
-        apush(objects, object);
-        if (!authoring_prototype_parameters_fields(fields, object, error, size)) {
-            goto done;
-        }
-    }
-    scene = authoring_scene_prepare(
-        document,
-        (const game_prototype *const *)objects,
-        acount(objects),
-        error,
-        size
-    );
-    if (!scene || !attachments_valid(scene, sources, error, size) ||
-        game_scene_register_components(scene, schemas, error, size)) {
+    start = scene_name(scene_path);
+    scene = prepare_scene(&inputs, scene_path, error, size);
+    if (!scene || !prepare_scenes(&inputs, start, &scenes, error, size)) {
         goto done;
     }
     for (int i = 0; i < authoring_sources_count(sources); i++) {
@@ -430,6 +530,9 @@ bool authoring_project_prepare(
         apush(visual_scenes, prepared[i].scene);
     }
     apush(visual_scenes, scene);
+    for (int i = 0; i < acount(scenes); i++) {
+        apush(visual_scenes, scenes[i].scene);
+    }
     if (!authoring_visual_prepare(visual_scenes, acount(visual_scenes), &assets, error, size)) {
         goto done;
     }
@@ -449,7 +552,10 @@ bool authoring_project_prepare(
         .prototype_count = acount(prepared),
         .assets = assets,
         .asset_count = acount(assets),
-        .scene = scene
+        .scene = scene,
+        .scene_name = start,
+        .scenes = scenes,
+        .scene_count = acount(scenes)
     };
     valid = game_player_prepared_write(&spec, &artifact->data, &artifact->size, error, size);
     if (valid) {
@@ -478,13 +584,13 @@ done:
     }
     afree(prepared);
     game_scene_free(scene);
-    for (int i = 0; i < acount(objects); i++) {
-        game_prototype_free(objects[i]);
+    for (int i = 0; i < acount(scenes); i++) {
+        free((void *)scenes[i].name);
+        game_scene_free(scenes[i].scene);
     }
-    afree(objects);
+    afree(scenes);
     project_prepare_prototypes_free(prototypes);
-    game_scene_document_free(document);
-    free(text);
+    free(start);
     free(scene_path);
     game_event_catalog_free(events);
     authoring_sources_free(sources);

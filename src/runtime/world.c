@@ -2,6 +2,7 @@
 
 #include "execution/ecs_reader.h"
 #include "runtime/behaviors/entities_source.h"
+#include "runtime/behaviors/scene_flow.h"
 #include "runtime/component_catalog.h"
 #include "support/xalloc.h"
 
@@ -19,6 +20,7 @@ struct game_world
     eval_component_reader reader;
     execution_log_service log;
     engine_modules modules;
+    game_scene_flow *scenes;
     engine *runtime;
 };
 static void boundary(void *context, double now, double delta)
@@ -100,6 +102,7 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     w->modules.rendering = (options->modules & GAME_WORLD_VISUAL_MOTION) != 0;
     w->modules.sdf_motion = options->sdf_motion;
     w->modules.save = game_save_new();
+    w->scenes = game_scene_flow_new();
     if (options->modules & GAME_WORLD_AUDIO) {
         w->modules.audio = game_audio_new();
     }
@@ -129,6 +132,7 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     bind(w, EVAL_COMPONENT_READER_SERVICE, &w->reader);
     bind(w, "game.entities", w->modules.entities);
     bind(w, "game.save", w->modules.save);
+    bind(w, "game.scenes", w->scenes);
     bind(w, "game.audio", w->modules.audio);
     bind(w, "game.ui", w->modules.ui);
     bind(w, "game.particles", w->modules.particles);
@@ -177,6 +181,7 @@ void game_world_free(game_world *w)
         game_ui_free(w->modules.ui);
     }
     game_save_free(w->modules.save);
+    game_scene_flow_free(w->scenes);
     if (w->owns_ecs) {
         ecs_world_free(w->ecs);
     }
@@ -205,6 +210,11 @@ game_materials *game_world_materials(const game_world *w)
 material_fields *game_world_fields(const game_world *w)
 {
     return w->modules.materials ? game_materials_fields(w->modules.materials) : NULL;
+}
+
+game_scene_flow *game_world_scenes(const game_world *w)
+{
+    return w->scenes;
 }
 
 const engine_modules *game_world_modules(const game_world *w)

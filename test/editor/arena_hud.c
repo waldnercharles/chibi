@@ -232,13 +232,11 @@ static void repair_event(char *event, size_t size)
 static void sandbox_previews()
 {
     chibi_preview_run *run = NULL;
-    bool perspective = false;
     char error[256] = "";
     int status = chibi_automation_preview(
         ROOT,
         "{\"kind\":\"scene\",\"name\":\"Sandbox\",\"frames\":1}",
         &run,
-        &perspective,
         error,
         sizeof error
     );

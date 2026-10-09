@@ -1732,10 +1732,11 @@ TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
         }
         REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "done", 41));
-        /* All 41 finished together; only the newest 32 keep their results. */
+        /* All 41 finished together; only the newest 32 keep their results,
+         * so awaiting the first one fails. */
         args[0].d = 3;
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.15, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "got", 0));
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.15, 0, 1000) != FLOW_OK);
+        REQUIRE(number_state(instance, "got", -1));
         /* The oldest finished slot, the first task's, now runs Long. */
         args[0].d = 2;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.2, 0, 1000) == FLOW_OK);

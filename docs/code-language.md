@@ -223,8 +223,8 @@ behavior Turret {
 - `cancel t` stops a running task and the tasks it started; anything awaiting it
   wakes with default results. Cancelling a finished task does nothing.
 - A finished task keeps its results until 32 more of its owner's tasks finish.
-  Awaiting it after that gives default results, like a cancelled task, so keep a
-  result you need longer in a state.
+  Awaiting it after that is a runtime error, so keep a result you need longer in
+  a state.
 - A task is true while it is running, so `if t` and `if !t` test it.
 - A `task` state needs no default; until assigned it refers to no task.
 - Tasks belong to the entity or system registration that started them and stop

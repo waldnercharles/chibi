@@ -48,6 +48,9 @@ typedef struct
     float angle, stop_fraction;
     bool seen, pierceable_fragment, masked;
     bool follower; /* Has a ChildOf parent, so it follows it and never writes back. */
+    /* The slot of the body it moves with, its own unless it follows an
+     * anchor, or 0 for a follower with none. */
+    unsigned group;
 } physics_body;
 
 typedef struct
@@ -205,6 +208,7 @@ static bool same_entity(ecs_entity a, ecs_entity b)
 static bool eligible(const physics_body *a, const physics_body *b)
 {
     return !same_entity(a->entity, b->entity) &&
+           (!a->group || a->group != b->group) &&
            (a->collider.category & b->collider.mask) &&
            (b->collider.category & a->collider.mask) &&
            a->collider.ignore_entity != ecs_entity_to_u64(b->entity) &&
@@ -910,18 +914,20 @@ static bool continuous_sensor(const physics_body *body)
     return body->settings.continuous && body->collider.sensor;
 }
 
-/* A continuous sensor stops where it first meets a blocker, after its
- * followers have been placed and tested at its full sweep, so none may
- * carry a collider. */
-static int anchors_valid(game_physics *physics)
+/* Groups each body with the one it moves with. A continuous sensor stops
+ * where it first meets a blocker, after its followers have been placed and
+ * tested at its full sweep, so none may carry a collider. */
+static int group_followers(game_physics *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
-        const physics_body *body = &physics->bodies[i];
-        if (!body->body.index1 || !body->seen || !body->follower) {
+        physics_body *body = &physics->bodies[i];
+        if (!body->body.index1 || !body->seen) {
             continue;
         }
-        const physics_body *with = anchor(physics, body->entity);
-        if (with && continuous_sensor(with)) {
+        const physics_body *with = body->follower ? anchor(physics, body->entity)
+                                                  : body;
+        body->group = with ? with->entity.slot : 0;
+        if (body->follower && with && continuous_sensor(with)) {
             snprintf(
                 physics->error,
                 sizeof physics->error,
@@ -947,7 +953,7 @@ static void follow_anchors(game_physics *physics, bool stepped)
         if (!body->body.index1 || !body->seen || !body->follower) {
             continue;
         }
-        const physics_body *with = anchor(physics, body->entity);
+        const physics_body *with = body->group ? &physics->bodies[body->group] : NULL;
         if (stepped) {
             if (with) {
                 b2Transform relative = b2InvMulTransforms(with->start, body->start);
@@ -1861,7 +1867,7 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     CHIBI_TRACE_ZONE_END(sync_zone);
     profile_phase(physics, &start, &physics->profile.synchronize_ms);
     if (result >= 0) {
-        result = anchors_valid(physics);
+        result = group_followers(physics);
     }
     if (result < 0) {
         return result;

@@ -311,6 +311,7 @@ TEST_CASE(export_assembles_a_runnable_folder)
     REQUIRE(contains("site/files.json", "\"art/sheet.bin\""));
     REQUIRE(contains("site/files.json", "\"files.json\""));
     REQUIRE(contains("site/files.json", "\"engine/shaders/nested/a.glsl\""));
+    REQUIRE(has("site/data/.chibi-export", "") && !contains("site/files.json", ".chibi-export"));
     REQUIRE(export_as("site", CHIBI_EXPORT_WEB, false)); /* replaces a site */
     remove_at("web/chibi-player.wasm");
     REQUIRE(!export_as("broken", CHIBI_EXPORT_WEB, false));

@@ -613,7 +613,8 @@ static bool finish_app(const chibi_export_spec *spec, const char *staging, const
     return sign(staging);
 }
 
-/* Lists every file under `directory` by its path from `prefix`. */
+/* Lists every file under `directory` by its path from `prefix`, except the
+ * export marker, which the player never reads and static hosts often drop. */
 static bool list_tree(const char *directory, const char *prefix, yyjson_mut_doc *doc, yyjson_mut_val *files)
 {
     DIR *dir = opendir(directory);
@@ -628,7 +629,8 @@ static bool list_tree(const char *directory, const char *prefix, yyjson_mut_doc 
             listed = errno == 0 || failed(strerror(errno), directory);
             break;
         }
-        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") ||
+            (!prefix[0] && !strcmp(entry->d_name, EXPORT_MARKER))) {
             continue;
         }
         char *path = join(directory, entry->d_name);

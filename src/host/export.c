@@ -105,30 +105,30 @@ static bool copy_tree(const char *from, const char *to)
     return copied;
 }
 
-/* Deletes a folder this export created, without following symlinks. */
-static void remove_tree(const char *path)
+/* Deletes a folder without following symlinks; false when anything remains. */
+static bool remove_tree(const char *path)
 {
     struct stat info;
     if (lstat(path, &info) != 0) {
-        return;
+        return errno == ENOENT;
     }
     if (!S_ISDIR(info.st_mode)) {
-        unlink(path);
-        return;
+        return unlink(path) == 0;
     }
     DIR *dir = opendir(path);
+    bool removed = dir != NULL;
     struct dirent *entry;
     while (dir && (entry = readdir(dir))) {
         if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")) {
             char *child = join(path, entry->d_name);
-            remove_tree(child);
+            removed = remove_tree(child) && removed;
             free(child);
         }
     }
     if (dir) {
         closedir(dir);
     }
-    rmdir(path);
+    return rmdir(path) == 0 && removed;
 }
 
 /* Copies each resource the artifact reads from its resource root at run time,
@@ -541,9 +541,10 @@ static bool publish(const char *staging, const char *output)
         published = false;
         rename(old, output);
     }
-    if (published) {
-        remove_tree(old);
-    } else {
+    if (published && !remove_tree(old)) {
+        fprintf(stderr, "Could not remove the previous export: %s\n", old);
+    }
+    if (!published) {
         failed(strerror(errno), output);
         rmdir(old); /* only the empty reservation; a stranded export stays */
     }

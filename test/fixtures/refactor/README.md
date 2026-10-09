@@ -13,8 +13,8 @@ refactoring tests. Prototypes and the scene contain only the relationships the
 tests exercise. Material and field graphs provide a valid constant surface and
 field without retaining game rendering content.
 
-`values` retains ArenaDropBehavior's authored struct-field use of ArenaExperience,
-a prototype reference to the same material, and an OrbitFlipper action binding.
+`values` retains ArenaDropBehavior's authored struct-field use of ArenaExperience
+and a prototype reference to the same material.
 Studio navigation key fixtures continue to come from product Studio assets.
 
 These fixtures do not load external game repositories or launch scenes.

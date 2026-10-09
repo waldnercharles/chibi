@@ -1,8 +1,8 @@
 #include "execution/backend.h"
 #include "host/native_default.h"
 #include "platform/cute.h"
-#include "render/scene3d.h"
 #include "render/device_controls.h"
+#include "render/scene3d.h"
 #include "render/scene_renderer.h"
 #include "render/sdf_motion.h"
 #include "render/shader_images.h"
@@ -323,6 +323,29 @@ static void log_message(void *, const execution_log_message *message)
         message->text
     );
 }
+/* Starts the scene scripts asked for during the frame that just drew, or
+ * prints why it could not. */
+static bool follow_scene(player_host *host)
+{
+    char *next = game_scene_flow_take(game_world_scenes(game_player_world(host->player)));
+    if (!next) {
+        return true;
+    }
+    char error[512];
+    bool loaded = game_player_load_scene(host->player, next, error, sizeof error);
+    free(next);
+    if (!loaded) {
+        fprintf(stderr, "%s\n", error);
+        return false;
+    }
+    const game_scene *scene = game_scene_instance_scene(game_player_scene(host->player));
+    engine_viewport_reset_camera(host->viewport);
+    app_scene_renderer_reset(host->renderer);
+    engine_viewport_set_perspective(host->viewport, game_scene_perspective(scene));
+    host->ui.page = game_scene_ui(scene);
+    engine_viewport_set_ui(host->viewport, &host->ui, "");
+    return true;
+}
 /* Runs one frame: 1 to continue, 0 when the player quits, and -1 after
  * printing why the game failed. */
 static int run_frame(player_host *host)
@@ -408,6 +431,9 @@ static int run_frame(player_host *host)
     }
     engine_viewport_present(host->viewport);
     cf_app_draw_onto_screen(true);
+    if (!follow_scene(host)) {
+        return -1;
+    }
     host->now += host->fixed_dt ? host->fixed_dt : CF_DELTA_TIME;
     return 1;
 }

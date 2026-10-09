@@ -727,9 +727,11 @@ TEST_CASE(test_catalog_coverage)
  * frame without a behavior failure. */
 static bool run_scene(const char *path)
 {
-    /* The controller takes the file name, which keeps any ".kdl" in its stem. */
-    const char *name = strrchr(path, '/') + 1;
-    char request_path[MAX_PATH], log_path[MAX_PATH];
+    /* A scene's name is its file name without ".kdl"; the scene runs under it,
+     * as current_scene() reports. */
+    const char *file = strrchr(path, '/') + 1;
+    char name[MAX_PATH], request_path[MAX_PATH], log_path[MAX_PATH];
+    snprintf(name, sizeof name, "%.*s", (int)(strlen(file) - strlen(".kdl")), file);
     yyjson_mut_doc *message = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(message);
     yyjson_mut_doc_set_root(message, root);

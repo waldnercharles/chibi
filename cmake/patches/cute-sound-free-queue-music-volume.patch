@@ -1,0 +1,65 @@
+diff --git a/libraries/cute/cute_sound.h b/libraries/cute/cute_sound.h
+--- a/libraries/cute/cute_sound.h
++++ b/libraries/cute/cute_sound.h
+@@ -1093,10 +1093,10 @@
+ 		s_ctx->t += dt;
+ 		if (s_ctx->t >= s_ctx->fade) {
+ 			s_ctx->music_state = CUTE_SOUND_MUSIC_STATE_PLAYING;
+-			s_ctx->music_playing->volume = s_ctx->music_volume;
++			s_ctx->music_playing->volume = 1.0f;
+ 		} else {
+ 			float progress = s_smoothstep(s_ctx->t / s_ctx->fade);
+-			s_ctx->music_playing->volume = s_ctx->music_volume * progress;
++			s_ctx->music_playing->volume = progress;
+ 		}
+ 	}	break;
+ 
+@@ -1122,12 +1122,12 @@
+ 		s_ctx->t += dt;
+ 		if (s_ctx->t >= s_ctx->fade) {
+ 			s_ctx->music_state = CUTE_SOUND_MUSIC_STATE_PLAYING;
+-			s_ctx->music_next->volume = s_ctx->music_volume;
++			s_ctx->music_next->volume = 1.0f;
+ 			s_ctx->music_playing = s_ctx->music_next;
+ 			s_ctx->music_next = NULL;
+ 		} else {
+ 			float progress = s_smoothstep(s_ctx->t / s_ctx->fade);
+-			s_ctx->music_next->volume = s_ctx->music_volume * progress;
++			s_ctx->music_next->volume = progress;
+ 		}
+ 	}	break;
+ 
+@@ -1137,13 +1137,13 @@
+ 		if (s_ctx->t >= s_ctx->fade) {
+ 			s_ctx->music_state = CUTE_SOUND_MUSIC_STATE_PLAYING;
+ 			s_ctx->music_playing->active = false;
+-			s_ctx->music_next->volume = s_ctx->music_volume;
++			s_ctx->music_next->volume = 1.0f;
+ 			s_ctx->music_playing = s_ctx->music_next;
+ 			s_ctx->music_next = NULL;
+ 		} else {
+ 			float progress = s_smoothstep(s_ctx->t / s_ctx->fade);
+ 			s_ctx->music_playing->volume = s_ctx->fade_start_volume * (1.0f - progress);
+-			s_ctx->music_next->volume = s_ctx->music_volume * progress;
++			s_ctx->music_next->volume = progress;
+ 		}
+ 	}	break;
+ 
+@@ -1791,7 +1791,7 @@
+ 		} else {
+ 			if (s_ctx->audio_sources_to_free_size == s_ctx->audio_sources_to_free_capacity) {
+ 				int new_capacity = s_ctx->audio_sources_to_free_capacity * 2;
+-				cs_audio_source_t** new_sources = (cs_audio_source_t**)CUTE_SOUND_ALLOC(new_capacity, s_mem_ctx);
++				cs_audio_source_t** new_sources = (cs_audio_source_t**)CUTE_SOUND_ALLOC(sizeof(cs_audio_source_t*) * new_capacity, s_mem_ctx);
+ 				CUTE_SOUND_MEMCPY(new_sources, s_ctx->audio_sources_to_free, sizeof(cs_audio_source_t*) * s_ctx->audio_sources_to_free_size);
+ 				CUTE_SOUND_FREE(s_ctx->audio_sources_to_free, s_mem_ctx);
+ 				s_ctx->audio_sources_to_free = new_sources;
+@@ -2128,8 +2128,6 @@
+ {
+ 	if (volume_0_to_1 < 0) volume_0_to_1 = 0;
+ 	s_ctx->music_volume = volume_0_to_1;
+-	if (s_ctx->music_playing) s_ctx->music_playing->volume = volume_0_to_1;
+-	if (s_ctx->music_next) s_ctx->music_next->volume = volume_0_to_1;
+ }
+ 
+ void cs_music_set_pitch(float pitch)

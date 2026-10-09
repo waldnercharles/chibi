@@ -2,7 +2,7 @@
 
 Audited on October 9, 2026. The dependency now targets [`96e6034aa6bc44665856ee480962a9ddab0b87cc`](https://github.com/RandyGaul/cute_framework/commit/96e6034aa6bc44665856ee480962a9ddab0b87cc), Cute's `master` on that day. The previous pin was [`7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d`](https://github.com/RandyGaul/cute_framework/commit/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d). The update brings in Cute's optional WebGPU backend, which the browser player uses; other builds leave it off.
 
-Of 17 patches, 11 are now upstream, most adapted from Chibi's own patches. Six remain, and `cute-web-webgpu-device` and `cute-gles-range-draw-state` are new.
+Of 17 patches, 11 are now upstream, most adapted from Chibi's own patches. Six remain, and `cute-web-webgpu-device`, `cute-gles-range-draw-state` and `cute-sound-free-queue-music-volume` are new.
 
 ## Removed patches
 
@@ -36,6 +36,7 @@ The rows follow the build's application order. Each patch applies independently 
 | [cute-instance-buffer](cute-instance-buffer.md) | Expose existing shared instance staging through the public C header. |
 | [cute-web-webgpu-device](cute-web-webgpu-device.md) | Start WebGPU in the browser from a device the page requests, since the player links without Asyncify. |
 | [cute-gles-range-draw-state](cute-gles-range-draw-state.md) | Keep the viewport between GLES range draws, so batched shadow casters stay in their atlas tile. |
+| [cute-sound-free-queue-music-volume](cute-sound-free-queue-music-volume.md) | Grow the deferred free queue by pointers and apply the music volume once. |
 
 The October 6 audit published each patch it kept as an unlisted gist, and `gists.json` records that publication. The gists hold the October 6 versions and were not republished for this update. The patches in `cmake/patches` and these documents are current.
 

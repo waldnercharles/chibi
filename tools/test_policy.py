@@ -81,7 +81,7 @@ TOOLS = {
     'source-edit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-edit'],
     # One new-asset scaffolding case in a temporary content folder.
     'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--new-asset'],
-    # Thirteen validate_project cases, each a scaffolded temporary project and a few built chibi_ctl runs.
+    # Fourteen validate_project cases, each a scaffolded temporary project and a few built chibi_ctl runs.
     'validate-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--validate-project',
                          str(ROOT / 'build/bin/chibi_ctl')],
     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--shader-parameters-prepared'],
@@ -173,7 +173,7 @@ TOOLS = {
     # Four reviewed in-tree Radiance .hdr cases: flat and run-length decoding, malformed files,
     # preparation from mounted content and import without replacement; one temporary folder, no GPU.
     'sky-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--sky-files'],
-    # Seven reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, declared components, and per-step action state and recorded taps.
+    # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.
     'physics': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--physics'],

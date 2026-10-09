@@ -25,6 +25,7 @@
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/sound_prepare.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_collection.h"
 #include "authoring/source_format.h"
@@ -6848,17 +6849,20 @@ static int load_behavior_family_assets(
 /* Scenarios use the application's canonical declaration and source pipeline. */
 static int register_shared_assets(const char *root, game_prototype_preview *preview, char *error, size_t error_size)
 {
+    const char *content = chibi_automation_content(root);
     /* The preview's live world is the only world, so nothing registers twice. */
-    int loaded = app_behavior_fixtures_load(
-        game_prototype_preview_live(preview),
-        NULL,
-        chibi_automation_content(root)
-    );
+    int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), NULL, content);
+    bool sounds = loaded >= 0 &&
+                  authoring_sounds_load(
+                      content,
+                      engine_audio(game_prototype_preview_runtime(preview)),
+                      error,
+                      error_size
+                  );
     if (loaded < 0) {
         set_error(error, error_size, "project source or native asset preparation failed; see preparation diagnostics");
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    return CHIBI_AUTOMATION_OK;
+    return sounds ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
 
 static int add_scenario_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t frames, double fixed_dt)
@@ -7394,6 +7398,16 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         catalog_hash_text(&context->runtime_hash, entries[i].relative);
         char hash[17];
         snprintf(hash, sizeof hash, "%016llx", (unsigned long long)entries[i].hash);
+        catalog_hash_text(&context->runtime_hash, hash);
+    }
+    /* Sounds are no catalog asset, but which ones loaded decides what
+     * play_sound finds, so a replay checks them too. */
+    const game_audio *audio = engine_audio(
+        game_prototype_preview_runtime(context->preview)
+    );
+    if (game_audio_sound_count(audio)) {
+        char hash[17];
+        snprintf(hash, sizeof hash, "%016llx", (unsigned long long)game_audio_library_hash(audio));
         catalog_hash_text(&context->runtime_hash, hash);
     }
     return status;

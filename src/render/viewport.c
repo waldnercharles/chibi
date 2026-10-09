@@ -669,6 +669,13 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
 {
     assert(viewport->host);
     viewport->pointer = (engine_viewport_pointer){ 0 };
+    /* Sound follows the session even while the viewport draws nothing. */
+    bool session = viewport->runtime && controls->session;
+    render_audio_update(
+        viewport->audio,
+        session ? engine_audio(viewport->runtime) : NULL,
+        controls->playing
+    );
     const engine_viewport_host_input *in = &viewport->host_input;
     viewport->image_size = (CF_V2){ in->width, in->height };
     viewport->focused = in->focused && !controls->editing;
@@ -707,13 +714,6 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
     }
     bool navigating = navigate_viewport(viewport, &io, controls->playing);
     capture_viewport_pointer(viewport, &io, navigating || viewport->ui_capture);
-    if (viewport->runtime && controls->session) {
-        render_audio_update(
-            viewport->audio,
-            engine_audio(viewport->runtime),
-            controls->playing
-        );
-    }
     return 0;
 }
 

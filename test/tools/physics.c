@@ -1530,6 +1530,39 @@ static void authored_bounce_and_drive()
     dispose(&f);
 }
 
+/* Terrain tiles are laid out along the world's axes, so terrain under a
+ * rotated parent, which would turn them, is refused. */
+static void rotated_terrain()
+{
+    fixture f = create();
+    assert(ecs_world_register_component(f.world, &GAME_COMPONENT_MaterialTerrain, NULL) == ECS_OK);
+    ecs_entity parent = ecs_world_create_entity(f.world);
+    ecs_entity source = ecs_world_create_entity(f.world);
+    assert(GAME_GameTransform_add(f.world, parent, 0) == ECS_OK);
+    assert(GAME_GameOrientation_add(f.world, parent, 0) == ECS_OK);
+    assert(GAME_GameTransform_add(f.world, source, 0) == ECS_OK);
+    assert(ecs_world_record_add_pair(f.world, source, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    MaterialTerrain terrain = { .width = 64,
+                                .height = 64,
+                                .cell_size = 2,
+                                .field = "Cave",
+                                .min_fragment_cells = 1 };
+    assert(
+        ecs_world_record_add(f.world, source, GAME_COMPONENT_MaterialTerrain.id, &terrain, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    GAME_GameOrientation_get(f.world, parent)->radians = 0.5f;
+    const char *error = game_materials_prepare(f.materials);
+    assert(error && strstr(error, "unrotated"));
+    dispose(&f);
+}
+
+TEST_CASE(physics_rotated_terrain_is_refused)
+{
+    rotated_terrain();
+    return true;
+}
+
 TEST_CASE(physics_task_pool_runs_every_range)
 {
     test_task_pool();
@@ -1577,6 +1610,7 @@ void test_tool_physics()
 {
     test_native_catalog_enable(); /* Contact payloads copy a CF_V2. */
     RUN_TEST_CASE(physics_task_pool_runs_every_range);
+    RUN_TEST_CASE(physics_rotated_terrain_is_refused);
     RUN_TEST_CASE(physics_authored_motion);
     RUN_TEST_CASE(physics_contacts_and_queries_at_each_substep_count);
     RUN_TEST_CASE(physics_parallel_collection_matches_serial);

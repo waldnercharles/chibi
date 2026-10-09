@@ -107,6 +107,11 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
                 fail(error, size, "invalid prepared scene component");
                 goto failed;
             }
+            if (desc->derived_from) {
+                /* Propagation computes it from the component it derives from. */
+                fail(error, size, "prepared scene component is derived, not authored");
+                goto failed;
+            }
             if (desc->layout_hash && desc->layout_hash != ecs_layout_hash(desc->type)) {
                 fail(error, size, "prepared scene component layout hash differs");
                 goto failed;

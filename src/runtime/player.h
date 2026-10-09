@@ -15,6 +15,7 @@ typedef enum
     GAME_PLAYER_ASSET_PARTS,
     GAME_PLAYER_ASSET_UI,
     GAME_PLAYER_ASSET_FONT,
+    GAME_PLAYER_ASSET_SKY,
     GAME_PLAYER_ASSET_COUNT
 } game_player_asset_kind;
 typedef struct

@@ -6,6 +6,7 @@
 #include "render/scene3d_influence.h"
 #include "render/scene3d_light_shadow.h"
 #include "render/scene3d_shadow.h"
+#include "render/scene3d_sky.h"
 #include "render/scene3d_trail.h"
 #include "render/scene3d_visual.h"
 #include "render/shader_catalog.h"
@@ -78,6 +79,7 @@ struct render_scene3d
     render_programs *programs;
     render_influences *influences;
     scene3d_trails *trails;
+    render_scene3d_sky *sky;
     game_particle_emitters *emitters;
     CF_Mesh prism, octahedron, tetrahedron;
     CF_Mesh particle_quad;
@@ -141,6 +143,7 @@ render_scene3d *render_scene3d_new()
     scene3d->shadow = render_scene3d_shadow_new();
     scene3d->light_shadow = render_scene3d_light_shadow_new();
     scene3d->trails = render_scene3d_trails_new();
+    scene3d->sky = render_scene3d_sky_new();
     scene3d->emitters = game_particle_emitters_new(NULL);
     scene3d->prism = render_scene3d_prism_mesh();
     scene3d->octahedron = render_scene3d_octahedron_mesh();
@@ -188,6 +191,7 @@ void render_scene3d_free(render_scene3d *scene3d)
     afree(scene3d->shadow_boxes);
     afree(scene3d->near_boxes);
     render_scene3d_trails_free(scene3d->trails);
+    render_scene3d_sky_free(scene3d->sky);
     game_particle_emitters_free(scene3d->emitters);
     cf_destroy_mesh(scene3d->prism);
     cf_destroy_mesh(scene3d->octahedron);
@@ -922,10 +926,18 @@ static bool draw_light_shadows(render_scene3d *scene3d, int receivers)
     return true;
 }
 
+/* The sky and trails go between opaque and translucent surfaces: the sky
+ * fills what opaque ones left open, and translucent ones blend over both. */
+static void draw_behind_translucents(render_scene3d *scene3d, const render_scene3d_camera *camera)
+{
+    render_scene3d_sky_draw(scene3d->sky, camera);
+    render_scene3d_trails_draw(scene3d->trails, camera);
+}
+
 static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera, float time)
 {
     if (!acount(scene3d->buffer.draws)) {
-        render_scene3d_trails_draw(scene3d->trails, camera);
+        draw_behind_translucents(scene3d, camera);
         return true;
     }
     for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
@@ -1029,7 +1041,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
             render_programs_bind3d(scene3d->programs, program);
         }
         if (draw->transparent && !transparent) {
-            render_scene3d_trails_draw(scene3d->trails, camera);
+            draw_behind_translucents(scene3d, camera);
             transparent = true;
             cf_draw3d_pop_render_state();
             state.depth_write_enabled = false;
@@ -1068,7 +1080,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     cf_draw3d_pop_view();
     cf_draw3d_pop_projection();
     if (!transparent) {
-        render_scene3d_trails_draw(scene3d->trails, camera);
+        draw_behind_translucents(scene3d, camera);
     }
     return true;
 }
@@ -1220,6 +1232,14 @@ bool render_scene3d_draw(
                                (float)beat.period,
                                (float)beat.duration };
     set_ambient(scene3d, environment);
+    if (!render_scene3d_sky_prepare(
+            scene3d->sky,
+            environment,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        )) {
+        return false;
+    }
     if (!collect_sun(scene3d, world, runtime)) {
         return false;
     }

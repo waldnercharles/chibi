@@ -552,7 +552,11 @@ typedef enum
  * Material's linear convention and the intensity scales both. Auto exposure
  * meters the mean log luminance of the frame's lit pixels to middle gray, then
  * applies exposure as compensation; it adapts at adaptation_speed per scene
- * second, from 0.1 to 100, and zero adapts every frame. */
+ * second, from 0.1 to 100, and zero adapts every frame. Sky is an
+ * equirectangular Radiance .hdr image, such as content/skies/field.hdr, drawn
+ * behind the 3D scene. Sky rotation turns it about the up axis in degrees,
+ * counterclockwise seen from above; sky exposure brightens it in stops, from
+ * -20 to 20. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 {
     float exposure;
@@ -565,6 +569,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
     GameToneMapping tone_mapping;
     bool auto_exposure;
     float adaptation_speed;
+    const char *sky;
+    float sky_rotation;
+    float sky_exposure;
 }
 GameEnvironment;
 

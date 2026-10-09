@@ -409,6 +409,12 @@ consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
 the copy Cute pins). A box falls onto static ground and comes to rest, then
 closest raycasts hit the box, hit the ground and miss. It needs a native tools
 build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.
+`sky-files` selects four in-tree Radiance `.hdr` cases: flat and run-length
+decoding, fourteen malformed files, preparation from mounted content (read
+once, with an identity that follows the texels) and import that never replaces
+a file. It needs a compiler build, uses one temporary folder and passes 661
+assertions in 0.12 seconds under ASan/UBSan with leak checks, without
+processes or GPU.
 `graph-model` selects two independently reviewed public consumer cases for nested
 value copies, opaque artifact replacement/destruction and topology mutation
 rules. They pass 25 assertions in 0.355 seconds under ASan/UBSan. The consumer

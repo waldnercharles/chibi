@@ -5,6 +5,7 @@
 #include "render/shader_catalog_records.h"
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_prepared.h"
+#include "runtime/images/sky.h"
 #include "runtime/images/table.h"
 #include "runtime/models/prepared.h"
 #include "runtime/shaders/prepared.h"
@@ -27,10 +28,12 @@ typedef struct resource_generation
     render_parts_table *parts;
     render_image_table *images;
     render_mesh_table *meshes;
+    render_sky_table *skies;
     game_ui_documents *documents;
     render_parts_table *empty_parts;
     render_image_table *empty_images;
     render_mesh_table *empty_meshes;
+    render_sky_table *empty_skies;
     game_ui_documents *empty_documents;
     game_ui_font *fonts;
     size_t font_storage;
@@ -75,10 +78,12 @@ static void discard(void *, void *generation)
     render_parts_free(g->parts);
     render_image_table_free(g->images);
     render_mesh_table_free(g->meshes);
+    render_sky_table_free(g->skies);
     game_ui_documents_free(g->documents);
     render_parts_free(g->empty_parts);
     render_image_table_free(g->empty_images);
     render_mesh_table_free(g->empty_meshes);
+    render_sky_table_free(g->empty_skies);
     game_ui_documents_free(g->empty_documents);
     for (int i = 0; i < acount(g->fonts); i++) {
         game_ui_font_free(&g->fonts[i]);
@@ -336,7 +341,8 @@ static void *stage_decoded(
                          : 0;
     size_t headers = font_rows + sizeof(resource_generation) +
                      2 * (render_image_table_header_bytes() +
-                          render_parts_header_bytes()) +
+                          render_parts_header_bytes() +
+                          render_sky_table_header_bytes()) +
                      (shaders ? (size_t)(shaders < 16 ? 16 : shaders) *
                                         sizeof(shader_asset) +
                                     sizeof(dyna_hdr)
@@ -361,6 +367,8 @@ static void *stage_decoded(
     g->empty_images = render_image_table_new();
     g->meshes = render_mesh_table_new_budget(&budget);
     g->empty_meshes = render_mesh_table_new_budget(&budget);
+    g->skies = render_sky_table_new();
+    g->empty_skies = render_sky_table_new();
     g->documents = game_ui_documents_new_budget(&budget, true);
     g->empty_documents = game_ui_documents_new_budget(&budget, false);
     if (!g->meshes || !g->empty_meshes || !g->documents || !g->empty_documents) {
@@ -415,6 +423,10 @@ static void *stage_decoded(
                 snprintf(diagnostic.message, sizeof diagnostic.message, "Prepared mesh identity is invalid");
                 goto reject;
             }
+        }
+        if (r->kind == GAME_PLAYER_ASSET_SKY &&
+            !render_sky_table_decode(g->skies, r->name, r->data, r->length, &budget, error, size)) {
+            goto reject;
         }
         if (r->kind == GAME_PLAYER_ASSET_PARTS) {
             render_parts_table *parts = render_parts_prepare(r->data, r->length, &budget, error, size);
@@ -654,6 +666,9 @@ static bool scene(void *, void *generation, const game_scene *value, char *error
             if (c.desc->id == GAME_COMPONENT_GameUi.id) {
                 expected = &GAME_COMPONENT_GameUi;
             }
+            if (c.desc->id == GAME_COMPONENT_GameEnvironment.id) {
+                expected = &GAME_COMPONENT_GameEnvironment;
+            }
             if (!expected) {
                 continue;
             }
@@ -705,6 +720,12 @@ static bool scene(void *, void *generation, const game_scene *value, char *error
                     return fail(error, size, "Component mesh is absent from prepared resources");
                 }
             }
+            if (expected == &GAME_COMPONENT_GameEnvironment) {
+                const char *key = ((const GameEnvironment *)c.data)->sky;
+                if (named(key) && !render_sky_table_contains(g->skies, key)) {
+                    return fail(error, size, "Environment sky is absent from prepared resources");
+                }
+            }
             if (expected == &GAME_COMPONENT_GameMeshParts) {
                 const char *key = ((const GameMeshParts *)c.data)->parts;
                 bool found = !named(key);
@@ -730,6 +751,7 @@ static void exchange(resource_generation *g)
     render_parts_exchange(g->parts);
     render_image_table_exchange(g->images);
     render_mesh_table_exchange(g->meshes);
+    render_sky_table_exchange(g->skies);
     game_ui_documents_exchange(g->documents);
 }
 static void commit(void *, void *generation, game_world *)
@@ -752,6 +774,9 @@ static void commit(void *, void *generation, game_world *)
         render_mesh_table *meshes = current->meshes;
         current->meshes = g->meshes;
         g->meshes = meshes;
+        render_sky_table *skies = current->skies;
+        current->skies = g->skies;
+        g->skies = skies;
         game_ui_documents *documents = current->documents;
         current->documents = g->documents;
         g->documents = documents;
@@ -770,6 +795,9 @@ static void commit(void *, void *generation, game_world *)
         render_mesh_table_free(g->meshes);
         g->meshes = g->empty_meshes;
         g->empty_meshes = NULL;
+        render_sky_table_free(g->skies);
+        g->skies = g->empty_skies;
+        g->empty_skies = NULL;
         game_ui_documents_free(g->documents);
         g->documents = g->empty_documents;
         g->empty_documents = NULL;

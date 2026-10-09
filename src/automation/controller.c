@@ -293,6 +293,11 @@ static const contract_field CONTRACT_BAKE_MODEL[] = {
     { "options", "object", false, "Bounded cell_size, max_axis_cells, max_triangles, max_samples, max_work and edge_iterations." },
     { "overrides", "array", false, "Checked parameter snapshot keyed by asset, scope and parameter_id, with value components." },
 };
+static const contract_field CONTRACT_IMPORT_SKY[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "source", "string", true, "Radiance .hdr file to copy into the project, such as a download." },
+    { "destination", "string", false, "New content/... .hdr path; defaults to content/skies/ and the source's file name. An existing file is kept and rejected." },
+};
 static const contract_field CONTRACT_ANALYZE_CODE[] = {
     { "project_root", "string", false, "Optional project directory supplying library/event signatures; defaults to the controller root." },
     { "rename", "string", false, "Propose a source-local rename at offset, without publishing." },
@@ -613,6 +618,17 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         "publish an engine mesh, OBJ, MTL and provenance bundle.",
         CONTRACT_BAKE_MODEL,
         CONTRACT_FIELD_COUNT(CONTRACT_BAKE_MODEL),
+        1,
+        false,
+        false,
+        false,
+    },
+    {
+        "import_sky",
+        "Check that a Radiance .hdr file is an equirectangular sky and copy it "
+        "into the project's content for Environment's sky.",
+        CONTRACT_IMPORT_SKY,
+        CONTRACT_FIELD_COUNT(CONTRACT_IMPORT_SKY),
         1,
         false,
         false,
@@ -4473,6 +4489,30 @@ static void inspect_model_parameters(
     model_inspection_free(&inspection);
     model_program_free(&program);
     free_behavior_assets(models);
+}
+
+static int handle_import_sky(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *source = request_string(request, "source");
+    const char *destination = request_string(request, "destination");
+    if (!source || (yyjson_obj_get(request, "destination") && !destination)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "Invalid import_sky source or destination.");
+        return -1;
+    }
+    chibi_project project = { 0 };
+    char error[512] = { 0 };
+    char *key = chibi_project_open(&project, root, error, sizeof error) == 0
+                  ? image_prepare_sky_import(project.content, source, destination, error, sizeof error)
+                  : NULL;
+    chibi_project_free(&project);
+    if (!key) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "path", key);
+    free(key);
+    return 0;
 }
 
 static int handle_bake_model(const char *root, yyjson_val *request, response *result, int *exit_code)
@@ -11068,8 +11108,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
            !strcmp(operation, "validate_asset") ||
            !strcmp(operation, "bake_model") || !strcmp(operation, "preview_field") ||
-           !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
-           !strcmp(operation, "search_assets") ||
+           !strcmp(operation, "import_sky") || !strcmp(operation, "search_nodes") ||
+           !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
            !strcmp(operation, "find_references") ||
            !strcmp(operation, "call_hierarchy") ||
@@ -11204,6 +11244,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_navigation(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "bake_model")) {
         handle_bake_model(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "import_sky")) {
+        handle_import_sky(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_graph")) {
         handle_inspect_graph(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_system")) {

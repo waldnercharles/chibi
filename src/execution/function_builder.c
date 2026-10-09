@@ -1109,6 +1109,8 @@ static behavior_value_kind payload_kind(pin_value value, behavior_value_kind kin
 static bool context_address(size_t offset)
 {
 #define FIELD(name) case offsetof(behavior_function_context, name):
+    /* clang-format reflows this macro run differently on each pass. */
+    // clang-format off
     switch (offset) {
         FIELD(parent)
         FIELD(activation)
@@ -1119,15 +1121,29 @@ static bool context_address(size_t offset)
         FIELD(points)
         FIELD(variables)
         FIELD(states)
-        FIELD(arguments) FIELD(results) FIELD(error_message) FIELD(services)
-            FIELD(queries) FIELD(commands) FIELD(command_arguments)
-                FIELD(command_results) FIELD(owner_type_name) FIELD(world)
-                    FIELD(binding_world) FIELD(columns) FIELD(variable_storage)
-                        FIELD(value_owner) FIELD(value_storage) FIELD(watches)
-                            FIELD(edges) FIELD(watch_storage) return true;
+        FIELD(arguments)
+        FIELD(results)
+        FIELD(error_message)
+        FIELD(services)
+        FIELD(queries)
+        FIELD(commands)
+        FIELD(command_arguments)
+        FIELD(command_results)
+        FIELD(owner_type_name)
+        FIELD(world)
+        FIELD(binding_world)
+        FIELD(columns)
+        FIELD(variable_storage)
+        FIELD(value_owner)
+        FIELD(value_storage)
+        FIELD(watches)
+        FIELD(edges)
+        FIELD(watch_storage)
+            return true;
         default: return false;
     }
 #undef FIELD
+    // clang-format on
 }
 static const char *verify_instruction_kinds(const behavior_function *f, int pc, const int *headers)
 {

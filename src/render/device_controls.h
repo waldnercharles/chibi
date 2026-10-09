@@ -1,0 +1,22 @@
+#ifndef CHIBI_RENDER_DEVICE_CONTROLS_H
+#define CHIBI_RENDER_DEVICE_CONTROLS_H
+
+#include "runtime/components.h"
+
+#include <cute_input.h>
+
+/* GameControl sources read from the desktop's keyboard, mouse and first
+ * controller, shared by every host so play feels the same everywhere. */
+
+/* The control a key press latches, so a press released within one frame still
+ * counts, or GAME_CONTROL_NONE. */
+GameControl game_control_for_key(CF_KeyButton key);
+bool game_control_down(GameControl control);
+/* Every held control as GameControl bits. */
+uint64_t game_controls_down();
+/* The left stick, else WASD or the arrow keys; at most length 1. */
+CF_V2 game_controls_movement();
+/* The right stick's unit direction, or zero inside its dead zone. */
+CF_V2 game_controls_aim();
+
+#endif

@@ -9,6 +9,7 @@
 #include "runtime/core_definition.h"
 #include "runtime/fields/definition.h"
 #include "runtime/generated_capabilities.h"
+#include "runtime/input_definition.h"
 #include "runtime/materials_definition.h"
 #include "runtime/math_definition.h"
 #include "runtime/particles_definition.h"
@@ -67,6 +68,7 @@ native_capabilities *host_native_default_catalog_new(
     apush(selected, GAME_MATERIAL_DEFINITION_PACK);
     apush(selected, GAME_VISUAL_REACTION_DEFINITION_PACK);
     apush(selected, GAME_VISIBILITY_DEFINITION_PACK);
+    apush(selected, GAME_INPUT_DEFINITION_PACK);
     for (int i = 0; i < definition_count; i++) {
         apush(selected, definitions[i]);
     }

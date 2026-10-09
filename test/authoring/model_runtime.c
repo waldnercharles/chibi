@@ -377,20 +377,23 @@ static bool corrupt_mesh_group()
     for (int i = 0; i < 12; i++) {
         execution_wire_float(&reader, &value);
     }
-    execution_wire_count(&reader, &count, 8);
+    execution_wire_count(&reader, &count, 1);
     REQUIRE(!reader.error && count == 3);
     for (int i = 0; i < 60; i++) {
         execution_wire_float(&reader, &value);
     }
-    execution_wire_count(&reader, &count, 8);
+    execution_wire_count(&reader, &count, 1);
     execution_wire_int(&reader, &first);
-    REQUIRE(!reader.error && count == 1 && first == 0 && reader.offset + 8 <= copy_length);
+    REQUIRE(!reader.error && count == 1);
+    size_t at = reader.offset;
+    execution_wire_int(&reader, &count);
+    REQUIRE(!reader.error && first == 0 && count == 3);
     execution_wire writer = { 0 };
     count = 4; /* Invalid: a material group must contain whole triangles. */
     execution_wire_int(&writer, &count);
-    bool encoded = !writer.error && writer.size == 8;
+    bool encoded = !writer.error && writer.size == reader.offset - at;
     if (encoded) {
-        memcpy(copy + reader.offset, writer.data, writer.size);
+        memcpy(copy + at, writer.data, writer.size);
     }
     afree(writer.data);
     REQUIRE(encoded);

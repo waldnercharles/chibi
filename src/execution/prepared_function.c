@@ -1,6 +1,7 @@
 #include "execution/delay.h"
 #include "execution/intrinsics.h"
 #include "execution/prepared_internal.h"
+#include "execution/task.h"
 #include "support/array.h"
 #include "types/catalog.h"
 
@@ -259,6 +260,10 @@ static void command(prepared_context *c, behavior_function_command *v)
         v->command = &EXECUTION_Delay;
         return;
     }
+    v->command = execution_task_command(v->capability_id, v->capability_abi);
+    if (v->command) {
+        return;
+    }
     execution_prepared_command linked = { 0 };
     if (!c->linker || !c->linker->command ||
         !c->linker->command(c->linker->user, v->capability_id, v->reference, &linked) ||
@@ -426,6 +431,7 @@ void prepared_function(prepared_context *c, behavior_function *f)
         INT(v->count);
         INT(v->result_first);
         INT(v->result_count);
+        BOOL(v->task);
     });
     ARRAY(definitions, {
         const behavior_function *v = f->definitions[index];

@@ -1,20 +1,7 @@
 #include "runtime/rhythm_definition.h"
 
 #include "runtime/rhythm.h"
-#define PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
-    { .name = NAME,                                                                            \
-      .kind = KIND,                                                                            \
-      .storage = STORAGE,                                                                      \
-      .type_name = TYPE_NAME,                                                                  \
-      .container = CONTAINER,                                                                  \
-      .type_flags = FLAGS,                                                                     \
-      .generic_group = GROUP,                                                                  \
-      .reference_kind = REFERENCE,                                                             \
-      .default_owner = OWNER,                                                                  \
-      .has_default = true,                                                                     \
-      .default_value = VALUE },
-static const native_parameter_definition OUTPUTS[] = { GAME_RHYTHM_OUTPUTS(PORT) };
-#undef PORT
+static const native_parameter_definition OUTPUTS[] = { GAME_RHYTHM_OUTPUTS(NATIVE_PORT) };
 static const native_capability_definition DEFINITIONS[] = {
     { .canonical_name = GAME_RHYTHM_NAME,
       GAME_RHYTHM_PRESENTATION,
@@ -22,7 +9,7 @@ static const native_capability_definition DEFINITIONS[] = {
       .kind = SCRIPT_CAPABILITY_FUNCTION,
       .pure = true,
       .outputs = OUTPUTS,
-      .output_count = sizeof OUTPUTS / sizeof *OUTPUTS,
+      .output_count = NATIVE_COUNT(OUTPUTS),
       .completion_output = -1 }
 };
 static const native_definition_binding BINDINGS[] = {
@@ -31,7 +18,7 @@ static const native_definition_binding BINDINGS[] = {
 };
 const native_definition_pack GAME_RHYTHM_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
-    .definition_count = sizeof DEFINITIONS / sizeof *DEFINITIONS,
+    .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,
-    .binding_count = sizeof BINDINGS / sizeof *BINDINGS,
+    .binding_count = NATIVE_COUNT(BINDINGS),
 };

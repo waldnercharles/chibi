@@ -1,37 +1,24 @@
 #include "runtime/comparisons.h"
-#define PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
-    { .name = NAME,                                                                            \
-      .kind = KIND,                                                                            \
-      .storage = STORAGE,                                                                      \
-      .type_name = TYPE_NAME,                                                                  \
-      .container = CONTAINER,                                                                  \
-      .type_flags = FLAGS,                                                                     \
-      .generic_group = GROUP,                                                                  \
-      .reference_kind = REFERENCE,                                                             \
-      .default_owner = OWNER,                                                                  \
-      .has_default = true,                                                                     \
-      .default_value = VALUE },
 static const native_parameter_definition REAL_INPUTS[] = {
-    NATIVE_COMPARE_REAL_INPUTS(PORT)
+    NATIVE_COMPARE_REAL_INPUTS(NATIVE_PORT)
 };
 static const native_parameter_definition INTEGER_INPUTS[] = {
-    NATIVE_COMPARE_INTEGER_INPUTS(PORT)
+    NATIVE_COMPARE_INTEGER_INPUTS(NATIVE_PORT)
 };
-static const native_parameter_definition OUTPUTS[] = { NATIVE_COMPARE_OUTPUTS(PORT) };
+static const native_parameter_definition OUTPUTS[] = { NATIVE_COMPARE_OUTPUTS(NATIVE_PORT) };
 #define VALUE(KEY, NAME, SOURCE, INPUTS, CATEGORY, KEYWORDS, DESCRIPTION)      \
-    static const native_parameter_definition KEY##_inputs[] = { INPUTS(PORT) };
+    static const native_parameter_definition KEY##_inputs[] = { INPUTS(NATIVE_PORT) };
 NATIVE_COMPARE_VALUES(VALUE)
 #undef VALUE
-#define COUNT(A) (sizeof(A) / sizeof *(A))
 #define DEFINITION(KEY, NAME, SOURCE, INPUTS, OP)                              \
     { .canonical_name = NAME,                                                  \
       .source_name = SOURCE,                                                   \
       .operator_name = OP,                                                     \
       .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
       .inputs = INPUTS,                                                        \
-      .input_count = COUNT(INPUTS),                                            \
+      .input_count = NATIVE_COUNT(INPUTS),                                     \
       .outputs = OUTPUTS,                                                      \
-      .output_count = COUNT(OUTPUTS),                                          \
+      .output_count = NATIVE_COUNT(OUTPUTS),                                   \
       .completion_output = -1,                                                 \
       .pure = true },
 #define REAL(KEY, NAME, SOURCE, OP, EQUALITY, NEGATE, KEYWORDS, DESCRIPTION)   \
@@ -64,7 +51,7 @@ static const native_definition_binding BINDINGS[] = { NATIVE_COMPARE_REALS(
 ) NATIVE_COMPARE_INTEGERS(INTEGER) NATIVE_COMPARE_VALUES(VALUE) };
 const native_definition_pack NATIVE_COMPARISON_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
-    .definition_count = COUNT(DEFINITIONS),
+    .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,
-    .binding_count = COUNT(BINDINGS)
+    .binding_count = NATIVE_COUNT(BINDINGS)
 };

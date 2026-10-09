@@ -1222,7 +1222,7 @@ static int apply_batch(ecs_world *world)
 {
     ecs_command *batch = world->commands;
     world->commands = NULL;
-    qsort(batch, (size_t)acount(batch), sizeof *batch, compare_commands);
+    asort(batch, compare_commands);
     int result = ECS_OK;
     for (int i = 0; result == ECS_OK && i < acount(batch); i++) {
         result = apply_command(world, &batch[i]);

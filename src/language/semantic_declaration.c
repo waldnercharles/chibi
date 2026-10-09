@@ -20,10 +20,8 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
 {
     script_symbol_kind kind = script_analyzer_is(node, "action_declaration")
                                 ? SCRIPT_ACTION
-                            : script_analyzer_is(node, "value_declaration")
-                                ? script_analyzer_token_present(a, node, "local")
-                                    ? SCRIPT_LOCAL
-                                    : SCRIPT_LAZY
+                            : script_analyzer_is(node, "lazy_local_declaration")
+                                ? SCRIPT_LOCAL
                             : script_analyzer_is(node, "event_declaration") ? SCRIPT_EVENT
                             : script_analyzer_text_is(a, script_analyzer_field(node, "storage"), "shared")
                                 ? SCRIPT_SHARED_STATE
@@ -32,6 +30,10 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
         script_analyzer_diagnostic(a, node, "Shared state is restricted to systems");
     }
     script_type type = script_analyzer_type_node(a, script_analyzer_field(node, "type"));
+    if (kind == SCRIPT_SHARED_STATE && (type.flags & SCRIPT_TYPE_TASK)) {
+        /* A task belongs to the entity that started it. */
+        script_analyzer_diagnostic(a, node, "Shared state cannot hold a task");
+    }
     int symbol = script_analyzer_symbol_new(
         a,
         script_analyzer_field(node, "name"),
@@ -76,7 +78,7 @@ void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bo
             script_analyzer_field(parameter, "name"),
             results ? SCRIPT_RESULT : SCRIPT_PARAMETER,
             type,
-            results || (type.flags & SCRIPT_TYPE_REFERENCE)
+            true
         );
         script_function *function = &a->out->functions[function_index];
         if (results) {
@@ -89,6 +91,32 @@ void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bo
             apush(a->initializers, ((initializer){ symbol, value }));
         }
     }
+}
+static bool returns_value(TSNode node)
+{
+    if (script_analyzer_is(node, "return_statement")) {
+        return !ts_node_is_null(script_analyzer_field(node, "value"));
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (!script_analyzer_is(child, "function_declaration") &&
+            !script_analyzer_is(child, "macro_declaration") && returns_value(child)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* A callable's value is its single result, a struct of several, or flow. */
+void script_analyzer_function_type(analyzer *a, int function)
+{
+    int symbol = a->out->functions[function].symbol;
+    int count = acount(a->out->functions[function].results);
+    a->out->symbols[symbol]
+        .type = count == 1
+                  ? a->out->symbols[a->out->functions[function].results[0]].type
+                  : (script_type){ .storage = count ? PIN_STRUCT : PIN_FLOW,
+                                   .nominal = count ? a->out->symbols[symbol].id : 0,
+                                   .flags = count ? SCRIPT_TYPE_RESULTS : 0 };
 }
 void script_analyzer_declare_function(analyzer *a, TSNode node)
 {
@@ -141,14 +169,12 @@ void script_analyzer_declare_function(analyzer *a, TSNode node)
             .function = function,
             .declaration = { .start = -1, .end = -1 } })
     );
-    int count = acount(a->out->functions[function].results);
-    a->out->symbols[symbol]
-        .type = count == 1
-                  ? a->out->symbols[a->out->functions[function].results[0]].type
-                  : (script_type){ .storage = count ? PIN_STRUCT : PIN_FLOW,
-                                   .nominal = count ? a->out->symbols[symbol].id : 0,
-                                   .flags = count ? SCRIPT_TYPE_RESULTS : 0 };
-    apush(a->bodies, ((function_body){ function, script_analyzer_field(node, "body") }));
+    a->out->functions[function]
+        .inferred = !macro &&
+                    ts_node_is_null(script_analyzer_field(node, "results")) &&
+                    returns_value(script_analyzer_field(node, "body"));
+    script_analyzer_function_type(a, function);
+    apush(a->bodies, ((function_body){ function, script_analyzer_field(node, "body"), BODY_PENDING }));
     TSNode body = script_analyzer_field(node, "body");
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode declaration = ts_node_named_child(body, i);
@@ -302,7 +328,7 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
         if (script_analyzer_is(node, "state_declaration") ||
-            script_analyzer_is(node, "value_declaration") ||
+            script_analyzer_is(node, "lazy_local_declaration") ||
             script_analyzer_is(node, "action_declaration") ||
             script_analyzer_is(node, "event_declaration")) {
             script_analyzer_declare_value(a, node);
@@ -711,15 +737,6 @@ void script_analyzer_binding_reads(analyzer *a, script_binding *binding, int ind
             apush(binding->reads, path);
         }
     }
-    if (expression->kind == SCRIPT_EXPR_SYMBOL && expression->symbol >= 0 &&
-        a->out->symbols[expression->symbol].kind == SCRIPT_LAZY) {
-        script_analyzer_binding_reads(
-            a,
-            binding,
-            a->out->symbols[expression->symbol].initializer,
-            depth + 1
-        );
-    }
     script_analyzer_binding_reads(a, binding, expression->left, depth + 1);
     if (expression->kind != SCRIPT_EXPR_CALL) {
         script_analyzer_binding_reads(a, binding, expression->right, depth + 1);
@@ -768,7 +785,7 @@ void script_analyzer_binding(analyzer *a, TSNode node)
 bool script_analyzer_declaration_kind(TSNode node)
 {
     return script_analyzer_is(node, "state_declaration") ||
-           script_analyzer_is(node, "value_declaration") ||
+           script_analyzer_is(node, "lazy_local_declaration") ||
            script_analyzer_is(node, "action_declaration") ||
            script_analyzer_is(node, "event_declaration") ||
            script_analyzer_is(node, "function_declaration") ||

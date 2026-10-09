@@ -130,6 +130,7 @@ void script_analyzer_binding(analyzer *a, TSNode node);
 bool script_analyzer_declaration_kind(TSNode node);
 void script_analyzer_definition_pass(analyzer *a, TSNode body);
 void script_analyzer_task_hints(analyzer *a, TSNode node);
+void script_analyzer_infer_task(analyzer *a, int symbol, script_type value);
 unsigned script_analyzer_statement_effects(script_analysis *out, script_statement *statement);
 void script_analyzer_finish_effects(analyzer *a);
 void script_analyzer_finish_boxes(analyzer *a);

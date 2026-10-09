@@ -1,4 +1,5 @@
 #include "runtime/component_catalog.h"
+#include "runtime/engine.h"
 #include "runtime/transform_propagation.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -97,6 +98,8 @@ TEST_CASE(transforms_follow_moves_and_reparenting)
     REQUIRE(at(child, 101, 2));
     GAME_GameTransform_get(world, first)->x = 200;
     REQUIRE(at(child, 101, 2) == false);
+    /* With no engine, presentation places it exactly before propagation. */
+    REQUIRE(near(engine_render_transform(NULL, world, child).position.x, 201));
     REQUIRE(game_transform_propagate(world) == ECS_OK);
     REQUIRE(at(child, 201, 2));
     REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, second, 0) == ECS_OK);

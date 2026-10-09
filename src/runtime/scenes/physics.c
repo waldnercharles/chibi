@@ -914,9 +914,11 @@ static bool continuous_sensor(const physics_body *body)
     return body->settings.continuous && body->collider.sensor;
 }
 
-/* Groups each body with the one it moves with. A continuous sensor stops
- * where it first meets a blocker, after its followers have been placed and
- * tested at its full sweep, so none may carry a collider. */
+/* Groups each body with the one it moves with. Box2D filters a pair only
+ * when it begins to touch, so a body that changes group drops its contacts.
+ * A continuous sensor stops where it first meets a blocker, after its
+ * followers have been placed and tested at its full sweep, so none may
+ * carry a collider. */
 static int group_followers(game_physics *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -926,7 +928,12 @@ static int group_followers(game_physics *physics)
         }
         const physics_body *with = body->follower ? anchor(physics, body->entity)
                                                   : body;
-        body->group = with ? with->entity.slot : 0;
+        unsigned group = with ? with->entity.slot : 0;
+        if (group != body->group && b2Body_GetContactCapacity(body->body)) {
+            b2Body_Disable(body->body);
+            b2Body_Enable(body->body);
+        }
+        body->group = group;
         if (body->follower && with && continuous_sensor(with)) {
             snprintf(
                 physics->error,

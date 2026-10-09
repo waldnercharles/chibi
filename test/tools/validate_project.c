@@ -911,6 +911,14 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
         0
     );
     REQUIRE(global_x("Ship.Turret") == 110 && global_x("Turret") == 0);
+    /* The catalog lists a child by its path. */
+    REQUIRE(ctl(true, "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"Start\"}") == 0);
+    yyjson_val *members = yyjson_obj_get(yyjson_arr_get(result("assets"), 0), "members");
+    bool listed = false;
+    for (size_t i = 0; i < yyjson_arr_size(members); i++) {
+        listed |= reads(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(members, i), "name")), "Ship.Turret");
+    }
+    REQUIRE(listed);
     write_file(
         "game/content/scenes/Start.kdl",
         "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Ship\" "

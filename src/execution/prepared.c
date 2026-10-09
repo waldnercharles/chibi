@@ -365,8 +365,6 @@ static uint64_t context_abi()
                               FIELD(state_inputs),
                               FIELD(state_transition),
                               FIELD(retrigger_action),
-                              FIELD(initialize_local),
-                              FIELD(store_local_group),
                               FIELD(component_membership) };
 #undef FIELD
     uint64_t hash = UINT64_C(14695981039346656037);
@@ -505,7 +503,6 @@ static void captures(prepared_context *c, execution_module_capture **values, int
     for (int i = 0; i < *count && !w->error; i++) {
         U64((*values)[i].id);
         INT((*values)[i].value);
-        INT((*values)[i].field);
         VALUE((*values)[i].type);
     }
 }
@@ -537,21 +534,6 @@ static void payload(prepared_context *c)
         U64(v->outcome);
         captures(c, &v->captures, &v->local_capture_count);
         INT(v->capture_count);
-        int locals = v->local_count;
-        prepared_table(w, &locals, sizeof *v->locals);
-        if (w->reading && !w->error) {
-            v->locals = xcalloc((size_t)locals, sizeof *v->locals);
-            v->local_count = locals;
-        }
-        for (int j = 0; j < v->local_count && !w->error; j++) {
-            execution_module_local *local = &v->locals[j];
-            U64(local->id);
-            INT(local->value);
-            INT(local->result_count);
-            root_ref(c, &local->initializer);
-            captures(c, &local->captures, &local->local_capture_count);
-            INT(local->capture_count);
-        }
         BOOL(v->continuation_wait);
         ENUM(v->kind);
         const char *entry = v->entry;
@@ -681,9 +663,6 @@ static bool owners(prepared_context *c)
     for (int i = 0; i < p->function_count; i++) {
         OWNER(p->functions[i].body);
         OWNER(p->functions[i].subscription);
-        for (int j = 0; j < p->functions[i].local_count; j++) {
-            OWNER(p->functions[i].locals[j].initializer);
-        }
     }
     for (int i = 0; i < p->binding_count; i++) {
         OWNER(p->bindings[i].body);
@@ -706,9 +685,6 @@ static bool owners(prepared_context *c)
     for (int i = 0; i < p->function_count; i++) {
         valid &= reached(c, p->functions[i].body, seen, 0);
         valid &= reached(c, p->functions[i].subscription, seen, 0);
-        for (int j = 0; j < p->functions[i].local_count; j++) {
-            valid &= reached(c, p->functions[i].locals[j].initializer, seen, 0);
-        }
     }
     for (int i = 0; i < p->binding_count; i++) {
         valid &= reached(c, p->bindings[i].body, seen, 0);
@@ -733,9 +709,6 @@ static void discard_functions(prepared_context *c)
     for (int i = 0; i < c->plan->function_count; i++) {
         c->plan->functions[i].body = NULL;
         c->plan->functions[i].subscription = NULL;
-        for (int j = 0; j < c->plan->functions[i].local_count; j++) {
-            c->plan->functions[i].locals[j].initializer = NULL;
-        }
     }
     for (int i = 0; i < c->plan->binding_count; i++) {
         c->plan->bindings[i].body = NULL;
@@ -767,9 +740,6 @@ static bool write_depth(
     for (int i = 0; i < c.plan->function_count && !c.wire.error; i++) {
         add_function(&c, c.plan->functions[i].body, 0);
         add_function(&c, c.plan->functions[i].subscription, 0);
-        for (int j = 0; j < c.plan->functions[i].local_count && !c.wire.error; j++) {
-            add_function(&c, c.plan->functions[i].locals[j].initializer, 0);
-        }
     }
     for (int i = 0; i < c.plan->binding_count && !c.wire.error; i++) {
         add_function(&c, c.plan->bindings[i].body, 0);

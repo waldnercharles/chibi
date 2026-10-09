@@ -72,12 +72,6 @@ void script_analyzer_finish_effects(analyzer *a)
             } else if (expression->right >= 0) {
                 effects |= out->expressions[expression->right].effects;
             }
-            if (expression->kind == SCRIPT_EXPR_SYMBOL && expression->symbol >= 0 &&
-                out->symbols[expression->symbol].lazy_local &&
-                out->symbols[expression->symbol].initializer >= 0) {
-                effects |= out->expressions[out->symbols[expression->symbol].initializer]
-                               .effects;
-            }
             for (int j = 0; j < acount(expression->arguments); j++) {
                 effects |= out->expressions[expression->arguments[j].value].effects;
             }

@@ -951,6 +951,24 @@ TEST_CASE(point_lights_cast_shadows_across_faces)
     return true;
 }
 
+/* A sphere above the view, level with the lamp, shares a face with the floor
+ * and the box, so that face draws its boxes and then the sphere as ranges of
+ * one batch. The sphere must stay in its face: the floor around the box shows
+ * only the box's shadow. */
+TEST_CASE(point_lights_cast_from_mixed_primitives)
+{
+    add_box_on_floor();
+    add_solid((CF_V3){ 0, 4, -.5f }, (GameGeometry3D){ GAME_PRIMITIVE_SPHERE, 1, 1, 1 }, 0xffffffffu);
+    ecs_entity lamp = add_lamp(lamp_spots[0], 2, 20);
+    static CF_Pixel open[1][PIXELS];
+    CF_Pixel *shown[] = { open[0], NULL };
+    REQUIRE(render_lamps(&lamp, 1, open));
+    int checked[2] = { 0 };
+    REQUIRE(floor_matches(lamp_spots, 1, shown, checked));
+    REQUIRE(checked[0] > 10 && checked[1] > 10);
+    return true;
+}
+
 /* A sphere lit from between three of the lamp's faces keeps all its light:
  * its surface turns away from each face's axis, and nothing shadows itself. */
 TEST_CASE(point_lights_leave_curved_surfaces_lit)
@@ -1773,11 +1791,17 @@ TEST_CASE(color_ramps_color_surfaces_from_any_table_offset)
 }
 #endif
 
-void test_render_scene3d()
+void test_render_scene3d(bool gles)
 {
-    setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+    /* GLES needs a display, such as Xvfb's; SDL's offscreen driver has none. */
+    if (!gles) {
+        setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+    }
     setenv("CHIBI_RENDER_SHADER_DIR", CHIBI_SOURCE_ROOT "/src/render/shaders", 0);
-    CF_Result made = cf_make_app("scene3d", 0, 0, 0, SIDE, SIDE, CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT, NULL);
+    CF_AppOptionFlags options = CF_APP_OPTIONS_NO_AUDIO_BIT |
+                                CF_APP_OPTIONS_HIDDEN_BIT |
+                                (gles ? CF_APP_OPTIONS_GFX_OPENGL_BIT : 0);
+    CF_Result made = cf_make_app("scene3d", 0, 0, 0, SIDE, SIDE, options, NULL);
     assert(!cf_is_error(made));
     app_scene_renderer_initialize();
     pu_setup(setup, teardown);
@@ -1801,6 +1825,7 @@ void test_render_scene3d()
     RUN_TEST_CASE(shadow_cascades_cover_only_what_the_view_shows);
     RUN_TEST_CASE(sun_size_softens_shadows_away_from_casters);
     RUN_TEST_CASE(point_lights_cast_shadows_across_faces);
+    RUN_TEST_CASE(point_lights_cast_from_mixed_primitives);
     RUN_TEST_CASE(point_lights_leave_curved_surfaces_lit);
     RUN_TEST_CASE(point_lights_cast_shadows_from_their_own_maps);
     RUN_TEST_CASE(point_light_shadows_stop_at_four_lights);

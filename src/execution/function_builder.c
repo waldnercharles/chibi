@@ -1068,8 +1068,6 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
             return count == 1 && INPUT(0, BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_REFERENCE_WRITE:
             return count == 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
-        case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
-            return count >= 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_LOCAL_RELEASE:
             return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_ACTION_READ:
@@ -1110,39 +1108,39 @@ static behavior_value_kind payload_kind(pin_value value, behavior_value_kind kin
  * provenance. Arbitrary raw loads cannot manufacture logical references. */
 static bool context_address(size_t offset)
 {
-    // clang-format off
 #define FIELD(name) case offsetof(behavior_function_context, name):
+    /* clang-format reflows this macro run differently on each pass. */
+    // clang-format off
     switch (offset) {
-    FIELD(parent)
-    FIELD(activation)
-    FIELD(data)
-    FIELD(program_name)
-    FIELD(instance_time)
-    FIELD(inspection_user)
-    FIELD(points)
-    FIELD(variables)
-    FIELD(states)
-    FIELD(arguments)
-    FIELD(results)
-    FIELD(error_message)
-    FIELD(services)
-    FIELD(queries)
-    FIELD(commands)
-    FIELD(command_arguments)
-    FIELD(command_results)
-    FIELD(owner_type_name)
-    FIELD(world)
-    FIELD(binding_world)
-    FIELD(columns)
-    FIELD(variable_storage)
-    FIELD(value_owner)
-    FIELD(value_storage)
-    FIELD(watches)
-    FIELD(edges)
-    FIELD(watch_storage)
-        return true;
-    default:
-        return false;
+        FIELD(parent)
+        FIELD(activation)
+        FIELD(data)
+        FIELD(program_name)
+        FIELD(instance_time)
+        FIELD(inspection_user)
+        FIELD(points)
+        FIELD(variables)
+        FIELD(states)
+        FIELD(arguments)
+        FIELD(results)
+        FIELD(error_message)
+        FIELD(services)
+        FIELD(queries)
+        FIELD(commands)
+        FIELD(command_arguments)
+        FIELD(command_results)
+        FIELD(owner_type_name)
+        FIELD(world)
+        FIELD(binding_world)
+        FIELD(columns)
+        FIELD(variable_storage)
+        FIELD(value_owner)
+        FIELD(value_storage)
+        FIELD(watches)
+        FIELD(edges)
+        FIELD(watch_storage)
+            return true;
+        default: return false;
     }
 #undef FIELD
     // clang-format on
@@ -1424,7 +1422,6 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_REFERENCE_FIELD:
                 case EXECUTION_INTRINSIC_REFERENCE_READ:
                 case EXECUTION_INTRINSIC_REFERENCE_WRITE:
-                case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
                 case EXECUTION_INTRINSIC_LOCAL_RELEASE:
                     expected = BEHAVIOR_REFERENCE;
                     break;

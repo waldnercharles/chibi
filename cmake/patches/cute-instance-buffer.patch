@@ -1,8 +1,8 @@
 diff --git a/include/cute_graphics.h b/include/cute_graphics.h
-index bc27fb30..7387ebba 100644
+index 26587d47..462054a0 100644
 --- a/include/cute_graphics.h
 +++ b/include/cute_graphics.h
-@@ -2057,6 +2057,15 @@ CF_API void CF_CALL cf_mesh_update_vertex_data(CF_Mesh mesh, void* data, int cou
+@@ -1952,6 +1952,15 @@ CF_API void CF_CALL cf_mesh_update_vertex_data(CF_Mesh mesh, void* data, int cou
   */
  CF_API void CF_CALL cf_mesh_update_index_data(CF_Mesh mesh, void* data, int count);
  
@@ -19,10 +19,10 @@ index bc27fb30..7387ebba 100644
   * @function cf_mesh_update_instance_data
   * @category graphics
 diff --git a/src/internal/cute_graphics_internal.h b/src/internal/cute_graphics_internal.h
-index a1e4f05f..5c4ca582 100644
+index 16b1ba22..b241d94a 100644
 --- a/src/internal/cute_graphics_internal.h
 +++ b/src/internal/cute_graphics_internal.h
-@@ -318,22 +318,10 @@ int cf_mesh_instance_stride(CF_Mesh mesh);
+@@ -361,23 +361,11 @@ int cf_mesh_instance_stride(CF_Mesh mesh);
  bool cf_mesh_draw3d_augmented(CF_Mesh mesh);
  void cf_mesh_set_draw3d_augmented(CF_Mesh mesh);
  
@@ -44,4 +44,5 @@ index a1e4f05f..5c4ca582 100644
 -// per-flush staging buffer (each binds its own slice). Must be a multiple of the stride.
 -void cf_apply_instance_buffer_override(uint64_t handle, int count, int offset_bytes);
  
- #endif // CF_GRAPHICS_INTERNAL_H
+ // What cf_canvas_copy_depth needs to know about each side; backends fill these in and share the
+ // misuse reporting. `format` is backend-native (an SDL or GL enum), compared only for equality.

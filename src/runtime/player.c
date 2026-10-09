@@ -30,7 +30,7 @@ uint64_t game_player_asset_fingerprint(const void *data, size_t length)
     }
     return hash;
 }
-static bool relative_path(const char *path)
+bool game_player_relative_path(const char *path)
 {
     if (!path || !path[0] || strnlen(path, 1025) > 1024 || path[0] == '/' ||
         strchr(path, '\\') || strchr(path, ':')) {
@@ -57,7 +57,7 @@ bool game_player_asset_valid(const game_player_asset *asset)
     if (!asset || !asset->name || !asset->name[0] || strnlen(asset->name, 1025) > 1024 ||
         asset->kind < 0 || asset->kind >= GAME_PLAYER_ASSET_COUNT ||
         !asset->length || asset->length > GAME_PLAYER_MAX_ASSET_BYTES ||
-        (asset->path && !relative_path(asset->path))) {
+        (asset->path && !game_player_relative_path(asset->path))) {
         return false;
     }
     if (asset->external) {

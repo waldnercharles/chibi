@@ -182,6 +182,17 @@ void authoring_project_artifact_free(authoring_project_artifact *artifact)
     free(artifact->manifest);
     *artifact = (authoring_project_artifact){ 0 };
 }
+/* The window shows the project name unless a title replaces it, so a name
+ * longer than the artifact holds needs a title. */
+static bool application_title_valid(const chibi_project *project, char *error, size_t size)
+{
+    bool valid = project->application.title ||
+                 strlen(project->name) <= GAME_PLAYER_APPLICATION_TEXT_MAX;
+    if (!valid && size) {
+        snprintf(error, size, "Project name is longer than %d bytes; set a shorter application title", GAME_PLAYER_APPLICATION_TEXT_MAX);
+    }
+    return valid;
+}
 /* The window icon ships beside the artifact, so it must decode as a PNG. */
 static bool application_icon_valid(const chibi_project *project, char *error, size_t size)
 {
@@ -291,6 +302,7 @@ bool authoring_project_prepare(
     size_t module_bytes = 0;
     char *scene_path = NULL, *text = NULL;
     if (chibi_project_open(&project, options->project, error, size) ||
+        !application_title_valid(&project, error, size) ||
         !application_icon_valid(&project, error, size)) {
         goto done;
     }
@@ -466,11 +478,8 @@ bool authoring_project_prepare(
         .asset_count = acount(assets),
         .scene = scene
     };
-    /* The window shows the project name unless the title replaces it. */
-    char *title = project.application.title;
-    if (!title && strlen(project.name) <= GAME_PLAYER_APPLICATION_TEXT_MAX) {
-        title = project.name;
-    }
+    char *title = project.application.title ? project.application.title
+                                            : project.name;
     game_player_application application = { .title = title,
                                             .width = project.application.width,
                                             .height = project.application.height,

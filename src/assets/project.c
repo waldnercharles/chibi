@@ -320,6 +320,19 @@ static char *scene_path(const char *root, const char *content, const char *scene
     return join_path(content, scene);
 }
 
+/* The canonical path of the manifest's start scene, so the upgrade can tell
+ * whether it lies inside the content, or NULL when there is none. */
+static char *start_scene_path(const chibi_project *project, const char *content)
+{
+    if (!content || !project->start_scene || !project->start_scene[0]) {
+        return NULL;
+    }
+    char *scene = scene_path(project->root, content, project->start_scene);
+    char *canonical = absolute_path(scene);
+    free(scene);
+    return canonical;
+}
+
 /* Runs each step from `from` and then records the new version. The manifest
  * is written last, so an interrupted upgrade reruns from the old version. */
 static int upgrade(
@@ -505,10 +518,7 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
                            : join_path(project->root, project->content);
     free(input);
     char *absolute_content = absolute_path(content_path);
-    char *start_scene = absolute_content && project->start_scene &&
-                                project->start_scene[0]
-                          ? scene_path(project->root, absolute_content, project->start_scene)
-                          : NULL;
+    char *start_scene = start_scene_path(project, absolute_content);
     if (absolute_content && is_directory(absolute_content) &&
         version < CHIBI_PROJECT_VERSION &&
         upgrade(manifest, absolute_content, start_scene, version, error, error_size)) {

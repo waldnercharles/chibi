@@ -31,6 +31,9 @@ typedef struct
     bool external;
 } game_player_asset;
 uint64_t game_player_asset_fingerprint(const void *, size_t);
+/* A normalized path under a resource root: no empty, `.` or `..` parts, no
+ * leading slash, backslash or colon, and at most 1024 bytes. */
+bool game_player_relative_path(const char *path);
 bool game_player_asset_valid(const game_player_asset *);
 #define GAME_PLAYER_MAX_ASSETS 4096
 #define GAME_PLAYER_MAX_ASSET_BYTES (64 * 1024 * 1024)

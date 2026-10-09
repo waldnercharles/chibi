@@ -163,6 +163,8 @@ extern const GameAppearance *GAME_GameAppearance_get_const(const ecs_world *, ec
 extern int GAME_GameAppearance_has(const ecs_world *, ecs_entity);
 extern int GAME_GameAppearance_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameAppearance_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameSprite;
+extern const GameSprite *GAME_GameSprite_get_const(const ecs_world *, ecs_entity);
 
 extern GameCollider *GAME_GameCollider_get(ecs_world *, ecs_entity);
 extern const GameCollider *GAME_GameCollider_get_const(const ecs_world *, ecs_entity);

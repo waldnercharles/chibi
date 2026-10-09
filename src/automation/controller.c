@@ -1329,7 +1329,7 @@ static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
         }
     }
     if (acount(asset->members) > 1) {
-        qsort(asset->members, (size_t)acount(asset->members), sizeof *asset->members, catalog_member_compare);
+        asort(asset->members, catalog_member_compare);
     }
 }
 
@@ -1821,10 +1821,10 @@ static void catalog_link_references(catalog_asset *assets, const reference_index
         catalog_reference *dependencies = assets[i].dependencies;
         catalog_reference *dependents = assets[i].dependents;
         if (acount(dependencies) > 1) {
-            qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
+            asort(dependencies, catalog_reference_compare);
         }
         if (acount(dependents) > 1) {
-            qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+            asort(dependents, catalog_reference_compare);
         }
     }
 }
@@ -2689,7 +2689,7 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
         free(directory_path);
     }
     if (acount(entries) > 1) {
-        qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+        asort(entries, asset_entry_compare);
     }
     *out = entries;
     return 0;
@@ -3260,7 +3260,7 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
         }
     }
     if (acount(found) > 1) {
-        qsort(found, (size_t)acount(found), sizeof *found, compare_matches);
+        asort(found, compare_matches);
     }
     int total = acount(found);
     uint64_t start = page.cursor < (uint64_t)total ? page.cursor : (uint64_t)total;
@@ -10738,7 +10738,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         apush(matches, match);
     }
     if (acount(matches) > 1) {
-        qsort(matches, (size_t)acount(matches), sizeof *matches, node_match_compare);
+        asort(matches, node_match_compare);
     }
     yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
     int total = acount(matches);

@@ -288,9 +288,8 @@ def build_identity(build, cache):
             else:
                 key = 'external/' + path.name + '-' + checksum[:16]
             inputs[key] = checksum
-    for name, record in formats.items():
-        if (not isinstance(record, dict) or type(record.get('version')) is not int
-                or record['version'] < 1 or not isinstance(record.get('source'), str)
+    def owned(name, record):
+        if (not isinstance(record, dict) or not isinstance(record.get('source'), str)
                 or not isinstance(record.get('header'), str)
                 or not record['source'].startswith('src/')
                 or not record['header'].startswith('src/')):
@@ -303,6 +302,12 @@ def build_identity(build, cache):
         if source != record.get('sha256') or not copies or any(
                 checksum != record.get('header_sha256') for checksum in copies):
             raise ValueError(f'Configured artifact format differs from compiled ownership: {name}; reconfigure/rebuild first')
+    for name, record in formats.items():
+        owned(name, record)
+        if type(record.get('version')) is not int or record['version'] < 1:
+            raise ValueError(f'Configured artifact format is invalid: {name}')
+        if 'codec' in record:
+            owned(name, record['codec'])
     if set(executables) != allowed_products:
         raise ValueError(f'Built executables differ from product contract: {sorted(executables)}')
     return {'configured_engine': configured,

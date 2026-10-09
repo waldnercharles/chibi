@@ -570,7 +570,7 @@ int graph_optimize(graph *g, const graph_optimize_options *requested, graph_opti
         apush(ids, g->nodes[i]->id);
     }
     if (acount(ids)) {
-        qsort(ids, (size_t)acount(ids), sizeof *ids, compare_ids);
+        asort(ids, compare_ids);
     }
     for (int i = 0; i < acount(ids); i++) {
         node *source = graph_node_by_id(g, ids[i]);

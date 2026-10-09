@@ -125,7 +125,7 @@ bool project_prepare_prototypes(
         return false;
     }
     if (acount(*result) > 1) {
-        qsort(*result, (size_t)acount(*result), sizeof **result, compare);
+        asort(*result, compare);
     }
     for (int i = 1; i < acount(*result); i++) {
         if (!strcmp((*result)[i - 1].name, (*result)[i].name)) {

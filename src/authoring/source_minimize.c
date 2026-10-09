@@ -10,11 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum
-{
-    MINIMIZE_ROUNDS = 8,
-};
-
 typedef enum
 {
     PASS_SHAPE, /* Everything except labels; dropped arguments decide ordinals. */
@@ -103,31 +98,21 @@ static bool same_symbol(const pair *p, int i, int j)
            x->outcome == y->outcome && x->lazy_local == y->lazy_local &&
            ((payload(x) && payload(y)) || same_text(x->name, y->name));
 }
+/* Arguments evaluate in source order, so a rewrite must keep their order as
+ * well as their parameters. */
 static bool same_arguments(const pair *p, const script_expression *x, const script_expression *y)
 {
     if (x->argument_count != y->argument_count) {
         return false;
     }
-    bool *used = xcalloc((size_t)(y->argument_count ? y->argument_count : 1), sizeof *used);
-    bool same = true;
-    for (int i = 0; same && i < x->argument_count; i++) {
-        const script_argument *left = &x->arguments[i];
-        int match = -1;
-        for (int j = 0; match < 0 && j < y->argument_count; j++) {
-            const script_argument *right = &y->arguments[j];
-            if (!used[j] && right->parameter == left->parameter &&
-                right->member == left->member) {
-                match = j;
-            }
-        }
-        same = match >= 0 &&
-               same_expression(p, left->value, y->arguments[match].value);
-        if (same) {
-            used[match] = true;
+    for (int i = 0; i < x->argument_count; i++) {
+        const script_argument *left = &x->arguments[i], *right = &y->arguments[i];
+        if (right->parameter != left->parameter || right->member != left->member ||
+            !same_expression(p, left->value, right->value)) {
+            return false;
         }
     }
-    free(used);
-    return same;
+    return true;
 }
 /* Component paths record their root symbol only for navigation; the
  * receiver expression carries their meaning. */
@@ -904,6 +889,10 @@ static void accessor_read(collector *c, TSNode node, const script_expression *ca
     path_edits(&r, c, start(read), end(read), written_argument(c, node, call, cap->component_entity), cap);
     apush(c->rewrites, r);
 }
+static bool is_self(const collector *c, script_range range)
+{
+    return range.end - range.start == 4 && !strncmp(c->text + range.start, "self", 4);
+}
 /* `set_dash(v)` becomes `self.Dash = v`; the value keeps its text. */
 static void accessor_write(
     collector *c,
@@ -933,17 +922,12 @@ static void accessor_write(
         free((char *)last->text);
         last->text = text;
     } else {
-        char *root = NULL;
-        if (entity < 0) {
-            append_text(&root, "self", 4);
-        } else {
-            script_range e = value_range(c, entity);
-            bool bare = primary_at(c, e);
-            append_text(&root, "(", !bare);
-            append_text(&root, c->text + e.start, e.end - e.start);
-            append_text(&root, ")", !bare);
+        /* An entity written after the value would be evaluated first. */
+        if (entity >= 0 && !is_self(c, value_range(c, entity))) {
+            return;
         }
-        char *suffix = component_suffix(c, cap, false);
+        char *suffix = component_suffix(c, cap, false), *root = NULL;
+        append_text(&root, "self", 4);
         append_text(&root, suffix, (int)strlen(suffix));
         append_text(&root, " = ", 3);
         apush(root, 0);
@@ -1246,11 +1230,9 @@ char *authoring_source_minimize(const char *text, const script_catalog *catalog,
     if (original->valid && !original->diagnostic_count && !syntax->diagnostic_count) {
         oracle o = { catalog, identity, original };
         for (pass phase = PASS_SHAPE; phase <= PASS_LABELS; phase++) {
-            for (int round = 0; round < MINIMIZE_ROUNDS; round++) {
-                char *next = round_text(&o, current, phase);
-                if (!next) {
-                    break;
-                }
+            /* Each round accepts at least one rewrite, so this ends when
+             * nothing is left to drop. */
+            for (char *next; (next = round_text(&o, current, phase));) {
                 free(current);
                 current = next;
             }

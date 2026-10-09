@@ -114,6 +114,8 @@ by a local value. Missing, ambiguous and wrong-kind symbols are errors.
 Values include booleans, numbers, strings, arrays, sets, maps, nominal handles and
 reflected structs. Arrays use `number[]`; collection types use `set<int>` or
 `map<int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
+Collection natives such as `array_add` return a new value: write
+`hair = array_add(hair, h)`. A pure native called as a statement is an error.
 Runtime strings cannot contain embedded NUL bytes. Explicit scalar conversions use
 `cast<number>(value)` or `cast<float>(value)`. They remain available at numeric
 boundaries; ordinary arithmetic uses its inferred or expected type. A cast to a

@@ -281,6 +281,11 @@ CF_Canvas render_scene3d_post_output(const render_scene3d_post *post)
     return post->output;
 }
 
+void render_scene3d_post_reset(render_scene3d_post *post)
+{
+    post->exposure.valid = false;
+}
+
 const char *render_scene3d_post_error(const render_scene3d_post *post)
 {
     return post->error;

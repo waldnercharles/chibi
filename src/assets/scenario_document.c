@@ -152,8 +152,8 @@ static bool read_document(av_value *root, scenario_document *out, char *error, s
             return false;
         }
         int previous = acount(out->keys) - 1;
-        if (previous >= 0 && key.step <= out->keys[previous].step) {
-            return fail(error, error_size, "key frames must increase");
+        if (previous >= 0 && key.step < out->keys[previous].step) {
+            return fail(error, error_size, "key frames must not decrease");
         }
         if (previous < 0 && key.step > 0) {
             apush(out->keys, ((input_keyframe){ 0 }));

@@ -2,6 +2,11 @@
 include(FetchContent)
 set(CF_FRAMEWORK_STATIC ON CACHE BOOL "" FORCE)
 set(CF_CUTE_SHADERC OFF CACHE BOOL "" FORCE)
+# The browser player renders with WebGPU when its page provides a device
+# (src/host/web/index.html) and falls back to WebGL 2 otherwise.
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_WEB_PLAYER)
+    set(CF_WEBGPU ON CACHE BOOL "" FORCE)
+endif()
 FetchContent_Declare(
     cute_framework
     GIT_REPOSITORY https://github.com/RandyGaul/cute_framework.git
@@ -21,7 +26,7 @@ if(NOT cute_framework_POPULATED)
 endif()
 include("${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/apply_patch.cmake")
 set(CUTE_PATCHES "")
-foreach(name cute-interior-border cute-imgui-render-target cute-eight-targets cute-web-no-asyncify cute-gles-ubo-instance-scope cute-instance-buffer)
+foreach(name cute-interior-border cute-imgui-render-target cute-eight-targets cute-web-no-asyncify cute-gles-ubo-instance-scope cute-instance-buffer cute-web-webgpu-device)
     list(APPEND CUTE_PATCHES "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/${name}.patch")
 endforeach()
 chibi_apply_patches("${cute_framework_SOURCE_DIR}" ${CUTE_PATCHES})

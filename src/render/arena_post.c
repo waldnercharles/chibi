@@ -88,14 +88,22 @@ void render_arena_post_free(render_arena_post *post)
     free(post);
 }
 
+#ifdef __EMSCRIPTEN__
+/* Cute's GLES capability table assumes float color support. Ask WebGL before
+ * framebuffer creation, which otherwise asserts on these devices. WebGPU
+ * reports its formats itself. */
+static bool webgl_float_targets()
+{
+    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = emscripten_webgl_get_current_context();
+    return emscripten_webgl_enable_extension(context, "EXT_color_buffer_float") ||
+           emscripten_webgl_enable_extension(context, "EXT_color_buffer_half_float");
+}
+#endif
+
 static bool supports_hdr()
 {
 #ifdef __EMSCRIPTEN__
-    /* Cute's GLES capability table assumes float color support. Ask WebGL
-     * before framebuffer creation, which otherwise asserts on these devices. */
-    EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context = emscripten_webgl_get_current_context();
-    if (!emscripten_webgl_enable_extension(context, "EXT_color_buffer_float") &&
-        !emscripten_webgl_enable_extension(context, "EXT_color_buffer_half_float")) {
+    if (cf_query_backend() == CF_BACKEND_TYPE_GLES3 && !webgl_float_targets()) {
         return false;
     }
 #endif

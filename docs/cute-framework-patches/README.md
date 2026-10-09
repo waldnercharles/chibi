@@ -1,8 +1,8 @@
 # Cute Framework upgrade and patch audit
 
-Audited on October 9, 2026. The dependency now targets [`96e6034aa6bc44665856ee480962a9ddab0b87cc`](https://github.com/RandyGaul/cute_framework/commit/96e6034aa6bc44665856ee480962a9ddab0b87cc), Cute's `master` on that day. The previous pin was [`7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d`](https://github.com/RandyGaul/cute_framework/commit/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d). The update brings in Cute's optional WebGPU backend; Chibi does not enable it yet.
+Audited on October 9, 2026. The dependency now targets [`96e6034aa6bc44665856ee480962a9ddab0b87cc`](https://github.com/RandyGaul/cute_framework/commit/96e6034aa6bc44665856ee480962a9ddab0b87cc), Cute's `master` on that day. The previous pin was [`7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d`](https://github.com/RandyGaul/cute_framework/commit/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d). The update brings in Cute's optional WebGPU backend, which the browser player uses; other builds leave it off.
 
-Of 17 patches, 11 are now upstream, most adapted from Chibi's own patches. Six remain.
+Of 17 patches, 11 are now upstream, most adapted from Chibi's own patches. Six remain, and `cute-web-webgpu-device` is new.
 
 ## Removed patches
 
@@ -34,6 +34,7 @@ The rows follow the build's application order. Each patch applies independently 
 | [cute-web-no-asyncify](cute-web-no-asyncify.md) | Link the web build without Asyncify. |
 | [cute-gles-ubo-instance-scope](cute-gles-ubo-instance-scope.md) | Give anonymous uniform block instances separate stage names. |
 | [cute-instance-buffer](cute-instance-buffer.md) | Expose existing shared instance staging through the public C header. |
+| [cute-web-webgpu-device](cute-web-webgpu-device.md) | Start WebGPU in the browser from a device the page requests, since the player links without Asyncify. |
 
 The October 6 audit published each patch it kept as an unlisted gist, and `gists.json` records that publication. The gists hold the October 6 versions and were not republished for this update. The patches in `cmake/patches` and these documents are current.
 

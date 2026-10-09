@@ -10,7 +10,7 @@ Upstream took the other half of the earlier patch in [ff7f2a58](https://github.c
 
 ## Limits
 
-This is a Chibi build choice, not a general replacement for Cute's asynchronous APIs. Code that calls `emscripten_sleep`, such as Cute's WebGPU backend while it waits for its adapter and device, needs Asyncify or another way to wait.
+This is a Chibi build choice, not a general replacement for Cute's asynchronous APIs. Code that calls `emscripten_sleep` needs Asyncify or another way to wait. Cute's WebGPU backend waits that way for its adapter and device, so [cute-web-webgpu-device](cute-web-webgpu-device.md) lets the page provide the device instead.
 
 ## Apply the patch
 

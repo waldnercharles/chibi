@@ -26,6 +26,7 @@ NATIVE = {
     ('--studio-starter-startup',): 'Reviewed first measurement: own empty starter, actual Studio shell, two hidden1920x1080 frames, fixed dt; agent exact build/resource provenance and UI diagnostics required, whole process60s',
     ('--player-space-cadet-vm',): 'Reviewed first GPU measurement: fixed prepared SpaceCadet UI/font manifest, VM, four hidden 1280x720 frames at fixed dt, whole process under 60 seconds; tools/agent.py preflight required',
     ('--player-space-cadet-sljit',): 'Reviewed first GPU measurement: fixed prepared SpaceCadet UI/font manifest, SLJIT, four hidden 1280x720 frames at fixed dt, whole process under 60 seconds; tools/agent.py preflight required',
+    ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
     ('--prepare-corpora-sljit', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive six-project SLJIT preparation, shared 256 sources/8 MiB, compilation only, no execution/GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
@@ -125,8 +126,9 @@ TOOLS = {
     # One reviewed CPU-only typed renderer transaction/lifetime case; no window, GPU, fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--render-resources'],
     # Two reviewed hidden-app 64x64 cases: Cute's interior border on a circle and a diamond,
-    # opaque and translucent, through the instanced and tiled draw paths.
-    'interior-border': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--interior-border'],
+    # opaque and translucent, through the instanced and tiled draw paths. Render consumers
+    # build only with the desktop SDK, so this defaults to the `make build` tools.
+    'interior-border': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--interior-border'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene-prepared'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.
@@ -446,7 +448,8 @@ def main():
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
-        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'player-space-cadet-vm', 'player-space-cadet-sljit', 'studio-starter-startup', 'studio-source-edit'):
+        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'player-space-cadet-vm', 'player-space-cadet-sljit', 'studio-starter-startup', 'studio-source-edit',
+                            'interior-border'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])
         return run_commands([TOOLS[arguments[0]]])

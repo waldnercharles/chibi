@@ -35,12 +35,13 @@
   },
   "selectors": [
     {
-      "command": "python3 tools/test_policy.py tool interior-border",
+      "command": "make agent-gpu-test AGENT_SELECTOR=--interior-border",
       "backend": "Vulkan (lavapipe)",
       "status": "passed",
       "tests": 2,
       "assertions": 8,
-      "wall_seconds": 6.1
+      "wall_seconds_cold": 6.1,
+      "wall_seconds_warm": 0.8
     },
     {
       "command": "build/test/tools/test_tools --interior-border with CF_APP_OPTIONS_GFX_OPENGL_BIT, one local run",

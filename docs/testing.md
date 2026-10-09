@@ -459,8 +459,9 @@ backend has one, so there a failure means Cute's tile shaders did not load.
 near clipping, a mixed 2D layer, and a later frame without the occluder) with
 hidden-surface rejection on and off, and requires the same pixels both ways and
 the expected depth snapshot copies. It also checks Cute's whole-canvas depth copy
-on its own: a cropped draw after the copy must not reach the snapshot. It reads
-the shaders from `src/render/shaders`. Build and run it like `interior-border`
+on its own: a cropped draw after the copy must not reach the snapshot. It builds
+shader graphs, so it needs a compiler build, and it reads the shaders from
+`src/render/shaders`. Build and run it like `interior-border`
 with `AGENT_SELECTOR=--sdf-visibility`. On lavapipe it passes in 8.9 seconds
 with Mesa's shader cache disabled and 2.9 seconds warm.
 `sdf-coverage` draws the production warped-SDF shape from `src/render/sdf_shapes.c`

@@ -33,7 +33,8 @@ void render_sky_free(render_sky *sky)
 
 bool render_sky_sides_valid(int width, int height)
 {
-    return width >= 2 && width <= RENDER_SKY_WIDTH_MAX && width == 2 * height;
+    return width >= 2 && width <= RENDER_SKY_WIDTH_MAX && width % 2 == 0 &&
+           height == width / 2;
 }
 
 int render_sky_face_size(const render_sky *sky)

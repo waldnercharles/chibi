@@ -122,12 +122,17 @@ static CF_Pixel front()
 }
 
 /* The pixel showing a world point. */
-static CF_Pixel pixel_at(CF_V3 world)
+static int pixel_index(CF_V3 world)
 {
     CF_V3 ndc = render_scene3d_project(&lens, world);
     int x = (int)((ndc.x + 1) * SIDE / 2), y = (int)((1 - ndc.y) * SIDE / 2);
     assert(x >= 0 && x < SIDE && y >= 0 && y < SIDE);
-    return pixels[y * SIDE + x];
+    return y * SIDE + x;
+}
+
+static CF_Pixel pixel_at(CF_V3 world)
+{
+    return pixels[pixel_index(world)];
 }
 
 static bool render_at(const GameEnvironment *environment, float time)
@@ -541,6 +546,23 @@ static GameDirectionalLight *add_walls(unsigned walls)
     return sun;
 }
 
+/* How much green a wall's shadow gained or lost since `before`, summed over
+ * a grid across the shadow and its edges. */
+static int softened(const CF_Pixel *before, int wall)
+{
+    float depth = wall_depths[wall];
+    int change = 0;
+    for (int y = -4; y <= 4; y++) {
+        for (int x = -4; x <= 4; x++) {
+            CF_V3 at = on_wall(wall, .02f * y);
+            at.x += .02f * x * depth;
+            int i = pixel_index(at);
+            change += abs(pixels[i].colors.g - before[i].colors.g);
+        }
+    }
+    return change;
+}
+
 TEST_CASE(deep_views_split_sun_shadows_into_cascades)
 {
     GameDirectionalLight *sun = add_walls(0xf);
@@ -552,16 +574,28 @@ TEST_CASE(deep_views_split_sun_shadows_into_cascades)
         open[i][1] = pixel_at(on_wall(i, .15f));
     }
     sun->shadows = true;
-    REQUIRE(render(&environment));
-    REQUIRE(render_scene3d_last_work(scene3d).cascades == WALLS);
-    /* A single map across the whole view would blur the nearest shadow away. */
+    /* A single map across the whole view would blur the nearest shadow away.
+     * A 5-degree sun leaves each shadow's core dark and its surroundings lit. */
+    CF_Pixel hard[PIXELS];
+    for (int soft = 0; soft < 2; soft++) {
+        sun->angular_diameter = 5.0f * soft;
+        REQUIRE(render(&environment));
+        REQUIRE(render_scene3d_last_work(scene3d).cascades == WALLS);
+        for (int i = 0; i < WALLS; i++) {
+            REQUIRE(pixel_at(on_wall(i, 0)).colors.g == 0);
+            REQUIRE(
+                open[i][0].colors.g > 60 &&
+                distance(pixel_at(on_wall(i, -.15f)), open[i][0]) <= 3
+            );
+            REQUIRE(distance(pixel_at(on_wall(i, .15f)), open[i][1]) <= 3);
+        }
+        if (!soft) {
+            memcpy(hard, pixels, sizeof hard);
+        }
+    }
+    /* It softens the edges in every cascade. */
     for (int i = 0; i < WALLS; i++) {
-        REQUIRE(pixel_at(on_wall(i, 0)).colors.g == 0);
-        REQUIRE(
-            open[i][0].colors.g > 60 &&
-            distance(pixel_at(on_wall(i, -.15f)), open[i][0]) <= 3
-        );
-        REQUIRE(distance(pixel_at(on_wall(i, .15f)), open[i][1]) <= 3);
+        REQUIRE(softened(hard, i) > 200);
     }
     return true;
 }
@@ -625,7 +659,7 @@ static GameDirectionalLight *add_wall_scene()
  * and near its top, then deep inside the shadow. */
 static const CF_V3 wall_edges[] = {
     { .5f, 0, 2.85f },  { .5f, 0, 3.15f }, { 3.5f, 0, 2.85f },
-    { 3.5f, 0, 3.15f }, { 3.5f, 0, 1 },
+    { 3.5f, 0, 3.15f }, { 2, 0, 1 },
 };
 enum
 {
@@ -663,6 +697,14 @@ TEST_CASE(sun_size_softens_shadows_away_from_casters)
     REQUIRE(pixel_at(wall_edges[2]).colors.g > 10);
     REQUIRE(pixel_at(wall_edges[3]).colors.g < open[3].colors.g - 10);
     REQUIRE(pixel_at(wall_edges[4]).colors.g == 0);
+    /* A short wall just past the view's near edge, which the camera culls,
+     * still shades the floor inside the view that its penumbra reaches. The
+     * edge is the cascade's low side, which no rounding widens. */
+    CF_V3 fringe = { 5.5f, 0, -1.1f };
+    CF_Pixel lit = pixel_at(fringe);
+    add_solid((CF_V3){ 2, 2, -1.5f }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, .4f, 4 }, 0xffffffffu);
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(fringe).colors.g < lit.colors.g - 10);
     sun->angular_diameter = 21;
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_error(scene3d), "angular diameter"));

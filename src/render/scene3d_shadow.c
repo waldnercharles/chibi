@@ -1,6 +1,7 @@
 #include "render/scene3d_shadow.h"
 
 #include "platform/cute.h"
+#include "render/fullscreen.h"
 #include "render/shader_program.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -21,6 +22,8 @@ enum
     /* A lookup's reach past its surface point: a 2.5-texel normal offset
      * plus its 1.5-texel filter. */
     MARGIN_TEXELS = 4,
+    /* The widest soft filter's radius; matches SOFT_TEXELS in scene3d.frag. */
+    SOFT_TEXELS = 128,
     /* Keeps the depth pass apart from anything else queued for drawing. */
     SHADOW_LAYER = INT_MIN / 2,
     /* Clipping every edge of a box and a frustum against the other. */
@@ -74,6 +77,7 @@ struct render_scene3d_shadow
     int width, height;
     blocker_map blockers;
     float spread;
+    float reach; /* How far the widest penumbra the scene allows reaches. */
     CF_M4x4 view;
     cascade cascades[CASCADE_LIMIT];
     int count;
@@ -180,13 +184,14 @@ static bool load_blocker_pass(blocker_map *blockers, char *error, size_t size)
     }
     char *vertex = render_shader_source("hrc/pass.vert");
     char *fragment = render_shader_source("scene3d_shadow_blockers.frag");
-    if (vertex && fragment) {
+    bool read = vertex && fragment;
+    if (read) {
         blockers->shader = cf_make_shader_from_source(vertex, fragment);
     }
     free(vertex);
     free(fragment);
     if (!blockers->shader.id) {
-        snprintf(error, size, "Shadow blocker shader: %s", cf_shader_compile_error());
+        snprintf(error, size, "Shadow blocker shader: %s", read ? cf_shader_compile_error() : "cannot read blocker shader sources");
         return false;
     }
     blockers->material = cf_make_material();
@@ -195,10 +200,7 @@ static bool load_blocker_pass(blocker_map *blockers, char *error, size_t size)
     raw.mip_filter = CF_MIP_FILTER_NEAREST;
     raw.wrap_u = raw.wrap_v = raw.wrap_w = CF_WRAP_MODE_CLAMP_TO_EDGE;
     blockers->raw = cf_make_sampler(raw);
-    CF_VertexAttribute position = { .name = "in_pos", .format = CF_VERTEX_FORMAT_FLOAT2 };
-    const float corners[] = { -1, -1, 3, -1, -1, 3 };
-    blockers->triangle = cf_make_mesh((int)sizeof corners, &position, 1, 2 * (int)sizeof(float));
-    cf_mesh_update_vertex_data(blockers->triangle, (void *)corners, 3);
+    blockers->triangle = render_make_pass_mesh();
     return true;
 }
 
@@ -214,7 +216,8 @@ static void reduce_blockers(render_scene3d_shadow *shadow)
         shadow->map,
         blockers->raw
     );
-    cf_apply_canvas(blockers->canvas, false);
+    /* Every texel is rewritten, so nothing need load. */
+    cf_apply_canvas(blockers->canvas, true);
     cf_apply_mesh(blockers->triangle);
     cf_apply_shader(blockers->shader, blockers->material);
     cf_apply_viewport(0, 0, width, height);
@@ -425,7 +428,8 @@ static shown show(
 }
 
 /* Covers what the receivers show between two view depths with a margin for
- * the lookups. Quarter-octave sizes and a texel-aligned origin keep shadow
+ * the lookups, widened for a soft sun by its widest penumbra up to the soft
+ * filter's limit. Quarter-octave sizes and a texel-aligned origin keep shadow
  * edges still while the camera moves within one size. */
 static void fit_cascade(
     render_scene3d_shadow *shadow,
@@ -455,12 +459,15 @@ static void fit_cascade(
         return;
     }
     cascade *cascade = &shadow->cascades[shadow->count++];
-    /* Room for the margin on both sides and one texel lost to snapping. */
-    size *= (float)TILE / (TILE - 2 * MARGIN_TEXELS - 1);
-    size = exp2f(ceilf(log2f(size) * 4) / 4);
+    /* Room for the margins on both sides and one texel lost to snapping. */
+    float reached = (size + 2 * shadow->reach) * TILE / (TILE - 2 * MARGIN_TEXELS - 1);
+    float limited = size * TILE / (TILE - 2 * (MARGIN_TEXELS + SOFT_TEXELS) - 1);
+    size = exp2f(ceilf(log2f(fminf(reached, limited)) * 4) / 4);
     cascade->texel = size / TILE;
-    min.x = (floorf(min.x / cascade->texel) - MARGIN_TEXELS) * cascade->texel;
-    min.y = (floorf(min.y / cascade->texel) - MARGIN_TEXELS) * cascade->texel;
+    float margin = MARGIN_TEXELS +
+                   fminf(floorf(shadow->reach / cascade->texel), SOFT_TEXELS);
+    min.x = (floorf(min.x / cascade->texel) - margin) * cascade->texel;
+    min.y = (floorf(min.y / cascade->texel) - margin) * cascade->texel;
     cascade->area = (CF_Aabb){ min, { min.x + size, min.y + size } };
 }
 
@@ -500,9 +507,14 @@ int render_scene3d_shadow_fit(
     shadow->count = 0;
     asetlen(shadow->extents, count);
     CF_Aabb3 unit = { { -.5f, -.5f, -.5f }, { .5f, .5f, .5f } };
+    float low = FLT_MAX, high = -FLT_MAX;
     for (int i = 0; i < count; i++) {
         shadow->extents[i] = cf_transform_aabb3(cf_mul_m4(shadow->view, boxes[i]), unit);
+        low = fminf(low, shadow->extents[i].min.z);
+        high = fmaxf(high, shadow->extents[i].max.z);
     }
+    /* No blocker lies farther from its receiver than the scene is deep. */
+    shadow->reach = spread * (high - low);
     hull frustum = frustum_between(camera, 0, FLT_MAX);
     float near = FLT_MAX, far = -FLT_MAX;
     asetlen(shadow->shown, receivers);

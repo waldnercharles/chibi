@@ -7,7 +7,7 @@ layout(set = 2, binding = SG_SHADOW_BINDING) uniform sampler2DShadow scene_shado
 layout(set = 2, binding = SG_SHADOW_BLOCKERS_BINDING) uniform sampler2D scene_shadow_blockers;
 const float PI = 3.141592653589793;
 // Taps per blocker search and per soft filter, and the widest radius of each,
-// in texels of the cascade.
+// in texels of the cascade; scene3d_shadow.c widens cascades by that radius.
 const int SEARCH_TAPS = 16;
 const int FILTER_TAPS = 32;
 const float SOFT_TEXELS = 128.0;
@@ -94,6 +94,13 @@ vec2 depth_slope(mat4 matrix)
     return vec2(dy.y * dx.z - dx.y * dy.z, dx.x * dy.z - dy.x * dx.z) / determinant;
 }
 
+// The receiver's plane at uv. Taps past the far plane compare as the far
+// plane, so texels with nothing in them stay lit.
+float plane_depth(vec3 coord, vec2 slope, vec2 uv)
+{
+    return min(coord.z + dot(slope, uv - coord.xy), 1.0);
+}
+
 // Tap i of count on a unit Vogel disc turned by angle.
 vec2 vogel_tap(int i, int count, float angle)
 {
@@ -120,7 +127,7 @@ float soft_shadow(int cascade, vec3 coord, vec2 low, vec2 high)
     for (int i = 0; i < SEARCH_TAPS; i++) {
         vec2 uv = clamp(coord.xy + vogel_tap(i, SEARCH_TAPS, angle) * search * texel, low, high);
         float depth = texelFetch(scene_shadow_blockers, ivec2(uv / texel) / 2, 0).r;
-        if (depth >= coord.z + dot(slope, uv - coord.xy) - tolerance) continue;
+        if (depth >= plane_depth(coord, slope, uv) - tolerance) continue;
         blockers += depth;
         count += 1.0;
     }
@@ -129,7 +136,7 @@ float soft_shadow(int cascade, vec3 coord, vec2 low, vec2 high)
     float lit = 0.0;
     for (int i = 0; i < FILTER_TAPS; i++) {
         vec2 uv = clamp(coord.xy + vogel_tap(i, FILTER_TAPS, angle) * radius * texel, low, high);
-        lit += textureLod(scene_shadow_map, vec3(uv, coord.z + dot(slope, uv - coord.xy)), 0.0);
+        lit += textureLod(scene_shadow_map, vec3(uv, plane_depth(coord, slope, uv)), 0.0);
     }
     return lit / float(FILTER_TAPS);
 }

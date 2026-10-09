@@ -923,6 +923,20 @@ typedef struct
  * `Name: T = e`, which parse as states at the root and locals in callables.
  * `keyword` is `value` or `local`, both five letters. A multi-result type
  * `(a: T, b: U)` is dropped, since such a local is inferred. */
+/* Skips the whitespace and comments the grammar allows between tokens. */
+static const char *gap(const char *p)
+{
+    for (;;) {
+        while (isspace((unsigned char)*p)) {
+            p++;
+        }
+        const char *skip = *p == '/' ? skip_literal(p) : p;
+        if (skip == p) {
+            return p;
+        }
+        p = skip;
+    }
+}
 static char *strip_lazy(const char *source, const char *keyword_text, lazy **out)
 {
     char *text = xmalloc(strlen(source) + 1), *at = text;
@@ -935,17 +949,12 @@ static char *strip_lazy(const char *source, const char *keyword_text, lazy **out
         }
         size_t keyword = strncmp(p, keyword_text, 5) ? 0 : 5;
         const char *name = p + keyword;
-        while (keyword && (*name == ' ' || *name == '\t')) {
-            name++;
-        }
+        name = keyword ? gap(name) : name;
         const char *after = *name == '"' ? skip_literal(name) : name;
         while (*after != '"' && word_char(*after)) {
             after++;
         }
-        const char *sign = after;
-        while (*sign == ' ' || *sign == '\t') {
-            sign++;
-        }
+        const char *sign = gap(after);
         if (!keyword || word_char(p[keyword]) || name == p + keyword ||
             after == name || (p > source && word_char(p[-1])) ||
             !statement_start(source, p) || (*sign != ':' && *sign != '=') ||
@@ -955,19 +964,14 @@ static char *strip_lazy(const char *source, const char *keyword_text, lazy **out
         }
         apush(*out, ((lazy){ .offset = (int)(at - text) }));
         at = stpncpy(at, name, (size_t)(after - name));
-        const char *tuple = sign + 1;
-        while (*sign == ':' && (*tuple == ' ' || *tuple == '\t')) {
-            tuple++;
-        }
+        const char *tuple = *sign == ':' ? gap(sign + 1) : sign + 1;
         if (*sign == ':' && *tuple == '(') {
             int depth = 0;
             do {
                 depth += (*tuple == '(') - (*tuple == ')');
                 tuple++;
             } while (depth && *tuple);
-            while (*tuple == ' ' || *tuple == '\t') {
-                tuple++;
-            }
+            tuple = gap(tuple);
             sign = *tuple == '=' ? tuple : sign;
         }
         if (*sign == '=') {

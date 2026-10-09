@@ -2592,6 +2592,20 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         chibi_migrate_locals(disabled, &unchanged, error, sizeof error) &&
         !unchanged && strstr(error, "disabled")
     );
+    /* Comments and line breaks may sit between a local's tokens. */
+    const char *spaced[] = {
+        "behavior L { n: double = 0; local /* note */ X = 1\n"
+        "    on Impulse(amount, enabled) { n = X }\n}\n",
+        "behavior L { n: double = 0; local X /* note */ = 1\n"
+        "    on Impulse(amount, enabled) { n = X }\n}\n",
+        "behavior L { n: double = 0; local\n    X = 1\n"
+        "    on Impulse(amount, enabled) { n = X }\n}\n",
+    };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(!chibi_migrate_locals(spaced[i], &unchanged, error, sizeof error));
+        REQUIRE(unchanged && !strstr(unchanged, "local") && strstr(unchanged, "X := 1; n = X"));
+        free(unchanged);
+    }
     /* `local.X` names the root local past a nearer `X`. */
     const char *qualified = "behavior L { n: double = 0\n"
                             "    local X = n + 1\n"

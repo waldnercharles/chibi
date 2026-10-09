@@ -62,8 +62,10 @@ jobs:
 
   studio:
     name: Studio build and startup
-    # Pull requests from forks get no secrets, so they can't check out Studio.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Pull requests from forks and Dependabot get no secrets, so they can't check out Studio.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

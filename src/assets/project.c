@@ -371,7 +371,8 @@ static int upgrade(const char *manifest, const char *content, int from, char *er
             return -1;
         }
     }
-    const char *rest = digits + strspn(digits, "0123456789");
+    char *rest;
+    strtol(digits, &rest, 10); /* The whole token, sign included. */
     size_t size = strlen(text) + 32;
     char *updated = xmalloc(size);
     snprintf(updated, size, "%.*s%d%s", (int)(digits - text), text, CHIBI_PROJECT_VERSION, rest);

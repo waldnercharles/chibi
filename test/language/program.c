@@ -1985,7 +1985,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "wb");
     fputs(
         "meta {\n    version 12\n}\n// metadata {\nname \"P\"; version "
-        "12\ncontent "
+        "+12\ncontent "
         "\"content\"\n"
         "start_scene \"scenes/Start.kdl\"\n",
         file

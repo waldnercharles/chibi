@@ -1,6 +1,8 @@
 #ifndef CHIBI_ASSETS_PROJECT_MIGRATE_H
 #define CHIBI_ASSETS_PROJECT_MIGRATE_H
 
+#include "runtime/input_action.h"
+
 #include <stddef.h>
 
 /* Upgrades the sources under `content`, and the canonical `start_scene` path
@@ -39,5 +41,11 @@ char *chibi_migrate_values(const char *source, char *error, size_t error_size);
  * every such entity lists none, or NULL when the text does not change or is
  * not a scene. */
 char *chibi_migrate_scene_behaviors(const char *scene);
+/* Version 16 moves GameActionBinding components into the project's input map.
+ * Adds the action of each enabled binding in a scene or prototype `asset` to
+ * `map`, and returns an owned copy of the asset without them, or NULL when it
+ * has none. Sets `error` and returns NULL when a binding names an unknown
+ * control. */
+char *chibi_migrate_action_bindings(const char *asset, input_action **map, char *error, size_t error_size);
 
 #endif

@@ -598,15 +598,6 @@ static void values()
         "renaming a material renames it in struct defaults such as a "
         "GameShader value"
     );
-    reference_symbol flip = { .kind = REFERENCE_SYMBOL_EVENT, .asset = -1, .name = "FlipLeft" };
-    uses = event_uses(&p, "FlipLeft");
-    planned = rename_to(&p, flip, "FlipPort", &plan);
-    listed = planned && edits(&p, &plan, "OrbitFlipper");
-    applied = planned && apply(&p, &plan);
-    test_check(
-        listed && applied && uses >= 1 && event_uses(&p, "FlipPort") == uses,
-        "renaming an event renames the action bindings that send it"
-    );
     project_free(&p);
 
     p = project_load("projects/studio/content");

@@ -1,9 +1,11 @@
 #include "assets/project_migrate.h"
 
+#include "assets/input_map.h"
 #include "language/syntax.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
+#include "types/catalog.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -1335,9 +1337,11 @@ static int stage_text(const char *path, const char *text, char *error, size_t er
     /* Never write through a symbolic or hard link left at the staging path. */
     unlink(staged);
     int fd = open(staged, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
-    struct stat original;
-    /* The replacement keeps the source's permissions. */
-    if (fd >= 0 && (stat(path, &original) || fchmod(fd, original.st_mode & 07777))) {
+    /* The replacement keeps the source's permissions; a new file gets the
+     * usual ones. */
+    struct stat original = { .st_mode = 0644 };
+    if (fd >= 0 && ((stat(path, &original) && errno != ENOENT) ||
+                    fchmod(fd, original.st_mode & 07777))) {
         close(fd);
         fd = -1;
     }
@@ -1378,6 +1382,119 @@ char *chibi_migrate_scene_behaviors(const char *scene)
     }
     char *migrated = changed ? asset_text_write(root) : NULL;
     av_doc_free(document);
+    return migrated;
+}
+/* Adds one binding's control to its action. A binding without an action or
+ * a control, or a disabled one, never held anything. */
+static bool move_binding(const av_value *binding, input_action **map, char *error, size_t error_size)
+{
+    const av_value *action = av_obj_get(binding, "action");
+    const av_value *source = av_obj_get(binding, "source");
+    const av_value *disabled = av_obj_get(binding, "disabled");
+    const av_value *firing = av_obj_get(binding, "firing");
+    if (!av_is_str(action) || !av_get_str(action)[0] || !av_is_str(source) ||
+        (av_is_bool(disabled) && av_get_bool(disabled))) {
+        return true;
+    }
+    int control;
+    if (!type_catalog_enum_value("GameControl", av_get_str(source), &control)) {
+        snprintf(error, error_size, "Unknown input control %s", av_get_str(source));
+        return false;
+    }
+    if (control > 0) {
+        input_map_add(
+            map,
+            av_get_str(action),
+            UINT64_C(1) << control,
+            av_is_bool(firing) && av_get_bool(firing)
+        );
+    }
+    return true;
+}
+/* Removes the bindings from `owner`'s components object `key`, adding active
+ * ones to `map`, and drops the object when nothing else is left in it unless
+ * `keep` is set. Returns whether any were removed. */
+static bool move_bindings(
+    av_value *owner,
+    const char *key,
+    bool active,
+    bool keep,
+    input_action **map,
+    char *error,
+    size_t error_size
+)
+{
+    av_value *components = av_obj_get(owner, key);
+    bool changed = false;
+    for (size_t i = av_is_obj(components) ? av_obj_size(components) : 0; i-- > 0;) {
+        const char *name = av_get_str(av_obj_key_at(components, i));
+        if (strcmp(name, "GAME.GameActionBinding") &&
+            strcmp(name, "GameActionBinding")) {
+            continue;
+        }
+        if (active &&
+            !move_binding(av_obj_value_at(components, i), map, error, error_size)) {
+            return false;
+        }
+        av_obj_remove_key(components, name);
+        changed = true;
+    }
+    if (changed && !keep && !av_obj_size(components)) {
+        av_obj_remove_key(owner, key);
+    }
+    return changed;
+}
+char *chibi_migrate_action_bindings(const char *asset, input_action **map, char *error, size_t error_size)
+{
+    char message[128];
+    av_doc *document = asset_text_read(asset, message, sizeof message);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    if (!av_is_obj(root)) {
+        av_doc_free(document);
+        return NULL;
+    }
+    /* A prototype holds components and detached ones; a scene's entities hold
+     * components and retained ones. */
+    bool changed = move_bindings(root, "components", true, true, map, error, error_size);
+    changed |= move_bindings(root, "detached_components", false, false, map, error, error_size);
+    av_value *entities = av_obj_get(root, "entities");
+    for (size_t i = 0; av_is_arr(entities) && i < av_arr_size(entities); i++) {
+        av_value *entity = av_arr_get(entities, i);
+        if (av_is_obj(entity)) {
+            changed |= move_bindings(entity, "components", true, false, map, error, error_size);
+            changed |= move_bindings(entity, "retained_components", true, false, map, error, error_size);
+        }
+    }
+    char *migrated = changed && !error[0] ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
+/* Moves the bindings of every scene and prototype into the input map at
+ * paths[target], whose source is empty when the project has none. */
+static char **migrate_bindings(char **sources, char **paths, int count, int target, char *error, size_t error_size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    input_action *map = NULL;
+    if (sources[target][0] &&
+        !input_map_read(sources[target], &map, error, error_size)) {
+        return migrated;
+    }
+    bool moved = false;
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (i == target) {
+            continue;
+        }
+        migrated[i] = chibi_migrate_action_bindings(sources[i], &map, error, error_size);
+        moved |= migrated[i] != NULL;
+        size_t length = strlen(error);
+        if (length) {
+            snprintf(error + length, error_size - length, " in %s", paths[i]);
+        }
+    }
+    if (moved && acount(map) && !error[0]) {
+        migrated[target] = input_map_write(map);
+    }
+    input_map_free(map);
     return migrated;
 }
 static int collect_sources(const char *directory, const char *suffix, char ***paths, char *error, size_t error_size)
@@ -1429,9 +1546,9 @@ int chibi_project_migrate_content(
 )
 {
     char **paths = NULL;
-    /* Version 15 changes scenes, wherever the project keeps them; every
-     * earlier step changes scripts. */
-    bool scenes = from == 14;
+    /* Versions 15 and 16 change scenes and prototypes, wherever the project
+     * keeps them; every earlier step changes scripts. */
+    bool scenes = from == 14 || from == 15;
     int status = collect_sources(
         content,
         scenes ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
@@ -1446,10 +1563,30 @@ int chibi_project_migrate_content(
         !stat(start_scene, &info) && S_ISREG(info.st_mode)) {
         apush(paths, xstrdup(start_scene));
     }
+    /* Version 16 writes the input map, which may not exist yet. */
+    int map = -1;
+    bool created = false;
+    if (!status && from == 15) {
+        size_t size = strlen(content) + sizeof "/" INPUT_MAP_FILE;
+        char *path = xmalloc(size);
+        snprintf(path, size, "%s/" INPUT_MAP_FILE, content);
+        for (int i = 0; i < acount(paths) && map < 0; i++) {
+            map = strcmp(paths[i], path) ? -1 : i;
+        }
+        created = map < 0;
+        if (created) {
+            map = acount(paths);
+            apush(paths, path);
+        } else {
+            free(path);
+        }
+    }
     int count = acount(paths);
     char **sources = xmalloc((size_t)(count + 1) * sizeof *sources);
     for (int i = 0; i < count; i++) {
-        sources[i] = status ? NULL : read_text(paths[i]);
+        sources[i] = status              ? NULL
+                   : i == map && created ? xstrdup("")
+                                         : read_text(paths[i]);
         if (!status && !sources[i]) {
             snprintf(error, error_size, "Cannot read source %s", paths[i]);
             status = -1;
@@ -1486,6 +1623,11 @@ int chibi_project_migrate_content(
                 for (int i = 0; i < count; i++) {
                     migrated[i] = chibi_migrate_scene_behaviors(sources[i]);
                 }
+                break;
+            case 15:
+                error[0] = '\0';
+                migrated = migrate_bindings(sources, paths, count, map, error, error_size);
+                status = error[0] ? -1 : 0;
                 break;
             default: assert(false);
         }

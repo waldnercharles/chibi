@@ -453,8 +453,9 @@ static void ui_events()
     char *button = search_in(root, "\"query\":\"button\",\"limit\":3", &bytes);
     char *resume = search_in(root, "\"query\":\"resume\"", &bytes);
     test_check(
-        outline && strstr(outline, "\"Contact Begin\",\"PressedChanged\",\"Go\",\"Volume\",\"Choose\"]") &&
-            go && strstr(go, "\"type\":\"Event\",\"event_name\":\"Go\",\"description\":\"Sent when the player clicks #go in Hud.\"") &&
+        outline &&
+            strstr(outline, "\"Contact Begin\",\"Go\",\"Volume\",\"Choose\"]") && go &&
+            strstr(go, "\"type\":\"Event\",\"event_name\":\"Go\",\"description\":\"Sent when the player clicks #go in Hud.\"") &&
             volume &&
             strstr(volume, "\"description\":\"Sent when the player changes #volume in Hud.\"") &&
             choose &&

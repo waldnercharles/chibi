@@ -132,7 +132,7 @@ add_library(Chibi::input_runtime ALIAS chibi_input_runtime)
 set_target_properties(chibi_input_runtime PROPERTIES EXPORT_NAME input_runtime)
 chibi_sdk_headers(chibi_input_runtime PUBLIC runtime/engine_input.h runtime/input_definition.h
     runtime/input_timeline.h runtime/source_input.h)
-target_link_libraries(chibi_input_runtime PUBLIC chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime PRIVATE chibi_scheduling chibi_events)
+target_link_libraries(chibi_input_runtime PUBLIC chibi_input_action chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime PRIVATE chibi_events)
 target_include_directories(chibi_save_runtime PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
 list(APPEND CHIBI_SDK_TARGETS chibi_native_types chibi_entity_runtime chibi_audio_runtime
     chibi_rhythm_runtime chibi_particle_runtime chibi_save_runtime chibi_ui_runtime chibi_input_runtime)

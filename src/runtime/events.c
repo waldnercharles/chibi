@@ -9,51 +9,39 @@ static const game_event_field TICK_PAYLOAD[] = {
 static const game_event_field INPUT_PAYLOAD[] = {
     { .name = "Direction", .type = PIN_STRUCT, .type_name = "CF_V2" },
 };
-static const game_event_field PRESSED_PAYLOAD[] = {
-    { .name = "pressed", .type = PIN_BOOL, .type_name = "bool" },
-};
 static const game_event_field CONTACT_PAYLOAD[] = {
     { .name = "Other", .type = PIN_HANDLE, .type_name = "ecs.entity" },
     { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" },
 };
 
 const game_host_event_desc GAME_HOST_EVENTS[GAME_HOST_EVENT_COUNT] = {
-    [GAME_HOST_EVENT_PRESSED_CHANGED] = {
-        .name = "PressedChanged",
-        .keywords = "input action binding pressed released changed",
-        .description = "Runs when this entity's ActionBinding pressed state changes.",
-        .payload = PRESSED_PAYLOAD,
-        .payload_count = 1,
-        .receiver_type = "GameActionBinding",
-        .receiver_field = "pressed",
-    },
     [GAME_HOST_EVENT_BEGIN] = { .name = "Begin", .keywords = "start spawn create init ready", .description = "Runs once when the behavior starts." },
     [GAME_HOST_EVENT_TICK] = { .name = "Tick",
-                                .keywords = "update frame every loop delta "
-                                            "time",
-                                .description = "Runs every frame; DeltaSeconds "
-                                               "is the time since the last "
-                                               "one.",
-                                .payload = TICK_PAYLOAD,
-                                .payload_count = 1 },
-    [GAME_HOST_EVENT_FIRE] = { .name = "Fire", .keywords = "shoot attack weapon", .description = "Runs when the Fire input is pressed, on entities that bind input actions." },
-    [GAME_HOST_EVENT_DASH] = { .name = "Dash", .keywords = "dodge boost", .description = "Runs when the Dash input is pressed, on entities that bind input actions." },
+                               .keywords = "update frame every loop delta "
+                                           "time",
+                               .description = "Runs every frame; DeltaSeconds "
+                                              "is the time since the last "
+                                              "one.",
+                               .payload = TICK_PAYLOAD,
+                               .payload_count = 1 },
+    [GAME_HOST_EVENT_FIRE] = { .name = "Fire", .keywords = "shoot attack weapon", .description = "Runs when the Fire action is pressed, on entities with Input." },
+    [GAME_HOST_EVENT_DASH] = { .name = "Dash", .keywords = "dodge boost", .description = "Runs when the Dash action is pressed, on entities with Input." },
     [GAME_HOST_EVENT_INPUT] = { .name = "Input",
-                                 .keywords = "move direction stick controls "
-                                             "player",
-                                 .description = "Runs with the movement "
-                                                "Direction for entities the "
-                                                "player controls.",
-                                 .payload = INPUT_PAYLOAD,
-                                 .payload_count = 1 },
+                                .keywords = "move direction stick controls "
+                                            "player",
+                                .description = "Runs with the movement "
+                                               "Direction for entities the "
+                                               "player controls.",
+                                .payload = INPUT_PAYLOAD,
+                                .payload_count = 1 },
     [GAME_HOST_EVENT_CONTACT_BEGIN] = { .name = "Contact Begin",
-                                         .keywords = "hit collide collision "
-                                                     "touch overlap enter",
-                                         .description = "Runs when this entity "
-                                                        "starts touching Other "
-                                                        "at Point.",
-                                         .payload = CONTACT_PAYLOAD,
-                                         .payload_count = 2 },
+                                        .keywords = "hit collide collision "
+                                                    "touch overlap enter",
+                                        .description = "Runs when this entity "
+                                                       "starts touching Other "
+                                                       "at Point.",
+                                        .payload = CONTACT_PAYLOAD,
+                                        .payload_count = 2 },
 };
 
 const char *game_host_event_name(game_host_event event)

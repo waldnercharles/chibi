@@ -147,7 +147,7 @@ behavior Emitter {
         self.ParticleEmitter.Active = true;
         self.ParticleEmitter.Rate += event.dt;
         parent := self.ParticleEmitter.Parent;
-        pressed := parent.ActionBinding.Pressed;
+        health := parent.Health.Current;
     }
 }
 ```
@@ -339,9 +339,9 @@ Systems declare their required and optional components in the header. Their
 ordinary body runs once per matched entity per tick:
 
 ```code
-system EmitterControl(emitter: ParticleEmitter, trigger: ActionBinding?) without Collider {
+system EmitterControl(emitter: ParticleEmitter, trigger: Aim?) without Collider {
     if (trigger) {
-        emitter.Active = trigger.Pressed;
+        emitter.Active = trigger.Firing;
     }
     emitter.Rate += event.dt;
 }
@@ -386,22 +386,38 @@ continuations are cancelled, and both entity-private and shared state start from
 the authored defaults. Compatible behavior instance reload does not preserve
 state across this system registration replacement.
 
+### Input actions
+
+A project's input map, `content/input.kdl`, names each action, the GameControl
+labels that hold it, and whether it also holds the Aim of input owners:
+
+```kdl
+Boost {
+    (array)sources "Shift" "Pad Left Shoulder"
+}
+Fire {
+    (array)sources "Mouse Left" "Pad Right Trigger"
+    firing #true
+}
+```
+
+Each action is an event that entities with Input receive when one of its
+sources goes down. Scripts read an action through the `input` global:
+`input.Boost.held` is true while any of its sources is down, and
+`input.Boost.pressed` is true for the one fixed step after one went down, even
+for a tap released before that step. Action names are typed members, so
+`input.Bost.held` is a compile error, and completion after `input.` lists the
+map's actions. A pause or focus change keeps held actions, so resuming with the
+same controls held presses nothing again.
+
 ### Maintained ECS relationships
 
 A root-level `bind` maintains a writable component field from a deterministic
-value expression. A qualified `PressedChanged` handler observes the referenced
-ActionBinding rather than the behavior owner's unrelated input:
+value expression:
 
 ```code
 behavior LinkedEmitter {
-    bind self.ParticleEmitter.Active = self.ParticleEmitter.Parent.ActionBinding.Pressed;
-    on self.ParticleEmitter.Parent.ActionBinding.PressedChanged(pressed) {
-        if (pressed) {
-            self.ParticleEmitter.Rate = 10;
-        } else {
-            self.ParticleEmitter.Rate = 0;
-        }
-    }
+    bind self.ParticleEmitter.Active = input.Boost.held;
 }
 ```
 
@@ -412,13 +428,8 @@ components again at each safe point, including when a parent handle changes.
 An unavailable source makes an available destination zero or null; an unavailable
 destination remains dormant until it exists again. Initial subscription and
 retargeting establish the current event baseline without inventing a transition.
-Input delivers queued `PressedChanged(pressed)` edges after its component queries
-finish, preserving release and re-press payloads within one update. Other component
-writes are observed at maintenance points. Behavior callbacks may suspend using
-normal behavior continuations. To read an action across all of its bindings,
-`held("Jump")` is true while any source bound to `Jump` is down, and
-`pressed("Jump")` is true for the one fixed step after one went down, even for a
-tap released before that step.
+Component writes are observed at maintenance points. Behavior callbacks may
+suspend using normal behavior continuations.
 
 A system maintains relationships for its matched entities. While an entity's
 system invocation is active or suspended, relationship values and subscription

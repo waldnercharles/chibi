@@ -5,11 +5,11 @@
 #include "execution/arguments.h"
 #include "execution/host.h"
 #include "runtime/components.h"
+#include "runtime/input_action.h"
 #include "runtime/input_timeline.h"
 
 /* Private engine input snapshot, local ownership and transition queue. */
 typedef struct engine_input engine_input;
-typedef struct game_schedule game_schedule;
 /* The record is copied; context remains borrowed until input is freed. Hooks
  * preserve the existing event delivery boundaries. Negative results
  * may write an owned error message into the supplied buffer. */
@@ -18,10 +18,11 @@ typedef struct
     void *context;
     bool (*has_event)(void *, const char *);
     int (*dispatch)(void *, ecs_entity, const char *, execution_arguments, char *, size_t);
-    int (*field_changed)(void *, ecs_entity, ecs_component_id, size_t, pin_value, char *, size_t);
 } engine_input_host;
-engine_input *engine_input_new(ecs_world *world, const engine_input_host *, game_schedule *systems);
+engine_input *engine_input_new(ecs_world *world, const engine_input_host *);
 void engine_input_free(engine_input *input);
+/* Copies the project's input map, which controls hold each action. */
+void engine_input_set_actions(engine_input *input, const input_action *actions, int count);
 void engine_input_clear(engine_input *input);
 void engine_input_reset(engine_input *input);
 int engine_input_action(engine_input *input, const char *action, bool pressed);

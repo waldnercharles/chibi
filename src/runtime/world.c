@@ -141,6 +141,7 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     }
     w->runtime = engine_new(w->ecs, &w->modules);
     assert(w->runtime);
+    engine_set_input_actions(w->runtime, options->actions, options->action_count);
     return w;
 fail:
     snprintf(error, size, "Runtime component registration failed");

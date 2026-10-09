@@ -1,5 +1,6 @@
 #include "authoring/source_catalog.h"
 
+#include "assets/input_map.h"
 #include "assets/ui_document.h"
 #include "authoring/reference_index.h"
 #include "authoring/source_catalog_snapshot.h"
@@ -46,6 +47,7 @@ struct source_catalog
     source_catalog_reference *references;
     source_catalog_diagnostic *diagnostics;
     script_catalog_capability *capabilities;
+    input_action *input;
     size_t bytes;
     int files, entries;
     int values;
@@ -308,8 +310,7 @@ static void project_references(
         for (int j = 0; j < component->field_count; j++) {
             const char *field = component->fields[j].name;
             reference_asset_kind kind = reference_named_field_kind(component->name, field);
-            if (kind == REFERENCE_ASSET_EVENT || kind == REFERENCE_ASSET_PROTOTYPE ||
-                kind == REFERENCE_ASSET_SYSTEM) {
+            if (kind == REFERENCE_ASSET_PROTOTYPE || kind == REFERENCE_ASSET_SYSTEM) {
                 const av_value *named = av_obj_get(fields, field);
                 if (!av_get_str(named)) {
                     continue;
@@ -317,17 +318,12 @@ static void project_references(
                 if (!project_value(c, path)) {
                     return;
                 }
-                if (kind == REFERENCE_ASSET_EVENT) {
-                    named_event(c, path, av_get_str(named));
-                }
                 value_reference(
                     c,
                     path,
                     text,
                     named,
-                    kind == REFERENCE_ASSET_EVENT    ? SOURCE_REFERENCE_EVENT
-                    : kind == REFERENCE_ASSET_SYSTEM ? SOURCE_REFERENCE_SYSTEM
-                                                     : SOURCE_REFERENCE_PROTOTYPE
+                    kind == REFERENCE_ASSET_SYSTEM ? SOURCE_REFERENCE_SYSTEM : SOURCE_REFERENCE_PROTOTYPE
                 );
             }
         }
@@ -535,6 +531,93 @@ static void scan(source_catalog *c, const char *path, int depth, declaration_kin
         error(c, path, (script_range){ 0 }, "Project declaration directory entry limit exceeded");
     }
     closedir(directory);
+}
+static void *grow(source_catalog *c, const void *items, int count, int extra, size_t size)
+{
+    void *grown = arena_alloc(&c->storage, (size_t)(count + extra) * size);
+    memcpy(grown, items, (size_t)count * size);
+    return grown;
+}
+/* The input map's actions are events, and `input.<Action>` reads one: an
+ * InputMap field per action holds its name, whose InputAction type reads
+ * held and pressed through the native input capabilities. */
+static void input_declarations(source_catalog *c)
+{
+    char path[MAX_PATH];
+    snprintf(path, sizeof path, "%s/" INPUT_MAP_FILE, c->root);
+    struct stat info;
+    if (lstat(path, &info) && errno == ENOENT) {
+        return;
+    }
+    char *text = read_source(c, path);
+    char message[192];
+    if (!text || !input_map_read(text, &c->input, message, sizeof message)) {
+        if (text) {
+            error(c, path, (script_range){ 0 }, message);
+        }
+        free(text);
+        return;
+    }
+    free(text);
+    if (!acount(c->input)) {
+        return;
+    }
+    const char *getters[] = { INPUT_ACTION_HELD, INPUT_ACTION_PRESSED };
+    script_catalog_field *reads = arena_alloc(&c->storage, 2 * sizeof *reads);
+    for (int i = 0; i < 2; i++) {
+        uint64_t id = script_catalog_id("capability", getters[i]);
+        if (!script_catalog_capability_by_id(&c->view, id)) {
+            error(c, path, (script_range){ 0 }, "Input actions need the native input capabilities");
+            return;
+        }
+        reads[i] = (script_catalog_field){
+            .id = script_catalog_id("field", i ? "InputAction.pressed" : "InputAction.held"),
+            .name = i ? "pressed" : "held",
+            .type = { .storage = PIN_BOOL },
+            .read = id,
+        };
+    }
+    uint64_t action_type = script_catalog_id("type", INPUT_ACTION_TYPE);
+    uint64_t map_type = script_catalog_id("type", INPUT_MAP_TYPE);
+    int count = acount(c->input);
+    script_catalog_field *actions = arena_alloc(&c->storage, (size_t)count * sizeof *actions);
+    for (int i = 0; i < count; i++) {
+        const char *name = own(c, c->input[i].name);
+        size_t size = strlen(name) + sizeof "InputMap.";
+        char *field = arena_alloc(&c->storage, size);
+        snprintf(field, size, "InputMap.%s", name);
+        actions[i] = (script_catalog_field){
+            .id = script_catalog_id("field", field),
+            .name = name,
+            .type = { .storage = PIN_STR, .nominal = action_type },
+            .constant = true,
+        };
+        named_event(c, path, name);
+    }
+    script_catalog_type *types = grow(c, c->view.types, c->view.type_count, 2, sizeof *types);
+    types[c->view.type_count] = (script_catalog_type){
+        .id = action_type,
+        .name = INPUT_ACTION_TYPE,
+        .type = { .storage = PIN_STR, .nominal = action_type },
+        .fields = reads,
+        .field_count = 2,
+    };
+    types[c->view.type_count + 1] = (script_catalog_type){
+        .id = map_type,
+        .name = INPUT_MAP_TYPE,
+        .type = { .storage = PIN_STR, .nominal = map_type },
+        .fields = actions,
+        .field_count = count,
+    };
+    c->view.types = types;
+    c->view.type_count += 2;
+    script_catalog_global *globals = grow(c, c->view.globals, c->view.global_count, 1, sizeof *globals);
+    globals[c->view.global_count++] = (script_catalog_global){
+        .id = script_catalog_id("global", "input"),
+        .name = "input",
+        .type = { .storage = PIN_STR, .nominal = map_type },
+    };
+    c->view.globals = globals;
 }
 static script_catalog_parameter *parameters(
     source_catalog *c,
@@ -797,6 +880,7 @@ static source_catalog *build(
             load_file(c, edits[i].path, edit_kind(root, edits[i].path));
         }
     }
+    input_declarations(c);
     free(c->edit_used);
     c->edit_used = NULL;
     c->edits = NULL;
@@ -909,6 +993,10 @@ const script_catalog *source_catalog_view(const source_catalog *c)
 {
     return &c->view;
 }
+const input_action *source_catalog_input(const source_catalog *c)
+{
+    return c->input;
+}
 int source_catalog_source_count(const source_catalog *c)
 {
     return acount(c->sources);
@@ -958,6 +1046,7 @@ void source_catalog_free(source_catalog *c)
     afree(c->references);
     afree(c->diagnostics);
     afree(c->capabilities);
+    input_map_free(c->input);
     arena_free(&c->storage);
     free(c);
 }

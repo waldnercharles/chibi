@@ -11,7 +11,7 @@ endif()
 
 set(packages asset_authoring asset_json asset_text authoring behavior_runtime
     component_presentation ecs execution execution_contract field_catalog graph_authoring
-    graph_compilation graph_model graph_catalog host_native_default image_preparation json
+    graph_compilation graph_model graph_catalog host_native_default image_preparation input_map json
     model_authoring model_runtime native_capabilities native_types platform project_document
     project_preparation project_compilation prototype_document reference_index render
     scenario_document scene_document shader_preparation source_catalog source_presentation

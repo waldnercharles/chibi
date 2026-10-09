@@ -72,7 +72,7 @@ python3 -m http.server -d ~/builds/neon-swarm-web    # play at http://localhost:
 
 The site holds `index.html`, titled with the project's title, the player's
 `chibi-player.js` and `chibi-player.wasm`, and the same `data/` folder, which
-`data/files.json` lists. The page fetches those files before the game starts,
+`files.json` lists. The page fetches those files before the game starts,
 so it needs a web server rather than a `file://` URL. Any static host works.
 `chibi-celeste/.github/workflows/web.yml` builds and publishes a game repository
 on GitHub Pages; copy it to publish another game.

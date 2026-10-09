@@ -14,7 +14,7 @@ typedef enum
      * only a Windows host can add the icon */
     CHIBI_EXPORT_WINDOWS,
     /* A static site: index.html and the browser player beside data/, which
-     * data/files.json lists for the page to fetch */
+     * files.json lists for the page to fetch */
     CHIBI_EXPORT_WEB,
 } chibi_export_layout;
 

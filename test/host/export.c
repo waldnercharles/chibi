@@ -154,6 +154,7 @@ TEST_CASE(export_assembles_a_runnable_folder)
         "test -f \"$2/fail\" && exit 3\n"
         "printf artifact > \"$4\"\n"
         "printf '{\"external\":[{\"path\":\"art/sheet.bin\"},"
+        "{\"path\":\"files.json\"},"
         "{\"kind\":\"icon\",\"path\":\"art/icon.png\"}]}' > "
         "\"$4.resources.json\"\n",
         0755
@@ -165,6 +166,7 @@ TEST_CASE(export_assembles_a_runnable_folder)
     write_at("project/art/icon.png", "", 0644);
     write_png(64, 64);
     write_at("project/art/sheet.bin", "sheet", 0644);
+    write_at("project/files.json", "authored", 0644);
 
     REQUIRE(export_to("out/Game/"));
     REQUIRE(has("out/Game/My Game_2", "player") && executable("out/Game/My Game_2"));
@@ -282,8 +284,8 @@ TEST_CASE(export_assembles_a_runnable_folder)
     icon = "art/icon.png";
 
     /* A web export is a static site: the browser player's page titled for the
-     * game beside its script and module, and data/files.json listing every
-     * data file for the page to fetch. */
+     * game beside its script and module, and files.json listing every data
+     * file for the page to fetch, even an authored data/files.json. */
     write_at("web/index.html", "<title>{{TITLE}}</title>{{TITLE", 0644);
     /* The browser player's compiler runs under Node; this fake node runs the
      * fake compiler script instead. */
@@ -304,9 +306,11 @@ TEST_CASE(export_assembles_a_runnable_folder)
     REQUIRE(has("site/chibi-player.js", "script") && has("site/chibi-player.wasm", "module"));
     REQUIRE(!has("site/My Game_2", NULL) && !has("site/my-game-2.desktop", NULL));
     REQUIRE(has("site/data/game.chibip", "artifact"));
-    REQUIRE(contains("site/data/files.json", "\"game.chibip\""));
-    REQUIRE(contains("site/data/files.json", "\"art/sheet.bin\""));
-    REQUIRE(contains("site/data/files.json", "\"engine/shaders/nested/a.glsl\""));
+    REQUIRE(has("site/data/files.json", "authored"));
+    REQUIRE(contains("site/files.json", "\"game.chibip\""));
+    REQUIRE(contains("site/files.json", "\"art/sheet.bin\""));
+    REQUIRE(contains("site/files.json", "\"files.json\""));
+    REQUIRE(contains("site/files.json", "\"engine/shaders/nested/a.glsl\""));
     REQUIRE(export_as("site", CHIBI_EXPORT_WEB, false)); /* replaces a site */
     remove_at("web/chibi-player.wasm");
     REQUIRE(!export_as("broken", CHIBI_EXPORT_WEB, false));

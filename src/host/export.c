@@ -645,14 +645,16 @@ static bool list_tree(const char *directory, const char *prefix, yyjson_mut_doc 
     return listed;
 }
 
-/* The page fetches each file data/files.json lists into the browser's /data
- * before the player starts, as a desktop player finds them beside itself. */
-static bool write_file_list(const char *data)
+/* The page fetches each data file files.json lists into the browser's /data
+ * before the player starts, as a desktop player finds them beside itself. The
+ * list sits beside the page, outside data, so no resource path can collide
+ * with it. */
+static bool write_file_list(const char *staging, const char *data)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *files = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, files);
-    char *path = join(data, "files.json");
+    char *path = join(staging, "files.json");
     bool written = list_tree(data, "", doc, files) &&
                    (yyjson_mut_write_file(path, doc, 0, NULL, NULL) ||
                     failed("cannot write", path));
@@ -701,7 +703,7 @@ static bool finish_web(const chibi_export_spec *spec, const char *staging, const
     finished = finished && write_page(from, to, display_name(spec, name));
     free(from);
     free(to);
-    return finished && write_file_list(data);
+    return finished && write_file_list(staging, data);
 }
 
 /* Adds what the layout needs beside the player and data. */

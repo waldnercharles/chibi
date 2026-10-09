@@ -177,6 +177,16 @@ static int pump_sources(engine *e)
     }
     return status;
 }
+/* Unbinds before the engine frees its input, since sources outlive it. */
+static void bind_input(engine *e, engine_input *input)
+{
+    if (!e->modules.sources) {
+        return;
+    }
+    int status = game_source_bind_service(e->modules.sources, GAME_INPUT_SERVICE, input);
+    assert(!status);
+    (void)status;
+}
 
 engine *engine_new(ecs_world *world, const engine_modules *modules)
 {
@@ -208,6 +218,7 @@ engine *engine_new(ecs_world *world, const engine_modules *modules)
                                    ? game_source_input_host(&result->source_input)
                                    : (engine_input_host){ 0 };
         result->input = engine_input_new(world, &host, result->systems);
+        bind_input(result, result->input);
     }
     boundary(result);
     if (result->modules.sources && sync_authored_systems(result) < 0) {
@@ -235,6 +246,7 @@ void engine_free(engine *engine)
     afree(engine->recorded);
     afree(engine->replay);
     if (engine->input) {
+        bind_input(engine, NULL);
         engine_input_free(engine->input);
     }
     free(engine);

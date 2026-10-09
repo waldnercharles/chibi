@@ -68,34 +68,51 @@ static void write_byte(execution_wire *w, unsigned char byte)
     }
     apush(w->data, byte);
 }
+/* Unsigned LEB128: seven bits per byte, low group first, shortest form only. */
 void execution_wire_u64(execution_wire *w, uint64_t *value)
 {
-    if (!available(w, 8)) {
-        return;
-    }
-    if (w->reading) {
-        uint64_t decoded = 0;
-        for (int i = 0; i < 8; i++) {
-            decoded |= (uint64_t)w->data[w->offset++] << (i * 8);
+    if (!w->reading) {
+        if (!available(w, 10)) {
+            return;
         }
-        *value = decoded;
+        uint64_t rest = *value;
+        do {
+            unsigned char byte = rest & 0x7f;
+            rest >>= 7;
+            write_byte(w, rest ? byte | 0x80 : byte);
+            w->size++;
+        } while (rest);
+        w->offset = w->size;
         return;
     }
-    for (int i = 0; i < 8; i++) {
-        write_byte(w, (unsigned char)(*value >> (i * 8)));
+    uint64_t decoded = 0;
+    for (int shift = 0; shift < 64; shift += 7) {
+        if (!available(w, 1)) {
+            return;
+        }
+        unsigned char byte = w->data[w->offset++];
+        if ((shift == 63 && byte > 1) || (shift && !byte)) {
+            fail(w, "Invalid prepared integer encoding");
+            return;
+        }
+        decoded |= (uint64_t)(byte & 0x7f) << shift;
+        if (!(byte & 0x80)) {
+            *value = decoded;
+            return;
+        }
     }
-    w->size += 8;
-    w->offset = w->size;
+    fail(w, "Invalid prepared integer encoding");
 }
+/* Zigzag keeps small negative values, such as -1 for "none", one byte long. */
 void execution_wire_int(execution_wire *w, int *value)
 {
-    uint64_t bits = w->reading ? 0 : (uint64_t)(int64_t)*value;
+    int64_t signed_value = w->reading ? 0 : *value;
+    uint64_t bits = ((uint64_t)signed_value << 1) ^ (uint64_t)(signed_value >> 63);
     execution_wire_u64(w, &bits);
     if (!w->reading || w->error) {
         return;
     }
-    int64_t decoded;
-    memcpy(&decoded, &bits, sizeof decoded);
+    int64_t decoded = (int64_t)(bits >> 1) ^ -(int64_t)(bits & 1);
     if (decoded < INT_MIN || decoded > INT_MAX) {
         fail(w, "Prepared integer is outside domain range");
         return;
@@ -130,14 +147,16 @@ void execution_wire_bool(execution_wire *w, bool *value)
         *value = bits != 0;
     }
 }
-void execution_wire_count(execution_wire *w, int *count, size_t minimum)
+void execution_wire_count(execution_wire *w, int *count, size_t minimum_fields)
 {
     execution_wire_int(w, count);
     if (w->error) {
         return;
     }
+    /* Every encoded field takes at least one byte. */
     if (*count < 0 || (size_t)*count > EXECUTION_WIRE_MAX_RECORDS - w->records ||
-        (w->reading && minimum && (size_t)*count > (w->size - w->offset) / minimum)) {
+        (w->reading && minimum_fields &&
+         (size_t)*count > (w->size - w->offset) / minimum_fields)) {
         fail(w, "Prepared record count limit or truncated table");
         return;
     }
@@ -245,7 +264,7 @@ static void structure(execution_wire *w, pin_value *v, unsigned depth)
     bool present = !w->reading && v->ptr;
     execution_wire_bool(w, &present);
     int fields = type->field_count;
-    execution_wire_count(w, &fields, present ? 24 : 0);
+    execution_wire_count(w, &fields, present ? 3 : 0);
     if (w->error) {
         return;
     }

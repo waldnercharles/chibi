@@ -27,6 +27,7 @@ void test_scene_prepared();
 void test_render_resources();
 void test_render_interior_border();
 void test_render_sdf_visibility();
+void test_render_sdf_coverage();
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -86,7 +87,7 @@ int main(int argc, char **argv)
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, render_resources = false, interior_border = false,
-         sdf_visibility = false, box3d = false;
+         sdf_visibility = false, sdf_coverage = false, box3d = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -124,6 +125,7 @@ int main(int argc, char **argv)
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
     sdf_visibility = argc == 2 && !strcmp(argv[1], "--sdf-visibility");
+    sdf_coverage = argc == 2 && !strcmp(argv[1], "--sdf-coverage");
 #endif
 #ifdef CHIBI_TEST_BOX3D
     box3d = argc == 2 && !strcmp(argv[1], "--box3d");
@@ -138,9 +140,9 @@ int main(int argc, char **argv)
         !package && !unit && !query_benchmark && !prepared && !read && !scene &&
         !scene_prepared && !native && !native_values && !native_catalog &&
         !physics && !render_resources && !interior_border && !sdf_visibility &&
-        !box3d && !persistent_store && !whole_alias && !whole_math &&
-        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
-        !parallel_tick && !source_features && !source_numeric &&
+        !sdf_coverage && !box3d && !persistent_store && !whole_alias &&
+        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
+        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
         !source_material && !source_presentation && !system_schedule &&
         !source_systems && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
@@ -152,6 +154,7 @@ int main(int argc, char **argv)
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics "
             "| --render-resources | --interior-border | --sdf-visibility | "
+            "--sdf-coverage | "
             "--box3d | "
             "--persistent-store | "
             "--whole-alias | "
@@ -223,11 +226,13 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (render_resources || interior_border || sdf_visibility) {
+    if (render_resources || interior_border || sdf_visibility || sdf_coverage) {
         if (interior_border) {
             test_render_interior_border();
         } else if (sdf_visibility) {
             test_render_sdf_visibility();
+        } else if (sdf_coverage) {
+            test_render_sdf_coverage();
         } else {
             test_render_resources();
         }

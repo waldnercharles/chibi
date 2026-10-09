@@ -83,7 +83,7 @@ endif()
 
 if(TARGET Chibi::render)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/interior_border.c
-        ../sdf_visibility.c ../draw_backend.cpp)
+        ../sdf_coverage.c ../sdf_visibility.c ../draw_backend.cpp)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_render_consumer PRIVATE Chibi::render Chibi::shader_preparation
         Chibi::graph_authoring Chibi::graph_compilation)

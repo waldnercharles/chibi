@@ -53,3 +53,6 @@ CHIBI_GPU_SELECTOR("--interior-border")
 /* Meshes and SDFs hiding each other in a hidden 96x80 app, with and without
  * hidden-surface rejection and its depth snapshot copies, with readback. */
 CHIBI_GPU_SELECTOR("--sdf-visibility")
+/* The production warped-SDF shape in a hidden 128x128 app, through the
+ * instanced and tiled draw paths, against its CPU field, with readback. */
+CHIBI_GPU_SELECTOR("--sdf-coverage")

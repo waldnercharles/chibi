@@ -821,7 +821,7 @@ ui_source *ui_source_parse(const char *text, ui_source_language language)
     }
     paint_source(source);
     if (acount(source->spans) > 1) {
-        qsort(source->spans, (size_t)acount(source->spans), sizeof *source->spans, span_order);
+        asort(source->spans, span_order);
     }
     diagnose(source, root);
     return source;

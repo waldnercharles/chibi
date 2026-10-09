@@ -155,6 +155,9 @@ script_type script_builtin_type(const char *name)
         return (script_type){ .storage = PIN_HANDLE,
                               .nominal = script_catalog_id("type", "ecs.entity") };
     }
+    if (!strcmp(name, "task")) {
+        return (script_type){ .storage = PIN_U64, .flags = SCRIPT_TYPE_TASK };
+    }
     if (!strcmp(name, "any")) {
         return (script_type){ .storage = PIN_FLOW, .flags = SCRIPT_TYPE_UNTYPED };
     }
@@ -172,8 +175,8 @@ bool script_type_numeric(script_type type)
     return type.container == PIN_CONTAINER_SINGLE &&
            (!type.nominal || (type.flags & SCRIPT_TYPE_GENERIC)) &&
            type.storage >= PIN_I8 && type.storage <= PIN_F64 &&
-           !(type.flags &
-             (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS));
+           !(type.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_OPTIONAL |
+                           SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK));
 }
 bool script_type_assignable(script_type expected, script_type actual)
 {
@@ -185,6 +188,10 @@ bool script_type_assignable(script_type expected, script_type actual)
     }
     expected.flags &= ~SCRIPT_TYPE_GENERIC;
     actual.flags &= ~SCRIPT_TYPE_GENERIC;
+    if ((expected.flags | actual.flags) & SCRIPT_TYPE_TASK) {
+        /* Any task fits any task slot, whichever function started it. */
+        return expected.flags & actual.flags & SCRIPT_TYPE_TASK;
+    }
     if ((actual.flags & SCRIPT_TYPE_OPTIONAL) &&
         !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
         return false;

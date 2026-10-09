@@ -2,20 +2,8 @@
 
 #include "execution/log.h"
 
-#define PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, TYPE_FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
-    { .name = NAME,                                                                                 \
-      .kind = KIND,                                                                                 \
-      .storage = STORAGE,                                                                           \
-      .type_name = TYPE_NAME,                                                                       \
-      .container = CONTAINER,                                                                       \
-      .type_flags = TYPE_FLAGS,                                                                     \
-      .generic_group = GROUP,                                                                       \
-      .reference_kind = REFERENCE,                                                                  \
-      .has_default = true,                                                                          \
-      .default_owner = OWNER,                                                                       \
-      .default_value = VALUE },
 #define PORTS(NAME, LIST)                                                      \
-    static const native_parameter_definition NAME[] = { LIST(PORT) };
+    static const native_parameter_definition NAME[] = { LIST(NATIVE_PORT) };
 PORTS(EXEC, CORE_EXEC_INPUTS)
 PORTS(THEN, CORE_THEN_OUTPUTS)
 PORTS(CONDITION, CORE_CONDITION_INPUTS)
@@ -44,13 +32,11 @@ PORTS(COMPONENT_SET_OUT, CORE_COMPONENT_SET_OUTPUTS)
 PORTS(COMPONENT_CHANGE, CORE_COMPONENT_CHANGE_INPUTS)
 PORTS(COMPONENT_CHANGE_OUT, CORE_COMPONENT_CHANGE_OUTPUTS)
 static const native_parameter_definition PI[] = {
-    CORE_DATA_PORT(PORT, "Pi", PIN_F64, "double")
+    CORE_DATA_PORT(NATIVE_PORT, "Pi", PIN_F64, "double")
 };
 #undef PORTS
-#undef PORT
-#define COUNT(ARRAY) ((int)(sizeof ARRAY / sizeof *ARRAY))
-#define IN(ARRAY) .inputs = ARRAY, .input_count = COUNT(ARRAY)
-#define OUT(ARRAY) .outputs = ARRAY, .output_count = COUNT(ARRAY)
+#define IN(ARRAY) .inputs = ARRAY, .input_count = NATIVE_COUNT(ARRAY)
+#define OUT(ARRAY) .outputs = ARRAY, .output_count = NATIVE_COUNT(ARRAY)
 #define ACTION(NAME, SOURCE, COMPLETION)                                       \
     .canonical_name = NAME, .source_name = SOURCE,                             \
     .kind = SCRIPT_CAPABILITY_ACTION, .completion_output = COMPLETION
@@ -171,16 +157,15 @@ static const native_definition_global_binding GLOBAL_BINDINGS[] = {
 };
 const native_definition_pack CORE_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
-    .definition_count = COUNT(DEFINITIONS),
+    .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,
-    .binding_count = COUNT(BINDINGS),
+    .binding_count = NATIVE_COUNT(BINDINGS),
     .global_definitions = GLOBALS,
-    .global_count = COUNT(GLOBALS),
+    .global_count = NATIVE_COUNT(GLOBALS),
     .global_bindings = GLOBAL_BINDINGS,
-    .global_binding_count = COUNT(GLOBAL_BINDINGS),
+    .global_binding_count = NATIVE_COUNT(GLOBAL_BINDINGS),
 };
 #undef FUNCTION
 #undef ACTION
 #undef OUT
 #undef IN
-#undef COUNT

@@ -1,5 +1,6 @@
 #include "authoring/source_format.h"
 #include "authoring/source_metadata.h"
+#include "authoring/source_minimize.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -216,6 +217,329 @@ TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors)
     return true;
 }
 
+static const script_catalog_parameter tick[] = { { .name = "dt",
+                                                   .type = { .storage = PIN_F32 } } };
+static const script_catalog_capability capabilities[] = {
+    { .id = 30,
+      .name = "Tick",
+      .kind = SCRIPT_CAPABILITY_EVENT,
+      .parameters = tick,
+      .parameter_count = 1 },
+};
+static const script_catalog catalog = {
+    .capabilities = capabilities,
+    .capability_count = 1,
+    .entity_type = 40,
+    .tick_event = 30,
+};
+
+static bool minimize_in(const script_catalog *in, const char *input, const char *expected)
+{
+    text = authoring_source_minimize(input, in, "Demo");
+    if (strcmp(text, expected)) {
+        fprintf(stderr, "minimize:\n%s\nexpected:\n%s\n", text, expected);
+        return false;
+    }
+    return true;
+}
+static bool minimize(const char *input, const char *expected)
+{
+    return minimize_in(&catalog, input, expected);
+}
+
+TEST_CASE(source_minimize_drops_redundant_text)
+{
+    REQUIRE(minimize(
+        "library Demo {\n"
+        "    function Scale(a: float = 0.0, b: float = 2.0) -> (r: float = "
+        "0.0) {\n"
+        "        r = a * b;\n"
+        "    }\n"
+        "    function Twice(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "        return(a * 2.0);\n"
+        "    }\n"
+        "    function Use() -> () {\n"
+        "        x: float = Scale(a: 1.0, b: 2.0);\n"
+        "        y: float = Scale(b: 3.0);\n"
+        "        if (x > 0) {\n"
+        "            x = 1.0;\n"
+        "        } else {\n"
+        "        }\n"
+        "        return();\n"
+        "    }\n"
+        "}\n",
+        "library Demo {\n"
+        "    function Scale(a: float = 0.0, b: float = 2.0) -> (r: float = "
+        "0.0) {\n"
+        "        r = a * b\n"
+        "    }\n"
+        "    function Twice(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "        return a * 2.0\n"
+        "    }\n"
+        "    function Use() {\n"
+        "        x := Scale(1.0)\n"
+        "        y := Scale(b: 3.0)\n"
+        "        if x > 0 {\n"
+        "            x = 1.0\n"
+        "        }\n"
+        "        return\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
+
+TEST_CASE(source_minimize_reaches_a_fixed_point)
+{
+    /* Each round drops only the outermost of nested redundant parentheses. */
+    REQUIRE(minimize(
+        "library Demo {\n"
+        "    function Use(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "        return ((((((((((((a))))))))))))\n"
+        "    }\n"
+        "}\n",
+        "library Demo {\n"
+        "    function Use(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "        return a\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
+
+TEST_CASE(source_minimize_keeps_argument_order)
+{
+    /* Arguments run in source order, so out-of-order labels stay. */
+    REQUIRE(minimize(
+        "library Demo {\n"
+        "    function Pair(a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
+        "{\n"
+        "        return a - b\n"
+        "    }\n"
+        "    function Next() -> (r: float = 0.0) {\n"
+        "        return 1.0\n"
+        "    }\n"
+        "    function Use() -> (r: float = 0.0) {\n"
+        "        return Pair(b: Next(), a: Next())\n"
+        "    }\n"
+        "}\n",
+        "library Demo {\n"
+        "    function Pair(a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
+        "{\n"
+        "        return a - b\n"
+        "    }\n"
+        "    function Next() -> (r: float = 0.0) {\n"
+        "        return 1.0\n"
+        "    }\n"
+        "    function Use() -> (r: float = 0.0) {\n"
+        "        return Pair(b: Next(), a: Next())\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
+
+TEST_CASE(source_minimize_keeps_invalid_source)
+{
+    const char
+        *input = "library Demo { function F() -> () { x := missing(a: 1); } }";
+    REQUIRE(minimize(input, input));
+    return true;
+}
+
+TEST_CASE(source_format_keeps_else_and_arrow_spacing)
+{
+    REQUIRE(format("library M{function F(x:int)->(r:int){if x>0{r=1;}\nelse{r=engine [\"Self\"]();}}}"));
+    REQUIRE(strstr(text, "-> (r: int)"));
+    REQUIRE(strstr(text, "} else {"));
+    REQUIRE(strstr(text, "engine[\"Self\"]()"));
+    return true;
+}
+
+TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges)
+{
+    REQUIRE(minimize(
+        "library Demo {\n"
+        "    function F(a: bool, b: bool, c: bool, m: int) {\n"
+        "        x := a || (b && c)\n"
+        "        y := (a && b) || (c)\n"
+        "        z := m | (m & 3)\n"
+        "        w := m + (m * 3)\n"
+        "        for i in 0 .. m - 1 {\n"
+        "            w += i\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        "library Demo {\n"
+        "    function F(a: bool, b: bool, c: bool, m: int) {\n"
+        "        x := a || (b && c)\n"
+        "        y := (a && b) || c\n"
+        "        z := m | (m & 3)\n"
+        "        w := m + m * 3\n"
+        "        for i in 0 .. m - 1 {\n"
+        "            w += i\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    ));
+    free(text);
+    text = NULL;
+    REQUIRE(format("library M{function F(m:int){for i in 0 .. m-1{m+=i;}}}"));
+    REQUIRE(strstr(text, "for i in 0..m - 1 {"));
+    return true;
+}
+
+static const script_catalog_field velocity_field = { .id = 81,
+                                                     .name = "x",
+                                                     .type = { .storage = PIN_F64 },
+                                                     .writable = true };
+static const script_catalog_type velocity_type = {
+    .id = 80,
+    .name = "Velocity",
+    .type = { .storage = PIN_STRUCT, .nominal = 80 },
+    .fields = &velocity_field,
+    .field_count = 1,
+    .size = sizeof(double),
+    .component = true,
+    .component_id = 90,
+};
+static const script_catalog_parameter velocity_value[] = {
+    { .name = "Value", .type = { .storage = PIN_STRUCT, .nominal = 80 } }
+};
+static const script_catalog_parameter present[] = {
+    { .name = "Value", .type = { .storage = PIN_BOOL } }
+};
+static const script_catalog_parameter field_write[] = {
+    { .name = "Value", .type = { .storage = PIN_F64 } },
+    { .name = "Target",
+      .type = { .storage = PIN_HANDLE, .nominal = 40 },
+      .has_default = true,
+      .default_owner = true },
+};
+static const script_catalog_parameter reals[] = {
+    { .name = "A", .type = { .storage = PIN_F64 } },
+    { .name = "B", .type = { .storage = PIN_F64 } }
+};
+static const script_catalog_parameter floats[] = {
+    { .name = "A", .type = { .storage = PIN_F32 } },
+    { .name = "B", .type = { .storage = PIN_F32 } }
+};
+static const script_catalog_parameter real_result[] = {
+    { .name = "Result", .type = { .storage = PIN_F64 } }
+};
+static const script_catalog_capability component_capabilities[] = {
+    { .id = 30,
+      .name = "Tick",
+      .kind = SCRIPT_CAPABILITY_EVENT,
+      .parameters = tick,
+      .parameter_count = 1 },
+    { .id = 31,
+      .name = "get_velocity",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .results = velocity_value,
+      .result_count = 1,
+      .component_access = SCRIPT_COMPONENT_ACCESS_READ,
+      .component = 80,
+      .component_entity = -1,
+      .component_value = -1,
+      .effects = SCRIPT_EFFECT_READ },
+    { .id = 32,
+      .name = "has_velocity",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .results = present,
+      .result_count = 1,
+      .component_access = SCRIPT_COMPONENT_ACCESS_HAS,
+      .component = 80,
+      .component_entity = -1,
+      .component_value = -1,
+      .effects = SCRIPT_EFFECT_READ },
+    { .id = 33,
+      .name = "set_velocity_x",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .parameters = field_write,
+      .parameter_count = 2,
+      .results = velocity_value,
+      .result_count = 1,
+      .component_access = SCRIPT_COMPONENT_ACCESS_WRITE,
+      .component = 80,
+      .component_field = 81,
+      .component_entity = 1,
+      .component_value = 0,
+      .effects = SCRIPT_EFFECT_WRITE },
+    { .id = 34,
+      .name = "multiply",
+      .operator_name = "*",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = reals,
+      .parameter_count = 2,
+      .results = real_result,
+      .result_count = 1,
+      .pure = true },
+    { .id = 35,
+      .name = "less",
+      .operator_name = "<",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = reals,
+      .parameter_count = 2,
+      .results = present,
+      .result_count = 1,
+      .pure = true },
+    { .id = 36,
+      .name = "less_float",
+      .operator_name = "<",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = floats,
+      .parameter_count = 2,
+      .results = present,
+      .result_count = 1,
+      .pure = true },
+};
+static const script_catalog component_catalog = {
+    .types = &velocity_type,
+    .type_count = 1,
+    .capabilities = component_capabilities,
+    .capability_count = sizeof component_capabilities / sizeof *component_capabilities,
+    .entity_type = 40,
+    .tick_event = 30,
+};
+
+TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
+{
+    REQUIRE(minimize_in(
+        &component_catalog,
+        "behavior Demo {\n"
+        "    on Tick {\n"
+        "        if has_velocity() {\n"
+        "            set_velocity_x(multiply(get_velocity().Value.x, 2.0))\n"
+        "        }\n"
+        "        if less(get_velocity().Value.x, 1.0) {\n"
+        "            set_velocity_x(multiply(2.0, 3.0), self)\n"
+        "        }\n"
+        "        e := self\n"
+        "        set_velocity_x(2.0, e)\n"
+        "        lifted := has_velocity()\n"
+        "        narrowed := less_float(get_velocity().Value.x, "
+        "get_velocity().Value.x)\n"
+        "    }\n"
+        "}\n",
+        "behavior Demo {\n"
+        "    on Tick {\n"
+        "        if self.Velocity {\n"
+        "            self.Velocity.x = self.Velocity.x * 2.0\n"
+        "        }\n"
+        "        if self.Velocity.x < 1.0 {\n"
+        "            self.Velocity.x = 2.0 * 3.0\n"
+        "        }\n"
+        "        e := self\n"
+        "        set_velocity_x(2.0, e)\n"
+        "        lifted := has_velocity()\n"
+        "        narrowed := less_float(self.Velocity.x, self.Velocity.x)\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
+
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
@@ -227,5 +551,12 @@ void test_language_format()
     RUN_TEST_CASE(source_metadata_preserves_bound_identities);
     RUN_TEST_CASE(source_metadata_rejects_stale_or_changed_tokens);
     RUN_TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors);
+    RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
+    RUN_TEST_CASE(source_minimize_drops_redundant_text);
+    RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
+    RUN_TEST_CASE(source_minimize_keeps_argument_order);
+    RUN_TEST_CASE(source_minimize_keeps_invalid_source);
+    RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);
+    RUN_TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators);
     pu_setup(NULL, NULL);
 }

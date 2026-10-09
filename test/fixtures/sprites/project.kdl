@@ -1,0 +1,4 @@
+version 14
+name "Sprite contracts"
+content "content"
+start_scene "scenes/Start.kdl"

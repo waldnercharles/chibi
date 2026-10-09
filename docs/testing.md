@@ -30,6 +30,10 @@ make test-tools          # tooling and process integrations, separate build-tool
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
+`python3 tools/test_policy.py tool <name>` runs one entry of that table against
+the drivers `make test-build` produced; set `CHIBI_TOOLS_BUILD_DIR` or
+`CHIBI_LANGUAGE_BUILD_DIR` to use another build.
+
 `make language-build` builds a standalone, faster `test_language` in
 `build-language/` for the `test-language*` targets. Add a case to the selector
 that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the

@@ -5,8 +5,8 @@
   "host": "Linux x86_64 container, lavapipe (llvmpipe) Vulkan and Mesa GLES 3.2 under Xvfb",
   "patch_applicability": {
     "status": "passed",
-    "independent_patches": 6,
-    "ordered_series_patches": 6,
+    "independent_patches": 7,
+    "ordered_series_patches": 7,
     "patched_source_diff_check": "passed",
     "series_matches_rebased_branch": true
   },
@@ -37,14 +37,20 @@
     "emscripten": "6.0.10",
     "command": "make package-web-player",
     "status": "passed",
-    "build_seconds": 291.3,
-    "notes": "WebGL 2 only; the player still links without Asyncify.",
+    "build_seconds": 263.1,
+    "notes": "Cute builds with CF_WEBGPU and emdawnwebgpu; the player still links without Asyncify.",
     "browser_checks": [
       {
         "command": "chibi export test/fixtures/sprites --web dist/web-player, served from localhost to headless Chromium",
-        "backend": "WebGL 2 (SwiftShader)",
+        "backend": "WebGL 2 (SwiftShader); the page skips WebGPU because the adapter allows 32 color bytes per sample",
         "status": "passed",
         "notes": "The Start scene renders like the desktop preview."
+      },
+      {
+        "command": "the same export with the 48-byte gate removed",
+        "backend": "WebGPU (SwiftShader, 32 color bytes per sample)",
+        "status": "expected failure",
+        "notes": "Cute adopts the page device without an Asyncify abort, then cf_make_canvas asserts that 6 color targets exceed the device's 4. This is the case the page's gate avoids."
       }
     ]
   },
@@ -132,10 +138,17 @@
       "command": "chibi_ctl --render-request preview_scene Start (test/fixtures/sprites), 480x270, 2 frames",
       "status": "passed",
       "notes": "Byte-identical PNG to the same preview from a build of the 3D renderer branch, which still uses the previous pin."
+    },
+    {
+      "command": "chibi_ctl --render-request preview_scene Start (test/fixtures/sprites), 480x270, 2 frames, a scratch Debug build with CF_WEBGPU=ON and CF_APP_OPTIONS_GFX_WEBGPU_BIT under Xvfb",
+      "backend": "WebGPU (wgpu-native v29.0.1.1 on lavapipe Vulkan)",
+      "status": "passed",
+      "notes": "Matches the Vulkan preview except 3 of 129,600 pixels, each off by one level. The scratch build is not part of this change."
     }
   ],
   "not_run": [
     "full native and render aggregate tests, quarantined by repository policy",
-    "Windows, macOS and D3D12 or Metal backends"
+    "Windows, macOS and D3D12 or Metal backends",
+    "chibi's renderer on browser WebGPU: headless Chromium here offers only a 32-byte SwiftShader adapter, which the page sends to WebGL 2"
   ]
 }

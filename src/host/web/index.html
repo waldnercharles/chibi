@@ -53,7 +53,32 @@
         chibiFail: fail,
       };
     })();
+    // The player renders with WebGPU, like the desktop build, but cannot wait for
+    // the browser to grant a device. The page asks first and hands the device over;
+    // without one the player uses WebGL 2.
+    (async () => {
+      // The 2D material raster writes six RGBA16F targets at once
+      // (src/render/material_raster.c), so smaller adapters use WebGL 2.
+      const colorBytesPerSample = 6 * 8;
+      try {
+        const adapter = await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' });
+        if (adapter?.limits.maxColorAttachmentBytesPerSample >= colorBytesPerSample) {
+          const requiredLimits = {};
+          for (const name in adapter.limits) requiredLimits[name] = adapter.limits[name];
+          const device = await adapter.requestDevice({ requiredFeatures: [...adapter.features], requiredLimits });
+          device.lost.then(info => {
+            if (info.reason !== 'destroyed') Module.chibiFail('Graphics device lost. Reload this page to continue.');
+          });
+          device.onuncapturederror = event => console.error(`WebGPU: ${event.error.message}`);
+          Module.preinitializedWebGPUDevice = device;
+        }
+      } catch (error) {
+        console.warn('WebGPU is unavailable, so the game uses WebGL 2.', error);
+      }
+      const player = document.createElement('script');
+      player.src = 'chibi-player.js';
+      document.body.append(player);
+    })();
   </script>
-  <script src="chibi-player.js"></script>
 </body>
 </html>

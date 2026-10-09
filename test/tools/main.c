@@ -27,13 +27,13 @@ void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
 void test_render_interior_border();
-void test_render_sdf_visibility();
 void test_render_sdf_coverage();
 void test_render_scene3d(bool gles);
 void test_device_controls();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
 void test_render_material_ramps();
+void test_render_sdf_visibility();
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -145,12 +145,12 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
-    sdf_visibility = argc == 2 && !strcmp(argv[1], "--sdf-visibility");
     sdf_coverage = argc == 2 && !strcmp(argv[1], "--sdf-coverage");
     bool scene3d_gles = argc == 2 && !strcmp(argv[1], "--scene3d-gles");
     scene3d = scene3d_gles || (argc == 2 && !strcmp(argv[1], "--scene3d"));
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
     material_ramps = argc == 2 && !strcmp(argv[1], "--material-ramps");
+    sdf_visibility = argc == 2 && !strcmp(argv[1], "--sdf-visibility");
     material_graphs = scene3d || material_ramps;
 #endif
 #endif
@@ -261,11 +261,9 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (render_resources || interior_border || sdf_visibility || sdf_coverage || scene3d) {
+    if (render_resources || interior_border || sdf_coverage || scene3d) {
         if (interior_border) {
             test_render_interior_border();
-        } else if (sdf_visibility) {
-            test_render_sdf_visibility();
         } else if (sdf_coverage) {
             test_render_sdf_coverage();
         } else if (scene3d) {
@@ -279,8 +277,12 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
-    if (material_ramps) {
-        test_render_material_ramps();
+    if (material_ramps || sdf_visibility) {
+        if (sdf_visibility) {
+            test_render_sdf_visibility();
+        } else {
+            test_render_material_ramps();
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

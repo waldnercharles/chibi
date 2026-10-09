@@ -69,6 +69,9 @@ static entry *entries;
 static int problems; /* Reported failures; the coverage case fails on any. */
 static prototype_entry *prototypes;
 static script_analysis **analyses; /* One per project source, in catalog order. */
+/* The project's loaded prototypes; scene placements merge over them. */
+static game_prototype_registry registry;
+static project_prototype *values;
 /* Names a scene reaches: its entities' prototypes, behaviors and systems, the
  * prototypes and libraries that running sources spawn or call, and the
  * behaviors of spawned prototypes. */
@@ -157,16 +160,13 @@ static void use_id(entry_kind kind, uint64_t id)
     }
 }
 
-/* A component's catalog name, without the GAME. prefix documents may use. */
-static const char *component_name(const char *name)
-{
-    const char *prefix = "GAME.";
-    return strncmp(name, prefix, strlen(prefix)) ? name : name + strlen(prefix);
-}
-
 static void use_component_name(const char *name)
 {
-    entry *found = find_name(ENTRY_COMPONENT, component_name(name));
+    const char *prefix = "GAME.";
+    if (!strncmp(name, prefix, strlen(prefix))) {
+        name += strlen(prefix);
+    }
+    entry *found = find_name(ENTRY_COMPONENT, name);
     if (found) {
         found->used = true;
     }
@@ -304,9 +304,10 @@ static void reach_system(const char *name)
 }
 
 /* Reaches the named prototype and the prototypes it includes. A spawn also
- * runs its behaviors, which already hold its includes' behaviors; a scene
- * placement runs the entity's own list instead. Returns whether it reached
- * anything new. */
+ * runs the systems its EngineSystem names and its behaviors, which already
+ * hold its includes' behaviors. A scene placement runs the entity's own
+ * behavior list and the systems of its merged instance (use_scenes). Returns
+ * whether it reached anything new. */
 static bool reach_prototype(const char *name, bool spawned)
 {
     for (int i = 0; i < acount(prototypes); i++) {
@@ -320,12 +321,12 @@ static bool reach_prototype(const char *name, bool spawned)
             for (int j = 0; j < acount(prototype->includes); j++) {
                 reach_prototype(prototype->includes[j], false);
             }
-            for (int j = 0; j < acount(prototype->systems); j++) {
-                reach_system(prototype->systems[j]);
-            }
         }
         if (spawned && !listed(spawned_prototypes, name)) {
             apush(spawned_prototypes, xstrdup(name));
+            for (int j = 0; j < acount(prototype->systems); j++) {
+                reach_system(prototype->systems[j]);
+            }
             for (int j = 0; j < acount(prototype->behaviors); j++) {
                 reach_behavior(prototype->behaviors[j]);
             }
@@ -351,14 +352,28 @@ static char **prototype_includes(const char *text)
     return names;
 }
 
+/* The systems a prototype's or instance's merged EngineSystem names, owned
+ * by the caller. */
+static char **engine_systems(const game_prototype *prototype)
+{
+    char **systems = NULL;
+    for (int i = 0; i < acount(prototype->components); i++) {
+        const game_prototype_component *component = &prototype->components[i];
+        const EngineSystem *system = component->data;
+        if (component->desc->id == GAME_COMPONENT_EngineSystem.id && system->asset) {
+            apush(systems, xstrdup(system->asset));
+        }
+    }
+    return systems;
+}
+
 /* Loads the prototypes as project preparation does, so includes resolve. */
 static void use_prototypes()
 {
-    game_prototype_registry registry = {
+    registry = (game_prototype_registry){
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
-    project_prototype *values = NULL;
     char error[256];
     if (!project_prepare_prototypes(content_root, &registry, &values, error, sizeof error)) {
         fprintf(stderr, "%s/prototypes: %s\n", content_root, error);
@@ -372,32 +387,42 @@ static void use_prototypes()
         prototype_entry item = {
             .name = xstrdup(prototype->name),
             .includes = prototype_includes(values[i].text),
+            .systems = engine_systems(prototype),
         };
         for (int j = 0; j < acount(prototype->graphs); j++) {
             apush(item.behaviors, xstrdup(prototype->graphs[j]));
         }
         for (int j = 0; j < acount(prototype->components); j++) {
-            const game_prototype_component *component = &prototype->components[j];
-            use_component_name(component->desc->name);
-            const EngineSystem *system = component->data;
-            if (component->desc->id == GAME_COMPONENT_EngineSystem.id && system->asset) {
-                apush(item.systems, xstrdup(system->asset));
-            }
+            use_component_name(prototype->components[j].desc->name);
         }
         apush(prototypes, item);
     }
-    project_prepare_prototypes_free(values);
+}
+
+/* A placed entity runs the systems its merged instance names: the scene's
+ * component overrides apply over its prototype's, as at runtime. */
+static void place_prototype(const game_scene_entity *entity)
+{
+    reach_prototype(entity->prototype, false);
+    char error[256];
+    game_prototype *object = project_prepare_object(entity, values, error, sizeof error);
+    if (!object) {
+        fprintf(stderr, "scene entity %s: %s\n", entity->name, error);
+        problems++;
+        return;
+    }
+    char **systems = engine_systems(object);
+    for (int i = 0; i < acount(systems); i++) {
+        reach_system(systems[i]);
+    }
+    free_paths(systems);
+    game_prototype_free(object);
 }
 
 static void use_scene_components(const av_value *components)
 {
     for (size_t i = 0; components && i < av_obj_size(components); i++) {
-        const char *name = av_get_str(av_obj_key_at(components, i));
-        use_component_name(name);
-        const char *system = av_get_str(av_obj_get(av_obj_value_at(components, i), "asset"));
-        if (!strcmp(component_name(name), "EngineSystem") && system) {
-            reach_system(system);
-        }
+        use_component_name(av_get_str(av_obj_key_at(components, i)));
     }
 }
 
@@ -416,7 +441,7 @@ static void use_scenes()
             const game_scene_entity *entity = &scene->entities[j];
             use_scene_components(entity->components);
             if (entity->prototype) {
-                reach_prototype(entity->prototype, false);
+                place_prototype(entity);
             }
             for (int k = 0; k < acount(entity->behaviors); k++) {
                 reach_behavior(entity->behaviors[k]);
@@ -566,6 +591,7 @@ static void free_reach()
         free_paths(prototypes[i].systems);
     }
     afree(prototypes);
+    project_prepare_prototypes_free(values);
     free_paths(reached_prototypes);
     free_paths(spawned_prototypes);
     free_paths(reached_behaviors);
@@ -578,7 +604,8 @@ static void free_reach()
 }
 
 /* coverage-gaps.txt lists the catalog entries the project knowingly leaves
- * unused, one "<kind> <name>" per line. Without it the report only lists them. */
+ * unused, one "<kind> <name>" per line, each in a group of lines under a
+ * comment that gives the reason. Without it the report only lists them. */
 static bool read_allowed_gaps()
 {
     char path[MAX_PATH];
@@ -588,11 +615,17 @@ static bool read_allowed_gaps()
         return false;
     }
     char line[MAX_LINE];
+    bool reasoned = false; /* A comment gives the reason for the entries below it. */
     while (fgets(line, sizeof line, file)) {
         line[strcspn(line, "\r\n")] = 0;
         char *name = strchr(line, ' ');
         if (!line[0] || line[0] == '#') {
+            reasoned = line[0] == '#';
             continue;
+        }
+        if (!reasoned) {
+            fprintf(stderr, "coverage-gaps.txt: give %s a reason in a comment above it\n", line);
+            problems++;
         }
         if (!name) {
             fprintf(stderr, "coverage-gaps.txt: expected \"<kind> <name>\": %s\n", line);
@@ -691,14 +724,18 @@ static bool run_scene(const char *path)
     char name[MAX_LINE], request_path[MAX_PATH], log_path[MAX_PATH],
         request[2 * MAX_LINE];
     snprintf(name, sizeof name, "%.*s", (int)(strlen(file) - 4), file);
-    snprintf(
-        request,
-        sizeof request,
-        "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\","
-        "\"name\":\"%s\",\"frames\":%d}\n",
-        name,
-        SCENARIO_FRAMES
-    );
+    yyjson_mut_doc *message = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(message);
+    yyjson_mut_doc_set_root(message, root);
+    yyjson_mut_obj_add_int(message, root, "contract", 1);
+    yyjson_mut_obj_add_str(message, root, "operation", "run_scenario");
+    yyjson_mut_obj_add_str(message, root, "kind", "scene");
+    yyjson_mut_obj_add_str(message, root, "name", name);
+    yyjson_mut_obj_add_int(message, root, "frames", SCENARIO_FRAMES);
+    char *json = yyjson_mut_write(message, 0, NULL);
+    snprintf(request, sizeof request, "%s\n", json);
+    free(json);
+    yyjson_mut_doc_free(message);
     snprintf(request_path, sizeof request_path, "%s/feature-coverage-request.json", scratch);
     snprintf(log_path, sizeof log_path, "%s/feature-coverage-%s.log", scratch, name);
     tool_write(request_path, request);

@@ -1,8 +1,9 @@
 # Catalog entries no feature-coverage scene uses yet, one "<kind> <name>" per
 # line. `test_tools --feature-coverage` fails when a catalog entry is missing
 # from both the scenes and this list, and when a listed entry becomes used.
-# A feature PR covers its new entries in a scene; list one here only with a
-# reason, and remove lines as scenes start using them.
+# A feature PR covers its new entries in a scene; list one here only under a
+# comment that gives the reason (a blank line ends a group), and remove lines
+# as scenes start using them.
 
 # Material simulation: fluids, destruction worlds, heat and combustion need a
 # material field and solver scene.

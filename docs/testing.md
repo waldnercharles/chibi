@@ -50,9 +50,10 @@ A system runs only while an entity's `EngineSystem` names it. Run it on any
 project whose content folder is `content` to list what that project leaves
 unused.
 
-For the fixture, `coverage-gaps.txt` lists the entries no scene uses yet, each
-with a reason. The check fails when a catalog entry is in neither the scenes nor
-that list, and when a listed entry becomes used. A PR that adds a component,
+For the fixture, `coverage-gaps.txt` lists the entries no scene uses yet, in
+groups under a comment that gives the reason. The check fails when a catalog
+entry is in neither the scenes nor that list, when a listed entry has no reason
+comment above it, and when a listed entry becomes used. A PR that adds a component,
 native function or event uses it in a feature-coverage scene; it lists the
 entry as a gap only with a reason. The `native` group, and so CI, runs it.
 

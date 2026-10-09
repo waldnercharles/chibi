@@ -72,7 +72,7 @@ static void declarations(execution_wire *wire, game_event_catalog *catalog, cons
     if (!wire->error && (identity != magic || version != GAME_EVENT_CATALOG_VERSION)) {
         wire->error = "Event catalog magic or version is unsupported";
     }
-    execution_wire_count(wire, &catalog->type_count, 40);
+    execution_wire_count(wire, &catalog->type_count, 5);
     if (!wire->error && catalog->type_count > GAME_MODULE_SET_MAX_EVENT_FIELDS) {
         wire->error = "Event catalog type count exceeds limit";
     }
@@ -111,7 +111,7 @@ static void declarations(execution_wire *wire, game_event_catalog *catalog, cons
             }
         }
     }
-    execution_wire_count(wire, &catalog->count, 32);
+    execution_wire_count(wire, &catalog->count, 4);
     if (!wire->error && catalog->count > GAME_MODULE_SET_MAX_EVENT_DECLARATIONS) {
         wire->error = "Event catalog declaration limit exceeded";
     }
@@ -125,7 +125,7 @@ static void declarations(execution_wire *wire, game_event_catalog *catalog, cons
         execution_wire_u64(wire, &d->event.id);
         execution_wire_u64(wire, &d->event.abi);
         name(wire, &d->event.name);
-        execution_wire_count(wire, &d->event.field_count, 40);
+        execution_wire_count(wire, &d->event.field_count, 5);
         if (!wire->error &&
             (!d->event.id || !d->event.abi ||
              d->event.field_count > GAME_MODULE_SET_MAX_EVENT_FIELDS - field_count)) {

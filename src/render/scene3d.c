@@ -621,12 +621,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         scene3d->buffer.pixels,
         acount(scene3d->buffer.pixels) * (int)sizeof *scene3d->buffer.pixels
     );
-    qsort(
-        scene3d->buffer.draws,
-        (size_t)acount(scene3d->buffer.draws),
-        sizeof *scene3d->buffer.draws,
-        compare_draws
-    );
+    asort(scene3d->buffer.draws, compare_draws);
     CF_M4x4 inverse = cf_m4_invert(camera->view);
     CF_V4 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14], time };
     cf_draw3d_set_uniform("scene_camera_time", &eye, CF_UNIFORM_TYPE_FLOAT4, 1);

@@ -12,7 +12,9 @@
 #include "runtime/component_catalog.h"
 #include "runtime/native_prepared.h"
 #include "runtime/player_prepared.h"
+#include "support/file_io.h"
 #include "support/resources.h"
+#include "support/xalloc.h"
 #include "types/catalog.h"
 
 #include <errno.h>
@@ -41,6 +43,11 @@ typedef struct
     engine_viewport *viewport;
     bool render_failed;
 } player_host;
+#define BUNDLE_ARTIFACT "game.chibip"
+#define BUNDLE_ENGINE "engine"
+#define BUNDLE_MOUNT "/chibi-game"
+#define DEFAULT_WIDTH 1280
+#define DEFAULT_HEIGHT 720
 static volatile sig_atomic_t stopped;
 static rml_input keys[128];
 static int key_count;
@@ -309,6 +316,60 @@ static bool number(const char *text, double *out)
     *out = strtod(text, &end);
     return !errno && end != text && !*end && isfinite(*out) && *out > 0;
 }
+/* An exported game keeps its artifact and resources in data/ beside the
+ * executable, or in Contents/Resources of a macOS app bundle, with the engine's
+ * shaders, licenses and identity in engine/ under it. Returns the
+ * owned directory, or NULL when this player was not exported with a game. */
+static char *bundle_directory()
+{
+    static const char *const candidates[] = {
+        "/data",
+#ifdef __APPLE__
+        "/../Resources",
+#endif
+    };
+    char *executable = file_executable_dir();
+    for (size_t i = 0; i < sizeof candidates / sizeof *candidates; i++) {
+        size_t size = strlen(executable) + strlen(candidates[i]) +
+                      sizeof "/" BUNDLE_ARTIFACT;
+        char *directory = xmalloc(size);
+        snprintf(directory, size, "%s%s/" BUNDLE_ARTIFACT, executable, candidates[i]);
+        FILE *file = fopen(directory, "rb");
+        bool found = file != NULL;
+        if (file) {
+            fclose(file);
+        }
+        directory[strlen(executable) + strlen(candidates[i])] = 0;
+        if (found) {
+            free(executable);
+            return directory;
+        }
+        free(directory);
+    }
+    free(executable);
+    return NULL;
+}
+static char *join(const char *directory, const char *name)
+{
+    size_t size = strlen(directory) + strlen(name) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", directory, name);
+    return path;
+}
+/* The icon lives under the resource root, which CF reads through a mount. */
+static void set_icon(const char *root, const char *icon)
+{
+    if (!icon) {
+        return;
+    }
+    if (!root || cf_is_error(cf_fs_mount(root, BUNDLE_MOUNT, true))) {
+        fprintf(stderr, "Application icon needs a readable --resource-root: %s\n", icon);
+        return;
+    }
+    char *path = join(BUNDLE_MOUNT, icon);
+    cf_app_set_icon(path);
+    free(path);
+}
 static void log_message(void *, const execution_log_message *message)
 {
     printf(
@@ -328,7 +389,7 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         const char *option = argv[i];
         if (!strcmp(option, "--help")) {
-            puts("chibi-player ARTIFACT [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit] [--hidden] [--frames N] [--fixed-dt SECONDS]");
+            puts("chibi-player [ARTIFACT] [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit] [--hidden] [--frames N] [--fixed-dt SECONDS]");
             return 0;
         }
         if (!strcmp(option, "--hidden")) {
@@ -367,12 +428,30 @@ int main(int argc, char **argv)
             return 2;
         }
     }
+    char *bundle = artifact ? NULL : bundle_directory();
+    char *bundled = bundle ? join(bundle, BUNDLE_ARTIFACT) : NULL;
+    char *engine_dir = bundle ? join(bundle, BUNDLE_ENGINE) : NULL;
+    if (bundle) {
+        resource_configure(engine_dir, engine_dir, engine_dir);
+        artifact = bundled;
+        root = root ? root : bundle;
+    }
+    int result = 1;
+    char error[1024] = { 0 };
+    game_player_application application = { 0 };
+    native_capabilities *native = NULL;
     if (!artifact) {
         fprintf(stderr, "A prepared project artifact is required; use --help.\n");
-        return 2;
+        result = 2;
+        goto release;
     }
-    char error[1024] = { 0 };
-    native_capabilities *native = host_native_default_catalog_new(
+    if (!game_player_application_read(artifact, &application, error, sizeof error)) {
+        fprintf(stderr, "%s: %s\n", artifact, error);
+        goto release;
+    }
+    int initial_width = application.width ? application.width : DEFAULT_WIDTH;
+    int initial_height = application.height ? application.height : DEFAULT_HEIGHT;
+    native = host_native_default_catalog_new(
         NULL,
         0,
         &RENDER_SHADER_PARAMETER_DEFINITION_PACK,
@@ -382,25 +461,25 @@ int main(int argc, char **argv)
     );
     if (!native) {
         fprintf(stderr, "%s\n", error);
-        return 1;
+        goto release;
     }
     CF_Result made = cf_make_app(
-        "Chibi Player",
+        application.title ? application.title : "Chibi Player",
         0,
         0,
         0,
-        1280,
-        720,
+        initial_width,
+        initial_height,
         CF_APP_OPTIONS_WINDOW_POS_CENTERED_BIT | CF_APP_OPTIONS_RESIZABLE_BIT |
+            (application.fullscreen ? CF_APP_OPTIONS_FULLSCREEN_BIT : 0) |
             (hidden ? CF_APP_OPTIONS_HIDDEN_BIT : 0),
         argv[0]
     );
     if (cf_is_error(made)) {
         fprintf(stderr, "%s\n", made.details);
-        native_capabilities_free(native);
-        return 1;
+        goto release;
     }
-    int result = 1;
+    set_icon(root, application.icon);
     player_host host = { 0 };
     if (!shader_dir) {
         shader_dir = resource_shaders();
@@ -412,7 +491,11 @@ int main(int argc, char **argv)
     }
     cf_shader_directory("/chibi-render");
     host.renderer = app_scene_renderer_new();
-    host.viewport = engine_viewport_new(1280, 720);
+    host.viewport = engine_viewport_new(initial_width, initial_height);
+    if (!host.viewport) {
+        fprintf(stderr, "Cannot create a %dx%d window canvas\n", initial_width, initial_height);
+        goto finish;
+    }
     engine_viewport_adopt_ui(host.viewport, render_ui_new_prepared(NULL));
     native_prepared_context context = { .native = native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
@@ -557,6 +640,11 @@ finish:
     rml_backend_release_prepared_fonts();
     render_images_clear();
     cf_destroy_app();
+release:
     native_capabilities_free(native);
+    game_player_application_free(&application);
+    free(engine_dir);
+    free(bundled);
+    free(bundle);
     return result;
 }

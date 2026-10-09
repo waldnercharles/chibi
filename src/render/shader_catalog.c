@@ -417,18 +417,43 @@ static int ramp_offset(const render_shader_set *set, int index)
     return offset;
 }
 
-static bool shader_resources_add(render_shader_set *set, const shader_asset *asset, shader_error *error)
+bool render_shader_set_add_image(render_shader_set *set, int image, shader_error *error)
 {
-    if (!asset) {
+    if (set_slot(set, image) >= 0) {
         return true;
     }
+    if (set->count == RENDER_SHADER_IMAGE_MAX) {
+        if (error) {
+            snprintf(
+                error->message,
+                sizeof error->message,
+                "Adding image %d exceeds %d image variants in one "
+                "material/shape "
+                "or composite group.",
+                image,
+                RENDER_SHADER_IMAGE_MAX
+            );
+        }
+        return false;
+    }
+    int at = set->count++;
+    while (at > 0 && set->images[at - 1] > image) {
+        set->images[at] = set->images[at - 1];
+        at--;
+    }
+    set->images[at] = image;
+    return true;
+}
+
+bool render_shader_set_add(render_shader_set *set, int id, shader_error *error)
+{
+    if (id <= 0) {
+        return true;
+    }
+    const shader_asset *asset = &shader_catalog_assets[id - 1];
     render_shader_set fresh = *set;
     for (int i = 0; i < acount(asset->images); i++) {
-        int image = asset->images[i];
-        if (set_slot(&fresh, image) >= 0) {
-            continue;
-        }
-        if (fresh.count == RENDER_SHADER_IMAGE_MAX) {
+        if (!render_shader_set_add_image(&fresh, asset->images[i], error)) {
             if (error) {
                 snprintf(
                     error->message,
@@ -441,20 +466,9 @@ static bool shader_resources_add(render_shader_set *set, const shader_asset *ass
             }
             return false;
         }
-        int at = fresh.count++;
-        while (at > 0 && fresh.images[at - 1] > image) {
-            fresh.images[at] = fresh.images[at - 1];
-            at--;
-        }
-        fresh.images[at] = image;
     }
     *set = fresh;
     return true;
-}
-
-bool render_shader_set_add(render_shader_set *set, int id, shader_error *error)
-{
-    return id <= 0 || shader_resources_add(set, &shader_catalog_assets[id - 1], error);
 }
 
 int render_shader_ramp_vec4_count(const render_shader_set *set)
@@ -551,6 +565,12 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
             i
         );
     }
+    /* Sprites name their image variant; graphs reach theirs through assets. */
+    append(&text, "vec4 sg_image_sample(int id,vec2 uv) {\n");
+    for (int i = 0; i < set->count; i++) {
+        append(&text, " if(id==%d) return textureLod(sg_image_%d,uv,0.0);\n", set->images[i], i);
+    }
+    append(&text, " return vec4(0);\n}\n");
     append(&text, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 part_position; vec3 object_from_world[3]; vec3 part_from_world[3]; vec3 uv_from_world[2]; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
     for (int i = 0; i < acount(shader_catalog_assets); i++) {
         if (!render_shader_set_contains(set, i + 1)) {

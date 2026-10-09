@@ -1,0 +1,4 @@
+name "RechargeSystem"
+components {
+    GAME.EngineSystem asset="Recharge"
+}

@@ -126,7 +126,6 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     w->modules.paused = paused;
     w->modules.input = (options->modules & GAME_WORLD_INPUT) != 0;
     w->modules.rendering = (options->modules & GAME_WORLD_VISUAL_MOTION) != 0;
-    w->modules.sdf_motion = options->sdf_motion;
     w->modules.save = game_save_new();
     w->scenes = game_scene_flow_new();
     if (options->modules & GAME_WORLD_AUDIO) {

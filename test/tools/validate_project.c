@@ -13,6 +13,17 @@
 
 /* The longest prototype name the player takes, GAME_PROTOTYPE_NAME_MAX. */
 #define PROTOTYPE_NAME_MAX 1024
+/* How many resources a player takes in all, GAME_PLAYER_MAX_ASSETS. */
+#define PLAYER_MAX_ASSETS 4096
+
+/* An Ogg Vorbis file's first page holds only its 30-byte identification
+ * header; a page with no segments is its header alone. */
+enum
+{
+    OGG_PAGE_HEADER = 27,
+    OGG_FIRST_PAGE = OGG_PAGE_HEADER + 1 + 30,
+    OGG_END_OF_STREAM = 4
+};
 
 static char program[4096];
 static char root[64], log_path[96];
@@ -483,6 +494,123 @@ TEST_CASE(scenarios_load_graph_assets)
     return true;
 }
 
+static void write_bytes(const char *relative, const unsigned char *bytes, size_t length)
+{
+    char file[256];
+    path(file, sizeof file, relative);
+    FILE *out = fopen(file, "wb");
+    assert(out);
+    size_t written = fwrite(bytes, 1, length, out);
+    int closed = fclose(out);
+    assert(written == length && closed == 0);
+    (void)written, (void)closed;
+}
+
+/* What the scenario refuses with, or NULL when it runs. */
+static const char *tone_refusal()
+{
+    if (ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0) {
+        return NULL;
+    }
+    yyjson_val *error = yyjson_obj_get(yyjson_doc_get_root(reply), "error");
+    return yyjson_get_str(yyjson_obj_get(error, "message"));
+}
+
+TEST_CASE(sounds_must_decode)
+{
+    /* Players decode an Ogg sound before they play it, so a scenario, like
+     * preparation and validation, refuses one whose Vorbis audio they cannot
+     * decode. */
+    static const char refusal[] = "sounds/Tone.ogg: holds no Vorbis audio that "
+                                  "players can decode";
+    char fixture[4096];
+    snprintf(fixture, sizeof fixture, "%s/test/fixtures/sounds/Tone.ogg", tool_root());
+    FILE *in = fopen(fixture, "rb");
+    assert(in);
+    unsigned char tone[4096];
+    size_t length = fread(tone, 1, sizeof tone, in);
+    fclose(in);
+    assert(length > OGG_FIRST_PAGE + 150 && length < sizeof tone);
+    char folder[256];
+    path(folder, sizeof folder, "game/content/sounds");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Dot\"}") == 0
+    );
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\"\n}\n");
+    write_bytes("game/content/sounds/Tone.ogg", tone, length);
+    REQUIRE(!tone_refusal());
+    REQUIRE(validate() == 0);
+
+    /* Its first page, then one that ends the stream: whole pages, but no
+     * comment or setup header and no audio. */
+    unsigned char bare[OGG_FIRST_PAGE + OGG_PAGE_HEADER] = { 0 };
+    memcpy(bare, tone, OGG_FIRST_PAGE);
+    memcpy(bare + OGG_FIRST_PAGE, "OggS", 4);
+    bare[OGG_FIRST_PAGE + 5] = OGG_END_OF_STREAM;
+    write_bytes("game/content/sounds/Tone.ogg", bare, sizeof bare);
+    const char *message = tone_refusal();
+    REQUIRE(message && !strcmp(message, refusal));
+    /* Validation lists it too, as a problem of the project, */
+    REQUIRE(validate() != 0 && errors() == 1);
+    message = first_message(result("project"));
+    REQUIRE(message && !strcmp(message, refusal));
+    /* even beside another asset's problems, which keep preparation from
+     * reaching the sounds. */
+    write_file("game/content/prototypes/Broken.kdl", "name \"Broken\"\n(array)components {\n");
+    REQUIRE(validate() != 0 && yyjson_arr_size(result("problems")) == 1);
+    message = first_message(result("project"));
+    REQUIRE(message && !strcmp(message, refusal));
+    char broken[256];
+    path(broken, sizeof broken, "game/content/prototypes/Broken.kdl");
+    REQUIRE(unlink(broken) == 0);
+
+    /* Every header intact, but its one audio page, the last ~200 bytes,
+     * garbled. */
+    for (size_t i = length - 150; i < length; i++) {
+        tone[i] ^= 0xFF;
+    }
+    write_bytes("game/content/sounds/Tone.ogg", tone, length);
+    message = tone_refusal();
+    REQUIRE(message && !strcmp(message, refusal));
+    return true;
+}
+
+/* The smallest WAV players take: one silent 16-bit mono frame at 44.1 kHz. */
+static const unsigned char SILENCE[] = {
+    'R',  'I',  'F', 'F', 38,   0,    0,    0, 'W', 'A', 'V', 'E',
+    'f',  'm',  't', ' ', 16,   0,    0,    0, 1,   0,   1,   0,
+    0x44, 0xAC, 0,   0,   0x88, 0x58, 0x01, 0, 2,   0,   16,  0,
+    'd',  'a',  't', 'a', 2,    0,    0,    0, 0,   0
+};
+
+static void write_silences(int first, int end)
+{
+    for (int i = first; i < end; i++) {
+        char name[64];
+        snprintf(name, sizeof name, "game/content/sounds/%04d.wav", i);
+        write_bytes(name, SILENCE, sizeof SILENCE);
+    }
+}
+
+TEST_CASE(resources_are_limited_together)
+{
+    /* Even a new project carries resources besides its sounds, so sounds
+     * that fit the player's resource count on their own overflow it with
+     * them, and compiling refuses the project. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/sounds");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_silences(0, 1);
+    REQUIRE(validate() == 0);
+    write_silences(1, PLAYER_MAX_ASSETS - 1);
+    REQUIRE(validate() != 0 && errors() == 1);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "cannot be read within the resource limit"));
+    return true;
+}
+
 /* Whether `text` is there and reads `expected`. */
 static bool reads(const char *text, const char *expected)
 {
@@ -790,6 +918,8 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(prototype_includes_resolve);
     RUN_TEST_CASE(prototypes_are_found_by_declared_name);
     RUN_TEST_CASE(scenarios_load_graph_assets);
+    RUN_TEST_CASE(sounds_must_decode);
+    RUN_TEST_CASE(resources_are_limited_together);
     RUN_TEST_CASE(manifest_content_folder_is_used);
     RUN_TEST_CASE(scenes_run_under_their_own_name);
     RUN_TEST_CASE(scenarios_hold_input_actions);

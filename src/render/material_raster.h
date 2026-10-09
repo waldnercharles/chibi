@@ -27,13 +27,11 @@ enum
     RENDER_SHAPE_MESH
 };
 
-/* Matches shaders/entity.shd std430 layout. Colors are straight linear RGBA,
- * including HDR emission. Points and inverse rotation are in Y-up world units.
- * extent must conservatively include AA, deformation and metaball expansion.
- * wobble = amplitude, angular frequency, temporal frequency, sort key.
- * pluck = amplitude, origin, age, speed. time[0] is simulation time;
- * remaining values are reserved by the raster. Equal sort keys retain caller
- * order. */
+/* The fields before material_parameters match shaders/entity.shd's std430
+ * layout. Colors are straight linear RGBA, including HDR emission. Points and
+ * inverse rotation are in Y-up world units. extent must conservatively include
+ * AA and metaball expansion. time[0] is simulation time; the remaining values
+ * are reserved by the raster. */
 typedef struct
 {
     float inv_rot[4], pos[2], extent[2];
@@ -51,7 +49,7 @@ typedef struct
     float scene[4], emission[4], absorption[4], albedo[4];
     float border_scene[4], border_emission[4], border_absorption[4],
         border_albedo[4];
-    float wobble[4], pluck[4], time[3];
+    float time[3];
     /* Nonzero for boxes that tile one shape without overlapping, such as a
      * material mask's cells. Consecutive pieces that share it add coverage.
      * Pieces
@@ -64,6 +62,9 @@ typedef struct
     float material_frame[4];
     /* Uploaded separately: Cute storage-buffer structs cannot contain arrays. */
     float material_parameters[32][4], shape_parameters[32][4];
+    /* Draw order, never uploaded: lower layers draw first, and equal layers
+     * keep the caller's order. */
+    float layer;
 } render_material_entity;
 
 /* The material raster's RGBA16F render targets. */

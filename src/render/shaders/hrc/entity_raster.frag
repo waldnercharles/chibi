@@ -58,7 +58,7 @@ layout(set = 2, binding = SG_COUNTS_BINDING) readonly buffer TileOffsets { uvec4
 layout(set = 2, binding = SG_INDICES_BINDING) readonly buffer TileEntities { uvec4 tile_entities[]; };
 layout(set = 2, binding = SG_PARAMETERS_BINDING) readonly buffer ShaderParameters { vec4 shader_parameters[]; };
 
-#define ENTITY_VEC4S 21u
+#define ENTITY_VEC4S 19u
 
 uint tile_offset(uint i) { return tile_offsets[i >> 2u][i & 3u]; }
 uint tile_entity(uint i) { return tile_entities[i >> 2u][i & 3u]; }
@@ -99,12 +99,10 @@ Entity entity_at(uint index)
     e.border_emission = entity_vec4(b + 14u);
     e.border_absorption = entity_vec4(b + 15u);
     e.border_albedo = entity_vec4(b + 16u);
-    e.wobble_pad = entity_vec4(b + 17u);
-    e.pluck_data = entity_vec4(b + 18u);
-    v = entity_vec4(b + 19u);
+    v = entity_vec4(b + 17u);
     e.simulation_time = v.xyz;
     e.tile_group = v.w;
-    e.material_frame = entity_vec4(b + 20u);
+    e.material_frame = entity_vec4(b + 18u);
     return e;
 }
 
@@ -662,50 +660,6 @@ void main()
             e.inv_rot.z * dp.x + e.inv_rot.w * dp.y
         );
 
-        // SDF wobble: standing wave (sustained hum) + traveling wave (pluck transient).
-        float wobble = e.wobble_pad.x;
-        float pluck_amp = e.pluck_data.x;
-
-        if (wobble > 0.0 || pluck_amp > 0.0) {
-            float ang_freq = round(e.wobble_pad.y);
-            float time_freq = e.wobble_pad.z;
-            float angle = atan(local_p.y, local_p.x);
-            float deform = 0.0;
-
-            // Traveling wave: sustained energy hum rotating around the border.
-            if (wobble > 0.0) {
-                deform += sin(angle * ang_freq - e.simulation_time.x * time_freq) * wobble;
-            }
-
-            // Traveling wave: pluck transient.
-            if (pluck_amp > 0.01) {
-                float pluck_origin = e.pluck_data.y;
-                float pluck_age = e.pluck_data.z;
-                float pluck_speed = e.pluck_data.w;
-
-                float dist = angle - pluck_origin;
-                dist = dist - 6.2831853 * floor((dist + 3.1415926) / 6.2831853);
-
-                float wave_front = pluck_age * pluck_speed;
-
-                // Counter-propagating wave packets from pluck origin.
-                float p1 = dist - wave_front;
-                float p2 = dist + wave_front;
-                float env_w = 0.8 + ang_freq * 0.1;
-                float env1 = exp(-p1 * p1 * env_w);
-                float env2 = exp(-p2 * p2 * env_w);
-
-                float traveling = sin(dist * ang_freq - wave_front) * env1
-                                + sin(dist * ang_freq + wave_front) * env2;
-                deform += traveling * pluck_amp;
-            }
-
-            vec2 radial = local_p + vec2(0.0001);
-            float radial_length = length(radial);
-            if (radial_length > 0.0) local_p += radial / radial_length * deform;
-        }
-
-        vec4 object_frame = wobble > 0.0 || pluck_amp > 0.01 ? vec4(0) : e.inv_rot;
         float sdf = evaluate_sdf(local_p, e);
         vec2 half_size = shader_half_size(e);
         vec2 material_pos = material_position(e, local_p, world_pos);
@@ -714,15 +668,14 @@ void main()
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[floatBitsToUint(e.simulation_time.y)+32u+uint(p)];
-            sg_dispatch_2d(int(e.reserved1), local_p, material_pos, half_size, object_frame, e.simulation_time.x, parameters, graph_output);
+            sg_dispatch_2d(int(e.reserved1), local_p, material_pos, half_size, e.inv_rot, e.simulation_time.x, parameters, graph_output);
             sdf = graph_output[0].x;
         }
         float aa = e.aa > 0.0 ? e.aa : max(plane_pixel.x, plane_pixel.y) * 0.5;
         bool filtered_circle_emission = e.shape_type == SHAPE_CIRCLE &&
                                         e.thickness <= 0.0 && e.border_thickness <= 0.0 &&
                                         e.reserved0 <= 0.0 && e.reserved1 <= 0.0 &&
-                                        e.metaball_group == 0u && e.wobble_pad.x == 0.0 &&
-                                        e.pluck_data.x == 0.0;
+                                        e.metaball_group == 0u;
         bool may_emit = any(notEqual(e.emission.rgb, vec3(0.0)));
         float emission_half_width = filtered_circle_emission
                                       ? circle_emission_half_width(e)
@@ -748,7 +701,7 @@ void main()
         float height = 0.0;
         if (e.reserved0 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[floatBitsToUint(e.simulation_time.y)+uint(p)];
-            sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, object_frame, e.simulation_time.x, parameters, graph_output);
+            sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, e.inv_rot, e.simulation_time.x, parameters, graph_output);
             e.scene=graph_output[0]; e.emission=graph_output[1];
             e.albedo=graph_output[2]; e.absorption=graph_output[3];
             e.border_scene=graph_output[0]; e.border_emission=graph_output[1];

@@ -84,8 +84,8 @@ endif()
 
 
 set(render_sources appearance_geometry.c scene_renderer.c shader_fragment.c shader_preview.c
-    shader_publish.c screenshot.c sdf_shapes.c material.c material_lod.c shader_images.c
-    shader_program.c sdf_motion.c fog.c material_raster.c fluid_raster.c
+    shader_publish.c screenshot.c material.c material_lod.c shader_images.c
+    shader_program.c fog.c material_raster.c fluid_raster.c
     reflections.c radiance.c post_2d.c gpu_timing.c viewport.c audio.c geometry_2d.c grid_2d.c
     mesh_surface.c mesh_material.c scene3d.c scene3d_geometry.c scene3d_influence.c
     scene3d_visual.c scene3d_trail.c scene3d_camera.c scene3d_pick.c scene3d_post.c scene3d_shadow.c

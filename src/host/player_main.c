@@ -4,7 +4,6 @@
 #include "render/device_controls.h"
 #include "render/scene3d.h"
 #include "render/scene_renderer.h"
-#include "render/sdf_motion.h"
 #include "render/shader_images.h"
 #include "render/shader_parameters.h"
 #include "render/shader_publish.h"
@@ -584,7 +583,6 @@ int main(int argc, char **argv)
                                                 GAME_REGISTRY_COMPONENT_COUNT },
                                 .linker = &host.linker,
                                 .log = { log_message, NULL },
-                                .sdf_motion = game_sdf_motion_tick,
                                 .resources = render_prepared_resources(root) };
     host.player = game_player_open(artifact, &loader, backend, error, sizeof error);
     if (!host.player) {

@@ -492,6 +492,10 @@ int main(int argc, char **argv)
     cf_shader_directory("/chibi-render");
     host.renderer = app_scene_renderer_new();
     host.viewport = engine_viewport_new(initial_width, initial_height);
+    if (!host.viewport) {
+        fprintf(stderr, "Cannot create a %dx%d window canvas\n", initial_width, initial_height);
+        goto finish;
+    }
     engine_viewport_adopt_ui(host.viewport, render_ui_new_prepared(NULL));
     native_prepared_context context = { .native = native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);

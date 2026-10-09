@@ -1,4 +1,4 @@
-version 16
+version 17
 name "Feature coverage"
 content "content"
 start_scene "scenes/Physics2D.kdl"

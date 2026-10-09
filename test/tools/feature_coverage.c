@@ -474,13 +474,9 @@ static bool reach_library(uint64_t id)
     return true;
 }
 
-/* Reaches the prototype a spawn call names by a literal, as
- * spawn_prototype("Drone") does. */
-static bool reach_spawned(
-    const source_catalog_source *source,
-    const script_analysis *analysis,
-    const script_expression *call
-)
+/* Reaches the prototype a spawn call names by reference, as
+ * spawn_prototype("Drone") and spawn_prototype(Drone) do. */
+static bool reach_spawned(const script_analysis *analysis, const script_expression *call)
 {
     bool reached = false;
     for (int i = 0; i < call->argument_count; i++) {
@@ -488,26 +484,16 @@ static bool reach_spawned(
         const script_expression *argument = value < 0
                                               ? NULL
                                               : &analysis->expressions[value];
-        if (!argument || argument->kind != SCRIPT_EXPR_CONSTANT ||
-            source->text[argument->range.start] != '"') {
-            continue;
+        if (argument && argument->kind == SCRIPT_EXPR_CONSTANT && argument->capability) {
+            reached |= reach_prototype(argument->constant.str, true);
         }
-        char name[MAX_LINE];
-        snprintf(
-            name,
-            sizeof name,
-            "%.*s",
-            argument->range.end - argument->range.start - 2,
-            source->text + argument->range.start + 1
-        );
-        reached |= reach_prototype(name, true);
     }
     return reached;
 }
 
 /* Reaches what one running source spawns and the libraries it calls. Returns
  * whether it reached anything new. */
-static bool reach_from(const source_catalog_source *source, const script_analysis *analysis)
+static bool reach_from(const script_analysis *analysis)
 {
     const script_catalog *catalog = source_catalog_view(project);
     bool reached = false;
@@ -520,7 +506,7 @@ static bool reach_from(const source_catalog_source *source, const script_analysi
             *capability = script_catalog_capability_by_id(catalog, expression->capability);
         reached |= reach_library(expression->capability);
         if (capability && !strcmp(capability->name, GAME_ENTITY_SPAWN_SOURCE)) {
-            reached |= reach_spawned(source, analysis, expression);
+            reached |= reach_spawned(analysis, expression);
         }
     }
     for (int i = 0; i < analysis->use_count; i++) {
@@ -538,7 +524,7 @@ static void use_reachable()
         reached = false;
         for (int i = 0; i < acount(analyses); i++) {
             if (runs(analyses[i])) {
-                reached |= reach_from(source_catalog_source_at(project, i), analyses[i]);
+                reached |= reach_from(analyses[i]);
             }
         }
     }

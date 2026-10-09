@@ -2,7 +2,7 @@ behavior EntityProbe {
     on Begin {
         spawner: handle<"ecs.entity"> = get_global_variable("Spawner")
         await set_global_variable("Spawned", Value: int = 0)
-        drone := await spawn_prototype("Drone")
+        drone := await spawn_prototype(Drone)
         if has_entities_with_component("GAME.GameCollider") {
             colliders := find_entities_with_component("GAME.GameCollider")
             nearest := find_nearest_entity(self.Transform, 64.0, 2, self)

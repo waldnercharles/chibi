@@ -27,6 +27,7 @@ struct engine_viewport
     float view_height;
     float focal_distance;
     float yaw, pitch, target_elevation, roll;
+    engine_viewport_lens lens;
     bool panning;
     bool pointer_active;
     bool perspective;
@@ -261,6 +262,7 @@ void engine_viewport_reset_camera(engine_viewport *viewport)
     viewport->center_y = 180.0f;
     viewport->view_width = 640.0f;
     viewport->view_height = 360.0f;
+    viewport->lens = (engine_viewport_lens){ 0 };
     viewport->panning = false;
 }
 
@@ -272,6 +274,7 @@ void engine_viewport_fit(engine_viewport *viewport, float min_x, float min_y, fl
     viewport->center_y = min_y + (max_y - min_y) * 0.5f;
     viewport->view_width = fmaxf(1.0f, max_x - min_x) * 1.2f;
     viewport->view_height = fmaxf(1.0f, max_y - min_y) * 1.2f;
+    viewport->lens = (engine_viewport_lens){ 0 };
 }
 
 void engine_viewport_get_view(const engine_viewport *viewport, engine_viewport_view *view)
@@ -279,7 +282,8 @@ void engine_viewport_get_view(const engine_viewport *viewport, engine_viewport_v
     *view = (engine_viewport_view){
         viewport->center_x,    viewport->center_y,         viewport->view_width,
         viewport->view_height, viewport->focal_distance,   viewport->yaw,
-        viewport->pitch,       viewport->target_elevation, viewport->roll
+        viewport->pitch,       viewport->target_elevation, viewport->roll,
+        viewport->lens
     };
 }
 
@@ -303,6 +307,7 @@ void engine_viewport_set_view(engine_viewport *viewport, const engine_viewport_v
     viewport->pitch = view->pitch;
     viewport->roll = view->roll;
     viewport->target_elevation = view->target_elevation;
+    viewport->lens = view->lens;
     viewport->panning = false;
 }
 
@@ -330,19 +335,15 @@ void engine_viewport_get_camera(const engine_viewport *viewport, engine_viewport
                                         viewport->yaw,
                                         viewport->pitch,
                                         viewport->target_elevation,
-                                        viewport->roll };
+                                        viewport->roll,
+                                        viewport->lens };
 }
 
 void engine_viewport_get_camera3d(const engine_viewport *viewport, render_scene3d_camera *camera)
 {
     engine_viewport_camera frame;
     engine_viewport_get_camera(viewport, &frame);
-    *camera = render_scene3d_camera_make(
-        frame.center_x,
-        frame.center_y,
-        frame.span_width,
-        frame.span_height
-    );
+    *camera = render_scene3d_camera_frame(&frame);
 }
 
 void engine_viewport_set_perspective(engine_viewport *viewport, bool perspective)
@@ -511,6 +512,8 @@ static bool navigate_viewport(engine_viewport *viewport, const viewport_io *io, 
     if (!viewport->panning && !zoom) {
         return false;
     }
+    /* Gestures move the overhead framing, so they take the view off a lens. */
+    viewport->lens = (engine_viewport_lens){ 0 };
     engine_viewport_camera before;
     engine_viewport_get_camera(viewport, &before);
     if (zoom) {

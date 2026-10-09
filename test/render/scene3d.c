@@ -4,6 +4,8 @@
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
+#include "render/viewport.h"
+#include "runtime/camera.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
 #include "runtime/images/sky.h"
@@ -208,6 +210,154 @@ TEST_CASE(scene_draws_without_a_valid_rhythm_clock)
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     REQUIRE(top().colors.r > 0);
+    return true;
+}
+
+/* Points the renders through the scene's camera, as Play frames it. */
+static int look_through_camera()
+{
+    engine_viewport_view view;
+    int found = game_camera_view(world, NULL, &view);
+    if (found == 1) {
+        lens = render_scene3d_camera_frame(&(engine_viewport_camera){
+            .center_x = view.center_x,
+            .center_y = view.center_y,
+            .span_width = view.width,
+            .span_height = view.height,
+            .lens = view.lens });
+    }
+    return found;
+}
+
+/* A camera at a 3D pose, looking along -Z until rotated. */
+static ecs_entity add_camera_3d(CF_Quat rotation)
+{
+    ecs_entity entity = add(GAME_COMPONENT_GameCamera.id, &(GameCamera){ .width = 2, .height = 2 });
+    GameTransform3D pose = { .rotation = rotation, .scale = { 1, 1, 1 } };
+    assert(
+        ecs_world_record_add(world, entity, GAME_COMPONENT_GameTransform3D.id, &pose, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return entity;
+}
+
+static CF_Pixel center()
+{
+    return pixels[SIDE / 2 * SIDE + SIDE / 2];
+}
+
+static bool near_value(float value, float expected)
+{
+    return fabsf(value - expected) < 1e-4f;
+}
+
+TEST_CASE(cameras_look_along_their_transform3d)
+{
+    GameGeometry3D cube = { GAME_PRIMITIVE_BOX, 2, 2, 2, 0 };
+    add_solid((CF_V3){ 6, 0, 0 }, cube, 0xff0000ffu);
+    add_solid((CF_V3){ -6, 0, 0 }, cube, 0x0000ffffu);
+    ecs_entity camera = add_camera_3d(
+        cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -CF_PI / 2)
+    );
+    REQUIRE(look_through_camera() == 1);
+    CF_V3 ahead = render_scene3d_project(&lens, (CF_V3){ 5, 0, 0 });
+    CF_V3 above = render_scene3d_project(&lens, (CF_V3){ 5, 1, 0 });
+    CF_V3 right = render_scene3d_project(&lens, (CF_V3){ 5, 0, 1 });
+    REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
+    REQUIRE(near_value(above.x, 0) && above.y > .1f);
+    REQUIRE(right.x > .1f && near_value(right.y, 0));
+    GameEnvironment environment = game_environment_defaults();
+    REQUIRE(render(&environment));
+    REQUIRE(center().colors.r > 2 * center().colors.b);
+    GAME_GameTransform3D_get(world, camera)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, CF_PI / 2);
+    REQUIRE(look_through_camera() == 1);
+    REQUIRE(render(&environment));
+    REQUIRE(center().colors.b > 2 * center().colors.r);
+    return true;
+}
+
+TEST_CASE(camera_field_of_view_and_clips_shape_the_projection)
+{
+    ecs_entity framing = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 3, 2 });
+    GameCamera authored = { .width = 4, .height = 2 };
+    assert(
+        ecs_world_record_add(world, framing, GAME_COMPONENT_GameCamera.id, &authored, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(look_through_camera() == 1);
+    CF_V3 target = render_scene3d_project(&lens, (CF_V3){ 3, 0, 2 });
+    REQUIRE(near_value(target.x, 0) && near_value(target.y, 0));
+    REQUIRE(near_value(lens.projection.elements[5] * tanf(.5f * 35 * CF_PI / 180), 1));
+    REQUIRE(near_value(lens.projection.elements[5] / lens.projection.elements[0], 2));
+    GAME_GameCamera_get(world, framing)->fov = CF_PI / 2;
+    REQUIRE(look_through_camera() == 1);
+    target = render_scene3d_project(&lens, (CF_V3){ 3, 0, 2 });
+    REQUIRE(near_value(target.x, 0) && near_value(target.y, 0));
+    REQUIRE(near_value(lens.projection.elements[5], 1));
+    assert(ecs_world_destroy_entity(world, framing) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity posed = add_camera_3d(
+        cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -CF_PI / 2)
+    );
+    GameCamera *clipped = GAME_GameCamera_get(world, posed);
+    clipped->near_clip = .5f;
+    clipped->far_clip = 50;
+    REQUIRE(look_through_camera() == 1);
+    REQUIRE(near_value(render_scene3d_project(&lens, (CF_V3){ .5f, 0, 0 }).z, 0));
+    REQUIRE(near_value(render_scene3d_project(&lens, (CF_V3){ 50, 0, 0 }).z, 1));
+    return true;
+}
+
+TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
+{
+    static const float lenses[][3] = {
+        { -.1f, 0, 0 }, { CF_PI, 0, 0 }, { NAN, 0, 0 }, { 0, 1, 0 },
+        { 0, 0, 1 },    { 0, 2, 2 },     { 0, 2, 1 },   { 0, 1, INFINITY },
+    };
+    ecs_entity entity = add_camera_3d(cf_quat_identity());
+    GameCamera *camera = GAME_GameCamera_get(world, entity);
+    for (int i = 0; i < (int)(sizeof lenses / sizeof lenses[0]); i++) {
+        camera->fov = lenses[i][0];
+        camera->near_clip = lenses[i][1];
+        camera->far_clip = lenses[i][2];
+        REQUIRE(look_through_camera() == -1);
+    }
+    *camera = (GameCamera){ .width = 2, .height = 2, .fov = 1, .near_clip = 1, .far_clip = 2 };
+    REQUIRE(look_through_camera() == 1);
+    GAME_GameTransform3D_get(world, entity)->scale = (CF_V3){ 0 };
+    REQUIRE(look_through_camera() == -1);
+    return true;
+}
+
+/* Panning or zooming hands the view from an authored lens to the editor's
+ * overhead framing, which those gestures move. */
+TEST_CASE(navigating_drops_an_authored_lens)
+{
+    engine_viewport *viewport = engine_viewport_new(SIDE, SIDE);
+    REQUIRE(viewport);
+    engine_viewport_set_perspective(viewport, true);
+    engine_viewport_view view = {
+        .width = 2,
+        .height = 2,
+        .lens = { .eye = { 0, 1, 4 }, .forward = { 0, 0, -1 }, .up = { 0, 1, 0 } },
+    };
+    engine_viewport_set_view(viewport, &view);
+    engine_viewport_set_host_input(
+        viewport,
+        &(engine_viewport_host_input){ .width = SIDE,
+                                       .height = SIDE,
+                                       .x = SIDE / 2,
+                                       .y = SIDE / 2,
+                                       .hovered = true,
+                                       .wheel = 1 }
+    );
+    int drawn = engine_viewport_draw(viewport, &(engine_viewport_controls){ 0 });
+    engine_viewport_get_view(viewport, &view);
+    engine_viewport_free(viewport);
+    REQUIRE(drawn == 0);
+    REQUIRE(view.width < 2);
+    REQUIRE(cf_dot_v3(view.lens.forward, view.lens.forward) == 0);
     return true;
 }
 
@@ -1868,6 +2018,10 @@ void test_render_scene3d(bool gles)
     app_scene_renderer_initialize();
     pu_setup(setup, teardown);
     RUN_TEST_CASE(scene_draws_without_a_valid_rhythm_clock);
+    RUN_TEST_CASE(cameras_look_along_their_transform3d);
+    RUN_TEST_CASE(camera_field_of_view_and_clips_shape_the_projection);
+    RUN_TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use);
+    RUN_TEST_CASE(navigating_drops_an_authored_lens);
     RUN_TEST_CASE(picking_and_bounds_place_children_under_their_parent);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(picking_and_bounds_place_child_models_under_their_parent);

@@ -6,6 +6,31 @@
 
 #include <math.h>
 
+/* The 3D lens of a camera, looking along its global -Z with +Y up when it has
+ * a Transform3D. False for values the 3D path can't use. */
+static bool camera_lens(const GameCamera *camera, const GameGlobalTransform3D *pose, engine_viewport_lens *lens)
+{
+    float closest = camera->near_clip, farthest = camera->far_clip;
+    *lens = (engine_viewport_lens){ .fov = camera->fov,
+                                    .near_clip = closest,
+                                    .far_clip = farthest };
+    bool clips = (closest == 0 && farthest == 0) ||
+                 (closest > 0 && farthest > closest && isfinite(farthest));
+    if (!(camera->fov >= 0 && camera->fov < CF_PI && clips)) {
+        return false;
+    }
+    if (!pose) {
+        return true;
+    }
+    lens->eye = pose->position;
+    lens->forward = cf_neg_v3(pose->z_axis);
+    lens->up = pose->y_axis;
+    CF_V3 side = cf_cross_v3(lens->forward, lens->up);
+    float turn = cf_dot_v3(side, side);
+    return turn > 0 && isfinite(turn) &&
+           isfinite(lens->eye.x + lens->eye.y + lens->eye.z);
+}
+
 int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_view *out)
 {
     if (!ecs_world_component(world, GAME_COMPONENT_GameCamera.id) ||
@@ -24,21 +49,24 @@ int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_vi
         if (camera->disabled || ecs_entity_is_retiring(world, entity)) {
             continue;
         }
-        if (!GAME_GameTransform_has(world, entity)) {
+        const GameGlobalTransform3D *pose = GAME_GameGlobalTransform3D_get_const(world, entity);
+        if (!pose && !GAME_GameTransform_has(world, entity)) {
             found = -1;
             break;
         }
-        CF_V2 position = engine_render_transform(runtime, world, entity).position;
-        *out = (engine_viewport_view){ position.x + camera->offset.x,
-                                       -position.y - camera->offset.y,
-                                       camera->width,
-                                       camera->height,
-                                       camera->focal_distance,
-                                       camera->yaw,
-                                       camera->pitch,
-                                       camera->target_elevation,
-                                       camera->roll };
-        if (found || !isfinite(out->center_x) || !isfinite(out->center_y) ||
+        CF_V2 position = pose ? (CF_V2){ pose->position.x, pose->position.z }
+                              : engine_render_transform(runtime, world, entity).position;
+        *out = (engine_viewport_view){ .center_x = position.x + camera->offset.x,
+                                       .center_y = -position.y - camera->offset.y,
+                                       .width = camera->width,
+                                       .height = camera->height,
+                                       .focal_distance = camera->focal_distance,
+                                       .yaw = camera->yaw,
+                                       .pitch = camera->pitch,
+                                       .target_elevation = camera->target_elevation,
+                                       .roll = camera->roll };
+        if (found || !camera_lens(camera, pose, &out->lens) ||
+            !isfinite(out->center_x) || !isfinite(out->center_y) ||
             !isfinite(out->width) || !isfinite(out->height) || out->width <= 0 ||
             out->height <= 0 || !isfinite(out->focal_distance) ||
             out->focal_distance < 0 || !isfinite(out->yaw) || !isfinite(out->pitch) ||

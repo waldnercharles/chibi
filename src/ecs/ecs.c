@@ -1017,6 +1017,22 @@ static void link_derived(ecs_world *world, ecs_component_id id)
     }
 }
 
+/* Whether an automatic id must skip this one: it is registered, or it is a
+ * derived component's source still to come. */
+static bool id_taken(ecs_world *world, const ecs_component_desc *desc, ecs_component_id id)
+{
+    if (id == desc->derived_from || find_component(world, id) ||
+        world_relationship(world, id)) {
+        return true;
+    }
+    for (int i = 0; i < acount(world->components); i++) {
+        if (world->components[i].desc.derived_from == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int ecs_world_register_component(ecs_world *world, const ecs_component_desc *desc, ecs_component_id *out_id)
 {
     if (!world || !desc || !desc->name || !desc->name[0] || !desc->element_size ||
@@ -1037,10 +1053,7 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     ecs_component_id id = desc->id;
     if (!id) {
         id = 1;
-        for (;;) {
-            if (!find_component(world, id) && !world_relationship(world, id)) {
-                break;
-            }
+        while (id_taken(world, desc, id)) {
             id++;
             if (!id) {
                 return ECS_ERR_CAPACITY;

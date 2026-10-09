@@ -1,6 +1,6 @@
 #pragma once
 
-#define GAME_PLAYER_PREPARED_VERSION 5
+#define GAME_PLAYER_PREPARED_VERSION 7
 #include "runtime/player.h"
 
 #define GAME_PLAYER_PREPARED_MAX_BYTES (64 * 1024 * 1024)

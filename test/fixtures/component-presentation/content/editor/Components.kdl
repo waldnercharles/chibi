@@ -1,6 +1,5 @@
 components {
     GAME.EngineSystem icon="system"
-    GAME.GameActionBinding tab="Gameplay" icon="keyboard"
     GAME.GameAim tab="Gameplay"
     GAME.GameAppearance {
         icon "shape"

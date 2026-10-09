@@ -21,19 +21,6 @@ env:
   SDL_AUDIODRIVER: dummy
 
 jobs:
-  tools:
-    name: C tooling checks
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up CMake
-        run: |
-          python3 -m venv /tmp/cmake
-          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
-          echo /tmp/cmake/bin >> "$GITHUB_PATH"
-      - name: Tooling and process integrations (one 60-second deadline)
-        run: make test-tools TOOLS_C_COMPILER=clang-18
-
   native:
     name: Engine build and native tests
     runs-on: ubuntu-24.04
@@ -65,6 +52,9 @@ jobs:
       # The only engine build on fork pull requests, which skip the Studio job.
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
+      # After make build, whose build/reflect the reflection identity cases run.
+      - name: Tooling and process integrations (one 60-second deadline)
+        run: make test-tools TOOLS_C_COMPILER=clang-18
       - name: Native selectors (one 60-second deadline)
         run: make test-native LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Language selectors (one 60-second deadline)

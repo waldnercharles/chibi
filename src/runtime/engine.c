@@ -217,7 +217,7 @@ engine *engine_new(ecs_world *world, const engine_modules *modules)
         engine_input_host host = result->modules.sources
                                    ? game_source_input_host(&result->source_input)
                                    : (engine_input_host){ 0 };
-        result->input = engine_input_new(world, &host, result->systems);
+        result->input = engine_input_new(world, &host);
         bind_input(result, result->input);
     }
     boundary(result);
@@ -621,12 +621,21 @@ engine_focus engine_get_focus(const engine *engine)
     return engine ? engine->focus : ENGINE_FOCUS_NONE;
 }
 
+void engine_set_input_actions(engine *engine, const input_action *actions, int count)
+{
+    if (engine->input) {
+        engine_input_set_actions(engine->input, actions, count);
+    }
+}
+
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
 {
     if (!engine->input) {
         return FLOW_ERR_STATE;
     }
-    if (engine->replay) {
+    /* A stopped transport keeps the controls held when it stopped, so hosts
+     * that sample nothing while paused never press them again on resume. */
+    if (engine->replay || (!engine->playing && !engine->step_requested)) {
         *firing = false;
         return FLOW_OK;
     }

@@ -146,6 +146,25 @@ selector currently fails: the migrated invalid-source case exposed a NULL progra
 identity in lowering. The supervised debugger located the failure; its completion
 is diagnostic evidence, not a passing test.
 
+`--new-asset` admits one case: `new_asset_create` writes a behavior and a scene
+into one temporary content folder, creating the missing folders, and refuses an
+existing file, a model named like a shape, an invalid name, a folder blocked
+by a file, and a family folder or content folder that is a symbolic link out
+of the project. Each refusal's errno tells a bad request from a taken name and
+a storage failure. CPU only; the folder is removed afterwards.
+
+After `make build`, `python3 tools/test_policy.py tool validate-project` runs
+eight cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+project with `new_project` and checks the `validate_project` reply: a new
+project is valid; a UI style error is listed under its asset; a start scene
+outside the scene assets is parsed and checked for its prototypes; a broken
+start scene inside them is reported once; a UI document named by the
+manifest or a scene must exist; a scene's missing prototype or behavior, and
+each syntax error in a source, is one error; a project saved by an earlier
+build is reported, not upgraded; and a scene runs as a scenario in a project
+that has a material. A few short `chibi_ctl` runs, CPU only; the project is
+removed afterwards.
+
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
 effectful result reuse, lexical capture rejection, statement deletion/reordering,
@@ -253,10 +272,10 @@ retired script coverage and exact admitted native tuples.
 package/install and configure preservation, room service, publication,
 supervisor cleanup/deadlines and validation-planner regressions. Packaging,
 publication and room service implementations remain external programs; C tests
-own their assertions. A tooling build configured with `CHIBI_REFLECT_EXECUTABLE`
-also runs that `reflect` against component manifest identity, unchanged and failed
-generation, handle pins and JIT identity; without it those cases are absent, not
-passed. Select this complete group for affected tooling contracts.
+own their assertions. Once `make build` has produced `build/reflect`, the
+tooling build also runs it against component manifest identity, unchanged and
+failed generation, handle pins and JIT identity; without it those cases are
+absent, not passed. Select this complete group for affected tooling contracts.
 CI runs `make test-tools`; the planner's `--tools` also selects that complete group.
 Both modes retain one shared 60-second supervisor deadline. Retired script suites
 have not been reproduced completely.

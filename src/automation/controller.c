@@ -1748,23 +1748,12 @@ static void catalog_validate_asset(
         game_prototype_registry registry = prototype_registry(&includes);
         char error[256] = { 0 };
         game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
-        /* Scenes and includes find a prototype by its file name. */
-        bool misnamed = prototype && strcmp(prototype->name, asset->name);
-        if (misnamed) {
-            snprintf(
-                error,
-                sizeof error,
-                "Prototype '%s' must be in a file named %s%s",
-                prototype->name,
-                prototype->name,
-                DECLARATIVE_ASSET_EXTENSION
-            );
-        }
-        if (!prototype || misnamed) {
+        if (!prototype) {
             asset->errors = 1;
             catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
+        } else {
+            game_prototype_free(prototype);
         }
-        game_prototype_free(prototype);
         prototype_includes_free(&includes);
     } else if (family->loader == ASSET_EDITOR || family->loader == ASSET_SCENARIO) {
         char error[256] = { 0 };

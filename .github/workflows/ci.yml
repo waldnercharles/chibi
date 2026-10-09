@@ -67,6 +67,59 @@ jobs:
       - name: Language selectors (one 60-second deadline)
         run: make test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
 
+  native-macos:
+    name: Engine build and native tests (macOS)
+    runs-on: macos-14
+    env:
+      XDG_RUNTIME_DIR: /tmp/chibi-runtime
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          brew install llvm ninja
+          LLVM="$(brew --prefix llvm)"
+          echo "LLVM=$LLVM" >> "$GITHUB_ENV"
+          echo "CC=$LLVM/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=$LLVM/bin/clang++" >> "$GITHUB_ENV"
+          python3 -m venv /tmp/cmake
+          /tmp/cmake/bin/pip install 'cmake>=4.2,<5'
+          echo /tmp/cmake/bin >> "$GITHUB_PATH"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - name: Identify dependency sources
+        id: deps
+        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/chibi-fetchcontent
+            ~/.cache/chibi-dependency-packages
+          key: native-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.deps.outputs.key }}
+      - name: Build chibi_ctl and the test drivers (ASan and UBSan)
+        run: make test-build LIBCLANG_ROOT="$LLVM"
+      - name: Native selectors (one 60-second deadline)
+        run: make test-native LIBCLANG_ROOT="$LLVM"
+      - name: Language selectors (one 60-second deadline)
+        run: make test-language-all LIBCLANG_ROOT="$LLVM"
+
+  windows:
+    name: Engine build and compile smoke test (Windows)
+    runs-on: windows-2022
+    # The Windows port is new; keep this row advisory until it has passed once.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: lukka/get-cmake@latest
+      - name: Put LLVM on PATH
+        run: echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF -DLIBCLANG_ROOT="C:/Program Files/LLVM"
+      - name: Build the SDK tools
+        run: cmake --build build --target chibi chibi-compile chibi-player chibi_ctl
+      - name: Compile a project
+        run: build/sdk/chibi-compile.exe --project-root "$PWD/test/fixtures/studio" --output "$env:RUNNER_TEMP/game.chibip"
+
   studio:
     name: Studio build and startup
     runs-on: ubuntu-24.04

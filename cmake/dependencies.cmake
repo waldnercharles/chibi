@@ -1,12 +1,16 @@
 # --- cute_framework (window host + dcimgui), pinned commit ---
 include(FetchContent)
-set(CHIBI_SDL3_PACKAGE_PREFIX "" CACHE PATH "Pinned SDL3 package prefix")
 set(CF_FRAMEWORK_STATIC ON CACHE BOOL "" FORCE)
 set(CF_CUTE_SHADERC OFF CACHE BOOL "" FORCE)
+# The browser player renders with WebGPU when its page provides a device
+# (src/host/web/index.html) and falls back to WebGL 2 otherwise.
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_WEB_PLAYER)
+    set(CF_WEBGPU ON CACHE BOOL "" FORCE)
+endif()
 FetchContent_Declare(
     cute_framework
     GIT_REPOSITORY https://github.com/RandyGaul/cute_framework.git
-    GIT_TAG        7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d
+    GIT_TAG        96e6034aa6bc44665856ee480962a9ddab0b87cc
     UPDATE_DISCONNECTED TRUE
 )
 FetchContent_GetProperties(cute_framework)
@@ -22,7 +26,7 @@ if(NOT cute_framework_POPULATED)
 endif()
 include("${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/apply_patch.cmake")
 set(CUTE_PATCHES "")
-foreach(name cute-installed-sdl cute-interior-border cute-custom-coverage cute-custom-shape-cache cute-imgui-render-target cute-gles-buffer-streaming cute-zero-size-window cute-gles-scissor-cache cute-gpu-submit cute-eight-targets cute-gles-float-readback cute-web-no-asyncify cute-fragment-depth cute-gles-ubo-instance-scope cute-instance-buffer cute-depth-snapshot cute-sanitizer-cleanup cute-sound-free-queue-music-volume)
+foreach(name cute-interior-border cute-imgui-render-target cute-eight-targets cute-web-no-asyncify cute-gles-ubo-instance-scope cute-instance-buffer cute-web-webgpu-device cute-gles-range-draw-state cute-sound-free-queue-music-volume)
     list(APPEND CUTE_PATCHES "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/${name}.patch")
 endforeach()
 chibi_apply_patches("${cute_framework_SOURCE_DIR}" ${CUTE_PATCHES})

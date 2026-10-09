@@ -263,13 +263,12 @@ bool source_edit_declarations(
             (uint32_t)selected->declaration.end
         );
         while (!ts_node_is_null(node) &&
-               strcmp(ts_node_type(node), "action_declaration") &&
-               strcmp(ts_node_type(node), "lazy_local_declaration")) {
+               strcmp(ts_node_type(node), "action_declaration")) {
             node = ts_node_parent(node);
         }
         if (ts_node_is_null(node)) {
             script_syntax_free(syntax);
-            return fail(error, size, "Only action and local declarations support disabled source syntax");
+            return fail(error, size, "Only action declarations support disabled source syntax");
         }
         TSNode first = ts_node_child(node, 0);
         bool disabled = !strcmp(ts_node_type(first), "disabled");

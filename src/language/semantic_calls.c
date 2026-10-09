@@ -207,13 +207,8 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
         }
     }
     if (script_analyzer_is(object, "builtin_reference") &&
-        (script_analyzer_text_is(a, object, "state") ||
-         script_analyzer_text_is(a, object, "local"))) {
-        int symbol = script_analyzer_lookup_storage(
-            a,
-            member,
-            script_analyzer_text_is(a, object, "state") ? SCRIPT_STATE : SCRIPT_LOCAL
-        );
+        script_analyzer_text_is(a, object, "state")) {
+        int symbol = script_analyzer_lookup_storage(a, member, SCRIPT_STATE);
         if (symbol < 0) {
             script_analyzer_diagnostic(a, member, "Unknown declared value '%s'", name);
             free(name);

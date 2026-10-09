@@ -1,0 +1,289 @@
+diff --git a/include/cute_graphics.h b/include/cute_graphics.h
+index 462054a0..0d39d647 100644
+--- a/include/cute_graphics.h
++++ b/include/cute_graphics.h
+@@ -786,7 +786,8 @@ CF_API void CF_CALL cf_generate_mipmaps(CF_Texture texture);
+  * @function cf_gpu_sync
+  * @category graphics
+  * @brief    Submits the command buffer, waits for GPU completion via fence, then reacquires.
+- * @remarks  Forces GPU/CPU serialization.
++ * @remarks  Forces GPU/CPU serialization. A WebGPU web build linked without ASYNCIFY cannot wait, so there it only
++ *           submits, like `cf_gpu_submit`.
+  * @related  cf_gpu_submit
+  */
+ CF_API void CF_CALL cf_gpu_sync(void);
+diff --git a/src/cute_graphics_webgpu.cpp b/src/cute_graphics_webgpu.cpp
+index cf79c64c..e57fbd09 100644
+--- a/src/cute_graphics_webgpu.cpp
++++ b/src/cute_graphics_webgpu.cpp
+@@ -188,6 +188,7 @@ struct CF_ReadbackInternal
+ 	bool mapped;
+ 	bool failed;
+ 	bool ready;
++	bool orphaned;     // Destroyed before its map landed in a build that cannot wait; the map callback frees it.
+ };
+ 
+ struct CF_WPipelineKey
+@@ -555,6 +556,16 @@ static void s_process_events()
+ #endif
+ }
+ 
++// Whether s_wait can block. The web yields to the browser inside a wait, which needs ASYNCIFY.
++static bool s_can_wait()
++{
++#ifdef CF_EMSCRIPTEN
++	return emscripten_has_asyncify();
++#else
++	return true;
++#endif
++}
++
+ // Blocks until *flag turns true, pumping WebGPU events. The web yields to the browser (ASYNCIFY).
+ static void s_wait(volatile bool* flag)
+ {
+@@ -1370,7 +1381,7 @@ static uint8_t* s_stage(int size, WGPUBuffer* buffer, uint64_t* offset)
+ 				s_process_events();
+ 				s_collect_staging();
+ 			}
+-			if (!g_ctx.staging_free.count() && g_ctx.staging_pending.count() && g_ctx.staging_bytes + CF_WGPU_STAGING_CHUNK > CF_WGPU_STAGING_CEILING && !g_ctx.device_lost) {
++			if (!g_ctx.staging_free.count() && g_ctx.staging_pending.count() && g_ctx.staging_bytes + CF_WGPU_STAGING_CHUNK > CF_WGPU_STAGING_CEILING && !g_ctx.device_lost && s_can_wait()) {
+ 				s_wait(&g_ctx.staging_pending[0]->map_done);
+ 				s_collect_staging();
+ 			}
+@@ -1640,7 +1651,54 @@ static bool s_has_feature(const WGPUSupportedFeatures* f, WGPUFeatureName name)
+ 	return false;
+ }
+ 
++static void s_name_adapter(WGPUAdapterInfo* info)
++{
++	// Browsers leave device and description empty; vendor and architecture are what they give.
++	String name = s_str(info->device);
++	if (!name.len()) name = s_str(info->description);
++	if (!name.len()) {
++		name = s_str(info->vendor);
++		String arch = s_str(info->architecture);
++		if (name.len() && arch.len()) name.add(' ');
++		name.append(arch.c_str());
++	}
++	g_ctx.adapter_name = sintern(name.c_str());
++	wgpuAdapterInfoFreeMembers(*info);
++}
++
++static void s_read_features(const WGPUSupportedFeatures* supported)
++{
++	g_ctx.float32_filterable = s_has_feature(supported, WGPUFeatureName_Float32Filterable);
++	g_ctx.float32_blendable = s_has_feature(supported, WGPUFeatureName_Float32Blendable);
++	g_ctx.depth32_stencil8 = s_has_feature(supported, WGPUFeatureName_Depth32FloatStencil8);
++	g_ctx.bc = s_has_feature(supported, WGPUFeatureName_TextureCompressionBC);
++	g_ctx.formats_tier1 = s_has_feature(supported, WGPUFeatureName_TextureFormatsTier1);
++	g_ctx.rg11b10_renderable = s_has_feature(supported, WGPUFeatureName_RG11B10UfloatRenderable) || g_ctx.formats_tier1;
++	g_ctx.depth_clip_control = s_has_feature(supported, WGPUFeatureName_DepthClipControl);
++	g_ctx.bgra8_storage = s_has_feature(supported, WGPUFeatureName_BGRA8UnormStorage);
++#ifndef CF_EMSCRIPTEN
++	g_ctx.adapter_formats = s_has_feature(supported, (WGPUFeatureName)WGPUNativeFeature_TextureAdapterSpecificFormatFeatures);
++#endif
++}
++
+ #ifdef CF_EMSCRIPTEN
++// A page can request the device itself and hand it over as Module.preinitializedWebGPUDevice. A
++// build without ASYNCIFY cannot wait for the adapter and device, so this is how it gets WebGPU.
++static bool s_adopt_page_device()
++{
++	if (!EM_ASM_INT({ return !!Module['preinitializedWebGPUDevice']; })) return false;
++	g_ctx.device = emscripten_webgpu_get_device();
++	// GPUDevice.adapterInfo is newer than WebGPU itself; without it the adapter stays unnamed.
++	WGPUAdapterInfo ainfo = WGPU_ADAPTER_INFO_INIT;
++	bool named = EM_ASM_INT({ return !!Module['preinitializedWebGPUDevice'].adapterInfo; });
++	if (named && wgpuDeviceGetAdapterInfo(g_ctx.device, &ainfo) == WGPUStatus_Success) s_name_adapter(&ainfo);
++	WGPUSupportedFeatures supported = WGPU_SUPPORTED_FEATURES_INIT;
++	wgpuDeviceGetFeatures(g_ctx.device, &supported);
++	s_read_features(&supported);
++	wgpuSupportedFeaturesFreeMembers(supported);
++	return true;
++}
++
+ // SDL picks the window's canvas from this hint, else "#canvas".
+ static WGPUSurface s_create_web_surface()
+ {
+@@ -1654,18 +1712,10 @@ static WGPUSurface s_create_web_surface()
+ }
+ #endif
+ 
+-CF_Result cf_webgpu_init(bool debug)
++// Requests an adapter, then a device with every optional feature CF can use and the adapter's
++// full limits.
++static CF_Result s_request_device()
+ {
+-#ifndef CF_EMSCRIPTEN
+-	if (debug) {
+-		wgpuSetLogCallback(s_on_log, NULL);
+-		wgpuSetLogLevel(WGPULogLevel_Warn);
+-	}
+-#endif
+-	WGPUInstanceDescriptor idesc = WGPU_INSTANCE_DESCRIPTOR_INIT;
+-	g_ctx.instance = wgpuCreateInstance(&idesc);
+-	if (!g_ctx.instance) return cf_result_error("WebGPU: failed to create an instance.");
+-
+ 	CF_WRequest req = { };
+ 	WGPURequestAdapterOptions aopts = WGPU_REQUEST_ADAPTER_OPTIONS_INIT;
+ 	aopts.powerPreference = WGPUPowerPreference_HighPerformance;
+@@ -1683,21 +1733,8 @@ CF_Result cf_webgpu_init(bool debug)
+ 	g_ctx.adapter = req.adapter;
+ 
+ 	WGPUAdapterInfo ainfo = WGPU_ADAPTER_INFO_INIT;
+-	if (wgpuAdapterGetInfo(g_ctx.adapter, &ainfo) == WGPUStatus_Success) {
+-		// Browsers leave device and description empty; vendor and architecture are what they give.
+-		String name = s_str(ainfo.device);
+-		if (!name.len()) name = s_str(ainfo.description);
+-		if (!name.len()) {
+-			name = s_str(ainfo.vendor);
+-			String arch = s_str(ainfo.architecture);
+-			if (name.len() && arch.len()) name.add(' ');
+-			name.append(arch.c_str());
+-		}
+-		g_ctx.adapter_name = sintern(name.c_str());
+-		wgpuAdapterInfoFreeMembers(ainfo);
+-	}
++	if (wgpuAdapterGetInfo(g_ctx.adapter, &ainfo) == WGPUStatus_Success) s_name_adapter(&ainfo);
+ 
+-	// Ask for every optional feature CF can use, and the adapter's full limits.
+ 	WGPUSupportedFeatures supported = WGPU_SUPPORTED_FEATURES_INIT;
+ 	wgpuAdapterGetFeatures(g_ctx.adapter, &supported);
+ 	WGPUFeatureName wanted[] = {
+@@ -1712,17 +1749,7 @@ CF_Result cf_webgpu_init(bool debug)
+ 	for (int i = 0; i < (int)CF_ARRAY_SIZE(wanted); ++i) {
+ 		if (s_has_feature(&supported, wanted[i])) features.add(wanted[i]);
+ 	}
+-	g_ctx.float32_filterable = s_has_feature(&supported, WGPUFeatureName_Float32Filterable);
+-	g_ctx.float32_blendable = s_has_feature(&supported, WGPUFeatureName_Float32Blendable);
+-	g_ctx.depth32_stencil8 = s_has_feature(&supported, WGPUFeatureName_Depth32FloatStencil8);
+-	g_ctx.bc = s_has_feature(&supported, WGPUFeatureName_TextureCompressionBC);
+-	g_ctx.formats_tier1 = s_has_feature(&supported, WGPUFeatureName_TextureFormatsTier1);
+-	g_ctx.rg11b10_renderable = s_has_feature(&supported, WGPUFeatureName_RG11B10UfloatRenderable) || g_ctx.formats_tier1;
+-	g_ctx.depth_clip_control = s_has_feature(&supported, WGPUFeatureName_DepthClipControl);
+-	g_ctx.bgra8_storage = s_has_feature(&supported, WGPUFeatureName_BGRA8UnormStorage);
+-#ifndef CF_EMSCRIPTEN
+-	g_ctx.adapter_formats = s_has_feature(&supported, (WGPUFeatureName)WGPUNativeFeature_TextureAdapterSpecificFormatFeatures);
+-#endif
++	s_read_features(&supported);
+ 	wgpuSupportedFeaturesFreeMembers(supported);
+ 
+ 	WGPULimits limits = WGPU_LIMITS_INIT;
+@@ -1750,13 +1777,41 @@ CF_Result cf_webgpu_init(bool debug)
+ 		return cf_result_error(req.error ? req.error : "WebGPU: failed to create a device.");
+ 	}
+ 	g_ctx.device = req.device;
++	return cf_result_success();
++}
++
++CF_Result cf_webgpu_init(bool debug)
++{
++#ifndef CF_EMSCRIPTEN
++	if (debug) {
++		wgpuSetLogCallback(s_on_log, NULL);
++		wgpuSetLogLevel(WGPULogLevel_Warn);
++	}
++#endif
++	WGPUInstanceDescriptor idesc = WGPU_INSTANCE_DESCRIPTOR_INIT;
++	g_ctx.instance = wgpuCreateInstance(&idesc);
++	if (!g_ctx.instance) return cf_result_error("WebGPU: failed to create an instance.");
++
++#ifdef CF_EMSCRIPTEN
++	bool adopted = s_adopt_page_device();
++	if (!adopted && !s_can_wait()) {
++		wgpuInstanceRelease(g_ctx.instance);
++		g_ctx.instance = NULL;
++		return cf_result_error("WebGPU: the page provided no device, and this build cannot wait for one.");
++	}
++	CF_Result requested = adopted ? cf_result_success() : s_request_device();
++#else
++	CF_Result requested = s_request_device();
++#endif
++	if (cf_is_error(requested)) return requested;
+ #ifdef CF_EMSCRIPTEN
+ 	// The canvas is known before the window exists, so a canvas that refuses a WebGPU context
+ 	// fails here, while the app can still choose WebGL 2.
+ 	g_ctx.surface = s_create_web_surface();
+ 	if (!g_ctx.surface) {
+ 		wgpuDeviceRelease(g_ctx.device);
+-		wgpuAdapterRelease(g_ctx.adapter);
++		// A device the page provided comes without an adapter.
++		if (g_ctx.adapter) wgpuAdapterRelease(g_ctx.adapter);
+ 		wgpuInstanceRelease(g_ctx.instance);
+ 		g_ctx.device = NULL;
+ 		g_ctx.adapter = NULL;
+@@ -2029,7 +2084,7 @@ void cf_webgpu_end_frame()
+ #ifdef CF_EMSCRIPTEN
+ 	// The browser presents once control returns to it. A polling-loop app (no main callbacks)
+ 	// never returns, so yield here the way SDL_GL_SwapWindow does for WebGL.
+-	if (!app->using_main_callbacks) emscripten_sleep(0);
++	if (!app->using_main_callbacks && s_can_wait()) emscripten_sleep(0);
+ #else
+ 	if (g_ctx.swapchain_tex) wgpuSurfacePresent(g_ctx.surface);
+ #endif
+@@ -2746,6 +2801,13 @@ bool cf_webgpu_current_canvas_has_depth()
+ //--------------------------------------------------------------------------------------------------
+ // Readbacks.
+ 
++static void s_release_readback(CF_ReadbackInternal* rb)
++{
++	if (rb->mapped) wgpuBufferUnmap(rb->buffer);
++	if (rb->buffer) wgpuBufferRelease(rb->buffer);
++	CF_FREE(rb);
++}
++
+ static void s_on_map(WGPUMapAsyncStatus status, WGPUStringView message, void* ud1, void* ud2)
+ {
+ 	CF_UNUSED(ud2);
+@@ -2757,6 +2819,7 @@ static void s_on_map(WGPUMapAsyncStatus status, WGPUStringView message, void* ud
+ 		rb->mapped = true;
+ 	}
+ 	rb->ready = true;
++	if (rb->orphaned) s_release_readback(rb);
+ }
+ 
+ CF_Readback cf_webgpu_canvas_readback2(CF_Canvas canvas_handle, int index)
+@@ -2846,13 +2909,16 @@ int cf_webgpu_readback_size(CF_Readback readback)
+ 	return rb ? rb->size : 0;
+ }
+ 
+-// The map callback holds rb, so the map has to land before the free.
++// The map callback holds rb, so the map has to land before the free. A build that cannot wait
++// leaves the free to the callback.
+ static void s_free_readback(CF_ReadbackInternal* rb)
+ {
++	if (!rb->ready && !s_can_wait()) {
++		rb->orphaned = true;
++		return;
++	}
+ 	s_wait(&rb->ready);
+-	if (rb->mapped) wgpuBufferUnmap(rb->buffer);
+-	if (rb->buffer) wgpuBufferRelease(rb->buffer);
+-	CF_FREE(rb);
++	s_release_readback(rb);
+ }
+ 
+ void cf_webgpu_destroy_readback(CF_Readback readback)
+@@ -4262,6 +4328,8 @@ void cf_webgpu_gpu_submit()
+ void cf_webgpu_gpu_sync()
+ {
+ 	s_submit();
++	// A build that cannot wait degrades to cf_gpu_submit.
++	if (!s_can_wait()) return;
+ 	volatile bool done = false;
+ 	WGPUQueueWorkDoneCallbackInfo cb = WGPU_QUEUE_WORK_DONE_CALLBACK_INFO_INIT;
+ 	cb.mode = WGPUCallbackMode_AllowProcessEvents;
+@@ -4362,8 +4430,11 @@ void cf_webgpu_cleanup()
+ 	// free, and before the instance goes: releasing it fires them with a cancel.
+ 	for (int i = 0; i < g_ctx.readbacks.count(); ++i) s_free_readback(g_ctx.readbacks[i]);
+ 	g_ctx.readbacks.clear();
+-	for (int i = 0; i < g_ctx.staging_pending.count(); ++i) s_wait(&g_ctx.staging_pending[i]->map_done);
+-	for (int i = 0; i < g_ctx.staging_pending.count(); ++i) s_free_staging_chunk(g_ctx.staging_pending[i]);
++	// A build that cannot wait leaks the chunks still mapping, so their callbacks write to live memory.
++	if (s_can_wait()) {
++		for (int i = 0; i < g_ctx.staging_pending.count(); ++i) s_wait(&g_ctx.staging_pending[i]->map_done);
++		for (int i = 0; i < g_ctx.staging_pending.count(); ++i) s_free_staging_chunk(g_ctx.staging_pending[i]);
++	}
+ 	for (int i = 0; i < g_ctx.staging_free.count(); ++i) s_free_staging_chunk(g_ctx.staging_free[i]);
+ 	g_ctx.staging_pending.clear();
+ 	g_ctx.staging_free.clear();

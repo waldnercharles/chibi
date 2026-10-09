@@ -144,9 +144,6 @@ bool program_preflight(const execution_module *module, const ecs_world *world)
         }
         add_function(&functions, function->body);
         add_function(&functions, function->subscription);
-        for (int j = 0; j < function->local_count; j++) {
-            add_function(&functions, function->locals[j].initializer);
-        }
     }
     bool valid = true;
     for (int i = 0; i < acount(functions); i++) {

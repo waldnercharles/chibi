@@ -54,7 +54,7 @@ void prepared_function_ref(prepared_context *c, const behavior_function **functi
 {
     execution_wire *w = &c->wire;
     int own = -1, imported = -1;
-    uint64_t function_id = 0, local_id = 0;
+    uint64_t function_id = 0;
     int role = 0;
     if (!w->reading && *function) {
         for (int i = 0; i < acount(c->functions); i++) {
@@ -71,13 +71,6 @@ void prepared_function_ref(prepared_context *c, const behavior_function **functi
                 if (entry->subscription == *function) {
                     matched = true;
                     role = 1;
-                }
-                for (int k = 0; k < entry->local_count; k++) {
-                    if (entry->locals[k].initializer == *function) {
-                        matched = true;
-                        role = 2;
-                        local_id = entry->locals[k].id;
-                    }
                 }
                 if (matched) {
                     imported = i;
@@ -96,7 +89,6 @@ void prepared_function_ref(prepared_context *c, const behavior_function **functi
     INT(own);
     U64(function_id);
     INT(role);
-    U64(local_id);
     if (!w->reading || w->error) {
         return;
     }
@@ -119,14 +111,6 @@ void prepared_function_ref(prepared_context *c, const behavior_function **functi
                 if (role == 1) {
                     *function = p->functions[i].subscription;
                     return;
-                }
-                if (role == 2 && local_id) {
-                    for (int j = 0; j < p->functions[i].local_count; j++) {
-                        if (p->functions[i].locals[j].id == local_id) {
-                            *function = p->functions[i].locals[j].initializer;
-                            return;
-                        }
-                    }
                 }
             }
         }

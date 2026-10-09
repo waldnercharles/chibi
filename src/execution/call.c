@@ -161,7 +161,6 @@ static invocation_frame *frame_new(const behavior_function *function, behavior_f
         .call_depth = depth,
         .inspection_user = parent->inspection_user,
         .source_debug_user = parent->source_debug_user,
-        .source_debug_suppressed = parent->source_debug_suppressed,
         .source_pause = parent->source_pause,
         .source_capture = parent->source_capture,
         .begin_command = parent->begin_command,
@@ -176,8 +175,6 @@ static invocation_frame *frame_new(const behavior_function *function, behavior_f
         .request_action_break = parent->request_action_break,
         .take_action_break = parent->take_action_break,
         .store_component = parent->store_component,
-        .initialize_local = parent->initialize_local,
-        .store_local_group = parent->store_local_group,
         .component_membership = parent->component_membership,
         .failure_observer = parent->failure_observer,
         .bind_instance = parent->bind_instance,
@@ -243,7 +240,6 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     context->own_type_name = root->own_type_name;
     context->inspect = root->inspect;
     context->source_debug_user = root->source_debug_user;
-    context->source_debug_suppressed = root->source_debug_suppressed;
     context->source_pause = root->source_pause;
     context->source_capture = root->source_capture;
     context->watch = root->watch;

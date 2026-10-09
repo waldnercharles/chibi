@@ -37,7 +37,11 @@ static void cancel_continuations(behavior_function_context *ctx)
         if (child->continuation_context != ctx) {
             continue;
         }
-        assert(!child->running);
+        /* A running continuation stops when control returns to it. */
+        if (child->running) {
+            child->stopping = true;
+            continue;
+        }
         unlink_continuation(child);
         behavior_function_visit_contexts(&child->context, cancel_continuations);
         while (acount(child->requests)) {
@@ -68,7 +72,6 @@ void program_activation_free(execution_activation *activation)
     }
     afree(activation->requests);
     afree(activation->actions);
-    afree(activation->locals);
     behavior_function_activation_free(&activation->activation);
     behavior_function_release_host(&activation->context);
     arena_free(&activation->storage);
@@ -82,13 +85,6 @@ static void leave_context(behavior_function_context *ctx, int result)
     program_commit_instance(ctx);
     cancel_continuations(ctx);
     program_boxes_detach(a, ctx);
-    for (int i = 0; i < acount(a->locals);) {
-        if (a->locals[i].context == ctx) {
-            adel(a->locals, i);
-        } else {
-            i++;
-        }
-    }
     for (int i = 0; i < acount(a->requests);) {
         command_wait *wait = a->requests[i];
         if (wait->context != ctx) {
@@ -148,32 +144,28 @@ execution_activation *program_activation_new(
     if (resumable) {
         behavior_function_activation_init(function, &a->activation);
     }
-    a->context = (behavior_function_context){
-        .activation = resumable ? &a->activation : NULL,
-        .variables = instance->values,
-        .states = instance->node_states,
-        .variable_storage = instance->layouts,
-        .value_owner = instance,
-        .value_storage = &a->payload,
+    a->context = (behavior_function_context){ .activation = resumable ? &a->activation
+                                                                      : NULL,
+                                              .variables = instance->values,
+                                              .states = instance->node_states,
+                                              .variable_storage = instance->layouts,
+                                              .value_owner = instance,
+                                              .value_storage = &a->payload,
 
-        .arguments = args,
-        .argument_count = declared,
-        .results = results,
-        .now = now,
-        .delta_seconds = delta,
-        .instance_time = &instance->time,
-        .budget = budget,
-        .services = instance->program->services,
-        .owner = instance->owner,
-        .owner_type_name = "ecs.entity",
+                                              .arguments = args,
+                                              .argument_count = declared,
+                                              .results = results,
+                                              .now = now,
+                                              .delta_seconds = delta,
+                                              .instance_time = &instance->time,
+                                              .budget = budget,
+                                              .services = instance->program->services,
+                                              .owner = instance->owner,
+                                              .owner_type_name = "ecs.entity",
 
-        .call_leave = leave_context,
+                                              .call_leave = leave_context,
 
-        .initialize_local = program_initialize_local,
-        .store_local_group = program_store_local_group,
-
-        .inspection_user = a
-    };
+                                              .inspection_user = a };
     program_bind_world_callbacks(&a->context);
     program_bind_commands(&a->context);
     program_bind_tasks(&a->context);
@@ -194,7 +186,7 @@ execution_activation *program_activation_new(
 }
 void program_continuation_finish(execution_activation *a)
 {
-    if (a->initializer || !a->continuation_owner || !a->finished) {
+    if (!a->continuation_owner || !a->finished) {
         return;
     }
     behavior_function_context *ctx = a->continuation_context;
@@ -329,10 +321,13 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         }
     }
     program_commit_instance(&a->context);
+    if (a->stopping) {
+        program_activation_cancel(a);
+    }
     a->finished = a->status != FLOW_SUSPENDED_RESULT && a->status != FLOW_PAUSED_RESULT;
     if (a->finished) {
         program_boxes_detach(a, NULL);
-        program_task_finished(a, false);
+        program_task_finished(a, a->stopping);
     }
     program_inspection_finish(a);
     program_continuation_finish(a);

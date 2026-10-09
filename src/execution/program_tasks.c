@@ -178,10 +178,6 @@ static execution_box *box_for(behavior_function_context *owner, pin_value *slot)
 /* The box keeps the local's value once its frame no longer does. */
 static void box_detach(execution_box *box)
 {
-    behavior_function_context *owner = box->owner;
-    if (owner->initialize_local) {
-        owner->initialize_local(owner, box->value, false);
-    }
     int status = pin_value_snapshot_to_arena(&box->storage, &box->kept, box->value);
     assert(!status);
     (void)status;
@@ -284,6 +280,10 @@ static int start_task(behavior_function_context *ctx, int index)
     } else {
         program_activation_free(a);
     }
+    /* The started task cancelled its caller. */
+    if (caller->stopping) {
+        return FLOW_SUSPENDED_RESULT;
+    }
     return status < 0 ? status : FLOW_OK;
 }
 void program_bind_tasks(behavior_function_context *ctx)
@@ -319,53 +319,26 @@ void program_task_finished(execution_activation *a, bool cancelled)
     afree(waiters);
 }
 
-/* Whether the task or one of its descendants is the running caller. */
-static bool running(execution_instance *instance, const execution_task *t)
-{
-    if (t->activation && t->activation->running) {
-        return true;
-    }
-    for (execution_task *c = slot(instance, t->child); c; c = slot(instance, c->next)) {
-        if (running(instance, c)) {
-            return true;
-        }
-    }
-    return false;
-}
-/* Whether `caller` works for `t` or one of its descendants, as an outcome
- * continuation that resumed on its own does. */
-static bool works_for(execution_instance *instance, const execution_activation *caller, const execution_task *t)
-{
-    for (execution_task *c = find(instance, program_owning_task(caller)); c;
-         c = slot(instance, c->parent)) {
-        if (c == t) {
-            return true;
-        }
-    }
-    return false;
-}
-static int cancel(execution_instance *instance, const execution_activation *caller, uint64_t handle)
+/* Cancels the task and every task it started. A running one, such as the
+ * caller or the task that started it, stops when control returns to it. */
+static void cancel(execution_instance *instance, uint64_t handle)
 {
     execution_task *t = find(instance, handle);
     if (!t || !t->activation) {
-        return FLOW_OK;
+        return;
     }
-    /* Checked before anything is cancelled, so a refusal changes nothing. */
-    if (running(instance, t) || works_for(instance, caller, t)) {
-        return FLOW_ERR_STATE;
+    /* Cancelling a child may retire it from this list, so read ahead. */
+    for (execution_task *c = slot(instance, t->child), *next; c; c = next) {
+        next = slot(instance, c->next);
+        cancel(instance, handle_of(instance, c));
     }
-    /* Cancelling a child retires it from this list. */
-    for (execution_task *c = slot(instance, t->child); c; c = slot(instance, t->child)) {
-        int status = cancel(instance, caller, handle_of(instance, c));
-        if (status < 0) {
-            return status;
-        }
+    execution_activation *a = find(instance, handle)->activation;
+    if (a->running) {
+        a->stopping = true;
+        return;
     }
-    t = find(instance, handle);
-    execution_activation *a = t->activation;
     program_activation_cancel(a);
     program_task_finished(a, true);
-    return FLOW_OK;
 }
 
 int program_task_command(
@@ -385,11 +358,19 @@ int program_task_command(
             program_request_deliver(request, &(pin_value){ .type = PIN_BOOL, .b = running }, 1);
             break;
         case NODE_COMMAND_TASK_CANCEL: {
-            int status = cancel(instance, a, handle);
-            if (status < 0) {
-                ctx->error_message = "a task cannot cancel itself or a task "
-                                     "that is running it";
-                return status;
+            /* A continuation is not yet listed while it first runs, so
+             * cancelling its task, which may itself be running, cannot
+             * reach it there. */
+            uint64_t owner = program_owning_task(a);
+            bool owned = find(instance, owner) && find(instance, owner)->activation;
+            cancel(instance, handle);
+            execution_task *own = find(instance, owner);
+            a->stopping |= owned &&
+                           (!own || !own->activation || own->activation->stopping);
+            /* A caller that cancelled itself stops here. */
+            if (a->stopping) {
+                flow_host_release(request);
+                return FLOW_OK;
             }
             program_request_deliver(request, NULL, 0);
             break;

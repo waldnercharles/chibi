@@ -20,8 +20,6 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
 {
     script_symbol_kind kind = script_analyzer_is(node, "action_declaration")
                                 ? SCRIPT_ACTION
-                            : script_analyzer_is(node, "lazy_local_declaration")
-                                ? SCRIPT_LOCAL
                             : script_analyzer_is(node, "event_declaration") ? SCRIPT_EVENT
                             : script_analyzer_text_is(a, script_analyzer_field(node, "storage"), "shared")
                                 ? SCRIPT_SHARED_STATE
@@ -39,10 +37,9 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
         script_analyzer_field(node, "name"),
         kind,
         type,
-        kind == SCRIPT_STATE || kind == SCRIPT_SHARED_STATE || kind == SCRIPT_LOCAL
+        kind == SCRIPT_STATE || kind == SCRIPT_SHARED_STATE
     );
     a->out->symbols[symbol].disabled = script_analyzer_token_present(a, node, "disabled");
-    a->out->symbols[symbol].lazy_local = kind == SCRIPT_LOCAL;
     apush(a->initializers, ((initializer){ symbol, script_analyzer_field(node, "value") }));
 }
 int script_analyzer_function_new(analyzer *a, TSNode node, script_function_kind kind, int symbol)
@@ -328,7 +325,6 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
         if (script_analyzer_is(node, "state_declaration") ||
-            script_analyzer_is(node, "lazy_local_declaration") ||
             script_analyzer_is(node, "action_declaration") ||
             script_analyzer_is(node, "event_declaration")) {
             script_analyzer_declare_value(a, node);
@@ -785,7 +781,6 @@ void script_analyzer_binding(analyzer *a, TSNode node)
 bool script_analyzer_declaration_kind(TSNode node)
 {
     return script_analyzer_is(node, "state_declaration") ||
-           script_analyzer_is(node, "lazy_local_declaration") ||
            script_analyzer_is(node, "action_declaration") ||
            script_analyzer_is(node, "event_declaration") ||
            script_analyzer_is(node, "function_declaration") ||

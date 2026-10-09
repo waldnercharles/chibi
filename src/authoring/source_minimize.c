@@ -93,9 +93,8 @@ static bool same_symbol(const pair *p, int i, int j)
     bool parameter = x->kind == SCRIPT_PARAMETER;
     return x->kind == y->kind && same_type(x->type, y->type) &&
            x->capability == y->capability &&
-           (parameter || x->function == y->function) &&
-           x->writable == y->writable && x->disabled == y->disabled &&
-           x->outcome == y->outcome && x->lazy_local == y->lazy_local &&
+           (parameter || x->function == y->function) && x->writable == y->writable &&
+           x->disabled == y->disabled && x->outcome == y->outcome &&
            ((payload(x) && payload(y)) || same_text(x->name, y->name));
 }
 /* Arguments evaluate in source order, so a rewrite must keep their order as
@@ -1039,13 +1038,12 @@ static void call_rewrites(collector *c, TSNode node)
         operator_rewrite(c, node, call);
     }
 }
-/* `state.x` and `local.x` name their symbol directly. */
+/* `state.x` names its symbol directly. */
 static void storage_path(collector *c, TSNode node)
 {
     TSNode object = field(node, "object");
     if (is(object, "builtin_reference") &&
-        (!strncmp(c->text + start(object), "state", 5) ||
-         !strncmp(c->text + start(object), "local", 5))) {
+        !strncmp(c->text + start(object), "state", 5)) {
         unwrap_node(c, node, field(node, "member"));
     }
 }
@@ -1081,7 +1079,7 @@ static void collect(collector *c, TSNode node, pass phase)
         if (!ts_node_is_null(results) && !ts_node_named_child_count(results)) {
             add(c, end(field(node, "parameters")), end(results), "");
         }
-    } else if (!strcmp(type, "lazy_local_declaration") || !strcmp(type, "action_declaration") || !strcmp(type, "event_declaration")) {
+    } else if (!strcmp(type, "action_declaration") || !strcmp(type, "event_declaration")) {
         TSNode name = field(node, "name"), declared = field(node, "type");
         if (!ts_node_is_null(declared)) {
             add(c, end(name), end(declared), "");

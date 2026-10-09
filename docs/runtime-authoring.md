@@ -32,7 +32,9 @@ Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
 `material`, `shape`, `field`, `shader-library` and `model`. Before running content,
 `validate_project` checks the manifest, its start scene and every asset. Its
 `problems` list only the assets with errors or warnings, each diagnostic naming
-what is missing (`Unknown prototype 'Block'`) and, when known, its line.
+what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
+model and a shape share a name there is no catalog, so it lists no asset
+problems until one is renamed.
 
 ## Edit and verify
 

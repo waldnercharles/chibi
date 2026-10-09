@@ -1439,24 +1439,40 @@ static bool read_ui_asset(const char *root, const char *name, char *error, size_
     return ok;
 }
 
+/* Whether the ui folder holds markup for `name`, matched as preparation
+ * matches it: the exact file name, top level only. */
+static bool ui_exists(const char *root, const char *name)
+{
+    char folder[1024], file[512];
+    ui_folder(root, folder, sizeof folder);
+    snprintf(file, sizeof file, "%s" UI_MARKUP_EXTENSION, name);
+    DIR *dir = opendir(folder);
+    bool found = false;
+    for (struct dirent *entry; dir && !found && (entry = readdir(dir));) {
+        found = entry->d_name[0] != '.' && !strcmp(entry->d_name, file);
+    }
+    if (dir) {
+        closedir(dir);
+    }
+    return found;
+}
+
 /* UI language service (workstream B): validateAsset for a ui asset whose
  * markup is `rml`: its syntax, widgets, imports and RmlUi's warnings.
  * Returns the error count. */
 static int validate_ui(
     const char *root,
-    const asset_ref *ref,
+    const char *name,
     const char *rml,
     yyjson_mut_doc *doc,
     yyjson_mut_val *diagnostics
 )
 {
-    char *name = asset_name_from_filename(ref->filename);
     char content[1024];
     snprintf(content, sizeof content, "%s/content", root);
     char *rcss = ui_styles(root, name);
     int errors = automation_ui_validate(content, name, rml, rcss, doc, diagnostics);
     free(rcss);
-    free(name);
     return errors;
 }
 
@@ -5792,7 +5808,7 @@ static int compile_project_graph(const char *root, const behavior_asset *asset, 
     return report->error_count;
 }
 
-static int validate_prototype_shader(const char *, const char *, char *, size_t);
+static int validate_prototype_bindings(const char *, const char *, char *, size_t);
 static int validate_scene_behavior(const char *, const char *, char *, size_t);
 static int validate_scene_dependencies(const char *, const char *, char *, size_t);
 
@@ -5870,14 +5886,16 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 acount(prototype->components)
             );
             game_prototype_free(prototype);
-            if (validate_prototype_shader(root, json, load_error, sizeof load_error) !=
+            if (validate_prototype_bindings(root, json, load_error, sizeof load_error) !=
                 CHIBI_AUTOMATION_OK) {
                 errors = 1;
                 add_load_diagnostic(result->doc, diagnostics, load_error);
             }
         }
     } else if (ref.family->loader == ASSET_UI) {
-        errors = validate_ui(root, &ref, json, result->doc, diagnostics);
+        char *name = asset_name_from_filename(ref.filename);
+        errors = validate_ui(root, name, json, result->doc, diagnostics);
+        free(name);
     } else if (ref.family->loader == ASSET_EDITOR || ref.family->loader == ASSET_SCENARIO) {
         char load_error[256] = { 0 };
         bool ok = ref.family->loader == ASSET_EDITOR
@@ -5916,9 +5934,64 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     return 0;
 }
 
+/* A cataloged asset's path below `root`, owned. */
+static char *asset_path(const char *root, const catalog_asset *asset)
+{
+    size_t bytes = strlen(root) + strlen(asset->asset.relative) + 2;
+    char *path = xmalloc(bytes);
+    snprintf(path, bytes, "%s/%s", root, asset->asset.relative);
+    return path;
+}
+
+/* A cataloged asset's text, owned; NULL with why in `error`. */
+static char *asset_text(const char *root, const catalog_asset *asset, char *error, size_t size)
+{
+    char *path = asset_path(root, asset);
+    char *text = read_file(path, NULL, NULL, error, size);
+    free(path);
+    return text;
+}
+
+/* Whether `path` is one of the cataloged scenes, which the asset checks cover. */
+static bool cataloged_scene(const char *root, const catalog_asset *assets, const char *path)
+{
+    char *file = realpath(path, NULL);
+    bool found = false;
+    for (int i = 0; file && !found && i < acount(assets); i++) {
+        if (assets[i].asset.family->loader != ASSET_SCENE) {
+            continue;
+        }
+        char *scene = asset_path(root, &assets[i]);
+        char *other = realpath(scene, NULL);
+        found = other && !strcmp(file, other);
+        free(other);
+        free(scene);
+    }
+    free(file);
+    return found;
+}
+
+/* A start scene no scene asset covers loads, and so do its prototypes and
+   behaviors; false with why in `error` when it does not. */
+static bool valid_start_scene(const char *root, const char *path, char *error, size_t size)
+{
+    char *json = read_file(path, NULL, NULL, error, size);
+    bool valid = json && (validate_scene_dependencies(root, json, error, size) ==
+                              CHIBI_AUTOMATION_OK ||
+                          catalog_fallout(error));
+    free(json);
+    return valid;
+}
+
 /* The manifest opens at this build's version and names a start scene that
-   exists; adds a diagnostic and returns 1 when it does not. */
-static int validate_manifest(const char *root, yyjson_mut_doc *doc, yyjson_mut_val *diagnostics)
+   exists and loads, and a UI document that exists; adds a diagnostic for each
+   problem and returns how many. */
+static int validate_manifest(
+    const char *root,
+    const catalog_asset *assets,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *diagnostics
+)
 {
     chibi_project project = { 0 };
     char error[512] = { 0 };
@@ -5927,43 +6000,69 @@ static int validate_manifest(const char *root, yyjson_mut_doc *doc, yyjson_mut_v
         return 1;
     }
     char *scene = chibi_project_scene_path(&project, NULL);
+    assert(scene); /* an open project has a content folder and start scene */
     struct stat info;
-    bool found = scene && stat(scene, &info) == 0 && S_ISREG(info.st_mode);
-    if (!found) {
-        snprintf(
-            error,
-            sizeof error,
-            "start scene not found: %s",
-            project.start_scene ? project.start_scene : "(none)"
-        );
-        add_load_diagnostic(doc, diagnostics, error);
+    char message[1024];
+    int errors = 0;
+    if (stat(scene, &info) != 0 || !S_ISREG(info.st_mode)) {
+        snprintf(message, sizeof message, "start scene not found: %s", project.start_scene);
+        add_load_diagnostic(doc, diagnostics, message);
+        errors++;
+    } else if (!cataloged_scene(root, assets, scene) && !valid_start_scene(root, scene, error, sizeof error)) {
+        snprintf(message, sizeof message, "start scene %s: %s", project.start_scene, error);
+        add_load_diagnostic(doc, diagnostics, message);
+        errors++;
+    }
+    if (project.ui && !ui_exists(root, project.ui)) {
+        snprintf(message, sizeof message, "Unknown UI document '%s'", project.ui);
+        add_load_diagnostic(doc, diagnostics, message);
+        errors++;
     }
     free(scene);
     chibi_project_free(&project);
-    return !found;
+    return errors;
 }
 
 /* What validate_asset checks beyond the catalog: a scene's prototypes and
-   behaviors, and a prototype's shader binding. */
+   behaviors, and a prototype's shader binding and UI document. */
 static int validate_asset_dependencies(const char *root, const catalog_asset *asset, char *error, size_t size)
 {
     int loader = asset->asset.family->loader;
     if (asset->errors || (loader != ASSET_SCENE && loader != ASSET_PROTOTYPE)) {
         return CHIBI_AUTOMATION_OK;
     }
-    size_t bytes = strlen(root) + strlen(asset->asset.relative) + 2;
-    char *path = xmalloc(bytes);
-    snprintf(path, bytes, "%s/%s", root, asset->asset.relative);
-    char *json = read_file(path, NULL, NULL, error, size);
-    free(path);
+    char *json = asset_text(root, asset, error, size);
     if (!json) {
         return CHIBI_AUTOMATION_IO_ERROR;
     }
     int status = loader == ASSET_SCENE
                    ? validate_scene_dependencies(root, json, error, size)
-                   : validate_prototype_shader(root, json, error, size);
+                   : validate_prototype_bindings(root, json, error, size);
     free(json);
     return status;
+}
+
+/* validate_asset's markup, style and RmlUi checks for a UI asset the catalog
+   loaded; returns the error count. */
+static int validate_catalog_ui(
+    const char *root,
+    const catalog_asset *asset,
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *diagnostics
+)
+{
+    if (asset->errors || asset->asset.family->loader != ASSET_UI) {
+        return 0;
+    }
+    char error[256] = { 0 };
+    char *rml = asset_text(root, asset, error, sizeof error);
+    if (!rml) {
+        add_load_diagnostic(doc, diagnostics, error);
+        return 1;
+    }
+    int errors = validate_ui(root, asset->name, rml, doc, diagnostics);
+    free(rml);
+    return errors;
 }
 
 static void add_range_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const source_catalog_diagnostic *diagnostic)
@@ -6018,7 +6117,7 @@ static int handle_validate_project(const char *root, response *result, int *exit
     yyjson_mut_doc *doc = result->doc;
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, result->root, "result");
     yyjson_mut_val *project = yyjson_mut_obj_add_arr(doc, value, "project");
-    int errors = validate_manifest(root, doc, project);
+    int errors = validate_manifest(root, assets, doc, project);
     if (cataloged != CHIBI_AUTOMATION_OK) {
         add_load_diagnostic(doc, project, catalog_error);
         errors++;
@@ -6038,9 +6137,10 @@ static int handle_validate_project(const char *root, response *result, int *exit
                                 CHIBI_AUTOMATION_OK &&
                             !catalog_fallout(error);
         asset_errors += dependencies;
-        size_t bytes = strlen(root) + strlen(asset->asset.relative) + 2;
-        char *path = xmalloc(bytes);
-        snprintf(path, bytes, "%s/%s", root, asset->asset.relative);
+        /* Kept apart until the asset turns out to have problems. */
+        yyjson_mut_val *ui = yyjson_mut_arr(doc);
+        asset_errors += validate_catalog_ui(root, asset, doc, ui);
+        char *path = asset_path(root, asset);
         for (int j = 0; j < declarations; j++) {
             const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);
             if (diagnostic->path && !strcmp(diagnostic->path, path)) {
@@ -6070,6 +6170,9 @@ static int handle_validate_project(const char *root, response *result, int *exit
         }
         if (dependencies) {
             add_load_diagnostic(doc, diagnostics, error);
+        }
+        for (yyjson_mut_val *item; (item = yyjson_mut_arr_remove_first(ui));) {
+            yyjson_mut_arr_append(diagnostics, item);
         }
         free(path);
     }
@@ -11085,7 +11188,18 @@ static int validate_shader_binding(const char *root, const GameShader *binding, 
     return status;
 }
 
-static int validate_prototype_shader(const char *root, const char *text, char *error, size_t error_size)
+/* A GameUi component names a UI document the project has. */
+static int validate_ui_binding(const char *root, const GameUi *ui, char *error, size_t error_size)
+{
+    if (!ui || !ui->document || !ui->document[0] || ui_exists(root, ui->document)) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    set_errorf(error, error_size, "Unknown UI document '%s'", ui->document);
+    return CHIBI_AUTOMATION_VALIDATION_ERROR;
+}
+
+/* A prototype's shader binding and UI document resolve. */
+static int validate_prototype_bindings(const char *root, const char *text, char *error, size_t error_size)
 {
     game_prototype_registry registry = {
         .components = GAME_REGISTRY_COMPONENTS,
@@ -11096,11 +11210,13 @@ static int validate_prototype_shader(const char *root, const char *text, char *e
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     int status = CHIBI_AUTOMATION_OK;
-    for (int i = 0; i < acount(prototype->components); i++) {
+    for (int i = 0; i < acount(prototype->components) && status == CHIBI_AUTOMATION_OK;
+         i++) {
         const game_prototype_component *component = &prototype->components[i];
         if (!strcmp(component->desc->name, "GameShader")) {
             status = validate_shader_binding(root, component->data, error, error_size);
-            break;
+        } else if (!strcmp(component->desc->name, "GameUi")) {
+            status = validate_ui_binding(root, component->data, error, error_size);
         }
     }
     game_prototype_free(prototype);
@@ -11210,6 +11326,11 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
     if (!scene) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
+    if (scene->ui && !ui_exists(root, scene->ui)) {
+        set_errorf(error, error_size, "Unknown UI document '%s'", scene->ui);
+        game_scene_document_free(scene);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
     game_prototype_registry registry = {
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
@@ -11284,6 +11405,9 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
                     error,
                     error_size
                 );
+            }
+            if (status == CHIBI_AUTOMATION_OK) {
+                status = validate_ui_binding(root, GAME_GameUi_get_const(world, actor), error, error_size);
             }
             ecs_world_free(world);
             game_prototype_owned_strings_free(component_strings);

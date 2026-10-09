@@ -1234,7 +1234,9 @@ void ui_document_event_ranges(const char *rml, ui_document_event_range **ranges)
 {
     name_span *spans = NULL;
     event_spans(rml, &spans);
-    qsort(spans, (size_t)acount(spans), sizeof *spans, span_order);
+    if (acount(spans) > 1) {
+        qsort(spans, (size_t)acount(spans), sizeof *spans, span_order);
+    }
     for (int i = 0; i < acount(spans); i++) {
         int start = (int)(spans[i].at - rml);
         apush(*ranges, ((ui_document_event_range){ start, start + (int)spans[i].length }));
@@ -1250,7 +1252,9 @@ char *ui_document_rename(const char *rml, bool event, const char *from, const ch
     } else {
         use_spans(rml, &spans);
     }
-    qsort(spans, (size_t)acount(spans), sizeof *spans, span_order);
+    if (acount(spans) > 1) {
+        qsort(spans, (size_t)acount(spans), sizeof *spans, span_order);
+    }
     char *out = NULL;
     const char *p = rml;
     *count = 0;

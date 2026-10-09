@@ -126,12 +126,13 @@ TOOLS = {
 }
 # Every admitted selector of each built driver, run under one shared deadline.
 GROUPS = {
-    'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'runtime-scene',
-               'scene-prepared', 'render-resources', 'persistent-store', 'whole-alias',
-               'whole-integer', 'whole-conversion', 'whole-select', 'whole-math', 'owned-tick',
-               'parallel-tick', 'source-native-features', 'source-native-numeric-queries',
-               'source-native-material', 'source-presentation', 'system-schedule',
-               'source-systems', 'source-edit', 'shader-parameters-prepared', 'language-prepared'],
+    'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'box3d',
+               'runtime-scene', 'scene-prepared', 'render-resources', 'persistent-store',
+               'whole-alias', 'whole-integer', 'whole-conversion', 'whole-select', 'whole-math',
+               'owned-tick', 'parallel-tick', 'source-native-features',
+               'source-native-numeric-queries', 'source-native-material', 'source-presentation',
+               'system-schedule', 'source-systems', 'source-edit', 'shader-parameters-prepared',
+               'language-prepared'],
     'language': ['language', 'language-semantic', 'language-execution', 'language-program',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',

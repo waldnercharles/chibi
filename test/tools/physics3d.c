@@ -528,6 +528,27 @@ TEST_CASE(physics3d_followers_of_resting_bodies_let_them_sleep)
     return true;
 }
 
+/* A follower carried into a sleeping body wakes it and pushes it, as Box3D
+ * wakes what a moving kinematic body starts touching. */
+TEST_CASE(physics3d_moving_followers_wake_what_they_meet)
+{
+    ground();
+    ecs_entity sphere = collider((ecs_entity){ 0 }, (CF_V3){ 0, METER / 2, 0 }, ball(METER / 2), GAME_BODY_DYNAMIC);
+    steps(90);
+    REQUIRE(near_v3(body(sphere)->linear_velocity, (CF_V3){ 0 }, 0));
+    ecs_entity carrier = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 5 * METER, 3 * METER, 0 },
+        ball(METER / 4),
+        GAME_BODY_KINEMATIC
+    );
+    body(carrier)->linear_velocity = (CF_V3){ -3 * METER, 0, 0 };
+    collider(carrier, (CF_V3){ 0, -2.5f * METER, 0 }, box(METER, METER, METER), GAME_BODY_STATIC);
+    steps(120);
+    REQUIRE(position(sphere).x < -METER);
+    return true;
+}
+
 TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go)
 {
     set_gravity((CF_V3){ 0 });
@@ -773,6 +794,7 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_followers_use_the_parent_rotation);
     RUN_TEST_CASE(physics3d_followers_move_with_their_body);
     RUN_TEST_CASE(physics3d_followers_of_resting_bodies_let_them_sleep);
+    RUN_TEST_CASE(physics3d_moving_followers_wake_what_they_meet);
     RUN_TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go);
     RUN_TEST_CASE(physics3d_masks_and_sensors_filter_contacts);
     RUN_TEST_CASE(physics3d_interpolates_moving_roots_only);

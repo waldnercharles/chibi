@@ -1,4 +1,4 @@
-#include "runtime/player_prepared.h"
+#include "assets/project.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
@@ -344,8 +344,8 @@ TEST_CASE(application_settings_are_checked)
 
     /* The window shows the project name unless a title replaces it. */
     static const char NAME_LINE[] = "name \"Game\"\n";
-    char manifest[256], name[GAME_PLAYER_APPLICATION_TEXT_MAX + 2],
-        updated[2 * GAME_PLAYER_APPLICATION_TEXT_MAX];
+    char manifest[256], name[CHIBI_APPLICATION_TEXT_MAX + 2],
+        updated[2 * CHIBI_APPLICATION_TEXT_MAX];
     path(manifest, sizeof manifest, "game/project.kdl");
     char *text = tool_read(manifest);
     char *line = text ? strstr(text, NAME_LINE) : NULL;

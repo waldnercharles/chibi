@@ -13,7 +13,8 @@ typedef struct arena
 {
     arena_block *first;
     arena_block *current;
-    arena_allocation *allocations;
+    arena_allocation *allocations; /* Live collectable values. */
+    arena_allocation *unused;      /* Swept values kept for reuse. */
     bool collectable;
 } arena;
 

@@ -42,11 +42,11 @@ group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 which needs a display and a GPU driver the CI job does not set up, so they stay
 out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 
-CI runs the build and both groups on Linux and macOS. On Windows it builds the
-SDK tools, compiles `test/fixtures/studio` under a one-minute step timeout
-(the test supervisor needs POSIX signals) and builds Studio against the
-installed SDK, without running tests. The Windows jobs are advisory until they
-first pass.
+CI runs the build, both groups and `make test-tools` on Linux and macOS. On
+Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
+one-minute step timeout (the test supervisor needs POSIX signals) and builds
+Studio against the installed SDK, without running tests. The Windows jobs are
+advisory until they first pass.
 
 ## Feature coverage
 

@@ -92,6 +92,9 @@ jobs:
         run: make test-build LIBCLANG_ROOT="$LLVM"
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT="$LLVM"
+      # After make build, whose build/reflect the reflection identity cases run.
+      - name: Tooling and process integrations (one 60-second deadline)
+        run: make test-tools TOOLS_C_COMPILER="$CC"
       - name: Native selectors (one 60-second deadline)
         run: make test-native LIBCLANG_ROOT="$LLVM"
       - name: Language selectors (one 60-second deadline)

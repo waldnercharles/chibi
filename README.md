@@ -32,6 +32,25 @@ files or the compiler changed since the last run, then starts `chibi-player`
 beside it. Options after the project go to the player. Studio's `chibi-dev`
 opens a project the same way.
 
+To use `chibi` and Studio in any project without a checkout's build folders,
+install the SDK, then Studio from its checkout:
+
+```sh
+make install                    # into ~/.local; PREFIX=/elsewhere to change it
+make -C ../chibi-studio install # the same PREFIX
+cd ~/games/neon-swarm && chibi-dev
+```
+
+`make install` builds a Release SDK in its own build folder and installs
+`chibi`, `chibi-compile` and `chibi-player` into `PREFIX/bin`, their shaders and
+licenses into `PREFIX/share/chibi`, and the libraries, headers and CMake package
+that Studio and other consumers build against. Add `PREFIX/bin` to `PATH` if it
+is not there already; macOS does not include `~/.local/bin`. The executables
+find their resources relative to themselves. To uninstall, delete the files
+CMake lists in `build-install-sdk/install_manifest.txt` and
+`PREFIX/share/chibi/engine.json`. On Windows, which has no make wrappers, run
+the target's commands directly.
+
 To ship a game, export it with an installed SDK's `chibi`:
 
 ```sh
@@ -98,11 +117,13 @@ make studio-build STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolu
 make studio-run STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk PROJECT_ROOT=/absolute/game
 make studio-dev STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk PROJECT_ROOT=/absolute/game
 make package-studio STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk
+make install [PREFIX=/absolute/prefix]
 make prepare-project PROJECT_ROOT=/absolute/game ARTIFACT=/absolute/output/game.chibip
 make player-run ARTIFACT=/absolute/output/game.chibip RESOURCE_ROOT=/absolute/resources
 make controller-run PROJECT_ROOT=/absolute/game
 ```
 
+`STUDIO_SOURCE` defaults to the `chibi-studio` checkout beside the engine's.
 `studio-build` uses Ninja and `STUDIO_CMAKE_FLAGS` (Debug by default).
 `studio-dev` restores `STUDIO_CHECKPOINT`, defaulting to the Studio build's
 `workspace.json`. Source edits remain owned by the game; native changes require

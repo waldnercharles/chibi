@@ -1056,6 +1056,21 @@ static float distance(const physics_body *a, b2Transform first, const physics_bo
     return nearest;
 }
 
+/* The group a step gives the entity, read from the ECS: the topmost placed
+ * entity it moves with, when that one has a collider. */
+static unsigned read_group(const ecs_world *world, game_entities *entities, ecs_entity entity)
+{
+    ecs_entity top = entity;
+    for (ecs_entity at = game_transform_parent(world, top); at.slot;
+         at = game_transform_parent(world, top)) {
+        top = at;
+    }
+    return GAME_GameCollider_has(world, top) &&
+                   !game_entities_is_retiring(entities, top)
+             ? top.slot
+             : 0;
+}
+
 static bool read_geometry(ecs_world *world, game_entities *entities, ecs_entity entity, physics_body *body)
 {
     const GameCollider *collider = GAME_GameCollider_get_const(world, entity);
@@ -1069,6 +1084,7 @@ static bool read_geometry(ecs_world *world, game_entities *entities, ecs_entity 
         return false;
     }
     body->entity = entity;
+    body->group = read_group(world, entities, entity);
     body->collider = *collider;
     body->mask = game_materials_mask(game_entities_materials(entities), entity);
     body->end = (b2Transform){ { position.x, position.y }, b2MakeRot(angle) };

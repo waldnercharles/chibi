@@ -50,11 +50,14 @@ static const ecs_relationship_desc anchor_desc = {
     .name = "Anchor",
     .on_delete_target = ECS_CLEANUP_PANIC,
 };
+static const ecs_relationship_desc depends_desc = {
+    .id = 605,
+    .key = "sdk.ecs.depends",
+    .name = "Depends",
+    .on_delete_target = ECS_CLEANUP_DELETE,
+};
 static const ecs_relationship_desc *const relationship_descs[] = {
-    &likes_desc,
-    &owner_desc,
-    &parent_desc,
-    &anchor_desc,
+    &likes_desc, &owner_desc, &parent_desc, &anchor_desc, &depends_desc,
 };
 
 static ecs_world *world;
@@ -188,7 +191,7 @@ static void trace_destroy(ecs_world *w, ecs_event, ecs_entity entity, ecs_compon
     destroyed[destroyed_count++] = entity;
 }
 
-TEST_CASE(ecs_delete_cleanup_destroys_sources_depth_first)
+TEST_CASE(ecs_delete_cleanup_destroys_sources_in_postorder)
 {
     ecs_entity root = spawn(), branch = spawn(), leaf = spawn(), sibling = spawn();
     ecs_entity fan = spawn();
@@ -204,11 +207,26 @@ TEST_CASE(ecs_delete_cleanup_destroys_sources_depth_first)
     REQUIRE(ecs_world_record_add_pair(world, fan, likes_desc.id, sibling, 3) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     REQUIRE(destroyed_count == 4);
-    REQUIRE(same(destroyed[0], leaf) && same(destroyed[1], sibling));
-    REQUIRE(same(destroyed[2], branch) && same(destroyed[3], root));
+    REQUIRE(same(destroyed[0], leaf) && same(destroyed[1], branch));
+    REQUIRE(same(destroyed[2], sibling) && same(destroyed[3], root));
     REQUIRE(ecs_world_live_count(world) == 1 && ecs_entity_is_alive(world, fan));
     REQUIRE(ecs_pair_target_count(world, fan, likes_desc.id) == 0);
     REQUIRE(!ecs_entity_is_retiring(world, spawn()));
+    return true;
+}
+
+/* S depends on root and on T, which also depends on root. */
+TEST_CASE(ecs_delete_cleanup_destroys_shared_sources_before_their_targets)
+{
+    ecs_entity root = spawn(), s = spawn(), t = spawn();
+    REQUIRE(add_pair(s, depends_desc.id, root) == ECS_OK);
+    REQUIRE(add_pair(t, depends_desc.id, root) == ECS_OK);
+    REQUIRE(add_pair(s, depends_desc.id, t) == ECS_OK);
+    REQUIRE(ecs_world_observe(world, ECS_ON_DESTROY, 0, trace_destroy, NULL) > 0);
+    destroyed_count = 0;
+    REQUIRE(ecs_world_destroy_entity(world, root) == ECS_OK);
+    REQUIRE(destroyed_count == 3);
+    REQUIRE(same(destroyed[0], s) && same(destroyed[1], t) && same(destroyed[2], root));
     return true;
 }
 
@@ -313,7 +331,8 @@ void test_tool_ecs_relationships()
     RUN_TEST_CASE(ecs_registration_shares_one_id_space);
     RUN_TEST_CASE(ecs_exclusive_pairs_replace_their_target);
     RUN_TEST_CASE(ecs_acyclic_pairs_reject_cycles_when_recorded_and_applied);
-    RUN_TEST_CASE(ecs_delete_cleanup_destroys_sources_depth_first);
+    RUN_TEST_CASE(ecs_delete_cleanup_destroys_sources_in_postorder);
+    RUN_TEST_CASE(ecs_delete_cleanup_destroys_shared_sources_before_their_targets);
     RUN_TEST_CASE(ecs_panic_cleanup_fails_the_sync_point);
     RUN_TEST_CASE(ecs_pairs_target_entities_created_in_the_same_sync_point);
     RUN_TEST_CASE(ecs_pairs_survive_entity_growth_and_feed_the_world_hash);

@@ -13,6 +13,7 @@ void test_tool_validation_plan();
 void test_tool_publish();
 void test_tool_types();
 void test_tool_ecs();
+void test_tool_ecs_relationships();
 void test_tool_studio_selectors(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
@@ -232,6 +233,7 @@ int main(int argc, char **argv)
         test_tool_execution_policy();
         test_tool_types();
         test_tool_ecs();
+        test_tool_ecs_relationships();
         test_tool_package();
         test_tool_collab();
         test_tool_test_policy();

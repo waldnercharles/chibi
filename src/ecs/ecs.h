@@ -50,7 +50,36 @@ typedef enum
     ECS_ERR_COMMAND = -5,
     ECS_ERR_ITERATING = -6,
     ECS_ERR_CAPACITY = -7,
+    ECS_ERR_CYCLE = -8,
 } ecs_result;
+
+/* Relationships, after Flecs pairs (Rel, Target). A relationship is registered
+ * like a component and shares its id space; each pair links a source entity
+ * to a live target entity and carries no data. Forward and reverse indexes
+ * answer an entity's targets and a target's sources without scanning. */
+typedef enum
+{
+    ECS_REL_EXCLUSIVE = 1u << 0, /* One target per source; adding replaces it. */
+    ECS_REL_ACYCLIC = 1u << 1,   /* Adding a pair that closes a cycle fails. */
+    ECS_REL_TRAVERSABLE = 1u << 2 | ECS_REL_ACYCLIC, /* Queries may walk it. */
+} ecs_relationship_trait;
+
+/* What destroying a target does to the pairs that point at it. */
+typedef enum
+{
+    ECS_CLEANUP_REMOVE, /* Drop the pairs. */
+    ECS_CLEANUP_DELETE, /* Destroy the sources first, depth first. */
+    ECS_CLEANUP_PANIC,  /* Fail the sync point while any source remains. */
+} ecs_cleanup;
+
+typedef struct ecs_relationship_desc
+{
+    ecs_component_id id;
+    const char *key;
+    const char *name;
+    unsigned traits;
+    ecs_cleanup on_delete_target;
+} ecs_relationship_desc;
 
 /* Lifecycle events, after Flecs's OnAdd/OnSet/OnRemove observers. Component
  * events name one registered component; ECS_ON_DESTROY names none (zero). */
@@ -112,6 +141,10 @@ const struct ecs_execution_view *ecs_world_execution(const ecs_world *world);
 int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity);
 uint32_t ecs_world_entity_capacity(const ecs_world *world);
 int ecs_world_register_component(ecs_world *world, const ecs_component_desc *desc, ecs_component_id *out_id);
+int ecs_world_register_relationship(ecs_world *, const ecs_relationship_desc *, ecs_component_id *out_id);
+const ecs_relationship_desc *ecs_world_relationship(const ecs_world *, ecs_component_id);
+/* Adding component also adds implied when it is missing, as Flecs's With. */
+int ecs_world_add_with(ecs_world *, ecs_component_id component, ecs_component_id implied);
 int ecs_world_component_count(const ecs_world *world);
 const ecs_component_desc *ecs_world_component_at(const ecs_world *world, int index);
 const ecs_component_desc *ecs_world_component(const ecs_world *world, ecs_component_id id);
@@ -128,6 +161,22 @@ int ecs_world_record_add(
     uint64_t sort_key
 );
 int ecs_world_record_remove(ecs_world *world, ecs_entity entity, ecs_component_id component, uint64_t sort_key);
+/* Pair commands share the command buffer and its sort keys. A target may be a
+ * handle reserved by a create recorded earlier in the same sort order. */
+int ecs_world_record_add_pair(
+    ecs_world *,
+    ecs_entity entity,
+    ecs_component_id relationship,
+    ecs_entity target,
+    uint64_t sort_key
+);
+int ecs_world_record_remove_pair(
+    ecs_world *,
+    ecs_entity entity,
+    ecs_component_id relationship,
+    ecs_entity target,
+    uint64_t sort_key
+);
 int ecs_world_apply_commands(ecs_world *world);
 void ecs_world_clear_commands(ecs_world *world);
 int ecs_world_command_count(const ecs_world *world);
@@ -142,6 +191,13 @@ ecs_entity ecs_entity_from_u64(uint64_t value);
 int ecs_entity_is_alive(const ecs_world *world, ecs_entity entity);
 bool ecs_entity_is_retiring(const ecs_world *world, ecs_entity entity);
 int ecs_component_has(const ecs_world *world, ecs_entity entity, ecs_component_id component);
+bool ecs_has_pair(const ecs_world *, ecs_entity, ecs_component_id relationship, ecs_entity target);
+/* Targets in ascending handle order; an exclusive relationship has at most one. */
+int ecs_pair_target_count(const ecs_world *, ecs_entity, ecs_component_id relationship);
+ecs_entity ecs_pair_target(const ecs_world *, ecs_entity, ecs_component_id relationship, int index);
+/* Sources in the order their pairs were added. */
+int ecs_pair_source_count(const ecs_world *, ecs_component_id relationship, ecs_entity target);
+ecs_entity ecs_pair_source(const ecs_world *, ecs_component_id relationship, ecs_entity target, int index);
 /* Read the existing component index without allocating a query plan. Pending
  * destruction and explicitly excluded handles do not count as matches. */
 bool ecs_component_has_entities(

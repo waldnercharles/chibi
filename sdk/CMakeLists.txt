@@ -144,10 +144,13 @@ chibi_sdk_headers(chibi_native_capabilities PUBLIC runtime/native_capabilities.h
 target_link_libraries(chibi_native_capabilities PUBLIC chibi_capabilities chibi_execution_contract)
 
 add_library(chibi_ecs STATIC "${CHIBI_SDK_ROOT}/src/ecs/ecs.c"
-    "${CHIBI_SDK_ROOT}/src/ecs/component_catalog.c")
+    "${CHIBI_SDK_ROOT}/src/ecs/relationship.c" "${CHIBI_SDK_ROOT}/src/ecs/component_catalog.c")
 add_library(Chibi::ecs ALIAS chibi_ecs)
 set_target_properties(chibi_ecs PROPERTIES EXPORT_NAME ecs)
 chibi_sdk_headers(chibi_ecs PUBLIC ecs/ecs.h ecs/execution.h ecs/component_catalog.h)
+configure_file("${CHIBI_SDK_ROOT}/src/ecs/ecs_internal.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/ecs/ecs/ecs_internal.h" COPYONLY)
+target_include_directories(chibi_ecs PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/ecs")
 target_link_libraries(chibi_ecs PUBLIC chibi_types)
 
 add_library(chibi_events STATIC "${CHIBI_SDK_ROOT}/src/runtime/events.c")

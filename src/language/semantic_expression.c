@@ -558,7 +558,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         result.op = script_analyzer_operator_node(a, op);
         result.left = script_analyzer_expression(a, script_analyzer_field(node, "operand"), expected);
-        result.type = script_analyzer_expr_type(a, result.left);
+        result.type = result.op == SCRIPT_OP_NOT
+                        ? script_analyzer_presence(a, result.left)
+                        : script_analyzer_expr_type(a, result.left);
         result.effects = script_analyzer_expr_effects(a, result.left);
         if (result.op == SCRIPT_OP_NOT) {
             if (!(result.type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK))) {
@@ -639,6 +641,11 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         bool equality = result.op == SCRIPT_OP_EQ || result.op == SCRIPT_OP_NE;
         bool comparison = result.op >= SCRIPT_OP_EQ && result.op <= SCRIPT_OP_GE;
         bool logical = result.op == SCRIPT_OP_AND || result.op == SCRIPT_OP_OR;
+        if (logical || (equality && (script_analyzer_is(left, "nil") ||
+                                     script_analyzer_is(right, "nil")))) {
+            x = script_analyzer_presence(a, result.left);
+            y = script_analyzer_presence(a, result.right);
+        }
         if (equality &&
             (script_analyzer_is(left, "nil") || script_analyzer_is(right, "nil"))) {
             script_type nonnil = script_analyzer_is(left, "nil") ? y : x;

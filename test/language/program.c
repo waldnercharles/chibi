@@ -2510,6 +2510,30 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     REQUIRE(!analysis->valid);
     return true;
 }
+TEST_CASE(program_component_paths_test_presence)
+{
+    const char *source = "behavior H { n: double = 0;"
+                         "on Impulse(amount, enabled) {"
+                         "if self.Velocity { n += 1 }"
+                         "if !self.Velocity { n += 10 }"
+                         "if self.Velocity != nil && self.Position { n += 100 }"
+                         "if self.Velocity == nil || self.Velocity.x > 3 { n "
+                         "+= 1000 } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 4; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b % 2]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(positioned(1, b / 2))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", b / 2 ? 1101 : 1010));
+    }
+    return true;
+}
 TEST_CASE(program_parameters_defaults_and_contextual_words)
 {
     const char *source = "behavior V { n: double = 0\n"
@@ -2652,6 +2676,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
+    RUN_TEST_CASE(program_component_paths_test_presence);
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);

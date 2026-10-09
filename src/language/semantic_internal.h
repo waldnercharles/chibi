@@ -88,6 +88,7 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol);
 script_operator script_analyzer_operator_node(analyzer *a, TSNode node);
 char *script_analyzer_qualified_name(analyzer *a, TSNode node);
 int script_analyzer_callable_symbol(const analyzer *a, const char *name);
+script_type script_analyzer_presence(analyzer *a, int value);
 int script_analyzer_parameter_index(
     const script_catalog_parameter *parameters,
     int count,

@@ -157,6 +157,10 @@ entity. Reads can traverse nested reflected structs; assigning a nested struct
 subfield is currently rejected. Component and field names that cannot be resolved
 produce source diagnostics. Prototype membership improves completion ranking;
 it does not guarantee that a component is present on a live entity.
+A component path used as a condition tests presence instead: `if self.GameDash`,
+`!self.GameDash`, `self.GameDash == nil` and `&&`/`||` operands ask whether the
+entity has the component, so `if self.GameDash && self.GameDash.remaining > 0`
+reads the field only when it exists.
 
 Ordinary blocks support assignments, compound assignments, `if`/`else`, `match`, `while`,
 `for (i in first..last)` with inclusive bounds, `foreach (item in array)`,

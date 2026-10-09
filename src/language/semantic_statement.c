@@ -47,9 +47,18 @@ void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool tr
         }
     }
 }
+/* A component path tested as a condition asks whether the entity has it. */
+script_type script_analyzer_presence(analyzer *a, int value)
+{
+    script_expression *e = &a->out->expressions[value];
+    if (e->kind == SCRIPT_EXPR_COMPONENT) {
+        e->type.flags |= SCRIPT_TYPE_OPTIONAL;
+    }
+    return e->type;
+}
 void script_analyzer_condition_type(analyzer *a, TSNode node, int value)
 {
-    script_type type = script_analyzer_expr_type(a, value);
+    script_type type = script_analyzer_presence(a, value);
     if (!(type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK))) {
         script_analyzer_require(a, node, script_analyzer_boolean_type(), type);
     }

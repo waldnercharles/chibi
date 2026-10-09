@@ -61,7 +61,7 @@ typedef enum
 {
     ECS_REL_EXCLUSIVE = 1u << 0, /* One target per source; adding replaces it. */
     ECS_REL_ACYCLIC = 1u << 1,   /* Adding a pair that closes a cycle fails. */
-    ECS_REL_TRAVERSABLE = 1u << 2 | ECS_REL_ACYCLIC, /* Queries may walk it. */
+    ECS_REL_TRAVERSABLE = 1u << 2, /* Queries may walk it; registration adds ACYCLIC. */
 } ecs_relationship_trait;
 
 /* What destroying a target does to the pairs that point at it. */

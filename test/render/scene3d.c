@@ -1,5 +1,6 @@
 #include "render/scene3d.h"
 
+#include "render/fog.h"
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
@@ -10,6 +11,7 @@
 #include "runtime/engine.h"
 #include "runtime/images/sky.h"
 #include "runtime/particles.h"
+#include "runtime/visibility.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #if CHIBI_TEST_MATERIAL_GRAPHS
@@ -158,15 +160,9 @@ static CF_V3 pixel_floor(CF_V3 world)
     return (CF_V3){ ground.x, 0, ground.y };
 }
 
-/* Post-processes the scene target and reads back the tone-mapped output. */
-static bool finish(float time)
+static bool read_pixels(CF_Canvas canvas)
 {
-    bool processed = render_scene3d_post_process(post, time);
-    cf_app_draw_onto_screen(false);
-    if (!processed) {
-        return false;
-    }
-    CF_Readback readback = cf_canvas_readback(render_scene3d_post_output(post));
+    CF_Readback readback = cf_canvas_readback(canvas);
     assert(readback.id);
     while (!cf_readback_ready(readback)) {
         cf_sleep(1);
@@ -175,6 +171,14 @@ static bool finish(float time)
     bool read = cf_readback_data(readback, pixels, bytes) == bytes;
     cf_destroy_readback(readback);
     return read;
+}
+
+/* Post-processes the scene target and reads back the tone-mapped output. */
+static bool finish(float time)
+{
+    bool processed = render_scene3d_post_process(post, time);
+    cf_app_draw_onto_screen(false);
+    return processed && read_pixels(render_scene3d_post_output(post));
 }
 
 static bool render_at(const GameEnvironment *environment, float time)
@@ -327,6 +331,51 @@ TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
     REQUIRE(look_through_camera() == 1);
     GAME_GameTransform3D_get(world, entity)->scale = (CF_V3){ 0 };
     REQUIRE(look_through_camera() == -1);
+    return true;
+}
+
+/* Fog conceals ground no vision source sees. A ray that never reaches the
+ * ground ahead, such as one above a level camera's horizon, sees past the
+ * grid, so fog conceals it too. */
+TEST_CASE(fog_conceals_rays_that_miss_the_ground)
+{
+    GameFog settings = { .origin = { -8, -8 },
+                         .columns = 16,
+                         .rows = 16,
+                         .cell_size = 1,
+                         .color = 0xff0000ffu };
+    add(GAME_COMPONENT_GameFog.id, &settings);
+    ecs_entity eye = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0, 0 });
+    GameVision vision = { .radius = 6 };
+    assert(ecs_world_record_add(world, eye, GAME_COMPONENT_GameVision.id, &vision, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    game_visibility *visibility = game_visibility_new(world, NULL);
+    const char *error = game_visibility_update(visibility, 0);
+    engine_viewport_camera frame = {
+        .span_width = 2,
+        .span_height = 2,
+        .lens = { .eye = { 0, 1, 0 },
+                  .forward = { 0, 0, -1 },
+                  .up = { 0, 1, 0 },
+                  .fov = CF_PI / 2 },
+    };
+    render_scene3d_camera level = render_scene3d_camera_frame(&frame);
+    render_fog *fog = render_fog_new();
+    CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    cf_canvas_set_clear_color(canvas, (CF_Color){ 1, 1, 1, 1 });
+    cf_app_update(NULL);
+    bool drawn = render_fog_draw(fog, visibility, &frame, &level, 0);
+    cf_render_to(canvas, true);
+    cf_app_draw_onto_screen(false);
+    bool read = read_pixels(canvas);
+    cf_destroy_canvas(canvas);
+    render_fog_free(fog);
+    game_visibility_free(visibility);
+    REQUIRE(!error && drawn && read);
+    CF_Pixel sky = pixels[4 * SIDE + SIDE / 2],
+             ground = pixels[(SIDE - 5) * SIDE + SIDE / 2];
+    REQUIRE(sky.colors.r > 192 && sky.colors.g < 64);
+    REQUIRE(ground.colors.r > 192 && ground.colors.g > 192);
     return true;
 }
 
@@ -2022,6 +2071,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(camera_field_of_view_and_clips_shape_the_projection);
     RUN_TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use);
     RUN_TEST_CASE(navigating_drops_an_authored_lens);
+    RUN_TEST_CASE(fog_conceals_rays_that_miss_the_ground);
     RUN_TEST_CASE(picking_and_bounds_place_children_under_their_parent);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(picking_and_bounds_place_child_models_under_their_parent);

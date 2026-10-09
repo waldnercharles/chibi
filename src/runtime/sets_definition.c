@@ -1,33 +1,19 @@
 #include "runtime/sets.h"
 
-#define PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
-    { .name = NAME,                                                                            \
-      .kind = KIND,                                                                            \
-      .storage = STORAGE,                                                                      \
-      .type_name = TYPE_NAME,                                                                  \
-      .container = CONTAINER,                                                                  \
-      .type_flags = FLAGS,                                                                     \
-      .generic_group = GROUP,                                                                  \
-      .reference_kind = REFERENCE,                                                             \
-      .default_owner = OWNER,                                                                  \
-      .has_default = true,                                                                     \
-      .default_value = VALUE },
-#define ARRAYS(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                    \
-    static const native_parameter_definition KERNEL##_inputs[] = { INPUTS(PORT) }; \
-    static const native_parameter_definition KERNEL##_outputs[] = { OUTPUTS(PORT) };
+#define ARRAYS(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                           \
+    static const native_parameter_definition KERNEL##_inputs[] = { INPUTS(NATIVE_PORT) }; \
+    static const native_parameter_definition KERNEL##_outputs[] = { OUTPUTS(NATIVE_PORT) };
 NATIVE_SET_OPERATIONS(ARRAYS)
 #undef ARRAYS
-#undef PORT
-#define COUNT(A) (sizeof(A) / sizeof *(A))
 #define DEFINITION(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)            \
     { .canonical_name = NAME,                                                  \
       NATIVE_SET_##KERNEL##_PRESENTATION,                                      \
       .source_name = SOURCE,                                                   \
       .kind = SCRIPT_CAPABILITY_FUNCTION,                                      \
       .inputs = KERNEL##_inputs,                                               \
-      .input_count = COUNT(KERNEL##_inputs),                                   \
+      .input_count = NATIVE_COUNT(KERNEL##_inputs),                            \
       .outputs = KERNEL##_outputs,                                             \
-      .output_count = COUNT(KERNEL##_outputs),                                 \
+      .output_count = NATIVE_COUNT(KERNEL##_outputs),                          \
       .completion_output = -1,                                                 \
       .pure = true,                                                            \
       .variadic = VARIADIC },
@@ -43,8 +29,7 @@ static const native_definition_binding BINDINGS[] = { NATIVE_SET_OPERATIONS(BIND
 #undef BINDING
 const native_definition_pack NATIVE_SET_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
-    .definition_count = COUNT(DEFINITIONS),
+    .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,
-    .binding_count = COUNT(BINDINGS),
+    .binding_count = NATIVE_COUNT(BINDINGS),
 };
-#undef COUNT

@@ -216,7 +216,7 @@ bool authoring_ui_assets_prepare(
         closedir(dir);
     }
     if (acount(names) > 1) {
-        qsort(names, (size_t)acount(names), sizeof *names, compare);
+        asort(names, compare);
     }
     for (int i = 0; i < acount(*assets); i++) {
         if ((*assets)[i].length > GAME_PLAYER_MAX_ASSET_BYTES - total) {

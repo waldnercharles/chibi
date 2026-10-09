@@ -96,7 +96,7 @@ text_rank_row *text_rank(const text_rank_entry *entries, int count, const char *
         return out;
     }
     group_rows(rows, entries);
-    qsort(rows, (size_t)acount(rows), sizeof *rows, compare_rows);
+    asort(rows, compare_rows);
     if (filter && (flags & TEXT_RANK_LIMIT)) {
         limit_groups(rows);
     }

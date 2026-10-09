@@ -10,7 +10,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/local.h"
 #include "graph/model/registry.h"
-#include "runtime/component_catalog.h"
+#include "runtime/declared_components.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/asset_value.h"
@@ -189,10 +189,7 @@ static char *saved_source(const refactor_project *, reference_asset_kind kind, l
         case REFERENCE_ASSET_PROTOTYPE:
             return game_prototype_save(l->prototype);
         case REFERENCE_ASSET_SCENE:
-            return game_scene_document_save(
-                l->scene,
-                (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
-            );
+            return game_scene_document_save(l->scene, project_components());
         case REFERENCE_ASSET_KIND_COUNT: break;
         default: return behavior_asset_save(l->graphs);
     }
@@ -1172,7 +1169,7 @@ static bool finish(work *w, refactor_plan *plan)
         l->metadata = NULL;
         l->references = NULL;
     }
-    qsort(plan->edits, (size_t)acount(plan->edits), sizeof *plan->edits, edit_order);
+    asort(plan->edits, edit_order);
     return true;
 }
 

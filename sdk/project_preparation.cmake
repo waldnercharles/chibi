@@ -14,13 +14,13 @@ target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi
     PRIVATE chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog)
 
 add_library(chibi_project_compilation STATIC)
-foreach(unit project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
+foreach(unit component_declarations project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
     graph_sources native_graph_prepare material_prepare scene_prepare ui_prepare ui_prepare_assets)
     target_sources(chibi_project_compilation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
 endforeach()
 add_library(Chibi::project_compilation ALIAS chibi_project_compilation)
 set_target_properties(chibi_project_compilation PROPERTIES EXPORT_NAME project_compilation)
-chibi_sdk_headers(chibi_project_compilation PUBLIC authoring/project_compile.h authoring/renderer_catalog.h
+chibi_sdk_headers(chibi_project_compilation PUBLIC authoring/component_declarations.h authoring/project_compile.h authoring/renderer_catalog.h
     authoring/project_prepare.h authoring/prototype_prepare.h authoring/material_prepare.h authoring/scene_prepare.h)
 foreach(header project_prepare_internal graph_sources native_graph_prepare ui_prepare)
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"
@@ -33,8 +33,19 @@ target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chib
     chibi_asset_text chibi_project_document chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json)
 list(APPEND CHIBI_SDK_TARGETS chibi_shader_preparation chibi_project_compilation)
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
     add_executable(chibi-compile "${CHIBI_SDK_ROOT}/src/host/compile_main.c")
     target_link_libraries(chibi-compile PRIVATE Chibi::project_compilation)
+endif()
+if(CHIBI_WEB_PLAYER)
+    # Prepared artifacts carry their target's ABI, so `chibi export --web` runs
+    # this browser-target compiler under Node to prepare the game.
+    set_target_properties(chibi-compile PROPERTIES SUFFIX ".js")
+    target_link_options(chibi-compile PRIVATE -sENVIRONMENT=node -sNODERAWFS=1 -sEXIT_RUNTIME=1
+        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576)
+    install(FILES "$<TARGET_FILE:chibi-compile>" "$<TARGET_FILE_DIR:chibi-compile>/chibi-compile.wasm"
+        DESTINATION compiler COMPONENT web_player EXCLUDE_FROM_ALL)
+elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    chibi_windows_manifest(chibi-compile)
     install(TARGETS chibi-compile RUNTIME DESTINATION bin)
 endif()

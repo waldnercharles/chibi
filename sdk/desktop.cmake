@@ -7,6 +7,14 @@ endif()
 if(NOT CHIBI_DEPENDENCY_SOURCE_ROOT)
     set(CHIBI_DEPENDENCY_SOURCE_ROOT "${CHIBI_SDK_ROOT}")
 endif()
+# On Windows, dependencies build without the project's strict warnings, as
+# their package does; SDL's Windows sources do not compile under them.
+get_directory_property(project_options COMPILE_OPTIONS)
+if(WIN32)
+    set(dependency_options ${project_options})
+    list(FILTER dependency_options EXCLUDE REGEX "^-W")
+    set_directory_properties(PROPERTIES COMPILE_OPTIONS "${dependency_options}")
+endif()
 if(NOT TARGET cute)
     if(CHIBI_DEPENDENCY_PACKAGE)
         include("${CHIBI_DEPENDENCY_PACKAGE}")
@@ -21,6 +29,7 @@ endif()
 if(NOT TARGET RmlUi::Core)
     include("${CHIBI_SDK_ROOT}/cmake/rmlui_dependencies.cmake")
 endif()
+set_directory_properties(PROPERTIES COMPILE_OPTIONS "${project_options}")
 include("${CMAKE_CURRENT_LIST_DIR}/desktop_dependencies.cmake")
 chibi_desktop_dependency(cute CHIBI_DESKTOP_CUTE)
 chibi_desktop_dependency(RmlUi::Core CHIBI_DESKTOP_RMLUI)
@@ -116,12 +125,24 @@ endif()
 install(DIRECTORY "${CHIBI_SDK_ROOT}/src/render/shaders/" DESTINATION share/chibi/shaders)
 list(APPEND CHIBI_SDK_TARGETS chibi_platform chibi_ui_host chibi_renderer)
 
-# The deployed player links only prepared runtime packages.
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+# The deployed player links only prepared runtime packages. The web SDK
+# builds its browser player only on request, outside the SDK package.
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
     add_executable(chibi-player "${CHIBI_SDK_ROOT}/src/host/player_main.c")
     target_link_libraries(chibi-player PRIVATE Chibi::render Chibi::player
         Chibi::native_prepared Chibi::host_native_default)
     set_target_properties(chibi-player PROPERTIES LINKER_LANGUAGE CXX)
+endif()
+if(CHIBI_WEB_PLAYER)
+    set(web "${CHIBI_SDK_ROOT}/src/host/web")
+    set_target_properties(chibi-player PROPERTIES SUFFIX ".js")
+    set_property(TARGET chibi-player APPEND PROPERTY LINK_DEPENDS "${web}/player_data.js")
+    target_link_options(chibi-player PRIVATE "--pre-js=${web}/player_data.js"
+        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1)
+    install(FILES "$<TARGET_FILE:chibi-player>" "$<TARGET_FILE_DIR:chibi-player>/chibi-player.wasm"
+        "${web}/index.html" DESTINATION . COMPONENT web_player EXCLUDE_FROM_ALL)
+elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    chibi_windows_manifest(chibi-player)
     install(TARGETS chibi-player RUNTIME DESTINATION bin)
 endif()
 

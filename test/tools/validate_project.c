@@ -212,7 +212,7 @@ TEST_CASE(missing_ui_documents_are_reported)
     return true;
 }
 
-TEST_CASE(missing_dependencies_are_reported_once)
+TEST_CASE(catalog_errors_are_reported_once)
 {
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
     REQUIRE(validate() != 0 && errors() == 1);
@@ -236,6 +236,50 @@ TEST_CASE(missing_dependencies_are_reported_once)
     REQUIRE(validate() != 0 && errors() == 1);
     diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
     REQUIRE(!strcmp(first_message(diagnostics), "Unknown behavior or system 'Ghost'"));
+
+    /* A source's syntax errors come once, from the catalog, with their lines. */
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Broken\"}") == 0
+    );
+    write_file("game/content/behaviors/Broken.chibi", "behavior Broken\n\nfn update( {\n");
+    REQUIRE(validate() != 0 && errors() == 2);
+    diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
+    REQUIRE(yyjson_arr_size(diagnostics) == 2);
+    yyjson_val *diagnostic;
+    size_t index, count;
+    yyjson_arr_foreach(diagnostics, index, count, diagnostic)
+    {
+        REQUIRE(yyjson_obj_get(diagnostic, "line"));
+    }
+
+    /* The catalog lists the declaration's unknown type, not the cast's. */
+    write_file("game/content/behaviors/Broken.chibi", "behavior \"Broken\" {\n    state a: Foo = 0\n    on Tick {\n        a = cast<Foo>(a)\n    }\n}\n");
+    REQUIRE(validate() != 0 && errors() == 2);
+    diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
+    REQUIRE(yyjson_arr_size(diagnostics) == 2);
+    return true;
+}
+
+TEST_CASE(old_projects_are_not_upgraded)
+{
+    char manifest[256];
+    path(manifest, sizeof manifest, "game/project.kdl");
+    char *text = tool_read(manifest);
+    int version = 0;
+    REQUIRE(text && sscanf(text, "version %d", &version) == 1);
+    char old[1024];
+    snprintf(old, sizeof old, "version %d%s", version - 1, strchr(text, '\n'));
+    free(text);
+    tool_write(manifest, old);
+    REQUIRE(validate() != 0 && errors() == 1);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "--migrate"));
+    /* Validation leaves the old project as it was. */
+    text = tool_read(manifest);
+    bool kept = text && !strcmp(text, old);
+    free(text);
+    REQUIRE(kept);
     return true;
 }
 
@@ -298,7 +342,8 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(start_scene_outside_scenes_is_parsed);
     RUN_TEST_CASE(cataloged_start_scene_is_reported_once);
     RUN_TEST_CASE(missing_ui_documents_are_reported);
-    RUN_TEST_CASE(missing_dependencies_are_reported_once);
+    RUN_TEST_CASE(catalog_errors_are_reported_once);
+    RUN_TEST_CASE(old_projects_are_not_upgraded);
     RUN_TEST_CASE(prototype_includes_resolve);
     pu_clear_setup();
 }

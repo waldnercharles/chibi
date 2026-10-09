@@ -12,7 +12,9 @@
 #include "runtime/component_catalog.h"
 #include "runtime/native_prepared.h"
 #include "runtime/player_prepared.h"
+#include "support/file_io.h"
 #include "support/resources.h"
+#include "support/xalloc.h"
 #include "types/catalog.h"
 
 #include <errno.h>
@@ -21,6 +23,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 /* This final application supplies one explicit native type composition. */
 int type_catalog_pack_count()
@@ -40,7 +46,19 @@ typedef struct
     app_scene_renderer *renderer;
     engine_viewport *viewport;
     bool render_failed;
+    /* A browser keeps calling frame() after main returns, so everything a
+     * frame reads lives here rather than on main's stack. */
+    native_prepared_context context;
+    execution_prepared_linker linker;
+    ui_world ui;
+    double now;
+    double fixed_dt;
 } player_host;
+#define BUNDLE_ARTIFACT "game.chibip"
+#define BUNDLE_ENGINE "engine"
+#define BUNDLE_MOUNT "/chibi-game"
+#define DEFAULT_WIDTH 1280
+#define DEFAULT_HEIGHT 720
 static volatile sig_atomic_t stopped;
 static rml_input keys[128];
 static int key_count;
@@ -309,6 +327,65 @@ static bool number(const char *text, double *out)
     *out = strtod(text, &end);
     return !errno && end != text && !*end && isfinite(*out) && *out > 0;
 }
+/* An exported game keeps its artifact and resources in data/ beside the
+ * executable, or in Contents/Resources of a macOS app bundle, with the engine's
+ * shaders, licenses and identity in engine/ under it. Returns the
+ * owned directory, or NULL when this player was not exported with a game. */
+static char *bundle_directory()
+{
+#ifdef __EMSCRIPTEN__
+    /* The page fetches the exported data/ folder here before main runs. */
+    return xstrdup("/data");
+#else
+    static const char *const candidates[] = {
+        "/data",
+#ifdef __APPLE__
+        "/../Resources",
+#endif
+    };
+    char *executable = file_executable_dir();
+    for (size_t i = 0; i < sizeof candidates / sizeof *candidates; i++) {
+        size_t size = strlen(executable) + strlen(candidates[i]) +
+                      sizeof "/" BUNDLE_ARTIFACT;
+        char *directory = xmalloc(size);
+        snprintf(directory, size, "%s%s/" BUNDLE_ARTIFACT, executable, candidates[i]);
+        FILE *file = fopen(directory, "rb");
+        bool found = file != NULL;
+        if (file) {
+            fclose(file);
+        }
+        directory[strlen(executable) + strlen(candidates[i])] = 0;
+        if (found) {
+            free(executable);
+            return directory;
+        }
+        free(directory);
+    }
+    free(executable);
+    return NULL;
+#endif
+}
+static char *join(const char *directory, const char *name)
+{
+    size_t size = strlen(directory) + strlen(name) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", directory, name);
+    return path;
+}
+/* The icon lives under the resource root, which CF reads through a mount. */
+static void set_icon(const char *root, const char *icon)
+{
+    if (!icon) {
+        return;
+    }
+    if (!root || cf_is_error(cf_fs_mount(root, BUNDLE_MOUNT, true))) {
+        fprintf(stderr, "Application icon needs a readable --resource-root: %s\n", icon);
+        return;
+    }
+    char *path = join(BUNDLE_MOUNT, icon);
+    cf_app_set_icon(path);
+    free(path);
+}
 static void log_message(void *, const execution_log_message *message)
 {
     printf(
@@ -318,6 +395,116 @@ static void log_message(void *, const execution_log_message *message)
         message->text
     );
 }
+/* Runs one frame: 1 to continue, 0 when the player quits, and -1 after
+ * printing why the game failed. */
+static int run_frame(player_host *host)
+{
+    game_world *world = game_player_world(host->player);
+    engine *runtime = game_world_engine(world);
+    const game_scene *scene = game_scene_instance_scene(game_player_scene(host->player));
+    key_count = 0;
+    pressed_controls = 0;
+    input_overflow = false;
+    if (engine_viewport_ui_typing(host->viewport)) {
+        cf_input_enable_ime();
+    } else {
+        cf_input_disable_ime();
+    }
+    cf_app_update(NULL);
+    if (!text_input(host)) {
+        fprintf(stderr, "Invalid or oversized text input\n");
+        return -1;
+    }
+    if (input_overflow) {
+        fprintf(stderr, "Input event limit exceeded\n");
+        return -1;
+    }
+    bool typing = engine_viewport_ui_typing(host->viewport);
+    if (!typing && cf_key_just_pressed(CF_KEY_ESCAPE)) {
+        engine_set_playing(runtime, !engine_is_playing(runtime));
+    }
+    if (!typing && !engine_is_playing(runtime) && cf_key_just_pressed(CF_KEY_Q)) {
+        return 0;
+    }
+    int width, height;
+    cf_app_get_size(&width, &height);
+    engine_viewport_request_resize(host->viewport, width, height);
+    engine_viewport_host_input input = { .width = width,
+                                         .height = height,
+                                         .resolution = 1,
+                                         .x = cf_mouse_x(),
+                                         .y = cf_mouse_y(),
+                                         .hovered = cf_app_has_focus(),
+                                         .focused = cf_app_has_focus(),
+                                         .wheel = cf_mouse_wheel_motion(),
+                                         .modifiers = modifiers(),
+                                         .keys = keys,
+                                         .key_count = key_count };
+    for (int i = 0; i < key_count; i++) {
+        keys[i].modifiers = input.modifiers;
+    }
+    for (int i = 0; i < 3; i++) {
+        input.down[i] = cf_mouse_down(i);
+        input.pressed[i] = cf_mouse_just_pressed(i);
+        input.released[i] = cf_mouse_just_released(i);
+    }
+    engine_viewport_set_host_input(host->viewport, &input);
+    engine_set_focus(runtime, input.focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_NONE);
+    if (sample_input(host) < 0 || engine_frame(runtime, host->now) < 0) {
+        const char *message = engine_error(runtime);
+        fprintf(stderr, "%s\n", message ? message : "Gameplay input rejected");
+        return -1;
+    }
+    engine_viewport_view view;
+    int camera = game_camera_view(game_world_ecs(world), runtime, &view);
+    if (camera < 0) {
+        fprintf(stderr, "Invalid active camera\n");
+        return -1;
+    }
+    if (camera) {
+        engine_viewport_set_view(host->viewport, &view);
+        engine_viewport_clear_arena_camera(host->viewport);
+    } else if (game_scene_perspective(scene)) {
+        engine_viewport_set_arena_showcase(host->viewport, (float)host->now);
+    }
+    engine_viewport_set_time(host->viewport, host->now);
+    if (engine_viewport_draw(
+            host->viewport,
+            &(engine_viewport_controls){ .playing = engine_is_playing(runtime),
+                                         .session = true }
+        ) < 0 ||
+        host->render_failed) {
+        fprintf(stderr, "%s\n", app_scene_renderer_error(host->renderer));
+        return -1;
+    }
+    const char *ui_error = render_ui_error(engine_viewport_ui(host->viewport));
+    if (ui_error[0]) {
+        fprintf(stderr, "%s\n", ui_error);
+        return -1;
+    }
+    engine_viewport_present(host->viewport);
+    cf_app_draw_onto_screen(true);
+    host->now += host->fixed_dt ? host->fixed_dt : CF_DELTA_TIME;
+    return 1;
+}
+#ifdef __EMSCRIPTEN__
+/* Shows the last error the player printed on the page. */
+// clang-format off
+EM_JS(void, web_stopped, (), {
+    Module['chibiStopped']?.();
+})
+// clang-format on
+
+/* The browser calls this every animation frame. A stopped game stays on its
+ * last frame, with the reason shown on the page. */
+static void web_frame(void *host)
+{
+    if (run_frame(host) <= 0) {
+        emscripten_cancel_main_loop();
+        web_stopped();
+    }
+}
+#endif
 int main(int argc, char **argv)
 {
     const char *artifact = NULL, *root = NULL, *shader_dir = NULL, *save_path = NULL;
@@ -328,7 +515,7 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         const char *option = argv[i];
         if (!strcmp(option, "--help")) {
-            puts("chibi-player ARTIFACT [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit] [--hidden] [--frames N] [--fixed-dt SECONDS]");
+            puts("chibi-player [ARTIFACT] [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit] [--hidden] [--frames N] [--fixed-dt SECONDS]");
             return 0;
         }
         if (!strcmp(option, "--hidden")) {
@@ -367,12 +554,30 @@ int main(int argc, char **argv)
             return 2;
         }
     }
+    char *bundle = artifact ? NULL : bundle_directory();
+    char *bundled = bundle ? join(bundle, BUNDLE_ARTIFACT) : NULL;
+    char *engine_dir = bundle ? join(bundle, BUNDLE_ENGINE) : NULL;
+    if (bundle) {
+        resource_configure(engine_dir, engine_dir, engine_dir);
+        artifact = bundled;
+        root = root ? root : bundle;
+    }
+    int result = 1;
+    char error[1024] = { 0 };
+    game_player_application application = { 0 };
+    native_capabilities *native = NULL;
     if (!artifact) {
         fprintf(stderr, "A prepared project artifact is required; use --help.\n");
-        return 2;
+        result = 2;
+        goto release;
     }
-    char error[1024] = { 0 };
-    native_capabilities *native = host_native_default_catalog_new(
+    if (!game_player_application_read(artifact, &application, error, sizeof error)) {
+        fprintf(stderr, "%s: %s\n", artifact, error);
+        goto release;
+    }
+    int initial_width = application.width ? application.width : DEFAULT_WIDTH;
+    int initial_height = application.height ? application.height : DEFAULT_HEIGHT;
+    native = host_native_default_catalog_new(
         NULL,
         0,
         &RENDER_SHADER_PARAMETER_DEFINITION_PACK,
@@ -382,26 +587,27 @@ int main(int argc, char **argv)
     );
     if (!native) {
         fprintf(stderr, "%s\n", error);
-        return 1;
+        goto release;
     }
     CF_Result made = cf_make_app(
-        "Chibi Player",
+        application.title ? application.title : "Chibi Player",
         0,
         0,
         0,
-        1280,
-        720,
+        initial_width,
+        initial_height,
         CF_APP_OPTIONS_WINDOW_POS_CENTERED_BIT | CF_APP_OPTIONS_RESIZABLE_BIT |
+            (application.fullscreen ? CF_APP_OPTIONS_FULLSCREEN_BIT : 0) |
             (hidden ? CF_APP_OPTIONS_HIDDEN_BIT : 0),
         argv[0]
     );
     if (cf_is_error(made)) {
         fprintf(stderr, "%s\n", made.details);
-        native_capabilities_free(native);
-        return 1;
+        goto release;
     }
-    int result = 1;
-    player_host host = { 0 };
+    set_icon(root, application.icon);
+    static player_host host;
+    host.fixed_dt = fixed_dt;
     if (!shader_dir) {
         shader_dir = resource_shaders();
     }
@@ -412,13 +618,17 @@ int main(int argc, char **argv)
     }
     cf_shader_directory("/chibi-render");
     host.renderer = app_scene_renderer_new();
-    host.viewport = engine_viewport_new(1280, 720);
+    host.viewport = engine_viewport_new(initial_width, initial_height);
+    if (!host.viewport) {
+        fprintf(stderr, "Cannot create a %dx%d window canvas\n", initial_width, initial_height);
+        goto finish;
+    }
     engine_viewport_adopt_ui(host.viewport, render_ui_new_prepared(NULL));
-    native_prepared_context context = { .native = native };
-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+    host.context = (native_prepared_context){ .native = native };
+    host.linker = native_capabilities_prepared_linker(&host.context);
     game_player_host loader = { .components = { GAME_REGISTRY_COMPONENTS,
                                                 GAME_REGISTRY_COMPONENT_COUNT },
-                                .linker = &linker,
+                                .linker = &host.linker,
                                 .log = { log_message, NULL },
                                 .sdf_motion = game_sdf_motion_tick,
                                 .resources = render_prepared_resources(root) };
@@ -433,18 +643,18 @@ int main(int argc, char **argv)
     engine_viewport_set_perspective(host.viewport, game_scene_perspective(scene));
     engine_viewport_set_runtime(host.viewport, runtime);
     engine_viewport_set_render_callback(host.viewport, render, &host);
-    ui_world ui = { .ecs = game_world_ecs(world),
-                    .page = game_scene_ui(scene),
-                    .model = game_world_modules(world)->ui,
-                    .save = game_world_modules(world)->save,
-                    .host = { &host, payload, dispatch, initializing } };
-    engine_viewport_set_ui(host.viewport, &ui, "");
-    if (save_path && !ui.save) {
+    host.ui = (ui_world){ .ecs = game_world_ecs(world),
+                          .page = game_scene_ui(scene),
+                          .model = game_world_modules(world)->ui,
+                          .save = game_world_modules(world)->save,
+                          .host = { &host, payload, dispatch, initializing } };
+    engine_viewport_set_ui(host.viewport, &host.ui, "");
+    if (save_path && !host.ui.save) {
         fprintf(stderr, "Save service is unavailable\n");
         goto finish;
     }
-    if (save_path && !game_save_open(ui.save, save_path)) {
-        fprintf(stderr, "%s\n", game_save_error(ui.save));
+    if (save_path && !game_save_open(host.ui.save, save_path)) {
+        fprintf(stderr, "%s\n", game_save_error(host.ui.save));
         goto finish;
     }
     signal(SIGINT, stop);
@@ -452,93 +662,17 @@ int main(int argc, char **argv)
     cf_register_key_callback(key_changed);
     cf_set_target_framerate(60);
     engine_set_playing(runtime, true);
-    double now = 0;
-    int frame = 0;
-    while (!stopped && cf_app_is_running() && (!frames || frame < frames)) {
-        key_count = 0;
-        pressed_controls = 0;
-        input_overflow = false;
-        if (engine_viewport_ui_typing(host.viewport)) {
-            cf_input_enable_ime();
-        } else {
-            cf_input_disable_ime();
-        }
-        cf_app_update(NULL);
-        if (!text_input(&host)) {
-            fprintf(stderr, "Invalid or oversized text input\n");
-            goto finish;
-        }
-        if (input_overflow) {
-            fprintf(stderr, "Input event limit exceeded\n");
-            goto finish;
-        }
-        bool typing = engine_viewport_ui_typing(host.viewport);
-        if (!typing && cf_key_just_pressed(CF_KEY_ESCAPE)) {
-            engine_set_playing(runtime, !engine_is_playing(runtime));
-        }
-        if (!typing && !engine_is_playing(runtime) && cf_key_just_pressed(CF_KEY_Q)) {
-            break;
-        }
-        int width, height;
-        cf_app_get_size(&width, &height);
-        engine_viewport_request_resize(host.viewport, width, height);
-        engine_viewport_host_input input = { .width = width,
-                                             .height = height,
-                                             .resolution = 1,
-                                             .x = cf_mouse_x(),
-                                             .y = cf_mouse_y(),
-                                             .hovered = cf_app_has_focus(),
-                                             .focused = cf_app_has_focus(),
-                                             .wheel = cf_mouse_wheel_motion(),
-                                             .modifiers = modifiers(),
-                                             .keys = keys,
-                                             .key_count = key_count };
-        for (int i = 0; i < key_count; i++) {
-            keys[i].modifiers = input.modifiers;
-        }
-        for (int i = 0; i < 3; i++) {
-            input.down[i] = cf_mouse_down(i);
-            input.pressed[i] = cf_mouse_just_pressed(i);
-            input.released[i] = cf_mouse_just_released(i);
-        }
-        engine_viewport_set_host_input(host.viewport, &input);
-        engine_set_focus(runtime, input.focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_NONE);
-        if (sample_input(&host) < 0 || engine_frame(runtime, now) < 0) {
-            const char *message = engine_error(runtime);
-            fprintf(stderr, "%s\n", message ? message : "Gameplay input rejected");
-            goto finish;
-        }
-        engine_viewport_view view;
-        int camera = game_camera_view(game_world_ecs(world), runtime, &view);
-        if (camera < 0) {
-            fprintf(stderr, "Invalid active camera\n");
-            goto finish;
-        }
-        if (camera) {
-            engine_viewport_set_view(host.viewport, &view);
-            engine_viewport_clear_arena_camera(host.viewport);
-        } else if (game_scene_perspective(scene)) {
-            engine_viewport_set_arena_showcase(host.viewport, (float)now);
-        }
-        engine_viewport_set_time(host.viewport, now);
-        if (engine_viewport_draw(
-                host.viewport,
-                &(engine_viewport_controls){ .playing = engine_is_playing(runtime),
-                                             .session = true }
-            ) < 0 ||
-            host.render_failed) {
-            fprintf(stderr, "%s\n", app_scene_renderer_error(host.renderer));
-            goto finish;
-        }
-        const char *ui_error = render_ui_error(engine_viewport_ui(host.viewport));
-        if (ui_error[0]) {
-            fprintf(stderr, "%s\n", ui_error);
-            goto finish;
-        }
-        engine_viewport_present(host.viewport);
-        cf_app_draw_onto_screen(true);
-        now += fixed_dt ? fixed_dt : CF_DELTA_TIME;
-        frame++;
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop_arg(web_frame, &host, 0, true);
+#endif
+    int status = 1, frame = 0;
+    while (status > 0 && !stopped && cf_app_is_running() &&
+           (!frames || frame < frames)) {
+        status = run_frame(&host);
+        frame += status > 0;
+    }
+    if (status < 0) {
+        goto finish;
     }
     printf(
         "frames=%d steps=%llu\n",
@@ -560,6 +694,16 @@ finish:
     rml_backend_release_prepared_fonts();
     render_images_clear();
     cf_destroy_app();
+release:
     native_capabilities_free(native);
+    game_player_application_free(&application);
+    free(engine_dir);
+    free(bundled);
+    free(bundle);
+#ifdef __EMSCRIPTEN__
+    if (result) {
+        web_stopped();
+    }
+#endif
     return result;
 }

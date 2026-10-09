@@ -324,6 +324,16 @@ static const char *skip_text(const char *p)
         }
         return p;
     }
+    if (p[0] == '/' && p[1] == '-') {
+        /* `/-` discards what follows; skipping to the node's end is enough. */
+        int depth = 0;
+        for (p += 2 + strspn(p + 2, " \t\r\n"); *p && (depth || !strchr("\n;", *p));) {
+            const char *next = skip_text(p);
+            depth += next == p ? (*p == '{') - (*p == '}') : 0;
+            p = next == p ? p + 1 : next;
+        }
+        return p;
+    }
     if (p[0] == '/' && p[1] == '/') {
         return p + strcspn(p, "\n");
     }

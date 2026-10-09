@@ -233,7 +233,8 @@ behavior Turret {
 - Calls into a library start tasks the same way, such as `Store.Work()`.
 - A `task` state takes the function of the tasks assigned to it, so after
   `pulse = Charge(1)`, `power := await pulse` gives `Charge`'s result. A state
-  that holds tasks of different functions can be awaited only for completion.
+  that holds tasks of different functions, or a task passed in as a plain
+  `task`, can be awaited only for completion.
 - Awaiting a task whose function has several results gives the same tuple as
   awaiting the call: `(await t).b`.
 - A task keeps references to state, components and locals for as long as it

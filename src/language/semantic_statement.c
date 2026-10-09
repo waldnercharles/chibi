@@ -93,15 +93,15 @@ int script_analyzer_statement_block(analyzer *a, TSNode node)
 }
 /* A task symbol declared without its function takes the function of the
  * tasks assigned to it, so awaiting it gives that function's results. Tasks
- * of different functions leave it awaitable only for completion. */
+ * of different or unknown functions leave it awaitable only for completion. */
 static void infer_task(analyzer *a, int symbol, script_type value)
 {
     script_symbol *s = &a->out->symbols[symbol];
     if (!(s->type.flags & SCRIPT_TYPE_TASK) || !(value.flags & SCRIPT_TYPE_TASK) ||
-        !value.nominal || s->type.nominal == value.nominal || s->mixed_tasks) {
+        (value.nominal && s->type.nominal == value.nominal) || s->mixed_tasks) {
         return;
     }
-    s->mixed_tasks = s->type.nominal != 0;
+    s->mixed_tasks = s->type.nominal != 0 || !value.nominal;
     s->type.nominal = s->mixed_tasks ? 0 : value.nominal;
 }
 /* The function a call starts a task of, by name: a local function or a

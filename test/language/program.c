@@ -1935,6 +1935,11 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                   "        }\n"
                   "        return\n"
                   "    }\n"
+                  "    function List(x: double) -> (Values: double[]) {\n"
+                  "        result Values: double[] = [x]\n"
+                  "        Values[0] = 2\n"
+                  "        return\n"
+                  "    }\n"
                   "    on Impulse(amount, enabled) { p := Pair(2); n = "
                   "p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
                   "}\n";
@@ -1965,6 +1970,11 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                    "        }\n"
                    "        return Value\n"
                    "    }\n"
+                   "    function List(x: double) -> (Values: double[]) {\n"
+                   "        Values = [x]\n"
+                   "        Values[0] = 2\n"
+                   "        return Values\n"
+                   "    }\n"
                    "    on Impulse(amount, enabled) { p := Pair(2); n "
                    "= p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
                    "}\n";
@@ -1994,7 +2004,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     REQUIRE(!symlink(outside, staged));
     file = fopen(manifest, "wb");
     fputs(
-        "meta {\n    version 12\n}\n// metadata {\nname #\"P\\\"#; version "
+        "meta {\n    version 12\n}\n/-\nversion 12\n/- x {\n}\n// metadata "
+        "{\nname #\"P\\\"#; version "
         "+12\ncontent "
         "\"content\"\n"
         "start_scene \"scenes/Start.kdl\"\n",
@@ -2485,6 +2496,18 @@ TEST_CASE(program_task_state_awaits_its_function_results)
         REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
         REQUIRE(number_state(instance, "power", 6));
     }
+    /* A task of an unknown function leaves the state without results. */
+    prepare();
+    syntax = script_parse(
+        "behavior P { pulse: task; power: double = 0;"
+        "function Charge(time: double) -> (power: double) { yield; "
+        "return(time) }"
+        "function Keep(t: task) { pulse = t }"
+        "on Impulse(amount, enabled) { pulse = Charge(amount); power = await "
+        "pulse } }"
+    );
+    analysis = script_analyze(syntax, &catalog);
+    REQUIRE(!analysis->valid);
     return true;
 }
 TEST_CASE(program_parameters_defaults_and_contextual_words)

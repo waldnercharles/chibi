@@ -592,12 +592,20 @@ static bool names(const char *source, TSNode node, const char *name)
     return is_name(node) && strlen(name) == length &&
            !strncmp(name, source + start, length);
 }
-/* Whether the function's own statements assign `name` before a local of the
+/* The variable a write lands in: `Values` for `Values[0].x = 1`. */
+static TSNode written(TSNode target)
+{
+    while (is(target, "member_expression") || is(target, "index_expression")) {
+        target = ts_node_child_by_field_name(target, "object", 6);
+    }
+    return target;
+}
+/* Whether the function's own statements write `name` before a local of the
  * same name shadows it. */
 static bool assigns(const char *source, TSNode node, const char *name)
 {
     if (is(node, "assignment") &&
-        names(source, ts_node_child_by_field_name(node, "target", 6), name)) {
+        names(source, written(ts_node_child_by_field_name(node, "target", 6)), name)) {
         return true;
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {

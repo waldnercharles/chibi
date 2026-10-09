@@ -99,6 +99,22 @@ and `JOBS` select the toolchain, matching reflection installation, and compile
 parallelism. Builds print phase summaries with full logs in `.chibi/logs`;
 `VERBOSE=1` streams output. SDK product builds use a standalone reflection tool.
 
+Windows builds use the LLVM installer's clang, which targets the Microsoft C
+runtime and finds Visual Studio's Windows SDK, with CMake and Ninja. The make
+wrappers need a POSIX shell, so configure directly:
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF \
+    -DLIBCLANG_ROOT="C:/Program Files/LLVM"
+cmake --build build --target chibi chibi-compile chibi-player chibi_ctl
+```
+
+Reflection loads `libclang.dll`, so LLVM's `bin` folder must be on `PATH`. C
+sources that link `Chibi::support` get the POSIX calls the Microsoft runtime
+lacks from `src/support/win32`. The C tests still need POSIX, so Windows builds
+skip them.
+
 ## Browser Studio
 
 Browser Studio uses an installed Emscripten SDK containing the same owning

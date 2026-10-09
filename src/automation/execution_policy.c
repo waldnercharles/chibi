@@ -2,9 +2,13 @@
 
 #include "support/execution_policy.h"
 
+#include <assert.h>
 #include <signal.h>
 #include <stdint.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 static bool bounded_int(yyjson_val *root, const char *key, int fallback, int min, int max, int *out)
 {
@@ -64,23 +68,40 @@ const char *chibi_render_policy(yyjson_val *root)
     return NULL;
 }
 
-static void deadline(int number)
+static const char
+    BLOCKED[] = "{\"ok\":false,\"status\":\"blocked\",\"reason\":\"render_"
+                "time_budget_exceeded\",\"full_verification\":false}\n";
+
+#ifdef _WIN32
+/* TerminateProcess skips the DLL detach _exit runs, which a GPU driver hung
+ * on the main thread can deadlock. */
+static void CALLBACK deadline(void *, BOOLEAN)
 {
-    (void)number;
-    static const char
-        message[] = "{\"ok\":false,\"status\":\"blocked\",\"reason\":\"render_"
-                    "time_budget_exceeded\",\"full_verification\":false}\n";
-    write(STDOUT_FILENO, message, sizeof message - 1);
+    write(STDOUT_FILENO, BLOCKED, sizeof BLOCKED - 1);
+    TerminateProcess(GetCurrentProcess(), 124);
+}
+#else
+static void deadline(int)
+{
+    write(STDOUT_FILENO, BLOCKED, sizeof BLOCKED - 1);
     _exit(124);
 }
+#endif
 
 void chibi_render_deadline(void)
 {
     if (chibi_execution_hardware()) {
         return;
     }
+    int seconds = chibi_execution_is("mp4") ? 120 : 30;
+#ifdef _WIN32
+    HANDLE timer;
+    bool armed = CreateTimerQueueTimer(&timer, NULL, deadline, NULL, (DWORD)seconds * 1000, 0, WT_EXECUTEONLYONCE);
+    assert(armed);
+#else
     signal(SIGALRM, deadline);
-    alarm(chibi_execution_is("mp4") ? 120 : 30);
+    alarm((unsigned)seconds);
+#endif
 }
 
 bool chibi_preview_hidden(int render_frames)

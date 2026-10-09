@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <yyjson.h>
 
 enum
@@ -255,13 +256,22 @@ static char **directory_files(const char *folder)
     if (!directory) {
         return NULL;
     }
+    /* The files chibi_ctl enumerates as assets: visible, regular .kdl files. */
     for (struct dirent *item; (item = readdir(directory));) {
-        size_t length = strlen(item->d_name);
-        if (length > 4 && !strcmp(item->d_name + length - 4, ".kdl")) {
-            char *file = xmalloc(MAX_PATH);
-            snprintf(file, MAX_PATH, "%s/%s", path, item->d_name);
-            apush(paths, file);
+        const char *name = item->d_name;
+        size_t length = strlen(name);
+        if (name[0] == '.' || strchr(name, '\\') || strstr(name, "..") ||
+            length <= 4 || strcmp(name + length - 4, ".kdl")) {
+            continue;
         }
+        char *file = xmalloc(MAX_PATH);
+        snprintf(file, MAX_PATH, "%s/%s", path, name);
+        struct stat info;
+        if (lstat(file, &info) || !S_ISREG(info.st_mode)) {
+            free(file);
+            continue;
+        }
+        apush(paths, file);
     }
     closedir(directory);
     if (paths) {
@@ -605,14 +615,14 @@ static void free_reach()
 
 /* coverage-gaps.txt lists the catalog entries the project knowingly leaves
  * unused, one "<kind> <name>" per line, each in a group of lines under a
- * comment that gives the reason. Without it the report only lists them. */
-static bool read_allowed_gaps()
+ * comment that gives the reason. Without it, every unused entry is a gap. */
+static void read_allowed_gaps()
 {
     char path[MAX_PATH];
     snprintf(path, sizeof path, "%s/coverage-gaps.txt", project_root);
     FILE *file = fopen(path, "r");
     if (!file) {
-        return false;
+        return;
     }
     char line[MAX_LINE];
     bool reasoned = false; /* A comment gives the reason for the entries below it. */
@@ -647,10 +657,9 @@ static bool read_allowed_gaps()
         }
     }
     fclose(file);
-    return true;
 }
 
-static void report(bool strict)
+static void report()
 {
     for (entry_kind kind = 0; kind < ENTRY_KIND_COUNT; kind++) {
         int total = 0, used = 0;
@@ -677,10 +686,10 @@ static void report(bool strict)
             stale++;
         }
     }
-    if (strict && unlisted) {
+    if (unlisted) {
         fprintf(stderr, "Use each new gap in a feature-coverage scene, or list it in coverage-gaps.txt with a reason\n");
     }
-    problems += strict && unlisted;
+    problems += unlisted > 0;
     problems += stale;
 }
 
@@ -710,8 +719,8 @@ TEST_CASE(test_catalog_coverage)
     use_prototypes();
     use_scenes();
     use_reachable();
-    bool strict = read_allowed_gaps();
-    report(strict);
+    read_allowed_gaps();
+    report();
     REQUIRE(!problems);
     return true;
 }

@@ -821,9 +821,51 @@ static int constructor_from(lower *l, const script_expression *e, int base)
     );
     return host_result(l, behavior_function_builder_host_results(l->builder, host), e->type, e->range);
 }
+/* Plain scalar and string literals that need no conversion; nominal types keep
+ * the constructor. */
+static bool literal_array(lower *l, const script_expression *e)
+{
+    pin_type storage = e->type.storage;
+    if (e->kind != SCRIPT_EXPR_ARRAY || !e->argument_count || e->type.nominal ||
+        storage == PIN_HANDLE) {
+        return false;
+    }
+    for (int i = 0; i < e->argument_count; i++) {
+        const script_expression *value = &l->a->expressions[e->arguments[i].value];
+        if (value->kind != SCRIPT_EXPR_CONSTANT || value->constant.type != storage ||
+            value->constant.container != PIN_CONTAINER_SINGLE ||
+            value->type.storage != storage || value->type.nominal ||
+            (value->type.flags & SCRIPT_TYPE_OPTIONAL)) {
+            return false;
+        }
+    }
+    return true;
+}
+/* An array of literals is one data constant instead of one instruction and host
+ * argument per element. Stores copy it, like catalog default arrays. */
+static int array_constant(lower *l, const script_expression *e)
+{
+    pin_value value = initial(l, e->type);
+    pin_array *items = pin_array_snapshot_allocate(&l->module->storage, e->type.storage, NULL, e->argument_count);
+    for (int i = 0; i < e->argument_count; i++) {
+        const pin_value *item = &l->a->expressions[e->arguments[i].value].constant;
+        int result = pin_value_snapshot_to_arena(&l->module->storage, &items->items[i], item);
+        assert(result == 0);
+        (void)result;
+    }
+    value.ptr = items;
+    return value_op(
+        l,
+        (behavior_function_instruction){ .op = BF_ARRAY,
+                                         .type = BF_POINTER_TYPE,
+                                         .target = BF_CONSTANT,
+                                         .value = value },
+        e->range
+    );
+}
 static int constructor(lower *l, const script_expression *e)
 {
-    return constructor_from(l, e, -1);
+    return literal_array(l, e) ? array_constant(l, e) : constructor_from(l, e, -1);
 }
 static bool concrete_function(const script_analysis *a, const script_function *f)
 {

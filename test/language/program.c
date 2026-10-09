@@ -824,6 +824,47 @@ TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume)
     }
     return true;
 }
+TEST_CASE(program_array_literals_are_fresh_copies)
+{
+    const char *source =
+        "behavior Literals { first: double = 0; second: double = 0; "
+        "mixed_total: double = 0; text: string = \"\"; kept: double[] = []; "
+        "loop_total: double = 0; "
+        "function Tiles() -> (tiles: double[]) { return [3, -1.5, 7]; } "
+        "on Impulse(amount, enabled) { changed := Tiles(); changed[0] = 99; "
+        "fresh := Tiles(); first = fresh[0] + fresh[1]; second = changed[0]; "
+        "mixed: double[] = [amount, 2]; mixed_total = mixed[0] + mixed[1]; "
+        "names: string[] = [\"a\", \"b\"]; text = names[1]; "
+        "kept = [1, 2]; kept[0] = kept[0] + 10; loop_total = 0; i: double = 0; "
+        "while i < 2 { row: double[] = [3, 4]; row[0] = row[0] + 1; "
+        "loop_total += row[0]; i += 1; } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = 5 },
+                                   { .type = PIN_BOOL, .b = true } };
+        for (int round = 0; round < 2; round++) {
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "first", 1.5));
+            REQUIRE(number_state(instance, "second", 99));
+            REQUIRE(number_state(instance, "mixed_total", 7));
+            REQUIRE(string_state(instance, "text", "b"));
+            REQUIRE(number_state(instance, "loop_total", 8));
+            const pin_value *kept = execution_instance_state(instance, state_id("kept"));
+            REQUIRE(kept && kept->container == PIN_CONTAINER_ARRAY);
+            const pin_array *items = kept->ptr;
+            REQUIRE(
+                items->count == 2 && items->items[0].d == 11 && items->items[1].d == 2
+            );
+        }
+        execution_program_detach(program, ecs_entity_to_u64(owner));
+    }
+    return true;
+}
 static bool memory_text_state(execution_instance *instance, const char *name, int produced)
 {
     const pin_value *value = execution_instance_state(instance, state_id(name));
@@ -3117,6 +3158,7 @@ void test_language_program()
     RUN_TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned);
     RUN_TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes);
     RUN_TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume);
+    RUN_TEST_CASE(program_array_literals_are_fresh_copies);
     RUN_TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes);
     RUN_TEST_CASE(program_lazy_tuple_initializes_once_and_preserves_group_writes);
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);

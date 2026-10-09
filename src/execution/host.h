@@ -92,7 +92,11 @@ typedef int (*node_command_begin_fn)(
 typedef enum
 {
     NODE_COMMAND_NATIVE,
-    NODE_COMMAND_DELAY
+    NODE_COMMAND_DELAY,
+    NODE_COMMAND_YIELD,
+    NODE_COMMAND_TASK_JOIN,
+    NODE_COMMAND_TASK_CANCEL,
+    NODE_COMMAND_TASK_RUNNING
 } node_command_intrinsic;
 typedef struct
 {

@@ -64,6 +64,9 @@ char *render_shader_fragment_source()
         "result); "
         "sc=result[0]; "
         "em=result[1]; bs=result[0]; be=result[1]; }\n"
+        " if(e.shape_type==SHAPE_SPRITE) { vec4 "
+        "t=d>0.0?vec4(0):sprite_texel(p,e); "
+        "sc*=t; em.a*=t.a; d=-1.0; }\n"
         " float aa=max(e.aa,0.001), coverage=1.0-smoothstep(0.0,aa,d);\n"
         " float "
         "fill=e.border_thickness>0.0?1.0-smoothstep(-e.border_thickness,-e."
@@ -99,7 +102,9 @@ int render_shader_fragment_prepare(
 {
     render_shader_set set = { 0 };
     if (!render_shader_set_add(&set, (int)entity->reserved[0], error) ||
-        !render_shader_set_add(&set, (int)entity->reserved[1], error)) {
+        !render_shader_set_add(&set, (int)entity->reserved[1], error) ||
+        (entity->shape_type == RENDER_SHAPE_SPRITE &&
+         !render_shader_set_add_image(&set, (int)entity->points[12], error))) {
         return 0;
     }
     int program = render_programs_prepare(programs, &set);

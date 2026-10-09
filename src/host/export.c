@@ -18,6 +18,7 @@
 
 #define EXPORT_ARTIFACT "game.chibip"
 #define EXPORT_MANIFEST EXPORT_ARTIFACT ".resources.json"
+#define ICON_BYTES_MAX (64 * 1024 * 1024)
 
 static char *join(const char *base, const char *name)
 {
@@ -207,6 +208,8 @@ static bool write_text(const char *path, const char *text)
     return written || failed("cannot write", path);
 }
 
+/* An icon file, or NULL when it is missing or larger than the compiler
+ * accepts for an image. */
 static char *read_bytes(const char *path, size_t *size)
 {
     FILE *file = fopen(path, "rb");
@@ -215,7 +218,7 @@ static char *read_bytes(const char *path, size_t *size)
     }
     char *bytes = NULL;
     long length = fseek(file, 0, SEEK_END) == 0 ? ftell(file) : -1;
-    if (length >= 0 && fseek(file, 0, SEEK_SET) == 0) {
+    if (length >= 0 && length <= ICON_BYTES_MAX && fseek(file, 0, SEEK_SET) == 0) {
         bytes = xmalloc((size_t)length);
         *size = fread(bytes, 1, (size_t)length, file);
     }

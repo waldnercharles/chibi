@@ -1074,7 +1074,7 @@ void ui_data_show_entities(ui_data *d, const game_ui *model)
     if (!acount(changed)) {
         return;
     }
-    qsort(changed, (size_t)acount(changed), sizeof *changed, by_revision);
+    asort(changed, by_revision);
     uint64_t *dirty = NULL;
     for (int i = 0; i < acount(changed); i++) {
         const game_ui_datum *datum = changed[i];

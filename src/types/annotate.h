@@ -29,7 +29,6 @@
 /* Native read functions return an error string and expose data via NODE_OUT. */
 #define NODE_READ __attribute__((annotate("node:read")))
 #define NODE_JIT(NAME) __attribute__((annotate("node:jit:" NAME)))
-#define NODE_JIT_FAST_MATH __attribute__((annotate("node:jit-fast-math")))
 #define NODE_EXEC __attribute__((annotate("node:exec")))
 #define NODE_OUT __attribute__((annotate("node:out")))
 #define NODE_NAME(NAME) __attribute__((annotate("node:name:" NAME)))

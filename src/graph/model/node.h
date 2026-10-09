@@ -62,29 +62,6 @@ typedef const char *(*node_read_inputs_fn)(
     arena *a,
     pin_value *out
 );
-/* Typed adapters: output and inputs point at storage for the declared pin types. */
-typedef int (*node_fast_fn)(void *output, const void *const *inputs);
-typedef int (*node_fast0_fn)(void *output);
-typedef int (*node_fast1_fn)(void *output, const void *input0);
-typedef int (*node_fast2_fn)(void *output, const void *input0, const void *input1);
-typedef int (*node_fast3_fn)(void *output, const void *input0, const void *input1, const void *input2);
-typedef int (*node_fast4_fn)(
-    void *output,
-    const void *input0,
-    const void *input1,
-    const void *input2,
-    const void *input3
-);
-
-typedef union
-{
-    node_fast0_fn zero;
-    node_fast1_fn one;
-    node_fast2_fn two;
-    node_fast3_fn three;
-    node_fast4_fn four;
-} node_fast_direct_fn;
-
 typedef enum
 {
     NODE_JIT_NONE = 0,
@@ -109,11 +86,6 @@ typedef enum
     /* Explicit promise: copy a fixed-layout struct and retag its nominal type. */
     NODE_JIT_IDENTITY,
 } node_jit_kind;
-
-enum
-{
-    NODE_JIT_FLAG_FAST_MATH = 1u << 0,
-};
 
 typedef enum
 {
@@ -192,7 +164,6 @@ typedef struct
     pin_spec *outputs;
     node_pure_kind pure_kind; /* how to compute DATA outputs; CONST is zero default */
     node_jit_kind jit_kind;
-    unsigned jit_flags;
     node_component_kind component_kind;
     const struct ecs_component_desc *component;
     int component_field;
@@ -200,9 +171,6 @@ typedef struct
     node_fn fn;
     node_read_fn read;
     node_read_inputs_fn read_inputs;
-    node_fast_fn fast;
-    node_fast_direct_fn direct;
-    int direct_count; /* arity plus one; zero means no direct adapter */
     node_flow_kind flow_kind;
     node_flow_fn flow;
     int latent;

@@ -492,6 +492,7 @@ static game_prototype *load_value_document(
             }
             merge_prototype(prototype, base);
             game_prototype_free(base);
+            apush(prototype->includes, own_string(prototype, av_get_str(include)));
         }
     }
     if (parse_components(prototype, &prototype->components, av_obj_get(root, "components"), error, error_size) ||
@@ -673,6 +674,7 @@ void game_prototype_free(game_prototype *prototype)
     }
     afree(prototype->detached_components);
     afree(prototype->graphs);
+    afree(prototype->includes);
     game_prototype_owned_strings_free(prototype->strings);
     free(prototype->name);
     free(prototype->identity);

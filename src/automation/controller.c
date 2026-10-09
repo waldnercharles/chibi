@@ -2702,9 +2702,11 @@ static int build_catalog_from_entries(
     load_catalog_links(root, entries, &links);
     int status = 0;
     for (int i = 0; i < acount(entries) && !status; i++) {
-        bool graph = entries[i].family->loader == ASSET_GRAPH ||
-                     entries[i].family->loader == ASSET_SYSTEM;
-        int previous_index = previous && (!graph || graphs_cached)
+        asset_loader loader = entries[i].family->loader;
+        bool graph = loader == ASSET_GRAPH || loader == ASSET_SYSTEM;
+        /* A prototype is loaded again each time, since a prototype it
+           includes may have changed or appeared. */
+        int previous_index = previous && (!graph || graphs_cached) && loader != ASSET_PROTOTYPE
                                ? cached_catalog_asset_index(previous, &entries[i])
                                : -1;
         if (previous_index >= 0) {

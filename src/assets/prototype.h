@@ -65,6 +65,7 @@ typedef struct game_prototype
     /* Authoring-only values; never included when spawning runtime components. */
     game_prototype_component *detached_components;
     char **graphs;
+    char **includes; /* the prototypes its document includes, in order */
     char **strings;
 } game_prototype;
 

@@ -26,8 +26,9 @@ static void write_file(const char *relative, const char *text)
     tool_write(file, text);
 }
 
-/* Sends one request to chibi_ctl from `root`, inside the project "game" when
- * `scoped`; returns its exit status and keeps its reply. */
+/* Sends requests, one per line, to one chibi_ctl from `root`, inside the
+ * project "game" when `scoped`; returns its exit status and keeps the last
+ * reply. */
 static int ctl(bool scoped, const char *request)
 {
     write_file("request.json", request);
@@ -38,6 +39,9 @@ static int ctl(bool scoped, const char *request)
     int status = tool_run(args, root, log_path);
     char *output = tool_read(log_path);
     const char *json = output ? strstr(output, "{\"contract\"") : NULL;
+    for (const char *next; json && (next = strstr(json + 1, "{\"contract\""));) {
+        json = next;
+    }
     yyjson_doc_free(reply);
     reply = json ? yyjson_read(json, strlen(json), YYJSON_READ_STOP_WHEN_DONE) : NULL;
     free(output);
@@ -311,6 +315,31 @@ TEST_CASE(prototype_includes_resolve)
                 !strstr(text, "GameHealth");
     free(text);
     REQUIRE(kept);
+    /* The include is an edge from Drone to Hull, and only Drone's. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"asset_dependencies\",\"kind\":\"prototype\",\"name\":\"Drone\"}") ==
+        0
+    );
+    yyjson_val *edges = result("edges");
+    REQUIRE(yyjson_arr_size(edges) == 1);
+    yyjson_val *to = yyjson_obj_get(yyjson_arr_get_first(edges), "to");
+    REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(to, "name")), "Hull"));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"asset_dependencies\",\"kind\":\"prototype\",\"name\":\"Hull\",\"direction\":\"incoming\"}") ==
+        0
+    );
+    REQUIRE(yyjson_arr_size(result("edges")) == 1);
+    /* One controller first finds Drone's include missing, then sees the Hull
+     * it creates, so only its last reply is checked. */
+    char hull[256];
+    path(hull, sizeof hull, "game/content/prototypes/Hull.kdl");
+    REQUIRE(unlink(hull) == 0);
+    ctl(true,
+        "{\"contract\":1,\"operation\":\"validate_project\"}\n"
+        "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\","
+        "\"name\":\"Hull\"}\n"
+        "{\"contract\":1,\"operation\":\"validate_project\"}");
+    REQUIRE(yyjson_get_bool(result("valid")));
 
     write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Nope\"\n");
     REQUIRE(validate() != 0 && errors() == 2 && yyjson_arr_size(result("problems")) == 2);

@@ -19,6 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
     ('--studio-source-edit',): 'Reviewed actual installed Studio edit/undo/redo, disposable3file212byteproject+isolatedprefs, fourhidden1920x1080frames, shared60s',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
@@ -217,6 +218,7 @@ TOOLS = {
     # Reviewed finite C syntax cases and a corpus capped at 256 files/8 MiB.
     'language': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'),
                  '--syntax', '--corpus', str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'corpus.txt')],
+    'web-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--web-storage'],
     'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools')],
 
 }

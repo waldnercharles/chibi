@@ -3030,11 +3030,25 @@ static yyjson_mut_val *add_catalog_reference(
     return object;
 }
 
-static void add_catalog_diagnostics(yyjson_mut_doc *doc, yyjson_mut_val *object, const catalog_asset *asset)
+/* A source's stand-in for the declaration catalog's own diagnostics. */
+static bool catalog_fallout(const char *message)
+{
+    return !strcmp(message, AUTHORING_SOURCES_CATALOG_INCOMPLETE);
+}
+
+static void add_catalog_diagnostics(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *object,
+    const catalog_asset *asset,
+    bool omit_fallout
+)
 {
     yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(doc, object, "diagnostics");
     for (int i = 0; i < acount(asset->diagnostics); i++) {
         const catalog_diagnostic *diagnostic = &asset->diagnostics[i];
+        if (omit_fallout && catalog_fallout(diagnostic->message)) {
+            continue;
+        }
         yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
         yyjson_mut_obj_add_strcpy(doc, item, "severity", diagnostic->severity);
         yyjson_mut_obj_add_int(doc, item, "rule", diagnostic->rule);
@@ -3082,7 +3096,7 @@ static yyjson_mut_val *add_catalog_asset(
     for (int i = 0; i < acount(asset->dependents); i++) {
         add_catalog_reference(doc, dependents, &asset->dependents[i], assets, count);
     }
-    add_catalog_diagnostics(doc, object, asset);
+    add_catalog_diagnostics(doc, object, asset, false);
     yyjson_mut_obj_add_bool(doc, object, "valid", asset->valid);
     yyjson_mut_obj_add_int(doc, object, "errors", asset->errors);
     yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
@@ -5976,10 +5990,16 @@ static int handle_validate_project(const char *root, response *result, int *exit
     for (int i = 0; i < acount(assets); i++) {
         const catalog_asset *asset = &assets[i];
         error[0] = '\0';
+        /* The declaration diagnostics below take the fallout's place, in
+           sources and in scenes whose behaviors are sources. */
         int asset_errors = asset->errors;
-        asset_errors += validate_asset_dependencies(root, asset, error, sizeof error) !=
-                        CHIBI_AUTOMATION_OK;
-        bool dependencies = asset_errors > asset->errors;
+        for (int j = 0; j < acount(asset->diagnostics); j++) {
+            asset_errors -= catalog_fallout(asset->diagnostics[j].message);
+        }
+        bool dependencies = validate_asset_dependencies(root, asset, error, sizeof error) !=
+                                CHIBI_AUTOMATION_OK &&
+                            !catalog_fallout(error);
+        asset_errors += dependencies;
         size_t bytes = strlen(root) + strlen(asset->asset.relative) + 2;
         char *path = xmalloc(bytes);
         snprintf(path, bytes, "%s/%s", root, asset->asset.relative);
@@ -6002,7 +6022,7 @@ static int handle_validate_project(const char *root, response *result, int *exit
         yyjson_mut_obj_add_strcpy(doc, object, "path", asset->asset.relative);
         yyjson_mut_obj_add_int(doc, object, "errors", asset_errors);
         yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
-        add_catalog_diagnostics(doc, object, asset);
+        add_catalog_diagnostics(doc, object, asset, true);
         yyjson_mut_val *diagnostics = yyjson_mut_obj_get(object, "diagnostics");
         for (int j = 0; j < declarations; j++) {
             const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);

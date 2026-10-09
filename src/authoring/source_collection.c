@@ -75,7 +75,7 @@ authoring_sources *authoring_sources_prepare_catalog(
     }
     if (source_catalog_diagnostic_count(sources->catalog)) {
         for (int i = 0; i < count; i++) {
-            reject(sources->sources[i], "Project declaration catalog is incomplete");
+            reject(sources->sources[i], AUTHORING_SOURCES_CATALOG_INCOMPLETE);
         }
         return sources;
     }

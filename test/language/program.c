@@ -2516,6 +2516,15 @@ TEST_CASE(program_task_with_several_results_awaits_a_tuple)
         }
         REQUIRE(number_state(instance, "n", 23));
     }
+    /* A task has no result fields until it is awaited. */
+    prepare();
+    REQUIRE(!compile(
+        "behavior B { n: double = 0;"
+        "function P(x: double) -> (a: double, b: double) { "
+        "yield; return(x, x * 10); }"
+        "on Impulse(amount, enabled) { t := P(amount); n = t.a } }",
+        BEHAVIOR_BYTECODE
+    ));
     return true;
 }
 

@@ -255,6 +255,11 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                  .right = -1,
                                  .type = script_analyzer_bad_type(),
                                  .effects = receiver.effects };
+    if (receiver.type.flags & SCRIPT_TYPE_TASK) {
+        script_analyzer_diagnostic(a, member, "Await this task to read '%s'", name);
+        free(name);
+        return script_analyzer_expr_add(a, result);
+    }
     const script_expression *initializer = script_analyzer_result_source(a, left);
     int receiver_function = receiver.symbol >= 0
                               ? a->out->symbols[receiver.symbol].function

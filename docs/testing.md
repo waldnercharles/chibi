@@ -160,9 +160,10 @@ is diagnostic evidence, not a passing test.
 
 `--new-asset` admits one case: `new_asset_create` writes a behavior and a scene
 into one temporary content folder, creating the missing folders, and refuses an
-existing file, a model named like a shape, an invalid name and a folder blocked
-by a file. Each refusal's errno tells a bad request from a taken name and a
-storage failure. CPU only; the folder is removed afterwards.
+existing file, a model named like a shape, an invalid name, a folder blocked
+by a file, and a family folder or content folder that is a symbolic link out
+of the project. Each refusal's errno tells a bad request from a taken name and
+a storage failure. CPU only; the folder is removed afterwards.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
 eight cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary

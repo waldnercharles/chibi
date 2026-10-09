@@ -1077,6 +1077,20 @@ static void followers_move_with_their_body()
     dispose(&f);
 }
 
+/* A continuous sensor stops partway through its sweep, after its followers
+ * were tested at its end, so it cannot carry a collider. */
+static void continuous_sensors_carry_no_colliders()
+{
+    fixture f = create();
+    ecs_entity shot = sensor(&f, 0, 0);
+    ecs_entity hitbox = body(&f, 4, 0, GAME_BODY_KINEMATIC, 1, 0);
+    assert(ecs_world_record_add_pair(f.world, hitbox, ECS_CHILD_OF, shot, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(game_physics_tick(f.physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
+    assert(strstr(game_physics_error(f.physics), "cannot carry colliders"));
+    dispose(&f);
+}
+
 /* A destructible under a placed parent breaks where its parent places it. */
 static void followed_material()
 {
@@ -1340,6 +1354,7 @@ static void physics_cases()
     interpolation();
     followers();
     followers_move_with_their_body();
+    continuous_sensors_carry_no_colliders();
     followed_material();
     current_contact_query();
     ordered_contacts();

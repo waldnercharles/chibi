@@ -160,25 +160,29 @@ is diagnostic evidence, not a passing test.
 
 `--new-asset` admits one case: `new_asset_create` writes a behavior and a scene
 into one temporary content folder, creating the missing folders, and refuses an
-existing file, a model named like a shape, an invalid name and a folder blocked
-by a file. Each refusal's errno tells a bad request from a taken name and a
-storage failure. CPU only; the folder is removed afterwards.
+existing file, a model named like a shape, an invalid name, a folder blocked
+by a file, and a family folder or content folder that is a symbolic link out
+of the project. Each refusal's errno tells a bad request from a taken name and
+a storage failure. CPU only; the folder is removed afterwards.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-nine cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+ten cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
 start scene inside them is reported once; a UI document named by the
-manifest or a scene must exist; a scene's missing prototype or behavior, and
-each syntax error in a source, is one error; a project saved by an earlier
-build is reported, not upgraded; a prototype that includes another
-validates, runs in a scene and keeps its include through `--format`, while a
-missing include is reported; and in a project whose manifest names another
-content folder, assets are scaffolded, validated, run, formatted, found and
-reported there under their `content/` paths, and `status` names that folder
-even once the project is too old to open. A few short `chibi_ctl` runs, CPU
-only; the project is removed afterwards.
+manifest or a scene must exist, and markup that is a folder or a link is
+refused; a scene's missing prototype or behavior, and each syntax error in a
+source, is one error; a project saved by an earlier build is reported, not
+upgraded; the application icon must decode as a PNG and a long project name
+needs a title; a prototype that includes another validates, runs in a scene
+and keeps its include through `--format`, while a missing include is reported
+and the included prototype's behaviors stay its own references; and in a
+project whose manifest names another content folder, assets are scaffolded,
+validated, run, formatted, found and reported there under their `content/`
+paths, and `status` names that folder even once the project is too old to
+open. A few short `chibi_ctl` runs, CPU only; the project is removed
+afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,

@@ -1,6 +1,7 @@
 #include "automation/controller.h"
 
 #include "assets/asset_source.h"
+#include "assets/input_map.h"
 #include "assets/model_export.h"
 #include "assets/new_asset.h"
 #include "assets/project.h"
@@ -335,6 +336,7 @@ static const contract_field CONTRACT_SEARCH_ASSETS[] = {
     { "summary", "boolean", false, "Return identity and validation fields without relationship details." },
 };
 static const contract_field CONTRACT_DESCRIBE_REGISTRY[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "sections", "string[]", false, "nodes, types, services, or components; defaults to all but nodes." },
 };
 static const contract_field CONTRACT_CATALOG[] = {
@@ -424,6 +426,7 @@ static const contract_field CONTRACT_SEARCH_NODES[] = {
     { "behavior", "string", false, "A behavior asset's name: offer only the UI events of the GameUi documents on the prototypes and scene objects that attach it." },
 };
 static const contract_field CONTRACT_DESCRIBE_COMPONENTS[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "names", "string[]", false, "Optional component names or stable keys; omit to describe every reflected component." },
 };
 static const contract_field CONTRACT_PROFILE_SCENARIO[] = {
@@ -5616,6 +5619,44 @@ static char *canonical_asset(
     return NULL;
 }
 
+/* The input map is canonical as its own writer emits it. Returns whether it
+ * differed, or -1 when it is invalid or cannot be written. */
+static int format_input_map(const char *root, bool check)
+{
+    size_t length = strlen(root) + sizeof "/content/" INPUT_MAP_FILE;
+    char *path = xmalloc(length);
+    snprintf(path, length, "%s/content/" INPUT_MAP_FILE, root);
+    struct stat info;
+    if (stat(path, &info) && errno == ENOENT) {
+        free(path);
+        return 0;
+    }
+    char error[256];
+    input_action *map = NULL;
+    char *json = read_file(path, NULL, NULL, error, sizeof error);
+    char *written = json && input_map_read(json, &map, error, sizeof error)
+                      ? input_map_write(map)
+                      : NULL;
+    char *text = written ? asset_text_to_disk(written, error, sizeof error) : NULL;
+    int differing = text ? strcmp(json, text) != 0 : -1;
+    if (!text) {
+        fprintf(stderr, "chibi_ctl --format: %s\n", error);
+    } else if (differing) {
+        fprintf(stderr, "%s content/" INPUT_MAP_FILE "\n", check ? "not canonical:" : "formatted");
+        FILE *file = check ? NULL : fopen(path, "wb");
+        if (!check && (!file || fputs(text, file) < 0 || fclose(file))) {
+            fprintf(stderr, "chibi_ctl --format: could not write content/" INPUT_MAP_FILE "\n");
+            differing = -1;
+        }
+    }
+    input_map_free(map);
+    free(text);
+    free(written);
+    free(json);
+    free(path);
+    return differing;
+}
+
 int chibi_automation_format_assets(const char *root, bool check)
 {
     asset_entry *entries = NULL;
@@ -5692,6 +5733,10 @@ int chibi_automation_format_assets(const char *root, bool check)
         free(text);
         free(json);
         free(path);
+    }
+    if (differing >= 0) {
+        int map = format_input_map(root, check);
+        differing = map < 0 ? map : differing + map;
     }
     source_catalog_free(sources);
     authoring_language_catalog_free(native);
@@ -7304,6 +7349,7 @@ static int prepare_scene_scenario(
                 .components = entity->components,
                 .behaviors = (const char *const *)entity->behaviors,
                 .behavior_count = acount(entity->behaviors),
+                .own_behaviors = entity->own_behaviors,
             })
         );
         for (int behavior = 0; behavior < acount(prototype->graphs); behavior++) {

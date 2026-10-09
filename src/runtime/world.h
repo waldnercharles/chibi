@@ -23,6 +23,8 @@ typedef struct
     ecs_component_catalog components; /* Host descriptors, borrowed; identical installed schemas reuse. */
     material_fields *fields; /* Prepared catalog, consumed only on success. */
     game_event_catalog *events; /* Borrowed during creation, registry retains. */
+    const input_action *actions; /* The input map, copied during creation. */
+    int action_count;
     execution_log_service log; /* Copied callback; its user outlives the world. */
     int (*sdf_motion)(ecs_world *, double);
 } game_world_options;

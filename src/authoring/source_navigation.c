@@ -1,5 +1,6 @@
 #include "authoring/source_navigation.h"
 
+#include "authoring/source_prototype_flow.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -394,6 +395,26 @@ static void document_references(authoring_navigation *index, int document)
     expressions(index, document);
 }
 
+/* Constants that reach a prototype parameter through values reference it. */
+static void prototype_names(authoring_navigation *index)
+{
+    authoring_prototype_name *names = authoring_prototype_names(
+        index->documents,
+        acount(index->documents),
+        index->catalog
+    );
+    for (int i = 0; i < acount(names); i++) {
+        add_reference(
+            index,
+            (authoring_reference){ { AUTHORING_PROTOTYPE, -1, names[i].prototype, 0 },
+                                   { names[i].document, names[i].range },
+                                   AUTHORING_HANDLE,
+                                   { .storage = PIN_NAME } }
+        );
+    }
+    afree(names);
+}
+
 authoring_navigation *authoring_navigation_new(
     const authoring_document *documents,
     int count,
@@ -455,6 +476,7 @@ authoring_navigation *authoring_navigation_new_project(
     for (int i = 0; i < count; i++) {
         document_references(index, i);
     }
+    prototype_names(index);
     for (int i = 0; i < definition_count; i++) {
         const source_catalog_definition *definition = &definitions[i];
         assert(definition->path && definition->text);

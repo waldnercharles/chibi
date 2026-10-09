@@ -6,6 +6,7 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/behaviors/source.h"
 #include "runtime/components.h"
+#include "runtime/input_action.h"
 #include "runtime/input_timeline.h"
 #include "runtime/materials.h"
 #include "runtime/particles.h"
@@ -101,18 +102,22 @@ int engine_dispatch_input(engine *engine, const char *action, double value, int 
 /* Host input ingress: hold the latest movement/aim sample across fixed steps. */
 int engine_sample_movement(engine *engine, float x, float y);
 int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point);
-/* Held physical controls interpreted through authored GameActionBinding entities. */
+/* Copies the project's input map. Without input the engine ignores it. */
+void engine_set_input_actions(engine *engine, const input_action *actions, int count);
+/* Held physical controls interpreted through the input map. Ignored while
+ * replaying, and while stopped unless a step is requested. */
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing);
 /* Gameplay input recording and replay count fixed steps from the last reset,
  * so both follow a scene from its start. Recording keeps a key wherever held
- * input changes. Replay holds each key from its step on in place of live
- * samples. Both seed the shared random stream, so a replay draws what its
- * recording did. */
+ * input changes, plus one per control change between two steps, in order and
+ * at the same step. Replay samples each key at its step and holds the last one
+ * from then on in place of live samples. Both seed the shared random stream,
+ * so a replay draws what its recording did. */
 void engine_record_input(engine *engine, unsigned seed);
 void engine_stop_recording(engine *engine);
 /* Borrowed until the next recording or reset. */
 const input_keyframe *engine_recorded_input(const engine *engine, int *count);
-/* Copies the keys, which start at step zero in increasing order. */
+/* Copies the keys, which start at step zero in nondecreasing order. */
 void engine_replay_input(engine *engine, const input_keyframe *keys, int count, unsigned seed);
 void engine_stop_replay(engine *engine);
 bool engine_replaying_input(const engine *engine);

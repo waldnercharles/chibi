@@ -370,6 +370,22 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
     const script_catalog_type
         *type = script_catalog_type_by_id(a->catalog, receiver.type.nominal);
     int index = type ? script_catalog_find_field(type, name) : -1;
+    if (index >= 0 && type->fields[index].constant) {
+        const script_catalog_field *f = &type->fields[index];
+        script_analyzer_use(a, member, -1, SCRIPT_READ, f->id);
+        free(name);
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
+                                 .type = f->type,
+                                 .range = result.range,
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .member = f->id,
+                                 .constant = { .type = PIN_STR, .str = xstrdup(f->name) } }
+        );
+    }
     if (index >= 0) {
         const script_catalog_field *f = &type->fields[index];
         result.type = f->type;

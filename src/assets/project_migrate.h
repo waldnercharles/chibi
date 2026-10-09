@@ -1,11 +1,20 @@
 #ifndef CHIBI_ASSETS_PROJECT_MIGRATE_H
 #define CHIBI_ASSETS_PROJECT_MIGRATE_H
 
+typedef struct av_doc av_doc;
+
 #include <stddef.h>
 
-/* Upgrades the sources under `content` from project version `from` to
- * `from + 1`. Returns 0, or -1 with `error` set. */
-int chibi_project_migrate_content(const char *content, int from, char *error, size_t error_size);
+/* Upgrades the sources under `content`, and the canonical `start_scene` path
+ * wherever it lies, from project version `from` to `from + 1`. Returns 0, or
+ * -1 with `error` set. */
+int chibi_project_migrate_content(
+    const char *content,
+    const char *start_scene,
+    int from,
+    char *error,
+    size_t error_size
+);
 /* Version 11 starts a task for an unawaited call to a function that waits.
  * Given every version 10 source of a project, returns an owned array with an
  * owned copy of each source that gains `await` before the calls that blocked
@@ -27,5 +36,15 @@ char *chibi_migrate_results(const char *source);
  * a value is read would capture a name the value reads, returns NULL and
  * sets `error`. */
 char *chibi_migrate_values(const char *source, char *error, size_t error_size);
+/* Version 15 scene entities without a `behaviors` list keep their
+ * prototype's behaviors. Returns an owned copy of a version 14 scene in which
+ * every such entity lists none, or NULL when the text does not change or is
+ * not a scene. */
+char *chibi_migrate_scene_behaviors(const char *scene);
+/* Version 16 moves GameActionBinding components into the project's input map.
+ * Adds the action of each enabled binding in a scene or prototype `asset` to
+ * the input map document `map`, and returns an owned copy of the asset
+ * without them, or NULL when it has none. */
+char *chibi_migrate_action_bindings(const char *asset, av_doc *map);
 
 #endif

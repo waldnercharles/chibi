@@ -3,7 +3,6 @@
 #include "execution/status.h"
 #include "runtime/component_catalog.h"
 #include "runtime/events.h"
-#include "runtime/systems/scheduler.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -18,40 +17,62 @@ typedef struct
     char *action;
     bool pressed;
 } input_transition;
-typedef input_transition input_button;
 typedef struct
 {
-    ecs_entity entity;
+    char *action;
     bool pressed;
-} binding_change;
+    /* started: went down since the last step began; stepped: before this one. */
+    bool started, stepped;
+} input_button;
 
 struct engine_input
 {
     ecs_world *world;
     engine_input_host host;
-    game_schedule *systems;
+    input_action *actions;
     CF_V2 movement;
     bool movement_sampled;
     CF_V2 aim;
     bool aim_sampled, aim_point, firing;
     uint64_t controls;
+    /* Controls held after each change since the last step, oldest first. */
+    uint64_t *trail;
     input_button *buttons;
     input_transition *transitions;
     ecs_entity *controlled;
     ecs_entity *released;
-    binding_change *changes;
     char message[256];
 };
 
-engine_input *engine_input_new(ecs_world *world, const engine_input_host *host, game_schedule *systems)
+engine_input *engine_input_new(ecs_world *world, const engine_input_host *host)
 {
     engine_input *input = xcalloc(1, sizeof *input);
     input->world = world;
     if (host) {
         input->host = *host;
     }
-    input->systems = systems;
     return input;
+}
+
+static void free_actions(engine_input *input)
+{
+    for (int i = 0; i < acount(input->actions); i++) {
+        free((char *)input->actions[i].name);
+    }
+    afree(input->actions);
+}
+
+void engine_input_set_actions(engine_input *input, const input_action *actions, int count)
+{
+    free_actions(input);
+    for (int i = 0; i < count; i++) {
+        input_action action = actions[i];
+        for (int j = 0; j < i; j++) {
+            assert(strcmp(actions[j].name, action.name));
+        }
+        action.name = xstrdup(action.name);
+        apush(input->actions, action);
+    }
 }
 
 void engine_input_free(engine_input *input)
@@ -63,10 +84,11 @@ void engine_input_free(engine_input *input)
         free(input->buttons[i].action);
     }
     afree(input->transitions);
+    afree(input->trail);
     afree(input->buttons);
     afree(input->controlled);
     afree(input->released);
-    afree(input->changes);
+    free_actions(input);
     free(input);
 }
 
@@ -90,6 +112,16 @@ static int button_index(const engine_input *input, const char *action)
     return -1;
 }
 
+static int action_index(const engine_input *input, const char *name)
+{
+    for (int i = 0; i < acount(input->actions); i++) {
+        if (!strcmp(input->actions[i].name, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void free_transitions(engine_input *input)
 {
     for (int i = 0; i < acount(input->transitions); i++) {
@@ -98,8 +130,6 @@ static void free_transitions(engine_input *input)
     aclear(input->transitions);
 }
 
-static void apply_action_state(engine_input *input);
-
 static void clear_actions(engine_input *input)
 {
     free_transitions(input);
@@ -107,7 +137,6 @@ static void clear_actions(engine_input *input)
         free(input->buttons[i].action);
     }
     aclear(input->buttons);
-    apply_action_state(input);
 }
 
 static void clear_owner(engine_input *input, ecs_entity entity)
@@ -138,16 +167,15 @@ void engine_input_clear(engine_input *input)
     input->aim_point = false;
     input->aim_sampled = true;
     input->firing = false;
-    input->controls = 0;
-    clear_actions(input);
     /* Pause may never run another fixed tick. Clear reflected local input now,
-     * without dispatching authored gameplay while transport is stopped. */
+     * without dispatching authored gameplay while transport is stopped. Held
+     * controls and actions stay, so resuming with the same controls held
+     * presses nothing again. */
     ecs_component_id component = GAME_COMPONENT_GameInput.id;
     if (ecs_world_component(input->world, component)) {
         ecs_query query;
         int result = ecs_query_begin(input->world, &query, &component, 1);
         assert(result == ECS_OK);
-        (void)result;
         (void)result;
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
@@ -163,6 +191,9 @@ void engine_input_clear(engine_input *input)
 void engine_input_reset(engine_input *input)
 {
     engine_input_clear(input);
+    input->controls = 0;
+    aclear(input->trail);
+    clear_actions(input);
     aclear(input->controlled);
     aclear(input->released);
 }
@@ -171,13 +202,18 @@ static bool update_button(engine_input *input, const char *action, bool down)
 {
     int index = button_index(input, action);
     if (index < 0) {
-        apush(input->buttons, ((input_button){ xstrdup(action), down }));
+        apush(
+            input->buttons,
+            ((input_button){ .action = xstrdup(action), .pressed = down, .started = down })
+        );
         return down;
     }
-    if (input->buttons[index].pressed == down) {
+    input_button *button = &input->buttons[index];
+    if (button->pressed == down) {
         return false;
     }
-    input->buttons[index].pressed = down;
+    button->pressed = down;
+    button->started |= down;
     return true;
 }
 
@@ -214,72 +250,36 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
 {
     _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
     *firing = false;
+    if (controls != input->controls) {
+        apush(input->trail, controls);
+    }
     input->controls = controls;
-    input_button *sample = NULL;
-    ecs_component_id component = GAME_COMPONENT_GameActionBinding.id;
-    ecs_query query;
-    int result = FLOW_OK;
-    if (ecs_world_component(input->world, component) &&
-        ecs_query_begin(input->world, &query, &component, 1) == ECS_OK) {
-        ecs_entity entity;
-        while (ecs_query_next(&query, &entity)) {
-            const GameActionBinding
-                *binding = GAME_GameActionBinding_get_const(input->world, entity);
-            if (binding->disabled || ecs_entity_is_retiring(input->world, entity)) {
-                continue;
-            }
-            if (binding->source <= GAME_CONTROL_NONE ||
-                binding->source >= GAME_CONTROL_COUNT || !binding->action ||
-                !binding->action[0]) {
-                result = FLOW_ERR_ARGUMENT;
-                break;
-            }
-            bool down = (controls & (UINT64_C(1) << binding->source)) != 0;
-            *firing |= down && binding->firing;
-            int index = 0;
-            while (index < acount(sample) &&
-                   strcmp(sample[index].action, binding->action)) {
-                index++;
-            }
-            if (index == acount(sample)) {
-                apush(sample, ((input_button){ (char *)binding->action, down }));
-            } else {
-                sample[index].pressed |= down;
-            }
-        }
-        ecs_query_end(&query);
-    }
-    if (result >= 0) {
-        for (int i = 0; i < acount(input->buttons); i++) {
-            int index = 0;
-            while (index < acount(sample) &&
-                   strcmp(sample[index].action, input->buttons[i].action)) {
-                index++;
-            }
-            if (index == acount(sample)) {
-                if (engine_input_action(input, input->buttons[i].action, false) ==
-                    FLOW_ERR_UNKNOWN_EVENT) {
-                    input->buttons[i].pressed = false;
-                }
-            }
-        }
-        for (int i = 0; i < acount(sample); i++) {
-            int dispatched = engine_input_action(
-                input,
-                sample[i].action,
-                sample[i].pressed
-            );
-            /* Held state is useful to Tick graphs without an event receiver. */
-            if (dispatched == FLOW_ERR_UNKNOWN_EVENT) {
-                update_button(input, sample[i].action, sample[i].pressed);
-            } else if (dispatched < 0) {
-                result = dispatched;
-                break;
-            }
+    for (int i = 0; i < acount(input->buttons); i++) {
+        if (action_index(input, input->buttons[i].action) < 0 &&
+            engine_input_action(input, input->buttons[i].action, false) ==
+                FLOW_ERR_UNKNOWN_EVENT) {
+            input->buttons[i].pressed = false;
         }
     }
-    afree(sample);
-    return result;
+    for (int i = 0; i < acount(input->actions); i++) {
+        const input_action *action = &input->actions[i];
+        bool down = (controls & action->controls) != 0;
+        *firing |= down && action->firing;
+        int dispatched = engine_input_action(input, action->name, down);
+        /* Held state is useful to Tick graphs without an event receiver. */
+        if (dispatched == FLOW_ERR_UNKNOWN_EVENT) {
+            update_button(input, action->name, down);
+        } else if (dispatched < 0) {
+            return dispatched;
+        }
+    }
+    return FLOW_OK;
+}
+
+int engine_input_trail(const engine_input *input, const uint64_t **controls)
+{
+    *controls = input->trail;
+    return acount(input->trail);
 }
 
 input_keyframe engine_input_held(const engine_input *input)
@@ -511,91 +511,21 @@ static int dispatch_actions(engine_input *input)
     return result < 0 ? result : FLOW_OK;
 }
 
-static void apply_action_state(engine_input *input)
-{
-    ecs_component_id component = GAME_COMPONENT_GameActionBinding.id;
-    if (!ecs_world_component(input->world, component)) {
-        return;
-    }
-    ecs_query query;
-    int result = ecs_query_begin(input->world, &query, &component, 1);
-    assert(result == ECS_OK);
-    (void)result;
-    ecs_entity entity;
-    while (ecs_query_next(&query, &entity)) {
-        GameActionBinding *binding = GAME_GameActionBinding_get(input->world, entity);
-        int index = binding->action ? button_index(input, binding->action) : -1;
-        bool pressed = !binding->disabled && index >= 0 && input->buttons[index].pressed;
-        if (binding->pressed != pressed) {
-            binding->pressed = pressed;
-            apush(input->changes, ((binding_change){ entity, pressed }));
-        }
-    }
-    ecs_query_end(&query);
-}
-
 int engine_input_apply(engine_input *input)
 {
     input->message[0] = 0;
-    apply_action_state(input);
+    aclear(input->trail);
+    for (int i = 0; i < acount(input->buttons); i++) {
+        input->buttons[i].stepped = input->buttons[i].started;
+        input->buttons[i].started = false;
+    }
     int result = apply_aim_sample(input);
     if (result >= 0) {
         result = apply_movement_sample(input);
     }
-    /* Notify source field observers before an event boundary samples the
-     * mutated component. Each explicit edge remains authoritative, including
-     * repeated payloads; external actions still precede PressedChanged events. */
-    binding_change *changes = input->changes;
-    input->changes = NULL;
-    for (int i = 0; result >= 0 && i < acount(changes); i++) {
-        if (!input->host.field_changed ||
-            !ecs_entity_is_alive(input->world, changes[i].entity) ||
-            !GAME_GameActionBinding_has(input->world, changes[i].entity)) {
-            continue;
-        }
-        result = input->host.field_changed(
-            input->host.context,
-            changes[i].entity,
-            GAME_COMPONENT_GameActionBinding.id,
-            offsetof(GameActionBinding, pressed),
-            (pin_value){ .type = PIN_BOOL, .b = changes[i].pressed },
-            input->message,
-            sizeof input->message
-        );
-    }
     if (result >= 0) {
         result = dispatch_actions(input);
     }
-    /* Gameplay runs after releasing the component query. Focus/transport
-     * clears enqueue their release here and deliver it when simulation resumes. */
-    for (int i = 0; result >= 0 && i < acount(changes); i++) {
-        if (!ecs_entity_is_alive(input->world, changes[i].entity) ||
-            !GAME_GameActionBinding_has(input->world, changes[i].entity)) {
-            continue;
-        }
-        pin_value pressed = { .type = PIN_BOOL, .b = changes[i].pressed };
-        result = dispatch(
-            input,
-            changes[i].entity,
-            game_host_event_name(GAME_HOST_EVENT_PRESSED_CHANGED),
-            (execution_arguments){ &pressed, 1 }
-        );
-        if (result >= 0) {
-            game_schedule_error error = { 0 };
-            result = game_schedule_field_changed(
-                input->systems,
-                changes[i].entity,
-                GAME_COMPONENT_GameActionBinding.id,
-                offsetof(GameActionBinding, pressed),
-                pressed,
-                &error
-            );
-            if (result < 0) {
-                snprintf(input->message, sizeof input->message, "%s", error.message);
-            }
-        }
-    }
-    afree(changes);
     if (result < 0 && !input->message[0]) {
         snprintf(input->message, sizeof input->message, "Input action failed");
     }
@@ -606,3 +536,37 @@ const char *engine_input_error(const engine_input *input)
 {
     return input->message;
 }
+
+static const input_button *named_button(const engine_input *input, const char *action)
+{
+    int index = input ? button_index(input, action) : -1;
+    return index < 0 ? NULL : &input->buttons[index];
+}
+
+static const char *action_held(void *service, const pin_value *in, pin_value *out)
+{
+    if (!in[0].str || !in[0].str[0]) {
+        return "Action Held requires an action name";
+    }
+    const input_button *button = named_button(service, in[0].str);
+    out[0].b = button && button->pressed;
+    return NULL;
+}
+
+static const char *action_pressed(void *service, const pin_value *in, pin_value *out)
+{
+    if (!in[0].str || !in[0].str[0]) {
+        return "Action Pressed requires an action name";
+    }
+    const input_button *button = named_button(service, in[0].str);
+    out[0].b = button && button->stepped;
+    return NULL;
+}
+
+const node_host_call GAME_INPUT_HELD_CALL = { .service = GAME_INPUT_SERVICE,
+                                              .invoke = action_held,
+                                              .optional_service = true };
+const node_host_call GAME_INPUT_PRESSED_CALL = { .service = GAME_INPUT_SERVICE,
+                                                 .invoke = action_pressed,
+                                                 .optional_service = true };
+const node_access GAME_INPUT_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

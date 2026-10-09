@@ -553,11 +553,14 @@ static bool publish(const char *staging, const char *output)
 }
 
 /* Writes <output>.tar.gz holding the output folder under its own name. */
+/* Writes <output>.tar.gz through a partial file, so a failed tar leaves an
+ * earlier archive in place. */
 static bool archive(const char *output)
 {
-    size_t size = strlen(output) + sizeof ".tar.gz";
-    char *path = xmalloc(size);
+    size_t size = strlen(output) + sizeof ".tar.gz.partial";
+    char *path = xmalloc(size), *partial = xmalloc(size);
     snprintf(path, size, "%s.tar.gz", output);
+    snprintf(partial, size, "%s.tar.gz.partial", output);
     char *parent = xstrdup(output);
     char *slash = strrchr(parent, '/');
     const char *base = slash ? slash + 1 : output;
@@ -567,18 +570,19 @@ static bool archive(const char *output)
     /* ./ keeps a name that starts with a dash from reading as an option. */
     char *member = join(".", base);
     char *argv[] = {
-        "tar",  "-czf", path, "-C", slash ? (parent[0] ? parent : "/") : ".",
+        "tar",  "-czf", partial, "-C", slash ? (parent[0] ? parent : "/") : ".",
         member, NULL
     };
-    bool archived = chibi_process_run(argv) == 0;
+    bool archived = chibi_process_run(argv) == 0 && rename(partial, path) == 0;
     if (archived) {
         printf("Archived %s\n", path);
     } else {
-        unlink(path);
+        unlink(partial);
         failed("tar could not archive the export", path);
     }
     free(member);
     free(parent);
+    free(partial);
     free(path);
     return archived;
 }

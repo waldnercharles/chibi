@@ -195,6 +195,14 @@ TEST_CASE(export_assembles_a_runnable_folder)
         20
     ));
     REQUIRE(has("apps/Game.app.tar.gz", NULL));
+    /* A tar that cannot run leaves the earlier archive in place. */
+    char path[4096];
+    snprintf(path, sizeof path, "%s", getenv("PATH"));
+    setenv("PATH", "", 1);
+    bool archived = export_as("apps/Game", CHIBI_EXPORT_APP, true);
+    setenv("PATH", path, 1);
+    REQUIRE(!archived && has("apps/Game.app.tar.gz", NULL));
+    REQUIRE(!has("apps/Game.app.tar.gz.partial", NULL));
 
     /* Without a title, people see the project name. */
     title = NULL;

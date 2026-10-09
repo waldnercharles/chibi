@@ -501,15 +501,17 @@ static void add_locations(
         if (locations[i].definition != definitions) {
             continue;
         }
+        char path[1024];
+        snprintf(path, sizeof path, "content%s", locations[i].path + prefix);
         yyjson_mut_val *place = yyjson_mut_arr_add_obj(doc, array);
-        yyjson_mut_obj_add_strcpy(doc, place, "path", locations[i].path + prefix);
+        yyjson_mut_obj_add_strcpy(doc, place, "path", path);
         yyjson_mut_obj_add_int(doc, place, "line", locations[i].line);
         yyjson_mut_obj_add_int(doc, place, "column", locations[i].column);
     }
 }
 
 int automation_ui_references(
-    const char *root,
+    const char *content_root,
     yyjson_val *request,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,
@@ -532,16 +534,14 @@ int automation_ui_references(
     if (!key) {
         return failf(error, error_size, CHIBI_AUTOMATION_INVALID_REQUEST, "ui_class, token and save_key each take a name");
     }
-    char content[1024];
-    snprintf(content, sizeof content, "%s/content", root);
     ui_source_project project = { 0 };
-    ui_source_project_scan(&project, content);
+    ui_source_project_scan(&project, content_root);
     ui_source_location *found = NULL;
     ui_source_references(&project, &symbol, &found);
     yyjson_mut_val *named = yyjson_mut_obj_add_obj(doc, result, "symbol");
     yyjson_mut_obj_add_str(doc, named, "kind", key);
     yyjson_mut_obj_add_strcpy(doc, named, "name", symbol.name);
-    size_t prefix = strlen(root) + 1;
+    size_t prefix = strlen(content_root);
     add_locations(doc, yyjson_mut_obj_add_arr(doc, result, "definitions"), found, true, prefix);
     add_locations(doc, yyjson_mut_obj_add_arr(doc, result, "uses"), found, false, prefix);
     yyjson_mut_obj_add_int(doc, result, "total", acount(found));

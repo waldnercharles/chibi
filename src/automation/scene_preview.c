@@ -201,15 +201,13 @@ static bool render_scene(
         }
         engine_viewport_set_render_callback(scene.viewport, draw_scene, &scene);
         engine *preview_runtime = game_prototype_preview_runtime(scene.preview);
-        char content_root[1024];
-        snprintf(content_root, sizeof content_root, "%s/content", root);
         ui_world ui = {
             .ecs = game_prototype_preview_world(scene.preview),
             .page = chibi_preview_page(run),
             .model = engine_ui(preview_runtime),
             .host = authoring_ui_events(game_prototype_preview_live(scene.preview))
         };
-        engine_viewport_set_ui(scene.viewport, &ui, content_root);
+        engine_viewport_set_ui(scene.viewport, &ui, chibi_automation_content(root));
     }
     /* Captures settle the renderer for two frames. Performance runs first warm
      * it with simulation frozen, then measure GPU-complete frame work.

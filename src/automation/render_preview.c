@@ -1,5 +1,6 @@
 #include "authoring/render_preview.h"
 
+#include "assets/project.h"
 #include "authoring/image_prepare.h"
 #include "authoring/mesh_prepare.h"
 #include "authoring/shader_prepare.h"
@@ -358,20 +359,32 @@ static bool under_root(const char *root, const char *path)
     return !strncmp(root, path, length) && path[length] == '/';
 }
 
-static char *read_ref(const char *root, preview_ref *ref, char *error, size_t error_size)
+/* The real path of the folder the project at `root` keeps its content in,
+ * which virtual content/ paths name: PREVIEW_OK, or another status with why
+ * in `error`. */
+static int content_folder(const char *root, char *out, char *error, size_t error_size)
 {
-    char root_path[PATH_MAX];
-    if (!realpath(root, root_path)) {
-        set_errorf(error, error_size, "project root cannot be resolved: %s", strerror(errno));
-        return NULL;
+    char *content = chibi_project_content(root, error, error_size);
+    if (!content) {
+        return PREVIEW_VALIDATION_ERROR;
     }
-    int length = snprintf(ref->path, sizeof ref->path, "%s/%s", root_path, ref->relative);
+    int status = realpath(content, out) ? PREVIEW_OK : PREVIEW_NOT_FOUND;
+    if (status != PREVIEW_OK) {
+        set_errorf(error, error_size, "project content folder cannot be resolved: %s", strerror(errno));
+    }
+    free(content);
+    return status;
+}
+
+static char *read_ref(const char *content, preview_ref *ref, char *error, size_t error_size)
+{
+    int length = snprintf(ref->path, sizeof ref->path, "%s%s", content, ref->relative + strlen("content"));
     if (length < 0 || (size_t)length >= sizeof ref->path) {
         set_error(error, error_size, "asset path is too long");
         return NULL;
     }
     char resolved[PATH_MAX];
-    if (!realpath(ref->path, resolved) || !under_root(root_path, resolved)) {
+    if (!realpath(ref->path, resolved) || !under_root(content, resolved)) {
         set_errorf(error, error_size, "asset not found: %s", ref->relative);
         return NULL;
     }
@@ -506,11 +519,10 @@ static char *load_library_file(const char *path)
     return json;
 }
 
-static behavior_asset **load_libraries(const char *root)
+static behavior_asset **load_libraries(const char *content)
 {
     char path[PATH_MAX];
-    if (snprintf(path, sizeof path, "%s/content/shader-libraries", root) >=
-        (int)sizeof path) {
+    if (snprintf(path, sizeof path, "%s/shader-libraries", content) >= (int)sizeof path) {
         return NULL;
     }
     DIR *directory = opendir(path);
@@ -535,7 +547,7 @@ static behavior_asset **load_libraries(const char *root)
         }
         char resolved[PATH_MAX];
         struct stat info;
-        if (!realpath(file_path, resolved) || !under_root(root, resolved) ||
+        if (!realpath(file_path, resolved) || !under_root(content, resolved) ||
             stat(resolved, &info) || !S_ISREG(info.st_mode)) {
             continue;
         }
@@ -815,6 +827,7 @@ static bool add_sample_grid(
 
 static bool render_asset(
     const behavior_asset *asset,
+    const char *content,
     float time,
     int width,
     int height,
@@ -861,8 +874,8 @@ static bool render_asset(
         cf_backend_type_to_string(cf_query_backend())
     );
     char mount_error[PREVIEW_MAX_ERROR] = { 0 };
-    if (!render_image_mount_content("content", mount_error, sizeof mount_error) ||
-        !authoring_mesh_mount_content("content", mount_error, sizeof mount_error)) {
+    if (!render_image_mount_content(content, mount_error, sizeof mount_error) ||
+        !authoring_mesh_mount_content(content, mount_error, sizeof mount_error)) {
         set_error(error, error_size, mount_error);
         cf_destroy_app();
         return false;
@@ -919,7 +932,7 @@ static char *response_finish(preview_response *response)
     return json;
 }
 
-static bool validate_shader_images(const behavior_asset *asset, const char *root, preview_response *response)
+static bool validate_shader_images(const behavior_asset *asset, const char *content, preview_response *response)
 {
     shader_graph graph;
     shader_graph_init(&graph);
@@ -935,8 +948,9 @@ static bool validate_shader_images(const behavior_asset *asset, const char *root
         struct stat info;
         if (!key || strncmp(key, "content/", sizeof "content/" - 1) ||
             strchr(key, '\\') || strstr(key, "..") || key[0] == '/' ||
-            snprintf(path, sizeof path, "%s/%s", root, key) >= (int)sizeof path ||
-            !realpath(path, resolved) || !under_root(root, resolved) ||
+            snprintf(path, sizeof path, "%s%s", content, key + strlen("content")) >=
+                (int)sizeof path ||
+            !realpath(path, resolved) || !under_root(content, resolved) ||
             stat(resolved, &info) || !S_ISREG(info.st_mode)) {
             response_diagnostic(response, "error", 0, "shader image keys must resolve inside the project content directory");
             valid = false;
@@ -1111,7 +1125,11 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
     }
 
     preview_ref ref;
+    char content[PATH_MAX];
     int status = resolve_preview_ref(root, &ref, error, sizeof error);
+    if (status == PREVIEW_OK) {
+        status = content_folder(project_root, content, error, sizeof error);
+    }
     if (status != PREVIEW_OK) {
         response_error(&response, status, error);
         if (exit_code) {
@@ -1120,7 +1138,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         yyjson_doc_free(document);
         return response_finish(&response);
     }
-    char *json = read_ref(project_root, &ref, error, sizeof error);
+    char *json = read_ref(content, &ref, error, sizeof error);
     if (!json) {
         response_error(&response, PREVIEW_NOT_FOUND, error);
         if (exit_code) {
@@ -1175,7 +1193,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         yyjson_doc_free(document);
         return response_finish(&response);
     }
-    behavior_asset **libraries = load_libraries(root_abs);
+    behavior_asset **libraries = load_libraries(content);
     char link_error[PREVIEW_MAX_ERROR] = { 0 };
     behavior_asset *linked = behavior_asset_link_libraries(
         asset,
@@ -1212,7 +1230,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         yyjson_doc_free(document);
         return response_finish(&response);
     }
-    if (!validate_shader_images(linked, root_abs, &response)) {
+    if (!validate_shader_images(linked, content, &response)) {
         yyjson_mut_obj_add_bool(response.doc, response.result, "valid", false);
         response_error(&response, PREVIEW_VALIDATION_ERROR, "shader image paths must remain inside the project");
         compile_report_free(&report);
@@ -1277,6 +1295,7 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
     }
     bool rendered = render_asset(
         linked,
+        content,
         time,
         width,
         height,

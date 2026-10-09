@@ -1,6 +1,7 @@
 # Author a game with Chibi
 
 The game's `project.kdl` selects its `content` directory and starting scene.
+`chibi-compile` and `chibi_ctl` both read assets from that directory.
 Project format 10 uses `.chibi` executable source for behaviors, callable
 libraries, and systems. Scenes, prototypes, shaders, models, and other declarative
 assets use KDL. Studio, text editors, and AI agents edit these same asset files.
@@ -103,9 +104,13 @@ JSON response per line. Requests use `contract: 1`, an `operation`, and the
 operation's fields at the top level. For example, validate a saved behavior:
 
 ```sh
-printf '%s\n' '{"contract":1,"operation":"validate_asset","path":"behaviors/Projectile.chibi"}' | \
+printf '%s\n' '{"contract":1,"operation":"validate_asset","path":"content/behaviors/Projectile.chibi"}' | \
   chibi_ctl --project-root "$PWD"
 ```
+
+Asset paths in requests and replies start with `content/`, which stands for the
+folder `project.kdl` selects: `content/behaviors/Projectile.chibi` is
+`behaviors/Projectile.chibi` there.
 
 Change the path to an asset in your project. A request failure returns a nonzero
 exit status. Inspect the response's diagnostics as well as its status. Retained

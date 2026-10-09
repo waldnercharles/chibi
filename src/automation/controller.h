@@ -42,6 +42,11 @@ enum
  * safe to print to stdout; diagnostics are data, never process logging. */
 char *chibi_automation_handle(const char *request, const char *default_root, int *exit_code);
 
+/* The folder the project at `root` keeps its content in, which virtual
+ * content/ paths name: the one its manifest names, joined to `root`. `root`
+ * must be the project the current request or preview opened. */
+const char *chibi_automation_content(const char *root);
+
 /* Rewrites every authored asset under root in the canonical form its loader
  * and saver produce. With check, only reports differences. Returns the
  * number of differing assets, or -1 when an asset cannot be loaded or written. */

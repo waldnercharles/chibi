@@ -70,19 +70,26 @@ static const char *first_message(yyjson_val *diagnostics)
     return yyjson_get_str(yyjson_obj_get(yyjson_arr_get_first(diagnostics), "message"));
 }
 
-static void set_start_scene(const char *scene)
+/* Sets the manifest's `key`, a line the scaffold writes, to `value`. */
+static void set_manifest(const char *key, const char *value)
 {
-    char manifest[256];
+    char manifest[256], prefix[64];
     path(manifest, sizeof manifest, "game/project.kdl");
+    snprintf(prefix, sizeof prefix, "\n%s ", key);
     char *text = tool_read(manifest);
-    char *line = text ? strstr(text, "start_scene ") : NULL;
+    char *line = text ? strstr(text, prefix) : NULL;
     assert(line);
-    char *rest = strchr(line, '\n');
-    *line = '\0';
+    char *rest = strchr(line + 1, '\n');
+    line[1] = '\0';
     char updated[1024];
-    snprintf(updated, sizeof updated, "%sstart_scene \"%s\"%s", text, scene, rest ? rest : "\n");
+    snprintf(updated, sizeof updated, "%s%s \"%s\"%s", text, key, value, rest ? rest : "\n");
     free(text);
     tool_write(manifest, updated);
+}
+
+static void set_start_scene(const char *scene)
+{
+    set_manifest("start_scene", scene);
 }
 
 static void append_manifest(const char *line)
@@ -359,6 +366,81 @@ TEST_CASE(prototype_includes_resolve)
     return true;
 }
 
+/* Whether `text` is there and reads `expected`. */
+static bool reads(const char *text, const char *expected)
+{
+    return text && !strcmp(text, expected);
+}
+
+/* Runs chibi_ctl --format on the project, with "--check" to only compare. */
+static int format(const char *check)
+{
+    const char *args[] = { program, "--project-root", "game", "--format", check,
+                           NULL };
+    return tool_run(args, root, log_path);
+}
+
+TEST_CASE(manifest_content_folder_is_used)
+{
+    char from[256], to[256];
+    path(from, sizeof from, "game/content");
+    path(to, sizeof to, "game/assets");
+    REQUIRE(rename(from, to) == 0);
+    set_manifest("content", "assets");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    /* A start scene named by its content/ path is in the folder too. */
+    set_start_scene("content/scenes/Start.kdl");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    ctl(true, "{\"contract\":1,\"operation\":\"status\"}");
+    REQUIRE(reads(yyjson_get_str(result("content_root")), "assets"));
+
+    /* Requests and replies keep naming assets by their content/ paths. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Hero\"}") == 0
+    );
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/Hero.kdl"));
+    char hero[256];
+    path(hero, sizeof hero, "game/assets/prototypes/Hero.kdl");
+    REQUIRE(access(hero, F_OK) == 0);
+    write_file("game/assets/prototypes/Hero.kdl", "name \"Hero\"\ncomponents {\n  GameTransform x=1 y=2\n}\n");
+    write_file("game/assets/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"path\":\"content/prototypes/Hero.kdl\"}") ==
+        0
+    );
+    REQUIRE(yyjson_get_int(result("components")) == 1);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
+
+    char folder[256];
+    path(folder, sizeof folder, "game/assets/ui");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file("game/assets/ui/Hud.rml", "<div class=\"hud\">Score</div>\n");
+    ctl(true, "{\"contract\":1,\"operation\":\"find_references\",\"ui_class\":\"hud\"}");
+    yyjson_val *use = yyjson_arr_get_first(result("uses"));
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(use, "path")), "content/ui/Hud.rml"));
+
+    write_file("game/assets/prototypes/Broken.kdl", "name \"Broken\"\ncomponents {\n");
+    REQUIRE(validate() != 0 && yyjson_arr_size(result("problems")) == 1);
+    yyjson_val *problem = yyjson_arr_get_first(result("problems"));
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(problem, "path")), "content/prototypes/Broken.kdl"));
+
+    /* A project too old to open still names where its content is. */
+    char manifest[256], old[1024];
+    path(manifest, sizeof manifest, "game/project.kdl");
+    char *text = tool_read(manifest);
+    assert(text);
+    snprintf(old, sizeof old, "version 1%s", strchr(text, '\n'));
+    free(text);
+    tool_write(manifest, old);
+    ctl(true, "{\"contract\":1,\"operation\":\"status\"}");
+    REQUIRE(reads(yyjson_get_str(result("content_root")), "assets"));
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -374,5 +456,6 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(catalog_errors_are_reported_once);
     RUN_TEST_CASE(old_projects_are_not_upgraded);
     RUN_TEST_CASE(prototype_includes_resolve);
+    RUN_TEST_CASE(manifest_content_folder_is_used);
     pu_clear_setup();
 }

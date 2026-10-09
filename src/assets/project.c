@@ -373,20 +373,6 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
         return -1;
     }
     int found = (int)av_get_int(version);
-    if (found < CHIBI_PROJECT_OLDEST_VERSION || found > CHIBI_PROJECT_VERSION) {
-        av_doc_free(document);
-        snprintf(
-            error,
-            error_size,
-            "Project version %d needs %s build; this build opens version %d: "
-            "%s",
-            found,
-            found > CHIBI_PROJECT_VERSION ? "a newer" : "an older",
-            CHIBI_PROJECT_VERSION,
-            path
-        );
-        return -1;
-    }
     av_value *name_value = av_obj_get(root, "name");
     av_value *content_value = av_obj_get(root, "content");
     av_value *scene_value = av_obj_get(root, "start_scene");
@@ -418,6 +404,26 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     *opened = found;
     av_doc_free(document);
     return result;
+}
+
+/* Whether this build opens a project saved at `version`; false with why in
+ * `error` when it does not. */
+static bool opens_version(int version, const char *path, char *error, size_t error_size)
+{
+    if (version >= CHIBI_PROJECT_OLDEST_VERSION && version <= CHIBI_PROJECT_VERSION) {
+        return true;
+    }
+    snprintf(
+        error,
+        error_size,
+        "Project version %d needs %s build; this build opens version %d: "
+        "%s",
+        version,
+        version > CHIBI_PROJECT_VERSION ? "a newer" : "an older",
+        CHIBI_PROJECT_VERSION,
+        path
+    );
+    return false;
 }
 
 /* Runs each step from `from` and then records the new version. The manifest
@@ -583,7 +589,8 @@ static int open_project(chibi_project *project, const char *path, bool migrate, 
     }
     project->root = root;
     int version = CHIBI_PROJECT_VERSION;
-    if (manifest && read_manifest(manifest, project, &version, error, error_size) != 0) {
+    if (manifest && (read_manifest(manifest, project, &version, error, error_size) != 0 ||
+                     !opens_version(version, manifest, error, error_size))) {
         chibi_project_free(project);
         free(input);
         free(manifest);
@@ -661,6 +668,20 @@ int chibi_project_read(chibi_project *project, const char *path, char *error, si
     return open_project(project, path, false, error, error_size);
 }
 
+char *chibi_project_content(const char *root, char *error, size_t error_size)
+{
+    char *manifest = join_path(root, CHIBI_PROJECT_MANIFEST);
+    chibi_project project = { 0 };
+    int version = 0;
+    bool parsed = !is_file(manifest) ||
+                  read_manifest(manifest, &project, &version, error, error_size) == 0;
+    free(manifest);
+    char *content = parsed ? join_path(root, project.content ? project.content : "content")
+                           : NULL;
+    chibi_project_free(&project);
+    return content;
+}
+
 char *chibi_project_scene_path(const chibi_project *project, const char *requested)
 {
     if (!project || !project->root || !project->content) {
@@ -673,8 +694,9 @@ char *chibi_project_scene_path(const chibi_project *project, const char *request
     if (scene[0] == '/') {
         return xstrdup(scene);
     }
+    /* A scene named by its content/ path is in the content folder. */
     if (!strncmp(scene, "content/", strlen("content/"))) {
-        return join_path(project->root, scene);
+        scene += strlen("content/");
     }
     return join_path(project->content, scene);
 }

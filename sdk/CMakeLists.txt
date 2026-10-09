@@ -179,6 +179,7 @@ target_link_libraries(chibi_native_capabilities PUBLIC chibi_capabilities chibi_
 
 add_library(chibi_ecs STATIC "${CHIBI_SDK_ROOT}/src/ecs/ecs.c"
     "${CHIBI_SDK_ROOT}/src/ecs/relationship.c" "${CHIBI_SDK_ROOT}/src/ecs/hierarchy.c"
+    "${CHIBI_SDK_ROOT}/src/ecs/query.c"
     "${CHIBI_SDK_ROOT}/src/ecs/component_catalog.c")
 add_library(Chibi::ecs ALIAS chibi_ecs)
 set_target_properties(chibi_ecs PROPERTIES EXPORT_NAME ecs)

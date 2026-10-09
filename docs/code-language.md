@@ -403,8 +403,10 @@ Fire {
 }
 ```
 
-Each action is an event that entities with Input receive when one of its
-sources goes down. Scripts read an action through the `input` global:
+A map holds at most 256 actions. Each action is an event that entities with
+Input receive when one of its sources goes down, so an action cannot take the
+name of a host event such as `Tick`, and no other global may be named `input`.
+A project event may share an action's name; pressing the action raises it. Scripts read an action through the `input` global:
 `input.Boost.held` is true while any of its sources is down, and
 `input.Boost.pressed` is true for the one fixed step after one went down, even
 for a tap released before that step. Action names are typed members, so
@@ -416,7 +418,8 @@ Migrating a version 15 project moves its GameActionBinding components into the
 map, leaving out disabled and retained ones. Which action a script's
 `ActionBinding` or `PressedChanged` meant depended on its entity, so a script
 that still uses one stops the migration until it is rewritten with
-`input.<Action>`.
+`input.<Action>`. So does an existing `content/input.kdl` that is not an input
+map, until it is fixed or moved.
 
 ### Maintained ECS relationships
 

@@ -1,6 +1,7 @@
 #include "assets/project_migrate.h"
 
 #include "language/syntax.h"
+#include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
@@ -1507,6 +1508,64 @@ static av_doc *empty_map()
     av_doc_set_root(map, av_obj(map));
     return map;
 }
+static bool action_shaped(const av_value *action)
+{
+    const av_value *sources = av_obj_get(action, "sources");
+    const av_value *firing = av_obj_get(action, "firing");
+    if (av_obj_size(action) != 1 + (firing != NULL) ||
+        (firing && !av_is_bool(firing)) || !av_arr_size(sources)) {
+        return false;
+    }
+    for (size_t i = 0; i < av_arr_size(sources); i++) {
+        if (!av_is_str(av_arr_get(sources, i))) {
+            return false;
+        }
+    }
+    return true;
+}
+/* Whether `map` has the shape assets/input_map.c reads. Its labels are left
+ * to that reader: naming GameControls needs the type catalog, which the
+ * launcher that links this library does not provide. */
+static bool input_map_shaped(const av_value *map)
+{
+    if (!av_is_obj(map) || av_obj_size(map) > INPUT_ACTION_MAX) {
+        return false;
+    }
+    for (size_t i = 0; i < av_obj_size(map); i++) {
+        if (!av_get_str(av_obj_key_at(map, i))[0] ||
+            !action_shaped(av_obj_value_at(map, i))) {
+            return false;
+        }
+    }
+    return true;
+}
+/* Reads the input map `source` at `path`, which is empty when the project has
+ * none. A map the input map reader would reject stops the migration before
+ * any asset changes. */
+static av_doc *read_map(const char *source, const char *path, char *error, size_t error_size)
+{
+    char message[128];
+    av_doc *map = source[0] ? asset_text_read(source, message, sizeof message)
+                            : empty_map();
+    if (!map) {
+        snprintf(error, error_size, "Cannot read %s: %s; fix or move it, then migrate", path, message);
+        return NULL;
+    }
+    if (input_map_shaped(av_doc_root(map))) {
+        return map;
+    }
+    snprintf(
+        error,
+        error_size,
+        "%s is not an input map: it holds at most %d actions, each with "
+        "(array)sources of GameControl labels and an optional firing flag; "
+        "fix or move it, then migrate",
+        path,
+        INPUT_ACTION_MAX
+    );
+    av_doc_free(map);
+    return NULL;
+}
 static bool code_path(const char *path)
 {
     size_t length = strlen(path);
@@ -1535,13 +1594,8 @@ static char **migrate_bindings(char **sources, char **paths, int count, int targ
             return migrated;
         }
     }
-    char message[128];
-    av_doc *map = sources[target][0]
-                    ? asset_text_read(sources[target], message, sizeof message)
-                    : empty_map();
-    if (!map || !av_is_obj(av_doc_root(map))) {
-        snprintf(error, error_size, "Cannot read %s: %s", paths[target], map ? "not a map" : message);
-        av_doc_free(map);
+    av_doc *map = read_map(sources[target], paths[target], error, error_size);
+    if (!map) {
         return migrated;
     }
     bool moved = false;
@@ -1551,7 +1605,16 @@ static char **migrate_bindings(char **sources, char **paths, int count, int targ
             moved |= migrated[i] != NULL;
         }
     }
-    if (moved && av_obj_size(av_doc_root(map))) {
+    if (av_obj_size(av_doc_root(map)) > INPUT_ACTION_MAX) {
+        snprintf(
+            error,
+            error_size,
+            "Moving the bindings into %s gives it more than %d actions; "
+            "remove some bindings or actions, then migrate",
+            paths[target],
+            INPUT_ACTION_MAX
+        );
+    } else if (moved && av_obj_size(av_doc_root(map))) {
         migrated[target] = asset_text_write(av_doc_root(map));
     }
     av_doc_free(map);

@@ -16,6 +16,7 @@
 #include "runtime/state_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
@@ -2703,6 +2704,22 @@ TEST_CASE(program_input_map_validates_actions)
             strstr(error, invalid[i].message)
         );
     }
+    /* A map holds at most INPUT_ACTION_MAX actions. */
+    size_t size = (INPUT_ACTION_MAX + 1) *
+                  sizeof "A256 {\n    (array)sources \"Z\"\n}\n";
+    char *many = xmalloc(size);
+    size_t most = 0, used = 0;
+    for (int i = 0; i <= INPUT_ACTION_MAX; i++) {
+        most = used;
+        used += (size_t)snprintf(many + used, size - used, "A%d {\n    (array)sources \"Z\"\n}\n", i);
+    }
+    REQUIRE(!input_map_read(many, &map, error, sizeof error) && !map);
+    REQUIRE(strstr(error, "at most"));
+    many[most] = 0;
+    REQUIRE(input_map_read(many, &map, error, sizeof error));
+    REQUIRE(acount(map) == INPUT_ACTION_MAX);
+    input_map_free(map);
+    free(many);
     return true;
 }
 TEST_CASE(program_input_actions_read_through_typed_names)
@@ -2767,6 +2784,50 @@ TEST_CASE(program_input_actions_read_through_typed_names)
     REQUIRE(source_catalog_diagnostic_count(clashing) == 1);
     REQUIRE(strstr(source_catalog_diagnostic_at(clashing, 0)->message, "rename the type"));
     source_catalog_free(clashing);
+    /* So is a project global that takes the name input. */
+    const script_catalog_global global = { .id = script_catalog_id("global", "input"),
+                                           .name = "input",
+                                           .type = { .storage = PIN_F64 } };
+    clash = native;
+    clash.globals = &global;
+    clash.global_count = 1;
+    clashing = source_catalog_new(root, &clash);
+    REQUIRE(source_catalog_diagnostic_count(clashing) == 1);
+    REQUIRE(strstr(source_catalog_diagnostic_at(clashing, 0)->message, "rename the global"));
+    source_catalog_free(clashing);
+    /* An action named like an existing event would dispatch that event, so
+     * each such action is reported. */
+    source_catalog_edit lifecycle = {
+        .path = map,
+        .text = "Tick {\n    (array)sources \"X\"\n}\n"
+                "Jump {\n    (array)sources \"Space\"\n}\n",
+    };
+    clashing = source_catalog_edited(root, &native, &lifecycle, 1);
+    REQUIRE(source_catalog_diagnostic_count(clashing) == 1);
+    REQUIRE(
+        strstr(source_catalog_diagnostic_at(clashing, 0)->message, "Input action Tick takes the name of the event Tick; rename the action")
+    );
+    REQUIRE(
+        script_catalog_find_capability(source_catalog_view(clashing), "Jump", SCRIPT_CAPABILITY_EVENT) < 0
+    );
+    source_catalog_free(clashing);
+    /* A project event may share an action's name: both raise that event. */
+    char events[256], event[256];
+    snprintf(events, sizeof events, "%s/events", root);
+    snprintf(event, sizeof event, "%s/Jump.kdl", events);
+    REQUIRE(!mkdir(events, 0700));
+    FILE *file = fopen(event, "wb");
+    REQUIRE(file);
+    fputs("version 3\nname \"Jump\"\ndomain \"event\"\n", file);
+    fclose(file);
+    source_catalog *shared = source_catalog_new(root, &native);
+    REQUIRE(!source_catalog_diagnostic_count(shared));
+    REQUIRE(
+        script_catalog_find_capability(source_catalog_view(shared), "Jump", SCRIPT_CAPABILITY_EVENT) >= 0
+    );
+    source_catalog_free(shared);
+    unlink(event);
+    rmdir(events);
     remove_input_project(root);
     REQUIRE(!source_catalog_diagnostic_count(project));
     const script_catalog *view = source_catalog_view(project);
@@ -2919,12 +2980,55 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
     }
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
     REQUIRE(strstr(error, "Move.chibi reads PressedChanged"));
+    snprintf(path, sizeof path, "%s/%s", root, scripts[1][0]);
+    unlink(path);
+
+    /* An input map that the input map reader would reject stops the
+     * migration before any asset changes. */
+    const char *unrelated[][2] = {
+        { "content/scenes/Start.kdl", scene },
+        { "content/" INPUT_MAP_FILE, "bindings {\n    jump \"Space\"\n}\n" },
+    };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, unrelated[i][0]);
+        FILE *file = fopen(path, "wb");
+        fputs(unrelated[i][1], file);
+        fclose(file);
+    }
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
+    REQUIRE(strstr(error, "content/" INPUT_MAP_FILE " is not an input map"));
+    const char *const *kept[] = { scripts[0], unrelated[0], unrelated[1] };
+    for (int i = 0; i < 3; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
+        char text[1024];
+        FILE *file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        REQUIRE(!strcmp(text, kept[i][1]));
+    }
+
+    /* So does a map that the moved bindings would take past the action
+     * limit. */
+    snprintf(path, sizeof path, "%s/content/" INPUT_MAP_FILE, root);
+    FILE *full = fopen(path, "wb");
+    for (int i = 0; i < INPUT_ACTION_MAX; i++) {
+        fprintf(full, "A%d {\n    (array)sources \"Space\"\n}\n", i);
+    }
+    fclose(full);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
+    REQUIRE(strstr(error, "more than 256 actions"));
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
+        char text[1024];
+        FILE *file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        REQUIRE(!strcmp(text, kept[i][1]));
+    }
     for (int i = 0; i < 4; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);
     }
-    snprintf(path, sizeof path, "%s/%s", root, scripts[1][0]);
-    unlink(path);
     for (int i = 2; i >= 0; i--) {
         snprintf(path, sizeof path, "%s/%s", root, directories[i]);
         rmdir(path);

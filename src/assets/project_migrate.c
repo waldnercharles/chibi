@@ -1705,7 +1705,8 @@ static bool storage_path(const char *text, lazy *all, TSNode node)
     if (is(node, "call_expression")) {
         return reads_component(text, node);
     }
-    return is(node, "builtin_reference") ||
+    uint32_t start = ts_node_start_byte(node);
+    return (is(node, "builtin_reference") && !strncmp(text + start, "state", 5)) ||
            (is(node, "identifier") && names_storage(text, node));
 }
 /* Whether a storage path reads a local evaluated once or calls something,
@@ -1864,6 +1865,21 @@ static int place_local(
         if (scope_node(scope) && redeclares(text, scope, name, l->node)) {
             return inline_local(text, all, index, unit, uses, out, error, error_size);
         }
+    }
+    /* Assigning a local before reading it skipped its initializer. */
+    TSNode target = ts_node_parent(first);
+    TSNode op = ts_node_child_by_field_name(target, "operator", 8);
+    if (!constant(value) && is(target, "assignment") &&
+        child_is(target, "target", first) &&
+        ts_node_end_byte(op) - ts_node_start_byte(op) == 1) {
+        return local_fail(
+            error,
+            error_size,
+            text,
+            ts_node_child_by_field_name(l->node, "name", 4),
+            "Local `%.*s` is assigned before it is read; declare it there "
+            "before migrating"
+        );
     }
     /* A local was evaluated at its first read, which a branch or loop
      * body might skip or reach after the state it reads changed. */

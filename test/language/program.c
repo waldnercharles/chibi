@@ -2588,8 +2588,12 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         "    function One() { return 1 }\n"
         "    local hit = One(); local twice = hit + hit\n"
         "    action wait = timer(twice)\n}\n",
+        "behavior L { n: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local hit = One()\n"
+        "    on Tick() { hit = 2; n = hit }\n}\n",
     };
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 13; i++) {
         unchanged = NULL;
         REQUIRE(
             chibi_migrate_locals(later[i], &unchanged, error, sizeof error) &&
@@ -2650,10 +2654,11 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
                  "    local done = wait.Done\n"
                  "    local hp = get_component(self).Value\n"
                  "    local me = self\n"
+                 "    local amount = event.amount\n"
                  "    local health = self.Health\n"
                  "    local armor = engine[\"Get Component\"](self).Value\n"
                  "    on Tick() { alias = 2; m := typed; typed = 3; n = "
-                 "done; hp = 4; e := me; health = 5; armor = 6 }\n"
+                 "done; hp = 4; e := me; health = 5; armor = 6; a := amount }\n"
                  "}\n";
     REQUIRE(!chibi_migrate_locals(alias, &unchanged, error, sizeof error));
     REQUIRE(
@@ -2665,7 +2670,8 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
             "    on Tick() { n = 2; m := n; n = 3; done := "
             "wait.Done; n = done; "
             "get_component(self).Value = 4; me := self; e := me; "
-            "self.Health = 5; engine[\"Get Component\"](self).Value = 6 }\n"
+            "self.Health = 5; engine[\"Get Component\"](self).Value = 6; "
+            "amount := event.amount; a := amount }\n"
             "}\n"
         )
     );

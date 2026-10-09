@@ -3022,6 +3022,17 @@ TEST_CASE(program_input_actions_read_through_typed_names)
         REQUIRE(acount(source_catalog_input(edited)) == !i);
         source_catalog_free(edited);
     }
+    /* A project type that takes an input type's name is reported. */
+    const script_catalog_type taken = { .id = script_catalog_id("type", "input_action"),
+                                        .name = "input_action",
+                                        .type = { .storage = PIN_F64 } };
+    script_catalog clash = native;
+    clash.types = &taken;
+    clash.type_count = 1;
+    source_catalog *clashing = source_catalog_new(root, &clash);
+    REQUIRE(source_catalog_diagnostic_count(clashing) == 1);
+    REQUIRE(strstr(source_catalog_diagnostic_at(clashing, 0)->message, "rename the type"));
+    source_catalog_free(clashing);
     remove_input_project(root);
     REQUIRE(!source_catalog_diagnostic_count(project));
     const script_catalog *view = source_catalog_view(project);

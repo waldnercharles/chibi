@@ -6,6 +6,9 @@
 
 #include <stddef.h>
 
+/* The longest name a prototype may declare, in bytes. */
+#define GAME_PROTOTYPE_NAME_MAX 1024
+
 typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
 
 /* Borrowed typed rows matching the registered descriptor's native layout.

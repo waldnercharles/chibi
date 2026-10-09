@@ -39,8 +39,11 @@ typedef struct
     const char *name;
     script_type type;
     size_t offset;
+    /* Getter and setter capabilities; a getter takes the receiver. */
     uint64_t read, write;
     bool writable;
+    /* Reads as its own name, a string constant, with no receiver storage. */
+    bool constant;
 } script_catalog_field;
 typedef struct
 {

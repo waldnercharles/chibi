@@ -72,6 +72,23 @@ typedef enum
     ECS_CLEANUP_PANIC,  /* Fail the sync point while any source remains. */
 } ecs_cleanup;
 
+/* Built-in identities every world registers, after Flecs's ChildOf, Name and
+ * Disabled. Each is the marker id of its key ("ecs.ChildOf" and so on).
+ * - ChildOf: Exclusive, Traversable, and destroying a parent destroys its
+ *   children first. Children keep the order they were parented in.
+ * - Name: one name per entity, unique among its siblings (or among roots).
+ *   Set it with ecs_world_record_name; direct adds and writes are rejected.
+ * - Disabled: a tag that hides the entity from every query that does not name
+ *   Disabled. It does not propagate to children. */
+#define ECS_CHILD_OF UINT64_C(0x84771d550890f1a1)
+#define ECS_NAME UINT64_C(0xc5c81abad4002dc1)
+#define ECS_DISABLED UINT64_C(0xf9db78dc2d5f93d2)
+
+typedef struct
+{
+    const char *value;
+} ecs_name;
+
 typedef struct ecs_relationship_desc
 {
     ecs_component_id id;
@@ -128,6 +145,7 @@ struct ecs_query
     void *component_refs;         /* private query plan */
     const void *single_component; /* Inline plan for a single-component query. */
     void *expression_plan;        /* private expression candidate plan */
+    const void *disabled; /* Disabled column to skip, unless the query names it */
 };
 
 /* Entity storage grows automatically. Component rows remain contiguous, but a
@@ -177,6 +195,10 @@ int ecs_world_record_remove_pair(
     ecs_entity target,
     uint64_t sort_key
 );
+/* Names must be nonempty and contain no '.', the path separator. */
+int ecs_world_record_name(ecs_world *, ecs_entity, const char *name, uint64_t sort_key);
+/* Moves a child to index among its parent's children, clamped to the end. */
+int ecs_world_record_child_index(ecs_world *, ecs_entity child, int index, uint64_t sort_key);
 int ecs_world_apply_commands(ecs_world *world);
 void ecs_world_clear_commands(ecs_world *world);
 int ecs_world_command_count(const ecs_world *world);
@@ -198,6 +220,13 @@ ecs_entity ecs_pair_target(const ecs_world *, ecs_entity, ecs_component_id relat
 /* Sources in the order their pairs were added. */
 int ecs_pair_source_count(const ecs_world *, ecs_component_id relationship, ecs_entity target);
 ecs_entity ecs_pair_source(const ecs_world *, ecs_component_id relationship, ecs_entity target, int index);
+/* The entity's name, or NULL. Valid until the name changes or is removed. */
+const char *ecs_entity_name(const ecs_world *, ecs_entity);
+/* Resolves a '.'-separated path of names from scope's children, or from the
+ * roots when scope is zero. Returns zero when any segment is missing. */
+ecs_entity ecs_lookup(const ecs_world *, ecs_entity scope, const char *path);
+/* ChildOf ancestors above the entity; zero for roots. */
+int ecs_entity_depth(const ecs_world *, ecs_entity);
 /* Read the existing component index without allocating a query plan. Pending
  * destruction and explicitly excluded handles do not count as matches. */
 bool ecs_component_has_entities(
@@ -245,7 +274,8 @@ const char *ecs_world_intern_string(ecs_world *world, const char *text);
 
 /* Simple component lists visit their intersection in ascending slot order.
  * Expression queries also visit in ascending slot order and support boolean
- * component presence tests. */
+ * component presence tests. Both skip Disabled entities unless they name
+ * ECS_DISABLED. */
 int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *components, int component_count);
 int ecs_query_begin_expression(ecs_world *world, ecs_query *query, const ecs_query_expr *expression);
 int ecs_query_next(ecs_query *query, ecs_entity *out_entity);

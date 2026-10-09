@@ -42,6 +42,17 @@ typedef struct
     void *user;
 } ecs_observer_entry;
 
+/* Built-ins are registered first, so they keep these array indices. */
+enum
+{
+    NAME_COMPONENT,
+    DISABLED_COMPONENT,
+};
+enum
+{
+    CHILD_OF_RELATIONSHIP,
+};
+
 /* pending_destroy states of a slot. */
 enum
 {
@@ -66,6 +77,7 @@ struct ecs_world
     int *component_lookup; /* Component array index + 1; zero is an empty bucket. */
     int component_lookup_capacity;
     ecs_relationship *relationships;
+    int *depth; /* ChildOf ancestors of each slot. */
     ecs_command *commands;
     char **field_strings; /* Interned values assigned through the field API. */
     uint64_t next_sequence;
@@ -122,5 +134,14 @@ void relationship_unlink(ecs_relationship *, uint32_t source, ecs_entity target)
 /* Drops every pair the slot holds as a source and every pair aimed at it. */
 void relationship_detach(ecs_world *, uint32_t slot);
 uint64_t relationship_hash(const ecs_relationship *, uint32_t slot, uint64_t hash);
+
+/* The slot's name, or NULL when it has none. */
+const char *hierarchy_name(const ecs_world *, uint32_t slot);
+uint32_t hierarchy_parent(const ecs_world *, uint32_t slot);
+/* Whether another child of parent (a root when zero) already uses name. */
+bool hierarchy_name_taken(const ecs_world *, uint32_t parent, const char *name, uint32_t self);
+/* Recomputes depth for the slot and its descendants after a reparent. */
+void hierarchy_update_depth(ecs_world *, uint32_t slot);
+void hierarchy_move_child(ecs_world *, uint32_t child, int index);
 
 #endif

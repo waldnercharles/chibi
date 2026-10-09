@@ -19,6 +19,8 @@ typedef enum
     ECS_COMMAND_REMOVE,
     ECS_COMMAND_ADD_PAIR,
     ECS_COMMAND_REMOVE_PAIR,
+    ECS_COMMAND_NAME,
+    ECS_COMMAND_CHILD_INDEX,
 } ecs_command_kind;
 
 struct ecs_command
@@ -311,6 +313,7 @@ int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity)
     for (int i = 0; i < acount(world->relationships); i++) {
         relationship_grow(&world->relationships[i], old, count);
     }
+    world->depth = ecs_grow_storage(world->depth, old, count, sizeof *world->depth);
     return ECS_OK;
 }
 
@@ -521,8 +524,10 @@ static int command_rank(ecs_command_kind kind)
         case ECS_COMMAND_REMOVE: return 3;
         case ECS_COMMAND_REMOVE_PAIR: return 4;
         case ECS_COMMAND_ADD_PAIR: return 5;
+        case ECS_COMMAND_NAME: return 6;
+        case ECS_COMMAND_CHILD_INDEX: return 7;
     }
-    return 6;
+    return 8;
 }
 
 static int compare_commands(const void *left_ptr, const void *right_ptr)
@@ -651,6 +656,7 @@ static void retire_entity(ecs_world *world, ecs_entity entity)
         }
     }
     world->occupied[entity.slot] = 0;
+    world->depth[entity.slot] = 0;
     world->pending_destroy[entity.slot] = DESTROY_APPLIED;
     world->live_count--;
     advance_generation(world, entity.slot);
@@ -788,7 +794,16 @@ static int apply_add_pair(ecs_world *world, const ecs_command *command)
     if (closes_cycle(world, relationship, command->entity, command->target)) {
         return ECS_ERR_CYCLE;
     }
+    bool child_of = command->component == ECS_CHILD_OF;
+    const char *name = child_of ? hierarchy_name(world, command->entity.slot) : NULL;
+    if (name &&
+        hierarchy_name_taken(world, command->target.slot, name, command->entity.slot)) {
+        return ECS_ERR_DUPLICATE;
+    }
     relationship_link(relationship, command->entity.slot, command->target);
+    if (child_of) {
+        hierarchy_update_depth(world, command->entity.slot);
+    }
     return ECS_OK;
 }
 
@@ -804,11 +819,70 @@ static int apply_remove_pair(ecs_world *world, const ecs_command *command)
     if (!ecs_has_pair(world, command->entity, command->component, command->target)) {
         return ECS_ERR_COMPONENT;
     }
+    bool child_of = command->component == ECS_CHILD_OF;
+    const char *name = child_of ? hierarchy_name(world, command->entity.slot) : NULL;
+    if (name && hierarchy_name_taken(world, 0, name, command->entity.slot)) {
+        return ECS_ERR_DUPLICATE;
+    }
     relationship_unlink(
         world_relationship(world, command->component),
         command->entity.slot,
         command->target
     );
+    if (child_of) {
+        hierarchy_update_depth(world, command->entity.slot);
+    }
+    return ECS_OK;
+}
+
+static int write_value(ecs_world *, ecs_component *, ecs_entity, size_t offset, pin_value declared, pin_value value);
+
+static const pin_value NAME_VALUE = { .type = PIN_NAME };
+
+static int apply_name(ecs_world *world, const ecs_command *command)
+{
+    if (destroyed_earlier(world, command->entity)) {
+        return ECS_OK;
+    }
+    if (!entity_matches(world, command->entity)) {
+        return ECS_ERR_ENTITY;
+    }
+    const char *name = command->value;
+    uint32_t slot = command->entity.slot;
+    const char *previous = hierarchy_name(world, slot);
+    if (previous && !strcmp(previous, name)) {
+        return ECS_OK;
+    }
+    if (hierarchy_name_taken(world, hierarchy_parent(world, slot), name, slot)) {
+        return ECS_ERR_DUPLICATE;
+    }
+    ecs_component *names = &world->components[NAME_COMPONENT];
+    int result = component_matches(names, slot)
+                   ? ECS_OK
+                   : add_component(world, names, command->entity, NULL);
+    pin_value value = NAME_VALUE;
+    value.str = name;
+    if (result == ECS_OK) {
+        result = write_value(world, names, command->entity, 0, NAME_VALUE, value);
+    }
+    if (result == ECS_OK) {
+        mark_modified(names, slot);
+    }
+    return result;
+}
+
+static int apply_child_index(ecs_world *world, const ecs_command *command)
+{
+    if (destroyed_earlier(world, command->entity)) {
+        return ECS_OK;
+    }
+    if (!entity_matches(world, command->entity)) {
+        return ECS_ERR_ENTITY;
+    }
+    if (!hierarchy_parent(world, command->entity.slot)) {
+        return ECS_ERR_COMPONENT;
+    }
+    hierarchy_move_child(world, command->entity.slot, *(const int *)command->value);
     return ECS_OK;
 }
 
@@ -817,12 +891,54 @@ static const char *execution_intern(const ecs_execution_view *world, const char 
     return ecs_world_intern_string((ecs_world *)world, text);
 }
 
+static const type_field NAME_FIELDS[] = {
+    { .name = "value",
+      .type = PIN_NAME,
+      .offset = 0,
+      .size = sizeof(const char *),
+      .type_name = "const char *" },
+};
+static const type_desc NAME_TYPE = {
+    .name = "ecs.Name",
+    .size = sizeof(ecs_name),
+    .fields = NAME_FIELDS,
+    .field_count = 1,
+};
+/* Indexed by NAME_COMPONENT and DISABLED_COMPONENT. */
+static const ecs_component_desc BUILTIN_COMPONENTS[] = {
+    { .id = ECS_NAME,
+      .key = "ecs.Name",
+      .name = "Name",
+      .element_size = sizeof(ecs_name),
+      .type = &NAME_TYPE },
+    { .id = ECS_DISABLED,
+      .key = "ecs.Disabled",
+      .name = "Disabled",
+      .element_size = 1,
+      .type = &TYPE_MARKER },
+};
+static const ecs_relationship_desc CHILD_OF_DESC = {
+    .id = ECS_CHILD_OF,
+    .key = "ecs.ChildOf",
+    .name = "ChildOf",
+    .traits = ECS_REL_EXCLUSIVE | ECS_REL_TRAVERSABLE,
+    .on_delete_target = ECS_CLEANUP_DELETE,
+};
+
 ecs_world *ecs_world_new()
 {
     ecs_world *world = (ecs_world *)xcalloc(1, sizeof *world);
     world->free_hint = 1;
     world->execution.intern_string = execution_intern;
     int result = ecs_world_reserve_entities(world, INITIAL_ENTITY_SLOTS - 1);
+    assert(!result);
+    for (int i = 0;
+         !result && i < (int)(sizeof BUILTIN_COMPONENTS / sizeof *BUILTIN_COMPONENTS);
+         i++) {
+        result = ecs_world_register_component(world, &BUILTIN_COMPONENTS[i], NULL);
+    }
+    result = result ? result
+                    : ecs_world_register_relationship(world, &CHILD_OF_DESC, NULL);
     assert(!result);
     (void)result;
     return world;
@@ -872,6 +988,7 @@ void ecs_world_free(ecs_world *world)
         relationship_free(&world->relationships[i], world->execution.slot_count);
     }
     afree(world->relationships);
+    free(world->depth);
     afree(world->observers);
     afree(world->execution_columns);
     free(world->component_lookup);
@@ -1062,6 +1179,9 @@ int ecs_world_record_add(
         !entity_matches(world, entity) || dying(world, entity)) {
         return ECS_ERR_ENTITY;
     }
+    if (component_id == ECS_NAME) {
+        return ECS_ERR_ARGUMENT;
+    }
     if (ecs_component_has(world, entity, component_id)) {
         return ECS_ERR_DUPLICATE;
     }
@@ -1113,6 +1233,8 @@ static int apply_command(ecs_world *world, const ecs_command *command)
         case ECS_COMMAND_REMOVE: return apply_remove(world, command);
         case ECS_COMMAND_ADD_PAIR: return apply_add_pair(world, command);
         case ECS_COMMAND_REMOVE_PAIR: return apply_remove_pair(world, command);
+        case ECS_COMMAND_NAME: return apply_name(world, command);
+        case ECS_COMMAND_CHILD_INDEX: return apply_child_index(world, command);
     }
     return ECS_ERR_COMMAND;
 }
@@ -1234,6 +1356,68 @@ int ecs_world_record_remove_pair(
     return record_pair(world, ECS_COMMAND_REMOVE_PAIR, entity, relationship, target, sort_key);
 }
 
+static bool name_valid(const char *name)
+{
+    return name && name[0] && !strchr(name, '.');
+}
+
+int ecs_world_record_name(ecs_world *world, ecs_entity entity, const char *name, uint64_t sort_key)
+{
+    assert(world);
+    if (!name_valid(name)) {
+        return ECS_ERR_ARGUMENT;
+    }
+    if (world->iteration_depth || !entity_matches(world, entity) ||
+        dying(world, entity)) {
+        return ECS_ERR_ENTITY;
+    }
+    if (hierarchy_name_taken(
+            world,
+            hierarchy_parent(world, entity.slot),
+            name,
+            entity.slot
+        )) {
+        return ECS_ERR_DUPLICATE;
+    }
+    size_t size = strlen(name) + 1;
+    ecs_command command = {
+        .sort_key = sort_key,
+        .sequence = world->next_sequence++,
+        .kind = ECS_COMMAND_NAME,
+        .entity = entity,
+        .value = xmalloc(size),
+        .value_size = size,
+    };
+    memcpy(command.value, name, size);
+    apush(world->commands, command);
+    return ECS_OK;
+}
+
+int ecs_world_record_child_index(ecs_world *world, ecs_entity child, int index, uint64_t sort_key)
+{
+    assert(world);
+    if (index < 0) {
+        return ECS_ERR_ARGUMENT;
+    }
+    if (world->iteration_depth || !entity_matches(world, child) || dying(world, child)) {
+        return ECS_ERR_ENTITY;
+    }
+    if (!hierarchy_parent(world, child.slot)) {
+        return ECS_ERR_COMPONENT;
+    }
+    ecs_command command = {
+        .sort_key = sort_key,
+        .sequence = world->next_sequence++,
+        .kind = ECS_COMMAND_CHILD_INDEX,
+        .entity = child,
+        .value = xmalloc(sizeof index),
+        .value_size = sizeof index,
+    };
+    memcpy(command.value, &index, sizeof index);
+    apush(world->commands, command);
+    return ECS_OK;
+}
+
 int ecs_world_apply_commands(ecs_world *world)
 {
     if (!world) {
@@ -1333,6 +1517,13 @@ int ecs_component_has(const ecs_world *world, ecs_entity entity, ecs_component_i
     return (component->occupancy[entity.slot / 64u] & bit) != 0;
 }
 
+/* Disabled entities stay out of queries that do not mention the tag. */
+static const ecs_component *skipped_disabled(const ecs_world *world, bool named)
+{
+    const ecs_component *disabled = &world->components[DISABLED_COMPONENT];
+    return named || !disabled->count ? NULL : disabled;
+}
+
 bool ecs_component_has_entities(
     const ecs_world *world,
     ecs_component_id component_id,
@@ -1343,8 +1534,12 @@ bool ecs_component_has_entities(
     assert(world && excluded_count >= 0 && (!excluded_count || excluded));
     const ecs_component *component = find_component_const(world, component_id);
     assert(component);
+    const ecs_component *disabled = skipped_disabled(world, component_id == ECS_DISABLED);
     for (uint32_t word = 0; word <= world->high_water / 64u; word++) {
         uint64_t occupied = component->occupancy[word];
+        if (disabled) {
+            occupied &= ~disabled->occupancy[word];
+        }
         while (occupied) {
             uint32_t slot = word * 64u + (uint32_t)__builtin_ctzll(occupied);
             occupied &= occupied - 1;
@@ -1436,7 +1631,7 @@ int ecs_component_write_field(
     ecs_component *component = world ? find_component(world, component_id) : NULL;
     const type_field *type_field = component ? component_field(component, field) : NULL;
     void *data = ecs_component_data(world, entity, component_id);
-    if (!type_field || !data) {
+    if (!type_field || !data || component_id == ECS_NAME) {
         return ECS_ERR_ARGUMENT;
     }
     if (type_field->type == PIN_STR || type_field->type == PIN_NAME) {
@@ -1645,7 +1840,8 @@ int ecs_component_write_value(
     pin_value value
 )
 {
-    ecs_component *component = world ? find_component(world, id) : NULL;
+    ecs_component *component = world && id != ECS_NAME ? find_component(world, id)
+                                                       : NULL;
     int result = write_value(world, component, entity, offset, declared, value);
     if (result == ECS_OK) {
         mark_modified(component, entity.slot);
@@ -1665,6 +1861,19 @@ int ecs_component_modified(ecs_world *world, ecs_entity entity, ecs_component_id
     return ECS_OK;
 }
 
+static bool expression_names(const ecs_query_expr *expr, ecs_component_id component)
+{
+    if (expr->kind == ECS_QUERY_HAS) {
+        return expr->component == component;
+    }
+    for (int i = 0; i < acount(expr->children); i++) {
+        if (expression_names(expr->children[i], component)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *components, int component_count)
 {
     if (!world || !query || component_count < 0 ||
@@ -1676,6 +1885,7 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
     query->component_count = component_count;
     query->dense_count = -1;
     query->dense_index = -1;
+    bool named_disabled = false;
     if (component_count) {
         const void **refs = component_count == 1
                               ? &query->single_component
@@ -1692,6 +1902,7 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
                 return ECS_ERR_COMPONENT;
             }
             refs[i] = component;
+            named_disabled |= components[i] == ECS_DISABLED;
             compact_dense(component);
             if (component->desc.index == ECS_INDEX_DENSE &&
                 (!candidate || acount(component->dense) < acount(candidate->dense))) {
@@ -1706,6 +1917,7 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
         }
     }
     query->limit = world->high_water;
+    query->disabled = skipped_disabled(world, named_disabled);
     world->iteration_depth++;
     return ECS_OK;
 }
@@ -1823,6 +2035,7 @@ int ecs_query_begin_expression(ecs_world *world, ecs_query *query, const ecs_que
         query->dense_cursor = -1;
     }
     query->expression_plan = plan;
+    query->disabled = skipped_disabled(world, expression_names(expression, ECS_DISABLED));
     world->iteration_depth++;
     return ECS_OK;
 }
@@ -1863,6 +2076,9 @@ int ecs_query_next(ecs_query *query, ecs_entity *out_entity)
                                                 : query->cursor;
         ecs_entity entity = { slot, query->world->generations[slot] };
         if (query->dense_count < 0 && !entity_matches(query->world, entity)) {
+            continue;
+        }
+        if (query->disabled && component_matches(query->disabled, slot)) {
             continue;
         }
         if (query->expression &&

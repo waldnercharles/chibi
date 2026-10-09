@@ -32,7 +32,6 @@ enum
 {
     SCENARIO_FRAMES = 4,
     MAX_PATH = 4096,
-    MAX_LINE = 256,
 };
 
 typedef enum
@@ -611,9 +610,10 @@ static void read_allowed_gaps()
     if (!file) {
         return;
     }
-    char line[MAX_LINE];
+    char *line = NULL;
+    size_t size = 0;
     bool reasoned = false; /* A comment gives the reason for the entries below it. */
-    while (fgets(line, sizeof line, file)) {
+    while (getline(&line, &size, file) >= 0) {
         line[strcspn(line, "\r\n")] = 0;
         char *name = strchr(line, ' ');
         if (!line[0]) {
@@ -647,6 +647,7 @@ static void read_allowed_gaps()
             found->allowed = true;
         }
     }
+    free(line);
     fclose(file);
 }
 
@@ -731,9 +732,9 @@ TEST_CASE(test_catalog_coverage)
  * frame without a behavior failure. */
 static bool run_scene(const char *path)
 {
-    const char *file = strrchr(path, '/') + 1;
-    char name[MAX_LINE], request_path[MAX_PATH], log_path[MAX_PATH];
-    snprintf(name, sizeof name, "%.*s", (int)(strlen(file) - 4), file);
+    /* The controller takes the file name, which keeps any ".kdl" in its stem. */
+    const char *name = strrchr(path, '/') + 1;
+    char request_path[MAX_PATH], log_path[MAX_PATH];
     yyjson_mut_doc *message = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(message);
     yyjson_mut_doc_set_root(message, root);

@@ -17,6 +17,7 @@ typedef union
     GameParticleEmitter emitter;
     GameEnvironment environment;
     GameDirectionalLight light;
+    GameSpotLight spot;
 } native_initial;
 
 static bool contains(game_prototype_component *components, const char *name)
@@ -110,6 +111,10 @@ static int initial_row(
         storage->light = game_directional_light_defaults();
         out->data = &storage->light;
         out->size = sizeof storage->light;
+    } else if (!strcmp(desc->name, "GameSpotLight")) {
+        storage->spot = game_spot_light_defaults();
+        out->data = &storage->spot;
+        out->size = sizeof storage->spot;
     }
     return 0;
 }

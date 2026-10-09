@@ -791,6 +791,7 @@ static int apply_add(ecs_world *world, const ecs_command *command)
         return add_component(world, component, command->entity, command->value);
     }
     if (command->value) {
+        release_row(component, command->entity.slot);
         memcpy(
             component_address(component, command->entity.slot),
             command->value,

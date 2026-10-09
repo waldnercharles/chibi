@@ -1,9 +1,12 @@
 #ifndef CHIBI_ASSETS_PROJECT_H
 #define CHIBI_ASSETS_PROJECT_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #define CHIBI_PROJECT_MANIFEST "project.kdl"
+#define CHIBI_APPLICATION_SIZE_MAX 16384
+#define CHIBI_APPLICATION_TEXT_MAX 1024
 
 /* The manifest version this build opens. Bump it when an asset contract
    change alters what projects saved by earlier builds mean or stops them from
@@ -12,6 +15,15 @@
 /* Opening a project from this version on upgrades it in place first. */
 #define CHIBI_PROJECT_OLDEST_VERSION 10
 
+/* The optional `application` block: how a shipped game presents its window. */
+typedef struct
+{
+    char *title;       /* NULL shows the project name */
+    int width, height; /* zero selects the default window size */
+    bool fullscreen;
+    char *icon; /* project-relative PNG path, or NULL */
+} chibi_application;
+
 typedef struct
 {
     char *root;
@@ -19,6 +31,7 @@ typedef struct
     char *name;
     char *start_scene;
     char *ui; /* the root ui document scenes show their UI on by default, or NULL */
+    chibi_application application;
 } chibi_project;
 
 /* Resolve a project directory, its project.kdl, or a legacy content directory. */

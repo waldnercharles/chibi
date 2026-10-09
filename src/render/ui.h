@@ -13,7 +13,8 @@
 
 /* Event hooks are copied with each world view. Context and names returned by
  * payload remain borrowed through that invocation. A negative payload count
- * rejects an unsupported declaration before dispatch. */
+ * rejects an unsupported declaration before dispatch. A negative dispatch
+ * status is a failure, which the optional failure hook describes. */
 typedef struct
 {
     const char *name;
@@ -25,6 +26,7 @@ typedef struct
     int (*payload)(void *, const char *, render_ui_event_field *, int capacity);
     int (*dispatch)(void *, uint64_t entity, const char *, execution_arguments);
     bool (*initializing)(void *);
+    const char *(*failure)(void *);
 } render_ui_host;
 
 /* What shown documents read and act on. Only `ecs` is required: without
@@ -143,7 +145,8 @@ typedef struct ui_activation
  * and Pointer (CF_V2, in the document's pixels) come from the DOM event, as a
  * web handler reads event.shiftKey and event.clientX; each other value is
  * emit's next argument read as its type (text, a number or a flag). False,
- * running nothing, for a payload a UI event cannot carry. */
+ * running nothing, for a payload a UI event cannot carry; a dispatch that
+ * fails is the host's to describe (failure). */
 bool ui_activation_send(const render_ui_host *host, ecs_entity entity, const ui_activation *a, unsigned primary);
 ui_mount *ui_mount_new(const char *content_root, const char *name);
 void ui_mount_free(ui_mount *mount);

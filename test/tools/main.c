@@ -55,6 +55,7 @@ void test_source_native_material_features();
 void test_tool_native();
 void test_tool_native_values();
 void test_tool_native_catalog();
+void test_tool_physics();
 #endif
 
 static bool shader_parameters;
@@ -72,7 +73,7 @@ int main(int argc, char **argv)
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool native = false, native_values = false, native_catalog = false,
-         render_resources = false;
+         physics = false, render_resources = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -113,10 +114,11 @@ int main(int argc, char **argv)
     native_catalog = argc == 2 && !strcmp(argv[1], "--native-catalog");
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
     native = argc == 2 && !strcmp(argv[1], "--native");
+    physics = argc == 2 && !strcmp(argv[1], "--physics");
 #endif
-    if (argc != 1 && !corpus && !shader_parameters && !source_edit &&
-        !package && !unit && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !render_resources &&
+    if (argc != 1 && !corpus && !shader_parameters && !source_edit && !package &&
+        !unit && !prepared && !read && !scene && !scene_prepared && !native &&
+        !native_values && !native_catalog && !physics && !render_resources &&
         !persistent_store && !whole_alias && !whole_math && !whole_integer &&
         !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
         !source_features && !source_numeric && !source_material &&
@@ -128,6 +130,7 @@ int main(int argc, char **argv)
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
+            "| --physics "
             "| --render-resources | --persistent-store | --whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
             "--whole-select | --owned-tick | "
@@ -204,8 +207,10 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
-    if (native || native_values || native_catalog) {
-        if (native_catalog) {
+    if (native || native_values || native_catalog || physics) {
+        if (physics) {
+            test_tool_physics();
+        } else if (native_catalog) {
             test_tool_native_catalog();
         } else if (native_values) {
             test_tool_native_values();

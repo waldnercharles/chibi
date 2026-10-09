@@ -1,0 +1,11 @@
+name "Charge"
+description "Stored energy that refills over time."
+(array)fields {
+    - name="level" type="float"
+    - name="rate" type="float" description="Units gained per second."
+    - name="capacity" type="float"
+    - name="cycles" type="int" description="Times the charge filled up."
+    - name="full" type="bool"
+    - name="source" type="entity"
+    - name="drift" type="CF_V2"
+}

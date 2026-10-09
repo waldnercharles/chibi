@@ -465,6 +465,69 @@ TEST_CASE(physics3d_followers_use_the_parent_rotation)
     return true;
 }
 
+/* A child of a moving body moves with it within the same step, so it touches
+ * what lies where its parent carries it, not only where it started. */
+TEST_CASE(physics3d_followers_move_with_their_body)
+{
+    set_gravity((CF_V3){ 0 });
+    ecs_entity parent = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, ball(METER / 4), GAME_BODY_DYNAMIC);
+    body(parent)->linear_velocity = (CF_V3){ 30 * METER, 0, 0 };
+    GameCollider3D zone = ball(METER / 4);
+    zone.sensor = true;
+    ecs_entity child = collider(parent, (CF_V3){ METER, 0, 0 }, zone, GAME_BODY_STATIC);
+    /* The child starts over 0.75..1.25 m and ends over 1.25..1.75 m; the
+     * target covers 1.525..1.775 m. */
+    ecs_entity target = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 1.65f * METER, 0, 0 },
+        ball(METER / 8),
+        GAME_BODY_DYNAMIC
+    );
+    REQUIRE(step(1.0f / 60) == 2 && touched(child, target, true));
+    REQUIRE(near_v3(position(parent), (CF_V3){ METER / 2, 0, 0 }, 1e-3f * METER));
+    REQUIRE(near_v3(position(child), (CF_V3){ METER, 0, 0 }, 0));
+    /* A spinning parent carries its child along the arc's tangent: turning
+     * 0.3 rad about Y in a step moves local +X toward -Z. */
+    CF_V3 hub = { 0, 0, 10 * METER };
+    ecs_entity spinner = collider((ecs_entity){ 0 }, hub, ball(METER / 4), GAME_BODY_KINEMATIC);
+    body(spinner)->angular_velocity = (CF_V3){ 0, 18, 0 };
+    ecs_entity arm = collider(spinner, (CF_V3){ METER, 0, 0 }, zone, GAME_BODY_STATIC);
+    ecs_entity ahead = collider(
+        (ecs_entity){ 0 },
+        cf_add_v3(hub, (CF_V3){ .93f * METER, 0, -.55f * METER }),
+        ball(METER / 8),
+        GAME_BODY_DYNAMIC
+    );
+    step(1.0f / 60);
+    REQUIRE(touched(arm, ahead, true));
+    return true;
+}
+
+/* A follower moves only when its body does, so what rests on the follower
+ * of a resting body falls asleep, which zeroes its velocity. */
+TEST_CASE(physics3d_followers_of_resting_bodies_let_them_sleep)
+{
+    ground();
+    ecs_entity base = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 0, METER / 2, 0 },
+        box(METER, METER, METER),
+        GAME_BODY_DYNAMIC
+    );
+    collider(base, (CF_V3){ 2 * METER, 0, 0 }, box(METER, METER / 4, METER), GAME_BODY_STATIC);
+    ecs_entity crate = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 2 * METER, METER, 0 },
+        box(METER / 2, METER / 2, METER / 2),
+        GAME_BODY_DYNAMIC
+    );
+    steps(240);
+    REQUIRE(near_v3(body(base)->linear_velocity, (CF_V3){ 0 }, 0));
+    REQUIRE(near_v3(body(crate)->linear_velocity, (CF_V3){ 0 }, 0));
+    REQUIRE(near(position(crate).y, 7 * METER / 8, 1e-2f * METER));
+    return true;
+}
+
 TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go)
 {
     set_gravity((CF_V3){ 0 });
@@ -708,6 +771,8 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_teleports_wake_what_they_land_in);
     RUN_TEST_CASE(physics3d_children_follow_their_parent);
     RUN_TEST_CASE(physics3d_followers_use_the_parent_rotation);
+    RUN_TEST_CASE(physics3d_followers_move_with_their_body);
+    RUN_TEST_CASE(physics3d_followers_of_resting_bodies_let_them_sleep);
     RUN_TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go);
     RUN_TEST_CASE(physics3d_masks_and_sensors_filter_contacts);
     RUN_TEST_CASE(physics3d_interpolates_moving_roots_only);

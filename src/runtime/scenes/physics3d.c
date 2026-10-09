@@ -443,7 +443,10 @@ static b3ShapeId create_shape(body_record *record)
 static void create_body(game_physics3d *physics, body_record *record, pose at)
 {
     b3BodyDef def = b3DefaultBodyDef();
-    def.type = body_type(record->type);
+    /* A follower moves and turns with its anchor through each step, which
+     * Box3D allows only kinematic bodies. A static and a kinematic body touch
+     * the same bodies. */
+    def.type = record->follower ? b3_kinematicBody : body_type(record->type);
     def.position = to_b3(at.position);
     def.rotation = quat_to_b3(at.rotation);
     record->body = b3CreateBody(physics->simulation, &def);
@@ -485,20 +488,10 @@ static void teleport(game_physics3d *physics, body_record *record, pose at)
     wake_overlapping(physics, record->shape);
 }
 
-/* A body teleports when it gains or loses a placed parent, starting again
- * from rest; a root when something other than physics moved its Transform3D;
- * and a follower to each new placement of its parent, so followers do not
- * sweep or push like moving roots. */
+/* A root teleports when something other than physics moved its Transform3D,
+ * and a follower when its placement changed other than with its anchor. */
 static void move(game_physics3d *physics, body_record *record, placement at)
 {
-    if (at.follower != record->follower) {
-        b3Body_SetLinearVelocity(record->body, (b3Vec3){ 0 });
-        b3Body_SetAngularVelocity(record->body, (b3Vec3){ 0 });
-        record->linear_velocity = record->angular_velocity = cf_v3(0, 0, 0);
-        record->follower = at.follower;
-        teleport(physics, record, at.pose);
-        return;
-    }
     if (at.follower) {
         if (!same_pose(at.pose, record->placed)) {
             teleport(physics, record, at.pose);
@@ -561,7 +554,8 @@ static int sync_entity(game_physics3d *physics, ecs_entity entity)
     }
     body_record *record = &physics->bodies[entity.slot];
     if (B3_IS_NON_NULL(record->body) &&
-        (!same_entity(record->entity, entity) || record->type != body.type)) {
+        (!same_entity(record->entity, entity) || record->type != body.type ||
+         record->follower != at.follower)) {
         remove_body(physics, record);
     }
     if (B3_IS_NULL(record->body)) {
@@ -667,6 +661,63 @@ static pose body_pose(b3BodyId body)
 {
     b3WorldTransform transform = b3Body_GetTransform(body);
     return (pose){ from_b3(transform.p), quat_from_b3(transform.q) };
+}
+
+/* The body a follower moves with: its nearest ancestor that is a moving
+ * root, or NULL when no moving body places it. */
+static const body_record *anchor(const game_physics3d *physics, ecs_entity entity)
+{
+    for (ecs_entity at = game_transform_parent_3d(physics->world, entity); at.slot;
+         at = game_transform_parent_3d(physics->world, at)) {
+        const body_record *record = at.slot < (unsigned)acount(physics->bodies)
+                                      ? &physics->bodies[at.slot]
+                                      : NULL;
+        if (record && moving_root(record) && same_entity(record->entity, at)) {
+            return record;
+        }
+    }
+    return NULL;
+}
+
+/* Before the step, each follower takes the velocity of the point of its
+ * anchor it is attached to, so contacts during the step see it move. */
+static void lead_followers(game_physics3d *physics)
+{
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        body_record *record = &physics->bodies[i];
+        const body_record *with = B3_IS_NON_NULL(record->body) && record->follower
+                                    ? anchor(physics, record->entity)
+                                    : NULL;
+        if (!with) {
+            continue;
+        }
+        b3Vec3 spin = b3Body_GetAngularVelocity(with->body);
+        b3Vec3 arm = b3Sub(to_b3(record->placed.position), b3Body_GetWorldCenterOfMass(with->body));
+        b3Body_SetLinearVelocity(
+            record->body,
+            b3Add(b3Body_GetLinearVelocity(with->body), b3Cross(spin, arm))
+        );
+        b3Body_SetAngularVelocity(record->body, spin);
+    }
+}
+
+/* After the step and write-back, each follower lands exactly where its
+ * parents now place it and rests until the next step. */
+static void land_followers(game_physics3d *physics)
+{
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        body_record *record = &physics->bodies[i];
+        if (B3_IS_NULL(record->body) || !record->follower) {
+            continue;
+        }
+        pose at = place(physics->world, record->entity).pose;
+        if (!same_pose(at, record->placed)) {
+            b3Body_SetTransform(record->body, to_b3(at.position), quat_to_b3(at.rotation));
+            record->placed = at;
+        }
+        b3Body_SetLinearVelocity(record->body, (b3Vec3){ 0 });
+        b3Body_SetAngularVelocity(record->body, (b3Vec3){ 0 });
+    }
 }
 
 static void write_back(game_physics3d *physics)
@@ -880,6 +931,7 @@ static void step(game_physics3d *physics, float delta)
             record->start = body_pose(record->body);
         }
     }
+    lead_followers(physics);
     physics->slot_count = 0;
     game_task_pool_begin(physics->pool, physics->body_count >= PARALLEL_BODY_MINIMUM);
     b3World_Step(physics->simulation, delta, physics->settings.substeps);
@@ -906,6 +958,7 @@ int game_physics3d_tick(game_physics3d *physics, float delta_seconds)
     }
     step(physics, delta_seconds);
     write_back(physics);
+    land_followers(physics);
     current_pairs(physics);
     return dispatch_pairs(physics);
 }

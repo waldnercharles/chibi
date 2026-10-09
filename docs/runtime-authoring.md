@@ -202,8 +202,9 @@ entity's world scale. Lengths are units, 32 to the meter. Without
 `GAME.GameBody3D` the collider is static; with one it is kinematic, moving at its
 velocities, or dynamic, and physics writes a dynamic body's position, rotation
 and velocities back each step. Dynamic bodies must be roots. Any other body
-under a ChildOf parent with a Transform3D teleports with that parent, so give
-a platform that should carry bodies its own velocities instead. Moving a body's
+under a ChildOf parent with a Transform3D follows it and ignores its own
+velocities: it moves through each step with the moving body above it, pushing
+what it meets, and teleports when a script moves its parents. Moving a body's
 Transform3D from a script teleports it. Gravity is 9.81 meters per second
 squared down Y unless one entity's `GAME.GameGravity3D` sets it. Behaviors
 handle `on ContactBegin3D` with `event.Other` and `event.Point`, and

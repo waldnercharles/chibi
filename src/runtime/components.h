@@ -1280,8 +1280,9 @@ GameGlobalTransform2D;
  * units and masses kilograms. A Body3D makes the collider kinematic or dynamic;
  * without one it is static. A dynamic body must be placed in the world, and
  * physics writes its position, rotation and velocities back. Any other body
- * under a ChildOf parent with a Transform3D teleports with that parent, so it
- * does not push like a moving kinematic root. */
+ * under a ChildOf parent with a Transform3D follows it and ignores its own
+ * velocities: it moves through each step with the moving body above it, and
+ * teleports when anything else moves its parents. */
 
 typedef enum
 {

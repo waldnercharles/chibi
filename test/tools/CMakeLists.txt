@@ -67,6 +67,13 @@ if(TARGET Chibi::entity_runtime)
 endif()
 add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
 
+# The SDK installs no Box3D headers, so only an in-tree build can call Box3D directly.
+if(TARGET chibi_box3d)
+    target_sources(test_tools PRIVATE box3d.c)
+    target_link_libraries(test_tools PRIVATE Chibi::box3d)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_BOX3D=1)
+endif()
+
 if(TARGET Chibi::render)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")

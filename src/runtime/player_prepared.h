@@ -1,9 +1,20 @@
 #pragma once
 
-#define GAME_PLAYER_PREPARED_VERSION 5
+#define GAME_PLAYER_PREPARED_VERSION 7
 #include "runtime/player.h"
 
 #define GAME_PLAYER_PREPARED_MAX_BYTES (64 * 1024 * 1024)
+#define GAME_PLAYER_APPLICATION_TEXT_MAX 1024
+#define GAME_PLAYER_APPLICATION_SIZE_MAX 16384
+/* How a host presents the game's window. NULL strings and zero sizes are
+ * unset; the icon is a PNG path relative to the host's resource root. */
+typedef struct
+{
+    char *title;
+    int width, height;
+    bool fullscreen;
+    char *icon;
+} game_player_application;
 typedef struct
 {
     ecs_component_catalog components;
@@ -26,6 +37,7 @@ typedef struct
  * outside this canonical artifact storage budget. */
 bool game_player_prepared_write(
     const game_player_spec *,
+    const game_player_application *,
     unsigned char **data,
     size_t *length,
     char *error,
@@ -39,6 +51,11 @@ game_player *game_player_prepared_read(
     char *error,
     size_t size
 );
+/* Reads only the application settings at the front of an artifact file, so a
+ * host can create its window before opening the game. The strings are owned;
+ * release them with game_player_application_free. */
+bool game_player_application_read(const char *path, game_player_application *, char *error, size_t size);
+void game_player_application_free(game_player_application *);
 /* Reads one bounded artifact. No filesystem access occurs during simulation. */
 game_player *game_player_open(
     const char *path,

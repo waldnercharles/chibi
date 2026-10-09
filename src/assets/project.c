@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -237,6 +238,104 @@ static char *read_file(const char *path, char *error, size_t error_size)
     return text;
 }
 
+/* A project-relative path that stays inside the project. */
+static bool contained_path(const char *path)
+{
+    if (path[0] == '/' || strchr(path, '\\')) {
+        return false;
+    }
+    for (const char *part = path;;) {
+        size_t length = strcspn(part, "/");
+        if (!length || (length == 1 && part[0] == '.') ||
+            (length == 2 && !strncmp(part, "..", 2))) {
+            return false;
+        }
+        if (!part[length]) {
+            return true;
+        }
+        part += length + 1;
+    }
+}
+
+static bool window_size(const av_value *value, int *out)
+{
+    if (!value) {
+        return true;
+    }
+    if (!av_is_int(value) || av_get_int(value) < 1 ||
+        av_get_int(value) > CHIBI_APPLICATION_SIZE_MAX) {
+        return false;
+    }
+    *out = av_get_int(value);
+    return true;
+}
+
+static bool application_text(const av_value *value)
+{
+    const char *text = av_get_str(value);
+    return !value || (text && text[0] && strlen(text) <= CHIBI_APPLICATION_TEXT_MAX);
+}
+
+/* A .png path inside the project that CF's virtual file system can mount. */
+static bool icon_path(const char *path)
+{
+    size_t length = strlen(path);
+    return contained_path(path) && !strchr(path, ':') && length > 4 &&
+           !strcasecmp(path + length - 4, ".png");
+}
+
+static int read_application(
+    av_value *block,
+    chibi_application *application,
+    const char *path,
+    char *error,
+    size_t error_size
+)
+{
+    if (!block) {
+        return 0;
+    }
+    if (!av_is_obj(block)) {
+        set_errorf(error, error_size, "Project application must be a block: %s", path);
+        return -1;
+    }
+    av_value *title = av_obj_get(block, "title");
+    av_value *fullscreen = av_obj_get(block, "fullscreen");
+    av_value *icon = av_obj_get(block, "icon");
+    if (!application_text(title) || !application_text(icon) ||
+        (fullscreen && !av_is_bool(fullscreen))) {
+        snprintf(
+            error,
+            error_size,
+            "Project application title and icon must be text of 1 to %d bytes, "
+            "and "
+            "fullscreen a boolean: %s",
+            CHIBI_APPLICATION_TEXT_MAX,
+            path
+        );
+        return -1;
+    }
+    if (!window_size(av_obj_get(block, "width"), &application->width) ||
+        !window_size(av_obj_get(block, "height"), &application->height)) {
+        snprintf(
+            error,
+            error_size,
+            "Project application width and height must be 1 to %d: %s",
+            CHIBI_APPLICATION_SIZE_MAX,
+            path
+        );
+        return -1;
+    }
+    if (icon && !icon_path(av_get_str(icon))) {
+        set_errorf(error, error_size, "Project application icon must be a .png path inside the project: %s", path);
+        return -1;
+    }
+    application->title = title ? xstrdup(av_get_str(title)) : NULL;
+    application->fullscreen = fullscreen && av_get_bool(fullscreen);
+    application->icon = icon ? xstrdup(av_get_str(icon)) : NULL;
+    return 0;
+}
+
 static int read_manifest(const char *path, chibi_project *project, int *opened, char *error, size_t error_size)
 {
     char *text = read_file(path, error, error_size);
@@ -304,9 +403,10 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     project->content = manifest_content ? xstrdup(manifest_content) : NULL;
     project->start_scene = manifest_scene ? xstrdup(manifest_scene) : NULL;
     project->ui = manifest_ui ? xstrdup(manifest_ui) : NULL;
+    int result = read_application(av_obj_get(root, "application"), &project->application, path, error, error_size);
     *opened = found;
     av_doc_free(document);
-    return 0;
+    return result;
 }
 
 static char *scene_path(const char *root, const char *content, const char *scene)
@@ -405,6 +505,8 @@ void chibi_project_free(chibi_project *project)
     free(project->name);
     free(project->start_scene);
     free(project->ui);
+    free(project->application.title);
+    free(project->application.icon);
     *project = (chibi_project){ 0 };
 }
 

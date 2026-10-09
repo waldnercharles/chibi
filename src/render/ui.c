@@ -13,6 +13,7 @@
 #include <SDL3/SDL_video.h>
 #include <assert.h>
 #include <ctype.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -524,31 +525,37 @@ static int ui_activation_payload(
 /* Values an event's payload may hold; a UI event declares a few. */
 #define PAYLOAD_MAX 16
 
-bool ui_activation_send(const render_ui_host *host, ecs_entity entity, const ui_activation *a, unsigned primary)
+/* A status no dispatch returns: the payload could not be carried. */
+#define UNCARRIED INT_MIN
+
+/* Runs `a` and returns the dispatch's status, or UNCARRIED. */
+static int activation_send(const render_ui_host *host, ecs_entity entity, const ui_activation *a, unsigned primary)
 {
-    if (!host || !host->dispatch) {
-        return true;
-    }
     render_ui_event_field fields[PAYLOAD_MAX];
     int count = host->payload
                   ? host->payload(host->context, a->event, fields, PAYLOAD_MAX)
                   : 0;
     if (count < 0 || count > PAYLOAD_MAX) {
-        return false;
+        return UNCARRIED;
     }
     pin_value values[PAYLOAD_MAX];
     float pointer[2];
     count = ui_activation_payload(a, fields, count, primary, pointer, values, PAYLOAD_MAX);
     if (count < 0) {
-        return false;
+        return UNCARRIED;
     }
-    host->dispatch(
+    return host->dispatch(
         host->context,
         ecs_entity_to_u64(entity),
         a->event,
         (execution_arguments){ .values = values, .count = count }
     );
-    return true;
+}
+
+bool ui_activation_send(const render_ui_host *host, ecs_entity entity, const ui_activation *a, unsigned primary)
+{
+    return !host || !host->dispatch ||
+           activation_send(host, entity, a, primary) != UNCARRIED;
 }
 
 static void escape_text(char *out, size_t size, const char *text)
@@ -1597,21 +1604,19 @@ static void send_activations(render_ui *ui, const ui_world *world)
             if (!host->dispatch) {
                 continue;
             }
-            if (!ui_activation_send(host, ecs_entity_from_u64(view->entity), &a, GAME_PRIMARY)) {
+            int status = activation_send(host, ecs_entity_from_u64(view->entity), &a, GAME_PRIMARY);
+            const char *why = host->failure ? host->failure(host->context) : "";
+            if (status == UNCARRIED) {
                 snprintf(
                     ui->failure,
                     sizeof ui->failure,
                     "%s declares a payload a UI event cannot carry",
                     a.event
                 );
-            } else if (host->failure && host->failure(host->context)[0]) {
-                snprintf(
-                    ui->failure,
-                    sizeof ui->failure,
-                    "%s failed: %s",
-                    a.event,
-                    host->failure(host->context)
-                );
+            } else if (status < 0 && why[0]) {
+                snprintf(ui->failure, sizeof ui->failure, "%s failed: %s", a.event, why);
+            } else if (status < 0) {
+                snprintf(ui->failure, sizeof ui->failure, "%s failed", a.event);
             }
         }
     }

@@ -13,8 +13,8 @@
 
 /* Event hooks are copied with each world view. Context and names returned by
  * payload remain borrowed through that invocation. A negative payload count
- * rejects an unsupported declaration before dispatch. Failure describes why
- * the last dispatch failed, or is empty when it succeeded. */
+ * rejects an unsupported declaration before dispatch. A negative dispatch
+ * status is a failure, which the optional failure hook describes. */
 typedef struct
 {
     const char *name;

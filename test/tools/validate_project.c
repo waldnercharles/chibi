@@ -212,6 +212,33 @@ TEST_CASE(missing_ui_documents_are_reported)
     return true;
 }
 
+TEST_CASE(missing_dependencies_are_reported_once)
+{
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
+    REQUIRE(validate() != 0 && errors() == 1);
+    yyjson_val *diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
+    REQUIRE(yyjson_arr_size(diagnostics) == 1);
+    REQUIRE(!strcmp(first_message(diagnostics), "Unknown prototype 'Hero'"));
+
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Hero\"}") == 0
+    );
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\" {\n        (array)behaviors \"Ghost\"\n    }\n}\n");
+    REQUIRE(validate() != 0 && errors() == 1);
+    diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
+    REQUIRE(yyjson_arr_size(diagnostics) == 1);
+    REQUIRE(!strcmp(first_message(diagnostics), "Unknown behavior or system 'Ghost'"));
+
+    /* A system is not a behavior, and the scene still gets one error. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"system\",\"name\":\"Ghost\"}") == 0
+    );
+    REQUIRE(validate() != 0 && errors() == 1);
+    diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
+    REQUIRE(!strcmp(first_message(diagnostics), "Unknown behavior or system 'Ghost'"));
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -224,5 +251,6 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(start_scene_outside_scenes_is_parsed);
     RUN_TEST_CASE(cataloged_start_scene_is_reported_once);
     RUN_TEST_CASE(missing_ui_documents_are_reported);
+    RUN_TEST_CASE(missing_dependencies_are_reported_once);
     pu_clear_setup();
 }

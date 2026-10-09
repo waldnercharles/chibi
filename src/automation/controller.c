@@ -6173,7 +6173,6 @@ static int handle_validate_project(const char *root, response *result, int *exit
         bool dependencies = validate_asset_dependencies(root, asset, error, sizeof error) !=
                                 CHIBI_AUTOMATION_OK &&
                             !catalog_fallout(error);
-        asset_errors += dependencies;
         /* Kept apart until the asset turns out to have problems. */
         yyjson_mut_val *ui = yyjson_mut_arr(doc);
         asset_errors += validate_catalog_ui(root, asset, doc, ui);
@@ -6183,8 +6182,11 @@ static int handle_validate_project(const char *root, response *result, int *exit
             if (diagnostic->path && !strcmp(diagnostic->path, path)) {
                 placed[j] = true;
                 asset_errors++;
+                /* The catalog already names this missing prototype or behavior, with its line. */
+                dependencies = dependencies && strcmp(diagnostic->message, error);
             }
         }
+        asset_errors += dependencies;
         errors += asset_errors;
         warnings += asset->warnings;
         if (!asset_errors && !asset->warnings) {
@@ -11348,7 +11350,8 @@ static int validate_scene_behavior(const char *root, const char *name, char *err
         }
     }
     if (!found) {
-        snprintf(error, error_size, "Unknown behavior source %s", name);
+        /* The catalog's words, so validate_project counts it once. */
+        snprintf(error, error_size, "Unknown behavior or system '%s'", name);
     } else if (!valid && !error[0]) {
         set_error(error, error_size, "Project source preparation failed");
     }
@@ -11389,6 +11392,9 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
             error,
             error_size
         );
+        if (status == CHIBI_AUTOMATION_NOT_FOUND) {
+            set_errorf(error, error_size, "Unknown prototype '%s'", entity->prototype);
+        }
         if (status != CHIBI_AUTOMATION_OK) {
             free(prototype_json);
             break;

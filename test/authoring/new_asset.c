@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 static char content[64];
@@ -80,6 +81,26 @@ TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder)
     errno = 0;
     REQUIRE(!new_asset_create(content, NEW_ASSET_LIBRARY, "Wind", error, sizeof error));
     REQUIRE(errno == ENOTDIR);
+
+    /* A linked folder would put the asset outside the project, where the
+       catalog never looks, so neither level may be a link. */
+    char outside[128], link[128];
+    snprintf(outside, sizeof outside, "%s/outside", content);
+    REQUIRE(mkdir(outside, 0755) == 0);
+    snprintf(link, sizeof link, "%s/systems", content);
+    REQUIRE(symlink(outside, link) == 0);
+    errno = 0;
+    REQUIRE(!new_asset_create(content, NEW_ASSET_SYSTEM, "Wind", error, sizeof error));
+    REQUIRE(errno == ENOTDIR && strstr(error, "not a folder"));
+    snprintf(link, sizeof link, "%s/linked", content);
+    REQUIRE(symlink(outside, link) == 0);
+    errno = 0;
+    REQUIRE(!new_asset_create(link, NEW_ASSET_EVENT, "Wind", error, sizeof error));
+    REQUIRE(errno == ENOTDIR);
+    snprintf(expected_path, sizeof expected_path, "%s/Wind.chibi", outside);
+    REQUIRE(access(expected_path, F_OK) != 0);
+    snprintf(expected_path, sizeof expected_path, "%s/events", outside);
+    REQUIRE(access(expected_path, F_OK) != 0);
     return true;
 }
 

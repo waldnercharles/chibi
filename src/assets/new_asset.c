@@ -175,10 +175,30 @@ char *new_asset_text(new_asset_kind kind, const char *name)
     return NULL;
 }
 
+/* A folder, not a symbolic link to one, so a file made inside it stays in
+ * the project; like the catalog, writes never follow a link out of it. */
+static bool real_folder(const char *path, char *error, size_t size)
+{
+    struct stat info;
+    if (lstat(path, &info) != 0) {
+        snprintf(error, size, "Cannot inspect %s: %s", path, strerror(errno));
+        return false;
+    }
+    if (S_ISDIR(info.st_mode)) {
+        return true;
+    }
+    snprintf(error, size, "%s is not a folder", path);
+    errno = ENOTDIR;
+    return false;
+}
+
 char *new_asset_create(const char *content, new_asset_kind kind, const char *name, char *error, size_t size)
 {
     if (!new_asset_name_valid(name, error, size)) {
         errno = EINVAL;
+        return NULL;
+    }
+    if (!real_folder(content, error, size)) {
         return NULL;
     }
     size_t bytes = strlen(content) + strlen("shader-libraries") + strlen(name) + 16;
@@ -186,6 +206,10 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
     snprintf(path, bytes, "%s/%s", content, FOLDERS[kind]);
     if (mkdir(path, 0755) != 0 && errno != EEXIST) {
         snprintf(error, size, "Cannot create %s: %s", path, strerror(errno));
+        free(path);
+        return NULL;
+    }
+    if (!real_folder(path, error, size)) {
         free(path);
         return NULL;
     }

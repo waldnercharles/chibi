@@ -302,6 +302,39 @@ TEST_CASE(source_format_keeps_else_and_arrow_spacing)
     return true;
 }
 
+TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges)
+{
+    REQUIRE(minimize(
+        "library Demo {\n"
+        "    function F(a: bool, b: bool, c: bool, m: int) {\n"
+        "        x := a || (b && c)\n"
+        "        y := (a && b) || (c)\n"
+        "        z := m | (m & 3)\n"
+        "        w := m + (m * 3)\n"
+        "        for i in 0 .. m - 1 {\n"
+        "            w += i\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        "library Demo {\n"
+        "    function F(a: bool, b: bool, c: bool, m: int) {\n"
+        "        x := a || (b && c)\n"
+        "        y := (a && b) || c\n"
+        "        z := m | (m & 3)\n"
+        "        w := m + m * 3\n"
+        "        for i in 0 .. m - 1 {\n"
+        "            w += i\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    ));
+    free(text);
+    text = NULL;
+    REQUIRE(format("library M{function F(m:int){for i in 0 .. m-1{m+=i;}}}"));
+    REQUIRE(strstr(text, "for i in 0..m - 1 {"));
+    return true;
+}
+
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
@@ -316,5 +349,6 @@ void test_language_format()
     RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
     RUN_TEST_CASE(source_minimize_drops_redundant_text);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
+    RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);
     pu_setup(NULL, NULL);
 }

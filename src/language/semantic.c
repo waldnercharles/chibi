@@ -114,10 +114,12 @@ static script_analysis *analyze(
             }
         }
         if (!declarations) {
+            script_analyzer_task_hints(&a, body);
+            /* Inferred bodies first: other code reads their results. */
+            script_analyzer_callable_definitions(&a, true);
             for (int j = 0; j < acount(a.initializers); j++) {
                 script_analyzer_resolve_initializer(&a, a.initializers[j].symbol);
             }
-            script_analyzer_task_hints(&a, body);
             script_analyzer_definition_pass(&a, body);
             if (out->kind == SCRIPT_PROGRAM_SYSTEM) {
                 int function = script_analyzer_function_new(&a, body, SCRIPT_FUNCTION_SYSTEM, -1);
@@ -125,13 +127,14 @@ static script_analysis *analyze(
                 out->functions[function].event = catalog->tick_event;
                 script_analyzer_callable_definition(&a, function, body);
             }
-            for (int j = 0; j < acount(a.bodies); j++) {
-                script_analyzer_callable_definition(
-                    &a,
-                    a.bodies[j].function,
-                    a.bodies[j].node
-                );
-            }
+            script_analyzer_callable_definitions(&a, false);
+        }
+        if (declarations && out->kind == SCRIPT_PROGRAM_LIBRARY) {
+            /* Library signatures need inferred results; the full analysis
+             * reports the bodies' diagnostics. */
+            int reported = acount(out->diagnostics);
+            script_analyzer_callable_definitions(&a, true);
+            asetlen(out->diagnostics, reported);
         }
     }
     if (!found) {

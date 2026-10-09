@@ -335,6 +335,38 @@ static void unwrap_node(collector *c, TSNode node, TSNode part)
     add(c, from, end(node), inner);
     free(inner);
 }
+/* The group of operators whose mix reads ambiguously, or 0. */
+static int operator_group(const collector *c, TSNode binary)
+{
+    TSNode op = field(binary, "operator");
+    static const struct
+    {
+        const char *text;
+        int group;
+    } groups[] = { { "||", 1 }, { "&&", 1 }, { "|", 2 }, { "^", 2 }, { "&", 2 } };
+    for (size_t i = 0; i < sizeof groups / sizeof *groups; i++) {
+        size_t n = strlen(groups[i].text);
+        if ((size_t)(end(op) - start(op)) == n &&
+            !strncmp(c->text + start(op), groups[i].text, n)) {
+            return groups[i].group;
+        }
+    }
+    return 0;
+}
+/* Parentheses that group `&&` under `||`, or one bitwise operator under
+ * another, stay: precedence decides them, but the grouping reads better. */
+static bool grouping(const collector *c, TSNode node)
+{
+    TSNode parent = ts_node_parent(node), inner = field(node, "expression");
+    if (!is(parent, "binary_expression") || !is(inner, "binary_expression")) {
+        return false;
+    }
+    int group = operator_group(c, parent);
+    TSNode a = field(parent, "operator"), b = field(inner, "operator");
+    bool same = end(a) - start(a) == end(b) - start(b) &&
+                !strncmp(c->text + start(a), c->text + start(b), (size_t)(end(a) - start(a)));
+    return group && group == operator_group(c, inner) && !same;
+}
 /* Removes a node with its line when nothing else shares that line. */
 static void delete_line(collector *c, TSNode node)
 {
@@ -599,7 +631,7 @@ static void collect(collector *c, TSNode node, pass phase)
         handler(c, node);
     } else if (!strcmp(type, "cast_expression")) {
         unwrap_node(c, node, field(node, "value"));
-    } else if (!strcmp(type, "parenthesized_expression")) {
+    } else if (!strcmp(type, "parenthesized_expression") && !grouping(c, node)) {
         unwrap_node(c, node, field(node, "expression"));
     } else if (!strcmp(type, "member_expression")) {
         storage_path(c, node);

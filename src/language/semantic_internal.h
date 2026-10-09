@@ -26,10 +26,17 @@ typedef struct
     int symbol;
     TSNode value;
 } initializer;
+typedef enum
+{
+    BODY_PENDING,
+    BODY_ACTIVE,
+    BODY_DONE,
+} body_state;
 typedef struct
 {
     int function;
     TSNode node;
+    body_state state;
 } function_body;
 typedef struct
 {
@@ -63,6 +70,7 @@ int script_analyzer_lookup_name(const analyzer *a, const char *name);
 int script_analyzer_lookup_storage(analyzer *, TSNode, script_symbol_kind);
 int script_analyzer_lookup(analyzer *a, TSNode node);
 int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind, script_type type, bool writable);
+int script_analyzer_result_new(analyzer *a, TSNode node, const char *name, script_type type);
 void script_analyzer_use(analyzer *a, TSNode node, int symbol, script_use_kind kind, uint64_t member);
 bool script_analyzer_present(const analyzer *a, int symbol);
 script_type script_analyzer_bad_type();
@@ -127,6 +135,8 @@ void script_analyzer_finish_boxes(analyzer *a);
 bool script_analyzer_binding_depends(const script_binding *reader, const script_binding *writer);
 void script_analyzer_finish_bindings(analyzer *a);
 void script_analyzer_callable_definition(analyzer *a, int index, TSNode body);
+void script_analyzer_callable_definitions(analyzer *a, bool inferred_only);
+void script_analyzer_function_type(analyzer *a, int function);
 void script_analyzer_host_declarations(analyzer *a, TSNode root);
 bool script_analyzer_resolve_operator(analyzer *, TSNode, TSNode, script_expression *);
 bool script_analyzer_numeric_aggregate(const script_catalog *, script_type, int);

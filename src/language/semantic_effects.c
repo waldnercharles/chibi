@@ -221,6 +221,69 @@ void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
     a->function = old_function;
     asetlen(a->narrowed, 0);
 }
+static bool calls(const analyzer *a, TSNode node, const char *name)
+{
+    if (script_analyzer_is(node, "call_expression")) {
+        char *target = script_analyzer_text_copy(a, script_analyzer_field(node, "function"));
+        const char *dot = strrchr(target, '.');
+        bool match = !strcmp(dot ? dot + 1 : target, name);
+        free(target);
+        if (match) {
+            return true;
+        }
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (!script_analyzer_is(child, "function_declaration") &&
+            !script_analyzer_is(child, "macro_declaration") && calls(a, child, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Defines inferred bodies after the inferred functions they call, so each
+ * call sees its callee's results. */
+static void define_inferred(analyzer *a, int body)
+{
+    function_body b = a->bodies[body];
+    if (b.state == BODY_DONE) {
+        return;
+    }
+    if (b.state == BODY_ACTIVE) {
+        TSNode name = script_analyzer_field(ts_node_parent(b.node), "name");
+        script_analyzer_diagnostic(a, name, "Recursive functions need declared results");
+        return;
+    }
+    a->bodies[body].state = BODY_ACTIVE;
+    for (int i = 0; i < acount(a->bodies); i++) {
+        const script_function *callee = &a->out->functions[a->bodies[i].function];
+        if (callee->inferred && calls(a, b.node, a->out->symbols[callee->symbol].name)) {
+            define_inferred(a, i);
+        }
+    }
+    script_analyzer_callable_definition(a, b.function, b.node);
+    script_analyzer_function_type(a, b.function);
+    a->bodies[body].state = BODY_DONE;
+}
+/* Defines the callable bodies not yet defined, or only the inferred ones. */
+void script_analyzer_callable_definitions(analyzer *a, bool inferred_only)
+{
+    for (int i = 0; i < acount(a->bodies); i++) {
+        if (a->out->functions[a->bodies[i].function].inferred) {
+            define_inferred(a, i);
+        }
+    }
+    for (int i = 0; i < acount(a->bodies) && !inferred_only; i++) {
+        if (a->bodies[i].state == BODY_PENDING) {
+            a->bodies[i].state = BODY_DONE;
+            script_analyzer_callable_definition(
+                a,
+                a->bodies[i].function,
+                a->bodies[i].node
+            );
+        }
+    }
+}
 void script_analyzer_host_declarations(analyzer *a, TSNode root)
 {
     for (int i = 0; i < a->catalog->global_count; i++) {

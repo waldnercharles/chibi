@@ -1875,6 +1875,15 @@ TEST_CASE(program_version_11_references_migrate_to_values)
     bound = chibi_migrate_references("x := fallback((&speed), default: 0)");
     REQUIRE(bound && !strcmp(bound, "x := fallback(binding: (speed), default: 0)"));
     free(bound);
+    bound = chibi_migrate_references("x := fallback(driver, &speed, default: 0)");
+    REQUIRE(bound && !strcmp(bound, "x := fallback(driver, binding: speed, default: 0)"));
+    free(bound);
+    bound = chibi_migrate_references("x := fallback(get(a, b), ((&speed)), default: (0))");
+    REQUIRE(bound && !strcmp(bound, "x := fallback(get(a, b), binding: ((speed)), default: (0))"));
+    free(bound);
+    bound = chibi_migrate_references("x := fallback(binding: &speed, default: f(&n))");
+    REQUIRE(bound && !strcmp(bound, "x := fallback(binding: speed, default: f(n))"));
+    free(bound);
     bound = chibi_migrate_references("f(Value: ref int split &count, Other: true & ok)");
     REQUIRE(bound && !strcmp(bound, "f(Value: ref int split count, Other: true & ok)"));
     free(bound);
@@ -2184,6 +2193,61 @@ TEST_CASE(program_single_result_call_fields_read_the_result)
             REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
         REQUIRE(number_state(instance, "n", 34));
+    }
+    return true;
+}
+
+TEST_CASE(program_results_are_inferred_from_returns)
+{
+    const char
+        *source = "behavior B { n: double = 0;"
+                  "function Faster(a: double, b: double) { if a > b { return "
+                  "true } return false }"
+                  "function Pick(a: double, b: double) { if Faster(a, b) { "
+                  "return a } return b }"
+                  "function Split(x: double) { return(Low: x, High: x * 10) }"
+                  "function Later(x: double) { yield; return x + 1 }"
+                  "on Impulse(amount, enabled) { n += Pick(2, 5); r := "
+                  "Split(amount);"
+                  " n += r.Low + r.High; n += await Later(1); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        for (int i = 1; i <= 3; i++) {
+            REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
+        }
+        REQUIRE(number_state(instance, "n", 18));
+    }
+    static const struct
+    {
+        const char *source, *message;
+    } invalid[] = {
+        { "behavior B { function Count(n: double) { if n < 1 { return 0.0 } "
+          "return Count(n - 1) + 1 } }",
+          "Recursive functions need declared results" },
+        { "behavior B { function Pair(x: double) { return(x, x) } }", "Name each result" },
+        { "behavior B { function Mixed(x: double) { if x > 0 { return true } "
+          "return x } }",
+          "" },
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        prepare();
+        syntax = script_parse(invalid[i].source);
+        analysis = script_analyze(syntax, &catalog);
+        REQUIRE(!analysis->valid);
+        bool found = false;
+        for (int d = 0; d < analysis->diagnostic_count; d++) {
+            found |= strstr(analysis->diagnostics[d].message, invalid[i].message) != NULL;
+        }
+        REQUIRE(found);
     }
     return true;
 }
@@ -2532,6 +2596,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_11_references_migrate_to_values);
     RUN_TEST_CASE(program_version_12_results_migrate_to_returns);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
+    RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
     RUN_TEST_CASE(program_library_call_starts_a_task);
     RUN_TEST_CASE(program_library_task_writes_the_callers_state);

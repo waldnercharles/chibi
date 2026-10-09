@@ -397,6 +397,23 @@ TEST_CASE(intelligence_signatures_and_semantic_highlights)
     return true;
 }
 
+TEST_CASE(library_signatures_infer_results_from_returns)
+{
+    const char *sources[] = {
+        "library Math { function Twice(input:int) { return input * 2 }"
+        " function Both(input:int) { return(Low: Twice(input), High: input * "
+        "4) } }",
+        "behavior App { score:=0; on Tick { score=Math.Twice(3) + "
+        "Math.Both(1).High; } }"
+    };
+    REQUIRE(project(sources, 2));
+    int cursor = (int)(strstr(documents[1].syntax->text, "Twice") -
+                       documents[1].syntax->text);
+    edited = authoring_source_hover(navigation, 1, cursor);
+    REQUIRE(edited && !strcmp(edited, "Math.Twice(input: int) -> (Result: int)"));
+    return true;
+}
+
 TEST_CASE(intelligence_recovers_reflected_members_and_rejects_comments)
 {
     const char *sources[] = {
@@ -940,6 +957,7 @@ void test_language_navigation()
     RUN_TEST_CASE(rename_groups_event_alias_handlers);
     RUN_TEST_CASE(intelligence_scope_identity_and_owned_outputs);
     RUN_TEST_CASE(intelligence_signatures_and_semantic_highlights);
+    RUN_TEST_CASE(library_signatures_infer_results_from_returns);
     RUN_TEST_CASE(intelligence_recovers_reflected_members_and_rejects_comments);
     RUN_TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members);
     RUN_TEST_CASE(intelligence_prototype_arguments_use_declared_reference_context);

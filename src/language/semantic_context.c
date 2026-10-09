@@ -113,9 +113,8 @@ int script_analyzer_lookup_storage(analyzer *a, TSNode node, script_symbol_kind 
     free(name);
     return found;
 }
-int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind, script_type type, bool writable)
+static int declare(analyzer *a, TSNode node, char *name, script_symbol_kind kind, script_type type, bool writable)
 {
-    char *name = script_analyzer_name_copy(a, node);
     int existing = script_analyzer_lookup_name(a, name);
     if (kind == SCRIPT_FUNCTION || kind == SCRIPT_MACRO) {
         existing = -1;
@@ -158,6 +157,15 @@ int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind
     free(identity);
     apush(a->out->symbols, symbol);
     return acount(a->out->symbols) - 1;
+}
+int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind, script_type type, bool writable)
+{
+    return declare(a, node, script_analyzer_name_copy(a, node), kind, type, writable);
+}
+/* A result named by the language rather than the source, declared at `node`. */
+int script_analyzer_result_new(analyzer *a, TSNode node, const char *name, script_type type)
+{
+    return declare(a, node, xstrdup(name), SCRIPT_RESULT, type, true);
 }
 void script_analyzer_use(analyzer *a, TSNode node, int symbol, script_use_kind kind, uint64_t member)
 {

@@ -321,60 +321,100 @@ static bool after_operand(const char *source, const char *last)
     }
     return true;
 }
-/* `fallback(&x, ...)` and `fallback((&x), ...)` bound their first argument
- * through the reference. Returns where `binding: ` goes, or NULL. */
-static const char *fallback_binding(const char *source, const char *last)
+/* An open parenthesis. `start` holds until the current argument has a
+ * token, and `arg` is where that argument begins. */
+typedef struct
 {
-    const char *open = NULL;
-    while (last && *last == '(') {
-        open = last;
-        do {
-            last = last > source ? last - 1 : NULL;
-        } while (last && isspace((unsigned char)*last));
+    bool fallback;
+    bool wrap;
+    bool start;
+    const char *arg;
+} paren;
+static bool fallback_call(const char *source, const char *last)
+{
+    if (!last || last - source < 7 || strncmp(last - 7, "fallback", 8)) {
+        return false;
     }
-    if (!open || !last || last - source < 7) {
+    return last - 7 == source || !word_char(last[-8]);
+}
+/* A positional `&x` at `p` in `fallback(...)`, also inside wrapping
+ * parentheses, bound through the reference. Returns where `binding: `
+ * goes, or NULL. */
+static const char *fallback_binding(const paren *stack, const char *p)
+{
+    int top = acount(stack) - 1;
+    if (top < 0 || !stack[top].start) {
         return NULL;
     }
-    const char *word = last - 7;
-    if (strncmp(word, "fallback", 8) || (word > source && word_char(word[-1]))) {
+    while (top > 0 && stack[top].wrap) {
+        top--;
+    }
+    if (!stack[top].fallback) {
         return NULL;
     }
-    const char *after = strchr(word, '(') + 1;
-    return after;
+    return stack[top].arg ? stack[top].arg : p;
+}
+static void enter_token(paren *stack, const char *p)
+{
+    if (acount(stack) && stack[acount(stack) - 1].start) {
+        stack[acount(stack) - 1].start = false;
+        stack[acount(stack) - 1].arg = p;
+    }
 }
 char *chibi_migrate_references(const char *source)
 {
     insertion *inserts = NULL;
+    paren *stack = NULL;
     char *result = NULL;
     const char *last = NULL;
     int removed = 0;
     for (const char *p = source; *p;) {
         const char *skip = skip_literal(p);
         if (skip != p) {
-            last = *p == '"' ? skip - 1 : last;
+            if (*p == '"') {
+                enter_token(stack, p);
+                last = skip - 1;
+            }
             p = skip;
             continue;
         }
         if (p[0] == '&' && (p[1] == '&' || p[1] == '=')) {
+            enter_token(stack, p);
             last = p + 1;
             p += 2;
             continue;
         }
         if (*p == '&' && !after_operand(source, last)) {
-            const char *binding = fallback_binding(source, last);
+            const char *binding = fallback_binding(stack, p);
             if (binding) {
                 apush(inserts, ((insertion){ (int)(binding - source), acount(inserts), "binding: " }));
             }
+            enter_token(stack, p);
             apush(inserts, ((insertion){ (int)(p - source), -1, NULL }));
             removed++;
             p++;
             continue;
+        }
+        if (*p == '(') {
+            bool call = after_operand(source, last);
+            bool wrap = !call && acount(stack) && stack[acount(stack) - 1].start;
+            enter_token(stack, p);
+            apush(stack, ((paren){ call && fallback_call(source, last), wrap, true, NULL }));
+        } else if (*p == ')' && acount(stack)) {
+            asetlen(stack, acount(stack) - 1);
+            enter_token(stack, p);
+        } else if (*p == ',' && acount(stack)) {
+            stack[acount(stack) - 1].start = true;
+            stack[acount(stack) - 1].arg = NULL;
+        } else if (!isspace((unsigned char)*p)) {
+            enter_token(stack, p);
         }
         if (!isspace((unsigned char)*p)) {
             last = p;
         }
         p++;
     }
+    afree(stack);
     if (removed) {
         size_t size = strlen(source) + 1;
         for (int i = 0; i < acount(inserts); i++) {

@@ -146,6 +146,21 @@ Inspect `behavior_failures` and the deterministic state evidence in the response
 Test invocations remain subject to the [60-second policy](testing.md#temporary-60-second-policy).
 A short sample run does not establish full runtime or rendering coverage.
 
+## Switch scenes
+
+Scripts start another scene with `load_scene(Scene: "Level2")`, restart the
+running one with `reload_scene()`, and read its name with `current_scene()`. A
+scene's name is its file name in `content/scenes` without `.kdl`. A request
+takes effect after the frame: the host destroys every entity, discards
+uncommitted save changes, keeps committed save data, and starts the scene, whose
+Begin runs before its first frame. Time, held input and audio carry on.
+`chibi-compile` prepares every scene in `content/scenes`, so the player can load
+any of them, and refuses a scene that binds one `GameGlobalBinding` name to two
+entities. Scene scenarios (`run_scenario`, `runtime_snapshot`,
+`profile_scenario` and recordings) follow requests the same way. Studio play
+mode cannot load scenes yet, so a request there fails with "This host cannot
+load scenes".
+
 ## Runtime identity and capability requests
 
 `.chibi-engine.json` records the player package build ID, source SDK build ID,

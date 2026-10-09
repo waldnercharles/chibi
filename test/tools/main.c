@@ -15,6 +15,8 @@ void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
 void test_tool_ecs_hierarchy();
+void test_tool_ecs_world();
+void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
 void test_tool_studio_selectors(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
@@ -241,6 +243,8 @@ int main(int argc, char **argv)
         test_tool_ecs();
         test_tool_ecs_relationships();
         test_tool_ecs_hierarchy();
+        test_tool_ecs_world();
+        test_tool_ecs_query();
         test_tool_package();
         test_tool_collab();
         test_tool_test_policy();

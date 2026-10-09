@@ -537,7 +537,7 @@ typedef enum
  * Material's linear convention and the intensity scales both. Auto exposure
  * meters the mean log luminance of the frame's lit pixels to middle gray, then
  * applies exposure as compensation; it adapts at adaptation_speed per scene
- * second, and zero adapts every frame. */
+ * second, from 0.1 to 100, and zero adapts every frame. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 {
     float exposure;

@@ -2,7 +2,11 @@ version 1
 name "Shapes"
 presentation "3d"
 (array)entities {
-    - name="Sun" prototype="Sun"
+    - {
+        name "Sun"
+        prototype "Sun"
+        (array)behaviors
+    }
     - {
         name "Box"
         prototype "Solid"
@@ -11,6 +15,7 @@ presentation "3d"
             GAME.GameGeometry3D primitive=0 width=100.0 depth=100.0 height=100.0 elevation=50.0
             GAME.GameMaterial scene=0xd04030ff
         }
+        (array)behaviors
     }
     - {
         name "Sphere"
@@ -20,6 +25,7 @@ presentation "3d"
             GAME.GameGeometry3D primitive=1 width=110.0 depth=110.0 height=110.0 elevation=55.0
             GAME.GameMaterial scene=0x40a0e0ff
         }
+        (array)behaviors
     }
     - {
         name "Floor"
@@ -29,5 +35,6 @@ presentation "3d"
             GAME.GameGeometry3D primitive=0 width=600.0 depth=400.0 height=4.0 elevation=-2.0
             GAME.GameMaterial scene=0x808080ff
         }
+        (array)behaviors
     }
 }

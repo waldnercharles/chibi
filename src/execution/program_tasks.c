@@ -229,6 +229,13 @@ static void capture_references(execution_activation *a, const behavior_function_
         execution_reference_capture(&a->payload, &a->context, &arguments[i], box);
     }
 }
+uint64_t program_owning_task(const execution_activation *a)
+{
+    while (!a->task && a->continuation_owner) {
+        a = a->continuation_owner;
+    }
+    return a->task;
+}
 static int start_task(behavior_function_context *ctx, int index)
 {
     execution_activation *caller = ctx->inspection_user;
@@ -250,7 +257,9 @@ static int start_task(behavior_function_context *ctx, int index)
         return FLOW_ERR_ARGUMENT;
     }
     capture_references(a, call);
-    execution_task *t = task_new(instance), *parent = find(instance, caller->task);
+    /* An outcome continuation runs on behalf of the task that owns it. */
+    execution_task *t = task_new(instance),
+                   *parent = find(instance, program_owning_task(caller));
     t->activation = a;
     if (parent) {
         adopt(instance, parent, t);

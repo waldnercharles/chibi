@@ -212,6 +212,8 @@ void program_bind_world_callbacks(behavior_function_context *);
 void program_bind_commands(behavior_function_context *);
 int program_complete_action(behavior_function_context *, uint64_t, const pin_value *, int);
 void program_continuation_finish(execution_activation *);
+/* The task an activation, or the activation it continues, belongs to. */
+uint64_t program_owning_task(const execution_activation *);
 bool program_capture_reference(
     arena *,
     behavior_function_context *,

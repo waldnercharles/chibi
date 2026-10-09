@@ -1724,6 +1724,42 @@ TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings)
     }
     return true;
 }
+TEST_CASE(program_task_owns_tasks_started_by_its_continuations)
+{
+    /* P's outcome continuation resumes on its own and starts Spin, which
+     * still belongs to P, so cancelling P stops it. */
+    const char
+        *source = "behavior C { ticks: double = 0; worker: task;"
+                  "function Spin() -> () { while true { ticks += 1; yield } }"
+                  "function Count() -> (shown: double) { return 1 }"
+                  "action act = Count();"
+                  "function P() -> () { act(); await Delay(10) }"
+                  "after act { yield; Spin() }"
+                  "on Impulse(amount, enabled) { if enabled { worker = P() } "
+                  "else { cancel worker } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                             { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "ticks", 2));
+        args[1].b = false;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 4, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "ticks", 2));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
 TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
 {
     const char *source = "behavior Many { done: double = 0; kept: double = 0; "
@@ -2796,6 +2832,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
     RUN_TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings);
+    RUN_TEST_CASE(program_task_owns_tasks_started_by_its_continuations);
     RUN_TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);

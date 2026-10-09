@@ -422,18 +422,11 @@ int program_complete_action(behavior_function_context *ctx, uint64_t action, con
             apush(arguments, ctx->arguments[i]);
         }
         for (int i = 0; i < fn->local_capture_count; i++) {
-            const execution_module_capture *capture = &fn->captures[i];
-            pin_value *value = program_capture_value(ctx, capture);
-            if (!value) {
+            pin_value reference;
+            if (!program_capture_reference(&owner->payload, ctx, &fn->captures[i], &reference)) {
                 afree(arguments);
                 return FLOW_ERR_STATE;
             }
-            pin_value reference = execution_reference_value(
-                &owner->payload,
-                ctx,
-                value,
-                capture->type
-            );
             apush(arguments, reference);
         }
         for (int i = 0; i < count; i++) {

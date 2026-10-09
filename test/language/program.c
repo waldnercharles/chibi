@@ -7,6 +7,7 @@
 #include "execution/status.h"
 #include "language/identity.h"
 #include "language/lower.h"
+#include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/state_definition.h"
 #include "support/arena.h"
@@ -397,14 +398,9 @@ static bool compile_state(const char *source, behavior_backend backend)
         .layout_count = 2,
     };
     char error[256];
-    state_native = native_capabilities_from_definition_packs(
-        &base,
-        1,
-        &NATIVE_STATE_DEFINITION_PACK,
-        1,
-        error,
-        sizeof error
-    );
+    const native_definition_pack packs[] = { NATIVE_STATE_DEFINITION_PACK,
+                                             CORE_DEFINITION_PACK };
+    state_native = native_capabilities_from_definition_packs(&base, 1, packs, 2, error, sizeof error);
     if (!state_native) {
         fprintf(stderr, "state catalog: %s\n", error);
         return false;
@@ -2578,6 +2574,46 @@ TEST_CASE(program_component_paths_test_presence)
     }
     return true;
 }
+TEST_CASE(program_branch_completes_inside_action_continuation)
+{
+    /* The inner continuations capture the root local Shown, which the outer
+     * continuation holds only by reference, before and after resuming. */
+    const char *bodies[] = { "n += 1\n inner()", "n += 1\n await Wait()\n inner()" };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int c = 0; c < 2; c++) {
+        char source[EXAMPLE_SOURCE_CAPACITY];
+        int length = snprintf(
+            source,
+            sizeof source,
+            "behavior B { n: double = 0\n"
+            "function Count() -> (shown: double) { return 2 }\n"
+            "function Wait() { yield }\n"
+            "action outer = Count()\n"
+            "local Shown = outer.shown\n"
+            "action inner = engine[\"Branch\"](Condition: Shown > 0)\n"
+            "on Impulse(amount, enabled) { outer() }\n"
+            "after outer { %s }\n"
+            "after inner.True { n += 10 }\n"
+            "after inner.False { n += 100 } }",
+            bodies[c]
+        );
+        REQUIRE(length > 0 && (size_t)length < sizeof source);
+        for (int b = 0; b < 2; b++) {
+            prepare();
+            REQUIRE(compile_state(source, backends[b]));
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(positioned(1, 1))
+            );
+            const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                       { .type = PIN_BOOL, .b = true } };
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "n", 11));
+        }
+    }
+    return true;
+}
 TEST_CASE(program_parameters_defaults_and_contextual_words)
 {
     const char *source = "behavior V { n: double = 0\n"
@@ -2722,6 +2758,7 @@ void test_language_program()
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
     RUN_TEST_CASE(program_component_paths_test_presence);
+    RUN_TEST_CASE(program_branch_completes_inside_action_continuation);
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);

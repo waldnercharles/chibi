@@ -1,5 +1,6 @@
 #include "runtime/declared_components.h"
 
+#include "capabilities/catalog.h"
 #include "runtime/component_catalog.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -137,6 +138,9 @@ static bool build(declared_components *c, int index, const declared_component *i
     }
     if (type_catalog_find(name)) {
         return fail(error, size, name, "name is already an engine type");
+    }
+    if (!(script_builtin_type(name).flags & SCRIPT_TYPE_ERROR)) {
+        return fail(error, size, name, "name is a built-in script type");
     }
     for (int i = 0; i < index; i++) {
         if (!strcmp(c->types[i].name, name)) {

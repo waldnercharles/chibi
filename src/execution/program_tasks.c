@@ -361,6 +361,7 @@ int program_task_command(
             cancel(instance, handle);
             /* A caller that cancelled itself stops here. */
             if (a->stopping) {
+                flow_host_release(request);
                 return FLOW_OK;
             }
             program_request_deliver(request, NULL, 0);

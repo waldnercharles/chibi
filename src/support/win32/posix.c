@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <string.h>
 #include <windows.h>
@@ -36,6 +37,18 @@ static int errno_from_windows()
         case ERROR_DIRECTORY: return ENOTDIR;
         default: return EACCES;
     }
+}
+
+int posix_win32_open(const char *path, int flags, ...)
+{
+    int mode = 0;
+    if (flags & _O_CREAT) {
+        va_list arguments;
+        va_start(arguments, flags);
+        mode = va_arg(arguments, int) & (_S_IREAD | _S_IWRITE);
+        va_end(arguments);
+    }
+    return _open(path, flags | _O_BINARY, mode);
 }
 
 int posix_win32_lstat(const char *path, struct stat *info)

@@ -19,8 +19,7 @@ static int lock_manifest(const char *path)
     }
     char *name = xmalloc(strlen(path) + sizeof ".lock");
     snprintf(name, strlen(path) + sizeof ".lock", "%s.lock", path);
-    /* Read and write for the owner are the only mode bits Windows accepts. */
-    int fd = open(name, O_CREAT | O_RDWR, 0600);
+    int fd = open(name, O_CREAT | O_RDWR, 0666);
     free(name);
     if (fd < 0 || flock(fd, LOCK_EX) < 0) {
         perror("reflect: manifest lock");

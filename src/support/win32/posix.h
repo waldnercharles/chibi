@@ -4,8 +4,9 @@
  * this header into every C source that links Chibi::support on Windows, and
  * puts unistd.h, dirent.h and strings.h from this directory on the include
  * path. Together they supply what POSIX declares and the runtime lacks or
- * spells differently. lstat reports symbolic links and junctions as links,
- * and rename replaces an existing file or empty folder, as POSIX's do. */
+ * spells differently. open uses binary mode, lstat reports symbolic links and
+ * junctions as links, and rename replaces an existing file or empty folder,
+ * as POSIX's do. */
 #ifndef CHIBI_SUPPORT_WIN32_POSIX_H
 #define CHIBI_SUPPORT_WIN32_POSIX_H
 #ifdef _WIN32
@@ -61,6 +62,9 @@ typedef unsigned short mode_t;
 #define CLOCK_MONOTONIC 1
 #endif
 
+/* The runtime's open in binary mode, keeping only the owner's read and write
+ * bits, the only ones it accepts. */
+int posix_win32_open(const char *path, int flags, ...);
 /* stat, with symbolic links and junctions as S_IFLNK instead of their target. */
 int posix_win32_lstat(const char *path, struct stat *info);
 /* The absolute path with forward slashes, into `resolved` (PATH_MAX bytes)
@@ -76,6 +80,9 @@ int posix_win32_clock_gettime(int clock, struct timespec *time);
 char *posix_win32_stpcpy(char *to, const char *from);
 char *posix_win32_stpncpy(char *to, const char *from, size_t size);
 
+/* Object-like, so members named open are renamed alike where they are
+ * declared and called. */
+#define open posix_win32_open
 #define mkdir(path, mode) _mkdir(path)
 #define lstat(path, info) posix_win32_lstat(path, info)
 #define fsync(fd) _commit(fd)

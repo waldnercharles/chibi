@@ -2584,8 +2584,12 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         "    function SetN() { n = 5; return 0 }\n"
         "    local hit = n + 1; local other = SetN()\n"
         "    on Tick() { n = other + hit }\n}\n",
+        "behavior L { n: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local hit = One(); local twice = hit + hit\n"
+        "    action wait = timer(twice)\n}\n",
     };
-    for (int i = 0; i < 11; i++) {
+    for (int i = 0; i < 12; i++) {
         unchanged = NULL;
         REQUIRE(
             chibi_migrate_locals(later[i], &unchanged, error, sizeof error) &&

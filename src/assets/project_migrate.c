@@ -1748,6 +1748,47 @@ static bool calls(const char *text, lazy *all, TSNode node)
     }
     return false;
 }
+/* Counts the reads of each local `node` evaluates, through other locals. */
+static void count_reads(const char *text, lazy *all, TSNode node, int *reads)
+{
+    lazy *read = local_read(text, all, node);
+    if (read) {
+        reads[lazy_index(all, read)]++;
+        if (!read->alias) {
+            count_reads(text, all, ts_node_child_by_field_name(read->node, "value", 5), reads);
+        }
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        count_reads(text, all, ts_node_named_child(node, i), reads);
+    }
+}
+/* A local an action, event or binding reads more than once, which its
+ * expansion would evaluate at every read, or null. */
+static lazy *repeated_argument(const char *text, lazy *all, TSNode node)
+{
+    if (is(node, "action_declaration") || is(node, "event_declaration") ||
+        is(node, "bind_declaration")) {
+        int *reads = xcalloc((size_t)acount(all), sizeof *reads);
+        count_reads(text, all, node, reads);
+        lazy *found = NULL;
+        for (int i = 0; !found && i < acount(all); i++) {
+            if (reads[i] > 1 && !all[i].alias &&
+                !constant(ts_node_child_by_field_name(all[i].node, "value", 5))) {
+                found = &all[i];
+            }
+        }
+        free(reads);
+        return found;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        lazy *found = repeated_argument(text, all, ts_node_named_child(node, i));
+        if (found) {
+            return found;
+        }
+    }
+    return NULL;
+}
 /* Whether `node` calls something that runs before `read` is evaluated. */
 static bool calls_before(const char *text, lazy *all, TSNode node, TSNode read)
 {
@@ -2005,6 +2046,17 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
                 "that value where it should run before migrating"
             );
         }
+    }
+    lazy *repeated = status ? NULL : repeated_argument(text, all, root);
+    if (repeated) {
+        status = local_fail(
+            error,
+            error_size,
+            text,
+            ts_node_child_by_field_name(repeated->node, "name", 4),
+            "Local `%.*s` is read more than once by an action, event or "
+            "binding; declare it where it should run before migrating"
+        );
     }
     replacement *edits = NULL;
     local_use *uses = NULL;

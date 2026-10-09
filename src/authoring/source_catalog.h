@@ -2,6 +2,7 @@
 #define CHIBI_AUTHORING_SOURCE_CATALOG_H
 #include "authoring/source_declaration.h"
 #include "language/semantic.h"
+#include "runtime/input_action.h"
 
 typedef struct source_catalog source_catalog;
 typedef struct
@@ -47,6 +48,8 @@ source_catalog *source_catalog_replaced(
     int edit_count
 );
 const script_catalog *source_catalog_view(const source_catalog *);
+/* The project's input map, content/input.kdl, as a support/array.h vector. */
+const input_action *source_catalog_input(const source_catalog *);
 int source_catalog_source_count(const source_catalog *);
 const source_catalog_source *source_catalog_source_at(const source_catalog *, int index);
 int source_catalog_definition_count(const source_catalog *);

@@ -1,5 +1,7 @@
 #include "runtime/native_prepared.h"
 
+#include "runtime/input_action.h"
+
 #include <assert.h>
 
 static bool host(void *user, uint64_t id, execution_prepared_host *out)
@@ -56,6 +58,13 @@ static bool event(void *user, uint64_t id, uint64_t abi)
 }
 static bool type(void *user, uint64_t id, execution_prepared_type *out)
 {
+    const char *input[] = { INPUT_MAP_TYPE, INPUT_ACTION_TYPE };
+    for (int i = 0; i < 2; i++) {
+        if (id == script_catalog_id("type", input[i])) {
+            *out = (execution_prepared_type){ .name = input[i], .storage = PIN_STR };
+            return true;
+        }
+    }
     const native_prepared_context *context = user;
     const script_catalog *catalog = native_capabilities_catalog(context->native);
     for (int i = 0; i < catalog->type_count; i++) {

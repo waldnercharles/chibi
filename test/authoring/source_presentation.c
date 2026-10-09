@@ -154,8 +154,7 @@ TEST_CASE(source_views_keep_named_invalid_drafts)
 {
     const char *drafts[] = {
         "behavior Draft { on Tick { missing.x; } }",
-        "behavior Draft { on Tick { current := Unknown(1); current.message; } "
-        "}",
+        "behavior Draft { on Tick { x := Unknown(1); x.message; } }",
         "behavior Draft { text: string = \"draft\"; on Tick { text = ; } }",
     };
     for (int i = 0; i < 3; i++) {

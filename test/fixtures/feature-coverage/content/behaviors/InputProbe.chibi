@@ -1,10 +1,10 @@
 behavior InputProbe {
     on Input {
         self.Transform += Direction
-        if held("Fire") {
+        if input.Shoot.held {
             self.Aim.firing = true
         }
-        if pressed("Fire") {
+        if input.Shoot.pressed {
             self.Aim.firing = true
         }
     }
@@ -13,7 +13,5 @@ behavior InputProbe {
     }
     on Dash {
         self.Aim.firing = false
-    }
-    on PressedChanged {
     }
 }

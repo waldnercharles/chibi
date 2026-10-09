@@ -6,5 +6,4 @@ name "Input"
         prototype "Pilot"
         (array)behaviors "InputProbe"
     }
-    - name="FireKey" prototype="FireKey"
 }

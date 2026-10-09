@@ -198,6 +198,9 @@ static void use_analysis(const script_catalog *catalog, const script_analysis *a
         if (expression->kind != SCRIPT_EXPR_COMPONENT) { /* Its capability is a type ID. */
             use_capability(catalog, expression->capability);
         }
+        /* A field such as input.Fire.held reads through a native getter. */
+        use_capability(catalog, expression->read);
+        use_capability(catalog, expression->write);
         use_id(ENTRY_COMPONENT, expression->type.nominal);
     }
     /* Every catalog name is a symbol in scope; only its uses count. */

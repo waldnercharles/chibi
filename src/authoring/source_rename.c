@@ -314,11 +314,12 @@ static char *replacement(
     if (kind == SOURCE_TEXT_RML) {
         return identifier(name) ? xstrdup(name) : NULL;
     }
-    if (!document->syntax) {
-        return quoted(name);
-    }
     if (source[r->location.range.start] == '"') {
         return quoted(name);
+    }
+    if (!document->syntax) {
+        /* A bare KDL name, like an input map action's node, stays bare. */
+        return identifier(name) ? xstrdup(name) : quoted(name);
     }
     if (identifier(name)) {
         return xstrdup(name);

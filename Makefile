@@ -302,8 +302,11 @@ test-language-format:
 test-language-prepared:
 	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" CHIBI_TOOLS_BUILD_DIR="$(TOOLS_BUILD_DIR)" python3 tools/test_policy.py tool language-prepared
 
+# The reflection identity cases run the reflect that `make build` produced.
+TOOLS_REFLECT ?= $(wildcard $(abspath $(BUILD_DIR))/reflect)
+
 tools-build:
-	@cmake -S test/tools -B "$(TOOLS_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug
+	@cmake -S test/tools -B "$(TOOLS_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug -DCHIBI_REFLECT_EXECUTABLE="$(TOOLS_REFLECT)"
 	@cmake --build "$(TOOLS_BUILD_DIR)" --parallel $(JOBS)
 
 test-short: tools-build

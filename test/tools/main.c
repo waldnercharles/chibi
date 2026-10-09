@@ -18,12 +18,14 @@ void test_tool_ecs_hierarchy();
 void test_tool_ecs_world();
 void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
+void test_tool_validate_project(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
+void test_device_controls();
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -34,6 +36,7 @@ void test_compiled_aliases();
 void test_persistent_stores();
 void test_parallel_ticks();
 void test_owned_ticks();
+void test_new_asset();
 static bool source_runtime_active;
 bool test_source_runtime_active()
 {
@@ -84,14 +87,15 @@ int main(int argc, char **argv)
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
+    bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, render_resources = false, box3d = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
-    bool source_features = false, source_numeric = false,
-         source_material = false, source_presentation = false,
-         system_schedule = false, source_systems = false, source_edit = false;
+    bool source_features = false, source_numeric = false, source_material = false,
+         source_presentation = false, system_schedule = false,
+         source_systems = false, source_edit = false, new_asset = false;
     int corpus = 0;
     bool coverage = false;
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
@@ -106,6 +110,7 @@ int main(int argc, char **argv)
     whole_select = argc == 2 && !strcmp(argv[1], "--whole-select");
     owned_tick = argc == 2 && !strcmp(argv[1], "--owned-tick");
     parallel_tick = argc == 2 && !strcmp(argv[1], "--parallel-tick");
+    new_asset = argc == 2 && !strcmp(argv[1], "--new-asset");
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
     shader_parameters = argc == 2 && !strcmp(argv[1], "--shader-parameters-prepared");
@@ -135,17 +140,18 @@ int main(int argc, char **argv)
     native = argc == 2 && !strcmp(argv[1], "--native");
     physics = argc == 2 && !strcmp(argv[1], "--physics");
 #endif
-    if (argc != 1 && !corpus && !coverage && !shader_parameters &&
-        !source_edit && !package && !unit && !query_benchmark && !prepared &&
-        !read && !scene && !scene_prepared && !native && !native_values &&
-        !native_catalog && !physics && !render_resources && !box3d &&
-        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
-        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
-        !source_features && !source_numeric && !source_material &&
-        !source_presentation && !system_schedule && !source_systems) {
+    if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
+        !new_asset && !package && !unit && !query_benchmark && !prepared && !read &&
+        !scene && !scene_prepared && !native && !native_values && !native_catalog &&
+        !physics && !render_resources && !box3d && !persistent_store &&
+        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !owned_tick && !parallel_tick && !source_features &&
+        !source_numeric && !source_material && !source_presentation &&
+        !system_schedule && !source_systems && !validate_project) {
         fprintf(
             stderr,
             "Usage: %s [--package | --unit | --ecs-query-benchmark | "
+            "--validate-project chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
@@ -157,7 +163,8 @@ int main(int argc, char **argv)
             "--parallel-tick | --source-native-features | "
             "--source-native-numeric-queries | --source-native-material | "
             "--source-presentation | --system-schedule | --source-systems | "
-            "--source-edit | --shader-parameters-prepared | --semantic-corpora "
+            "--source-edit | --new-asset | --shader-parameters-prepared | "
+            "--semantic-corpora "
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
             "manifest | --feature-coverage project]\n",
             argv[0]
@@ -168,11 +175,12 @@ int main(int argc, char **argv)
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = corpus || coverage || shader_parameters ||
-                            source_edit || system_schedule || source_systems ||
-                            persistent_store || source_presentation || whole_alias ||
-                            whole_math || whole_integer || whole_conversion ||
-                            whole_select || owned_tick || parallel_tick ||
-                            source_features || source_numeric || source_material;
+                            source_edit || new_asset || system_schedule ||
+                            source_systems || persistent_store ||
+                            source_presentation || whole_alias || whole_math ||
+                            whole_integer || whole_conversion || whole_select ||
+                            owned_tick || parallel_tick || source_features ||
+                            source_numeric || source_material;
     if (source_runtime_active) {
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
         if (coverage) {
@@ -203,7 +211,9 @@ int main(int argc, char **argv)
             test_source_native_material_features();
         } else
 #endif
-            if (persistent_store) {
+            if (new_asset) {
+            test_new_asset();
+        } else if (persistent_store) {
             test_persistent_stores();
         } else if (whole_alias) {
             test_compiled_aliases();
@@ -227,6 +237,7 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     if (render_resources) {
         test_render_resources();
+        test_device_controls();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
@@ -263,6 +274,8 @@ int main(int argc, char **argv)
         test_tool_prepared(argv[2], argv[0]);
     } else if (read) {
         test_tool_prepared_runtime(argv[2]);
+    } else if (validate_project) {
+        test_tool_validate_project(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
     } else if (query_benchmark) {

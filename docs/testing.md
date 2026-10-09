@@ -177,8 +177,7 @@ source, is one error; a project saved by an earlier build is reported, not
 upgraded; the application icon must decode as a PNG and a long project name
 needs a title; and a prototype that includes another validates, runs in a
 scene and keeps its include through `--format`, while a missing include is
-reported, the included prototype's behaviors stay its own references, and a
-prototype in a file named otherwise is reported. A few short `chibi_ctl` runs, CPU only; the
+reported and the included prototype's behaviors stay its own references. A few short `chibi_ctl` runs, CPU only; the
 project is removed afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline

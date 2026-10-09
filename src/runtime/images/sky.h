@@ -33,9 +33,10 @@ int render_sky_face_size(const render_sky *);
  * size * size RGBA16F texels, bilinearly sampled and clamped to 65504. */
 void render_sky_face(const render_sky *, int face, int size, uint16_t *texels);
 
-/* The sky's irradiance as nine spherical-harmonic coefficients per channel,
- * convolved with the cosine lobe and folded with their basis constants, so the
- * irradiance arriving at a surface facing unit direction (x, y, z) is
+/* The irradiance of the sky's radiance, clamped to 65504 as in its faces, as
+ * nine spherical-harmonic coefficients per channel, convolved with the cosine
+ * lobe and folded with their basis constants, so the irradiance arriving at a
+ * surface facing unit direction (x, y, z) is
  * c0 + c1 x + c2 y + c3 z + c4 xy + c5 yz + c6 (3y^2 - 1) + c7 xz +
  * c8 (x^2 - z^2). A white sky of radiance 1 gives pi everywhere.
  * Reference: https://graphics.stanford.edu/papers/envmap/envmap.pdf */

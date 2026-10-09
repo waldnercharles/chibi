@@ -198,6 +198,9 @@ TEST_CASE(radiance_files_reject_malformed_skies)
         { "#?RADIANCE\n\n-Y 4 +X 8 \n", { 0 }, 0, "(-Y +X)" },
         { "#?RADIANCE\n\n-Y 4 +X 4\n", { 0 }, 0, "twice as wide" },
         { "#?RADIANCE\n\n-Y 4096 +X 8192\n", { 0 }, 0, "twice as wide" },
+        /* Doubling either height would overflow; the second wraps to 2. */
+        { "#?RADIANCE\n\n-Y 2147483647 +X 2\n", { 0 }, 0, "twice as wide" },
+        { "#?RADIANCE\n\n-Y -2147483647 +X 2\n", { 0 }, 0, "twice as wide" },
         { "#?RADIANCE\n\n-Y 4 +X 8\n", { 1, 2, 3, 4 }, 4, "truncated" },
         { "#?RADIANCE\n\n-Y 8 +X 16\n", { 2, 2, 0, 9 }, 4, "truncated" },
         { "#?RADIANCE\n\n-Y 8 +X 16\n", { 2, 2, 0, 16, 0 }, 5, "truncated" },

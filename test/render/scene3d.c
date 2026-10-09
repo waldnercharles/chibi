@@ -389,9 +389,9 @@ TEST_CASE(solids_outside_the_view_cast_shadows_into_it)
 {
     GameDirectionalLight *sun = add_shadow_scene();
     sun->shadows = true;
-    /* A pillar beyond the left edge of the view, and nearer the sun than the
-     * floor, shades the floor up to x = 3. */
-    add_solid_at(-6, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8, 4 }, 0xffffffffu);
+    /* A pillar well beyond the left edge of the view, and nearer the sun than
+     * the floor, shades the floor up to x = 1. */
+    add_solid_at(-8, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8, 4 }, 0xffffffffu);
     GameEnvironment environment = unlit_environment();
     REQUIRE(render(&environment));
     REQUIRE(pixel_at(sunlit[0]).colors.g == 0);

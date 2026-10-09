@@ -5,14 +5,23 @@
 #include "support/xalloc.h"
 
 #include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 enum
 {
-    SHADOW_SIZE = 2048
+    SHADOW_SIZE = 2048,
+    /* A lookup's reach past its surface point: a 2.5-texel normal offset
+     * plus its 1.5-texel filter. */
+    MARGIN_TEXELS = 4,
+    /* Keeps the depth pass apart from anything else queued for drawing. */
+    SHADOW_LAYER = INT_MIN / 2
 };
+
+/* Built-in meshes reach 2/3 of a unit from their center: the triangle's tip. */
+static const float mesh_extent = 2.0f / 3;
 
 struct render_scene3d_shadow
 {
@@ -21,7 +30,8 @@ struct render_scene3d_shadow
     CF_Shader shader;
     int size;
     CF_M4x4 view, projection;
-    float texel; /* World units per map texel. */
+    CF_Aabb area; /* Light-space XY the map covers. */
+    float texel;  /* World units per map texel. */
 };
 
 render_scene3d_shadow *render_scene3d_shadow_new()
@@ -40,9 +50,6 @@ static void destroy_map(render_scene3d_shadow *shadow)
 
 void render_scene3d_shadow_free(render_scene3d_shadow *shadow)
 {
-    if (!shadow) {
-        return;
-    }
     destroy_map(shadow);
     if (shadow->shader.id) {
         cf_destroy_shader(shadow->shader);
@@ -50,7 +57,7 @@ void render_scene3d_shadow_free(render_scene3d_shadow *shadow)
     free(shadow);
 }
 
-/* A cleared depth map of at least `size` texels per side. */
+/* A depth map of at least `size` texels per side, cleared to the far plane. */
 static void prepare_map(render_scene3d_shadow *shadow, int size)
 {
     if (shadow->size >= size) {
@@ -68,6 +75,7 @@ static void prepare_map(render_scene3d_shadow *shadow, int size)
     params.attach_target = shadow->map;
     shadow->canvas = cf_make_canvas(params);
     cf_canvas_set_clear_depth_stencil(shadow->canvas, 1, 0);
+    /* The placeholder map is only ever bound, never drawn into. */
     cf_clear_canvas(shadow->canvas);
     shadow->size = size;
 }
@@ -93,6 +101,32 @@ static bool load_shader(render_scene3d_shadow *shadow, char *error, size_t size)
     free(vertex);
     free(fragment);
     return shadow->shader.id;
+}
+
+static CF_V3 box_corner(CF_M4x4 box, int corner)
+{
+    CF_V3 unit = { corner & 1 ? mesh_extent : -mesh_extent,
+                   corner & 2 ? mesh_extent : -mesh_extent,
+                   corner & 4 ? mesh_extent : -mesh_extent };
+    return cf_m4_transform_point(box, unit);
+}
+
+static void light_bounds(const render_scene3d_shadow *shadow, CF_M4x4 box, CF_V3 *low, CF_V3 *high)
+{
+    CF_M4x4 matrix = cf_mul_m4(shadow->view, box);
+    *low = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
+    *high = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
+    for (int corner = 0; corner < 8; corner++) {
+        CF_V3 p = box_corner(matrix, corner);
+        *low = cf_min_v3(*low, p);
+        *high = cf_max_v3(*high, p);
+    }
+}
+
+static bool covers(const render_scene3d_shadow *shadow, CF_V3 low, CF_V3 high)
+{
+    return low.x <= shadow->area.max.x && high.x >= shadow->area.min.x &&
+           low.y <= shadow->area.max.y && high.y >= shadow->area.min.y;
 }
 
 static float view_depth(const render_scene3d_camera *camera, CF_V3 world)
@@ -131,48 +165,81 @@ static CF_Aabb frustum_slab(
     return bounds;
 }
 
+/* The light-space XY of the receivers the camera can see, with a margin for
+ * the lookups. Quarter-octave sizes and a texel-aligned origin keep shadow
+ * edges still while the camera moves within one size. */
+static bool fit_area(
+    render_scene3d_shadow *shadow,
+    const CF_M4x4 *boxes,
+    int receivers,
+    const render_scene3d_camera *camera
+)
+{
+    CF_V2 low = { FLT_MAX, FLT_MAX }, high = { -FLT_MAX, -FLT_MAX };
+    float near = FLT_MAX, far = -FLT_MAX;
+    for (int i = 0; i < receivers; i++) {
+        for (int corner = 0; corner < 8; corner++) {
+            CF_V3 world = box_corner(boxes[i], corner);
+            CF_V3 light = cf_m4_transform_point(shadow->view, world);
+            low = cf_min_v2(low, (CF_V2){ light.x, light.y });
+            high = cf_max_v2(high, (CF_V2){ light.x, light.y });
+            near = fminf(near, view_depth(camera, world));
+            far = fmaxf(far, view_depth(camera, world));
+        }
+    }
+    CF_Aabb slab = frustum_slab(shadow, camera, near, far);
+    CF_V2 min = cf_max_v2(slab.min, low), max = cf_min_v2(slab.max, high);
+    float size = fmaxf(max.x - min.x, max.y - min.y);
+    if (!(size > 0) || min.x > max.x || min.y > max.y) {
+        return false;
+    }
+    float margin = size * MARGIN_TEXELS / SHADOW_SIZE;
+    size = exp2f(ceilf(log2f(size + 2 * margin) * 4) / 4);
+    shadow->texel = size / SHADOW_SIZE;
+    min.x = floorf((min.x - margin) / shadow->texel) * shadow->texel;
+    min.y = floorf((min.y - margin) / shadow->texel) * shadow->texel;
+    shadow->area = (CF_Aabb){ min, { min.x + size, min.y + size } };
+    return true;
+}
+
 bool render_scene3d_shadow_fit(
     render_scene3d_shadow *shadow,
     CF_V3 toward_light,
     const CF_M4x4 *boxes,
     int count,
+    int receivers,
     const render_scene3d_camera *camera
 )
 {
     CF_V3 up = fabsf(toward_light.y) > .99f ? (CF_V3){ 0, 0, 1 } : (CF_V3){ 0, 1, 0 };
     shadow->view = cf_look_at((CF_V3){ 0 }, cf_neg_v3(toward_light), up);
-    CF_V3 low = { FLT_MAX, FLT_MAX, FLT_MAX }, high = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
-    float near = FLT_MAX, far = -FLT_MAX;
-    for (int i = 0; i < count; i++) {
-        for (int corner = 0; corner < 8; corner++) {
-            CF_V3 unit = { corner & 1 ? .5f : -.5f,
-                           corner & 2 ? .5f : -.5f,
-                           corner & 4 ? .5f : -.5f };
-            CF_V3 world = cf_m4_transform_point(boxes[i], unit);
-            CF_V3 light = cf_m4_transform_point(shadow->view, world);
-            low = cf_min_v3(low, light);
-            high = cf_max_v3(high, light);
-            near = fminf(near, view_depth(camera, world));
-            far = fmaxf(far, view_depth(camera, world));
-        }
-    }
-    /* Only boxes within the camera's depth range can show a shadow. */
-    CF_Aabb slab = frustum_slab(shadow, camera, near, far);
-    CF_V2 min = cf_max_v2(slab.min, (CF_V2){ low.x, low.y });
-    CF_V2 max = cf_min_v2(slab.max, (CF_V2){ high.x, high.y });
-    float size = fmaxf(max.x - min.x, max.y - min.y);
-    if (!(size > 0) || min.x > max.x || min.y > max.y) {
+    if (!fit_area(shadow, boxes, receivers, camera)) {
         return false;
     }
-    /* Quarter-octave sizes and a texel-aligned origin keep shadow edges still
-     * while the camera moves. */
-    size = exp2f(ceilf(log2f(size) * 4) / 4);
-    shadow->texel = size / SHADOW_SIZE;
-    min.x = floorf(min.x / shadow->texel) * shadow->texel;
-    min.y = floorf(min.y / shadow->texel) * shadow->texel;
-    float pad = shadow->texel * 4;
-    shadow->projection = cf_ortho(min.x, min.x + size, min.y, min.y + size, -high.z - pad, -low.z + pad);
+    /* Depth spans every box over the area, so casters outside the view count. */
+    float low = FLT_MAX, high = -FLT_MAX;
+    for (int i = 0; i < count; i++) {
+        CF_V3 a, b;
+        light_bounds(shadow, boxes[i], &a, &b);
+        if (covers(shadow, a, b)) {
+            low = fminf(low, a.z);
+            high = fmaxf(high, b.z);
+        }
+    }
+    if (low > high) {
+        return false;
+    }
+    float pad = shadow->texel * MARGIN_TEXELS;
+    CF_Aabb area = shadow->area;
+    shadow->projection = cf_ortho(area.min.x, area.max.x, area.min.y, area.max.y, -high - pad, -low + pad);
     return true;
+}
+
+bool render_scene3d_shadow_reaches(const render_scene3d_shadow *shadow, CF_M4x4 box)
+{
+    CF_V3 low, high;
+    light_bounds(shadow, box, &low, &high);
+    return covers(shadow, low, high);
 }
 
 bool render_scene3d_shadow_begin(render_scene3d_shadow *shadow, char *error, size_t size)
@@ -184,6 +251,7 @@ bool render_scene3d_shadow_begin(render_scene3d_shadow *shadow, char *error, siz
     CF_RenderState state = cf_render_state_3d_defaults();
     /* Open meshes such as the flat triangle cast from either side. */
     state.cull_mode = CF_CULL_MODE_NONE;
+    cf_draw_push_layer(SHADOW_LAYER);
     cf_draw3d_push_render_state(state);
     cf_draw3d_push_shader(shadow->shader);
     cf_draw3d_push_projection(shadow->projection);
@@ -197,7 +265,8 @@ void render_scene3d_shadow_end(render_scene3d_shadow *shadow)
     cf_draw3d_pop_projection();
     cf_draw3d_pop_shader();
     cf_draw3d_pop_render_state();
-    cf_render_to(shadow->canvas, true);
+    cf_draw_pop_layer();
+    cf_render_layers_to(shadow->canvas, SHADOW_LAYER, SHADOW_LAYER, true);
 }
 
 void render_scene3d_shadow_bind(render_scene3d_shadow *shadow, bool enabled)

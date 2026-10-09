@@ -41,13 +41,22 @@ typedef struct
     bool transparent;
 } scene3d_draw;
 
+/* An opaque solid outside the view, which may still cast a shadow into it. */
+typedef struct
+{
+    CF_M4x4 frame;
+    GameGeometry3D shape;
+} scene3d_caster;
+
 typedef struct
 {
     CF_V4 *pixels;
     scene3d_draw *draws;
+    scene3d_caster *casters; /* Kept only while the sun casts shadows. */
     render_shader_parameter_cache *cache;
     char binding_error[256];
     unsigned worker;
+    bool shadows;
 } draw_buffer;
 
 struct render_scene3d
@@ -172,6 +181,7 @@ void render_scene3d_free(render_scene3d *scene3d)
     for (int i = 0; i < acount(scene3d->chunks); i++) {
         afree(scene3d->chunks[i].pixels);
         afree(scene3d->chunks[i].draws);
+        afree(scene3d->chunks[i].casters);
         render_shader_parameter_cache_free(scene3d->chunks[i].cache);
     }
     afree(scene3d->chunks);
@@ -179,6 +189,7 @@ void render_scene3d_free(render_scene3d *scene3d)
     render_shader_parameter_cache_free(scene3d->buffer.cache);
     afree(scene3d->buffer.pixels);
     afree(scene3d->buffer.draws);
+    afree(scene3d->buffer.casters);
     free(scene3d);
 }
 
@@ -215,6 +226,12 @@ static void draw_shape(const render_scene3d *scene3d, const GameGeometry3D *shap
     }
 }
 
+static bool transparent_surface(int material, const game_material_coefficients *color)
+{
+    return material ? render_shader_may_be_transparent(material)
+                    : color->scene[3] < 1;
+}
+
 static void append_draw(
     draw_buffer *buffer,
     scene3d_draw draw,
@@ -225,8 +242,7 @@ static void append_draw(
 {
     draw.row = acount(buffer->draws);
     draw.transparent = draw.particle_shape ||
-                       (draw.material ? render_shader_may_be_transparent(draw.material)
-                                      : color->scene[3] < 1);
+                       transparent_surface(draw.material, color);
     CF_V4 origin = { draw.frame.elements[12],
                      draw.frame.elements[13],
                      draw.frame.elements[14],
@@ -300,7 +316,14 @@ static void collect_entity(
             }
             return;
         }
+        GameGeometry3D shape = { .primitive = visual->part.primitive,
+                                 .width = visual->part.dimensions.x,
+                                 .height = visual->part.dimensions.y,
+                                 .depth = visual->part.dimensions.z };
         if (!render_scene3d_visual_visible(visual, view_projection)) {
+            if (buffer->shadows && !transparent_surface(id, &color)) {
+                apush(buffer->casters, ((scene3d_caster){ visual->frame, shape }));
+            }
             continue;
         }
         float parameters[SHADER_PARAMETER_MAX][4];
@@ -312,12 +335,7 @@ static void collect_entity(
             parameters,
             &buffer->cache
         );
-        scene3d_draw draw = { .frame = visual->frame,
-                              .shape = { .primitive = visual->part.primitive,
-                                         .width = visual->part.dimensions.x,
-                                         .height = visual->part.dimensions.y,
-                                         .depth = visual->part.dimensions.z },
-                              .material = id };
+        scene3d_draw draw = { .frame = visual->frame, .shape = shape, .material = id };
         append_draw(buffer, draw, &color, parameters, camera);
     }
 }
@@ -504,7 +522,7 @@ static void set_sun(render_scene3d *scene3d, const GameDirectionalLight *light)
     direction = cf_div_v3_f(direction, -length);
     scene3d->sun_direction = (CF_V4){ direction.x, direction.y, direction.z, 0 };
     scene3d->sun_color = radiance(light->color, light->intensity);
-    scene3d->sun_shadows = light->shadows;
+    scene3d->sun_shadows = light->shadows && (light->color & 0xffffff00u);
 }
 
 static void set_ambient(render_scene3d *scene3d, const GameEnvironment *environment)
@@ -562,7 +580,15 @@ static int compare_draws(const void *left, const void *right)
     return (a->row > b->row) - (a->row < b->row);
 }
 
-/* Fits the sun's shadow map around every solid the camera may see. */
+static CF_M4x4 shape_box(CF_M4x4 frame, const GameGeometry3D *shape)
+{
+    return cf_mul_m4(
+        frame,
+        cf_m4_scale((CF_V3){ shape->width, shape->height, shape->depth })
+    );
+}
+
+/* Fits the sun's shadow map to the solids in view, then the casters outside it. */
 static bool fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *camera)
 {
     if (!scene3d->sun_shadows) {
@@ -572,9 +598,13 @@ static bool fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *cam
     for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
         const scene3d_draw *draw = &scene3d->buffer.draws[i];
         if (!draw->particle_shape) {
-            CF_V3 scale = { draw->shape.width, draw->shape.height, draw->shape.depth };
-            apush(scene3d->shadow_boxes, cf_mul_m4(draw->frame, cf_m4_scale(scale)));
+            apush(scene3d->shadow_boxes, shape_box(draw->frame, &draw->shape));
         }
+    }
+    int receivers = acount(scene3d->shadow_boxes);
+    for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
+        const scene3d_caster *caster = &scene3d->buffer.casters[i];
+        apush(scene3d->shadow_boxes, shape_box(caster->frame, &caster->shape));
     }
     CF_V3 toward = { scene3d->sun_direction.x,
                      scene3d->sun_direction.y,
@@ -584,11 +614,21 @@ static bool fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *cam
         toward,
         scene3d->shadow_boxes,
         acount(scene3d->shadow_boxes),
+        receivers,
         camera
     );
 }
 
-/* Opaque solids, which sort first, write their depth from the sun. */
+static void draw_caster(const render_scene3d *scene3d, CF_M4x4 frame, const GameGeometry3D *shape)
+{
+    cf_draw3d_push();
+    cf_draw3d_transform(frame);
+    draw_shape(scene3d, shape);
+    cf_draw3d_pop();
+}
+
+/* Opaque solids in view, which sort first, and the casters that reach the map
+ * write their depth from the sun. */
 static bool draw_shadow(render_scene3d *scene3d)
 {
     if (!render_scene3d_shadow_begin(
@@ -603,10 +643,15 @@ static bool draw_shadow(render_scene3d *scene3d)
         if (draw->transparent) {
             break;
         }
-        cf_draw3d_push();
-        cf_draw3d_transform(draw->frame);
-        draw_shape(scene3d, &draw->shape);
-        cf_draw3d_pop();
+        draw_caster(scene3d, draw->frame, &draw->shape);
+    }
+    const CF_M4x4 *boxes = scene3d->shadow_boxes + acount(scene3d->shadow_boxes) -
+                           acount(scene3d->buffer.casters);
+    for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
+        const scene3d_caster *caster = &scene3d->buffer.casters[i];
+        if (render_scene3d_shadow_reaches(scene3d->shadow, boxes[i])) {
+            draw_caster(scene3d, caster->frame, &caster->shape);
+        }
     }
     render_scene3d_shadow_end(scene3d->shadow);
     return true;
@@ -780,8 +825,10 @@ static void collect_range(int start, int end, uint32_t worker, void *user)
         draw_buffer *buffer = &scene3d->chunks[c];
         aclear(buffer->pixels);
         aclear(buffer->draws);
+        aclear(buffer->casters);
         buffer->binding_error[0] = 0;
         buffer->worker = worker;
+        buffer->shadows = scene3d->sun_shadows;
         int limit = (c + 1) * DRAW_CHUNK;
         if (limit > acount(scene3d->entities)) {
             limit = acount(scene3d->entities);
@@ -817,6 +864,7 @@ static void collect_geometry(
     const game_task_system *tasks = game_task_pool_tasks(scene3d->pool);
     if (scene3d->parallel_disabled || count < DRAW_CHUNK * 2 || tasks->workers == 1) {
         scene3d->buffer.binding_error[0] = 0;
+        scene3d->buffer.shadows = scene3d->sun_shadows;
         for (int i = 0; i < count; i++) {
             collect_entity(&scene3d->buffer, world, scene3d->entities[i], camera, runtime);
         }
@@ -856,6 +904,9 @@ static void collect_geometry(
             draw.row += rows;
             apush(scene3d->buffer.draws, draw);
         }
+        for (int i = 0; i < acount(buffer->casters); i++) {
+            apush(scene3d->buffer.casters, buffer->casters[i]);
+        }
         int size = acount(buffer->pixels);
         if (size) {
             asetlen(scene3d->buffer.pixels, pixels + size);
@@ -893,6 +944,7 @@ bool render_scene3d_draw(
     scene3d->binding_error[0] = 0;
     aclear(scene3d->buffer.pixels);
     aclear(scene3d->buffer.draws);
+    aclear(scene3d->buffer.casters);
     /* Rhythm is an optional material input; without a valid clock it rests at zero. */
     game_beat beat = { 0 };
     game_rhythm_sample(world, time, &beat);
@@ -959,6 +1011,7 @@ bool render_scene3d_preview_material(
     scene3d->binding_error[0] = 0;
     aclear(scene3d->buffer.pixels);
     aclear(scene3d->buffer.draws);
+    aclear(scene3d->buffer.casters);
     scene3d->light_count = 0;
     scene3d->rhythm = (CF_V4){ .x = activity->beat_phase, .y = activity->beat_pulse };
     GameDirectionalLight sun = game_directional_light_defaults();

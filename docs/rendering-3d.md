@@ -27,10 +27,13 @@ A Directional Light with `shadows` renders opaque solids' depth from the light
 into one 2048x2048 depth map (`render/scene3d_shadow.c`), then the lit pass
 compares against it with a 3x3 grid of hardware 2x2 comparisons.
 
-- **Fit**: an orthographic light view covers every solid within the depth range
-  the camera sees them at, so solids outside the view still cast into it. The
-  map's size steps by quarter octaves and its origin snaps to whole texels, so
-  edges hold still while the camera pans.
+- **Fit**: an orthographic light view covers the solids in view, clipped to the
+  camera frustum between their nearest and farthest depths, plus a 4-texel
+  margin. Its depth range also takes in opaque solids the camera culls, which
+  still cast into the view when they reach the covered area. The map's size
+  steps by quarter octaves and its origin snaps to whole texels, so edges hold
+  still while the camera pans, apart from a resolution step when the covered
+  area crosses a size.
 - **Bias**: each lookup lifts the surface point along its geometric normal by
   half a texel facing the light, up to 2.5 texels edge on. Contact shadows start
   that far from the caster.

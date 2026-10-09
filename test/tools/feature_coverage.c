@@ -6,6 +6,7 @@
 #include "authoring/application_catalog.h"
 #include "authoring/language_catalog.h"
 #include "authoring/source_catalog.h"
+#include "runtime/behaviors/entities_definition.h"
 #include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -371,26 +372,51 @@ static bool behavior_name(const source_catalog_source *source, char *name, size_
     return true;
 }
 
-/* Reaches each prototype that a reached behavior names in a string, as
- * spawn_prototype("Drone") does. Returns whether it reached any. */
+/* Reaches each prototype that a reached behavior spawns by a literal name,
+ * as spawn_prototype("Drone") does. Returns whether it reached any. */
 static bool reach_spawned()
 {
+    const script_catalog *catalog = source_catalog_view(project);
     bool reached = false;
     for (int i = 0; i < source_catalog_source_count(project); i++) {
         const source_catalog_source *source = source_catalog_source_at(project, i);
-        char name[MAX_LINE], quoted[MAX_LINE];
+        char name[MAX_LINE];
         if (!behavior_name(source, name, sizeof name) ||
             !listed(reached_behaviors, name)) {
             continue;
         }
-        for (int j = 0; j < acount(prototypes); j++) {
-            snprintf(quoted, sizeof quoted, "\"%s\"", prototypes[j].name);
-            if (!listed(reached_prototypes, prototypes[j].name) &&
-                strstr(source->text, quoted)) {
-                reach_prototype(prototypes[j].name);
-                reached = true;
+        script_analysis
+            *analysis = script_analyze_document(source->syntax, catalog, source->identity);
+        for (int j = 0; j < analysis->expression_count; j++) {
+            const script_expression *call = &analysis->expressions[j];
+            const script_catalog_capability
+                *capability = call->kind == SCRIPT_EXPR_CALL
+                                ? script_catalog_capability_by_id(catalog, call->capability)
+                                : NULL;
+            if (!capability || strcmp(capability->name, GAME_ENTITY_SPAWN_SOURCE)) {
+                continue;
+            }
+            for (int k = 0; k < call->argument_count; k++) {
+                int value = call->arguments[k].value;
+                const script_range *range = value < 0
+                                              ? NULL
+                                              : &analysis->expressions[value].range;
+                if (!range || analysis->expressions[value].kind != SCRIPT_EXPR_CONSTANT ||
+                    source->text[range->start] != '"') {
+                    continue;
+                }
+                snprintf(
+                    name,
+                    sizeof name,
+                    "%.*s",
+                    range->end - range->start - 2,
+                    source->text + range->start + 1
+                );
+                reached |= !listed(reached_prototypes, name);
+                reach_prototype(name);
             }
         }
+        script_analysis_free(analysis);
     }
     return reached;
 }

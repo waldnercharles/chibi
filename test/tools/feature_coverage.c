@@ -791,7 +791,7 @@ TEST_CASE(test_scenes_run)
 int run_feature_coverage(const char *root)
 {
     char error[256];
-    chibi_project manifest;
+    chibi_project manifest = { 0 };
     if (!realpath(root, project_root)) {
         perror(root);
         return 1;

@@ -122,12 +122,6 @@ extern const GameOrientation *GAME_GameOrientation_get_const(const ecs_world *, 
 extern int GAME_GameOrientation_has(const ecs_world *, ecs_entity);
 extern int GAME_GameOrientation_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameOrientation_remove(ecs_world *, ecs_entity, uint64_t);
-extern const ecs_component_desc GAME_COMPONENT_GameSdfMotion;
-extern GameSdfMotion *GAME_GameSdfMotion_get(ecs_world *, ecs_entity);
-extern const GameSdfMotion *GAME_GameSdfMotion_get_const(const ecs_world *, ecs_entity);
-extern int GAME_GameSdfMotion_has(const ecs_world *, ecs_entity);
-extern int GAME_GameSdfMotion_add(ecs_world *, ecs_entity, uint64_t);
-extern int GAME_GameSdfMotion_remove(ecs_world *, ecs_entity, uint64_t);
 extern const ecs_component_desc GAME_COMPONENT_GameCollider;
 extern const ecs_component_desc GAME_COMPONENT_GameHealth;
 extern const ecs_component_desc GAME_COMPONENT_GameMovement;

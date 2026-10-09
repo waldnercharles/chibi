@@ -37,8 +37,6 @@ struct Entity {
     vec4 border_emission;
     vec4 border_absorption;
     vec4 border_albedo;
-    vec4 wobble_pad; // .x = wobble, .y = ang_freq, .z = time_freq, .w = sort_key
-    vec4 pluck_data; // .x=amplitude, .y=origin, .z=age, .w=speed
     vec3 simulation_time; // .x = time, .y = parameter block, .z = emission scale
     float tile_group;   // nonzero: adds coverage with neighbors sharing it
     vec4 material_frame; // laid-out position (Y up), cos, sin; zero cos and sin = none

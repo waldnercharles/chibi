@@ -20,7 +20,6 @@
 #include "render/radiance.h"
 #include "render/reflections.h"
 #include "render/scene3d_post.h"
-#include "render/sdf_motion.h"
 #include "render/shader_catalog.h"
 #include "render/shader_dir.h"
 #include "render/shader_fragment.h"
@@ -459,15 +458,12 @@ static bool append_entity(
     const GameTransform *position,
     const GameAppearance *appearance,
     float angle,
-    const GameSdfMotion *motion,
     const GameMaterial *material
 )
 {
     CF_V2 min, max;
-    float padding = 0;
     if (!isfinite(position->x) || !isfinite(position->y) ||
-        !game_appearance_rotated_bounds(appearance, angle, &min, &max) ||
-        (motion && !game_sdf_motion_padding(motion, &padding))) {
+        !game_appearance_rotated_bounds(appearance, angle, &min, &max)) {
         return false;
     }
     game_material_coefficients coefficients;
@@ -483,14 +479,14 @@ static bool append_entity(
         return false;
     }
     float aa = isfinite(appearance->antialias) ? fmaxf(appearance->antialias, 0) : 1;
-    padding += aa > 0 ? aa : renderer->pixel_aa;
+    float padding = aa > 0 ? aa : renderer->pixel_aa;
     render_material_entity entity = {
         .pos = { position->x, -position->y },
         .extent = { fmaxf(fabsf(min.x), fabsf(max.x)) + padding,
                     fmaxf(fabsf(min.y), fabsf(max.y)) + padding },
         .inv_rot = { cosf(angle), sinf(angle), -sinf(angle), cosf(angle) },
         .aa = aa,
-        .wobble = { 0, 0, 0, appearance->layer },
+        .layer = appearance->layer,
         .reserved = { 0, 0, material ? material->edge_light : 0 },
         .border_thickness = fmaxf(0, appearance->border_width)
     };
@@ -533,16 +529,6 @@ static bool append_entity(
             entity.points[0] = half_x;
             entity.points[1] = half_y;
             break;
-    }
-    if (motion) {
-        entity.wobble[0] = motion->amplitude;
-        entity.wobble[1] = motion->angular_frequency;
-        entity.wobble[2] = motion->temporal_frequency;
-        entity.pluck[0] = motion->pluck_amplitude;
-        entity.pluck[1] = motion->pluck_origin;
-        entity.pluck[2] = motion->pluck_age;
-        entity.pluck[3] = motion->pluck_speed;
-        entity.time[0] = motion->time;
     }
     entity.time[0] = renderer->time;
     copy_material(&entity, &coefficients);
@@ -589,7 +575,7 @@ static bool append_sprite(
                            .height = (float)cell_height,
                            .color = 0xffffffffu,
                            .layer = sprite->layer };
-    if (!append_entity(renderer, position, &box, angle, NULL, material)) {
+    if (!append_entity(renderer, position, &box, angle, material)) {
         return true;
     }
     float u0 = (float)(sprite->frame % columns * cell_width) / (float)width;
@@ -694,7 +680,7 @@ static void mask_edges(
                                  .height = rect.height * mask->cell_size,
                                  .antialias = .1f,
                                  .color = look->border_color };
-        append_entity(renderer, &p, &cells, -heading, NULL, &edge);
+        append_entity(renderer, &p, &cells, -heading, &edge);
     }
 }
 
@@ -876,7 +862,7 @@ static void collect_chunks(
             glow.emission_intensity = chunk->heat * profile->spark_emission;
             glow.emission_multiplier = 1;
         }
-        if (!append_entity(renderer, &position, &part, -chunk->angle, NULL, hot ? &glow : material)) {
+        if (!append_entity(renderer, &position, &part, -chunk->angle, hot ? &glow : material)) {
             continue;
         }
         render_material_entity *draw = &alast(renderer->entities);
@@ -990,11 +976,9 @@ static bool collect(
                 -min.y < view.max_y - view.height || -max.y > view.max_y) {
                 continue;
             }
-            render_material_entity draw = {
-                .shape_type = RENDER_SHAPE_MESH,
-                .wobble = { 0, 0, 0, renderer->actors[actor].layer },
-                .points = { (float)acount(renderer->meshes) }
-            };
+            render_material_entity draw = { .shape_type = RENDER_SHAPE_MESH,
+                                            .layer = renderer->actors[actor].layer,
+                                            .points = { (float)acount(renderer->meshes) } };
             float pixels = fmaxf(
                 (max.x - min.x) * renderer->raster_width / view.width,
                 (max.y - min.y) * renderer->raster_height / view.height
@@ -1134,7 +1118,7 @@ static bool collect(
                                         .shape = GAME_SHAPE_BOX,
                                         .color = appearance.color,
                                         .antialias = appearance.antialias };
-                if (!append_entity(renderer, &p, &part, -heading, NULL, GAME_GameMaterial_get_const(world, entity))) {
+                if (!append_entity(renderer, &p, &part, -heading, GAME_GameMaterial_get_const(world, entity))) {
                     continue;
                 }
                 render_material_entity *draw = &alast(renderer->entities);
@@ -1160,14 +1144,7 @@ static bool collect(
             tile_group(renderer, first, group);
             continue;
         }
-        if (!append_entity(
-                renderer,
-                &position,
-                &appearance,
-                angle,
-                GAME_GameSdfMotion_get_const(world, entity),
-                GAME_GameMaterial_get_const(world, entity)
-            )) {
+        if (!append_entity(renderer, &position, &appearance, angle, GAME_GameMaterial_get_const(world, entity))) {
             continue;
         }
         /* Appearance owns the 2D footprint; its shader still owns the
@@ -1247,7 +1224,7 @@ static bool collect(
             if (diameter <= 0) {
                 continue;
             }
-            if (!append_entity(renderer, &position, &appearance, -particle->angle, NULL, &material)) {
+            if (!append_entity(renderer, &position, &appearance, -particle->angle, &material)) {
                 continue;
             }
             render_material_entity
@@ -1284,7 +1261,7 @@ static bool collect(
                                       .shape = GAME_SHAPE_BOX,
                                       .antialias = 1 };
         GameTransform position = { particle->position.x, particle->position.y };
-        append_entity(renderer, &position, &appearance, 0, NULL, NULL);
+        append_entity(renderer, &position, &appearance, 0, NULL);
     }
     for (int i = 0; i < acount(renderer->meshes); i++) {
         renderer->meshes[i].surface = &renderer->mesh_surfaces[i];

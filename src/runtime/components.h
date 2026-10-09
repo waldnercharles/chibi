@@ -414,19 +414,6 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameOrientation)
 }
 GameOrientation;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameSdfMotion)
-{
-    float amplitude;
-    float angular_frequency;
-    float temporal_frequency;
-    float time;
-    float pluck_amplitude;
-    float pluck_origin;
-    float pluck_age;
-    float pluck_speed;
-}
-GameSdfMotion;
-
 typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
 {
     unsigned scene NODE_COLOR;

@@ -354,8 +354,7 @@ game_player *game_player_prepared_read(
                                          : (execution_prepared_linker){ 0 };
     game_player_spec spec = { .world = { .modules = (unsigned)flags,
                                          .components = catalog,
-                                         .log = host->log,
-                                         .sdf_motion = host->sdf_motion },
+                                         .log = host->log },
                               .declared = declared,
                               .linker = host->linker ? &linker : NULL,
                               .backend = backend };

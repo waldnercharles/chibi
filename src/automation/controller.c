@@ -899,19 +899,19 @@ static bool valid_asset_filename(const asset_family *family, const char *filenam
 }
 
 /* Sets `ref`'s file name to `name`, with its family's extension unless it
- * has it; NULL, or why the name is refused. */
+ * ends with it; NULL, or why the name is refused. */
 static const char *name_asset_file(asset_ref *ref, const char *name)
 {
     const char *extension = ref->family->extension;
-    if (strstr(name, extension)) {
-        if (!valid_asset_filename(ref->family, name) ||
-            strlen(name) >= sizeof ref->filename) {
+    size_t length = strlen(name), suffix = strlen(extension);
+    if (length >= suffix && !strcmp(name + length - suffix, extension)) {
+        if (!valid_asset_filename(ref->family, name) || length >= sizeof ref->filename) {
             return "asset name is invalid";
         }
         snprintf(ref->filename, sizeof ref->filename, "%s", name);
         return NULL;
     }
-    if (strlen(name) + strlen(extension) >= sizeof ref->filename) {
+    if (length + suffix >= sizeof ref->filename) {
         return "asset name is too long";
     }
     snprintf(ref->filename, sizeof ref->filename, "%s%s", name, extension);
@@ -7577,7 +7577,8 @@ static int prepare_scene_scenario(
         scenario_context_free(context);
         return status;
     }
-    list_scenario_scenes(context, name);
+    /* A request may name the file, but the scene runs under its own name. */
+    list_scenario_scenes(context, context->prototype_ref.name);
     return status;
 }
 

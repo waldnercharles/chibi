@@ -658,6 +658,37 @@ TEST_CASE(manifest_content_folder_is_used)
     return true;
 }
 
+TEST_CASE(scenes_run_under_their_own_name)
+{
+    /* A request may name a scene's file, but its scripts see the scene's
+     * name, so reloading it restarts the scene that is running. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Dot\"}") == 0
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Again\"}") == 0
+    );
+    write_file("game/content/behaviors/Again.chibi", "behavior \"Again\" {\n    on Tick {\n        reload_scene()\n    }\n}\n");
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\" {\n        (array)behaviors \"Again\"\n    }\n}\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start.kdl\",\"frames\":2}") ==
+        0
+    );
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/scenes/Start.kdl"));
+
+    /* Only a name that ends with the extension names the file. */
+    char start[256], boss[256];
+    path(start, sizeof start, "game/content/scenes/Start.kdl");
+    path(boss, sizeof boss, "game/content/scenes/Boss.kdl.v2.kdl");
+    REQUIRE(rename(start, boss) == 0);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Boss.kdl.v2\",\"frames\":2}") ==
+        0
+    );
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/scenes/Boss.kdl.v2.kdl"));
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -677,5 +708,6 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(prototypes_are_found_by_declared_name);
     RUN_TEST_CASE(scenarios_load_graph_assets);
     RUN_TEST_CASE(manifest_content_folder_is_used);
+    RUN_TEST_CASE(scenes_run_under_their_own_name);
     pu_clear_setup();
 }

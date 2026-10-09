@@ -21,7 +21,7 @@ target_compile_options(policy_worker PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 # Compiling the tests through the product's source include path would hide leaks.
 configure_file("${CHIBI_TOOL_ROOT}/third_party/pico_headers/pico_unit.h"
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/third_party/pico_headers/pico_unit.h" COPYONLY)
-add_library(chibi_sdk_contracts OBJECT types.c ecs.c)
+add_library(chibi_sdk_contracts OBJECT types.c ecs.c ecs_relationship.c ecs_hierarchy.c)
 target_include_directories(chibi_sdk_contracts PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
 target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::execution_contract Chibi::ecs Chibi::value_document)
 target_compile_options(chibi_sdk_contracts PRIVATE -Wall -Wextra -Werror -UNDEBUG)
@@ -66,6 +66,13 @@ if(TARGET Chibi::entity_runtime)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_NATIVE_RUNTIME=1)
 endif()
 add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
+
+# The SDK installs no Box3D headers, so only an in-tree build can call Box3D directly.
+if(TARGET chibi_box3d)
+    target_sources(test_tools PRIVATE box3d.c)
+    target_link_libraries(test_tools PRIVATE Chibi::box3d)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_BOX3D=1)
+endif()
 
 if(TARGET Chibi::render)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c)

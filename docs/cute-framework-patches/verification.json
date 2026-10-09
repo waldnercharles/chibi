@@ -60,7 +60,7 @@
       "backend": "Vulkan (lavapipe)",
       "status": "passed",
       "tests": 2,
-      "assertions": 8,
+      "assertions": 9,
       "wall_seconds_cold": 6.1,
       "wall_seconds_warm": 0.8
     },
@@ -70,7 +70,7 @@
       "status": "passed",
       "tests": 2,
       "assertions": 4,
-      "notes": "The tiled case skips: GLES has no compute renderer."
+      "notes": "Instanced cases only, from before the tiled case required Cute's compute renderer, which GLES lacks."
     },
     {
       "command": "make test-short",

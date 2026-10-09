@@ -420,8 +420,9 @@ GPU check that needs the render-enabled tools of the main build: run
 `make agent-gpu-test AGENT_SELECTOR=--interior-border`, which runs that build's
 `test/tools/test_tools` after the agent's device preflight. Pass the same
 `BUILD_DIR` to both to check another build. On lavapipe it passes
-8 assertions in 6.1 seconds on a cold shader cache and 0.6 seconds warm. A
-backend without Cute's compute renderer skips the tiled case.
+9 assertions in 6.1 seconds on a cold shader cache and 0.9 seconds warm. The
+tiled case fails when Cute's compute renderer is unavailable. Every SDL_GPU
+backend has one, so there a failure means Cute's tile shaders did not load.
 `graph-model` selects two independently reviewed public consumer cases for nested
 value copies, opaque artifact replacement/destruction and topology mutation
 rules. They pass 25 assertions in 0.355 seconds under ASan/UBSan. The consumer

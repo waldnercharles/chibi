@@ -61,6 +61,22 @@ resources. The SDK and its dependencies link the release C runtime statically
 in every configuration, so the folder runs without the Visual C++
 redistributable.
 
+For browsers, export a static site with the browser player, which
+`make package-web-player` builds with Emscripten into `dist/web-player`:
+
+```sh
+make package-web-player
+dist/sdk/bin/chibi export ~/games/neon-swarm --web dist/web-player --output ~/builds/neon-swarm-web
+python3 -m http.server -d ~/builds/neon-swarm-web    # play at http://localhost:8000
+```
+
+The site holds `index.html`, titled with the project's title, the player's
+`chibi-player.js` and `chibi-player.wasm`, and the same `data/` folder, which
+`files.json` lists. The page fetches those files before the game starts,
+so it needs a web server rather than a `file://` URL. Any static host works.
+`chibi-celeste/.github/workflows/web.yml` builds and publishes a game repository
+on GitHub Pages; copy it to publish another game.
+
 Both SDK product builds prepare a standalone host reflection tool. `SDK_PREFIX`,
 `RUNTIME_SDK_PREFIX`, and `PLAYER_OUTPUT` select their outputs. Packaging leaves
 registered games untouched; `make update-game-runtime` explicitly verifies and

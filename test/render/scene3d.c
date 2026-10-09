@@ -352,6 +352,32 @@ TEST_CASE(auto_exposure_adapts_over_scene_time)
     return true;
 }
 
+TEST_CASE(slow_auto_exposure_eases_past_half_float_steps)
+{
+    add_floor();
+    /* Bright enough that half floats hold the metered log2 luminance in coarse
+     * steps; near the target this easing moves it by less than one a frame. */
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
+    sun->intensity = 2048;
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.auto_exposure = true;
+    environment.adaptation_speed = 0;
+    REQUIRE(render(&environment));
+    CF_Pixel target = top();
+    sun->intensity /= 1.414f;
+    REQUIRE(render(&environment));
+    sun->intensity *= 1.414f;
+    environment.adaptation_speed = 1.8f;
+    bool drawn = true;
+    for (int frame = 1; frame <= 110; frame++) {
+        drawn &= render_at(&environment, frame / 60.0f);
+    }
+    REQUIRE(drawn && distance(top(), target) <= 6);
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -370,6 +396,7 @@ void test_render_scene3d()
     RUN_TEST_CASE(auto_exposure_meters_the_geometric_mean);
     RUN_TEST_CASE(auto_exposure_ignores_an_empty_background);
     RUN_TEST_CASE(auto_exposure_adapts_over_scene_time);
+    RUN_TEST_CASE(slow_auto_exposure_eases_past_half_float_steps);
     pu_clear_setup();
     cf_destroy_app();
 }

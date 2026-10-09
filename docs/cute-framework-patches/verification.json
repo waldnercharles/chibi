@@ -100,14 +100,37 @@
     {
       "command": "make test-tools",
       "status": "failed",
-      "tests": 78,
+      "tests": 88,
       "failed": 1,
       "notes": "portable_nested_cleanup_preserves_sibling fails in this container on every branch."
     },
     {
-      "command": "python3 tools/test_policy.py tool render-resources",
-      "status": "failed",
-      "notes": "The case requires a one-pixel prepared image to exceed 16 bytes, and it is exactly 16. This update touches neither; the 3D renderer stack relaxes the bound."
+      "command": "build/test/tools/test_tools --render-resources",
+      "status": "passed",
+      "tests": 10,
+      "assertions": 580,
+      "notes": "After merging main with the 3D renderer stack, which relaxed the prepared-image bound that failed before."
+    },
+    {
+      "command": "build/test/tools/test_tools --scene3d",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "tests": 41,
+      "assertions": 9215,
+      "notes": "The 3D renderer stack's cases, merged from main, on this pin."
+    },
+    {
+      "command": "build/test/tools/test_tools --material-ramps",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "tests": 4,
+      "assertions": 32
+    },
+    {
+      "command": "build/test/tools/test_tools --sky-files",
+      "status": "passed",
+      "tests": 4,
+      "assertions": 665
     }
   ],
   "previews": [

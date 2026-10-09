@@ -65,6 +65,7 @@ typedef struct game_prototype
     /* Authoring-only values; never included when spawning runtime components. */
     game_prototype_component *detached_components;
     char **graphs;
+    char **includes; /* the prototypes its document includes, in order */
     char **strings;
 } game_prototype;
 
@@ -75,6 +76,15 @@ const ecs_component_desc *game_prototype_registry_find(
 );
 game_prototype *game_prototype_load(
     const char *value,
+    const game_prototype_registry *registry,
+    char *error,
+    size_t error_size
+);
+/* Only what the document itself authors: its includes are named in
+ * `includes` but not loaded, so no resolver is needed. For indexing a
+ * prototype's direct references; its components are not what it spawns. */
+game_prototype *game_prototype_load_authored(
+    const char *text,
     const game_prototype_registry *registry,
     char *error,
     size_t error_size

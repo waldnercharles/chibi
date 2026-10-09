@@ -24,8 +24,6 @@ const game_host_event_desc GAME_HOST_EVENTS[GAME_HOST_EVENT_COUNT] = {
                                               "one.",
                                .payload = TICK_PAYLOAD,
                                .payload_count = 1 },
-    [GAME_HOST_EVENT_FIRE] = { .name = "Fire", .keywords = "shoot attack weapon", .description = "Runs when the Fire action is pressed, on entities with Input." },
-    [GAME_HOST_EVENT_DASH] = { .name = "Dash", .keywords = "dodge boost", .description = "Runs when the Dash action is pressed, on entities with Input." },
     [GAME_HOST_EVENT_INPUT] = { .name = "Input",
                                 .keywords = "move direction stick controls "
                                             "player",

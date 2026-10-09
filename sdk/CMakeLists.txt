@@ -504,7 +504,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     target_include_directories(chibi_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/authoring"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi_authoring PUBLIC chibi_compiler chibi_native_capabilities chibi_reference_index
-        PRIVATE chibi_json chibi_asset_text)
+        PRIVATE chibi_json chibi_asset_text chibi_input_action)
     list(APPEND CHIBI_SDK_TARGETS chibi_syntax_runtime chibi_language_syntax
         chibi_language chibi_compiler chibi_authoring)
     include(source_authoring.cmake)

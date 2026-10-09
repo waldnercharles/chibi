@@ -1,11 +1,10 @@
-#include "render/arena3d.h"
-
 #include "authoring/engine_preview.h"
 #include "authoring/parts_prepare.h"
 #include "platform/cute.h"
-#include "render/arena_geometry.h"
-#include "render/arena_parts.h"
-#include "render/arena_post.h"
+#include "render/scene3d.h"
+#include "render/scene3d_geometry.h"
+#include "render/scene3d_parts.h"
+#include "render/scene3d_post.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
 #include "runtime/visual_parts.h"
@@ -53,9 +52,9 @@ static ecs_entity add_shape(ecs_world *world, int primitive, CF_V3 position, uns
     return entity;
 }
 
-static render_arena_camera front_camera()
+static render_scene3d_camera front_camera()
 {
-    return (render_arena_camera){
+    return (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 0, 0, 8 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 }),
         .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100)
     };
@@ -65,13 +64,17 @@ static bool camera_checks()
 {
     float spans[][2] = { { 640, 360 }, { 360, 640 }, { 640, 640 } };
     for (int aspect = 0; aspect < 3; aspect++) {
-        render_arena_camera
-            camera = render_arena_camera_make(320, 180, spans[aspect][0], spans[aspect][1]);
-        CF_V3 target = render_arena_project(&camera, (CF_V3){ 320, 0, -180 });
+        render_scene3d_camera camera = render_scene3d_camera_make(
+            320,
+            180,
+            spans[aspect][0],
+            spans[aspect][1]
+        );
+        CF_V3 target = render_scene3d_project(&camera, (CF_V3){ 320, 0, -180 });
         if (fabsf(target.x) > 0.0001f || fabsf(target.y) > 0.0001f) {
             fprintf(
                 stderr,
-                "arena3d camera center failed: aspect %d, target (%g, %g)\n",
+                "scene3d camera center failed: aspect %d, target (%g, %g)\n",
                 aspect,
                 target.x,
                 target.y
@@ -80,60 +83,60 @@ static bool camera_checks()
         }
         for (int i = -1; i <= 1; i++) {
             CF_V3 world = { 320 + i * 60, 0, -180 + i * 40 };
-            CF_V3 projected = render_arena_project(&camera, world);
+            CF_V3 projected = render_scene3d_project(&camera, world);
             CF_V2 game;
-            if (!render_arena_ground(&camera, (CF_V2){ projected.x, projected.y }, &game) ||
+            if (!render_scene3d_ground(&camera, (CF_V2){ projected.x, projected.y }, &game) ||
                 fabsf(game.x - world.x) > 0.2f || fabsf(game.y - world.z) > 0.2f) {
-                fprintf(stderr, "arena3d ground mapping failed: aspect %d, point %d\n", aspect, i);
+                fprintf(stderr, "scene3d ground mapping failed: aspect %d, point %d\n", aspect, i);
                 return false;
             }
         }
-        CF_V3 down = render_arena_project(&camera, (CF_V3){ 320, 0, -120 });
+        CF_V3 down = render_scene3d_project(&camera, (CF_V3){ 320, 0, -120 });
         if (down.y >= target.y) {
-            fprintf(stderr, "arena3d game Y direction failed: aspect %d\n", aspect);
+            fprintf(stderr, "scene3d game Y direction failed: aspect %d\n", aspect);
             return false;
         }
-        CF_Ray3 center = render_arena_ray(&camera, (CF_V2){ 0 });
-        CF_V3 across = render_arena_project(&camera, (CF_V3){ 380, 0, -180 });
+        CF_Ray3 center = render_scene3d_ray(&camera, (CF_V2){ 0 });
+        CF_V3 across = render_scene3d_project(&camera, (CF_V3){ 380, 0, -180 });
         float horizontal_pixels = fabsf(across.x) * spans[aspect][0];
         float vertical_pixels = fabsf(down.y) * spans[aspect][1];
         float proportion = vertical_pixels / horizontal_pixels;
         if (center.d.y > -0.97f || proportion < 0.95f || proportion > 1.05f) {
-            fprintf(stderr, "arena3d overhead composition failed: aspect %d, proportion %g\n", aspect, proportion);
+            fprintf(stderr, "scene3d overhead composition failed: aspect %d, proportion %g\n", aspect, proportion);
             return false;
         }
     }
-    render_arena_camera camera = front_camera();
-    CF_V3 far = render_arena_project(&camera, (CF_V3){ 1, 0, 0 });
-    CF_V3 near = render_arena_project(&camera, (CF_V3){ 1, 0, 3 });
+    render_scene3d_camera camera = front_camera();
+    CF_V3 far = render_scene3d_project(&camera, (CF_V3){ 1, 0, 0 });
+    CF_V3 near = render_scene3d_project(&camera, (CF_V3){ 1, 0, 3 });
     return near.x > far.x * 1.5f;
 }
 
 static bool pick_checks()
 {
-    render_arena_camera camera = front_camera();
+    render_scene3d_camera camera = front_camera();
     for (int primitive = GAME_PRIMITIVE_BOX; primitive <= GAME_PRIMITIVE_TETRAHEDRON;
          primitive++) {
         ecs_world *world = new_world();
         add_shape(world, primitive, (CF_V3){ 0, 0, 0 }, 0x0000ffffu);
         ecs_entity near = add_shape(world, primitive, (CF_V3){ 0, 0, 3 }, 0xff0000ffu);
-        CF_V3 probe = render_arena_project(
+        CF_V3 probe = render_scene3d_project(
             &camera,
             primitive == GAME_PRIMITIVE_TETRAHEDRON ? (CF_V3){ -.4f, -.4f, 3 }
                                                     : (CF_V3){ 0, 0, 3 }
         );
-        ecs_entity hit = render_arena_pick(
+        ecs_entity hit = render_scene3d_pick(
             world,
             &camera,
             (CF_V2){ probe.x, probe.y },
             (render_skip){ 0 }
         );
         bool ok = ecs_entity_to_u64(hit) == ecs_entity_to_u64(near) &&
-                  !render_arena_pick(world, &camera, (CF_V2){ 0.98f, 0.98f }, (render_skip){ 0 })
+                  !render_scene3d_pick(world, &camera, (CF_V2){ 0.98f, 0.98f }, (render_skip){ 0 })
                        .slot;
         ecs_world_free(world);
         if (!ok) {
-            fprintf(stderr, "arena3d picking primitive %d failed\n", primitive);
+            fprintf(stderr, "scene3d picking primitive %d failed\n", primitive);
             return false;
         }
     }
@@ -155,14 +158,14 @@ static bool bounds_checks()
     assert(ecs_world_apply_commands(world) == ECS_OK);
     assert(!GAME_GameAppearance_has(world, entity));
     CF_V3 corners[8] = { 0 };
-    bool ok = render_arena_entity_bounds(world, entity, corners);
+    bool ok = render_scene3d_entity_bounds(world, entity, corners);
     ok &= fabsf(corners[7].x - 32.12132f) < 0.0001f;
     ok &= fabsf(corners[7].z + 6.464466f) < 0.0001f;
     ok &= corners[0].y == 0 && corners[7].y == 40;
     if (!ok) {
         fprintf(
             stderr,
-            "arena3d rotated bounds failed: corner 7 (%g, %g, %g), base %g\n",
+            "scene3d rotated bounds failed: corner 7 (%g, %g, %g), base %g\n",
             corners[7].x,
             corners[7].y,
             corners[7].z,
@@ -172,8 +175,8 @@ static bool bounds_checks()
     const float aspects[] = { 0.5f, 1, 3.5f };
     for (int aspect = 0; aspect < 3; aspect++) {
         bool framed = true;
-        CF_Aabb fit = render_arena_fit(corners, 8, aspects[aspect]);
-        render_arena_camera camera = render_arena_camera_make(
+        CF_Aabb fit = render_scene3d_fit(corners, 8, aspects[aspect]);
+        render_scene3d_camera camera = render_scene3d_camera_make(
             (fit.min.x + fit.max.x) * 0.5f,
             (fit.min.y + fit.max.y) * 0.5f,
             fit.max.x - fit.min.x,
@@ -181,15 +184,15 @@ static bool bounds_checks()
         );
         float extent = 0;
         for (int i = 0; i < 8; i++) {
-            CF_V3 ndc = render_arena_project(&camera, corners[i]);
+            CF_V3 ndc = render_scene3d_project(&camera, corners[i]);
             extent = fmaxf(extent, fmaxf(fabsf(ndc.x), fabsf(ndc.y)));
             framed &= ndc.z > 0 && ndc.z < 1;
         }
         framed &= extent > 0.83f && extent < 0.834f;
         CF_Aabb projected = { 0 };
-        bool projected_bounds = render_arena_screen_bounds(&camera, corners, &projected);
+        bool projected_bounds = render_scene3d_screen_bounds(&camera, corners, &projected);
         for (int i = 0; i < 8; i++) {
-            CF_V3 ndc = render_arena_project(&camera, corners[i]);
+            CF_V3 ndc = render_scene3d_project(&camera, corners[i]);
             projected_bounds &= ndc.x >= projected.min.x - 0.0001f &&
                                 ndc.x <= projected.max.x + 0.0001f &&
                                 ndc.y >= projected.min.y - 0.0001f &&
@@ -198,7 +201,7 @@ static bool bounds_checks()
         if (!framed || !projected_bounds) {
             fprintf(
                 stderr,
-                "arena3d fit failed: aspect %g, extent %g, depth/framing %d, "
+                "scene3d fit failed: aspect %g, extent %g, depth/framing %d, "
                 "projected bounds %d\n",
                 aspects[aspect],
                 extent,
@@ -208,21 +211,21 @@ static bool bounds_checks()
         }
         ok &= framed && projected_bounds;
     }
-    render_arena_camera camera = front_camera();
+    render_scene3d_camera camera = front_camera();
     *GAME_GameTransform_get(world, entity) = (GameTransform){ 0, 7.95f };
     shape = GAME_GameGeometry3D_get(world, entity);
     *shape = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 0 };
-    assert(render_arena_entity_bounds(world, entity, corners));
+    assert(render_scene3d_entity_bounds(world, entity, corners));
     CF_Aabb clipped = { 0 };
-    bool near_clip = render_arena_screen_bounds(&camera, corners, &clipped);
+    bool near_clip = render_scene3d_screen_bounds(&camera, corners, &clipped);
     near_clip &= isfinite(
         clipped.min.x + clipped.min.y + clipped.max.x + clipped.max.y
     );
     GAME_GameTransform_get(world, entity)->y = 20;
-    assert(render_arena_entity_bounds(world, entity, corners));
-    bool behind = !render_arena_screen_bounds(&camera, corners, &clipped);
+    assert(render_scene3d_entity_bounds(world, entity, corners));
+    bool behind = !render_scene3d_screen_bounds(&camera, corners, &clipped);
     if (!near_clip || !behind) {
-        fprintf(stderr, "arena3d bounds clipping failed: near %d, behind %d\n", near_clip, behind);
+        fprintf(stderr, "scene3d bounds clipping failed: near %d, behind %d\n", near_clip, behind);
     }
     ok &= near_clip && behind;
     ecs_world_free(world);
@@ -250,35 +253,35 @@ static bool read_pixels(CF_Canvas canvas, CF_Pixel *pixels)
 }
 
 static bool serial_geometry;
-static render_arena_work geometry_work;
-static bool render(ecs_world *world, const render_arena_camera *camera, CF_Pixel *pixels)
+static render_scene3d_work geometry_work;
+static bool render(ecs_world *world, const render_scene3d_camera *camera, CF_Pixel *pixels)
 {
-    render_arena_post *post = render_arena_post_new();
-    GameEnvironment environment = render_arena_post_defaults();
+    render_scene3d_post *post = render_scene3d_post_new();
+    GameEnvironment environment = render_scene3d_post_defaults();
     environment.bloom_strength = 0;
-    assert(render_arena_post_prepare(post, SIDE, SIDE, &environment));
-    CF_Canvas canvas = render_arena_post_target(post);
-    render_arena *arena = render_arena_new();
-    render_arena_set_parallel(arena, !serial_geometry);
+    assert(render_scene3d_post_prepare(post, SIDE, SIDE, &environment));
+    CF_Canvas canvas = render_scene3d_post_target(post);
+    render_scene3d *arena = render_scene3d_new();
+    render_scene3d_set_parallel(arena, !serial_geometry);
     game_particles *particles = game_particles_new();
     assert(canvas.id && arena);
     cf_canvas_set_clear_color(canvas, (CF_Color){ 0, 0, 0, 1 });
     cf_app_update(NULL);
-    bool ok = render_arena_draw(arena, world, particles, camera, 0, NULL, (render_skip){ 0 });
-    geometry_work = render_arena_last_work(arena);
+    bool ok = render_scene3d_draw(arena, world, particles, camera, 0, NULL, (render_skip){ 0 });
+    geometry_work = render_scene3d_last_work(arena);
     cf_render_to(canvas, true);
-    ok &= render_arena_post_process(post);
+    ok &= render_scene3d_post_process(post);
     cf_app_draw_onto_screen(false);
-    ok &= read_pixels(render_arena_post_output(post), pixels);
-    render_arena_free(arena);
+    ok &= read_pixels(render_scene3d_post_output(post), pixels);
+    render_scene3d_free(arena);
     game_particles_free(particles);
-    render_arena_post_free(post);
+    render_scene3d_post_free(post);
     return ok;
 }
 
-static int brightness(const CF_Pixel *pixels, const render_arena_camera *camera, CF_V3 point)
+static int brightness(const CF_Pixel *pixels, const render_scene3d_camera *camera, CF_V3 point)
 {
-    CF_V3 ndc = render_arena_project(camera, point);
+    CF_V3 ndc = render_scene3d_project(camera, point);
     int x = (int)((ndc.x * 0.5f + 0.5f) * SIDE);
     int y = (int)((0.5f - ndc.y * 0.5f) * SIDE);
     assert(x > 0 && x < SIDE - 1 && y > 0 && y < SIDE - 1);
@@ -306,9 +309,9 @@ static bool fitted_render_check(CF_Pixel *pixels)
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
     CF_V3 points[8];
-    assert(render_arena_entity_bounds(world, entity, points));
-    CF_Aabb fit = render_arena_fit(points, 8, 1);
-    render_arena_camera camera = render_arena_camera_make(
+    assert(render_scene3d_entity_bounds(world, entity, points));
+    CF_Aabb fit = render_scene3d_fit(points, 8, 1);
+    render_scene3d_camera camera = render_scene3d_camera_make(
         (fit.min.x + fit.max.x) * 0.5f,
         (fit.min.y + fit.max.y) * 0.5f,
         fit.max.x - fit.min.x,
@@ -330,7 +333,7 @@ static bool fitted_render_check(CF_Pixel *pixels)
     }
     ok &= covered > 500 && extent > 0.78f && extent < 0.85f;
     if (!ok) {
-        fprintf(stderr, "arena3d rendered fit failed: covered %d pixels, extent %g\n", covered, extent);
+        fprintf(stderr, "scene3d rendered fit failed: covered %d pixels, extent %g\n", covered, extent);
     }
     ecs_world_free(world);
     return ok;
@@ -366,7 +369,7 @@ static bool prism_checks(CF_Pixel *pixels)
     assert(GAME_GameVelocity_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     engine *runtime = authoring_engine_new(world, live->runtime);
-    render_arena_camera camera = front_camera();
+    render_scene3d_camera camera = front_camera();
     camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
     /* Wide at the back and narrow at the +X tip; both empty samples are in its box bounds. */
     const CF_V3 samples[] = {
@@ -383,18 +386,18 @@ static bool prism_checks(CF_Pixel *pixels)
         bool rendered = render(world, &camera, pixels);
         CF_V3 corners[8];
         CF_Aabb bounds;
-        bool bounded = render_arena_entity_bounds(world, entity, corners) &&
-                       render_arena_screen_bounds(&camera, corners, &bounds);
+        bool bounded = render_scene3d_entity_bounds(world, entity, corners) &&
+                       render_scene3d_screen_bounds(&camera, corners, &bounds);
         ok &= rendered && bounded;
         for (int i = 0; i < 4; i++) {
             CF_V3 point = samples[i];
             point.x = cosf(angle) * samples[i].x - sinf(angle) * samples[i].z;
             point.z = sinf(angle) * samples[i].x + cosf(angle) * samples[i].z;
-            CF_V3 ndc = render_arena_project(&camera, point);
+            CF_V3 ndc = render_scene3d_project(&camera, point);
             bool in_bounds = bounded && ndc.x > bounds.min.x &&
                              ndc.x < bounds.max.x && ndc.y > bounds.min.y &&
                              ndc.y < bounds.max.y;
-            ecs_entity hit = render_arena_pick(
+            ecs_entity hit = render_scene3d_pick(
                 world,
                 &camera,
                 (CF_V2){ ndc.x, ndc.y },
@@ -408,7 +411,7 @@ static bool prism_checks(CF_Pixel *pixels)
             if (!sample_ok) {
                 fprintf(
                     stderr,
-                    "arena3d prism failed: turn %d, sample %d, bounds %d, "
+                    "scene3d prism failed: turn %d, sample %d, bounds %d, "
                     "picked %d, brightness %d\n",
                     turn,
                     i,
@@ -425,7 +428,7 @@ static bool prism_checks(CF_Pixel *pixels)
     ok &= render(world, &camera, pixels);
     int underside = brightness(pixels, &camera, (CF_V3){ 0, -0.1f, 0 });
     if (underside <= 40) {
-        fprintf(stderr, "arena3d prism underside failed: brightness %d\n", underside);
+        fprintf(stderr, "scene3d prism underside failed: brightness %d\n", underside);
     }
     ok &= underside > 40;
     engine_free(runtime);
@@ -466,7 +469,7 @@ static bool octahedron_checks(CF_Pixel *pixels)
     for (int view = 0; view < 10; view++) {
         float angle = view < 8 ? view * 0.7853981634f : 0;
         GAME_GameOrientation_get(world, entity)->radians = angle;
-        render_arena_camera camera = front_camera();
+        render_scene3d_camera camera = front_camera();
         if (view < 8) {
             camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
         }
@@ -481,8 +484,8 @@ static bool octahedron_checks(CF_Pixel *pixels)
                       sinf(angle) * samples[sample].z;
             point.z = sinf(angle) * samples[sample].x +
                       cosf(angle) * samples[sample].z;
-            CF_V3 ndc = render_arena_project(&camera, point);
-            ecs_entity hit = render_arena_pick(
+            CF_V3 ndc = render_scene3d_project(&camera, point);
+            ecs_entity hit = render_scene3d_pick(
                 world,
                 &camera,
                 (CF_V2){ ndc.x, ndc.y },
@@ -493,7 +496,7 @@ static bool octahedron_checks(CF_Pixel *pixels)
             bool inside = sample < 2;
             bool sample_ok = picked == inside && (inside ? light > 40 : light == 0);
             if (!sample_ok) {
-                fprintf(stderr, "arena3d octahedron failed: view %d, sample %d, picked %d, brightness %d\n", view, sample, picked, light);
+                fprintf(stderr, "scene3d octahedron failed: view %d, sample %d, picked %d, brightness %d\n", view, sample, picked, light);
             }
             ok &= sample_ok;
         }
@@ -516,19 +519,20 @@ static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
         ecs_world_record_add(world, entity, GAME_COMPONENT_GameVisualTransform.id, &transform, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    render_arena_camera camera = front_camera();
+    render_scene3d_camera camera = front_camera();
     bool ok = render(world, &camera, first);
     bool before[225];
     for (int i = 0; i < 225; i++) {
         CF_V2 point = { (i % 15 - 7) * .065f, (i / 15 - 7) * .065f };
-        before[i] = render_arena_pick(world, &camera, point, (render_skip){ 0 }).slot != 0;
+        before[i] = render_scene3d_pick(world, &camera, point, (render_skip){ 0 })
+                        .slot != 0;
     }
     /* Eight canonical tetrahedra reconstruct every visible face of the source solid. */
-    arena_parts parts = { .count = 8 };
+    scene3d_parts parts = { .count = 8 };
     for (int i = 0; i < 8; i++) {
         int x = i & 1 ? 1 : -1, y = i & 2 ? 1 : -1, z = i & 4 ? 1 : -1;
         bool even = x * y * z > 0;
-        parts.parts[i] = (arena_part){
+        parts.parts[i] = (scene3d_part){
             .primitive = GAME_PRIMITIVE_TETRAHEDRON,
             .dimensions = even ? (CF_V3){ 2, 1, 1.5f } : (CF_V3){ 1.5f, 1, 2 },
             .position = { x, y * .5f, z * .75f },
@@ -551,13 +555,13 @@ static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
     ok &= changed < 20;
     for (int i = 0; i < 225; i++) {
         CF_V2 point = { (i % 15 - 7) * .065f, (i / 15 - 7) * .065f };
-        ok &= (render_arena_pick(world, &camera, point, (render_skip){ 0 }).slot !=
+        ok &= (render_scene3d_pick(world, &camera, point, (render_skip){ 0 }).slot !=
                0) == before[i];
     }
     GAME_GameVisualTransform_get(world, entity)->scale = 0;
     CF_V3 bounds[8];
-    ok &= !render_arena_entity_bounds(world, entity, bounds);
-    ok &= !render_arena_pick(world, &camera, (CF_V2){ 0 }, (render_skip){ 0 }).slot;
+    ok &= !render_scene3d_entity_bounds(world, entity, bounds);
+    ok &= !render_scene3d_pick(world, &camera, (CF_V2){ 0 }, (render_skip){ 0 }).slot;
     if (!ok) {
         fprintf(stderr, "composed visual mismatch: %d pixels changed across exact tetrahedron decomposition\n", changed);
     }
@@ -568,7 +572,7 @@ static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
 
 static bool polygon_visuals(CF_Pixel *pixels)
 {
-    render_arena_camera camera = front_camera();
+    render_scene3d_camera camera = front_camera();
     camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
     const int primitives[] = { GAME_PRIMITIVE_CHEVRON_PYRAMID,
                                GAME_PRIMITIVE_BOX_FRAME,
@@ -585,18 +589,18 @@ static bool polygon_visuals(CF_Pixel *pixels)
             GAME_GameGeometry3D_get(world, entity)->height = .1f;
         }
         ok &= render(world, &camera, pixels);
-        CF_V3 ndc = render_arena_project(&camera, solid[i]);
+        CF_V3 ndc = render_scene3d_project(&camera, solid[i]);
         bool visible = brightness(pixels, &camera, solid[i]) > 40 &&
-                       render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
+                       render_scene3d_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
                                .slot == entity.slot;
         if (i < 3) {
-            ndc = render_arena_project(&camera, hole[i]);
-            visible &= !render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
+            ndc = render_scene3d_project(&camera, hole[i]);
+            visible &= !render_scene3d_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
                             .slot &&
                        brightness(pixels, &camera, hole[i]) == 0;
         }
         if (!visible) {
-            fprintf(stderr, "arena3d polygon primitive %d disagrees between mesh and picking\n", primitives[i]);
+            fprintf(stderr, "scene3d polygon primitive %d disagrees between mesh and picking\n", primitives[i]);
         }
         ok &= visible;
         ecs_world_free(world);
@@ -610,8 +614,8 @@ static bool centered_triangles()
     for (int primitive = GAME_PRIMITIVE_TRIANGLE_OUTLINE;
          primitive <= GAME_PRIMITIVE_TRIANGLE;
          primitive++) {
-        CF_V3 triangles[ARENA_MESH_TRIANGLE_LIMIT][3];
-        int count = render_arena_mesh_triangles(primitive, triangles);
+        CF_V3 triangles[SCENE3D_MESH_TRIANGLE_LIMIT][3];
+        int count = render_scene3d_mesh_triangles(primitive, triangles);
         CF_V3 centroid = { 0 };
         float area = 0;
         for (int i = 0; i < count; i++) {
@@ -634,13 +638,13 @@ static bool centered_triangles()
             ecs_world_record_add(world, entity, GAME_COMPONENT_GameOrientation.id, &heading, 0) == ECS_OK
         );
         assert(ecs_world_apply_commands(world) == ECS_OK);
-        render_arena_camera camera = front_camera();
+        render_scene3d_camera camera = front_camera();
         camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
         for (int step = 0; step < 8; step++) {
             float angle = step * .7853981634f;
             GAME_GameOrientation_get(world, entity)->radians = angle;
             CF_V3 bounds[8];
-            ok &= render_arena_entity_bounds(world, entity, bounds);
+            ok &= render_scene3d_entity_bounds(world, entity, bounds);
             CF_M4x4 rotation = cf_m4_from_trs(
                 (CF_V3){ 0 },
                 game_visual_rotation(angle, (CF_V3){ 0 }),
@@ -652,12 +656,12 @@ static bool centered_triangles()
             ok &= fabsf(minimum.x + 2.0f / 3) < .0001f &&
                   fabsf(maximum.x - 4.0f / 3) < .0001f;
             ok &= fabsf(maximum.z - minimum.z - 2) < .0001f;
-            bool picked_center = render_arena_pick(world, &camera, (CF_V2){ 0 }, (render_skip){ 0 })
+            bool picked_center = render_scene3d_pick(world, &camera, (CF_V2){ 0 }, (render_skip){ 0 })
                                      .slot == entity.slot;
             ok &= picked_center == (primitive == GAME_PRIMITIVE_TRIANGLE);
             CF_V3 edge = cf_m4_transform_point(rotation, (CF_V3){ 1.0f / 3 - .04f, 0, .44f });
-            CF_V3 ndc = render_arena_project(&camera, edge);
-            ok &= render_arena_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
+            CF_V3 ndc = render_scene3d_project(&camera, edge);
+            ok &= render_scene3d_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
                       .slot == entity.slot;
         }
         ecs_world_free(world);
@@ -687,11 +691,11 @@ static bool frame_parts(CF_Pixel *before, CF_Pixel *after)
         ecs_world_record_add(world, source, GAME_COMPONENT_GameOrientation.id, &heading, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    render_arena_camera camera = front_camera();
+    render_scene3d_camera camera = front_camera();
     bool ok = render(world, &camera, before), hits[625];
     for (int i = 0; i < 625; i++) {
         CF_V2 point = { (i % 25 - 12) * .04f, (i / 25 - 12) * .04f };
-        hits[i] = render_arena_pick(world, &camera, point, (render_skip){ 0 }).slot != 0;
+        hits[i] = render_scene3d_pick(world, &camera, point, (render_skip){ 0 }).slot != 0;
     }
     CF_M4x4 frame = cf_m4_from_trs(
         (CF_V3){ 0 },
@@ -737,7 +741,7 @@ static bool frame_parts(CF_Pixel *before, CF_Pixel *after)
     ok &= changed < 20;
     for (int i = 0; i < 625; i++) {
         CF_V2 point = { (i % 25 - 12) * .04f, (i / 25 - 12) * .04f };
-        ok &= (render_arena_pick(world, &camera, point, (render_skip){ 0 }).slot !=
+        ok &= (render_scene3d_pick(world, &camera, point, (render_skip){ 0 }).slot !=
                0) == hits[i];
     }
     if (!ok) {
@@ -777,7 +781,7 @@ static bool parallel_geometry(CF_Pixel *first, CF_Pixel *second)
             assert(!ecs_world_apply_commands(world));
         }
     }
-    render_arena_camera camera = front_camera();
+    render_scene3d_camera camera = front_camera();
     serial_geometry = true;
     bool ok = render(world, &camera, first);
     assert(!geometry_work.tasks);
@@ -811,7 +815,7 @@ int test_arena3d()
     composed &= centered_triangles();
     composed &= frame_parts(first, second);
     bool depth = true;
-    render_arena_camera camera = front_camera();
+    render_scene3d_camera camera = front_camera();
     for (int order = 0; order < 2; order++) {
         ecs_world *world = new_world();
         for (int i = 0; i < 2; i++) {
@@ -830,7 +834,7 @@ int test_arena3d()
     if (!depth) {
         fprintf(
             stderr,
-            "arena3d depth failed: center RGB (%d, %d, %d), order independence "
+            "scene3d depth failed: center RGB (%d, %d, %d), order independence "
             "%d\n",
             center.colors.r,
             center.colors.g,
@@ -860,7 +864,7 @@ int test_arena3d()
                     : first[SIDE / 2 * SIDE + SIDE / 2].colors.r;
         visible &= red > 60;
         if (!visible) {
-            fprintf(stderr, "arena3d primitive %d failed: center red %d\n", primitive, red);
+            fprintf(stderr, "scene3d primitive %d failed: center red %d\n", primitive, red);
         }
         primitives &= visible;
         ecs_world_free(world);
@@ -894,7 +898,7 @@ int test_arena3d()
     bool ok = parallel && camera_ok && picking && bounds && fitted && depth &&
               lighting && primitives && prism && octahedron && composed && batching;
     printf(
-        "arena3d %s: camera %d, picking %d, bounds %d, rendered fit %d, depth "
+        "scene3d %s: camera %d, picking %d, bounds %d, rendered fit %d, depth "
         "%d, "
         "lighting %d (%d/%d), primitives %d, prism %d, octahedron %d, batching "
         "%d (%d "

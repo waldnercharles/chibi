@@ -32,7 +32,7 @@ typedef struct
     game_prototype_preview *preview;
     app_scene_renderer *renderer;
     engine_viewport *viewport;
-    bool perspective, failed;
+    bool failed;
 } scene_preview;
 
 static void draw_scene(void *user)
@@ -41,9 +41,9 @@ static void draw_scene(void *user)
     ecs_world *world = game_prototype_preview_world(scene->preview);
     engine *runtime = game_prototype_preview_runtime(scene->preview);
     const game_particles *particles = game_prototype_preview_particles(scene->preview);
-    if (scene->perspective) {
-        render_arena_camera camera;
-        engine_viewport_get_arena_camera(scene->viewport, &camera);
+    if (engine_viewport_perspective(scene->viewport)) {
+        render_scene3d_camera camera;
+        engine_viewport_get_camera3d(scene->viewport, &camera);
         scene->failed = !app_scene_renderer_draw3d(
             scene->renderer,
             world,
@@ -106,6 +106,17 @@ static double seconds()
     return now.tv_sec + now.tv_nsec * 1e-9;
 }
 
+/* A script can load another scene during any step, which brings its own
+ * projection, root ui document and default camera, as in the player. */
+static void show_scene(scene_preview *scene, const chibi_preview_run *run, ui_world *ui, const char *content_root)
+{
+    engine_viewport_reset_camera(scene->viewport);
+    app_scene_renderer_reset(scene->renderer);
+    engine_viewport_set_perspective(scene->viewport, chibi_preview_perspective(run));
+    ui->page = chibi_preview_page(run);
+    engine_viewport_set_ui(scene->viewport, ui, content_root);
+}
+
 static int compare_time(const void *a, const void *b)
 {
     double x = *(const double *)a, y = *(const double *)b;
@@ -156,7 +167,9 @@ static bool render_scene(
     app_scene_renderer_initialize();
     scene_preview scene = { 0 };
     chibi_preview_run *run = NULL;
-    bool ok = chibi_automation_preview(root, request, &run, &scene.perspective, error, size) ==
+    ui_world ui;
+    const char *content_root = NULL;
+    bool ok = chibi_automation_preview(root, request, &run, error, size) ==
               CHIBI_AUTOMATION_OK;
     if (ok) {
         scene.preview = chibi_preview_runtime(run);
@@ -185,7 +198,14 @@ static bool render_scene(
         app_scene_renderer_set_sdf_trace_debug(scene.renderer, options->sdf_trace_debug);
         app_scene_renderer_set_hidden_rejection(scene.renderer, options->hidden_rejection);
         app_scene_renderer_set_spatial_scratch(scene.renderer, options->spatial_scratch);
-        engine_viewport_set_perspective(scene.viewport, scene.perspective);
+        engine *preview_runtime = game_prototype_preview_runtime(scene.preview);
+        content_root = chibi_automation_content(root);
+        ui = (ui_world){
+            .ecs = game_prototype_preview_world(scene.preview),
+            .model = engine_ui(preview_runtime),
+            .host = authoring_ui_events(game_prototype_preview_live(scene.preview))
+        };
+        show_scene(&scene, run, &ui, content_root);
         engine_viewport_view view;
         int camera = game_camera_view(
             game_prototype_preview_world(scene.preview),
@@ -200,16 +220,6 @@ static bool render_scene(
             engine_viewport_set_view(scene.viewport, &view);
         }
         engine_viewport_set_render_callback(scene.viewport, draw_scene, &scene);
-        engine *preview_runtime = game_prototype_preview_runtime(scene.preview);
-        char content_root[1024];
-        snprintf(content_root, sizeof content_root, "%s/content", root);
-        ui_world ui = {
-            .ecs = game_prototype_preview_world(scene.preview),
-            .page = chibi_preview_page(run),
-            .model = engine_ui(preview_runtime),
-            .host = authoring_ui_events(game_prototype_preview_live(scene.preview))
-        };
-        engine_viewport_set_ui(scene.viewport, &ui, content_root);
     }
     /* Captures settle the renderer for two frames. Performance runs first warm
      * it with simulation frozen, then measure GPU-complete frame work.
@@ -261,9 +271,16 @@ static bool render_scene(
         double simulation_start = seconds();
         bool advance = render_frames > 2 && i >= warmup && !options->frozen;
         if (advance) {
+            int loads = chibi_preview_loads(run);
             CHIBI_TRACE_ZONE_BEGIN(simulation_zone, "Preview simulation");
             ok = chibi_preview_step(run, error, size) == CHIBI_AUTOMATION_OK;
             CHIBI_TRACE_ZONE_END(simulation_zone);
+            if (!ok) {
+                break;
+            }
+            if (chibi_preview_loads(run) != loads) {
+                show_scene(&scene, run, &ui, content_root);
+            }
         }
         double simulation_elapsed = advance ? (seconds() - simulation_start) * 1000
                                             : 0;

@@ -538,27 +538,124 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEncounterMember)
 }
 GameEncounterMember;
 
+/* Display transform from scene-linear HDR. AgX is filmic and desaturates
+ * highlights; Neutral keeps base colors close to their authored values. */
+typedef enum
+{
+    GAME_TONE_MAPPING_AGX NODE_NAME("AgX"),
+    GAME_TONE_MAPPING_NEUTRAL NODE_NAME("Neutral"),
+} GameToneMapping;
+
 /* Scene-wide display settings. Exposure is in stops; bloom radius is a fraction
- * of viewport height. Zero strength disables bloom. */
+ * of viewport height. Zero strength disables bloom. The 3D ambient light blends
+ * from the ground color below to the sky color above; colors are 0xRRGGBBAA in
+ * Material's linear convention and the intensity scales both. Auto exposure
+ * meters the mean log luminance of the frame's lit pixels to middle gray, then
+ * applies exposure as compensation; it adapts at adaptation_speed per scene
+ * second, from 0.1 to 100, and zero adapts every frame. Sky is an
+ * equirectangular Radiance .hdr image, such as content/skies/field.hdr, drawn
+ * behind the 3D scene; it lights the scene in place of the ambient colors. Sky
+ * rotation turns it and its light about the up axis in degrees,
+ * counterclockwise seen from above; sky exposure brightens both in stops, from
+ * -20 to 20. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 {
     float exposure;
     float bloom_strength;
     float bloom_threshold;
     float bloom_radius;
+    unsigned ambient_sky NODE_COLOR;
+    unsigned ambient_ground NODE_COLOR;
+    float ambient_intensity;
+    GameToneMapping tone_mapping;
+    bool auto_exposure;
+    float adaptation_speed;
+    const char *sky;
+    float sky_rotation;
+    float sky_exposure;
 }
 GameEnvironment;
 
+static inline GameEnvironment game_environment_defaults()
+{
+    return (GameEnvironment){ .bloom_strength = .18f,
+                              .bloom_threshold = 1,
+                              .bloom_radius = .012f,
+                              .ambient_sky = 0x2b3345ffu,
+                              .ambient_ground = 0x0f121affu,
+                              .ambient_intensity = 1,
+                              .adaptation_speed = 2 };
+}
+
+/* Light from an infinitely distant source, such as the sun. Direction is the
+ * world-space direction the light travels; it need not be normalized. Color
+ * is 0xRRGGBBAA in Material's linear convention. Shadows lets opaque solids
+ * block it. Angular diameter is the light's apparent size in degrees, 0 to
+ * 20: its shadows soften with distance from their caster, and zero keeps
+ * them hard. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameDirectionalLight)
+{
+    unsigned color NODE_COLOR;
+    float intensity;
+    CF_V3 direction;
+    bool shadows;
+    float angular_diameter;
+}
+GameDirectionalLight;
+
+static inline GameDirectionalLight game_directional_light_defaults()
+{
+    return (GameDirectionalLight){ .color = 0xffffffffu,
+                                   .intensity = 2.8f,
+                                   .direction = { .45f, -.85f, -.4f },
+                                   .shadows = true,
+                                   .angular_diameter = 3 };
+}
+
 /* Local scene-linear light. Radius and center elevation use project units;
- * color is 0xRRGGBBAA, matching other authored color fields. */
+ * color is 0xRRGGBBAA, matching other authored color fields. Shadows lets
+ * opaque solids within its radius block it, for up to four lights a view
+ * ranks highest. */
 typedef NODE_COMPONENT_TYPE_DENSE(GamePointLight)
 {
     unsigned color NODE_COLOR;
     float intensity;
     float radius;
     float elevation;
+    bool shadows;
 }
 GamePointLight;
+
+/* A cone of local scene-linear light. Radius and center elevation use project
+ * units, and color is 0xRRGGBBAA like a Point Light's. Direction is the world
+ * direction the cone points; it need not be normalized. Outer angle is the
+ * cone's full width in degrees, and the light fades from full strength at the
+ * inner angle to none at the outer one. Shadows lets opaque solids within its
+ * cone and radius block it. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameSpotLight)
+{
+    unsigned color NODE_COLOR;
+    float intensity;
+    float radius;
+    float elevation;
+    CF_V3 direction;
+    float inner_angle;
+    float outer_angle;
+    bool shadows;
+}
+GameSpotLight;
+
+static inline GameSpotLight game_spot_light_defaults()
+{
+    return (GameSpotLight){ .color = 0xffffffffu,
+                            .intensity = 6,
+                            .radius = 400,
+                            .elevation = 160,
+                            .direction = { 0, -1, 0 },
+                            .inner_angle = 40,
+                            .outer_angle = 60,
+                            .shadows = true };
+}
 
 /* A colored activity signal for material effects, independent of lighting. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceInfluence)

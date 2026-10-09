@@ -1,6 +1,6 @@
 #include "render/mesh_surface.h"
 
-#include "render/arena_geometry.h"
+#include "render/scene3d_geometry.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
 #include "support/array.h"
@@ -99,8 +99,8 @@ bool render_mesh_surface_vertices(
 {
     assert(vertices);
     aclear(*vertices);
-    CF_V3 triangles[ARENA_MESH_TRIANGLE_LIMIT][3];
-    int count = render_arena_mesh_triangles(primitive, triangles);
+    CF_V3 triangles[SCENE3D_MESH_TRIANGLE_LIMIT][3];
+    int count = render_scene3d_mesh_triangles(primitive, triangles);
     for (int i = 0; i < count; i++) {
         add_triangle(vertices, triangles[i][0], triangles[i][1], triangles[i][2]);
     }
@@ -283,7 +283,7 @@ bool render_mesh_surface_build_with_bounds(
         part.borrowed = true;
         surface->min = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
         surface->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
-        CF_M4x4 model = render_arena_visual_model(&part.visual);
+        CF_M4x4 model = render_scene3d_visual_model(&part.visual);
         for (int i = 0; i < 8; i++) {
             CF_V3 corner = { i & 1 ? .5f : -.5f, i & 2 ? .5f : -.5f, i & 4 ? .5f : -.5f };
             CF_V3 p = cf_m4_transform_point(model, corner);
@@ -296,8 +296,8 @@ bool render_mesh_surface_build_with_bounds(
     const GameMeshAsset *imported = GAME_GameMeshAsset_get_const(world, entity);
     if (imported && imported->source && *imported->source) {
         const GameMeshParts *parts = GAME_GameMeshParts_get_const(world, entity);
-        arena_parts parsed;
-        if (!render_arena_parts_read(parts ? parts->parts : NULL, &parsed, error, size)) {
+        scene3d_parts parsed;
+        if (!render_scene3d_parts_read(parts ? parts->parts : NULL, &parsed, error, size)) {
             return false;
         }
         if (parsed.count) {
@@ -353,7 +353,7 @@ bool render_mesh_surface_build_with_bounds(
         };
         surface->min = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
         surface->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
-        CF_M4x4 model = render_arena_visual_model(&part.visual);
+        CF_M4x4 model = render_scene3d_visual_model(&part.visual);
         for (int i = 0; i < render_mesh_surface_vertex_count(&part); i++) {
             CF_V3 p = cf_m4_transform_point(model, part.vertices[i].position);
             surface->min = cf_min_v3(surface->min, p);
@@ -380,8 +380,8 @@ bool render_mesh_surface_build_with_bounds(
         }
         return true;
     }
-    arena_visual visuals[ARENA_PART_LIMIT];
-    int count = render_arena_visuals(world, entity, position, visuals, error, size);
+    scene3d_visual visuals[SCENE3D_PART_LIMIT];
+    int count = render_scene3d_visuals(world, entity, position, visuals, error, size);
     if (count < 0) {
         return false;
     }
@@ -394,7 +394,7 @@ bool render_mesh_surface_build_with_bounds(
             render_mesh_surface_free(surface);
             return false;
         }
-        CF_M4x4 model = render_arena_visual_model(&part.visual);
+        CF_M4x4 model = render_scene3d_visual_model(&part.visual);
         for (int v = 0; v < render_mesh_surface_vertex_count(&part); v++) {
             CF_V3 p = cf_m4_transform_point(model, part.vertices[v].position);
             surface->min = cf_min_v3(surface->min, p);
@@ -461,7 +461,7 @@ bool render_mesh_surface_pick(const render_mesh_surface *surface, CF_V2 position
     float front = -FLT_MAX;
     for (int i = 0; i < acount(surface->parts); i++) {
         const render_mesh_surface_part *part = &surface->parts[i];
-        CF_M4x4 model = render_arena_visual_model(&part->visual);
+        CF_M4x4 model = render_scene3d_visual_model(&part->visual);
         for (int v = 0; v < render_mesh_surface_vertex_count(part); v += 3) {
             CF_V3 a = cf_m4_transform_point(model, part->vertices[v].position);
             CF_V3 b = cf_m4_transform_point(model, part->vertices[v + 1].position);

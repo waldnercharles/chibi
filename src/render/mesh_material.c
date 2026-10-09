@@ -436,7 +436,7 @@ static bool draw_actor(
             ok = false;
             break;
         }
-        CF_M4x4 model = render_arena_visual_model(&part->visual);
+        CF_M4x4 model = render_scene3d_visual_model(&part->visual);
         float rows[3][4];
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 4; col++) {
@@ -572,7 +572,7 @@ static bool sdf_record(
     memcpy(record->colors[2], color.albedo, 16);
     memcpy(record->colors[3], color.absorption, 16);
     const render_mesh_surface_part *part = &surface->parts[0];
-    CF_M4x4 model = render_arena_visual_model(&part->visual),
+    CF_M4x4 model = render_scene3d_visual_model(&part->visual),
             frame = part->visual.frame;
     for (int row = 0; row < 3; row++) {
         float norm = 0;

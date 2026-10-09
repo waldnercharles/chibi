@@ -8,7 +8,7 @@
  * render targets; RASTER_ACCUMULATE continues from the previous batch's. */
 typedef enum
 {
-    RENDER_PROGRAM_ARENA,
+    RENDER_PROGRAM_SCENE3D,
     RENDER_PROGRAM_FRAGMENT,
     RENDER_PROGRAM_RASTER,
     RENDER_PROGRAM_RASTER_ACCUMULATE,
@@ -18,6 +18,9 @@ typedef enum
     RENDER_PROGRAM_MESH_MATERIAL
 } render_program_kind;
 typedef struct render_programs render_programs;
+/* The fragment samplers a program of `kind` binds for `set`, its ramp table
+ * included. GLES3 gives a fragment shader 16 texture units. */
+int render_program_samplers(render_program_kind kind, const render_shader_set *set);
 render_programs *render_programs_new(render_program_kind kind);
 void render_programs_free(render_programs *programs);
 unsigned render_shader_compile_count();

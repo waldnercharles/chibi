@@ -106,6 +106,7 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     }
     if (!root || !root[0] || !name || !name[0]) {
         set_error(error, error_size, "Project path and name are required");
+        errno = EINVAL;
         return -1;
     }
     bool named = false;
@@ -114,19 +115,27 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     }
     if (!named) {
         set_error(error, error_size, "Enter a project name");
+        errno = EINVAL;
         return -1;
     }
     if (is_directory(root) || is_file(root)) {
         set_errorf(error, error_size, "Project already exists: %s", root);
+        errno = EEXIST;
         return -1;
     }
     char *parent = parent_path(root);
-    if (!is_directory(parent)) {
+    struct stat info;
+    /* mkdir reports a parent that exists but cannot be inspected. */
+    bool missing = stat(parent, &info) ? errno == ENOENT || errno == ENOTDIR
+                                       : !S_ISDIR(info.st_mode);
+    if (missing) {
         set_errorf(error, error_size, "Project parent directory does not exist: %s", parent);
         free(parent);
+        errno = EINVAL;
         return -1;
     }
     free(parent);
+    errno = 0;
     if (mkdir(root, 0755) != 0) {
         if (error_size) {
             snprintf(error, error_size, "Cannot create project: %s", strerror(errno));
@@ -144,11 +153,13 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
                    write_asset_file(manifest_path, manifest, error, error_size) == 0 &&
                    write_asset_file(scene_path, scene, error, error_size) == 0;
     if (!written) {
+        int failure = errno ? errno : EIO;
         unlink(scene_path);
         unlink(manifest_path);
         rmdir(scenes);
         rmdir(content);
         rmdir(root);
+        errno = failure;
         if (!error_size || !error[0]) {
             set_error(error, error_size, "Could not create project files");
         }
@@ -336,25 +347,35 @@ static int read_application(
     return 0;
 }
 
-static int read_manifest(const char *path, chibi_project *project, int *opened, char *error, size_t error_size)
+/* The manifest at `path` parsed, or NULL with why in `error`. */
+static av_doc *manifest_document(const char *path, char *error, size_t error_size)
 {
     char *text = read_file(path, error, error_size);
     if (!text) {
-        return -1;
+        return NULL;
     }
     char parse_error[128];
     av_doc *document = asset_text_read(text, parse_error, sizeof parse_error);
     free(text);
     if (!document) {
         snprintf(error, error_size, "Invalid project manifest %s: %s", path, parse_error);
+        return NULL;
+    }
+    if (!av_is_obj(av_doc_root(document))) {
+        av_doc_free(document);
+        set_errorf(error, error_size, "Project manifest must contain a code asset object: %s", path);
+        return NULL;
+    }
+    return document;
+}
+
+static int read_manifest(const char *path, chibi_project *project, int *opened, char *error, size_t error_size)
+{
+    av_doc *document = manifest_document(path, error, error_size);
+    if (!document) {
         return -1;
     }
     av_value *root = av_doc_root(document);
-    if (!av_is_obj(root)) {
-        av_doc_free(document);
-        set_errorf(error, error_size, "Project manifest must contain a code asset object: %s", path);
-        return -1;
-    }
     av_value *version = av_obj_get(root, "version");
     if (!av_is_int(version)) {
         av_doc_free(document);
@@ -362,20 +383,6 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
         return -1;
     }
     int found = (int)av_get_int(version);
-    if (found < CHIBI_PROJECT_OLDEST_VERSION || found > CHIBI_PROJECT_VERSION) {
-        av_doc_free(document);
-        snprintf(
-            error,
-            error_size,
-            "Project version %d needs %s build; this build opens version %d: "
-            "%s",
-            found,
-            found > CHIBI_PROJECT_VERSION ? "a newer" : "an older",
-            CHIBI_PROJECT_VERSION,
-            path
-        );
-        return -1;
-    }
     av_value *name_value = av_obj_get(root, "name");
     av_value *content_value = av_obj_get(root, "content");
     av_value *scene_value = av_obj_get(root, "start_scene");
@@ -407,6 +414,26 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     *opened = found;
     av_doc_free(document);
     return result;
+}
+
+/* Whether this build opens a project saved at `version`; false with why in
+ * `error` when it does not. */
+static bool opens_version(int version, const char *path, char *error, size_t error_size)
+{
+    if (version >= CHIBI_PROJECT_OLDEST_VERSION && version <= CHIBI_PROJECT_VERSION) {
+        return true;
+    }
+    snprintf(
+        error,
+        error_size,
+        "Project version %d needs %s build; this build opens version %d: "
+        "%s",
+        version,
+        version > CHIBI_PROJECT_VERSION ? "a newer" : "an older",
+        CHIBI_PROJECT_VERSION,
+        path
+    );
+    return false;
 }
 
 static char *scene_path(const char *root, const char *content, const char *scene)
@@ -553,7 +580,7 @@ char *chibi_project_find(const char *start)
     return NULL;
 }
 
-int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
+static int open_project(chibi_project *project, const char *path, bool migrate, char *error, size_t error_size)
 {
     if (!project) {
         set_error(error, error_size, "Project output is required");
@@ -603,7 +630,15 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
     }
     project->root = root;
     int version = CHIBI_PROJECT_VERSION;
-    if (manifest && read_manifest(manifest, project, &version, error, error_size) != 0) {
+    if (manifest && (read_manifest(manifest, project, &version, error, error_size) != 0 ||
+                     !opens_version(version, manifest, error, error_size))) {
+        chibi_project_free(project);
+        free(input);
+        free(manifest);
+        return -1;
+    }
+    if (!migrate && version < CHIBI_PROJECT_VERSION) {
+        snprintf(error, error_size, "Project version %d is older than %d; run chibi_ctl --project-root <root> --migrate", version, CHIBI_PROJECT_VERSION);
         chibi_project_free(project);
         free(input);
         free(manifest);
@@ -664,6 +699,41 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
         error[0] = '\0';
     }
     return 0;
+}
+
+int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
+{
+    return open_project(project, path, true, error, error_size);
+}
+
+int chibi_project_read(chibi_project *project, const char *path, char *error, size_t error_size)
+{
+    return open_project(project, path, false, error, error_size);
+}
+
+char *chibi_project_content(const char *root, char *error, size_t error_size)
+{
+    char *manifest = join_path(root, CHIBI_PROJECT_MANIFEST);
+    if (!is_file(manifest)) {
+        free(manifest);
+        return join_path(root, "content");
+    }
+    /* Only the content folder has to be readable here, so validate_manifest
+     * can list the manifest's other problems alongside the project's. */
+    av_doc *document = manifest_document(manifest, error, error_size);
+    if (!document) {
+        free(manifest);
+        return NULL;
+    }
+    av_value *value = av_obj_get(av_doc_root(document), "content");
+    const char *folder = value ? av_get_str(value) : "content";
+    char *content = folder && folder[0] ? join_path(root, folder) : NULL;
+    if (!content) {
+        set_errorf(error, error_size, "Project manifest content must be a folder name: %s", manifest);
+    }
+    av_doc_free(document);
+    free(manifest);
+    return content;
 }
 
 char *chibi_project_scene_path(const chibi_project *project, const char *requested)

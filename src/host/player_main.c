@@ -1,8 +1,8 @@
 #include "execution/backend.h"
 #include "host/native_default.h"
 #include "platform/cute.h"
-#include "render/arena3d.h"
 #include "render/device_controls.h"
+#include "render/scene3d.h"
 #include "render/scene_renderer.h"
 #include "render/sdf_motion.h"
 #include "render/shader_images.h"
@@ -162,9 +162,13 @@ static void render(void *context)
     player_host *host = context;
     game_world *world = game_player_world(host->player);
     const engine_modules *modules = game_world_modules(world);
+    app_scene_renderer_set_time(
+        host->renderer,
+        (float)engine_last_timing(game_world_engine(world))->simulation_time
+    );
     if (engine_viewport_perspective(host->viewport)) {
-        render_arena_camera camera;
-        engine_viewport_get_arena_camera(host->viewport, &camera);
+        render_scene3d_camera camera;
+        engine_viewport_get_camera3d(host->viewport, &camera);
         host->render_failed = !app_scene_renderer_draw3d(
             host->renderer,
             game_world_ecs(world),
@@ -323,13 +327,35 @@ static void log_message(void *, const execution_log_message *message)
         message->text
     );
 }
+/* Starts the scene scripts asked for during the frame that just drew, or
+ * prints why it could not. */
+static bool follow_scene(player_host *host)
+{
+    char *next = game_scene_flow_take(game_world_scenes(game_player_world(host->player)));
+    if (!next) {
+        return true;
+    }
+    char error[512];
+    bool loaded = game_player_load_scene(host->player, next, error, sizeof error);
+    free(next);
+    if (!loaded) {
+        fprintf(stderr, "%s\n", error);
+        return false;
+    }
+    const game_scene *scene = game_scene_instance_scene(game_player_scene(host->player));
+    engine_viewport_reset_camera(host->viewport);
+    app_scene_renderer_reset(host->renderer);
+    engine_viewport_set_perspective(host->viewport, game_scene_perspective(scene));
+    host->ui.page = game_scene_ui(scene);
+    engine_viewport_set_ui(host->viewport, &host->ui, "");
+    return true;
+}
 /* Runs one frame: 1 to continue, 0 when the player quits, and -1 after
  * printing why the game failed. */
 static int run_frame(player_host *host)
 {
     game_world *world = game_player_world(host->player);
     engine *runtime = game_world_engine(world);
-    const game_scene *scene = game_scene_instance_scene(game_player_scene(host->player));
     key_count = 0;
     pressed_controls = 0;
     input_overflow = false;
@@ -391,9 +417,6 @@ static int run_frame(player_host *host)
     }
     if (camera) {
         engine_viewport_set_view(host->viewport, &view);
-        engine_viewport_clear_arena_camera(host->viewport);
-    } else if (game_scene_perspective(scene)) {
-        engine_viewport_set_arena_showcase(host->viewport, (float)host->now);
     }
     engine_viewport_set_time(host->viewport, host->now);
     if (engine_viewport_draw(
@@ -412,6 +435,9 @@ static int run_frame(player_host *host)
     }
     engine_viewport_present(host->viewport);
     cf_app_draw_onto_screen(true);
+    if (!follow_scene(host)) {
+        return -1;
+    }
     host->now += host->fixed_dt ? host->fixed_dt : CF_DELTA_TIME;
     return 1;
 }

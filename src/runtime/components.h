@@ -1281,7 +1281,8 @@ GameGlobalTransform2D;
  * without one it is static. A dynamic body must be placed in the world, and
  * physics writes its position, rotation and velocities back. Any other body
  * under a ChildOf parent with a Transform3D follows it and ignores its own
- * velocities: it moves through each step with the moving body above it, and
+ * velocities: it moves through each step with the moving body above it,
+ * never touches the body above it or the others that body carries, and
  * teleports when anything else moves its parents. */
 
 typedef enum

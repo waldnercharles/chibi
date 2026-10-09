@@ -549,6 +549,47 @@ TEST_CASE(physics3d_moving_followers_wake_what_they_meet)
     return true;
 }
 
+/* A body and the colliders it carries move as one, so they never touch. */
+TEST_CASE(physics3d_followers_never_touch_their_body)
+{
+    set_gravity((CF_V3){ 0 });
+    ecs_entity ship = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, box(METER, METER, METER), GAME_BODY_DYNAMIC);
+    collider(ship, (CF_V3){ METER / 2, 0, 0 }, box(METER, METER, METER), GAME_BODY_STATIC);
+    GameCollider3D zone = ball(METER);
+    zone.sensor = true;
+    collider(ship, (CF_V3){ 0 }, zone, GAME_BODY_KINEMATIC);
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(step(STEP) == 0);
+    }
+    REQUIRE(near_v3(position(ship), (CF_V3){ 0 }, 0));
+    REQUIRE(near_v3(body(ship)->linear_velocity, (CF_V3){ 0 }, 0));
+    return true;
+}
+
+/* A collider handed to the body it touches stops touching it, rather than
+ * pushing it along. */
+TEST_CASE(physics3d_followers_stop_touching_the_body_they_join)
+{
+    set_gravity((CF_V3){ 0 });
+    ecs_entity player = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, box(METER, METER, METER), GAME_BODY_DYNAMIC);
+    ecs_entity table = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 3 * METER, 0, 0 },
+        box(METER, METER, METER),
+        GAME_BODY_STATIC
+    );
+    ecs_entity item = collider(table, (CF_V3){ -2 * METER, 0, 0 }, box(METER, METER, METER), GAME_BODY_STATIC);
+    REQUIRE(step(STEP) == 2 && touched(player, item, true));
+    REQUIRE(ecs_world_record_add_pair(world, item, ECS_CHILD_OF, player, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    GAME_GameTransform3D_get(world, item)->position = (CF_V3){ METER / 2, 0, 0 };
+    REQUIRE(step(STEP) == 2 && touched(player, item, false));
+    steps(4);
+    REQUIRE(near_v3(position(player), (CF_V3){ 0 }, 0));
+    REQUIRE(near_v3(body(player)->linear_velocity, (CF_V3){ 0 }, 0));
+    return true;
+}
+
 TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go)
 {
     set_gravity((CF_V3){ 0 });
@@ -795,6 +836,8 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_followers_move_with_their_body);
     RUN_TEST_CASE(physics3d_followers_of_resting_bodies_let_them_sleep);
     RUN_TEST_CASE(physics3d_moving_followers_wake_what_they_meet);
+    RUN_TEST_CASE(physics3d_followers_never_touch_their_body);
+    RUN_TEST_CASE(physics3d_followers_stop_touching_the_body_they_join);
     RUN_TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go);
     RUN_TEST_CASE(physics3d_masks_and_sensors_filter_contacts);
     RUN_TEST_CASE(physics3d_interpolates_moving_roots_only);

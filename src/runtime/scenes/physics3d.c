@@ -52,6 +52,9 @@ typedef struct
     GameBodyType type;
     CF_V3 scale; /* The world scale the shape was built at. */
     bool follower, seen;
+    /* The slot of the body it moves with, its own unless it follows an
+     * anchor, or 0 until grouped. */
+    unsigned group;
     /* A root's local transform as physics last read or wrote it; a change
      * means something else moved it. */
     GameTransform3D written;
@@ -276,6 +279,19 @@ static void finish_task(void *task, void *user)
     physics->tasks.finish(task, physics->tasks.user);
 }
 
+static const body_record *shape_record(const game_physics3d *physics, b3ShapeId shape)
+{
+    return &physics->bodies[(uintptr_t)b3Shape_GetUserData(shape)];
+}
+
+/* Bodies that move together never touch. Box3D asks from its workers during
+ * the step, while the records hold still. */
+static bool apart(b3ShapeId a, b3ShapeId b, void *user)
+{
+    const game_physics3d *physics = user;
+    return shape_record(physics, a)->group != shape_record(physics, b)->group;
+}
+
 static void create_world(game_physics3d *physics)
 {
     b3WorldDef def = b3DefaultWorldDef();
@@ -291,6 +307,7 @@ static void create_world(game_physics3d *physics)
         def.userTaskContext = physics;
     }
     physics->simulation = b3CreateWorld(&def);
+    b3World_SetCustomFilterCallback(physics->simulation, apart, physics);
 }
 
 static void destroy_world(game_physics3d *physics)
@@ -418,6 +435,8 @@ static b3ShapeId create_shape(body_record *record)
     def.filter.maskBits = collider->mask;
     def.isSensor = collider->sensor;
     def.enableSensorEvents = true;
+    /* Only a follower shares its group with other bodies. */
+    def.enableCustomFiltering = record->follower;
     float radius, half;
     switch (collider->shape) {
         case GAME_COLLIDER3D_BOX: {
@@ -454,6 +473,15 @@ static void create_body(game_physics3d *physics, body_record *record, pose at)
     wake_overlapping(physics, record->shape);
     record->start = record->end = at;
     physics->body_count++;
+}
+
+/* A new shape loses the old one's contacts, which Box3D filtered when they
+ * began. */
+static void reshape(game_physics3d *physics, body_record *record)
+{
+    b3DestroyShape(record->shape, true);
+    record->shape = create_shape(record);
+    wake_overlapping(physics, record->shape);
 }
 
 static void remove_body(game_physics3d *physics, body_record *record)
@@ -568,11 +596,9 @@ static int sync_entity(game_physics3d *physics, ecs_entity entity)
     } else {
         if (!same_collider(collider, &record->collider) ||
             !same_scale(at.scale, record->scale)) {
-            b3DestroyShape(record->shape, true);
             record->collider = *collider;
             record->scale = at.scale;
-            record->shape = create_shape(record);
-            wake_overlapping(physics, record->shape);
+            reshape(physics, record);
         }
         move(physics, record, at);
     }
@@ -663,8 +689,8 @@ static pose body_pose(b3BodyId body)
     return (pose){ from_b3(transform.p), quat_from_b3(transform.q) };
 }
 
-/* The body a follower moves with: its nearest ancestor that is a moving
- * root, or NULL when no moving body places it. */
+/* The body a follower moves with: its nearest ancestor with a body that
+ * follows nothing, or NULL when none places it. */
 static const body_record *anchor(const game_physics3d *physics, ecs_entity entity)
 {
     for (ecs_entity at = game_transform_parent_3d(physics->world, entity); at.slot;
@@ -672,11 +698,33 @@ static const body_record *anchor(const game_physics3d *physics, ecs_entity entit
         const body_record *record = at.slot < (unsigned)acount(physics->bodies)
                                       ? &physics->bodies[at.slot]
                                       : NULL;
-        if (record && moving_root(record) && same_entity(record->entity, at)) {
+        if (record && B3_IS_NON_NULL(record->body) && !record->follower &&
+            same_entity(record->entity, at)) {
             return record;
         }
     }
     return NULL;
+}
+
+/* Groups each body with the one it moves with. Box3D filters a pair of
+ * shapes only as they begin to overlap, so a follower that changes groups
+ * gets a new shape. */
+static void group_followers(game_physics3d *physics)
+{
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        body_record *record = &physics->bodies[i];
+        if (B3_IS_NULL(record->body)) {
+            continue;
+        }
+        const body_record *with = record->follower ? anchor(physics, record->entity)
+                                                   : NULL;
+        unsigned group = with ? with->entity.slot : record->entity.slot;
+        bool regrouped = record->group && record->group != group;
+        record->group = group;
+        if (regrouped) {
+            reshape(physics, record);
+        }
+    }
 }
 
 /* Before the step, each follower takes the velocity of the point of its
@@ -685,12 +733,10 @@ static void lead_followers(game_physics3d *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
         body_record *record = &physics->bodies[i];
-        const body_record *with = B3_IS_NON_NULL(record->body) && record->follower
-                                    ? anchor(physics, record->entity)
-                                    : NULL;
-        if (!with) {
+        if (B3_IS_NULL(record->body) || record->group == record->entity.slot) {
             continue;
         }
+        const body_record *with = &physics->bodies[record->group];
         b3Vec3 spin = b3Body_GetAngularVelocity(with->body);
         b3Vec3 arm = b3Sub(to_b3(record->placed.position), b3Body_GetWorldCenterOfMass(with->body));
         b3Body_SetLinearVelocity(
@@ -745,8 +791,7 @@ static void write_back(game_physics3d *physics)
 
 static uint64_t shape_entity(const game_physics3d *physics, b3ShapeId shape)
 {
-    uintptr_t slot = (uintptr_t)b3Shape_GetUserData(shape);
-    return ecs_entity_to_u64(physics->bodies[slot].entity);
+    return ecs_entity_to_u64(shape_record(physics, shape)->entity);
 }
 
 static void add_pair(game_physics3d *physics, uint64_t a, uint64_t b, CF_V3 point)
@@ -953,6 +998,7 @@ int game_physics3d_tick(game_physics3d *physics, float delta_seconds)
     if (B3_IS_NULL(physics->simulation)) {
         return FLOW_OK;
     }
+    group_followers(physics);
     if (!same_v3(acceleration, physics->gravity)) {
         set_gravity(physics, acceleration);
     }

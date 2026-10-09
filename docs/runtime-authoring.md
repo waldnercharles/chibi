@@ -204,7 +204,8 @@ velocities, or dynamic, and physics writes a dynamic body's position, rotation
 and velocities back each step. Dynamic bodies must be roots. Any other body
 under a ChildOf parent with a Transform3D follows it and ignores its own
 velocities: it moves through each step with the moving body above it, pushing
-what it meets, and teleports when a script moves its parents. Moving a body's
+what it meets but never the body above it or the others that body carries, and
+teleports when a script moves its parents. Moving a body's
 Transform3D from a script teleports it. Gravity is 9.81 meters per second
 squared down Y unless one entity's `GAME.GameGravity3D` sets it. Behaviors
 handle `on ContactBegin3D` with `event.Other` and `event.Point`, and

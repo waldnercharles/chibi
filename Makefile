@@ -264,7 +264,7 @@ test-build:
 	@$(MAKE) build BUILD_TARGET='chibi_ctl test_tools test_language'
 
 test-native: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" python3 tools/test_policy.py group native
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_CTL="$(BUILD_DIR)/bin/chibi_ctl" python3 tools/test_policy.py group native
 
 test: test-short
 

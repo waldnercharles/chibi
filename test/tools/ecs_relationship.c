@@ -390,6 +390,24 @@ TEST_CASE(ecs_derived_components_follow_their_source_and_reject_writes)
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     REQUIRE(!ecs_component_has(world, armored, total_desc.id));
     REQUIRE(!ecs_component_has(world, armored, late.id));
+    /* An automatic id never takes a source still to come. */
+    ecs_component_id next = 1;
+    while (ecs_world_component(world, next) || ecs_world_relationship(world, next)) {
+        next++;
+    }
+    ecs_component_desc early = total_desc, unrelated = shield_desc, source = shield_desc;
+    early.id = 0, early.key = "sdk.ecs.early", early.name = "Early",
+    early.derived_from = next;
+    unrelated.id = 0, unrelated.key = "sdk.ecs.unrelated", unrelated.name = "Unrelated";
+    source.id = next, source.key = "sdk.ecs.source", source.name = "Source";
+    ecs_component_id early_id = 0, unrelated_id = 0;
+    REQUIRE(ecs_world_register_component(world, &early, &early_id) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &unrelated, &unrelated_id) == ECS_OK);
+    REQUIRE(early_id != next && unrelated_id != next);
+    REQUIRE(ecs_world_register_component(world, &source, NULL) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, shielded, next, &value, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_component_has(world, shielded, early_id));
     return true;
 }
 

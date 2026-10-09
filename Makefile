@@ -58,7 +58,7 @@ FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve publish-web format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
+.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve publish-web format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
 all: build
 
@@ -75,6 +75,7 @@ help:
 		'make studio-run PROJECT_ROOT=/game  Run the external Studio consumer' \
 		'make studio-dev PROJECT_ROOT=/game  Run Studio with checkpoint recovery' \
 		'make package-studio Package the external Studio distribution' \
+		'make install STUDIO_SOURCE=/studio [PREFIX=~/.local]  Install chibi-dev and chibi' \
 		'make controller-build / controller-run PROJECT_ROOT=/game' \
 		'make update-game-runtime Explicitly refresh registered deployments' \
 		'make agent-list     List runnable classified selectors and admission status' \
@@ -136,6 +137,10 @@ STUDIO_PACKAGE_BUILD_DIR ?= build-studio-package
 STUDIO_OUTPUT ?= dist/chibi-studio-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 STUDIO_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug
 STUDIO_CHECKPOINT ?= $(STUDIO_BUILD_DIR)/workspace.json
+PREFIX ?= $(HOME)/.local
+INSTALL_SDK_BUILD_DIR ?= build-install-sdk
+INSTALL_SDK_PREFIX ?= dist/install-sdk
+INSTALL_STUDIO_BUILD_DIR ?= build-install-studio
 
 controller-run:
 	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
@@ -171,6 +176,15 @@ studio-dev:
 package-studio:
 	@$(MAKE) studio-build STUDIO_BUILD_DIR="$(STUDIO_PACKAGE_BUILD_DIR)" STUDIO_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_STUDIO_DISTRIBUTION=ON"
 	@$(QUIET) package-studio -- python3 "$(STUDIO_SDK_PREFIX)/share/chibi/tools/package_studio.py" --build "$(STUDIO_PACKAGE_BUILD_DIR)" --sdk "$(STUDIO_SDK_PREFIX)" --output "$(STUDIO_OUTPUT)"
+
+# Release Studio and the SDK's chibi, chibi-compile and chibi-player, in their
+# own build trees so development builds stay as they are.
+install:
+	@test -n "$(STUDIO_SOURCE)" && test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'Set STUDIO_SOURCE to the separate Studio repository' >&2; exit 2; }
+	@$(MAKE) package-sdk SDK_BUILD_DIR="$(INSTALL_SDK_BUILD_DIR)" SDK_PREFIX="$(INSTALL_SDK_PREFIX)" SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
+	@$(MAKE) studio-build STUDIO_SDK_PREFIX="$(INSTALL_SDK_PREFIX)" STUDIO_BUILD_DIR="$(INSTALL_STUDIO_BUILD_DIR)" STUDIO_CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Release
+	@cmake --install "$(INSTALL_STUDIO_BUILD_DIR)" --prefix "$(abspath $(PREFIX))"
+	@cmake --install "$(INSTALL_STUDIO_BUILD_DIR)" --prefix "$(abspath $(PREFIX))" --component sdk_tools
 
 build-release:
 	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"

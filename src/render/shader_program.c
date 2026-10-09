@@ -223,7 +223,7 @@ static bool compile(render_programs *programs, program *entry)
         "#define SG_ENTITY_BINDING %d\n"
         "#define SG_COUNTS_BINDING %d\n#define SG_INDICES_BINDING %d\n"
         "#define SG_PARAMETERS_BINDING %d\n#define SG_DEPTH_BINDING "
-        "%d\n%s%s%s\n%s",
+        "%d\n#define SG_SHADOW_BINDING %d\n%s%s%s\n%s",
         RENDER_SHADER_RAMP_VEC4_MAX,
         programs->kind == RENDER_PROGRAM_RASTER_MESH
             ? "#define SG_ACCUMULATE 1\n#define SG_MESH_LAYER 1\n"
@@ -242,6 +242,7 @@ static bool compile(render_programs *programs, program *entry)
                                 ? 1
                                 : previous + 3),
         entry->set.count,
+        entry->set.count + 1,
         scene,
         uniforms,
         graphs,

@@ -566,12 +566,14 @@ static inline GameEnvironment game_environment_defaults()
 
 /* Light from an infinitely distant source, such as the sun. Direction is the
  * world-space direction the light travels; it need not be normalized. Color
- * is 0xRRGGBBAA in Material's linear convention. */
+ * is 0xRRGGBBAA in Material's linear convention. Shadows lets opaque solids
+ * block it. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameDirectionalLight)
 {
     unsigned color NODE_COLOR;
     float intensity;
     CF_V3 direction;
+    bool shadows;
 }
 GameDirectionalLight;
 
@@ -579,7 +581,8 @@ static inline GameDirectionalLight game_directional_light_defaults()
 {
     return (GameDirectionalLight){ .color = 0xffffffffu,
                                    .intensity = 2.8f,
-                                   .direction = { .45f, -.85f, -.4f } };
+                                   .direction = { .45f, -.85f, -.4f },
+                                   .shadows = true };
 }
 
 /* Local scene-linear light. Radius and center elevation use project units;

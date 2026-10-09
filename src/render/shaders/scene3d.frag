@@ -3,6 +3,7 @@ layout(location = 1) in vec3 v_world;
 layout(location = 2) flat in vec4 v_material;
 layout(location = 0) out vec4 result;
 layout(set = 2, binding = 0) uniform sampler2D scene_parameters;
+layout(set = 2, binding = SG_SHADOW_BINDING) uniform sampler2DShadow scene_shadow_map;
 const float PI = 3.141592653589793;
 
 vec4 material_value(int slot)
@@ -58,6 +59,27 @@ vec3 surface_light(vec3 base, float roughness, float metallic, vec3 normal, vec3
     return (diffuse + specular) * nl;
 }
 
+// The sun's visibility: a 3x3 grid of hardware 2x2 comparisons around the
+// surface point, lifted along its geometric normal by up to 2.5 map texels so
+// that sloped surfaces stay in front of their own stored depth.
+float sun_shadow()
+{
+    if (scene_shadow.x <= 0.0) return 1.0;
+    vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
+    float facing = clamp(dot(normal, scene_sun_direction.xyz), 0.0, 1.0);
+    float lift = scene_shadow.z * (0.5 + 2.0 * sqrt(1.0 - facing * facing));
+    vec4 clip = scene_shadow_matrix * vec4(v_world + normal * lift, 1.0);
+    vec2 uv = vec2(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
+    if (any(lessThan(uv, vec2(0))) || any(greaterThan(uv, vec2(1))) || clip.z >= 1.0) return 1.0;
+    float lit = 0.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            lit += textureLod(scene_shadow_map, vec3(uv + vec2(x, y) * scene_shadow.y, clip.z), 0.0);
+        }
+    }
+    return lit / 9.0;
+}
+
 vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)
 {
     float sky = 0.5 + 0.5 * normal.y;
@@ -65,7 +87,7 @@ vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 
     vec3 result = base * (1.0 - metallic) * ambient;
     if (dot(scene_sun_color.rgb, scene_sun_color.rgb) > 0.0) {
         result += surface_light(base, roughness, metallic, normal, view, scene_sun_direction.xyz) *
-                  scene_sun_color.rgb;
+                  scene_sun_color.rgb * sun_shadow();
     }
     for (int i = 0; i < int(scene_light_count.x); i++) {
         vec3 delta = scene_light_positions[i].xyz - v_world;

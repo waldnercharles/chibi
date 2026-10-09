@@ -3,6 +3,11 @@ name "Shapes"
 presentation "3d"
 (array)entities {
     - {
+        name "Environment"
+        prototype "Environment"
+        (array)behaviors
+    }
+    - {
         name "Sun"
         prototype "Sun"
         (array)behaviors

@@ -538,10 +538,21 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEncounterMember)
 }
 GameEncounterMember;
 
+/* Display transform from scene-linear HDR. AgX is filmic and desaturates
+ * highlights; Neutral keeps base colors close to their authored values. */
+typedef enum
+{
+    GAME_TONE_MAPPING_AGX NODE_NAME("AgX"),
+    GAME_TONE_MAPPING_NEUTRAL NODE_NAME("Neutral"),
+} GameToneMapping;
+
 /* Scene-wide display settings. Exposure is in stops; bloom radius is a fraction
  * of viewport height. Zero strength disables bloom. The 3D ambient light blends
  * from the ground color below to the sky color above; colors are 0xRRGGBBAA in
- * Material's linear convention and the intensity scales both. */
+ * Material's linear convention and the intensity scales both. Auto exposure
+ * meters the mean log luminance of the frame's lit pixels to middle gray, then
+ * applies exposure as compensation; it adapts at adaptation_speed per scene
+ * second, from 0.1 to 100, and zero adapts every frame. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 {
     float exposure;
@@ -551,6 +562,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
     unsigned ambient_sky NODE_COLOR;
     unsigned ambient_ground NODE_COLOR;
     float ambient_intensity;
+    GameToneMapping tone_mapping;
+    bool auto_exposure;
+    float adaptation_speed;
 }
 GameEnvironment;
 
@@ -561,7 +575,8 @@ static inline GameEnvironment game_environment_defaults()
                               .bloom_radius = .012f,
                               .ambient_sky = 0x2b3345ffu,
                               .ambient_ground = 0x0f121affu,
-                              .ambient_intensity = 1 };
+                              .ambient_intensity = 1,
+                              .adaptation_speed = 2 };
 }
 
 /* Light from an infinitely distant source, such as the sun. Direction is the

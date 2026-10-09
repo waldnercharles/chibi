@@ -577,6 +577,15 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         REQUIRE(!strcmp(read.title, "Native") && !strcmp(read.icon, "art/icon.png"));
         REQUIRE(read.width == 640 && read.height == 360 && read.fullscreen);
         game_player_application_free(&read);
+        /* An icon outside the resource root is refused, as on reading. */
+        application.icon = "../outside.png";
+        unsigned char *unsafe = NULL;
+        size_t unsafe_length = 0;
+        REQUIRE(
+            !game_player_prepared_write(&spec, &application, &unsafe, &unsafe_length, error, sizeof error)
+        );
+        REQUIRE(!unsafe);
+        application.icon = "art/icon.png";
         game_player_host player_host_context = {
             .components = { .components = GAME_REGISTRY_COMPONENTS,
                             .component_count = GAME_REGISTRY_COMPONENT_COUNT },

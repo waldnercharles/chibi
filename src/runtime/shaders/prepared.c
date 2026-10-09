@@ -12,7 +12,7 @@
 
 static void bounded_count(execution_wire *w, int *count, int maximum)
 {
-    execution_wire_count(w, count, 8);
+    execution_wire_count(w, count, 1);
     if (!w->error && *count > maximum) {
         w->error = "Prepared shader table exceeds limit";
     }

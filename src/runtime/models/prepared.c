@@ -12,7 +12,7 @@
 
 static void count(execution_wire *w, int *n, int limit)
 {
-    execution_wire_count(w, n, 8);
+    execution_wire_count(w, n, 1);
     if (!w->error && *n > limit) {
         w->error = "Prepared model table exceeds limit";
     }

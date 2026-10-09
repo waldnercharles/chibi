@@ -1,10 +1,12 @@
 #include "ecs/component_catalog.h"
 #include "runtime/scenes/prepared.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
 #include "types/value_wire.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -248,35 +250,41 @@ TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_stru
     REQUIRE(*(const unsigned char *)marked.data == 0);
 
     /* Locate the unique field-wise marker header, then corrupt one schema field. */
+    execution_wire encoded = { 0 };
+    uint64_t marker_id = marker.id;
+    execution_wire_u64(&encoded, &marker_id);
     size_t marker_offset = 0;
     int matches = 0;
-    for (size_t i = 0; i + 24 <= length; i++) {
-        uint64_t id = 0;
-        for (int byte = 0; byte < 8; byte++) {
-            id |= (uint64_t)bytes[i + byte] << (8 * byte);
-        }
-        if (id == marker.id) {
+    for (size_t i = 0; i + encoded.size <= length; i++) {
+        if (!memcmp(bytes + i, encoded.data, encoded.size)) {
             marker_offset = i;
             matches++;
         }
     }
+    afree(encoded.data);
     REQUIRE(matches == 1);
     arena storage = { 0 };
     execution_wire wire = { .data = bytes,
                             .size = length,
-                            .offset = marker_offset + 24,
+                            .offset = marker_offset,
                             .reading = true,
                             .storage = &storage };
+    uint64_t id = 0, layout = 0;
+    size_t element_size = 0;
     const char *name = NULL, *key = NULL;
+    execution_wire_u64(&wire, &id);
+    size_t layout_offset = wire.offset;
+    execution_wire_u64(&wire, &layout);
+    execution_wire_size(&wire, &element_size);
     execution_wire_string(&wire, &name);
     execution_wire_string(&wire, &key);
     size_t index_offset = wire.offset;
-    bool header_valid = !wire.error && !strcmp(name, marker.name) &&
-                        !strcmp(key, marker.key);
+    bool header_valid = !wire.error && id == marker.id &&
+                        !strcmp(name, marker.name) && !strcmp(key, marker.key);
     arena_free(&storage);
     REQUIRE(header_valid && index_offset < length);
     changed = xmalloc(length);
-    size_t offsets[] = { marker_offset, marker_offset + 8, index_offset };
+    size_t offsets[] = { marker_offset, layout_offset, index_offset };
     for (int i = 0; i < 3; i++) {
         memcpy(changed, bytes, length);
         changed[offsets[i]] ^= 1;
@@ -320,9 +328,61 @@ TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_stru
     REQUIRE(ecs_world_live_count(world) == 1 && *presence == 0);
     return true;
 }
+TEST_CASE(prepared_integers_roundtrip_in_shortest_form)
+{
+    static const uint64_t words[] = { 0, 127, 128, 16383, 16384, UINT64_MAX };
+    static const size_t word_sizes[] = { 1, 1, 2, 2, 3, 10 };
+    static const int ints[] = { 0, -1, 1, -64, 64, INT_MIN, INT_MAX };
+    static const size_t int_sizes[] = { 1, 1, 1, 1, 2, 5, 5 };
+    for (size_t i = 0; i < sizeof words / sizeof *words; i++) {
+        execution_wire writer = { 0 };
+        uint64_t value = words[i];
+        execution_wire_u64(&writer, &value);
+        REQUIRE(!writer.error && writer.size == word_sizes[i]);
+        execution_wire reader = { .data = writer.data, .size = writer.size, .reading = true };
+        value = 0;
+        execution_wire_u64(&reader, &value);
+        REQUIRE(!reader.error && value == words[i] && reader.offset == writer.size);
+        afree(writer.data);
+    }
+    for (size_t i = 0; i < sizeof ints / sizeof *ints; i++) {
+        execution_wire writer = { 0 };
+        int value = ints[i];
+        execution_wire_int(&writer, &value);
+        REQUIRE(!writer.error && writer.size == int_sizes[i]);
+        execution_wire reader = { .data = writer.data, .size = writer.size, .reading = true };
+        value = 0;
+        execution_wire_int(&reader, &value);
+        REQUIRE(!reader.error && value == ints[i]);
+        afree(writer.data);
+    }
+    static unsigned char overlong[] = { 0x80, 0x00 };
+    static unsigned char too_wide[] = { 0xff, 0xff, 0xff, 0xff, 0xff,
+                                        0xff, 0xff, 0xff, 0xff, 0x02 };
+    static unsigned char truncated[] = { 0x80 };
+    static unsigned char out_of_int[] = { 0x80, 0x80, 0x80, 0x80, 0x10 };
+    uint64_t word = 0;
+    int number = 0;
+    execution_wire reader = { .data = overlong, .size = sizeof overlong, .reading = true };
+    execution_wire_u64(&reader, &word);
+    REQUIRE(reader.error);
+    reader = (execution_wire){ .data = too_wide, .size = sizeof too_wide, .reading = true };
+    execution_wire_u64(&reader, &word);
+    REQUIRE(reader.error);
+    reader = (execution_wire){ .data = truncated, .size = sizeof truncated, .reading = true };
+    execution_wire_u64(&reader, &word);
+    REQUIRE(reader.error);
+    reader = (execution_wire){ .data = out_of_int,
+                               .size = sizeof out_of_int,
+                               .reading = true };
+    execution_wire_int(&reader, &number);
+    REQUIRE(reader.error);
+    return true;
+}
 void test_scene_prepared()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(prepared_integers_roundtrip_in_shortest_form);
     RUN_TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation);
     RUN_TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records);
     RUN_TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_structs);

@@ -11,6 +11,8 @@
  * name, so a module needs nothing from them at runtime. */
 #define INPUT_MAP_TYPE "InputMap"
 #define INPUT_ACTION_TYPE "InputAction"
+/* The most actions an input map holds. */
+#define INPUT_ACTION_MAX 256
 
 /* One action of a project's input map. Any of its controls holds it, and a
  * firing action also holds the Aim of GameInput owners. */

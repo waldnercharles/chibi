@@ -152,16 +152,20 @@ static script_type event_type(source_catalog *c, const av_value *variable)
     }
     return type;
 }
-static void named_event(source_catalog *c, const char *path, const char *name)
+static const script_catalog_capability *find_event(const source_catalog *c, const char *name)
 {
-    if (!name || !*name) {
-        return;
-    }
     for (int i = 0; i < c->view.capability_count; i++) {
         const script_catalog_capability *value = &c->view.capabilities[i];
         if (value->kind == SCRIPT_CAPABILITY_EVENT && !strcmp(value->name, name)) {
-            return;
+            return value;
         }
+    }
+    return NULL;
+}
+static void named_event(source_catalog *c, const char *path, const char *name)
+{
+    if (!name || !*name || find_event(c, name)) {
+        return;
     }
     capability(
         c,
@@ -554,6 +558,38 @@ static char *input_text(source_catalog *c, const char *path)
     }
     return read_source(c, path);
 }
+static bool has_global(const source_catalog *c, const char *name)
+{
+    for (int i = 0; i < c->view.global_count; i++) {
+        if (!strcmp(c->view.globals[i].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Each action is an event of its own, so pressing a control that takes an
+ * existing event's name would dispatch that event instead. Reports each. */
+static bool actions_unclaimed(source_catalog *c, const char *path)
+{
+    bool unclaimed = true;
+    for (int i = 0; i < acount(c->input); i++) {
+        const script_catalog_capability *event = find_event(c, c->input[i].name);
+        if (!event) {
+            continue;
+        }
+        char message[sizeof c->diagnostics->message];
+        snprintf(
+            message,
+            sizeof message,
+            "Input action %s takes the name of the event %s; rename the action",
+            c->input[i].name,
+            event->qualified_name ? event->qualified_name : event->name
+        );
+        error(c, path, (script_range){ 0 }, message);
+        unclaimed = false;
+    }
+    return unclaimed;
+}
 /* The input map's actions are events, and `input.<Action>` reads one: an
  * InputMap field per action holds its name, whose InputAction type reads
  * held and pressed through the native input capabilities. */
@@ -598,6 +634,13 @@ static void input_declarations(source_catalog *c)
             "Input actions need the type names " INPUT_ACTION_TYPE
             " and " INPUT_MAP_TYPE "; rename the type that uses one"
         );
+        return;
+    }
+    if (has_global(c, "input")) {
+        error(c, path, (script_range){ 0 }, "Input actions need the global name input; rename the global that uses it");
+        return;
+    }
+    if (!actions_unclaimed(c, path)) {
         return;
     }
     uint64_t action_type = script_catalog_id("type", INPUT_ACTION_TYPE);

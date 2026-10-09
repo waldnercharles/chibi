@@ -8,9 +8,9 @@ into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
 ## Lighting
 
 - **Directional Light** (`GameDirectionalLight`): color, intensity and the world
-  direction the light travels. A scene has at most one; a second is an error. With
-  none, only ambient and point lights shade the scene. `shadows` lets opaque
-  solids block it (see Shadows).
+  direction the light travels. A scene shows at most one; a second visible one is
+  an error, and hidden ones are left out. With none, only ambient and point lights
+  shade the scene. `shadows` lets opaque solids block it (see Shadows).
 - **Point Light** (`GamePointLight`): up to 32 per view, ranked by estimated
   influence on the camera.
 - **Environment** (`GameEnvironment`): exposure, bloom, and a hemisphere ambient
@@ -77,19 +77,19 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 ## Tests
 
 `python3 tools/test_policy.py tool scene3d` renders a box or a floor in a hidden
-64x64 app. It checks ambient, the directional light, the one-light limit,
-drawing without a rhythm clock, both tone maps, auto exposure's geometric
-mean, background rejection, easing, snapping and settings checks, and sun
-shadows: a box's shadow, no self-shadowing on lit faces, a solid the camera
-culls casting into the view (collected across workers), the depth pass
-leaving earlier queued draws alone, four cascades across a deep view each
-keeping a small shadow sharp, two cascades side by side when the depths
-between hold nothing, and one cascade for a floor that reaches far past a
-shallow view. It runs `test_tools` from the
-desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`. llvmpipe leaks
-112 bytes from its own worker threads, so LeakSanitizer hosts on llvmpipe need
-`ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with Vulkan llvmpipe
-passed 15 cases and 86 assertions in 2.8 seconds on 2026-10-09.
+64x64 app. It checks ambient, the directional light, the one-light limit
+(hidden lights left out), drawing without a rhythm clock, both tone maps, auto
+exposure's geometric mean, background rejection, easing (including slow easing
+finer than a half-float step), snapping and settings checks, and sun shadows: a
+box's shadow, no self-shadowing on lit faces, a solid the camera culls casting
+into the view (collected across workers), the depth pass leaving earlier queued
+draws alone, four cascades across a deep view each keeping a small shadow
+sharp, two cascades side by side when the depths between hold nothing, and one
+cascade for a floor that reaches far past a shallow view. It runs `test_tools`
+from the desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`.
+llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
+llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
+Vulkan llvmpipe passed 17 cases and 91 assertions in 2.3 seconds on 2026-10-09.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

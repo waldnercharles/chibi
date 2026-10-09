@@ -547,12 +547,13 @@ static bool collect_sun(render_scene3d *scene3d, ecs_world *world, const engine 
     int count = 0;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
+        if (!engine_entity_visible(runtime, world, entity)) {
+            continue;
+        }
         if (count++) {
             break;
         }
-        if (engine_entity_visible(runtime, world, entity)) {
-            set_sun(scene3d, GAME_GameDirectionalLight_get_const(world, entity));
-        }
+        set_sun(scene3d, GAME_GameDirectionalLight_get_const(world, entity));
     }
     ecs_query_end(&query);
     if (count > 1) {

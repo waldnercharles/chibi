@@ -3,6 +3,7 @@
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "runtime/component_catalog.h"
+#include "runtime/engine.h"
 #include "runtime/particles.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -26,6 +27,7 @@ static render_scene3d *scene3d;
 static render_scene3d_post *post;
 static game_particles *particles;
 static CF_Pixel pixels[PIXELS];
+static engine *runtime;
 
 /* Looks down at the origin from 45 degrees. */
 static render_scene3d_camera camera()
@@ -51,6 +53,8 @@ static void setup()
 static void teardown()
 {
     backdrop = false;
+    engine_free(runtime);
+    runtime = NULL;
     render_scene3d_free(scene3d);
     render_scene3d_post_free(post);
     game_particles_free(particles);
@@ -139,7 +143,7 @@ static bool render_at(const GameEnvironment *environment, float time)
     if (backdrop) {
         cf_draw_quad_fill(cf_make_aabb((CF_V2){ -SIDE, -SIDE }, (CF_V2){ SIDE, SIDE }), 0);
     }
-    bool drawn = render_scene3d_draw(scene3d, world, particles, &lens, 0, NULL, &settings, (render_skip){ 0 });
+    bool drawn = render_scene3d_draw(scene3d, world, particles, &lens, 0, runtime, &settings, (render_skip){ 0 });
     cf_render_to(canvas, true);
     bool processed = render_scene3d_post_process(post, time);
     cf_app_draw_onto_screen(false);
@@ -215,6 +219,28 @@ TEST_CASE(scene_rejects_a_second_directional_light)
     GameEnvironment environment = game_environment_defaults();
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_error(scene3d), "only one Directional Light"));
+    return true;
+}
+
+TEST_CASE(hidden_directional_lights_neither_shade_nor_count)
+{
+    add_box(0xffffffffu);
+    add_sun(0xff0000ffu, (CF_V3){ 0, -2, 0 });
+    GameDirectionalLight unseen = { .color = 0x00ff00ffu,
+                                    .intensity = 3,
+                                    .direction = { 0, -2, 0 } };
+    ecs_entity hidden = add(GAME_COMPONENT_GameDirectionalLight.id, &unseen);
+    GameRenderState state = { .hidden = true };
+    assert(
+        ecs_world_record_add(world, hidden, GAME_COMPONENT_GameRenderState.id, &state, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    runtime = engine_new(world, NULL);
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    REQUIRE(render(&environment));
+    CF_Pixel lit = top();
+    REQUIRE(lit.colors.r > 150 && lit.colors.r > 2 * lit.colors.g);
     return true;
 }
 
@@ -345,6 +371,32 @@ TEST_CASE(auto_exposure_adapts_over_scene_time)
     environment.auto_exposure = true;
     REQUIRE(render_at(&environment, 0));
     REQUIRE(distance(top(), settled) <= 6);
+    return true;
+}
+
+TEST_CASE(slow_auto_exposure_eases_past_half_float_steps)
+{
+    add_floor();
+    /* Bright enough that half floats hold the metered log2 luminance in coarse
+     * steps; near the target this easing moves it by less than one a frame. */
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
+    sun->intensity = 2048;
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.auto_exposure = true;
+    environment.adaptation_speed = 0;
+    REQUIRE(render(&environment));
+    CF_Pixel target = top();
+    sun->intensity /= 1.414f;
+    REQUIRE(render(&environment));
+    sun->intensity *= 1.414f;
+    environment.adaptation_speed = 1.8f;
+    bool drawn = true;
+    for (int frame = 1; frame <= 110; frame++) {
+        drawn &= render_at(&environment, frame / 60.0f);
+    }
+    REQUIRE(drawn && distance(top(), target) <= 6);
     return true;
 }
 
@@ -557,11 +609,13 @@ void test_render_scene3d()
     RUN_TEST_CASE(environment_ambient_lights_unlit_faces);
     RUN_TEST_CASE(directional_light_shades_faces_it_faces);
     RUN_TEST_CASE(scene_rejects_a_second_directional_light);
+    RUN_TEST_CASE(hidden_directional_lights_neither_shade_nor_count);
     RUN_TEST_CASE(neutral_tone_mapping_keeps_saturated_colors);
     RUN_TEST_CASE(auto_exposure_meters_the_frame_to_middle_gray);
     RUN_TEST_CASE(auto_exposure_meters_the_geometric_mean);
     RUN_TEST_CASE(auto_exposure_ignores_an_empty_background);
     RUN_TEST_CASE(auto_exposure_adapts_over_scene_time);
+    RUN_TEST_CASE(slow_auto_exposure_eases_past_half_float_steps);
     RUN_TEST_CASE(directional_light_casts_shadows);
     RUN_TEST_CASE(solids_outside_the_view_cast_shadows_into_it);
     RUN_TEST_CASE(shadow_pass_leaves_earlier_draws_queued);

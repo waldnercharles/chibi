@@ -5440,8 +5440,16 @@ static int read_asset_file(
         return CHIBI_AUTOMATION_IO_ERROR;
     }
     char *name = asset_name(ref->family, ref->filename, *json);
-    snprintf(ref->name, sizeof ref->name, "%s", name);
+    /* The player refuses a longer name, and a shorter copy would name another. */
+    bool fits = strlen(name) < sizeof ref->name;
+    snprintf(ref->name, sizeof ref->name, "%s", fits ? name : "");
     free(name);
+    if (!fits) {
+        free(*json);
+        *json = NULL;
+        snprintf(error, error_size, "%s declares a name longer than %d bytes", ref->relative, GAME_PROTOTYPE_NAME_MAX);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
     return CHIBI_AUTOMATION_OK;
 }
 
@@ -5502,7 +5510,18 @@ static int find_prototype(
         return CHIBI_AUTOMATION_IO_ERROR;
     }
     int status = CHIBI_AUTOMATION_NOT_FOUND;
-    for (struct dirent *entry; (entry = readdir(directory));) {
+    for (;;) {
+        errno = 0; /* readdir's end and its failure both return NULL */
+        struct dirent *entry = readdir(directory);
+        if (!entry) {
+            if (errno) {
+                snprintf(error, error_size, "could not read %s: %s", family->folder, strerror(errno));
+                free(*json);
+                *json = NULL;
+                status = CHIBI_AUTOMATION_IO_ERROR;
+            }
+            break;
+        }
         asset_ref candidate = { .family = family };
         if (!valid_asset_filename(family, entry->d_name) ||
             strlen(entry->d_name) >= sizeof candidate.filename) {
@@ -5545,7 +5564,7 @@ static int find_prototype(
             free(text);
             free(*json);
             *json = NULL;
-            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            status = CHIBI_AUTOMATION_CONFLICT;
             break;
         }
         *ref = candidate;
@@ -6707,9 +6726,12 @@ static int handle_new_asset(const char *root, yyjson_val *request, response *res
         }
         /* A lookup that failed to read could have missed one. */
         if (found != CHIBI_AUTOMATION_NOT_FOUND) {
-            bool taken = found == CHIBI_AUTOMATION_OK ||
-                         found == CHIBI_AUTOMATION_VALIDATION_ERROR;
-            response_error(result, exit_code, taken ? CHIBI_AUTOMATION_CONFLICT : found, error);
+            response_error(
+                result,
+                exit_code,
+                found == CHIBI_AUTOMATION_OK ? CHIBI_AUTOMATION_CONFLICT : found,
+                error
+            );
             return -1;
         }
     }

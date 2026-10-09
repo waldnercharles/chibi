@@ -174,14 +174,14 @@ start scene inside them is reported once; a UI document named by the
 manifest or a scene must exist, and markup that is a folder or a link is
 refused; a scene's missing prototype or behavior, and each syntax error in a
 source, is one error; a project saved by an earlier build is reported, not
-upgraded; the application icon must decode as a PNG and a long project name
+upgraded, and one from a newer build needs that build; the application icon must decode as a PNG and a long project name
 needs a title; a prototype that includes another validates, runs in a scene
 and keeps its include through `--format`, while a missing include is
 reported and the included prototype's behaviors stay its own references; a
 prototype is found by the name it declares, even when another file bears that
 name or the name could not name a file, `new_asset` refuses a declared name,
-two declarations of one name are reported, and a file the search cannot read
-fails it; a scene runs as a scenario in a project that has a material; a
+two declarations of one name are a conflict, and a file the search cannot read,
+or one declaring a name longer than the player takes, fails it; a scene runs as a scenario in a project that has a material; a
 scene requested by its file name runs, and reloads, under its own name; and in
 a project whose manifest names another content folder, assets are
 scaffolded, validated, run, formatted, found and reported there under their

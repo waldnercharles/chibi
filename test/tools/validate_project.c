@@ -11,6 +11,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* The longest prototype name the player takes, GAME_PROTOTYPE_NAME_MAX. */
+#define PROTOTYPE_NAME_MAX 1024
+
 static char program[4096];
 static char root[64], log_path[96];
 static yyjson_doc *reply;
@@ -70,6 +73,13 @@ static const char *failure()
 {
     yyjson_val *error = yyjson_obj_get(yyjson_doc_get_root(reply), "error");
     return yyjson_get_str(yyjson_obj_get(error, "message"));
+}
+
+/* The code of the last reply's error. */
+static const char *failure_code()
+{
+    yyjson_val *error = yyjson_obj_get(yyjson_doc_get_root(reply), "error");
+    return yyjson_get_str(yyjson_obj_get(error, "code"));
 }
 
 /* The message of the diagnostic at `index` in `diagnostics`. */
@@ -520,6 +530,26 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     write_file("game/content/prototypes/long.kdl", text);
     snprintf(request, sizeof request, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"%s\"}", long_name);
     REQUIRE(ctl(true, request) == 0 && reads(yyjson_get_str(result("name")), long_name));
+    /* But not one longer than the player takes, which a shorter copy would
+     * misname. */
+    char huge[PROTOTYPE_NAME_MAX + 2], huge_text[PROTOTYPE_NAME_MAX + 16],
+        huge_file[256];
+    memset(huge, 'H', sizeof huge - 1);
+    huge[sizeof huge - 1] = '\0';
+    snprintf(huge_text, sizeof huge_text, "name \"%s\"\n", huge);
+    write_file("game/content/prototypes/huge.kdl", huge_text);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"path\":\"content/prototypes/huge.kdl\"}") !=
+        0
+    );
+    REQUIRE(reads(failure(), "content/prototypes/huge.kdl declares a name longer than 1024 bytes"));
+    /* And a new prototype waits until every prototype can be read. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Wing\"}") != 0
+    );
+    REQUIRE(reads(failure_code(), "validation_failed"));
+    path(huge_file, sizeof huge_file, "game/content/prototypes/huge.kdl");
+    REQUIRE(unlink(huge_file) == 0);
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
         0
@@ -548,6 +578,7 @@ TEST_CASE(prototypes_are_found_by_declared_name)
         0
     );
     REQUIRE(failure() && strstr(failure(), "both declare the prototype 'Hull'"));
+    REQUIRE(reads(failure_code(), "asset_conflict"));
     REQUIRE(validate() != 0);
     /* Even when one of them is the file named after it, which a lookup
      * reads first, the project is refused. */

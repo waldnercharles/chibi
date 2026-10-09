@@ -29,6 +29,9 @@ NATIVE = {
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
     ('--sdf-coverage',): 'Reviewed hidden 128x128 app: production warped-SDF shape, plain and bordered, three phases, instanced and tiled draw paths against its CPU field, readback; GPU; docs/testing.md',
+    ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky and ramps with readback; GPU; docs/rendering-3d.md',
+    ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
+    ('--material-ramps',): 'Reviewed hidden 64x64 app: four color ramp table cases through 2D and material raster shaders; GPU; docs/testing.md',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
     ('--prepare-corpora-sljit', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive six-project SLJIT preparation, shared 256 sources/8 MiB, compilation only, no execution/GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
@@ -147,14 +150,14 @@ TOOLS = {
     'sdf-coverage': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-coverage'],
     # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure, the Environment
     # sky and its light, and color ramps.
-    'scene3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene3d'],
-    # The same renders on GLES, the WebGL 2 fallback's backend. GLES needs a display, so Xvfb
-    # provides one; Linux only.
-    'scene3d-gles': ['xvfb-run', '-a', str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene3d-gles'],
+    'scene3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d'],
+    # The same renders on GLES, the WebGL 2 fallback's backend. GLES needs a display, so the
+    # agent runs it under xvfb-run; Linux only.
+    'scene3d-gles': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-gles'],
     # Four reviewed hidden-app 64x64 cases: a ramp past 4 KB of the ramp table through a 2D draw
     # shader and the material raster, every program kind compiling the table, and the table
     # counted among a raster batch's samplers.
-    'material-ramps': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--material-ramps'],
+    'material-ramps': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-ramps'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene-prepared'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.
@@ -478,7 +481,8 @@ def main():
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'player-space-cadet-vm', 'player-space-cadet-sljit', 'studio-starter-startup', 'studio-source-edit',
-                            'interior-border', 'sdf-visibility', 'sdf-coverage'):
+                            'interior-border', 'sdf-visibility', 'sdf-coverage', 'scene3d', 'scene3d-gles',
+                            'material-ramps'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])
         return run_commands([TOOLS[arguments[0]]])

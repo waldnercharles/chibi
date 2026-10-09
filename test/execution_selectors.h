@@ -56,3 +56,10 @@ CHIBI_GPU_SELECTOR("--sdf-visibility")
 /* The production warped-SDF shape in a hidden 128x128 app, through the
  * instanced and tiled draw paths, against its CPU field, with readback. */
 CHIBI_GPU_SELECTOR("--sdf-coverage")
+/* The 3D renderer's cases in a hidden 64x64 app, with readback. */
+CHIBI_GPU_SELECTOR("--scene3d")
+/* The same cases on GLES, under xvfb-run on Linux. */
+CHIBI_GPU_SELECTOR("--scene3d-gles")
+/* Color ramp table cases through 2D and material raster shaders in a hidden
+ * 64x64 app, with readback. */
+CHIBI_GPU_SELECTOR("--material-ramps")

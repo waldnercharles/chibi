@@ -440,6 +440,22 @@ TEST_CASE(sky_irradiance_integrates_the_cosine_lobe)
     REQUIRE(checked == 26);
     return true;
 }
+/* Radiance past the half range saturates in the faces, so the brightest RGBE
+ * sky lights as an even sky of 65504 rather than with infinite coefficients. */
+TEST_CASE(sky_irradiance_saturates_with_the_faces)
+{
+    const float pi = 3.14159265f, saturated = pi * 65504;
+    float coefficients[9][3];
+    render_sky sky = uniform_sky(64, (const unsigned char[4]){ 255, 255, 255, 255 });
+    render_sky_irradiance(&sky, coefficients);
+    render_sky_free(&sky);
+    const float up[3] = { 0, 1, 0 }, side[3] = { 1, 0, 0 };
+    for (int c = 0; c < 3; c++) {
+        REQUIRE(fabsf(irradiance(coefficients, up, c) - saturated) < saturated * .005f);
+        REQUIRE(fabsf(irradiance(coefficients, side, c) - saturated) < saturated * .005f);
+    }
+    return true;
+}
 static float from_half(uint16_t h)
 {
     int exponent = h >> 10 & 0x1f, mantissa = h & 0x3ff;
@@ -602,6 +618,7 @@ void test_render_resources()
     RUN_TEST_CASE(sky_faces_follow_the_gpu_cube_map_layout);
     RUN_TEST_CASE(sky_faces_hold_texels_as_halves);
     RUN_TEST_CASE(sky_irradiance_integrates_the_cosine_lobe);
+    RUN_TEST_CASE(sky_irradiance_saturates_with_the_faces);
     RUN_TEST_CASE(split_sum_table_integrates_the_specular_lobe);
     RUN_TEST_CASE(prepared_skies_publish_with_their_generation);
     pu_clear_setup();

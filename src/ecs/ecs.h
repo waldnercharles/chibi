@@ -118,7 +118,8 @@ typedef void (*ecs_observer)(ecs_world *, ecs_event, ecs_entity, ecs_component_i
  *   ECS_UP looks for the id on the nearest ancestor along an exclusive
  *   traversable relationship (ChildOf unless trav_rel names another), and
  *   ECS_SELF_UP checks the source first. cascade orders results by depth
- *   along that relationship, parents first.
+ *   along that relationship, parents first; a query's cascade terms must all
+ *   use the same relationship.
  * - Operators: ECS_NOT inverts a term, ECS_OPTIONAL always holds, and
  *   consecutive ECS_OR terms hold when any of them does. ECS_TERM_OPEN and
  *   ECS_TERM_CLOSE bracket a scope that acts as one term with the open's

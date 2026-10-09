@@ -44,6 +44,12 @@ static const ecs_relationship_desc owner_desc = {
     .name = "Owner",
     .traits = ECS_REL_EXCLUSIVE,
 };
+static const ecs_relationship_desc contained_in_desc = {
+    .id = 953,
+    .key = "sdk.query.contained_in",
+    .name = "ContainedIn",
+    .traits = ECS_REL_EXCLUSIVE | ECS_REL_TRAVERSABLE,
+};
 
 static ecs_world *world;
 
@@ -55,6 +61,7 @@ static void prepare_world()
     assert(ecs_world_register_component(world, &frozen_desc, NULL) == ECS_OK);
     assert(ecs_world_register_relationship(world, &likes_desc, NULL) == ECS_OK);
     assert(ecs_world_register_relationship(world, &owner_desc, NULL) == ECS_OK);
+    assert(ecs_world_register_relationship(world, &contained_in_desc, NULL) == ECS_OK);
 }
 
 static void release_world()
@@ -250,6 +257,16 @@ TEST_CASE(ecs_cascade_visits_parents_before_children)
     }
     REQUIRE(!ecs_query_next(&query, &found));
     ecs_query_end(&query);
+    ecs_term mixed[] = {
+        { .id = position_desc.id },
+        { .oper = ECS_OPTIONAL, .id = position_desc.id, .trav = ECS_UP, .cascade = true },
+        { .oper = ECS_OPTIONAL,
+          .id = position_desc.id,
+          .trav = ECS_UP,
+          .trav_rel = contained_in_desc.id,
+          .cascade = true },
+    };
+    REQUIRE(ecs_query_begin_terms(world, &query, mixed, 3) == ECS_ERR_ARGUMENT);
     return true;
 }
 

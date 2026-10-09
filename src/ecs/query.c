@@ -53,6 +53,7 @@ typedef struct
     int skip;        /* Top operand the candidates already satisfy, or -1. */
     bool binding;    /* Some top operand is a generator. */
     uint32_t *slots; /* Cascade candidates, owned. */
+    const ecs_relationship *cascade; /* What cascade orders by, or NULL. */
     ecs_entity vars[ECS_QUERY_VARS + 1];
     uint32_t this_slot;
     bool resume;
@@ -149,6 +150,13 @@ static int compile_term(parser *p, const ecs_term *term, bool top)
         if (!compiled.trav) {
             return ECS_ERR_ARGUMENT;
         }
+    }
+    if (term->cascade) {
+        /* One depth order per query: cascades must share a relationship. */
+        if (p->plan->cascade && p->plan->cascade != compiled.trav) {
+            return ECS_ERR_ARGUMENT;
+        }
+        p->plan->cascade = compiled.trav;
     }
     if (compiled.pair && term->target_var > 0 && !p->known[term->target_var]) {
         if (!top || term->trav != ECS_SELF) {
@@ -622,14 +630,12 @@ static void finish_plan(ecs_world *world, ecs_query *query, query_plan *plan)
     query->plan = plan;
     choose_candidates(query, plan);
     bool named_disabled = false;
-    const ecs_relationship *ordered = NULL;
     for (int i = 0; i < acount(plan->terms); i++) {
         named_disabled |= plan->terms[i].term.id == ECS_DISABLED;
-        ordered = plan->terms[i].term.cascade ? plan->terms[i].trav : ordered;
     }
     query->disabled = skipped_disabled(world, named_disabled);
-    if (ordered) {
-        cascade(query, plan, ordered);
+    if (plan->cascade) {
+        cascade(query, plan, plan->cascade);
     }
 }
 

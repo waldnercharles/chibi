@@ -125,7 +125,7 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     add_library(chibi_source_runtime_consumer OBJECT
         ../runtime/whole_math.c ../runtime/whole_integer.c ../runtime/whole_conversion.c
         ../runtime/owned_tick.c ../runtime/parallel_tick.c ../runtime/whole_alias.c ../runtime/persistent_store.c
-        ../authoring/new_asset.c
+        ../authoring/new_asset.c ../authoring/asset_refactor.c
         ../support/reflected_types.c)
     target_include_directories(chibi_source_runtime_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_source_runtime_consumer PRIVATE Chibi::authoring Chibi::asset_authoring

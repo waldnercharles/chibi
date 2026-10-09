@@ -44,6 +44,7 @@ void test_persistent_stores();
 void test_parallel_ticks();
 void test_owned_ticks();
 void test_new_asset();
+void test_asset_refactor();
 static bool source_runtime_active;
 bool test_source_runtime_active()
 {
@@ -111,9 +112,10 @@ int main(int argc, char **argv)
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
-    bool source_features = false, source_numeric = false, source_material = false,
-         source_presentation = false, system_schedule = false,
-         source_systems = false, source_edit = false, new_asset = false;
+    bool source_features = false, source_numeric = false,
+         source_material = false, source_presentation = false,
+         system_schedule = false, source_systems = false, source_edit = false,
+         new_asset = false, asset_refactor = false;
     int corpus = 0;
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
@@ -125,6 +127,7 @@ int main(int argc, char **argv)
     owned_tick = argc == 2 && !strcmp(argv[1], "--owned-tick");
     parallel_tick = argc == 2 && !strcmp(argv[1], "--parallel-tick");
     new_asset = argc == 2 && !strcmp(argv[1], "--new-asset");
+    asset_refactor = argc == 2 && !strcmp(argv[1], "--asset-refactor");
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
     shader_parameters = argc == 2 && !strcmp(argv[1], "--shader-parameters-prepared");
@@ -167,13 +170,13 @@ int main(int argc, char **argv)
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
     if (argc != 1 && !corpus && !shader_parameters && !source_edit && !new_asset &&
-        !package && !unit && !query_benchmark && !prepared && !read && !scene &&
-        !scene_prepared && !native && !native_values && !native_catalog &&
-        !physics && !transforms && !render_resources && !interior_border &&
-        !sdf_visibility && !scene3d && !material_ramps && !box3d && !sky_files &&
-        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
-        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
-        !source_features && !source_numeric && !source_material &&
+        !asset_refactor && !package && !unit && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !native && !native_values &&
+        !native_catalog && !physics && !transforms && !render_resources &&
+        !interior_border && !sdf_visibility && !scene3d && !material_ramps &&
+        !box3d && !sky_files && !persistent_store && !whole_alias && !whole_math &&
+        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
+        !parallel_tick && !source_features && !source_numeric && !source_material &&
         !source_presentation && !system_schedule && !source_systems &&
         !validate_project && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
@@ -195,7 +198,8 @@ int main(int argc, char **argv)
             "--parallel-tick | --source-native-features | "
             "--source-native-numeric-queries | --source-native-material | "
             "--source-presentation | --system-schedule | --source-systems | "
-            "--source-edit | --new-asset | --shader-parameters-prepared | "
+            "--source-edit | --new-asset | --asset-refactor | "
+            "--shader-parameters-prepared | "
             "--semantic-corpora "
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
             "manifest]\n",
@@ -207,11 +211,12 @@ int main(int argc, char **argv)
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = corpus || shader_parameters || source_edit ||
-                            new_asset || system_schedule || source_systems ||
-                            persistent_store || source_presentation || whole_alias ||
-                            whole_math || whole_integer || whole_conversion ||
-                            whole_select || owned_tick || parallel_tick ||
-                            source_features || source_numeric || source_material;
+                            new_asset || asset_refactor || system_schedule ||
+                            source_systems || persistent_store ||
+                            source_presentation || whole_alias || whole_math ||
+                            whole_integer || whole_conversion || whole_select ||
+                            owned_tick || parallel_tick || source_features ||
+                            source_numeric || source_material;
     if (source_runtime_active) {
 #ifdef CHIBI_TEST_SOURCE_FEATURES
         if (corpus) {
@@ -239,6 +244,8 @@ int main(int argc, char **argv)
 #endif
             if (new_asset) {
             test_new_asset();
+        } else if (asset_refactor) {
+            test_asset_refactor();
         } else if (persistent_store) {
             test_persistent_stores();
         } else if (whole_alias) {

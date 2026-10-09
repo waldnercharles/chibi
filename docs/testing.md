@@ -165,6 +165,10 @@ by a file, and a family folder or content folder that is a symbolic link out
 of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
+`--asset-refactor` admits one case: renaming a prototype that a nested
+prototype child uses plans a rewrite of that child in its parent's text.
+Three in-memory prototypes, no files, CPU only.
+
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
 sixteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new

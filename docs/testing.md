@@ -166,7 +166,7 @@ of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-fifteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+sixteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
@@ -183,7 +183,8 @@ name or the name could not name a file, `new_asset` refuses a declared name,
 two declarations of one name are a conflict, and a file the search cannot read,
 or one declaring a name longer than the player takes, fails it; a scene runs as
 a scenario in a project that has a material; a scene requested by its file name
-runs, and reloads, under its own name; a scenario and validation accept a real
+runs, and reloads, under its own name; a scenario's controls hold the input
+map's actions; a scenario and validation accept a real
 Ogg Vorbis sound, but refuse copies whose headers or audio packets players
 cannot decode; sounds that fit the player's resource count alone, but not with
 the project's other resources, fail validation as they fail compiling; and in a

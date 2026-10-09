@@ -439,6 +439,274 @@ TEST_CASE(ecs_managed_storage_retires_on_remove_destroy_and_world_free)
     return true;
 }
 
+typedef struct
+{
+    ecs_event event;
+    uint32_t slot;
+    ecs_component_id component;
+    float amount; /* Record value seen by the observer, or -1 when absent. */
+    bool tagged;
+} observed_event;
+
+static observed_event observed[32];
+static int observed_count;
+
+static void record_event(ecs_world *w, ecs_event event, ecs_entity entity, ecs_component_id component, void *)
+{
+    assert(observed_count < (int)(sizeof observed / sizeof observed[0]));
+    const sdk_record *row = ecs_component_data_const(w, entity, record_desc.id);
+    observed[observed_count++] = (observed_event){
+        .event = event,
+        .slot = entity.slot,
+        .component = component,
+        .amount = row ? row->amount : -1,
+        .tagged = ecs_component_has(w, entity, tag_desc.id),
+    };
+}
+
+static bool observed_is(int index, ecs_event event, ecs_entity entity, ecs_component_id component, float amount)
+{
+    const observed_event *e = &observed[index];
+    return e->event == event && e->slot == entity.slot &&
+           e->component == component && e->amount == amount;
+}
+
+static void observe_all(ecs_component_id component)
+{
+    assert(ecs_world_observe(world, ECS_ON_ADD, component, record_event, NULL) > 0);
+    assert(ecs_world_observe(world, ECS_ON_SET, component, record_event, NULL) > 0);
+    assert(ecs_world_observe(world, ECS_ON_REMOVE, component, record_event, NULL) > 0);
+}
+
+TEST_CASE(ecs_observers_see_add_set_and_remove_at_the_sync_point)
+{
+    observed_count = 0;
+    REQUIRE(ecs_world_register_component(world, &tag_desc, NULL) == ECS_OK);
+    observe_all(record_desc.id);
+    ecs_entity entity = ecs_world_create_entity(world);
+    sdk_record initial = { .amount = 3 };
+    REQUIRE(ecs_world_record_add(world, entity, record_desc.id, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, entity, tag_desc.id, NULL, 1) == ECS_OK);
+    REQUIRE(observed_count == 0);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(observed_count == 2);
+    REQUIRE(
+        observed_is(0, ECS_ON_ADD, entity, record_desc.id, 3) && !observed[0].tagged
+    );
+    REQUIRE(observed_is(1, ECS_ON_SET, entity, record_desc.id, 3));
+    pin_value amount = { .type = PIN_F32, .f = 5 };
+    REQUIRE(ecs_component_write_field(world, entity, record_desc.id, 0, amount) == ECS_OK);
+    amount.f = 6;
+    REQUIRE(ecs_component_write_value(world, entity, record_desc.id, 0, amount, amount) == ECS_OK);
+    REQUIRE(ecs_world_record_remove(world, entity, record_desc.id, 0) == ECS_OK);
+    REQUIRE(observed_count == 2);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(observed_count == 4);
+    REQUIRE(observed_is(2, ECS_ON_SET, entity, record_desc.id, 6));
+    REQUIRE(observed_is(3, ECS_ON_REMOVE, entity, record_desc.id, 6));
+    REQUIRE(!ecs_component_has(world, entity, record_desc.id));
+    REQUIRE(ecs_world_record_add(world, entity, record_desc.id, NULL, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(
+        observed_count == 5 && observed_is(4, ECS_ON_ADD, entity, record_desc.id, 0)
+    );
+    return true;
+}
+
+TEST_CASE(ecs_destroy_notifies_the_entity_and_each_component_before_removal)
+{
+    observed_count = 0;
+    REQUIRE(ecs_world_register_component(world, &tag_desc, NULL) == ECS_OK);
+    ecs_entity entity = ecs_world_create_entity(world);
+    sdk_record initial = { .amount = 9 };
+    REQUIRE(ecs_world_record_add(world, entity, record_desc.id, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, entity, tag_desc.id, NULL, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_world_observe(world, ECS_ON_REMOVE, tag_desc.id, record_event, NULL) > 0);
+    REQUIRE(ecs_world_observe(world, ECS_ON_DESTROY, 0, record_event, NULL) > 0);
+    REQUIRE(ecs_world_observe(world, ECS_ON_REMOVE, record_desc.id, record_event, NULL) > 0);
+    REQUIRE(ecs_world_destroy_entity(world, entity) == ECS_OK);
+    REQUIRE(observed_count == 3);
+    REQUIRE(observed_is(0, ECS_ON_DESTROY, entity, 0, 9) && observed[0].tagged);
+    REQUIRE(
+        observed_is(1, ECS_ON_REMOVE, entity, record_desc.id, 9) && observed[1].tagged
+    );
+    REQUIRE(observed_is(2, ECS_ON_REMOVE, entity, tag_desc.id, 9) && observed[2].tagged);
+    REQUIRE(!ecs_entity_is_alive(world, entity));
+    return true;
+}
+
+TEST_CASE(ecs_rows_destroyed_later_in_the_batch_still_report_their_set)
+{
+    observed_count = 0;
+    observe_all(record_desc.id);
+    ecs_entity entity = ecs_world_create_entity(world);
+    sdk_record initial = { .amount = 4 };
+    REQUIRE(ecs_world_record_add(world, entity, record_desc.id, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_destroy(world, entity, 1) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(observed_count == 3);
+    REQUIRE(observed_is(0, ECS_ON_ADD, entity, record_desc.id, 4));
+    REQUIRE(observed_is(1, ECS_ON_SET, entity, record_desc.id, 4));
+    REQUIRE(observed_is(2, ECS_ON_REMOVE, entity, record_desc.id, 4));
+    return true;
+}
+
+static ecs_entity follower;
+
+static void tag_on_add(ecs_world *w, ecs_event, ecs_entity entity, ecs_component_id, void *)
+{
+    assert(ecs_world_record_add(w, entity, tag_desc.id, NULL, 0) == ECS_OK);
+}
+
+static void destroy_follower(ecs_world *w, ecs_event, ecs_entity entity, ecs_component_id, void *)
+{
+    if (entity.slot != follower.slot) {
+        assert(ecs_world_record_destroy(w, follower, 0) == ECS_OK);
+    }
+}
+
+TEST_CASE(ecs_observer_commands_apply_in_the_same_sync_point)
+{
+    REQUIRE(ecs_world_register_component(world, &tag_desc, NULL) == ECS_OK);
+    REQUIRE(ecs_world_observe(world, ECS_ON_ADD, record_desc.id, tag_on_add, NULL) > 0);
+    REQUIRE(ecs_world_observe(world, ECS_ON_DESTROY, 0, destroy_follower, NULL) > 0);
+    ecs_entity leader = ecs_world_create_entity(world);
+    follower = ecs_world_create_entity(world);
+    REQUIRE(ecs_world_record_add(world, leader, record_desc.id, NULL, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_component_has(world, leader, tag_desc.id));
+    REQUIRE(ecs_world_command_count(world) == 0);
+    REQUIRE(ecs_world_destroy_entity(world, leader) == ECS_OK);
+    REQUIRE(!ecs_entity_is_alive(world, leader) && !ecs_entity_is_alive(world, follower));
+    REQUIRE(ecs_world_live_count(world) == 0);
+    return true;
+}
+
+static int tagged_seen;
+
+static void count_tagged(ecs_world *w, ecs_event, ecs_entity, ecs_component_id, void *)
+{
+    ecs_query q;
+    assert(ecs_query_begin(w, &q, &tag_desc.id, 1) == ECS_OK);
+    ecs_entity found;
+    while (ecs_query_next(&q, &found)) {
+        tagged_seen++;
+    }
+    ecs_query_end(&q);
+}
+
+TEST_CASE(ecs_observer_queries_skip_rows_removed_earlier_in_the_batch)
+{
+    REQUIRE(ecs_world_register_component(world, &tag_desc, NULL) == ECS_OK);
+    ecs_entity entities[3];
+    for (int i = 0; i < 3; i++) {
+        entities[i] = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_record_add(world, entities[i], tag_desc.id, NULL, 0) == ECS_OK);
+    }
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_world_observe(world, ECS_ON_DESTROY, 0, count_tagged, NULL) > 0);
+    tagged_seen = 0;
+    REQUIRE(ecs_world_record_destroy(world, entities[0], 0) == ECS_OK);
+    REQUIRE(ecs_world_record_destroy(world, entities[1], 1) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(tagged_seen == 3 + 2);
+    return true;
+}
+
+static int observer_id;
+
+static void observe_while_applying(ecs_world *w, ecs_event, ecs_entity, ecs_component_id, void *)
+{
+    assert(ecs_world_observe(w, ECS_ON_DESTROY, 0, record_event, NULL) == ECS_ERR_ITERATING);
+    assert(ecs_world_unobserve(w, observer_id) == ECS_ERR_ITERATING);
+    assert(ecs_world_apply_commands(w) == ECS_ERR_ITERATING);
+}
+
+TEST_CASE(ecs_set_marks_coalesce_in_slot_order_until_unobserved)
+{
+    observed_count = 0;
+    ecs_entity entities[3];
+    for (int i = 0; i < 3; i++) {
+        entities[i] = ecs_world_create_entity(world);
+        REQUIRE(ecs_world_record_add(world, entities[i], record_desc.id, NULL, 0) == ECS_OK);
+    }
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(
+        ecs_world_observe(world, ECS_ON_DESTROY, record_desc.id, record_event, NULL) == ECS_ERR_ARGUMENT
+    );
+    REQUIRE(ecs_world_observe(world, ECS_ON_SET, 0, record_event, NULL) == ECS_ERR_ARGUMENT);
+    REQUIRE(ecs_world_observe(world, ECS_ON_SET, tag_desc.id, record_event, NULL) == ECS_ERR_COMPONENT);
+    observer_id = ecs_world_observe(world, ECS_ON_SET, record_desc.id, record_event, NULL);
+    REQUIRE(observer_id > 0);
+    REQUIRE(
+        ecs_world_observe(world, ECS_ON_SET, record_desc.id, observe_while_applying, NULL) > 0
+    );
+    pin_value amount = { .type = PIN_F32, .f = 1 };
+    for (int i = 2; i >= 0; i--) {
+        amount.f = (float)(i + 1);
+        REQUIRE(ecs_component_write_field(world, entities[i], record_desc.id, 0, amount) == ECS_OK);
+    }
+    ((sdk_record *)ecs_component_data(world, entities[1], record_desc.id))->amount = 7;
+    REQUIRE(ecs_component_modified(world, entities[1], record_desc.id) == ECS_OK);
+    REQUIRE(ecs_component_modified(world, entities[1], tag_desc.id) == ECS_ERR_COMPONENT);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(observed_count == 3);
+    REQUIRE(observed_is(0, ECS_ON_SET, entities[0], record_desc.id, 1));
+    REQUIRE(observed_is(1, ECS_ON_SET, entities[1], record_desc.id, 7));
+    REQUIRE(observed_is(2, ECS_ON_SET, entities[2], record_desc.id, 3));
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK && observed_count == 3);
+    REQUIRE(ecs_world_unobserve(world, observer_id) == ECS_OK);
+    REQUIRE(ecs_world_unobserve(world, observer_id) == ECS_ERR_ARGUMENT);
+    REQUIRE(ecs_component_write_field(world, entities[0], record_desc.id, 0, amount) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK && observed_count == 3);
+    return true;
+}
+
+static void clamp_amount(ecs_world *w, ecs_event, ecs_entity entity, ecs_component_id, void *)
+{
+    pin_value amount = { .type = PIN_F32, .f = 10 };
+    assert(ecs_component_write_field(w, entity, record_desc.id, 0, amount) == ECS_OK);
+}
+
+static void reject_dying_commands(ecs_world *w, ecs_event, ecs_entity entity, ecs_component_id, void *)
+{
+    assert(ecs_world_record_remove(w, entity, tag_desc.id, 0) == ECS_ERR_ENTITY);
+    assert(ecs_world_record_add(w, entity, excluded_desc.id, NULL, 0) == ECS_ERR_ENTITY);
+    assert(!ecs_world_create_entity(w).slot);
+    assert(ecs_world_destroy_entity(w, follower) == ECS_ERR_ITERATING);
+}
+
+TEST_CASE(ecs_observers_rewrite_rows_without_firing_again)
+{
+    observed_count = 0;
+    REQUIRE(ecs_world_register_component(world, &tag_desc, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &excluded_desc, NULL) == ECS_OK);
+    REQUIRE(ecs_world_observe(world, ECS_ON_ADD, record_desc.id, clamp_amount, NULL) > 0);
+    REQUIRE(ecs_world_observe(world, ECS_ON_SET, record_desc.id, clamp_amount, NULL) > 0);
+    REQUIRE(ecs_world_observe(world, ECS_ON_SET, record_desc.id, record_event, NULL) > 0);
+    REQUIRE(
+        ecs_world_observe(world, ECS_ON_REMOVE, record_desc.id, reject_dying_commands, NULL) > 0
+    );
+    ecs_entity entity = ecs_world_create_entity(world);
+    follower = ecs_world_create_entity(world);
+    sdk_record initial = { .amount = 3 };
+    REQUIRE(ecs_world_record_add(world, entity, record_desc.id, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, entity, tag_desc.id, NULL, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(
+        observed_count == 1 && observed_is(0, ECS_ON_SET, entity, record_desc.id, 10)
+    );
+    pin_value amount = { .type = PIN_F32, .f = 99 };
+    REQUIRE(ecs_component_write_field(world, entity, record_desc.id, 0, amount) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(observed_count == 2 && observed[1].amount == 10);
+    REQUIRE(ecs_world_destroy_entity(world, entity) == ECS_OK);
+    REQUIRE(!ecs_entity_is_alive(world, entity) && ecs_entity_is_alive(world, follower));
+    REQUIRE(ecs_world_command_count(world) == 0 && ecs_world_live_count(world) == 1);
+    return true;
+}
+
 void test_tool_ecs()
 {
     pu_setup(prepare_world, release_world);
@@ -449,5 +717,12 @@ void test_tool_ecs()
     RUN_TEST_CASE(ecs_reflected_field_writes_retain_strings);
     RUN_TEST_CASE(ecs_managed_rows_outlive_sources_and_reclaim_replacements);
     RUN_TEST_CASE(ecs_managed_storage_retires_on_remove_destroy_and_world_free);
+    RUN_TEST_CASE(ecs_observers_see_add_set_and_remove_at_the_sync_point);
+    RUN_TEST_CASE(ecs_destroy_notifies_the_entity_and_each_component_before_removal);
+    RUN_TEST_CASE(ecs_rows_destroyed_later_in_the_batch_still_report_their_set);
+    RUN_TEST_CASE(ecs_observer_commands_apply_in_the_same_sync_point);
+    RUN_TEST_CASE(ecs_observer_queries_skip_rows_removed_earlier_in_the_batch);
+    RUN_TEST_CASE(ecs_set_marks_coalesce_in_slot_order_until_unobserved);
+    RUN_TEST_CASE(ecs_observers_rewrite_rows_without_firing_again);
     pu_clear_setup();
 }

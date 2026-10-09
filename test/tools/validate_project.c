@@ -13,6 +13,8 @@
 
 /* The longest prototype name the player takes, GAME_PROTOTYPE_NAME_MAX. */
 #define PROTOTYPE_NAME_MAX 1024
+/* How many resources a player takes in all, GAME_PLAYER_MAX_ASSETS. */
+#define PLAYER_MAX_ASSETS 4096
 
 /* An Ogg Vorbis file's first page holds only its 30-byte identification
  * header; a page with no segments is its header alone. */
@@ -518,7 +520,8 @@ static const char *tone_refusal()
 TEST_CASE(sounds_must_decode)
 {
     /* Players decode an Ogg sound before they play it, so a scenario, like
-     * preparation, refuses one whose Vorbis audio they cannot decode. */
+     * preparation and validation, refuses one whose Vorbis audio they cannot
+     * decode. */
     static const char refusal[] = "sounds/Tone.ogg: holds no Vorbis audio that "
                                   "players can decode";
     char fixture[4096];
@@ -538,6 +541,7 @@ TEST_CASE(sounds_must_decode)
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\"\n}\n");
     write_bytes("game/content/sounds/Tone.ogg", tone, length);
     REQUIRE(!tone_refusal());
+    REQUIRE(validate() == 0);
 
     /* Its first page, then one that ends the stream: whole pages, but no
      * comment or setup header and no audio. */
@@ -548,6 +552,19 @@ TEST_CASE(sounds_must_decode)
     write_bytes("game/content/sounds/Tone.ogg", bare, sizeof bare);
     const char *message = tone_refusal();
     REQUIRE(message && !strcmp(message, refusal));
+    /* Validation lists it too, as a problem of the project, */
+    REQUIRE(validate() != 0 && errors() == 1);
+    message = first_message(result("project"));
+    REQUIRE(message && !strcmp(message, refusal));
+    /* even beside another asset's problems, which keep preparation from
+     * reaching the sounds. */
+    write_file("game/content/prototypes/Broken.kdl", "name \"Broken\"\n(array)components {\n");
+    REQUIRE(validate() != 0 && yyjson_arr_size(result("problems")) == 1);
+    message = first_message(result("project"));
+    REQUIRE(message && !strcmp(message, refusal));
+    char broken[256];
+    path(broken, sizeof broken, "game/content/prototypes/Broken.kdl");
+    REQUIRE(unlink(broken) == 0);
 
     /* Every header intact, but its one audio page, the last ~200 bytes,
      * garbled. */
@@ -557,6 +574,40 @@ TEST_CASE(sounds_must_decode)
     write_bytes("game/content/sounds/Tone.ogg", tone, length);
     message = tone_refusal();
     REQUIRE(message && !strcmp(message, refusal));
+    return true;
+}
+
+/* The smallest WAV players take: one silent 16-bit mono frame at 44.1 kHz. */
+static const unsigned char SILENCE[] = {
+    'R',  'I',  'F', 'F', 38,   0,    0,    0, 'W', 'A', 'V', 'E',
+    'f',  'm',  't', ' ', 16,   0,    0,    0, 1,   0,   1,   0,
+    0x44, 0xAC, 0,   0,   0x88, 0x58, 0x01, 0, 2,   0,   16,  0,
+    'd',  'a',  't', 'a', 2,    0,    0,    0, 0,   0
+};
+
+static void write_silences(int first, int end)
+{
+    for (int i = first; i < end; i++) {
+        char name[64];
+        snprintf(name, sizeof name, "game/content/sounds/%04d.wav", i);
+        write_bytes(name, SILENCE, sizeof SILENCE);
+    }
+}
+
+TEST_CASE(resources_are_limited_together)
+{
+    /* Even a new project carries resources besides its sounds, so sounds
+     * that fit the player's resource count on their own overflow it with
+     * them, and compiling refuses the project. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/sounds");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_silences(0, 1);
+    REQUIRE(validate() == 0);
+    write_silences(1, PLAYER_MAX_ASSETS - 1);
+    REQUIRE(validate() != 0 && errors() == 1);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "cannot be read within the resource limit"));
     return true;
 }
 
@@ -823,6 +874,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(prototypes_are_found_by_declared_name);
     RUN_TEST_CASE(scenarios_load_graph_assets);
     RUN_TEST_CASE(sounds_must_decode);
+    RUN_TEST_CASE(resources_are_limited_together);
     RUN_TEST_CASE(manifest_content_folder_is_used);
     RUN_TEST_CASE(scenes_run_under_their_own_name);
     pu_clear_setup();

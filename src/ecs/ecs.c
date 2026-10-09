@@ -512,6 +512,17 @@ static bool notify_modified(ecs_world *world)
     return marked;
 }
 
+/* Delivers a row's pending ON_SET before a command removes the row. */
+static void flush_modified(ecs_world *world, ecs_component *component, ecs_entity entity)
+{
+    uint64_t bit = UINT64_C(1) << (entity.slot % 64u);
+    if (!component->modified || !(component->modified[entity.slot / 64u] & bit)) {
+        return;
+    }
+    component->modified[entity.slot / 64u] &= ~bit;
+    notify(world, ECS_ON_SET, entity, component->desc.id);
+}
+
 static int command_rank(ecs_command_kind kind)
 {
     switch (kind) {
@@ -631,6 +642,13 @@ static bool collect_cleanup(ecs_world *world, ecs_entity entity, cleanup_entry *
 /* Notifies and removes one entity whose cleanup was collected. */
 static void retire_entity(ecs_world *world, ecs_entity entity)
 {
+    for (int i = 0; world_observes(world, ECS_ON_SET) && i < acount(world->components);
+         i++) {
+        ecs_component *component = &world->components[i];
+        if (component_matches(component, entity.slot)) {
+            flush_modified(world, component, entity);
+        }
+    }
     if (world_observes(world, ECS_ON_DESTROY)) {
         notify(world, ECS_ON_DESTROY, entity, 0);
     }
@@ -753,6 +771,7 @@ static int apply_remove(ecs_world *world, const ecs_command *command)
     if (!ecs_component_has(world, command->entity, command->component)) {
         return ECS_ERR_COMPONENT;
     }
+    flush_modified(world, component, command->entity);
     if (observes(component, ECS_ON_REMOVE)) {
         notify(world, ECS_ON_REMOVE, command->entity, command->component);
     }

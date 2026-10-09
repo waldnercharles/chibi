@@ -22,12 +22,13 @@ foreach(unit graph_expression presentation_schema source_presentation source_pre
     source_presentation_values source_presentation_flow source_presentation_layout
     source_presentation_details source_edit source_edit_selection source_edit_arguments
     source_edit_capability source_edit_declarations source_edit_refactor source_edit_inline
-    source_edit_signature source_edit_binding)
+    source_edit_signature source_edit_binding source_minimize)
     target_sources(chibi_source_presentation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
 endforeach()
 add_library(Chibi::source_presentation ALIAS chibi_source_presentation)
 set_target_properties(chibi_source_presentation PROPERTIES EXPORT_NAME source_presentation)
-chibi_sdk_headers(chibi_source_presentation PUBLIC authoring/graph_expression.h authoring/presentation_schema.h authoring/source_presentation.h authoring/source_edit.h)
+chibi_sdk_headers(chibi_source_presentation PUBLIC authoring/graph_expression.h authoring/presentation_schema.h authoring/source_presentation.h authoring/source_edit.h
+    authoring/source_minimize.h)
 foreach(header source_presentation_internal source_presentation_anchors source_presentation_details
     source_edit_internal source_edit_refactor_internal)
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"

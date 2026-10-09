@@ -32,7 +32,7 @@ WEB_PORT ?= 8099
 CHIBI_COLLAB_URL ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
-BUILD_TARGET ?= chibi-compile chibi-player chibi_ctl
+BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
 VERBOSE ?= 0
 export VERBOSE TEST_ARGS AGENT_SELECTOR
 MAKEFLAGS += --no-print-directory

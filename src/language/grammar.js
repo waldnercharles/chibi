@@ -8,7 +8,6 @@ const K = Object.fromEntries(
     "state",
     "shared",
     "action",
-    "value",
     "local",
     "event",
     "disabled",
@@ -22,7 +21,6 @@ const K = Object.fromEntries(
     "macro",
     "entry",
     "exit",
-    "result",
     "owner",
     "description",
     "domain",
@@ -45,6 +43,8 @@ const K = Object.fromEntries(
     "break",
     "continue",
     "await",
+    "yield",
+    "cancel",
     "true",
     "false",
     "nil",
@@ -60,6 +60,8 @@ const K = Object.fromEntries(
     "split",
   ].map((word) => [word, word]),
 );
+
+const CONTEXTUAL = ["from", "split"];
 
 const P = {
   or: 1,
@@ -85,7 +87,14 @@ module.exports = grammar({
   extras: ($) => [/\s/, $.comment],
   externals: ($) => [$._automatic_terminator],
   word: ($) => $.identifier,
-  reserved: { global: ($) => Object.values(K), member: ($) => [] },
+  // Contextual words stay usable as names wherever a name fits.
+  reserved: {
+    global: ($) =>
+      Object.entries(K)
+        .filter(([word]) => !CONTEXTUAL.includes(word))
+        .map(([, rule]) => rule),
+    member: ($) => [],
+  },
   conflicts: ($) => [
     [$._expression, $._name],
     [$.argument_list, $.parenthesized_expression],
@@ -123,7 +132,7 @@ module.exports = grammar({
     _common_declaration: ($) =>
       choice(
         $.action_declaration,
-        $.value_declaration,
+        $.lazy_local_declaration,
         $.event_declaration,
         $.bind_declaration,
         $.handler,
@@ -132,7 +141,6 @@ module.exports = grammar({
         $.events_declaration,
         $.entry_declaration,
         $.exit_declaration,
-        $.result_declaration,
         $.metadata_declaration,
         $.query_declaration,
       ),
@@ -153,8 +161,7 @@ module.exports = grammar({
             field("name", $._name),
             ":",
             field("type", $.type),
-            "=",
-            field("value", $._expression),
+            optional(seq("=", field("value", $._expression))),
           ),
           seq(
             field("type", $.type),
@@ -167,12 +174,8 @@ module.exports = grammar({
       ),
     action_declaration: ($) =>
       seq(optional(K.disabled), K.action, $._computation_declaration),
-    value_declaration: ($) =>
-      seq(
-        optional(K.disabled),
-        choice(K.value, K.local),
-        $._computation_declaration,
-      ),
+    lazy_local_declaration: ($) =>
+      seq(optional(K.disabled), K.local, $._computation_declaration),
     event_declaration: ($) => seq(K.event, $._computation_declaration),
     _computation_declaration: ($) =>
       seq(
@@ -218,8 +221,7 @@ module.exports = grammar({
         field("name", $._name),
         optional(field("type_parameters", $.type_parameter_list)),
         field("parameters", $.parameter_list),
-        "->",
-        field("results", $.parameter_list),
+        optional(seq("->", field("results", $.parameter_list))),
         field("body", $.callable_body),
       ),
     callable_body: ($) =>
@@ -249,16 +251,6 @@ module.exports = grammar({
     entry_declaration: ($) =>
       seq(K.entry, field("name", $._name), field("body", $.block)),
     exit_declaration: ($) => seq(K.exit, field("name", $._name), $._end),
-    result_declaration: ($) =>
-      seq(
-        K.result,
-        field("name", $._name),
-        ":",
-        field("type", $.type),
-        "=",
-        field("value", $._expression),
-        $._end,
-      ),
     metadata_declaration: ($) =>
       seq(
         field(
@@ -307,6 +299,8 @@ module.exports = grammar({
         $.goto_statement,
         $.break_statement,
         $.continue_statement,
+        $.yield_statement,
+        $.cancel_statement,
         $.label_statement,
       ),
     local_declaration: ($) =>
@@ -395,6 +389,8 @@ module.exports = grammar({
     goto_statement: ($) => seq(K.goto, field("name", $._name), $._end),
     break_statement: ($) => seq(K.break, $._end),
     continue_statement: ($) => seq(K.continue, $._end),
+    yield_statement: ($) => seq(K.yield, $._end),
+    cancel_statement: ($) => seq(K.cancel, field("value", $._expression), $._end),
     label_statement: ($) => seq(field("name", $._name), ":"),
     _expression: ($) =>
       choice(
@@ -494,7 +490,7 @@ module.exports = grammar({
       prec(
         P.unary,
         seq(
-          field("operator", choice("!", "-", "+", "~", "&")),
+          field("operator", choice("!", "-", "+", "~")),
           field("operand", $._expression),
         ),
       ),

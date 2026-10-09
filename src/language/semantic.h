@@ -16,7 +16,6 @@ typedef enum
     SCRIPT_PARAMETER,
     SCRIPT_RESULT,
     SCRIPT_LOCAL,
-    SCRIPT_LAZY,
     SCRIPT_ACTION,
     SCRIPT_COMPONENT,
     SCRIPT_LABEL,
@@ -31,6 +30,8 @@ typedef struct
     script_range declaration;
     int scope, initializer, function;
     bool writable, disabled, resolving, outcome, lazy_local;
+    bool boxed;       /* A task keeps this local by reference. */
+    bool mixed_tasks; /* Holds tasks of different functions. */
 } script_symbol;
 typedef enum
 {
@@ -69,6 +70,9 @@ typedef enum
     SCRIPT_EXPR_NIL,
     SCRIPT_EXPR_FALLBACK,
     SCRIPT_EXPR_STORE,
+    SCRIPT_EXPR_YIELD,
+    SCRIPT_EXPR_JOIN,   /* await of a task handle in left */
+    SCRIPT_EXPR_CANCEL, /* cancel of a task handle in left */
 } script_expression_kind;
 typedef enum
 {
@@ -94,7 +98,6 @@ typedef enum
     SCRIPT_OP_SHIFT_LEFT,
     SCRIPT_OP_SHIFT_RIGHT,
     SCRIPT_OP_BIT_NOT,
-    SCRIPT_OP_REFERENCE,
 } script_operator;
 typedef struct
 {
@@ -118,6 +121,7 @@ typedef struct
     size_t offset;
     unsigned effects;
     bool writable, awaited, constant_snapshot, partial;
+    bool task; /* An unawaited call to a waiting function starts a task. */
 } script_expression;
 typedef enum
 {
@@ -170,6 +174,7 @@ typedef struct
     script_range range;
     unsigned effects;
     bool pure, disabled;
+    bool inferred; /* No `->`: its returns give the results. */
 } script_function;
 typedef enum
 {

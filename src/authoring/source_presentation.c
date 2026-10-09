@@ -201,7 +201,7 @@ authoring_source_presentation *authoring_source_presentation_new(
             continue;
         }
         if (s->kind == SCRIPT_STATE || s->kind == SCRIPT_SHARED_STATE ||
-            s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_LAZY || s->kind == SCRIPT_ACTION ||
+            s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_ACTION ||
             s->kind == SCRIPT_EVENT || s->kind == SCRIPT_COMPONENT) {
             source_view_declaration(&p, i);
         }

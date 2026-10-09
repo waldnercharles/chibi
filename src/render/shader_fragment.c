@@ -3,6 +3,7 @@
 #include "render/shader_catalog.h"
 #include "support/xalloc.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,35 +33,19 @@ char *render_shader_fragment_source()
         "e.points_45=sg_entity[7]; e.points_67=sg_entity[8];\n"
         " vec2 wp=params.view_pos, p=wp-e.pos; "
         "p=vec2(dot(e.inv_rot.xy,p),dot(e.inv_rot.zw,p));\n"
-        " vec4 wobble=sg_entity[17],pluck=sg_entity[18]; float "
-        "clock=sg_entity[19].x;\n"
-        " float angle=atan(p.y,p.x),freq=round(wobble.y),deform=0.0;\n"
-        " if(wobble.x>0.0) deform=sin(angle*freq-clock*wobble.z)*wobble.x;\n"
-        " if(pluck.x>0.01) {float "
-        "dist=angle-pluck.y;dist-=6.2831853*floor((dist+3.1415926)/"
-        "6.2831853);\n"
-        " float "
-        "front=pluck.z*pluck.w,env=0.8+freq*0.1,p1=dist-front,p2=dist+front;\n"
-        " deform+=(sin(dist*freq-front)*exp(-p1*p1*env)+sin(dist*freq+front)*"
-        "exp(-p2*p2*env))*pluck.x;}\n"
-        " vec2 "
-        "radial=p+vec2(0.0001);if(length(radial)>0.0)p+=radial/"
-        "length(radial)*deform;\n"
         " float d=evaluate_sdf(p,e); vec2 half_size=shader_half_size(e); vec4 "
         "values[32], result[8];\n"
         " int shape=int(sg_entity[4].z), material=int(sg_entity[4].y); float "
-        "time=sg_entity[19].x;\n"
-        " e.material_frame=sg_entity[20]; vec2 "
+        "time=sg_entity[17].x;\n"
+        " e.material_frame=sg_entity[18]; vec2 "
         "mp=material_position(e,p,wp);\n"
-        " vec4 object_frame=wobble.x>0.0 || pluck.x>0.01 ? vec4(0) : "
-        "e.inv_rot;\n"
-        " if(shape>0) { for(int i=0;i<32;i++) values[i]=sg_entity[53+i]; "
-        "sg_dispatch_2d(shape,p,mp,half_size,object_frame,time,values,result); "
+        " if(shape>0) { for(int i=0;i<32;i++) values[i]=sg_entity[51+i]; "
+        "sg_dispatch_2d(shape,p,mp,half_size,e.inv_rot,time,values,result); "
         "d=result[0].x; }\n"
         " vec4 "
         "sc=sg_entity[9],em=sg_entity[10],bs=sg_entity[13],be=sg_entity[14];\n"
-        " if(material>0) { for(int i=0;i<32;i++) values[i]=sg_entity[21+i]; "
-        "sg_dispatch_2d(material,p,mp,half_size,object_frame,time,values,"
+        " if(material>0) { for(int i=0;i<32;i++) values[i]=sg_entity[19+i]; "
+        "sg_dispatch_2d(material,p,mp,half_size,e.inv_rot,time,values,"
         "result); "
         "sc=result[0]; "
         "em=result[1]; bs=result[0]; be=result[1]; }\n"
@@ -121,7 +106,8 @@ void render_shader_fragment_draw(
     CF_V2 lighting
 )
 {
-    float data[sizeof *entity / sizeof(float)];
+    /* Everything but the layer, which only orders draws. */
+    float data[offsetof(render_material_entity, layer) / sizeof(float)];
     memcpy(data, entity, sizeof data);
     data[8] = (float)entity->shape_type;
     data[13] = (float)entity->point_count;

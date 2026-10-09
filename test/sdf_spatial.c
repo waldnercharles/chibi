@@ -213,7 +213,7 @@ bool test_sdf_spatial()
           .inv_rot = { 1, 0, 0, 1 },
           .extent = { 60, 50 },
           .points = { 60, 50 },
-          .wobble = { 0, 0, 0, -1 },
+          .layer = -1,
           .scene = { 0, .2f, 0, 1 },
           .albedo = { 0, .2f, 0, 1 },
           .absorption = { 1, 1, 1, 1 } },
@@ -224,7 +224,7 @@ bool test_sdf_spatial()
           .inv_rot = { 1, 0, 0, 1 },
           .extent = { 4, 4 },
           .points = { 4, 4 },
-          .wobble = { 0, 0, 0, 1 },
+          .layer = 1,
           .scene = { .3f, .3f, 0, 1 },
           .albedo = { .3f, .3f, 0, 1 },
           .absorption = { 1, 1, 1, 1 } }

@@ -37,8 +37,11 @@ and icon, and every asset. Markup in `content/ui` must be a regular file:
 `problems` list only the assets with errors or warnings, each diagnostic naming
 what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
 model and a shape share a name there is no catalog, so it lists no asset
-problems until one is renamed. It never changes files: a project saved by an
-earlier build fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
+problems until one is renamed. Once nothing else is wrong, it prepares the
+project as `chibi-compile` does and lists what preparation refuses, such as
+resources that together pass the player's 4,096 records or 64 MiB, so a valid
+project compiles. It never changes files: a project saved by an earlier build
+fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
 A prototype is the `name` it declares, whatever its file is called: scenes and
 other prototypes' `(array)includes` find it by that name in the player and in
 `chibi_ctl` alike, and two prototypes that declare one name, or a name over
@@ -168,6 +171,27 @@ entities. Scene scenarios (`run_scenario`, `runtime_snapshot`,
 `profile_scenario` and recordings) follow requests the same way. Studio play
 mode cannot load scenes yet, so a request there fails with "This host cannot
 load scenes".
+
+## Play sounds and music
+
+Put mono or stereo WAV and Ogg Vorbis files sampled at 44.1 kHz in
+`content/sounds`. A WAV holds plain PCM (8 to 32-bit) or float samples;
+WAVE_FORMAT_EXTENSIBLE, surround, Opus, other sample rates and cut-short files
+fail preparation, since the mixer plays files at 44.1 kHz without resampling.
+Preparation and scenarios also decode every Ogg file with the players' Vorbis
+decoder and refuse one that yields no audio. `validate_project` lists the first
+sound they would refuse as a project problem. A sound's name is its file name
+without the extension, so `content/sounds/jump.ogg` is `"jump"`. Scripts play
+one with `play_sound(Sound: "jump")`, and set its Volume and Pan from 0 to 1.
+`play_music(Music: "theme", Fade: 1)` loops a track and fades it in. Asking for
+the track that already plays changes nothing, so scenes that share a track keep
+it running. `stop_music(Fade: 1)` fades it out. `set_master_volume`,
+`set_music_volume` and `set_sound_volume` scale each bus from 0 to 1, and the
+master bus scales the others. `play_tone` still synthesizes sweeps and noise
+without a file. `chibi-compile` embeds every sound in the prepared artifact.
+Scenarios hash every audio request, and `runtime_snapshot` counts the sounds and
+tones played in `sound_cues`. Studio play mode cannot play sound files yet, so
+`play_sound` and `play_music` fail there with "No sound named".
 
 ## Runtime identity and capability requests
 

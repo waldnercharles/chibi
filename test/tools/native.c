@@ -1083,7 +1083,7 @@ TEST_CASE(native_player_loads_named_scenes)
     REQUIRE(game_save_set(save, "level", "1") && game_save_commit(save));
     REQUIRE(game_save_set(save, "unsaved", "1"));
     game_audio *audio = engine_audio(runtime);
-    REQUIRE(game_audio_emit(audio, (game_sound){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
+    REQUIRE(game_audio_tone(audio, (game_tone){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
     uint64_t cues = game_audio_hash(audio);
     REQUIRE(follow("Next", error, sizeof error));
     REQUIRE(!strcmp(game_scene_flow_current(flow), "Next"));
@@ -1109,6 +1109,217 @@ TEST_CASE(native_player_loads_named_scenes)
     REQUIRE(!strcmp(error, "No scene named 'Missing'"));
     engine_reset(runtime);
     REQUIRE(game_audio_count(audio) == 0);
+    return true;
+}
+static int staged_sounds;
+static void *stage_sounds(void *, const game_player_asset *assets, int count, size_t *, char *, size_t)
+{
+    staged_sounds = count && assets[0].kind == GAME_PLAYER_ASSET_SOUND ? count : -1;
+    return &staged_sounds;
+}
+static bool any_scene(void *, void *, const game_scene *, char *, size_t)
+{
+    return true;
+}
+static void keep_sounds(void *, void *, game_world *) {}
+static void drop_sounds(void *, void *) {}
+static const char *call(const node_host_call *host, game_audio *audio, pin_value a, pin_value b)
+{
+    pin_value in[] = { a, b, { .type = PIN_F32, .f = 0.5f } };
+    return host->invoke(audio, in, NULL);
+}
+TEST_CASE(native_player_plays_sounds)
+{
+    char error[192];
+    GameTransform transform = { .x = 1 };
+    game_scene_component component = { &GAME_COMPONENT_GameTransform, &transform };
+    game_scene_object object = { .name = "Hero",
+                                 .components = &component,
+                                 .component_count = 1 };
+    game_scene_spec scene_spec = { .name = "Start",
+                                   .physics = game_physics_defaults(),
+                                   .objects = &object,
+                                   .object_count = 1 };
+    scene = game_scene_prepare(&scene_spec, error, sizeof error);
+    REQUIRE(scene);
+    /* Mono 16-bit PCM at 44.1 kHz with two samples. */
+    static const unsigned char wav[] = {
+        'R',  'I',  'F', 'F', 40,   0,    0, 0, 'W', 'A', 'V', 'E',
+        'f',  'm',  't', ' ', 16,   0,    0, 0, 1,   0,   1,   0,
+        0x44, 0xAC, 0,   0,   0x88, 0x58, 1, 0, 2,   0,   16,  0,
+        'd',  'a',  't', 'a', 4,    0,    0, 0, 0,   0,   0,   0
+    };
+    game_player_asset sound = { .name = "Jump",
+                                .kind = GAME_PLAYER_ASSET_SOUND,
+                                .data = wav,
+                                .length = sizeof wav };
+    game_player_resource_host resources = { .stage = stage_sounds,
+                                            .scene = any_scene,
+                                            .commit = keep_sounds,
+                                            .discard = drop_sounds,
+                                            .retire = drop_sounds };
+    game_player_spec spec = { .world = { .modules = GAME_WORLD_AUDIO },
+                              .scene = scene,
+                              .assets = &sound,
+                              .asset_count = 1,
+                              .resources = resources };
+    size_t length;
+    game_player_application application = { 0 };
+    REQUIRE(
+        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
+    game_player_host host_context = {
+        .components = { .components = GAME_REGISTRY_COMPONENTS,
+                        .component_count = GAME_REGISTRY_COMPONENT_COUNT },
+        .linker = &(execution_prepared_linker){ .host = player_host },
+        .resources = resources
+    };
+    player = game_player_prepared_read(player_bytes, length, &host_context, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(player && staged_sounds == 1);
+    game_audio *audio = game_world_modules(game_player_world(player))->audio;
+    REQUIRE(game_audio_sound_count(audio) == 1);
+    REQUIRE(!memcmp(game_audio_sound(audio, 0, &length), wav, sizeof wav) && length == sizeof wav);
+    /* Recordings identify the library by its names and files. */
+    game_audio *library = game_audio_new();
+    uint64_t empty = game_audio_library_hash(library);
+    game_audio_add_sound(library, "Jump", wav, sizeof wav);
+    REQUIRE(game_audio_library_hash(library) == game_audio_library_hash(audio));
+    REQUIRE(game_audio_library_hash(library) != empty);
+    game_audio_add_sound(library, "Land", wav, sizeof wav);
+    REQUIRE(game_audio_library_hash(library) != game_audio_library_hash(audio));
+    game_audio_free(library);
+    /* The library's records, names and copies count against the retained
+     * storage budget. */
+    size_t budget = 1 << 20;
+    spec.decoded_remaining = &budget;
+    game_player *charged = game_player_new(&spec, error, sizeof error);
+    REQUIRE(charged);
+    game_player_free(charged);
+    size_t used = (1 << 20) - budget;
+    REQUIRE(used > sizeof wav + sizeof "Jump");
+    budget = used - 1;
+    REQUIRE(!game_player_new(&spec, error, sizeof error) && budget == used - 1);
+    REQUIRE(!strcmp(error, "Prepared player retained storage budget exceeded"));
+
+    pin_value jump = { .type = PIN_STR, .str = "Jump" },
+              missing = { .type = PIN_STR, .str = "Missing" };
+    pin_value quarter = { .type = PIN_F32, .f = 0.25f },
+              two = { .type = PIN_F32, .f = 2 };
+    REQUIRE(!call(&GAME_AUDIO_SOUND_CALL, audio, jump, quarter));
+    REQUIRE(!strcmp(call(&GAME_AUDIO_SOUND_CALL, audio, missing, quarter), "No sound named 'Missing'"));
+    REQUIRE(call(&GAME_AUDIO_SOUND_CALL, audio, jump, two));
+    game_voice voices[2];
+    REQUIRE(game_audio_take(audio, voices, 2) == 1 && game_audio_count(audio) == 1);
+    REQUIRE(voices[0].sound == 0 && voices[0].volume == 0.25f && voices[0].pan == 0.5f);
+    REQUIRE(game_audio_tone(audio, (game_tone){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
+    REQUIRE(game_audio_take(audio, voices, 2) == 1 && voices[0].sound == -1);
+
+    float fade;
+    uint64_t started, serial;
+    REQUIRE(!call(&GAME_AUDIO_MUSIC_CALL, audio, jump, two));
+    REQUIRE(game_audio_music(audio, &fade, &started) == 0 && fade == 2);
+    /* The playing track keeps playing when a scene asks for it again. */
+    REQUIRE(!call(&GAME_AUDIO_MUSIC_CALL, audio, jump, quarter));
+    REQUIRE(game_audio_music(audio, &fade, &serial) == 0 && serial == started && fade == 2);
+    REQUIRE(!call(&GAME_AUDIO_STOP_MUSIC_CALL, audio, quarter, quarter));
+    REQUIRE(game_audio_music(audio, &fade, &serial) == -1 && serial != started && fade == 0.25f);
+    REQUIRE(!call(&GAME_AUDIO_MUSIC_VOLUME_CALL, audio, quarter, quarter));
+    REQUIRE(call(&GAME_AUDIO_SOUND_VOLUME_CALL, audio, two, two));
+    REQUIRE(game_audio_volume(audio, GAME_AUDIO_MUSIC) == 0.25f);
+    REQUIRE(
+        game_audio_volume(audio, GAME_AUDIO_MASTER) == 1 &&
+        game_audio_volume(audio, GAME_AUDIO_SOUNDS) == 1
+    );
+
+    uint64_t generation = game_audio_generation(audio), hash = game_audio_hash(audio);
+    REQUIRE(
+        hash && !call(&GAME_AUDIO_MUSIC_CALL, audio, jump, two) &&
+        game_audio_hash(audio) != hash
+    );
+    REQUIRE(!call(&GAME_AUDIO_SOUND_CALL, audio, jump, quarter));
+    REQUIRE(!call(&GAME_AUDIO_MASTER_VOLUME_CALL, audio, quarter, quarter));
+    REQUIRE(!call(&GAME_AUDIO_SOUND_VOLUME_CALL, audio, quarter, quarter));
+    REQUIRE(game_audio_volume(audio, GAME_AUDIO_SOUNDS) == 0.25f);
+    engine_reset(game_world_engine(game_player_world(player)));
+    REQUIRE(
+        game_audio_generation(audio) != generation &&
+        game_audio_music(audio, &fade, &serial) == -1
+    );
+    REQUIRE(!game_audio_hash(audio) && !game_audio_count(audio));
+    REQUIRE(!game_audio_take(audio, voices, 2) && game_audio_sound_count(audio) == 1);
+    for (int i = 0; i < GAME_AUDIO_BUSES; i++) {
+        REQUIRE(game_audio_volume(audio, i) == 1);
+    }
+    static const unsigned char text[] = "not a sound file";
+    sound = (game_player_asset){ .name = "Text",
+                                 .kind = GAME_PLAYER_ASSET_SOUND,
+                                 .data = text,
+                                 .length = sizeof text };
+    REQUIRE(!game_player_asset_valid(&sound));
+    /* Players only take sounds they can decode: not WAVE_FORMAT_EXTENSIBLE,
+     * surround, 12-bit samples, less than one whole frame, or 48 kHz, which
+     * the 44.1 kHz mixer would play slow and low. */
+    static const struct
+    {
+        int at, value;
+    } undecodable[] = { { 20, 0xFFFE }, { 22, 6 }, { 34, 12 }, { 40, 1 }, { 24, 48000 } };
+    for (size_t i = 0; i < sizeof undecodable / sizeof *undecodable; i++) {
+        unsigned char edited[sizeof wav];
+        memcpy(edited, wav, sizeof wav);
+        edited[undecodable[i].at] = undecodable[i].value & 0xFF;
+        edited[undecodable[i].at + 1] = undecodable[i].value >> 8;
+        REQUIRE(!game_sound_format_of(edited, sizeof edited));
+    }
+    REQUIRE(!game_sound_format_of(wav, sizeof wav - 1)); /* samples cut short */
+    unsigned char real[sizeof wav];
+    memcpy(real, wav, sizeof wav);
+    real[20] = 3, real[34] = 32; /* one float sample */
+    REQUIRE(game_sound_format_of(real, sizeof real) == GAME_SOUND_WAV);
+    /* Chunks pad to even sizes, and samples only count after the format. */
+    unsigned char padded[sizeof wav + 10] = { 0 };
+    memcpy(padded, wav, 36);
+    memcpy(padded + 36, "LIST\1\0\0\0", 8);
+    memcpy(padded + 46, wav + 36, 12);
+    REQUIRE(game_sound_format_of(padded, sizeof padded) == GAME_SOUND_WAV);
+    unsigned char early[sizeof wav];
+    memcpy(early, wav, 12);
+    memcpy(early + 12, wav + 36, 12);
+    memcpy(early + 24, wav + 12, 24);
+    REQUIRE(!game_sound_format_of(early, sizeof early));
+    /* A page holding only a stereo 44.1 kHz Vorbis identification header, an
+     * empty page that ends the stream, and a few trailing bytes. */
+    unsigned char ogg[88] = { 'O', 'g', 'g', 'S' };
+    ogg[5] = 2, ogg[26] = 1, ogg[27] = 30, ogg[28] = 1, ogg[39] = 2;
+    ogg[40] = 0x44, ogg[41] = 0xAC;
+    memcpy(ogg + 29, "vorbis", 6);
+    memcpy(ogg + 58, "OggS", 4);
+    ogg[63] = 4;
+    memcpy(ogg + 85, "TAG", 3);
+    REQUIRE(game_sound_format_of(ogg, sizeof ogg) == GAME_SOUND_OGG);
+    REQUIRE(game_sound_format_of(ogg, 85) == GAME_SOUND_OGG);
+    /* Cut inside the header or the last page, or before the stream ends. */
+    REQUIRE(!game_sound_format_of(ogg, 40));
+    REQUIRE(!game_sound_format_of(ogg, 84));
+    REQUIRE(!game_sound_format_of(ogg, 58));
+    /* The first page must not end the stream. */
+    ogg[5] = 6;
+    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    ogg[5] = 2;
+    ogg[40] = 0x80, ogg[41] = 0xBB; /* 48 kHz */
+    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    ogg[40] = 0x44, ogg[41] = 0xAC;
+    ogg[39] = 6;
+    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    memcpy(ogg + 28, "OpusHead", 8);
+    ogg[39] = 2;
+    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    sound = (game_player_asset){ .name = "Jump",
+                                 .kind = GAME_PLAYER_ASSET_SOUND,
+                                 .length = sizeof wav,
+                                 .path = "content/sounds/Jump.wav",
+                                 .content_hash = 1,
+                                 .external = true };
+    REQUIRE(!game_player_asset_valid(&sound));
     return true;
 }
 typedef struct
@@ -1282,6 +1493,7 @@ void test_tool_native()
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
     RUN_TEST_CASE(native_player_loads_named_scenes);
+    RUN_TEST_CASE(native_player_plays_sounds);
     RUN_TEST_CASE(native_player_reads_declared_components);
     RUN_TEST_CASE(native_action_state_combines_sources_per_step);
     RUN_TEST_CASE(native_recorded_taps_replay_per_step);

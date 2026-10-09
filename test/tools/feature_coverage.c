@@ -10,6 +10,7 @@
 #include "authoring/project_prepare_internal.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_prototype_flow.h"
+#include "authoring/studio_project.h"
 #include "runtime/behaviors/entities_definition.h"
 #include "runtime/component_catalog.h"
 #include "runtime/components.h"
@@ -683,7 +684,12 @@ static void report()
 TEST_CASE(test_catalog_coverage)
 {
     char error[256];
-    native_capabilities *table = authoring_application_catalog_new(false, error, sizeof error);
+    /* The Studio project sees the editor's capabilities, as chibi_ctl gives it. */
+    native_capabilities *table = authoring_application_catalog_new(
+        studio_project_is(project_root),
+        error,
+        sizeof error
+    );
     REQUIRE(table != NULL);
     /* The live declared set joins the language catalog and project_components. */
     if (!authoring_component_declarations_load(

@@ -600,36 +600,71 @@ typedef struct
     bool recorded; /* Its own destroy command is still pending. */
 } cleanup_entry;
 
-/* Collects entity and, breadth first, every source its DELETE relationships
- * would destroy. Returns false when a PANIC relationship still has a source,
- * leaving every pending_destroy state as it was. */
-static bool collect_cleanup(ecs_world *world, ecs_entity entity, cleanup_entry **entries)
+typedef struct
 {
-    bool recorded = world->pending_destroy[entity.slot] == DESTROY_RECORDED;
-    apush(*entries, ((cleanup_entry){ entity, recorded }));
-    world->pending_destroy[entity.slot] = DESTROY_RUNNING;
-    bool allowed = true;
-    for (int at = 0; allowed && at < acount(*entries); at++) {
-        uint32_t slot = (*entries)[at].entity.slot;
-        for (int r = 0; allowed && r < acount(world->relationships); r++) {
-            const ecs_relationship *relationship = &world->relationships[r];
-            const uint32_t *sources = relationship->sources[slot];
-            ecs_cleanup policy = relationship->desc.on_delete_target;
-            allowed = policy != ECS_CLEANUP_PANIC || !acount(sources);
-            for (int i = 0; policy == ECS_CLEANUP_DELETE && i < acount(sources); i++) {
-                uint32_t source = sources[i];
-                if (world->pending_destroy[source] == DESTROY_RUNNING) {
-                    continue;
-                }
-                cleanup_entry entry = {
-                    .entity = { source, world->generations[source] },
-                    .recorded = world->pending_destroy[source] == DESTROY_RECORDED,
-                };
-                apush(*entries, entry);
-                world->pending_destroy[source] = DESTROY_RUNNING;
+    cleanup_entry entry;
+    int relationship; /* Next relationship whose sources to visit. */
+    int source;
+} cleanup_frame;
+
+static void push_cleanup(ecs_world *world, cleanup_frame **stack, uint32_t slot)
+{
+    cleanup_frame frame = {
+        .entry = { { slot, world->generations[slot] },
+                   world->pending_destroy[slot] == DESTROY_RECORDED },
+    };
+    apush(*stack, frame);
+    world->pending_destroy[slot] = DESTROY_RUNNING;
+}
+
+/* Returns the frame's next DELETE source not yet collected, or 0 when none
+ * remain. Clears allowed when a PANIC relationship still has a source. */
+static uint32_t next_cleanup_source(ecs_world *world, cleanup_frame *frame, bool *allowed)
+{
+    uint32_t slot = frame->entry.entity.slot;
+    for (; frame->relationship < acount(world->relationships);
+         frame->relationship++, frame->source = 0) {
+        const ecs_relationship *relationship = &world->relationships[frame->relationship];
+        const uint32_t *sources = relationship->sources[slot];
+        ecs_cleanup policy = relationship->desc.on_delete_target;
+        if (policy == ECS_CLEANUP_PANIC && acount(sources)) {
+            *allowed = false;
+            return 0;
+        }
+        while (policy == ECS_CLEANUP_DELETE && frame->source < acount(sources)) {
+            uint32_t source = sources[frame->source++];
+            if (world->pending_destroy[source] != DESTROY_RUNNING) {
+                return source;
             }
         }
     }
+    return 0;
+}
+
+/* Collects entity and every source its DELETE relationships would destroy in
+ * postorder, so each source comes before its targets. Returns false when a
+ * PANIC relationship still has a source, leaving every pending_destroy state
+ * as it was. */
+static bool collect_cleanup(ecs_world *world, ecs_entity entity, cleanup_entry **entries)
+{
+    cleanup_frame *stack = NULL;
+    bool allowed = true;
+    push_cleanup(world, &stack, entity.slot);
+    while (allowed && acount(stack)) {
+        uint32_t source = next_cleanup_source(world, &stack[acount(stack) - 1], &allowed);
+        if (source) {
+            push_cleanup(world, &stack, source);
+            continue;
+        }
+        if (allowed) {
+            apush(*entries, stack[acount(stack) - 1].entry);
+            asetlen(stack, acount(stack) - 1);
+        }
+    }
+    for (int i = 0; i < acount(stack); i++) {
+        apush(*entries, stack[i].entry);
+    }
+    afree(stack);
     for (int i = 0; !allowed && i < acount(*entries); i++) {
         const cleanup_entry *entry = &(*entries)[i];
         world->pending_destroy[entry->entity.slot] = entry->recorded
@@ -676,7 +711,8 @@ static void retire_entity(ecs_world *world, ecs_entity entity)
 }
 
 /* Applies OnDeleteTarget cleanup before the entity goes: DELETE sources are
- * destroyed deepest first, and a PANIC source fails it before any change. */
+ * destroyed before their targets, and a PANIC source fails it before any
+ * change. */
 static int destroy_entity(ecs_world *world, ecs_entity entity)
 {
     cleanup_entry *entries = NULL;
@@ -684,7 +720,7 @@ static int destroy_entity(ecs_world *world, ecs_entity entity)
         afree(entries);
         return ECS_ERR_COMMAND;
     }
-    for (int i = acount(entries) - 1; i >= 0; i--) {
+    for (int i = 0; i < acount(entries); i++) {
         retire_entity(world, entries[i].entity);
     }
     afree(entries);
